@@ -9,18 +9,23 @@
 //! [`faces`](rust_native::layout::shape::faces) names: the system faces
 //! the app installed (the desktop's prose face and its code face), or the
 //! bundled Paper Mono when it installed none. A character those faces lack is
-//! painted from one of this computer's fonts ([`crate::fallback`]), centered
-//! in the width the shaper measured for it.
+//! painted from one of this computer's fallback faces
+//! ([`rust_native::layout::shape::system`]), in the width the shaper measured
+//! for it: that face's own on Linux and Windows, and centered in CoreText's
+//! on a Mac.
 
 use crate::canvas::Frame;
 use rust_native::layout::display::{Font, Weight};
-use rust_native::layout::shape::{FontSpec, ShapingMeasurer, faces, fallback_advance, grapheme_at};
+use rust_native::layout::shape::{
+    FontSpec, ShapingMeasurer, faces, fallback_width, grapheme_at, system,
+};
 use rust_native::layout::{MeasureRun, Measurer};
 use rust_native::style::{Color, TextAlign};
 use std::collections::HashMap;
 use std::rc::Rc;
 use swash::FontRef;
-use swash::scale::{Render, ScaleContext, Source};
+use swash::scale::image::Content;
+use swash::scale::{Render, ScaleContext, Source, StrikeWith};
 use swash::shape::ShapeContext;
 use swash::zeno::{Format, Vector};
 
@@ -65,7 +70,10 @@ struct Glyph {
     top: i32,
     width: usize,
     height: usize,
+    /// One coverage byte a pixel, or, for a color glyph (an emoji face's),
+    /// four bytes of RGBA.
     coverage: Vec<u8>,
+    color: bool,
 }
 
 type GlyphKey = (usize, u32, u32, u16, u8);
@@ -74,6 +82,8 @@ type GlyphKey = (usize, u32, u32, u16, u8);
 pub struct Fonts {
     measurer: ShapingMeasurer,
     shape: ShapeContext,
+    /// Shapes clusters in fallback faces while `shape` shapes a line.
+    fallback_shape: ShapeContext,
     scale: ScaleContext,
     faces: Vec<FontRef<'static>>,
     paragraphs: HashMap<(String, u64, u32, u32), Rc<Paragraph>>,
@@ -114,6 +124,7 @@ impl Fonts {
         Fonts {
             measurer: ShapingMeasurer::new(),
             shape: ShapeContext::new(),
+            fallback_shape: ShapeContext::new(),
             scale: ScaleContext::new(),
             faces: faces()
                 .iter()
@@ -424,6 +435,7 @@ impl Fonts {
         }
         let metrics = face.metrics(&[]).scale(size);
         let line_height = paragraph.line_height() * scale;
+        let widths = self.measurer.fallback_widths();
         for (index, line) in paragraph.lines.iter().enumerate() {
             let text = &paragraph.text[line.start..line.end];
             if text.is_empty() {
@@ -472,20 +484,29 @@ impl Fonts {
                         }
                     });
                 if cluster.glyphs.iter().any(|glyph| glyph.id == 0) {
-                    // The drawing face lacks this character: the shaper
-                    // measured it at CoreText's fallback width, so center a
-                    // fallback glyph there.
+                    // The drawing face lacks this character: draw it from a
+                    // fallback face in the width the shaper measured, the
+                    // face's own on Linux and Windows, centered in
+                    // CoreText's on a Mac.
                     // A grapheme the face splits, such as a flag, draws once.
                     let Some(grapheme) = grapheme_at(text, cluster.source.start as usize) else {
                         return;
                     };
-                    let ch = grapheme.chars().next().unwrap_or('?');
-                    let width = fallback_advance(grapheme, spec.size, spec.fallback) as f32 * scale;
-                    if let Some((index, fallback)) = crate::fallback::face_for(ch) {
-                        let id = fallback.charmap().map(ch);
-                        let advance = fallback.glyph_metrics(&[]).scale(size).advance_width(id);
-                        let gx = pen + ((width - advance) / 2.0).max(0.0);
-                        placed.push((Some(index), id, gx, 0.0, color));
+                    let glyphs = system::fallback_glyphs(&mut self.fallback_shape, grapheme, &spec);
+                    let width =
+                        fallback_width(glyphs.as_ref(), grapheme, &spec, widths) as f32 * scale;
+                    if let Some(glyphs) = glyphs {
+                        let advance = glyphs.advance as f32 * scale;
+                        let start = pen + ((width - advance) / 2.0).max(0.0);
+                        for (id, gx, gy) in glyphs.glyphs {
+                            placed.push((
+                                Some(glyphs.face),
+                                id,
+                                start + gx * scale,
+                                gy * scale,
+                                color,
+                            ));
+                        }
                     } else if let Some(glyph) = cluster.glyphs.first() {
                         placed.push((None, glyph.id, pen + glyph.x, glyph.y, color));
                     }
@@ -504,7 +525,7 @@ impl Fonts {
                 let (key_face, face) = match fallback {
                     Some(index) => (
                         self.faces.len() + index,
-                        crate::fallback::face_for_index(index).unwrap_or(face),
+                        system::face_at(index).unwrap_or(face),
                     ),
                     None => (spec.face, face),
                 };
@@ -516,12 +537,23 @@ impl Fonts {
                         .size(size)
                         .hint(false)
                         .variations(if fallback.is_some() {
-                            Vec::new()
+                            vec![("wght", spec.weight)]
                         } else {
                             variations.clone()
                         })
                         .build();
-                    let image = Render::new(&[Source::Outline])
+                    // An emoji face draws in its own colors: layered
+                    // outlines (Segoe UI Emoji) or bitmaps (Noto Color Emoji). (check-fonts: allow)
+                    let sources: &[Source] = if fallback.is_some() {
+                        &[
+                            Source::ColorOutline(0),
+                            Source::ColorBitmap(StrikeWith::BestFit),
+                            Source::Outline,
+                        ]
+                    } else {
+                        &[Source::Outline]
+                    };
+                    let image = Render::new(sources)
                         .format(Format::Alpha)
                         .offset(Vector::new(f32::from(quarter) / 4.0, 0.0))
                         .render(&mut scaler, id)
@@ -530,6 +562,7 @@ impl Fonts {
                             top: image.placement.top,
                             width: image.placement.width as usize,
                             height: image.placement.height as usize,
+                            color: image.content == Content::Color,
                             coverage: image.data,
                         });
                     if self.glyphs.len() > 8_192 {
@@ -544,6 +577,27 @@ impl Fonts {
                 let top = (baseline - gy) as i64 - i64::from(glyph.top);
                 for row in 0..glyph.height {
                     for col in 0..glyph.width {
+                        if glyph.color {
+                            let at = (row * glyph.width + col) * 4;
+                            let Some(&[red, green, blue, alpha]) = glyph.coverage.get(at..at + 4)
+                            else {
+                                continue;
+                            };
+                            if alpha > 0 {
+                                frame.blend(
+                                    left + col as i64,
+                                    top + row as i64,
+                                    Color {
+                                        red,
+                                        green,
+                                        blue,
+                                        alpha: color.alpha,
+                                    },
+                                    f32::from(alpha) / 255.0,
+                                );
+                            }
+                            continue;
+                        }
                         let coverage = glyph.coverage[row * glyph.width + col];
                         if coverage > 0 {
                             // The faces are drawn without an italic
@@ -623,7 +677,7 @@ mod tests {
 
 #[cfg(test)]
 mod coverage {
-    use rust_native::layout::shape::{FontSpec, fallback_advance};
+    use rust_native::layout::shape::{FontSpec, ShapingMeasurer, fallback_width, system};
 
     #[test]
     fn the_body_face_has_the_marks_screens_use() {
@@ -638,11 +692,19 @@ mod coverage {
         let mut fonts = super::Fonts::new();
         let font = super::font(14.0, rust_native::layout::display::Weight::Regular, false);
         let paragraph = fonts.paragraph("✓ ₿ ok", font, None);
-        // The missing marks are measured at CoreText's fallback widths,
-        // the same the painter centers them in, beside Paper Mono's 0.606 em.
+        // The missing marks are measured at this platform's fallback widths
+        // (CoreText's on a Mac, the fallback face's own on Linux and
+        // Windows), the same the painter draws them in, beside Paper Mono's
+        // 0.606 em.
+        let spec = FontSpec::of(font);
+        let widths = ShapingMeasurer::new().fallback_widths();
+        let mut context = swash::shape::ShapeContext::new();
         let marks: f64 = ["✓", "₿"]
             .iter()
-            .map(|mark| fallback_advance(mark, 14.0, FontSpec::of(font).fallback))
+            .map(|mark| {
+                let glyphs = system::fallback_glyphs(&mut context, mark, &spec);
+                fallback_width(glyphs.as_ref(), mark, &spec, widths)
+            })
             .sum();
         assert!((f64::from(paragraph.width) - (4.0 * 0.606 * 14.0 + marks)).abs() < 0.1);
         let mut frame = crate::canvas::Frame::transparent(120, 40);
@@ -663,6 +725,61 @@ mod coverage {
                 .filter(|(x, y)| frame.pixel(*x, *y) != [0, 0, 0])
                 .count();
             assert!(lit > 5, "{lit} pixels");
+        }
+    }
+
+    /// Emoji, Han and Hangul paint from this computer's fallback faces
+    /// inside the width the shaper measured, which on Linux and Windows is
+    /// the face's own (#11304); an emoji face paints in its own colors.
+    #[test]
+    fn fallback_clusters_paint_inside_their_measured_width() {
+        let mut fonts = super::Fonts::new();
+        let font = super::font(20.0, rust_native::layout::display::Weight::Regular, false);
+        let spec = FontSpec::of(font);
+        let widths = ShapingMeasurer::new().fallback_widths();
+        let mut context = swash::shape::ShapeContext::new();
+        for cluster in ["😀", "中", "가"] {
+            let paragraph = fonts.paragraph(cluster, font, None);
+            let glyphs = system::fallback_glyphs(&mut context, cluster, &spec);
+            let width = fallback_width(glyphs.as_ref(), cluster, &spec, widths);
+            assert!(
+                (f64::from(paragraph.width) - width).abs() < 1e-3,
+                "{cluster}"
+            );
+            if glyphs.is_none() {
+                continue;
+            }
+            let mut frame = crate::canvas::Frame::transparent(80, 60);
+            fonts.draw(
+                &mut frame,
+                &paragraph,
+                10.0,
+                10.0,
+                60.0,
+                rust_native::style::TextAlign::Start,
+                1.0,
+                rust_native::style::Color::rgb(255, 255, 255),
+            );
+            let lit: Vec<(usize, usize)> = (0..60)
+                .flat_map(|y| (0..80).map(move |x| (x, y)))
+                .filter(|(x, y)| frame.pixel(*x, *y) != [0, 0, 0])
+                .collect();
+            assert!(lit.len() > 20, "{cluster}: {} pixels", lit.len());
+            let right = lit.iter().map(|(x, _)| *x).max().unwrap_or(0);
+            assert!(
+                right as f64 <= 10.0 + width + 1.0,
+                "{cluster} paints to {right}, past its {width} pt"
+            );
+            if cluster == "😀" {
+                // In color, not the text's white.
+                assert!(
+                    lit.iter().any(|(x, y)| {
+                        let [r, g, b] = frame.pixel(*x, *y);
+                        r != g || g != b
+                    }),
+                    "the emoji paints in color"
+                );
+            }
         }
     }
 }

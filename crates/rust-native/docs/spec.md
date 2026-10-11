@@ -250,9 +250,13 @@ adapter presents them, not a separate wire contract.
   text is drawn upright. Lines break greedily at UAX #14
   opportunities with CoreText's tailoring, trailing spaces hang, and a word
   wider than the line breaks between grapheme clusters. Tabs advance to
-  28-point stops. A character the faces lack is measured as a platform
-  fallback roughly draws it (1 em for wide characters and emoji, else
-  0.6 em), so such text can wrap differently from the platform. An app may
+  28-point stops. A character the faces lack is measured as the platform
+  draws it from a fallback face: on Apple platforms at CoreText's widths,
+  measured on a Mac (`shape/fallback.rs`, from `tools/fallback-metrics.swift`),
+  and on Linux and Windows from the system fallback face the desktop paints
+  it with (`shape::system`: fontconfig's fallback order on Linux, Segoe UI <!-- check-fonts: allow -->
+  Emoji, Microsoft YaHei, Malgun Gothic and the like on Windows), so
+  measuring matches drawing there glyph for glyph. An app may
   install its own faces (the desktop installs the system's, SF Pro and SF
   Mono on a Mac); a face's optical size follows the text size and its `trak`
   tracking is added after every glyph, as CoreText does. Ground-truth tests
@@ -260,9 +264,8 @@ adapter presents them, not a separate wire contract.
   Mono (`fixtures/coretext-lines.json`) and with SF Pro and SF Mono
   (`fixtures/coretext-lines-system.json`, break positions only, made from
   the fonts on the Mac that ran `tools/coretext-lines.swift`): every
-  paragraph the faces cover must break exactly where CoreText's does, and
-  the count of differing paragraphs that need fallback faces (CJK, emoji) is
-  pinned so it cannot grow. The C interface adds
+  paragraph, including those that need fallback faces (CJK, emoji), must
+  break exactly where CoreText's does. The C interface adds
   `rust_native_layout_create_shaped`, `rust_native_font_spec`, and
   `rust_native_font_data`.
 - **Frame.** Every row has a key, a content version, an exact height, and a

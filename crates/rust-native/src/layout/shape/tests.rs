@@ -444,7 +444,7 @@ fn compare(measurer: &mut ShapingMeasurer, truth: &str, fixture: &str) -> Compar
 #[test]
 fn line_breaks_match_coretext_for_the_bundled_fonts() {
     let Comparison { covered, fallback } = compare(
-        &mut ShapingMeasurer::over(None),
+        &mut ShapingMeasurer::over(None).with_fallback_widths(FallbackWidths::CoreText),
         include_str!("../../../fixtures/coretext-lines.json"),
         "fixtures/coretext-lines.json",
     );
@@ -463,7 +463,9 @@ fn line_breaks_match_coretext_for_the_system_fonts() {
         return;
     };
     let Comparison { covered, fallback } = compare(
-        &mut ShapingMeasurer::with_faces(text, code).unwrap(),
+        &mut ShapingMeasurer::with_faces(text, code)
+            .unwrap()
+            .with_fallback_widths(FallbackWidths::CoreText),
         include_str!("../../../fixtures/coretext-lines-system.json"),
         "fixtures/coretext-lines-system.json",
     );
@@ -738,4 +740,89 @@ fn fallback_widths_are_coretexts() {
     };
     assert_eq!(FontSpec::of(font(Weight::Regular)).fallback, Proportional);
     assert_eq!(FontSpec::of(font(Weight::Bold)).fallback, Monospace);
+}
+
+/// On Linux and Windows a character the faces lack is measured from the
+/// fallback face the painter draws it with (#11304): the measured width is
+/// that face's shaped advance, and CoreText's only where no face on this
+/// computer has the character. Where the usual faces are installed, their
+/// widths are pinned.
+#[test]
+fn fallback_widths_are_the_system_faces_where_the_platform_draws_them() {
+    use swash::{StringId, shape::ShapeContext};
+    let font = Font {
+        family: Default::default(),
+        size: 20.0,
+        weight: Weight::Regular,
+        italic: false,
+        mono: false,
+    };
+    let mut measurer = ShapingMeasurer::over(None).with_fallback_widths(FallbackWidths::System);
+    let spec = measurer.spec(font);
+    let mut context = ShapeContext::new();
+    // (cluster, the face's family, its width in ems)
+    let pins: &[(&str, &str, f64)] = if cfg!(target_os = "linux") {
+        &[
+            ("中", "Noto Sans CJK", 1.0),
+            ("あ", "Noto Sans CJK", 1.0),
+            ("가", "Noto Sans CJK", 0.92),
+            ("😀", "Noto Color Emoji", 1.2451),
+            ("🇺🇸", "Noto Color Emoji", 1.2451),
+            ("👨\u{200d}👩\u{200d}👧", "Noto Color Emoji", 1.2451),
+            ("Ж", "DejaVu Sans", 1.0771), // check-fonts: allow
+            ("α", "DejaVu Sans", 0.6592), // check-fonts: allow
+        ]
+    } else {
+        &[("中", "Microsoft YaHei", 1.0)]
+    };
+    let mut pinned = 0;
+    for cluster in [
+        "中",
+        "あ",
+        "가",
+        "😀",
+        "🇺🇸",
+        "👨\u{200d}👩\u{200d}👧",
+        "Ж",
+        "α",
+        "✔",
+    ] {
+        let length = cluster.encode_utf16().count() as u32;
+        let run = MeasureRun {
+            start16: 0,
+            end16: length,
+            font,
+        };
+        let measured = f64::from(measurer.measure(cluster, &[run], None).unwrap().lines[0].width);
+        let Some(glyphs) = system::fallback_glyphs(&mut context, cluster, &spec) else {
+            let table = fallback_advance(cluster, 20.0, spec.fallback);
+            assert!((measured - table).abs() < 1e-3, "{cluster}: {measured}");
+            continue;
+        };
+        assert!(
+            (measured - glyphs.advance).abs() < 1e-3,
+            "{cluster}: measured {measured}, drawn {}",
+            glyphs.advance
+        );
+        let face = system::face_at(glyphs.face).unwrap();
+        let family = face
+            .localized_strings()
+            .find_by_id(StringId::Family, Some("en"))
+            .map(|name| name.chars().collect::<String>())
+            .unwrap_or_default();
+        eprintln!("{cluster}: {family}, {:.4} em", measured / 20.0);
+        if cfg!(any(target_os = "linux", target_os = "windows")) {
+            for (pin, name, em) in pins {
+                if *pin == cluster && family.starts_with(name) {
+                    pinned += 1;
+                    assert!(
+                        (measured / 20.0 - em).abs() < 1e-3,
+                        "{cluster} in {family}: {} em, not {em}",
+                        measured / 20.0
+                    );
+                }
+            }
+        }
+    }
+    eprintln!("{pinned} widths pinned");
 }

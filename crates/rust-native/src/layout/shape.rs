@@ -15,11 +15,13 @@
 //! line breaks after them whatever UAX #14 says; a hard line break ends a
 //! line, and a word longer than the line breaks between grapheme clusters.
 //! Tabs advance to the next multiple of 28 points, as CoreText's default tab
-//! stops do. A character the faces lack is measured as CoreText draws it
-//! from its fallback faces ([`fallback_advance`]), with widths measured on a
-//! Mac (`shape/fallback.rs`, from `tools/fallback-metrics.swift`). The
-//! ground-truth test in `shape::tests` checks the breaks against CoreText's
-//! for the same fonts.
+//! stops do. A character the faces lack is measured as this platform draws
+//! it from its fallback faces ([`FallbackWidths`]): on Apple platforms as
+//! CoreText does ([`fallback_advance`]), with widths measured on a Mac
+//! (`shape/fallback.rs`, from `tools/fallback-metrics.swift`), and on Linux
+//! and Windows from the system fallback face the painter draws it with
+//! ([`system::fallback_glyphs`]). The ground-truth test in `shape::tests`
+//! checks the breaks against CoreText's for the same fonts.
 //!
 //! An app may instead draw with faces of its own, such as the computer's
 //! system fonts, by calling [`install_faces`] once at start: a face for text
@@ -35,6 +37,9 @@ use swash::text::cluster::Boundary;
 use swash::{FontRef, Metrics};
 
 mod fallback;
+pub mod system;
+
+pub use system::FallbackWidths;
 
 /// The bundled faces, by [`FontSpec::face`]: Paper Mono's variable font.
 pub const FACES: [&[u8]; 1] = [paper_mono::VARIABLE];
@@ -165,6 +170,8 @@ pub struct ShapingMeasurer {
     fonts: Vec<FontRef<'static>>,
     /// The faces this measurer shapes with, when not the bundled ones.
     installed: Option<Installed>,
+    /// How it measures characters the faces lack.
+    widths: FallbackWidths,
 }
 
 impl Default for ShapingMeasurer {
@@ -208,7 +215,23 @@ impl ShapingMeasurer {
                 .map(|data| FontRef::from_index(data, 0).expect("a checked face"))
                 .collect(),
             installed,
+            widths: FallbackWidths::platform(),
         }
+    }
+
+    /// This measurer, measuring characters its faces lack with `widths`
+    /// instead of this platform's ([`FallbackWidths::platform`]).
+    #[must_use]
+    pub fn with_fallback_widths(mut self, widths: FallbackWidths) -> Self {
+        self.widths = widths;
+        self
+    }
+
+    /// How this measurer measures characters its faces lack; a painter
+    /// draws them in the same widths ([`fallback_width`]).
+    #[must_use]
+    pub fn fallback_widths(&self) -> FallbackWidths {
+        self.widths
     }
 
     /// How this measurer draws `font`.
@@ -284,7 +307,15 @@ impl ShapingMeasurer {
                 // The face may split a grapheme it lacks, such as a flag's
                 // two regional indicators, which a fallback face draws as one.
                 match grapheme_at(text, byte) {
-                    Some(grapheme) => fallback_advance(grapheme, spec.size, spec.fallback),
+                    Some(grapheme) => {
+                        let glyphs = match self.widths {
+                            FallbackWidths::CoreText => None,
+                            FallbackWidths::System => {
+                                system::fallback_glyphs(&mut self.context, grapheme, spec)
+                            }
+                        };
+                        fallback_width(glyphs.as_ref(), grapheme, spec, self.widths)
+                    }
                     None => {
                         c.cluster = false;
                         0.0
@@ -384,38 +415,71 @@ pub enum Fallback {
 /// whose width is whole points and wider than an em at text sizes (16 pt at
 /// 12 pt, 23 pt at 20 pt); Hangul is 0.865 em, Han and kana an em, and
 /// Menlo 0.602 em. A character the table has no width for is 0.6 em.
-/// Measuring and painting both use this, so they agree whatever fonts a
-/// computer has; other platforms' fallback faces are drawn centered in it.
+/// On Apple platforms measuring and painting both use this, so they agree
+/// whatever fonts a computer has; Linux and Windows measure the fallback
+/// face they draw instead ([`fallback_width`]).
 #[must_use]
 pub fn fallback_advance(cluster: &str, size: f32, fallback: Fallback) -> f64 {
-    let Some(first) = cluster.chars().next() else {
+    if cluster.is_empty() {
         return 0.0;
+    }
+    let thousandths = milli(cluster, fallback);
+    if presents_as_emoji(cluster, fallback) {
+        return f64::from(emoji_advance(size));
+    }
+    let em = if thousandths == 0 || thousandths == fallback::EMOJI {
+        0.6
+    } else {
+        f64::from(thousandths) / 1000.0
+    };
+    em * f64::from(size)
+}
+
+/// The width, in points, a measurer with `widths` gives `cluster`, a
+/// grapheme cluster `spec`'s face lacks, which `glyphs` draw (from
+/// [`system::fallback_glyphs`]): their own advance under
+/// [`FallbackWidths::System`], and CoreText's ([`fallback_advance`])
+/// otherwise or when no face on this computer has the cluster. A painter
+/// draws `glyphs` centered in this width.
+#[must_use]
+pub fn fallback_width(
+    glyphs: Option<&system::FallbackGlyphs>,
+    cluster: &str,
+    spec: &FontSpec,
+    widths: FallbackWidths,
+) -> f64 {
+    match (widths, glyphs) {
+        (FallbackWidths::System, Some(glyphs)) => glyphs.advance,
+        _ => fallback_advance(cluster, spec.size, spec.fallback),
+    }
+}
+
+/// Whether CoreText draws `cluster` as emoji: a variation selector or
+/// keycap picks the presentation; otherwise the character's default does.
+#[must_use]
+pub fn presents_as_emoji(cluster: &str, fallback: Fallback) -> bool {
+    match cluster
+        .chars()
+        .find(|c| matches!(c, '\u{fe0e}' | '\u{fe0f}' | '\u{20e3}'))
+    {
+        Some('\u{fe0e}') => false,
+        Some(_) => true,
+        None => milli(cluster, fallback) == fallback::EMOJI,
+    }
+}
+
+/// The table's width for `cluster`'s first character, in thousandths of an
+/// em: [`fallback::EMOJI`] for emoji, 0 for none.
+fn milli(cluster: &str, fallback: Fallback) -> u16 {
+    let Some(first) = cluster.chars().next() else {
+        return 0;
     };
     let table = match fallback {
         Fallback::Monospace => fallback::MONOSPACE,
         Fallback::Proportional => fallback::PROPORTIONAL,
     };
     let at = table.partition_point(|(start, _)| *start <= u32::from(first));
-    let milli = at.checked_sub(1).map_or(0, |index| table[index].1);
-    // A variation selector or keycap picks the presentation; otherwise the
-    // character's default does.
-    let emoji = match cluster
-        .chars()
-        .find(|c| matches!(c, '\u{fe0e}' | '\u{fe0f}' | '\u{20e3}'))
-    {
-        Some('\u{fe0e}') => false,
-        Some(_) => true,
-        None => milli == fallback::EMOJI,
-    };
-    if emoji {
-        return f64::from(emoji_advance(size));
-    }
-    let em = if milli == 0 || milli == fallback::EMOJI {
-        0.6
-    } else {
-        f64::from(milli) / 1000.0
-    };
-    em * f64::from(size)
+    at.checked_sub(1).map_or(0, |index| table[index].1)
 }
 
 /// The grapheme cluster of `text` that starts at byte `at`, or `None` when
