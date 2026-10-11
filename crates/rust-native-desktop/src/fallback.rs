@@ -12,10 +12,11 @@
 //! [`face_for`] finds the first of this computer's fonts that has the
 //! character. Nothing here is bundled: a missing file is skipped, and a
 //! character no file has draws as the drawing face's missing glyph.
-//! The shaper measures such a character at an estimate
-//! ([`rust_native::layout::shape::fallback_em`]), and the painter centers the
-//! fallback glyph in that width, so layout never depends on which fonts a
-//! computer has.
+//! The shaper measures such a character at the width CoreText's fallback
+//! face gives it on a Mac
+//! ([`rust_native::layout::shape::fallback_advance`]), and the painter
+//! centers the fallback glyph in that same width, so layout never depends on
+//! which fonts a computer has.
 
 use std::sync::OnceLock;
 use swash::FontRef;

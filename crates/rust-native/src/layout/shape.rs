@@ -15,10 +15,11 @@
 //! line breaks after them whatever UAX #14 says; a hard line break ends a
 //! line, and a word longer than the line breaks between grapheme clusters.
 //! Tabs advance to the next multiple of 28 points, as CoreText's default tab
-//! stops do. A character the bundled faces lack is
-//! measured as a platform fallback would roughly draw it: a full em for wide
-//! characters and emoji, else 0.6 em. The ground-truth test in
-//! `shape::tests` checks the breaks against CoreText's for the same fonts.
+//! stops do. A character the faces lack is measured as CoreText draws it
+//! from its fallback faces ([`fallback_advance`]), with widths measured on a
+//! Mac (`shape/fallback.rs`, from `tools/fallback-metrics.swift`). The
+//! ground-truth test in `shape::tests` checks the breaks against CoreText's
+//! for the same fonts.
 //!
 //! An app may instead draw with faces of its own, such as the computer's
 //! system fonts, by calling [`install_faces`] once at start: a face for text
@@ -32,6 +33,8 @@ use super::measure::{Line, MeasureRun, Measured, Measurer};
 use swash::shape::ShapeContext;
 use swash::text::cluster::Boundary;
 use swash::{FontRef, Metrics};
+
+mod fallback;
 
 /// The bundled faces, by [`FontSpec::face`]: Paper Mono's variable font.
 pub const FACES: [&[u8]; 1] = [paper_mono::VARIABLE];
@@ -107,6 +110,8 @@ pub struct FontSpec {
     /// size, which CoreText applies (SF Pro has it); zero for faces without.
     /// Painters add it to each glyph's advance, as the measurer does.
     pub tracking: f32,
+    /// Which fallback faces draw the characters this face lacks.
+    pub fallback: Fallback,
 }
 
 impl FontSpec {
@@ -132,6 +137,16 @@ impl FontSpec {
         let tracking = installed
             .and_then(|installed| installed.tracks[face].as_ref())
             .map_or(0.0, |track| track.points(font.size));
+        // CoreText falls back from a monospace face to Menlo, and from a
+        // proportional one to the system's default list. It counts Paper
+        // Mono's Regular instance as proportional, its other weights as
+        // monospace; an app's installed faces are text, then code.
+        let fallback = match installed {
+            Some(_) if face == 1 => Fallback::Monospace,
+            Some(_) => Fallback::Proportional,
+            None if weight == 400.0 => Fallback::Proportional,
+            None => Fallback::Monospace,
+        };
         Self {
             face,
             size: font.size,
@@ -139,6 +154,7 @@ impl FontSpec {
             optical,
             calt: !font.mono,
             tracking,
+            fallback,
         }
     }
 }
@@ -233,7 +249,6 @@ impl ShapingMeasurer {
     fn shape_run(&mut self, text: &str, chars: &mut [Char], spec: &FontSpec) {
         let upem = f64::from(self.fonts[spec.face].metrics(&[]).units_per_em.max(1));
         let scale = f64::from(spec.size) / upem;
-        let size = f64::from(spec.size);
         // Byte offset of each character within `text`.
         let mut starts = Vec::with_capacity(chars.len() + 1);
         let mut at = 0;
@@ -245,7 +260,7 @@ impl ShapingMeasurer {
         let track = f64::from(spec.tracking) / scale;
         let mut shaper = self.shaper(spec);
         shaper.add_str(text);
-        let mut clusters: Vec<(usize, f64, bool)> = Vec::new();
+        let mut clusters: Vec<(usize, f64, bool)> = Vec::with_capacity(chars.len());
         shaper.shape_with(|cluster| {
             let advance: f64 = cluster
                 .glyphs
@@ -258,14 +273,23 @@ impl ShapingMeasurer {
             let missing = cluster.glyphs.iter().any(|g| g.id == 0);
             clusters.push((cluster.source.start as usize, advance * scale, missing));
         });
-        for (byte, advance, missing) in clusters {
+        clusters.sort_by_key(|cluster| cluster.0);
+        for &(byte, advance, missing) in &clusters {
             let Ok(index) = starts.binary_search(&byte) else {
                 continue;
             };
             let c = &mut chars[index];
             c.cluster = true;
             c.advance = if missing {
-                fallback_em(c.ch) * size
+                // The face may split a grapheme it lacks, such as a flag's
+                // two regional indicators, which a fallback face draws as one.
+                match grapheme_at(text, byte) {
+                    Some(grapheme) => fallback_advance(grapheme, spec.size, spec.fallback),
+                    None => {
+                        c.cluster = false;
+                        0.0
+                    }
+                }
             } else {
                 advance
             };
@@ -344,15 +368,88 @@ impl Tracking {
     }
 }
 
-/// The width, in ems, a platform fallback face roughly gives a character
-/// the bundled faces lack.
+/// Which fallback faces CoreText draws a face's missing characters from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fallback {
+    /// Menlo first, as under SF Mono.
+    Monospace,
+    /// The system's default list (Helvetica, Lucida Grande, Zapf Dingbats,
+    /// ...), as under SF Pro.
+    Proportional,
+}
+
+/// The width, in points, CoreText gives `cluster`, a grapheme cluster the
+/// drawing face lacks, at `size` points: the fallback face's width measured
+/// on a Mac (`shape/fallback.rs`). Emoji are drawn from Apple Color Emoji,
+/// whose width is whole points and wider than an em at text sizes (16 pt at
+/// 12 pt, 23 pt at 20 pt); Hangul is 0.865 em, Han and kana an em, and
+/// Menlo 0.602 em. A character the table has no width for is 0.6 em.
+/// Measuring and painting both use this, so they agree whatever fonts a
+/// computer has; other platforms' fallback faces are drawn centered in it.
 #[must_use]
-pub fn fallback_em(ch: char) -> f64 {
-    let wide = matches!(u32::from(ch),
-        0x1100..=0x115F | 0x2E80..=0xA4CF | 0xAC00..=0xD7A3 | 0xF900..=0xFAFF
-        | 0xFE30..=0xFE4F | 0xFF00..=0xFF60 | 0xFFE0..=0xFFE6
-        | 0x1F000..=0x1FAFF | 0x20000..=0x3FFFD | 0x2600..=0x27BF);
-    if wide { 1.0 } else { 0.6 }
+pub fn fallback_advance(cluster: &str, size: f32, fallback: Fallback) -> f64 {
+    let Some(first) = cluster.chars().next() else {
+        return 0.0;
+    };
+    let table = match fallback {
+        Fallback::Monospace => fallback::MONOSPACE,
+        Fallback::Proportional => fallback::PROPORTIONAL,
+    };
+    let at = table.partition_point(|(start, _)| *start <= u32::from(first));
+    let milli = at.checked_sub(1).map_or(0, |index| table[index].1);
+    // A variation selector or keycap picks the presentation; otherwise the
+    // character's default does.
+    let emoji = match cluster
+        .chars()
+        .find(|c| matches!(c, '\u{fe0e}' | '\u{fe0f}' | '\u{20e3}'))
+    {
+        Some('\u{fe0e}') => false,
+        Some(_) => true,
+        None => milli == fallback::EMOJI,
+    };
+    if emoji {
+        return f64::from(emoji_advance(size));
+    }
+    let em = if milli == 0 || milli == fallback::EMOJI {
+        0.6
+    } else {
+        f64::from(milli) / 1000.0
+    };
+    em * f64::from(size)
+}
+
+/// The grapheme cluster of `text` that starts at byte `at`, or `None` when
+/// `at` is inside one. A painter draws a cluster the face lacks as
+/// [`fallback_advance`] of its grapheme, and nothing for the rest of it.
+#[must_use]
+pub fn grapheme_at(text: &str, at: usize) -> Option<&str> {
+    use unicode_segmentation::GraphemeCursor;
+    let mut cursor = GraphemeCursor::new(at, text.len(), true);
+    if !cursor.is_boundary(text, 0).unwrap_or(true) {
+        return None;
+    }
+    let end = cursor
+        .next_boundary(text, 0)
+        .ok()
+        .flatten()
+        .unwrap_or(text.len());
+    Some(&text[at..end])
+}
+
+/// Apple Color Emoji's width at `size` points: whole points, stepping up at
+/// the measured sizes, then the size rounded.
+fn emoji_advance(size: f32) -> f32 {
+    let steps = fallback::EMOJI_STEPS;
+    if size < fallback::EMOJI_FROM {
+        return fallback::EMOJI_LOW * size / fallback::EMOJI_FROM;
+    }
+    let passed = steps.partition_point(|step| *step <= size);
+    let width = fallback::EMOJI_LOW + passed as f32;
+    if passed == steps.len() {
+        width.max(size.round())
+    } else {
+        width
+    }
 }
 
 /// Whitespace that hangs at the end of a line.

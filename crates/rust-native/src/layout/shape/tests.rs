@@ -10,16 +10,19 @@
 //! read from `/System/Library/Fonts` and never committed; only the break
 //! positions are. The system gate runs where those files exist.
 //!
-//! Each gate: every paragraph the faces cover breaks exactly where
-//! CoreText's does, and line widths stay within half a point. Paragraphs
-//! with characters the faces lack (CJK, emoji) are drawn partly in a
-//! platform fallback face the shaper only estimates, so how many of them
-//! differ is pinned (`FALLBACK_BASELINE`): the gate fails if it grows.
+//! Each gate: every paragraph breaks exactly where CoreText's does. Line
+//! widths stay within half a point where the faces cover the text, and
+//! within 2 points where characters the faces lack (CJK, emoji, and Greek
+//! and Cyrillic in Paper Mono) are drawn from CoreText's fallback faces,
+//! whose widths the shaper takes from a table measured on a Mac
+//! (`shape/fallback.rs`, #11301) but without their kerning.
 //!
 //! Regenerate the ground truth after changing the corpus, the fonts, or the
 //! layout's paragraphs:
 //!
 //! ```text
+//! swift crates/rust-native/tools/fallback-metrics.swift \
+//!     crates/paper-mono/fonts crates/rust-native/src/layout/shape/fallback.rs
 //! RUST_NATIVE_WRITE_CORPUS=/tmp/corpus.json cargo test -p rust-native \
 //!     --features shaping --lib shape::tests::write_corpus -- --ignored
 //! swift crates/rust-native/tools/coretext-lines.swift /tmp/corpus.json \
@@ -321,11 +324,12 @@ fn compare(measurer: &mut ShapingMeasurer, truth: &str, fixture: &str) -> Compar
     };
     let faces: Vec<FontRef<'_>> = measurer.fonts.clone();
     let mut worst_width = 0.0f32;
+    let mut worst_fallback = 0.0f32;
     let mut report = vec![];
     for (index, ((text, runs, width), expected)) in corpus.iter().zip(truth).enumerate() {
         // A paragraph with characters its faces lack is drawn partly in
-        // the platform's fallback face, whose widths the shaper only
-        // estimates (`fallback_em`).
+        // CoreText's fallback faces, whose widths the shaper takes from a
+        // measured table (`fallback_advance`).
         let covered = text.chars().all(|c| {
             c.is_control()
                 || runs.iter().all(|r| {
@@ -365,12 +369,13 @@ fn compare(measurer: &mut ShapingMeasurer, truth: &str, fixture: &str) -> Compar
         let mine = starts(&got);
         tally.same += starts(&ends).intersection(&mine).count();
         if got == ends {
-            if !covered {
-                continue;
-            }
             for (line, width) in measured.lines.iter().zip(&widths) {
                 let delta = (line.width - width).abs();
-                worst_width = worst_width.max(delta);
+                if covered {
+                    worst_width = worst_width.max(delta);
+                } else {
+                    worst_fallback = worst_fallback.max(delta);
+                }
                 if delta > 0.05 && std::env::var_os("SHAPE_WIDTHS").is_some() {
                     let units: Vec<u16> = text.encode_utf16().collect();
                     eprintln!(
@@ -414,7 +419,9 @@ fn compare(measurer: &mut ShapingMeasurer, truth: &str, fixture: &str) -> Compar
             tally.ratio() * 100.0
         );
     }
-    eprintln!("worst width difference on covered lines that match: {worst_width:.3} pt");
+    eprintln!(
+        "worst width difference on lines that match: covered {worst_width:.3} pt, fallback-face {worst_fallback:.3} pt"
+    );
     for line in &report {
         eprintln!("{line}");
     }
@@ -422,14 +429,17 @@ fn compare(measurer: &mut ShapingMeasurer, truth: &str, fixture: &str) -> Compar
         worst_width < 0.5,
         "covered line widths drift from CoreText's by {worst_width} pt"
     );
+    // Fallback widths are each character's alone; Hiragino kerns kana
+    // against the long-vowel mark (サー, バー) by up to 0.05 em.
+    assert!(
+        worst_fallback < 2.0,
+        "fallback-face line widths drift from CoreText's by {worst_fallback} pt"
+    );
     comparison
 }
 
-// Both gates hold paragraphs the faces cover to CoreText's breaks exactly.
-// Paragraphs with characters the faces lack (CJK, emoji, arrows in Paper
-// Mono) are drawn partly in a platform fallback face whose widths the
-// shaper estimates as a whole em or 0.6 em, so their differences are
-// pinned at today's count: the gate fails if more of them differ.
+// Both gates hold every paragraph to CoreText's breaks exactly, those the
+// faces cover and those partly drawn from fallback faces (#11291, #11301).
 
 #[test]
 fn line_breaks_match_coretext_for_the_bundled_fonts() {
@@ -439,7 +449,7 @@ fn line_breaks_match_coretext_for_the_bundled_fonts() {
         "fixtures/coretext-lines.json",
     );
     assert_eq!(covered.differ, 0, "{covered:?}");
-    assert!(fallback.differ <= FALLBACK_BASELINE.0, "{fallback:?}");
+    assert_eq!(fallback.differ, 0, "{fallback:?}");
 }
 
 /// The desktop's faces on a Mac, SF Pro for prose and SF Mono for code,
@@ -458,12 +468,8 @@ fn line_breaks_match_coretext_for_the_system_fonts() {
         "fixtures/coretext-lines-system.json",
     );
     assert_eq!(covered.differ, 0, "{covered:?}");
-    assert!(fallback.differ <= FALLBACK_BASELINE.1, "{fallback:?}");
+    assert_eq!(fallback.differ, 0, "{fallback:?}");
 }
-
-/// Fallback-face paragraphs whose breaks differ from CoreText's today,
-/// with Paper Mono and with the system faces (#11291, #11301).
-const FALLBACK_BASELINE: (usize, usize) = (18, 13);
 
 #[test]
 fn a_paragraph_breaks_at_spaces_and_keeps_trailing_space_on_the_line() {
@@ -676,4 +682,60 @@ fn every_font_is_paper_mono_at_its_weight() {
     // Setting the one family again changes nothing, so nothing is measured.
     layout.set_font_family(FontFamily::PaperMono);
     assert_eq!(layout.update(update(), &mut measurer).unwrap().relaid, 0);
+}
+
+/// CoreText's fallback widths on a Mac (#11301), as
+/// `tools/fallback-metrics.swift` measured them: Apple Color Emoji in whole points that grow faster than
+/// the size at text sizes, Apple SD Gothic Neo's Hangul at 0.865 em, Han an
+/// em, and Menlo under a monospace face.
+#[test]
+fn fallback_widths_are_coretexts() {
+    use Fallback::{Monospace, Proportional};
+    for (size, points) in [
+        (12.0, 16.0),
+        (14.4, 19.0),
+        (16.75, 21.0),
+        (20.0, 23.0),
+        (27.0, 27.0),
+        (40.0, 40.0),
+    ] {
+        for emoji in ["🎉", "🇺🇸", "👨\u{200d}👩\u{200d}👧", "👍🏽", "✔\u{fe0f}"]
+        {
+            assert_eq!(
+                fallback_advance(emoji, size, Proportional),
+                points,
+                "{emoji} at {size}"
+            );
+            assert_eq!(
+                fallback_advance(emoji, size, Monospace),
+                points,
+                "{emoji} at {size}"
+            );
+        }
+    }
+    let close = |cluster: &str, fallback, em: f64| {
+        let got = fallback_advance(cluster, 10.0, fallback) / 10.0;
+        assert!((got - em).abs() < 0.001, "{cluster}: {got} em, not {em}");
+    };
+    close("가", Proportional, 0.865);
+    close("한", Monospace, 0.865);
+    close("中", Proportional, 1.0);
+    close("、", Monospace, 1.0);
+    close("✔", Monospace, 0.602);
+    close("✔\u{fe0e}", Monospace, 0.602);
+    close("✔", Proportional, 0.846);
+    close("Ж", Monospace, 0.602);
+    // A flag the face shapes as two clusters is one grapheme.
+    assert_eq!(grapheme_at("a🇺🇸", 1), Some("🇺🇸"));
+    assert_eq!(grapheme_at("a🇺🇸", 5), None);
+    // Paper Mono's Regular instance falls back like a proportional face.
+    let font = |weight| Font {
+        family: Default::default(),
+        size: 15.0,
+        weight,
+        italic: false,
+        mono: false,
+    };
+    assert_eq!(FontSpec::of(font(Weight::Regular)).fallback, Proportional);
+    assert_eq!(FontSpec::of(font(Weight::Bold)).fallback, Monospace);
 }

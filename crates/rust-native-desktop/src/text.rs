@@ -14,7 +14,7 @@
 
 use crate::canvas::Frame;
 use rust_native::layout::display::{Font, Weight};
-use rust_native::layout::shape::{FontSpec, ShapingMeasurer, faces, fallback_em};
+use rust_native::layout::shape::{FontSpec, ShapingMeasurer, faces, fallback_advance, grapheme_at};
 use rust_native::layout::{MeasureRun, Measurer};
 use rust_native::style::{Color, TextAlign};
 use std::collections::HashMap;
@@ -473,11 +473,14 @@ impl Fonts {
                     });
                 if cluster.glyphs.iter().any(|glyph| glyph.id == 0) {
                     // The drawing face lacks this character: the shaper
-                    // measured it at an estimate, so center a fallback
-                    // glyph there.
-                    let start = line.start + cluster.source.start as usize;
-                    let ch = paragraph.text[start..].chars().next().unwrap_or('?');
-                    let width = fallback_em(ch) as f32 * size;
+                    // measured it at CoreText's fallback width, so center a
+                    // fallback glyph there.
+                    // A grapheme the face splits, such as a flag, draws once.
+                    let Some(grapheme) = grapheme_at(text, cluster.source.start as usize) else {
+                        return;
+                    };
+                    let ch = grapheme.chars().next().unwrap_or('?');
+                    let width = fallback_advance(grapheme, spec.size, spec.fallback) as f32 * scale;
                     if let Some((index, fallback)) = crate::fallback::face_for(ch) {
                         let id = fallback.charmap().map(ch);
                         let advance = fallback.glyph_metrics(&[]).scale(size).advance_width(id);
@@ -620,6 +623,8 @@ mod tests {
 
 #[cfg(test)]
 mod coverage {
+    use rust_native::layout::shape::{FontSpec, fallback_advance};
+
     #[test]
     fn the_body_face_has_the_marks_screens_use() {
         let face = swash::FontRef::from_index(rust_native::layout::shape::FACES[0], 0).unwrap();
@@ -633,10 +638,13 @@ mod coverage {
         let mut fonts = super::Fonts::new();
         let font = super::font(14.0, rust_native::layout::display::Weight::Regular, false);
         let paragraph = fonts.paragraph("✓ ₿ ok", font, None);
-        // The missing marks are measured at the shaper's estimates, the
-        // check mark as a symbol 1 em wide and the bitcoin sign at 0.6 em,
-        // beside Paper Mono's 0.606 em.
-        assert!((paragraph.width - (4.0 * 0.606 + 1.0 + 0.6) * 14.0).abs() < 0.1);
+        // The missing marks are measured at CoreText's fallback widths,
+        // the same the painter centers them in, beside Paper Mono's 0.606 em.
+        let marks: f64 = ["✓", "₿"]
+            .iter()
+            .map(|mark| fallback_advance(mark, 14.0, FontSpec::of(font).fallback))
+            .sum();
+        assert!((f64::from(paragraph.width) - (4.0 * 0.606 * 14.0 + marks)).abs() < 0.1);
         let mut frame = crate::canvas::Frame::transparent(120, 40);
         fonts.draw(
             &mut frame,
