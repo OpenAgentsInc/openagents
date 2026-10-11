@@ -7102,6 +7102,19 @@ name = "icecream-rules"
 version = "0.1.0"
 
 [[package]]
+name = "icecream-web"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "glam",
+ "icecream-rules",
+ "js-sys",
+ "oa-copy",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "icu_collections"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
