@@ -69,7 +69,7 @@
       "usd_per_hour": 0.12,
       "source": "CoderOS-4080 amortized hardware + power (assumption, see doc)"
     },
-    "hardware": "RTX 4080 16 GB, Psionic Clef-Flash Q4_K_M CUDA (bench instance, port 18097)",
+    "hardware": "RTX 4080 16 GB, Psionic Clef-Flash Q4_K_M CUDA (bench instance, port 18097; manual only, never beside a running production pylon-clef: #11303)",
     "duration": 150,
     "max_conc": 32,
     "daily_conc": [
@@ -78,6 +78,33 @@
       16
     ],
     "shape_conc_max": 2
+  },
+  "coderos-clef-prod": {
+    "kind": "http",
+    "base": "http://127.0.0.1:18096",
+    "model": "clef-flash",
+    "price": {
+      "usd_per_hour": 0.12,
+      "source": "CoderOS-4080 amortized hardware + power (assumption, see doc)"
+    },
+    "hardware": "RTX 4080 16 GB, the production pylon-clef Psionic Clef-Flash Q4_K_M CUDA server (port 18096), measured read-only at low concurrency beside its live traffic",
+    "duration": 60,
+    "daily_duration": 45,
+    "max_conc": 2,
+    "daily_conc": [
+      1,
+      2
+    ],
+    "shape_conc_max": 1,
+    "daily_shape_conc": 1,
+    "daily_skip_long": true,
+    "tokens_max": 4000,
+    "guard": {
+      "health": "http://127.0.0.1:18096/health",
+      "min_free_mib": 768,
+      "abort_on_error": true,
+      "busy_retry_ms": 0
+    }
   },
   "coderos-llamacpp": {
     "kind": "http",

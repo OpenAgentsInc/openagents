@@ -40,7 +40,7 @@ Keys come from the environment only (--key-env names the variable) and are
 never printed or written.
 
     python3 -I harness.py --target jev --plan full --corpus DIR --out runs.jsonl
-    python3 -I harness.py --target coderos-clef --plan daily --corpus DIR --out runs.jsonl \
+    python3 -I harness.py --target coderos-clef-prod --plan daily --corpus DIR --out runs.jsonl \
         --gpu-cmd 'nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits'
 
 `--target NAME` takes a backend, model and price from targets.json; every
@@ -290,24 +290,87 @@ CALLS = {"http": http_call, "vertex": vertex_call, "att": att_call}
 
 # ---------------------------------------------------------------- GPU sampler
 
+def gpu_read(cmd):
+    """One `util, mem_used_mib, mem_total_mib` reading from --gpu-cmd, or None."""
+    try:
+        out = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10).stdout
+        return tuple(float(x) for x in out.strip().splitlines()[0].split(",")[:3])
+    except Exception:
+        return None
+
+
+class Guard:
+    """Protects a production server the harness shares (--guard-*): the run
+    stops at the first sign of pressure and every later point is skipped.
+    Signs: free GPU memory under --guard-min-free-mib, a failed health
+    check, and (with --abort-on-error) any request that is not answered,
+    including 503 busy, which means production's queue is full."""
+
+    def __init__(self, args):
+        self.health = args.guard_health
+        self.min_free = args.guard_min_free_mib
+        self.on_error = args.abort_on_error
+        self.gpu_cmd = args.gpu_cmd
+        self.reason = None
+        self.event = threading.Event()
+
+    def trip(self, reason):
+        if not self.event.is_set():
+            self.reason = reason
+            self.event.set()
+            print(f"guard: stopping the run: {reason}", flush=True)
+
+    def tripped(self):
+        return self.event.is_set()
+
+    def check_gpu(self, reading):
+        if self.min_free and reading:
+            free = reading[2] - reading[1]
+            if free < self.min_free:
+                self.trip(f"free GPU memory {free:.0f} MiB < {self.min_free} MiB")
+
+    def check_reply(self, r):
+        if self.on_error and not (r.get("status") == 200 and r.get("answered")):
+            self.trip(f"request failed: {r.get('status')}:{r.get('error', 'unanswered')}")
+
+    def check_now(self):
+        """Before a point: health answers 200 and the GPU has room."""
+        if self.health:
+            try:
+                with urllib.request.urlopen(urllib.request.Request(self.health, headers={"User-Agent": UA}),
+                                            timeout=5) as x:
+                    if x.status != 200:
+                        self.trip(f"health {x.status}")
+            except Exception as e:
+                self.trip(f"health failed: {type(e).__name__}")
+        if self.min_free and self.gpu_cmd:
+            reading = gpu_read(self.gpu_cmd)
+            if reading is None:
+                self.trip("cannot read GPU memory")
+            else:
+                self.check_gpu(reading)
+        return not self.tripped()
+
+
 class GpuSampler(threading.Thread):
-    """Runs --gpu-cmd every 5 s; expects `util, mem_used_mib, mem_total_mib`
-    (nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total
+    """Runs --gpu-cmd every 5 s (2 s under a memory guard); expects
+    `util, mem_used_mib, mem_total_mib` (nvidia-smi
+    --query-gpu=utilization.gpu,memory.used,memory.total
     --format=csv,noheader,nounits), first GPU."""
 
-    def __init__(self, cmd):
+    def __init__(self, cmd, guard=None):
         super().__init__(daemon=True)
-        self.cmd, self.samples, self.stop = cmd, [], threading.Event()
+        self.cmd, self.samples, self.stop, self.guard = cmd, [], threading.Event(), guard
 
     def run(self):
+        every = 2 if self.guard and self.guard.min_free else 5
         while not self.stop.is_set():
-            try:
-                out = subprocess.run(self.cmd, shell=True, capture_output=True, text=True, timeout=10).stdout
-                u, m, t = [float(x) for x in out.strip().splitlines()[0].split(",")[:3]]
-                self.samples.append((u, m, t))
-            except Exception:
-                pass
-            self.stop.wait(5)
+            reading = gpu_read(self.cmd)
+            if reading:
+                self.samples.append(reading)
+            if self.guard:
+                self.guard.check_gpu(reading)
+            self.stop.wait(every)
 
     def summary(self):
         if not self.samples:
@@ -342,7 +405,7 @@ class Spend:
         return self.cap is not None and self.usd >= self.cap
 
 
-def run_point(cfg, corpus, point, args, spend):
+def run_point(cfg, corpus, point, args, spend, guard):
     call = CALLS[cfg["kind"]]
     run_nonce = uuid.uuid4().hex[:10]
     counter = iter(range(10 ** 9))
@@ -359,9 +422,11 @@ def run_point(cfg, corpus, point, args, spend):
     if point.get("warmup", args.warmup):
         n = max(conc, point.get("warmup", args.warmup))
         with ThreadPoolExecutor(min(conc, 64)) as ex:
-            list(ex.map(lambda i: call(cfg, make_request(corpus, point, i, "w" + run_nonce, cfg["model"]), args.timeout),
-                        range(n)))
-    gpu = GpuSampler(args.gpu_cmd) if args.gpu_cmd else None
+            for r in ex.map(lambda i: call(cfg, make_request(corpus, point, i, "w" + run_nonce, cfg["model"]),
+                                           args.timeout) if not guard.tripped() else {"status": 200, "answered": 1},
+                            range(n)):
+                guard.check_reply(r)
+    gpu = GpuSampler(args.gpu_cmd, guard) if args.gpu_cmd else None
     if gpu:
         gpu.start()
     t0 = time.perf_counter()
@@ -369,7 +434,8 @@ def run_point(cfg, corpus, point, args, spend):
     stopped = {"budget": False, "billing": False}
 
     def worker():
-        while time.perf_counter() < end and not stopped["budget"] and not stopped["billing"]:
+        while (time.perf_counter() < end and not stopped["budget"] and not stopped["billing"]
+               and not guard.tripped()):
             i = next_i()
             body = make_request(corpus, point, i, run_nonce, cfg["model"])
             s = time.perf_counter()
@@ -386,6 +452,7 @@ def run_point(cfg, corpus, point, args, spend):
             r.update({"t": round(s - t0, 4), "latency_s": round(e - s, 4), "busy_retries": busy,
                       "questions": len(body["questions"])})
             spend.add(r)
+            guard.check_reply(r)
             if spend.over():
                 stopped["budget"] = True
             if r.get("status") == 402:  # out of credit: asking again only adds refusals
@@ -401,6 +468,8 @@ def run_point(cfg, corpus, point, args, spend):
         gpu.stop.set()
     s = summarize(rows, wall, point, cfg, gpu.summary() if gpu else None, stopped["budget"])
     s["billing_stop"] = stopped["billing"]
+    if guard.tripped():
+        s["guard_stop"] = guard.reason
     return s
 
 
@@ -542,6 +611,12 @@ def main():
     ap.add_argument("--timeout", type=float, help="seconds per request (default: the target's, else 120)")
     ap.add_argument("--busy-retry-ms", type=float, default=50, help="0 counts 503 busy as a failure")
     ap.add_argument("--gpu-cmd", help="shell command printing util,mem_used,mem_total (nvidia-smi csv)")
+    ap.add_argument("--guard-health", help="URL that must answer 200 before every point (a shared production server)")
+    ap.add_argument("--guard-min-free-mib", type=float,
+                    help="stop the run when free GPU memory (from --gpu-cmd) drops under this")
+    ap.add_argument("--abort-on-error", action="store_true",
+                    help="stop the run at the first unanswered request, 503 busy included")
+    ap.add_argument("--dry-run", action="store_true", help="print the plan and the guard checks, send nothing")
     ap.add_argument("--no-knee-stop", action="store_true", help="run every concurrency even past the knee")
     ap.add_argument("--note", default="")
     a = ap.parse_args()
@@ -565,10 +640,20 @@ def main():
     if cfg["kind"] == "att":
         cfg["oa_att"] = os.environ.get("OA_ATT", cfg.get("oa_att", "oa-att"))
     a.timeout = a.timeout or cfg.get("timeout", 120)
+    # a target that is a shared production server carries its own guard
+    g = cfg.get("guard") or {}
+    a.guard_health = a.guard_health or g.get("health")
+    a.guard_min_free_mib = a.guard_min_free_mib or g.get("min_free_mib")
+    a.abort_on_error = a.abort_on_error or bool(g.get("abort_on_error"))
+    if g.get("busy_retry_ms") is not None:
+        a.busy_retry_ms = g["busy_retry_ms"]
+    if a.guard_min_free_mib and not a.gpu_cmd:
+        raise SystemExit("--guard-min-free-mib needs --gpu-cmd")
+    guard = Guard(a)
     budget = a.budget_usd if a.budget_usd is not None else (
         cfg.get("daily_budget_usd", cfg.get("budget_usd")) if a.plan == "daily" else cfg.get("budget_usd"))
     spend = Spend(budget, cfg.get("price"))
-    duration = a.duration or cfg.get("duration", 150)
+    duration = a.duration or (cfg.get("daily_duration") if a.plan == "daily" else None) or cfg.get("duration", 150)
 
     corpus_dir = gcs.local_corpus(a.corpus)
     corpus = Corpus(corpus_dir)
@@ -612,6 +697,20 @@ def main():
         print(json.dumps(short), flush=True)
         return line
 
+    if a.dry_run:
+        ok = guard.check_now()
+        for p in sweep:
+            if not only or label(p) in only:
+                print(json.dumps({"point": label(p), "conc": p["conc"], "duration_s": duration}))
+        for p in shapes:
+            print(json.dumps({"point": label(dict(p, conc=0)), "conc": cfg.get("daily_shape_conc") or "best",
+                              "duration_s": duration}))
+        print(json.dumps({"dry_run": True, "target": a.target, "base": cfg.get("base"), "guard_ok": ok,
+                          "guard_reason": guard.reason, "health": a.guard_health,
+                          "min_free_mib": a.guard_min_free_mib, "abort_on_error": a.abort_on_error,
+                          "busy_retry_ms": a.busy_retry_ms}), flush=True)
+        sys.exit(0 if ok else 3)
+
     done = []
     for p in sweep:
         p["duration"] = duration
@@ -620,7 +719,11 @@ def main():
         if spend.over():
             print("budget reached; stopping", flush=True)
             break
-        done.append(emit(p, run_point(cfg, corpus, p, a, spend)))
+        if not guard.check_now():
+            break
+        done.append(emit(p, run_point(cfg, corpus, p, a, spend, guard)))
+        if guard.tripped():
+            break
         if done[-1].get("billing_stop"):
             print("402: the account is out of credit; stopping this target", flush=True)
             return
@@ -640,11 +743,15 @@ def main():
         if spend.over():
             print("budget reached; stopping", flush=True)
             break
-        if emit(p, run_point(cfg, corpus, p, a, spend)).get("billing_stop"):
+        if guard.tripped() or not guard.check_now():
+            break
+        if emit(p, run_point(cfg, corpus, p, a, spend, guard)).get("billing_stop"):
             print("402: the account is out of credit; stopping this target", flush=True)
             return
     print(json.dumps({"run": run_id, "target": a.target, "spend_usd_est": round(spend.usd, 3),
-                      "knee_conc": knee(done)}), flush=True)
+                      "knee_conc": knee(done), "guard_stop": guard.reason}), flush=True)
+    if guard.tripped():
+        sys.exit(3)
 
 
 if __name__ == "__main__":
