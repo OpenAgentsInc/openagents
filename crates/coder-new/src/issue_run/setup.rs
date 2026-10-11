@@ -113,7 +113,7 @@ pub async fn prepare(
             "-R",
             &options.github,
             "--json",
-            "title,body,state,stateReason,closedAt,url",
+            "title,body,state,stateReason,closedAt,url,comments",
         ],
         &repo,
     )
@@ -131,7 +131,13 @@ pub async fn prepare(
         }
     };
     let title = issue["title"].as_str().unwrap_or_default().to_owned();
-    let body = issue["body"].as_str().unwrap_or_default().to_owned();
+    let body = with_comments(
+        issue["body"].as_str().unwrap_or_default(),
+        issue["comments"]
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or_default(),
+    );
     let mut closed = issue["state"].as_str() == Some("CLOSED");
     card["detail"] = json!(format!("#{number} {title}"));
     // An issue closed as not planned was never fixed, so there is nothing
@@ -579,6 +585,15 @@ fn package_checks(worktree: &Path, path: &str, why: &str) -> Vec<Check> {
             what: format!("compile {name}, which {why}"),
             required: false,
         }];
+        // A change can compile and still break the crate's tests (a rubric
+        // edit that moved a committed digest, #11329), so they must pass.
+        out.push(Check {
+            id: format!("test:{name}"),
+            argv: argv(&["cargo", "test", "-p", &name]),
+            filter: true,
+            what: format!("run {name}'s tests, which {why}"),
+            required: true,
+        });
         if is_browser_build(&toml) {
             out.push(Check {
                 id: format!("wasm:{name}"),
@@ -627,6 +642,31 @@ pub fn briefed_wasm_checks(worktree: &Path, briefing: &Briefing) -> Vec<Check> {
         }
     }
     found
+}
+
+/// The issue's body with its newest comments after it: a handoff comment
+/// often says what is already on main and what is left, which the hands
+/// must know before they change anything.
+#[must_use]
+pub fn with_comments(body: &str, comments: &[Value]) -> String {
+    const NEWEST: usize = 6;
+    const EACH: usize = 3000;
+    if comments.is_empty() {
+        return body.to_owned();
+    }
+    let mut out = format!("{body}\n\n## Comments on the issue (newest last)\n");
+    for comment in &comments[comments.len().saturating_sub(NEWEST)..] {
+        let author = comment["author"]["login"].as_str().unwrap_or("someone");
+        let at = comment["createdAt"].as_str().unwrap_or_default();
+        let text: String = comment["body"]
+            .as_str()
+            .unwrap_or_default()
+            .chars()
+            .take(EACH)
+            .collect();
+        out.push_str(&format!("\n### {author}, {at}\n\n{text}\n"));
+    }
+    out
 }
 
 /// The `[package]` name in a Cargo.toml, when it has one.

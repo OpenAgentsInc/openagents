@@ -345,3 +345,29 @@ fn a_small_change_starts_on_the_small_coder_and_a_hand_back_uses_the_full_one() 
     let fixed = Options::parse(&args(&["11338", "--coder-model", "claude-opus-5-5"])).unwrap();
     assert_eq!(coder_model(&fixed, Size::Small, 0), "claude-opus-5-5");
 }
+
+#[test]
+fn the_run_cost_counts_every_hand() {
+    use super::with_hands_cost;
+    let mut summary = serde_json::json!({
+        "agent_usd": 0.07,
+        "cost": {"components": {"agent": {"usd": 0.07}, "decisions": {"usd": 0.0}}, "total_usd": 0.07},
+    });
+    let turns = [
+        turn(Hand::Intaker, None, Some(0.001), None),
+        turn(Hand::Briefer, None, Some(0.008), None),
+        turn(Hand::Coder, None, Some(0.07), None),
+        turn(Hand::Tester, None, Some(0.03), None),
+    ];
+    with_hands_cost(&mut summary, &turns);
+    let total = summary["cost"]["total_usd"].as_f64().unwrap();
+    assert!((total - 0.109).abs() < 1e-9, "{total}");
+    assert!(
+        (summary["cost"]["components"]["hands"]["tester"]["usd"]
+            .as_f64()
+            .unwrap()
+            - 0.03)
+            .abs()
+            < 1e-9
+    );
+}

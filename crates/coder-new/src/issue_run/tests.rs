@@ -741,5 +741,18 @@ fn a_docs_change_is_held_to_a_link_check_not_rust_builds() {
         Some("docs/zones.md")
     );
     let ids: Vec<&str> = both.iter().map(|c| c.id.as_str()).collect();
-    assert_eq!(ids, ["check:a", "links:docs"]);
+    assert_eq!(ids, ["check:a", "test:a", "links:docs"]);
+}
+
+#[test]
+fn the_issue_text_carries_its_newest_comments() {
+    use crate::issue_run::setup::with_comments;
+    let comments: Vec<serde_json::Value> = (0..8)
+        .map(|n| serde_json::json!({"author": {"login": "agent"}, "createdAt": format!("2026-10-11T0{n}:00:00Z"), "body": format!("note {n}")}))
+        .collect();
+    let text = with_comments("The bug.", &comments);
+    assert!(text.starts_with("The bug."));
+    assert!(text.contains("note 7") && text.contains("note 2"));
+    assert!(!text.contains("note 1"), "only the newest six");
+    assert_eq!(with_comments("The bug.", &[]), "The bug.");
 }

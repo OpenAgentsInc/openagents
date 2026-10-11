@@ -39,7 +39,8 @@ must change, each with one line on what changes there; drop candidates that don'
 `## Shape of the change` (the functions, types and behavior to add or alter, concretely), \
 `## Tests` (which tests to add or change, or none for a docs-only change), `## Checks` (only the \
 checks that exercise the files that change: a docs or link change needs no compile check). Be \
-specific and short. You cannot edit files. End with exactly one line: `SIZE: small` when the \
+specific and short. Read the issue's comments: a handoff there may say what is already on main \
+and what is left; brief only what is left. You cannot edit files. End with exactly one line: `SIZE: small` when the \
 change is a few lines in one or two files and the fix is clear, or `SIZE: large` otherwise.";
 
 /// How big the Briefer judged the change, from its `SIZE:` line.

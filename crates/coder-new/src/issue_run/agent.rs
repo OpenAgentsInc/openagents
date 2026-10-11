@@ -848,7 +848,7 @@ pub async fn final_checks(
     briefing: &Briefing,
     transcript: &mut Transcript,
 ) -> Vec<(String, bool)> {
-    final_check_outputs(base, briefing, transcript)
+    final_check_outputs(base, briefing, &[], transcript)
         .await
         .into_iter()
         .map(|(id, ok, _)| (id, ok))
@@ -865,16 +865,22 @@ pub fn harness_runs(check: &Check) -> bool {
 }
 
 /// [`final_checks`] with each check's output, so a hand-back can carry the
-/// real errors.
+/// real errors. A check in `passed` already passed on this same working copy
+/// (the Tester ran it and cannot edit), so it isn't built again.
 pub async fn final_check_outputs(
     base: &Base,
     briefing: &Briefing,
+    passed: &[String],
     transcript: &mut Transcript,
 ) -> Vec<(String, bool, String)> {
     let mut verdicts = Vec::new();
     for check in briefing.checks.iter().filter(|c| harness_runs(c)) {
         if transcript.cancelled() {
             break;
+        }
+        if passed.contains(&check.id) {
+            verdicts.push((check.id.clone(), true, "passed in the Tester's run".into()));
+            continue;
         }
         let input = json!({"command": check.argv.join(" "), "check": check.id});
         let index = transcript.push(Entry::Tool {

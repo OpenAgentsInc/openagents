@@ -550,6 +550,14 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
         }
         let tester = hands::test(options, &base, &briefing, round, folder, transcript).await;
         let verdict = hands::Verdict::parse(tester.verdict.as_deref().unwrap_or_default());
+        // The Tester can't edit, so what it saw pass still holds.
+        let passed: Vec<String> = tester
+            .work
+            .checks
+            .iter()
+            .filter(|(_, ok)| *ok)
+            .map(|(id, _)| id.clone())
+            .collect();
         end.turns.push(tester);
         if transcript.cancelled() {
             break Outcome::stopped(Status::Cancelled, "The run was stopped.");
@@ -569,7 +577,8 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
                 checked.checks.push(check);
             }
         }
-        let outputs = issue_run::agent::final_check_outputs(&base, &checked, transcript).await;
+        let outputs =
+            issue_run::agent::final_check_outputs(&base, &checked, &passed, transcript).await;
         let errors = hands::failing_output(&outputs);
         end.checks = outputs.into_iter().map(|(id, ok, _)| (id, ok)).collect();
         let judged = verdict::judge(transcript.cancelled(), None, &required, &end.checks);
@@ -637,6 +646,38 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
     end.conclude(outcome, transcript).await;
 }
 
+/// The summary's cost covers every hand, not only the last Coder's session:
+/// the Intaker, Briefer and Tester are Claude sessions too, and the footer
+/// and the run list read `cost.total_usd`.
+pub fn with_hands_cost(summary: &mut Value, turns: &[Turn]) {
+    let Some(total) = hands::total_cost(turns) else {
+        return;
+    };
+    let decisions = summary["cost"]["components"]["decisions"]["usd"]
+        .as_f64()
+        .unwrap_or(0.0);
+    let hands: serde_json::Map<String, Value> =
+        [Hand::Intaker, Hand::Briefer, Hand::Coder, Hand::Tester]
+            .iter()
+            .map(|hand| {
+                let usd: f64 = turns
+                    .iter()
+                    .filter(|turn| turn.hand == *hand)
+                    .filter_map(|turn| turn.work.cost_usd)
+                    .sum();
+                (
+                    hand.as_str().to_owned(),
+                    json!({"usd": usd, "unknown_reason": null}),
+                )
+            })
+            .collect();
+    summary["agent_usd"] = json!(total);
+    summary["cost"]["components"]["agent"] = json!({"usd": total, "unknown_reason": null});
+    summary["cost"]["components"]["hands"] = Value::Object(hands);
+    summary["cost"]["known_subtotal_usd"] = json!(total + decisions);
+    summary["cost"]["total_usd"] = json!(total + decisions);
+}
+
 /// What a run has when it ends.
 struct End<'a> {
     options: &'a Options,
@@ -682,12 +723,14 @@ impl End<'_> {
         } else {
             None
         };
+        let total = hands::total_cost(&self.turns);
         summary["solver"] = json!({
             "hands": self.turns.iter().map(Turn::json).collect::<Vec<_>>(),
             "rounds": self.rounds,
-            "cost_usd": hands::total_cost(&self.turns),
+            "cost_usd": total,
             "pull_request": url,
         });
+        with_hands_cost(&mut summary, &self.turns);
         if self.base.is_some() && self.briefing.is_some() {
             let diff = self
                 .base
