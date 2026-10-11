@@ -503,3 +503,28 @@ fn asks_from_the_website_are_read_and_bad_ones_left_out() {
         ]
     );
 }
+
+#[test]
+fn many_saves_at_once_in_one_process_all_succeed() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("sync.json");
+    let handles: Vec<_> = (0..16)
+        .map(|i| {
+            let file = file.clone();
+            std::thread::spawn(move || {
+                for j in 0..50 {
+                    super::write_private(&file, format!("{{\"n\":{}}}", i * 100 + j).as_bytes())
+                        .unwrap();
+                }
+            })
+        })
+        .collect();
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    assert!(
+        std::fs::read_to_string(&file)
+            .unwrap()
+            .starts_with("{\"n\":")
+    );
+}

@@ -178,14 +178,18 @@ fn write_private(file: &Path, bytes: &[u8]) -> Result<(), String> {
         .ok_or_else(|| format!("{} has no folder.", file.display()))?;
     std::fs::create_dir_all(dir).map_err(|_| format!("Couldn't make {}.", dir.display()))?;
     // A per-call unique temp name, so two writers in one process (or a
-    // crashed earlier write) never share a temp file.
+    // crashed earlier write) never share a temp file. The counter matters:
+    // macOS's clock moves in microseconds, so two saves in one microsecond
+    // would otherwise pick the same name and the second would fail.
+    static SAVES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let unique = format!(
-        "{}-{}",
+        "{}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
-            .unwrap_or(0)
+            .unwrap_or(0),
+        SAVES.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     );
     let tmp = dir.join(format!(".{FILE}.{unique}.tmp"));
     let mut options = std::fs::OpenOptions::new();
