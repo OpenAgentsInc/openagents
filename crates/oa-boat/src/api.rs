@@ -1,7 +1,7 @@
 //! The HTTP surface: Boat's v1 paths under `/api/v1`, in Boat's JSON shapes
 //! (the SDK's own models), with Boat's error envelope.
 //!
-//! Every path but `/healthz` needs `Authorization: Bearer <token>`. The
+//! Every path but `/health` needs `Authorization: Bearer <token>`. The
 //! operations Boat has that this service does not (integrated agents,
 //! desktops, hosted ports, webhooks, keys) answer 501 `not_supported`.
 
@@ -64,7 +64,7 @@ fn ok<T: serde::Serialize>(r: Res<T>) -> Response {
 }
 
 async fn auth(State(token): State<Token>, req: Request, next: Next) -> Response {
-    if req.uri().path() == "/healthz" {
+    if matches!(req.uri().path(), "/health" | "/healthz") {
         return next.run(req).await;
     }
     let given = req
@@ -380,6 +380,8 @@ pub fn router<C: Compute, R: Remote>(service: Arc<Service<C, R>>, token: Token) 
         .fallback(missing)
         .with_state(service);
     Router::new()
+        // Google's front end keeps /healthz for itself on run.app hosts.
+        .route("/health", get(healthz))
         .route("/healthz", get(healthz))
         .nest("/api/v1", v1)
         .fallback(missing)

@@ -290,9 +290,13 @@ impl Rest {
 
     async fn call(&self, method: reqwest::Method, url: &str, body: Option<Value>) -> Result<Value> {
         let token = self.token().await?;
+        let post = method == reqwest::Method::POST;
         let mut req = self.http.request(method, url).bearer_auth(token);
-        if let Some(b) = body {
-            req = req.json(&b);
+        match body {
+            Some(b) => req = req.json(&b),
+            // Google answers 411 to a POST without a length.
+            None if post => req = req.json(&json!({})),
+            None => {}
         }
         let resp = req
             .send()
