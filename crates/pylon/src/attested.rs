@@ -130,6 +130,22 @@ fn file_sha256(path: &Path) -> Result<String, String> {
     Ok(hex(&hasher.finalize()))
 }
 
+/// The launcher's Unix socket.
+#[cfg(unix)]
+async fn connect(socket: &Path) -> std::io::Result<tokio::net::UnixStream> {
+    tokio::net::UnixStream::connect(socket).await
+}
+
+/// The launcher only exists in a Linux Confidential Space VM; elsewhere (a
+/// Windows build of the same binary) there is nothing to connect to.
+#[cfg(not(unix))]
+async fn connect(_socket: &Path) -> std::io::Result<tokio::io::DuplexStream> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "it runs only on Linux",
+    ))
+}
+
 /// Ask the launcher at `socket` for a PKI token whose nonce is `binding`.
 ///
 /// # Errors
@@ -146,7 +162,7 @@ pub async fn token(socket: &Path, binding: &str) -> Result<String, String> {
         "POST /v1/token HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
     );
-    let mut stream = tokio::net::UnixStream::connect(socket).await.map_err(|e| {
+    let mut stream = connect(socket).await.map_err(|e| {
         format!(
             "the Confidential Space launcher at {} is not there: {e}",
             socket.display()
