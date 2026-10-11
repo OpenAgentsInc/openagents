@@ -743,6 +743,9 @@ impl App {
                 running,
                 ..
             } if self.live.busy => {
+                // What the model wrote before this call shows above it, not
+                // at the end of the turn.
+                self.live.finish_partial();
                 if let Some(live::Entry::Tool { input: previous_input, output: previous_output, running: previous_running, .. }) = self.live.entries.iter_mut().rev().find(|entry| {
                     matches!(entry, live::Entry::Tool { name: previous, input: previous_input, running: true, .. } if previous == &name && (input.is_null() || previous_input == &input))
                 }) {
@@ -752,7 +755,6 @@ impl App {
                 } else {
                     self.live.entries.push(live::Entry::Tool { name, input, output, running });
                 }
-
             }
             live::Update::Delta { text, .. } if self.live.busy => {
                 self.live.partial.push_str(&text);
@@ -806,12 +808,21 @@ impl App {
                         if let Some(cost) = reply.usage.cost.filter(|cost| cost.is_finite()) {
                             self.live.cost_usd += cost;
                         }
-                        self.live.entries.push(live::Entry::Assistant {
-                            elapsed_ms: self.live.reply_elapsed_ms(),
-                            text: reply.text,
-                            model: live::model_slug(&reply.model)
-                                .map(|model| self.active_options.slug(&model)),
-                        });
+                        let model = live::model_slug(&reply.model)
+                            .map(|model| self.active_options.slug(&model));
+                        if self.live.text_shown_this_turn() {
+                            // The turn's earlier text is already above its
+                            // tool calls; only what came after the last one
+                            // is left.
+                            self.live.partial_model = model;
+                            self.live.finish_partial();
+                        } else {
+                            self.live.entries.push(live::Entry::Assistant {
+                                elapsed_ms: self.live.reply_elapsed_ms(),
+                                text: reply.text,
+                                model,
+                            });
+                        }
                         self.live.partial.clear();
                         self.live.partial_model = None;
                         self.live.notice = None;

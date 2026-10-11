@@ -953,6 +953,71 @@ mod tests {
     }
 
     #[test]
+    fn text_written_between_tool_calls_shows_between_them() {
+        let mut app = live_app();
+        app.submit("work", std::path::Path::new("."));
+        let id = app.request.take().unwrap().id;
+        let tool = |running| live::Update::Tool {
+            id,
+            name: "Run".into(),
+            input: serde_json::json!({"command":"ls"}),
+            output: serde_json::Value::Null,
+            running,
+        };
+        app.apply_update(live::Update::Delta {
+            id,
+            text: "Looking first.".into(),
+        });
+        app.apply_update(tool(true));
+        app.apply_update(tool(false));
+        app.apply_update(live::Update::Delta {
+            id,
+            text: "\n\nDone.".into(),
+        });
+        app.apply_update(live::Update::Finished {
+            id,
+            result: Ok(openrouter::Streamed {
+                text: "Looking first.\n\nDone.".into(),
+                ..Default::default()
+            }),
+        });
+        let shown: Vec<String> = app
+            .live
+            .entries
+            .iter()
+            .map(|entry| match entry {
+                live::Entry::User(text) => format!("user {text}"),
+                live::Entry::Assistant { text, .. } => format!("text {text}"),
+                live::Entry::Tool { name, .. } => format!("tool {name}"),
+                _ => "other".into(),
+            })
+            .collect();
+        assert_eq!(
+            shown,
+            ["user work", "text Looking first.", "tool Run", "text Done."]
+        );
+
+        // A turn without tool calls still shows its one reply.
+        app.submit("again", std::path::Path::new("."));
+        let id = app.request.take().unwrap().id;
+        app.apply_update(live::Update::Delta {
+            id,
+            text: "Hi.".into(),
+        });
+        app.apply_update(live::Update::Finished {
+            id,
+            result: Ok(openrouter::Streamed {
+                text: "Hi.".into(),
+                ..Default::default()
+            }),
+        });
+        assert!(
+            matches!(app.live.entries.last(), Some(live::Entry::Assistant { text, .. }) if text == "Hi.")
+        );
+        assert_eq!(app.live.entries.len(), 6);
+    }
+
+    #[test]
     fn the_status_line_adds_agent_dollars() {
         let mut app = live_app();
         app.live.cost_usd = 0.5;

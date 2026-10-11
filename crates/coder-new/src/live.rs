@@ -87,13 +87,25 @@ impl Chat {
         self.cache.builds
     }
     pub fn finish_partial(&mut self) {
-        if !self.partial.is_empty() {
+        let text = std::mem::take(&mut self.partial);
+        let text = text.trim();
+        if !text.is_empty() {
             self.entries.push(Entry::Assistant {
                 elapsed_ms: self.reply_elapsed_ms(),
-                text: std::mem::take(&mut self.partial),
+                text: text.to_owned(),
                 model: self.partial_model.take(),
             });
         }
+    }
+
+    /// Whether this turn (everything after the newest prompt) already
+    /// shows text of the model's, committed above a tool call.
+    pub fn text_shown_this_turn(&self) -> bool {
+        self.entries
+            .iter()
+            .rev()
+            .take_while(|entry| !matches!(entry, Entry::User(_)))
+            .any(|entry| matches!(entry, Entry::Assistant { .. }))
     }
 
     pub fn stop_tools(&mut self, reason: &str) {
