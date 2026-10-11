@@ -185,13 +185,15 @@ def finder_tool() -> Path | None:
     """#11210's finder (`scripts/filefind/filefind.py`), taken from
     origin/main into the bench's work dir."""
     dest = WORK / "filefind"
-    if not (dest / "filefind.py").exists():
-        dest.mkdir(parents=True, exist_ok=True)
-        for name in ("filefind.py", "model.json"):
-            text = show("origin/main", f"scripts/filefind/{name}")
-            if text is None:
-                return None
-            (dest / name).write_text(text)
+    dest.mkdir(parents=True, exist_ok=True)
+    # cards.py too: filefind imports it (#11249); refreshed when main changes.
+    for name in ("filefind.py", "model.json", "cards.py"):
+        text = show("origin/main", f"scripts/filefind/{name}")
+        if text is None:
+            return None
+        path = dest / name
+        if not path.exists() or path.read_text() != text:
+            path.write_text(text)
     return dest / "filefind.py"
 
 

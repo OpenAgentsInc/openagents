@@ -93,3 +93,39 @@ staging's test account); landing pushes with the host's GitHub token, so
 `queue` and `pr` reach repositories that token can push to (#11226 adds the
 person's own GitHub connection); runs on one host share its machine (one
 VM per run is the next step for people other than the owner).
+
+## Proof (2026-10-11)
+
+Three real open issues, each worked twice on the cloud environment
+`oa-dev-env-3` (spot `c3-standard-22`, image `oa-coder-host`, account
+`oa-mvp-automation@`), with the owner's own Claude sign-in and
+`claude-opus-5-5`, from the same `origin/main`. Both engines are judged the
+same way: the checks replayed on the actual diff (`cargo fmt` and
+`cargo test -p briefed-agent`).
+
+| Issue | Briefed agent (default) | Bare Claude Code (`--engine bare --land none`) | Result |
+| --- | --- | --- | --- |
+| [#11260](https://github.com/OpenAgentsInc/openagents/issues/11260) verify log skips cached calls | 61 s, $0.23, checks 2/2 (22 tests), filefind briefing | 56 s, $0.48, checks 2/2 | [PR #11266](https://github.com/OpenAgentsInc/openagents/pull/11266) |
+| [#11261](https://github.com/OpenAgentsInc/openagents/issues/11261) symlink escapes the worktree | 58 s, $0.20, checks 2/2 (23 tests) | 53 s, $0.40, checks 2/2 | [PR #11267](https://github.com/OpenAgentsInc/openagents/pull/11267) |
+| [#11262](https://github.com/OpenAgentsInc/openagents/issues/11262) new file counted as a miss | 48 s, $0.21, checks 2/2 (23 tests) | 48 s, $0.39, checks 2/2 | [PR #11268](https://github.com/OpenAgentsInc/openagents/pull/11268) |
+| Total | 167 s, $0.64 | 157 s, $1.27 | |
+
+On these three small issues the briefed agent cost 49% less at about the
+same wall time (the A/B's 2.3x speedup came from larger issues, where bare
+Claude Code explores longer). No run escalated.
+
+Web path: on staging, `POST /v1/work` as the agent-work test account was
+taken by the work host within 3 s; the account has no saved Claude sign-in,
+so the run stopped with "Save your own Claude sign-in in Settings > Claude"
+and the server's credentials were never used. Production serves the same
+build (revision `coder-web-a74a2376f9-20261011031455`); the production runs
+from the website wait on the owner's sign-in (NEEDS_OWNER.md).
+
+What the proof found and fixed:
+
+- A first bare run had the host's GitHub token: Claude Code pushed its own
+  change to `main` (1d16475293) and closed #11257 itself, skipping the
+  run's checks. The engines now run with no GitHub credential, `gh` and
+  `openagents` refuse, and `git push` has no destination; the driver lands.
+- The briefing copied `filefind.py` without `cards.py`, so the finder fell
+  back to `lite`; it now copies both.
