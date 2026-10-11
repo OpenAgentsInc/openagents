@@ -1,0 +1,142 @@
+//! `/games/the-ice-cream-man`: The Ice Cream Man in the browser
+//! (`docs/verse/games/the-ice-cream-man.md`), served like Grow Little
+//! Bunny (`super::bunny`).
+//!
+//! The page is a canvas filling the window and the build's own start
+//! script. The `icecream-web` build (`scripts/build-icecream-web.sh`) is
+//! read from the directory the server was started with (`--icecream DIR`,
+//! or `/srv/icecream` when the image has it):
+//!
+//! ```text
+//! DIR/icecream_web.js          wasm-bindgen's `--target web` glue
+//! DIR/icecream_web_bg.wasm     the module
+//! DIR/start.js                 imports the glue and starts the game
+//! DIR/*.gz                     gzip copies, sent when the request accepts them
+//! ```
+//!
+//! `/games/the-ice-cream-man/{file}` serves any `.js` or `.wasm` file
+//! directly in `DIR`. Without the directory, or without the three files in
+//! it, the page says the game can't be played here and runs no script.
+
+use std::path::Path;
+
+use axum::Router;
+use axum::extract::{Path as UrlPath, State};
+use axum::http::{HeaderMap, HeaderValue, header};
+use axum::response::Response;
+use axum::routing::get;
+
+use maud::html;
+use openagents_ui::content::{MarkdownRoot, PageColumn};
+
+use crate::App;
+use crate::layout::fullscreen;
+use crate::ui_page::{UiPage, action_link};
+
+/// The game's page.
+pub(crate) const ICECREAM_PATH: &str = "/games/the-ice-cream-man";
+
+/// The build's files, as `scripts/build-icecream-web.sh` names them.
+pub(crate) const ICECREAM_GLUE: &str = "icecream_web.js";
+pub(crate) const ICECREAM_WASM: &str = "icecream_web_bg.wasm";
+pub(crate) const ICECREAM_START: &str = "start.js";
+
+/// The canvas the game draws in; `icecream-web` looks it up by this id.
+pub(crate) const ICECREAM_CANVAS: &str = "icecream-canvas";
+
+/// The page's policy: Grow Little Bunny's (scripts and the module from
+/// this site only, compiling WebAssembly, same-origin reads).
+pub(crate) const ICECREAM_POLICY: &str = super::bunny::BUNNY_POLICY;
+
+const TITLE: &str = "The Ice Cream Man";
+
+pub(crate) fn routes() -> Router<App> {
+    Router::new()
+        .route(ICECREAM_PATH, get(page))
+        .route("/games/the-ice-cream-man/{file}", get(build_file))
+}
+
+/// The build directory, when it holds the glue, the module and the start
+/// script.
+fn build(app: &App) -> Option<&Path> {
+    let directory = app.config.icecream.as_deref()?;
+    [ICECREAM_GLUE, ICECREAM_WASM, ICECREAM_START]
+        .iter()
+        .all(|file| directory.join(file).is_file())
+        .then_some(directory)
+}
+
+/// The canvas, filling the window, with the loading line over its foot.
+/// The heading is for screen readers only.
+fn body() -> String {
+    format!(
+        "<h1 class=\"unseen\">{TITLE}</h1>\
+<div class=\"glade\" id=\"icecream\">\
+<canvas id=\"{ICECREAM_CANVAS}\" tabindex=\"0\" aria-label=\"The Airbnb, where the Ice Cream Man is\"></canvas>\
+<p class=\"glade-status\" id=\"icecream-status\" aria-live=\"polite\">Loading\u{2026}</p>\
+<noscript><p class=\"glade-status\">Turn on JavaScript to play.</p></noscript></div>\
+<script type=\"module\" src=\"{ICECREAM_PATH}/{ICECREAM_START}\"></script>"
+    )
+}
+
+/// The page without the build: it runs no script and keeps the site's
+/// policy.
+fn unavailable(headers: &HeaderMap) -> Response {
+    let content = PageColumn::new(html! {
+        section aria-labelledby="icecream-title" {
+            (MarkdownRoot::new(html! {
+                h1 id="icecream-title" { (TITLE) }
+                p.oa-page-lead { "The game can't be played here right now." }
+            }))
+            div.oa-page-actions {
+                (action_link("Back to the home page", "/"))
+            }
+        }
+    });
+    UiPage::new(TITLE)
+        .path(ICECREAM_PATH)
+        .scriptless()
+        .content(content)
+        .respond(headers)
+}
+
+async fn page(State(app): State<App>, headers: HeaderMap) -> Response {
+    if build(&app).is_none() {
+        return unavailable(&headers);
+    }
+    let mut response = fullscreen(TITLE, &body());
+    response.headers_mut().insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(ICECREAM_POLICY),
+    );
+    response
+}
+
+async fn build_file(
+    State(app): State<App>,
+    UrlPath(file): UrlPath<String>,
+    request: HeaderMap,
+) -> Response {
+    let (Some(directory), Some(content_type)) = (build(&app), super::everglade::build_type(&file))
+    else {
+        return crate::not_found().await;
+    };
+    super::everglade::serve_build(directory, &file, content_type, &request).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_page_has_one_script_from_the_build_and_no_inline_style() {
+        let html = body();
+        let lower = html.to_ascii_lowercase();
+        assert_eq!(lower.matches("<script").count(), 1);
+        assert!(html.contains("src=\"/games/the-ice-cream-man/start.js\""));
+        assert!(!lower.contains(" style="));
+        assert!(!lower.contains("<style"));
+        assert!(html.contains(&format!("<canvas id=\"{ICECREAM_CANVAS}\"")));
+        assert!(html.contains("id=\"icecream-status\""));
+    }
+}

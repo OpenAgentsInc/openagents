@@ -330,6 +330,11 @@ pub struct Config {
     /// `/games/grow-little-bunny/`. Without it, the game's page says it
     /// can't be played here.
     pub bunny: Option<PathBuf>,
+    /// The Ice Cream Man web build (`--icecream DIR`, default
+    /// `/srv/icecream` when it exists), served under
+    /// `/games/the-ice-cream-man/`. Without it, the game's page says it
+    /// can't be played here.
+    pub icecream: Option<PathBuf>,
     /// The sealed-inference demo's build (`--att DIR`, default `/srv/att`
     /// when it exists), served under `/att/`.
     pub att: Option<PathBuf>,
@@ -427,6 +432,7 @@ impl Config {
             api_operator_signup: false,
             everglade: None,
             bunny: None,
+            icecream: None,
             att: None,
             components_build: None,
             cloud: None,

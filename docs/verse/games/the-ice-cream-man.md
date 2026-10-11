@@ -1,6 +1,8 @@
 # The Ice Cream Man
 
-Status: design 2026-10-11; MVP being built as a browser game first, the way
+Status: design 2026-10-11; the browser MVP is built (`crates/icecream-rules`,
+`crates/icecream-web`, served at `/games/the-ice-cream-man`, guide at
+`/studios/blue-rush/the-ice-cream-man/how-to-play`, #11344), the way
 [Grow Little Bunny](grow-little-bunny.md) was. A Roblox version follows the
 Verse one, so controls, camera and feel copy Roblox from the start. Numbers
 marked *tunable* are starting values for playtests, not measured results.

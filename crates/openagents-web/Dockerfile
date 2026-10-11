@@ -87,6 +87,14 @@ RUN scripts/build-bunny-web.sh /build/bunny \
     && test -s /build/bunny/bunny_web_bg.wasm \
     && test -s /build/bunny/start.js
 
+# The Ice Cream Man, which /games/the-ice-cream-man serves the same way. The
+# site finds it at /srv/icecream without a flag (production's arguments are
+# copied from the live revision).
+RUN scripts/build-icecream-web.sh /build/icecream \
+    && test -s /build/icecream/icecream_web.js \
+    && test -s /build/icecream/icecream_web_bg.wasm \
+    && test -s /build/icecream/start.js
+
 # The sealed-inference demo, which /att serves (crates/att-web): the glue,
 # the module, the start script, the stylesheet, and gzip copies of each.
 RUN scripts/build-att-web.sh /build/att \
@@ -109,6 +117,7 @@ COPY --from=everglade /build/components /srv/components
 COPY --from=everglade /build/cloud /srv/cloud
 COPY --from=everglade /build/chat /srv/chat
 COPY --from=everglade /build/bunny /srv/bunny
+COPY --from=everglade /build/icecream /srv/icecream
 COPY --from=everglade /build/att /srv/att
 
 USER 10001:10001

@@ -1,7 +1,8 @@
 //! `/studios/blue-rush`: the Blue Rush Studios site, OpenAgents' game
-//! studio (Grow Little Bunny, `docs/verse/games/grow-little-bunny.md`, and
-//! the games after it), and its pages: the Grow Little Bunny guide at
-//! [`GUIDE`].
+//! studio (Grow Little Bunny, `docs/verse/games/grow-little-bunny.md`, The
+//! Ice Cream Man, `docs/verse/games/the-ice-cream-man.md`, and the games
+//! after them), and its pages: the Grow Little Bunny guide at [`GUIDE`] and
+//! The Ice Cream Man's at [`ICECREAM_GUIDE`].
 //!
 //! It is its own brand, so it does not use the OpenAgents shell
 //! (`UiPage`): the pages link their own stylesheet (and the homepage its
@@ -9,8 +10,9 @@
 //!
 //! **Its own domain.** The studio's hosts ([`HOSTS`] by default, more with
 //! `--studio-host`) serve the same pages at the root: `/` is the homepage,
-//! `/grow-little-bunny/how-to-play` the guide, `/static/...` the studio's
-//! files, and `/games/grow-little-bunny` the game itself ([`studio_path`]
+//! `/grow-little-bunny/how-to-play` and `/the-ice-cream-man/how-to-play`
+//! the guides, `/static/...` the studio's files, and
+//! `/games/grow-little-bunny` and `/games/the-ice-cream-man` the games ([`studio_path`]
 //! maps each request before routing; anything else is `404` there). The
 //! pages drawn for those hosts link the root paths and send the legal links
 //! to openagents.com ([`Site`]).
@@ -39,6 +41,10 @@ pub(crate) const PATH: &str = "/studios/blue-rush";
 /// to play cards (`tutorial::GUIDE`), so the path stays put.
 pub(crate) const GUIDE: &str = "/studios/blue-rush/grow-little-bunny/how-to-play";
 
+/// The Ice Cream Man guide. `icecream-web` links it from its tutorial and
+/// menu, so the path stays put.
+pub(crate) const ICECREAM_GUIDE: &str = "/studios/blue-rush/the-ice-cream-man/how-to-play";
+
 /// Where the pages' stylesheet, script, and pictures are served.
 pub(crate) const ASSETS: &str = "/studios/blue-rush/static/";
 
@@ -61,13 +67,17 @@ img-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 /// Where the hero's button and the featured card lead.
 pub(crate) const BUNNY: &str = "/games/grow-little-bunny";
 
+/// The Ice Cream Man's game.
+pub(crate) const ICECREAM: &str = "/games/the-ice-cream-man";
+
 const CSS: &str = include_str!("../../static/bluerush/bluerush.css");
 const JS: &str = include_str!("../../static/bluerush/bluerush.js");
 
 /// The coast stills, from `bench/verse/2026-10-08/coast-c1` and `coast-c2`,
 /// downscaled to JPEG, and the guide's screenshots of the real game
-/// (`bunny-*.jpg`, 960 by 600).
-const IMAGES: [(&str, &[u8]); 12] = [
+/// (`bunny-*.jpg`, 960 by 600), and The Ice Cream Man's (`icecream-*.jpg`,
+/// 960 by 600).
+const IMAGES: [(&str, &[u8]); 18] = [
     (
         "hero-bay.jpg",
         include_bytes!("../../static/bluerush/hero-bay.jpg"),
@@ -116,6 +126,30 @@ const IMAGES: [(&str, &[u8]); 12] = [
         "bunny-hop.jpg",
         include_bytes!("../../static/bluerush/bunny-hop.jpg"),
     ),
+    (
+        "icecream-hall.jpg",
+        include_bytes!("../../static/bluerush/icecream-hall.jpg"),
+    ),
+    (
+        "icecream-man.jpg",
+        include_bytes!("../../static/bluerush/icecream-man.jpg"),
+    ),
+    (
+        "icecream-fudge.jpg",
+        include_bytes!("../../static/bluerush/icecream-fudge.jpg"),
+    ),
+    (
+        "icecream-hide.jpg",
+        include_bytes!("../../static/bluerush/icecream-hide.jpg"),
+    ),
+    (
+        "icecream-door.jpg",
+        include_bytes!("../../static/bluerush/icecream-door.jpg"),
+    ),
+    (
+        "icecream-tour.jpg",
+        include_bytes!("../../static/bluerush/icecream-tour.jpg"),
+    ),
 ];
 
 /// A versioned file: its link carries `?v=` and the first bytes of its
@@ -139,6 +173,7 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(PATH, get(page))
         .route(GUIDE, get(guide))
+        .route(ICECREAM_GUIDE, get(icecream_guide))
         .route("/studios/blue-rush/static/{file}", get(asset))
 }
 
@@ -153,6 +188,8 @@ pub(crate) fn studio_path(path: &str) -> String {
         || path.starts_with("/studios/blue-rush/")
         || path == BUNNY
         || path.starts_with("/games/grow-little-bunny/")
+        || path == ICECREAM
+        || path.starts_with("/games/the-ice-cream-man/")
         || matches!(
             path,
             "/favicon.svg" | "/favicon.ico" | "/static/legacy-demo.css" | "/health"
@@ -173,6 +210,7 @@ pub(crate) fn studio_path(path: &str) -> String {
 struct Site {
     home: &'static str,
     guide: &'static str,
+    icecream_guide: &'static str,
     assets: &'static str,
     /// Prefixed to the links to the rest of openagents.com.
     openagents: &'static str,
@@ -181,6 +219,7 @@ struct Site {
 const ON_OPENAGENTS: Site = Site {
     home: PATH,
     guide: GUIDE,
+    icecream_guide: ICECREAM_GUIDE,
     assets: ASSETS,
     openagents: "",
 };
@@ -188,6 +227,7 @@ const ON_OPENAGENTS: Site = Site {
 const ON_STUDIO: Site = Site {
     home: "/",
     guide: "/grow-little-bunny/how-to-play",
+    icecream_guide: "/the-ice-cream-man/how-to-play",
     assets: "/static/",
     openagents: "https://openagents.com",
 };
@@ -234,6 +274,10 @@ async fn page(headers: HeaderMap) -> Response {
 
 async fn guide(headers: HeaderMap) -> Response {
     with_policy(render_guide(site(&headers)), GUIDE_POLICY)
+}
+
+async fn icecream_guide(headers: HeaderMap) -> Response {
+    with_policy(render_icecream_guide(site(&headers)), GUIDE_POLICY)
 }
 
 /// A 5x7 pixel font for the wordmark and the headline: each glyph is seven
@@ -349,8 +393,9 @@ fn head(site: &Site, title: &str, description: &str, script: bool) -> Markup {
     }
 }
 
-/// The nav: the wordmark home, the page's own links, and Play now.
-fn nav(site: &Site, links: &[(&str, &str)]) -> Markup {
+/// The nav: the wordmark home, the page's own links, and Play now
+/// (`play`, the page's game).
+fn nav(site: &Site, links: &[(&str, &str)], play: &str) -> Markup {
     html! {
         a class="br-skip" href="#main" { "Skip to content" }
         header class="br-nav" {
@@ -363,7 +408,7 @@ fn nav(site: &Site, links: &[(&str, &str)]) -> Markup {
                     a href=(href) { (label) }
                 }
             }
-            a class="br-outline" href=(BUNNY) { "Play now" }
+            a class="br-outline" href=(play) { "Play now" }
         }
     }
 }
@@ -391,7 +436,7 @@ fn render(site: &Site) -> Markup {
         html lang="en" {
             (head(site, "Blue Rush Studios", "Learning games about living things, the ocean, and building new homes on the sea.", true))
             body class="br" {
-                (nav(site, &[("Games", "#games"), ("How to play", site.guide), ("Learn", "#learn"), ("Sand garden", "#garden")]))
+                (nav(site, &[("Games", "#games"), ("How to play", site.guide), ("Learn", "#learn"), ("Sand garden", "#garden")], BUNNY))
                 main id="main" {
                     section class="br-hero" {
                         img class="br-hero-img" src={(site.assets) "hero-bay.jpg"} alt="" width="960" height="540";
@@ -411,6 +456,20 @@ fn render(site: &Site) -> Markup {
                         div class="br-wrap" {
                             h2 class="br-h2" id="games-title" { "Our games" }
                             div class="br-cards" {
+                                article class="br-card br-card-new" {
+                                    a class="br-card-media" href=(ICECREAM) tabindex="-1" aria-hidden="true" {
+                                        img src={(site.assets) "icecream-hall.jpg"} alt="" width="960" height="600" loading="lazy";
+                                    }
+                                    div class="br-card-body" {
+                                        span class="br-tag br-tag-new" { "New" }
+                                        h3 { "The Ice Cream Man" }
+                                        p { "You're stuck in an Airbnb that keeps going, and the Ice Cream Man wants you in a cone. Find three keys, blast him with hot fudge, and get out." }
+                                        div class="br-card-actions" {
+                                            a class="br-card-go" href=(ICECREAM) { "Play" }
+                                            a class="br-card-link" href=(site.icecream_guide) { "How to play" }
+                                        }
+                                    }
+                                }
                                 article class="br-card br-card-featured" {
                                     a class="br-card-media" href=(BUNNY) tabindex="-1" aria-hidden="true" {
                                         img src={(site.assets) "lighthouse.jpg"} alt="" width="960" height="540" loading="lazy";
@@ -508,21 +567,31 @@ const SECTIONS: [(&str, &str); 10] = [
     ("tips", "Tips"),
 ];
 
-fn section_title(id: &str) -> &'static str {
-    SECTIONS
+fn section_title(sections: &[(&str, &'static str)], id: &str) -> &'static str {
+    sections
         .iter()
         .find(|(anchor, _)| *anchor == id)
         .map_or("", |(_, title)| title)
 }
 
 fn step(id: &str, number: usize, body: Markup, picture: Option<Markup>) -> Markup {
+    step_in(&SECTIONS, id, number, body, picture)
+}
+
+fn step_in(
+    sections: &[(&str, &'static str)],
+    id: &str,
+    number: usize,
+    body: Markup,
+    picture: Option<Markup>,
+) -> Markup {
     let heading = format!("{id}-title");
     html! {
         section class=(if picture.is_some() { "br-step" } else { "br-step br-step-solo" }) id=(id) aria-labelledby=(heading) {
             div class="br-step-text" {
                 h2 id=(heading) {
                     span class="br-step-num" { (number) }
-                    (section_title(id))
+                    (section_title(sections, id))
                 }
                 (body)
             }
@@ -586,7 +655,7 @@ fn render_guide(site: &Site) -> Markup {
         html lang="en" {
             (head(site, "How to play Grow Little Bunny \u{b7} Blue Rush Studios", "How to play Grow Little Bunny: the controls, how your bunny grows, how to dodge the farmer, and how to clear a garden.", false))
             body class="br" {
-                (nav(site, &[("Games", &format!("{}#games", site.home)), ("How to play", site.guide)]))
+                (nav(site, &[("Games", &format!("{}#games", site.home)), ("How to play", site.guide)], BUNNY))
                 main id="main" {
                     header class="br-guide-head" {
                         div class="br-wrap" {
@@ -720,6 +789,178 @@ fn render_guide(site: &Site) -> Markup {
     }
 }
 
+/// The Ice Cream Man guide's sections: their anchors and titles.
+const ICECREAM_SECTIONS: [(&str, &str); 9] = [
+    ("goal", "The goal"),
+    ("controls", "Controls"),
+    ("house", "The house"),
+    ("keys", "Find the keys"),
+    ("man", "The Ice Cream Man"),
+    ("tools", "Hot fudge and farts"),
+    ("hide", "Hide"),
+    ("escape", "Escape, or get scooped"),
+    ("tips", "Tips"),
+];
+
+fn render_icecream_guide(site: &Site) -> Markup {
+    let step = |id, number, body, picture| step_in(&ICECREAM_SECTIONS, id, number, body, picture);
+    let control_rows: [(&str, Markup, Markup); 10] = [
+        (
+            "Move",
+            html! { (key("W")) " " (key("A")) " " (key("S")) " " (key("D")) " or the arrow keys" },
+            html! { "The stick on the left" },
+        ),
+        (
+            "Look around",
+            html! { "Hold the right mouse button and drag. The mouse wheel zooms; all the way in is first person." },
+            html! { "Drag on the right side of the screen" },
+        ),
+        (
+            "Shift Lock (aim)",
+            html! { (key("Ctrl")) " locks the camera over your shoulder, with a crosshair" },
+            html! { "Not needed: Fire aims at him when he's in front of you" },
+        ),
+        (
+            "Jump",
+            html! { (key("Space")) },
+            html! { "The Jump button" },
+        ),
+        (
+            "Sprint",
+            html! { "Hold " (key("Shift")) },
+            html! { "The Sprint button turns it on and off" },
+        ),
+        (
+            "Use your tool",
+            html! { "Left click" },
+            html! { "The Fire button" },
+        ),
+        (
+            "Pick a tool",
+            html! { (key("1")) " " (key("2")) " " (key("3")) ", or click the hot bar" },
+            html! { "Tap the hot bar" },
+        ),
+        (
+            "Hide, open a fridge, unlock the door",
+            html! { (key("E")) },
+            html! { "The Use button" },
+        ),
+        ("Menu", html! { (key("Esc")) }, html! { "The menu button" }),
+        (
+            "Open the tutorial",
+            html! { (key("?")) ", or How to play in the menu" },
+            html! { "How to play in the menu" },
+        ),
+    ];
+    html! {
+        (DOCTYPE)
+        html lang="en" {
+            (head(site, "How to play The Ice Cream Man \u{b7} Blue Rush Studios", "How to play The Ice Cream Man: the controls, the keys, hot fudge and fart clouds, hiding, and how to get out of the Airbnb.", false))
+            body class="br" {
+                (nav(site, &[("Games", &format!("{}#games", site.home)), ("How to play", site.icecream_guide)], ICECREAM))
+                main id="main" {
+                    header class="br-guide-head" {
+                        div class="br-wrap" {
+                            p class="br-crumbs" {
+                                a href=(site.home) { "Blue Rush Studios" }
+                                " / The Ice Cream Man"
+                            }
+                            h1 class="br-guide-title" { "How to play The Ice Cream Man" }
+                            p class="br-guide-lede" {
+                                "You wake up in an Airbnb that keeps going. Somewhere inside is the Ice Cream Man, and he wants you in a cone. Find three keys and get out the front door. Here's how, with pictures from the game."
+                            }
+                            div class="br-guide-actions" {
+                                a class="br-cta" href=(ICECREAM) { "Play The Ice Cream Man" }
+                            }
+                            nav class="br-toc" aria-label="On this page" {
+                                @for (anchor, title) in &ICECREAM_SECTIONS {
+                                    a href={"#" (anchor)} { (title) }
+                                }
+                            }
+                        }
+                    }
+                    div class="br-guide br-wrap" {
+                        (step("goal", 1, html! {
+                            p { "Your check-in note says: " strong { "\u{201c}Check-out is at 11. Don't let him in.\u{201d}" } " Too late. He's in." }
+                            p { "Find the " strong { "three check-out keys" } ", then go to the front door and hold " (key("E")) " for 2 seconds to unlock it. Get out and you win." }
+                        }, Some(shot(site, "icecream-hall.jpg", "The bedroom where you wake up: your blocky avatar with the hot fudge blaster next to a closet, and the hot bar at the bottom", "The bedroom where you wake up."))))
+                        (step("controls", 2, html! {
+                            div class="br-table-wrap" {
+                                table class="br-keys-table" {
+                                    thead {
+                                        tr {
+                                            th scope="col" { "To" }
+                                            th scope="col" { "Keyboard and mouse" }
+                                            th scope="col" { "Phone or tablet" }
+                                        }
+                                    }
+                                    tbody {
+                                        @for (action, keys, touch) in &control_rows {
+                                            tr {
+                                                th scope="row" { (action) }
+                                                td { (keys) }
+                                                td { (touch) }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            p { "The first time you play, four quick cards show these controls. Skip them if you like, and open them again with " (key("?")) " or " strong { "How to play" } " in the menu." }
+                        }, Some(shot(site, "icecream-tour.jpg", "The game's tutorial card about looking around, with Back, Skip and Next buttons", "The tutorial in the game."))))
+                        (step("house", 3, html! {
+                            p { "The house has a bedroom, a kitchen, a living room, a bathroom, a laundry, hallways, a stairwell, and the freezer room. Some rooms show up again, and some hallways are longer than they should be." }
+                            p { "Every run shuffles the rooms, so it's a new house every time." }
+                        }, None))
+                        (step("keys", 4, html! {
+                            p { "Keys spin and sparkle just above the floor. Walk over one to pick it up. The count at the top of the screen shows how many you have." }
+                            p { "A fridge with a pink sparkle on top hasn't been opened yet." }
+                        }, None))
+                        (step("man", 5, html! {
+                            p { "He's a walking ice cream cone with a huge shiny forehead. He wanders the house and comes to check on noises: running, firing, jingling keys, and rattling the front door. When he sees you, he chases you. When he loses you, he searches where he last saw you." }
+                            ul class="br-list" {
+                                li { strong { "Sprinkles" } ": from far away he fires sprinkles. Each one costs 5 health. Jump to dodge them." }
+                                li { strong { "Grab" } ": up close he grabs you. That costs 30 health and shoves you back." }
+                                li { strong { "Speed" } ": he's a bit slower than you sprinting, and faster than you walking." }
+                            }
+                            p { "Listen for the ice cream truck jingle. The louder it gets, the closer he is." }
+                        }, Some(shot(site, "icecream-man.jpg", "The Ice Cream Man: a waffle-cone body with a vanilla scoop head, a huge bald forehead and a big grin", "He's coming. Hear the jingle?"))))
+                        (step("tools", 6, html! {
+                            p { "Your tools sit in the hot bar at the bottom of the screen." }
+                            ul class="br-list" {
+                                li { strong { "1. Hot Fudge Blaster" } " (30 squirts): each hit slows him down. Six quick hits and he freezes solid for 3 seconds." }
+                                li { strong { "2. Fart Launcher" } " (3 clouds): knocks him back, and he forgets where you are for 4 seconds." }
+                                li { strong { "3. Key Ring" } ": shows your keys. Click to jingle them and lure him somewhere." }
+                            }
+                            p { "Running low? Press " (key("E")) " at a fridge for more fudge or a fart cloud. Each fridge opens once." }
+                        }, Some(shot(site, "icecream-fudge.jpg", "The Ice Cream Man frozen solid in hardened hot fudge, next to your avatar", "Six quick hits and he's frozen solid."))))
+                        (step("hide", 7, html! {
+                            p { "Press " (key("E")) " next to a closet to hide inside, and " (key("E")) " again to come out. He can't open your closet, unless he saw you get in." }
+                        }, Some(shot(site, "icecream-hide.jpg", "The view from inside a closet, peeking out at the room", "Hiding in a closet."))))
+                        (step("escape", 8, html! {
+                            p { "With all three keys, go to the front door and hold " (key("E")) " for 2 seconds. Rattling the door makes noise, so he may come running." }
+                            p { "You have 100 health. It slowly comes back once you haven't been hit for 10 seconds. If it runs out, you're " strong { "scooped" } ": he plops you in a cone and the run is over. Press " strong { "Try again" } "." }
+                            p { "After every run you get a card with your time, your keys, the hits you took, and how well you aimed your fudge." }
+                        }, Some(shot(site, "icecream-door.jpg", "The run card after escaping, with the time, keys, hits taken and fudge accuracy", "Out! Your run card."))))
+                        (step("tips", 9, html! {
+                            ul class="br-list" {
+                                li { "Sprint to get out of his sight, then hide." }
+                                li { "Save a fart cloud for when he's close." }
+                                li { "Fudge him from far away, before he can grab you." }
+                                li { "Jingle your keys in one room, then sneak off to another." }
+                            }
+                            div class="br-guide-actions" {
+                                a class="br-cta" href=(ICECREAM) { "Play now" }
+                                a class="br-hero-link" href=(site.home) { "Back to Blue Rush Studios" }
+                            }
+                        }, None))
+                    }
+                }
+                (footer(site))
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -728,6 +969,10 @@ mod tests {
     fn a_studio_host_maps_its_paths_to_the_studio() {
         assert_eq!(studio_path("/"), PATH);
         assert_eq!(studio_path("/grow-little-bunny/how-to-play"), GUIDE);
+        assert_eq!(
+            studio_path("/the-ice-cream-man/how-to-play"),
+            ICECREAM_GUIDE
+        );
         assert_eq!(
             studio_path("/static/bluerush.css"),
             format!("{ASSETS}bluerush.css")
@@ -738,6 +983,9 @@ mod tests {
             "/studios/blue-rush/static/bunny-run.jpg",
             BUNNY,
             "/games/grow-little-bunny/start.js",
+            ICECREAM,
+            "/games/the-ice-cream-man/start.js",
+            ICECREAM_GUIDE,
             "/static/legacy-demo.css",
             "/favicon.svg",
             "/health",
@@ -752,10 +1000,13 @@ mod tests {
     fn the_studio_pages_link_the_root_paths() {
         let home = render(&ON_STUDIO).into_string();
         let guide = render_guide(&ON_STUDIO).into_string();
-        for html in [&home, &guide] {
+        let icecream = render_icecream_guide(&ON_STUDIO).into_string();
+        for html in [&home, &guide, &icecream] {
             assert!(!html.contains("/studios/blue-rush"), "root paths only");
             assert!(html.contains("href=\"https://openagents.com/privacy\""));
         }
         assert!(guide.contains("href=\"/\""), "home");
+        assert!(icecream.contains("href=\"/\""), "home");
+        assert!(home.contains("href=\"/the-ice-cream-man/how-to-play\""));
     }
 }

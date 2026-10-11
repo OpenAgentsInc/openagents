@@ -12,6 +12,7 @@ pub(crate) mod download;
 pub(crate) mod efficiency;
 mod everglade;
 pub(crate) mod home;
+mod icecream;
 pub(crate) mod live;
 pub(crate) mod profile;
 pub(crate) mod stats;
@@ -24,7 +25,8 @@ use crate::App;
 pub(crate) use api_docs::API_DOCS;
 #[cfg(test)]
 pub(crate) use blue_rush::{
-    ASSETS as BLUE_RUSH_ASSETS, GUIDE as BLUE_RUSH_GUIDE, PATH as BLUE_RUSH,
+    ASSETS as BLUE_RUSH_ASSETS, GUIDE as BLUE_RUSH_GUIDE,
+    ICECREAM_GUIDE as BLUE_RUSH_ICECREAM_GUIDE, PATH as BLUE_RUSH,
 };
 pub(crate) use blue_rush::{HOSTS as STUDIO_HOSTS, STUDIO_HEADER, studio_path};
 pub(crate) use bunny::{BUNNY_CANVAS, BUNNY_GLUE, BUNNY_POLICY, BUNNY_START, BUNNY_WASM};
@@ -41,6 +43,10 @@ pub(crate) use download::{
 pub(crate) use everglade::GRID_POLICY;
 pub(crate) use everglade::{CANVAS_ID, EVERGLADE_POLICY, GLUE, WASM};
 #[cfg(test)]
+pub(crate) use icecream::{
+    ICECREAM_CANVAS, ICECREAM_GLUE, ICECREAM_PATH, ICECREAM_POLICY, ICECREAM_START, ICECREAM_WASM,
+};
+#[cfg(test)]
 pub(crate) use stats::utc;
 
 pub(crate) fn routes() -> Router<App> {
@@ -54,6 +60,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(efficiency::routes())
         .merge(everglade::routes())
         .merge(bunny::routes())
+        .merge(icecream::routes())
         .merge(att::routes())
         .merge(content::routes())
         .merge(api_docs::routes())

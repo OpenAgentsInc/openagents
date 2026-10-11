@@ -33,7 +33,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 
 /// The paths this site answers itself, exactly or as a prefix. `/app`, the
 /// local task browser, is never proxied; the host guard keeps it local.
-const OWNED_EXACT: [&str; 69] = [
+const OWNED_EXACT: [&str; 70] = [
     "/",
     crate::analytics::BEACON,
     crate::analytics::SCRIPT,
@@ -65,6 +65,7 @@ const OWNED_EXACT: [&str; 69] = [
     "/druid",
     "/grid",
     "/games/grow-little-bunny",
+    "/games/the-ice-cream-man",
     // The sealed-inference demo (#11241).
     "/att",
     "/ask",
@@ -118,7 +119,7 @@ const OWNED_EXACT: [&str; 69] = [
 /// `/coder/memory`), so a shipped app still calling them is served here
 /// and its `Bearer sess_...` never reaches the upstream. Current apps ask
 /// the `/v1` paths first (#11158).
-const OWNED_PREFIXES: [&str; 25] = [
+const OWNED_PREFIXES: [&str; 26] = [
     "/auth/",
     // The actor runtime's routes (#11253, crate::actors_host).
     "/v1/w/",
@@ -132,6 +133,7 @@ const OWNED_PREFIXES: [&str; 25] = [
     "/app/",
     "/everglade/",
     "/games/grow-little-bunny/",
+    "/games/the-ice-cream-man/",
     "/att/",
     "/pilot/",
     "/chat/",
