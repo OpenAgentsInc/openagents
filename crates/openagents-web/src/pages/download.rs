@@ -191,13 +191,18 @@ img-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-act
 frame-ancestors 'none'";
 
 async fn download(headers: HeaderMap) -> Response {
+    download_page(&headers, DESKTOP_RELEASED)
+}
+
+/// The page for `headers`; `desktop` shows the desktop downloads.
+pub(crate) fn download_page(headers: &HeaderMap, desktop: bool) -> Response {
     let mut response = UiPage::new("Download OpenAgents")
         .section("/download")
         .path("/download")
         .scriptless()
         .head(html! { script src=(crate::analytics::SCRIPT) defer {} })
-        .content(page(DESKTOP_RELEASED))
-        .respond(&headers);
+        .content(page(desktop))
+        .respond(headers);
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,
         axum::http::HeaderValue::from_static(DOWNLOAD_POLICY),

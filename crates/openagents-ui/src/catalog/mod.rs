@@ -205,8 +205,29 @@ pub const SECTIONS: &[Section] = &[
     section("Overlays", "dialog", "Dialog", overlays::dialog),
     section("Shell", "composer", "Composer", shell::composer),
     section("Shell", "app-shell", "App shell", shell::app_shell),
-    section("Shell", "theme", "Theme toggle", shell::theme),
     section("Shell", "document", "Document", shell::document),
+    section(
+        "Molecules",
+        "legal-footer",
+        "Legal footer",
+        shell::legal_footer,
+    ),
+    section("Molecules", "theme-toggle", "Theme toggle", shell::theme),
+    section(
+        "Molecules",
+        "suggestion-chips",
+        "Suggestion chips",
+        shell::suggestion_chips,
+    ),
+    section("Molecules", "chat-row", "Chat row", shell::chat_row),
+    section("Molecules", "task-row", "Task row", shell::task_row),
+    section("Molecules", "breadcrumb", "Breadcrumb", shell::breadcrumb),
+    section(
+        "Molecules",
+        "account-menu",
+        "Account menu",
+        shell::account_menu,
+    ),
 ];
 
 const fn section(
@@ -224,13 +245,14 @@ const fn section(
 }
 
 /// The Storybook groups, in page order.
-pub const GROUPS: [&str; 6] = [
+pub const GROUPS: [&str; 7] = [
     "Foundations",
     "Actions",
     "Forms",
     "Content",
     "Overlays",
     "Shell",
+    "Molecules",
 ];
 
 /// One theme pane of a section.

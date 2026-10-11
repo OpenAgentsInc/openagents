@@ -21,7 +21,7 @@ use sha2::Sha256;
 use maud::PreEscaped;
 
 use crate::App;
-use crate::layout::{escape, problem};
+use crate::layout::escape;
 use crate::ui_page::{UiPage, prose};
 
 const COOKIE: &str = "oa_pilot";
@@ -256,7 +256,13 @@ fn private(mut response: Response) -> Response {
     response
 }
 fn failure(status: StatusCode, text: &str) -> Response {
-    private(problem(
+    failure_page(&HeaderMap::new(), status, text)
+}
+
+/// A refused pilot request, for `headers`.
+pub(crate) fn failure_page(headers: &HeaderMap, status: StatusCode, text: &str) -> Response {
+    private(crate::ui_page::problem(
+        headers,
         status,
         "Pilot request unavailable",
         text,
@@ -270,13 +276,8 @@ pub(crate) fn routes() -> Router<App> {
         .layer(DefaultBodyLimit::max(8192))
 }
 
-async fn retired() -> Response {
-    crate::layout::problem(
-        StatusCode::NOT_FOUND,
-        "Not found",
-        "Nothing on this site has that address.",
-        ("/", "Home"),
-    )
+async fn retired(headers: HeaderMap) -> Response {
+    crate::not_found_for(&headers)
 }
 
 #[cfg(test)]
@@ -381,15 +382,20 @@ async fn submit(
             "We couldn't confirm we got your request. Send the same form again.",
         );
     };
+    received_page(&headers, &ack.reference)
+}
+
+/// The thanks page for the request filed as `reference`, for `headers`.
+pub(crate) fn received_page(headers: &HeaderMap, reference: &str) -> Response {
     private(
         UiPage::new("Pilot request received")
             .path("/")
             .scriptless()
             .content(prose(PreEscaped(format!(
             "<h1>Pilot request received</h1><p>Thanks, we have your request. Its reference is <code>{}</code>; keep it in case you write to us about it.</p><p>A person reads every request and writes back by email if you said we may. Nothing is booked or billed yet.</p><p><a href=\"/\">Home</a></p>",
-            escape(&ack.reference)
+            escape(reference)
         ))))
-            .respond(&headers),
+            .respond(headers),
     )
 }
 

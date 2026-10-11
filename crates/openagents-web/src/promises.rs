@@ -408,6 +408,11 @@ fn page(title: &str, path: &str, lead: &str, source: &str, other: (&str, &str)) 
 }
 
 async fn promises_page(headers: HeaderMap) -> Response {
+    promises_view(&headers)
+}
+
+/// `/promises` for `headers`.
+pub(crate) fn promises_view(headers: &HeaderMap) -> Response {
     page(
         "What works today",
         "/promises",
@@ -415,10 +420,15 @@ async fn promises_page(headers: HeaderMap) -> Response {
         &promises_markdown(),
         ("Roadmap", "/roadmap"),
     )
-    .respond(&headers)
+    .respond(headers)
 }
 
 async fn roadmap_page(headers: HeaderMap) -> Response {
+    roadmap_view(&headers)
+}
+
+/// `/roadmap` for `headers`.
+pub(crate) fn roadmap_view(headers: &HeaderMap) -> Response {
     page(
         "Roadmap",
         "/roadmap",
@@ -426,7 +436,7 @@ async fn roadmap_page(headers: HeaderMap) -> Response {
         &roadmap_markdown(),
         ("What works today", "/promises"),
     )
-    .respond(&headers)
+    .respond(headers)
 }
 
 async fn promises_md() -> Response {

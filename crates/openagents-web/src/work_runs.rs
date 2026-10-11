@@ -1992,10 +1992,18 @@ struct SubmitForm {
 }
 
 fn problem(status: StatusCode, text: &str) -> Response {
-    protect(
-        crate::layout::problem(status, "Work on issues", text, (PAGE, "Back to work"))
-            .into_response(),
-    )
+    problem_page(&HeaderMap::new(), status, text)
+}
+
+/// A refused work request, for `headers`.
+pub(crate) fn problem_page(headers: &HeaderMap, status: StatusCode, text: &str) -> Response {
+    protect(crate::ui_page::problem(
+        headers,
+        status,
+        "Work on issues",
+        text,
+        (PAGE, "Back to work"),
+    ))
 }
 
 /// Whether `supplied` is this owner's form token, compared in constant time.

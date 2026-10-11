@@ -51,7 +51,12 @@ async fn every_state_renders_in_both_themes() {
                     html.contains(&format!("data-theme=\"{}\"", theme.as_str())),
                     "{route}: theme"
                 );
-                crate::copy_guard::assert_plain(&route, &html);
+                // A page keeps the allowances of the address it lives at.
+                let guarded = match screen.routes {
+                    [live, ..] if live.starts_with('/') => format!("{live}?{route}"),
+                    _ => route.clone(),
+                };
+                crate::copy_guard::assert_plain(&guarded, &html);
             }
         }
     }
@@ -88,6 +93,76 @@ async fn the_index_and_screen_pages_list_everything() {
     }
     let missing = screen(HeaderMap::new(), Path("nope".to_owned())).await;
     assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+}
+
+/// The site states show their sample data and answer with their status.
+#[tokio::test]
+async fn site_states_show_their_sample_data() {
+    let all = screens();
+    let cases = [
+        ("download", "desktop", StatusCode::OK, "Download OpenAgents"),
+        ("stats", "populated", StatusCode::OK, "sample-weather"),
+        ("stats", "no-data", StatusCode::OK, "Stats"),
+        ("live", "one", StatusCode::OK, "A Coder run started"),
+        ("live", "waiting", StatusCode::OK, "None yet."),
+        ("pilot", "received", StatusCode::OK, "SAMPLE-0001"),
+        (
+            "pilot",
+            "invalid",
+            StatusCode::BAD_REQUEST,
+            "Nothing was sent.",
+        ),
+        ("docs", "missing", StatusCode::NOT_FOUND, "Page not found"),
+        (
+            "problem",
+            "not-found",
+            StatusCode::NOT_FOUND,
+            "Nothing on this site",
+        ),
+        (
+            "problem",
+            "refused",
+            StatusCode::FORBIDDEN,
+            "Pick a workspace first.",
+        ),
+        ("problem", "gone", StatusCode::GONE, "This page has moved"),
+        (
+            "problem",
+            "broken",
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Something went wrong",
+        ),
+        (
+            "problem",
+            "unavailable",
+            StatusCode::SERVICE_UNAVAILABLE,
+            "right now",
+        ),
+        (
+            "problem",
+            "rate-limited",
+            StatusCode::TOO_MANY_REQUESTS,
+            "Too many runs",
+        ),
+        (
+            "connect-google",
+            "connecting",
+            StatusCode::OK,
+            "Connecting Google",
+        ),
+    ];
+    for (screen, state, status, text) in cases {
+        let render = all
+            .iter()
+            .find(|s| s.id == screen)
+            .and_then(|s| s.states.iter().find(|s| s.id == state))
+            .unwrap_or_else(|| panic!("{screen}/{state}"))
+            .render;
+        let response = render(&HeaderMap::new());
+        assert_eq!(response.status(), status, "{screen}/{state}");
+        let html = body(response).await;
+        assert!(html.contains(text), "{screen}/{state} lacks {text:?}");
+    }
 }
 
 #[tokio::test]

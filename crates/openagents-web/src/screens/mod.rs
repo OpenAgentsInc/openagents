@@ -17,6 +17,7 @@
 mod account;
 mod auth;
 mod chat;
+mod site;
 
 use axum::Router;
 use axum::extract::{Path, Query};
@@ -84,6 +85,7 @@ pub(crate) fn screens() -> Vec<Screen> {
     all.extend(auth::screens());
     all.extend(chat::screens());
     all.extend(account::screens());
+    all.extend(site::screens());
     all
 }
 

@@ -255,11 +255,16 @@ the rows behind every number on this page are in the repository. On your own com
 }
 
 async fn efficiency_page(headers: HeaderMap) -> Response {
+    page(&headers)
+}
+
+/// The page for `headers`.
+pub(crate) fn page(headers: &HeaderMap) -> Response {
     UiPage::new("Efficiency")
         .path("/efficiency")
         .scriptless()
         .content(wide_prose(PreEscaped(body())))
-        .respond(&headers)
+        .respond(headers)
 }
 
 #[cfg(test)]

@@ -221,6 +221,11 @@ pub(crate) fn routes() -> Router<App> {
 
 /// `/docs`: every guide, in reading order, under its section's title.
 async fn docs_index(headers: HeaderMap) -> Response {
+    docs_index_page(&headers)
+}
+
+/// The docs index for `headers`.
+pub(crate) fn docs_index_page(headers: &HeaderMap) -> Response {
     let mut body = String::from(
         "<h1>Docs</h1><p class=\"oa-page-lead\">Guides to OpenAgents: the chat, Coder, the apps, \
 plugins, and the Gym.</p>",
@@ -259,7 +264,7 @@ works today with its proof, and what we're building next.</p><ol class=\"oa-item
         .path("/docs")
         .scriptless()
         .content(prose(PreEscaped(body)))
-        .respond(&headers)
+        .respond(headers)
 }
 
 /// `/docs/{slug}`: one guide, with the previous and next ones under it.
@@ -270,9 +275,14 @@ async fn doc(Path(slug): Path<String>, headers: HeaderMap) -> Response {
     {
         return crate::agent_ready::guide_md(name, source);
     }
+    doc_page(&headers, &slug)
+}
+
+/// The guide `slug` for `headers`, or the not-found page.
+pub(crate) fn doc_page(headers: &HeaderMap, slug: &str) -> Response {
     let Some(index) = DOCS.iter().position(|(name, _)| *name == slug) else {
         return problem(
-            &headers,
+            headers,
             StatusCode::NOT_FOUND,
             "Page not found",
             "No guide has that name.",
@@ -300,15 +310,15 @@ async fn doc(Path(slug): Path<String>, headers: HeaderMap) -> Response {
             }
         }
     });
-    let title = markdown::title(source, &slug);
+    let title = markdown::title(source, slug);
     UiPage::new(title.clone())
-        .breadcrumb(doc_breadcrumb(&slug, &title))
+        .breadcrumb(doc_breadcrumb(slug, &title))
         .section("/docs")
         .path(format!("/docs/{slug}"))
         .description(crate::agent_ready::summary(source))
         .scriptless()
         .content(content)
-        .respond(&headers)
+        .respond(headers)
 }
 
 /// One document in the reading column, with a way home under it.
@@ -325,20 +335,28 @@ fn article(title: String, path: &str, source: &str, headers: &HeaderMap) -> Resp
 }
 
 async fn terms(headers: HeaderMap) -> Response {
+    terms_page(&headers)
+}
+
+pub(crate) fn terms_page(headers: &HeaderMap) -> Response {
     article(
         markdown::title(TERMS, "Terms of Service"),
         "/terms",
         TERMS,
-        &headers,
+        headers,
     )
 }
 
 async fn privacy(headers: HeaderMap) -> Response {
+    privacy_page(&headers)
+}
+
+pub(crate) fn privacy_page(headers: &HeaderMap) -> Response {
     article(
         markdown::title(PRIVACY, "Privacy Policy"),
         "/privacy",
         PRIVACY,
-        &headers,
+        headers,
     )
 }
 
