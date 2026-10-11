@@ -1,0 +1,48 @@
+{
+  "compiled": true,
+  "gpu_executed": false,
+  "build_receipt": "build-1/receipt.json",
+  "build_lease": "build-lease-1.json",
+  "memory_lease": "build-memory-lease-1.json",
+  "files": {
+    "probe": {
+      "sha256": "c51facd8708407188e5bf802be3e52dd6bf5802470042247fbc660946801bdcb",
+      "bytes": 150344
+    },
+    "kernels.air": {
+      "sha256": "9d5fe603e2ab7ee40f60cf33d3c3425962e3e153bcf52c18e0977bab4027ad9a",
+      "bytes": 19632
+    },
+    "baseline.metal": {
+      "sha256": "6f6268e1fc24f372844f97de326a9eecb03e50d946265e801b460b2bf07cb2b6",
+      "bytes": 10692
+    },
+    "kernels.metal": {
+      "sha256": "99361c242f1d88869953107c5f91fd9b0853364de19820f2a7afcc13e4ab46df",
+      "bytes": 15977
+    },
+    "probe.swift": {
+      "sha256": "7cfd14253bf5647e07d61315be39c94ecbfe0c564e5e4bcb07eaddc4c66a9317",
+      "bytes": 19782
+    },
+    "build.py": {
+      "sha256": "a6333699f5f162bac934b7a1903aeee7f426c6c5c0d30fcdc0177d6c298b3231",
+      "bytes": 655
+    },
+    "guard.py": {
+      "sha256": "7984fb9508efd2d130903bc87bcc8614e46b2519c8225f214cf2a3ddcbefe191",
+      "bytes": 4647
+    },
+    "source.json": {
+      "sha256": "1a0338af0f7121caf604eb4292e8e2f90a94ae8223b6178b6564e805f4755166",
+      "bytes": 889
+    },
+    "summarize.py": {
+      "sha256": "947b12f4afa222fe4347f0d4b86b623c55548bc40b2290203778c4c3ff6590d9",
+      "bytes": 3264
+    }
+  },
+  "seconds": 2.0722618749999997,
+  "peak_accounted_bytes": 47448064,
+  "owned_group_stopped": true
+}

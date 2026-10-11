@@ -1,0 +1,25 @@
+{
+  "files": {
+    "evidence.json": {
+      "bytes": 1394,
+      "sha256": "3f9ee92c98413aac48ccef0d80dd8d00efe327243c7699da16f67a56984b6384"
+    },
+    "summary.json": {
+      "bytes": 4916,
+      "sha256": "4a018575221d5cbc2311ad9ff7f8001ad2694247d3e479c766042a4a634340ec"
+    },
+    "README.md": {
+      "bytes": 2002,
+      "sha256": "d031de615c66025636d019d7ca15549417bf22496ac95a60cb7ed64eb571b441"
+    },
+    "per-second.csv": {
+      "bytes": 1404,
+      "sha256": "8f7819d90ed370b1090065def02c706535db5cc81b259ef8ac6d87e318429810"
+    },
+    "owned-timings.jsonl": {
+      "bytes": 386404,
+      "sha256": "447f20884de2fffcd7a967a043e8013da490e498d3c37e9ce196951c85300a62"
+    }
+  },
+  "private_trace_included": false
+}

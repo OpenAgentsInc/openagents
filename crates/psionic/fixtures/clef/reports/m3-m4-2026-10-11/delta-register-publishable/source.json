@@ -1,0 +1,13 @@
+{
+  "kind": "scratch_only_block16_register_column_solve",
+  "product_source_changed": false,
+  "baseline_block": 16,
+  "sources": {
+    "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_delta_block.metal": "6f6268e1fc24f372844f97de326a9eecb03e50d946265e801b460b2bf07cb2b6",
+    "crates/psionic/crates/psionic-backend-metal/src/clef_delta/tests.rs": "b9d38b57ad7c6e9df38e52248c82620477db7ca5cddb406f6f2b62748a967d06",
+    "crates/psionic/crates/psionic-backend-metal/src/clef_prefill/delta_tests.rs": "b6ee26100d95ea8b8f1a253b846f8d177ca0d1453d6f3f61f4d04266cb45ed51"
+  },
+  "baseline_copy_sha256": "6f6268e1fc24f372844f97de326a9eecb03e50d946265e801b460b2bf07cb2b6",
+  "candidate_source_sha256": "99361c242f1d88869953107c5f91fd9b0853364de19820f2a7afcc13e4ab46df",
+  "change": "Only the scan triangular solve; beta/fma initialization and all TensorOps calls remain unchanged."
+}

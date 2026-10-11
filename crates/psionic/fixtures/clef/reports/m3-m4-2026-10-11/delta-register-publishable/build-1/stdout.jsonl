@@ -1,0 +1,3 @@
+{"command": ["xcrun", "-sdk", "macosx", "metal", "-std=metal4.0", "-c", "run-artifacts/delta-register-probe/kernels.metal", "-o", "run-artifacts/delta-register-probe/kernels.air"]}
+{"command": ["xcrun", "swiftc", "-O", "-num-threads", "2", "run-artifacts/delta-register-probe/probe.swift", "-o", "run-artifacts/delta-register-probe/probe"]}
+{"compiled": true, "gpu_executed": false, "binary_sha256": "c51facd8708407188e5bf802be3e52dd6bf5802470042247fbc660946801bdcb"}

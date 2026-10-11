@@ -1,0 +1,28 @@
+{
+  "original_small_evidence_sha256": {
+    "owned-probe.jsonl": "90a41224bcffe64a9dc208ee4beb9835ff69d382af71a783a396da5498675d4c",
+    "receipt.json": "dc5a707092833bf9c625baec556bd43e0b84e7306a60a3c10438ebf209808475",
+    "memory.jsonl": "989dd3f68174de0b91030d5d44fbb125888e69e3a5d7860850ff38083dac4859",
+    "xctrace.stdout": "e32d583939b585455d5938357d488036ad9338490a312365491b32404bb9e4bc",
+    "xctrace.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "private-trace-metadata.json": "852bfb85c81f9f1df396ad962dc9f2582ec74959fb7e790db0a042f3cfd82a2b"
+  },
+  "raw_system_trace_hashed": false,
+  "raw_system_trace_read_or_exported": false,
+  "raw_system_trace_metadata_only": {
+    "exists": true,
+    "files": 2,
+    "apparent_bytes": 1239660656,
+    "allocated_bytes": 1239662592,
+    "largest_file_bytes": 1239607408,
+    "finalized": false,
+    "export_attempted": false
+  },
+  "binary_sha256": "6baeeeef52af42a2a5a831fc7cbaff37723f04e80640b3d30916f6ca3b0039b5",
+  "metal_library_sha256": "f6dd3a1b61e8b28507dde0399a96824c2dabff12f041bd609379de323ca31467",
+  "published": {
+    "summary.json": "4a018575221d5cbc2311ad9ff7f8001ad2694247d3e479c766042a4a634340ec",
+    "owned-timings.jsonl": "447f20884de2fffcd7a967a043e8013da490e498d3c37e9ce196951c85300a62",
+    "per-second.csv": "8f7819d90ed370b1090065def02c706535db5cc81b259ef8ac6d87e318429810"
+  }
+}

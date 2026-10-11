@@ -1,0 +1,60 @@
+{
+  "mode": "bench",
+  "status": "complete",
+  "preflight": {
+    "available_memory_bytes": 99442556928,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 3627210,
+      "inactive": 2037937,
+      "speculative": 404345
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "max_owned_group_bytes": 2147483648,
+  "minimum_available_bytes": 12884901888,
+  "minimum_start_bytes": 15032385536,
+  "deadline_seconds": 60,
+  "conditions": "shared machine; synthetic normalized Delta inputs; actual Flash dimensions; no model execution",
+  "source_sha256": {
+    "baseline.metal": "6f6268e1fc24f372844f97de326a9eecb03e50d946265e801b460b2bf07cb2b6",
+    "kernels.metal": "99361c242f1d88869953107c5f91fd9b0853364de19820f2a7afcc13e4ab46df",
+    "probe.swift": "7cfd14253bf5647e07d61315be39c94ecbfe0c564e5e4bcb07eaddc4c66a9317",
+    "build.py": "a6333699f5f162bac934b7a1903aeee7f426c6c5c0d30fcdc0177d6c298b3231",
+    "guard.py": "7984fb9508efd2d130903bc87bcc8614e46b2519c8225f214cf2a3ddcbefe191",
+    "source.json": "1a0338af0f7121caf604eb4292e8e2f90a94ae8223b6178b6564e805f4755166"
+  },
+  "guard_dependency_sha256": {
+    "mac_quiet_bench.py": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb",
+    "mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd"
+  },
+  "command": [
+    "run-artifacts/delta-register-probe/probe",
+    "run-artifacts/delta-register-probe",
+    "bench"
+  ],
+  "binary_sha256": "c51facd8708407188e5bf802be3e52dd6bf5802470042247fbc660946801bdcb",
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 45581,
+    "max_rss_bytes": 2147483648,
+    "peak_rss_bytes": 504545280,
+    "peak_physical_footprint_bytes": 621233160,
+    "peak_accounted_bytes": 621233160,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 21,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 98802647040,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 11.128889249999999
+}

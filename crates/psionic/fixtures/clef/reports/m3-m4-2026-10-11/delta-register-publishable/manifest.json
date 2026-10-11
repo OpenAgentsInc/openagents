@@ -1,0 +1,199 @@
+{
+  "format": "scratch-publication-v1",
+  "immutable_source_run": "delta-register-probe/run-1",
+  "files": [
+    {
+      "source": "delta-register-probe/baseline.metal",
+      "published": "baseline.metal",
+      "source_sha256": "6f6268e1fc24f372844f97de326a9eecb03e50d946265e801b460b2bf07cb2b6",
+      "source_bytes": 10692,
+      "published_sha256": "6f6268e1fc24f372844f97de326a9eecb03e50d946265e801b460b2bf07cb2b6",
+      "published_bytes": 10692,
+      "sanitization": {}
+    },
+    {
+      "source": "delta-register-probe/kernels.metal",
+      "published": "kernels.metal",
+      "source_sha256": "99361c242f1d88869953107c5f91fd9b0853364de19820f2a7afcc13e4ab46df",
+      "source_bytes": 15977,
+      "published_sha256": "99361c242f1d88869953107c5f91fd9b0853364de19820f2a7afcc13e4ab46df",
+      "published_bytes": 15977,
+      "sanitization": {}
+    },
+    {
+      "source": "delta-register-probe/probe.swift",
+      "published": "probe.swift",
+      "source_sha256": "7cfd14253bf5647e07d61315be39c94ecbfe0c564e5e4bcb07eaddc4c66a9317",
+      "source_bytes": 19782,
+      "published_sha256": "7cfd14253bf5647e07d61315be39c94ecbfe0c564e5e4bcb07eaddc4c66a9317",
+      "published_bytes": 19782,
+      "sanitization": {}
+    },
+    {
+      "source": "delta-register-probe/build.py",
+      "published": "build.py",
+      "source_sha256": "a6333699f5f162bac934b7a1903aeee7f426c6c5c0d30fcdc0177d6c298b3231",
+      "source_bytes": 655,
+      "published_sha256": "a6333699f5f162bac934b7a1903aeee7f426c6c5c0d30fcdc0177d6c298b3231",
+      "published_bytes": 655,
+      "sanitization": {}
+    },
+    {
+      "source": "delta-register-probe/guard.py",
+      "published": "guard.py",
+      "source_sha256": "7984fb9508efd2d130903bc87bcc8614e46b2519c8225f214cf2a3ddcbefe191",
+      "source_bytes": 4647,
+      "published_sha256": "d67a8558ec09e39f2770e97f0002ed6222369918f9fb1a9268bc55acaa7947eb",
+      "published_bytes": 4610,
+      "sanitization": {
+        "portable_repo_environment": 1
+      }
+    },
+    {
+      "source": "delta-register-probe/summarize.py",
+      "published": "summarize.py",
+      "source_sha256": "947b12f4afa222fe4347f0d4b86b623c55548bc40b2290203778c4c3ff6590d9",
+      "source_bytes": 3264,
+      "published_sha256": "947b12f4afa222fe4347f0d4b86b623c55548bc40b2290203778c4c3ff6590d9",
+      "published_bytes": 3264,
+      "sanitization": {}
+    },
+    {
+      "source": "delta-register-probe/source.json",
+      "published": "source.json",
+      "source_sha256": "1a0338af0f7121caf604eb4292e8e2f90a94ae8223b6178b6564e805f4755166",
+      "source_bytes": 889,
+      "published_sha256": "1a0338af0f7121caf604eb4292e8e2f90a94ae8223b6178b6564e805f4755166",
+      "published_bytes": 889,
+      "sanitization": {}
+    },
+    {
+      "source": "delta-register-probe/compiled.json",
+      "published": "compiled.json",
+      "source_sha256": "c1ade901f096576d0cabfd957e19746cabe51dc93e3901877001a69de2cfc484",
+      "source_bytes": 1480,
+      "published_sha256": "c1ade901f096576d0cabfd957e19746cabe51dc93e3901877001a69de2cfc484",
+      "published_bytes": 1480,
+      "sanitization": {}
+    },
+    {
+      "source": "delta-register-probe/build-1/receipt.json",
+      "published": "build-1/receipt.json",
+      "source_sha256": "aa0217fd4271b9f1751cd64bf8856ee2b74fcb695954d09cf0807d27cc026b68",
+      "source_bytes": 2438,
+      "published_sha256": "2a27a30ec2ba38e320949d6143f66b4cee2150446b7ea99b93246ffc9d51938e",
+      "published_bytes": 2354,
+      "sanitization": {
+        "run-artifacts": 1
+      }
+    },
+    {
+      "source": "delta-register-probe/build-1/stdout.jsonl",
+      "published": "build-1/stdout.jsonl",
+      "source_sha256": "1ddbe33118a2e7b066e9519f1237a88c4e4e94ca4453d5c5367a11b9a729613e",
+      "source_bytes": 804,
+      "published_sha256": "fde9ed0886becba0767adfa334c6d77f7781c6c5d3a2f04fa15182b9221348eb",
+      "published_bytes": 468,
+      "sanitization": {
+        "run-artifacts": 4
+      }
+    },
+    {
+      "source": "delta-register-probe/build-1/stderr.log",
+      "published": "build-1/stderr.log",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source_bytes": 0,
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "sanitization": {}
+    },
+    {
+      "source": "delta-register-probe/run-1/receipt.json",
+      "published": "run-1/receipt.json",
+      "source_sha256": "c2510077798012e94f378f01873f84fc13fe2ecbba0e16047e1c5315f2002ca6",
+      "source_bytes": 2596,
+      "published_sha256": "f2721c2cd1100b771c411474e99f09672d774c1537d05f8021087b55d7570e10",
+      "published_bytes": 2428,
+      "sanitization": {
+        "run-artifacts": 2
+      }
+    },
+    {
+      "source": "delta-register-probe/run-1/stdout.jsonl",
+      "published": "run-1/stdout.jsonl",
+      "source_sha256": "eeeedc688494210f22a7dec5a7ea4aafc1979112ca99dfab76a5110fb4b74011",
+      "source_bytes": 32026,
+      "published_sha256": "eeeedc688494210f22a7dec5a7ea4aafc1979112ca99dfab76a5110fb4b74011",
+      "published_bytes": 32026,
+      "sanitization": {}
+    },
+    {
+      "source": "delta-register-probe/run-1/stderr.log",
+      "published": "run-1/stderr.log",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source_bytes": 0,
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "sanitization": {}
+    },
+    {
+      "source": "delta-register-probe/run-1/summary.json",
+      "published": "run-1/summary.json",
+      "source_sha256": "2267adf511b98035285651ad2026f8e35c58915d823b17416f66ecb2c8914850",
+      "source_bytes": 34285,
+      "published_sha256": "8aa784bdffd2e190678e54e1ec529ea3d88a548fb1aa4899d7bf132ab37e692e",
+      "published_bytes": 34117,
+      "sanitization": {
+        "run-artifacts": 2
+      }
+    },
+    {
+      "source": "delta-register-probe/build-lease-1.json",
+      "published": "build-lease-1.json",
+      "source_sha256": "8126e11acd6ca7e0a495c1c2b1d8c88892335470f0a1a25a1a3467e85e5c8257",
+      "source_bytes": 672,
+      "published_sha256": "0daab597b6f6c040bd75865ec4e2a20439e5c55778881f8cdb5762fba974e282",
+      "published_bytes": 618,
+      "sanitization": {
+        "workspace/openagents": 1
+      }
+    },
+    {
+      "source": "delta-register-probe/build-memory-lease-1.json",
+      "published": "build-memory-lease-1.json",
+      "source_sha256": "3c05a9cb6b4b0500ab75498bc59100985ac471ca9eea4fab1c813222f305eec0",
+      "source_bytes": 486,
+      "published_sha256": "3c05a9cb6b4b0500ab75498bc59100985ac471ca9eea4fab1c813222f305eec0",
+      "published_bytes": 486,
+      "sanitization": {}
+    },
+    {
+      "source": "delta-register-probe/run-gpu-lease-1.json",
+      "published": "run-gpu-lease-1.json",
+      "source_sha256": "5089688cd486a1ec071b2dca6f2963e91410b618a61c5104c452e8ac540088be",
+      "source_bytes": 487,
+      "published_sha256": "5089688cd486a1ec071b2dca6f2963e91410b618a61c5104c452e8ac540088be",
+      "published_bytes": 487,
+      "sanitization": {}
+    },
+    {
+      "source": "delta-register-probe/run-memory-lease-1.json",
+      "published": "run-memory-lease-1.json",
+      "source_sha256": "79e0b79f189d065c6f9ec308d1430b01b7e7db5d9664e044c618a844f0f9b7c6",
+      "source_bytes": 487,
+      "published_sha256": "79e0b79f189d065c6f9ec308d1430b01b7e7db5d9664e044c618a844f0f9b7c6",
+      "published_bytes": 487,
+      "sanitization": {}
+    },
+    {
+      "generated": "README.md",
+      "published_sha256": "28be22dfa1c6d68dc14013b8159799481206c1d67fefce2d629d47c811bdd0ab",
+      "published_bytes": 5300
+    },
+    {
+      "generated": "recommendation.json",
+      "published_sha256": "8e9620ae410f3755c1940b9e6e232bb950eba87e7a679661a2538987d66fa139",
+      "published_bytes": 2955
+    }
+  ]
+}

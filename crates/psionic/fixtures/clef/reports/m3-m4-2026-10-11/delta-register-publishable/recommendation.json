@@ -1,0 +1,116 @@
+{
+  "conclusion": "Reject product integration: every paired timing comparison was slower than frozen block16.",
+  "numerical_gate_passed": true,
+  "performance_gate_passed": false,
+  "checks": 24,
+  "bitwise_values": 16081920,
+  "bit_mismatches": 0,
+  "maximum_f64_absolute_error": 8.394025870217536e-07,
+  "paired_timings": [
+    {
+      "n": 1024,
+      "scope": "prepare-and-scan",
+      "paired_rounds": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "baseline_gpu_ms_median": 0.9754583334142808,
+      "candidate_gpu_ms_median": 1.4906666674505686,
+      "paired_gpu_ratio_median": 1.5301964567594297,
+      "paired_gpu_ratios": [
+        1.5219733567359044,
+        1.5415131522836931,
+        1.5414830168057227,
+        1.4894551809706573,
+        1.5366322272872521,
+        1.5237606862316073
+      ],
+      "candidate_faster_rounds": 0
+    },
+    {
+      "n": 1024,
+      "scope": "scan-only",
+      "paired_rounds": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "baseline_gpu_ms_median": 0.8773958325036801,
+      "candidate_gpu_ms_median": 1.404624999850057,
+      "paired_gpu_ratio_median": 1.6002206127101557,
+      "paired_gpu_ratios": [
+        1.6202422134403007,
+        1.5944371413666332,
+        1.5971570774357862,
+        1.59153334340519,
+        1.613746466290486,
+        1.6032841479845252
+      ],
+      "candidate_faster_rounds": 0
+    },
+    {
+      "n": 2048,
+      "scope": "prepare-and-scan",
+      "paired_rounds": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "baseline_gpu_ms_median": 1.9888750011887169,
+      "candidate_gpu_ms_median": 3.0657291663374053,
+      "paired_gpu_ratio_median": 1.5385212391883998,
+      "paired_gpu_ratios": [
+        1.551134577586449,
+        1.5294202963410535,
+        1.5289802218336042,
+        1.5544354820668842,
+        1.541945388662361,
+        1.5350970897144385
+      ],
+      "candidate_faster_rounds": 0
+    },
+    {
+      "n": 2048,
+      "scope": "scan-only",
+      "paired_rounds": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "baseline_gpu_ms_median": 1.7418958341295365,
+      "candidate_gpu_ms_median": 2.8110208331781905,
+      "paired_gpu_ratio_median": 1.6146426555790425,
+      "paired_gpu_ratios": [
+        1.6195386313568851,
+        1.6122161133284374,
+        1.6170691978296476,
+        1.6188311840429908,
+        1.6107087336402246,
+        1.6087590888959
+      ],
+      "candidate_faster_rounds": 0
+    }
+  ],
+  "load_average_1min_range": [
+    14.65380859375,
+    14.7109375
+  ],
+  "source_summary_sha256": "2267adf511b98035285651ad2026f8e35c58915d823b17416f66ecb2c8914850",
+  "hardware_cause": "Not established.",
+  "scope": "Short shared-machine synthetic DeltaNet experiment at real Flash dimensions, not full-model accuracy or latency.",
+  "gpu_lease_released": true,
+  "product_source_changed": false
+}

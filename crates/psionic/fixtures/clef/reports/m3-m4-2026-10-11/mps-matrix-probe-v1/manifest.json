@@ -1,0 +1,38 @@
+{
+  "original_binary_sha256": "5b3c1191edced6a66b1a16f6f2db5d7e3979eab6c6d4d2f1d89ceb015de92fe6",
+  "original_source_sha256": {
+    "kernels.metal": "2fe0e11a47ce6c691b537935521df6dcf32197fe05cc122728779ffe2aa0688a",
+    "probe.swift": "64ab881609a5a3737d40bbfddd4c8fcc9ac7a486886386c785c8fd2b91226fab",
+    "build.py": "e2d52ceaa1f5aee22586da3a765e4efdec71588379ccf3ab6cee33378e4c171a",
+    "guard.py": "faeec4b7d5ee9e454c79d315f287cd867ac7b16ad7332383deac1919dd2d0619",
+    "sources.json": "355fc1de19645d85bd6918a6c85736859bbbefcae8787bc5679842af7f4c1811",
+    "weights.json": "67f4754c3ed4beb03d2ea283f933e38a98054a6748e24b4857bd90cb4142e275"
+  },
+  "sanitization": "Personal absolute roots replaced with placeholders. Published guard reads OPENAGENTS_WORKTREE instead of a personal absolute repository path. Raw scratch artifacts remain unchanged. No weights or binaries included.",
+  "published_sha256": {
+    "README.md": "b55ce3df8be4b16faf919568690dc813fb649e30572c5074ef0d8d0b1c7d73a1",
+    "build-1/memory.jsonl": "5c91760337f9be9711e09da362bfd9a0a5578f683f19553988cbfaff7eadea6c",
+    "build-1/receipt.json": "ad1950bfcdb9add005edfc211a9b6b765963ed4d6b937505135f62727854a73a",
+    "build-1/stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build-1/stdout.jsonl": "fa04f9f9af8b6452806cd88284937e6d19611cedd0adb8834d3ac235c58d14d6",
+    "build-2/memory.jsonl": "5fb373dbc373f1b7347b350e5d0285f5829f0945c2454e8addc2fc15a51f02c3",
+    "build-2/receipt.json": "9eb9395b60d2268d60e8fbcbe601cac38323c11c32e87fbf0cf810727d945477",
+    "build-2/stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build-2/stdout.jsonl": "72c52d4f73085606f2d864ec6ca0bf3ad550ae71fae997db6e4e9d8c3f8649c4",
+    "build.py": "e2d52ceaa1f5aee22586da3a765e4efdec71588379ccf3ab6cee33378e4c171a",
+    "guard.py": "5ca171937f5ae0bc6c8ed125836b5154dc4340153eb1d6318ac6aca77bcbca50",
+    "kernels.metal": "2fe0e11a47ce6c691b537935521df6dcf32197fe05cc122728779ffe2aa0688a",
+    "mixed-check-1/memory.jsonl": "282b4663ba610d634a50d7589ab811e8e763efb9681a900815b562cf5902eb32",
+    "mixed-check-1/receipt.json": "18768beeca0431f9da89ecdaab6cb8677098fbab8a564dfcee1b10c91e8f2e86",
+    "mixed-check-1/stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "mixed-check-1/stdout.jsonl": "d6022bcd0eddd14a76dea8bb901c14367d9a7d68140c3ec3fdfa5a08896643f1",
+    "probe.swift": "64ab881609a5a3737d40bbfddd4c8fcc9ac7a486886386c785c8fd2b91226fab",
+    "sources.json": "355fc1de19645d85bd6918a6c85736859bbbefcae8787bc5679842af7f4c1811",
+    "summary.json": "ab5248f96a038a5876ec4b6716f36a79e839f0b06f05dde85f05188c3fe26681",
+    "weighted-1/memory.jsonl": "a881148782bebc7be545781f3a5c0dfd15fc800c0bcb5ff1729eae469e9c4229",
+    "weighted-1/receipt.json": "7feb393da53aa763c459bda1bc4d8ca4aef0008656071a17b5da5c821ffa41cf",
+    "weighted-1/stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "weighted-1/stdout.jsonl": "0d7386ee2d7a8596ab585cf947c58eb21cf5d676b023c2fff545b94d961dbc60",
+    "weights.json": "67f4754c3ed4beb03d2ea283f933e38a98054a6748e24b4857bd90cb4142e275"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "mode": "build",
+  "status": "complete",
+  "preflight": {
+    "available_memory_bytes": 102694141952,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 3206102,
+      "inactive": 2837862,
+      "speculative": 223989
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "max_owned_group_bytes": 4294967296,
+  "minimum_available_bytes": 12884901888,
+  "minimum_start_bytes": 17179869184,
+  "deadline_seconds": 180,
+  "conditions": "shared machine; one verified Flash FFN layer; vendor MPS versus frozen MPP; no model or product latency claim",
+  "source_sha256": {
+    "kernels.metal": "ba42d87d4f4503c909367dfa3dab5800185357b34020723304fc1cf30ea6f1cc",
+    "probe.swift": "7ef2a033c401f3b528a4fe7b09cef749982169fe6fde755c041b46f6c64823b3",
+    "build.py": "e2d52ceaa1f5aee22586da3a765e4efdec71588379ccf3ab6cee33378e4c171a",
+    "guard.py": "faeec4b7d5ee9e454c79d315f287cd867ac7b16ad7332383deac1919dd2d0619",
+    "sources.json": "15ba4e74f59a8f35fc0115af45cbfe049e413b5fdbe7bc955f446f32e8d87f8b",
+    "weights.json": "67f4754c3ed4beb03d2ea283f933e38a98054a6748e24b4857bd90cb4142e275"
+  },
+  "command": [
+    "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+    "<SCRATCH>/clef-m3-m4/mps-matrix-probe/build.py"
+  ],
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 31536,
+    "max_rss_bytes": 4294967296,
+    "peak_rss_bytes": 47349760,
+    "peak_physical_footprint_bytes": 17793864,
+    "peak_accounted_bytes": 47349760,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 7,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 102478184448,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 3.498571542
+}

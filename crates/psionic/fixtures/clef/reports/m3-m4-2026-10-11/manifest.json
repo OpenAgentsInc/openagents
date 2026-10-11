@@ -11,7 +11,8 @@
     "Stage 4 evidence was added after completion; its frozen source manifest and successful build records identify the server used by both HTTP runs.",
     "Stage 4 weighted DeltaNet and partial CPU text-014 diagnostics were added later without changing earlier copied evidence or source hashes. These runs precede subsequent normalization, serial-wait, and 27B GEMM-shape changes.",
     "Stage 4 shared-machine latency and Stage 5 normalization source/CUDA oracle evidence were added separately; the latency binary precedes the normalization and serial-wait changes.",
-    "Stage 5 builds, bounded GPU checks, native 27B comparison, and independent CPU-head reference are identified by their own source and binary hashes. MPS probes are diagnostic; no failed result or acceptance threshold is replaced."
+    "Stage 5 builds, bounded GPU checks, native 27B comparison, and independent CPU-head reference are identified by their own source and binary hashes. MPS probes are diagnostic; no failed result or acceptance threshold is replaced.",
+    "Stage 6 experiments preserve failed correctness gates and resource refusals. Only owned, sanitized trace aggregates are published; raw system traces, model weights, and tensor payloads remain outside Git."
   ],
   "files": [
     {
@@ -4447,6 +4448,483 @@
       "published": "stage5/native27b-layer-014/output.log",
       "published_sha256": "3900c88c6057ba90c74d7dc971dcb247b8e54212827e211336e97218f84bed5a",
       "published_bytes": 157,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/README.md",
+      "original_sha256": "28be22dfa1c6d68dc14013b8159799481206c1d67fefce2d629d47c811bdd0ab",
+      "original_bytes": 5300,
+      "published": "delta-register-publishable/README.md",
+      "published_sha256": "28be22dfa1c6d68dc14013b8159799481206c1d67fefce2d629d47c811bdd0ab",
+      "published_bytes": 5300,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/baseline.metal",
+      "original_sha256": "6f6268e1fc24f372844f97de326a9eecb03e50d946265e801b460b2bf07cb2b6",
+      "original_bytes": 10692,
+      "published": "delta-register-publishable/baseline.metal",
+      "published_sha256": "6f6268e1fc24f372844f97de326a9eecb03e50d946265e801b460b2bf07cb2b6",
+      "published_bytes": 10692,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/build-1/receipt.json",
+      "original_sha256": "2a27a30ec2ba38e320949d6143f66b4cee2150446b7ea99b93246ffc9d51938e",
+      "original_bytes": 2354,
+      "published": "delta-register-publishable/build-1/receipt.json",
+      "published_sha256": "2a27a30ec2ba38e320949d6143f66b4cee2150446b7ea99b93246ffc9d51938e",
+      "published_bytes": 2354,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/build-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "delta-register-publishable/build-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/build-1/stdout.jsonl",
+      "original_sha256": "fde9ed0886becba0767adfa334c6d77f7781c6c5d3a2f04fa15182b9221348eb",
+      "original_bytes": 468,
+      "published": "delta-register-publishable/build-1/stdout.jsonl",
+      "published_sha256": "fde9ed0886becba0767adfa334c6d77f7781c6c5d3a2f04fa15182b9221348eb",
+      "published_bytes": 468,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/build-lease-1.json",
+      "original_sha256": "0daab597b6f6c040bd75865ec4e2a20439e5c55778881f8cdb5762fba974e282",
+      "original_bytes": 618,
+      "published": "delta-register-publishable/build-lease-1.json",
+      "published_sha256": "0daab597b6f6c040bd75865ec4e2a20439e5c55778881f8cdb5762fba974e282",
+      "published_bytes": 618,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/build-memory-lease-1.json",
+      "original_sha256": "3c05a9cb6b4b0500ab75498bc59100985ac471ca9eea4fab1c813222f305eec0",
+      "original_bytes": 486,
+      "published": "delta-register-publishable/build-memory-lease-1.json",
+      "published_sha256": "3c05a9cb6b4b0500ab75498bc59100985ac471ca9eea4fab1c813222f305eec0",
+      "published_bytes": 486,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/build.py",
+      "original_sha256": "a6333699f5f162bac934b7a1903aeee7f426c6c5c0d30fcdc0177d6c298b3231",
+      "original_bytes": 655,
+      "published": "delta-register-publishable/build.py",
+      "published_sha256": "a6333699f5f162bac934b7a1903aeee7f426c6c5c0d30fcdc0177d6c298b3231",
+      "published_bytes": 655,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/compiled.json",
+      "original_sha256": "c1ade901f096576d0cabfd957e19746cabe51dc93e3901877001a69de2cfc484",
+      "original_bytes": 1480,
+      "published": "delta-register-publishable/compiled.json",
+      "published_sha256": "c1ade901f096576d0cabfd957e19746cabe51dc93e3901877001a69de2cfc484",
+      "published_bytes": 1480,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/guard.py",
+      "original_sha256": "d67a8558ec09e39f2770e97f0002ed6222369918f9fb1a9268bc55acaa7947eb",
+      "original_bytes": 4610,
+      "published": "delta-register-publishable/guard.py",
+      "published_sha256": "d67a8558ec09e39f2770e97f0002ed6222369918f9fb1a9268bc55acaa7947eb",
+      "published_bytes": 4610,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/kernels.metal",
+      "original_sha256": "99361c242f1d88869953107c5f91fd9b0853364de19820f2a7afcc13e4ab46df",
+      "original_bytes": 15977,
+      "published": "delta-register-publishable/kernels.metal",
+      "published_sha256": "99361c242f1d88869953107c5f91fd9b0853364de19820f2a7afcc13e4ab46df",
+      "published_bytes": 15977,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/manifest.json",
+      "original_sha256": "5facbbee71d247c0d84c12fc3115d632985a69286be2e1ce5f6b301d8f017672",
+      "original_bytes": 7851,
+      "published": "delta-register-publishable/manifest.json",
+      "published_sha256": "5facbbee71d247c0d84c12fc3115d632985a69286be2e1ce5f6b301d8f017672",
+      "published_bytes": 7851,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/probe.swift",
+      "original_sha256": "7cfd14253bf5647e07d61315be39c94ecbfe0c564e5e4bcb07eaddc4c66a9317",
+      "original_bytes": 19782,
+      "published": "delta-register-publishable/probe.swift",
+      "published_sha256": "7cfd14253bf5647e07d61315be39c94ecbfe0c564e5e4bcb07eaddc4c66a9317",
+      "published_bytes": 19782,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/recommendation.json",
+      "original_sha256": "8e9620ae410f3755c1940b9e6e232bb950eba87e7a679661a2538987d66fa139",
+      "original_bytes": 2955,
+      "published": "delta-register-publishable/recommendation.json",
+      "published_sha256": "8e9620ae410f3755c1940b9e6e232bb950eba87e7a679661a2538987d66fa139",
+      "published_bytes": 2955,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/run-1/receipt.json",
+      "original_sha256": "f2721c2cd1100b771c411474e99f09672d774c1537d05f8021087b55d7570e10",
+      "original_bytes": 2428,
+      "published": "delta-register-publishable/run-1/receipt.json",
+      "published_sha256": "f2721c2cd1100b771c411474e99f09672d774c1537d05f8021087b55d7570e10",
+      "published_bytes": 2428,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/run-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "delta-register-publishable/run-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/run-1/stdout.jsonl",
+      "original_sha256": "eeeedc688494210f22a7dec5a7ea4aafc1979112ca99dfab76a5110fb4b74011",
+      "original_bytes": 32026,
+      "published": "delta-register-publishable/run-1/stdout.jsonl",
+      "published_sha256": "eeeedc688494210f22a7dec5a7ea4aafc1979112ca99dfab76a5110fb4b74011",
+      "published_bytes": 32026,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/run-1/summary.json",
+      "original_sha256": "8aa784bdffd2e190678e54e1ec529ea3d88a548fb1aa4899d7bf132ab37e692e",
+      "original_bytes": 34117,
+      "published": "delta-register-publishable/run-1/summary.json",
+      "published_sha256": "8aa784bdffd2e190678e54e1ec529ea3d88a548fb1aa4899d7bf132ab37e692e",
+      "published_bytes": 34117,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/run-gpu-lease-1.json",
+      "original_sha256": "5089688cd486a1ec071b2dca6f2963e91410b618a61c5104c452e8ac540088be",
+      "original_bytes": 487,
+      "published": "delta-register-publishable/run-gpu-lease-1.json",
+      "published_sha256": "5089688cd486a1ec071b2dca6f2963e91410b618a61c5104c452e8ac540088be",
+      "published_bytes": 487,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/run-memory-lease-1.json",
+      "original_sha256": "79e0b79f189d065c6f9ec308d1430b01b7e7db5d9664e044c618a844f0f9b7c6",
+      "original_bytes": 487,
+      "published": "delta-register-publishable/run-memory-lease-1.json",
+      "published_sha256": "79e0b79f189d065c6f9ec308d1430b01b7e7db5d9664e044c618a844f0f9b7c6",
+      "published_bytes": 487,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/source.json",
+      "original_sha256": "1a0338af0f7121caf604eb4292e8e2f90a94ae8223b6178b6564e805f4755166",
+      "original_bytes": 889,
+      "published": "delta-register-publishable/source.json",
+      "published_sha256": "1a0338af0f7121caf604eb4292e8e2f90a94ae8223b6178b6564e805f4755166",
+      "published_bytes": 889,
+      "path_replacements": []
+    },
+    {
+      "source": "delta-register-publishable/summarize.py",
+      "original_sha256": "947b12f4afa222fe4347f0d4b86b623c55548bc40b2290203778c4c3ff6590d9",
+      "original_bytes": 3264,
+      "published": "delta-register-publishable/summarize.py",
+      "published_sha256": "947b12f4afa222fe4347f0d4b86b623c55548bc40b2290203778c4c3ff6590d9",
+      "published_bytes": 3264,
+      "path_replacements": []
+    },
+    {
+      "source": "sustained-trace-probe/publishable-trace-attempt-v1/README.md",
+      "original_sha256": "d031de615c66025636d019d7ca15549417bf22496ac95a60cb7ed64eb571b441",
+      "original_bytes": 2002,
+      "published": "sustained-trace-attempt-v1/README.md",
+      "published_sha256": "d031de615c66025636d019d7ca15549417bf22496ac95a60cb7ed64eb571b441",
+      "published_bytes": 2002,
+      "path_replacements": []
+    },
+    {
+      "source": "sustained-trace-probe/publishable-trace-attempt-v1/evidence.json",
+      "original_sha256": "3f9ee92c98413aac48ccef0d80dd8d00efe327243c7699da16f67a56984b6384",
+      "original_bytes": 1394,
+      "published": "sustained-trace-attempt-v1/evidence.json",
+      "published_sha256": "3f9ee92c98413aac48ccef0d80dd8d00efe327243c7699da16f67a56984b6384",
+      "published_bytes": 1394,
+      "path_replacements": []
+    },
+    {
+      "source": "sustained-trace-probe/publishable-trace-attempt-v1/manifest.json",
+      "original_sha256": "25b475952180a5ed8f7af97ab6659da5d9a2900ff3bd5c66b7e302450c53fd4a",
+      "original_bytes": 729,
+      "published": "sustained-trace-attempt-v1/manifest.json",
+      "published_sha256": "25b475952180a5ed8f7af97ab6659da5d9a2900ff3bd5c66b7e302450c53fd4a",
+      "published_bytes": 729,
+      "path_replacements": []
+    },
+    {
+      "source": "sustained-trace-probe/publishable-trace-attempt-v1/owned-timings.jsonl",
+      "original_sha256": "447f20884de2fffcd7a967a043e8013da490e498d3c37e9ce196951c85300a62",
+      "original_bytes": 386404,
+      "published": "sustained-trace-attempt-v1/owned-timings.jsonl",
+      "published_sha256": "447f20884de2fffcd7a967a043e8013da490e498d3c37e9ce196951c85300a62",
+      "published_bytes": 386404,
+      "path_replacements": []
+    },
+    {
+      "source": "sustained-trace-probe/publishable-trace-attempt-v1/per-second.csv",
+      "original_sha256": "8f7819d90ed370b1090065def02c706535db5cc81b259ef8ac6d87e318429810",
+      "original_bytes": 1404,
+      "published": "sustained-trace-attempt-v1/per-second.csv",
+      "published_sha256": "8f7819d90ed370b1090065def02c706535db5cc81b259ef8ac6d87e318429810",
+      "published_bytes": 1404,
+      "path_replacements": []
+    },
+    {
+      "source": "sustained-trace-probe/publishable-trace-attempt-v1/summary.json",
+      "original_sha256": "4a018575221d5cbc2311ad9ff7f8001ad2694247d3e479c766042a4a634340ec",
+      "original_bytes": 4916,
+      "published": "sustained-trace-attempt-v1/summary.json",
+      "published_sha256": "4a018575221d5cbc2311ad9ff7f8001ad2694247d3e479c766042a4a634340ec",
+      "published_bytes": 4916,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/README.md",
+      "original_sha256": "b55ce3df8be4b16faf919568690dc813fb649e30572c5074ef0d8d0b1c7d73a1",
+      "original_bytes": 5142,
+      "published": "mps-matrix-probe-v1/README.md",
+      "published_sha256": "b55ce3df8be4b16faf919568690dc813fb649e30572c5074ef0d8d0b1c7d73a1",
+      "published_bytes": 5142,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/build-1/memory.jsonl",
+      "original_sha256": "5c91760337f9be9711e09da362bfd9a0a5578f683f19553988cbfaff7eadea6c",
+      "original_bytes": 5897,
+      "published": "mps-matrix-probe-v1/build-1/memory.jsonl",
+      "published_sha256": "5c91760337f9be9711e09da362bfd9a0a5578f683f19553988cbfaff7eadea6c",
+      "published_bytes": 5897,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/build-1/receipt.json",
+      "original_sha256": "ad1950bfcdb9add005edfc211a9b6b765963ed4d6b937505135f62727854a73a",
+      "original_bytes": 2146,
+      "published": "mps-matrix-probe-v1/build-1/receipt.json",
+      "published_sha256": "ad1950bfcdb9add005edfc211a9b6b765963ed4d6b937505135f62727854a73a",
+      "published_bytes": 2146,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/build-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "mps-matrix-probe-v1/build-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/build-1/stdout.jsonl",
+      "original_sha256": "fa04f9f9af8b6452806cd88284937e6d19611cedd0adb8834d3ac235c58d14d6",
+      "original_bytes": 480,
+      "published": "mps-matrix-probe-v1/build-1/stdout.jsonl",
+      "published_sha256": "fa04f9f9af8b6452806cd88284937e6d19611cedd0adb8834d3ac235c58d14d6",
+      "published_bytes": 480,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/build-2/memory.jsonl",
+      "original_sha256": "5fb373dbc373f1b7347b350e5d0285f5829f0945c2454e8addc2fc15a51f02c3",
+      "original_bytes": 5890,
+      "published": "mps-matrix-probe-v1/build-2/memory.jsonl",
+      "published_sha256": "5fb373dbc373f1b7347b350e5d0285f5829f0945c2454e8addc2fc15a51f02c3",
+      "published_bytes": 5890,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/build-2/receipt.json",
+      "original_sha256": "9eb9395b60d2268d60e8fbcbe601cac38323c11c32e87fbf0cf810727d945477",
+      "original_bytes": 2153,
+      "published": "mps-matrix-probe-v1/build-2/receipt.json",
+      "published_sha256": "9eb9395b60d2268d60e8fbcbe601cac38323c11c32e87fbf0cf810727d945477",
+      "published_bytes": 2153,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/build-2/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "mps-matrix-probe-v1/build-2/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/build-2/stdout.jsonl",
+      "original_sha256": "72c52d4f73085606f2d864ec6ca0bf3ad550ae71fae997db6e4e9d8c3f8649c4",
+      "original_bytes": 480,
+      "published": "mps-matrix-probe-v1/build-2/stdout.jsonl",
+      "published_sha256": "72c52d4f73085606f2d864ec6ca0bf3ad550ae71fae997db6e4e9d8c3f8649c4",
+      "published_bytes": 480,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/build.py",
+      "original_sha256": "e2d52ceaa1f5aee22586da3a765e4efdec71588379ccf3ab6cee33378e4c171a",
+      "original_bytes": 547,
+      "published": "mps-matrix-probe-v1/build.py",
+      "published_sha256": "e2d52ceaa1f5aee22586da3a765e4efdec71588379ccf3ab6cee33378e4c171a",
+      "published_bytes": 547,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/guard.py",
+      "original_sha256": "5ca171937f5ae0bc6c8ed125836b5154dc4340153eb1d6318ac6aca77bcbca50",
+      "original_bytes": 4341,
+      "published": "mps-matrix-probe-v1/guard.py",
+      "published_sha256": "5ca171937f5ae0bc6c8ed125836b5154dc4340153eb1d6318ac6aca77bcbca50",
+      "published_bytes": 4341,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/kernels.metal",
+      "original_sha256": "2fe0e11a47ce6c691b537935521df6dcf32197fe05cc122728779ffe2aa0688a",
+      "original_bytes": 7066,
+      "published": "mps-matrix-probe-v1/kernels.metal",
+      "published_sha256": "2fe0e11a47ce6c691b537935521df6dcf32197fe05cc122728779ffe2aa0688a",
+      "published_bytes": 7066,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/manifest.json",
+      "original_sha256": "7f6af30b08739b1e0bfcacf9735d34000a62abc57c1904d9b66fd72c502357a3",
+      "original_bytes": 3174,
+      "published": "mps-matrix-probe-v1/manifest.json",
+      "published_sha256": "7f6af30b08739b1e0bfcacf9735d34000a62abc57c1904d9b66fd72c502357a3",
+      "published_bytes": 3174,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/mixed-check-1/memory.jsonl",
+      "original_sha256": "282b4663ba610d634a50d7589ab811e8e763efb9681a900815b562cf5902eb32",
+      "original_bytes": 1492,
+      "published": "mps-matrix-probe-v1/mixed-check-1/memory.jsonl",
+      "published_sha256": "282b4663ba610d634a50d7589ab811e8e763efb9681a900815b562cf5902eb32",
+      "published_bytes": 1492,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/mixed-check-1/receipt.json",
+      "original_sha256": "18768beeca0431f9da89ecdaab6cb8677098fbab8a564dfcee1b10c91e8f2e86",
+      "original_bytes": 2233,
+      "published": "mps-matrix-probe-v1/mixed-check-1/receipt.json",
+      "published_sha256": "18768beeca0431f9da89ecdaab6cb8677098fbab8a564dfcee1b10c91e8f2e86",
+      "published_bytes": 2233,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/mixed-check-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "mps-matrix-probe-v1/mixed-check-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/mixed-check-1/stdout.jsonl",
+      "original_sha256": "d6022bcd0eddd14a76dea8bb901c14367d9a7d68140c3ec3fdfa5a08896643f1",
+      "original_bytes": 3081,
+      "published": "mps-matrix-probe-v1/mixed-check-1/stdout.jsonl",
+      "published_sha256": "d6022bcd0eddd14a76dea8bb901c14367d9a7d68140c3ec3fdfa5a08896643f1",
+      "published_bytes": 3081,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/probe.swift",
+      "original_sha256": "64ab881609a5a3737d40bbfddd4c8fcc9ac7a486886386c785c8fd2b91226fab",
+      "original_bytes": 14406,
+      "published": "mps-matrix-probe-v1/probe.swift",
+      "published_sha256": "64ab881609a5a3737d40bbfddd4c8fcc9ac7a486886386c785c8fd2b91226fab",
+      "published_bytes": 14406,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/sources.json",
+      "original_sha256": "355fc1de19645d85bd6918a6c85736859bbbefcae8787bc5679842af7f4c1811",
+      "original_bytes": 1833,
+      "published": "mps-matrix-probe-v1/sources.json",
+      "published_sha256": "355fc1de19645d85bd6918a6c85736859bbbefcae8787bc5679842af7f4c1811",
+      "published_bytes": 1833,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/summary.json",
+      "original_sha256": "ab5248f96a038a5876ec4b6716f36a79e839f0b06f05dde85f05188c3fe26681",
+      "original_bytes": 24656,
+      "published": "mps-matrix-probe-v1/summary.json",
+      "published_sha256": "ab5248f96a038a5876ec4b6716f36a79e839f0b06f05dde85f05188c3fe26681",
+      "published_bytes": 24656,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/weighted-1/memory.jsonl",
+      "original_sha256": "a881148782bebc7be545781f3a5c0dfd15fc800c0bcb5ff1729eae469e9c4229",
+      "original_bytes": 6829,
+      "published": "mps-matrix-probe-v1/weighted-1/memory.jsonl",
+      "published_sha256": "a881148782bebc7be545781f3a5c0dfd15fc800c0bcb5ff1729eae469e9c4229",
+      "published_bytes": 6829,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/weighted-1/receipt.json",
+      "original_sha256": "7feb393da53aa763c459bda1bc4d8ca4aef0008656071a17b5da5c821ffa41cf",
+      "original_bytes": 2244,
+      "published": "mps-matrix-probe-v1/weighted-1/receipt.json",
+      "published_sha256": "7feb393da53aa763c459bda1bc4d8ca4aef0008656071a17b5da5c821ffa41cf",
+      "published_bytes": 2244,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/weighted-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "mps-matrix-probe-v1/weighted-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/weighted-1/stdout.jsonl",
+      "original_sha256": "0d7386ee2d7a8596ab585cf947c58eb21cf5d676b023c2fff545b94d961dbc60",
+      "original_bytes": 67554,
+      "published": "mps-matrix-probe-v1/weighted-1/stdout.jsonl",
+      "published_sha256": "0d7386ee2d7a8596ab585cf947c58eb21cf5d676b023c2fff545b94d961dbc60",
+      "published_bytes": 67554,
+      "path_replacements": []
+    },
+    {
+      "source": "mps-matrix-probe/publication-v1/weights.json",
+      "original_sha256": "67f4754c3ed4beb03d2ea283f933e38a98054a6748e24b4857bd90cb4142e275",
+      "original_bytes": 7076,
+      "published": "mps-matrix-probe-v1/weights.json",
+      "published_sha256": "67f4754c3ed4beb03d2ea283f933e38a98054a6748e24b4857bd90cb4142e275",
+      "published_bytes": 7076,
       "path_replacements": []
     }
   ],

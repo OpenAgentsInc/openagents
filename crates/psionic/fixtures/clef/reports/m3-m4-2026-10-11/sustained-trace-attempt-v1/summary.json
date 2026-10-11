@@ -1,0 +1,141 @@
+{
+  "schema": "clef.owned-metal-trace-attempt.v1",
+  "status": "trace_resource_refusal_after_workload_completed",
+  "diagnostic_only": true,
+  "acceptance_benchmark": false,
+  "model_executed": false,
+  "device": "Apple M5 Max",
+  "workload": {
+    "completed": true,
+    "seconds": 13.015678249998018,
+    "calls": 522,
+    "tokens_per_call": 2048,
+    "operations_per_call": "three baseline FFN GEMMs and SiLU",
+    "fixed_fixture_bytes": 603980288,
+    "maximum_metal_allocated_bytes": 604717056,
+    "final_finite_output_values": 8388608,
+    "every_sample_bit_stable": true,
+    "every_output_guard_unchanged": true,
+    "small_f64_oracle": {
+      "f64_max_scaled_abs": 1.7052257806494387e-06,
+      "outputs": 7,
+      "passed": true
+    },
+    "gpu_ms": {
+      "first": 19.198124999093125,
+      "median": 24.641458332553157,
+      "last": 25.00187500118045,
+      "minimum": 10.088250000990229,
+      "maximum": 33.18537499944796
+    },
+    "first_command_cpu_scheduling_ms": 12.2775833333435
+  },
+  "public_counter_capabilities": {
+    "counter_sets": [
+      {
+        "counters": [
+          "GPUTimestamp"
+        ],
+        "name": "timestamp"
+      }
+    ],
+    "supports_stage_counters": true,
+    "supports_dispatch_counters": false,
+    "counter_sampling_enabled": false
+  },
+  "power": {
+    "thermal_states_observed": [
+      "fair"
+    ],
+    "low_power_mode_enabled_values": [
+      false
+    ],
+    "power_state_override": false,
+    "gpu_frequency": "unavailable",
+    "gpu_performance_state": "unavailable",
+    "thermal_cause_established": false
+  },
+  "trace": {
+    "exists": true,
+    "files": 2,
+    "apparent_bytes": 1239660656,
+    "allocated_bytes": 1239662592,
+    "largest_file_bytes": 1239607408,
+    "finalized": false,
+    "export_attempted": false
+  },
+  "bounds": {
+    "max_owned_group_bytes": 2147483648,
+    "minimum_available_bytes": 12884901888,
+    "minimum_start_bytes": 15032385536,
+    "deadline_seconds": 60,
+    "raw_trace_size_limit_bytes": 1073741824
+  },
+  "guard": {
+    "peak_rss_bytes": 7836073984,
+    "peak_physical_footprint_bytes": 6586901096,
+    "peak_accounted_bytes": 7836073984,
+    "lowest_available_memory_bytes": 98785689600,
+    "memory_rejection": "rss_limit",
+    "cleanup_error": null,
+    "owned_group_stopped": true,
+    "sample_interval_seconds": 0.5,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "refusal": {
+    "reason": "private trace exceeded its one-GiB output bound",
+    "seconds": 21.373441417,
+    "phase": "xctrace finalization after the owned probe exited",
+    "sampled_cap_overshot": true,
+    "retry_performed": false,
+    "bounds_raised": false,
+    "permission_changes": false,
+    "system_or_desktop_controls": false,
+    "quiet_lease": false
+  },
+  "leases": {
+    "gpu": {
+      "amount": 1,
+      "held_ms": 21451,
+      "exit": 1,
+      "held_whole_run": true,
+      "released": true
+    },
+    "memory": {
+      "amount": 2,
+      "held_ms": 21540,
+      "exit": 1,
+      "held_whole_run": true,
+      "released": true
+    },
+    "disk": {
+      "amount": 2,
+      "held_ms": 21497,
+      "exit": 1,
+      "held_whole_run": true,
+      "released": true
+    }
+  },
+  "source_sha256": {
+    "tiles.metal": "5aa57fd8fa2315c2a03e3eefeff7cebb758f49a7ff24f05e8d19c1a2800157e4",
+    "probe.swift": "e7031e0787d94e43f5e891d69cf9154af0a04ed02606a6ba4f783c053b77016f",
+    "notify_bridge.h": "d8e4061d28a3847dd6e7bc1df5e546f18f9bc72f381cb3739deb9cc38e1f45c2",
+    "build.py": "794cba941acb1d91d7a5d801d567bb4e9d4865a208f9ff438e8f11d83ec76aad",
+    "guard.py": "65e80ef129d9335dcc859e4364cf456ee59910f44c1451456f337825d830a798",
+    "run_trace.py": "f8766833d4ba3695e627f0efe6ba64a2e7766903ded07b514c215881707a7ded",
+    "probe": "6baeeeef52af42a2a5a831fc7cbaff37723f04e80640b3d30916f6ca3b0039b5",
+    "probe.metallib": "f6dd3a1b61e8b28507dde0399a96824c2dabff12f041bd609379de323ca31467"
+  },
+  "guard_dependency_sha256": {
+    "mac_quiet_bench.py": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb",
+    "mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd"
+  },
+  "interpretation": [
+    "The FFN workload completed before profiling finalization exceeded the output and sampled memory limits.",
+    "GPU intervals rise from a first-second median of about 13.52 ms to about 29.88 ms, then settle near 24\u201325 ms.",
+    "The retained timestamps cannot distinguish frequency policy, scheduling/preemption, cache behavior, or profiling overhead.",
+    "Fair thermal state remained unchanged and does not establish thermal causation.",
+    "Instrumented timings must not be merged into unprofiled acceptance latency results."
+  ],
+  "privacy": "Only owned-process samples with relative times and aggregate facts are included. Raw system trace and unrestricted exports remain outside Git."
+}

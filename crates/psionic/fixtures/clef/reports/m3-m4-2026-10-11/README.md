@@ -203,6 +203,26 @@ specializations and persistent pretransposition do not improve the 1,024- or
 2,048-row workloads. Every timing sample and paired ratio is retained; no
 winning variant is inferred from the noisy ratio of aggregate medians.
 
+Three additional probes retain negative or inconclusive results:
+
+- The [register-column DeltaNet solve](delta-register-publishable/README.md)
+  preserves all 16,081,920 checked output/state values bitwise but loses all
+  24 paired timing comparisons. Reducing its barriers from 23 to 8 makes
+  preparation plus scan about 1.53 times slower. It is not integrated.
+- The [MPS matrix comparison](mps-matrix-probe-v1/README.md) confirms that
+  mixed f16 inputs and f32 outputs match the current projections bitwise.
+  Summed projection medians improve about 4% against fixed-64 MPP, but tie
+  the weight-shape path at 2,048 rows. Full-f32 MPS is much slower, and f16
+  output loses precision. These results do not justify another product path.
+- The [bounded trace attempt](sustained-trace-attempt-v1/README.md) completes
+  522 identical FFN calls before the profiler exceeds its sampled memory
+  and output bounds during finalization. The guard stops only its owned
+  process group. Recorded GPU intervals rise from a first-second median
+  of 13.52 ms to 29.88 ms, then settle near 24–25 ms. This instrumented run
+  does not establish GPU frequency or the cause of the slowdown. Only owned
+  samples and aggregate facts are published; the unfinished system trace
+  remains outside Git. No retry or resource-bound increase follows.
+
 ## Stage 5 27B HTTP batching
 
 The [27B batch result](native27b-batch-stage5/summary.json) passes with two

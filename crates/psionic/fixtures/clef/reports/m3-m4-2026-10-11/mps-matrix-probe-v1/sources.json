@@ -1,0 +1,19 @@
+{
+  "primary_sources": [
+    "https://developer.apple.com/documentation/metalperformanceshaders/mpsmatrixmultiplication",
+    "https://developer.apple.com/documentation/metalperformanceshaders/mpsmatrix",
+    "https://developer.apple.com/documentation/metalperformanceshaders/mpsdatatype"
+  ],
+  "sdk_header_sha256": "f0d5cd86ca2519179f0db165933863ba1f0d9cd65690a5b67c311845fbdc47b9",
+  "sdk_header": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSMatrix.framework/Headers/MPSMatrixMultiplication.h",
+  "mpp_source_sha256": "45eb21b90a2bee61c29016dda161ebcb7d07f50df7ea7325ba983bdb91f097f6",
+  "mpp_source_path": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_prefill.metal",
+  "mixed_type_support": "not explicitly guaranteed by inspected SDK/API docs; separate small capability invocation required",
+  "mps_f16": "all matrices Float16, product widened then f32 residual addition; reduced precision diagnostic",
+  "mps_f32": "Float16 values widened exactly toFloat32; same-type Float32 MPS with beta1 for down residual; input widening timed, weight widening staged",
+  "scope": "one real Flash layer, gate/up and common baseline-SiLU down input; no fullmodel gate or latency claim",
+  "mpp_shapes_source_path": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_gemm_shapes.metal",
+  "mpp_shapes_source_sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+  "mpp_comparators": "Frozen fixed64 default and exact weight-shapes64x128 for real Flash FFN shapes; unknown small shapes use the production fixed64 fallback.",
+  "correctness_poison": "Reset f32 output and f16 intermediate to NaNs before each correctness dispatch, outside timed rounds."
+}

@@ -1,0 +1,3 @@
+{"command": ["xcrun", "-sdk", "macosx", "metal", "-std=metal4.0", "-c", "<SCRATCH>/clef-m3-m4/mps-matrix-probe/kernels.metal", "-o", "<SCRATCH>/clef-m3-m4/mps-matrix-probe/kernels.air"]}
+{"command": ["xcrun", "swiftc", "-O", "-num-threads", "2", "<SCRATCH>/clef-m3-m4/mps-matrix-probe/probe.swift", "-o", "<SCRATCH>/clef-m3-m4/mps-matrix-probe/probe"]}
+{"compiled": true, "gpu_executed": false, "binary_sha256": "5b3c1191edced6a66b1a16f6f2db5d7e3979eab6c6d4d2f1d89ceb015de92fe6"}

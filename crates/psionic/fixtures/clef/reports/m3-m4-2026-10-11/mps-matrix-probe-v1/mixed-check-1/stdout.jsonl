@@ -1,0 +1,18 @@
+{"conditions":"shared machine; bounded kernel diagnostic","kind":"device","mode":"mixed-check","name":"Apple M5 Max","recommended_working_set":115448725504}
+{"k":17,"kind":"attempt","m":1,"mixed_support_unproven":true,"n":1,"residual":false,"variant":"mps_mixed"}
+{"diagnostic_limit":3.0000000000000001e-05,"full_model_gate_applied":false,"k":17,"kind":"small_oracle","m":1,"max_abs":9.3132257461547852e-09,"max_scaled_abs":9.3132257461547852e-09,"n":1,"passed":true,"residual":false,"variant":"mps_mixed"}
+{"k":17,"kind":"attempt","m":1,"mixed_support_unproven":true,"n":1,"residual":true,"variant":"mps_mixed"}
+{"diagnostic_limit":3.0000000000000001e-05,"full_model_gate_applied":false,"k":17,"kind":"small_oracle","m":1,"max_abs":9.3132257461547852e-09,"max_scaled_abs":9.3132257461547852e-09,"n":1,"passed":true,"residual":true,"variant":"mps_mixed"}
+{"k":65,"kind":"attempt","m":7,"mixed_support_unproven":true,"n":3,"residual":false,"variant":"mps_mixed"}
+{"diagnostic_limit":3.0000000000000001e-05,"full_model_gate_applied":false,"k":65,"kind":"small_oracle","m":7,"max_abs":3.1727540772408247e-07,"max_scaled_abs":1.2798037656471962e-07,"n":3,"passed":true,"residual":false,"variant":"mps_mixed"}
+{"k":65,"kind":"attempt","m":7,"mixed_support_unproven":true,"n":3,"residual":true,"variant":"mps_mixed"}
+{"diagnostic_limit":3.0000000000000001e-05,"full_model_gate_applied":false,"k":65,"kind":"small_oracle","m":7,"max_abs":2.5767076294869184e-07,"max_scaled_abs":1.2574861875688399e-07,"n":3,"passed":true,"residual":true,"variant":"mps_mixed"}
+{"k":129,"kind":"attempt","m":65,"mixed_support_unproven":true,"n":7,"residual":false,"variant":"mps_mixed"}
+{"diagnostic_limit":3.0000000000000001e-05,"full_model_gate_applied":false,"k":129,"kind":"small_oracle","m":65,"max_abs":2.2933818399906158e-08,"max_scaled_abs":1.0653809761245293e-08,"n":7,"passed":true,"residual":false,"variant":"mps_mixed"}
+{"k":129,"kind":"attempt","m":65,"mixed_support_unproven":true,"n":7,"residual":true,"variant":"mps_mixed"}
+{"diagnostic_limit":3.0000000000000001e-05,"full_model_gate_applied":false,"k":129,"kind":"small_oracle","m":65,"max_abs":1.4214310795068741e-07,"max_scaled_abs":6.3221410063902018e-08,"n":7,"passed":true,"residual":true,"variant":"mps_mixed"}
+{"k":32,"kind":"attempt","m":17,"mixed_support_unproven":true,"n":65,"residual":false,"variant":"mps_mixed"}
+{"diagnostic_limit":3.0000000000000001e-05,"full_model_gate_applied":false,"k":32,"kind":"small_oracle","m":17,"max_abs":2.3096799850463867e-07,"max_scaled_abs":1.8676967146594231e-07,"n":65,"passed":true,"residual":false,"variant":"mps_mixed"}
+{"k":32,"kind":"attempt","m":17,"mixed_support_unproven":true,"n":65,"residual":true,"variant":"mps_mixed"}
+{"diagnostic_limit":3.0000000000000001e-05,"full_model_gate_applied":false,"k":32,"kind":"small_oracle","m":17,"max_abs":2.6077032089233398e-07,"max_scaled_abs":1.7193879904276071e-07,"n":65,"passed":true,"residual":true,"variant":"mps_mixed"}
+{"full_model_gate_applied":false,"gpu_executed":true,"kind":"complete","mode":"mixed-check","model_executed":false}
