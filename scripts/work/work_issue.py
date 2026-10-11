@@ -148,6 +148,18 @@ def agent_env(out: Path) -> dict:
     return env
 
 
+def codex_signed_in() -> bool:
+    home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+    return (home / "auth.json").exists()
+
+
+def signed_in(engine: str) -> str | None:
+    """None when `engine`'s login is here; otherwise what is missing."""
+    if backend_of(engine) == "codex" and engine.startswith("briefed"):
+        return None if codex_signed_in() else "no Codex sign-in in this environment (~/.codex/auth.json)"
+    return None if claude_signed_in() else "no Claude sign-in in this environment (CLAUDE_CODE_OAUTH_TOKEN or ~/.claude)"
+
+
 def claude_signed_in() -> bool:
     return (bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")) or keeps_api_key()
             or any(os.environ.get(k) for k in ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX",
@@ -345,11 +357,11 @@ def run_briefed(run: Run, b: dict, root: Path, out: Path, model: str, timeout: i
             "cochange": {}, "log": str(out / "verify.jsonl"),
         },
     }
-    (out / "agent.json").write_text(json.dumps(config, indent=2))
-    agent = os.environ.get("OA_BRIEFED_AGENT") or shutil.which("briefed-agent") or "briefed-agent"
     if backend == "codex":
         config["model"] = os.environ.get("OA_WORK_CODEX_MODEL", "")  # empty: Codex's own default
         config["codex_bin"] = shutil.which("codex") or "codex"
+    (out / "agent.json").write_text(json.dumps(config, indent=2))
+    agent = os.environ.get("OA_BRIEFED_AGENT") or shutil.which("briefed-agent") or "briefed-agent"
     run.say("agent", f"the briefed agent is working on {'Codex' if backend == 'codex' else 'Claude'}",
             engine=f"briefed:{backend}" if backend != "claude" else "briefed")
     t0 = time.time()
@@ -527,8 +539,8 @@ def main() -> int:
               "land": args.land, "landed": None, "checks": [], "diff": None, "cost_usd": None,
               "secs": None, "attempts": [], "error": None}
     try:
-        if not claude_signed_in():
-            raise RuntimeError("no Claude sign-in in this environment (CLAUDE_CODE_OAUTH_TOKEN or ~/.claude)")
+        if missing := signed_in(args.engine):
+            raise RuntimeError(missing)
         run.say("start", f"working {args.repo}#{args.issue}", run_id=run_id)
         issue = json.loads(sh(["gh", "issue", "view", str(args.issue), "--repo", args.repo,
                                "--json", "number,title,body,state,url"], timeout=120).stdout)
@@ -575,12 +587,16 @@ def main() -> int:
                 why = f"repeated verify failures ({ag['verify_fails']})"
             else:
                 why = "the replayed checks failed on the briefed agent's change"
-            run.say("escalate", why + "; falling back to bare Claude Code")
-            result["escalated"] = why
-            engine = "bare"
-            a = attempt(run, engine, issue, checkout, base, out / engine, args, None)
-            result["attempts"].append(a)
-            say_cost(run, result["attempts"])
+            if missing := signed_in("bare"):
+                run.say("escalate", f"{why}; no fallback: {missing}")
+                result["escalated"] = f"{why}; {missing}"
+            else:
+                run.say("escalate", why + "; falling back to bare Claude Code")
+                result["escalated"] = why
+                engine = "bare"
+                a = attempt(run, engine, issue, checkout, base, out / engine, args, None)
+                result["attempts"].append(a)
+                say_cost(run, result["attempts"])
         result["engine"], result["ok"] = engine, a["ok"]
         result["checks"], result["diff"] = a["checks"], a["diff"]
         result["cost_usd"] = cost_so_far(result["attempts"])[0]
