@@ -426,6 +426,64 @@ struct Call {
     sdk_input: Value,
 }
 
+/// One constrained Claude Agent SDK session: its model, its built-in tools,
+/// its in-process tools, and what it is told. `issue_run` runs one, the
+/// briefed agent; `solver` runs four, each with the tools its hand needs.
+pub struct Session {
+    /// The agent card's title and detail line.
+    pub title: String,
+    pub detail: String,
+    pub model: String,
+    pub timeout: Duration,
+    /// The built-in tools; file tools among them are held to the worktree.
+    pub tools: Vec<String>,
+    /// The checks a `run_check` tool offers; none means no such tool.
+    pub checks: Vec<Check>,
+    /// An in-process tool server of the hand's own, beside `run_check`.
+    pub server: Option<SdkMcpServer>,
+    pub system: String,
+    pub prompt: String,
+    /// The files the briefing listed; a `Read` of another is a miss.
+    pub briefed: BTreeSet<String>,
+    /// The file the session's raw messages are written to, in the run's
+    /// folder.
+    pub events_file: String,
+}
+
+impl Session {
+    /// The briefed agent of `coder issue-run`: Read, Edit, Write, Grep,
+    /// Glob and `run_check` over the briefing's checks.
+    #[must_use]
+    pub fn briefed(options: &super::Options, briefing: &Briefing) -> Self {
+        Self {
+            title: "Briefed agent".into(),
+            detail: "Claude Agent SDK session on this computer's Claude Code login".into(),
+            model: options.model.clone(),
+            timeout: options.timeout,
+            tools: TOOLS.iter().map(|t| (*t).to_owned()).collect(),
+            checks: briefing.checks.clone(),
+            server: None,
+            system: briefing.system.clone(),
+            prompt: briefing.prompt.clone(),
+            briefed: briefing.files.iter().cloned().collect(),
+            events_file: "agent-events.jsonl".into(),
+        }
+    }
+
+    /// What the card's `tools` row says.
+    #[must_use]
+    pub fn tools_text(&self) -> String {
+        let mut names = self.tools.clone();
+        if !self.checks.is_empty() {
+            names.push("run_check".into());
+        }
+        if let Some(server) = &self.server {
+            names.extend(server.allowed_tool_names());
+        }
+        names.join(", ")
+    }
+}
+
 /// Runs the briefed agent to the end, drawing its work as it goes.
 pub async fn work(
     options: &super::Options,
@@ -434,14 +492,23 @@ pub async fn work(
     folder: &Path,
     transcript: &mut Transcript,
 ) -> Work {
-    let root = base
-        .worktree
-        .canonicalize()
-        .unwrap_or_else(|_| base.worktree.clone());
-    let checks = Arc::new(briefing.checks.clone());
+    run(
+        Session::briefed(options, briefing),
+        &base.worktree,
+        folder,
+        transcript,
+    )
+    .await
+}
+
+/// The `run_check` tool server over `checks`, and the verdicts it records.
+fn checks_server(
+    checks: Arc<Vec<Check>>,
+    root: PathBuf,
+) -> (SdkMcpServer, Arc<Mutex<Vec<(String, bool)>>>) {
     let verdicts: Arc<Mutex<Vec<(String, bool)>>> = Arc::default();
     let server = {
-        let (checks, root, verdicts) = (checks.clone(), root.clone(), verdicts.clone());
+        let verdicts = verdicts.clone();
         SdkMcpServer::new("checks", "1.0.0").tool(
             "run_check",
             format!(
@@ -477,37 +544,59 @@ pub async fn work(
             },
         )
     };
-    let mut allowed = server.allowed_tool_names();
-    allowed.extend(TOOLS.iter().map(|t| (*t).to_owned()));
+    (server, verdicts)
+}
+
+/// Runs one session to the end in `worktree`, drawing its work as it goes.
+pub async fn run(
+    session: Session,
+    worktree: &Path,
+    folder: &Path,
+    transcript: &mut Transcript,
+) -> Work {
+    let root = worktree
+        .canonicalize()
+        .unwrap_or_else(|_| worktree.to_path_buf());
+    let checks = Arc::new(session.checks.clone());
+    let tools_text = session.tools_text();
+    let mut allowed: Vec<String> = session.tools.clone();
     let mut query_options = QueryOptions::new()
         .cwd(&root)
-        .model(options.model.clone())
+        .model(session.model.clone())
         .permission_mode(PermissionMode::Default)
-        .no_session_persistence()
-        .sdk_mcp_server(server);
-    query_options.tools = Some(ToolsConfig::Names(
-        TOOLS.iter().map(|t| (*t).to_owned()).collect(),
-    ));
+        .no_session_persistence();
+    let mut verdicts = None;
+    if !checks.is_empty() {
+        let (server, seen) = checks_server(checks.clone(), root.clone());
+        allowed.extend(server.allowed_tool_names());
+        query_options = query_options.sdk_mcp_server(server);
+        verdicts = Some(seen);
+    }
+    if let Some(server) = session.server {
+        allowed.extend(server.allowed_tool_names());
+        query_options = query_options.sdk_mcp_server(server);
+    }
+    query_options.tools = Some(ToolsConfig::Names(session.tools.clone()));
     query_options.allowed_tools = Some(allowed.clone());
-    query_options.system_prompt = Some(SystemPromptConfig::Custom(briefing.system.clone()));
+    query_options.system_prompt = Some(SystemPromptConfig::Custom(session.system.clone()));
     query_options.setting_sources = Some(Vec::new());
     query_options.strict_mcp_config = true;
     query_options.env_remove = REMOVED_ENV.iter().map(|n| (*n).to_owned()).collect();
 
     let card = json!({
         "kind": "agent",
-        "title": "Briefed agent",
-        "detail": "Claude Agent SDK session on this computer's Claude Code login",
+        "title": session.title,
+        "detail": session.detail,
         "rows": [
-            {"label": "model", "text": options.model},
-            {"label": "tools", "text": "Read, Edit, Write, Grep, Glob (held to the worktree) and run_check"},
-            {"label": "checks", "text": briefing.checks.iter().map(|c| c.id.clone()).collect::<Vec<_>>().join(", ")},
-            {"label": "briefing", "text": format!("{} files, {} characters in the system prompt", briefing.files.len(), briefing.system.chars().count())},
+            {"label": "model", "text": session.model},
+            {"label": "tools", "text": tools_text},
+            {"label": "checks", "text": checks.iter().map(|c| c.id.clone()).collect::<Vec<_>>().join(", ")},
+            {"label": "briefing", "text": format!("{} files, {} characters in the system prompt", session.briefed.len(), session.system.chars().count())},
         ],
     });
     let card_index = transcript.card(card.clone());
 
-    let briefed: BTreeSet<String> = briefing.files.iter().cloned().collect();
+    let briefed = session.briefed;
     let misses: Arc<Mutex<Vec<String>>> = Arc::default();
     let handler = {
         let (root, allowed) = (root.clone(), allowed.clone());
@@ -534,7 +623,7 @@ pub async fn work(
     let mut work = Work::default();
     let mut events = String::new();
     let mut query = match claude_agent_sdk::query_with_permissions(
-        briefing.prompt.clone(),
+        session.prompt,
         query_options,
         handler,
     )
@@ -556,7 +645,7 @@ pub async fn work(
             work.error = Some("The run was stopped.".into());
             break;
         }
-        let left = options.timeout.saturating_sub(started.elapsed());
+        let left = session.timeout.saturating_sub(started.elapsed());
         if left.is_zero() {
             work.error = Some("The agent ran out of its time.".into());
             break;
@@ -704,10 +793,10 @@ pub async fn work(
             },
         );
     }
-    let _ = std::fs::write(folder.join("agent-events.jsonl"), events);
+    let _ = std::fs::write(folder.join(&session.events_file), events);
     work.wall_ms = started.elapsed().as_millis() as u64;
     work.misses = lock(&misses).clone();
-    work.checks = lock(&verdicts).clone();
+    work.checks = verdicts.map(|v| lock(&v).clone()).unwrap_or_default();
     work
 }
 

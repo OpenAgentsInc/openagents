@@ -65,6 +65,7 @@ pub mod sessions;
 mod shells;
 pub mod slash;
 pub mod snapshot;
+pub mod solver;
 mod stuck;
 mod supervise;
 pub mod theme;
@@ -105,6 +106,9 @@ pub enum Mode {
     /// ([`microclaude`]). Offered only where this process found that
     /// login, because finding it starts `claude auth status`.
     Microclaude,
+    /// Four constrained agents take an issue to a pull request
+    /// ([`solver`]). Offered where [`microclaude`] is.
+    Solver,
 }
 
 impl Default for Mode {
@@ -924,19 +928,22 @@ impl App {
     /// login) and back to `auto`. Offered only where [`microclaude`] found
     /// that login in this process.
     fn toggle_microclaude(&mut self) {
-        if self.mode == Mode::Microclaude {
-            self.set_mode(Mode::Live);
-            return;
+        match self.mode {
+            Mode::Microclaude => {
+                self.set_mode(Mode::Solver);
+                self.notice = None;
+            }
+            Mode::Solver => self.set_mode(Mode::Live),
+            Mode::Live => {
+                if !crate::microclaude::available() {
+                    self.notice = Some(microclaude::NEEDS_LOGIN.into());
+                    return;
+                }
+                self.set_mode(Mode::Microclaude);
+                self.notice = None;
+            }
+            Mode::Demo => {}
         }
-        if self.mode != Mode::Live {
-            return;
-        }
-        if !crate::microclaude::available() {
-            self.notice = Some(microclaude::NEEDS_LOGIN.into());
-            return;
-        }
-        self.set_mode(Mode::Microclaude);
-        self.notice = None;
     }
 
     fn command(&mut self, command: slash::Command) {
@@ -1328,10 +1335,51 @@ impl App {
         });
     }
 
+    /// The solver conversation: an issue reference starts a run in this
+    /// conversation; anything else gets the Intaker's question back.
+    fn submit_solver(&mut self) {
+        if self.draft.text.trim().is_empty() {
+            return;
+        }
+        self.record_prompt();
+        let text = self.draft.text.clone();
+        self.draft = Draft::default();
+        self.composer = Default::default();
+        self.screen = Screen::Conversation;
+        let Some((repo, issue)) = solver::issue_reference(&text) else {
+            self.live.entries.push(live::Entry::User(text));
+            self.live.entries.push(live::Entry::Assistant {
+                elapsed_ms: None,
+                text: solver::ASK_ISSUE.into(),
+                model: None,
+            });
+            self.history.dirty = true;
+            self.scroll_main_to_end();
+            return;
+        };
+        if self.live.busy || self.issue_run.is_some() {
+            self.notice = Some("A solver run is already working here.".into());
+            return;
+        }
+        let mut args = vec![issue.to_string()];
+        if let Some(repo) = repo {
+            args.push("--github".into());
+            args.push(repo);
+        }
+        match solver::Options::parse(&args) {
+            Ok(options) => self.watch_issue_run(solver::start(options)),
+            Err(why) => self.notice = Some(why),
+        }
+    }
+
     pub fn submit_live(&mut self) {
         // microclaude runs turns of its own, on the Claude Agent SDK.
         if self.mode == Mode::Microclaude {
             self.submit_microclaude();
+            return;
+        }
+        if self.mode == Mode::Solver {
+            self.submit_solver();
             return;
         }
         if self.live.busy
@@ -1576,7 +1624,7 @@ impl App {
             models::OPENROUTER_PLUGIN,
             &self.plugins.model,
             self.plugins.options.clone(),
-            matches!(self.mode, Mode::Live | Mode::Microclaude),
+            matches!(self.mode, Mode::Live | Mode::Microclaude | Mode::Solver),
         ));
     }
 
@@ -2263,7 +2311,7 @@ impl App {
                             self.draft = Draft::default();
                             self.composer = Default::default();
                             self.composer_history.reset();
-                        } else if matches!(self.mode, Mode::Live | Mode::Microclaude)
+                        } else if matches!(self.mode, Mode::Live | Mode::Microclaude | Mode::Solver)
                             && (!self.draft.text.trim().is_empty()
                                 || !self.composer.images.is_empty())
                         {

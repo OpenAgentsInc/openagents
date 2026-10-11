@@ -648,18 +648,18 @@ pub async fn open_pr(
     base: &Base,
     outcome: &Outcome,
     transcript: &mut Transcript,
-) {
+) -> Option<String> {
     if !outcome.delivers() {
         transcript.notice(format!(
             "No pull request: the run did not pass ({}). {}",
             outcome.status.as_str(),
             outcome.reason.as_deref().unwrap_or_default()
         ));
-        return;
+        return None;
     }
     if base.closed {
         transcript.notice("A closed issue's test run never opens a pull request.");
-        return;
+        return None;
     }
     let branch = format!("coder/issue-{}", base.issue);
     let message = format!(
@@ -703,6 +703,7 @@ pub async fn open_pr(
             body,
         ],
     ];
+    let mut url = None;
     for step in steps {
         let shown = step
             .iter()
@@ -723,6 +724,9 @@ pub async fn open_pr(
         let args: Vec<&str> = step[1..].iter().map(String::as_str).collect();
         let result = output(&step[0], &args, &base.worktree).await;
         let failed = result.is_err();
+        if step[0] == "gh" {
+            url = result.as_deref().ok().map(|text| text.trim().to_owned());
+        }
         transcript.set(
             index,
             Entry::Tool {
@@ -736,7 +740,8 @@ pub async fn open_pr(
             },
         );
         if failed {
-            return;
+            return None;
         }
     }
+    url
 }
