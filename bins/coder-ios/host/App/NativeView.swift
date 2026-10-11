@@ -27,6 +27,8 @@ struct NativeStyle: Codable, Equatable {
     /// `context`: the stack's first child is a card and its other buttons
     /// are the card's menu (`rust_native::style::Menu`).
     var menu: String? = nil
+    /// The background's corner radius in points, as a card's.
+    var radius: Int? = nil
 
     static func points(_ space: String?) -> CGFloat {
         switch space {
@@ -251,7 +253,8 @@ struct NativeRenderer: View {
         content
             .padding(node.style.insets)
             .modifier(NativeForeground(explicit: node.style.foreground?.color))
-            .background(node.style.background?.color ?? .clear)
+            .background(RoundedRectangle(cornerRadius: CGFloat(node.style.radius ?? 0), style: .continuous)
+                .fill(node.style.background?.color ?? .clear))
             .fontWeight(node.style.weight == "bold" ? .bold :
                         node.style.weight == "normal" ? .regular : nil)
             .multilineTextAlignment(node.style.align == "center" ? .center :

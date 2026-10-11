@@ -372,11 +372,9 @@ fn a_reply_to_a_terminal_chat_waits_for_coder() {
     let request = sent.body.as_ref().unwrap()["request_id"].as_str().unwrap();
     assert_eq!(request.len(), 36);
     until(|| {
-        f.link
-            .lock()
-            .open
-            .as_ref()
-            .is_some_and(|o| o.sent == vec!["run the tests".to_owned()])
+        f.link.lock().open.as_ref().is_some_and(|o| {
+            o.sent.len() == 1 && o.sent[0].text == "run the tests" && o.sent[0].files.is_empty()
+        })
     });
     // A credential never leaves the phone.
     f.link.input(
@@ -518,6 +516,16 @@ fn a_landing_queue_entry_shows_its_stage_without_controls() {
         1,
         "{words:?}"
     );
+    // #11348: each card carries its corner radius and fill for the phones
+    // to draw.
+    let mut found = vec![];
+    find_keys(packet.view.as_ref().unwrap(), &mut found);
+    let cards: Vec<_> = found
+        .iter()
+        .filter(|(key, node)| key.starts_with("link-item-") && node["style"]["radius"] == 14)
+        .collect();
+    assert_eq!(cards.len(), 2, "{found:?}");
+    assert!(cards.iter().all(|(_, node)| node["style"]["background"].is_object()));
 }
 
 /// #11228, #11250: a fleet row's issue, commit, and pull request open on
@@ -1385,4 +1393,63 @@ fn a_reply_to_a_web_chat_carries_its_photos() {
             .as_ref()
             .is_some_and(|o| o.photos.is_empty() && !o.sending)
     });
+    // The sent photo lists by name under the reply before the chat has it.
+    let file_rows = |f: &mut Fixture| {
+        let view = f.link.packet().view.expect("the chat draws");
+        let mut found = vec![];
+        find_keys(&view, &mut found);
+        found
+            .into_iter()
+            .filter(|(key, _)| key.starts_with("link-file-"))
+            .map(|(key, node)| (key, node["element"]["props"]["value"].clone()))
+            .collect::<Vec<_>>()
+    };
+    let rows = file_rows(&mut f);
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(
+        rows[0].1,
+        json!(format!("Photo.png · PNG · {} bytes", png.bytes.len()))
+    );
+    // The chat sends each message's files; they list under it, after it.
+    f.site.answer(
+        "GET /v1/threads/w1",
+        200,
+        json!({
+            "thread": {"id": "w1", "title": "Plans", "surface": "web",
+                       "online": true, "can_reply": true},
+            "messages": [
+                {"role": "user", "text": "hi"},
+                {"role": "assistant", "text": "Hello."},
+                {"role": "user", "text": "what is in this?", "files": [
+                    {"id": "a".repeat(32), "name": "Photo.png", "kind": "png", "size": 70},
+                    {"id": "b".repeat(32), "name": "Notes.pdf", "kind": "pdf", "size": 2048},
+                ]},
+            ],
+            "earlier": 0, "waiting": 0,
+        }),
+    );
+    f.link.act(Action::Show {
+        screen: Screen::Chat,
+        id: Some("w1".into()),
+    });
+    until(|| {
+        f.link
+            .lock()
+            .open
+            .as_ref()
+            .is_some_and(|o| o.loaded && o.messages.len() == 3 && o.sent.is_empty())
+    });
+    let rows = file_rows(&mut f);
+    assert_eq!(
+        rows,
+        vec![
+            ("link-file-3-0".to_owned(), json!("Photo.png · PNG · 70 bytes")),
+            ("link-file-3-1".to_owned(), json!("Notes.pdf · PDF · 2 KB")),
+        ]
+    );
+    let view = f.link.packet().view.unwrap();
+    let mut found = vec![];
+    find_keys(&view, &mut found);
+    let at = |key: &str| found.iter().position(|(k, _)| k == key).unwrap();
+    assert!(at("link-m2") < at("link-file-3-0"));
 }

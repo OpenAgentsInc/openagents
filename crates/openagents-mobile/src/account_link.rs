@@ -370,6 +370,21 @@ pub struct Message {
     /// `user`, `assistant`, or `tool`.
     pub role: String,
     pub text: String,
+    /// The files attached to a sent message.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<MessageFile>,
+}
+
+/// A file attached to a message.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MessageFile {
+    pub id: String,
+    pub name: String,
+    /// `png`, `jpeg`, `gif`, `webp`, `pdf`, or `text`.
+    pub kind: String,
+    /// Its size in bytes.
+    pub size: u64,
 }
 
 /// A question an agent asks before it goes on.
@@ -690,8 +705,9 @@ pub struct Open {
     pub earlier: usize,
     /// Replies sent here or on the website that Coder hasn't taken yet.
     pub waiting: usize,
-    /// Replies sent from this phone that the next read hasn't shown yet.
-    pub sent: Vec<String>,
+    /// Replies sent from this phone that the next read hasn't shown yet,
+    /// each with the files it carried.
+    pub sent: Vec<Message>,
     pub sending: bool,
     pub error: Option<String>,
     /// Photos for the next reply: each one's name and bytes, as the host's
@@ -1588,17 +1604,26 @@ impl Link {
         let state = self.state.clone();
         let wake = self.wake.clone();
         let nudge = self.nudge.clone();
+        let attached: Vec<(String, u64)> = photos
+            .iter()
+            .map(|(name, bytes)| (name.clone(), bytes.len() as u64))
+            .collect();
         self.spawn(async move {
             // The photos first, each by its own upload; the reply names
             // them by the ids the website gave them.
             let mut files = Vec::with_capacity(photos.len());
+            let mut kinds = Vec::with_capacity(photos.len());
             let mut failed = None;
             for (name, bytes) in photos {
                 let url = format!("{origin}/v1/threads/{id}/files?name={}", query_value(&name));
                 match http.upload(url, Some(token.clone()), bytes).await {
                     Ok(reply) if (200..300).contains(&reply.status) => {
                         match reply.body["id"].as_str() {
-                            Some(file) => files.push(file.to_owned()),
+                            Some(file) => {
+                                files.push(file.to_owned());
+                                let kind = reply.body["kind"].as_str().unwrap_or("");
+                                kinds.push(kind.to_owned());
+                            }
                             None => {
                                 failed = Some(Ok(reply));
                                 break;
@@ -1646,7 +1671,22 @@ impl Link {
                 if let Some(open) = state.open.as_mut().filter(|open| open.id == id) {
                     open.sending = false;
                     if notice.is_none() {
-                        open.sent.push(text.clone());
+                        // The sent photos show by name until the chat has them.
+                        let files = attached
+                            .iter()
+                            .zip(files.iter().zip(&kinds))
+                            .map(|((name, size), (file, kind))| MessageFile {
+                                id: file.clone(),
+                                name: name.clone(),
+                                kind: kind.clone(),
+                                size: *size,
+                            })
+                            .collect();
+                        open.sent.push(Message {
+                            role: "user".into(),
+                            text: text.clone(),
+                            files,
+                        });
                         open.photos.clear();
                     }
                 }
@@ -2713,15 +2753,13 @@ impl Poller {
                         let earlier = reply.body["earlier"].as_u64().unwrap_or(0) as usize;
                         let waiting = reply.body["waiting"].as_u64().unwrap_or(0) as usize;
                         // A reply sent from here shows until the chat has it.
-                        let sent: Vec<String> = open
+                        let sent: Vec<Message> = open
                             .sent
                             .iter()
-                            .filter(|text| {
-                                !messages
-                                    .iter()
-                                    .rev()
-                                    .take(8)
-                                    .any(|m| m.role == "user" && m.text.trim() == text.trim())
+                            .filter(|sent| {
+                                !messages.iter().rev().take(8).any(|m| {
+                                    m.role == "user" && m.text.trim() == sent.text.trim()
+                                })
                             })
                             .cloned()
                             .collect();
@@ -3128,6 +3166,7 @@ pub fn upload_messages(turns: &[openagents_chat::basic_coder::Turn]) -> Vec<Mess
                     openagents_chat::basic_coder::Role::Assistant => "assistant".into(),
                 },
                 text,
+                files: Vec::new(),
             }
         })
         .collect();

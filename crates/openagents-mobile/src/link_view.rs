@@ -4,7 +4,7 @@
 //! prompts. Rust Native views the hosts draw as they draw the Computers
 //! screens.
 
-use crate::account_link::{Agents, Item, Open, Screen, SignIn, State, Thread, place};
+use crate::account_link::{Agents, Item, MessageFile, Open, Screen, SignIn, State, Thread, place};
 use openagents_chat::basic_coder::Turn;
 use openagents_chat_app::projection::{Appearance, Projection, Reply};
 use rust_native::style::{Color, Space, Style, TextWeight};
@@ -322,19 +322,28 @@ fn chat(state: &State, open: &Open, composer: u64, limit: usize, cut_at: usize) 
         rows.push(working("link-chat-loading", "Loading the chat…"));
     } else {
         let start = open.messages.len().saturating_sub(limit);
-        let turns: Vec<Turn> = open.messages[start..]
+        // Each message's files list under it: `attached[0]` before the
+        // first turn, `attached[n + 1]` after turn `n`.
+        let mut turns: Vec<Turn> = vec![];
+        let mut attached: Vec<Vec<&MessageFile>> = vec![vec![]];
+        for m in open.messages[start..]
             .iter()
-            .filter(|m| m.role != "tool" && !m.text.trim().is_empty())
-            .map(|m| {
+            .filter(|m| m.role != "tool")
+            .chain(&open.sent)
+        {
+            if !m.text.trim().is_empty() {
                 let text = cut(&m.text, cut_at);
-                if m.role == "user" {
+                turns.push(if m.role == "user" {
                     Turn::user(text)
                 } else {
                     Turn::assistant(text, None)
-                }
-            })
-            .chain(open.sent.iter().map(|text| Turn::user(cut(text, cut_at))))
-            .collect();
+                });
+                attached.push(vec![]);
+            }
+            if let Some(slot) = attached.last_mut() {
+                slot.extend(&m.files);
+            }
+        }
         let busy = thread.is_some_and(|t| t.working) || !open.sent.is_empty() || open.waiting > 0;
         let label = match thread {
             Some(t) if t.surface == "terminal" && !t.working => {
@@ -371,6 +380,22 @@ fn chat(state: &State, open: &Open, composer: u64, limit: usize, cut_at: usize) 
                 },
             },
         );
+        let tail = rows.split_off(turns.len().min(rows.len()));
+        let mut messages = std::mem::take(&mut rows).into_iter();
+        for (slot, files) in attached.iter().enumerate() {
+            if slot > 0 {
+                rows.extend(messages.next());
+            }
+            for (n, file) in files.iter().enumerate() {
+                rows.push(status(
+                    &format!("link-file-{slot}-{n}"),
+                    &file_line(file),
+                    quiet(),
+                ));
+            }
+        }
+        rows.extend(messages);
+        rows.extend(tail);
     }
     children.push(Node {
         key: "link-transcript".into(),
@@ -1296,6 +1321,23 @@ fn heading(key: &str, value: &str) -> Node<Intent> {
 
 fn status(key: &str, value: &str, color: Color) -> Node<Intent> {
     text(key, value, TextRole::Status, color, false)
+}
+
+/// A sent file's line: its name, kind, and size, as `Photo.png · PNG · 1 KB`.
+fn file_line(file: &MessageFile) -> String {
+    let size = if file.size < 1024 {
+        format!("{} bytes", file.size)
+    } else if file.size < 1024 * 1024 {
+        format!("{} KB", file.size.div_ceil(1024))
+    } else {
+        format!("{:.1} MB", file.size as f64 / (1024.0 * 1024.0))
+    };
+    let mut parts = vec![file.name.clone()];
+    if !file.kind.is_empty() {
+        parts.push(file.kind.to_uppercase());
+    }
+    parts.push(size);
+    parts.join(" · ")
 }
 
 fn working(key: &str, label: &str) -> Node<Intent> {
