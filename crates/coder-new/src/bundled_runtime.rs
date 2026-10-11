@@ -12,9 +12,7 @@ use std::time::{Duration, Instant};
 use acp_client::{Handler, Opening, Session, Update};
 use microcoder_loop::{
     env::Env,
-    models::{
-        CodexGenerator, Generate, JevJudge, Judge, Judgment, OpenRouterGenerator, QuestionSet,
-    },
+    models::{Generate, JevJudge, Judge, Judgment, OpenRouterGenerator, QuestionSet},
     run::{Event, Limits, Models, Observer},
     state::{CommandResult, State},
 };
@@ -333,7 +331,7 @@ pub fn acp_tool_definition(agents: &[AcpAgent]) -> Option<Value> {
 pub fn microcoder_tool_definition() -> Value {
     json!({"type":"function","function":{
         "name":"microcoder",
-        "description":"Hand a concrete coding task to the bundled Microcoder loop. The loop uses structured next actions, Jev judgments when configured, and commands bounded to writes in the current checkout. State the desired result and relevant constraints. The delegation runs until completion or cancellation and returns the reply, actual model, token usage, and ending.",
+        "description":"Hand a concrete coding task to the bundled Microcoder loop. The loop uses structured next actions, Jev judgments when configured, and commands bounded to writes in the current checkout. State the desired result and relevant constraints. It runs on the OpenRouter plugin's saved model when an OpenRouter key is saved in /plugins, otherwise on this computer's Codex login, then its Claude Code login, then the OpenAgents gateway, falling over to the next one mid-task. The delegation runs until completion or cancellation and returns the reply, the provider that ran it, the actual model, token usage, the cost basis (billed or list_price), and the ending.",
         "parameters":{"type":"object","properties":{"task":{"type":"string","minLength":1,"maxLength":65536}},"required":["task"],"additionalProperties":false}
     }})
 }
@@ -1186,155 +1184,6 @@ fn validate_task(task: &str) -> Result<(), String> {
     }
 }
 
-/// Local logins followed by the OpenAgents gateway, without a model API key.
-pub struct LocalGenerator {
-    providers: GeneratorChain<LocalProvider>,
-}
-
-enum LocalProvider {
-    Codex(Box<CodexGenerator>),
-    Claude(microcoder_loop::claude::ClaudeGenerator),
-    Gateway(coder::cloud::CloudLane<coder::relay::RelayDoor>),
-}
-
-impl Generate for LocalProvider {
-    async fn generate(&self, system: &str, prompt: &str) -> microcoder_loop::models::Generated {
-        match self {
-            Self::Codex(generator) => {
-                let mut generated = generator.generate(system, prompt).await;
-                generated.model = codex_model_label(&generated.model);
-                generated
-            }
-            Self::Claude(generator) => generator.generate(system, prompt).await,
-            Self::Gateway(generator) => generator.generate(system, &gateway_prompt(prompt)).await,
-        }
-    }
-}
-
-// Model metadata is also the composer rail label. Qualify it at the provider
-// boundary rather than inferring the backend from a GPT model name.
-fn codex_model_label(model: &str) -> String {
-    if model.is_empty() || model.starts_with("codex:") {
-        model.to_owned()
-    } else {
-        format!("codex:{model}")
-    }
-}
-
-#[cfg(test)]
-mod codex_model_label_tests {
-    use super::codex_model_label;
-
-    #[test]
-    fn qualifies_codex_model_metadata() {
-        assert_eq!(codex_model_label("gpt-6.1-sol"), "codex:gpt-6.1-sol");
-        assert_eq!(
-            codex_model_label("gpt-6.1-sol:high"),
-            "codex:gpt-6.1-sol:high"
-        );
-        assert_eq!(codex_model_label("codex:gpt-6.1-sol"), "codex:gpt-6.1-sol");
-        assert_eq!(codex_model_label(""), "");
-    }
-}
-
-/// Regenerate a failed action before dispatch, preserving earlier commands.
-struct GeneratorChain<G> {
-    providers: Vec<G>,
-    current: Cell<usize>,
-}
-
-impl<G: Generate> Generate for GeneratorChain<G> {
-    async fn generate(&self, system: &str, prompt: &str) -> microcoder_loop::models::Generated {
-        let mut spent = None;
-        loop {
-            let current = self.current.get();
-            let generated = self.providers[current].generate(system, prompt).await;
-            let retry_elsewhere = generated.action.is_err() && current + 1 < self.providers.len();
-            let generated = microcoder_loop::failover::merge(spent.take(), generated);
-            if !retry_elsewhere {
-                return generated;
-            }
-            spent = Some(generated);
-            self.current.set(current + 1);
-        }
-    }
-}
-
-impl Generate for LocalGenerator {
-    async fn generate(&self, system: &str, prompt: &str) -> microcoder_loop::models::Generated {
-        self.providers.generate(system, prompt).await
-    }
-}
-
-/// Keep the task and recent observations within the gateway's request size.
-fn gateway_prompt(prompt: &str) -> String {
-    const HEAD: usize = 12 * 1024;
-    const TAIL: usize = 32 * 1024;
-    if prompt.len() <= HEAD + TAIL {
-        return prompt.to_owned();
-    }
-    let head = bounded(prompt, HEAD);
-    let mut tail = prompt.len().saturating_sub(TAIL);
-    while !prompt.is_char_boundary(tail) {
-        tail += 1;
-    }
-    format!(
-        "{head}\n\n[Earlier observations were compacted. Inspect current files to recover details; \
-         do not repeat completed changes.]\n\n{}",
-        &prompt[tail..]
-    )
-}
-
-/// Resolve local model providers and the no-setup gateway fallback.
-pub fn local_generator() -> Result<LocalGenerator, String> {
-    use codex_transport::codex::{CodexTransport, Login};
-    let session = format!("coder-new-{}", std::process::id());
-    let mut providers = vec![];
-    if let Some(path) = Login::default_path() {
-        if let Ok(transport) = CodexTransport::new(path, &session) {
-            providers.push(LocalProvider::Codex(Box::new(CodexGenerator {
-                transport,
-                model: std::env::var("CODER_CODEX_MODEL")
-                    .ok()
-                    .filter(|v| !v.is_empty())
-                    .unwrap_or_else(|| microcoder_loop::MODEL.into()),
-                effort: std::env::var("CODER_CODEX_REASONING")
-                    .ok()
-                    .filter(|v| !v.is_empty()),
-                cache_key: session,
-                images: vec![],
-            })));
-        }
-    }
-    if let Ok(generator) =
-        microcoder_loop::claude::ClaudeGenerator::from_env(microcoder_loop::MODEL, None)
-    {
-        providers.push(LocalProvider::Claude(generator));
-    }
-    if std::env::var("CODER_CLOUD").as_deref() != Ok("off") {
-        match coder::cloud::door(&|name| std::env::var(name).ok()) {
-            Ok(door) => providers.push(LocalProvider::Gateway(coder::cloud::CloudLane::new(
-                Arc::new(door),
-            ))),
-            Err(error) if providers.is_empty() => {
-                return Err(format!(
-                    "Cannot connect to the OpenAgents AI Gateway: {error}"
-                ));
-            }
-            Err(_) => {}
-        }
-    }
-    if providers.is_empty() {
-        return Err("No Codex or Claude Code login is available, and the OpenAgents AI Gateway is turned off. Enable OpenRouter BYOK or unset CODER_CLOUD=off.".into());
-    }
-    Ok(LocalGenerator {
-        providers: GeneratorChain {
-            providers,
-            current: Cell::new(0),
-        },
-    })
-}
-
 pub async fn microcoder_local(
     task: &str,
     cwd: &Path,
@@ -1344,8 +1193,16 @@ pub async fn microcoder_local(
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Value, String> {
     validate_task(task)?;
-    let generator = local_generator()?;
-    run_microcoder(task, cwd, &generator, jev, redaction_keys, cancel, emit).await
+    let session = format!("coder-new-{}", std::process::id());
+    let generator = coder::local_chain::local_generator(&session, None, None)?;
+    let mut result =
+        run_microcoder(task, cwd, &generator, jev, redaction_keys, cancel, emit).await?;
+    result["provider"] = json!(generator.provider());
+    let fell_back_from = generator.fell_back_from();
+    if !fell_back_from.is_empty() {
+        result["fell_back_from"] = json!(fell_back_from);
+    }
+    Ok(result)
 }
 
 pub async fn microcoder_openrouter(
@@ -1368,6 +1225,7 @@ pub async fn microcoder_openrouter(
     let mut result =
         run_microcoder(task, cwd, &generator, jev, redaction_keys, cancel, emit).await?;
     result["usage"] = json!({"cost": result["outcome"]["model_usd"]});
+    result["provider"] = json!("openrouter");
     Ok(result)
 }
 
@@ -1411,6 +1269,7 @@ async fn run_microcoder<G: Generate>(
         failures: Cell::new(0),
         repeated: Cell::new(0),
         previous_commands: RefCell::new(vec![]),
+        bases: RefCell::new(vec![]),
     };
     let set = microcoder_loop::models::question_set();
     let route = microcoder_loop::models::route_set();
@@ -1451,7 +1310,16 @@ async fn run_microcoder<G: Generate>(
         &mut observer,
     )
     .await;
-    let mut result = json!({"reply":observer.reply,"model":observer.model,"tokens":observer.tokens,"outcome":outcome});
+    // What the model cost rests on: `billed` when the provider reported
+    // what it charged, `list_price` for reported tokens at published prices
+    // (the Codex and Claude Code logins), `mixed` after a failover between
+    // the two, as Terminal-Bench study records state it (#11276).
+    let cost_basis = match canceled_generator.bases.borrow().as_slice() {
+        [] => Value::Null,
+        [basis] => json!(basis),
+        _ => json!("mixed"),
+    };
+    let mut result = json!({"reply":observer.reply,"model":observer.model,"tokens":observer.tokens,"cost_basis":cost_basis,"outcome":outcome});
     for key in redaction_keys {
         crate::plugin_tools::redact_value(&mut result, key.expose());
     }
@@ -1467,6 +1335,8 @@ struct CancellableGenerator<'a, G> {
     failures: Cell<usize>,
     repeated: Cell<usize>,
     previous_commands: RefCell<Vec<String>>,
+    /// The cost basis of each kind every answered generation rested on.
+    bases: RefCell<Vec<microcoder_loop::models::Basis>>,
 }
 
 impl<G: Generate> Generate for CancellableGenerator<'_, G> {
@@ -1493,6 +1363,9 @@ impl<G: Generate> Generate for CancellableGenerator<'_, G> {
         match &generated.action {
             Ok(action) => {
                 self.failures.set(0);
+                if !self.bases.borrow().contains(&generated.cost_basis) {
+                    self.bases.borrow_mut().push(generated.cost_basis);
+                }
                 let repeats = !action.commands.is_empty()
                     && *self.previous_commands.borrow() == action.commands;
                 self.repeated.set(if repeats {
@@ -2801,6 +2674,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         .unwrap();
         assert_eq!(result["reply"], "The scratch task is complete.");
         assert_eq!(result["model"], "fixture/model");
+        assert_eq!(result["cost_basis"], "billed");
         assert_eq!(result["tokens"], 35);
         assert_eq!(result["outcome"]["ending"]["reason"], "finished");
         assert!(
@@ -2830,6 +2704,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             failures: Cell::new(0),
             repeated: Cell::new(0),
             previous_commands: RefCell::new(vec![]),
+            bases: RefCell::new(vec![]),
         };
         let result = tokio::time::timeout(Duration::from_secs(1), generator.generate("", ""))
             .await
@@ -3071,20 +2946,6 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         ));
     }
 
-    #[test]
-    fn gateway_context_keeps_the_task_and_latest_results_without_splitting_unicode() {
-        let prompt = format!(
-            "TASK: review these files\n{}\nLATEST: changed file",
-            "界".repeat(25_000)
-        );
-        let compact = gateway_prompt(&prompt);
-        assert!(compact.starts_with("TASK: review these files"));
-        assert!(compact.ends_with("LATEST: changed file"));
-        assert!(compact.contains("observations were compacted"));
-        assert!(compact.len() < 48 * 1024);
-        assert_eq!(gateway_prompt("A short prompt"), "A short prompt");
-    }
-
     struct GatewayFixture {
         calls: std::sync::atomic::AtomicUsize,
         replies: Vec<String>,
@@ -3214,7 +3075,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             calls: std::sync::atomic::AtomicUsize::new(0),
             replies: vec![fixture_action(vec![], true)],
         });
-        let providers = GeneratorChain {
+        let providers = coder::local_chain::GeneratorChain {
             providers: vec![
                 FixtureProvider::Unavailable(Arc::clone(&local_calls)),
                 FixtureProvider::Gateway(coder::cloud::CloudLane::new(Arc::clone(&fixture))),
