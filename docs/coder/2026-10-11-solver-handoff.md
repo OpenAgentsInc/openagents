@@ -204,8 +204,20 @@ not-planned issues itself.
 - **#11308–#11313, #11323 (briefed-agent bench program):** the code is on
   main; frozen bench plans need running on oa-dev-env-2/-3
   (`scripts/bench/briefed-ab/run-env.sh`, `docs/inference/briefed-agent-ab.md`,
-  `docs/inference/haiku-briefer.md`). A subagent had started #11323 → #11310
-  → #11311 → #11309. Check its handoff comments.
+  `docs/inference/haiku-briefer.md`). Where they stopped (each issue has a
+  handoff comment with the exact commands):
+  - **#11309:** the endless loop in the briefing step is fixed
+    (0d50f9e25c). ablate-levers is 107/126 done; s2b is 190/594 (shards
+    68, 35, 81, 6). ablate-tools and ablate-cold are done but moved no
+    production setting.
+    - Dev envs 2, 5, 6, 7 and 8 are stopped with their disks kept, so the
+      runs resume. Partial results are in
+      `gs://openagents-bench-artifacts/briefed-ab-11309/partial-2026-10-11/`.
+    - Nothing is judged yet.
+  - **#11310 and #11311:** not run. Their frozen plans pin Claude Code
+    2.1.291; the envs have 2.1.295. Re-freeze or install 2.1.291.
+  - **#11323:** not run. The Haiku plan names the Mac and coderos-4080;
+    re-freeze it for a dev env.
   - #11308 needs the Codex/OpenCode engines.
   - #11313 is the acceptance run after #11308–#11311.
   - These are compute-heavy; keep them to Claude and Vertex.
