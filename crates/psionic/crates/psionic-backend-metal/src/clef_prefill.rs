@@ -11,14 +11,14 @@
 use std::collections::HashMap;
 use std::ffi::c_void;
 
-use objc::{msg_send, sel, sel_impl};
 use metal::{
-    Buffer, CommandBuffer, CommandQueue, CompileOptions, ComputeCommandEncoder, ComputePipelineState, Device,
-    MTLResourceOptions, MTLSize,
+    Buffer, CommandBuffer, CommandQueue, CompileOptions, ComputeCommandEncoder,
+    ComputePipelineState, Device, MTLResourceOptions, MTLSize,
 };
+use objc::{msg_send, sel, sel_impl};
 
-use crate::clef_attention::{ClefAttentionPlan, ClefMetalAttention, CLEF_FUSED_THREADS};
-use crate::clef_gemm::{ClefGemmPlan, ClefMetalGemm, CLEF_GEMM_THREADS};
+use crate::clef_attention::{CLEF_FUSED_THREADS, ClefAttentionPlan, ClefMetalAttention};
+use crate::clef_gemm::{CLEF_GEMM_THREADS, ClefGemmPlan, ClefMetalGemm};
 
 const SOURCE: &str = concat!(
     include_str!("kernels/clef_prefill.metal"),
@@ -85,7 +85,9 @@ impl ClefMetalBuffer {
     pub fn view(&self, offset_bytes: usize, len_bytes: usize) -> Result<Self, String> {
         self.check(offset_bytes, len_bytes, "view")?;
         if offset_bytes % 16 != 0 {
-            return Err(String::from("clef metal views require a 16-byte aligned offset"));
+            return Err(String::from(
+                "clef metal views require a 16-byte aligned offset",
+            ));
         }
         Ok(Self {
             raw: self.raw.clone(),
@@ -111,7 +113,10 @@ impl ClefMetalBuffer {
         unsafe {
             std::ptr::copy_nonoverlapping(
                 bytes.as_ptr(),
-                self.raw.contents().cast::<u8>().add(self.offset_bytes + offset_bytes),
+                self.raw
+                    .contents()
+                    .cast::<u8>()
+                    .add(self.offset_bytes + offset_bytes),
                 bytes.len(),
             );
         }
@@ -125,7 +130,10 @@ impl ClefMetalBuffer {
         // SAFETY: the checked range is inside this shared allocation.
         unsafe {
             std::ptr::copy_nonoverlapping(
-                self.raw.contents().cast::<u8>().add(self.offset_bytes + offset_bytes),
+                self.raw
+                    .contents()
+                    .cast::<u8>()
+                    .add(self.offset_bytes + offset_bytes),
                 bytes.as_mut_ptr(),
                 len_bytes,
             );
@@ -136,27 +144,49 @@ impl ClefMetalBuffer {
     /// Writes f32 values at an element offset.
     pub fn write_f32(&self, offset: usize, values: &[f32]) -> Result<(), String> {
         // SAFETY: f32 has no padding; the slice covers exactly its values.
-        let bytes = unsafe { std::slice::from_raw_parts(values.as_ptr().cast::<u8>(), std::mem::size_of_val(values)) };
-        self.write_bytes(offset.checked_mul(4).ok_or("clef metal write offset overflow")?, bytes)
+        let bytes = unsafe {
+            std::slice::from_raw_parts(values.as_ptr().cast::<u8>(), std::mem::size_of_val(values))
+        };
+        self.write_bytes(
+            offset
+                .checked_mul(4)
+                .ok_or("clef metal write offset overflow")?,
+            bytes,
+        )
     }
 
     /// Writes i32 values at an element offset.
     pub fn write_i32(&self, offset: usize, values: &[i32]) -> Result<(), String> {
         // SAFETY: i32 has no padding; the slice covers exactly its values.
-        let bytes = unsafe { std::slice::from_raw_parts(values.as_ptr().cast::<u8>(), std::mem::size_of_val(values)) };
-        self.write_bytes(offset.checked_mul(4).ok_or("clef metal write offset overflow")?, bytes)
+        let bytes = unsafe {
+            std::slice::from_raw_parts(values.as_ptr().cast::<u8>(), std::mem::size_of_val(values))
+        };
+        self.write_bytes(
+            offset
+                .checked_mul(4)
+                .ok_or("clef metal write offset overflow")?,
+            bytes,
+        )
     }
 
     /// Reads `count` f32 values at an element offset.
     pub fn read_f32(&self, offset: usize, count: usize) -> Result<Vec<f32>, String> {
-        let offset_bytes = offset.checked_mul(4).ok_or("clef metal read offset overflow")?;
-        let len_bytes = count.checked_mul(4).ok_or("clef metal read length overflow")?;
+        let offset_bytes = offset
+            .checked_mul(4)
+            .ok_or("clef metal read offset overflow")?;
+        let len_bytes = count
+            .checked_mul(4)
+            .ok_or("clef metal read length overflow")?;
         self.check(offset_bytes, len_bytes, "read")?;
         let mut out = vec![0.0f32; count];
         // SAFETY: the range lies inside the shared allocation (checked above).
         unsafe {
             std::ptr::copy_nonoverlapping(
-                self.raw.contents().cast::<u8>().add(self.offset_bytes + offset_bytes).cast::<f32>(),
+                self.raw
+                    .contents()
+                    .cast::<u8>()
+                    .add(self.offset_bytes + offset_bytes)
+                    .cast::<f32>(),
                 out.as_mut_ptr(),
                 count,
             );
@@ -167,7 +197,13 @@ impl ClefMetalBuffer {
     /// Zeroes the whole buffer.
     pub fn zero(&self) {
         // SAFETY: writes exactly the allocation.
-        unsafe { std::ptr::write_bytes(self.raw.contents().cast::<u8>().add(self.offset_bytes), 0, self.bytes) }
+        unsafe {
+            std::ptr::write_bytes(
+                self.raw.contents().cast::<u8>().add(self.offset_bytes),
+                0,
+                self.bytes,
+            )
+        }
     }
 }
 
@@ -232,7 +268,10 @@ impl ClefMetal {
 
     /// Compiles the selected attention and projection implementations. Each
     /// experimental library is compiled only when its mode is selected.
-    pub fn new_with_options(attention: ClefMetalAttention, gemm: ClefMetalGemm) -> Result<Self, String> {
+    pub fn new_with_options(
+        attention: ClefMetalAttention,
+        gemm: ClefMetalGemm,
+    ) -> Result<Self, String> {
         let device = Device::system_default().ok_or("no Metal device is available")?;
         let library = device
             .new_library_with_source(SOURCE, &CompileOptions::new())
@@ -260,10 +299,15 @@ impl ClefMetal {
             if pipeline.thread_execution_width() != 32
                 || pipeline.max_total_threads_per_threadgroup() < CLEF_FUSED_THREADS as u64
             {
-                return Err(String::from("clef fused attention requires four 32-thread SIMD groups"));
+                return Err(String::from(
+                    "clef fused attention requires four 32-thread SIMD groups",
+                ));
             }
-            if pipeline.static_threadgroup_memory_length() > device.max_threadgroup_memory_length() {
-                return Err(String::from("clef fused attention exceeds device threadgroup memory"));
+            if pipeline.static_threadgroup_memory_length() > device.max_threadgroup_memory_length()
+            {
+                return Err(String::from(
+                    "clef fused attention exceeds device threadgroup memory",
+                ));
             }
             pipelines.insert(FUSED_KERNEL, pipeline);
         }
@@ -281,10 +325,16 @@ impl ClefMetal {
                 if pipeline.thread_execution_width() != 32
                     || pipeline.max_total_threads_per_threadgroup() < CLEF_GEMM_THREADS as u64
                 {
-                    return Err(String::from("clef weight-shape GEMM requires four 32-thread SIMD groups"));
+                    return Err(String::from(
+                        "clef weight-shape GEMM requires four 32-thread SIMD groups",
+                    ));
                 }
-                if pipeline.static_threadgroup_memory_length() > device.max_threadgroup_memory_length() {
-                    return Err(String::from("clef weight-shape GEMM exceeds device threadgroup memory"));
+                if pipeline.static_threadgroup_memory_length()
+                    > device.max_threadgroup_memory_length()
+                {
+                    return Err(String::from(
+                        "clef weight-shape GEMM exceeds device threadgroup memory",
+                    ));
                 }
                 pipelines.insert(*name, pipeline);
             }
@@ -323,8 +373,14 @@ impl ClefMetal {
     #[must_use]
     pub fn buffer(&self, bytes: usize) -> ClefMetalBuffer {
         let bytes = bytes.max(16);
-        let raw = self.device.new_buffer(bytes as u64, MTLResourceOptions::StorageModeShared);
-        let buffer = ClefMetalBuffer { raw, offset_bytes: 0, bytes };
+        let raw = self
+            .device
+            .new_buffer(bytes as u64, MTLResourceOptions::StorageModeShared);
+        let buffer = ClefMetalBuffer {
+            raw,
+            offset_bytes: 0,
+            bytes,
+        };
         buffer.zero();
         buffer
     }
@@ -338,7 +394,11 @@ impl ClefMetal {
             // Upload only its actual bytes and leave the padding zeroed.
             // SAFETY: the allocation has 16 bytes and the source is shorter.
             unsafe {
-                std::ptr::copy_nonoverlapping(bytes.as_ptr(), buffer.raw.contents().cast::<u8>(), bytes.len());
+                std::ptr::copy_nonoverlapping(
+                    bytes.as_ptr(),
+                    buffer.raw.contents().cast::<u8>(),
+                    bytes.len(),
+                );
             }
             return buffer;
         }
@@ -358,7 +418,9 @@ impl ClefMetal {
     #[must_use]
     pub fn buffer_f32(&self, values: &[f32]) -> ClefMetalBuffer {
         // SAFETY: f32 has no padding; the slice covers exactly its values.
-        let bytes = unsafe { std::slice::from_raw_parts(values.as_ptr().cast::<u8>(), std::mem::size_of_val(values)) };
+        let bytes = unsafe {
+            std::slice::from_raw_parts(values.as_ptr().cast::<u8>(), std::mem::size_of_val(values))
+        };
         self.buffer_with_bytes(bytes)
     }
 
@@ -463,12 +525,19 @@ impl ClefMetalBatch<'_> {
     }
 
     fn bind(&self, index: u64, buffer: &ClefMetalBuffer, offset_bytes: usize) {
-        self.encoder.set_buffer(index, Some(&buffer.raw), (buffer.offset_bytes + offset_bytes) as u64);
+        self.encoder.set_buffer(
+            index,
+            Some(&buffer.raw),
+            (buffer.offset_bytes + offset_bytes) as u64,
+        );
     }
 
     fn bytes<T>(&self, index: u64, value: &T) {
-        self.encoder
-            .set_bytes(index, std::mem::size_of::<T>() as u64, (value as *const T).cast::<c_void>());
+        self.encoder.set_bytes(
+            index,
+            std::mem::size_of::<T>() as u64,
+            (value as *const T).cast::<c_void>(),
+        );
     }
 
     /// A buffer-scope barrier before the next dispatch unless it was
@@ -525,12 +594,18 @@ impl ClefMetalBatch<'_> {
         destination_offset: usize,
         count: usize,
     ) -> Result<(), String> {
-        let source_offset = source_offset.checked_mul(4).ok_or("copy source offset overflow")?;
-        let destination_offset = destination_offset.checked_mul(4).ok_or("copy destination offset overflow")?;
+        let source_offset = source_offset
+            .checked_mul(4)
+            .ok_or("copy source offset overflow")?;
+        let destination_offset = destination_offset
+            .checked_mul(4)
+            .ok_or("copy destination offset overflow")?;
         let bytes = count.checked_mul(4).ok_or("copy length overflow")?;
         source.check(source_offset, bytes, "copy source")?;
         destination.check(destination_offset, bytes, "copy destination")?;
-        if count == 0 { return Ok(()); }
+        if count == 0 {
+            return Ok(());
+        }
         if source.raw.contents() == destination.raw.contents() {
             let a = source.offset_bytes + source_offset;
             let b = destination.offset_bytes + destination_offset;
@@ -559,7 +634,11 @@ impl ClefMetalBatch<'_> {
             .byte_len(elements)
             .ok_or("clef metal dequantize: not whole blocks")?;
         source.check(0, bytes, "dequantize source")?;
-        destination.check(0, elements.checked_mul(2).ok_or("dequantize size overflow")?, "dequantize destination")?;
+        destination.check(
+            0,
+            elements.checked_mul(2).ok_or("dequantize size overflow")?,
+            "dequantize destination",
+        )?;
         self.pipeline(match format {
             ClefMetalWeightFormat::Q8_0 => "clef_dequant_q8_0",
             ClefMetalWeightFormat::Q4K => "clef_dequant_q4_k",
@@ -601,7 +680,10 @@ impl ClefMetalBatch<'_> {
         self.bind(1, w16, 0);
         self.bind(2, out, plan.output_offset_bytes);
         self.bytes(3, &plan.nmk);
-        self.groups(size(plan.groups[0], plan.groups[1], 1), size(CLEF_GEMM_THREADS, 1, 1));
+        self.groups(
+            size(plan.groups[0], plan.groups[1], 1),
+            size(CLEF_GEMM_THREADS, 1, 1),
+        );
         Ok(())
     }
 
@@ -756,7 +838,12 @@ impl ClefMetalBatch<'_> {
         }
         input.check(0, n * channels * 4, "conv input")?;
         out.check(0, n * channels * 4, "conv out")?;
-        let nck = [int(n, "n")?, int(channels, "channels")?, int(kernel, "kernel")?, 0];
+        let nck = [
+            int(n, "n")?,
+            int(channels, "channels")?,
+            int(kernel, "kernel")?,
+            0,
+        ];
         self.pipeline("clef_conv1d_seq_silu")?;
         self.bind(0, input, 0);
         self.bind(1, state, 0);
@@ -793,7 +880,11 @@ impl ClefMetalBatch<'_> {
         conv_width: usize,
     ) -> Result<(), String> {
         if dim > 1024 || n == 0 {
-            return if n == 0 { Ok(()) } else { Err(String::from("clef metal delta prep: dim above 1024")) };
+            return if n == 0 {
+                Ok(())
+            } else {
+                Err(String::from("clef metal delta prep: dim above 1024"))
+            };
         }
         qn.check(0, n * key_heads * dim * 4, "qn")?;
         let args = DeltaPrepArgs {
@@ -803,9 +894,20 @@ impl ClefMetalBatch<'_> {
             conv_width: int(conv_width, "conv width")?,
         };
         self.pipeline("clef_delta_prep")?;
-        for (index, buffer) in [conv, alpha, beta_in, ssm_a, ssm_dt, qn, kn, decay, beta, key_dot_query]
-            .into_iter()
-            .enumerate()
+        for (index, buffer) in [
+            conv,
+            alpha,
+            beta_in,
+            ssm_a,
+            ssm_dt,
+            qn,
+            kn,
+            decay,
+            beta,
+            key_dot_query,
+        ]
+        .into_iter()
+        .enumerate()
         {
             self.bind(index as u64, buffer, 0);
         }
@@ -836,7 +938,9 @@ impl ClefMetalBatch<'_> {
         value_offset: usize,
     ) -> Result<(), String> {
         if dim != 128 {
-            return Err(format!("clef metal delta scan: head dim {dim} (this lane takes 128)"));
+            return Err(format!(
+                "clef metal delta scan: head dim {dim} (this lane takes 128)"
+            ));
         }
         if n == 0 {
             return Ok(());
@@ -852,7 +956,10 @@ impl ClefMetalBatch<'_> {
             value_offset: int(value_offset, "value offset")?,
         };
         self.pipeline("clef_delta_scan128_256x2")?;
-        for (index, buffer) in [qn, kn, conv, decay, beta, key_dot_query, state, out].into_iter().enumerate() {
+        for (index, buffer) in [qn, kn, conv, decay, beta, key_dot_query, state, out]
+            .into_iter()
+            .enumerate()
+        {
             self.bind(index as u64, buffer, 0);
         }
         self.bytes(8, &args);
@@ -912,7 +1019,9 @@ impl ClefMetalBatch<'_> {
         eps: f32,
     ) -> Result<(), String> {
         if dim > 1024 || rotary > dim {
-            return Err(String::from("clef metal attention prep: dims outside this lane"));
+            return Err(String::from(
+                "clef metal attention prep: dims outside this lane",
+            ));
         }
         key_cache.check(0, (pos0 + n) * kv_heads * dim * 2, "key cache")?;
         query16.check(0, n * heads * dim * 2, "query16")?;
@@ -927,7 +1036,16 @@ impl ClefMetalBatch<'_> {
         };
         self.pipeline("clef_attention_prep")?;
         for (index, buffer) in [
-            query_gate, key, value, query_norm, key_norm, cos_sin, query16, gate, key_cache, value_cache,
+            query_gate,
+            key,
+            value,
+            query_norm,
+            key_norm,
+            cos_sin,
+            query16,
+            gate,
+            key_cache,
+            value_cache,
         ]
         .into_iter()
         .enumerate()
@@ -935,7 +1053,10 @@ impl ClefMetalBatch<'_> {
             self.bind(index as u64, buffer, 0);
         }
         self.bytes(10, &args);
-        self.groups(size(n, heads + kv_heads, 1), size(dim.div_ceil(32) * 32, 1, 1));
+        self.groups(
+            size(n, heads + kv_heads, 1),
+            size(dim.div_ceil(32) * 32, 1, 1),
+        );
         Ok(())
     }
 
@@ -1035,12 +1156,21 @@ impl ClefMetalBatch<'_> {
         self.bind(2, value_cache, 0);
         self.bind(3, out, 0);
         self.bytes(4, &args);
-        self.groups(size(plan.fused_query_groups, heads, 1), size(CLEF_FUSED_THREADS, 1, 1));
+        self.groups(
+            size(plan.fused_query_groups, heads, 1),
+            size(CLEF_FUSED_THREADS, 1, 1),
+        );
         Ok(())
     }
 
     /// In-place softmax of `rows` full rows after multiplying by `scale`.
-    pub fn softmax_rows_f32(&self, scores: &ClefMetalBuffer, rows: usize, keys: usize, scale: f32) -> Result<(), String> {
+    pub fn softmax_rows_f32(
+        &self,
+        scores: &ClefMetalBuffer,
+        rows: usize,
+        keys: usize,
+        scale: f32,
+    ) -> Result<(), String> {
         scores.check(0, rows * keys * 4, "softmax scores")?;
         self.pipeline("clef_softmax_rows_f32")?;
         self.bind(0, scores, 0);
@@ -1140,7 +1270,14 @@ impl ClefMetalBatch<'_> {
     }
 
     /// `x[r, c] += b[c]`, then GELU (erf form) when `gelu`; in place.
-    pub fn bias_act(&self, x: &ClefMetalBuffer, b: &ClefMetalBuffer, rows: usize, cols: usize, gelu: bool) -> Result<(), String> {
+    pub fn bias_act(
+        &self,
+        x: &ClefMetalBuffer,
+        b: &ClefMetalBuffer,
+        rows: usize,
+        cols: usize,
+        gelu: bool,
+    ) -> Result<(), String> {
         x.check(0, rows * cols * 4, "bias x")?;
         b.check(0, cols * 4, "bias b")?;
         self.pipeline("clef_bias_act")?;
