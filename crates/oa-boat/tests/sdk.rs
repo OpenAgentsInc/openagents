@@ -20,6 +20,10 @@ struct World {
     images: BTreeMap<String, Image>,
     clock: i64,
     full_zones: Vec<String>,
+    /// The insert is made but its wait fails in transport.
+    flaky_zones: Vec<String>,
+    /// The wait fails in transport and the VM never appears.
+    lost_zones: Vec<String>,
 }
 
 #[derive(Clone, Default)]
@@ -48,6 +52,10 @@ impl Compute for Fake {
         if w.full_zones.iter().any(|z| z == zone) {
             return Err(GceError::new(409, "ZONE_RESOURCE_POOL_EXHAUSTED", "full"));
         }
+        if w.lost_zones.iter().any(|z| z == zone) {
+            return Err(GceError::new(0, "transport", "unreachable"));
+        }
+        let flaky = w.flaky_zones.iter().any(|z| z == zone);
         let name = body["name"].as_str().unwrap().to_owned();
         let now = Self::tick(&mut w);
         let disk_gb = body["disks"][0]["initializeParams"]["diskSizeGb"]
@@ -75,6 +83,9 @@ impl Compute for Fake {
             spot: body["scheduling"]["provisioningModel"] == "SPOT",
         };
         w.instances.insert(name, i);
+        if flaky {
+            return Err(GceError::new(0, "transport", "unreachable"));
+        }
         Ok(())
     }
     async fn get_instance(&self, _zone: &str, name: &str) -> Result<Option<Instance>> {
@@ -631,4 +642,26 @@ async fn a_restarted_service_finds_its_ready_sandboxes_at_once() {
         .await
         .unwrap();
     assert_eq!(got.sandbox.state, "ready");
+}
+
+#[tokio::test]
+async fn a_lost_insert_wait_tries_the_next_zone_and_a_made_vm_is_used() {
+    let r = rig(|_| {}).await;
+    {
+        let mut w = r.fake.0.lock().unwrap();
+        w.lost_zones = vec!["us-central1-a".into()];
+    }
+    let a = create(&r.client, CreateSandboxRequest::default(), None).await;
+    r.client.wait_until_ready(&a, &fast()).await.unwrap();
+    {
+        let mut w = r.fake.0.lock().unwrap();
+        let zones: Vec<_> = w.instances.values().map(|i| i.zone.clone()).collect();
+        assert_eq!(zones, vec!["us-central1-b".to_owned()]);
+        w.lost_zones.clear();
+        w.flaky_zones = vec!["us-central1-a".into()];
+    }
+    let b = create(&r.client, CreateSandboxRequest::default(), None).await;
+    r.client.wait_until_ready(&b, &fast()).await.unwrap();
+    let w = r.fake.0.lock().unwrap();
+    assert_eq!(w.instances.len(), 2, "no extra VM in another zone");
 }
