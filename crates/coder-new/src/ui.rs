@@ -196,6 +196,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         app.model_picker.is_none() && !app.footer_focused,
         &app.plugins,
         &app.composer,
+        app.composer_history.position(),
         app.composer_selected && !app.draft.text.is_empty(),
         // OpenAgents picks the model here, so the rail says `auto` and never
         // the name of whichever vendor answered.
@@ -1388,6 +1389,7 @@ fn composer_view(
     cursor_visible: bool,
     plugins: &crate::plugins::Plugins,
     composer: &crate::composer_state::ComposerState,
+    history_position: Option<(usize, usize)>,
     selected: bool,
     fallback_model: Option<&str>,
 ) {
@@ -1402,24 +1404,20 @@ fn composer_view(
         frame.buffer_mut(),
         Style::default().fg(t::PROMPT_BORDER_ACTIVE),
     );
-    if !composer.images.is_empty() {
-        coder_terminal::rail(
-            area,
-            frame.buffer_mut(),
-            0,
-            Some((
-                &composer
-                    .images
-                    .iter()
-                    .enumerate()
-                    .map(|(index, image)| crate::attachments::chip_for(&image.source, index + 1))
-                    .collect::<Vec<_>>()
-                    .join("  "),
-                Style::default().fg(t::GRAY),
-            )),
-            None,
-        );
+    let mut left_labels = Vec::new();
+    if let Some((position, total)) = history_position {
+        left_labels.push(format!("History {position}/{total}"));
     }
+    left_labels.extend(
+        composer
+            .images
+            .iter()
+            .enumerate()
+            .map(|(index, image)| crate::attachments::chip_for(&image.source, index + 1)),
+    );
+    let left_text = left_labels.join("  ");
+    let left = Some((left_text.as_str(), Style::default().fg(t::GRAY)));
+    coder_terminal::rail(area, frame.buffer_mut(), 0, left, None);
     let contributions = if let Some(model) = fallback_model {
         crate::plugin_definition::resolve_composer_rails(
             &[crate::plugin_definition::FALLBACK_PROVIDER],
@@ -1438,7 +1436,7 @@ fn composer_view(
             area,
             frame.buffer_mut(),
             offset,
-            None,
+            if offset == 0 { left } else { None },
             Some((
                 &text,
                 Style::default().fg(if contribution.text == crate::models::AUTO {
@@ -1501,6 +1499,47 @@ fn composer_view(
 
 #[cfg(test)]
 mod export_notice_tests {
+    #[test]
+    fn history_position_appears_on_the_top_left_rail() {
+        let mut app = App::default();
+        app.mode = Mode::Live;
+        for i in 0..100 {
+            app.draft.text = format!("prompt {i}");
+            app.record_prompt();
+        }
+        app.draft = crate::Draft::default();
+        let rail = |app: &mut App, width| {
+            let mut terminal = Terminal::new(TestBackend::new(width, 20)).unwrap();
+            terminal.draw(|frame| render(frame, app)).unwrap();
+            let buffer = terminal.backend().buffer();
+            let row = (1..20).find(|&y| buffer[(1, y)].symbol() == "❯").unwrap();
+            (0..width)
+                .map(|x| buffer[(x, row - 1)].symbol())
+                .collect::<String>()
+        };
+        assert!(!rail(&mut app, 60).contains("History"));
+        app.composer_arrow(true);
+        assert!(rail(&mut app, 60).starts_with("┌─ History 100/100 "));
+        app.composer_arrow(true);
+        assert!(rail(&mut app, 60).starts_with("┌─ History 99/100 "));
+        for _ in 0..100 {
+            app.composer_arrow(true);
+        }
+        assert!(rail(&mut app, 24).starts_with("┌─ History 1/100 "));
+        for _ in 0..99 {
+            app.draft.cursor = app.draft.text.len();
+            app.composer_arrow(false);
+        }
+        let text = rail(&mut app, 60);
+        assert!(text.starts_with("┌─ History 100/100 "));
+        assert!(text.contains("auto"));
+        app.composer_arrow(false);
+        assert!(!rail(&mut app, 60).contains("History"));
+        app.composer_arrow(true);
+        app.composer_history.reset();
+        assert!(!rail(&mut app, 60).contains("History"));
+    }
+
     use super::*;
     use ratatui::{Terminal, backend::TestBackend};
 

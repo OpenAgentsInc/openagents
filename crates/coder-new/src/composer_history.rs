@@ -32,6 +32,12 @@ pub(crate) struct History {
 }
 
 impl History {
+    pub(crate) fn position(&self) -> Option<(usize, usize)> {
+        let (index, id, _) = self.applied.as_ref()?;
+        let entry = self.walk.get(*index)?;
+        (self.navigating && entry.id == *id).then_some((self.walk.len() - index, self.walk.len()))
+    }
+
     pub(crate) fn reset(&mut self) {
         self.applied = None;
         self.index = None;
