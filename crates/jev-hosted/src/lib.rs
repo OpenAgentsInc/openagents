@@ -510,8 +510,8 @@ pub fn jev_first(
 
 /// Jev's door with a shadow: every [`SHADOW_EVERY`]th answer Jev gave is
 /// asked again at our API, Pylons first, after it is returned, and the
-/// agreement is logged (`decisions shadow: … agrees with Jev on a/b
-/// questions, max |Δp| …`).
+/// agreement is recorded as a debug tracing event. The library never
+/// writes diagnostics directly to the caller's terminal.
 struct Shadowed {
     inner: Arc<dyn Exchange>,
     pylons: Arc<OpenAgentsExchange>,
@@ -557,13 +557,7 @@ impl Exchange for Shadowed {
                     if second["answers"].is_null() {
                         return;
                     }
-                    let (agreed, asked, max_dp) = agreement(&first["answers"], &second["answers"]);
-                    eprintln!(
-                        "decisions shadow: {} ({}) agrees with Jev on {agreed}/{asked} questions, max |Δp| {max_dp:.3} (Jev {jev_ms} ms, shadow {} ms)",
-                        second["service"]["door"].as_str().unwrap_or("our API"),
-                        second["model"].as_str().unwrap_or("?"),
-                        started.elapsed().as_millis()
-                    );
+                    log_shadow_agreement(&first, &second, jev_ms, started.elapsed().as_millis());
                 });
             }
             reply
@@ -577,6 +571,20 @@ impl Exchange for Shadowed {
     fn relays(&self) -> bool {
         self.inner.relays()
     }
+}
+
+fn log_shadow_agreement(first: &Value, second: &Value, jev_ms: u128, shadow_ms: u128) {
+    let (agreed, asked, max_dp) = agreement(&first["answers"], &second["answers"]);
+    tracing::debug!(
+        door = second["service"]["door"].as_str().unwrap_or("our API"),
+        model = second["model"].as_str().unwrap_or("?"),
+        agreed,
+        asked,
+        max_dp,
+        jev_ms,
+        shadow_ms,
+        "Decision shadow comparison completed"
+    );
 }
 
 /// How far two answers agree: the questions whose pick agrees (a choice's
@@ -1440,6 +1448,64 @@ fn unix_now() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shadow_diagnostics_do_not_write_to_the_terminal() {
+        const PROBE: &str = "OPENAGENTS_TEST_SHADOW_DIAGNOSTICS";
+        if std::env::var_os(PROBE).is_none() {
+            // A subprocess catches direct stdout/stderr writes that could
+            // corrupt a terminal UI, even with libtest capture disabled.
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "tests::shadow_diagnostics_do_not_write_to_the_terminal",
+                    "--nocapture",
+                ])
+                .env(PROBE, "1")
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{output:?}");
+            assert!(output.stderr.is_empty(), "{output:?}");
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            assert!(!stdout.contains("pylon:coderos-4080-clef"), "{stdout}");
+            assert!(!stdout.contains("Decision shadow"), "{stdout}");
+            return;
+        }
+
+        let first = json!({"answers": {"ok": {"noul": 0.9}}});
+        let second = json!({
+            "answers": {"ok": {"noul": 0.8}},
+            "service": {"door": "pylon:coderos-4080-clef"},
+            "model": "clef-flash"
+        });
+        // The default used by Coder has no tracing subscriber.
+        log_shadow_agreement(&first, &second, 12, 34);
+
+        // A caller can still collect comparison metrics through its own sink.
+        let log = tempfile::NamedTempFile::new().unwrap();
+        let file = log.reopen().unwrap();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_ansi(false)
+            .without_time()
+            .with_writer(move || file.try_clone().unwrap())
+            .finish();
+        tracing::subscriber::with_default(subscriber, || {
+            log_shadow_agreement(&first, &second, 12, 34);
+        });
+        let recorded = std::fs::read_to_string(log.path()).unwrap();
+        for field in [
+            "pylon:coderos-4080-clef",
+            "clef-flash",
+            "agreed=1",
+            "asked=1",
+            "max_dp=",
+            "jev_ms=12",
+            "shadow_ms=34",
+        ] {
+            assert!(recorded.contains(field), "missing {field}: {recorded}");
+        }
+    }
 
     /// No variable but the choice of Jev: these tests cover the older
     /// paths, which only `OPENAGENTS_DECISIONS=legacy` takes since #11225.

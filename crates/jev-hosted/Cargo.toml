@@ -18,6 +18,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt", "time"] }
+tracing = "0.1"
 
 [dev-dependencies]
 axum = "0.8"
@@ -26,6 +27,7 @@ gateway = { path = "../gateway" }
 tempfile = "3"
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = "0.30"
+tracing-subscriber = { version = "0.3", features = ["fmt"] }
 
 [lints]
 workspace = true
