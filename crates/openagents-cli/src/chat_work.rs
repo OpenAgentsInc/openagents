@@ -374,15 +374,45 @@ async fn briefed_work(
     }
     let output = *output;
     let top = checkout.top.clone();
-    tokio::task::spawn_blocking(move || {
-        if target == super::placement::Target::Here {
-            super::work_briefed::work_here(&output, &top, &repository, &numbers, parallel, land)
+    let here = target == super::placement::Target::Here;
+    // Runs on this computer are rows of its agent list on openagents.com
+    // and the phone, as the bare issue flow's are (#11228).
+    let fleet: super::fleet::Shared = std::sync::Arc::new((
+        std::sync::Mutex::new(super::fleet::Fleet::new(&openagents_login::computer_name())),
+        tokio::sync::Notify::new(),
+    ));
+    let groups = super::work_briefed::Groups::default();
+    let reporter = if here {
+        super::fleet::spawn_with(
+            std::sync::Arc::clone(&fleet),
+            std::env::temp_dir(),
+            std::sync::Arc::new(super::work_briefed::EngineRuns(std::sync::Arc::clone(
+                &groups,
+            ))),
+        )
+    } else {
+        None
+    };
+    let rows = (std::sync::Arc::clone(&fleet), groups);
+    let worked = tokio::task::spawn_blocking(move || {
+        if here {
+            super::work_briefed::work_here(
+                &output,
+                &top,
+                &repository,
+                &numbers,
+                parallel,
+                land,
+                Some(rows),
+            )
         } else {
             super::work_briefed::work_cloud(&output, &repository, &numbers, land)
         }
     })
     .await
-    .map_err(|_| failed("the work stopped"))?
+    .map_err(|_| failed("the work stopped"));
+    super::fleet::close(&fleet, reporter).await;
+    worked?
 }
 
 /// Names the issue's thread and binds its task, so the apps show the run.

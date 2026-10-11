@@ -16,6 +16,13 @@
 //! | `POST /settings/agents/message` `{csrf, computer, item, text}` | Send it a message |
 //!
 //! The list reads itself again every few seconds while an agent works.
+//!
+//! Since #11250 it also shows the work runs on openagents.com's own
+//! machines (the `OpenAgents Cloud` list, [`crate::work_runs`]; Stop only)
+//! and the landing queue's entries an integrator reports (kind `landing`,
+//! no Stop or Message). Each row's title starts with its issue, its line
+//! says its stage, and the issue, commit and pull request are links to
+//! GitHub ([`crate::github_refs`]).
 
 use axum::Router;
 use axum::extract::rejection::FormRejection;
@@ -76,15 +83,39 @@ async fn machines(store: &Store, owner: &str) -> Vec<Machine> {
             agents: board
                 .items
                 .into_iter()
-                .filter(|item| item.kind == "agent")
+                .filter(|item| item.kind == "agent" || item.kind == phone_api::LANDING)
                 .collect(),
             updated_unix: board.updated_unix,
             name,
         })
         .filter(|machine| !machine.agents.is_empty())
         .collect();
+    // The work runs on openagents.com's own machines (#11258), which the
+    // website itself keeps: always reachable for Stop.
+    let runs: Vec<Item> = crate::work_runs::board_items(store, owner)
+        .await
+        .into_iter()
+        .map(|(_, item)| item)
+        .collect();
+    if !runs.is_empty() {
+        found.push(Machine {
+            name: crate::work_runs::BOARD.to_owned(),
+            online: true,
+            updated_unix: runs
+                .iter()
+                .map(|item| item.finished_unix.unwrap_or(item.started_unix))
+                .max()
+                .unwrap_or(0),
+            agents: runs,
+        });
+    }
     found.sort_by_key(|machine| std::cmp::Reverse(machine.updated_unix));
     found
+}
+
+/// Whether `item` is a work run's ([`crate::work_runs`]): Stop only.
+fn work_run(machine: &Machine, item: &Item) -> bool {
+    machine.name == crate::work_runs::BOARD && crate::work_runs::is_run(&item.id)
 }
 
 fn live(item: &Item) -> bool {
@@ -148,18 +179,21 @@ fn agent_row(machine: &Machine, item: &Item, csrf: &str, now: u64) -> Markup {
         .finished_unix
         .unwrap_or(if live(item) { now } else { item.started_unix });
     let elapsed = end.saturating_sub(item.started_unix);
-    let controls = live(item) && machine.online;
+    // A landing queue entry takes no Stop or Message here (#11250).
+    let controls = live(item) && machine.online && item.kind != phone_api::LANDING;
+    let message = controls && !work_run(machine, item);
+    let repository = crate::github_refs::DEFAULT_REPOSITORY;
     html! {
         div class="oa-settings-row" data-status=(item.status) {
             div class="oa-settings-text" {
-                span class="oa-settings-label" { (item.title) }
+                span class="oa-settings-label" { (crate::github_refs::linked(&item.title, repository)) }
                 span class="oa-settings-hint" {
                     (status_words(&item.status))
                     @if let Some(engine) = &item.engine { " · " (engine) }
                     " · " (agent_fleet::elapsed_words(elapsed))
                     @if let Some(cost) = item.cost_usd { " · " (agent_fleet::dollars(cost)) }
                 }
-                @if let Some(line) = &item.line { span class="oa-settings-hint" { (line) } }
+                @if let Some(line) = &item.line { span class="oa-settings-hint" { (crate::github_refs::linked(line, repository)) } }
             }
             @if controls {
                 div class="oa-settings-control" {
@@ -172,8 +206,10 @@ fn agent_row(machine: &Machine, item: &Item, csrf: &str, now: u64) -> Markup {
                             .variant(ButtonVariant::Soft)
                             .color(Color::Secondary))
                     }
-                    " "
-                    a href=(format!("{MESSAGE_PAGE}?{}", target_query(&machine.name, &item.id))) { "Message" }
+                    @if message {
+                        " "
+                        a href=(format!("{MESSAGE_PAGE}?{}", target_query(&machine.name, &item.id))) { "Message" }
+                    }
                 }
             }
         }
@@ -191,7 +227,7 @@ pub(crate) fn list_markup(
     html! {
         div class="oa-settings" {
             p {
-                "Agents running on your computers and cloud environments, including issue runs. "
+                "Agents running on your computers and cloud environments, including issue runs and the landing queue. "
                 "Stop or message one here or from your phone."
             }
             @if let Some(notice) = notice { p role="status" { (notice) } }
@@ -374,6 +410,19 @@ async fn act(app: &App, owner: &str, form: &ActForm, action: &str) -> &'static s
         if secret_screen::credential_in(text).is_some() {
             return "secret";
         }
+    }
+    // A work run on openagents.com's own machines (#11258): Stop reaches
+    // the run itself.
+    if computer == crate::work_runs::BOARD && crate::work_runs::is_run(&form.item) {
+        if action != "stop" {
+            return "gone";
+        }
+        return match crate::work_runs::act(&app.config.chat_store, owner, &form.item, action).await
+        {
+            Ok(Ok(())) => "stopping",
+            Ok(Err(_)) => "gone",
+            Err(_) => "failed",
+        };
     }
     let command = Command {
         id: crate::cloud::byo::fresh_request(),

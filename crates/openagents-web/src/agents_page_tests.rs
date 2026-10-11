@@ -10,7 +10,7 @@ fn issue_run(id: &str, status: &str) -> Item {
     Item {
         id: id.into(),
         kind: "agent".into(),
-        title: "Issue #11228: Fleet rows for cloud environment runs".into(),
+        title: "#11228 Fleet rows for cloud environment runs".into(),
         engine: Some("claude".into()),
         status: status.into(),
         started_unix: 1_000,
@@ -19,8 +19,8 @@ fn issue_run(id: &str, status: &str) -> Item {
         tokens: None,
         session: None,
         question: None,
-        line: Some("Running cargo test -p agent-fleet".into()),
         choices: Vec::new(),
+        line: Some("Running cargo test -p agent-fleet".into()),
     }
 }
 
@@ -107,7 +107,9 @@ fn the_list_shows_each_run_with_stop_and_message_while_it_works() {
         html.contains("oa-pool-p1-a · Last seen 10 min ago"),
         "{html}"
     );
-    assert!(html.contains("Issue #11228: Fleet rows for cloud environment runs"));
+    assert!(html.contains(
+        r#"<a href="https://github.com/OpenAgentsInc/openagents/issues/11228" rel="noopener">#11228</a> Fleet rows for cloud environment runs"#
+    ), "{html}");
     assert!(html.contains("Working · claude · 2m 0s · $1.70"), "{html}");
     assert!(html.contains("Running cargo test -p agent-fleet"));
     // Stop and Message on the working run of the online machine only.
@@ -140,4 +142,71 @@ fn every_action_code_reads_as_a_sentence() {
         assert!(notice_words(code).is_some(), "{code}");
     }
     assert_eq!(notice_words("<script>"), None);
+}
+
+/// A landing queue entry (#11250) shows with its machine's runs, its
+/// issue and commit as links, and no Stop or Message; a work run on
+/// openagents.com's own machines has Stop only.
+#[test]
+fn queue_entries_and_work_runs_show_their_stage_with_the_controls_that_work() {
+    let landing = Item {
+        id: "20261011T080000Z-oa-dev-env-1-ab12".into(),
+        kind: phone_api::LANDING.into(),
+        title: "#11250 Fleet rows for cloud runs".into(),
+        engine: None,
+        status: "working".into(),
+        started_unix: 1_000,
+        finished_unix: None,
+        cost_usd: None,
+        tokens: None,
+        session: None,
+        question: None,
+        choices: Vec::new(),
+        line: Some("landing: checks".into()),
+    };
+    let landed = Item {
+        id: "20261011T070000Z-oa-dev-env-1-cd34".into(),
+        status: "done".into(),
+        finished_unix: Some(1_050),
+        line: Some("landed 248c7ce8d6".into()),
+        ..landing.clone()
+    };
+    let run = Item {
+        id: "wrk0123456789abcdef01234567".into(),
+        kind: "agent".into(),
+        title: "#11250 Fleet rows for cloud runs".into(),
+        line: Some("fix turn 1".into()),
+        ..issue_run("x", "working")
+    };
+    let machines = vec![
+        Machine {
+            name: "oa-dev-env-1".into(),
+            online: true,
+            updated_unix: 1_100,
+            agents: vec![landing, landed],
+        },
+        Machine {
+            name: crate::work_runs::BOARD.into(),
+            online: true,
+            updated_unix: 1_090,
+            agents: vec![run],
+        },
+    ];
+    let html = list_markup(&machines, "token", 1_120, None).into_string();
+    crate::copy_guard::assert_plain(PAGE, &html);
+    assert!(
+        html.contains("landing: checks") && html.contains("fix turn 1"),
+        "{html}"
+    );
+    assert!(html.contains(
+        r#"landed <a href="https://github.com/OpenAgentsInc/openagents/commit/248c7ce8d6" rel="noopener">248c7ce8d6</a>"#
+    ), "{html}");
+    // Stop on the work run only; no Message anywhere.
+    assert_eq!(
+        html.matches(r#"action="/settings/agents/stop""#).count(),
+        1,
+        "{html}"
+    );
+    assert!(html.contains(r#"name="item" value="wrk0123456789abcdef01234567""#));
+    assert!(!html.contains("/settings/agents/message?"), "{html}");
 }
