@@ -90,6 +90,7 @@ fn config(state: &Path) -> Config {
         github_token: None,
         claude_key: None,
         model_api: None,
+        home_retention_days: None,
     }
 }
 

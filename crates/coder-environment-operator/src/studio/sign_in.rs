@@ -19,6 +19,15 @@
 //! and removed at once, and the terminal's log is deleted when sign-in
 //! ends. The only record kept is which computer is the environment's and
 //! whether it is signed in.
+//!
+//! Computers that are no longer the person's own copy are deleted (#11296):
+//! the computer of an older saved version once a newer one replaces it,
+//! and a computer that never finished signing in once it has sat stopped
+//! longer than the retention window ([`DEFAULT_RETENTION_DAYS`], the
+//! studio's `home_retention_days`). [`sweep`] does it at studio start and
+//! every hour. A computer that is still running is never deleted, and
+//! neither is the signed-in computer for the environment's current saved
+//! version: that is the person's own checkpoint.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -98,6 +107,73 @@ pub trait Machines {
     async fn put(&self, id: &str, path: &str, bytes: &[u8]) -> Result<(), String>;
     /// Stop the computer, keeping its disk.
     async fn stop(&self, id: &str) -> Result<(), String>;
+    /// The computer's state (`stopped`, `stopping`, `provisioned`,
+    /// `ready`), or `None` when it no longer exists.
+    async fn state(&self, id: &str) -> Result<Option<String>, String>;
+    /// Delete the computer and its disk.
+    async fn delete(&self, id: &str) -> Result<(), String>;
+}
+
+/// How long a stopped computer that is not the person's own signed-in
+/// copy is kept, by default.
+pub const DEFAULT_RETENTION_DAYS: u64 = 7;
+
+/// Delete computer `id` if it is stopped (or already gone). `Ok(true)` when
+/// it no longer exists; `Ok(false)` when it is running and was kept.
+pub async fn delete_stopped<M: Machines>(machines: &M, id: &str) -> Result<bool, String> {
+    match machines.state(id).await? {
+        None => Ok(true),
+        Some(state) if state == "stopped" => machines.delete(id).await.map(|()| true),
+        Some(_) => Ok(false),
+    }
+}
+
+/// Delete the computers no longer anyone's own copy (see the module
+/// notes). `current` names each environment's current saved version
+/// (`None` when it has none or is gone); `busy` says a sign-in is open
+/// there. Returns how many computers were deleted.
+pub async fn sweep<M: Machines>(
+    machines: &M,
+    homes: &Homes,
+    current: &dyn Fn(&str) -> Option<u64>,
+    busy: &dyn Fn(&str) -> bool,
+    now_ms: u64,
+    retention_ms: u64,
+) -> usize {
+    let mut deleted = 0;
+    for (env, mut home) in homes.all() {
+        if busy(&env) {
+            continue;
+        }
+        let before = home.clone();
+        let mut kept = Vec::new();
+        for old in std::mem::take(&mut home.retired) {
+            match delete_stopped(machines, &old).await {
+                Ok(true) => deleted += 1,
+                _ => kept.push(old),
+            }
+        }
+        home.retired = kept;
+        let own_copy = home.signed_in && current(&env) == Some(home.version);
+        let replaced = current(&env) != Some(home.version);
+        let expired = now_ms.saturating_sub(home.updated_ms) > retention_ms;
+        if !own_copy && (replaced || expired) {
+            if let Ok(true) = delete_stopped(machines, &home.sandbox).await {
+                deleted += 1;
+                if home.retired.is_empty() {
+                    homes.forget(&env);
+                    continue;
+                }
+                // The record stays only to remember what is left to delete.
+                home.signed_in = false;
+                home.sandbox.clear();
+            }
+        }
+        if home != before {
+            let _ = homes.save(&env, &home);
+        }
+    }
+    deleted
 }
 
 /// An environment's own computer for Claude.
@@ -111,6 +187,10 @@ pub struct Home {
     /// Claude Code said it is signed in when sign-in ended.
     pub signed_in: bool,
     pub updated_ms: u64,
+    /// Older computers of this environment still to delete (#11296): kept
+    /// here only while they could not be deleted yet.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub retired: Vec<String>,
 }
 
 /// Where each environment's [`Home`] is recorded.
@@ -131,6 +211,29 @@ impl Homes {
     pub fn read(&self, environment: &str) -> Option<Home> {
         let bytes = std::fs::read(self.path(environment)).ok()?;
         serde_json::from_slice(&bytes).ok()
+    }
+
+    /// Every environment's record.
+    pub fn all(&self) -> Vec<(String, Home)> {
+        let Ok(entries) = std::fs::read_dir(&self.root) else {
+            return Vec::new();
+        };
+        let mut all: Vec<(String, Home)> = entries
+            .flatten()
+            .filter_map(|entry| {
+                let name = entry.file_name().into_string().ok()?;
+                let env = name.strip_suffix(".json")?.to_owned();
+                let home = self.read(&env)?;
+                Some((env, home))
+            })
+            .collect();
+        all.sort_by(|a, b| a.0.cmp(&b.0));
+        all
+    }
+
+    /// Remove an environment's record.
+    pub fn forget(&self, environment: &str) {
+        let _ = std::fs::remove_file(self.path(environment));
     }
 
     /// The environment's signed-in computer for `version`, if there is one.
@@ -297,25 +400,48 @@ pub async fn drive<M: Machines>(
         let why = why.to_owned();
         sessions.set(env, |v| v.phase = Phase::Failed(why));
     };
-    let existing = homes.read(env).filter(|home| home.version == job.version);
-    let sandbox = match existing {
-        Some(home) => match machines.resume(&home.sandbox).await {
-            Ok(()) => home.sandbox,
-            Err(_) => match machines.create(&job.image, &job.size).await {
-                Ok(id) => id,
-                Err(_) => return fail(START_FAILED),
-            },
-        },
-        None => match machines.create(&job.image, &job.size).await {
+    let previous = homes.read(env);
+    let mut retired = previous
+        .as_ref()
+        .map(|home| home.retired.clone())
+        .unwrap_or_default();
+    let reused = match previous.as_ref() {
+        Some(home) if home.version == job.version && !home.sandbox.is_empty() => {
+            machines.resume(&home.sandbox).await.is_ok()
+        }
+        _ => false,
+    };
+    let sandbox = if reused {
+        previous
+            .as_ref()
+            .map(|home| home.sandbox.clone())
+            .unwrap_or_default()
+    } else {
+        match machines.create(&job.image, &job.size).await {
             Ok(id) => id,
             Err(_) => return fail(START_FAILED),
-        },
+        }
     };
+    // The computer this one replaces (an older version's, or one that
+    // didn't start again) is deleted now, or later by the sweep (#11296).
+    if let Some(old) = previous
+        .map(|home| home.sandbox)
+        .filter(|old| !old.is_empty() && *old != sandbox)
+    {
+        retired.push(old);
+    }
+    let mut kept = Vec::new();
+    for old in retired {
+        if !matches!(delete_stopped(machines, &old).await, Ok(true)) {
+            kept.push(old);
+        }
+    }
     let mut home = Home {
         sandbox: sandbox.clone(),
         version: job.version,
         signed_in: false,
         updated_ms: crate::now_ms(),
+        retired: kept,
     };
     if homes.save(env, &home).is_err() {
         let _ = machines.stop(&sandbox).await;
@@ -552,6 +678,33 @@ impl Machines for Boat {
             .map(|_| ())
             .map_err(|e| e.to_string())
     }
+
+    async fn state(&self, id: &str) -> Result<Option<String>, String> {
+        match self
+            .client
+            .get(&boat::models::GetParams {
+                sandbox_id: id.to_owned(),
+                ..Default::default()
+            })
+            .await
+        {
+            Ok(reply) => Ok(Some(reply.sandbox.state)),
+            Err(boat::Error::Api(api)) if api.status.as_u16() == 404 => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    async fn delete(&self, id: &str) -> Result<(), String> {
+        self.client
+            .delete_sandbox(&boat::models::DeleteSandboxParams {
+                sandbox_id: id.to_owned(),
+                x_ascii_confirm_delete: id.to_owned(),
+                ..Default::default()
+            })
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
 }
 
 impl Boat {
@@ -620,6 +773,8 @@ exit 2
         root: PathBuf,
         bin: PathBuf,
         log: Mutex<Vec<String>>,
+        running: Mutex<Vec<String>>,
+        gone: Mutex<Vec<String>>,
     }
 
     impl Local {
@@ -637,6 +792,8 @@ exit 2
                 root: root.to_owned(),
                 bin,
                 log: Mutex::new(Vec::new()),
+                running: Mutex::new(Vec::new()),
+                gone: Mutex::new(Vec::new()),
             }
         }
         fn home(&self, id: &str) -> PathBuf {
@@ -685,18 +842,46 @@ exit 2
             self.note(format!("stop {id}"));
             Ok(())
         }
+        async fn state(&self, id: &str) -> Result<Option<String>, String> {
+            if self.gone.lock().unwrap().iter().any(|g| g == id) {
+                return Ok(None);
+            }
+            Ok(Some(
+                if self.running.lock().unwrap().iter().any(|r| r == id) {
+                    "ready"
+                } else {
+                    "stopped"
+                }
+                .into(),
+            ))
+        }
+        async fn delete(&self, id: &str) -> Result<(), String> {
+            self.note(format!("delete {id}"));
+            self.gone.lock().unwrap().push(id.to_owned());
+            Ok(())
+        }
     }
 
-    fn job() -> Job {
+    fn job_at(version: u64) -> Job {
         Job {
             environment: "env-1".into(),
-            image: "env-1-v2".into(),
-            version: 2,
+            image: format!("env-1-v{version}"),
+            version,
             size: "small".into(),
         }
     }
 
     async fn sign_in(machines: &Local, homes: &Homes, sessions: &Sessions, code: &str) {
+        sign_in_at(machines, homes, sessions, code, 2).await;
+    }
+
+    async fn sign_in_at(
+        machines: &Local,
+        homes: &Homes,
+        sessions: &Sessions,
+        code: &str,
+        version: u64,
+    ) {
         let input = sessions.begin("env-1").unwrap();
         let typing = async {
             for _ in 0..400 {
@@ -718,7 +903,7 @@ exit 2
             assert!(sessions.send("env-1", "two\nlines").is_err());
             sessions.send("env-1", code).unwrap();
         };
-        let job = job();
+        let job = job_at(version);
         tokio::join!(
             drive(
                 machines,
@@ -795,6 +980,117 @@ exit 2
         assert!(homes.signed_in("env-1", 2).is_none());
         let home = homes.read("env-1").unwrap();
         assert!(machines.log.lock().unwrap().last().unwrap() == &format!("stop {}", home.sandbox));
+    }
+
+    /// #11296: a newer saved version's sign-in deletes the older version's
+    /// stopped computer; a running one is kept until the sweep finds it
+    /// stopped; the person's signed-in copy of the current version stays.
+    #[tokio::test]
+    async fn an_older_versions_computer_is_deleted_once_a_newer_one_replaces_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let machines = Local::new(&dir.path().join("machines"));
+        let homes = Homes::under(dir.path().join("homes"));
+        let sessions = Sessions::default();
+        sign_in_at(&machines, &homes, &sessions, "good-code", 2).await;
+        let v2 = homes.signed_in("env-1", 2).unwrap().sandbox;
+
+        // Version 2's computer is somehow still running: kept for now.
+        machines.running.lock().unwrap().push(v2.clone());
+        sign_in_at(&machines, &homes, &sessions, "good-code", 3).await;
+        let v3 = homes.signed_in("env-1", 3).unwrap();
+        assert_ne!(v3.sandbox, v2);
+        assert_eq!(v3.retired, [v2.clone()]);
+        assert!(
+            !machines
+                .log
+                .lock()
+                .unwrap()
+                .contains(&format!("delete {v2}"))
+        );
+
+        // Once it stops, the sweep deletes it; version 3's stays.
+        machines.running.lock().unwrap().clear();
+        let current = |_: &str| Some(3);
+        let idle = |_: &str| false;
+        let now = crate::now_ms();
+        let week = DEFAULT_RETENTION_DAYS * 86_400_000;
+        assert_eq!(
+            sweep(&machines, &homes, &current, &idle, now, week).await,
+            1
+        );
+        assert!(
+            machines
+                .log
+                .lock()
+                .unwrap()
+                .contains(&format!("delete {v2}"))
+        );
+        let home = homes.signed_in("env-1", 3).unwrap();
+        assert!(home.retired.is_empty());
+        // The person's own copy outlives the retention window.
+        let later = now + 30 * 86_400_000;
+        assert_eq!(
+            sweep(&machines, &homes, &current, &idle, later, week).await,
+            0
+        );
+        assert!(homes.signed_in("env-1", 3).is_some());
+
+        // A newer version saved without signing in again: version 3's
+        // computer is no longer anyone's copy and goes, record and all.
+        let newer = |_: &str| Some(4);
+        assert_eq!(sweep(&machines, &homes, &newer, &idle, now, week).await, 1);
+        assert!(homes.read("env-1").is_none());
+
+        // A second sign-in straight away deletes the replaced computer.
+        sign_in_at(&machines, &homes, &sessions, "good-code", 4).await;
+        let v4 = homes.signed_in("env-1", 4).unwrap().sandbox;
+        sign_in_at(&machines, &homes, &sessions, "good-code", 5).await;
+        assert!(
+            machines
+                .log
+                .lock()
+                .unwrap()
+                .contains(&format!("delete {v4}"))
+        );
+        assert!(homes.signed_in("env-1", 5).unwrap().retired.is_empty());
+    }
+
+    /// #11296: a computer whose sign-in never finished goes after the
+    /// retention window, never while running or while a sign-in is open.
+    #[tokio::test]
+    async fn an_unfinished_sign_ins_computer_goes_after_the_retention_window() {
+        let dir = tempfile::tempdir().unwrap();
+        let machines = Local::new(&dir.path().join("machines"));
+        let homes = Homes::under(dir.path().join("homes"));
+        let sessions = Sessions::default();
+        sign_in(&machines, &homes, &sessions, "bad-code").await;
+        let home = homes.read("env-1").unwrap();
+        let current = |_: &str| Some(2);
+        let idle = |_: &str| false;
+        let week = DEFAULT_RETENTION_DAYS * 86_400_000;
+        let now = home.updated_ms;
+        assert_eq!(
+            sweep(&machines, &homes, &current, &idle, now, week).await,
+            0
+        );
+        let later = now + week + 1;
+        let open = |_: &str| true;
+        assert_eq!(
+            sweep(&machines, &homes, &current, &open, later, week).await,
+            0
+        );
+        machines.running.lock().unwrap().push(home.sandbox.clone());
+        assert_eq!(
+            sweep(&machines, &homes, &current, &idle, later, week).await,
+            0
+        );
+        assert!(homes.read("env-1").is_some());
+        machines.running.lock().unwrap().clear();
+        assert_eq!(
+            sweep(&machines, &homes, &current, &idle, later, week).await,
+            1
+        );
+        assert!(homes.read("env-1").is_none());
     }
 
     #[test]

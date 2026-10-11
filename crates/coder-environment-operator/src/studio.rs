@@ -93,6 +93,11 @@ pub struct Config {
     /// fresh (Cloud Run) uses this.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_api: Option<ModelApi>,
+    /// Days a stopped computer that is not the person's own signed-in copy
+    /// is kept before it is deleted (#11296); default
+    /// [`sign_in::DEFAULT_RETENTION_DAYS`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home_retention_days: Option<u64>,
 }
 
 /// An Open Responses endpoint for the setup agent ([`Config::model_api`]).
@@ -136,6 +141,9 @@ impl Config {
         {
             return Err("deadline_seconds must be 1 to 86400.".into());
         }
+        if self.home_retention_days.is_some_and(|d| d == 0 || d > 365) {
+            return Err("home_retention_days must be 1 to 365.".into());
+        }
         if let Some(api) = &self.model_api
             && (!(api.url.starts_with("https://") || api.url.starts_with("http://"))
                 || !api.key_file.is_absolute())
@@ -149,6 +157,11 @@ impl Config {
     }
     fn size(&self) -> String {
         self.size.clone().unwrap_or_else(|| DEFAULT_SIZE.into())
+    }
+    fn retention_ms(&self) -> u64 {
+        self.home_retention_days
+            .unwrap_or(sign_in::DEFAULT_RETENTION_DAYS)
+            .saturating_mul(86_400_000)
     }
     fn deadline(&self) -> u64 {
         self.deadline_seconds.unwrap_or(DEFAULT_DEADLINE_SECONDS)
@@ -247,6 +260,33 @@ enum Work {
     Steer(String, String),
     Retry(String),
     Save(String, String, oneshot::Sender<Result<u64, String>>),
+}
+
+/// How often the studio looks for computers to delete (#11296).
+const SWEEP_EVERY: Duration = Duration::from_secs(60 * 60);
+
+/// Sweeps at start and every [`SWEEP_EVERY`] while the studio lives.
+fn spawn_sweeper(studio: std::sync::Weak<Studio>) {
+    let _ = std::thread::Builder::new()
+        .name("environment-computer-sweep".into())
+        .spawn(move || {
+            let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            else {
+                return;
+            };
+            loop {
+                let Some(live) = studio.upgrade() else { return };
+                runtime.block_on(async {
+                    if let Ok(client) = boat::Client::from_env().await {
+                        live.sweep_homes(&sign_in::Boat { client }).await;
+                    }
+                });
+                drop(live);
+                std::thread::sleep(SWEEP_EVERY);
+            }
+        });
 }
 
 /// Makes a model transport for one environment's setup.
@@ -422,7 +462,34 @@ impl Studio {
                 let _ = studio.work.send(Work::Run(s.id));
             }
         }
+        spawn_sweeper(Arc::downgrade(&studio));
         Ok(studio)
+    }
+
+    /// Delete the environment computers no longer anyone's own copy
+    /// (#11296, [`sign_in::sweep`]); how many were deleted.
+    pub async fn sweep_homes<M: sign_in::Machines>(&self, machines: &M) -> usize {
+        let envs = self.envs();
+        let current = |id: &str| {
+            envs.read(id)
+                .ok()
+                .and_then(|env| env.pin())
+                .map(|pin| pin.number)
+        };
+        let busy = |id: &str| {
+            self.sign_ins
+                .view(id)
+                .is_some_and(|view| !view.phase.finished())
+        };
+        sign_in::sweep(
+            machines,
+            &self.homes,
+            &current,
+            &busy,
+            crate::now_ms(),
+            self.config.retention_ms(),
+        )
+        .await
     }
 
     fn studio_dir(&self, id: &str) -> PathBuf {

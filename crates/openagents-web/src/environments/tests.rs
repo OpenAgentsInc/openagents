@@ -528,6 +528,7 @@ fn fake_studio(
         github_token: None,
         claude_key: None,
         model_api: None,
+        home_retention_days: None,
     };
     let transports: Transports<codex_transport::fake::FakeTransport> =
         std::sync::Arc::new(|_env: &str| Ok(codex_transport::fake::FakeTransport::default()));
