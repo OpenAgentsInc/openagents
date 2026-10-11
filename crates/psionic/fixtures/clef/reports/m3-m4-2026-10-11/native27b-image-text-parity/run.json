@@ -1,0 +1,128 @@
+{
+  "config": {
+    "binary": "cargo-target/release/psionic-openai-server",
+    "gguf": "run-artifacts/artifacts/Clef-Q4_K_M.gguf",
+    "head": "Cloudflare/clef@0b331204bb13fbd2ca93a64df1956f5b55478ce5 (BF16)/joint_head.safetensors",
+    "vision_manifest": "user-home/.ollama/models/manifests/registry.ollama.ai/library/clef/latest",
+    "vision_blobs": "user-home/.ollama/models/blobs",
+    "output": "run-artifacts/native27b-image-text-parity",
+    "chunk": 512,
+    "max_rss_gib": 52,
+    "minimum_start_available_gib": 64,
+    "minimum_available_gib": 12,
+    "startup_timeout": 600,
+    "deadline_seconds": 1800,
+    "request_timeout": 300,
+    "env": {
+      "PSIONIC_CLEF_METAL_FFN_WEIGHTS": "q4k-on-demand"
+    },
+    "checks": [
+      {
+        "suite": "images",
+        "reference": "run-artifacts/reference27b/images-mps-bf16.json"
+      },
+      {
+        "suite": "text",
+        "reference": "run-artifacts/reference27b/text-mps-bf16.json",
+        "requests": "repo/crates/psionic/fixtures/clef/e2e/requests.jsonl"
+      }
+    ]
+  },
+  "status": "failed",
+  "artifacts": {
+    "binary": {
+      "path": "cargo-target/release/psionic-openai-server",
+      "sha256": "bb097ec7fb4c18134377b3877b0d66d2c6fc68812436c3bf10ecd9240b08a0d2",
+      "bytes": 21964920
+    },
+    "gguf": {
+      "path": "run-artifacts/artifacts/Clef-Q4_K_M.gguf",
+      "sha256": "9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822",
+      "bytes": 19232219200
+    },
+    "head": {
+      "path": "Cloudflare/clef@0b331204bb13fbd2ca93a64df1956f5b55478ce5 (BF16)/joint_head.safetensors",
+      "sha256": "a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+      "bytes": 256125024
+    },
+    "vision_manifest": {
+      "path": "user-home/.ollama/models/manifests/registry.ollama.ai/library/clef/latest",
+      "sha256": "6ba6665c02c62493b331a705508d12ded428888c5c82d4d90e46ad0babdb4dc0",
+      "bytes": 271805
+    }
+  },
+  "checks": [
+    {
+      "suite": "images",
+      "output": "0-images.json",
+      "exit_code": 0
+    },
+    {
+      "suite": "text",
+      "output": "1-text.json",
+      "exit_code": 1
+    }
+  ],
+  "head_source": "external official BF16 safetensors, converted by the native head loader",
+  "preflight": {
+    "available_memory_bytes": 100721459200,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 2948415,
+      "inactive": 2855520,
+      "speculative": 343615
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "command": [
+    "cargo-target/release/psionic-openai-server",
+    "--decision-model",
+    "run-artifacts/artifacts/Clef-Q4_K_M.gguf",
+    "--clef-head",
+    "Cloudflare/clef@0b331204bb13fbd2ca93a64df1956f5b55478ce5 (BF16)/joint_head.safetensors",
+    "--decision-device",
+    "metal",
+    "--decision-vision-manifest",
+    "user-home/.ollama/models/manifests/registry.ollama.ai/library/clef/latest",
+    "--decision-vision-blobs",
+    "user-home/.ollama/models/blobs",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "0",
+    "--decision-chunk",
+    "512"
+  ],
+  "endpoint": "http://127.0.0.1:56888",
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 12121,
+    "max_rss_bytes": 55834574848,
+    "peak_rss_bytes": 45537050624,
+    "peak_physical_footprint_bytes": 28295857728,
+    "peak_accounted_bytes": 45537050624,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 315,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 65582858240,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [
+      {
+        "owned_pid": 12121,
+        "signal": 0,
+        "error_type": "PermissionError",
+        "errno": 1,
+        "leader_exit_code": -15,
+        "verified_group_members": 0
+      }
+    ],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "elapsed_seconds": 177.732362459
+}

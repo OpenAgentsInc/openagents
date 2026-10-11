@@ -21,6 +21,9 @@ use crate::{
     validate_qwen38_vision_preprocessed_input,
 };
 
+mod clef;
+pub use clef::ClefNativeVisionRuntime;
+
 pub const QWEN38_VISION_RUNTIME_SCHEMA_VERSION: &str = "psionic.qwen38.vision_runtime.v1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]

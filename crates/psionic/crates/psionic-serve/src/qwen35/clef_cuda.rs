@@ -25,6 +25,9 @@
 
 use std::sync::Mutex;
 
+mod load_admission;
+mod memory_admission;
+
 use psionic_backend_cuda::clef_prefill::{ClefEvent, ClefOperand, ClefStream, ClefWeightFormat};
 use psionic_backend_cuda::{CudaBackend, CudaBuffer, CudaCommandWait, CudaSubmission};
 use rayon::prelude::*;
@@ -233,9 +236,14 @@ fn ensure_stage(state: &mut DeviceState, input: usize, output: usize, bias: usiz
         stage.input_capacity < input || stage.output_capacity < output || stage.bias_capacity < bias
     });
     if grow {
-        let input_capacity = input.next_power_of_two().max(1 << 16);
-        let output_capacity = output.next_power_of_two().max(1 << 16);
-        let bias_capacity = bias.next_power_of_two().max(1 << 12);
+        let input_capacity = memory_admission::capacity(input, 1 << 16)?;
+        let output_capacity = memory_admission::capacity(output, 1 << 16)?;
+        let bias_capacity = memory_admission::capacity(bias, 1 << 12)?;
+        admit_allocation(&state.backend, "head_arenas", &[
+            memory_admission::bytes(&[input_capacity], 4)?,
+            memory_admission::bytes(&[output_capacity], 4)?,
+            memory_admission::bytes(&[bias_capacity], 4)?,
+        ])?;
         state.head_stage = Some(HeadStage {
             input: state.backend.f32_buffer(input_capacity).map_err(err)?,
             output: state.backend.f32_buffer(output_capacity).map_err(err)?,
@@ -273,6 +281,7 @@ pub struct ClefCudaTrunk {
     dims: Dims,
     compute_16f: bool,
     device_name: String,
+    memory_admission: serde_json::Value,
 }
 
 impl std::fmt::Debug for ClefCudaTrunk {
@@ -286,6 +295,13 @@ impl std::fmt::Debug for ClefCudaTrunk {
 
 fn err(error: impl std::fmt::Display) -> String {
     error.to_string()
+}
+
+fn admit_allocation(backend: &CudaBackend, stage: &str, byte_lengths: &[u64]) -> Result<(), String> {
+    let memory = backend.device_memory_info().map_err(err)?
+        .ok_or("CUDA memory information is unavailable")?;
+    memory_admission::admit_allocation(stage, memory_admission::sum(byte_lengths)?,
+        memory.free_bytes, memory.total_bytes)
 }
 
 /// The bytes of an f32 slice (native endianness, as the device reads it).
@@ -337,10 +353,6 @@ fn upload_matrix(backend: &mut CudaBackend, matrix: &HostMatrix, name: &str) -> 
     }
 }
 
-fn weight_bytes(weight: &DeviceWeight) -> u64 {
-    weight.buffer.byte_len() as u64
-}
-
 impl ClefCudaTrunk {
     /// Uploads the trunk of a loaded CPU qwen35 model (the CPU copy keeps
     /// `token_embd` and `output`) and the head's device-side parameters.
@@ -349,11 +361,34 @@ impl ClefCudaTrunk {
         head: &ClefCudaHeadParams<'_>,
         compute_16f: bool,
     ) -> Result<Self, String> {
+        Self::load_with_limits(cpu, head, compute_16f,
+            memory_admission::DEFAULT_TOKENS, memory_admission::DEFAULT_CHUNK)
+    }
+
+    /// Checks model, workspace, and configured backbone request memory before
+    /// uploading any weights. This check does not reserve memory on the GPU.
+    pub fn load_with_limits(
+        cpu: &CpuGgufQwen35TextGenerationService,
+        head: &ClefCudaHeadParams<'_>,
+        compute_16f: bool,
+        max_tokens: usize,
+        chunk: usize,
+    ) -> Result<Self, String> {
         let mut backend = CudaBackend::new();
         let device_name = backend
             .selected_device()
             .map(|device| device.device_name.clone().unwrap_or_default())
             .ok_or_else(|| String::from("no CUDA device is available"))?;
+        let estimate = load_admission::estimate(cpu, head, max_tokens, chunk)?;
+        let memory = backend.device_memory_info().map_err(err)?
+            .ok_or("CUDA memory information is unavailable")?;
+        estimate.admit(memory.free_bytes, memory.total_bytes)?;
+        let memory_admission = serde_json::json!({
+            "stage": "before_weight_upload", "estimate": estimate,
+            "required_bytes": estimate.required_bytes,
+            "free_bytes": memory.free_bytes, "total_bytes": memory.total_bytes,
+            "memory_reserved": false,
+        });
         let model = &cpu.model;
         let config = &model.descriptor.config;
         let metadata = &model.family_metadata;
@@ -376,7 +411,6 @@ impl ClefCudaTrunk {
             width: head.width,
             head_eps: head.norm_epsilon,
         };
-        let mut weight_total = 0u64;
         let mut largest = 0usize;
         for (index, layer) in model.layers.iter().enumerate() {
             let name = |part: &str| format!("blk.{index}.{part}");
@@ -451,7 +485,6 @@ impl ClefCudaTrunk {
                 }
             }
             for weight in &layer_weights {
-                weight_total += weight_bytes(weight);
                 // the f16 slots only serve weights the fused kernel does not take
                 let fused = knobs().fused == Fused::Always
                     && match weight.format {
@@ -490,13 +523,11 @@ impl ClefCudaTrunk {
             next: std::cell::Cell::new(0),
         };
         let mut head_matrices = std::collections::HashMap::new();
-        let mut head_bytes = 0u64;
         for (values, rows, columns) in &head.linear_matrices {
             if values.len() != rows * columns {
                 return Err(String::from("clef cuda head: matrix shape mismatch"));
             }
             let buffer = upload_f32(&mut backend, values)?;
-            head_bytes += buffer.byte_len() as u64;
             head_matrices.insert(values.as_ptr() as usize, (buffer, *rows, *columns));
         }
         let state = DeviceState {
@@ -509,7 +540,7 @@ impl ClefCudaTrunk {
                 .iter()
                 .map(|(w, b)| Ok((upload_f32(&mut backend, w)?, upload_f32(&mut backend, b)?)))
                 .collect::<Result<_, String>>()?,
-            weight_bytes: weight_total + (largest as u64) * 4 + head_bytes,
+            weight_bytes: estimate.resident_weight_bytes + estimate.conversion_workspace_bytes,
             head_matrices,
             head_io: None,
             projected_attention: None,
@@ -526,6 +557,7 @@ impl ClefCudaTrunk {
             dims,
             compute_16f,
             device_name,
+            memory_admission,
         })
     }
 
@@ -535,7 +567,19 @@ impl ClefCudaTrunk {
         &self.device_name
     }
 
-    /// Bytes of resident trunk weights (plus the f16 weight scratch).
+    /// The load-time estimate and the device memory reading used to admit it.
+    #[must_use]
+    pub fn memory_admission(&self) -> &serde_json::Value {
+        &self.memory_admission
+    }
+
+    /// Distinguishes a capacity refusal from an unavailable device when auto
+    /// selection considers falling back to the CPU.
+    pub fn is_memory_refusal(error: &str) -> bool {
+        memory_admission::is_memory_refusal(error)
+    }
+
+    /// Bytes of resident trunk and head weights, norms, and f16 weight scratch.
     #[must_use]
     pub fn weight_device_bytes(&self) -> u64 {
         self.device
@@ -580,6 +624,10 @@ impl ClefCudaTrunk {
             .iter()
             .flat_map(|(start, end)| [*start as i32, *end as i32])
             .collect();
+        admit_allocation(&state.backend, "schema_spans", &[
+            memory_admission::bytes(&[span_values.len().max(2)], 4)?,
+            memory_admission::bytes(&[spans.len().max(1), dims.hidden], 4)?,
+        ])?;
         let mut span_buffer = state.backend.i32_buffer(span_values.len().max(2)).map_err(err)?;
         if !span_values.is_empty() {
             let mut padded = span_values.clone();
@@ -806,8 +854,9 @@ impl ClefCudaTrunk {
                 request.normalized_memory.resize_with(layer + 1, || None);
             }
             if request.normalized_memory[layer].is_none() {
-                let buffer = state.backend.f32_buffer(length * w).map_err(err)?;
                 let (nw, nb) = state.evidence_norms.get(layer).ok_or("no evidence layer")?;
+                admit_allocation(&state.backend, "normalized_memory", &[memory_admission::bytes(&[length, w], 4)?])?;
+                let buffer = state.backend.f32_buffer(length * w).map_err(err)?;
                 let mut submission = state.backend.begin_submission().map_err(err)?;
                 submission
                     .clef_layer_norm_f32(&request.memory, Some((nw, nb)), &buffer, length, w, dims.head_eps)
@@ -824,7 +873,11 @@ impl ClefCudaTrunk {
             .as_ref()
             .is_none_or(|(capacity, _, _)| *capacity < need);
         if grow {
-            let capacity = need.next_power_of_two().max(64);
+            let capacity = memory_admission::capacity(need, 64)?;
+            admit_allocation(&state.backend, "memory_attention_scores", &[
+                memory_admission::bytes(&[capacity, w], 4)?,
+                memory_admission::bytes(&[capacity, length], 4)?,
+            ])?;
             let query_buffer = state.backend.f32_buffer(capacity * w).map_err(err)?;
             let score_buffer = state.backend.f32_buffer(capacity * length).map_err(err)?;
             state.attention_scratch = Some((capacity, query_buffer, score_buffer));
@@ -836,6 +889,7 @@ impl ClefCudaTrunk {
             Some(layer) => request.normalized_memory[layer].as_ref().ok_or("normalized memory")?,
             None => &request.memory,
         };
+        admit_allocation(&state.backend, "memory_attention_output", &[memory_admission::bytes(&[rows, w], 4)?])?;
         let mixed = state.backend.f32_buffer(rows * w).map_err(err)?;
         let mut submission = state.backend.begin_submission().map_err(err)?;
         submission
@@ -922,8 +976,9 @@ impl ClefCudaTrunk {
                 request.normalized_memory.resize_with(layer + 1, || None);
             }
             if request.normalized_memory[layer].is_none() {
-                let buffer = state.backend.f32_buffer(length * w).map_err(err)?;
                 let (nw, nb) = state.evidence_norms.get(layer).ok_or("no evidence layer")?;
+                admit_allocation(&state.backend, "normalized_memory", &[memory_admission::bytes(&[length, w], 4)?])?;
+                let buffer = state.backend.f32_buffer(length * w).map_err(err)?;
                 let mut submission = state.backend.begin_submission().map_err(err)?;
                 submission
                     .clef_layer_norm_f32(&request.memory, Some((nw, nb)), &buffer, length, w, dims.head_eps)
@@ -933,14 +988,17 @@ impl ClefCudaTrunk {
                 request.normalized_memory[layer] = Some(buffer);
             }
         }
-        let side_rows = rows * heads;
+        let side_rows = rows.checked_mul(heads).ok_or("CUDA memory estimate overflow")?;
         let grow = state
             .projected_attention
             .as_ref()
             .is_none_or(|scratch| scratch.rows < side_rows || scratch.length < length);
         if grow {
-            let capacity = side_rows.next_power_of_two().max(64);
-            let query_capacity = rows.next_power_of_two().max(16);
+            let capacity = memory_admission::capacity(side_rows, 64)?;
+            let query_capacity = memory_admission::capacity(rows, 16)?;
+            admit_allocation(&state.backend, "projected_attention_scores", &[
+                memory_admission::projected_attention_bytes(rows, heads, w, length)?,
+            ])?;
             state.projected_attention = Some(ProjectedAttention {
                 rows: capacity,
                 length,
@@ -1185,8 +1243,9 @@ impl ClefCudaTrunk {
                 request.normalized_memory.resize_with(layer + 1, || None);
             }
             if request.normalized_memory[layer].is_none() {
-                let buffer = state.backend.f32_buffer(length * w).map_err(err)?;
                 let (nw, nb) = state.evidence_norms.get(layer).ok_or("no evidence layer")?;
+                admit_allocation(&state.backend, "normalized_memory", &[memory_admission::bytes(&[length, w], 4)?])?;
+                let buffer = state.backend.f32_buffer(length * w).map_err(err)?;
                 let mut submission = state.backend.begin_submission().map_err(err)?;
                 submission
                     .clef_layer_norm_f32(&request.memory, Some((nw, nb)), &buffer, length, w, dims.head_eps)
@@ -1196,14 +1255,17 @@ impl ClefCudaTrunk {
                 request.normalized_memory[layer] = Some(buffer);
             }
         }
-        let side_rows = rows * heads;
+        let side_rows = rows.checked_mul(heads).ok_or("CUDA memory estimate overflow")?;
         let grow = state
             .projected_attention
             .as_ref()
             .is_none_or(|scratch| scratch.rows < side_rows || scratch.length < length);
         if grow {
-            let capacity = side_rows.next_power_of_two().max(64);
-            let query_capacity = rows.next_power_of_two().max(16);
+            let capacity = memory_admission::capacity(side_rows, 64)?;
+            let query_capacity = memory_admission::capacity(rows, 16)?;
+            admit_allocation(&state.backend, "projected_attention_scores", &[
+                memory_admission::projected_attention_bytes(rows, heads, w, length)?,
+            ])?;
             state.projected_attention = Some(ProjectedAttention {
                 rows: capacity,
                 length,
@@ -1323,7 +1385,7 @@ impl ClefCudaTrunk {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let state = &mut *guard;
-        let Some((matrix, rows, columns)) = state.head_matrices.get(&(values.as_ptr() as usize)) else {
+        let Some((_, rows, columns)) = state.head_matrices.get(&(values.as_ptr() as usize)) else {
             return Ok(None);
         };
         let (rows, columns) = (*rows, *columns);
@@ -1335,8 +1397,11 @@ impl ClefCudaTrunk {
             .as_ref()
             .is_none_or(|(cap_in, _, cap_out, _)| *cap_in < n * columns || *cap_out < n * rows);
         if grow {
-            let cap_in = (n * columns).next_power_of_two().max(1 << 16);
-            let cap_out = (n * rows).next_power_of_two().max(1 << 16);
+            let cap_in = memory_admission::capacity(n.checked_mul(columns).ok_or("CUDA memory estimate overflow")?, 1 << 16)?;
+            let cap_out = memory_admission::capacity(n.checked_mul(rows).ok_or("CUDA memory estimate overflow")?, 1 << 16)?;
+            admit_allocation(&state.backend, "head_linear", &[
+                memory_admission::bytes(&[cap_in], 4)?, memory_admission::bytes(&[cap_out], 4)?,
+            ])?;
             let input_buffer = state.backend.f32_buffer(cap_in).map_err(err)?;
             let output_buffer = state.backend.f32_buffer(cap_out).map_err(err)?;
             state.head_io = Some((cap_in, input_buffer, cap_out, output_buffer));
@@ -1906,16 +1971,21 @@ impl RopeTable {
     /// `[n, rotary/2, (cos, sin)]` for text positions `first..first + n`
     /// (all three MRoPE positions equal), as the CPU lane computes them.
     pub(super) fn table(&self, first: usize, n: usize, rotary: usize) -> Vec<f32> {
+        self.positions(&(first..first + n).map(|position| [position; 3]).collect::<Vec<_>>(), rotary)
+    }
+
+    /// `[n, rotary/2, (cos, sin)]` for explicit temporal, height, and width positions.
+    pub(super) fn positions(&self, positions: &[[usize; 3]], rotary: usize) -> Vec<f32> {
         let pairs = rotary / 2;
-        let mut out = Vec::with_capacity(n * pairs * 2);
-        for position in first..first + n {
-            let p = position as f32;
+        let mut out = Vec::with_capacity(positions.len() * pairs * 2);
+        for position in positions {
+            let p = position.map(|value| value as f32);
             for pair in 0..pairs {
                 let theta_base = if let Some(sections) = self.sections {
-                    qwen35_mrope_theta_base(pair, sections, self.interleaved, [p, p, p, 0.0])
+                    qwen35_mrope_theta_base(pair, sections, self.interleaved, [p[0], p[1], p[2], 0.0])
                         * self.theta_scale.powf(pair as f32)
                 } else {
-                    p * self.theta_scale.powf(pair as f32)
+                    p[0] * self.theta_scale.powf(pair as f32)
                 };
                 let (cos, sin) =
                     rope_yarn(theta_base, self.freq_scale, self.corr_dims, pair * 2, self.ext_factor, 1.0);

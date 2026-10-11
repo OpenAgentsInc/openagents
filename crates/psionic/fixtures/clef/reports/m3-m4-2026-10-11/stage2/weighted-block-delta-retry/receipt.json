@@ -1,0 +1,47 @@
+{
+  "name": "weighted-block-delta-retry",
+  "command": [
+    "run-artifacts/stage2/psionic-serve-tests",
+    "clef::tests::metal_block_delta_matches_sequential_weighted_logits",
+    "--test-threads=1",
+    "--nocapture",
+    "--ignored",
+    "--exact"
+  ],
+  "binary_sha256": "89f9f6f09cc19cdf0ad74a197ca641081edef78285b2856c8e7c14aa8523b073",
+  "environment": {},
+  "conditions": "shared machine; correctness only",
+  "preflight": {
+    "available_memory_bytes": 88701730816,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 2920149,
+      "inactive": 2217411,
+      "speculative": 276364
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 19720,
+    "max_rss_bytes": 38654705664,
+    "peak_rss_bytes": 20822065152,
+    "peak_physical_footprint_bytes": 15958884312,
+    "peak_accounted_bytes": 20822065152,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 58,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 76144377856,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 32.074048792
+}

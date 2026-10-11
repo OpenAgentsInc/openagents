@@ -1,0 +1,83 @@
+{
+  "method": "Pinned image crate JPEG decoder and actual production resize.rs, versus Pillow12.3 reference decoded RGB and committed Torchvision goldens. No model or GPU.",
+  "cases": [
+    {
+      "name": "jpeg",
+      "pixels": [
+        287,
+        319,
+        3
+      ],
+      "reference_decode_hash_matches": true,
+      "jpeg_decoder": {
+        "max": 3,
+        "changed": 7905,
+        "mean": 0.03414415693641934,
+        "histogram": {
+          "0": 266754,
+          "1": 6441,
+          "2": 1455,
+          "3": 9
+        }
+      },
+      "resized_from_own_jpeg": {
+        "max": 3,
+        "changed": 11250,
+        "mean": 0.04317491319444444,
+        "histogram": {
+          "0": 265230,
+          "1": 10570,
+          "2": 673,
+          "3": 7
+        }
+      },
+      "resized_from_reference_rgb": {
+        "max": 0,
+        "changed": 0,
+        "mean": 0.0,
+        "histogram": {
+          "0": 276480
+        }
+      }
+    },
+    {
+      "name": "jpeg_oriented",
+      "pixels": [
+        319,
+        287,
+        3
+      ],
+      "reference_decode_hash_matches": true,
+      "jpeg_decoder": {
+        "max": 3,
+        "changed": 7905,
+        "mean": 0.03414415693641934,
+        "histogram": {
+          "0": 266754,
+          "1": 6441,
+          "2": 1455,
+          "3": 9
+        }
+      },
+      "resized_from_own_jpeg": {
+        "max": 3,
+        "changed": 11214,
+        "mean": 0.043214699074074076,
+        "histogram": {
+          "0": 265266,
+          "1": 10483,
+          "2": 728,
+          "3": 3
+        }
+      },
+      "resized_from_reference_rgb": {
+        "max": 0,
+        "changed": 0,
+        "mean": 0.0,
+        "histogram": {
+          "0": 276480
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "name": "weighted-default",
+  "command": [
+    "run-artifacts/stage2/psionic-serve-tests",
+    "clef::tests::cuda_chunks_and_cpu_agree",
+    "--test-threads=1",
+    "--nocapture",
+    "--exact"
+  ],
+  "binary_sha256": "89f9f6f09cc19cdf0ad74a197ca641081edef78285b2856c8e7c14aa8523b073",
+  "environment": {},
+  "conditions": "shared machine; correctness only",
+  "preflight": {
+    "available_memory_bytes": 72093483008,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 840191,
+      "inactive": 2821589,
+      "speculative": 738457
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 58650,
+    "max_rss_bytes": 38654705664,
+    "peak_rss_bytes": 25715523584,
+    "peak_physical_footprint_bytes": 18196858496,
+    "peak_accounted_bytes": 25715523584,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 432,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 56757059584,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 243.58509029200002
+}

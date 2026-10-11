@@ -1,0 +1,34 @@
+{
+  "name": "physical_footprint_limit",
+  "rss_log": "guard-diagnostic-physical_footprint_limit.jsonl",
+  "process_group": 39278,
+  "max_rss_bytes": 38654705664,
+  "peak_rss_bytes": 10,
+  "peak_physical_footprint_bytes": 39728447488,
+  "peak_accounted_bytes": 39728447488,
+  "sampling_error": {
+    "error_type": "PermissionError",
+    "message": "[Errno 1] Operation not permitted"
+  },
+  "sampler_timeout_seconds": 5,
+  "rss_samples": 1,
+  "sample_interval_seconds": 0.5,
+  "minimum_available_memory_bytes": null,
+  "lowest_available_memory_bytes": null,
+  "available_memory_formula": null,
+  "memory_rejection": "physical_footprint_limit",
+  "cleanup_error": "PermissionError",
+  "cleanup_diagnostics": {
+    "owned_pid": 39278,
+    "guard_pgid": 39269,
+    "guard_uid": 501,
+    "process_exit_code": -15,
+    "observed_pgid_error": {
+      "type": "ProcessLookupError",
+      "errno": 3
+    },
+    "observed_uid_available": false
+  },
+  "owned_group_stopped": true,
+  "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+}

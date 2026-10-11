@@ -1,0 +1,20 @@
+
+running 15 tests
+test clef_prefill::buffer_tests::buffer_views_keep_ownership_and_bound_host_and_kernel_writes ... ok
+test clef_prefill::buffer_tests::byte_uploads_and_snapshots_preserve_short_and_unaligned_ranges ... ok
+test clef_prefill::buffer_tests::completed_batches_release_buffers_before_the_outer_pool_drains ... ok
+test clef_prefill::buffer_tests::device_copies_use_view_offsets_and_reject_overlap_before_dispatch ... ok
+test clef_prefill::delta_tests::block_delta_carries_state_across_non_aligned_chunks_and_zero_decay ... ok
+test clef_prefill::delta_tests::block_delta_matches_dense_oracle_and_sequential_with_tails_and_head_orders ... ok
+test clef_prefill::delta_tests::block_delta_rejects_short_buffers_before_encoding_and_empty_is_a_noop ... ok
+test clef_prefill::gemm_tests::selected_gemm_tiles_match_baseline_and_dense_samples_for_real_clef_weights ... ok
+test clef_prefill::gemm_tests::selected_narrow_gemm_handles_single_rows_and_token_tile_boundaries ... ok
+test clef_prefill::quantized_tests::clef_packed_projection_formats_match_cpu_decode_and_products ... ok
+test clef_prefill::tests::attention_rejects_undersized_buffers_before_dispatch ... ok
+test clef_prefill::tests::fused_attention_masks_finite_future_values_and_handles_uniform_probabilities ... ok
+test clef_prefill::tests::fused_attention_matches_dense_and_staged_at_tails_and_absolute_positions ... ok
+test clef_prefill::tests::fused_attention_repeats_exactly_and_matches_non_aligned_chunks ... ok
+test clef_prefill::tests::fused_attention_rescales_across_large_tile_maximum_changes ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 69 filtered out; finished in 2.79s
+

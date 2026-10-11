@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "repo/crates/psionic/fixtures/clef/tools/mac_quiet_bench.py", line 1193, in <module>
+    self_test()
+  File "repo/crates/psionic/fixtures/clef/tools/mac_quiet_bench.py", line 1126, in self_test
+    guard.close()
+  File "repo/crates/psionic/fixtures/clef/tools/mac_quiet_bench.py", line 587, in close
+    raise RuntimeError("owned process memory monitor cleanup failed")
+RuntimeError: owned process memory monitor cleanup failed

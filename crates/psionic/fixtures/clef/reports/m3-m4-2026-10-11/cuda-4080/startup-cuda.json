@@ -1,0 +1,37 @@
+{
+  "exit_code": 1,
+  "elapsed_seconds": 1.362761709955521,
+  "max_group_rss_bytes": 1033560064,
+  "stop_reason": null,
+  "passed": true,
+  "capacity_refusal": {
+    "stage": "before_weight_upload",
+    "estimate": {
+      "resident_weight_bytes": 17838430208,
+      "conversion_workspace_bytes": 356515840,
+      "backbone_scratch_bytes": 831127552,
+      "backbone_request_bytes": 1700397056,
+      "head_reserve_bytes": 67108864,
+      "runtime_margin_bytes": 134217728,
+      "required_bytes": 20927797248,
+      "max_tokens": 16384,
+      "chunk_tokens": 2048
+    },
+    "required_bytes": 20927797248,
+    "free_bytes": 5549588480,
+    "total_bytes": 16711352320,
+    "memory_reserved": false
+  },
+  "listening_message_seen": false,
+  "cpu_fallback_message_seen": false,
+  "remaining_owned_members": [],
+  "available_before_bytes": 114853724160,
+  "available_after_bytes": 114675204096,
+  "device": "cuda",
+  "gpu_before": "NVIDIA GeForce RTX 4080, 16376, 5548, 10390, 595.71.05",
+  "gpu_after": "NVIDIA GeForce RTX 4080, 16376, 5548, 10390, 595.71.05",
+  "existing_gpu_process_count_before": 6,
+  "existing_gpu_process_count_after": 6,
+  "existing_gpu_process_snapshot_unchanged": true,
+  "nvidia_smi_memory_units": "MiB"
+}

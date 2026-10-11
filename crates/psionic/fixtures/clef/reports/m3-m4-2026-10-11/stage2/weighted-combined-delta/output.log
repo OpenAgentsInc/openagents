@@ -1,0 +1,15 @@
+
+running 1 test
+test clef::tests::metal_block_delta_matches_sequential_weighted_logits ... 
+thread 'clef::tests::metal_block_delta_matches_sequential_weighted_logits' (5891670) panicked at crates/psionic-serve/src/clef/tests.rs:923:21:
+tokens=155 chunk=155: -1.1321846 vs -1.133729
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    clef::tests::metal_block_delta_matches_sequential_weighted_logits
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 500 filtered out; finished in 22.85s
+

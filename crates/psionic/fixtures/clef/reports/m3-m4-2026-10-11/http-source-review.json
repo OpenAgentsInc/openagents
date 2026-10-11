@@ -1,0 +1,27 @@
+{
+  "schema": "clef.validation.http_source_review.v1",
+  "server_binary_sha256": "bb097ec7fb4c18134377b3877b0d66d2c6fc68812436c3bf10ecd9240b08a0d2",
+  "source_manifest": "stage4/source-manifest.json",
+  "source_manifest_original_sha256": "e019ed1e0f1bd7b95f5e47fbf7da77c046bd3a8670509d0b0577a2fb09f37e9b",
+  "base_commit": "9c1b755d5914848cbc19e97286a70ca966871bdf",
+  "dirty_source_snapshot": true,
+  "source_frozen_during_build": true,
+  "source_files_compared": 2236,
+  "source_files_matching_at_review": 2236,
+  "source_differences_at_review": [],
+  "successful_build_records": "stage4/checks.json",
+  "build_guard": "stage4/guard.json",
+  "same_server_binary_in_both_http_receipts": true,
+  "historical_stage2_test_binary_sha256": "89f9f6f09cc19cdf0ad74a197ca641081edef78285b2856c8e7c14aa8523b073",
+  "limitations": [
+    "Local SHA-256 records identify source and binaries; they are not reproducible-build or remote-attestation evidence.",
+    "The captured frozen source manifest comes from an uncommitted checkout based on the recorded commit.",
+    "The HTTP checks used the Stage 4 server, not the earlier Stage 2 test binary."
+  ],
+  "later_harness_update": {
+    "path": "crates/psionic/fixtures/clef/tools/mac_quiet_bench.py",
+    "sha256": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb",
+    "change": "Optional explicit Clef head path, hash, size, and server argument for future performance runs. The tested Rust server binary is unchanged.",
+    "self_test_log": "stage4/harness-head-selftest.log"
+  }
+}

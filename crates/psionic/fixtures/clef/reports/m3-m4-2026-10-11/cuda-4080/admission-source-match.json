@@ -1,0 +1,52 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "file": "psionic/crates/psionic-serve/src/bin/psionic-openai-server.rs",
+      "scope": "whole file",
+      "tested_sha256": "4a01f7fc4e2d875380fb912372558ed93928c645cd516eae7105138d694e4b02",
+      "current_sha256": "4a01f7fc4e2d875380fb912372558ed93928c645cd516eae7105138d694e4b02",
+      "match": true
+    },
+    {
+      "file": "psionic/crates/psionic-serve/src/qwen35/clef_cuda.rs",
+      "scope": "whole file",
+      "tested_sha256": "05c55e42a803e65bb52c250a75411ac0c32501fc85502b3a406aad8f1d146344",
+      "current_sha256": "05c55e42a803e65bb52c250a75411ac0c32501fc85502b3a406aad8f1d146344",
+      "match": true
+    },
+    {
+      "file": "psionic/crates/psionic-serve/src/qwen35/clef_cuda/memory_admission.rs",
+      "scope": "whole file",
+      "tested_sha256": "1c3831318faffcf8191d3c7e25f53d798ad1e2a512ffcc55ffb3a0875901e39e",
+      "current_sha256": "1c3831318faffcf8191d3c7e25f53d798ad1e2a512ffcc55ffb3a0875901e39e",
+      "match": true
+    },
+    {
+      "file": "psionic/crates/psionic-serve/src/qwen35/clef_cuda/load_admission.rs",
+      "scope": "whole file",
+      "tested_sha256": "2546e75e5b4db3b0275e088084d6d73118a8a03c6bc1b688aad967797c004bc6",
+      "current_sha256": "2546e75e5b4db3b0275e088084d6d73118a8a03c6bc1b688aad967797c004bc6",
+      "match": true
+    },
+    {
+      "file": "psionic/crates/psionic-serve/src/clef/mod.rs",
+      "scope": "Auto refusal classifier",
+      "start_marker": "impl ClefDevice {",
+      "end_marker_exclusive": "impl std::str::FromStr for ClefDevice",
+      "tested_sha256": "60304c67f653df724b3a53b19d1b0b919a210512179ded52ab7a5160925b6088",
+      "current_sha256": "60304c67f653df724b3a53b19d1b0b919a210512179ded52ab7a5160925b6088",
+      "match": true
+    },
+    {
+      "file": "psionic/crates/psionic-serve/src/clef/mod.rs",
+      "scope": "Clef load through CUDA admission",
+      "start_marker": "pub fn load(",
+      "end_marker_exclusive": "let artifact_digest = sha256_file(gguf_path)?;",
+      "tested_sha256": "4cb5a2f22010681dca7cdd72d89bb264d5c6dcf12cbb16c7f8d8c80acd03f667",
+      "current_sha256": "4cb5a2f22010681dca7cdd72d89bb264d5c6dcf12cbb16c7f8d8c80acd03f667",
+      "match": true
+    }
+  ],
+  "clef_mod_whole_file_changed_only_for": "Batch response metadata (prefill chunk, tuple shape, and set_batch_metadata helper), after the startup loader."
+}

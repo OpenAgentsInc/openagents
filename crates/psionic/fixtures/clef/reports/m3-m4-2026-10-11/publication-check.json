@@ -1,0 +1,124 @@
+{
+  "schema": "clef.validation.publication_check.v1",
+  "copied_files": 85,
+  "copied_bytes": 1677948,
+  "published_hashes_match": true,
+  "goldens_equal_original_except_checkpoint_label": true,
+  "private_path_scan_passed": true,
+  "json_parse_passed": true,
+  "readme_links_exist": true,
+  "suites": [
+    {
+      "suite": "text",
+      "complete": true,
+      "cases": 40,
+      "answers": 104,
+      "finite_logits": true,
+      "exact_case_coverage": true,
+      "token_counts_match": true
+    },
+    {
+      "suite": "images",
+      "complete": true,
+      "cases": 6,
+      "answers": 14,
+      "finite_logits": true,
+      "exact_case_coverage": true,
+      "token_counts_match": true
+    }
+  ],
+  "executed_models": false,
+  "executed_builds": false,
+  "scope": "File and metadata verification only. Native27B image checks passed; strict text gate failed. Full-model prefix/batch/currentDelta and latency remain pending.",
+  "jsonl_parse_passed": true,
+  "archived_python_syntax_passed": true,
+  "http_results_recomputed": [
+    {
+      "suite": "flash-default",
+      "cases": 40,
+      "answers": 104,
+      "top_agree": 104,
+      "max_probability_difference": 0.0007844769703932997,
+      "gate_passed": true
+    },
+    {
+      "suite": "flash-fused-shapes",
+      "cases": 40,
+      "answers": 104,
+      "top_agree": 104,
+      "max_probability_difference": 0.0009549690061149141,
+      "gate_passed": true
+    },
+    {
+      "suite": "native27b-images",
+      "cases": 6,
+      "answers": 14,
+      "top_agree": 14,
+      "max_probability_difference": 0.001797753043799255,
+      "gate_passed": true,
+      "http_refusals": 10,
+      "mismatches": []
+    },
+    {
+      "suite": "native27b-text",
+      "cases": 40,
+      "answers": 104,
+      "top_agree": 94,
+      "max_probability_difference": 0.2199534834774498,
+      "gate_passed": false,
+      "http_refusals": 0,
+      "mismatches": [
+        {
+          "case": "text-009",
+          "question": "password_3",
+          "type": "score"
+        },
+        {
+          "case": "text-013",
+          "question": "branch",
+          "type": "noul"
+        },
+        {
+          "case": "text-014",
+          "question": "x0",
+          "type": "choice"
+        },
+        {
+          "case": "text-017",
+          "question": "branch_1",
+          "type": "choice"
+        },
+        {
+          "case": "text-024",
+          "question": "billing_0",
+          "type": "noul"
+        },
+        {
+          "case": "text-034",
+          "question": "admin",
+          "type": "noul"
+        },
+        {
+          "case": "text-034",
+          "question": "user",
+          "type": "noul"
+        },
+        {
+          "case": "text-037",
+          "question": "crash_1",
+          "type": "choice"
+        },
+        {
+          "case": "text-037",
+          "question": "seat",
+          "type": "choice"
+        },
+        {
+          "case": "text-039",
+          "question": "export_1",
+          "type": "score"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "preflight": {
+    "available_memory_bytes": 111668822016,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 5779156,
+      "inactive": 986392,
+      "speculative": 50176
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "status": "complete",
+  "exit": 0,
+  "memory": {
+    "rss_log": "build-memory.jsonl",
+    "process_group": 15633,
+    "max_rss_bytes": 25769803776,
+    "peak_rss_bytes": 24893587456,
+    "peak_physical_footprint_bytes": 24688040088,
+    "peak_accounted_bytes": 24893587456,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 3092,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 24335826944,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 1713.740564791
+}

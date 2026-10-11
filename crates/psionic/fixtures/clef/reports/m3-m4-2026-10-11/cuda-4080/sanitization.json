@@ -1,0 +1,29 @@
+{
+  "original_sha256": {
+    "results/startup-cuda.json": "173ed5afb77ad23dee83fbbd5168c97837e00aebee12aca2e0f307974de80bf2",
+    "results/startup-auto.json": "a7277c4676f4464de08581f7eb93f6ff97e32a0998674004f1835506b9ceea3f",
+    "results/startup-validation.json": "5bb0aa3644b6a7d7032f7dadc70248867a55536fe34490342ad0be9346e2f52e",
+    "results/model-verification.json": "aa3d3cbdf63663999355e77ad20ea6d843d5e6dcd9ceacb99aedd69e271a28c8",
+    "results/source-verification.json": "048187e34f732eb6ebedd19449f78172580d333a9638e0991ac6c005680bb0ee",
+    "results/build.json": "bde11b34690c53b290bc93b4a33f14e48c5ce1c322b32ed6b50da58ade58e100",
+    "results/build-attempt1.json": "149be05244792160afa4edb445a2e220686a929a9b3a10e76bc86ca35cfc7b88",
+    "results/cleanup.json": "184592dfc010228b2ddd128bcc873adb6557a7f1349c8cf557fa997adce188ed",
+    "source-manifest.json": "96bcc0e6d61ee0f1e6df30622a5f77c1ba35e8b147b7ffb9c55e0ee21d6d9a63",
+    "tested-clef-mod.rs": "45595d028c3fab16ec352f5d173405d6ddb367d346e0e6c4df84076f220ac918",
+    "guard.py": "b3ae7fadd25f5545d350e619a0527cef9d2bd898e428fc0fc97adc44796e3174",
+    "startup.py": "8436827d6de1a03bb5f27bbc49a8d12a2590c10b265616bf684eb240f1dde2d6",
+    "download.py": "9c12edf5e0f7a185fef43cc0f293227a3b3021e5815f3c63a0042c660ce80e0c"
+  },
+  "published_sha256": {
+    "admission-source-match.json": "563336cfe55407f69a1f8ab710b3cd75f39c5e4b1722636abc1fe2143135893c",
+    "startup-auto.json": "ee7f5109a8928a2275b419ec795b08a912d620c097fa14f8a9891d0f22b87a41",
+    "startup-cuda.json": "fd5104b6ba4a932c256dbea2cff740df04034300e9016640eed0e82c2faedf0e",
+    "summary.json": "8c2000fb8857134a94798fa759fb9582eb39af4c211498f881d35ddefb35e29b"
+  },
+  "changes": [
+    "Omitted unrelated GPU process names and command lines, retaining process counts and before/after equality.",
+    "Omitted task-owned process IDs and per-sample memory history from the public cases, retaining peaks and guard limits in retained raw records.",
+    "Summarized build, model, source, and cleanup evidence; exact admission error objects and GPU aggregate strings are unchanged."
+  ],
+  "raw_evidence_location": "Local task scratch, clef-m3-m4/cuda-admission/remote-validation (not published)."
+}

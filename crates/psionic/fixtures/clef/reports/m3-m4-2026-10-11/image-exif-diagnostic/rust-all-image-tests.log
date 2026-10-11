@@ -1,0 +1,19 @@
+
+running 14 tests
+test clef::json::tests::dumps_sorts_keys_and_escapes_like_python ... ok
+test clef::json::tests::floats_follow_python_repr ... ok
+test clef::json::tests::integers_stay_exact ... ok
+test clef::json::tests::refuses_what_python_would_not_round_trip ... ok
+test clef::json::tests::repeated_keys_keep_first_position_and_last_value ... ok
+test clef::json::tests::truthiness_matches_python ... ok
+test clef::media::resize::tests::clef_image_positions_match_qwen35_reference_without_model_weights ... ok
+test clef::media::resize::tests::clef_images_match_torchvision_processor_fixtures ... ok
+test clef::media::resize::tests::clef_resize_preserves_reference_rounding_and_server_bounds ... ok
+test clef::media::tests::clef_image_projection_rejects_missing_duplicate_or_invalid_rows ... ok
+test clef::media::tests::clef_images_decode_png_jpeg_webp_and_reject_wrong_content_types ... ok
+test clef::media::tests::clef_images_have_distinct_ranges_and_three_axis_positions ... ok
+test clef::media::tests::clef_images_refuse_unvalidated_high_bit_depth ... ok
+test clef::media::tests::clef_images_resize_small_inputs_and_refuse_invalid_base64 ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.74s
+

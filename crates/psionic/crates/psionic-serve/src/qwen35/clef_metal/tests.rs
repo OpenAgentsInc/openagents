@@ -1,6 +1,42 @@
-//! Bounded device checks for batching evidence normalization with its consumer.
+//! Input checks and bounded device checks for Metal prefill and its consumers.
 
 use super::*;
+
+mod ffn_weights;
+
+#[test]
+fn prefill_span_validation_accepts_boundaries_and_overlapping_spans() {
+    let maximum = i32::MAX as usize;
+    for (length, spans) in [
+        (1, vec![(0, 1)]),
+        (17, vec![(0, 17), (3, 8), (7, 9), (16, 17)]),
+        (maximum, vec![(0, maximum), (maximum - 1, maximum)]),
+    ] {
+        assert!(validate_prefill_spans(length, &spans).is_ok());
+    }
+}
+
+#[test]
+fn prefill_span_validation_allows_observers_without_spans() {
+    assert!(validate_prefill_spans(1, &[]).is_ok());
+    assert!(validate_prefill_spans(i32::MAX as usize, &[]).is_ok());
+}
+
+#[test]
+fn prefill_span_validation_rejects_invalid_prompt_lengths_without_allocating_tokens() {
+    for length in [0, i32::MAX as usize + 1, usize::MAX] {
+        assert!(validate_prefill_spans(length, &[]).is_err());
+        assert!(validate_prefill_spans(length, &[(0, 1)]).is_err());
+    }
+}
+
+#[test]
+fn prefill_span_validation_rejects_empty_reversed_and_outside_spans() {
+    for span in [(0, 0), (5, 5), (9, 8), (0, 18), (17, 18), (0, usize::MAX)] {
+        assert!(validate_prefill_spans(17, &[span]).is_err());
+        assert!(validate_prefill_spans(17, &[(0, 1), span]).is_err());
+    }
+}
 
 const WIDTH: usize = 64;
 const TOKENS: usize = 17;
@@ -9,6 +45,103 @@ const HEADS: usize = 2;
 const EPS: f32 = 1e-5;
 const SCALE: f32 = 0.25;
 const MEMORY_BYTES: u64 = (TOKENS * WIDTH * 4) as u64;
+
+#[test]
+#[ignore = "requires explicit Metal hardware validation"]
+fn grouped_ffn_preserves_independent_request_rows() {
+    let fixture = Fixture::new();
+    let mut trunk = fixture.trunk(&Fixture::memory(0));
+    trunk.dims.ffn = WIDTH;
+    let dims = trunk.dims;
+    let mut state = trunk.device.lock().unwrap();
+    let weight = |salt: usize| {
+        let values: Vec<f32> = (0..WIDTH * WIDTH)
+            .map(|i| ((i * 7 + i / WIDTH * 11 + salt) % 23) as f32 / 256.0 - 0.04)
+            .collect();
+        let source = state.metal.buffer_f32(&values);
+        let buffer = state.metal.buffer(WIDTH * WIDTH * 2);
+        let batch = state.metal.batch();
+        batch
+            .dequantize_to_f16(ClefMetalWeightFormat::F32, &source, &buffer, values.len())
+            .unwrap();
+        batch.commit_wait().unwrap();
+        DeviceWeight {
+            buffer,
+            rows: WIDTH,
+            columns: WIDTH,
+            format: None,
+        }
+    };
+    let layer = DeviceLayer {
+        attention_norm: state.metal.buffer_f32(&vec![1.0; WIDTH]),
+        post_attention_norm: state.metal.buffer_f32(&vec![1.0; WIDTH]),
+        gate: weight(1),
+        up: weight(9),
+        down: weight(17),
+        // This fixture exercises FFN grouping only; no mixer runs.
+        mixer: DeviceMixer::Attention {
+            query_gate: weight(0),
+            key: weight(0),
+            value: weight(0),
+            out: weight(0),
+            query_norm: state.metal.buffer(16),
+            key_norm: state.metal.buffer(16),
+        },
+    };
+    ensure_scratch(&mut state, dims, 3).unwrap();
+    let first = state.scratch.take().unwrap();
+    ensure_scratch(&mut state, dims, 5).unwrap();
+    let second = state.scratch.take().unwrap();
+    ensure_scratch(&mut state, dims, 8).unwrap();
+    let packed = state.scratch.take().unwrap();
+    let a: Vec<_> = (0..3 * WIDTH)
+        .map(|i| (i % 29) as f32 / 32.0 - 0.2)
+        .collect();
+    let b: Vec<_> = (0..5 * WIDTH)
+        .map(|i| (i % 37) as f32 / 64.0 + 0.3)
+        .collect();
+    first.x.write_f32(0, &a).unwrap();
+    second.x.write_f32(0, &b).unwrap();
+    let batch = state.metal.batch();
+    encode_ffn(&batch, &layer, &first, dims, 3).unwrap();
+    encode_ffn(&batch, &layer, &second, dims, 5).unwrap();
+    batch.commit_wait().unwrap();
+    let expected_a = first.x.read_f32(0, a.len()).unwrap();
+    let expected_b = second.x.read_f32(0, b.len()).unwrap();
+    first.x.write_f32(0, &a).unwrap();
+    second.x.write_f32(0, &b).unwrap();
+    let batch = state.metal.batch();
+    batch.copy_f32(&first.x, 0, &packed.x, 0, a.len()).unwrap();
+    batch
+        .copy_f32(&second.x, 0, &packed.x, a.len(), b.len())
+        .unwrap();
+    encode_ffn(&batch, &layer, &packed, dims, 8).unwrap();
+    batch.copy_f32(&packed.x, 0, &first.x, 0, a.len()).unwrap();
+    batch
+        .copy_f32(&packed.x, a.len(), &second.x, 0, b.len())
+        .unwrap();
+    batch.commit_wait().unwrap();
+    for (actual, expected) in first
+        .x
+        .read_f32(0, a.len())
+        .unwrap()
+        .iter()
+        .zip(&expected_a)
+        .chain(
+            second
+                .x
+                .read_f32(0, b.len())
+                .unwrap()
+                .iter()
+                .zip(&expected_b),
+        )
+    {
+        assert!(
+            actual.is_finite() && (actual - expected).abs() <= 1e-5,
+            "grouped FFN differs: {actual} versus {expected}"
+        );
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 enum Consumer {
@@ -95,15 +228,18 @@ impl Fixture {
                 })
                 .collect(),
             request: Some(request(&metal, memory)),
+            prefix: PrefixCache::new(0),
+            batch_prefix: None,
             metal,
             layers: Vec::new(),
             scratch: None,
             head_io: None,
             head_attention: None,
             weight_bytes: 0,
+            weight_workspace_bytes: 0,
         };
         ClefMetalTrunk {
-            device: Mutex::new(state),
+            device: Arc::new(Mutex::new(state)),
             dims: Dims {
                 hidden: WIDTH,
                 ffn: 0,
@@ -427,4 +563,86 @@ fn evidence_batch_projected_matches_separate_normalization() {
 #[ignore = "requires explicit Metal hardware validation"]
 fn evidence_batch_block_matches_separate_normalization() {
     exercise(Consumer::Block);
+}
+
+#[test]
+#[ignore = "requires explicit Metal hardware validation"]
+fn prefix_snapshot_restores_state_and_memory_without_suffix_bytes() {
+    objc::rc::autoreleasepool(|| {
+        let fixture = Fixture::new();
+        let trunk = fixture.trunk(&Fixture::memory(0));
+        let state = trunk.device.lock().unwrap();
+        let metal = &state.metal;
+        let mut cold = request(metal, &Fixture::memory(0));
+        cold.conv = vec![Some(metal.buffer_with_bytes(&[7u8; 32])), None];
+        cold.delta = vec![Some(metal.buffer_with_bytes(&[13u8; 64])), None];
+        cold.key_cache = vec![
+            None,
+            Some(metal.buffer_with_bytes(&vec![19u8; TOKENS * WIDTH * 2])),
+        ];
+        cold.value_cache = vec![
+            None,
+            Some(metal.buffer_with_bytes(&vec![23u8; TOKENS * WIDTH * 2])),
+        ];
+        let prefix = 5;
+        let snapshot = Snapshot::capture(&cold, trunk.dims, prefix).unwrap();
+        let mut warm = request(metal, &vec![-2.0; TOKENS * WIDTH]);
+        warm.conv = vec![Some(metal.buffer(32)), None];
+        warm.delta = vec![Some(metal.buffer(64)), None];
+        warm.key_cache = vec![None, Some(metal.buffer(TOKENS * WIDTH * 2))];
+        warm.value_cache = vec![None, Some(metal.buffer(TOKENS * WIDTH * 2))];
+        snapshot.restore(&warm).unwrap();
+        assert_eq!(
+            warm.conv[0].as_ref().unwrap().read_bytes(0, 32).unwrap(),
+            vec![7u8; 32]
+        );
+        assert_eq!(
+            warm.delta[0].as_ref().unwrap().read_bytes(0, 64).unwrap(),
+            vec![13u8; 64]
+        );
+        for (cache, byte) in [(&warm.key_cache, 19u8), (&warm.value_cache, 23u8)] {
+            let bytes = cache[1]
+                .as_ref()
+                .unwrap()
+                .read_bytes(0, TOKENS * WIDTH * 2)
+                .unwrap();
+            assert_eq!(
+                &bytes[..prefix * WIDTH * 2],
+                &vec![byte; prefix * WIDTH * 2]
+            );
+            assert!(bytes[prefix * WIDTH * 2..].iter().all(|&value| value == 0));
+        }
+        let memory = warm.memory.read_f32(0, TOKENS * WIDTH).unwrap();
+        assert_eq!(
+            &memory[..prefix * WIDTH],
+            &Fixture::memory(0)[..prefix * WIDTH]
+        );
+        assert!(memory[prefix * WIDTH..].iter().all(|&value| value == -2.0));
+        assert!(
+            warm.normalized_memory
+                .select(&warm.memory, Some(0), None)
+                .is_err()
+        );
+
+        // Validate every destination before writing any state.
+        let mut wrong = request(metal, &vec![-3.0; TOKENS * WIDTH]);
+        wrong.conv = vec![Some(metal.buffer(32)), None];
+        wrong.delta = vec![Some(metal.buffer(8)), None];
+        wrong.key_cache = vec![None, Some(metal.buffer(TOKENS * WIDTH * 2))];
+        wrong.value_cache = vec![None, Some(metal.buffer(TOKENS * WIDTH * 2))];
+        assert!(snapshot.restore(&wrong).is_err());
+        assert_eq!(
+            wrong.conv[0].as_ref().unwrap().read_bytes(0, 32).unwrap(),
+            vec![0; 32]
+        );
+        assert!(
+            wrong
+                .memory
+                .read_f32(0, TOKENS * WIDTH)
+                .unwrap()
+                .iter()
+                .all(|&value| value == -3.0)
+        );
+        assert!(Snapshot::byte_len(&cold, trunk.dims, usize::MAX).is_err());
+    });
 }

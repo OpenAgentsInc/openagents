@@ -8,6 +8,7 @@
 //! option span covers the rendered `{"option_id", "description"}` object.
 
 use super::json::{ClefJson, render};
+use super::media::{ClefImage, EncodedMedia, parse_images};
 
 /// The reference system prompt.
 pub const SYSTEM_PROMPT: &str = "Read the complete state and schema. Decide every field jointly. Each answer must be exactly one of that field's allowed options.";
@@ -79,6 +80,7 @@ pub struct ClefRequest {
     pub state: ClefJson,
     pub questions: Vec<ClefQuestion>,
     pub truncation: Truncation,
+    pub images: Vec<ClefImage>,
 }
 
 /// Request limits ([`super::ClefLimits`] holds the served values).
@@ -116,13 +118,17 @@ impl ClefRequest {
             .get("state")
             .cloned()
             .ok_or_else(|| invalid("state is required"))?;
-        for media in ["images", "videos"] {
-            if body.get(media).is_some_and(ClefJson::is_truthy) {
-                return Err(RequestRefusal::NotAdmitted(format!(
-                    "{media} are not supported by this Clef server yet; send text only or use another door"
-                )));
-            }
+        if body.get("videos").is_some_and(ClefJson::is_truthy) {
+            return Err(RequestRefusal::NotAdmitted(String::from(
+                "videos are not supported by this Clef server; send text or images",
+            )));
         }
+        if body.get("media_kwargs").is_some_and(ClefJson::is_truthy) {
+            return Err(RequestRefusal::NotAdmitted(String::from(
+                "custom image processing options are not supported; omit media_kwargs",
+            )));
+        }
+        let images = parse_images(body.get("images"))?;
         let truncation = match body.get("truncation") {
             None | Some(ClefJson::Null) => Truncation::Refuse,
             Some(ClefJson::String(value)) if value == "refuse" => Truncation::Refuse,
@@ -155,6 +161,7 @@ impl ClefRequest {
             state,
             questions,
             truncation,
+            images,
         })
     }
 }
@@ -296,6 +303,10 @@ pub struct EncodedRecord {
     pub questions: Vec<EncodedQuestion>,
     /// State tokens dropped by `truncation: "state_tail"`.
     pub truncated_state_tokens: usize,
+    /// Exact text prefix and state boundary; media requests disable prefix reuse.
+    pub prefix_tokens: usize,
+    /// Admitted image inputs, projected only after the request starts running.
+    pub media: Option<EncodedMedia>,
 }
 
 /// Why a request does not fit the token budget.
@@ -354,9 +365,10 @@ pub fn encode_record(
             option_ids,
         });
     }
-    let prefix_ids = tokenize(&format!(
+    let mut prefix_ids = tokenize(&format!(
         "<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n<|im_start|>user\nSTATE:\n"
     ));
+    let mut media = EncodedMedia::append(&mut prefix_ids, &request.images, tokenize);
     let suffix_ids = tokenize(
         "\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nJOINT SCHEMA DECISIONS:",
     );
@@ -391,9 +403,15 @@ pub fn encode_record(
     input_ids.extend(state_ids);
     input_ids.extend(schema_ids);
     input_ids.extend(suffix_ids);
+    let prefix_tokens = if media.is_some() { 0 } else { offset };
+    if let Some(media) = &mut media {
+        media.finish_positions(input_ids.len());
+    }
     Ok(EncodedRecord {
         input_ids,
         questions,
         truncated_state_tokens,
+        prefix_tokens,
+        media,
     })
 }

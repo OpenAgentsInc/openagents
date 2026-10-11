@@ -20,7 +20,11 @@ use metal::{
 use crate::clef_attention::{ClefAttentionPlan, ClefMetalAttention, CLEF_FUSED_THREADS};
 use crate::clef_gemm::{ClefGemmPlan, ClefMetalGemm, CLEF_GEMM_THREADS};
 
-const SOURCE: &str = include_str!("kernels/clef_prefill.metal");
+const SOURCE: &str = concat!(
+    include_str!("kernels/clef_prefill.metal"),
+    "\n",
+    include_str!("kernels/clef_dequant_q6_k.metal"),
+);
 const FUSED_SOURCE: &str = include_str!("kernels/clef_fused_attention.metal");
 const FUSED_KERNEL: &str = "clef_flash_attention256_tensorops";
 const GEMM_SHAPES_SOURCE: &str = include_str!("kernels/clef_gemm_shapes.metal");
@@ -38,6 +42,8 @@ pub enum ClefMetalWeightFormat {
     Q8_0,
     /// GGML Q4_K (144-byte super-blocks of 256).
     Q4K,
+    /// GGML Q6_K (210-byte super-blocks of 256).
+    Q6K,
     /// Dense row-major f32.
     F32,
 }
@@ -47,9 +53,10 @@ impl ClefMetalWeightFormat {
     #[must_use]
     pub const fn byte_len(self, elements: usize) -> Option<usize> {
         match self {
-            Self::Q8_0 if elements % 32 == 0 => Some(elements / 32 * 34),
-            Self::Q4K if elements % 256 == 0 => Some(elements / 256 * 144),
-            Self::F32 => Some(elements * 4),
+            Self::Q8_0 if elements % 32 == 0 => (elements / 32).checked_mul(34),
+            Self::Q4K if elements % 256 == 0 => (elements / 256).checked_mul(144),
+            Self::Q6K if elements % 256 == 0 => (elements / 256).checked_mul(210),
+            Self::F32 => elements.checked_mul(4),
             _ => None,
         }
     }
@@ -58,6 +65,7 @@ impl ClefMetalWeightFormat {
 /// A shared Metal buffer.
 pub struct ClefMetalBuffer {
     raw: Buffer,
+    offset_bytes: usize,
     bytes: usize,
 }
 
@@ -71,6 +79,19 @@ impl ClefMetalBuffer {
     #[must_use]
     pub fn byte_len(&self) -> usize {
         self.bytes
+    }
+
+    /// A shared view for a packed row range. Views keep their allocation alive.
+    pub fn view(&self, offset_bytes: usize, len_bytes: usize) -> Result<Self, String> {
+        self.check(offset_bytes, len_bytes, "view")?;
+        if offset_bytes % 16 != 0 {
+            return Err(String::from("clef metal views require a 16-byte aligned offset"));
+        }
+        Ok(Self {
+            raw: self.raw.clone(),
+            offset_bytes: self.offset_bytes + offset_bytes,
+            bytes: len_bytes,
+        })
     }
 
     fn check(&self, offset_bytes: usize, len_bytes: usize, what: &str) -> Result<(), String> {
@@ -90,35 +111,52 @@ impl ClefMetalBuffer {
         unsafe {
             std::ptr::copy_nonoverlapping(
                 bytes.as_ptr(),
-                self.raw.contents().cast::<u8>().add(offset_bytes),
+                self.raw.contents().cast::<u8>().add(self.offset_bytes + offset_bytes),
                 bytes.len(),
             );
         }
         Ok(())
     }
 
+    /// Reads raw bytes after the commands that write them have completed.
+    pub fn read_bytes(&self, offset_bytes: usize, len_bytes: usize) -> Result<Vec<u8>, String> {
+        self.check(offset_bytes, len_bytes, "read")?;
+        let mut bytes = vec![0; len_bytes];
+        // SAFETY: the checked range is inside this shared allocation.
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                self.raw.contents().cast::<u8>().add(self.offset_bytes + offset_bytes),
+                bytes.as_mut_ptr(),
+                len_bytes,
+            );
+        }
+        Ok(bytes)
+    }
+
     /// Writes f32 values at an element offset.
     pub fn write_f32(&self, offset: usize, values: &[f32]) -> Result<(), String> {
         // SAFETY: f32 has no padding; the slice covers exactly its values.
         let bytes = unsafe { std::slice::from_raw_parts(values.as_ptr().cast::<u8>(), std::mem::size_of_val(values)) };
-        self.write_bytes(offset * 4, bytes)
+        self.write_bytes(offset.checked_mul(4).ok_or("clef metal write offset overflow")?, bytes)
     }
 
     /// Writes i32 values at an element offset.
     pub fn write_i32(&self, offset: usize, values: &[i32]) -> Result<(), String> {
         // SAFETY: i32 has no padding; the slice covers exactly its values.
         let bytes = unsafe { std::slice::from_raw_parts(values.as_ptr().cast::<u8>(), std::mem::size_of_val(values)) };
-        self.write_bytes(offset * 4, bytes)
+        self.write_bytes(offset.checked_mul(4).ok_or("clef metal write offset overflow")?, bytes)
     }
 
     /// Reads `count` f32 values at an element offset.
     pub fn read_f32(&self, offset: usize, count: usize) -> Result<Vec<f32>, String> {
-        self.check(offset * 4, count * 4, "read")?;
+        let offset_bytes = offset.checked_mul(4).ok_or("clef metal read offset overflow")?;
+        let len_bytes = count.checked_mul(4).ok_or("clef metal read length overflow")?;
+        self.check(offset_bytes, len_bytes, "read")?;
         let mut out = vec![0.0f32; count];
         // SAFETY: the range lies inside the shared allocation (checked above).
         unsafe {
             std::ptr::copy_nonoverlapping(
-                self.raw.contents().cast::<f32>().add(offset),
+                self.raw.contents().cast::<u8>().add(self.offset_bytes + offset_bytes).cast::<f32>(),
                 out.as_mut_ptr(),
                 count,
             );
@@ -129,7 +167,7 @@ impl ClefMetalBuffer {
     /// Zeroes the whole buffer.
     pub fn zero(&self) {
         // SAFETY: writes exactly the allocation.
-        unsafe { std::ptr::write_bytes(self.raw.contents().cast::<u8>(), 0, self.bytes) }
+        unsafe { std::ptr::write_bytes(self.raw.contents().cast::<u8>().add(self.offset_bytes), 0, self.bytes) }
     }
 }
 
@@ -149,8 +187,10 @@ unsafe impl Send for ClefMetal {}
 unsafe impl Sync for ClefMetal {}
 
 const KERNELS: &[&str] = &[
+    "clef_copy_f32",
     "clef_dequant_q8_0",
     "clef_dequant_q4_k",
+    "clef_dequant_q6_k",
     "clef_f32_to_f16",
     "clef_gemm",
     "clef_gemm_accumulate",
@@ -284,7 +324,7 @@ impl ClefMetal {
     pub fn buffer(&self, bytes: usize) -> ClefMetalBuffer {
         let bytes = bytes.max(16);
         let raw = self.device.new_buffer(bytes as u64, MTLResourceOptions::StorageModeShared);
-        let buffer = ClefMetalBuffer { raw, bytes };
+        let buffer = ClefMetalBuffer { raw, offset_bytes: 0, bytes };
         buffer.zero();
         buffer
     }
@@ -292,6 +332,16 @@ impl ClefMetal {
     /// A shared buffer holding `bytes`.
     #[must_use]
     pub fn buffer_with_bytes(&self, bytes: &[u8]) -> ClefMetalBuffer {
+        if bytes.len() < 16 {
+            let buffer = self.buffer(16);
+            // The source may be shorter than Metal's minimum allocation.
+            // Upload only its actual bytes and leave the padding zeroed.
+            // SAFETY: the allocation has 16 bytes and the source is shorter.
+            unsafe {
+                std::ptr::copy_nonoverlapping(bytes.as_ptr(), buffer.raw.contents().cast::<u8>(), bytes.len());
+            }
+            return buffer;
+        }
         let raw = self.device.new_buffer_with_data(
             bytes.as_ptr().cast::<c_void>(),
             bytes.len().max(16) as u64,
@@ -299,6 +349,7 @@ impl ClefMetal {
         );
         ClefMetalBuffer {
             raw,
+            offset_bytes: 0,
             bytes: bytes.len().max(16),
         }
     }
@@ -314,13 +365,19 @@ impl ClefMetal {
     /// A batch of kernels recorded onto one command buffer.
     #[must_use]
     pub fn batch(&self) -> ClefMetalBatch<'_> {
-        let command_buffer = self.queue.new_command_buffer().to_owned();
+        // Metal returns autoreleased objects. Retain the owned handles before
+        // draining their temporary references, including on Rust worker threads
+        // that have no caller-provided autorelease pool.
+        let (command_buffer, encoder) = objc::rc::autoreleasepool(|| {
+            let command_buffer = self.queue.new_command_buffer().to_owned();
+            let encoder = command_buffer
+                .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent)
+                .to_owned();
+            (command_buffer, encoder)
+        });
         // concurrent dispatch with an explicit barrier before every dispatch,
         // except where a caller marks one independent of the one before
         // (`concurrent_with_previous`)
-        let encoder = command_buffer
-            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent)
-            .to_owned();
         ClefMetalBatch {
             metal: self,
             command_buffer,
@@ -406,7 +463,7 @@ impl ClefMetalBatch<'_> {
     }
 
     fn bind(&self, index: u64, buffer: &ClefMetalBuffer, offset_bytes: usize) {
-        self.encoder.set_buffer(index, Some(&buffer.raw), offset_bytes as u64);
+        self.encoder.set_buffer(index, Some(&buffer.raw), (buffer.offset_bytes + offset_bytes) as u64);
     }
 
     fn bytes<T>(&self, index: u64, value: &T) {
@@ -459,6 +516,37 @@ impl ClefMetalBatch<'_> {
         }
     }
 
+    /// Copies nonoverlapping f32 ranges on the device, with element offsets.
+    pub fn copy_f32(
+        &self,
+        source: &ClefMetalBuffer,
+        source_offset: usize,
+        destination: &ClefMetalBuffer,
+        destination_offset: usize,
+        count: usize,
+    ) -> Result<(), String> {
+        let source_offset = source_offset.checked_mul(4).ok_or("copy source offset overflow")?;
+        let destination_offset = destination_offset.checked_mul(4).ok_or("copy destination offset overflow")?;
+        let bytes = count.checked_mul(4).ok_or("copy length overflow")?;
+        source.check(source_offset, bytes, "copy source")?;
+        destination.check(destination_offset, bytes, "copy destination")?;
+        if count == 0 { return Ok(()); }
+        if source.raw.contents() == destination.raw.contents() {
+            let a = source.offset_bytes + source_offset;
+            let b = destination.offset_bytes + destination_offset;
+            if a < b + bytes && b < a + bytes {
+                return Err(String::from("clef metal copy ranges overlap"));
+            }
+        }
+        let count_u32 = int(count, "copy count")?;
+        self.pipeline("clef_copy_f32")?;
+        self.bind(0, source, source_offset);
+        self.bind(1, destination, destination_offset);
+        self.bytes(2, &count_u32);
+        self.threads(count, 256);
+        Ok(())
+    }
+
     /// Dequantizes `elements` weights (row-major) into an f16 buffer.
     pub fn dequantize_to_f16(
         &self,
@@ -471,10 +559,11 @@ impl ClefMetalBatch<'_> {
             .byte_len(elements)
             .ok_or("clef metal dequantize: not whole blocks")?;
         source.check(0, bytes, "dequantize source")?;
-        destination.check(0, elements * 2, "dequantize destination")?;
+        destination.check(0, elements.checked_mul(2).ok_or("dequantize size overflow")?, "dequantize destination")?;
         self.pipeline(match format {
             ClefMetalWeightFormat::Q8_0 => "clef_dequant_q8_0",
             ClefMetalWeightFormat::Q4K => "clef_dequant_q4_k",
+            ClefMetalWeightFormat::Q6K => "clef_dequant_q6_k",
             ClefMetalWeightFormat::F32 => "clef_f32_to_f16",
         })?;
         self.bind(0, source, 0);
@@ -1110,8 +1199,19 @@ impl ClefMetalBatch<'_> {
     }
 }
 
+mod delta;
+
+#[cfg(test)]
+mod delta_tests;
+
 #[cfg(test)]
 mod tests;
 
 #[cfg(test)]
 mod gemm_tests;
+
+#[cfg(test)]
+mod buffer_tests;
+
+#[cfg(test)]
+mod quantized_tests;

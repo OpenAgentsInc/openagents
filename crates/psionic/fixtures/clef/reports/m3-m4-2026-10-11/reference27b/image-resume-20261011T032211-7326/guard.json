@@ -1,0 +1,66 @@
+{
+  "command": [
+    "reference-python-env/bin/python",
+    "repo/crates/psionic/fixtures/clef/tools/image_parity.py",
+    "reference",
+    "--checkpoint",
+    "Cloudflare/clef@0b331204bb13fbd2ca93a64df1956f5b55478ce5 (BF16)",
+    "--device",
+    "mps",
+    "--dtype",
+    "bfloat16",
+    "--threads",
+    "2",
+    "--max-input-tokens",
+    "2048",
+    "--max-model-gib",
+    "64",
+    "--mps-memory-gib",
+    "60",
+    "--output",
+    "run-artifacts/reference27b/images-mps-bf16.json",
+    "--resume"
+  ],
+  "leases": [
+    "gpu",
+    "memory"
+  ],
+  "preflight": {
+    "available_memory_bytes": 113460264960,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 5972314,
+      "inactive": 718625,
+      "speculative": 234126
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "max_rss_gib": 72.0,
+  "deadline_seconds": 3600.0,
+  "minimum_start_available_gib": 84.0,
+  "minimum_available_gib": 12.0,
+  "status": "complete",
+  "exit_code": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 7360,
+    "max_rss_bytes": 77309411328,
+    "peak_rss_bytes": 1331724288,
+    "peak_physical_footprint_bytes": 57215011120,
+    "peak_accounted_bytes": 57224955752,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 215,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 24427626496,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "elapsed_seconds": 117.88497624999945
+}

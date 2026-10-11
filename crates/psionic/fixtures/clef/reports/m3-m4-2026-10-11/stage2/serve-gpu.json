@@ -1,0 +1,13 @@
+{
+  "command": [
+    "cargo-target/release/deps/psionic_serve-acadeb851218b939",
+    "qwen35::clef_metal::tests::",
+    "--ignored",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "binary_sha256": "89f9f6f09cc19cdf0ad74a197ca641081edef78285b2856c8e7c14aa8523b073",
+  "seconds": 0.20198666599999998,
+  "exit": 0,
+  "conditions": "shared machine; synthetic only"
+}

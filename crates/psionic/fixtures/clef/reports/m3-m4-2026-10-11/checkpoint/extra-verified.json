@@ -1,0 +1,19 @@
+{
+  "repository": "Cloudflare/clef",
+  "revision": "0b331204bb13fbd2ca93a64df1956f5b55478ce5",
+  "complete": true,
+  "files": [
+    {
+      "filename": "LICENSE",
+      "bytes": 11544,
+      "sha256": "bbedc3fda3305820b977265f01b8619d87570a6739de3a5582c3464840f1e57a",
+      "git_blob": "f938136e3adacfd92be087f6e113b5d6d97f678f"
+    },
+    {
+      "filename": "chat_template.jinja",
+      "bytes": 8952,
+      "sha256": "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041",
+      "git_blob": "c0c686f9c38d70d179fb7b5f5aa7530bc913dda3"
+    }
+  ]
+}

@@ -58,10 +58,11 @@ use crate::{
 };
 
 mod clef_cuda;
+mod clef_media;
 mod cpu_gemm;
 pub use clef_cuda::{ClefCudaHeadParams, ClefCudaPrefill, ClefCudaTrunk, ClefLayerObserver};
 #[cfg(target_os = "macos")]
-mod clef_metal;
+pub(crate) mod clef_metal;
 #[cfg(target_os = "macos")]
 pub use clef_metal::ClefMetalTrunk;
 

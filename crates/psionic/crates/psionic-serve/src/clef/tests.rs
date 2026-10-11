@@ -16,10 +16,50 @@ fn fixtures() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/clef")
 }
 
+#[test]
+fn auto_device_preserves_memory_refusals() {
+    use super::ClefDevice;
+
+    let capacity = "not enough CUDA memory: {\"stage\":\"before_weight_upload\"}";
+    assert!(!ClefDevice::Auto.permits_cpu_fallback(capacity));
+    assert!(ClefDevice::Auto.permits_cpu_fallback("CUDA driver is unavailable"));
+    for explicit in [ClefDevice::Cpu, ClefDevice::Cuda, ClefDevice::Metal] {
+        assert!(!explicit.permits_cpu_fallback(capacity));
+        assert!(!explicit.permits_cpu_fallback("CUDA driver is unavailable"));
+    }
+}
+
 const LIMITS: RequestLimits = RequestLimits {
     max_questions: 64,
     max_options: 255,
 };
+
+#[test]
+fn request_reservation_bounds_preprocessing_and_releases_on_every_exit() {
+    use super::{AtomicUsize, Ordering, WaitingGuard};
+    use std::sync::atomic::AtomicBool;
+
+    let waiting = AtomicUsize::new(0);
+    let cancelled = AtomicBool::new(false);
+    let first = WaitingGuard::reserve(&waiting, 1, &cancelled).unwrap();
+    let second = WaitingGuard::reserve(&waiting, 1, &cancelled).unwrap();
+    let rejected = WaitingGuard::reserve(&waiting, 1, &cancelled);
+    assert!(matches!(rejected, Err(ref error) if error.status == 503 && error.code == "busy"));
+    assert_eq!(waiting.load(Ordering::SeqCst), 2);
+    drop(first);
+    cancelled.store(true, Ordering::Release);
+    assert!(
+        matches!(WaitingGuard::reserve(&waiting, 1, &cancelled), Err(ref error) if error.status == 499)
+    );
+    assert_eq!(waiting.load(Ordering::SeqCst), 1);
+    drop(second);
+    assert_eq!(waiting.load(Ordering::SeqCst), 0);
+    cancelled.store(false, Ordering::Release);
+    let only = WaitingGuard::reserve(&waiting, 0, &cancelled).unwrap();
+    assert!(WaitingGuard::reserve(&waiting, 0, &cancelled).is_err());
+    drop(only);
+    assert_eq!(waiting.load(Ordering::SeqCst), 0);
+}
 
 fn request(text: &str) -> Result<ClefRequest, RequestRefusal> {
     ClefRequest::from_json(&json::parse(text).expect("json"), LIMITS)
@@ -77,6 +117,8 @@ fn tiny_head_matches_torch_reference() {
         input_ids: ids,
         questions,
         truncated_state_tokens: 0,
+        prefix_tokens: 0,
+        media: None,
     };
     let rows = |key: &str| -> Vec<Vec<f32>> {
         case[key]
@@ -235,7 +277,10 @@ fn refusals_separate_bad_questions_from_door_limits() {
         r#"{{"model":"m","state":"s","questions":{{{questions}}}}}"#
     )));
     assert!(not_admitted(
-        r#"{"model":"m","state":"s","images":["aGk="],"questions":{"q":{"type":"noul"}}}"#
+        r#"{"model":"m","state":"s","videos":["aGk="],"questions":{"q":{"type":"noul"}}}"#
+    ));
+    assert!(not_admitted(
+        r#"{"model":"m","state":"s","media_kwargs":{"max_pixels":65536},"questions":{"q":{"type":"noul"}}}"#
     ));
 }
 
@@ -554,7 +599,9 @@ fn dump_layer_rows() {
         std::env::var("PSIONIC_CLEF_LAYER_TOKENS"),
         std::env::var("PSIONIC_CLEF_LAYER_DIR"),
     ) else {
-        eprintln!("skipped: set PSIONIC_CLEF_GGUF, PSIONIC_CLEF_LAYER_TOKENS and PSIONIC_CLEF_LAYER_DIR");
+        eprintln!(
+            "skipped: set PSIONIC_CLEF_GGUF, PSIONIC_CLEF_LAYER_TOKENS and PSIONIC_CLEF_LAYER_DIR"
+        );
         return;
     };
     let chunk: usize = std::env::var("PSIONIC_CLEF_LAYER_CHUNK")
@@ -660,7 +707,8 @@ fn cuda_chunks_and_cpu_agree() {
         .expect("lane")
     };
     let corpus = std::fs::read_to_string(fixtures().join("encoder/corpus.jsonl")).expect("corpus");
-    let requests = std::fs::read_to_string(fixtures().join("e2e/requests.jsonl")).expect("requests");
+    let requests =
+        std::fs::read_to_string(fixtures().join("e2e/requests.jsonl")).expect("requests");
     let short = requests.lines().nth(6).expect("record").to_string();
     let worst = |a: &[Vec<f32>], b: &[Vec<f32>]| {
         a.iter()
@@ -695,13 +743,21 @@ fn cuda_chunks_and_cpu_agree() {
             .expect("long record")
             .1;
         for body in [&short, &long] {
-            let record = lane.encode(&lane.parse_request(body).expect("request")).expect("encode");
+            let record = lane
+                .encode(&lane.parse_request(body).expect("request"))
+                .expect("encode");
             let length = record.input_ids.len();
-            let whole = lane.logits_at_chunk(&record, length, None, None).expect("whole");
-            let again = lane.logits_at_chunk(&record, length, None, None).expect("repeat");
+            let whole = lane
+                .logits_at_chunk(&record, length, None, None)
+                .expect("whole");
+            let again = lane
+                .logits_at_chunk(&record, length, None, None)
+                .expect("repeat");
             assert_eq!(whole, again, "a repeat is bitwise identical");
             for chunk in [2048, 512, 64] {
-                let logits = lane.logits_at_chunk(&record, chunk, None, None).expect("chunk");
+                let logits = lane
+                    .logits_at_chunk(&record, chunk, None, None)
+                    .expect("chunk");
                 let delta = worst(&whole, &logits);
                 eprintln!(
                     "accumulate_f16={accumulate_f16} tokens={length} chunk={chunk}: max |dlogit| {delta:.2e}"
@@ -709,9 +765,17 @@ fn cuda_chunks_and_cpu_agree() {
                 // f32 accumulation: the M2 bound (1e-3) on short prompts,
                 // 2e-3 on long ones (f16 KV and per-shape GEMM rounding);
                 // f16 accumulation: 5e-2 (measured ~2e-2).
-                let bound = if accumulate_f16 { 5e-2 } else if length > 2048 { 2e-3 } else { 1e-3 };
+                let bound = if accumulate_f16 {
+                    5e-2
+                } else if length > 2048 {
+                    2e-3
+                } else {
+                    1e-3
+                };
                 if delta > bound || argmax(&whole) != argmax(&logits) {
-                    failures.push(format!("accumulate_f16={accumulate_f16} tokens={length} chunk={chunk}: {delta}"));
+                    failures.push(format!(
+                        "accumulate_f16={accumulate_f16} tokens={length} chunk={chunk}: {delta}"
+                    ));
                 }
             }
         }
@@ -720,7 +784,9 @@ fn cuda_chunks_and_cpu_agree() {
     // CUDA (f32 accumulate) vs the CPU lane on the short record.
     let cuda = load(gpu_device(), false);
     let cpu = load(super::ClefDevice::Cpu, false);
-    let record = cpu.encode(&cpu.parse_request(&short).expect("request")).expect("encode");
+    let record = cpu
+        .encode(&cpu.parse_request(&short).expect("request"))
+        .expect("encode");
     let a = cuda.logits(&record).expect("cuda");
     let b = cpu.logits(&record).expect("cpu");
     let dp = a
@@ -733,7 +799,161 @@ fn cuda_chunks_and_cpu_agree() {
                 .map(|(p, q)| (p - q).abs())
         })
         .fold(0.0f64, f64::max);
-    eprintln!("cuda vs cpu: max |dlogit| {:.2e}, max |dp| {dp:.2e}", worst(&a, &b));
+    eprintln!(
+        "cuda vs cpu: max |dlogit| {:.2e}, max |dp| {dp:.2e}",
+        worst(&a, &b)
+    );
     assert!(dp <= 0.02, "{dp}");
     assert_eq!(argmax(&a), argmax(&b));
+}
+
+/// Compares raw logits without retaining two model-weight copies. The selected
+/// attention and GEMM modes still come from their usual environment settings.
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires explicit Metal hardware and model validation"]
+fn metal_block_delta_matches_sequential_weighted_logits() {
+    metal_weighted_mode_parity(true);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires explicit Metal hardware and model validation"]
+fn metal_q4_ffn_matches_resident_weighted_logits() {
+    metal_weighted_mode_parity(false);
+}
+
+#[cfg(target_os = "macos")]
+fn metal_weighted_mode_parity(delta_mode: bool) {
+    use psionic_backend_metal::clef_delta::ClefMetalDelta;
+
+    eprintln!(
+        "Metal weighted parity settings: delta_mode={delta_mode} attention={} gemm={} ffn_weights={}",
+        std::env::var("PSIONIC_CLEF_METAL_ATTENTION").unwrap_or_else(|_| "staged".into()),
+        std::env::var("PSIONIC_CLEF_METAL_GEMM").unwrap_or_else(|_| "fixed-64".into()),
+        std::env::var("PSIONIC_CLEF_METAL_FFN_WEIGHTS").unwrap_or_else(|_| "resident-f16".into()),
+    );
+    let gguf = std::env::var("PSIONIC_CLEF_GGUF").expect("set PSIONIC_CLEF_GGUF");
+    let lane = super::ClefDecisionLane::load(
+        std::path::Path::new(&gguf),
+        super::ClefHeadSource::Embedded,
+        super::ClefLimits {
+            device: super::ClefDevice::Metal,
+            accumulate_f16: false,
+            ..super::ClefLimits::default()
+        },
+    )
+    .expect("Metal model");
+    assert!(
+        lane.batching.is_none(),
+        "run kernel-mode parity with batching disabled"
+    );
+    assert!(
+        std::env::var_os("PSIONIC_CLEF_SKIP").is_none(),
+        "kernel-mode parity must run every operation"
+    );
+    let corpus = std::fs::read_to_string(fixtures().join("encoder/corpus.jsonl")).unwrap();
+    let requests = std::fs::read_to_string(fixtures().join("e2e/requests.jsonl")).unwrap();
+    let short = lane
+        .encode(
+            &lane
+                .parse_request(requests.lines().nth(6).unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+    let long = corpus
+        .lines()
+        .filter_map(|body| lane.encode(&lane.parse_request(body).ok()?).ok())
+        .filter(|record| (129..=2048).contains(&record.input_ids.len()))
+        .max_by_key(|record| record.input_ids.len())
+        .expect("a bounded long corpus record");
+    let mut records = [short, long];
+    for record in &mut records {
+        record.prefix_tokens = 0;
+        assert!(record.media.is_none());
+    }
+    let replace = |enabled| {
+        let _running = lane.running.lock().unwrap();
+        lane.logit_cache.lock().unwrap().clear();
+        match lane.cuda.as_ref().unwrap() {
+            super::DeviceTrunk::Metal(trunk) => {
+                if delta_mode {
+                    trunk
+                        .replace_delta_for_test(if enabled {
+                            ClefMetalDelta::BlockTensorOps
+                        } else {
+                            ClefMetalDelta::Sequential
+                        })
+                        .unwrap();
+                } else {
+                    trunk
+                        .replace_ffn_weights_for_test(&lane.backbone, enabled)
+                        .unwrap();
+                }
+                trunk.weight_device_bytes()
+            }
+            _ => panic!("Metal model required"),
+        }
+    };
+    let resident_bytes = replace(false);
+    let mut baselines = Vec::new();
+    for record in &records {
+        for chunk in [record.input_ids.len(), 257] {
+            baselines.push(lane.logits_at_chunk(record, chunk, None, None).unwrap());
+        }
+    }
+    let selected_bytes = replace(true);
+    if !delta_mode {
+        assert!(
+            selected_bytes < resident_bytes,
+            "the placement fixture must contain Q4_K feed-forward weights"
+        );
+    }
+    let mut compared = 0;
+    let mut worst = 0.0f32;
+    let mut failures = Vec::new();
+    let mut baseline = baselines.iter();
+    for record in &records {
+        for chunk in [record.input_ids.len(), 257] {
+            let expected = baseline.next().unwrap();
+            let actual = lane.logits_at_chunk(record, chunk, None, None).unwrap();
+            assert_eq!(actual.len(), expected.len(), "question count");
+            assert!(!actual.is_empty());
+            for (question, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                assert_eq!(actual.len(), expected.len(), "option count");
+                assert!(!actual.is_empty());
+                for (option, (&actual, &expected)) in actual.iter().zip(expected).enumerate() {
+                    assert!(actual.is_finite() && expected.is_finite());
+                    let delta = (actual - expected).abs();
+                    worst = worst.max(delta);
+                    compared += 1;
+                    if delta > 1e-3 {
+                        failures.push(format!(
+                            "tokens={} chunk={chunk} question={question} option={option}: {actual} vs {expected} (delta {delta:.8e})",
+                            record.input_ids.len(),
+                        ));
+                    }
+                }
+                let top = |row: &[f32]| {
+                    row.iter()
+                        .enumerate()
+                        .max_by(|a, b| a.1.total_cmp(b.1))
+                        .unwrap()
+                        .0
+                };
+                if top(actual) != top(expected) {
+                    failures.push(format!(
+                        "tokens={} chunk={chunk} question={question}: top option changed",
+                        record.input_ids.len(),
+                    ));
+                }
+            }
+        }
+    }
+    assert!(compared > 0);
+    assert!(baseline.next().is_none());
+    eprintln!(
+        "Metal mode raw-logit parity: delta_mode={delta_mode} compared={compared} max_abs_delta={worst:.8e}"
+    );
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

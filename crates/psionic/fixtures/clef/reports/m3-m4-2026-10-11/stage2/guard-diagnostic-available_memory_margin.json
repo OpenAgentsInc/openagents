@@ -1,0 +1,21 @@
+{
+  "name": "available_memory_margin",
+  "rss_log": "guard-diagnostic-available_memory_margin.jsonl",
+  "process_group": 39281,
+  "max_rss_bytes": 38654705664,
+  "peak_rss_bytes": 8781824,
+  "peak_physical_footprint_bytes": 5128504,
+  "peak_accounted_bytes": 8781824,
+  "sampling_error": null,
+  "sampler_timeout_seconds": 5,
+  "rss_samples": 1,
+  "sample_interval_seconds": 0.5,
+  "minimum_available_memory_bytes": 1,
+  "lowest_available_memory_bytes": 0,
+  "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+  "memory_rejection": "available_memory_margin",
+  "cleanup_error": null,
+  "cleanup_diagnostics": null,
+  "owned_group_stopped": true,
+  "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+}

@@ -1,0 +1,1 @@
+First stage4 attempt: refused before spawning Cargo; available host memory below required 36 GiB. The 27B BF16 image reference was the only task-owned model process. Build and memory leases released without compiling.

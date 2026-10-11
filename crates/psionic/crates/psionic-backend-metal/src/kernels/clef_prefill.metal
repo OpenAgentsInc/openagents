@@ -17,6 +17,14 @@ using namespace mpp::tensor_ops;
 
 constant constexpr uint kSimd = 32;
 
+kernel void clef_copy_f32(
+    device const float *source [[buffer(0)]],
+    device float *destination [[buffer(1)]],
+    constant uint &count [[buffer(2)]],
+    uint index [[thread_position_in_grid]]) {
+    if (index < count) destination[index] = source[index];
+}
+
 // Threadgroup-wide sum for up to 1024 threads (32 simdgroups); every thread
 // gets the result. `scratch` holds 32 floats.
 inline float group_sum(float value, threadgroup float *scratch, uint tid, uint threads) {

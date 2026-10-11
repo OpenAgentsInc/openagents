@@ -1,0 +1,65 @@
+{
+  "command": [
+    "reference-python-env/bin/python",
+    "repo/crates/psionic/fixtures/clef/tools/image_parity.py",
+    "reference",
+    "--checkpoint",
+    "Cloudflare/clef@0b331204bb13fbd2ca93a64df1956f5b55478ce5 (BF16)",
+    "--device",
+    "mps",
+    "--dtype",
+    "bfloat16",
+    "--threads",
+    "2",
+    "--max-input-tokens",
+    "2048",
+    "--max-model-gib",
+    "64",
+    "--mps-memory-gib",
+    "60",
+    "--output",
+    "run-artifacts/reference27b/text-mps-bf16.json",
+    "--text-suite",
+    "repo/crates/psionic/fixtures/clef/e2e/requests.jsonl",
+    "--case",
+    "text-006"
+  ],
+  "leases": [
+    "gpu",
+    "memory"
+  ],
+  "preflight": {
+    "available_memory_bytes": 90514800640,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 3017951,
+      "inactive": 2169635,
+      "speculative": 336999
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "max_rss_gib": 72.0,
+  "deadline_seconds": 900.0,
+  "minimum_start_available_gib": 84.0,
+  "minimum_available_gib": 12.0,
+  "status": "failed",
+  "exit_code": null,
+  "error_type": "RuntimeError",
+  "reason": "owned process memory guard rejected this run: rss_monitor:TimeoutExpired",
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 64431,
+    "max_rss_bytes": 77309411328,
+    "peak_rss_bytes": 977272832,
+    "rss_samples": 26,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 62194352128,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": "rss_monitor:TimeoutExpired",
+    "cleanup_error": null,
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled process-group RSS; not a hard allocation limit"
+  },
+  "elapsed_seconds": 18.797500291999313
+}

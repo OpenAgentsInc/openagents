@@ -1,0 +1,50 @@
+[
+  {
+    "case": "jpeg",
+    "pil_load_image_dimensions": [
+      319,
+      287
+    ],
+    "actual_string_decoder_shape": [
+      3,
+      287,
+      319
+    ],
+    "actual_base64_grid": [
+      1,
+      18,
+      20
+    ],
+    "preloaded_pil_grid": [
+      1,
+      18,
+      20
+    ],
+    "actual_decoded_rgb_sha256": "87f81b4b1b9fb5ef40579fea6d467712093c93315c36aefec361c4541138c90d",
+    "reference_pil_decoded_rgb_sha256": "87f81b4b1b9fb5ef40579fea6d467712093c93315c36aefec361c4541138c90d"
+  },
+  {
+    "case": "jpeg_oriented",
+    "pil_load_image_dimensions": [
+      287,
+      319
+    ],
+    "actual_string_decoder_shape": [
+      3,
+      287,
+      319
+    ],
+    "actual_base64_grid": [
+      1,
+      18,
+      20
+    ],
+    "preloaded_pil_grid": [
+      1,
+      20,
+      18
+    ],
+    "actual_decoded_rgb_sha256": "87f81b4b1b9fb5ef40579fea6d467712093c93315c36aefec361c4541138c90d",
+    "reference_pil_decoded_rgb_sha256": "c990dce7c1928571a19ed10aa0c79f4024d36cdf9ef757e037323e71da1ee830"
+  }
+]

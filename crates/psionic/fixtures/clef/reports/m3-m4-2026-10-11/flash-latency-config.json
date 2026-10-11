@@ -1,0 +1,40 @@
+{
+  "model_path": "user-home/.openagents/scratch/codex-01a12620-209f-7ec3-9846-7e94fc1b965b/mac-quiet-2026-10-10/model.gguf",
+  "measurement_mode": "shared",
+  "max_start_load": 150,
+  "max_run_load": 180,
+  "rounds": 2,
+  "runs": 5,
+  "request_timeout": 300,
+  "variants": [
+    {
+      "name": "default",
+      "binary": "cargo-target/release/psionic-openai-server",
+      "chunk": 2048,
+      "env": {
+        "RAYON_NUM_THREADS": "2",
+        "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0"
+      }
+    },
+    {
+      "name": "fused-shapes",
+      "binary": "cargo-target/release/psionic-openai-server",
+      "chunk": 2048,
+      "env": {
+        "RAYON_NUM_THREADS": "2",
+        "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+        "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+        "PSIONIC_CLEF_METAL_GEMM": "weight-shapes"
+      }
+    }
+  ],
+  "requests": [
+    "user-home/.openagents/scratch/codex-01a12620-209f-7ec3-9846-7e94fc1b965b/mac-quiet-2026-10-10/requests/len1k.json",
+    "user-home/.openagents/scratch/codex-01a12620-209f-7ec3-9846-7e94fc1b965b/mac-quiet-2026-10-10/requests/len4k.json",
+    "user-home/.openagents/scratch/codex-01a12620-209f-7ec3-9846-7e94fc1b965b/mac-quiet-2026-10-10/requests/len16k.json"
+  ],
+  "output_dir": "run-artifacts/flash-latency-stage1",
+  "max_rss_gib": 36,
+  "minimum_available_memory_gib": 12,
+  "startup_timeout": 180
+}

@@ -1,0 +1,161 @@
+{
+  "repository": "Cloudflare/clef",
+  "revision": "0b331204bb13fbd2ca93a64df1956f5b55478ce5",
+  "complete": true,
+  "files": [
+    {
+      "filename": "README.md",
+      "bytes": 11105,
+      "sha256": "16ee04d296b1ef5edcdb3c4d3d3cd369acdc627fb5d255b34264a73e224d821a",
+      "git_blob": "5bf8da1926c6708c101db76502ba320200bad5d6",
+      "seconds": 0.36
+    },
+    {
+      "filename": "config.json",
+      "bytes": 3688,
+      "sha256": "c42e88892bd3fd84e8276b2ad90df58c1c3b797676ea161035006a72ad468c58",
+      "git_blob": "924bcf0ac4f4d792dc7aa6b44b93774bfc4da473",
+      "seconds": 0.46
+    },
+    {
+      "filename": "generation_config.json",
+      "bytes": 214,
+      "sha256": "dc36854b2b25176764cfeeda32a3d80fb4fcffbef2b00d55c6614079bf21eb9f",
+      "git_blob": "bfbe4ce905a96d5dd4daec54ce29ca2b7213de64",
+      "seconds": 0.38
+    },
+    {
+      "filename": "joint_head.safetensors",
+      "bytes": 256125024,
+      "sha256": "a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+      "git_blob": null,
+      "seconds": 9.93
+    },
+    {
+      "filename": "joint_head_config.json",
+      "bytes": 119,
+      "sha256": "890be585d75b981201eb96a35f98a9967afe37bc8d220cfdea2e72d56507534f",
+      "git_blob": "2268d622cd61bc87af4d8dc1a0548585b9bfef6c",
+      "seconds": 0.28
+    },
+    {
+      "filename": "joint_schema_model.py",
+      "bytes": 23263,
+      "sha256": "0e304cf7c6500e8bb59bef7e2afd2c6373f82596dfb3b57d1aa93c175e2dc3a3",
+      "git_blob": "6a3ac5fc030a3f33f7fa860a1271886b64a6606d",
+      "seconds": 0.32
+    },
+    {
+      "filename": "model-00001-of-00012.safetensors",
+      "bytes": 2542796928,
+      "sha256": "54d83c1d36631de231876217a8e0c2483eccee8746369a482b79442bdfc5d958",
+      "git_blob": null,
+      "seconds": 77.28
+    },
+    {
+      "filename": "model-00002-of-00012.safetensors",
+      "bytes": 4842451920,
+      "sha256": "464086af08be8e2ec14960a4dcff083ebc39974ade00d79d35497385f960ab3a",
+      "git_blob": null,
+      "seconds": 155.75
+    },
+    {
+      "filename": "model-00003-of-00012.safetensors",
+      "bytes": 4965227944,
+      "sha256": "092212d3a02fafacd6424723eda59d60e5282d2068d68f0e37cb891f63bbb658",
+      "git_blob": null,
+      "seconds": 156.63
+    },
+    {
+      "filename": "model-00004-of-00012.safetensors",
+      "bytes": 4912819264,
+      "sha256": "d06ff197668c782145fafa74bba61bbc296fb27e39afb15fd522918ce3514dc5",
+      "git_blob": null,
+      "seconds": 157.87
+    },
+    {
+      "filename": "model-00005-of-00012.safetensors",
+      "bytes": 4986198544,
+      "sha256": "cc693b8829614a72e0c2be303fb290cf05dbb4d7ded872a817b97bb222a78427",
+      "git_blob": null,
+      "seconds": 194.09
+    },
+    {
+      "filename": "model-00006-of-00012.safetensors",
+      "bytes": 4912819320,
+      "sha256": "e7cce15da2443cb8b84aaed66a9a71f0c87dc9d043f83b5f58f4a89f64ba60ad",
+      "git_blob": null,
+      "seconds": 180.27
+    },
+    {
+      "filename": "model-00007-of-00012.safetensors",
+      "bytes": 4932703272,
+      "sha256": "75fc7e76b57d5d17a5d85fff3e879d07dd33edc885a8ee04ad437a899bcd5307",
+      "git_blob": null,
+      "seconds": 191.26
+    },
+    {
+      "filename": "model-00008-of-00012.safetensors",
+      "bytes": 4966314576,
+      "sha256": "189b15cb6b1af48d5f118951446e15639bfeaf76081d5f20aed1f1b4253afe1d",
+      "git_blob": null,
+      "seconds": 184.13
+    },
+    {
+      "filename": "model-00009-of-00012.safetensors",
+      "bytes": 4964162248,
+      "sha256": "8101e2664bb14684fc7051f2e1f84903dbdf5489b17cae3212ac08a0af744a60",
+      "git_blob": null,
+      "seconds": 182.77
+    },
+    {
+      "filename": "model-00010-of-00012.safetensors",
+      "bytes": 4933789824,
+      "sha256": "a8e69016a1a8dab1c9ce8dd151c0d3224412ab864cf06d3a5e2b8a5775cfdfb8",
+      "git_blob": null,
+      "seconds": 175.59
+    },
+    {
+      "filename": "model-00011-of-00012.safetensors",
+      "bytes": 4965228032,
+      "sha256": "b328d21c36ab384696e40a30ac86a95aaf6dd82da89438ba009cb97d87c1d6b9",
+      "git_blob": null,
+      "seconds": 183.82
+    },
+    {
+      "filename": "model-00012-of-00012.safetensors",
+      "bytes": 2789094896,
+      "sha256": "7505eed910a84ea18e66953572476f8a8a6a6ef54192a6643d6e9cd21a3bb978",
+      "git_blob": null,
+      "seconds": 104.89
+    },
+    {
+      "filename": "model.safetensors.index.json",
+      "bytes": 111110,
+      "sha256": "a600c6626eb1eb653a3f078ab3dd1c7a8fab2e71185c7ef3aa923a39aaa637be",
+      "git_blob": "cc8da4e682c8b7483cd9c2c21a221188d547c26b",
+      "seconds": 0.5
+    },
+    {
+      "filename": "processor_config.json",
+      "bytes": 1191,
+      "sha256": "d89ef49ce9cd37fbf510158e13c1ef063d9286411c1ec9049932dbe0487143b1",
+      "git_blob": "33818c7f9e991ad735fd240209f4fa73e6c28c50",
+      "seconds": 0.41
+    },
+    {
+      "filename": "tokenizer.json",
+      "bytes": 19989325,
+      "sha256": "06b9509352d2af50381ab2247e083b80d32d5c0aba91c272ca9ff729b6a0e523",
+      "git_blob": null,
+      "seconds": 2.44
+    },
+    {
+      "filename": "tokenizer_config.json",
+      "bytes": 1075,
+      "sha256": "91a08f825d370d085d692e04cf117cdd7faad7bf18e996f1e6031b6dab03db72",
+      "git_blob": "0f19934ef65115549ff9629ff2c83d15e40e32d8",
+      "seconds": 0.34
+    }
+  ]
+}

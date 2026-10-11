@@ -1,0 +1,72 @@
+[
+  {
+    "name": "server",
+    "command": [
+      "cargo",
+      "build",
+      "--release",
+      "--manifest-path",
+      "crates/psionic/Cargo.toml",
+      "-p",
+      "psionic-serve",
+      "--bin",
+      "psionic-openai-server"
+    ],
+    "exit": 0,
+    "seconds": 1048.901182959
+  },
+  {
+    "name": "cli",
+    "command": [
+      "cargo",
+      "test",
+      "--release",
+      "--manifest-path",
+      "crates/psionic/Cargo.toml",
+      "-p",
+      "psionic-serve",
+      "--bin",
+      "psionic-openai-server",
+      "--",
+      "--test-threads=1"
+    ],
+    "exit": 0,
+    "seconds": 55.383469417000015
+  },
+  {
+    "name": "serve",
+    "command": [
+      "cargo",
+      "test",
+      "--release",
+      "--manifest-path",
+      "crates/psionic/Cargo.toml",
+      "-p",
+      "psionic-serve",
+      "--lib",
+      "clef",
+      "--",
+      "--test-threads=1"
+    ],
+    "exit": 0,
+    "seconds": 587.594494041
+  },
+  {
+    "name": "metal",
+    "command": [
+      "cargo",
+      "test",
+      "--release",
+      "--manifest-path",
+      "crates/psionic/Cargo.toml",
+      "-p",
+      "psionic-backend-metal",
+      "--lib",
+      "clef",
+      "--",
+      "--test-threads=1"
+    ],
+    "exit": 0,
+    "seconds": 21.71396604199981
+  }
+]

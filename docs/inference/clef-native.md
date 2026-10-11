@@ -1,9 +1,9 @@
-# Native Clef Decision Serving Plan
+# Native Clef decision serving plan
 
 > Moved from the psionic repo on 2026-10-09: the standalone psionic repo is reference only. All Clef engine work and its issues live in this monorepo (`crates/psionic`, issues #11194–#11197).
 
 
-Status: M1 `implemented_early` on the CPU (2026-10-09); M2 done on CUDA (2026-10-10, gate met, chunk bound restated); M3 in progress on Metal ([status](#m3-status-2026-10-10-in-progress)); M4 `planned`. See [M1 status](#m1-status-2026-10-09) and [M2 status](#m2-status-2026-10-10). File-relevance calibration map (X1): [below](#file-relevance-calibration-x1-2026-10-10).
+Status: M1 `implemented_early` on the CPU (2026-10-09); M2 done on CUDA (2026-10-10, gate met, chunk bound restated); M3 in progress on Metal ([status](#m3-status-2026-10-10-in-progress)); M4 implementation and validation in progress ([current controls](#m4-status-2026-10-11-validation-in-progress)). See [M1 status](#m1-status-2026-10-09) and [M2 status](#m2-status-2026-10-10). File-relevance calibration map (X1): [below](#file-relevance-calibration-x1-2026-10-10).
 
 This plan covers serving Cloudflare's open-weight Clef decision models
 natively in Psionic, at `POST /v1/systemone`, with no Ollama, llama.cpp,
@@ -816,8 +816,10 @@ sweep, and preparation incident. Those measurements include desktop GPU
 contention and do not pass the idle-Mac gate. The tested runtime patch remains
 an experiment; this audit changes no production runtime default.
 
-The Metal lane exists and its kernels are checked. It has not yet run the
-model. Issue: [#11196](https://github.com/OpenAgentsInc/openagents/issues/11196).
+The Metal lane runs the model; the dated rounds below record its measurements.
+The current implementation adds opt-in kernels and M4 features whose integrated
+model checks are still pending. Issue:
+[#11196](https://github.com/OpenAgentsInc/openagents/issues/11196).
 
 - **Kernels:** `crates/psionic/crates/psionic-backend-metal/src/kernels/clef_prefill.metal`,
   with `clef_prefill.rs`.
@@ -1154,6 +1156,219 @@ Metal objects before the next case. Experimental modes remain opt-in.
 - Run a paired Mac comparison against Ollama and MLX with per-phase profiling,
   reporting desktop contention separately.
 
+## M4 status (2026-10-11, validation in progress)
+
+The current implementation adds Metal text batching, exact prefix reuse, image
+inputs, 27B weight-format support, and CUDA memory checks for
+[#11197](https://github.com/OpenAgentsInc/openagents/issues/11197). These features
+have separate controls and acceptance checks. No new full-model speed result or
+completed M3/M4 acceptance gate is claimed in this section.
+
+The [validation bundle](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/README.md)
+retains model identities, full reference answers and logits, test receipts,
+failed attempts, and the real CUDA admission check. Its manifest records the
+original and published hashes; local machine paths are replaced with labels.
+
+### Metal controls and memory
+
+These settings are read when the model loads. Invalid enabled settings stop
+loading; batch limits are ignored while request batching is off.
+The existing defaults remain staged attention, fixed-64 GEMM, sequential
+DeltaNet, resident-f16 weights, no prefix snapshots, and no request batching.
+
+| Setting | Default | Effect and bound |
+| --- | --- | --- |
+| `PSIONIC_CLEF_METAL_ATTENTION` | `staged` | `fused-tensorops` selects the experimental attention kernel described above. |
+| `PSIONIC_CLEF_METAL_GEMM` | `fixed-64` | `weight-shapes` selects the experimental projection tiles. |
+| `PSIONIC_CLEF_METAL_DELTA` | `sequential` | `block-tensorops` selects the experimental 32-token block recurrence. Additional scratch is `ceil(chunk / 32) × value_heads × 37,120` bytes, at most 256 MiB per scratch allocation. |
+| `PSIONIC_CLEF_METAL_FFN_WEIGHTS` | `resident-f16` | `q4k-on-demand` keeps Q4_K feed-forward weights packed and converts one projection at a time into reusable f16 scratch. Other formats retain the resident path. The conversion slot is 96 MiB for Flash and 170 MiB for 27B, with a 256 MiB limit. |
+| `PSIONIC_CLEF_PREFIX_CACHE_BYTES` | `0` | Enables one exact prefix snapshot when nonzero; maximum 536,870,912 bytes, including its token key. |
+| `PSIONIC_CLEF_BATCH_REQUESTS` | `1` | `1` keeps serial execution; `2`–`4` enables the Metal worker and bounds active requests. |
+| `PSIONIC_CLEF_BATCH_TOKENS` | `2048` | Total token rows in one cohort, at most 16,384 and at least the active-request limit. |
+| `PSIONIC_CLEF_BATCH_BYTES` | `4294967296` | Total request reservations, at most 32 GiB; includes request scratch, recurrent/KV state, memory rows, spans, and a conservative head allowance. |
+| `PSIONIC_CLEF_BATCH_COHORT_BYTES` | `1073741824` | Separate shared FFN scratch budget, at most 4 GiB. The model's actual scratch estimate must fit before the worker starts. |
+
+At the default 2,048 cohort tokens, the scratch estimate is 571,080,704 bytes for
+Flash and 759,824,384 bytes for 27B. With both optional Q4 conversion and block
+DeltaNet scratch, these become 747,765,760 and 1,052,114,944 bytes, respectively,
+and still fit 1 GiB. These are allocation calculations, not process RSS or speed
+measurements. Raising the cohort to 4,096 tokens requires a larger explicit
+cohort budget. Request reservations, model weights, prefix snapshots, and host
+allocations are separate from that cohort budget.
+
+### Request batching and cancellation
+
+The worker groups independent text requests between chunks. Each request owns
+its recurrent state, attention caches, memory rows, spans, and scratch. At each
+layer, mixer work stays separate; residual rows are packed into shared buffers
+for the three FFN projections, then copied back to their owning requests. This
+is shared matrix work across requests, not concatenation of prompts into one
+attention context. Each head runs against its own completed request.
+
+The effective per-request chunk is at most the configured cohort token count
+divided by its request limit. New work joins between completed chunks, with a
+bounded queue and byte reservation. A request exceeding the whole request-byte
+budget receives `not_admitted` (413); a full queue receives `busy` (503).
+Profiling or skipped-kernel modes cannot be combined with batching.
+
+Images and raw-row exports use the serial path. A waiting serial request stops
+new batch admission until active requests drain, so a continuous text stream
+cannot keep it waiting forever. Serial requests have priority; this is not a
+global FIFO guarantee. The execution mutex excludes serial allocations while
+the active batch owns its reservations.
+
+Dropping an HTTP future marks its work cancelled. The worker checks cancellation
+between completed GPU chunks, drops only that request's state, and releases its
+reservation after the buffers are released. It does not interrupt an in-flight
+Metal command. Dropping the loaded model stops and joins its worker; the worker
+shares weight storage and holds no reference cycle back to the model. Queue
+admission happens before image decoding and tokenization.
+
+Successful batched responses add `psionic.batch.{chunks,max_requests,grouped_ffn}`.
+`psionic.prefill_chunk` reports the effective session chunk, including reductions
+for a cohort budget or a short request.
+`grouped_ffn` is true only when a chunk actually shared FFN work. Per-request
+timings keep encoding, queueing, prefill, and head work separate. A request's
+prefill time includes the shared cohort work it waited for; interleaved waits
+are counted in queue time. Summing request prefill times is not a measure of
+total GPU time.
+
+### Prefix reuse and images
+
+Prefix reuse matches every prefix token and the effective chunk size within one
+loaded model. The snapshot contains conv/DeltaNet state, prefix K/V, and the
+head's projected memory rows. A new request restores into fresh buffers and
+computes its schema suffix. Cold and warm requests split at the same prefix
+boundary. No question or option span may overlap that prefix.
+
+One snapshot is allowed across the published cache and a pending batch capture.
+Replacement frees the old entry first, and cancellation releases an unpublished
+snapshot. Media, layer/row observers, profiling, and skipped kernels disable
+prefix reuse. Raw pooled-head export can still check prefix reuse; it disables
+the separate whole-answer logit cache. `usage.cached_input_tokens` reports
+restored prefix tokens, while `psionic.timing.cached` reports a whole-answer hit.
+
+Image requests require an explicit matching vision tower:
+`--decision-vision-manifest PATH --decision-vision-blobs DIR`. The loader checks
+the complete named tensor set, BF16 shapes, and output width: 4,096 for Flash or
+5,120 for 27B. The 27B tower cannot stand in for Flash's tower. Vision projection
+runs on the CPU; the text decoder can run on CPU or Metal. The CUDA decision
+path refuses images. Image requests bypass both prefix reuse and whole-answer
+caching, and video remains unsupported. The base64 decoder preserves the stored
+pixel order, including when JPEG EXIF requests a rotation, matching the official
+Torchvision byte-input path. The [preprocessing fixtures](../../crates/psionic/crates/psionic-serve/fixtures/clef-images/README.md)
+check decoding, resize, patch order, media tokens, and multi-image positions. Accepted image inputs are bounded
+base64 PNG, JPEG, or WebP, with at most four images and the existing 8 MiB body
+limit; URLs are not fetched.
+
+The staged public 27B artifacts are `ggml-org/Clef-GGUF` Q4_K_M at revision
+`d2aa75cb425ae922b5c3c15ef3157d417b7f7641` and the official `Cloudflare/clef`
+BF16 checkpoint at `0b331204bb13fbd2ca93a64df1956f5b55478ce5`. The GGUF is
+19,232,219,200 bytes with SHA-256
+`9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822`.
+Use `--clef-head PATH` to select the official external head for a reference
+comparison. Download verification establishes artifact identity, not answer
+accuracy; the existing H100 comparison against llama.cpp does not satisfy the
+new official BF16 gate.
+
+### CUDA and benchmark memory checks
+
+CUDA loading now estimates resident weights, conversion slots, configured
+token/chunk buffers, a head reserve, and a runtime margin before uploading
+weights. It compares that estimate with current free and total device memory.
+Larger head allocations are checked again when needed. These checks do not
+reserve CUDA memory against another process. A memory refusal also stops `auto`
+from silently loading the same model on the CPU. The real 27B startup check passed on the RTX 4080 for both explicit CUDA and
+automatic device selection. Both reported `before_weight_upload`, with
+20,927,797,248 bytes required, 5,549,588,480 bytes free, and 16,711,352,320
+bytes of device memory. Both exited without starting a server or falling back
+to the CPU; the aggregate GPU memory snapshot was unchanged afterward.
+
+The shared Mac harness manages only process groups that it starts. It records
+effective Clef settings and thread bounds. Every 0.5 seconds, it reads RSS and
+macOS physical footprint for only the owned process group, accounting for the
+larger value per process. It stops its group if a limit or configured memory
+monitor fails. Each memory sampler has a five-second deadline; a timeout
+records the failing command and rejects the run. Flash defaults
+to `max_rss_gib: 36`. The bounded 27B image/text configuration uses Q4_K
+feed-forward storage, a 52 GiB RSS limit, and `startup_timeout: 600`. Its
+startup check requires 64 GiB available; execution requires a 12 GiB margin.
+The native estimate includes the complete GGUF mapping, GPU weights, both
+head copies, image projection, and request buffers. It does not cover arbitrary
+large option counts or concurrent requests. The metric is
+`vm_stat (free + inactive + speculative) × page_size`. This is sampled process
+and host memory monitoring, not a hard allocation cap or a system reservation.
+Native 27B and the official BF16 reference run sequentially.
+
+### Validation commands and evidence status
+
+Keep the existing per-worktree `CARGO_TARGET_DIR`. Build and CPU checks use a
+build lease; explicitly selected hardware checks and model runs use GPU and
+memory leases. Current Mac comparisons set `measurement_mode: "shared"`: they
+record other machine activity and cannot establish an idle-machine target. They
+do not stop desktop apps or request a quiet lease.
+
+From the repository root, the following checks need no model weights:
+
+```sh
+openagents lease build --keep-target-dir -- cargo test --release \
+  --manifest-path crates/psionic/Cargo.toml -p psionic-serve --lib clef
+python3 crates/psionic/fixtures/clef/tools/mac_quiet_bench.py --self-test
+python3 crates/psionic/fixtures/clef/tools/metal_batch_check.py --self-test
+```
+
+Clear model-test environment variables before the CPU filter. Tests that print
+that a GGUF or model-check setting is missing returned early; they are not model
+validation. Compile ignored GPU tests under a build lease, then run the recorded
+test executable under a GPU lease with `--ignored --test-threads=1`.
+
+The three model harnesses accept the existing `mac_quiet_bench.py` JSON config
+shape: absolute model/binary/request paths, an unused output directory, and
+shared-machine mode. Set the following shell variables to their config files.
+These commands reserve 36 GiB for Flash; use the reviewed 27B limits and memory
+reservation for a 27B run.
+
+```sh
+openagents lease gpu -- openagents lease memory --amount 36 -- \
+  python3 crates/psionic/fixtures/clef/tools/mac_quiet_bench.py "$CLEF_LATENCY_CONFIG"
+openagents lease gpu -- openagents lease memory --amount 36 -- \
+  python3 crates/psionic/fixtures/clef/tools/metal_prefix_check.py "$CLEF_PREFIX_CONFIG"
+openagents lease gpu -- openagents lease memory --amount 36 -- \
+  python3 crates/psionic/fixtures/clef/tools/metal_batch_check.py "$CLEF_BATCH_CONFIG"
+```
+
+Latency runs force `PSIONIC_CLEF_PREFIX_CACHE_BYTES=0` and reject nonzero
+settings. They pair fresh request nonces and reject cached responses. The prefix
+check instead compares exported raw logits with the cache disabled and enabled.
+The batch check starts the same binary serially, with two request slots, and
+with four slots; it forces zero prefix cache and `BATCH_TOKENS = chunk × slots`.
+It requires actual grouped FFN evidence, exact answer identities, 100% top-answer
+agreement, and maximum absolute probability difference at most `1e-3`, using
+unrounded JSON values. It also checks disconnect recovery and bounded queue
+refusals. Throughput comparisons from this check remain shared-machine results.
+
+`guarded_reference.py`, `image_parity.py`, and `native_image_parity.py` prepare
+the separate official BF16 and native image/text checks. The reference must
+complete before the native comparison starts; do not overlap their model loads.
+
+| Check on the current branch | Status |
+| --- | --- |
+| Backend synthetic Metal hardware checks, including attention, projection tiles, buffer lifetime/views/copies, packed formats including Q6_K, and block DeltaNet | Passed: 16 explicitly run checks. The direct-solve recurrence also matches the correlated-key oracle across unaligned chunks, with maximum difference below `3e-7`. These do not load Clef. |
+| Harness self-tests: process cleanup, RSS/memory refusal, startup deadline, uncached settings, effective environment, and answer comparison | Passed; mock servers and synthetic child processes only. |
+| Serving synthetic Metal checks: grouped FFN, reusable Q4 conversion, prefix state/memory restoration, and three evidence-normalization paths | Passed: all 6 explicitly run checks. |
+| Integrated serving CPU and CLI tests | Passed: nine CLI tests, 72 serving-filter tests, and 22 backend-filter tests after the image, direct-solve, and batch-metadata corrections. Model-dependent early returns are not model validation. |
+| Flash default Metal versus whole-prompt execution, 155 and 7,274 tokens, 3 chunk sizes and both accumulation modes | Passed: 12 comparisons have zero logit difference. CPU versus Metal has maximum logit difference `2.79e-4` and probability difference `1.35e-5`; repeated requests are bitwise stable. |
+| Flash fused attention and weight-shape GEMM | Passed: the same 12 chunk comparisons have zero logit difference. CPU versus Metal has maximum logit difference `1.31e-3` and probability difference `5.55e-5`. |
+| Flash compressed FFN versus resident f16 weights | Passed: 34 compared logits are identical. This is a storage/correctness result, not a speed claim. |
+| Flash route versus the CPU goldens, 40 requests and 104 answers per variant | Passed: default and fused-attention/weight-shape variants both match all 104 top answers. Maximum probability differences are `0.000784477` and `0.000954969`, respectively. These are correctness runs during compilation, not latency measurements. |
+| Block DeltaNet | **PENDING:** the original block algorithm passed alone but exceeded `1e-3` with fused attention. The replacement direct solve must pass the unchanged bound before use. |
+| Official 27B BF16 image goldens and native comparison | Passed: all six cases and 14 native top answers match the official reference and expected labels, with exact token counts. Maximum probability difference is `0.001797753`; all ten media refusal checks pass. |
+| Real 27B CUDA and Auto startup refusal on the RTX 4080 | Passed: both refused before weight upload, without CPU fallback; GPU memory before/after was unchanged. This does not claim that CUDA context creation uses no memory. |
+| Official 27B BF16 text goldens | Generated: all 40 cases and 104 answers, with exact reference token identity. An earlier capture failure is retained separately; the isolated retry and final resumed run passed. |
+| 27B native BF16 text comparison | **FAILED:** all 40 cases have matching token counts, but only 94 of 104 top answers match. Maximum probability difference is `0.219953483`; 64 questions exceed `0.02`. Some misses have large reference margins, so near ties do not explain the result. CPU/Metal isolation is in progress; quantization is not an established cause. |
+| Prefix raw-logit parity and two-/four-request HTTP batch acceptance | **PENDING:** no throughput or prefix speedup claim. |
+| Paired uncached Mac latency and sustained-load comparisons | **PENDING:** shared-machine measurements must be labeled separately from idle targets. |
+
 ## File-relevance calibration (X1, 2026-10-10)
 
 Roadmap X1 ([#11216](https://github.com/OpenAgentsInc/openagents/issues/11216))
@@ -1293,7 +1508,7 @@ tokens, and returns one logit per allowed option of every question.
 | Backbone | Qwen3.5-9B (`qwen3_5`), post-trained | Qwen3.8-27B (`qwen3_5` config, `output_gate_type: swish`) |
 | Layers | 32: 24 Gated DeltaNet + 8 gated full attention (every 4th) | 64, same 3:1 pattern |
 | Hidden / FFN | 4096 / 12288 (SwiGLU) | 5120 / 17408 |
-| Full attention | 16 Q heads, 4 KV heads, head_dim 256, partial rotary 0.25 (64 dims), interleaved MRoPE sections [11, 11, 10], θ = 1e7, sigmoid output gate, q/k RMSNorm | 24 Q heads, 4 KV heads, swish output gate |
+| Full attention | 16 Q heads, 4 KV heads, head_dim 256, partial rotary 0.25 (64 dims), interleaved MRoPE sections [11, 11, 10], θ = 1e7, sigmoid output gate, q/k RMSNorm | 24 Q heads, 4 KV heads, sigmoid output gate, matching the official reference implementation |
 | Linear attention | 16 key heads, 32 value heads, dims 128, causal conv kernel 4 | 16 key heads, 48 value heads |
 | Vocabulary | 248,320, untied `lm_head` | same |
 | Joint head | 121.8 M params (243 MB bf16): width 1024, 2 routing layers, 4 field layers, 16 heads, FFN 4096 | width 1024, `hidden_size` 5120 |
@@ -1472,6 +1687,9 @@ head file beside a qwen35 GGUF, which gives an f32/bf16 head for parity runs.
 Each of the three layouts maps onto one internal `ClefHeadWeights`.
 
 ## What Psionic has and what is missing
+
+This table records the original pre-M1 implementation inventory. The dated
+status sections above describe what has since been built and measured.
 
 | Area | Today | Gap for Clef |
 | --- | --- | --- |
@@ -1725,7 +1943,7 @@ It passes the chunk-equivalence gate and the RTX 4080 gate.
 
 **M4: breadth** ([#11197](https://github.com/OpenAgentsInc/openagents/issues/11197)). This milestone adds:
 
-- Clef 27B on the Qwen3.8 lanes, Metal first;
+- Clef 27B on the Qwen3.5 backbone, Metal first;
 - image inputs;
 - exact prefix reuse with cached memory rows;
 - continuous batching of backbone chunks across requests.

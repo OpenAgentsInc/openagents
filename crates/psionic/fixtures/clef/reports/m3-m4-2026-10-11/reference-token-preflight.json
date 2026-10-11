@@ -1,0 +1,229 @@
+{
+  "kind": "metadata_only_token_preflight",
+  "checkpoint": {
+    "index_sha256": "a600c6626eb1eb653a3f078ab3dd1c7a8fab2e71185c7ef3aa923a39aaa637be",
+    "shards": [
+      "model-00001-of-00012.safetensors",
+      "model-00002-of-00012.safetensors",
+      "model-00003-of-00012.safetensors",
+      "model-00004-of-00012.safetensors",
+      "model-00005-of-00012.safetensors",
+      "model-00006-of-00012.safetensors",
+      "model-00007-of-00012.safetensors",
+      "model-00008-of-00012.safetensors",
+      "model-00009-of-00012.safetensors",
+      "model-00010-of-00012.safetensors",
+      "model-00011-of-00012.safetensors",
+      "model-00012-of-00012.safetensors"
+    ],
+    "checkpoint_file_bytes": 54969731792
+  },
+  "suite_sha256": "3958f5f3b9d09d7fac61a39e40c69e812ef09c39f06baae2ab0286e171ab19bc",
+  "cases": [
+    {
+      "id": "text-000",
+      "input_tokens": 557,
+      "questions": 4
+    },
+    {
+      "id": "text-001",
+      "input_tokens": 451,
+      "questions": 3
+    },
+    {
+      "id": "text-002",
+      "input_tokens": 452,
+      "questions": 1
+    },
+    {
+      "id": "text-003",
+      "input_tokens": 206,
+      "questions": 1
+    },
+    {
+      "id": "text-004",
+      "input_tokens": 295,
+      "questions": 1
+    },
+    {
+      "id": "text-005",
+      "input_tokens": 585,
+      "questions": 2
+    },
+    {
+      "id": "text-006",
+      "input_tokens": 155,
+      "questions": 1
+    },
+    {
+      "id": "text-007",
+      "input_tokens": 908,
+      "questions": 3
+    },
+    {
+      "id": "text-008",
+      "input_tokens": 607,
+      "questions": 3
+    },
+    {
+      "id": "text-009",
+      "input_tokens": 970,
+      "questions": 5
+    },
+    {
+      "id": "text-010",
+      "input_tokens": 423,
+      "questions": 1
+    },
+    {
+      "id": "text-011",
+      "input_tokens": 968,
+      "questions": 5
+    },
+    {
+      "id": "text-012",
+      "input_tokens": 590,
+      "questions": 5
+    },
+    {
+      "id": "text-013",
+      "input_tokens": 599,
+      "questions": 3
+    },
+    {
+      "id": "text-014",
+      "input_tokens": 321,
+      "questions": 1
+    },
+    {
+      "id": "text-015",
+      "input_tokens": 284,
+      "questions": 1
+    },
+    {
+      "id": "text-016",
+      "input_tokens": 182,
+      "questions": 1
+    },
+    {
+      "id": "text-017",
+      "input_tokens": 653,
+      "questions": 3
+    },
+    {
+      "id": "text-018",
+      "input_tokens": 769,
+      "questions": 4
+    },
+    {
+      "id": "text-019",
+      "input_tokens": 994,
+      "questions": 5
+    },
+    {
+      "id": "text-020",
+      "input_tokens": 513,
+      "questions": 3
+    },
+    {
+      "id": "text-021",
+      "input_tokens": 522,
+      "questions": 3
+    },
+    {
+      "id": "text-022",
+      "input_tokens": 186,
+      "questions": 1
+    },
+    {
+      "id": "text-023",
+      "input_tokens": 261,
+      "questions": 1
+    },
+    {
+      "id": "text-024",
+      "input_tokens": 383,
+      "questions": 3
+    },
+    {
+      "id": "text-025",
+      "input_tokens": 498,
+      "questions": 3
+    },
+    {
+      "id": "text-026",
+      "input_tokens": 158,
+      "questions": 1
+    },
+    {
+      "id": "text-027",
+      "input_tokens": 839,
+      "questions": 5
+    },
+    {
+      "id": "text-028",
+      "input_tokens": 347,
+      "questions": 2
+    },
+    {
+      "id": "text-029",
+      "input_tokens": 359,
+      "questions": 3
+    },
+    {
+      "id": "text-030",
+      "input_tokens": 338,
+      "questions": 2
+    },
+    {
+      "id": "text-031",
+      "input_tokens": 169,
+      "questions": 1
+    },
+    {
+      "id": "text-032",
+      "input_tokens": 706,
+      "questions": 2
+    },
+    {
+      "id": "text-033",
+      "input_tokens": 588,
+      "questions": 3
+    },
+    {
+      "id": "text-034",
+      "input_tokens": 1031,
+      "questions": 3
+    },
+    {
+      "id": "text-035",
+      "input_tokens": 326,
+      "questions": 2
+    },
+    {
+      "id": "text-036",
+      "input_tokens": 516,
+      "questions": 2
+    },
+    {
+      "id": "text-037",
+      "input_tokens": 850,
+      "questions": 5
+    },
+    {
+      "id": "text-038",
+      "input_tokens": 245,
+      "questions": 1
+    },
+    {
+      "id": "text-039",
+      "input_tokens": 1090,
+      "questions": 5
+    }
+  ],
+  "shortest": {
+    "id": "text-006",
+    "input_tokens": 155,
+    "questions": 1
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "name": "weighted-block-delta",
+  "command": [
+    "run-artifacts/stage2/psionic-serve-tests",
+    "clef::tests::metal_block_delta_matches_sequential_weighted_logits",
+    "--test-threads=1",
+    "--nocapture",
+    "--ignored",
+    "--exact"
+  ],
+  "binary_sha256": "89f9f6f09cc19cdf0ad74a197ca641081edef78285b2856c8e7c14aa8523b073",
+  "environment": {},
+  "conditions": "shared machine; correctness only",
+  "preflight": {
+    "available_memory_bytes": 86109421568,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 2100640,
+      "inactive": 2723123,
+      "speculative": 431939
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "error": "owned process memory guard rejected this run: rss_monitor:RuntimeError",
+  "exit": 1,
+  "cleanup_error": "owned process memory monitor cleanup failed",
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 90246,
+    "max_rss_bytes": 38654705664,
+    "peak_rss_bytes": 20822097920,
+    "peak_physical_footprint_bytes": 15961636824,
+    "peak_accounted_bytes": 20822097920,
+    "sampling_error": {
+      "error_type": "RuntimeError",
+      "message": "the running owned process has no memory sample"
+    },
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 55,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 67220029440,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": "rss_monitor:RuntimeError",
+    "cleanup_error": "PermissionError",
+    "cleanup_diagnostics": {
+      "owned_pid": 90246,
+      "guard_pgid": 58646,
+      "guard_uid": 501,
+      "process_exit_code": null,
+      "observed_pgid_error": {
+        "type": "ProcessLookupError",
+        "errno": 3
+      },
+      "observed_uid": 501,
+      "observed_ps_pgid": 90246
+    },
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 30.497065916999986
+}

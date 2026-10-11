@@ -1,0 +1,20 @@
+[
+  {
+    "name": "serve",
+    "command": [
+      "cargo",
+      "test",
+      "--release",
+      "--manifest-path",
+      "crates/psionic/Cargo.toml",
+      "-p",
+      "psionic-serve",
+      "--lib",
+      "clef",
+      "--",
+      "--test-threads=1"
+    ],
+    "exit": 101,
+    "seconds": 1362.115019167
+  }
+]
