@@ -530,9 +530,7 @@ fn context_text(app: &App) -> String {
             crate::long_session::clock(until)
         ));
     }
-    if let Some(name) = &app.account {
-        parts.push(name.clone());
-    }
+    // The signed-in account's name is never shown under the input.
     if let Some(update) = &app.update_line {
         parts.push(update.clone());
     }
@@ -1576,13 +1574,15 @@ mod export_notice_tests {
     fn populated_footer_keeps_its_row_below_the_composer() {
         let mut app = App::default();
         app.mode = Mode::Live;
-        app.account = Some("Signed in".into());
+        app.account = Some("Christopher David".into());
+        app.update_line = Some("Update ready".into());
         let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
         terminal.draw(|frame| render(frame, &mut app)).unwrap();
         let buffer = terminal.backend().buffer();
         assert_eq!(buffer[(0, 18)].symbol(), "└");
         let text: String = (0..60).map(|x| buffer[(x, 19)].symbol()).collect();
-        assert_eq!(text.trim(), "Signed in");
+        // The account's name never shows under the input.
+        assert_eq!(text.trim(), "Update ready");
     }
 
     #[test]
