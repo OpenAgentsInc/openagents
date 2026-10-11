@@ -313,6 +313,17 @@ for e in ({"name": "STACK_STATE", "value": "/stack"},
     if e["name"] not in env:
         envs.append(e)
         sys.stderr.write(f"  web env {e['name']} added\n")
+# The actor runtime (#11253, docs/deployment/actors.md): the account
+# database the gateway already reaches through the Cloud SQL connector.
+# Mac jobs use it only when the live spec says OPENAGENTS_WEB_MAC_JOBS_ACTORS=1
+# (flipped with `gcloud run services update --container web`); a promote
+# keeps whatever the live spec has.
+instances = (revision["metadata"].get("annotations") or {}).get("run.googleapis.com/cloudsql-instances", "")
+if "openagents-production-pg" in instances and "OPENAGENTS_WEB_ACTORS_DATABASE_URL" not in env:
+    envs.append({"name": "OPENAGENTS_WEB_ACTORS_DATABASE_URL",
+                 "valueFrom": {"secretKeyRef": {"name": "openagents-production-pg-dsn",
+                                                "key": "latest"}}})
+    sys.stderr.write("  web env OPENAGENTS_WEB_ACTORS_DATABASE_URL added\n")
 mounts = web.setdefault("volumeMounts", [])
 if any(v["name"] == "stack" for v in spec.get("volumes", [])) and \
         not any(m["mountPath"] == "/stack" for m in mounts):

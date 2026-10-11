@@ -311,6 +311,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Analytics counts are kept");
     }
     config.analytics = analytics.clone();
+    // The actor runtime (#11253): the account database, in its own schema;
+    // with OPENAGENTS_WEB_MAC_JOBS_ACTORS=1 Mac jobs run through it. The
+    // connection string is never printed.
+    if let Ok(dsn) = std::env::var(openagents_web::actors_host::DATABASE_ENV)
+        && !dsn.trim().is_empty()
+    {
+        let mac_jobs = std::env::var(openagents_web::actors_host::MAC_JOBS_ENV)
+            .is_ok_and(|value| value == "1");
+        config.actors =
+            openagents_web::actors_host::Host::start(dsn.trim(), config.cloud.clone(), mac_jobs)
+                .await;
+    }
+    let actors = config.actors.clone();
     let shutdown = config.shutdown.clone();
     let listener = tokio::net::TcpListener::bind(listen).await?;
     let bound = listener.local_addr()?;
@@ -333,6 +346,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Err(error) = analytics.flush().await {
         eprintln!("The last analytics counts were not kept: {error}");
+    }
+    if let Some(actors) = actors {
+        actors.shutdown().await;
     }
     Ok(())
 }

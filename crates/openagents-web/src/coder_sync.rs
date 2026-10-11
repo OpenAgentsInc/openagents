@@ -1203,6 +1203,14 @@ fn respond(result: Result<Saved, Error>) -> Response {
 
 /// The account a request's app token signs in, as its chat owner.
 pub(crate) async fn owner(app: &App, headers: &HeaderMap) -> Result<String, Response> {
+    account(app, headers)
+        .await
+        .map(|account| account_owner(&account))
+}
+
+/// The account id an app's own token (`Authorization: Bearer sess_…`)
+/// belongs to, checked as [`owner`] checks it.
+pub(crate) async fn account(app: &App, headers: &HeaderMap) -> Result<String, Response> {
     let Some(service) = app.config.cloud.as_deref() else {
         return Err(refused(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -1217,12 +1225,12 @@ pub(crate) async fn owner(app: &App, headers: &HeaderMap) -> Result<String, Resp
         .unwrap_or_default();
     let key: [u8; 32] = Sha256::digest(token.as_bytes()).into();
     if let Some(account) = remembered(&key) {
-        return Ok(account_owner(&account));
+        return Ok(account);
     }
     match service.app_account(token).await {
         Ok(account) => {
             remember(key, &account);
-            Ok(account_owner(&account))
+            Ok(account)
         }
         Err(SessionError::Unauthenticated | SessionError::InvalidRequest) => Err(refused(
             StatusCode::UNAUTHORIZED,

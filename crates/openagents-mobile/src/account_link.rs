@@ -459,7 +459,18 @@ pub trait Http: Send + Sync {
     fn upload(&self, _url: String, _token: Option<String>, _bytes: Vec<u8>) -> Calling {
         Box::pin(async { Err("Photos can't be sent from here.".to_owned()) })
     }
+
+    /// Open the event stream at `url` and answer when something changes
+    /// there (the stream's second event; its first is the state on
+    /// connecting), when it ends, or after five minutes. The reply's
+    /// status is the stream's; `204` when it ended with no change.
+    fn changed(&self, _url: String, _token: Option<String>) -> Calling {
+        Box::pin(async { Err("Live updates aren't available here.".to_owned()) })
+    }
 }
+
+/// How long one live-update stream is held open.
+const STREAM_SECS: u64 = 300;
 
 /// `method` at `path` on the site at `origin`, then at `older` when the
 /// site doesn't serve `path` (a `404` that isn't the API's own `unknown`):
@@ -543,6 +554,54 @@ impl Http for Https {
                 .map_err(|_| "Couldn't reach openagents.com. Check your connection.".to_owned())?;
             let body = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
             Ok(Reply { status, body })
+        })
+    }
+
+    fn changed(&self, url: String, token: Option<String>) -> Calling {
+        let client = self.0.clone();
+        Box::pin(async move {
+            let mut request = client
+                .get(&url)
+                .timeout(Duration::from_secs(STREAM_SECS + 30))
+                .header("accept", "text/event-stream");
+            if let Some(token) = token {
+                request = request.bearer_auth(token);
+            }
+            let mut response = request
+                .send()
+                .await
+                .map_err(|_| "Couldn't reach openagents.com.".to_owned())?;
+            let status = response.status().as_u16();
+            if status != 200 {
+                return Ok(Reply {
+                    status,
+                    body: Value::Null,
+                });
+            }
+            let mut events = 0usize;
+            let mut tail = String::new();
+            while let Ok(Some(chunk)) = response.chunk().await {
+                tail.push_str(&String::from_utf8_lossy(&chunk));
+                while let Some(at) = tail.find("\n\n") {
+                    let event: String = tail.drain(..at + 2).collect();
+                    if event.lines().any(|line| line.starts_with("event:")) {
+                        events += 1;
+                        if events >= 2 {
+                            return Ok(Reply {
+                                status: 200,
+                                body: Value::Null,
+                            });
+                        }
+                    }
+                }
+                if tail.len() > 64 * 1024 {
+                    tail.clear();
+                }
+            }
+            Ok(Reply {
+                status: 204,
+                body: Value::Null,
+            })
         })
     }
 
@@ -2396,6 +2455,7 @@ struct Poller {
 
 impl Poller {
     async fn run(self) {
+        tokio::spawn(self.clone().watch());
         loop {
             if !lock(&self.state).signed() {
                 self.polling
@@ -2405,6 +2465,41 @@ impl Poller {
             self.pass().await;
             let interval = lock(&self.state).interval();
             let _ = tokio::time::timeout(interval, self.nudge.notified()).await;
+        }
+    }
+
+    /// Live updates (#11253): while signed in and in front, hold the Mac
+    /// jobs' event stream open and read again the moment a job changes,
+    /// rather than at the next poll. A site without the stream (`404`) is
+    /// asked again only every ten minutes; polling goes on regardless.
+    async fn watch(self) {
+        loop {
+            let (origin, token, active) = {
+                let state = lock(&self.state);
+                let Some(session) = state.session.clone().filter(|s| s.live(unix_now())) else {
+                    return;
+                };
+                (state.origin.clone(), session.token, state.active)
+            };
+            if !active {
+                tokio::time::sleep(Duration::from_secs(20)).await;
+                continue;
+            }
+            let pause = match self
+                .http
+                .changed(format!("{origin}/v1/mac-jobs/events"), Some(token))
+                .await
+            {
+                Ok(reply) if reply.status == 200 => {
+                    self.nudge.notify_one();
+                    Duration::ZERO
+                }
+                Ok(reply) if reply.status == 204 => Duration::ZERO,
+                Ok(reply) if reply.status == 404 => Duration::from_secs(600),
+                Ok(reply) if reply.status == 401 => return,
+                _ => Duration::from_secs(30),
+            };
+            tokio::time::sleep(pause).await;
         }
     }
 

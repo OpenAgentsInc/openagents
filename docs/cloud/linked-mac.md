@@ -43,6 +43,20 @@ the result back without anyone touching the Mac (#11223).
    Mac's board (`GET /v1/agents`), so the phone shows it with the computer's
    other work.
 
+## Through the actor runtime (#11253)
+
+With `OPENAGENTS_WEB_MAC_JOBS_ACTORS=1` on the website, each job is a
+`mac.job` actor (`crates/mac-jobs/src/actor.rs`) and the Mac claims it from
+the actor work queue instead of taking it from the chat store:
+`openagents mac serve` long-polls a claim, reports through calls fenced by
+that claim (a heartbeat thread renews it during quiet steps), and finishes it.
+A Mac killed mid-job loses the claim within a minute; a test or build runs
+again when a Mac claims it next, and an upload becomes uncertain until an
+operator records what happened. `openagents mac run` sends an
+`Idempotency-Key`, so a retried submit is the same job. The job pages and the
+phone update from `GET /v1/mac-jobs/events`. Details and the operator tools:
+[docs/deployment/actors.md](../deployment/actors.md).
+
 ## Recipes
 
 | Recipe | Kind | What runs | Arguments |

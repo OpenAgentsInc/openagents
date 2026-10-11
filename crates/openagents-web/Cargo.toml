@@ -9,6 +9,8 @@ default-run = "openagents-web"
 
 [dependencies]
 openagents-ui = { path = "../openagents-ui" }
+# The actor runtime (#11253): the store, its workers, and its routes.
+actors = { path = "../actors" }
 agent-fleet = { path = "../agent-fleet" }
 atif = { path = "../atif" }
 markdown-stream = { path = "../markdown-stream" }

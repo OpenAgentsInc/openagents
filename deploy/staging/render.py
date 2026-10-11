@@ -35,6 +35,10 @@ NFS_SERVER = "10.42.26.2"
 DATABASE = "openagentsgemini:us-central1:openagents-staging-pg"
 DATABASE_SECRET = "openagents-staging-pg-dsn"
 EGRESS_SUBNET = "openagents-web-staging"
+# Mac jobs through the actor runtime (#11253 step 1): "1" on, "0" off (the
+# chat-store jobs). Flip a live service with `gcloud run services update
+# --container web --update-env-vars OPENAGENTS_WEB_MAC_JOBS_ACTORS=0|1`.
+MAC_JOBS_ACTORS = "0"
 # Invite-only sign-in (oa_auth::invite, docs/auth/github.md): only the
 # owner's GitHub account (AtlantisPleb, id 14167547) may sign in, as a site
 # admin. Both the gateway and the web server read it.
@@ -102,6 +106,11 @@ def main():
             # First-party analytics (#11153, docs/deployment/analytics.md).
             plain("OPENAGENTS_WEB_ANALYTICS_BUCKET", ANALYTICS_BUCKET),
             secret("openagents-web-analytics-key-staging", "OPENAGENTS_WEB_ANALYTICS_KEY"),
+            # The actor runtime (#11253, docs/deployment/actors.md): the
+            # account database through the connector's socket, its own
+            # `actor` schema; Mac jobs through it when the flag is 1.
+            secret(DATABASE_SECRET, "OPENAGENTS_WEB_ACTORS_DATABASE_URL"),
+            plain("OPENAGENTS_WEB_MAC_JOBS_ACTORS", MAC_JOBS_ACTORS),
         ],
         # The gateway's store, read-only: the web reads only the house
         # service key there, for the environments setup agent.

@@ -22,6 +22,7 @@
 //! (`openagents mac run RECIPE --ref REF`). `docs/cloud/linked-mac.md`
 //! describes the whole flow.
 
+pub mod actor;
 mod capabilities;
 mod plan;
 mod spec;

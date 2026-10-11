@@ -16,6 +16,7 @@ pub mod account;
 mod account_export;
 mod account_memory;
 mod account_schedules;
+pub mod actors_host;
 mod agent_ready;
 mod agent_work;
 pub mod analytics;
@@ -43,6 +44,7 @@ mod environments;
 mod github_tools;
 mod layout;
 pub mod mac_jobs;
+mod mac_jobs_actor;
 mod mac_jobs_page;
 mod markdown;
 mod oauth;
@@ -373,6 +375,10 @@ pub struct Config {
     /// Starts when the server is asked to stop; open event streams end on
     /// it so a rollout can drain ([`shutdown`]).
     pub shutdown: shutdown::Shutdown,
+    /// The actor runtime (`OPENAGENTS_WEB_ACTORS_DATABASE_URL`, #11253):
+    /// its routes under `/v1/w/`, its workers, and with
+    /// `OPENAGENTS_WEB_MAC_JOBS_ACTORS=1` the Mac jobs. Absent, none of it.
+    pub actors: Option<Arc<actors_host::Host>>,
 }
 
 impl Config {
@@ -414,6 +420,7 @@ impl Config {
             analytics: Arc::new(analytics::Analytics::default()),
             agent_accounts: Vec::new(),
             shutdown: shutdown::Shutdown::default(),
+            actors: None,
         }
     }
 }
@@ -443,7 +450,14 @@ pub fn router(config: Config) -> Router {
         api: app.config.inference.is_some(),
     };
     let site_hosts = hosts.clone();
-    let site = Router::new()
+    let mut site = Router::<App>::new();
+    if let Some(actors) = &app.config.actors {
+        let routes = actors.router();
+        site = site
+            .route_service("/v1/w/{*rest}", routes.clone())
+            .route_service("/v1/actors/contract.json", routes);
+    }
+    let site = site
         .route("/api/v1/{*path}", axum::routing::any(api_proxy))
         .route("/api/flow/{*path}", get(pay_proxy))
         .route("/api/stats", get(pay_proxy))

@@ -140,6 +140,18 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
 }
 
 /// A job id or name as one path segment.
+/// Random bytes for a request key.
+fn rand_bytes() -> [u8; 16] {
+    let mut bytes = [0u8; 16];
+    if getrandom::fill(&mut bytes).is_err() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos());
+        bytes = (nanos ^ u128::from(std::process::id())).to_le_bytes();
+    }
+    bytes
+}
+
 fn segment(text: &str) -> String {
     text.bytes()
         .map(|b| {
@@ -254,6 +266,39 @@ impl Site {
         )
     }
 
+    /// `POST` that may be sent again: it carries one `Idempotency-Key`, and
+    /// a request that got no answer, or a busy answer, is tried again with
+    /// the same key, so the website makes one job however many times it
+    /// arrives (#11253).
+    fn post_once(&self, path: &str, body: &Value) -> Result<Value, String> {
+        let bytes: [u8; 16] = rand_bytes();
+        let key: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+        let mut last = Err("The website couldn't be reached.".to_owned());
+        for attempt in 0..4u32 {
+            if attempt > 0 {
+                std::thread::sleep(Duration::from_secs(2u64.pow(attempt)));
+            }
+            let sent = self
+                .http
+                .post(format!("{}{path}", self.saved.origin))
+                .bearer_auth(self.saved.token())
+                .header("idempotency-key", &key)
+                .json(body)
+                .send();
+            let again = match &sent {
+                Err(_) => true,
+                Ok(response) => {
+                    response.status().is_server_error() || response.status().as_u16() == 429
+                }
+            };
+            last = Self::answer(sent);
+            if !again {
+                break;
+            }
+        }
+        last
+    }
+
     fn download(&self, path: &str, to: &Path) -> Result<u64, String> {
         let mut response = self
             .http
@@ -304,7 +349,7 @@ pub(crate) fn job_body(args: &Args) -> Result<Value, String> {
 
 fn submit(output: &Output, site: &Site, args: &Args) -> Result<Value, String> {
     let body = job_body(args)?;
-    let queued = site.post("/v1/mac-jobs", &body)?;
+    let queued = site.post_once("/v1/mac-jobs", &body)?;
     let id = queued["id"].as_str().unwrap_or_default().to_owned();
     if args.switch("no-wait") {
         return Ok(queued);

@@ -48,9 +48,10 @@ use axum::routing::{get, post, put};
 use mac_jobs::{Capabilities, Kind, Recipe, Spec, valid_job_id};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::Digest as _;
 
 use crate::App;
-use crate::chat_store::{Error, Store, now_unix};
+use crate::chat_store::{Error, Store, account_owner, now_unix};
 use crate::coder_sync::{self, answer, line, refused, stored};
 use crate::phone_api::{Item, Question as ItemQuestion};
 
@@ -112,6 +113,7 @@ pub(crate) fn routes() -> Router<App> {
         )
         .route("/v1/mac-jobs", post(submit_route).get(list_route))
         .route("/v1/mac-jobs/macs", get(macs_route))
+        .route("/v1/mac-jobs/events", get(events_route))
         .route("/v1/mac-jobs/{id}", get(read_route))
         .route("/v1/mac-jobs/{id}/cancel", post(cancel_route))
         .route("/v1/mac-jobs/{id}/artifacts/{file}", get(artifact_route))
@@ -167,6 +169,9 @@ pub(crate) enum JobState {
     Done,
     Failed,
     Cancelled,
+    /// The Mac stopped answering during an upload; an operator records
+    /// what happened (actor jobs only, #11253).
+    Uncertain,
 }
 
 impl JobState {
@@ -182,6 +187,7 @@ impl JobState {
             Self::Done => "done",
             Self::Failed => "failed",
             Self::Cancelled => "cancelled",
+            Self::Uncertain => "uncertain",
         }
     }
 }
@@ -298,7 +304,7 @@ fn artifact_folder(owner: &str, id: &str) -> Result<String, Error> {
     Store::owner_key(owner, &format!("mac-jobs/art-{id}"))
 }
 
-fn part_key(owner: &str, id: &str, name: &str, part: u32) -> Result<String, Error> {
+pub(crate) fn part_key(owner: &str, id: &str, name: &str, part: u32) -> Result<String, Error> {
     Store::owner_key(owner, &format!("mac-jobs/art-{id}/{name}.p{part}"))
 }
 
@@ -853,6 +859,20 @@ pub(crate) async fn submit(
     owner: &str,
     sent: Submit,
 ) -> Result<Result<Submitted, Refused>, Error> {
+    let (spec, computer, online) = match choose(store, owner, sent).await? {
+        Ok(chosen) => chosen,
+        Err(refused) => return Ok(Err(refused)),
+    };
+    queue(store, owner, spec, computer, online).await
+}
+
+/// The job `sent` asks for and the Mac it goes to (online and free first),
+/// with whether that Mac is online.
+pub(crate) async fn choose(
+    store: &Store,
+    owner: &str,
+    sent: Submit,
+) -> Result<Result<(Spec, String, bool), Refused>, Error> {
     let spec = Spec {
         repo: sent.repo,
         git_ref: sent.git_ref,
@@ -898,6 +918,17 @@ pub(crate) async fn submit(
             why_not.unwrap_or_else(|| "No linked Mac runs this recipe.".into()),
         )));
     };
+    Ok(Ok((spec, computer, online)))
+}
+
+/// Keep a new job in the chat store (the flag-off path).
+async fn queue(
+    store: &Store,
+    owner: &str,
+    spec: Spec,
+    computer: String,
+    online: bool,
+) -> Result<Result<Submitted, Refused>, Error> {
     let now = now_unix();
     let id = new_job_id();
     let job = Job {
@@ -1116,10 +1147,16 @@ pub(crate) fn view(job: &Job, after: usize) -> Value {
 /// still going and those that ended in the last day, so the phone and the
 /// web show them with the computer's other work, and the phone's Approve,
 /// Deny, and Stop reach them ([`act`]).
+#[cfg(test)]
 pub(crate) async fn board_items(store: &Store, owner: &str) -> Vec<(String, Item)> {
     let Ok(jobs) = list(store, owner).await else {
         return Vec::new();
     };
+    board_items_of(&jobs)
+}
+
+/// [`board_items`] of jobs already read (both stores, [`crate::mac_jobs_actor`]).
+pub(crate) fn board_items_of(jobs: &[Job]) -> Vec<(String, Item)> {
     let now = now_unix();
     jobs.iter()
         .filter(|job| {
@@ -1141,6 +1178,7 @@ pub(crate) fn item(job: &Job) -> Item {
         JobState::Done => "done",
         JobState::Failed => "failed",
         JobState::Cancelled => "stopped",
+        JobState::Uncertain => "failed",
     };
     Item {
         id: job.id.clone(),
@@ -1171,6 +1209,7 @@ pub(crate) fn is_job(item: &str) -> bool {
 
 /// The phone's Approve, Deny, or Stop on a job's board item. `Err` holds
 /// the refusal.
+#[cfg(test)]
 pub(crate) async fn act(
     store: &Store,
     owner: &str,
@@ -1220,6 +1259,7 @@ pub(crate) async fn act(
 }
 
 /// The bytes of file `name` of job `id`, part after part.
+#[cfg(test)]
 pub(crate) async fn artifact_body(
     store: &Store,
     owner: &str,
@@ -1229,6 +1269,18 @@ pub(crate) async fn artifact_body(
     let Some(job) = load(store, owner, id).await? else {
         return Ok(None);
     };
+    artifact_body_of(store, owner, &job, name).await
+}
+
+/// The bytes of file `name` of `job` (either store's; the parts live under
+/// the account's folder either way).
+pub(crate) async fn artifact_body_of(
+    store: &Store,
+    owner: &str,
+    job: &Job,
+    name: &str,
+) -> Result<Option<(u64, Body)>, Error> {
+    let id = job.id.as_str();
     let Some(found) = job.artifacts.iter().find(|a| a.name == name && a.done) else {
         return Ok(None);
     };
@@ -1312,10 +1364,11 @@ async fn take_route(
     Path(name): Path<String>,
     body: Bytes,
 ) -> Response {
-    let owner = match coder_sync::owner(&app, &headers).await {
-        Ok(owner) => owner,
+    let account = match coder_sync::account(&app, &headers).await {
+        Ok(account) => account,
         Err(response) => return response,
     };
+    let owner = account_owner(&account);
     let computer = line(&name, 64);
     let Some(sent) = serde_json::from_slice::<Reports>(&body)
         .ok()
@@ -1331,8 +1384,19 @@ async fn take_route(
     if let Err(error) = report_capabilities(store, &owner, &computer, sent.capabilities).await {
         return stored(&error);
     }
+    // Jobs from before actors first; then, with actors on, where this Mac
+    // claims the rest (#11253): its workspace, the queue, and its target.
+    let actors = crate::mac_jobs_actor::jobs(&app, &account)
+        .await
+        .map(|jobs| {
+            json!({
+                "workspace": jobs.workspace,
+                "queue": mac_jobs::actor::QUEUE,
+                "target": mac_jobs::actor::target(&computer),
+            })
+        });
     match take(store, &owner, &computer).await {
-        Ok(jobs) => answer(StatusCode::OK, json!({"jobs": jobs})),
+        Ok(jobs) => answer(StatusCode::OK, json!({"jobs": jobs, "actors": actors})),
         Err(error) => stored(&error),
     }
 }
@@ -1379,6 +1443,11 @@ struct PartQuery {
     part: u32,
     #[serde(default)]
     last: u8,
+    /// An actor job's claim (#11253): its work item and epoch.
+    #[serde(default)]
+    item: Option<String>,
+    #[serde(default)]
+    epoch: Option<u64>,
 }
 
 async fn part_route(
@@ -1388,14 +1457,40 @@ async fn part_route(
     Query(query): Query<PartQuery>,
     body: Bytes,
 ) -> Response {
-    let owner = match coder_sync::owner(&app, &headers).await {
-        Ok(owner) => owner,
+    let account = match coder_sync::account(&app, &headers).await {
+        Ok(account) => account,
         Err(response) => return response,
     };
+    let owner = account_owner(&account);
     if !valid_job_id(&id) {
         return refused(StatusCode::NOT_FOUND, "unknown", "There is no such job.");
     }
     let computer = line(&name, 64);
+    if let (Some(item), Some(epoch)) = (query.item.clone(), query.epoch) {
+        let Some(jobs) = crate::mac_jobs_actor::jobs(&app, &account).await else {
+            return refused(StatusCode::NOT_FOUND, "unknown", "There is no such job.");
+        };
+        return match jobs
+            .save_part(
+                &app.config.chat_store,
+                &computer,
+                &id,
+                actors::WorkFence {
+                    item_id: item,
+                    epoch,
+                },
+                &file,
+                query.part,
+                query.last == 1,
+                body.to_vec(),
+            )
+            .await
+        {
+            Ok(Ok(())) => answer(StatusCode::OK, json!({"saved": true})),
+            Ok(Err((status, code, message))) => refused(status, code, &message),
+            Err(error) => stored(&error),
+        };
+    }
     match save_part(
         &app.config.chat_store,
         &owner,
@@ -1437,10 +1532,11 @@ async fn macs_route(State(app): State<App>, headers: HeaderMap) -> Response {
 }
 
 async fn submit_route(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Response {
-    let owner = match coder_sync::owner(&app, &headers).await {
-        Ok(owner) => owner,
+    let account = match coder_sync::account(&app, &headers).await {
+        Ok(account) => account,
         Err(response) => return response,
     };
+    let owner = account_owner(&account);
     let sent = match serde_json::from_slice::<Submit>(&body) {
         Ok(sent) => sent,
         Err(_) => {
@@ -1452,7 +1548,24 @@ async fn submit_route(State(app): State<App>, headers: HeaderMap, body: Bytes) -
             );
         }
     };
-    match submit(&app.config.chat_store, &owner, sent).await {
+    // A retry sends the same Idempotency-Key and gets the same job.
+    let request = headers
+        .get("idempotency-key")
+        .and_then(|v| v.to_str().ok())
+        .map(|key| line(key, 128))
+        .filter(|key| !key.is_empty());
+    let submitted = match crate::mac_jobs_actor::jobs(&app, &account).await {
+        Some(jobs) => match choose(&app.config.chat_store, &owner, sent).await {
+            Ok(Ok((spec, computer, online))) => jobs
+                .submit(spec, &computer, request.as_deref())
+                .await
+                .map(|done| done.map(|queued| Submitted { online, ..queued })),
+            Ok(Err(why)) => Ok(Err(why)),
+            Err(error) => Err(error),
+        },
+        None => submit(&app.config.chat_store, &owner, sent).await,
+    };
+    match submitted {
         Ok(Ok(queued)) => answer(
             StatusCode::CREATED,
             json!({
@@ -1475,11 +1588,11 @@ async fn submit_route(State(app): State<App>, headers: HeaderMap, body: Bytes) -
 }
 
 async fn list_route(State(app): State<App>, headers: HeaderMap) -> Response {
-    let owner = match coder_sync::owner(&app, &headers).await {
-        Ok(owner) => owner,
+    let account = match coder_sync::account(&app, &headers).await {
+        Ok(account) => account,
         Err(response) => return response,
     };
-    match list(&app.config.chat_store, &owner).await {
+    match crate::mac_jobs_actor::all(&app, &account).await {
         Ok(jobs) => {
             let jobs: Vec<Value> = jobs
                 .iter()
@@ -1509,15 +1622,14 @@ async fn read_route(
     Path(id): Path<String>,
     Query(query): Query<ReadQuery>,
 ) -> Response {
-    let owner = match coder_sync::owner(&app, &headers).await {
-        Ok(owner) => owner,
+    let account = match coder_sync::account(&app, &headers).await {
+        Ok(account) => account,
         Err(response) => return response,
     };
-    let store = &app.config.chat_store;
     let until = Instant::now() + Duration::from_secs(query.wait.min(MAX_WAIT));
     let mut first: Option<(JobState, usize, Option<String>)> = None;
     loop {
-        let job = match load(store, &owner, &id).await {
+        let job = match crate::mac_jobs_actor::find(&app, &account, &id).await {
             Ok(Some(job)) => job,
             Ok(None) => return refused(StatusCode::NOT_FOUND, "unknown", "There is no such job."),
             Err(error) => return stored(&error),
@@ -1543,11 +1655,11 @@ async fn cancel_route(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Response {
-    let owner = match coder_sync::owner(&app, &headers).await {
-        Ok(owner) => owner,
+    let account = match coder_sync::account(&app, &headers).await {
+        Ok(account) => account,
         Err(response) => return response,
     };
-    match cancel(&app.config.chat_store, &owner, &id).await {
+    match crate::mac_jobs_actor::cancel(&app, &account, &id).await {
         Ok(Some(())) => answer(StatusCode::OK, json!({"cancelled": true})),
         Ok(None) => refused(StatusCode::NOT_FOUND, "unknown", "There is no such job."),
         Err(error) => stored(&error),
@@ -1559,18 +1671,81 @@ async fn artifact_route(
     headers: HeaderMap,
     Path((id, file)): Path<(String, String)>,
 ) -> Response {
-    let owner = match coder_sync::owner(&app, &headers).await {
-        Ok(owner) => owner,
+    let account = match coder_sync::account(&app, &headers).await {
+        Ok(account) => account,
         Err(response) => return response,
     };
     if !valid_artifact(&file) {
         return refused(StatusCode::NOT_FOUND, "unknown", "There is no such file.");
     }
-    match artifact_body(&app.config.chat_store, &owner, &id, &file).await {
+    match crate::mac_jobs_actor::artifact(&app, &account, &id, &file).await {
         Ok(Some((size, body))) => download(&file, size, body),
         Ok(None) => refused(StatusCode::NOT_FOUND, "unknown", "There is no such file."),
         Err(error) => stored(&error),
     }
+}
+
+/// `GET /v1/mac-jobs/events`: an event stream that says `jobs` each time
+/// one of the account's actor jobs changes (#11253): the job pages and the
+/// phone read again on it instead of polling. An app's own token or the
+/// browser's session cookie; the first event comes at once, and a stream
+/// ends after five minutes (the client reconnects). Without actors here it
+/// answers 404, and readers keep polling.
+async fn events_route(State(app): State<App>, headers: HeaderMap) -> Response {
+    let account = if headers.contains_key(header::AUTHORIZATION) {
+        match coder_sync::account(&app, &headers).await {
+            Ok(account) => account,
+            Err(response) => return response,
+        }
+    } else {
+        match crate::settings::viewer(&app, &headers, "/settings/mac-jobs").await {
+            Ok((_, viewer)) => viewer.account_id,
+            Err(response) => return response,
+        }
+    };
+    let Some(jobs) = crate::mac_jobs_actor::jobs(&app, &account).await else {
+        return refused(
+            StatusCode::NOT_FOUND,
+            "unknown",
+            "Live updates aren't on here.",
+        );
+    };
+    let started = Instant::now();
+    let updates = futures_util::stream::unfold(
+        (jobs, None::<String>, started),
+        |(jobs, last, started)| async move {
+            loop {
+                if started.elapsed() > Duration::from_secs(300) {
+                    return None;
+                }
+                if last.is_some() {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+                let Ok(now) = jobs.fingerprint().await else {
+                    return None;
+                };
+                if last.as_deref() != Some(now.as_str()) {
+                    let digest = format!("{:x}", sha2::Sha256::digest(now.as_bytes()));
+                    let event = axum::response::sse::Event::default()
+                        .event("jobs")
+                        .id(digest[..16].to_owned())
+                        .data("{}");
+                    return Some((
+                        Ok::<_, std::convert::Infallible>(event),
+                        (jobs, Some(now), started),
+                    ));
+                }
+            }
+        },
+    );
+    let updates = app.config.shutdown.until(updates);
+    let mut response = axum::response::Sse::new(updates)
+        .keep_alive(axum::response::sse::KeepAlive::new().interval(Duration::from_secs(15)))
+        .into_response();
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
 }
 
 #[cfg(test)]

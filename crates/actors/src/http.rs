@@ -161,6 +161,9 @@ struct ActionBody {
     input: Option<Value>,
     #[serde(default)]
     expected_version: Option<u64>,
+    /// The work claim this call is fenced by (an executor's call).
+    #[serde(default)]
+    fence: Option<WorkFence>,
 }
 async fn action(
     State(api): State<Api>,
@@ -183,6 +186,7 @@ async fn action(
                     input: body.input,
                     idempotency_key: idem(&headers)?,
                     expected_version: body.expected_version,
+                    fence: body.fence,
                 },
             )
             .await?,
@@ -315,6 +319,9 @@ struct ClaimBody {
     target: Option<String>,
     #[serde(default = "one")]
     max: u32,
+    /// Wait this long, at most 30 000 ms, for work when none is ready.
+    #[serde(default)]
+    wait_ms: u64,
 }
 fn one() -> u32 {
     1
@@ -333,7 +340,13 @@ async fn claim(
     Ok(Json(Claims {
         items: api
             .store
-            .claim_work(&caller, &queue, body.target.as_deref(), body.max)
+            .claim_work_wait(
+                &caller,
+                &queue,
+                body.target.as_deref(),
+                body.max,
+                Duration::from_millis(body.wait_ms.min(30_000)),
+            )
             .await?,
     }))
 }
