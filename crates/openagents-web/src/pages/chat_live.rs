@@ -22,7 +22,10 @@
 //!
 //! A chat this tab hasn't drawn (a terminal's chat synced while the page is
 //! open, #11089) makes the stream send the whole list once, out of band, so
-//! the new row appears without a reload. The page names its open chat and
+//! the new row appears without a reload. So does a row whose title, pin,
+//! archive, or project changed on another device (#11263), and a reconnect
+//! after a gap (a backgrounded or offline tab) that finds chats changed
+//! since its cursor: the tab may have drawn none of them. The page names its open chat and
 //! whether rows load with HTMX in the connection address, so the list it
 //! sends matches the one it replaces.
 //!
@@ -49,7 +52,7 @@ const SETTLE: Duration = Duration::from_secs(1);
 /// How often a chat last seen Working is read again.
 const WORKING_EVERY: Duration = Duration::from_secs(5);
 /// How often the whole list is checked (for writes on other replicas).
-const ALL_EVERY: Duration = Duration::from_secs(120);
+const ALL_EVERY: Duration = Duration::from_secs(30);
 /// A connection made this soon after the page was drawn skips the catch-up.
 const FRESH_SECONDS: u64 = 5;
 /// The most Working chats a page names in its connection address.
@@ -127,6 +130,9 @@ struct Watch {
     /// The chats the tab's list has rows for; `None` until first read. A
     /// chat not in it makes the stream send the whole list.
     known: Option<HashSet<String>>,
+    /// What each known row shows besides its status (title, pin, archive,
+    /// project); a change sends the whole list (#11263).
+    rows: HashMap<String, RowLook>,
     /// What the tab's list was drawn with, to draw it again.
     current: Option<String>,
     hx: bool,
@@ -205,6 +211,7 @@ impl Watch {
             next_working: start + WORKING_EVERY,
             next_all: start + ALL_EVERY,
             known: None,
+            rows: HashMap::new(),
             current: None,
             hx: false,
             headers: HeaderMap::new(),
@@ -212,21 +219,35 @@ impl Watch {
     }
 
     /// The chats the tab drew: every one last changed by its cursor (or
-    /// drawn Working). A reconnect after a gap takes the list as it is.
+    /// drawn Working). On a reconnect after a gap too: a chat made or
+    /// renamed meanwhile is not one the tab drew, so it brings the list.
     async fn seed(&mut self) {
         if self.known.is_some() {
             return;
         }
-        let all = self.catch_up;
         if let Ok(rows) = self.app.config.chat_store.list(&self.owner).await {
-            self.known = Some(
-                rows.iter()
-                    .filter(|chat| {
-                        all || chat.updated_unix <= self.cursor || self.shown.contains_key(&chat.id)
-                    })
-                    .map(|chat| chat.id.clone())
-                    .collect(),
-            );
+            let drawn: Vec<&Conversation> = rows
+                .iter()
+                .filter(|chat| {
+                    chat.updated_unix <= self.cursor || self.shown.contains_key(&chat.id)
+                })
+                .collect();
+            self.rows = drawn
+                .iter()
+                .map(|chat| (chat.id.clone(), RowLook::of(chat)))
+                .collect();
+            self.known = Some(drawn.iter().map(|chat| chat.id.clone()).collect());
+        }
+    }
+
+    /// Whether `chat`'s row now looks different from the one the tab drew,
+    /// beyond its status (renamed, pinned, archived, or moved on another
+    /// device); remembers how it looks now.
+    fn restyled(&mut self, chat: &Conversation) -> bool {
+        let look = RowLook::of(chat);
+        match self.rows.insert(chat.id.clone(), look.clone()) {
+            Some(before) => before != look,
+            None => false,
         }
     }
 
@@ -385,6 +406,7 @@ impl Watch {
                 Ok(Some(loaded)) => {
                     let loaded = work::sync(&self.app, loaded).await;
                     fresh |= self.is_new(&loaded.conversation);
+                    fresh |= self.restyled(&loaded.conversation);
                     slots.push_str(&self.slot(&loaded.conversation));
                 }
                 // A deleted chat's row is gone with it.
@@ -419,9 +441,10 @@ impl Watch {
         };
         self.catch_up = false;
         self.dirty.clear();
-        let fresh = rows
-            .iter()
-            .fold(false, |fresh, chat| self.is_new(chat) || fresh);
+        let fresh = rows.iter().fold(false, |fresh, chat| {
+            let new = self.is_new(chat);
+            self.restyled(chat) || new || fresh
+        });
         let mut slots = self.changed_rows(&rows);
         if fresh {
             slots.insert_str(0, &self.list().await);
@@ -451,6 +474,26 @@ impl Watch {
         }
         self.shown.insert(chat.id.clone(), status);
         row_status_slot(chat, true).into_string()
+    }
+}
+
+/// What a row shows besides its status.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RowLook {
+    title: String,
+    pinned: bool,
+    archived: bool,
+    project: Option<String>,
+}
+
+impl RowLook {
+    fn of(chat: &Conversation) -> Self {
+        Self {
+            title: chat.title.clone(),
+            pinned: chat.pinned_unix.is_some(),
+            archived: chat.archived_unix.is_some(),
+            project: chat.project.clone(),
+        }
     }
 }
 
@@ -661,8 +704,60 @@ mod tests {
             "{slots}"
         );
         assert!(slots.contains(r#"data-status="working""#), "{slots}");
-        assert!(!slots.contains(A), "{slots}");
+        // B changed during the gap, so the tab may never have drawn it
+        // (#11263): the whole list comes too.
+        assert!(slots.contains(r#"id="chat-sidebar""#), "{slots}");
+        assert!(slots.contains(&format!("chat-row-{B}")), "{slots}");
         assert_eq!(watch.shown.get(A), Some(&Some(ChatStatus::Failed)));
         assert!(watch.cursor >= now() - 2);
+    }
+
+    /// #11263: a chat renamed on another device brings the whole list, so
+    /// the row shows its new title without a reload; its own owner's only.
+    #[tokio::test]
+    async fn a_chat_renamed_elsewhere_brings_the_whole_list() {
+        let directory = tempfile::tempdir().unwrap();
+        let app = app(&directory);
+        let mut drawn = chat(A, OWNER, 100);
+        drawn.pending = None;
+        app.config.chat_store.create(&drawn).await.unwrap();
+        let mut watch = Watch::new(app.clone(), OWNER.into(), now(), Vec::new());
+        watch.seed().await;
+        let store = &app.config.chat_store;
+        let loaded = store.load(OWNER, A).await.unwrap().unwrap();
+        let mut renamed = loaded.conversation.clone();
+        renamed.revision += 1;
+        renamed.title = "Named on the phone".into();
+        store.compare_and_swap(&loaded, &renamed).await.unwrap();
+        let slots = next(&mut watch).await;
+        assert!(slots.contains(r#"id="chat-sidebar""#), "{slots}");
+        assert!(slots.contains("Named on the phone"), "{slots}");
+        // The same look again sends nothing.
+        watch.dirty.insert(A.into());
+        assert_eq!(watch.read_dirty().await, Ok(String::new()));
+        // Another owner's watch never hears of it.
+        let mut other = Watch::new(app.clone(), OTHER.into(), now(), Vec::new());
+        other.seed().await;
+        other.drain();
+        assert!(other.dirty.is_empty());
+    }
+
+    /// #11263: a tab that reconnects after a gap gets the chats synced
+    /// while it was away.
+    #[tokio::test]
+    async fn a_reconnect_after_a_gap_brings_chats_synced_meanwhile() {
+        let directory = tempfile::tempdir().unwrap();
+        let app = app(&directory);
+        let mut drawn = chat(A, OWNER, 100);
+        drawn.pending = None;
+        app.config.chat_store.create(&drawn).await.unwrap();
+        let mut synced = chat(B, OWNER, now());
+        synced.pending = None;
+        app.config.chat_store.create(&synced).await.unwrap();
+        // The tab drew the list at 1,000 and was away since.
+        let mut watch = Watch::new(app.clone(), OWNER.into(), 1_000, Vec::new());
+        let slots = next(&mut watch).await;
+        assert!(slots.contains(r#"id="chat-sidebar""#), "{slots}");
+        assert!(slots.contains(&format!("chat-row-{B}")), "{slots}");
     }
 }

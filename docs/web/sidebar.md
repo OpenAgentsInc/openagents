@@ -177,12 +177,14 @@ Where each status comes from:
   band. The chat store announces this process's writes
   (`chat_store::Store::changes`); the stream waits a second for a burst to
   settle and reads only the chats that changed. Chats last seen Working are
-  read again every 5 seconds and the whole list every 2 minutes, for writes
+  read again every 5 seconds and the whole list every 30 seconds, for writes
   on another replica. A connection lasts 10 minutes; the browser then
   reconnects with the last event id (a unix time) and gets the rows changed
   since. A chat the tab has no row for (a terminal's chat synced while the
   page is open, #11089) makes the stream send the whole list once, out of
-  band; the connection address names the open chat (`current`) and `hx` so
+  band, and so does a row renamed, pinned, archived, or moved on another
+  device, or a reconnect after a gap that finds chats changed since its
+  cursor (#11263); the connection address names the open chat (`current`) and `hx` so
   the list matches the page's.
 
 ## Narrow screens
