@@ -1767,7 +1767,10 @@ fn a_fresh_new_chat_always_shows_suggestions() {
         [
             ("coder-suggest-meta.who", "What is OpenAgents?"),
             ("coder-suggest-meta.model", "What models do you use?"),
-            ("coder-suggest-meta.codebase", "How do I connect my codebase?"),
+            (
+                "coder-suggest-meta.codebase",
+                "How do I connect my codebase?"
+            ),
             ("coder-suggest-meta.plugins", "What are plugins?"),
         ]
         .map(|(key, label)| (key.to_owned(), label.to_owned()))
@@ -2637,8 +2640,15 @@ fn attached_images_show_as_shared_image_nodes_and_are_not_dropped() {
     fixture.coder.set_attachments(true);
     fixture.list();
     let screen = fixture.tap("coder-back");
-    assert!(node(&screen, "coder-attach").is_some());
-    fixture.tap("coder-attach");
+    // The attach control is inside the composer, on the field's line, not
+    // a button of its own above it.
+    assert!(node(&screen, "coder-attach").is_none());
+    let composer = node(&screen, "coder-composer").expect("the composer");
+    assert_eq!(
+        composer["element"]["props"]["attach"]["kind"],
+        "attach_image"
+    );
+    fixture.tap("coder-composer");
     assert_eq!(
         fixture.coder.take_go(),
         Some(crate::coder_tab::Go::PickImage)

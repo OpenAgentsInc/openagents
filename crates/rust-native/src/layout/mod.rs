@@ -1091,6 +1091,7 @@ pub fn without_intents<I>(node: &Node<I>) -> Node<()> {
             choices,
             draft,
             focus,
+            attach,
         } => Element::Composer {
             token: token.clone(),
             placeholder: placeholder.clone(),
@@ -1101,6 +1102,7 @@ pub fn without_intents<I>(node: &Node<I>) -> Node<()> {
             choices: choices.clone(),
             draft: draft.clone(),
             focus: *focus,
+            attach: attach.as_ref().map(|_| ()),
         },
     };
     Node {

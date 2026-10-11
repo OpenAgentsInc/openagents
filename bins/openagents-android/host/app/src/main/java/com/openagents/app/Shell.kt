@@ -8,7 +8,6 @@ package com.openagents.app
 
 import android.content.Context
 import android.graphics.Outline
-import android.graphics.drawable.GradientDrawable
 import android.text.Editable
 import android.text.TextUtils
 import android.text.TextWatcher
@@ -194,11 +193,9 @@ internal class HomeCards(private val context: Context, private val tryIt: (Strin
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
             val card = cards[position % cards.size]
             val view = holder.itemView as FrameLayout
-            val (icon, colors) = look(card.id)
-            view.background = GradientDrawable(GradientDrawable.Orientation.TL_BR, colors).apply {
-                cornerRadius = context.dpf(20f)
-            }
-            (view.getChildAt(0) as ImageView).apply { setImageResource(icon); setColorFilter(0xEBFFFFFF.toInt()) }
+            // Coder Noir: the theme's raised gray, a hairline edge, no hue.
+            view.background = context.rounded(Palette.RAISED, 20f, Palette.BORDER)
+            (view.getChildAt(0) as ImageView).apply { setImageResource(look(card.id)); setColorFilter(Palette.PRIMARY) }
             view.contentDescription = card.title
             view.tag = "shell-card-${card.id}"
             view.setOnClickListener { center(holder.bindingAdapterPosition, true); clock.release(now()) }
@@ -320,13 +317,13 @@ internal class HomeCards(private val context: Context, private val tryIt: (Strin
         private const val COPIES = 7
         private const val SIDE_DP = 96
 
-        /** A card's glyph and gradient, as on iOS. */
-        fun look(id: String): Pair<Int, IntArray> = when (id) {
-            "verse" -> R.drawable.ic_tab_verse to intArrayOf(0xFF2985DB.toInt(), 0xFF5CCCDB.toInt())
-            "coder" -> R.drawable.ic_glyph_code to intArrayOf(0xFF6B52DB.toInt(), 0xFFB88FFA.toInt())
-            "codebase" -> R.drawable.ic_glyph_folder to intArrayOf(0xFFDB6B3D.toInt(), 0xFFFAB366.toInt())
-            "roadmap" -> R.drawable.ic_glyph_map to intArrayOf(0xFF1F8F66.toInt(), 0xFF75D18F.toInt())
-            else -> R.drawable.ic_glyph_ask to intArrayOf(0xFF8E8E93.toInt(), 0xFFB0B0B5.toInt())
+        /** A card's glyph, as on iOS. */
+        fun look(id: String): Int = when (id) {
+            "verse" -> R.drawable.ic_tab_verse
+            "coder" -> R.drawable.ic_glyph_code
+            "codebase" -> R.drawable.ic_glyph_folder
+            "roadmap" -> R.drawable.ic_glyph_map
+            else -> R.drawable.ic_glyph_ask
         }
     }
 }
@@ -608,11 +605,10 @@ internal object VersePortal {
         contentDescription = label; tag = "verse-portal"
         isClickable = true; isFocusable = true
         setOnClickListener { enter() }
-        val (icon, colors) = HomeCards.look("verse")
         addView(FrameLayout(context).apply {
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, colors).apply { cornerRadius = context.dpf(14f) }
+            background = context.rounded(Palette.SURFACE, 14f, Palette.BORDER)
             addView(ImageView(context).apply {
-                setImageResource(icon); setColorFilter(0xEBFFFFFF.toInt())
+                setImageResource(HomeCards.look("verse")); setColorFilter(Palette.PRIMARY)
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }, FrameLayout.LayoutParams(context.dp(30), context.dp(30), Gravity.CENTER))
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO

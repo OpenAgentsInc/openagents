@@ -276,7 +276,12 @@ its Claude plan offers **Continue on your key** and **Continue with
 OpenAgents** and says where the plan stands, and **Issue**, **Commit**, and
 **Pull request** open the row's GitHub pages. `AccountGateUITests` signs in
 with a code (written to the shots folder for approval) and captures these
-screens, against staging with `TEST_RUNNER_OPENAGENTS_UITEST_ORIGIN`. A change to finished,
+screens, against staging with `TEST_RUNNER_OPENAGENTS_UITEST_ORIGIN`.
+`AttachmentGateUITests` (build 58) opens a website chat from a saved
+session, attaches a photo from Photos and `codeword.txt` from Files with
+the paperclip inside the reply composer, sends, and waits for the answer
+to name what they hold. The chat with OpenAgents has no paperclip: it
+takes words only. A change to finished,
 failed, or asking shows as a local notification, with **Approve** and
 **Deny** on a question; the app also reads in the background
 (`BGAppRefreshTask`, `com.openagents.app.link-refresh`) about every 15

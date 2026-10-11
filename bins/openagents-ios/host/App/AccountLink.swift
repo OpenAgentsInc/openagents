@@ -281,6 +281,9 @@ struct LinkScreen: View {
             }
         }
         .background(appColors.background.ignoresSafeArea())
+        // A web chat's attach control (#11174): its pickers live with
+        // this screen, which shows without the chat tab under it.
+        .modifier(AttachmentPickers(bridge: bridge))
         .onAppear { show() }
         .onChange(of: screen) { _, _ in show() }
         .onChange(of: chat) { _, _ in show() }

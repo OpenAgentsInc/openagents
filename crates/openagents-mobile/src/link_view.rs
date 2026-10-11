@@ -397,25 +397,22 @@ fn chat(state: &State, open: &Open, composer: u64, limit: usize, cut_at: usize) 
         None => (false, "Reply".into()),
     };
     let sending = open.sending;
-    // Photos for the reply (#11174): a web chat takes up to four.
-    if crate::account_link::takes_photos(open) {
+    // Photos and files for the reply (#11174): a web chat takes up to
+    // four. Each shows as a pill that removes it; the attach control is
+    // inside the composer, leading its field.
+    let takes = crate::account_link::takes_photos(open);
+    if takes {
         for (index, (name, _)) in open.photos.iter().enumerate() {
             children.push(button(
                 &format!("link-photo-{index}"),
                 &format!("Remove {name}"),
-                None,
+                Some(Glyph::Paperclip),
                 Intent::RemovePhoto { index },
             ));
         }
-        if open.photos.len() < crate::account_link::MAX_PHOTOS && !sending {
-            children.push(button(
-                "link-add-photo",
-                "Add photo",
-                None,
-                Intent::AddPhoto,
-            ));
-        }
     }
+    let attach =
+        takes && enabled && !sending && open.photos.len() < crate::account_link::MAX_PHOTOS;
     children.push(Node {
         key: "link-composer".into(),
         style: Style::default(),
@@ -429,6 +426,7 @@ fn chat(state: &State, open: &Open, composer: u64, limit: usize, cut_at: usize) 
             choices: vec![],
             draft: None,
             focus: false,
+            attach: attach.then_some(Intent::AddPhoto),
         },
     });
     page(children)
@@ -881,6 +879,7 @@ fn note(state: &State, composer: u64) -> Node<Intent> {
                 .and_then(|note| note.body.clone())
                 .filter(|body| body.len() <= crate::account_link::MAX_NOTE_BYTES),
             focus: true,
+            attach: None,
         },
     });
     if let Some(note) = found {
@@ -1126,6 +1125,7 @@ fn new_schedule(state: &State, composer: u64) -> Node<Intent> {
             choices: vec![],
             draft: None,
             focus: true,
+            attach: None,
         },
     });
     page(children)
@@ -1164,6 +1164,7 @@ fn message(state: &State, composer: u64) -> Node<Intent> {
             choices: vec![],
             draft: None,
             focus: true,
+            attach: None,
         },
     });
     page(children)
@@ -1217,6 +1218,7 @@ fn page(children: Vec<Node<Intent>>) -> Node<Intent> {
 fn card(key: &str, children: Vec<Node<Intent>>) -> Node<Intent> {
     let mut node = stack(key, Space::Xs, children);
     node.style.background = Some(openagents_chat_app::visual::inks().card);
+    node.style.radius = Some(14);
     node.style.padding_top = Some(Space::Sm);
     node.style.padding_end = Some(Space::Md);
     node.style.padding_bottom = Some(Space::Sm);

@@ -517,7 +517,8 @@ impl Inks {
     pub const DARK: Inks = Inks {
         text: Color::rgb(255, 255, 255),
         quiet: Color::rgb(153, 153, 153),
-        card: Color::rgb(26, 29, 34),
+        // Coder Noir's raised gray: no blue cast on the phones' black.
+        card: Color::rgb(33, 33, 33),
         warning: Color::rgb(229, 192, 123),
         added: Color::rgb(163, 190, 140),
         removed: Color::rgb(191, 120, 120),

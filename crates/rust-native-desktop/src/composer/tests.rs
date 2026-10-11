@@ -18,6 +18,7 @@ fn node(token: &str, draft: &str, enabled: bool, busy: bool) -> Node<String> {
             }],
             draft: Some(draft.into()),
             focus: true,
+            attach: None,
         },
     }
 }

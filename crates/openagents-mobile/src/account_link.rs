@@ -1524,22 +1524,29 @@ impl Link {
         std::mem::take(&mut self.picking)
     }
 
-    /// Add a photo the host's picker read to the open chat's reply. The
-    /// shared attachments code checks it (PNG or JPEG, 8 MiB, 4096 pixels
-    /// a side); a refusal shows as the notice.
+    /// Whether the open chat takes photos and files now: a web chat that
+    /// takes replies.
+    pub fn takes_attachments(&self) -> bool {
+        self.lock().open.as_ref().is_some_and(takes_photos)
+    }
+
+    /// Add a photo or file the host's picker read to the open chat's
+    /// reply. A photo goes through the shared attachments code (PNG or
+    /// JPEG, 8 MiB, 4096 pixels a side); a PDF or UTF-8 text file goes as
+    /// it is, within the website's bounds ([`attachable_file`]). A refusal
+    /// shows as the notice.
     pub fn attach(&mut self, name: &str, bytes: Vec<u8>) {
-        let checked = openagents_chat_app::attachments::Image::decode(name, bytes);
+        let checked = attachable(name, bytes);
         let mut state = self.lock();
         let Some(open) = state.open.as_mut().filter(|open| takes_photos(open)) else {
             return;
         };
         let notice = match checked {
             Ok(_) if open.photos.len() >= MAX_PHOTOS => {
-                Some("Send up to four photos with one reply.".to_owned())
+                Some("Send up to four photos or files with one reply.".to_owned())
             }
-            Ok(image) => {
-                open.photos
-                    .push((image.name.clone(), (*image.bytes).clone()));
+            Ok(file) => {
+                open.photos.push(file);
                 None
             }
             Err(message) => Some(message),
@@ -1610,7 +1617,7 @@ impl Link {
                     body: if reply.body["error"]["message"].is_string() {
                         reply.body
                     } else {
-                        json!({"error": {"message": "That photo wasn't sent. Try again."}})
+                        json!({"error": {"message": "That file wasn't sent. Try again."}})
                     },
                 }),
                 Some(Err(error)) => Err(error),
@@ -2281,6 +2288,55 @@ impl Link {
         let intent = self.view.as_ref()?.activate(event).ok()?.clone();
         self.tap(intent)
     }
+}
+
+/// The largest PDF a reply carries (the website's `MAX_FILE_BYTES`).
+pub const MAX_FILE_BYTES: usize = 10 * 1024 * 1024;
+/// The largest text file a reply carries (the website's `MAX_TEXT_BYTES`).
+pub const MAX_TEXT_BYTES: usize = 512 * 1024;
+
+/// What a reply carries for `bytes` the host's picker read: a photo,
+/// re-encoded and bounded by the shared attachments code, or a PDF or
+/// text file as it is ([`attachable_file`]).
+pub(crate) fn attachable(name: &str, bytes: Vec<u8>) -> Result<(String, Vec<u8>), String> {
+    if let Some(kept) = attachable_file(&bytes) {
+        return kept.map(|()| (name.to_owned(), bytes));
+    }
+    openagents_chat_app::attachments::Image::decode(name, bytes)
+        .map(|image| (image.name.clone(), (*image.bytes).clone()))
+        .map_err(|message| {
+            if message.starts_with("Choose a PNG or JPEG") {
+                "Add a photo (PNG or JPEG), a PDF, or a text file.".to_owned()
+            } else {
+                message
+            }
+        })
+}
+
+/// `Some` when `bytes` are a PDF or a text file, read from the bytes as
+/// the website reads them: `Ok` when they fit its bounds, else why not.
+/// `None` for anything else (a photo, or a kind no chat takes).
+pub(crate) fn attachable_file(bytes: &[u8]) -> Option<Result<(), String>> {
+    if bytes.starts_with(b"%PDF-") {
+        return Some(if bytes.len() > MAX_FILE_BYTES {
+            Err("That PDF is over 10 MB.".to_owned())
+        } else {
+            Ok(())
+        });
+    }
+    let image = bytes.starts_with(&[0x89, b'P', b'N', b'G'])
+        || bytes.starts_with(&[0xFF, 0xD8, 0xFF])
+        || bytes.starts_with(b"GIF8")
+        || (bytes.len() > 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP");
+    if image || bytes.is_empty() || bytes.contains(&0) {
+        return None;
+    }
+    std::str::from_utf8(bytes).ok()?;
+    Some(if bytes.len() > MAX_TEXT_BYTES {
+        Err("That text file is over 512 KB.".to_owned())
+    } else {
+        Ok(())
+    })
 }
 
 /// Whether `open` is a chat a reply with photos can go to: a web chat that

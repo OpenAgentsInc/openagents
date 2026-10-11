@@ -551,6 +551,7 @@ fn node<I>(n: &Node<I>, out: &mut String) -> Result<(), RenderError> {
             choices,
             draft,
             focus,
+            ..
         } => {
             start("div", "rn-composer", n, "", out);
             let _ = write!(

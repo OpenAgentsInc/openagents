@@ -3,6 +3,7 @@
 // terminal's keyboard target.
 import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 @main
 struct OpenAgentsApp: App {
@@ -324,8 +325,6 @@ struct CoderTab: View {
     @Environment(\.appColors) private var appColors
     /// The sheet this host is showing, to tell a swipe from Rust closing it.
     @State private var shownSheet: String?
-    @State private var picking = false
-    @State private var picked: PhotosPickerItem?
 
     private var gym: GymPacket? { bridge.packet?.gymPacket }
 
@@ -391,22 +390,8 @@ struct CoderTab: View {
                 ShellTopBar(state: shell, bridge: bridge, openDrawer: openDrawer, report: report)
             }
         }
-        // **Attach image**: the system photo picker; Rust decodes the photo.
-        // Mounted only while the chat takes images; the phone is text only
-        // since #10093 (`coder_tab::ATTACHMENTS_ENABLED`).
-        .photosPicker(isPresented: Binding(get: { picking && bridge.attachmentsEnabled },
-                                           set: { picking = $0 }),
-                      selection: $picked, matching: .images)
-        .onChange(of: bridge.imagePickRequested) { _, _ in picking = bridge.attachmentsEnabled }
-        .onChange(of: picked) { _, item in
-            guard let item else { return }
-            picked = nil
-            Task {
-                guard let data = try? await item.loadTransferable(type: Data.self),
-                      let photo = ChatImageSurface.encoded(data) else { return }
-                bridge.attachImage(name: photo.name, data: photo.data)
-            }
-        }
+        // The chat with OpenAgents takes words only, so no pickers here;
+        // the account surface mounts `AttachmentPickers` for a web chat.
         .sheet(item: Binding(get: { gym?.sheet }, set: { _ in }), onDismiss: {
             // A swipe closed it while Rust still shows it: tell Rust.
             if let sheet = gym?.sheet, sheet.id == shownSheet {
@@ -794,5 +779,66 @@ struct ChatImageSurface: View {
             }
         }
         return nil
+    }
+}
+
+/// The attach control's pickers, mounted with each screen that has a
+/// composer taking attachments (the chat and the account surface), and only
+/// while Rust says a chat on screen takes them (`attachments`).
+/// `pick_image` opens the photo picker; `pick_attachment` asks **Photo
+/// Library** or **Choose File** (a PDF or text file, or an image from
+/// Files). Rust checks and bounds what comes back.
+struct AttachmentPickers: ViewModifier {
+    @ObservedObject var bridge: MobileBridge
+    @State private var choosing = false
+    @State private var photos = false
+    @State private var files = false
+    @State private var picked: PhotosPickerItem?
+
+    func body(content: Content) -> some View {
+        content
+            .confirmationDialog("Attach", isPresented: $choosing, titleVisibility: .hidden) {
+                Button("Photo Library") { later { photos = true } }
+                    .accessibilityIdentifier("attach-photo-library")
+                Button("Choose File") { later { files = true } }
+                    .accessibilityIdentifier("attach-choose-file")
+                Button("Cancel", role: .cancel) {}
+            }
+            .photosPicker(isPresented: Binding(get: { photos && bridge.attachmentsEnabled },
+                                               set: { photos = $0 }),
+                          selection: $picked, matching: .images)
+            .fileImporter(isPresented: Binding(get: { files && bridge.attachmentsEnabled },
+                                               set: { files = $0 }),
+                          allowedContentTypes: [.pdf, .plainText, .text, .png, .jpeg, .image]) { result in
+                guard case let .success(url) = result else { return }
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                guard let data = try? Data(contentsOf: url) else { return }
+                // A picture from Files goes as a photo does (made a PNG or
+                // JPEG within bounds); anything else goes as it is.
+                if UIImage(data: data) != nil, let photo = ChatImageSurface.encoded(data) {
+                    let base = url.deletingPathExtension().lastPathComponent
+                    let ext = (photo.name as NSString).pathExtension
+                    bridge.attachImage(name: "\(base).\(ext)", data: photo.data)
+                } else {
+                    bridge.attachImage(name: url.lastPathComponent, data: data)
+                }
+            }
+            .onChange(of: bridge.imagePickRequested) { _, _ in photos = bridge.attachmentsEnabled }
+            .onChange(of: bridge.attachmentPickRequested) { _, _ in choosing = bridge.attachmentsEnabled }
+            .onChange(of: picked) { _, item in
+                guard let item else { return }
+                picked = nil
+                Task {
+                    guard let data = try? await item.loadTransferable(type: Data.self),
+                          let photo = ChatImageSurface.encoded(data) else { return }
+                    bridge.attachImage(name: photo.name, data: photo.data)
+                }
+            }
+    }
+
+    /// After the dialog has gone, so the picker it opens can present.
+    private func later(_ action: @escaping () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: action)
     }
 }

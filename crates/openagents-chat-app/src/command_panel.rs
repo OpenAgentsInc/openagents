@@ -317,6 +317,7 @@ pub fn view<I>(panel: Panel<'_>, intent: impl Fn(&str) -> I) -> (Node<I>, BTreeM
                 choices: vec![],
                 draft: Some(panel.query.into()),
                 focus: true,
+                attach: None,
             },
         };
         let badge = surface(

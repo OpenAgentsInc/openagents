@@ -176,6 +176,10 @@ pub enum Element<I> {
     /// edit; otherwise the field keeps what the person typed. `focus` puts
     /// the text cursor in the field when `token` is new, so a screen whose
     /// purpose is to write, such as a new chat, opens ready to type.
+    /// `attach`, when set, is a control inside the composer, leading the
+    /// field on the send control's line, that adds a photo or file to the
+    /// draft; the adapter answers it by activating the composer node while
+    /// it is not busy.
     Composer {
         token: String,
         placeholder: String,
@@ -189,7 +193,15 @@ pub enum Element<I> {
         draft: Option<String>,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         focus: bool,
+        #[serde(default = "none", skip_serializing_if = "Option::is_none")]
+        attach: Option<I>,
     },
+}
+
+/// No intent: the default of an optional intent field, with no
+/// `I: Default` bound.
+fn none<I>() -> Option<I> {
+    None
 }
 
 /// A styled Unicode run. Colors use the same generic sRGB values as `Style`.
@@ -793,6 +805,13 @@ impl<I> ValidatedView<I> {
                         stop: Some(stop),
                         ..
                     } => Ok(stop),
+                    // Not busy: the composer's attach control.
+                    Element::Composer {
+                        busy: false,
+                        enabled: true,
+                        attach: Some(attach),
+                        ..
+                    } => Ok(attach),
                     Element::Transcript { .. } | Element::Composer { .. } => {
                         Err(ViewError::Disabled)
                     }

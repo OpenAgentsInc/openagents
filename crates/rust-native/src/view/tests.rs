@@ -486,6 +486,7 @@ mod conversation {
     enum Chat {
         Earlier,
         Stop,
+        Attach,
     }
 
     fn node(key: &str, element: Element<Chat>) -> Node<Chat> {
@@ -586,6 +587,7 @@ mod conversation {
                 choices: vec![],
                 draft: None,
                 focus: false,
+                attach: None,
             },
         );
         View::new(
@@ -627,6 +629,46 @@ mod conversation {
     }
 
     #[test]
+    fn a_composer_attach_control_activates_while_not_busy() {
+        let composer = |busy: bool| {
+            View::new(
+                "chat",
+                1,
+                node(
+                    "composer",
+                    Element::<Chat>::Composer {
+                        token: "send-1".into(),
+                        placeholder: "Message Coder".into(),
+                        max_bytes: 16,
+                        enabled: true,
+                        busy,
+                        stop: Some(Chat::Stop),
+                        choices: vec![],
+                        draft: None,
+                        focus: false,
+                        attach: Some(Chat::Attach),
+                    },
+                ),
+            )
+            .validate()
+            .expect("valid")
+        };
+        let activation = Activation {
+            instance: "chat".into(),
+            revision: 1,
+            node: "composer".into(),
+        };
+        assert_eq!(composer(false).activate(&activation), Ok(&Chat::Attach));
+        assert_eq!(composer(true).activate(&activation), Ok(&Chat::Stop));
+        // An older packet without the field decodes with no attach control.
+        let json = serde_json::to_string(composer(false).view()).expect("encodes");
+        assert!(json.contains("\"attach\""));
+        let old = json.replace(",\"attach\":\"attach\"", "");
+        let decoded = View::<Chat>::from_json(old.as_bytes()).expect("decodes");
+        assert_eq!(decoded.activate(&activation), Err(ViewError::Disabled));
+    }
+
+    #[test]
     fn conversation_elements_refuse_bad_fields() {
         let mut bad = sample();
         if let Element::Stack { children, .. } = &mut bad.root.element {
@@ -640,6 +682,7 @@ mod conversation {
                 choices: vec![],
                 draft: None,
                 focus: false,
+                attach: None,
             };
         }
         assert_eq!(bad.validate().unwrap_err(), ViewError::Identity);
@@ -668,6 +711,7 @@ mod conversation {
                         choices,
                         draft: draft.map(str::to_owned),
                         focus: false,
+                        attach: None,
                     },
                 ),
             )

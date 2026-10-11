@@ -18,6 +18,7 @@ import java.util.concurrent.Executors
 class MobileBridge(private val context: Context, private val computersFixture: Boolean = false,
                    private val walletFixture: Boolean = false, private val chatFixture: Boolean = false,
                    private val gymFixture: Boolean = false, private val accountOrigin: String? = null,
+                   private val debugSession: String? = null,
                    private val changed: () -> Unit) {
     companion object {
         // Rust keeps each app handle on the thread that created it, so one
@@ -50,6 +51,8 @@ class MobileBridge(private val context: Context, private val computersFixture: B
     var screenRequests = 0; private set
     /** Counts the Chat tab's requests for the photo picker (`pick_image`), only while the chat takes images. */
     var imagePicks = 0; private set
+    /** The account surface's attach control asked for a photo or a file. */
+    var attachmentPicks = 0; private set
     /** Decoded images for the chat's `image:` surfaces, by resource. */
     private val images = HashMap<String, android.graphics.Bitmap>()
 
@@ -188,7 +191,10 @@ class MobileBridge(private val context: Context, private val computersFixture: B
         val name = runCatching {
             android.provider.Settings.Global.getString(context.contentResolver, android.provider.Settings.Global.DEVICE_NAME)
         }.getOrNull()?.takeIf { it.isNotBlank() } ?: android.os.Build.MODEL
-        val session = runCatching { DeviceKey.loadAccountSession(context) }.getOrNull()
+        // `debugSession`, debug builds only: a saved session (JSON: origin,
+        // account, label, expires_at, token) to start signed in with, as the
+        // iPhone simulator's signed-in gate does.
+        val session = debugSession ?: runCatching { DeviceKey.loadAccountSession(context) }.getOrNull()
         link("hello", "name" to name, "session" to session)
     }
 
@@ -578,6 +584,7 @@ class MobileBridge(private val context: Context, private val computersFixture: B
         when (val go = next.textOrNull("coder_go")) {
             "computers" -> computersRequested += 1
             "pick_image" -> if (PhoneAttachments.pickRequested(next)) imagePicks += 1
+            "pick_attachment" -> if (PhoneAttachments.enabled(next)) attachmentPicks += 1
             "wallet", "keys", "playtest", "report", "verse_gym", "chat" -> { screenRequested = go; screenRequests += 1 }
         }
         if (!next.optBoolean("terminal")) { terminalView = null; terminalRevision = 0 }

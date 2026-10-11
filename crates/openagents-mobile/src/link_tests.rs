@@ -1266,6 +1266,46 @@ fn an_older_website_has_no_scheduled_prompts() {
 
 /// A reply to a web chat carries photos (#11174): each uploads first, and
 /// the reply names them by the ids the website gave them.
+/// Every node under `value` with a key, and the node.
+fn find_keys(value: &Value, out: &mut Vec<(String, Value)>) {
+    match value {
+        Value::Object(map) => {
+            if let Some(key) = map.get("key").and_then(Value::as_str)
+                && map.contains_key("element")
+            {
+                out.push((key.to_owned(), value.clone()));
+            }
+            map.values().for_each(|v| find_keys(v, out));
+        }
+        Value::Array(items) => items.iter().for_each(|v| find_keys(v, out)),
+        _ => {}
+    }
+}
+
+#[test]
+fn attachments_are_photos_pdfs_or_text_within_the_website_bounds() {
+    use crate::account_link::{MAX_FILE_BYTES, MAX_TEXT_BYTES, attachable};
+    assert!(attachable("a.pdf", b"%PDF-1.7 x".to_vec()).is_ok());
+    assert!(attachable("a.txt", b"plain words".to_vec()).is_ok());
+    let mut pdf = b"%PDF-1.7".to_vec();
+    pdf.resize(MAX_FILE_BYTES + 1, b' ');
+    assert_eq!(
+        attachable("big.pdf", pdf).unwrap_err(),
+        "That PDF is over 10 MB."
+    );
+    assert_eq!(
+        attachable("big.txt", vec![b'a'; MAX_TEXT_BYTES + 1]).unwrap_err(),
+        "That text file is over 512 KB."
+    );
+    assert_eq!(
+        attachable("a.bin", vec![0, 1, 2, 0xFF]).unwrap_err(),
+        "Add a photo (PNG or JPEG), a PDF, or a text file."
+    );
+    let png = openagents_chat_app::attachments::Image::pixels(3, 2, vec![200; 24]).unwrap();
+    let (name, _) = attachable("Photo.png", png.bytes.as_ref().clone()).unwrap();
+    assert_eq!(name, "Photo.png");
+}
+
 #[test]
 fn a_reply_to_a_web_chat_carries_its_photos() {
     let mut f = fixture();
@@ -1295,15 +1335,38 @@ fn a_reply_to_a_web_chat_carries_its_photos() {
         id: Some("w1".into()),
     });
     until(|| f.link.lock().open.as_ref().is_some_and(|o| o.loaded));
-    // Add photo asks the host for its picker once.
+    // The attach control is inside the reply composer, on its field's
+    // line: no separate Add photo button above it.
+    let view = f.link.packet().view.expect("the chat draws");
+    let mut found = vec![];
+    find_keys(&view, &mut found);
+    assert!(!found.iter().any(|(key, _)| key == "link-add-photo"));
+    let composer = &found
+        .iter()
+        .find(|(key, _)| key == "link-composer")
+        .expect("the reply composer")
+        .1;
+    assert_eq!(composer["element"]["props"]["attach"]["kind"], "add_photo");
+    // The attach control asks the host for its picker once.
     f.link.tap(Intent::AddPhoto);
     assert!(f.link.take_pick());
     assert!(!f.link.take_pick());
     let png = openagents_chat_app::attachments::Image::pixels(3, 2, vec![200; 24]).unwrap();
     f.link.attach("Photo.png", png.bytes.as_ref().clone());
-    f.link.attach("bad.png", b"not an image".to_vec());
+    f.link.attach("bad.png", vec![0xFF, 0xFE, 0x00, 0x01]);
     assert_eq!(f.link.lock().open.as_ref().unwrap().photos.len(), 1);
-    assert!(f.link.lock().notice.is_some());
+    assert_eq!(
+        f.link.lock().notice.as_deref(),
+        Some("Add a photo (PNG or JPEG), a PDF, or a text file.")
+    );
+    // A PDF and a text file go as they are, as the web composer sends them.
+    f.link.attach("Notes.pdf", b"%PDF-1.4\n%%EOF\n".to_vec());
+    f.link
+        .attach("notes.txt", b"The code word is heron.".to_vec());
+    assert_eq!(f.link.lock().open.as_ref().unwrap().photos.len(), 3);
+    assert!(f.link.lock().notice.is_none());
+    f.link.tap(Intent::RemovePhoto { index: 2 });
+    f.link.tap(Intent::RemovePhoto { index: 1 });
     let token = format!("link-reply-w1-{}", f.link.composer);
     f.link.input(&token, "what is in this?");
     until(|| !f.site.calls("POST /v1/threads/w1/messages").is_empty());

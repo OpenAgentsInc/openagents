@@ -3334,6 +3334,7 @@ impl Panel {
                 choices: vec![],
                 draft: Some(field.text().into()),
                 focus: field.focused,
+                attach: None,
             },
         };
         let mut title = text(
@@ -3465,6 +3466,7 @@ impl Panel {
                     title.clone()
                 }),
                 focus: field.focused,
+                attach: None,
             },
         };
         let mut title = text("chat-rename-title", "Rename chat", TextRole::Body);
@@ -3902,6 +3904,7 @@ impl Panel {
                 choices: vec![],
                 draft,
                 focus: self.fields.get(&id).is_some_and(|field| field.focused),
+                attach: None,
             },
         };
         // Reimplemented from Zeron's composer: quiet utilities on the left,

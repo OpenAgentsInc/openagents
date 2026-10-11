@@ -695,6 +695,7 @@ mod tests {
                     choices: vec![],
                     draft: None,
                     focus: true,
+                    attach: None,
                 },
             },
         )

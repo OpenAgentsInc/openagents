@@ -759,6 +759,7 @@ fn sidebar(state: &State, model: &Model) -> Node<Intent> {
                 choices: vec![],
                 draft: Some(state.search.clone()),
                 focus: false,
+                attach: None,
             },
         ));
     }

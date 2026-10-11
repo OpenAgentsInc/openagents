@@ -383,6 +383,10 @@ adb shell am start -n com.openagents.app/.MainActivity --es account_route traine
 # Report a problem for the first screen, and Account > Playtest (logging is on unless the build turned it off).
 adb shell am start -n com.openagents.app/.MainActivity --es tab verse --ez report true
 adb shell am start -n com.openagents.app/.MainActivity --es account_route playtest
+# Start signed in with a saved session (JSON: origin, account, label,
+# expires_at, token) pushed to the app's external files directory; add
+# --es account_origin https://staging.openagents.com for staging.
+adb shell am start -n com.openagents.app/.MainActivity --es account_session_file session.json
 # Coder's offline Computers fixture: sample computers, no host or relay.
 adb shell am start -n com.openagents.app/.MainActivity --es account_route computers --ez computers_fixture true
 adb shell am start -n com.openagents.app/.MainActivity --ez rust_native_fixture true

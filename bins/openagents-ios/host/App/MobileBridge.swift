@@ -437,6 +437,8 @@ final class MobileBridge: ObservableObject {
     /// Counts the Chat tab's requests for the photo picker (`pick_image`),
     /// only while the packet says the chat takes images.
     @Published private(set) var imagePickRequested = 0
+    /// The account surface's attach control asked for a photo or a file.
+    @Published private(set) var attachmentPickRequested = 0
     /// The chat takes images (`attachments` in the packet; off since
     /// #10093, when the phone became text only).
     var attachmentsEnabled: Bool { packet?.attachments == true }
@@ -1001,6 +1003,7 @@ final class MobileBridge: ObservableObject {
             switch packet.coder_go {
             case "computers": self.computersRequested += 1
             case "pick_image" where packet.attachments == true: self.imagePickRequested += 1
+            case "pick_attachment" where packet.attachments == true: self.attachmentPickRequested += 1
             case let screen? where ["wallet", "keys", "playtest", "report", "verse_gym", "chat"].contains(screen):
                 self.screenRequest = ScreenRequest(screen: screen, serial: self.screenRequest.serial + 1)
             default: break

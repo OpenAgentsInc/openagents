@@ -250,6 +250,10 @@ pub enum Go {
     /// Open the system photo picker; the host sends the chosen image's
     /// bytes back to attach them to the draft.
     PickImage,
+    /// Offer a photo or a file (the photo library, or the system's file
+    /// picker for a PDF or text file); the host sends the chosen bytes back
+    /// the same way as [`Go::PickImage`]'s.
+    PickAttachment,
 }
 
 impl Go {
@@ -588,6 +592,14 @@ impl CoderTab {
     /// picker only while this is on.
     pub fn attachments_enabled(&self) -> bool {
         self.attachments
+    }
+
+    /// This tab with image attachments on or off
+    /// ([`CoderTab::set_attachments`]).
+    #[must_use]
+    pub fn with_attachments(mut self, on: bool) -> Self {
+        self.set_attachments(on);
+        self
     }
 
     /// Turn image attachments on or off for this tab; the shared image
@@ -959,20 +971,16 @@ impl CoderTab {
             .find(|image| image.id == id)
     }
 
-    /// The draft's attachments above the composer: an attach control and a
-    /// card per image, whose surface shows the image and whose label is its
-    /// alternative text. Nothing while attachments are off.
+    /// The draft's images above the composer: a card per image, whose
+    /// surface shows the image and whose label is its alternative text.
+    /// The attach control itself sits inside the composer, leading its
+    /// field ([`CoderTab::composer_with`]). Nothing while attachments are
+    /// off or the draft holds no image.
     fn attachments(&self) -> Option<Node<Intent>> {
         if !self.attachments {
             return None;
         }
-        let mut children = vec![icon_button(
-            "coder-attach",
-            "Attach image",
-            Glyph::Paperclip,
-            true,
-            Intent::AttachImage,
-        )];
+        let mut children = Vec::new();
         for image in self.images.get(&self.draft_key()) {
             children.push(Node {
                 key: format!("image-{}", image.id),
@@ -1003,6 +1011,9 @@ impl CoderTab {
                     ],
                 },
             });
+        }
+        if children.is_empty() {
+            return None;
         }
         Some(Node {
             key: "coder-attachments".into(),
@@ -3058,6 +3069,9 @@ impl CoderTab {
                     .collect(),
                 draft,
                 focus,
+                // The attach control, inside the composer on the field's
+                // line, as the web composer has it.
+                attach: (self.attachments && !busy).then_some(Intent::AttachImage),
             },
         )
     }
@@ -3863,6 +3877,7 @@ impl CoderTab {
                 choices: vec![],
                 draft: None,
                 focus: false,
+                attach: None,
             },
         ));
         page(children)

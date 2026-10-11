@@ -340,34 +340,33 @@ struct HomeCardsSurface: View {
     }
 }
 
-/// One card's picture: a soft gradient tile with the card's glyph.
+/// One card's picture: a Coder Noir tile (the theme's raised gray, a
+/// hairline edge, no hue) with the card's glyph in the primary ink.
 struct HomeCardArt: View {
+    @Environment(\.appColors) private var appColors
     let id: String
 
-    private var look: (symbol: String, colors: [Color]) {
+    private var symbol: String {
         switch id {
-        case "verse": ("globe.americas.fill", [Color(red: 0.16, green: 0.52, blue: 0.86),
-                                              Color(red: 0.36, green: 0.80, blue: 0.86)])
-        case "coder": ("chevron.left.forwardslash.chevron.right", [Color(red: 0.42, green: 0.32, blue: 0.86),
-                                                                   Color(red: 0.72, green: 0.56, blue: 0.98)])
-        case "codebase": ("folder.fill", [Color(red: 0.86, green: 0.42, blue: 0.24),
-                                          Color(red: 0.98, green: 0.70, blue: 0.40)])
-        case "roadmap": ("map.fill", [Color(red: 0.12, green: 0.56, blue: 0.40),
-                                      Color(red: 0.46, green: 0.82, blue: 0.56)])
-        default: ("sparkles", [Color.gray, Color.gray.opacity(0.6)])
+        case "verse": "globe.americas.fill"
+        case "coder": "chevron.left.forwardslash.chevron.right"
+        case "codebase": "folder.fill"
+        case "roadmap": "map.fill"
+        default: "sparkles"
         }
     }
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 20, style: .continuous)
-            .fill(LinearGradient(colors: look.colors, startPoint: .topLeading, endPoint: .bottomTrailing))
+        let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
+        shape
+            .fill(appColors.raised)
+            .overlay(shape.strokeBorder(appColors.border, lineWidth: 1))
             .overlay {
-                Image(systemName: look.symbol)
-                    .font(.system(size: 36, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .shadow(color: .black.opacity(0.15), radius: 6, y: 3)
+                Image(systemName: symbol)
+                    .font(.system(size: 34, weight: .semibold))
+                    .foregroundStyle(appColors.primary.opacity(0.92))
             }
-            .shadow(color: .black.opacity(0.25), radius: 12, y: 8)
+            .shadow(color: .black.opacity(appColors.scheme == .dark ? 0.35 : 0.08), radius: 12, y: 8)
     }
 }
 

@@ -127,6 +127,30 @@ class MainActivity : ComponentActivity() {
             main.post { photo?.let { (name, data) -> bridge.attachImage(name, data) } }
         }.start()
     }
+    private var attachmentPicksShown = 0
+
+    /**
+     * A file for a web chat's reply (#11174): a PDF or text file goes as it
+     * is; a picture from Files goes as a photo does. Rust checks the bytes.
+     */
+    private val pickFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) Thread {
+            val name = runCatching {
+                contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                    ?.use { if (it.moveToFirst()) it.getString(0) else null }
+            }.getOrNull() ?: "File"
+            val bytes = runCatching {
+                contentResolver.openInputStream(uri)?.use { input -> input.readBytes() }
+            }.getOrNull()
+            val photo = if (contentResolver.getType(uri)?.startsWith("image/") == true) bytes?.let { ChatImages.encoded(it) } else null
+            main.post {
+                when {
+                    photo != null -> bridge.attachImage(name.substringBeforeLast('.') + "." + photo.first.substringAfterLast('.'), photo.second)
+                    bytes != null -> bridge.attachImage(name, bytes)
+                }
+            }
+        }.start()
+    }
     private var statusTop = 0
 
     private lateinit var root: FrameLayout
@@ -218,7 +242,13 @@ class MainActivity : ComponentActivity() {
             BuildConfig.DEBUG && intent.getBooleanExtra("chat_fixture", false),
             BuildConfig.DEBUG && intent.getBooleanExtra("gym_fixture", false),
             // Debug builds only: `--es account_origin https://staging.openagents.com`.
-            if (BuildConfig.DEBUG) intent.getStringExtra("account_origin") else null) { render() }
+            if (BuildConfig.DEBUG) intent.getStringExtra("account_origin") else null,
+            // Debug builds only: `--es account_session_file NAME` starts
+            // signed in with the saved session in NAME, under the app's
+            // external files directory (the signed-in gate).
+            if (BuildConfig.DEBUG) intent.getStringExtra("account_session_file")?.let { name ->
+                runCatching { java.io.File(getExternalFilesDir(null), name).readText() }.getOrNull()
+            } else null) { render() }
         bridge.systemAppearance(night(resources.configuration))
         gym = GymViews(this) { id -> bridge.gym(id) }
         homeCards = HomeCards(this) { id -> bridge.shell("try_card", "id" to id) }
@@ -929,6 +959,17 @@ class MainActivity : ComponentActivity() {
             imagePicksShown = bridge.imagePicks
             if (bridge.attachmentsEnabled) pickImage.launch(androidx.activity.result.PickVisualMediaRequest(
                 ActivityResultContracts.PickVisualMedia.ImageOnly))
+        }
+        // A web chat's attach control: a photo or a file.
+        if (bridge.attachmentPicks != attachmentPicksShown) {
+            attachmentPicksShown = bridge.attachmentPicks
+            if (bridge.attachmentsEnabled) android.app.AlertDialog.Builder(this)
+                .setItems(arrayOf("Photo library", "Choose file")) { _, which ->
+                    if (which == 0) pickImage.launch(androidx.activity.result.PickVisualMediaRequest(
+                        ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    else pickFile.launch(PhoneAttachments.FILE_TYPES)
+                }
+                .show()
         }
         // A key that can answer chat was added: ask once whether to use it for everything.
         if (bridge.askMineRequests != askMineShown) {

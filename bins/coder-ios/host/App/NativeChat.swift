@@ -34,6 +34,10 @@ struct NativeComposerProps: Equatable {
     var draft: String? = nil
     /// Put the text cursor in the field when the token is new.
     var focus: Bool = false
+    /// The view carries an attach intent: a paperclip leads the field
+    /// inside the capsule, on the send control's line, and activates the
+    /// composer node while it is not busy.
+    var attachable: Bool = false
 }
 
 /// Another way to send a composer's text.
@@ -894,6 +898,20 @@ private struct NativeComposer: View {
     // capsule's ends and a round send control inside its trailing end.
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
+            if attaches {
+                Button(action: attach) {
+                    Image(systemName: "paperclip")
+                        .font(.paper(16, weight: .semibold))
+                        .foregroundStyle(Color(uiColor: .secondaryLabel))
+                        .frame(width: 34, height: 34)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 8)
+                .padding(.bottom, 8)
+                .accessibilityLabel("Attach")
+                .accessibilityIdentifier("\(key)-attach")
+            }
             NativeComposerField(text: $text, token: props.token, placeholder: props.placeholder,
                                 maxBytes: props.maxBytes, enabled: props.enabled, draft: props.draft,
                                 focusToken: props.focus ? props.token : nil, send: send)
@@ -908,7 +926,7 @@ private struct NativeComposer: View {
                             .accessibilityHidden(true)
                     }
                 }
-                .padding(.leading, 18)
+                .padding(.leading, attaches ? 0 : 18)
                 .padding(.vertical, 14)
             control
                 .padding(.trailing, 8)
@@ -921,6 +939,9 @@ private struct NativeComposer: View {
         .frame(maxWidth: NativeChatPalette.readingWidth + 24)
         .frame(maxWidth: .infinity)
         .opacity(props.enabled ? 1 : 0.6)
+        // A container, so the attach and send controls keep their own
+        // identifiers under the composer's.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier(key)
     }
 
@@ -981,6 +1002,14 @@ private struct NativeComposer: View {
 
     private func stop() {
         guard props.busy, props.stoppable else { return }
+        activate(key)
+    }
+
+    private var attaches: Bool { props.attachable && props.enabled && !props.busy }
+
+    /// Rust answers a not-busy composer's activation with its attach intent.
+    private func attach() {
+        guard attaches else { return }
         activate(key)
     }
 }

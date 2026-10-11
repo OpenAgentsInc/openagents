@@ -744,9 +744,10 @@ pub struct Packet {
     /// Show this screen of another tab, once: `computers` is Account >
     /// Computers.
     pub coder_go: Option<crate::coder_tab::Go>,
-    /// The chat takes images (`coder_tab::ATTACHMENTS_ENABLED`, off by
-    /// #10093, on again by #11174): the host mounts its photo picker and
-    /// sends picked images only while this is set.
+    /// A chat on screen takes photos or files: today the open web chat on
+    /// the account surface (#11174); the relay chat takes words only. The
+    /// host mounts its pickers and sends picked bytes only while this is
+    /// set.
     pub attachments: bool,
     /// **Connect a computer** (`SCR-22`) or **Connected** (`SCR-23`), while
     /// it shows. The host draws the camera and the paste field.
@@ -1138,7 +1139,12 @@ impl App {
             device_npub: device_npub.clone(),
             computers,
             chats,
+            // A chat with OpenAgents goes over the relay to the chat
+            // worker, which takes words only: no attach control there, so
+            // none that drops a photo. Photos and files go with a reply to
+            // a web chat on the account surface (`account_link`).
             coder: CoderTab::new(format!("coder:{}", id()))
+                .with_attachments(false)
                 .with_gym(gym)
                 .with_app_build(launch.app_build.clone())
                 .with_remote_cli(remote_cli)
@@ -1824,7 +1830,7 @@ impl App {
                     node,
                 };
                 self.link_open = self.link.activate(&event);
-                if self.link.take_pick() && self.coder.attachments_enabled() {
+                if self.link.take_pick() {
                     self.link_photo = true;
                     self.link_pick = true;
                 }
@@ -2340,7 +2346,7 @@ impl App {
             // A payment request on the sheet keeps packets coming too.
             coder_live,
             chat_streaming: self.coder.streaming(),
-            attachments: self.coder.attachments_enabled(),
+            attachments: self.coder.attachments_enabled() || self.link.takes_attachments(),
             coder_go: match self.coder.take_go() {
                 // The scanner is this app's own screen.
                 Some(crate::coder_tab::Go::Connect) => {
@@ -2352,9 +2358,10 @@ impl App {
                     self.link_photo = false;
                     Some(crate::coder_tab::Go::PickImage)
                 }
-                // The account surface's Add photo (#11174).
+                // The account surface's attach control (#11174): a photo
+                // or a file.
                 None if std::mem::take(&mut self.link_pick) => {
-                    Some(crate::coder_tab::Go::PickImage)
+                    Some(crate::coder_tab::Go::PickAttachment)
                 }
                 go => go,
             },

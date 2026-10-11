@@ -96,6 +96,7 @@ impl Probe {
                             choices: vec![],
                             draft: None,
                             focus: false,
+                            attach: None,
                         },
                     ),
                     node(

@@ -508,6 +508,10 @@ class Composer(private val context: Context, private val send: (String, String) 
     private var stoppable = false
     /** Each choice's token and label, in order. */
     private var choices: List<Pair<String, String>> = emptyList()
+    /** The view carries an attach intent: a paperclip leads the field. */
+    private var attachable = false
+    /** The attach control, inside the capsule on the send control's line. */
+    private val attach = android.widget.ImageView(context)
 
     /** One capsule holding the field and, at its trailing end, the send control. */
     private val capsule = context.row()
@@ -550,6 +554,21 @@ class Composer(private val context: Context, private val send: (String, String) 
             setOnClickListener { if (busy) doStop() else doSend() }
             setOnLongClickListener { offerChoices() }
         }
+        attach.apply {
+            setImageResource(R.drawable.ic_glyph_paperclip)
+            setColorFilter(Palette.SECONDARY)
+            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+            setPadding(context.dp(7), context.dp(7), context.dp(7), context.dp(7))
+            contentDescription = "Attach"
+            tag = "composer-attach"
+            isClickable = true; isFocusable = true
+            visibility = View.GONE
+            // Rust answers a not-busy composer's activation with its attach intent.
+            setOnClickListener {
+                if (attachable && enabled && !busy) (root.getTag(R.id.native_key) as? String)?.let { stop(it) }
+            }
+        }
+        capsule.addView(attach, LinearLayout.LayoutParams(context.dp(34), context.dp(34)))
         capsule.addView(field, LinearLayout.LayoutParams(0, -2, 1f))
         capsule.addView(control, LinearLayout.LayoutParams(context.dp(34), context.dp(34)).apply { marginStart = context.dp(4) })
         root.addView(capsule, LinearLayout.LayoutParams(-1, -2))
@@ -575,6 +594,7 @@ class Composer(private val context: Context, private val send: (String, String) 
         enabled = props.getBoolean("enabled")
         busy = props.getBoolean("busy")
         stoppable = props.has("stop") && !props.isNull("stop")
+        attachable = props.has("attach") && !props.isNull("attach")
         val placeholder = props.getString("placeholder")
         if (field.hint?.toString() != placeholder) { field.hint = placeholder; field.contentDescription = placeholder }
         field.isEnabled = enabled
@@ -600,6 +620,8 @@ class Composer(private val context: Context, private val send: (String, String) 
         control.tag = if (stops) "composer-stop" else "composer-send"
         control.isEnabled = active
         control.alpha = if (active) 1f else 0.3f
+        attach.visibility = if (attachable && enabled && !busy) View.VISIBLE else View.GONE
+        attach.setColorFilter(Palette.SECONDARY)
     }
 
     private fun doSend() = doSend(token)

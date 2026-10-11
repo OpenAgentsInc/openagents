@@ -107,6 +107,7 @@ impl Chat {
                             choices: vec![],
                             draft: None,
                             focus: false,
+                            attach: None,
                         },
                     ),
                     button("chat-send", "Send", Intent::Send, Some(Glyph::ArrowUp)),

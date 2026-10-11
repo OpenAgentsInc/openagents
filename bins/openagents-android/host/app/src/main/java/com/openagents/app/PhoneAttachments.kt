@@ -3,20 +3,21 @@ package com.openagents.app
 import org.json.JSONObject
 
 /**
- * The phone chat is text only (#10093). Rust says whether the chat takes
- * images in the packet's `attachments` (`coder_tab::ATTACHMENTS_ENABLED`,
- * off since 2026-10-01); while it is off the photo picker never opens,
- * nothing is sent to attach, and the composer takes only text from a paste,
- * a drop, or the keyboard. The shared image pipeline stays in Rust, so
- * turning the switch back on there brings attachments back here.
+ * Rust says whether a chat on screen takes photos or files in the packet's
+ * `attachments`: today a web chat on the account surface (#11174); the chat
+ * with OpenAgents takes words only. While it is off no picker opens and
+ * nothing is sent to attach. Rust checks and bounds what a picker returns.
  */
 object PhoneAttachments {
-    /** Whether the chat takes images. */
+    /** Whether a chat on screen takes photos or files. */
     fun enabled(packet: JSONObject?): Boolean = packet?.optBoolean("attachments") == true
 
     /** Whether a packet asks for the photo picker: `pick_image`, only while the chat takes images. */
     fun pickRequested(packet: JSONObject): Boolean =
         packet.optString("coder_go") == "pick_image" && enabled(packet)
+
+    /** The kinds the file picker offers: the website's (#11174). */
+    val FILE_TYPES = arrayOf("image/png", "image/jpeg", "application/pdf", "text/plain", "text/markdown", "text/*")
 
     /**
      * Whether one clipboard, drop, or keyboard item may enter the composer:

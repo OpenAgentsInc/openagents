@@ -36,6 +36,22 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "58",
+        title: "Attach in the composer",
+        what_to_test: "Everything from build 57 applies. Sign in under Settings, open one of your openagents.com chats from the menu, and tap the paperclip at the left of the reply field: attach a photo or a file (a PDF or a text file), ask about it, and send. The answer reads it. A new chat has no paperclip: it takes words only for now. The cards on a new chat are gray, in the app's own colors.",
+        items: &[
+            Item {
+                title: "Attach in the composer",
+                detail: "The paperclip sits inside the reply field, on its line. A web chat's reply takes photos, PDFs, and text files.",
+            },
+            Item {
+                title: "Gray cards",
+                detail: "The new chat's cards and the account's panels use the app's grays.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "57",
         title: "Agents on your account",
         what_to_test: "Everything from build 56 applies. Sign in under Settings, then open Running from the menu: each agent on your computers and in OpenAgents Cloud shows its stage, time, and cost so far, with Issue, Commit, and Pull request buttons that open GitHub. A run paused on its Claude plan shows Continue on your key and Continue with OpenAgents. The account's chats list updates by itself.",
