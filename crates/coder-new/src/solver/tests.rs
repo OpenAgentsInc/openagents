@@ -382,3 +382,26 @@ fn failing_tests_are_read_from_cargo_output_once_each() {
     );
     assert!(crate::issue_run::agent::failing_tests("test result: ok. 3 passed").is_empty());
 }
+
+#[test]
+fn a_linker_or_disk_fault_is_the_computers_not_the_changes() {
+    let outputs = vec![
+        ("check:a".to_owned(), true, "ok".to_owned()),
+        (
+            "test:b".to_owned(),
+            false,
+            "Compiling b\nerror: linking with `cc` failed: exit status: 1\n  = note: ..."
+                .to_owned(),
+        ),
+    ];
+    assert_eq!(
+        super::hands::environment_fault(&outputs).as_deref(),
+        Some("`test:b`: error: linking with `cc` failed: exit status: 1.")
+    );
+    let real = vec![(
+        "test:b".to_owned(),
+        false,
+        "test a::two ... FAILED\nerror: test failed".to_owned(),
+    )];
+    assert_eq!(super::hands::environment_fault(&real), None);
+}

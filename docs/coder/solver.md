@@ -14,10 +14,15 @@ in the Coder terminal steps `live` → `microclaude` → `solver`.
 | **Intaker** | Haiku | `environment`, `issue`, `worktree` (in-process) | Checks that `git`, `gh`, and the Claude Code login are present and that the checkout is clean, reads the issue, makes the run's fresh worktree at the issue's base, and sums up what it found. It asks the person for the repository and the issue when they were not given. |
 | **Briefer** | Haiku | Read, Grep, Glob (held to the worktree) | Runs the existing code-brief algorithm (the context finder's stages, scorer and System One questions, then the briefing generator; `issue_run::decide`), then reads the listed files and writes its **analysis**: the files to change, the shape of the change, what tests to add, and the checks that prove it. The analysis and the file list join the briefing. |
 | **Coder** | Opus | Read, Edit, Write, Grep, Glob (held to the worktree) | Codes only. No shell, no checks, no issue reading. Gets the briefing, the analysis, and, on a second round, the Tester's notes. |
-| **Tester** | Haiku | Read, Grep, Glob, `run_check` (the briefing's checks) | Runs the checks, reads what failed, and ends with one verdict line: `VERDICT: pass`, `VERDICT: coder: <what to fix>`, or `VERDICT: briefer: <what context is missing>`. |
+| **Tester** | Haiku | Read, Grep, Glob, `run_check` (the briefing's checks) | Called only when a required check fails. Reads the failures the harness hands it and the code behind them, and ends with one verdict line: `VERDICT: coder: <what to fix>` or `VERDICT: briefer: <what context is missing>`. |
 
-The harness then runs every required `check:` itself; the Tester's `pass` is
-never trusted alone (`issue_run::verdict`).
+After the Coder, the harness runs every required check itself: the touched
+crates' `check:` and `test:` entries, a browser crate's `wasm:` half, and
+Markdown links. A test that already fails at the base commit is excused
+(the failed tests rerun in a sibling `baseline` worktree). When everything
+passes the run opens the pull request with no Tester session; when a check
+reports a computer fault (a full disk, a dead linker) the run stops without
+a hand-back, because no edit can fix it (`issue_run::verdict`).
 
 ## Handoffs
 

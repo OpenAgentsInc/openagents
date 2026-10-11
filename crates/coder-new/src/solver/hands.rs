@@ -69,11 +69,12 @@ impl Size {
 
 /// The Tester's system prompt.
 const TESTER: &str = "You are the Tester of a four-hand coding run. The Coder has changed the \
-working copy. Run the briefing's checks with `run_check`, read what fails, and end your answer \
-with exactly one line: `VERDICT: pass` when every check passes, `VERDICT: coder: <what to fix, \
-with file paths and the failing check's words>` when the change needs work, or `VERDICT: \
-briefer: <what context is missing>` when the briefing sent the Coder to the wrong place. You \
-cannot edit files.";
+working copy and the harness has already run the required checks; the failures are in your \
+prompt. Read the failing code (and rerun a single check with `run_check` only when you need \
+more of its output), then end your answer with exactly one line: `VERDICT: coder: <what to \
+fix, with file paths and the failing check's words>` when the change needs work, or `VERDICT: \
+briefer: <what context is missing>` when the briefing sent the Coder to the wrong place. Never \
+answer `VERDICT: pass` while a check fails. You cannot edit files.";
 
 /// Whether `program` is on the `PATH`.
 fn installed(program: &str) -> bool {
@@ -381,6 +382,29 @@ pub fn failing_output(outputs: &[(String, bool, String)]) -> String {
     out
 }
 
+/// Words in a failed check's output that mean the computer failed, not the
+/// change: a linker that died, a full disk, a killed process. Handing those
+/// back to the Coder wastes rounds on a fault no edit can fix.
+const ENVIRONMENT_FAULTS: [&str; 4] = [
+    "No space left on device",
+    "linking with `cc` failed",
+    "SIGKILL",
+    "signal: 9",
+];
+
+/// The first environment fault among the failed checks, as "`id`: line".
+#[must_use]
+pub fn environment_fault(outputs: &[(String, bool, String)]) -> Option<String> {
+    outputs
+        .iter()
+        .filter(|(_, ok, _)| !ok)
+        .find_map(|(id, _, text)| {
+            text.lines()
+                .find(|line| ENVIRONMENT_FAULTS.iter().any(|fault| line.contains(fault)))
+                .map(|line| format!("`{id}`: {}.", line.trim().trim_end_matches('.')))
+        })
+}
+
 /// The briefing's compile checks (`check:`, e.g. `cargo check -p`), the
 /// only checks the Coder may run: it compiles as it works, and leaves the
 /// tests to the Tester.
@@ -393,11 +417,12 @@ pub fn compile_checks(briefing: &Briefing) -> Vec<crate::issue_run::decide::Chec
         .collect()
 }
 
-/// The Tester: read-only file tools and `run_check`.
+/// The Tester: read-only file tools and `run_check`, told what failed.
 pub async fn test(
     options: &Options,
     base: &Base,
     briefing: &Briefing,
+    failures: &str,
     round: usize,
     folder: &Path,
     transcript: &mut Transcript,
@@ -413,10 +438,11 @@ pub async fn test(
         server: None,
         system: TESTER.into(),
         prompt: format!(
-            "Issue #{}: {}\n\nThe Coder's change:\n\n```diff\n{}\n```\n\nRun the checks and give your verdict.",
+            "Issue #{}: {}\n\nThe Coder's change:\n\n```diff\n{}\n```\n\nThe harness ran the required checks. What failed:{}\n\nGive your verdict.",
             base.issue,
             base.title,
-            diff.chars().take(60_000).collect::<String>()
+            diff.chars().take(60_000).collect::<String>(),
+            failures
         ),
         briefed: briefing.files.iter().cloned().collect(),
         events_file: format!("tester-{round}-events.jsonl"),

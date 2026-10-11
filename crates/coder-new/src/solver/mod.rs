@@ -548,24 +548,10 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
         if let Some(error) = coder_error {
             break Outcome::stopped(Status::Failed, format!("The Coder stopped: {error}"));
         }
-        let tester = hands::test(options, &base, &briefing, round, folder, transcript).await;
-        let verdict = hands::Verdict::parse(tester.verdict.as_deref().unwrap_or_default());
-        // The Tester can't edit, so what it saw pass still holds.
-        let passed: Vec<String> = tester
-            .work
-            .checks
-            .iter()
-            .filter(|(_, ok)| *ok)
-            .map(|(id, _)| id.clone())
-            .collect();
-        end.turns.push(tester);
-        if transcript.cancelled() {
-            break Outcome::stopped(Status::Cancelled, "The run was stopped.");
-        }
-        // The change decides what must pass: every crate it touched builds
-        // (and a browser build's wasm half), its Markdown's links resolve,
-        // plus the briefing's own non-Rust required checks. The briefed
-        // crates' checks still run, but a docs change isn't held to them.
+        // The harness runs the required checks first: every crate the change
+        // touched builds (and a browser build's wasm half), its Markdown's
+        // links resolve, plus the briefing's own checks. A clean run ends
+        // here, with no Tester session to pay for; the Tester reads failures.
         let mut checked = briefing.clone();
         let changed = setup::change_checks(&base.worktree, &base.base).await;
         let mut required = required.clone();
@@ -577,13 +563,35 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
                 checked.checks.push(check);
             }
         }
-        let outputs =
-            issue_run::agent::final_check_outputs(&base, &checked, &passed, transcript).await;
+        let outputs = issue_run::agent::final_check_outputs(&base, &checked, &[], transcript).await;
         let errors = hands::failing_output(&outputs);
-        end.checks = outputs.into_iter().map(|(id, ok, _)| (id, ok)).collect();
+        end.checks = outputs
+            .iter()
+            .map(|(id, ok, _)| (id.clone(), *ok))
+            .collect();
         let judged = verdict::judge(transcript.cancelled(), None, &required, &end.checks);
         if judged.status == Status::Passed || judged.status == Status::Unchecked {
             break judged;
+        }
+        if transcript.cancelled() {
+            break Outcome::stopped(Status::Cancelled, "The run was stopped.");
+        }
+        if let Some(fault) = hands::environment_fault(&outputs) {
+            break Outcome::stopped(
+                Status::Failed,
+                format!(
+                    "The computer, not the change, failed a check: {fault} Fix it and run again."
+                ),
+            );
+        }
+        let tester = hands::test(
+            options, &base, &briefing, &errors, round, folder, transcript,
+        )
+        .await;
+        let verdict = hands::Verdict::parse(tester.verdict.as_deref().unwrap_or_default());
+        end.turns.push(tester);
+        if transcript.cancelled() {
+            break Outcome::stopped(Status::Cancelled, "The run was stopped.");
         }
         let failed: Vec<String> = end
             .checks
