@@ -390,9 +390,22 @@ impl<B: Backend + Send + Sync + 'static> Driver for BackendDriver<B> {
                 .ok()
                 .and_then(|r| crate::claude_task::pause(&r))
             {
+                let mut pause = pause;
                 loop {
                     if store.cancellation_requested(&record.id).unwrap_or(false) {
                         break;
+                    }
+                    // A pause choice (#11236) may move the resume time
+                    // earlier, or end the pause with a hand-off.
+                    match store
+                        .read(&record.id)
+                        .ok()
+                        .as_ref()
+                        .map(crate::claude_task::pause)
+                    {
+                        Some(Some(now_paused)) => pause = now_paused,
+                        Some(None) => break,
+                        None => {}
                     }
                     let now = crate::now_ms() / 1000;
                     if now >= pause.until {

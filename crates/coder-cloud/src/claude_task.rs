@@ -22,6 +22,7 @@
 //! credential *type* ([`evidence`]): never a credential, which OpenAgents
 //! never holds for a plan login.
 
+use crate::claude::OwnCredential;
 use crate::{Mode, Record, Spec, State};
 use coder_engine_status::Notice;
 use serde_json::{Value, json};
@@ -341,6 +342,120 @@ pub fn resume(record: &mut Record, now: u64) -> bool {
     true
 }
 
+/// What a person can do while a Claude plan pauses a task (#11236).
+/// Never: continue on Claude billed to OpenAgents, or buy Anthropic usage
+/// for them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case", tag = "choice", content = "credential")]
+pub enum PauseChoice {
+    /// The default: resume on the plan when the limit resets.
+    KeepWaiting,
+    /// The same Claude Code conversation, continued now on the person's own
+    /// API key or own Bedrock, Vertex, or Foundry credential.
+    ContinueOnYourKey(OwnCredential),
+    /// The rest of the task handed to Coder's own agent on OpenAgents'
+    /// Google-first door, billed as normal OpenAgents usage. It never
+    /// starts `claude`.
+    ContinueWithOpenAgents,
+}
+
+/// The choices a paused task offers, given the credential the person saved
+/// (`saved`): waiting first, then their own key when the saved one is not
+/// a subscription token (that bills the same plan), then OpenAgents. A task
+/// that isn't paused offers none.
+#[must_use]
+pub fn pause_choices(record: &Record, saved: Option<OwnCredential>) -> Vec<PauseChoice> {
+    if pause(record).is_none() {
+        return Vec::new();
+    }
+    let mut choices = vec![PauseChoice::KeepWaiting];
+    if let Some(class) = saved.filter(|class| *class != OwnCredential::SubscriptionToken) {
+        choices.push(PauseChoice::ContinueOnYourKey(class));
+    }
+    choices.push(PauseChoice::ContinueWithOpenAgents);
+    choices
+}
+
+/// What applying a choice leaves the caller to do.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Applied {
+    /// Nothing: the task keeps waiting for the reset.
+    Waiting,
+    /// The task resumes now; the caller releases the person's `class` for
+    /// that one turn, and never a subscription token.
+    ResumeOn(OwnCredential),
+    /// The Claude task ended handed off; the caller starts Coder's own
+    /// agent with this task. Nothing here starts `claude`.
+    HandOff { task: String },
+}
+
+/// Apply `choice` to a paused job at `now`. The record is changed in place
+/// and the caller saves it.
+///
+/// # Errors
+/// The job is not paused, the choice is not one it offers for `saved`, or
+/// it names a subscription token.
+pub fn choose(
+    record: &mut Record,
+    choice: PauseChoice,
+    saved: Option<OwnCredential>,
+    now: u64,
+) -> crate::Result<Applied> {
+    if !pause_choices(record, saved).contains(&choice) {
+        return Err(match choice {
+            PauseChoice::ContinueOnYourKey(OwnCredential::SubscriptionToken) => {
+                "A subscription token bills the same Claude plan; add an API key or your own cloud credential to continue now.".into()
+            }
+            _ => "That choice isn't available for this task.".into(),
+        });
+    }
+    let entry = &mut record.binding[BINDING];
+    match choice {
+        PauseChoice::KeepWaiting => Ok(Applied::Waiting),
+        PauseChoice::ContinueOnYourKey(class) => {
+            entry["pause"]["until"] = json!(now);
+            entry["continue_on"] = json!(class.name());
+            set_turn_sign_in(record, crate::claude::SignIn::Own(class));
+            record.events.push(json!({
+                "event": "pause_choice",
+                "engine": crate::claude::ENGINE,
+                "choice": "continue_on_your_key",
+            }));
+            record.updated_ms = crate::now_ms();
+            Ok(Applied::ResumeOn(class))
+        }
+        PauseChoice::ContinueWithOpenAgents => {
+            let original = entry["task"]
+                .as_str()
+                .map_or_else(|| record.spec.task.clone(), str::to_owned);
+            if let Some(entry) = entry.as_object_mut() {
+                entry.remove("pause");
+            }
+            record.binding[BINDING]["handed_to"] = json!("openagents");
+            record.events.push(json!({
+                "event": "pause_choice",
+                "engine": crate::claude::ENGINE,
+                "choice": "continue_with_openagents",
+            }));
+            record.state = State::Cancelled;
+            record.error =
+                Some("Handed to OpenAgents: Coder's own agent continues this task.".into());
+            record.updated_ms = crate::now_ms();
+            Ok(Applied::HandOff {
+                task: handoff_prompt(&original),
+            })
+        }
+    }
+}
+
+/// The task Coder's own agent takes over a paused Claude task with.
+#[must_use]
+pub fn handoff_prompt(task: &str) -> String {
+    format!(
+        "A Claude Code usage limit paused this task, and the person asked OpenAgents to finish it. Check the working copy for what was already done, continue from there, and do not repeat finished work.\n\nThe request was:\n{task}"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -365,6 +480,19 @@ mod tests {
         )
         .unwrap();
         admit(&mut r, "computer-1");
+        r
+    }
+
+    /// A job a usage limit paused, its book under a temporary folder.
+    fn paused_fixture() -> Record {
+        let dir = tempfile::tempdir().unwrap();
+        let mut r = record(&[]);
+        failed(
+            &mut r,
+            "Claude Code reached a usage limit on this computer's Claude sign-in. Claude AI usage limit reached|1790164200",
+        );
+        settle_in(&mut r, dir.path(), 1_790_163_058).unwrap();
+        assert_eq!(r.state, State::Paused);
         r
     }
 
@@ -503,5 +631,75 @@ mod tests {
         codex.spec.agent = "codex".into();
         failed(&mut codex, "You've hit your usage limit");
         assert_eq!(outcome(&codex, 1), None);
+    }
+
+    /// #11236: a paused task offers exactly what the saved credential
+    /// allows; a subscription token is never a way to continue now, and
+    /// handing off to OpenAgents never starts `claude`.
+    #[test]
+    fn a_paused_task_offers_only_the_choices_the_saved_credential_allows() {
+        use super::{Applied, PauseChoice, choose, pause_choices};
+        let mut record = paused_fixture();
+        assert_eq!(
+            pause_choices(&record, None),
+            vec![
+                PauseChoice::KeepWaiting,
+                PauseChoice::ContinueWithOpenAgents
+            ]
+        );
+        assert_eq!(
+            pause_choices(&record, Some(OwnCredential::SubscriptionToken)),
+            vec![
+                PauseChoice::KeepWaiting,
+                PauseChoice::ContinueWithOpenAgents
+            ]
+        );
+        assert_eq!(
+            pause_choices(&record, Some(OwnCredential::Vertex)),
+            vec![
+                PauseChoice::KeepWaiting,
+                PauseChoice::ContinueOnYourKey(OwnCredential::Vertex),
+                PauseChoice::ContinueWithOpenAgents
+            ]
+        );
+        // A subscription token is refused even when asked for directly.
+        let token = PauseChoice::ContinueOnYourKey(OwnCredential::SubscriptionToken);
+        assert!(
+            choose(
+                &mut record,
+                token,
+                Some(OwnCredential::SubscriptionToken),
+                10
+            )
+            .is_err()
+        );
+        assert_eq!(
+            choose(&mut record, PauseChoice::KeepWaiting, None, 10).unwrap(),
+            Applied::Waiting
+        );
+        // Their own key: resume now, on that key.
+        let key = PauseChoice::ContinueOnYourKey(OwnCredential::AnthropicApiKey);
+        let mut on_key = record.clone();
+        assert_eq!(
+            choose(&mut on_key, key, Some(OwnCredential::AnthropicApiKey), 10).unwrap(),
+            Applied::ResumeOn(OwnCredential::AnthropicApiKey)
+        );
+        assert!(due(&on_key, 10));
+        assert_eq!(
+            turn_sign_in(&on_key),
+            crate::claude::SignIn::Own(OwnCredential::AnthropicApiKey)
+        );
+        // OpenAgents: the Claude task ends handed off with the original task.
+        let mut handed = record.clone();
+        let Applied::HandOff { task } =
+            choose(&mut handed, PauseChoice::ContinueWithOpenAgents, None, 10).unwrap()
+        else {
+            panic!("expected a hand-off")
+        };
+        assert!(task.contains("Fix the fixture"), "{task}");
+        assert_eq!(handed.state, State::Cancelled);
+        assert!(super::pause(&handed).is_none());
+        // Not paused: no choices.
+        assert!(pause_choices(&handed, Some(OwnCredential::Vertex)).is_empty());
     }
 }
