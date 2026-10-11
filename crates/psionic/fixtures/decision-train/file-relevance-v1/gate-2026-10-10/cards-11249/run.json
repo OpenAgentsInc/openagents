@@ -1,0 +1,214 @@
+{
+ "v": "openagents.filefind.cards-run.v1",
+ "issue": 11249,
+ "evidence_class": "measured",
+ "vocab": {
+  "digest": "sha256:64bf4d84fbc775d0ce1b8c6df56b4a8d3a8f7cc73efb030de6b68fadc541fdf2",
+  "rev": "41e0b9ce4a03cca836d40ccb834d791730a9bece",
+  "note": "mined at the parent of the oldest eval fix; 130 areas, 159 entities, 13 layers, 5 clients, 186 routes; gemini-2.5-flash, $0.075 (plus $0.245 for a first draft not used)"
+ },
+ "index_cost": {
+  "replay_index": {
+   "cards": 40,
+   "model_calls": 40,
+   "seconds": 12.1,
+   "dollars": 0.0252,
+   "usage": {
+    "calls": 40,
+    "in": 262510,
+    "cached": 39197,
+    "out": 4598
+   },
+   "model": "gemini-2.5-flash-lite",
+   "at": "2026-10-10T21:53:53Z",
+   "what": "cards",
+   "vectors": {
+    "cards": 106517,
+    "model_calls": 74614,
+    "seconds": 1614.2,
+    "dollars": 19.6859,
+    "usage": {
+     "calls": 74702,
+     "in": 325054172,
+     "cached": 217014983,
+     "out": 8641425
+    },
+    "model": "gemini-2.5-flash-lite",
+    "at": "2026-10-10T22:23:17Z",
+    "what": "cards"
+   }
+  },
+  "incremental_35_commits": {
+   "vectors": {
+    "cards": 102,
+    "model_calls": 91,
+    "seconds": 10.3,
+    "dollars": 0.038,
+    "usage": {
+     "calls": 91,
+     "in": 408878,
+     "cached": 98081,
+     "out": 11163
+    },
+    "model": "gemini-2.5-flash-lite",
+    "at": "2026-10-10T23:17:19Z",
+    "what": "cards"
+   },
+   "seconds": 226.8,
+   "dollars": 1.3316,
+   "chars": 53262552,
+   "at": "2026-10-10T22:27:04Z",
+   "what": "vectors"
+  }
+ },
+ "teacher": {
+  "source": "Clef-Flash via https://openagents.com/api/v1/systemone (artifact sha256:fd3e9060..., head sha256:6e469970...)",
+  "items": 5419,
+  "partition": "training",
+  "seconds": 1584,
+  "auc_vs_outcome": 0.79
+ },
+ "towers": {
+  "all": {
+   "digest": "sha256:0627d32eaad694138ff9e273d4db74f6ee79ce45fac25dc8e479fcc24deafc4c",
+   "val_loss": 1.4512101376034305,
+   "epochs_run": 26,
+   "k": 32,
+   "lam": 0.5,
+   "a": [
+    3.9873199462890625,
+    3.9987599849700928,
+    0.8960300087928772
+   ],
+   "b": -2.0826339721679688
+  },
+  "A": {
+   "digest": "sha256:5b3295379c23972497bd219c817d369ed03f1b6c55258bf02a468744aa8c28c2",
+   "val_loss": 1.3747050251877098,
+   "epochs_run": 24,
+   "k": 32,
+   "lam": 0.5,
+   "a": [
+    3.965290069580078,
+    3.9687700271606445,
+    0.9345899820327759
+   ],
+   "b": -2.0590152740478516
+  },
+  "B": {
+   "digest": "sha256:e2f7ad23659fa4585c218668e57a05cb9ad0fd5cf0203bef6af19d9d9cb3ef8e",
+   "val_loss": 1.540703544439363,
+   "epochs_run": 14,
+   "k": 32,
+   "lam": 0.5,
+   "a": [
+    3.9559600353240967,
+    3.9568300247192383,
+    0.9523100256919861
+   ],
+   "b": -2.0510523319244385
+  },
+  "rows": 19676,
+  "teacher_rows": 5409
+ },
+ "tower_auc_corpus": {
+  "calibration": {
+   "tt": 0.7376,
+   "card_cos": 0.7107,
+   "blob_cos": 0.7235,
+   "tags": 0.7097
+  },
+  "development": {
+   "tt": 0.7631,
+   "card_cos": 0.7661,
+   "blob_cos": 0.7704,
+   "tags": 0.7126
+  }
+ },
+ "latency_ms_40_queries": {
+  "candidate_with_cards": {
+   "total": {
+    "p50": 1073,
+    "p95": 1888,
+    "max": 3653
+   },
+   "sym": {
+    "p50": 222,
+    "p95": 917,
+    "max": 2391
+   },
+   "load_cards": {
+    "p50": 48,
+    "p95": 53,
+    "max": 53
+   },
+   "cards": {
+    "p50": 40,
+    "p95": 47,
+    "max": 48
+   },
+   "profile_wait": {
+    "p50": 0,
+    "p95": 0,
+    "max": 0
+   },
+   "embed_wait": {
+    "p50": 69,
+    "p95": 246,
+    "max": 755
+   },
+   "stage2": {
+    "p50": 251,
+    "p95": 535,
+    "max": 745
+   },
+   "score": {
+    "p50": 291,
+    "p95": 575,
+    "max": 780
+   }
+  },
+  "active_without_cards": {
+   "total": {
+    "p50": 1025,
+    "p95": 1614,
+    "max": 2463
+   },
+   "sym": {
+    "p50": 216,
+    "p95": 709,
+    "max": 792
+   },
+   "load_cards": {
+    "p50": 0,
+    "p95": 0,
+    "max": 0
+   },
+   "cards": {
+    "p50": 0,
+    "p95": 0,
+    "max": 0
+   },
+   "profile_wait": {
+    "p50": 0,
+    "p95": 0,
+    "max": 0
+   },
+   "embed_wait": {
+    "p50": 127,
+    "p95": 416,
+    "max": 1675
+   },
+   "stage2": {
+    "p50": 209,
+    "p95": 332,
+    "max": 431
+   },
+   "score": {
+    "p50": 250,
+    "p95": 446,
+    "max": 521
+   }
+  }
+ }
+}

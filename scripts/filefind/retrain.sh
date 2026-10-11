@@ -13,6 +13,11 @@
 #    held-out eval cases under the gate's frozen plan (ranker_gate.py) and writes
 #    WORK_DIR/compare-<digest>.json.
 #
+# With FILEFIND_CARDS=1 (#11249) steps 4-5 also run the card stage: every replayed blob
+# is carded (cards.py; the vocabulary must exist), every issue gets its Jev profile,
+# and the distilled tower is trained on the file-relevance-v1 training partition
+# (Clef's answers from FILEFIND_CLEF_TEACHER, a JSONL of issue/path/clef_p, if set).
+#
 # It never writes scripts/filefind/model.json. The active model changes only on an
 # explicit promote, which refuses unless the comparison passed against the model
 # that is active now:
@@ -31,8 +36,16 @@ gh issue list --state closed --limit 20000 --json number,title,body,closedAt,cre
 python3 -I "$root/scripts/bench/file-finding-dataset.py" --repo "$root" --rev HEAD \
   --issues "$work/closed-issues.json" --multi --max-hand 40 --out "$work/dataset.json"
 python3 "$bench" prepare --repo "$root" --dataset "$work/dataset.json" --work "$work"
-python3 "$bench" features --repo "$root" --dataset "$work/dataset.json" --work "$work"
-python3 "$bench" train --repo "$root" --dataset "$work/dataset.json" --work "$work" --model "$work/model.json"
+cards=()
+if [ "${FILEFIND_CARDS:-0}" = 1 ]; then
+  python3 "$bench" cards --repo "$root" --dataset "$work/dataset.json" --work "$work"
+  python3 "$bench" profiles --repo "$root" --dataset "$work/dataset.json" --work "$work" --workers 12
+  python3 "$bench" tower --repo "$root" --dataset "$work/dataset.json" --work "$work" \
+    --towers "$work/towers.json" ${FILEFIND_CLEF_TEACHER:+--teacher "$FILEFIND_CLEF_TEACHER"}
+  cards=(--cards --towers "$work/towers.json")
+fi
+python3 "$bench" features --repo "$root" --dataset "$work/dataset.json" --work "$work" ${cards[@]+"${cards[@]}"}
+python3 "$bench" train --repo "$root" --dataset "$work/dataset.json" --work "$work" --model "$work/model.json" ${cards[@]+"${cards[@]}"}
 candidate="$(cd "$root/scripts/filefind" && python3 -c 'import sys, ranker_gate as g; print(g.immutable_copy(sys.argv[1], sys.argv[2]))' \
   "$work/model.json" "$work/candidates")"
 set +e

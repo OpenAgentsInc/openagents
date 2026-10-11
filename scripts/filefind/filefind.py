@@ -65,7 +65,7 @@ ISSUE_CHARS = 6000
 BIG_COMMIT = 40          # commits touching more files are ignored for co-change
 LOCK_NAMES = {"Cargo.lock", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock",
               "bun.lockb", "Package.resolved", "go.sum", "flake.lock", "uv.lock", "poetry.lock"}
-SOURCES = ["emb", "sym", "co", "sim", "hist", "pair", "dir", "recent", "stage2"]
+SOURCES = ["emb", "sym", "co", "sim", "hist", "pair", "dir", "recent", "stage2", "card"]
 # output-only labels for what stage 2 found (not model features)
 STAGES_OUT = SOURCES + ["ref", "iface", "rule", "crate", "tmpl", "feedback"]
 
@@ -956,8 +956,11 @@ def fields(text):
 class Query:
     """Candidate generation and features for one issue at one revision."""
 
-    def __init__(self, ix, repo, rev, tree, cutoff=None, exclude_issue=None, timing=None):
+    def __init__(self, ix, repo, rev, tree, cutoff=None, exclude_issue=None, timing=None, cards=None):
         self.ix, self.repo, self.rev, self.tree = ix, repo, rev, tree
+        # cards (#11249): {"store": cards.CardStore, "profile": Jev profile or a Future of
+        # one, "tower": distilled tower or None, "tower_cache": cards.TowerCache or None}
+        self.cards, self.cv = cards, None
         h = ix.hist
         self.cutoff = len(h["commits"]) if cutoff is None else cutoff  # commits [0, cutoff) are history
         self.exclude_issue = exclude_issue
@@ -1099,6 +1102,9 @@ class Query:
             if r < 10:
                 reason[p].append(f"embedding rank {r+1} (cos {cos[i]:.2f})")
         self.tick("emb", t0)
+        # ---- cards (#11249): card cosine, tag overlap and the distilled score over the tree
+        if self.cards:
+            self.card_stage(qvec, src, reason)
         # ---- seeds for graph sources
         seeds = {}
         for r, i in enumerate(order[:10]):
@@ -1238,11 +1244,35 @@ class Query:
         relative(feats, REL1)
         return feats
 
+    def card_stage(self, qvec, src, reason):
+        import cards as fc
+        c = self.cards
+        prof = c.get("profile")
+        if hasattr(prof, "result"):
+            tw = time.perf_counter()
+            try:
+                prof = prof.result()
+            except Exception:  # noqa: BLE001 - no tags this time: card cosine still runs
+                prof = None
+            self.tick("profile_wait", tw)
+        t0 = time.perf_counter()
+        self.cv = fc.CardView(c["store"], self.ix, self.paths, self.tree, qvec, prof,
+                              tower=c.get("tower") if prof else None, tower_cache=c.get("tower_cache"))
+        for which, k, label in (("cos", 150, "card"), ("tt", 150, "distilled"), ("tag", 100, "tags")):
+            for r, i in enumerate(self.cv.top(which, k)):
+                p = self.paths[i]
+                src["card"].add(p)
+                if r < 5:
+                    reason[p].append(f"{label} rank {r + 1}")
+        self.tick("cards", t0)
+
     def base(self, p):
         """The full feature dict of path p (source features plus file facts)."""
         h = self.ix.hist
         x = self.F(p)
         i = self.prow[p]
+        if self.cv is not None:
+            x.update(self.cv.feats(i))
         fid = h["pid"].get(p)
         x["cos"] = float(self.cos[i])
         x["erank"] = math.log1p(int(self.erank[i]))
@@ -1536,7 +1566,8 @@ class Query:
         return feats
 
 
-REL1 = ["cos", "co", "co_max", "hist", "hist_max", "sim", "sim_max", "sym_ment", "lit", "recent_n"]
+REL1 = ["cos", "co", "co_max", "hist", "hist_max", "sim", "sim_max", "sym_ment", "lit", "recent_n",
+        "card_cos", "card_tag", "tt"]
 REL2 = ["co2", "s1", "ref", "iface", "iface_x", "rule_f", "rule_d", "tmpl"]
 
 
@@ -2161,6 +2192,13 @@ def cmd_index(a):
     print(f"blobs: {len(ix.blob_rows)}", file=sys.stderr)
     TokenIndex(ix.cache).ensure(a.repo, tree)
     IfaceIndex(ix.cache).ensure(a.repo, tree)
+    import cards as fc
+    model = json.load(open(MODEL_PATH)) if os.path.exists(MODEL_PATH) else None
+    if fc.cards_on(model) and not a.no_cards:  # #11249: card, embed and project every new blob, once
+        try:
+            fc.refresh(a.repo, ix.cache, tree, key=key, model=model)
+        except Exception as e:  # noqa: BLE001 - cards are optional; the next index retries
+            print(f"cards not refreshed: {str(e)[:120]}", file=sys.stderr)
 
 
 def map_json(ranked, n, q):
@@ -2210,7 +2248,11 @@ def cmd_query(a):
     t_all = time.perf_counter()  # "total" counts from here: the issue text in hand
     cache = cache_for(a)
     key = embed_key(required=False, cache=cache)
-    pool = ThreadPoolExecutor(1)
+    pool = ThreadPoolExecutor(2)
+    import cards as fc  # #11249: the issue's one batched tag decision runs beside its embedding
+    model = json.load(open(a.model))
+    vocab = fc.load_vocab(cache) if fc.cards_on(model) and not a.no_cards else None
+    prof = pool.submit(fc.profile_issue, vocab, title, body) if vocab else None
     if key:  # the one network call runs while the indexes load and the token stages run
         qvec = pool.submit(embed, [issue_text(title, body)], key, task="RETRIEVAL_QUERY")
         qvec = _First(qvec)
@@ -2220,7 +2262,6 @@ def cmd_query(a):
         qvec = np.zeros(DIMS, np.float32)
     t0 = time.perf_counter()
     ix = Index(cache, key).load()
-    model = json.load(open(a.model))
     timing["load"] = time.perf_counter() - t0
     t0 = time.perf_counter()
     if ix.refresh_history(a.repo, a.rev) and key:  # new commits since the index: keep it fresh
@@ -2244,7 +2285,18 @@ def cmd_query(a):
     ix.tokens.ensure(a.repo, tree, log=False)
     ix.iface.ensure(a.repo, tree, log=False)
     timing["refresh_index"] = time.perf_counter() - t0
-    q = Query(ix, a.repo, rev, tree, exclude_issue=a.issue, timing=timing)
+    cards = None
+    if prof is not None:
+        t0 = time.perf_counter()
+        store = fc.CardStore(cache, key).load()
+        tower = fc.model_tower(model, store)
+        tc = None
+        if tower:  # file sides are projected at index time; any blob newer than that, now
+            tc = fc.TowerCache(store, ix, tower)
+            tc.ensure(list(tree.values()))
+        cards = {"store": store, "profile": prof, "tower": tower, "tower_cache": tc}
+        timing["load_cards"] = time.perf_counter() - t0
+    q = Query(ix, a.repo, rev, tree, exclude_issue=a.issue, timing=timing, cards=cards)
     feats = q.run(title, body, qvec)
     t0 = time.perf_counter()
     ranked_all, feats = rank_two_stage(model, q, feats)
@@ -2307,6 +2359,7 @@ def main():
     i.add_argument("--issue-limit", type=int, default=5000)
     i.add_argument("--no-issues", action="store_true", help="skip the similar-issue index")
     i.add_argument("--full", action="store_true", help="rebuild the history index from scratch")
+    i.add_argument("--no-cards", action="store_true", help="skip the file cards (#11249)")
     i.add_argument("--cache")
     i.add_argument("--workspace", help="the workspace the cache belongs to (default: FILEFIND_WORKSPACE, "
                    "OPENAGENTS_WORKSPACE, else local)")
@@ -2323,6 +2376,7 @@ def main():
     q.add_argument("--cache")
     q.add_argument("--workspace")
     q.add_argument("--model", default=MODEL_PATH)
+    q.add_argument("--no-cards", action="store_true", help="skip the card stage (#11249)")
     fb = sub.add_parser("feedback", help="collect late files from issue-run and A/B runs")
     fb.add_argument("--repo", default=".")
     fb.add_argument("--cache")

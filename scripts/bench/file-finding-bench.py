@@ -41,6 +41,50 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "filefind"))
 import filefind as ff  # noqa: E402
 import ranker_gate as gate  # noqa: E402
+import cards as fc  # noqa: E402
+
+# Cards (#11249): with --cards every replay runs the card stage, with the issue's Jev
+# profile from the cache (`profiles`) and the tower that never saw the case's issue.
+CARDS = None
+CORPUS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "crates", "gym", "suites",
+                      "file-relevance-v1")
+
+
+class BenchCards:
+    def __init__(self, a, ix=None):
+        cache = ff.cache_for(a)
+        self.store = fc.CardStore(cache, ix.key if ix else None).load()
+        if not self.store.vocab or (a.cmd not in ("profiles", "cards") and self.store.tags is None):
+            sys.exit("--cards: this cache has no card vocabulary or compiled tags (cards.py vocab / index)")
+        self.profiles = fc.Profiles(cache, self.store.vocab)
+        self.towers = json.load(open(a.towers)) if a.towers and os.path.exists(a.towers) else None
+        self.partition = corpus_partition()
+        self.no_tower = a.no_tower
+
+    def tower_for(self, issue):
+        """Out of sample for every case: a training-partition issue gets the fold tower
+        that did not train on it; every other issue the tower trained on all of them."""
+        t = self.towers
+        if not t or self.no_tower:
+            return None
+        if self.partition.get(issue) == "training":
+            return t["B"] if issue % 2 == 0 else t["A"]
+        return t["all"]
+
+    def ctx(self, c):
+        prof = self.profiles.get(c["title"], c["body"], fetch=False)
+        return {"store": self.store, "profile": prof, "tower": self.tower_for(c["issue"]) if prof else None,
+                "tower_cache": None}
+
+
+def corpus_partition():
+    out = {}
+    with open(os.path.join(CORPUS, "issues.tsv")) as f:
+        next(f)
+        for line in f:
+            n, part = line.split("\t")[:2]
+            out[int(n)] = part
+    return out
 
 KS = (20, 50, 100, 200, 300, 400)
 
@@ -129,7 +173,8 @@ def run_case(ix, repo, c, key, keep_query=False):
     else:
         qvec = ff.embed([ff.issue_text(c["title"], c["body"])], key, task="RETRIEVAL_QUERY")[0]
         timing["embed_query"] = time.perf_counter() - t0
-    q = ff.Query(ix, repo, c["parent"], tree, cutoff=pos, exclude_issue=c["issue"], timing=timing)
+    q = ff.Query(ix, repo, c["parent"], tree, cutoff=pos, exclude_issue=c["issue"], timing=timing,
+                 cards=CARDS.ctx(c) if CARDS else None)
     feats = q.run(c["title"], c["body"], qvec)
     hand = {h["path"] for h in c["hand"] if h["existing"]}
     if keep_query:
@@ -291,6 +336,7 @@ def save_model(a, train, m1, m2):
     with open(a.dataset, "rb") as f:
         dataset_digest = "sha256:" + __import__("hashlib").sha256(f.read()).hexdigest()
     model = {"schema": "openagents.filefind.model.v1", "stage1": m1, "stage2": m2,
+             **({"cards": cards_card(a)} if CARDS else {}),
              "trained_on": {"cases": len(train), "issues": f"#{min(issues)}..#{max(issues)}",
                             "issue_list": issues, "dataset": dataset_digest,
                             "includes_eval": bool(a.all)}}
@@ -299,6 +345,148 @@ def save_model(a, train, m1, m2):
         json.dump(model, f)
     os.replace(tmp, a.model)
     print(f"trained on {len(train)} cases -> {a.model}")
+
+
+def cards_card(a):
+    """The model card's cards block: the vocabulary its tag features were trained on and
+    the distilled tower that ran on its eval cases and runs at query time."""
+    t = CARDS.towers["all"] if CARDS.towers and not CARDS.no_tower else None
+    return {"vocab_digest": CARDS.store.vocab["digest"], "vocab_rev": CARDS.store.vocab["rev"],
+            "card_model": fc.CARD_MODEL, "profile_model": fc.JEV_MODEL, "tower": t,
+            "source": "openagents#11249"}
+
+
+def cmd_cards(a):
+    """Card, embed and compile every blob of every replayed parent tree (and HEAD)."""
+    cases = load(a)
+    revs = sorted({c["parent"] for c in cases}) + ["HEAD"]
+    blobs = {}
+    with ThreadPoolExecutor(8) as ex:
+        for t in ex.map(lambda r: ff.ls_tree(a.repo, r), revs):
+            for p, s_ in t.items():
+                blobs.setdefault(s_, p)
+    st = CARDS.store
+    print(json.dumps(st.make(a.repo, blobs, workers=64)))
+    print(json.dumps(st.embed(a.repo, blobs, tokens=ff.TokenIndex(ff.cache_for(a)))))
+    st.compile_tags()
+
+
+def cmd_teacher(a):
+    """Clef's answer on every training-partition item of file-relevance-v1, through the
+    fusion card's door (answers count only from the card's Clef artifact and head). They
+    are written as a teacher field (--teacher JSONL); labels stay the corpus outcomes."""
+    import gzip
+    cases = {c["issue"]: c for c in load(a)}
+    card = json.load(open(a.candidate))
+    door = ff.ClefDoor(card["fusion"], os.path.join(a.work, "clef-teacher-cache.jsonl"))
+    rows = [l.rstrip("\n").split("\t") for l in gzip.open(os.path.join(CORPUS, "items.tsv.gz"), "rt")]
+    h = rows[0]
+    rows = [dict(zip(h, r)) for r in rows[1:] if r[1] == "training" and int(r[0]) in cases]
+    heads = ff.clef_heads(a.repo, [r["blob"] for r in rows])
+    jobs = [(r, ff.clef_state(int(r["issue"]), cases[int(r["issue"])]["title"], cases[int(r["issue"])]["body"],
+                              r["path"], heads[r["blob"]])) for r in rows if heads.get(r["blob"]) is not None]
+
+    def one(j):
+        for attempt in range(8):
+            try:
+                return j[0], door.ask(j[1], timeout=120)
+            except Exception:  # noqa: BLE001 - a benched pylon: wait and ask again
+                time.sleep(20 * (attempt + 1))
+        return j[0], None
+    with open(a.teacher, "a") as out, ThreadPoolExecutor(a.clef_workers) as ex:
+        for r, p in ex.map(one, jobs):
+            if p is not None:
+                out.write(json.dumps({"issue": int(r["issue"]), "path": r["path"], "blob": r["blob"],
+                                      "label": r["label"], "clef_p": p}) + "\n")
+    print(f"teacher answers for {len(jobs)} items -> {a.teacher}")
+
+
+def cmd_profiles(a):
+    """Jev profiles of every case's issue (and the corpus training issues), cached."""
+    cases = load(a)
+    t0 = time.perf_counter()
+    lat = []
+
+    def one(c):
+        t = time.perf_counter()
+        p = CARDS.profiles.get(c["title"], c["body"])
+        lat.append(time.perf_counter() - t)
+        return p is not None
+    with ThreadPoolExecutor(a.workers) as ex:
+        ok = sum(ex.map(one, cases))
+    print(f"profiles: {ok}/{len(cases)} in {time.perf_counter() - t0:.0f}s")
+
+
+def cmd_tower(a):
+    """Distil the two-tower projection on the file-relevance-v1 training partition (#11215):
+    the corpus items (outcome labels, Clef's answer as a teacher field where asked) plus,
+    per issue, every existing fix file and 30 other files of the parent tree as outcome
+    pairs. Trains `all` and the two issue-parity folds `A` (even) and `B` (odd)."""
+    import gzip, random
+    cases = {c["issue"]: c for c in load(a)}
+    ix = ff.Index(ff.cache_for(a)).load()
+    st = CARDS.store
+    teacher = {}
+    if a.teacher and os.path.exists(a.teacher):
+        for line in open(a.teacher):
+            r = json.loads(line)
+            teacher[(r["issue"], r["path"])] = ff._logit(r["clef_p"])
+    rows = [l.rstrip("\n").split("\t") for l in gzip.open(os.path.join(CORPUS, "items.tsv.gz"), "rt")]
+    h = rows[0]
+    items = defaultdict(list)
+    for r in rows[1:]:
+        d = dict(zip(h, r))
+        if d["partition"] == "training":
+            items[int(d["issue"])].append(d)
+    isx = ix.issues
+    inum = {int(n): i for i, n in enumerate(isx["numbers"])}
+    Q, D, Y, T, G = [], [], [], [], []
+    tags = st.tags
+    rng = random.Random(11249)
+    skipped = Counter()
+    for n in sorted(items):
+        c = cases.get(n)
+        prof = CARDS.profiles.get(c["title"], c["body"], fetch=False) if c else None
+        if c is None or prof is None or n not in inum:
+            skipped["issue"] += 1
+            continue
+        qin = fc.tower_inputs_query(isx["vecs"][inum[n]], fc.profile_vector(st.vocab, prof))
+        tree = ff.ls_tree(a.repo, c["parent"])
+        pairs = {(d["path"], d["blob"]): (int(d["label"] == "true"), teacher.get((n, d["path"]), float("nan")))
+                 for d in items[n]}
+        hand = {x["path"] for x in c["hand"] if x["existing"]}
+        for p in hand:
+            if p in tree:
+                pairs.setdefault((p, tree[p]), (1, float("nan")))
+        others = [p for p in tree if p not in hand]
+        for p in rng.sample(others, min(30, len(others))):
+            pairs.setdefault((p, tree[p]), (0, float("nan")))
+        for (p, sha), (y, t) in pairs.items():
+            cr = st.rows.get(sha, st.rows.get(sha.encode()))
+            br = ix.blob_rows.get(sha.encode())
+            tr = tags["rows"].get(sha.encode())
+            if cr is None or br is None or tr is None:
+                skipped["file"] += 1
+                continue
+            Q.append(qin)
+            D.append(fc.tower_inputs_doc(st.vecs[cr:cr + 1], ix.blob_mat[br:br + 1], tags["hot"][tr:tr + 1])[0])
+            Y.append(y)
+            T.append(t)
+            G.append(n)
+    Q, D, Y, T, G = (np.array(Q, np.float32), np.array(D, np.float32), np.array(Y, np.float32),
+                     np.array(T, np.float32), np.array(G))
+    print(f"tower rows {len(Y)} ({int(Y.sum())} positive, {int(np.isfinite(T).sum())} with Clef), "
+          f"{len(set(G.tolist()))} issues; skipped {dict(skipped)}", file=sys.stderr)
+    out = {"source": "file-relevance-v1 training partition", "rows": int(len(Y)),
+           "teacher_rows": int(np.isfinite(T).sum()), "issues": sorted(set(G.tolist()))}
+    for name, sel in (("all", np.ones(len(G), bool)), ("A", G % 2 == 0), ("B", G % 2 == 1)):
+        t0 = time.time()
+        out[name] = fc.train_tower(Q[sel], D[sel], Y[sel], T[sel], G[sel], k=a.tower_k, lam=a.tower_lam)
+        out[name]["seconds"] = round(time.time() - t0, 1)
+        print(f"tower {name}: val loss {out[name]['val_loss']:.4f} in {out[name]['epochs_run']} epochs", file=sys.stderr)
+    with open(a.towers, "w") as f:
+        json.dump(out, f)
+    print(f"towers -> {a.towers}")
 
 
 def map_report(ev, feats, model, repo, title="map"):
@@ -885,7 +1073,7 @@ def cmd_check(a):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["prepare", "features", "train", "eval", "compare", "judge", "judge-eval", "plan",
-                                    "check", "rerank", "fusion-card"])
+                                    "check", "rerank", "fusion-card", "profiles", "tower", "cards", "teacher"])
     ap.add_argument("--repo", default=".")
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--work", required=True)
@@ -919,11 +1107,21 @@ def main():
     ap.add_argument("--clef-head",
                     default="sha256:6e4699704c24e9f04f3e9270e7fe9c72fdb7c72086e30648d4ac4a39e5e6b041")
     ap.add_argument("--clef-workers", type=int, default=3, help="compare: concurrent Clef requests")
+    ap.add_argument("--cards", action="store_true", help="run the card stage (#11249) in every replay")
+    ap.add_argument("--towers", help="--cards: the distilled towers (tower writes it)")
+    ap.add_argument("--no-tower", action="store_true", help="--cards without the distilled score (ablation)")
+    ap.add_argument("--teacher", help="tower: Clef answers on corpus items (JSONL issue, path, clef_p)")
+    ap.add_argument("--tower-k", type=int, default=32)
+    ap.add_argument("--tower-lam", type=float, default=0.5)
     a = ap.parse_args()
     os.makedirs(a.work, exist_ok=True)
+    global CARDS
+    if a.cards or a.cmd in ("profiles", "tower", "cards"):
+        CARDS = BenchCards(a)
     {"prepare": cmd_prepare, "features": cmd_features, "train": cmd_train, "eval": cmd_eval, "compare": cmd_compare,
      "judge": cmd_judge, "judge-eval": cmd_judge_eval, "plan": cmd_plan, "check": cmd_check, "rerank": cmd_rerank,
-     "fusion-card": cmd_fusion_card}[a.cmd](a)
+     "fusion-card": cmd_fusion_card, "profiles": cmd_profiles, "tower": cmd_tower,
+     "cards": cmd_cards, "teacher": cmd_teacher}[a.cmd](a)
 
 
 if __name__ == "__main__":

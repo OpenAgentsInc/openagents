@@ -1,0 +1,1430 @@
+{
+ "schema": "openagents.filefind.card-vocab.v1",
+ "rev": "41e0b9ce4a03cca836d40ccb834d791730a9bece",
+ "model": "gemini-2.5-flash",
+ "areas": [
+  {
+   "id": "agent_client_protocol",
+   "definition": "The protocol for communication between agents and clients, including typed frames and specific CLI integrations."
+  },
+  {
+   "id": "agent_trajectory_format",
+   "definition": "A standardized format for logging and interchanging agent session steps."
+  },
+  {
+   "id": "background_processes",
+   "definition": "Durable rules and tasks that run on the host without direct user interaction, like disk cleanup."
+  },
+  {
+   "id": "bitcoin_payments",
+   "definition": "Handling and display of Bitcoin amounts, including different unit representations and parsing."
+  },
+  {
+   "id": "boat_api_integration",
+   "definition": "Integration with the Boat public API for managing snapshots and environments."
+  },
+  {
+   "id": "briefing_generation",
+   "definition": "Generating read-only issue briefings from Git commits or agent conversations."
+  },
+  {
+   "id": "capability_management",
+   "definition": "Managing and discovering host capabilities, including trust and probing mechanisms."
+  },
+  {
+   "id": "chat_performance",
+   "definition": "Benchmarking and optimizing the loading speed of chat interfaces on mobile applications."
+  },
+  {
+   "id": "code_highlighting",
+   "definition": "Syntax highlighting for code blocks using tree-sitter and syntect."
+  },
+  {
+   "id": "coder_agent_core",
+   "definition": "The core functionality of the Coder agent, including routing, answer generation, and terminal display."
+  },
+  {
+   "id": "device_enrollment",
+   "definition": "Enrollment and access management for Coder devices and private Nostr artifacts."
+  },
+  {
+   "id": "keyboard_bindings",
+   "definition": "Managing desktop keyboard shortcuts and key bindings for CoderOS."
+  },
+  {
+   "id": "filesystem_boundary",
+   "definition": "Enforcing write boundaries for commands and tracking filesystem changes with snapshots."
+  },
+  {
+   "id": "wayland_compositor",
+   "definition": "The Coder Wayland compositor, handling window tiling, key bindings, and desk protocols."
+  },
+  {
+   "id": "host_status_display",
+   "definition": "Displaying host status, enrollment, access, and activity within Coder's UI."
+  },
+  {
+   "id": "coding_history_access",
+   "definition": "Providing read-only, encrypted access to retained coding history."
+  },
+  {
+   "id": "nostr_control",
+   "definition": "Scoped and authenticated control of local tasks via Nostr."
+  },
+  {
+   "id": "agent_delegation",
+   "definition": "Managing what Coder's terminal turns run, including model adapters and evaluation."
+  },
+  {
+   "id": "desktop_session_management",
+   "definition": "Interacting with and modifying desktop sessions and windows."
+  },
+  {
+   "id": "gesture_recognition",
+   "definition": "Hand landmark detection, pose recognition, and gesture rule processing for CoderOS."
+  },
+  {
+   "id": "agent_history_management",
+   "definition": "Managing read-only, bounded saved agent history and portable transcript pages."
+  },
+  {
+   "id": "coder_host_management",
+   "definition": "Managing the resident Coder host, including enrollment, reachability, and task execution."
+  },
+  {
+   "id": "labor_order_system",
+   "definition": "A recoverable, Nostr-based system for buyer-provider labor orders."
+  },
+  {
+   "id": "connection_supervision",
+   "definition": "Deterministic per-host connection supervision for Coder clients."
+  },
+  {
+   "id": "mobile_state_management",
+   "definition": "Managing Coder's mobile conversation state and native bridge."
+  },
+  {
+   "id": "task_view_probing",
+   "definition": "Synthetic, read-only probing of Rust native task views."
+  },
+  {
+   "id": "automated_pull_requests",
+   "definition": "Automating the creation of pull requests from GitHub issues using agent judgments."
+  },
+  {
+   "id": "project_supervision",
+   "definition": "Supervised project work executed through Coder programs."
+  },
+  {
+   "id": "pty_terminal_sessions",
+   "definition": "Managing host terminal sessions over PTY with replay and portable client state."
+  },
+  {
+   "id": "host_reachability",
+   "definition": "Managing host directory, presence, reachability hints, and direct channels."
+  },
+  {
+   "id": "task_scheduling",
+   "definition": "Deterministic backlog scheduling with a versioned catalog, admission plan, and ledger."
+  },
+  {
+   "id": "background_service_management",
+   "definition": "Managing the Coder host as a background service, including updates and rollback."
+  },
+  {
+   "id": "ssh_host_management",
+   "definition": "Installing, starting, and reaching a Coder host over SSH."
+  },
+  {
+   "id": "terminal_ui",
+   "definition": "The user interface components of the Coder terminal, including the composer and shell."
+  },
+  {
+   "id": "application_theming",
+   "definition": "Managing Coder application presentation and theme values."
+  },
+  {
+   "id": "vt100_emulation",
+   "definition": "A small VT100/xterm terminal emulator for character grids and screen management."
+  },
+  {
+   "id": "window_management",
+   "definition": "Dwindle tiling, workspaces, screens, and layout for Coder surfaces."
+  },
+  {
+   "id": "task_benchmarking",
+   "definition": "Managing task manifests and recorded goldens for Coder episodes."
+  },
+  {
+   "id": "camera_control",
+   "definition": "Controlling the camera on CoderOS, including recording and hand landmark detection."
+  },
+  {
+   "id": "codex_api_transport",
+   "definition": "Transport layer for Codex API requests and responses, including cost tracking."
+  },
+  {
+   "id": "public_discovery",
+   "definition": "Managing public discovery surfaces, documentation, and well-known indexes."
+  },
+  {
+   "id": "extension_evaluation_runner",
+   "definition": "Running extension test sets for chat on computers within a quota."
+  },
+  {
+   "id": "extension_evaluation_engine",
+   "definition": "The engine for evaluating extensions, including cases, graders, and reporting."
+  },
+  {
+   "id": "http_gateway",
+   "definition": "A keyed HTTP gateway for authentication, authorization, quota management, and request forwarding."
+  },
+  {
+   "id": "decision_model_measurement",
+   "definition": "Measurement and control plane for decision models, including result storage and gate management."
+  },
+  {
+   "id": "gym_board_management",
+   "definition": "Managing private Gym boards and launching local recipes."
+  },
+  {
+   "id": "benchmark_leaderboards",
+   "definition": "Publishing and managing Gym benchmark results and trace bundles."
+  },
+  {
+   "id": "jev_model_access",
+   "definition": "Accessing the Jev decision model via TypeSafe AI's System One API."
+  },
+  {
+   "id": "hosted_jev_service",
+   "definition": "Providing access to Jev via local keys, hosted service, or indicating unavailability."
+  },
+  {
+   "id": "kev_model_port",
+   "definition": "Rust port of the Kev decision model, including prefill, question isolation, and pointer readout."
+  },
+  {
+   "id": "knowledge_base_management",
+   "definition": "Managing the shared knowledge base, including entries, linting, and search."
+  },
+  {
+   "id": "laya_model_port",
+   "definition": "Rust port of the Laya decision model, including encoder and decision head."
+  },
+  {
+   "id": "lev_model_integration",
+   "definition": "Integration with Apple's on-device foundation model for guided generation and estimation."
+  },
+  {
+   "id": "microcoder_loop",
+   "definition": "The simple coding loop where Jev judges state and models return shell commands."
+  },
+  {
+   "id": "model_payment_management",
+   "definition": "Determining who pays for model calls based on available keys and fixed order."
+  },
+  {
+   "id": "nostr_protocol_primitives",
+   "definition": "Pure Nostr protocol implementation and verification primitives."
+  },
+  {
+   "id": "nostr_relay_operation",
+   "definition": "Operating a hardened Nostr relay with a single binary and Postgres."
+  },
+  {
+   "id": "nostr_transport_security",
+   "definition": "Bounded authenticated Nostr transport for admitted relays."
+  },
+  {
+   "id": "decision_api_cli",
+   "definition": "CLI for interacting with the decision API, including questions, classification, and discovery."
+  },
+  {
+   "id": "openagents_chat_service",
+   "definition": "Shared OpenAgents hosted chat transport, state, and encrypted storage."
+  },
+  {
+   "id": "openagents_chat_app_state",
+   "definition": "Shared OpenAgents chat application state, projections, and Coder client behavior."
+  },
+  {
+   "id": "openagents_cli_tool",
+   "definition": "The `openagents` command-line tool for accessing various OpenAgents surfaces."
+  },
+  {
+   "id": "phone_computer_connection",
+   "definition": "Connecting phones to computers using iroh, including QR payloads and control protocols."
+  },
+  {
+   "id": "presentation_deck_rendering",
+   "definition": "Rendering OpenAgents presentation slides using Rust Native in the desktop app."
+  },
+  {
+   "id": "desktop_app_management",
+   "definition": "Managing the OpenAgents desktop application, including phone pairing and Coder monitoring."
+  },
+  {
+   "id": "mobile_app_state",
+   "definition": "Rust-owned application state and native bridge for the OpenAgents mobile app."
+  },
+  {
+   "id": "openagents_terminal_ui",
+   "definition": "The OpenAgents Terminal, providing a full-screen chat interface."
+  },
+  {
+   "id": "openagents_website",
+   "definition": "The OpenAgents website, including public pages, legal documents, and task browser."
+  },
+  {
+   "id": "openrouter_client",
+   "definition": "A small client for OpenRouter API, focused on structured output."
+  },
+  {
+   "id": "payment_ledger_management",
+   "definition": "Managing local SQLite settlement and revenue-share ledgers."
+  },
+  {
+   "id": "verse_physics_engine",
+   "definition": "Zone-agnostic rigid-body physics for the Verse simulation."
+  },
+  {
+   "id": "playtest_program_management",
+   "definition": "Managing records for the OpenAgents playtest program, including reports and logs."
+  },
+  {
+   "id": "plugin_host_abi",
+   "definition": "The packet ABI host for OpenAgents plugin guests."
+  },
+  {
+   "id": "code_search_plugin",
+   "definition": "A plugin for bounded literal and wildcard code search."
+  },
+  {
+   "id": "dependency_check_plugin",
+   "definition": "A plugin for offline dependency manifest analysis and policy enforcement."
+  },
+  {
+   "id": "error_explanation_plugin",
+   "definition": "A plugin to explain errors by locating code and suggesting fixes."
+  },
+  {
+   "id": "diagnostic_outline_plugin",
+   "definition": "A plugin for generating diagnostic outlines."
+  },
+  {
+   "id": "plugin_development_kit",
+   "definition": "Packet types shared between plugin guests and their hosts."
+  },
+  {
+   "id": "release_notes_plugin",
+   "definition": "A plugin for generating user-facing release notes from Git logs."
+  },
+  {
+   "id": "repository_map_plugin",
+   "definition": "A plugin for mapping repository structure, files, and languages."
+  },
+  {
+   "id": "test_report_plugin",
+   "definition": "A plugin for extracting failing tests from various test outputs."
+  },
+  {
+   "id": "private_filesystem_management",
+   "definition": "Managing owner-only files and directories on Windows, mirroring Unix permissions."
+  },
+  {
+   "id": "push_notification_gateway",
+   "definition": "A push gateway for APNs and FCM credentials, and device client registration."
+  },
+  {
+   "id": "execution_receipts",
+   "definition": "Versioned execution receipts for decision calls, shared across transports."
+  },
+  {
+   "id": "agentic_execution_routing",
+   "definition": "The frozen contract for the agentic execution router, including admission and lifecycle."
+  },
+  {
+   "id": "rust_native_ui_components",
+   "definition": "Experimental reusable semantic views, intents, styles, and native-renderer contracts."
+  },
+  {
+   "id": "desktop_ui_adapter",
+   "definition": "A desktop adapter for Rust Native views, handling layout, painting, and windows."
+  },
+  {
+   "id": "spark_wallet_integration",
+   "definition": "Integration with the Spark wallet (Breez SDK) for phone and computer sharing."
+  },
+  {
+   "id": "subprocess_supervision",
+   "definition": "A subprocess supervisor that manages process trees and bounds output."
+  },
+  {
+   "id": "tenant_artifact_registry",
+   "definition": "A versioned registry binding tenant identity to artifacts and execution configurations."
+  },
+  {
+   "id": "verse_world_simulation",
+   "definition": "The Verse shared amber world simulation, Nostr session, and wgpu renderer."
+  },
+  {
+   "id": "lagrange_point_physics",
+   "definition": "Sun-Earth L1 physics for Verse, including orbit, station-keeping, and EVA construction."
+  },
+  {
+   "id": "ruins_simulation",
+   "definition": "The retained Ruins of Atlantis real-time Wizard Woods simulation for the Verse Ruins zone."
+  },
+  {
+   "id": "minecraft_agent_episodes",
+   "definition": "Open-ended agent episodes in a Minecraft world, including server supervision and ATIF tracing."
+  },
+  {
+   "id": "lightning_wallet",
+   "definition": "Lightning wallet functionality for OpenAgents, including x402 receiver and payer."
+  },
+  {
+   "id": "x402_lightning_payments",
+   "definition": "x402 exact Lightning over HTTP for OpenAgents, including facilitator and header codecs."
+  },
+  {
+   "id": "xp_ledger_derivation",
+   "definition": "Deriving the NIP-XP ledger and parsing knowledge entries without model clients."
+  },
+  {
+   "id": "task_management",
+   "definition": "Managing and tracking tasks, including their creation, assignment, status, and completion."
+  },
+  {
+   "id": "payment_processing",
+   "definition": "Handling financial transactions, including invoices, payouts, and ledger management."
+  },
+  {
+   "id": "code_generation",
+   "definition": "Generating code based on prompts, specifications, or existing codebases."
+  },
+  {
+   "id": "user_interface",
+   "definition": "Designing and implementing the visual and interactive elements of an application."
+  },
+  {
+   "id": "cloud_infrastructure",
+   "definition": "Managing and interacting with cloud computing resources, such as VMs and storage."
+  },
+  {
+   "id": "testing_and_benchmarking",
+   "definition": "Evaluating performance, correctness, and efficiency of code or systems."
+  },
+  {
+   "id": "documentation_management",
+   "definition": "Creating, organizing, and displaying user guides, API references, and other documentation."
+  },
+  {
+   "id": "mobile_application_development",
+   "definition": "Building and maintaining applications for mobile devices (iOS, Android)."
+  },
+  {
+   "id": "version_control_integration",
+   "definition": "Interacting with version control systems like Git for code management."
+  },
+  {
+   "id": "agent_orchestration",
+   "definition": "Coordinating and managing the interactions and workflows of multiple agents."
+  },
+  {
+   "id": "knowledge_retrieval",
+   "definition": "Accessing and utilizing stored information or knowledge bases to inform decisions."
+  },
+  {
+   "id": "real_time_communication",
+   "definition": "Enabling instant messaging and data exchange between users or systems."
+  },
+  {
+   "id": "security_and_authentication",
+   "definition": "Implementing measures to protect data and verify user identities."
+  },
+  {
+   "id": "deployment_and_release",
+   "definition": "Managing the process of building, packaging, and distributing software releases."
+  },
+  {
+   "id": "virtual_environments",
+   "definition": "Creating and managing isolated environments for running code or applications."
+  },
+  {
+   "id": "data_storage",
+   "definition": "Managing the persistence and retrieval of data."
+  },
+  {
+   "id": "error_handling",
+   "definition": "Detecting, reporting, and recovering from errors or unexpected conditions."
+  },
+  {
+   "id": "resource_management",
+   "definition": "Allocating, monitoring, and optimizing system resources like memory and CPU."
+  },
+  {
+   "id": "configuration_management",
+   "definition": "Managing and applying settings and parameters for applications and systems."
+  },
+  {
+   "id": "network_connectivity",
+   "definition": "Establishing and maintaining connections between different systems or devices."
+  },
+  {
+   "id": "content_rendering",
+   "definition": "Displaying various types of content, such as text, images, and interactive elements."
+  },
+  {
+   "id": "game_development",
+   "definition": "Creating and managing interactive 3D environments and game logic."
+  },
+  {
+   "id": "metrics_and_reporting",
+   "definition": "Collecting, analyzing, and presenting data on performance and usage."
+  },
+  {
+   "id": "plugin_management",
+   "definition": "Managing the lifecycle and interaction of external software components."
+  },
+  {
+   "id": "code_analysis",
+   "definition": "Examining code for quality, errors, and adherence to standards."
+  },
+  {
+   "id": "developer_tools",
+   "definition": "Providing utilities and interfaces to assist developers in their work."
+  },
+  {
+   "id": "access_control",
+   "definition": "Regulating who can access specific resources or perform certain actions."
+  },
+  {
+   "id": "system_integration",
+   "definition": "Connecting and coordinating different software systems or components."
+  },
+  {
+   "id": "user_onboarding",
+   "definition": "Guiding new users through the initial setup and usage of a product."
+  },
+  {
+   "id": "data_synchronization",
+   "definition": "Ensuring consistency of data across multiple systems or devices."
+  },
+  {
+   "id": "notification_management",
+   "definition": "Sending and managing alerts and messages to users."
+  },
+  {
+   "id": "api_management",
+   "definition": "Designing, implementing, and managing application programming interfaces."
+  },
+  {
+   "id": "data_serialization",
+   "definition": "Converting data structures into a format that can be stored or transmitted."
+  }
+ ],
+ "entities": [
+  {
+   "id": "agent",
+   "definition": "An autonomous software entity that performs tasks, often interacting with environments or users."
+  },
+  {
+   "id": "client",
+   "definition": "A software application or component that consumes services from an agent or host."
+  },
+  {
+   "id": "protocol",
+   "definition": "A set of rules governing the exchange of information between systems."
+  },
+  {
+   "id": "frame",
+   "definition": "A unit of data transmitted across a network or between processes."
+  },
+  {
+   "id": "session",
+   "definition": "A period of interaction between a user and a system, or between software components."
+  },
+  {
+   "id": "step",
+   "definition": "A discrete action or state change within an agent's trajectory or a process."
+  },
+  {
+   "id": "log",
+   "definition": "A record of events, actions, or data generated by a system over time."
+  },
+  {
+   "id": "host",
+   "definition": "The computer or environment where an agent or service runs."
+  },
+  {
+   "id": "rule",
+   "definition": "A predefined condition or instruction that dictates system behavior."
+  },
+  {
+   "id": "conversation",
+   "definition": "An exchange of messages or interactions, typically between a user and an agent."
+  },
+  {
+   "id": "disk_cleanup",
+   "definition": "The process of removing unnecessary files from storage to free up space."
+  },
+  {
+   "id": "bitcoin_amount",
+   "definition": "A quantity of Bitcoin, represented in various units."
+  },
+  {
+   "id": "snapshot",
+   "definition": "A saved state of a system or data at a specific point in time."
+  },
+  {
+   "id": "template",
+   "definition": "A pre-configured environment or set of files used as a starting point."
+  },
+  {
+   "id": "issue",
+   "definition": "A problem, task, or feature request tracked in a project management system."
+  },
+  {
+   "id": "git_commit",
+   "definition": "A record of changes to a repository at a specific point in time."
+  },
+  {
+   "id": "capability",
+   "definition": "A specific function or feature that a system or component can perform."
+  },
+  {
+   "id": "manifest",
+   "definition": "A file listing the contents, properties, or requirements of a package or system."
+  },
+  {
+   "id": "chat",
+   "definition": "A real-time text-based communication interface."
+  },
+  {
+   "id": "transcript",
+   "definition": "A written record of a conversation or session."
+  },
+  {
+   "id": "code_block",
+   "definition": "A section of source code, often displayed with syntax highlighting."
+  },
+  {
+   "id": "coder",
+   "definition": "The primary coding agent within the system."
+  },
+  {
+   "id": "route",
+   "definition": "A path or method for processing a request or message."
+  },
+  {
+   "id": "answer",
+   "definition": "The response generated by an agent to a query or task."
+  },
+  {
+   "id": "terminal",
+   "definition": "A text-based interface for interacting with a computer system."
+  },
+  {
+   "id": "device",
+   "definition": "A physical or virtual machine connected to the system."
+  },
+  {
+   "id": "enrollment",
+   "definition": "The process of registering a device or user with a system."
+  },
+  {
+   "id": "access_right",
+   "definition": "Permission granted to a user or device to interact with resources."
+  },
+  {
+   "id": "nostr_artifact",
+   "definition": "Data or content published and managed via the Nostr protocol."
+  },
+  {
+   "id": "chord",
+   "definition": "A combination of keys pressed simultaneously to trigger an action."
+  },
+  {
+   "id": "desk",
+   "definition": "A virtual workspace or desktop environment."
+  },
+  {
+   "id": "filesystem",
+   "definition": "The structure and organization of files and directories on a storage device."
+  },
+  {
+   "id": "command",
+   "definition": "An instruction given to a computer system to perform an action."
+  },
+  {
+   "id": "compositor",
+   "definition": "Software that combines multiple visual sources into a single output display."
+  },
+  {
+   "id": "tiling",
+   "definition": "A window management style where windows are arranged in non-overlapping tiles."
+  },
+  {
+   "id": "computer",
+   "definition": "A general term for a machine capable of computation, often referring to a user's workstation."
+  },
+  {
+   "id": "status",
+   "definition": "The current state or condition of a system or component."
+  },
+  {
+   "id": "activity",
+   "definition": "Actions or events performed by a user or system."
+  },
+  {
+   "id": "coding_history",
+   "definition": "A record of past coding sessions, commands, and outputs."
+  },
+  {
+   "id": "task",
+   "definition": "A unit of work to be performed by an agent or system."
+  },
+  {
+   "id": "adapter",
+   "definition": "A component that converts data or interfaces between incompatible systems."
+  },
+  {
+   "id": "probe",
+   "definition": "A diagnostic tool or test to gather information about a system's state or performance."
+  },
+  {
+   "id": "judge",
+   "definition": "An entity or mechanism that evaluates the quality or correctness of an agent's actions."
+  },
+  {
+   "id": "desktop_session",
+   "definition": "The active user environment on a desktop operating system."
+  },
+  {
+   "id": "window",
+   "definition": "A graphical user interface element displaying content."
+  },
+  {
+   "id": "hand_landmark",
+   "definition": "A specific point on a human hand, used for gesture recognition."
+  },
+  {
+   "id": "pose_recognition",
+   "definition": "The process of identifying the orientation and position of a body or its parts."
+  },
+  {
+   "id": "gesture",
+   "definition": "A motion of the body, especially the hands or head, that expresses an idea or meaning."
+  },
+  {
+   "id": "agent_history",
+   "definition": "A record of an agent's past actions, observations, and internal states."
+  },
+  {
+   "id": "reach",
+   "definition": "The ability of a system to connect to or communicate with another system."
+  },
+  {
+   "id": "channel",
+   "definition": "A communication pathway between two or more entities."
+  },
+  {
+   "id": "labor_order",
+   "definition": "A request for work to be performed, often involving a buyer and a provider."
+  },
+  {
+   "id": "connection",
+   "definition": "A link or communication pathway between two systems or components."
+  },
+  {
+   "id": "mobile_state",
+   "definition": "The current data and configuration of a mobile application."
+  },
+  {
+   "id": "bridge",
+   "definition": "A component that connects two different systems or technologies."
+  },
+  {
+   "id": "pull_request",
+   "definition": "A proposal to merge changes from one branch into another in a version control system."
+  },
+  {
+   "id": "project",
+   "definition": "A defined body of work with specific goals and deliverables."
+  },
+  {
+   "id": "pty",
+   "definition": "Pseudo-Terminal, a software interface that emulates a physical terminal."
+  },
+  {
+   "id": "scheduler",
+   "definition": "A component responsible for planning and executing tasks."
+  },
+  {
+   "id": "catalog",
+   "definition": "A structured list or inventory of items, such as tasks or services."
+  },
+  {
+   "id": "ledger",
+   "definition": "A record of transactions or events, often immutable."
+  },
+  {
+   "id": "service",
+   "definition": "A program or process that runs in the background to provide functionality."
+  },
+  {
+   "id": "update",
+   "definition": "A new version or patch for software."
+  },
+  {
+   "id": "rollback",
+   "definition": "The process of reverting a system to a previous state."
+  },
+  {
+   "id": "ssh",
+   "definition": "Secure Shell, a cryptographic network protocol for secure remote access."
+  },
+  {
+   "id": "composer",
+   "definition": "An input area for typing messages or commands."
+  },
+  {
+   "id": "shell",
+   "definition": "A command-line interpreter that provides an interface to an operating system."
+  },
+  {
+   "id": "theme",
+   "definition": "A set of visual styles and elements applied to a user interface."
+  },
+  {
+   "id": "vt100",
+   "definition": "A classic video terminal standard, often emulated in software."
+  },
+  {
+   "id": "character_grid",
+   "definition": "A display area composed of characters arranged in rows and columns."
+  },
+  {
+   "id": "workspace",
+   "definition": "A collection of windows or applications grouped together for a specific task."
+  },
+  {
+   "id": "screen",
+   "definition": "A display area, either physical or virtual."
+  },
+  {
+   "id": "episode",
+   "definition": "A complete sequence of interactions or operations for a given task."
+  },
+  {
+   "id": "camera",
+   "definition": "A device for capturing images or video."
+  },
+  {
+   "id": "codex",
+   "definition": "A large language model for code generation and understanding."
+  },
+  {
+   "id": "request",
+   "definition": "A message sent to a service asking for an action or data."
+  },
+  {
+   "id": "reply",
+   "definition": "A response to a request or message."
+  },
+  {
+   "id": "documentation",
+   "definition": "Written material providing information or instructions about a system."
+  },
+  {
+   "id": "corpus",
+   "definition": "A collection of texts or documents used for analysis or training."
+  },
+  {
+   "id": "extension",
+   "definition": "A software component that adds functionality to an existing application."
+  },
+  {
+   "id": "quota",
+   "definition": "A limit on the amount of resources or services that can be used."
+  },
+  {
+   "id": "eval_case",
+   "definition": "A specific scenario or input used to test an extension or model."
+  },
+  {
+   "id": "grader",
+   "definition": "A component that assesses the performance or output of an extension or model."
+  },
+  {
+   "id": "report",
+   "definition": "A document summarizing findings, results, or status."
+  },
+  {
+   "id": "gateway",
+   "definition": "A network node that connects two different networks or protocols."
+  },
+  {
+   "id": "authentication",
+   "definition": "The process of verifying the identity of a user or system."
+  },
+  {
+   "id": "authorization",
+   "definition": "The process of granting or denying access to resources."
+  },
+  {
+   "id": "receipt",
+   "definition": "A record confirming that a transaction or action has occurred."
+  },
+  {
+   "id": "decision_model",
+   "definition": "An AI model designed to make choices or recommendations."
+  },
+  {
+   "id": "suite",
+   "definition": "A collection of related tests or benchmarks."
+  },
+  {
+   "id": "result_store",
+   "definition": "A repository for storing the outcomes of tests or evaluations."
+  },
+  {
+   "id": "gym_board",
+   "definition": "A specific configuration or environment within the Gym system for experiments."
+  },
+  {
+   "id": "recipe",
+   "definition": "A predefined set of steps or instructions for performing a task."
+  },
+  {
+   "id": "leaderboard",
+   "definition": "A ranking of participants or results based on performance metrics."
+  },
+  {
+   "id": "trace_bundle",
+   "definition": "A collection of execution traces and related data for analysis."
+  },
+  {
+   "id": "jev",
+   "definition": "A specific decision model or AI system."
+  },
+  {
+   "id": "api_key",
+   "definition": "A unique identifier used to authenticate and authorize access to an API."
+  },
+  {
+   "id": "kev_model",
+   "definition": "A specific decision model, often a port of an existing one."
+  },
+  {
+   "id": "knowledge_entry",
+   "definition": "A unit of information stored in a knowledge base."
+  },
+  {
+   "id": "lint",
+   "definition": "A tool or process for checking code or text for stylistic or programmatic errors."
+  },
+  {
+   "id": "laya_model",
+   "definition": "A specific decision model, often based on a BERT encoder."
+  },
+  {
+   "id": "lev_model",
+   "definition": "A specific decision model, often integrated with on-device foundation models."
+  },
+  {
+   "id": "model_call",
+   "definition": "An invocation of an AI model to perform a task or generate output."
+  },
+  {
+   "id": "nostr_event",
+   "definition": "A fundamental unit of data in the Nostr protocol, signed and broadcast."
+  },
+  {
+   "id": "nostr_relay",
+   "definition": "A server that receives, stores, and broadcasts Nostr events."
+  },
+  {
+   "id": "openagents",
+   "definition": "The overarching product or platform."
+  },
+  {
+   "id": "iroh",
+   "definition": "A peer-to-peer data transfer and synchronization protocol."
+  },
+  {
+   "id": "qr_code",
+   "definition": "A two-dimensional barcode used to store information, often for scanning."
+  },
+  {
+   "id": "slide",
+   "definition": "A single page in a presentation deck."
+  },
+  {
+   "id": "website",
+   "definition": "A collection of web pages and related content identified by a common domain name."
+  },
+  {
+   "id": "openrouter",
+   "definition": "An API platform for accessing various AI models."
+  },
+  {
+   "id": "settlement",
+   "definition": "The process of finalizing a financial transaction."
+  },
+  {
+   "id": "revenue_share",
+   "definition": "A portion of revenue distributed among participants."
+  },
+  {
+   "id": "physics_body",
+   "definition": "An object in a physics simulation that interacts with forces and other bodies."
+  },
+  {
+   "id": "playtest_log",
+   "definition": "A record of events and feedback from a playtesting session."
+  },
+  {
+   "id": "plugin",
+   "definition": "A software component that adds specific functionality to a larger application."
+  },
+  {
+   "id": "packet",
+   "definition": "A formatted unit of data carried by a network."
+  },
+  {
+   "id": "snapshot_file",
+   "definition": "A file within a granted snapshot, used for analysis by plugins."
+  },
+  {
+   "id": "manifest_file",
+   "definition": "A file describing the contents or dependencies of a software package."
+  },
+  {
+   "id": "lockfile",
+   "definition": "A file that records the exact versions of dependencies used in a project."
+  },
+  {
+   "id": "license",
+   "definition": "A legal instrument governing the use and distribution of software."
+  },
+  {
+   "id": "error_output",
+   "definition": "Text generated by a program indicating a problem or failure."
+  },
+  {
+   "id": "git_log",
+   "definition": "A record of changes and commits in a Git repository."
+  },
+  {
+   "id": "test_report",
+   "definition": "A document summarizing the results of software tests."
+  },
+  {
+   "id": "junit_xml",
+   "definition": "An XML format for reporting test results, commonly used in Java environments."
+  },
+  {
+   "id": "private_file",
+   "definition": "A file with restricted access, typically only by its owner."
+  },
+  {
+   "id": "push_notification",
+   "definition": "A message sent from a server to a mobile device."
+  },
+  {
+   "id": "apns",
+   "definition": "Apple Push Notification Service."
+  },
+  {
+   "id": "fcm",
+   "definition": "Firebase Cloud Messaging."
+  },
+  {
+   "id": "credential",
+   "definition": "Information used to authenticate a user or system."
+  },
+  {
+   "id": "device_token",
+   "definition": "A unique identifier for a mobile device used for push notifications."
+  },
+  {
+   "id": "execution_receipt",
+   "definition": "A record of a decision call's outcome and attributable claims."
+  },
+  {
+   "id": "route_contract",
+   "definition": "A formal agreement or specification for how agentic execution routes are handled."
+  },
+  {
+   "id": "semantic_view",
+   "definition": "A UI component that represents data with inherent meaning."
+  },
+  {
+   "id": "intent",
+   "definition": "A user's goal or desired action, often expressed in natural language."
+  },
+  {
+   "id": "spark_wallet",
+   "definition": "A specific type of Lightning Network wallet, often integrated with Breez SDK."
+  },
+  {
+   "id": "subprocess",
+   "definition": "A process launched by another process."
+  },
+  {
+   "id": "process_tree",
+   "definition": "A hierarchical representation of processes, showing parent-child relationships."
+  },
+  {
+   "id": "tenant",
+   "definition": "An isolated user or organization within a multi-tenant system."
+  },
+  {
+   "id": "artifact",
+   "definition": "A piece of data or code produced during development or execution."
+  },
+  {
+   "id": "verse_world",
+   "definition": "The simulated 3D environment within the Verse system."
+  },
+  {
+   "id": "wgpu_renderer",
+   "definition": "A graphics renderer using the WebGPU API."
+  },
+  {
+   "id": "lagrange_point",
+   "definition": "A point in space where the gravitational forces of two large bodies balance."
+  },
+  {
+   "id": "minecraft_world",
+   "definition": "The simulated environment within the Minecraft game."
+  },
+  {
+   "id": "lightning_wallet",
+   "definition": "A digital wallet for managing Bitcoin Lightning Network payments."
+  },
+  {
+   "id": "x402_payment",
+   "definition": "A specific protocol for exact Lightning payments over HTTP."
+  },
+  {
+   "id": "xp_ledger",
+   "definition": "A ledger related to experience points or knowledge entries."
+  },
+  {
+   "id": "runbook",
+   "definition": "A set of instructions for performing routine tasks or procedures."
+  },
+  {
+   "id": "project_board",
+   "definition": "A visual tool for organizing and tracking tasks within a project."
+  },
+  {
+   "id": "invoice",
+   "definition": "A bill for goods or services provided."
+  },
+  {
+   "id": "payout",
+   "definition": "A payment made, especially from a fund or for a service."
+  },
+  {
+   "id": "sandbox",
+   "definition": "An isolated testing environment that mimics a real system."
+  },
+  {
+   "id": "worktree",
+   "definition": "A working directory associated with a Git repository."
+  },
+  {
+   "id": "wallet",
+   "definition": "A digital or physical container for managing financial assets."
+  },
+  {
+   "id": "efficiency_report",
+   "definition": "A document detailing the performance and resource usage of a system or process."
+  },
+  {
+   "id": "baseline",
+   "definition": "A reference point or standard for comparison."
+  },
+  {
+   "id": "cache",
+   "definition": "A temporary storage area that holds frequently accessed data for faster retrieval."
+  },
+  {
+   "id": "registry",
+   "definition": "A centralized database or list of registered items, such as plugins."
+  },
+  {
+   "id": "claim",
+   "definition": "A statement asserting a right or fact."
+  }
+ ],
+ "layers": [
+  {
+   "id": "route_handler",
+   "definition": "an HTTP/RPC route table or request handler"
+  },
+  {
+   "id": "store",
+   "definition": "persistence: database tables, queries, storage, caches"
+  },
+  {
+   "id": "protocol",
+   "definition": "protocol or wire types: request/response/event shapes, schemas, serialization contracts"
+  },
+  {
+   "id": "ui",
+   "definition": "user interface: views, screens, components, panes, styles"
+  },
+  {
+   "id": "cli_verb",
+   "definition": "a command-line command or subcommand"
+  },
+  {
+   "id": "test",
+   "definition": "tests"
+  },
+  {
+   "id": "doc",
+   "definition": "documentation for people"
+  },
+  {
+   "id": "registry",
+   "definition": "wiring that lists other parts: module lists, registries, catalogs, manifests"
+  },
+  {
+   "id": "generated",
+   "definition": "generated output (OpenAPI documents, tree.json, codegen)"
+  },
+  {
+   "id": "core_logic",
+   "definition": "domain logic or library code"
+  },
+  {
+   "id": "config_build",
+   "definition": "build, CI, deploy or runtime configuration"
+  },
+  {
+   "id": "script",
+   "definition": "a script or developer tool"
+  },
+  {
+   "id": "fixture",
+   "definition": "fixtures, test data, recorded traces"
+  }
+ ],
+ "clients": [
+  {
+   "id": "web",
+   "definition": "the web app (openagents.com pages, browser JS/CSS)"
+  },
+  {
+   "id": "phone",
+   "definition": "the phone apps (iOS/Android, mobile bridge)"
+  },
+  {
+   "id": "desktop",
+   "definition": "the desktop app"
+  },
+  {
+   "id": "cli",
+   "definition": "a command-line client"
+  },
+  {
+   "id": "worker",
+   "definition": "the server side: the openagents.com Worker/API, gateway, hosted services"
+  }
+ ],
+ "routes": [
+  "/v1/systemone",
+  "/v1/models",
+  "/dispatch/summary",
+  "/shipments/carriers",
+  "/shipments/dock-windows",
+  "/dispatch/pick-batches",
+  "/dispatch/forecast",
+  "/dispatch/docks",
+  "/v1/classify",
+  "/v1/workspaces/{}",
+  "/v1/responses",
+  "/v1/accounts",
+  "/v1/deliveries/apns",
+  "/observation/results",
+  "/logs/artifacts",
+  "/v1/jobs",
+  "/flow/snapshot",
+  "/api/stats",
+  "/exceptions/details",
+  "/exceptions/list",
+  "/v1/balance",
+  "/v1/docs",
+  "/forms/frmworkorders",
+  "/v1/workspaces",
+  "/cost/amount_usd",
+  "/v1/deliveries/fcm",
+  "/v1/messages",
+  "/verifier_result/rewards/reward",
+  "/pick-batches/labor",
+  "/v1/plugins/{}",
+  "/forms/frmcustomers",
+  "/v1/session",
+  "/_not-found/page",
+  "/flow/stream",
+  "/api/v1/sandboxes",
+  "/v1/sessions",
+  "/api/info",
+  "/results/tests",
+  "/extra/status",
+  "/x/{}",
+  "/v1/invitations/accept",
+  "/v1/recovery/redeem",
+  "/v1/account",
+  "/v1/submissions",
+  "/cost/usd",
+  "/agent_result/cost_usd",
+  "/v1/plans",
+  "/api/health",
+  "/api/flow/*",
+  "/api/flow/stream",
+  "/api/flow/snapshot",
+  "/definition/steps",
+  "/typesafe/v1/systemone",
+  "/playground/chat",
+  "/api/sheets",
+  "/api/entities/customers",
+  "/api/*",
+  "/item/type",
+  "/v1/skills",
+  "/session/id",
+  "/output/summary",
+  "/message/content",
+  "/extra/schema",
+  "/bin:/usr/bin",
+  "/policy/name",
+  "/u/{}",
+  "/v1/plugins/explain-error",
+  "/outcome/reward",
+  "/api/reset",
+  "/api/entities/{}",
+  "/api/meta",
+  "/api/_admin/dump",
+  "/shared/legacy_app",
+  "/v1/resources",
+  "/v1/paid-key",
+  "/delegate/delegation/briefing",
+  "/v1/systemone/separate",
+  "/v1/invitations",
+  "/v1/updates",
+  "/v1/feedback",
+  "/v1/recovery",
+  "/v1/docs/examples",
+  "/v1/docs/{}",
+  "/v1/docs/search",
+  "/v1/plugins/demo",
+  "/api/alpha/decisions",
+  "/error/message",
+  "/w/openagents",
+  "/api/v1/deletion-operations",
+  "/dashboard/w/{}",
+  "/dashboard/session",
+  "/state/status",
+  "/step/call",
+  "/provenance/receipts",
+  "/v1/account/access",
+  "/mcp/card",
+  "/v1/submissions/{}",
+  "/session/directive",
+  "/components/delegate",
+  "/detail/judged/tests",
+  "/start/tests",
+  "/verifier/finished_at",
+  "/agent_execution/finished_at",
+  "/components/jev",
+  "/implementation/digest",
+  "/verifier/started_at",
+  "/components/jev/cost_usd",
+  "/report/candidates",
+  "/extra/exit",
+  "/extensions/invocation",
+  "/extra/tool_result_is_error",
+  "/step/call/name",
+  "/v1/billing/sessions",
+  "/{}/device/{}",
+  "/v1/projects/demo-project",
+  "/confirmation/beats_baseline",
+  "/vies/check",
+  "/api/stock-moves",
+  "/api/contracts/{}",
+  "/intrastat/{}/2026-05",
+  "/api/flow",
+  "/policy/digest",
+  "/attempt/kind",
+  "/task/pin/git_commit_id",
+  "/attempt/arm",
+  "/task/checksum",
+  "/agent_execution/started_at",
+  "/task/git_commit_id",
+  "/extensions/briefing/text",
+  "/absolute/path/to",
+  "/delegation/briefing/chars",
+  "/policy/control/handoff",
+  "/attempt/trial",
+  "/timing/total_ms",
+  "/shared/legacy_app/export",
+  "/timing/started_at",
+  "/results/summary",
+  "/outcome/terminal_status",
+  "/task/path",
+  "/v1/installations/endpoint",
+  "/v1/installations/revoke",
+  "/v1/delegations",
+  "/v1/delegations/revoke",
+  "/confirmation/statement",
+  "/9j/aaaa",
+  "/sandboxes/{}",
+  "/boxes/{}",
+  "/delegate/agent",
+  "/policy/manifest/policy",
+  "/releases/{}",
+  "/logs/agent",
+  "/logs/verifier",
+  "/acceptance/rule",
+  "/v1/fleet/status",
+  "/candidate/digest",
+  "/expected/statement",
+  "/{}/{}",
+  "/usage/timeseries",
+  "/usage/activity",
+  "/usage/export",
+  "/usage/receipts/{}",
+  "/api/v1",
+  "/x/*",
+  "/api/predict",
+  "/v1/jobs/{}",
+  "/plugins/claude/skills",
+  "/v1/docs/caller",
+  "/plugins/codex/skills",
+  "/plugins/skills/openagents-decision-api",
+  "/cost/provenance",
+  "/extra/duration_ms",
+  "/issue/title",
+  "/inventory/replenishment",
+  "/inventory/holds",
+  "/artifact/version",
+  "/profile/difficulty",
+  "/done/noul",
+  "/agent/name",
+  "/agent/model_name",
+  "/nonexistent/coder",
+  "/timing/{}",
+  "/delegate/model",
+  "/v1/chat/completions",
+  "/v1/decisions",
+  "/v1/usage",
+  "/issue/body"
+ ],
+ "digest": "sha256:64bf4d84fbc775d0ce1b8c6df56b4a8d3a8f7cc73efb030de6b68fadc541fdf2"
+}

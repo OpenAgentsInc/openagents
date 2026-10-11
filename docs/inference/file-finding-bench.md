@@ -695,3 +695,161 @@ Neither was promoted. What this shows:
 - **A fix along the way.** The feature stage crashed (segfault, then
   "database disk image is malformed") because its worker threads shared one
   SQLite connection; each thread now opens its own (`900d756e39`).
+
+## File cards at index time and a distilled tower (#11249, 2026-10-10)
+
+**Goal.** Move the model work out of the query. Per-file Clef decisions cost
+15–60 s a query. Instead, every file version gets a card when it is indexed,
+and a query does one issue embedding, one batched tag decision for the issue,
+and lookups.
+
+**Verdict: not promoted.** The candidate fails the gate on quality and on
+latency. The active model is unchanged. The card stage is built, tested and
+off by default: it runs only for a model card that carries a `cards` block,
+or with `FILEFIND_CARDS=1`.
+
+### What was built
+
+`scripts/filefind/cards.py`, wired into `filefind.py index`, `query` and
+the bench:
+
+- **Vocabulary.** A closed vocabulary is mined once per repository
+  (`cards.py vocab --rev R`):
+  - 130 areas and 159 entities, from one Gemini 2.5 Flash call over the
+    repository's parts and their descriptions, its docs directories and its
+    commit subjects;
+  - 13 layers (route/handler, store, protocol/wire type, UI, CLI verb, test,
+    doc, registry, generated, core logic, config/build, script, fixture);
+  - 5 clients (web, phone, desktop, CLI, worker);
+  - 186 routes: quoted URL paths that occur in at least two files.
+
+  The bench vocabulary was mined at `41e0b9ce4a`, the parent of the oldest
+  eval fix, so no eval-era text shaped it. Changing the vocabulary means
+  re-carding every blob.
+- **Cards.** There is one card per blob: a summary of 40 words at most, plus
+  areas, layers, clients and entities. Each card is one structured call to
+  Vertex AI `gemini-2.5-flash-lite` with a response schema, and ids outside
+  the vocabulary are dropped. Routes are read from the text, and only routes
+  in the vocabulary are kept. Data, binaries, `bench/`, `third_party/` and
+  lockfiles get a card with no model call. Cards are keyed by blob and
+  vocabulary digest in the per-repository cache (`cards/cards.jsonl`), and
+  the compiled tag matrix is in `cards/tags.npz`.
+- **Card vectors.** The card text plus the file's defined identifiers are
+  embedded with Vertex `text-embedding-005` (256 dims).
+- **Issue profile.** One Jev decision per issue, through TypeSafe directly:
+  a choice over the areas, a choice over the entities, and a noul for each
+  layer and each client. Over the 1,735 replayed issues it took a median of
+  0.33 s (p95 0.51 s). It runs in parallel with the issue embedding, and in
+  40 live queries the ranker never waited for it.
+- **Two-tower distillation.** The score is
+  `a · (card cos, path+head cos, tag overlap) + (q Wq)·(d Wd) + b`, with
+  k = 32. The file side is projected once per blob and cached as
+  `cards/tower-<digest>.npz`, so the query pays one dot product per file.
+  - **Training data:** the file-relevance-v1 **training partition** only (449
+    issues, 19,676 pairs). These are the corpus items, every existing fix
+    file, and 30 other files per issue.
+  - **Labels** are outcomes. **Clef's answer** is a separate teacher field,
+    fitted with a squared-error term (weight 0.5) on the 5,409 items it
+    answered.
+  - **Teacher run:** `file-finding-bench.py teacher` asked Clef about all
+    5,419 items through the fusion card's door (digest-checked). It took
+    26 min. Clef's AUC against the outcomes is 0.79.
+  - **Cross-fitting:** a training-partition issue is scored by the fold
+    tower that did not train on it. Every other issue is scored by the tower
+    trained on all of them.
+- **Ranker features and candidates.** Each candidate gets these features:
+  - `card_cos`;
+  - `card_area`, `card_entity`, `card_layer` and `card_client`, each the
+    issue's probability mass on the file's tags;
+  - `card_route`;
+  - `card_tag`;
+  - `tt`, the distilled score;
+  - for `card_cos`, `card_tag` and `tt`, the relative value and rank.
+
+  A new `card` stage adds three candidate sets: the top 150 by card cosine,
+  the top 150 by `tt` and the top 100 by tag score. On the eval cases that
+  stage alone holds 0.625 of the fix files with 338 candidates. Embedding
+  similarity holds 0.473 with 300, and the union is 0.967.
+
+### Gate (frozen plan `sha256:d835c0d2f1ea…`, the same 100 eval cases)
+
+The candidate is `model-08dcb51ecf82`, trained with card features on the
+same 1,509 train cases as the Vertex retrain. The receipt and the candidate
+are in
+`crates/psionic/fixtures/decision-train/file-relevance-v1/gate-2026-10-10/cards-11249/`.
+
+| | recall@50 (primary) | recall@20 | recall@100 | Brier top 100 |
+|---|---|---|---|---|
+| Active model (on the card-widened pool) | 0.8092 | 0.6753 | 0.9242 | 0.0692 |
+| Card candidate | 0.8188 (+0.0097, SE 0.0122) | 0.6645 (−0.0108, SE 0.0119) | 0.9083 (**−0.0159, SE 0.0059**) | 0.0598 (−0.0094) |
+
+Verdict: **FAIL.** The @50 gain is 0.8 SE, and @100 fell 2.7 SE.
+
+Diagnostics. These were not gated, and nothing was tuned on them.
+
+- **Against the held-out Vertex retrain without cards** (same train cases,
+  same pool), the card features give +0.0186 at @50 (SE 0.0155) and −0.0099
+  at @100 (SE 0.0067). The ranker uses them: `card_client`, `card_layer`,
+  `tt` and `card_cos` are among its most frequent split features. But they
+  do not move the top 50 by 2 SE.
+- **The tower does not carry Clef's judgment.** On corpus partitions the
+  tower never trained on, its AUC is close to plain cosine:
+  - calibration: tower 0.738, card cosine 0.711, path+head cosine 0.724;
+  - development: tower 0.763, card cosine 0.766, path+head cosine 0.770.
+
+  Clef's own AUC is 0.79. A frozen fusion (ranker logit + `tt` in the top
+  100, the #11217 form) gives +0.005 at @50 over the Vertex retrain and
+  −0.003 over the card candidate. Clef's fusion gave +0.038. What Clef adds
+  comes from reading the file's text against the issue. A 32-wide projection
+  of 256-dim vectors, distilled from 449 issues, does not reproduce it.
+
+### Latency
+
+40 queries (issues #11216–#11255, text in hand, one process per query, this
+Mac under a load average of 8–10):
+
+| | p50 | p95 | max |
+|---|---:|---:|---:|
+| Active model, no cards | 1,025 ms | 1,614 ms | 2,463 ms |
+| Card candidate (cards, tower, Jev profile) | 1,073 ms | **1,888 ms** | 3,653 ms |
+| … of which loading cards + the card stage | 48 + 40 ms | 53 + 47 ms | |
+| … waiting for the Jev profile | 0 | 0 | |
+
+The card path itself costs about 90 ms. The p95 target of 1.5 s is missed
+with or without cards. The tail is in the existing stages, `sym` (up to
+2.4 s on long issue bodies with many literals) and stage 2. The card
+candidates make stage 2's pool larger, which adds about 200 ms at p95.
+
+### Cost
+
+| Run | Blobs | Model calls | Time | $ |
+|---|---:|---:|---:|---:|
+| Vocabulary (one Flash call plus an additions pass) | | 2 | 2 min | 0.08 |
+| Every blob of 1,559 replayed trees | 106,517 | 74,614 (flash-lite; 67% of input tokens cached) | 26.9 min, 64 workers | 19.69 |
+| … card vectors | 106,557 | | 3.8 min | 1.33 |
+| A fresh index of HEAD (39,423 files, 10,452 carded by a model; at the measured rates) | 39,423 | 10,452 | about 5 min | about 3.0 |
+| Incremental: 35 commits, about 2 h of main (measured, post-merge path) | 102 | 91 | 13.9 s | 0.039 |
+| A day of commits (Oct 4–10: 535–3,385 new model-carded blobs, median about 850) | | about 850 | about 1–2 min | about 0.35 |
+| Clef teacher (5,419 items, pylon) | | 5,419 | 26 min | 0 (our pylon) |
+| Jev profiles (1,735 issues; one per query live) | | 1,735 | 51 s, 12 workers | TypeSafe usage, not metered here |
+
+### What to try next
+
+1. **Keep cards as candidates, not as features.** The card stage reaches 62%
+   of fix files on its own and widens the pool. The loss at @100 suggests
+   the 2-stage ranker spends capacity on the new features. Two things to
+   try: a candidate that keeps the old feature set and only adds the card
+   candidates, and one with only `card_cos` and `card_client`.
+2. **A stronger teacher target.** Collect Clef on the stage-1 top 30 of every
+   training-partition issue, not only the corpus items, and give the
+   tower's correction term the file's identifiers. Its correction should
+   learn something the cosines lack.
+3. **Latency.** To make p95 ≤ 1.5 s: cap `sym` (literal checks on long
+   bodies), precompute iface users per blob, and keep the card stage's
+   contribution to the stage-2 pool to the top 150.
+
+`retrain.sh` with `FILEFIND_CARDS=1` reproduces the candidate. It runs the
+`cards`, `profiles` and `tower` bench steps, then `features --cards` and
+`train --cards`. Set `FILEFIND_CLEF_TEACHER` to the JSONL that
+`file-finding-bench.py teacher` writes. Any promotion still goes through
+`ranker_gate.py`.
