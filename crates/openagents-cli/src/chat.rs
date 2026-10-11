@@ -97,7 +97,7 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         build's command tree declares it; one that changes something here
         waits for this; one that moves money or shows a secret never runs
         from the chat.
-  work --issues NUMBERS|LABEL [--parallel N] [--land queue|main|pr|none] [--on boat|gce] [--engine briefed|bare]
+  work --issues NUMBERS|LABEL [--parallel N] [--land queue|main|pr|none] [--on boat|gce] [--engine briefed|briefed:codex|bare]
         Work several issues: NUMBERS such as 10050,10051, or a LABEL's open
         issues. By default the briefed agent works each one (--engine
         briefed): a briefing of the files the issue needs, the agent with
@@ -109,7 +109,8 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         goes to openagents.com's work hosts under your sign-in (coder login)
         and your own Claude sign-in from Settings > Claude. Each issue ends
         with its engine, time, cost (unknown when not reported), checks,
-        and pull request or landing entry. --engine bare keeps the Coder
+        and pull request or landing entry. --engine briefed:codex runs the
+        same briefing and checks on Codex CLI. --engine bare keeps the Coder
         issue flow below.
         With --engine bare: hand several issues to Coder, one issue flow
         each, each in its own thread.

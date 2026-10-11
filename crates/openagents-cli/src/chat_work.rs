@@ -74,17 +74,19 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
     let engine_fallback = args.switch("engine-fallback");
     // The briefed agent is the default engine (#11258); `--engine bare`
     // keeps the Coder issue flow.
-    let briefed = match args.option("engine").unwrap_or("briefed") {
-        "briefed" => true,
+    // `briefed:codex` runs the same briefing and checks on Codex (#11308).
+    let engine = args.option("engine").unwrap_or("briefed");
+    let briefed = match engine {
+        "briefed" | "briefed:codex" => true,
         "bare" => false,
         other => {
             return Err(Failure::Usage(format!(
-                "--engine is `briefed` or `bare`, not `{other}`"
+                "--engine is `briefed`, `briefed:codex`, or `bare`, not `{other}`"
             )));
         }
     };
     if briefed {
-        return briefed_work(output, args, &spec, target).await;
+        return briefed_work(output, args, &spec, target, engine).await;
     }
     if target != super::placement::Target::Here
         && !engine_fallback
@@ -342,7 +344,9 @@ async fn briefed_work(
     args: &Args,
     spec: &str,
     target: super::placement::Target,
+    engine: &str,
 ) -> Result<u8, Failure> {
+    let engine = engine.to_owned();
     if args.option("engine-logins").is_some() || args.option("template").is_some() {
         return Err(Failure::Usage(
             "--engine-logins and --template go with --engine bare --on boat".into(),
@@ -403,6 +407,7 @@ async fn briefed_work(
                 &numbers,
                 parallel,
                 land,
+                &engine,
                 Some(rows),
             )
         } else {
