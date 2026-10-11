@@ -90,6 +90,9 @@ pub enum Action {
     /// The Map page (#10085): how OpenAgents routes requests.
     Map,
     Computers,
+    /// Environments (#11120): the web's Environments page, opened in the
+    /// person's browser ([`ENVIRONMENTS_URL`]).
+    Environments,
     Settings,
     /// Settings' update button: restart into a waiting build, or open a
     /// newer package's download.
@@ -98,6 +101,9 @@ pub enum Action {
     Back,
     Forward,
 }
+
+/// Where the sidebar's Environments row goes: the web's Environments page.
+pub const ENVIRONMENTS_URL: &str = "https://openagents.com/environments";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
@@ -336,7 +342,7 @@ impl State {
                 }
             }
             // The shell runs these; the page stays.
-            Action::Update | Action::Back | Action::Forward => {}
+            Action::Update | Action::Environments | Action::Back | Action::Forward => {}
         }
     }
 
@@ -720,6 +726,17 @@ fn sidebar(state: &State, model: &Model) -> Node<Intent> {
             state.page == Page::Map,
         ));
     }
+    // Environments live on the web (`/environments`): the row opens that
+    // page in the browser, as the web's left panel links it.
+    header_rows.push(nav_row(
+        "sidebar-environments",
+        "Environments",
+        Glyph::Cloud,
+        Intent::Navigate {
+            action: Action::Environments,
+        },
+        false,
+    ));
     header_rows.push(nav_row(
         "sidebar-settings",
         "Settings",
@@ -1689,8 +1706,34 @@ mod tests {
         }
     }
 
+    /// The Environments row (#11120) is labelled as on the web and opens
+    /// the web's Environments page; it changes no page in the window.
+    #[test]
+    fn the_environments_row_is_labelled_and_opens_the_web_page() {
+        use crate::model::{Agent, Screen};
+        let model = Model::new(std::time::Instant::now(), Screen::Home, Agent::Enabled);
+        let mut state = State::empty();
+        state.preview = false;
+        let view = root(&state, &model, 0);
+        let row = find(&view, "sidebar-environments").expect("the Environments row");
+        let Element::Button { label, intent, .. } = &row.element else {
+            panic!("a button")
+        };
+        assert_eq!(label, "Environments");
+        assert_eq!(
+            intent,
+            &Intent::Navigate {
+                action: Action::Environments
+            }
+        );
+        assert_eq!(ENVIRONMENTS_URL, "https://openagents.com/environments");
+        let page = state.page;
+        state.activate(Action::Environments);
+        assert_eq!(state.page, page);
+    }
+
     /// Every sidebar control carries a visible label (#11120): New chat,
-    /// Connect a phone, and Settings as rows, the account row, and the
+    /// Connect a phone, Environments, and Settings as rows, the account row, and the
     /// theme toggle in its corner. The Verse and the Map show only in a
     /// preview build.
     #[test]
@@ -1715,7 +1758,10 @@ mod tests {
                 _ => panic!("{} is not a row", child.key),
             })
             .collect();
-        assert_eq!(rows, ["New chat", "Connect a phone", "Settings"]);
+        assert_eq!(
+            rows,
+            ["New chat", "Connect a phone", "Environments", "Settings"]
+        );
         let footer = find(&view, "sidebar-footer").expect("the footer");
         let Element::Stack { children, .. } = &footer.element else {
             panic!("a stack")

@@ -1522,6 +1522,14 @@ impl App for DesktopApp {
                 }
                 return;
             }
+            if action == chrome::Action::Environments {
+                // Tests walk every sidebar row; only a real window opens
+                // the browser.
+                #[cfg(not(test))]
+                openagents_desktop::chat::open_link(chrome::ENVIRONMENTS_URL);
+                self.present();
+                return;
+            }
             if action == chrome::Action::Update {
                 crate::updates::act();
                 self.present();
