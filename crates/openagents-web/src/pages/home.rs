@@ -116,8 +116,9 @@ pub(crate) async fn page(
         .boosted()
         .content(content)
         .composer(dock);
-    // A visitor without the cookie has no chats yet.
-    if fresh.is_none() {
+    // A visitor without the cookie has no chats yet; a move in place
+    // keeps the list it has (`crate::chat_html::main_only`).
+    if fresh.is_none() && !crate::chat_html::main_only(&headers) {
         page = page.sidebar_section(super::chat::chat_list(&app, &owner, None, false, false).await);
     }
     let mut response = crate::chat_html::protect(page.respond(&headers));

@@ -26,6 +26,22 @@ pub(crate) fn head() -> Markup {
     }
 }
 
+/// The request header `/static/chat-start.js` sends when it moves between
+/// the new chat and a chat's page in place: it keeps the left panel it
+/// already has and swaps only the main surface, so the page leaves the
+/// sidebar's chat list out (`main`). `prefetch` marks the new chat it
+/// loads ahead of a click, which is not a page view.
+pub(crate) const PART_HEADER: &str = "x-oa-part";
+
+/// Whether this request wants only a chat-family page's main surface
+/// ([`PART_HEADER`]): the sidebar's chat list is left out.
+pub(crate) fn main_only(headers: &axum::http::HeaderMap) -> bool {
+    headers
+        .get(PART_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| matches!(value, "main" | "prefetch"))
+}
+
 pub(crate) fn protect(mut response: Response) -> Response {
     let headers = response.headers_mut();
     headers.insert(
@@ -36,7 +52,10 @@ pub(crate) fn protect(mut response: Response) -> Response {
         header::CACHE_CONTROL,
         HeaderValue::from_static("no-store, private"),
     );
-    headers.insert(header::VARY, HeaderValue::from_static("Cookie, HX-Request"));
+    headers.insert(
+        header::VARY,
+        HeaderValue::from_static("Cookie, HX-Request, X-OA-Part"),
+    );
     headers.insert(
         header::REFERRER_POLICY,
         HeaderValue::from_static("same-origin"),

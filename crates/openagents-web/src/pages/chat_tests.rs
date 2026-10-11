@@ -1059,6 +1059,69 @@ async fn the_sidebar_follows_row_statuses_live() {
     fixture.no_worker();
 }
 
+/// Moving in place (#11322): `/chat-start.js` keeps the left panel and
+/// asks for a chat-family page's main surface only (`X-OA-Part`). The
+/// page is the same, with its main surface, composer and request id, but
+/// without the sidebar's chat list or its live stream; a plain load still
+/// has both. A prefetch says it isn't a page view.
+#[tokio::test]
+async fn a_move_in_place_leaves_the_sidebar_list_out() {
+    let fixture = Fixture::new();
+    fixture.record(None).await;
+    let get = |uri: String, part: Option<&'static str>| {
+        let mut builder = HttpRequest::builder()
+            .method(Method::GET)
+            .uri(uri)
+            .header(header::HOST, HOST)
+            .header(header::COOKIE, format!("oa_visitor={OWNER}"));
+        if let Some(part) = part {
+            builder = builder.header("X-OA-Part", part);
+        }
+        let router = fixture.router.clone();
+        async move {
+            let response = router
+                .oneshot(builder.body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            let status = response.status();
+            let vary = response
+                .headers()
+                .get(header::VARY)
+                .map(|v| v.to_str().unwrap().to_owned())
+                .unwrap_or_default();
+            let bytes = to_bytes(response.into_body(), 2 * 1024 * 1024)
+                .await
+                .unwrap();
+            (status, vary, String::from_utf8(bytes.to_vec()).unwrap())
+        }
+    };
+    for uri in ["/".to_owned(), format!("/chat/{CHAT}")] {
+        let (status, vary, full) = get(uri.clone(), None).await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        assert!(vary.contains("X-OA-Part"), "{uri}: {vary}");
+        assert!(full.contains(r#"id="chat-sidebar""#), "{uri}");
+        assert!(full.contains(r#"id="chat-sidebar-live""#), "{uri}");
+        for part in ["main", "prefetch"] {
+            let (status, _, body) = get(uri.clone(), Some(part)).await;
+            assert_eq!(status, StatusCode::OK, "{uri} {part}");
+            assert!(body.contains(r#"class="oa-main-surface""#), "{uri} {part}");
+            assert!(body.contains("data-oa-composer"), "{uri} {part}");
+            assert!(!body.contains(r#"id="chat-sidebar""#), "{uri} {part}");
+            assert!(!body.contains(r#"id="chat-sidebar-live""#), "{uri} {part}");
+            // The left panel's New chat link stays a plain link.
+            assert!(
+                body.contains(r#"aria-keyshortcuts="Control+N""#),
+                "{uri} {part}"
+            );
+        }
+    }
+    let (_, _, home) = get("/".to_owned(), Some("prefetch")).await;
+    assert!(home.contains(r#"name="request_id""#), "{home}");
+    // The page shell loads the script that moves in place.
+    assert!(home.contains(r#"src="/static/chat-start.js""#));
+    fixture.no_worker();
+}
+
 /// A Coder chat synced to the account (#11047): marked in the sidebar,
 /// read-only, Working from Coder's heartbeat, and deleted for Coder too.
 #[tokio::test]

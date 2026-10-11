@@ -719,14 +719,19 @@ async fn show_page(app: &App, headers: &HeaderMap, id: &str, notice: Option<&Not
     let chips = crate::suggestions::reply_chips(&app, chat).await;
     let offer = work::offer(&app, &headers, chat).await;
     let links = work::links(&app, &headers).await;
-    let page = UiPage::new(chat.title.clone())
+    let mut page = UiPage::new(chat.title.clone())
         .path(format!("/chat/{id}"))
         .app()
         .breadcrumb(work::breadcrumb(chat, offer.as_ref()))
         .actions(work::actions(chat, offer.as_ref(), false))
         .head(crate::chat_html::head())
-        .boosted()
-        .sidebar_section(chat_list(&app, &chat.owner, Some(&chat.id), true, false).await)
+        .boosted();
+    // A move in place keeps the list it has (`chat_html::main_only`).
+    if !crate::chat_html::main_only(&headers) {
+        page =
+            page.sidebar_section(chat_list(&app, &chat.owner, Some(&chat.id), true, false).await);
+    }
+    let page = page
         .content(html! {
             // The thread is private: HTMX never snapshots it into history.
             div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, chips, links)) }
@@ -770,13 +775,17 @@ async fn show_terminal(
         terminal_note(computer)
     };
     let links = work::links(app, headers).await;
-    let page = UiPage::new(chat.title.clone())
+    let mut page = UiPage::new(chat.title.clone())
         .path(format!("/chat/{id}"))
         .app()
         .breadcrumb(Breadcrumb::new(chat.title.clone()))
         .head(crate::chat_html::head())
-        .boosted()
-        .sidebar_section(chat_list(app, &chat.owner, Some(id.as_str()), false, false).await)
+        .boosted();
+    if !crate::chat_html::main_only(headers) {
+        page = page
+            .sidebar_section(chat_list(app, &chat.owner, Some(id.as_str()), false, false).await);
+    }
+    let page = page
         .content(html! {
             div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, html! {}, links)) }
         })

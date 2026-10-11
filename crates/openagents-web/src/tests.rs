@@ -481,7 +481,11 @@ async fn the_homepage_links_one_download_page_and_starts_a_chat() {
     );
     assert!(script.contains("import init, { start } from '/chat/assets/coder_chat_web.js'"));
     assert!(script.contains("await init()") && script.contains("start()"));
-    assert!(!script.contains("innerHTML") && !script.contains("fetch("));
+    // No markup goes in by hand: the one fetch, the main surface for a
+    // move in place (#11322), is parsed inert and swapped through HTMX.
+    assert!(!script.contains("innerHTML"));
+    assert_eq!(script.matches("fetch(").count(), 1, "{script}");
+    assert!(script.contains("'X-OA-Part': part") && script.contains("htmx.swap("));
 }
 
 #[tokio::test]

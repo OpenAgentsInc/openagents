@@ -223,7 +223,12 @@ impl Client {
             device: device(agent),
             referrer: referrer(text(header::REFERER.as_str()), text(header::HOST.as_str())),
             quiet,
-            fragment: headers.contains_key("hx-request") && !boosted,
+            // The new chat the chat pages load ahead of a click
+            // (`x-oa-part: prefetch`) is not a page view.
+            fragment: (headers.contains_key("hx-request") && !boosted)
+                || headers
+                    .get("x-oa-part")
+                    .is_some_and(|value| value == "prefetch"),
         }
     }
 }
@@ -231,6 +236,15 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_prefetched_new_chat_is_not_a_page_view() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-oa-part", "prefetch".parse().unwrap());
+        assert!(Client::from_headers(&headers).fragment);
+        headers.insert("x-oa-part", "main".parse().unwrap());
+        assert!(!Client::from_headers(&headers).fragment);
+    }
 
     #[test]
     fn browsers_agents_and_bots_are_told_apart() {
