@@ -192,7 +192,7 @@ pub async fn prepare(
             return fail(
                 transcript,
                 &mut card,
-                format!("No commit on origin/main names #{number}. Pass --fix SHA."),
+                format!("No commit on the tracked main names #{number}. Pass --fix SHA."),
             );
         };
         let resolved = output("git", &["rev-parse", &format!("{fix}^{{commit}}")], &repo).await;
@@ -216,28 +216,31 @@ pub async fn prepare(
         ));
         (Some(fix), parent.trim().to_owned())
     } else {
-        if let Err(why) = output("git", &["fetch", "-q", "origin", "main"], &repo).await {
+        let remote = main_remote(&repo).await;
+        if let Err(why) = output("git", &["fetch", "-q", &remote, "main"], &repo).await {
             fetch_error = Some(why);
         }
-        let Ok(head) = output("git", &["rev-parse", "origin/main"], &repo).await else {
+        let upstream = format!("{remote}/main");
+        let Ok(head) = output("git", &["rev-parse", &upstream], &repo).await else {
             card["rows"] = json!(rows);
             return fail(
                 transcript,
                 &mut card,
-                "This repository has no origin/main.".into(),
+                format!("This repository has no {upstream}."),
             );
         };
+        let head = newest_main(&repo, head.trim()).await;
         rows.push(row(
             "start",
             match &fetch_error {
-                None => format!("{} (origin/main)", short(head.trim())),
+                None => format!("{} ({upstream})", short(&head)),
                 Some(why) => format!(
-                    "{} (origin/main as last fetched; the fetch failed, so it may be stale: {why})",
-                    short(head.trim())
+                    "{} ({upstream} as last fetched; the fetch failed, so it may be stale: {why})",
+                    short(&head)
                 ),
             },
         ));
-        (None, head.trim().to_owned())
+        (None, head)
     };
     card["rows"] = json!(rows);
     transcript.set(
@@ -289,14 +292,55 @@ pub(crate) fn short(sha: &str) -> &str {
     &sha[..sha.len().min(10)]
 }
 
-/// The newest commit on `origin/main` whose message names `#issue`.
+/// The remote the repository's `main` tracks, or `origin`. A checkout may
+/// fetch and push through another remote than `origin`, which can then be
+/// a stale mirror.
+pub(crate) async fn main_remote(repo: &Path) -> String {
+    output(
+        "git",
+        &["rev-parse", "--abbrev-ref", "main@{upstream}"],
+        repo,
+    )
+    .await
+    .ok()
+    .and_then(|name| {
+        name.trim()
+            .split_once('/')
+            .map(|(remote, _)| remote.to_owned())
+    })
+    .unwrap_or_else(|| "origin".to_owned())
+}
+
+/// `upstream`, or the local `main` when it has moved past it (a push the
+/// fetch did not see yet, or a mirror that lags).
+async fn newest_main(repo: &Path, upstream: &str) -> String {
+    let Ok(local) = output("git", &["rev-parse", "main"], repo).await else {
+        return upstream.to_owned();
+    };
+    let local = local.trim().to_owned();
+    if local != upstream
+        && output(
+            "git",
+            &["merge-base", "--is-ancestor", upstream, &local],
+            repo,
+        )
+        .await
+        .is_ok()
+    {
+        return local;
+    }
+    upstream.to_owned()
+}
+
+/// The newest commit on the tracked `main` whose message names `#issue`.
 async fn find_fix(repo: &Path, issue: u64) -> Option<String> {
     let pattern = format!("#{issue}([^0-9]|$)");
+    let upstream = format!("{}/main", main_remote(repo).await);
     let log = output(
         "git",
         &[
             "log",
-            "origin/main",
+            &upstream,
             "-E",
             &format!("--grep={pattern}"),
             "--format=%H",
@@ -951,7 +995,7 @@ pub async fn open_pr(
             "git".into(),
             "push".into(),
             "-u".into(),
-            "origin".into(),
+            main_remote(&base.repo).await,
             format!("HEAD:refs/heads/{branch}"),
         ],
         vec![

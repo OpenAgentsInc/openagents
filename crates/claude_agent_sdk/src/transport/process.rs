@@ -95,6 +95,18 @@ impl ProcessTransport {
         }
         #[cfg(unix)]
         cmd.process_group(0);
+        // When the host dies without a chance to stop the CLI (a kill, a
+        // crash, a lost terminal), the kernel ends the CLI for it, so no
+        // orphaned run keeps spending.
+        #[cfg(target_os = "linux")]
+        // SAFETY: `prctl` with `PR_SET_PDEATHSIG` takes no pointers and
+        // only sets a flag on the child, between fork and exec.
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+                Ok(())
+            });
+        }
 
         let mut child = cmd.spawn()?;
         let pid = child.id();

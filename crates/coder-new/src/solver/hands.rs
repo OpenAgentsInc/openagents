@@ -8,7 +8,7 @@ use serde_json::json;
 use super::{Hand, Options, Turn};
 use crate::issue_run::{
     Transcript,
-    agent::{self, Session},
+    agent::{self, Baseline, Session},
     decide::Briefing,
     setup::{self, Base},
 };
@@ -177,6 +177,7 @@ pub async fn intake(options: &Options, folder: &Path, transcript: &mut Transcrip
         ),
         briefed: Default::default(),
         events_file: "intaker-events.jsonl".into(),
+        baseline: None,
     };
     turn(
         Hand::Intaker,
@@ -243,6 +244,7 @@ pub async fn brief(
         prompt,
         briefed: briefing.files.iter().cloned().collect(),
         events_file: format!("briefer-{round}-events.jsonl"),
+        baseline: None,
     };
     let turn = turn(
         Hand::Briefer,
@@ -308,6 +310,7 @@ pub async fn code(
         prompt,
         briefed: briefing.files.iter().cloned().collect(),
         events_file: format!("coder-{round}-events.jsonl"),
+        baseline: Some(Baseline::of(base)),
     };
     turn(
         Hand::Coder,
@@ -417,6 +420,7 @@ pub async fn test(
         ),
         briefed: briefing.files.iter().cloned().collect(),
         events_file: format!("tester-{round}-events.jsonl"),
+        baseline: Some(Baseline::of(base)),
     };
     turn(
         Hand::Tester,

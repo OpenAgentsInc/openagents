@@ -148,6 +148,7 @@ fn the_analysis_replaces_an_earlier_round_and_costs_add_up() {
 #[test]
 fn solver_asks_no_decision_model_and_refuses_a_decider() {
     let options = Options::parse(&["7".to_owned()]).unwrap();
+    assert_eq!(options.tester_model, "haiku");
     assert_eq!(options.inner.decider, crate::issue_run::Decider::Off);
     let refused = Options::parse(&["7".into(), "--decider".into(), "jev".into()]).unwrap_err();
     assert!(refused.contains("Unknown option --decider"), "{refused}");
@@ -370,4 +371,14 @@ fn the_run_cost_counts_every_hand() {
             .abs()
             < 1e-9
     );
+}
+
+#[test]
+fn failing_tests_are_read_from_cargo_output_once_each() {
+    let text = "running 3 tests\ntest a::one ... ok\ntest a::two ... FAILED\ntest b::three ... FAILED\n\nfailures:\n\n---- a::two stdout ----\ntest a::two ... FAILED\n";
+    assert_eq!(
+        crate::issue_run::agent::failing_tests(text),
+        vec!["a::two".to_owned(), "b::three".to_owned()]
+    );
+    assert!(crate::issue_run::agent::failing_tests("test result: ok. 3 passed").is_empty());
 }

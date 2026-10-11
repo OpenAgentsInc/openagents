@@ -12,7 +12,7 @@
 //!   the listed files and writes an analysis of what the change should
 //!   look like, which joins the briefing's system prompt.
 //! - **Coder** (Opus, Read, Edit, Write, Grep, Glob): codes only.
-//! - **Tester** (Sonnet, Read, Grep, Glob, `run_check`): runs the checks and
+//! - **Tester** (Haiku, Read, Grep, Glob, `run_check`): runs the checks and
 //!   ends with `VERDICT: pass`, `VERDICT: coder: notes` or `VERDICT:
 //!   briefer: notes`. The harness reruns the required checks itself and
 //!   judges ([`issue_run::verdict`]); hand-backs are bounded by `--rounds`.
@@ -231,7 +231,7 @@ Options:
                         Briefer judges small starts on sonnet and a large one, or
                         any hand-back, uses claude-opus-5-5.
   --briefer-model NAME  The Intaker's and Briefer's model (default haiku).
-  --tester-model NAME   The Tester's model (default sonnet).
+  --tester-model NAME   The Tester's model (default haiku).
   --files K             Files in the briefing (default 6).
   --timeout SECS        How long each hand may work (default 1800).
   --plain               Print the run as text instead of opening the terminal screen.
@@ -287,7 +287,7 @@ impl Options {
         let mut json = false;
         let mut open_pr = true;
         let mut briefer_model = "haiku".to_owned();
-        let mut tester_model = "sonnet".to_owned();
+        let mut tester_model = "haiku".to_owned();
         let mut small_coder = Some("sonnet".to_owned());
         // Claude only: the briefing's ranking is deterministic and the Haiku
         // Briefer judges it; no decision-model door is asked.

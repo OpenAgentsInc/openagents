@@ -224,16 +224,8 @@ pub async fn run_check(
         .current_dir(worktree)
         .stdin(std::process::Stdio::null());
     // Every run's worktree is new, so its own target folder would build the
-    // crates from scratch each time. Runs share one build folder instead,
-    // unless the person set their own.
-    if std::env::var_os("CARGO_TARGET_DIR").is_none()
-        && let Some(home) = std::env::var_os("HOME")
-    {
-        command.env(
-            "CARGO_TARGET_DIR",
-            std::path::Path::new(&home).join(".openagents/coder-new/target"),
-        );
-    }
+    // crates from scratch each time.
+    shared_target(&mut command);
     let result = command.output().await;
     let Ok(out) = result else {
         return (format!("Cannot run {program}."), false);
@@ -467,6 +459,177 @@ pub struct Session {
     /// The file the session's raw messages are written to, in the run's
     /// folder.
     pub events_file: String,
+    /// What a failed test is compared against: the repository and the
+    /// commit the run started from. A test that already fails there is not
+    /// the change's doing, so `run_check` doesn't fail on it.
+    pub baseline: Option<Baseline>,
+}
+
+/// The commit a run's tests are compared against, and a checkout to run
+/// them in.
+#[derive(Clone, Debug)]
+pub struct Baseline {
+    pub repo: PathBuf,
+    pub commit: String,
+    /// Where the baseline checkout goes (a sibling of the run's worktree).
+    pub worktree: PathBuf,
+}
+
+impl Baseline {
+    #[must_use]
+    pub fn of(base: &Base) -> Self {
+        Self {
+            repo: base.repo.clone(),
+            commit: base.base.clone(),
+            worktree: base
+                .worktree
+                .parent()
+                .map_or_else(|| base.worktree.join("baseline"), |p| p.join("baseline")),
+        }
+    }
+
+    /// The baseline checkout, made on first use.
+    async fn checkout(&self) -> Option<&Path> {
+        if !self.worktree.join(".git").exists() {
+            let status = tokio::process::Command::new("git")
+                .args(["worktree", "add", "--detach", "--force"])
+                .arg(&self.worktree)
+                .arg(&self.commit)
+                .current_dir(&self.repo)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .await
+                .ok()?;
+            if !status.success() {
+                return None;
+            }
+        }
+        Some(&self.worktree)
+    }
+}
+
+/// The tests a `cargo test` output reports as failed, in order.
+#[must_use]
+pub fn failing_tests(text: &str) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for line in text.lines() {
+        if let Some(name) = line
+            .trim()
+            .strip_prefix("test ")
+            .and_then(|rest| rest.strip_suffix(" ... FAILED"))
+            && !names.iter().any(|seen| seen == name)
+        {
+            names.push(name.to_owned());
+        }
+    }
+    names
+}
+
+/// Which of `names` also fail at the baseline: `None` when the baseline
+/// could not be checked out or built, so nothing is excused.
+pub async fn preexisting_failures(
+    baseline: &Baseline,
+    check: &Check,
+    names: &[String],
+) -> Option<Vec<String>> {
+    let worktree = baseline.checkout().await?;
+    let mut argv = check_argv(check, None);
+    argv.push("--".into());
+    argv.push("--exact".into());
+    argv.extend(names.iter().cloned());
+    let (program, args) = argv.split_first()?;
+    let mut command = tokio::process::Command::new(program);
+    command
+        .args(args)
+        .current_dir(worktree)
+        .stdin(std::process::Stdio::null());
+    shared_target(&mut command);
+    let out = command.output().await.ok()?;
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    if text.contains("error[E") || text.contains("error: could not compile") {
+        return None;
+    }
+    let failed = failing_tests(&text);
+    Some(
+        names
+            .iter()
+            .filter(|name| failed.contains(name))
+            .cloned()
+            .collect(),
+    )
+}
+
+/// `run_check`, then for a failed test check, the baseline's say: when
+/// every failed test already fails there the check passes with a note, and
+/// otherwise the note names the failures that were there before.
+pub async fn run_check_against(
+    checks: &[Check],
+    worktree: &Path,
+    baseline: Option<&Baseline>,
+    id: &str,
+    filter: Option<&str>,
+) -> (String, bool) {
+    let (text, ok) = run_check(checks, worktree, id, filter).await;
+    let Some(baseline) = baseline else {
+        return (text, ok);
+    };
+    let Some(check) = checks.iter().find(|check| check.id == id) else {
+        return (text, ok);
+    };
+    if ok || !check.id.starts_with("test:") {
+        return (text, ok);
+    }
+    let names = failing_tests(&text);
+    if names.is_empty() {
+        return (text, ok);
+    }
+    let Some(before) = preexisting_failures(baseline, check, &names).await else {
+        return (text, ok);
+    };
+    if before.is_empty() {
+        return (text, ok);
+    }
+    let short: Vec<&str> = before.iter().map(String::as_str).collect();
+    if before.len() == names.len() {
+        (
+            format!(
+                "{text}
+
+PASSED anyway: every failed test ({}) already fails at the base commit {}, before this change.",
+                short.join(", "),
+                &baseline.commit[..baseline.commit.len().min(10)]
+            ),
+            true,
+        )
+    } else {
+        (
+            format!(
+                "{text}
+
+Already failing at the base commit before this change, not yours to fix: {}. The other failures are the change's.",
+                short.join(", ")
+            ),
+            false,
+        )
+    }
+}
+
+/// Runs share one build folder, unless the person set their own.
+fn shared_target(command: &mut tokio::process::Command) {
+    if std::env::var_os("CARGO_TARGET_DIR").is_none()
+        && let Some(home) = std::env::var_os("HOME")
+    {
+        command.env(
+            "CARGO_TARGET_DIR",
+            std::path::Path::new(&home).join(".openagents/coder-new/target"),
+        );
+    }
 }
 
 impl Session {
@@ -486,6 +649,7 @@ impl Session {
             prompt: briefing.prompt.clone(),
             briefed: briefing.files.iter().cloned().collect(),
             events_file: "agent-events.jsonl".into(),
+            baseline: None,
         }
     }
 
@@ -524,6 +688,7 @@ pub async fn work(
 fn checks_server(
     checks: Arc<Vec<Check>>,
     root: PathBuf,
+    baseline: Option<Baseline>,
 ) -> (SdkMcpServer, Arc<Mutex<Vec<(String, bool)>>>) {
     let verdicts: Arc<Mutex<Vec<(String, bool)>>> = Arc::default();
     let server = {
@@ -548,9 +713,17 @@ fn checks_server(
             }),
             move |args| {
                 let (checks, root, verdicts) = (checks.clone(), root.clone(), verdicts.clone());
+                let baseline = baseline.clone();
                 async move {
                     let id = args["check"].as_str().unwrap_or_default().to_owned();
-                    let (text, ok) = run_check(&checks, &root, &id, args["filter"].as_str()).await;
+                    let (text, ok) = run_check_against(
+                        &checks,
+                        &root,
+                        baseline.as_ref(),
+                        &id,
+                        args["filter"].as_str(),
+                    )
+                    .await;
                     let mut verdicts = lock(&verdicts);
                     verdicts.retain(|(seen, _)| *seen != id);
                     verdicts.push((id, ok));
@@ -586,7 +759,7 @@ pub async fn run(
         .no_session_persistence();
     let mut verdicts = None;
     if !checks.is_empty() {
-        let (server, seen) = checks_server(checks.clone(), root.clone());
+        let (server, seen) = checks_server(checks.clone(), root.clone(), session.baseline.clone());
         allowed.extend(server.allowed_tool_names());
         query_options = query_options.sdk_mcp_server(server);
         verdicts = Some(seen);
@@ -889,7 +1062,14 @@ pub async fn final_check_outputs(
             output: Value::Null,
             running: true,
         });
-        let (text, ok) = run_check(&briefing.checks, &base.worktree, &check.id, None).await;
+        let (text, ok) = run_check_against(
+            &briefing.checks,
+            &base.worktree,
+            Some(&Baseline::of(base)),
+            &check.id,
+            None,
+        )
+        .await;
         let output = coder_output("Run", &Value::Null, &input, &text, None, !ok);
         transcript.set(
             index,
