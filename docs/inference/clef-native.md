@@ -913,13 +913,15 @@ The Clef-Flash Q4_K_M GGUF (digest `fd3e9060…`) ran on the M5 Max through
 
   The GEMMs ran at about 16 TF in the model, against 50–60 TF for the
   same shapes in short standalone runs.
-- **Why: sustained throughput, not the kernel.**
+- **Sustained throughput; cause unresolved.**
   `fixtures/clef/tools/metal_kernels_harness.swift` and a
   48-GEMM command buffer ran at 45 TF for the first 200 ms, then 15–18 TF,
-  with the same or distinct weights. On that loaded Mac, a long command
-  buffer shares the GPU with the visualizer and browser and runs under
-  the power the CPU-bound builds leave. The 1k/4k/16k gate has to be
-  measured on a quiet machine. At 55–60 TF sustained, the projections
+  with the same or distinct weights. These elapsed times do not distinguish
+  GPU scheduling, frequency policy, heat, or memory behavior. Later short
+  probes retain 50–60 TF across multiple rounds; other probes slow down
+  within the GPU interval. No clock or scheduling trace establishes the
+  cause. Shared-machine measurements do not establish the idle-machine
+  gate. At 55–60 TF sustained, the projections
   alone would be about 0.26 s at 1k and 3.6 s at 16k.
 
 ### Round 3 (2026-10-10): the head in fewer round trips
@@ -1365,11 +1367,11 @@ complete before the native comparison starts; do not overlap their model loads.
 | Official 27B BF16 image goldens and native comparison | Passed again on Stage 5: all six cases and 14 native top answers match the official reference and expected labels, with exact token counts. Maximum probability difference is `0.001785947`; all ten media refusal checks pass. |
 | Real 27B CUDA and Auto startup refusal on the RTX 4080 | Passed: both refused before weight upload, without CPU fallback; GPU memory before/after was unchanged. This does not claim that CUDA context creation uses no memory. |
 | Official 27B BF16 text goldens | Generated: all 40 cases and 104 answers, with exact reference token identity. An earlier capture failure is retained separately; the isolated retry and final resumed run passed. |
-| 27B native BF16 text comparison | **FAILED on Stage 5:** all 40 cases have matching token counts, but only 93 of 104 top answers match. Maximum probability difference is `0.217196109`; 64 questions exceed `0.02`. Against a separate BF16-backbone/CPU-f32-head reference, 94 of 104 match and maximum difference is `0.216096109`. Earlier native CPU and Metal agreed closely on case 014 while both disagreed with BF16. Quantization is not an established cause. |
+| 27B native BF16 text comparison | **FAILED on Stage 5:** all 40 cases have matching token counts, but only 93 of 104 top answers match. Maximum probability difference is `0.217196109`; 64 questions exceed `0.02`. Against a separate BF16-backbone/CPU-f32-head reference, 94 of 104 match and maximum difference is `0.216096109`. Controlled original-weight and independently decoded GGUF executions attribute case 014's large miss to quantized backbone weights. Other mismatches are not individually attributed. |
 | Two-/four-request Flash HTTP batch acceptance | Passed: 15 successful requests per mode have identical full-precision probabilities to serial references. Actual grouped FFN work, disconnect recovery, and saturation recovery pass. Each overload burst returns three `busy` refusals. The run overlaps compilation; no throughput improvement is claimed. |
 | Prefix raw-logit parity and reuse speed | Passed on Flash and 27B: all 21 question comparisons per model have zero logit difference; repeated-state medians improve by 6.83× and 9.42×, respectively. Changed schemas, state changes, eviction, and restored hits pass. Shared-machine runs overlap CPU compilation and export raw logits. |
 | 27B batching | Passed on Stage 5: two and four slots each compare 15 successful responses with identical serial probabilities, actual grouped FFN work, disconnect recovery, and overload recovery. Each burst returns three `busy` refusals. This functional run overlaps CPU diagnostics and does not establish a throughput target. |
-| Flash paired uncached latency | Shared-machine default medians: `0.819 / 2.665 / 11.098 s`; fused attention plus weight-shape GEMM: `0.708 / 2.438 / 10.552 s`, at approximately 1k/4k/16k tokens. Ten measured requests per group, paired nonces, no concurrent task build or model. The absolute M3 targets are not met. This run precedes the next serial-wait reduction; paired Ollama and sustained-load comparisons remain pending. |
+| Flash paired uncached latency | Stage 4 shared-machine default medians: `0.819 / 2.665 / 11.098 s`; fused attention plus weight-shape GEMM: `0.708 / 2.438 / 10.552 s`, at approximately 1k/4k/16k tokens. Stage 5's separate 512/1,024/2,048 chunk sweep still misses the absolute M3 targets; the 2,048 chunk medians are `0.755 / 2.529 / 11.040 s`. Each group has ten measured requests, paired nonces, and no concurrent task build or model. Between-run changes cannot be attributed to code. Paired Ollama and scheduling diagnostics remain pending. |
 
 Stage 5 corrects DeltaNet normalization in CPU, Metal prefill, and CUDA
 prefill to `x / sqrt(sum(x*x) + 1e-6)`, matching the executed Transformers
@@ -1378,8 +1380,9 @@ cases and 367,488 comparisons. CPU and Metal oracles also pass, but the fresh
 27B text comparison still fails.
 The same build carries the serial chunk's final normalization and head-input
 preparation in its existing command buffer, removing one wait, and extends
-opt-in GEMM routing to the eight observed 27B weight shapes. Fresh speed
-measurements remain pending.
+opt-in GEMM routing to the eight observed 27B weight shapes. A fresh chunk
+sweep does not establish a material speed improvement: later samples slow down
+across all three configurations. Every median and warmup remains in the report.
 
 Head-only probes also reproduce PyTorch 2.9.1 MPS instability, including
 nonfinite outputs with unchanged inputs and weights. The cause remains unknown.

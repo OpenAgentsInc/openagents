@@ -4221,6 +4221,233 @@
       "published_sha256": "7da4db9cff9071fc91fe3d984dd9c7448ac86d99c20074a46c5354aab4c58c45",
       "published_bytes": 3553,
       "path_replacements": []
+    },
+    {
+      "source": "flash-chunks-stage5/summary.json",
+      "original_sha256": "7290dfea5371bb5fd78194955f0f242a83314c462e10279d19051c14f9f74a76",
+      "original_bytes": 4647,
+      "published": "flash-chunks-stage5/summary.json",
+      "published_sha256": "079a58baacadd86d55550dd5eee0723766a79b238206d1b702a4b789173eed69",
+      "published_bytes": 3981,
+      "path_replacements": [
+        {
+          "replacement": "task-scratch",
+          "occurrences": 9
+        }
+      ]
+    },
+    {
+      "source": "flash-chunks-stage5/metadata.json",
+      "original_sha256": "342fc4f319475e5203c5435f1cfee75585d336b2af3e1a48ace0d91a8f7e30b4",
+      "original_bytes": 5184,
+      "published": "flash-chunks-stage5/metadata.json",
+      "published_sha256": "42e19bd8bb696aeb46618c199759eaac834ab1a15ca5e3fc4c352543d21b4502",
+      "published_bytes": 4370,
+      "path_replacements": [
+        {
+          "replacement": "task-scratch",
+          "occurrences": 11
+        }
+      ]
+    },
+    {
+      "source": "flash-chunks-stage5/records.jsonl",
+      "original_sha256": "3bd653d8cced32f658a4ed1ab7950cf22767be170d73dc14c777f531d00b394e",
+      "original_bytes": 235506,
+      "published": "flash-chunks-stage5/records.jsonl",
+      "published_sha256": "1da76396390bcaf1c8b1088496a0aec297a0ca90e87ae7f7a09c8608a710859c",
+      "published_bytes": 226626,
+      "path_replacements": [
+        {
+          "replacement": "task-scratch",
+          "occurrences": 120
+        }
+      ]
+    },
+    {
+      "source": "flash-chunks-stage5/host.jsonl",
+      "original_sha256": "8948db21dd02f88cdb5e932991cb58837504e881960544f6d37257d2adab92e6",
+      "original_bytes": 27864,
+      "published": "flash-chunks-stage5/host.jsonl",
+      "published_sha256": "8948db21dd02f88cdb5e932991cb58837504e881960544f6d37257d2adab92e6",
+      "published_bytes": 27864,
+      "path_replacements": []
+    },
+    {
+      "source": "flash-chunks-stage5-config.json",
+      "original_sha256": "f53fb5be9b16a75d25558a505a6be38e1a3930dbdad797a234f027923c7be383",
+      "original_bytes": 2228,
+      "published": "flash-chunks-stage5/config.json",
+      "published_sha256": "dbb23e1bbf3f98bf93ca404de2697a918de8e6b383a6fbed83f940a121bf8403",
+      "published_bytes": 1636,
+      "path_replacements": [
+        {
+          "replacement": "task-scratch",
+          "occurrences": 8
+        }
+      ]
+    },
+    {
+      "source": "flash-chunks-stage5-gpu-lease.json",
+      "original_sha256": "b698608b7776f1a460cd97277b38ec43199a01f58635577acab614e6b5c2604c",
+      "original_bytes": 484,
+      "published": "flash-chunks-stage5/gpu-lease.json",
+      "published_sha256": "b698608b7776f1a460cd97277b38ec43199a01f58635577acab614e6b5c2604c",
+      "published_bytes": 484,
+      "path_replacements": []
+    },
+    {
+      "source": "flash-chunks-stage5-memory-lease.json",
+      "original_sha256": "af0142b2be62e74e87449207d3b9a30e7bfdf8a91788bd93cd68dd94f3ffea91",
+      "original_bytes": 485,
+      "published": "flash-chunks-stage5/memory-lease.json",
+      "published_sha256": "af0142b2be62e74e87449207d3b9a30e7bfdf8a91788bd93cd68dd94f3ffea91",
+      "published_bytes": 485,
+      "path_replacements": []
+    },
+    {
+      "source": "flash-chunks-stage5/server-r0-fused-chunk-1024.log",
+      "original_sha256": "14e71a0a3dacdfa01d18dca229ba5828d198382ca6269a030134dd3b269aea34",
+      "original_bytes": 1455,
+      "published": "flash-chunks-stage5/server-r0-fused-chunk-1024.log",
+      "published_sha256": "28f19f80e02e9e5acee537ee85f2d52d38ce94292e7b1572fad83583d2b692f0",
+      "published_bytes": 1381,
+      "path_replacements": [
+        {
+          "replacement": "task-scratch",
+          "occurrences": 1
+        }
+      ]
+    },
+    {
+      "source": "flash-chunks-stage5/server-r0-fused-chunk-2048.log",
+      "original_sha256": "754625a379ca245f86eb4beeb1cbfdd850944392903a16d30d6faabd3cbd336e",
+      "original_bytes": 1455,
+      "published": "flash-chunks-stage5/server-r0-fused-chunk-2048.log",
+      "published_sha256": "033fbc2b3d685368befb7f504b91e4f4a7417aaf3f9abc1d626f0a8a052c74f7",
+      "published_bytes": 1381,
+      "path_replacements": [
+        {
+          "replacement": "task-scratch",
+          "occurrences": 1
+        }
+      ]
+    },
+    {
+      "source": "flash-chunks-stage5/server-r0-fused-chunk-512.log",
+      "original_sha256": "7a79c371f127b0be500fa999bcc052bbd5241504ab1b01566e83acabb11ed58b",
+      "original_bytes": 1455,
+      "published": "flash-chunks-stage5/server-r0-fused-chunk-512.log",
+      "published_sha256": "859b815990a4b824d13bca84972e1aeaa9dfe3d78f856abf59c60283d1411ea9",
+      "published_bytes": 1381,
+      "path_replacements": [
+        {
+          "replacement": "task-scratch",
+          "occurrences": 1
+        }
+      ]
+    },
+    {
+      "source": "flash-chunks-stage5/server-r1-fused-chunk-1024.log",
+      "original_sha256": "f675e933057a1653ee5775acc0c94fa3f99beecc590ca5ad617ef1431eb91d9d",
+      "original_bytes": 1455,
+      "published": "flash-chunks-stage5/server-r1-fused-chunk-1024.log",
+      "published_sha256": "8d335726f41f49d986b7988480dbf47124ff2f29426eb4afdb9f7bebf55afe34",
+      "published_bytes": 1381,
+      "path_replacements": [
+        {
+          "replacement": "task-scratch",
+          "occurrences": 1
+        }
+      ]
+    },
+    {
+      "source": "flash-chunks-stage5/server-r1-fused-chunk-2048.log",
+      "original_sha256": "2d79181409076431cf15460b37d61ba916bb63feb020fc50a7c0aab6b3c85ccc",
+      "original_bytes": 1455,
+      "published": "flash-chunks-stage5/server-r1-fused-chunk-2048.log",
+      "published_sha256": "307f4d864ac2dee77b9e542c96992c3df9272fd01b76641d26ac454bbc0a2a29",
+      "published_bytes": 1381,
+      "path_replacements": [
+        {
+          "replacement": "task-scratch",
+          "occurrences": 1
+        }
+      ]
+    },
+    {
+      "source": "flash-chunks-stage5/server-r1-fused-chunk-512.log",
+      "original_sha256": "768223dd776eb8cbf53aa72fc017f58a631c9a17f5d4235eec134f18bf8701bd",
+      "original_bytes": 1457,
+      "published": "flash-chunks-stage5/server-r1-fused-chunk-512.log",
+      "published_sha256": "34df7283a675959bb98cc7542415faba963654c653d8159e4b69ecf3ee23fcfc",
+      "published_bytes": 1383,
+      "path_replacements": [
+        {
+          "replacement": "task-scratch",
+          "occurrences": 1
+        }
+      ]
+    },
+    {
+      "source": "stage5/layer_dump.py",
+      "original_sha256": "0f3aed77994d0f64bb8b410d96041b0d38d9e955d087268d62519c65bada6554",
+      "original_bytes": 2623,
+      "published": "stage5/layer_dump.py",
+      "published_sha256": "2306ba56e1c32c13434ff2d0e8e377b67cf50e638299f4409ab31002650c4d91",
+      "published_bytes": 2553,
+      "path_replacements": [
+        {
+          "replacement": "repo",
+          "occurrences": 1
+        }
+      ]
+    },
+    {
+      "source": "stage5/native27b-layer-checks.json",
+      "original_sha256": "392ce7bdec995aa779e62e4b749de20e0925949954e5197b97ee5865554df146",
+      "original_bytes": 1860,
+      "published": "stage5/native27b-layer-checks.json",
+      "published_sha256": "dc557aade27bd759f28f6973080cd4b4abb26bb314779a9e6284e88e615e5eb7",
+      "published_bytes": 1712,
+      "path_replacements": [
+        {
+          "replacement": "task-scratch",
+          "occurrences": 2
+        }
+      ]
+    },
+    {
+      "source": "stage5/layer-memory-lease.json",
+      "original_sha256": "05ee6eff139ad09dbe2cc260fc328c05b3a66670ec1da8a0b9b07bbac39afc90",
+      "original_bytes": 489,
+      "published": "stage5/layer-memory-lease.json",
+      "published_sha256": "05ee6eff139ad09dbe2cc260fc328c05b3a66670ec1da8a0b9b07bbac39afc90",
+      "published_bytes": 489,
+      "path_replacements": []
+    },
+    {
+      "source": "stage5/native27b-layer-014/receipt.json",
+      "original_sha256": "27f534c9d1b9870bdf76c4a111c95da830ccca0b4778fda9eb2fcca9a1ac83f0",
+      "original_bytes": 1760,
+      "published": "stage5/native27b-layer-014/receipt.json",
+      "published_sha256": "95f7bdd547055ea5e559d191f3988e74b3a2022bc2d094330a34fca1e058661b",
+      "published_bytes": 1612,
+      "path_replacements": [
+        {
+          "replacement": "task-scratch",
+          "occurrences": 2
+        }
+      ]
+    },
+    {
+      "source": "stage5/native27b-layer-014/output.log",
+      "original_sha256": "3900c88c6057ba90c74d7dc971dcb247b8e54212827e211336e97218f84bed5a",
+      "original_bytes": 157,
+      "published": "stage5/native27b-layer-014/output.log",
+      "published_sha256": "3900c88c6057ba90c74d7dc971dcb247b8e54212827e211336e97218f84bed5a",
+      "published_bytes": 157,
+      "path_replacements": []
     }
   ],
   "current_source_snapshot": [

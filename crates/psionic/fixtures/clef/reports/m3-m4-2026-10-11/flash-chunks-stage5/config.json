@@ -1,0 +1,53 @@
+{
+  "model_path": "task-scratch/mac-quiet-2026-10-10/model.gguf",
+  "measurement_mode": "shared",
+  "max_start_load": 150,
+  "max_run_load": 180,
+  "rounds": 2,
+  "runs": 5,
+  "request_timeout": 300,
+  "variants": [
+    {
+      "name": "fused-chunk-512",
+      "binary": "task-scratch/clef-m3-m4/stage5/psionic-openai-server",
+      "chunk": 512,
+      "env": {
+        "RAYON_NUM_THREADS": "2",
+        "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+        "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+        "PSIONIC_CLEF_METAL_GEMM": "weight-shapes"
+      }
+    },
+    {
+      "name": "fused-chunk-1024",
+      "binary": "task-scratch/clef-m3-m4/stage5/psionic-openai-server",
+      "chunk": 1024,
+      "env": {
+        "RAYON_NUM_THREADS": "2",
+        "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+        "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+        "PSIONIC_CLEF_METAL_GEMM": "weight-shapes"
+      }
+    },
+    {
+      "name": "fused-chunk-2048",
+      "binary": "task-scratch/clef-m3-m4/stage5/psionic-openai-server",
+      "chunk": 2048,
+      "env": {
+        "RAYON_NUM_THREADS": "2",
+        "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+        "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+        "PSIONIC_CLEF_METAL_GEMM": "weight-shapes"
+      }
+    }
+  ],
+  "requests": [
+    "task-scratch/mac-quiet-2026-10-10/requests/len1k.json",
+    "task-scratch/mac-quiet-2026-10-10/requests/len4k.json",
+    "task-scratch/mac-quiet-2026-10-10/requests/len16k.json"
+  ],
+  "output_dir": "task-scratch/clef-m3-m4/flash-chunks-stage5",
+  "max_rss_gib": 36,
+  "minimum_available_memory_gib": 12,
+  "startup_timeout": 180
+}

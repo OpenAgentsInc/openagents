@@ -1,0 +1,132 @@
+{
+  "schema": "clef.mac-quiet-bench.v1",
+  "created_at": "2026-10-11T10:22:06.028037+00:00",
+  "config": {
+    "model_path": "task-scratch/mac-quiet-2026-10-10/Clef-Flash-Q4_K_M.gguf",
+    "measurement_mode": "shared",
+    "max_start_load": 150,
+    "max_run_load": 180,
+    "rounds": 2,
+    "runs": 5,
+    "request_timeout": 300,
+    "variants": [
+      {
+        "name": "fused-chunk-512",
+        "binary": "task-scratch/clef-m3-m4/stage5/psionic-openai-server",
+        "chunk": 512,
+        "env": {
+          "RAYON_NUM_THREADS": "2",
+          "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+          "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+          "PSIONIC_CLEF_METAL_GEMM": "weight-shapes"
+        },
+        "engine": "psionic",
+        "model": "clef-flash"
+      },
+      {
+        "name": "fused-chunk-1024",
+        "binary": "task-scratch/clef-m3-m4/stage5/psionic-openai-server",
+        "chunk": 1024,
+        "env": {
+          "RAYON_NUM_THREADS": "2",
+          "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+          "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+          "PSIONIC_CLEF_METAL_GEMM": "weight-shapes"
+        },
+        "engine": "psionic",
+        "model": "clef-flash"
+      },
+      {
+        "name": "fused-chunk-2048",
+        "binary": "task-scratch/clef-m3-m4/stage5/psionic-openai-server",
+        "chunk": 2048,
+        "env": {
+          "RAYON_NUM_THREADS": "2",
+          "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+          "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+          "PSIONIC_CLEF_METAL_GEMM": "weight-shapes"
+        },
+        "engine": "psionic",
+        "model": "clef-flash"
+      }
+    ],
+    "requests": [
+      "task-scratch/mac-quiet-2026-10-10/requests/len1k.json",
+      "task-scratch/mac-quiet-2026-10-10/requests/len4k.json",
+      "task-scratch/mac-quiet-2026-10-10/requests/len16k.json"
+    ],
+    "output_dir": "task-scratch/clef-m3-m4/flash-chunks-stage5",
+    "max_rss_gib": 36,
+    "minimum_available_memory_gib": 12,
+    "startup_timeout": 180,
+    "settle_seconds": 600,
+    "max_wait_seconds": 1800,
+    "max_start_gpu_percent": 10
+  },
+  "config_sha256": "8541edf4d5a69adc66d7459a4294dc57f652f4500c4a6d796eee7c3e0c15036f",
+  "python": "3.9.6",
+  "platform": "darwin",
+  "load_metric": "one-minute system load average",
+  "measurement_mode": "shared",
+  "quiet_lease": null,
+  "lease_id": "1791714125967-982-0",
+  "lease_resources": [
+    "gpu",
+    "memory"
+  ],
+  "self_test": false,
+  "removed_inherited_env_names": [],
+  "variants": [
+    {
+      "name": "fused-chunk-512",
+      "binary_sha256": "e8bb9510ada3d29651e3197ee372d90b3db86ecc46a981b68f14a66a2e58b168",
+      "binary_commit": null,
+      "env": {
+        "RAYON_NUM_THREADS": "2",
+        "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+        "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+        "PSIONIC_CLEF_METAL_GEMM": "weight-shapes"
+      },
+      "profile_mode": "disabled"
+    },
+    {
+      "name": "fused-chunk-1024",
+      "binary_sha256": "e8bb9510ada3d29651e3197ee372d90b3db86ecc46a981b68f14a66a2e58b168",
+      "binary_commit": null,
+      "env": {
+        "RAYON_NUM_THREADS": "2",
+        "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+        "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+        "PSIONIC_CLEF_METAL_GEMM": "weight-shapes"
+      },
+      "profile_mode": "disabled"
+    },
+    {
+      "name": "fused-chunk-2048",
+      "binary_sha256": "e8bb9510ada3d29651e3197ee372d90b3db86ecc46a981b68f14a66a2e58b168",
+      "binary_commit": null,
+      "env": {
+        "RAYON_NUM_THREADS": "2",
+        "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+        "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+        "PSIONIC_CLEF_METAL_GEMM": "weight-shapes"
+      },
+      "profile_mode": "disabled"
+    }
+  ],
+  "workloads": [
+    {
+      "path": "task-scratch/mac-quiet-2026-10-10/requests/len1k.json",
+      "sha256": "0f98f1ce7b7e54063e93ab8dbdf714f4bfb3a7a5822f0012ddd37f7bd7137eab"
+    },
+    {
+      "path": "task-scratch/mac-quiet-2026-10-10/requests/len4k.json",
+      "sha256": "5cadcbb4d5204128c73dbb8087ec0b6f27c81fffbd8e16416324396ce4c26dff"
+    },
+    {
+      "path": "task-scratch/mac-quiet-2026-10-10/requests/len16k.json",
+      "sha256": "7e2d3fc74517af655466c1951fba8fbed6aef652e6cb5953b3ac4b7f614e2daa"
+    }
+  ],
+  "checkout_commit": "3e281a272f51d68230c6343415d3c06426b68463"
+}

@@ -145,6 +145,39 @@ retain bounded readers, import-convention checks, model/source identities,
 guard receipts, and layer statistics. Raw intermediate tensors stay outside
 Git. The quantization diagnosis does not change the issue's accuracy gate.
 
+## Stage 5 chunk-size comparison
+
+The [uncached sweep](flash-chunks-stage5/summary.json) runs the same Stage 5
+server with fused attention, weight-shape GEMM, resident f16 FFN matrices, and
+sequential DeltaNet. Each round measures five requests after one warmup per
+workload; round two reverses the variant order. The same nonce-prefixed state
+is used across variants. Prefix caching is disabled.
+
+| Chunk tokens | 1k, rounds 1 / 2 | 4k, rounds 1 / 2 | 16k, rounds 1 / 2 |
+| --- | --- | --- | --- |
+| 512 | 0.742 / 0.920 s | 2.404 / 2.959 s | 10.358 / 12.028 s |
+| 1,024 | 0.736 / 0.824 s | 2.459 / 2.629 s | 10.867 / 11.157 s |
+| 2,048 | 0.739 / 0.770 s | 2.463 / 2.534 s | 11.000 / 11.132 s |
+
+The combined ten-sample medians for 2,048-token chunks are
+`0.754743 / 2.528619 / 11.040336 s`. All configurations miss the absolute M3
+targets. Later requests slow down across configurations, so the small aggregate
+differences do not establish a chunk-size improvement. The 2,048-token chunk
+remains the comparison baseline. Stage 4 and Stage 5 were measured in separate
+windows; their differences cannot be attributed to the synchronization change.
+
+No task-owned build or second model runs during this window. Other applications
+remain running. This is a shared-machine comparison, not idle-machine acceptance.
+The [records](flash-chunks-stage5/records.jsonl) retain all 90 measured requests,
+18 warmups, responses, actual token counts, and six successful owned-server
+shutdowns. The largest sampled process-group footprint/RSS accounting is
+21,437,988,864 bytes under the 36 GiB bound; available host memory stays above
+84,579,827,712 bytes. The [host samples](flash-chunks-stage5/host.jsonl),
+[metadata](flash-chunks-stage5/metadata.json),
+[configuration](flash-chunks-stage5/config.json),
+[GPU lease](flash-chunks-stage5/gpu-lease.json), and
+[memory lease](flash-chunks-stage5/memory-lease.json) identify the conditions.
+
 ## FFN fusion experiment
 
 The [bounded FFN prototype](ffn-pair-publishable/README.md) compares separate

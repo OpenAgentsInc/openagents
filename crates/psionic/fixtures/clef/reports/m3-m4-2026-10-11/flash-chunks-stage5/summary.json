@@ -1,0 +1,151 @@
+{
+  "status": "complete",
+  "error_type": null,
+  "finished_at": "2026-10-11T10:32:27.582955+00:00",
+  "groups": [
+    {
+      "variant": "fused-chunk-512",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len1k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 0.7961758749999888,
+      "input_tokens": [
+        1079,
+        1080,
+        1081,
+        1082
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "fused-chunk-512",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len4k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 2.6092275000000207,
+      "input_tokens": [
+        3915,
+        3916,
+        3917,
+        3921
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "fused-chunk-512",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len16k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 11.207370520499978,
+      "input_tokens": [
+        15509,
+        15510,
+        15511,
+        15513,
+        15514
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "fused-chunk-1024",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len1k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 0.7872819164999854,
+      "input_tokens": [
+        1079,
+        1080,
+        1081,
+        1082
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "fused-chunk-1024",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len4k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 2.566897124999997,
+      "input_tokens": [
+        3915,
+        3916,
+        3917,
+        3921
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "fused-chunk-1024",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len16k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 11.028628832999985,
+      "input_tokens": [
+        15509,
+        15510,
+        15511,
+        15513,
+        15514
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "fused-chunk-2048",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len1k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 0.7547434165000197,
+      "input_tokens": [
+        1079,
+        1080,
+        1081,
+        1082
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "fused-chunk-2048",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len4k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 2.5286189375000276,
+      "input_tokens": [
+        3915,
+        3916,
+        3917,
+        3921
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "fused-chunk-2048",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len16k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 11.040336209000003,
+      "input_tokens": [
+        15509,
+        15510,
+        15511,
+        15513,
+        15514
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    }
+  ],
+  "measurement_mode": "shared",
+  "monitor_error": null,
+  "diagnostic_only": false,
+  "gpu_interference_detection": "not enforced in shared mode; total GPU activity sampled",
+  "idle_machine_acceptance": "not applicable: shared machine",
+  "note": "Medians exclude warmups and rejected samples. No quality verdict or tail-latency claim."
+}
