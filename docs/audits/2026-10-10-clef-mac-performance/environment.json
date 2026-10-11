@@ -1,0 +1,57 @@
+{
+  "base_commit": "1d16475293",
+  "started_local": "2026-10-10T20:36:20.452153-05:00",
+  "sudo_available": false,
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.4\nBuildVersion:\t\t25E246\n",
+  "xcode": "Xcode 26.6\nBuild version 17F113\n",
+  "sdk": "26.5\n",
+  "hardware": "hw.model: Mac17,6\nhw.memsize: 137438953472\nhw.ncpu: 18\n",
+  "power": "Battery Power:\n Sleep On Power Button 1\n powermode            0\n standby              1\n ttyskeepawake        1\n hibernatemode        3\n powernap             1\n hibernatefile        /var/vm/sleepimage\n displaysleep         0\n womp                 0\n networkoversleep     0\n sleep                1\n lessbright           0\n tcpkeepalive         1\n disksleep            10\nAC Power:\n Sleep On Power Button 1\n powermode            0\n standby              1\n ttyskeepawake        1\n hibernatemode        3\n powernap             1\n hibernatefile        /var/vm/sleepimage\n displaysleep         0\n womp                 1\n networkoversleep     0\n sleep                1\n tcpkeepalive         1\n disksleep            10\n",
+  "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded\n",
+  "gpu": [
+    {
+      "spdisplays_vendor": "sppci_vendor_Apple",
+      "sppci_model": "Apple M5 Max"
+    }
+  ],
+  "model_sha256": "fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c",
+  "model_bytes": 6486448288,
+  "baseline_source_equivalence": "No changes under crates/psionic between c36c6c4067 and 1d16475293",
+  "source_commit": "1d16475293b1645796a873fc6877ed6d842fd07c",
+  "baseline_binary_sha256": "c2b48ef8da37156b5809380f5af20d7b279dd16fa55d0e0a190451721dce4cba",
+  "merged_binary_sha256": "3faff07dcd07e35d6b6d0a6c84cca20c08a8981a35b07427a9369901fe78d0aa",
+  "candidate_patch_sha256": "54fd1447a137501da6e59edd4f2a51ae1d96392e9c58f9193a3c0aa6822a966e",
+  "power_source": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=23068771)\t100%; charged; 0:00 remaining present: true\n",
+  "gpu_cores": 40,
+  "continued_after_power_button_recovery": true,
+  "comparison_class": "desktop-active diagnostic; not idle-Mac acceptance",
+  "desktop_apps": "left running",
+  "display": "left unchanged after recovery",
+  "ollama_version": "0.40.2",
+  "weighted_correctness": {
+    "test": "clef::tests::cuda_chunks_and_cpu_agree",
+    "status": "passed",
+    "seconds": 126.36,
+    "tokens": [
+      155,
+      7274
+    ],
+    "chunks": [
+      "whole",
+      2048,
+      512,
+      64
+    ],
+    "max_chunk_logit_difference": 0,
+    "max_cpu_logit_difference": 0.000279,
+    "max_cpu_probability_difference": 1.35e-05
+  },
+  "harness_changes": [
+    "GPU admission threshold",
+    "wait deadline",
+    "SIGTERM cleanup",
+    "required quiet lease",
+    "diagnostic classification for non-idle configurations"
+  ],
+  "incident": "incident.md"
+}

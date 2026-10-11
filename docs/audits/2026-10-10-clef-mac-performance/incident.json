@@ -1,0 +1,24 @@
+{
+  "schema": "clef.mac-incident.v1",
+  "date": "2026-10-10",
+  "timezone": "America/Chicago",
+  "cause_of_app_hang": "Agent sent SIGSTOP to desktop apps and helpers while attempting to quiet the machine.",
+  "stopped_process_count": 61,
+  "suspension_list_last_modified": "2026-10-10T20:50:19-05:00",
+  "display_off": "2026-10-10T20:51:54-05:00",
+  "display_on": "2026-10-10T20:51:57-05:00",
+  "last_benchmark_sample": "2026-10-10T20:56:01.803595-05:00",
+  "phase_at_last_sample": "settle",
+  "last_load_1_5_15": [
+    1.1630859375,
+    3.38671875,
+    10.685546875
+  ],
+  "last_gpu_utilization_percent": 0,
+  "model_requests": 0,
+  "boot_time": "2026-10-10T20:57:31-05:00",
+  "restart_trigger": "Owner confirmed holding the power button to recover from the freeze.",
+  "panic_collector": "No paniclog data found in local device; buffer was all zeros.",
+  "recovery": "After reboot, no benchmark, cleanup watchdog, or stopped processes remained. Resume script exited successfully.",
+  "new_procedure": "Do not suspend desktop applications or force display sleep. Wait under the quiet lease; abort on load or deadline. Terminate only child benchmark servers."
+}

@@ -1,0 +1,30 @@
+
+running 20 tests
+test clef::calibration::tests::bad_maps_are_refused ... ok
+test clef::calibration::tests::export_writes_rows_and_index ... ok
+test clef::calibration::tests::platt_and_temperature_maps_apply_and_digest ... ok
+test clef::json::tests::dumps_sorts_keys_and_escapes_like_python ... ok
+test clef::json::tests::floats_follow_python_repr ... ok
+test clef::json::tests::integers_stay_exact ... ok
+test clef::json::tests::refuses_what_python_would_not_round_trip ... ok
+test clef::json::tests::repeated_keys_keep_first_position_and_last_value ... ok
+test clef::json::tests::truthiness_matches_python ... ok
+test clef::tests::answers_follow_the_reference_shape ... ok
+test clef::tests::chunked_prefill_matches_token_at_a_time ... skipped: set PSIONIC_CLEF_GGUF and PSIONIC_CLEF_CHUNK_CHECK
+ok
+test clef::tests::cuda_chunks_and_cpu_agree ... skipped: set PSIONIC_CLEF_GGUF and PSIONIC_CLEF_CUDA_CHECK
+ok
+test clef::tests::dump_head_parity_inputs ... skipped: set PSIONIC_CLEF_GGUF and PSIONIC_CLEF_DUMP_DIR
+ok
+test clef::tests::dump_layer_rows ... skipped: set PSIONIC_CLEF_GGUF, PSIONIC_CLEF_LAYER_TOKENS and PSIONIC_CLEF_LAYER_DIR
+ok
+test clef::tests::encoder_matches_reference_corpus ... skipped: set PSIONIC_CLEF_GGUF to a Clef GGUF
+ok
+test clef::tests::over_budget_is_refused_unless_state_tail_is_asked ... ok
+test clef::tests::prompt_pieces_and_spans_follow_the_reference ... ok
+test clef::tests::refusals_separate_bad_questions_from_door_limits ... ok
+test clef::tests::tiny_head_matches_torch_reference ... ok
+test clef::tests::tiny_head_refuses_unknown_and_drifting_heads ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 422 filtered out; finished in 0.01s
+

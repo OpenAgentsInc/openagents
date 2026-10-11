@@ -1,0 +1,144 @@
+{
+  "source_status": "rejected_host_load",
+  "diagnostic_only": true,
+  "groups": [
+    {
+      "variant": "chunk1024",
+      "workload": "len1k.json",
+      "samples": 3,
+      "median_seconds": 0.6190486660000047,
+      "round_medians": {
+        "0": 0.6190486660000047
+      },
+      "input_tokens": [
+        1081,
+        1082,
+        1083
+      ]
+    },
+    {
+      "variant": "chunk1024",
+      "workload": "len4k.json",
+      "samples": 3,
+      "median_seconds": 3.9579177080000036,
+      "round_medians": {
+        "0": 3.9579177080000036
+      },
+      "input_tokens": [
+        3916,
+        3917,
+        3918
+      ]
+    },
+    {
+      "variant": "chunk1024",
+      "workload": "len16k.json",
+      "samples": 3,
+      "median_seconds": 17.899150708000008,
+      "round_medians": {
+        "0": 17.899150708000008
+      },
+      "input_tokens": [
+        15508,
+        15513,
+        15514
+      ]
+    },
+    {
+      "variant": "chunk4096",
+      "workload": "len1k.json",
+      "samples": 3,
+      "median_seconds": 1.1981011670000044,
+      "round_medians": {
+        "0": 1.1981011670000044
+      },
+      "input_tokens": [
+        1081,
+        1082,
+        1083
+      ]
+    },
+    {
+      "variant": "chunk4096",
+      "workload": "len4k.json",
+      "samples": 3,
+      "median_seconds": 4.1894081670000105,
+      "round_medians": {
+        "0": 4.1894081670000105
+      },
+      "input_tokens": [
+        3916,
+        3917,
+        3918
+      ]
+    },
+    {
+      "variant": "chunk4096",
+      "workload": "len16k.json",
+      "samples": 3,
+      "median_seconds": 19.414394625,
+      "round_medians": {
+        "0": 19.414394625
+      },
+      "input_tokens": [
+        15508,
+        15513,
+        15514
+      ]
+    },
+    {
+      "variant": "rayon1",
+      "workload": "len1k.json",
+      "samples": 3,
+      "median_seconds": 1.439769833000014,
+      "round_medians": {
+        "0": 1.439769833000014
+      },
+      "input_tokens": [
+        1081,
+        1082,
+        1083
+      ]
+    }
+  ],
+  "paired_baseline_candidate": [],
+  "host_phases": {
+    "run": {
+      "samples": 50,
+      "first_at": "2026-10-11T02:39:16.777465+00:00",
+      "last_at": "2026-10-11T02:43:23.429286+00:00",
+      "min_load": 3.439453125,
+      "max_load": 8.3173828125,
+      "gpu_percentages": [
+        65,
+        68,
+        69,
+        71,
+        72,
+        75,
+        77,
+        81,
+        93,
+        98,
+        99,
+        100
+      ]
+    },
+    "settle": {
+      "samples": 7,
+      "first_at": "2026-10-11T02:38:41.570659+00:00",
+      "last_at": "2026-10-11T02:39:11.748404+00:00",
+      "min_load": 2.61083984375,
+      "max_load": 3.712890625,
+      "gpu_percentages": [
+        70,
+        72,
+        73,
+        74,
+        75,
+        76,
+        96
+      ]
+    }
+  }
+}

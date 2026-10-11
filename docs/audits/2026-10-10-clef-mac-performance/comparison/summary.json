@@ -1,0 +1,82 @@
+{
+  "status": "complete",
+  "error_type": null,
+  "finished_at": "2026-10-11T02:38:41.289686+00:00",
+  "groups": [
+    {
+      "variant": "baseline",
+      "workload": "$SCRATCH/requests/len1k.json",
+      "count": 15,
+      "expected_count": 15,
+      "median_seconds": 1.1702960000000076,
+      "usable_comparison": false
+    },
+    {
+      "variant": "baseline",
+      "workload": "$SCRATCH/requests/len4k.json",
+      "count": 15,
+      "expected_count": 15,
+      "median_seconds": 3.638149666000004,
+      "usable_comparison": false
+    },
+    {
+      "variant": "baseline",
+      "workload": "$SCRATCH/requests/len16k.json",
+      "count": 15,
+      "expected_count": 15,
+      "median_seconds": 15.792076457999997,
+      "usable_comparison": false
+    },
+    {
+      "variant": "merged",
+      "workload": "$SCRATCH/requests/len1k.json",
+      "count": 15,
+      "expected_count": 15,
+      "median_seconds": 1.0861859999999979,
+      "usable_comparison": false
+    },
+    {
+      "variant": "merged",
+      "workload": "$SCRATCH/requests/len4k.json",
+      "count": 15,
+      "expected_count": 15,
+      "median_seconds": 3.5540060409999796,
+      "usable_comparison": false
+    },
+    {
+      "variant": "merged",
+      "workload": "$SCRATCH/requests/len16k.json",
+      "count": 15,
+      "expected_count": 15,
+      "median_seconds": 15.905986583999947,
+      "usable_comparison": false
+    },
+    {
+      "variant": "ollama0402",
+      "workload": "$SCRATCH/requests/len1k.json",
+      "count": 15,
+      "expected_count": 15,
+      "median_seconds": 1.1344589169999608,
+      "usable_comparison": false
+    },
+    {
+      "variant": "ollama0402",
+      "workload": "$SCRATCH/requests/len4k.json",
+      "count": 15,
+      "expected_count": 15,
+      "median_seconds": 3.6134179999999105,
+      "usable_comparison": false
+    },
+    {
+      "variant": "ollama0402",
+      "workload": "$SCRATCH/requests/len16k.json",
+      "count": 15,
+      "expected_count": 15,
+      "median_seconds": 14.942776625000079,
+      "usable_comparison": false
+    }
+  ],
+  "monitor_error": null,
+  "diagnostic_only": true,
+  "note": "Medians exclude warmups and rejected samples. No quality verdict or tail-latency claim."
+}

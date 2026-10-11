@@ -1,0 +1,8 @@
+{
+  "elapsed_seconds": 10.028501791,
+  "units": "raw accumulatedGPUTime counter; attribution diagnostic only",
+  "WindowServer_counter_delta": 6578769042,
+  "other_clients_counter_delta": 185266709,
+  "total_positive_delta": 6764035751,
+  "note": "Measured before model inference. These are raw registry counters, not a supported power or frequency metric."
+}

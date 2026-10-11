@@ -1,0 +1,761 @@
+{
+  "note": "Rounded log values; run time is request processing minus the execution-lock wait, not GPU-only time.",
+  "requests": [
+    {
+      "log": "server-r0-baseline.log",
+      "tokens": 1082,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 544,
+      "cached": false
+    },
+    {
+      "log": "server-r0-baseline.log",
+      "tokens": 1083,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 479,
+      "cached": false
+    },
+    {
+      "log": "server-r0-baseline.log",
+      "tokens": 1081,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 606,
+      "cached": false
+    },
+    {
+      "log": "server-r0-baseline.log",
+      "tokens": 1078,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 526,
+      "cached": false
+    },
+    {
+      "log": "server-r0-baseline.log",
+      "tokens": 1081,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 537,
+      "cached": false
+    },
+    {
+      "log": "server-r0-baseline.log",
+      "tokens": 1082,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 579,
+      "cached": false
+    },
+    {
+      "log": "server-r0-baseline.log",
+      "tokens": 3921,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1835,
+      "cached": false
+    },
+    {
+      "log": "server-r0-baseline.log",
+      "tokens": 3918,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1949,
+      "cached": false
+    },
+    {
+      "log": "server-r0-baseline.log",
+      "tokens": 3916,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1747,
+      "cached": false
+    },
+    {
+      "log": "server-r0-baseline.log",
+      "tokens": 3918,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1739,
+      "cached": false
+    },
+    {
+      "log": "server-r0-baseline.log",
+      "tokens": 3917,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1877,
+      "cached": false
+    },
+    {
+      "log": "server-r0-baseline.log",
+      "tokens": 3916,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1942,
+      "cached": false
+    },
+    {
+      "log": "server-r0-baseline.log",
+      "tokens": 15511,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 8131,
+      "cached": false
+    },
+    {
+      "log": "server-r0-baseline.log",
+      "tokens": 15512,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 8363,
+      "cached": false
+    },
+    {
+      "log": "server-r0-baseline.log",
+      "tokens": 15512,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 8386,
+      "cached": false
+    },
+    {
+      "log": "server-r0-baseline.log",
+      "tokens": 15510,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 8645,
+      "cached": false
+    },
+    {
+      "log": "server-r0-baseline.log",
+      "tokens": 15512,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 8867,
+      "cached": false
+    },
+    {
+      "log": "server-r0-baseline.log",
+      "tokens": 15508,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 9213,
+      "cached": false
+    },
+    {
+      "log": "server-r1-baseline.log",
+      "tokens": 1081,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 782,
+      "cached": false
+    },
+    {
+      "log": "server-r1-baseline.log",
+      "tokens": 1078,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1554,
+      "cached": false
+    },
+    {
+      "log": "server-r1-baseline.log",
+      "tokens": 1082,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1184,
+      "cached": false
+    },
+    {
+      "log": "server-r1-baseline.log",
+      "tokens": 1079,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1170,
+      "cached": false
+    },
+    {
+      "log": "server-r1-baseline.log",
+      "tokens": 1083,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1238,
+      "cached": false
+    },
+    {
+      "log": "server-r1-baseline.log",
+      "tokens": 1081,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1205,
+      "cached": false
+    },
+    {
+      "log": "server-r1-baseline.log",
+      "tokens": 3921,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3864,
+      "cached": false
+    },
+    {
+      "log": "server-r1-baseline.log",
+      "tokens": 3918,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3866,
+      "cached": false
+    },
+    {
+      "log": "server-r1-baseline.log",
+      "tokens": 3916,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3855,
+      "cached": false
+    },
+    {
+      "log": "server-r1-baseline.log",
+      "tokens": 3918,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3760,
+      "cached": false
+    },
+    {
+      "log": "server-r1-baseline.log",
+      "tokens": 3917,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 4086,
+      "cached": false
+    },
+    {
+      "log": "server-r1-baseline.log",
+      "tokens": 3914,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3723,
+      "cached": false
+    },
+    {
+      "log": "server-r1-baseline.log",
+      "tokens": 15509,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 15942,
+      "cached": false
+    },
+    {
+      "log": "server-r1-baseline.log",
+      "tokens": 15512,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 16246,
+      "cached": false
+    },
+    {
+      "log": "server-r1-baseline.log",
+      "tokens": 15512,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 15802,
+      "cached": false
+    },
+    {
+      "log": "server-r1-baseline.log",
+      "tokens": 15511,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 16847,
+      "cached": false
+    },
+    {
+      "log": "server-r1-baseline.log",
+      "tokens": 15512,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 16106,
+      "cached": false
+    },
+    {
+      "log": "server-r1-baseline.log",
+      "tokens": 15509,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 15917,
+      "cached": false
+    },
+    {
+      "log": "server-r1-merged.log",
+      "tokens": 1081,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 651,
+      "cached": false
+    },
+    {
+      "log": "server-r1-merged.log",
+      "tokens": 1078,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1015,
+      "cached": false
+    },
+    {
+      "log": "server-r1-merged.log",
+      "tokens": 1082,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1099,
+      "cached": false
+    },
+    {
+      "log": "server-r1-merged.log",
+      "tokens": 1079,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1120,
+      "cached": false
+    },
+    {
+      "log": "server-r1-merged.log",
+      "tokens": 1083,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1142,
+      "cached": false
+    },
+    {
+      "log": "server-r1-merged.log",
+      "tokens": 1081,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1123,
+      "cached": false
+    },
+    {
+      "log": "server-r1-merged.log",
+      "tokens": 3921,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3511,
+      "cached": false
+    },
+    {
+      "log": "server-r1-merged.log",
+      "tokens": 3918,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3458,
+      "cached": false
+    },
+    {
+      "log": "server-r1-merged.log",
+      "tokens": 3916,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3654,
+      "cached": false
+    },
+    {
+      "log": "server-r1-merged.log",
+      "tokens": 3918,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3508,
+      "cached": false
+    },
+    {
+      "log": "server-r1-merged.log",
+      "tokens": 3917,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3553,
+      "cached": false
+    },
+    {
+      "log": "server-r1-merged.log",
+      "tokens": 3914,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3914,
+      "cached": false
+    },
+    {
+      "log": "server-r1-merged.log",
+      "tokens": 15509,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 15763,
+      "cached": false
+    },
+    {
+      "log": "server-r1-merged.log",
+      "tokens": 15512,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 17251,
+      "cached": false
+    },
+    {
+      "log": "server-r1-merged.log",
+      "tokens": 15512,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 19365,
+      "cached": false
+    },
+    {
+      "log": "server-r1-merged.log",
+      "tokens": 15511,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 18283,
+      "cached": false
+    },
+    {
+      "log": "server-r1-merged.log",
+      "tokens": 15512,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 18199,
+      "cached": false
+    },
+    {
+      "log": "server-r1-merged.log",
+      "tokens": 15509,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 16900,
+      "cached": false
+    },
+    {
+      "log": "server-r2-merged.log",
+      "tokens": 1079,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 911,
+      "cached": false
+    },
+    {
+      "log": "server-r2-merged.log",
+      "tokens": 1081,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1319,
+      "cached": false
+    },
+    {
+      "log": "server-r2-merged.log",
+      "tokens": 1079,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1163,
+      "cached": false
+    },
+    {
+      "log": "server-r2-merged.log",
+      "tokens": 1079,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1093,
+      "cached": false
+    },
+    {
+      "log": "server-r2-merged.log",
+      "tokens": 1083,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1086,
+      "cached": false
+    },
+    {
+      "log": "server-r2-merged.log",
+      "tokens": 1079,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1071,
+      "cached": false
+    },
+    {
+      "log": "server-r2-merged.log",
+      "tokens": 3916,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3639,
+      "cached": false
+    },
+    {
+      "log": "server-r2-merged.log",
+      "tokens": 3919,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3871,
+      "cached": false
+    },
+    {
+      "log": "server-r2-merged.log",
+      "tokens": 3917,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3645,
+      "cached": false
+    },
+    {
+      "log": "server-r2-merged.log",
+      "tokens": 3917,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3640,
+      "cached": false
+    },
+    {
+      "log": "server-r2-merged.log",
+      "tokens": 3917,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3909,
+      "cached": false
+    },
+    {
+      "log": "server-r2-merged.log",
+      "tokens": 3917,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3584,
+      "cached": false
+    },
+    {
+      "log": "server-r2-merged.log",
+      "tokens": 15512,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 15951,
+      "cached": false
+    },
+    {
+      "log": "server-r2-merged.log",
+      "tokens": 15511,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 15532,
+      "cached": false
+    },
+    {
+      "log": "server-r2-merged.log",
+      "tokens": 15513,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 15959,
+      "cached": false
+    },
+    {
+      "log": "server-r2-merged.log",
+      "tokens": 15512,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 15905,
+      "cached": false
+    },
+    {
+      "log": "server-r2-merged.log",
+      "tokens": 15510,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 16114,
+      "cached": false
+    },
+    {
+      "log": "server-r2-merged.log",
+      "tokens": 15513,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 15599,
+      "cached": false
+    },
+    {
+      "log": "server-r2-baseline.log",
+      "tokens": 1079,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 661,
+      "cached": false
+    },
+    {
+      "log": "server-r2-baseline.log",
+      "tokens": 1081,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1206,
+      "cached": false
+    },
+    {
+      "log": "server-r2-baseline.log",
+      "tokens": 1079,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1291,
+      "cached": false
+    },
+    {
+      "log": "server-r2-baseline.log",
+      "tokens": 1079,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1218,
+      "cached": false
+    },
+    {
+      "log": "server-r2-baseline.log",
+      "tokens": 1083,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1117,
+      "cached": false
+    },
+    {
+      "log": "server-r2-baseline.log",
+      "tokens": 1079,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 1055,
+      "cached": false
+    },
+    {
+      "log": "server-r2-baseline.log",
+      "tokens": 3916,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3647,
+      "cached": false
+    },
+    {
+      "log": "server-r2-baseline.log",
+      "tokens": 3919,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3927,
+      "cached": false
+    },
+    {
+      "log": "server-r2-baseline.log",
+      "tokens": 3917,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3637,
+      "cached": false
+    },
+    {
+      "log": "server-r2-baseline.log",
+      "tokens": 3917,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3546,
+      "cached": false
+    },
+    {
+      "log": "server-r2-baseline.log",
+      "tokens": 3917,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3811,
+      "cached": false
+    },
+    {
+      "log": "server-r2-baseline.log",
+      "tokens": 3917,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 3574,
+      "cached": false
+    },
+    {
+      "log": "server-r2-baseline.log",
+      "tokens": 15512,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 15886,
+      "cached": false
+    },
+    {
+      "log": "server-r2-baseline.log",
+      "tokens": 15511,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 15791,
+      "cached": false
+    },
+    {
+      "log": "server-r2-baseline.log",
+      "tokens": 15513,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 15578,
+      "cached": false
+    },
+    {
+      "log": "server-r2-baseline.log",
+      "tokens": 15512,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 15964,
+      "cached": false
+    },
+    {
+      "log": "server-r2-baseline.log",
+      "tokens": 15510,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 15682,
+      "cached": false
+    },
+    {
+      "log": "server-r2-baseline.log",
+      "tokens": 15513,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 16175,
+      "cached": false
+    },
+    {
+      "log": "server-r0-merged.log",
+      "tokens": 1082,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 596,
+      "cached": false
+    },
+    {
+      "log": "server-r0-merged.log",
+      "tokens": 1083,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 749,
+      "cached": false
+    },
+    {
+      "log": "server-r0-merged.log",
+      "tokens": 1081,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 796,
+      "cached": false
+    },
+    {
+      "log": "server-r0-merged.log",
+      "tokens": 1078,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 742,
+      "cached": false
+    },
+    {
+      "log": "server-r0-merged.log",
+      "tokens": 1081,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 730,
+      "cached": false
+    },
+    {
+      "log": "server-r0-merged.log",
+      "tokens": 1082,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 732,
+      "cached": false
+    },
+    {
+      "log": "server-r0-merged.log",
+      "tokens": 3921,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 2518,
+      "cached": false
+    },
+    {
+      "log": "server-r0-merged.log",
+      "tokens": 3918,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 2523,
+      "cached": false
+    },
+    {
+      "log": "server-r0-merged.log",
+      "tokens": 3916,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 2661,
+      "cached": false
+    },
+    {
+      "log": "server-r0-merged.log",
+      "tokens": 3918,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 2576,
+      "cached": false
+    },
+    {
+      "log": "server-r0-merged.log",
+      "tokens": 3917,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 2584,
+      "cached": false
+    },
+    {
+      "log": "server-r0-merged.log",
+      "tokens": 3916,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 2860,
+      "cached": false
+    },
+    {
+      "log": "server-r0-merged.log",
+      "tokens": 15511,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 12207,
+      "cached": false
+    },
+    {
+      "log": "server-r0-merged.log",
+      "tokens": 15512,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 13136,
+      "cached": false
+    },
+    {
+      "log": "server-r0-merged.log",
+      "tokens": 15512,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 14874,
+      "cached": false
+    },
+    {
+      "log": "server-r0-merged.log",
+      "tokens": 15510,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 15394,
+      "cached": false
+    },
+    {
+      "log": "server-r0-merged.log",
+      "tokens": 15512,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 15677,
+      "cached": false
+    },
+    {
+      "log": "server-r0-merged.log",
+      "tokens": 15508,
+      "wait_ms_rounded": 0,
+      "run_ms_rounded": 15288,
+      "cached": false
+    }
+  ]
+}

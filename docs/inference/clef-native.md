@@ -712,6 +712,12 @@ same hour, with and without the Clef calibration map.
 
 ## M3 status (2026-10-10, in progress)
 
+The [October 10 Mac performance audit](../audits/2026-10-10-clef-mac-performance/README.md)
+records the later paired comparison, numerical checks, partial configuration
+sweep, and preparation incident. Those measurements include desktop GPU
+contention and do not pass the idle-Mac gate. The tested runtime patch remains
+an experiment; this audit changes no production runtime default.
+
 The Metal lane exists and its kernels are checked. It has not yet run the
 model. Issue: [#11196](https://github.com/OpenAgentsInc/openagents/issues/11196).
 
