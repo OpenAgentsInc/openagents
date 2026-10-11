@@ -87,6 +87,52 @@ list-price `cost_usd` for the agent, plus the Jev decision call.
 
 ### #11233, #11226, #11234: **not started**
 
+## Status at 2026-10-11 10:15 UTC
+
+Later attempts. A total is `unknown` when any of its turns reported no cost:
+a stopped turn reports none, and the total is never a partial sum.
+
+| Issue | Attempt | Task | Outcome | Agent cost | Decision cost | Tokens in / out |
+| --- | --- | --- | --- | --- | --- | --- |
+| #11228 | 2 | `ed3e775a2832` | Stopped by me at 22:3x. Its fix turns had found nothing in the code to fix: every failure was `main`'s stale `tree.json`, the full disk, or the 1,200 s gate deadline. Kept on `coder/stranded-ed3e775a` | unknown (3 turns, one stopped) | $0.0018 | 1,641,287 / 9,242 |
+| #11228 | 3 | none | `not_started`: restoring the stranded branch hit a `tree.json` conflict | $0 | none | none |
+| #11228 | 4 | `7c8bf190b5d4` | Green, then `main` moved +27 and the re-check failed to link (disk 100% full). Kept on `coder/stranded-7c8bf190` | $1.230 | $0.0004 | 809,780 / 5,070 |
+| #11228 | queue x4 | none | Bounced four times: the sign-in tests fail inside the gate's `bwrap` boundary on plain `main` too; ALSA was missing; `microcoder` broke on `main` for a while. The queue's re-check doesn't excuse failures `main` already has. Filed **#11300** | none | none | none |
+| #11228 | manual | none | **Landed `bdb85cec36`** (09:38 UTC). Then the #11250 follow-up plus default-engine rows **landed `b51cee9d22`** (09:58). Full `openagents-web` and `openagents-cli` suites were green on `oa-dev-env-1` before each push. Issue closed, board Done | none (no agent) | none | none |
+| #11242 | 3 | `92e74345c592` | Stopped by me. Stuck on the 1,200 s gate deadline with the old binary. Kept on `coder/stranded-92e74345` | unknown (3 turns, one stopped) | $0.0016 | 2,810,750 / 19,756 |
+| #11242 | 4 | `890ad2e9f2a4` | `failed`: "No coding agent is available right now" (the Claude plan was busy). Kept on `coder/stranded-890ad2e9` | unknown | $0.0017 | 2,064,505 / 10,737 |
+
+**Not landed:** #11242. Its change is on `coder/stranded-890ad2e9`; I did not
+pick it up again tonight, as the coordinator asked.
+
+**#11228 deploy.** Staging runs `b51cee9d22` (web image
+`sha256:f49d4c11…2e9f`, smoke 92 passed / 0 failed / 2 skipped).
+
+Checked signed in on staging with the test account:
+- `/settings/agents` shows run rows with `#N` titles, stage lines, cost, Stop
+  and Message, plus the landing row, with GitHub links for the issue and the
+  commit.
+- `GET /v1/agents`, which the phone reads, returns the same rows.
+
+Production waits for the owner (no production deploys tonight). The approval
+request is on #11228.
+
+**Replay verdicts.** #11243: verified. #11228 has none yet. It needs
+`traces.py capture --landed bdb85cec36,b51cee9d22 --issue 11228` on a host
+whose gate can run the sign-in tests (#11300).
+
+**Loop fixes landed tonight:**
+- `edcc8e2c99`: the gate deadline override, and the integrator's PATH.
+- `f6dc405efc`: ALSA and udev headers on the image, and the integrator's
+  3,600 s deadline in the unit.
+- On `oa-dev-env-1` itself: the disk grown to 500 GB, then cleaned (a build
+  slot had reached 144 GB against its 25 GB cap).
+
+**Filed:**
+- #11248: landing livelock.
+- #11300: the queue bounces every `openagents-web` change.
+- #11250: richer rows, since landed by another agent.
+
 ## Environment cost
 
 <!-- filled at the end -->
