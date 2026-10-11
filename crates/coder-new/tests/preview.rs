@@ -79,8 +79,11 @@ fn conversation_and_tiny_terminals_render() {
             .all(|line| line.trim().is_empty())
     );
     assert_eq!(composer_rules(&rendered).len(), 2);
+    // Tab switches to flash only with an OpenRouter key; without one it says so.
     key(&mut live, KeyCode::Tab);
-    assert_eq!(screen(&mut live, 110, 36), rendered);
+    let after = screen(&mut live, 110, 36);
+    assert!(after.contains("flash needs an OpenRouter API key"));
+    assert!(after.contains(" auto "));
 }
 
 #[test]
@@ -677,7 +680,12 @@ fn header_and_rail_keep_compact_spacing_above_the_bottom_margin() {
             assert!(header.trim().is_empty());
             let bottom = composer_rules(&rendered)[1].0;
             assert!(rendered.lines().nth(bottom).unwrap().contains("openagents"));
-            assert!(rendered.lines().nth(bottom + 1).unwrap().trim().is_empty());
+            assert!(
+                rendered
+                    .lines()
+                    .nth(bottom + 1)
+                    .is_none_or(|line| line.trim().is_empty())
+            );
         } else {
             assert!(header.trim_end().ends_with("openagents / main"));
         }
@@ -1037,7 +1045,12 @@ fn repository_context_stays_below_multiline_input_and_truncates_on_resize() {
         let rendered = screen(&mut app, width, 24);
         let bottom = composer_rules(&rendered)[1].0;
         let context = rendered.lines().nth(bottom).unwrap();
-        assert!(rendered.lines().nth(bottom + 1).unwrap().trim().is_empty());
+        assert!(
+            rendered
+                .lines()
+                .nth(bottom + 1)
+                .is_none_or(|line| line.trim().is_empty())
+        );
         if width >= 44 {
             assert!(
                 context.contains("/workspace/my-project (feature/layout)"),

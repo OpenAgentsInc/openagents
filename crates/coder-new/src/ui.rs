@@ -200,11 +200,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         app.composer_selected && !app.draft.text.is_empty(),
         // OpenAgents picks the model here, so the rail says `auto` and never
         // the name of whichever vendor answered.
-        if app.mode == Mode::Live && !(app.plugins.enabled && app.plugins.key_configured) {
-            Some(crate::models::AUTO)
-        } else {
-            None
-        },
+        rail_mode(app),
     );
     let path = repository_rail(app);
     let composer_area = Rect {
@@ -520,6 +516,22 @@ fn repository_rail(app: &App) -> String {
         text.push_str(&format!(" · {}", agent_fleet::dollars(cost)));
     }
     text
+}
+
+/// The mode the input's rail names: `flash` (Tab), else `auto` unless the
+/// person picked a model of their own.
+fn rail_mode(app: &App) -> Option<&'static str> {
+    if app.mode != Mode::Live {
+        return None;
+    }
+    let keyed = app.plugins.enabled && app.plugins.key_configured;
+    if keyed && app.plugins.model == crate::models::FLASH {
+        Some(crate::models::FLASH_LABEL)
+    } else if !keyed || !crate::models::pinned(&app.plugins.model) {
+        Some(crate::models::AUTO)
+    } else {
+        None
+    }
 }
 
 fn context_text(app: &App) -> String {
@@ -1401,10 +1413,10 @@ fn composer_view(
             if offset == 0 { left } else { None },
             Some((
                 &text,
-                Style::default().fg(if contribution.text == crate::models::AUTO {
-                    t::ACCENT_SKILL
-                } else {
-                    t::GRAY
+                Style::default().fg(match contribution.text.as_str() {
+                    crate::models::AUTO => t::ACCENT_SKILL,
+                    crate::models::FLASH_LABEL => t::ACCENT_MODEL,
+                    _ => t::GRAY,
                 }),
             )),
         );
@@ -1568,6 +1580,41 @@ mod export_notice_tests {
             assert_eq!(buffer[(0, height - 1)].symbol(), "└");
             assert_eq!(buffer[(width - 1, height - 1)].symbol(), "┘");
         }
+    }
+
+    #[test]
+    fn tab_switches_between_auto_and_flash_only_with_an_openrouter_key() {
+        use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+        let tab = || Event::Key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        let rail = |app: &mut App| {
+            let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
+            terminal.draw(|frame| render(frame, app)).unwrap();
+            let buffer = terminal.backend().buffer();
+            (0..20)
+                .map(|y| (0..60).map(|x| buffer[(x, y)].symbol()).collect::<String>())
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let mut app = App::default();
+        app.mode = Mode::Live;
+        app.plugins.model = crate::models::AUTO.into();
+        app.handle(tab());
+        assert_eq!(app.plugins.model, crate::models::AUTO);
+        assert!(
+            app.notice
+                .as_deref()
+                .is_some_and(|notice| notice.contains("OpenRouter API key"))
+        );
+
+        app.plugins.key_configured = true;
+        app.handle(tab());
+        assert_eq!(app.plugins.model, crate::models::FLASH);
+        assert!(app.plugins.enabled);
+        let shown = rail(&mut app);
+        assert!(shown.contains("flash") && !shown.contains("deepseek"));
+        app.handle(tab());
+        assert_eq!(app.plugins.model, crate::models::AUTO);
+        assert!(rail(&mut app).contains("auto"));
     }
 
     #[test]

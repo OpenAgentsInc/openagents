@@ -270,6 +270,19 @@ impl Plugins {
         true
     }
 
+    /// Switch to `id` with the current options, turning the OpenRouter
+    /// plugin on when `on` (Tab's auto/flash switch).
+    pub fn switch_model(&mut self, id: &str, on: bool) -> bool {
+        let enabled = self.enabled || on;
+        let options = self.options.clone();
+        if self.live && !self.persist(enabled, id, &options, self.live_key.clone()) {
+            return false;
+        }
+        self.enabled = enabled;
+        self.model = id.into();
+        true
+    }
+
     pub fn set_model(&mut self, model: &Model, options: GenerationOptions) -> bool {
         if model.plugin != OPENROUTER_PLUGIN
             || !options.valid()

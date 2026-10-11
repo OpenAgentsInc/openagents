@@ -887,6 +887,22 @@ impl App {
         }
     }
 
+    /// Tab: `auto` (OpenAgents picks) or `flash` (DeepSeek V4.1 Flash on
+    /// the person's OpenRouter key, offered only when that key is saved).
+    fn toggle_flash(&mut self) {
+        if self.plugins.model == models::FLASH {
+            self.plugins.switch_model(models::AUTO, false);
+            self.notice = None;
+        } else if !self.plugins.key_configured {
+            self.notice = Some("flash needs an OpenRouter API key. Add one with F2.".into());
+        } else if self.plugins.switch_model(models::FLASH, true) {
+            self.notice = None;
+        }
+        if let Some(error) = self.plugins.storage_error.clone() {
+            self.notice = Some(error);
+        }
+    }
+
     fn command(&mut self, command: slash::Command) {
         self.record_prompt();
         if command == slash::Command::Resume {
@@ -2011,6 +2027,7 @@ impl App {
                 }
                 match key.code {
                     KeyCode::F(2) => self.open_plugins(),
+                    KeyCode::Tab if self.mode == Mode::Live => self.toggle_flash(),
                     KeyCode::Up | KeyCode::Down => self.composer_arrow(key.code == KeyCode::Up),
                     KeyCode::Esc => {
                         if self.footer_focused {
