@@ -138,6 +138,10 @@ fn head_within(text: &str, limit: usize) -> usize {
 /// Whether the file tools of one call stay inside `root`: the path each
 /// names resolves under it, symlinks included, and a Glob pattern names
 /// nothing above it.
+///
+/// The check runs when the call is admitted, before the tool executes, so a
+/// symlink swapped in between the two is not caught. The window is small and
+/// the CLI sandbox is the wider guard; this is the mode's own boundary.
 fn stays_in(root: &Path, tool: &str, input: &Value) -> bool {
     let Ok(root) = root.canonicalize() else {
         return false;
@@ -294,6 +298,36 @@ pub async fn run_with_solver(
     .await
 }
 
+/// The options and the tool names one turn may use.
+///
+/// `allowed_tools` is deliberately left unset. Claude Code's `--allowedTools`
+/// pre-approves the tool for every call, so the CLI never sends
+/// `can_use_tool` and the permission handler below never runs; a tool named
+/// there could read or write any path. `--tools` alone narrows the offered
+/// tools without pre-approving them, so every call still comes to the
+/// handler, which is what holds the checkout boundary.
+fn turn_options(
+    cwd: &Path,
+    tools: &[&str],
+    server: Option<claude_agent_sdk::SdkMcpServer>,
+) -> (QueryOptions, Vec<String>) {
+    let mut options = QueryOptions::new()
+        .cwd(cwd)
+        .model(MODEL)
+        .permission_mode(PermissionMode::Default)
+        .no_session_persistence();
+    let mut allowed: Vec<String> = tools.iter().map(|t| (*t).to_owned()).collect();
+    options.tools = Some(ToolsConfig::Names(allowed.clone()));
+    if let Some(server) = server {
+        allowed.extend(server.allowed_tool_names());
+        options = options.sdk_mcp_server(server);
+    }
+    options.setting_sources = Some(Vec::new());
+    options.strict_mcp_config = true;
+    options.env_remove = REMOVED_ENV.iter().map(|name| (*name).to_owned()).collect();
+    (options, allowed)
+}
+
 /// Delegation events a tool server sends while the turn waits on it, and
 /// the flag that stops what it runs when the turn ends.
 struct Delegations {
@@ -319,21 +353,7 @@ async fn run_inner(
     if !crate::approval::tools_allowed() {
         return Err("This host refuses every tool, so microclaude cannot work here.".into());
     }
-    let mut options = QueryOptions::new()
-        .cwd(cwd)
-        .model(MODEL)
-        .permission_mode(PermissionMode::Default)
-        .no_session_persistence();
-    let mut allowed: Vec<String> = tools.iter().map(|t| (*t).to_owned()).collect();
-    options.tools = Some(ToolsConfig::Names(allowed.clone()));
-    if let Some(server) = server {
-        allowed.extend(server.allowed_tool_names());
-        options = options.sdk_mcp_server(server);
-    }
-    options.allowed_tools = Some(allowed.clone());
-    options.setting_sources = Some(Vec::new());
-    options.strict_mcp_config = true;
-    options.env_remove = REMOVED_ENV.iter().map(|name| (*name).to_owned()).collect();
+    let (options, allowed) = turn_options(cwd, tools, server);
     let root = cwd.to_owned();
     let handler = claude_agent_sdk::permission_handler(move |request| {
         let decision = if !allowed.iter().any(|name| *name == request.tool_name) {
@@ -600,6 +620,27 @@ mod tests {
         }
     }
 
+    /// `--allowedTools` pre-approves a tool for every call and stops the CLI
+    /// sending `can_use_tool`, so the checkout boundary in the handler would
+    /// never run. A turn must narrow its tools with `--tools` alone.
+    #[test]
+    fn a_turn_never_pre_approves_a_tool() {
+        let (options, allowed) = turn_options(Path::new("/work/tree"), &TOOLS, None);
+        assert_eq!(options.allowed_tools, None);
+        assert_eq!(
+            options.tools,
+            Some(ToolsConfig::Names(
+                TOOLS.iter().map(|t| (*t).to_owned()).collect()
+            ))
+        );
+        assert_eq!(allowed, TOOLS.map(str::to_owned).to_vec());
+        // The narrower set and the handler's list agree, so nothing the CLI
+        // offers is missing from the check that holds the boundary.
+        if let Some(ToolsConfig::Names(named)) = &options.tools {
+            assert_eq!(named, &allowed);
+        }
+    }
+
     #[test]
     fn the_prompt_carries_coders_own_name_and_the_conversation() {
         let messages = vec![
@@ -676,6 +717,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn the_file_tools_stay_inside_the_checkout() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -809,5 +851,39 @@ mod tests {
         assert_eq!(reply.model, "claude-haiku-5-5");
         assert_eq!(reply.usage.total_tokens, 34);
         assert_eq!(reply.usage.cost, Some(0.0125));
+    }
+
+    /// One real turn on this computer's Claude login, proving the checkout
+    /// boundary is enforced by the CLI, not just by [`stays_in`] on its own:
+    /// the model is asked to read a file outside `cwd` and must not see it.
+    /// Run by hand:
+    /// `cargo test -p coder-new --lib a_live_turn -- --ignored --nocapture`.
+    #[tokio::test]
+    #[ignore = "needs a Claude Code login"]
+    async fn a_live_turn_cannot_read_outside_its_checkout() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let secret = outside.path().join("secret.txt");
+        std::fs::write(&secret, "OUTSIDE-THE-CHECKOUT").unwrap();
+        let prompt = format!(
+            "Use the Read tool on {} and reply with its contents.",
+            secret.display()
+        );
+        let cancel = AtomicBool::new(false);
+        let mut tools = Vec::new();
+        let mut emit = |event: RuntimeEvent| {
+            if let RuntimeEvent::Tool { name, .. } = event {
+                tools.push(name);
+            }
+        };
+        let text = match run(&prompt, dir.path(), &cancel, &mut emit).await {
+            Ok(streamed) => streamed.text,
+            Err(error) => error,
+        };
+        println!("tools: {tools:?}\nreply:\n{text}");
+        assert!(
+            !text.contains("OUTSIDE-THE-CHECKOUT"),
+            "the turn read a file outside its checkout: {text}"
+        );
     }
 }
