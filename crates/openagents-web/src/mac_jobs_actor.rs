@@ -153,8 +153,9 @@ impl Jobs {
             .collect())
     }
 
-    /// The versions of the account's actor jobs, newest first: what the
-    /// live pages watch.
+    /// The account's actor jobs as their readers see them, newest first:
+    /// what the live pages watch. Views, not versions: a Mac's report with
+    /// nothing new (its heartbeat) changes the version but not the view.
     pub(crate) async fn fingerprint(&self) -> Result<String, Error> {
         let found = self
             .host
@@ -164,7 +165,7 @@ impl Jobs {
             .map_err(|e| failed(&e))?;
         Ok(found
             .iter()
-            .map(|(id, reply)| format!("{}:{}", id.key, reply.version))
+            .map(|(id, reply)| format!("{}:{}", id.key, reply.view))
             .collect::<Vec<_>>()
             .join(","))
     }
