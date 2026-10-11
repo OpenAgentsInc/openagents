@@ -288,11 +288,45 @@ class VertexEmbedder:
         return [p["embeddings"]["values"] for p in d["predictions"]]
 
 
+# Vertex text-embedding-005's list price per 1,000 input characters (the OpenRouter
+# fallback costs less), the estimate FILEFIND_SPEND_CAP_USD is held to.
+EMBED_USD_PER_KCHAR = 0.000025
+
+
+class SpendCapReached(RuntimeError):
+    pass
+
+
+def charge_embedding(chars):
+    """With FILEFIND_SPEND_CAP_USD set, record this call's estimated spend in
+    FILEFIND_SPEND_LEDGER (shared by every process of one job) and refuse a call
+    that would take the total past the cap (#11312's scheduled retrain)."""
+    cap = os.environ.get("FILEFIND_SPEND_CAP_USD")
+    if not cap:
+        return
+    ledger = os.environ.get("FILEFIND_SPEND_LEDGER") or os.path.expanduser("~/.cache/openagents/filefind/spend.jsonl")
+    usd = chars / 1000 * EMBED_USD_PER_KCHAR
+    spent = 0.0
+    if os.path.exists(ledger):
+        with open(ledger) as f:
+            for line in f:
+                try:
+                    spent += float(json.loads(line).get("usd") or 0)
+                except ValueError:
+                    continue
+    if spent + usd > float(cap):
+        raise SpendCapReached(f"embedding spend cap: ${spent:.2f} spent, this call ${usd:.2f}, cap ${float(cap):.2f}")
+    os.makedirs(os.path.dirname(os.path.abspath(ledger)), exist_ok=True)
+    with open(ledger, "a") as f:
+        f.write(json.dumps({"t": time.time(), "what": "embeddings", "chars": chars, "usd": round(usd, 6)}) + "\n")
+
+
 def embed(texts, key, batch=128, workers=6, dims=DIMS, task="RETRIEVAL_DOCUMENT"):
     """Unit vectors (float32, dims) for texts, in order. `key` is a VertexEmbedder or an
     OpenRouter key; `task` is Vertex's task type (issue text is RETRIEVAL_QUERY, both when
     indexed and when asked, so a replayed issue and a live one embed alike)."""
     vertex = isinstance(key, VertexEmbedder)
+    charge_embedding(sum(len(t or " ") for t in texts))
 
     def one(chunk):
         body = json.dumps({"model": EMBED_MODEL, "input": chunk, "dimensions": dims}).encode()

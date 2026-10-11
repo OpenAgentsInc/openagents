@@ -252,17 +252,25 @@ def stage_report(cases, feats):
         print(f"  {k}: {1000*statistics.median(v):.0f} / {1000*v[int(0.9*(len(v)-1))]:.0f}")
 
 
-def rows_of(cases, feats, names=None):
-    rows, y, grp = [], [], []
+def rows_of(cases, feats, names=None, weights=False):
+    """Feature rows and labels; with weights, also each row's label weight: 1 for
+    the fix's files and negatives, a learning-loop case's `extra` weight for a file
+    a run needed outside its briefing (#11312, scripts/work/learn.py)."""
+    rows, y, grp, w = [], [], [], []
     for c in cases:
         r = feats[c["issue"]]
         hand = set(r["hand"])
+        extra = c.get("extra") or {}
         for p, f in r["feats"].items():
             rows.append(f)
-            y.append(1.0 if p in hand else 0.0)
+            pos = p in hand or p in extra
+            y.append(1.0 if pos else 0.0)
+            w.append(1.0 if p in hand or not pos else float(extra[p]))
             grp.append(c["issue"])
     if names is None:
         names = sorted({k for f in rows for k in f})
+    if weights:
+        return ff.vectorize(rows, names), np.array(y), names, np.array(w)
     return ff.vectorize(rows, names), np.array(y), names
 
 
@@ -270,11 +278,11 @@ def fit(cases, feats, a, names=None):
     if names is None and a.drop:
         allnames = sorted({k for c in cases for f in feats[c["issue"]]["feats"].values() for k in f})
         names = [n for n in allnames if not any(n.startswith(d) for d in a.drop.split(","))]
-    X, y, names = rows_of(cases, feats, names)
+    X, y, names, w = rows_of(cases, feats, names, weights=True)
     # keep every positive and a random share of the negatives, reweighted
     rng = np.random.default_rng(7)
     keep = (y > 0) | (rng.random(len(y)) < a.neg_keep)
-    sw = np.where(y > 0, 1.0, 1.0 / a.neg_keep)[keep]
+    sw = (np.where(y > 0, 1.0, 1.0 / a.neg_keep) * w)[keep]
     m = ff.fit_gbdt(X[keep], y[keep], trees=a.trees, sample_weight=sw)
     m["features"] = names
     return m
@@ -339,7 +347,9 @@ def save_model(a, train, m1, m2):
              **({"cards": cards_card(a)} if CARDS else {}),
              "trained_on": {"cases": len(train), "issues": f"#{min(issues)}..#{max(issues)}",
                             "issue_list": issues, "dataset": dataset_digest,
-                            "includes_eval": bool(a.all)}}
+                            "includes_eval": bool(a.all),
+                            "learning_loop": {"production_cases": sum(c.get("kind") == "production" for c in train),
+                                              "extra_labels": sum(len(c.get("extra") or {}) for c in train)}}}
     tmp = f"{a.model}.{os.getpid()}.tmp"
     with open(tmp, "w") as f:
         json.dump(model, f)

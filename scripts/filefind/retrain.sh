@@ -13,6 +13,10 @@
 #    held-out eval cases under the gate's frozen plan (ranker_gate.py) and writes
 #    WORK_DIR/compare-<digest>.json.
 #
+# With FILEFIND_EXAMPLES=LEDGER (#11312) step 2 also folds the accepted briefed runs of a
+# `scripts/work/learn.py collect` ledger into the dataset (learn.py examples). With
+# FILEFIND_SPEND_CAP_USD the embedding calls stop at that estimated spend.
+#
 # With FILEFIND_CARDS=1 (#11249) steps 4-5 also run the card stage: every replayed blob
 # is carded (cards.py; the vocabulary must exist), every issue gets its Jev profile,
 # and the distilled tower is trained on the file-relevance-v1 training partition
@@ -35,6 +39,13 @@ python3 "$ff" feedback --repo "$root"
 gh issue list --state closed --limit 20000 --json number,title,body,closedAt,createdAt > "$work/closed-issues.json"
 python3 -I "$root/scripts/bench/file-finding-dataset.py" --repo "$root" --rev HEAD \
   --issues "$work/closed-issues.json" --multi --max-hand 40 --out "$work/dataset.json"
+if [ -n "${FILEFIND_EXAMPLES:-}" ]; then
+  # The learning loop (#11312): accepted briefed runs from the ledger
+  # (scripts/work/learn.py) fold into the dataset as positives and half-weight
+  # misses; the held-out window is never touched.
+  python3 "$root/scripts/work/learn.py" examples --repo "$root" --ledger "$FILEFIND_EXAMPLES" \
+    --dataset "$work/dataset.json" --out "$work/dataset.json" > "$work/examples.json"
+fi
 python3 "$bench" prepare --repo "$root" --dataset "$work/dataset.json" --work "$work"
 cards=()
 if [ "${FILEFIND_CARDS:-0}" = 1 ]; then

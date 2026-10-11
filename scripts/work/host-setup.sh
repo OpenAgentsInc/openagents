@@ -51,7 +51,31 @@ TimeoutStopSec=60
 [Install]
 WantedBy=multi-user.target
 UNIT
+# The learning loop (#11312) reads this host's run records from GCS: upload
+# them daily (scripts/work/learn-job/upload-ledger.sh).
+sudo -n tee /etc/systemd/system/oa-work-learn-upload.service > /dev/null <<UNIT
+[Unit]
+Description=Upload this work host's briefed-run records to the learning loop (#11312)
+
+[Service]
+Type=oneshot
+User=$USER
+WorkingDirectory=$here
+ExecStart=/bin/bash $here/scripts/work/learn-job/upload-ledger.sh
+UNIT
+sudo -n tee /etc/systemd/system/oa-work-learn-upload.timer > /dev/null <<UNIT
+[Unit]
+Description=Daily upload of briefed-run records (#11312)
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 UTC
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target
+UNIT
 sudo -n systemctl daemon-reload
-sudo -n systemctl enable --now oa-work-worker.service
+sudo -n systemctl enable --now oa-work-worker.service oa-work-learn-upload.timer
 sudo -n systemctl restart oa-work-worker.service
 echo "work host ready: $(hostname), taking runs from $sites"
