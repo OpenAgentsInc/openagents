@@ -6,7 +6,8 @@
 //! and only the bunny, its food and power-ups in colour; see `outline` and
 //! `look`), reads
 //! the keyboard and swipes, shows a small HUD, and keeps the win count in
-//! the browser's storage.
+//! the browser's storage. A short tutorial (`tutorial`) opens on the first
+//! run and from each How to play button.
 //!
 //! It draws with WebGL2 directly rather than through `verse-pbr`: that
 //! renderer brings wgpu, naga, glTF and the physics crate, several
@@ -23,6 +24,7 @@ pub mod look;
 pub mod meadow;
 pub mod mesh;
 pub mod scene;
+pub mod tutorial;
 pub mod zone;
 
 #[cfg(target_arch = "wasm32")]

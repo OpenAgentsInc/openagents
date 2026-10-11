@@ -408,6 +408,160 @@ async fn the_blue_rush_studio_page_serves_its_own_brand() {
     assert!(upstream::owned(pages::BLUE_RUSH));
 }
 
+/// The homepage leads to the Grow Little Bunny guide from its nav, its
+/// hero, and the game's card, beside the game itself.
+#[tokio::test]
+async fn the_blue_rush_homepage_links_the_how_to_play_guide() {
+    let root = tempfile::tempdir().unwrap();
+    let site = router(config(root.path().join("tasks")));
+    let (status, _, html) = get_with(site, pages::BLUE_RUSH, LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    let guide = format!("href=\"{}\"", pages::BLUE_RUSH_GUIDE);
+    assert_eq!(html.matches(&guide).count(), 3, "nav, hero and card");
+    let card = html
+        .split("br-card br-card-featured")
+        .nth(1)
+        .and_then(|rest| rest.split("</article>").next())
+        .expect("the featured card");
+    assert!(card.contains("Grow Little Bunny"));
+    assert!(card.contains(&guide), "{card}");
+    assert!(card.contains("href=\"/games/grow-little-bunny\""), "{card}");
+    assert!(card.contains(">How to play</a>"), "{card}");
+}
+
+/// `/studios/blue-rush/grow-little-bunny/how-to-play`: the written guide,
+/// in the studio's own brand, with screenshots from the game, no script,
+/// and every link it has answering.
+#[tokio::test]
+async fn the_blue_rush_guide_teaches_grow_little_bunny() {
+    let root = tempfile::tempdir().unwrap();
+    let site = router(config(root.path().join("tasks")));
+    let (status, headers, html) = get_with(site.clone(), pages::BLUE_RUSH_GUIDE, LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.to_ascii_lowercase().starts_with("<!doctype html>"));
+    assert!(html.contains("<h1 class=\"br-guide-title\">How to play Grow Little Bunny</h1>"));
+    assert!(html.contains(&format!(
+        "href=\"{}bluerush.css?v=",
+        pages::BLUE_RUSH_ASSETS
+    )));
+    assert!(!html.contains("oa-wordmark"), "not the OpenAgents shell");
+    for words in [
+        "Walk into a hole",
+        "Swipe up",
+        "Backspace",
+        "golden carrots",
+        "Gentle mode",
+        "Giant",
+        "Eat the very last bite",
+    ] {
+        assert!(html.contains(words), "{words}");
+    }
+    assert!(html.contains("href=\"/games/grow-little-bunny\""));
+    let lower = html.to_ascii_lowercase();
+    assert_eq!(scripts(&lower), 0, "the guide runs no script");
+    assert!(!lower.contains("<style"));
+    assert!(!lower.contains(" style="));
+    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    assert!(policy.starts_with("default-src 'none'"), "{policy}");
+    assert!(!policy.contains("script-src"), "{policy}");
+    let shots: Vec<&str> = html
+        .split("src=\"")
+        .skip(1)
+        .map(|rest| &rest[..rest.find('"').unwrap()])
+        .filter(|src| src.contains("/bunny-"))
+        .collect();
+    assert!(shots.len() >= 5, "{shots:?}");
+    for src in &shots {
+        let (status, headers, body) = get_bytes(site.clone(), src).await;
+        assert_eq!(status, StatusCode::OK, "{src}");
+        assert_eq!(headers[header::CONTENT_TYPE], "image/jpeg", "{src}");
+        assert!(body.starts_with(&[0xff, 0xd8]), "a JPEG: {src}");
+        assert!(body.len() < 80_000, "small: {src}");
+    }
+    for target in html.split("href=\"").skip(1) {
+        let target = &target[..target.find('"').unwrap()];
+        if target.starts_with('/') && !target.starts_with("/games/") {
+            let path = target.split(['?', '#']).next().unwrap();
+            let (status, _) = get(site.clone(), path).await;
+            assert_eq!(status, StatusCode::OK, "links {target}");
+        }
+    }
+    assert!(upstream::owned(pages::BLUE_RUSH_GUIDE));
+}
+
+/// On the studio's own domain the site is Blue Rush Studios: `/` is its
+/// homepage, the guide and the files sit at the root, the game is there,
+/// and nothing else of openagents.com answers.
+#[tokio::test]
+async fn the_studio_domain_serves_the_blue_rush_site_at_its_root() {
+    let root = tempfile::tempdir().unwrap();
+    let site = router(config(root.path().join("tasks")));
+    for host in pages::STUDIO_HOSTS {
+        let (status, headers, html) = get_with(site.clone(), "/", host).await;
+        assert_eq!(status, StatusCode::OK, "{host}");
+        assert!(html.contains("<title>Blue Rush Studios</title>"), "{host}");
+        assert!(html.contains("href=\"/grow-little-bunny/how-to-play\""));
+        assert!(html.contains("href=\"/static/bluerush.css?v="));
+        assert!(html.contains("src=\"/static/bluerush.js?v="));
+        assert!(html.contains("href=\"https://openagents.com/terms\""));
+        assert!(!html.contains("/studios/blue-rush"), "root paths only");
+        let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+        assert!(policy.contains("script-src 'self'"), "{policy}");
+    }
+    let host = pages::STUDIO_HOSTS[0];
+    let (status, _, guide) = get_with(site.clone(), "/grow-little-bunny/how-to-play", host).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(guide.contains("How to play Grow Little Bunny"));
+    assert!(guide.contains("src=\"/static/bunny-run.jpg\""));
+    for target in guide.split("href=\"").skip(1) {
+        let target = &target[..target.find('"').unwrap()];
+        if target.starts_with('/') {
+            let path = target.split(['?', '#']).next().unwrap();
+            let (status, _, _) = get_with(site.clone(), path, host).await;
+            assert_eq!(status, StatusCode::OK, "links {target}");
+        }
+    }
+    for (path, kind) in [
+        ("/static/bluerush.css", "text/css"),
+        ("/static/bunny-run.jpg", "image/jpeg"),
+        ("/studios/blue-rush", "text/html"),
+        ("/games/grow-little-bunny", "text/html"),
+        ("/favicon.svg", "image/svg"),
+    ] {
+        let (status, headers, _) = get_with(site.clone(), path, host).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        let content_type = headers[header::CONTENT_TYPE].to_str().unwrap();
+        assert!(content_type.starts_with(kind), "{path}: {content_type}");
+    }
+    for path in ["/login", "/chat", "/terms", "/static/nope.js", "/app"] {
+        let (status, _, _) = get_with(site.clone(), path, host).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}");
+    }
+}
+
+/// The studio's marker is only ever set by the server: one a browser sends
+/// to openagents.com is dropped, and the page keeps openagents.com's paths.
+#[tokio::test]
+async fn a_sent_studio_marker_changes_nothing() {
+    let root = tempfile::tempdir().unwrap();
+    let response = router(config(root.path().join("tasks")))
+        .oneshot(
+            Request::builder()
+                .uri(pages::BLUE_RUSH)
+                .header(header::HOST, LOCAL)
+                .header("x-openagents-studio", "1")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1 << 24).await.unwrap();
+    let html = String::from_utf8_lossy(&body);
+    assert!(html.contains(&format!("href=\"{}\"", pages::BLUE_RUSH_GUIDE)));
+    assert!(!html.contains("https://openagents.com/terms"));
+}
+
 #[tokio::test]
 async fn the_legal_pages_carry_the_published_text() {
     let root = tempfile::tempdir().unwrap();

@@ -1254,6 +1254,25 @@ Deviations, and why:
   spot takes seconds.
 - **No emotes** (thump, binky, ear flop, wave) yet.
 
+### The tutorial and the guide
+
+[#11340](https://github.com/OpenAgentsInc/openagents/issues/11340):
+
+- **In the game** (`crates/bunny-web/src/tutorial.rs`, words in
+  `copy.rs`): six cards (welcome, the meadow, the controls, eating and
+  growing, the farmer, clearing a garden), in the game's own card style,
+  with keyboard or touch wording to match the device. They open by
+  themselves on the first run, unless the page was opened straight into a
+  garden; Skip or the last card marks them seen in the browser's storage
+  (`bunny.tutorial.v1`, apart from the save). How to play on the title
+  card, the pause card and the Burrow, the `?` button in the meadow, or the
+  `?` key open them again. Each card links the written guide.
+- **The written guide**: `/studios/blue-rush/grow-little-bunny/how-to-play`
+  on the Blue Rush Studios site, with screenshots from the real game
+  (`crates/openagents-web/static/bluerush/bunny-*.jpg`), linked from the
+  studio's homepage (nav, hero and the game's card). On the studio's own
+  domain it is `/grow-little-bunny/how-to-play`.
+
 ### What's next
 
 - B7 (phone and browser): the browser build is playable on phones now

@@ -33,6 +33,13 @@ pub enum Action {
     /// Leave the game for the site's home page.
     Home,
     Close,
+    /// Open the tutorial at its first step.
+    Tour,
+    TourNext,
+    TourBack,
+    /// Close the tutorial, as seen: `true` from its last step's main
+    /// button, `false` from Skip.
+    TourEnd(bool),
 }
 
 /// A card's contents.
@@ -42,6 +49,8 @@ pub struct Card {
     pub swatch: Option<u32>,
     pub lines: Vec<String>,
     pub hint: Option<String>,
+    /// A link under the buttons: its words and where it goes.
+    pub link: Option<(String, String)>,
     /// Buttons: label, action, and whether it is the main one.
     pub buttons: Vec<(String, Action, bool)>,
 }
@@ -113,12 +122,14 @@ pub struct Hud {
     arrow_mark: HtmlElement,
     pause: HtmlElement,
     turn_back: HtmlElement,
+    help: HtmlElement,
     card: HtmlElement,
     card_title: HtmlElement,
     card_swatch: HtmlElement,
     card_lines: HtmlElement,
     card_hint: HtmlElement,
     card_buttons: HtmlElement,
+    card_link: HtmlElement,
     shown_card: Option<Card>,
     meadow: HtmlElement,
     meadow_swatch: HtmlElement,
@@ -346,6 +357,25 @@ impl Hud {
             ],
         );
         on_click(&turn_back, &actions, Action::TurnBack);
+        // Top right in the meadow: How to play.
+        let help = element(document, "button");
+        help.set_text_content(Some("?"));
+        help.set_attribute("aria-label", copy::HOW_TO_PLAY).ok();
+        help.set_attribute("title", copy::HOW_TO_PLAY).ok();
+        css(&help, &BUTTON);
+        css(
+            &help,
+            &[
+                ("position", "absolute"),
+                ("top", "calc(12px + env(safe-area-inset-top))"),
+                ("right", "calc(12px + env(safe-area-inset-right))"),
+                ("width", "48px"),
+                ("height", "48px"),
+                ("font-size", "22px"),
+                ("background", "rgba(244, 244, 242, 0.92)"),
+            ],
+        );
+        on_click(&help, &actions, Action::Tour);
         // The farmer's arrow.
         let arrow = element(document, "div");
         css(
@@ -456,12 +486,31 @@ impl Hud {
                 ("margin-top", "14px"),
             ],
         );
+        let card_link = element(document, "a");
+        css(
+            &card_link,
+            &[
+                ("display", "inline-block"),
+                ("margin-top", "14px"),
+                ("font-size", "15px"),
+                ("font-weight", "650"),
+                ("color", INK),
+            ],
+        );
+        // A tap on the link mustn't start a swipe.
+        let stop = Closure::<dyn FnMut(web_sys::Event)>::new(|event: web_sys::Event| {
+            event.stop_propagation();
+        });
+        let _ = card_link
+            .add_event_listener_with_callback("pointerdown", stop.as_ref().unchecked_ref());
+        stop.forget();
         for child in [
             &card_title,
             &card_swatch,
             &card_lines,
             &card_hint,
             &card_buttons,
+            &card_link,
         ] {
             let _ = card.append_child(child);
         }
@@ -507,6 +556,7 @@ impl Hud {
         );
         let _ = root.append_child(&meadow);
         let _ = root.append_child(&prompt);
+        let _ = root.append_child(&help);
         let _ = root.append_child(&game);
         let _ = root.append_child(&card);
         let _ = parent.append_child(&root);
@@ -525,12 +575,14 @@ impl Hud {
             arrow_mark,
             pause,
             turn_back,
+            help,
             card,
             card_title,
             card_swatch,
             card_lines,
             card_hint,
             card_buttons,
+            card_link,
             shown_card: Some(Card::default()),
             meadow,
             meadow_swatch,
@@ -540,6 +592,7 @@ impl Hud {
             touch,
         };
         show(&hud.turn_back, touch);
+        show(&hud.help, false);
         hud
     }
 
@@ -563,6 +616,11 @@ impl Hud {
                 self.prompt.set_text_content(Some(text));
             }
         }
+    }
+
+    /// Shows the meadow's How to play button or hides it.
+    pub fn show_help(&self, visible: bool) {
+        show(&self.help, visible);
     }
 
     /// Shows the in-garden HUD or hides it.
@@ -732,6 +790,11 @@ impl Hud {
                 );
                 on_click(&button, &self.actions, *action);
                 let _ = self.card_buttons.append_child(&button);
+            }
+            show(&self.card_link, content.link.is_some());
+            if let Some((words, href)) = &content.link {
+                self.card_link.set_text_content(Some(words));
+                let _ = self.card_link.set_attribute("href", href);
             }
             // Focus the main button so Enter and Space press it.
             if let Some(first) = self

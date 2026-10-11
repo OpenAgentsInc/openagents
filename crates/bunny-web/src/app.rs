@@ -21,6 +21,7 @@ use crate::kit::{self, Piece};
 use crate::look::{Options, Tier};
 use crate::meadow::{self, Spot, Walker};
 use crate::mesh::{Mesh, STRIDE, rgb};
+use crate::tutorial::{self, Tour};
 use crate::{copy, scene};
 use bunny_rules::progress::Progress;
 
@@ -365,6 +366,8 @@ struct App {
     walker: Walker,
     /// The meadow spot whose card is open.
     panel: Option<Spot>,
+    /// The tutorial, while it is open; its card shows over any other.
+    tour: Option<Tour>,
     /// Keys held for walking in the meadow: forward, back, left, right.
     held: [bool; 4],
     /// A drag on a touch screen, as a stick: start and current point.
@@ -414,6 +417,21 @@ fn load_progress(window: &Window) -> Progress {
         .and_then(|storage| storage.get_item(SAVE_KEY).ok().flatten())
         .map(|text| Progress::decode(&text))
         .unwrap_or_default()
+}
+
+/// What the browser stored about the tutorial, if anything.
+fn tutorial_seen(window: &Window) -> Option<String> {
+    window
+        .local_storage()
+        .ok()
+        .flatten()
+        .and_then(|storage| storage.get_item(tutorial::SEEN_KEY).ok().flatten())
+}
+
+fn mark_tutorial_seen(window: &Window) {
+    if let Ok(Some(storage)) = window.local_storage() {
+        let _ = storage.set_item(tutorial::SEEN_KEY, tutorial::SEEN);
+    }
 }
 
 fn save_progress(window: &Window, progress: &Progress) {
@@ -512,6 +530,30 @@ impl App {
             Action::Home => {
                 let _ = self.window.location().set_href("/");
             }
+            Action::Tour => {
+                if self.phase == Phase::Playing {
+                    self.phase = Phase::Paused;
+                }
+                self.held = [false; 4];
+                self.drag = None;
+                self.tour = Some(Tour::new());
+            }
+            Action::TourNext => {
+                if let Some(tour) = self.tour {
+                    self.tour = Some(tour.next().unwrap_or(tour));
+                }
+            }
+            Action::TourBack => self.tour = self.tour.map(Tour::back),
+            Action::TourEnd(finished) => {
+                if self.tour.take().is_some() {
+                    mark_tutorial_seen(&self.window);
+                    if finished && self.phase == Phase::Title {
+                        self.act(Action::Meadow);
+                    } else if self.phase == Phase::Meadow {
+                        let _ = self.canvas.focus();
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -533,7 +575,7 @@ impl App {
     /// Walks the meadow for `dt` seconds and enters what the bunny walks
     /// into.
     fn walk(&mut self, dt: f32) {
-        if self.panel.is_some() {
+        if self.panel.is_some() || self.tour.is_some() {
             return;
         }
         let [up, down, left, right] = self.held;
@@ -581,6 +623,7 @@ impl App {
                     swatch: Some(self.fur()),
                     lines,
                     hint: None,
+                    link: None,
                     buttons: vec![
                         (copy::gentle(p.gentle), Action::ToggleGentle, false),
                         (
@@ -588,6 +631,7 @@ impl App {
                             Action::ToggleContrast,
                             false,
                         ),
+                        (copy::HOW_TO_PLAY.to_owned(), Action::Tour, false),
                         (copy::CLOSE.to_owned(), Action::Close, true),
                     ],
                 }
@@ -607,6 +651,7 @@ impl App {
                     swatch: None,
                     lines,
                     hint: None,
+                    link: None,
                     buttons: vec![(copy::CLOSE.to_owned(), Action::Close, true)],
                 }
             }
@@ -615,13 +660,47 @@ impl App {
                 swatch: None,
                 lines: Vec::new(),
                 hint: None,
+                link: None,
                 buttons: vec![(copy::HOME.to_owned(), Action::Home, false), close],
             },
         }
     }
 
+    /// The tutorial's card at `tour`'s step.
+    fn tour_card(&self, tour: Tour) -> Card {
+        let (title, lines) = tour.words(self.coarse);
+        let mut buttons = Vec::new();
+        if tour.is_last() {
+            let done = if self.phase == Phase::Title {
+                copy::TOUR_DONE
+            } else {
+                copy::TOUR_CLOSE
+            };
+            buttons.push((done.to_owned(), Action::TourEnd(true), true));
+        } else {
+            buttons.push((copy::TOUR_NEXT.to_owned(), Action::TourNext, true));
+        }
+        if !tour.is_first() {
+            buttons.push((copy::TOUR_BACK.to_owned(), Action::TourBack, false));
+        }
+        if !tour.is_last() {
+            buttons.push((copy::TOUR_SKIP.to_owned(), Action::TourEnd(false), false));
+        }
+        Card {
+            title: title.to_owned(),
+            swatch: None,
+            lines: lines.iter().map(|line| (*line).to_owned()).collect(),
+            hint: Some(copy::tour_step_line(tour.step + 1, tutorial::STEPS)),
+            link: Some((copy::GUIDE.to_owned(), tutorial::GUIDE.to_owned())),
+            buttons,
+        }
+    }
+
     /// The card for the current phase, if one shows.
     fn card(&self) -> Option<Card> {
+        if let Some(tour) = self.tour {
+            return Some(self.tour_card(tour));
+        }
         let garden_buttons = || {
             (1..=level::COUNT)
                 .map(|n| {
@@ -643,7 +722,11 @@ impl App {
                     swatch: (self.progress.wins > 0).then(|| self.fur()),
                     lines: vec![copy::GOAL.to_owned(), self.meadow_hint().to_owned()],
                     hint: Some(self.hint().to_owned()),
-                    buttons: vec![(copy::PLAY.to_owned(), Action::Meadow, true)],
+                    link: None,
+                    buttons: vec![
+                        (copy::PLAY.to_owned(), Action::Meadow, true),
+                        (copy::HOW_TO_PLAY.to_owned(), Action::Tour, false),
+                    ],
                 })
             }
             Phase::Paused => Some(Card {
@@ -651,10 +734,12 @@ impl App {
                 swatch: None,
                 lines: vec![self.game.garden.name.clone()],
                 hint: Some(self.hint().to_owned()),
+                link: None,
                 buttons: vec![
                     (copy::RESUME.to_owned(), Action::Resume, true),
                     (copy::RESTART.to_owned(), Action::Restart, false),
                     (copy::LEAVE.to_owned(), Action::Leave, false),
+                    (copy::HOW_TO_PLAY.to_owned(), Action::Tour, false),
                 ],
             }),
             Phase::Over => {
@@ -684,6 +769,7 @@ impl App {
                     swatch: won.then(|| self.fur()),
                     lines,
                     hint: None,
+                    link: None,
                     buttons,
                 })
             }
@@ -765,6 +851,12 @@ impl App {
             prompt.as_deref(),
         );
         self.hud.show_run_buttons(self.phase == Phase::Playing);
+        self.hud.show_help(
+            self.phase == Phase::Meadow
+                && self.panel.is_none()
+                && self.tour.is_none()
+                && !self.options.kit,
+        );
         if playing {
             let elements = crate::zone::BunnyGame::hud_of(&self.game);
             let (w, h) = (
@@ -1788,6 +1880,7 @@ pub fn start() {
         progress,
         walker: Walker::default(),
         panel: None,
+        tour: None,
         held: [false; 4],
         drag: None,
         queue: Vec::new(),
@@ -1817,6 +1910,13 @@ pub fn start() {
     if app.options.kit {
         show(&app.hud.root, false);
     }
+    if tutorial::opens_by_itself(
+        tutorial_seen(&window).as_deref(),
+        app.options.garden.is_some(),
+        app.options.kit,
+    ) {
+        app.tour = Some(Tour::new());
+    }
     let app = Rc::new(RefCell::new(app));
 
     {
@@ -1824,6 +1924,24 @@ pub fn start() {
         listen::<KeyboardEvent>(window.as_ref(), "keydown", move |event| {
             let key = event.key();
             let mut app = app.borrow_mut();
+            if app.tour.is_some() {
+                let action = match key.as_str() {
+                    "Escape" => Some(Action::TourEnd(false)),
+                    "ArrowRight" => Some(Action::TourNext),
+                    "ArrowLeft" => Some(Action::TourBack),
+                    _ => None,
+                };
+                if let Some(action) = action {
+                    event.prevent_default();
+                    app.act(action);
+                }
+                return;
+            }
+            if key == "?" && !matches!(app.phase, Phase::Playing | Phase::Over) {
+                event.prevent_default();
+                app.act(Action::Tour);
+                return;
+            }
             if app.phase == Phase::Playing
                 && let Some(input) = input_for(&key)
             {

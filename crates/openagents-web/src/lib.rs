@@ -85,7 +85,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::Request;
-use axum::http::{HeaderValue, StatusCode, header};
+use axum::http::{HeaderValue, StatusCode, Uri, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -281,6 +281,11 @@ pub struct Config {
     /// may reach the public pages (for example `openagents.com`). The task
     /// browser answers only the local hosts.
     pub public_hosts: Vec<String>,
+    /// The Blue Rush Studios hosts (`--studio-host`, defaulting to
+    /// [`pages::STUDIO_HOSTS`]): their `/` is the studio's homepage, and
+    /// they answer only the studio's pages and the game
+    /// (`pages/blue_rush.rs`).
+    pub studio_hosts: Vec<String>,
     pub backend: Arc<dyn Backend>,
     /// Where the homepage terminal's questions are answered ([`ask`]).
     pub chat: Arc<dyn ask::Chat>,
@@ -408,6 +413,10 @@ impl Config {
             customer: None,
             port: 4300,
             public_hosts: Vec::new(),
+            studio_hosts: pages::STUDIO_HOSTS
+                .iter()
+                .map(|h| (*h).to_owned())
+                .collect(),
             backend: Arc::new(Development),
             chat: Arc::new(ask::Worker::default()),
             ask_salt: secp256k1::rand::random(),
@@ -463,6 +472,7 @@ pub fn router(config: Config) -> Router {
     let hosts = Hosts {
         port: app.config.port,
         public: app.config.public_hosts.clone(),
+        studio: app.config.studio_hosts.clone(),
         upstream: app.config.upstream.clone(),
         api: app.config.inference.is_some(),
     };
@@ -549,15 +559,40 @@ pub fn router(config: Config) -> Router {
     // Before routing, so a request for Markdown reaches the page's twin.
     Router::new()
         .fallback_service(site)
-        .layer(middleware::from_fn(move |request: Request, next: Next| {
-            let host = request
-                .headers()
-                .get(header::HOST)
-                .and_then(|value| value.to_str().ok())
-                .unwrap_or_default();
-            let ours = site_hosts.local(host) || site_hosts.public.iter().any(|p| p == host);
-            agent_ready::negotiate(ours, request, next)
-        }))
+        .layer(middleware::from_fn(
+            move |mut request: Request, next: Next| {
+                let host = request
+                    .headers()
+                    .get(header::HOST)
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or_default()
+                    .to_owned();
+                // Only this layer marks a request as the studio's.
+                request.headers_mut().remove(pages::STUDIO_HEADER);
+                if site_hosts.studio.contains(&host) {
+                    studio_request(&mut request);
+                }
+                let ours = site_hosts.local(&host) || site_hosts.public.contains(&host);
+                agent_ready::negotiate(ours, request, next)
+            },
+        ))
+}
+
+/// A request on a Blue Rush Studios host: answered at the studio's path
+/// for it ([`pages::studio_path`]) and marked so the pages link the root
+/// paths.
+fn studio_request(request: &mut Request) {
+    let path = pages::studio_path(request.uri().path());
+    let target = match request.uri().query() {
+        Some(query) => format!("{path}?{query}"),
+        None => path,
+    };
+    if let Ok(uri) = target.parse::<Uri>() {
+        *request.uri_mut() = uri;
+    }
+    request
+        .headers_mut()
+        .insert(pages::STUDIO_HEADER, HeaderValue::from_static("1"));
 }
 
 /// Set on a request that came to the local address (see [`guard`]); a
@@ -574,6 +609,9 @@ pub(crate) fn local_request(headers: &axum::http::HeaderMap) -> bool {
 struct Hosts {
     port: u16,
     public: Vec<String>,
+    /// The Blue Rush Studios hosts, public like `public` but mapped to the
+    /// studio's pages before routing.
+    studio: Vec<String>,
     upstream: Option<Arc<upstream::Upstream>>,
     /// `/api/v1/` goes to the inference gateway.
     api: bool,
@@ -649,7 +687,7 @@ async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
         || path.starts_with("/chat/")
         || path == "/ask"
         || path.starts_with("/composer/");
-    let public = hosts.public.contains(&host);
+    let public = hosts.public.contains(&host) || hosts.studio.contains(&host);
     let cloud_cookie = request
         .headers()
         .get_all(header::COOKIE)
