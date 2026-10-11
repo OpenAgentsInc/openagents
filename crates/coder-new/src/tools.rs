@@ -19,7 +19,7 @@ pub fn spinner(phase: u8) -> &'static str {
 
 pub(crate) fn outcome_header(running: bool, failed: bool, phase: u8) -> (&'static str, Color) {
     if running {
-        (spinner(phase), t::ACCENT_SKILL)
+        (spinner(phase), t::COMMAND)
     } else if failed {
         ("×", t::DIFF_DELETE_FG)
     } else {
@@ -346,7 +346,7 @@ pub fn plugin_lines(call: &PluginCall, phase: u8) -> Vec<Line<'static>> {
     match call.state {
         ToolState::Complete => result.push(styled(call.output, t::GRAY_BRIGHT)),
         ToolState::Running => result.extend([
-            styled("Running", t::ACCENT_SKILL),
+            styled("Running", t::COMMAND),
             styled(format!(" · {}", call.output), t::GRAY_BRIGHT),
         ]),
         ToolState::Failed => result.extend([
@@ -359,14 +359,12 @@ pub fn plugin_lines(call: &PluginCall, phase: u8) -> Vec<Line<'static>> {
 
 pub fn delegation_lines(agent: &DemoAgent, phase: u8, width: u16) -> Vec<Line<'static>> {
     let narrow = width < 32;
-    let mut header = vec![styled("● ", pulse(t::ACCENT_DELEGATE, phase))];
+    let mut header = vec![styled("● ", outcome_header(true, false, phase).1)];
     if !narrow {
         header.extend([
             Span::styled(
                 "Delegate",
-                Style::default()
-                    .fg(t::ACCENT_MODEL)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(t::COMMAND).add_modifier(Modifier::BOLD),
             ),
             Span::raw(" "),
         ]);
@@ -386,7 +384,7 @@ pub fn delegation_lines(agent: &DemoAgent, phase: u8, width: u16) -> Vec<Line<'s
         ]);
     }
     detail.extend([
-        styled("Running", t::ACCENT_MODEL),
+        styled("Running", t::COMMAND),
         styled(tokens, t::GRAY_BRIGHT),
     ]);
     vec![Line::from(header), Line::from(detail)]
@@ -394,17 +392,4 @@ pub fn delegation_lines(agent: &DemoAgent, phase: u8, width: u16) -> Vec<Line<'s
 
 fn styled(text: impl Into<String>, color: Color) -> Span<'static> {
     Span::styled(text.into(), Style::default().fg(color))
-}
-
-fn pulse(color: Color, phase: u8) -> Color {
-    const LEVELS: [u16; 8] = [100, 85, 65, 45, 35, 55, 75, 95];
-    let level = LEVELS[usize::from(phase) % LEVELS.len()];
-    match color {
-        Color::Rgb(red, green, blue) => Color::Rgb(
-            (u16::from(red) * level / 100) as u8,
-            (u16::from(green) * level / 100) as u8,
-            (u16::from(blue) * level / 100) as u8,
-        ),
-        color => color,
-    }
 }

@@ -904,7 +904,7 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
             if *running {
                 lines.push(Line::from(vec![
                     span("  ⎿  ", t::GRAY_DIM),
-                    span("Running", t::GRAY_BRIGHT),
+                    span("Running", color),
                 ]));
             } else {
                 if crate::brainstorm::is_tool(name) {
@@ -922,25 +922,13 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
             progress,
             ..
         } => {
+            let (glyph, color) =
+                crate::tools::outcome_header(*running, crate::tools::output_failed(output), phase);
             lines.push(Line::from(vec![
-                span(
-                    format!(
-                        "{} ",
-                        if *running {
-                            crate::tools::spinner(phase)
-                        } else if output.get("error").is_some() {
-                            "×"
-                        } else {
-                            "●"
-                        }
-                    ),
-                    t::ACCENT_DELEGATE,
-                ),
+                span(format!("{glyph} "), color),
                 Span::styled(
                     "Delegate",
-                    Style::default()
-                        .fg(t::ACCENT_MODEL)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(color).add_modifier(Modifier::BOLD),
                 ),
                 span(format!(" {name}"), t::TEXT_PRIMARY),
             ]));
@@ -1277,11 +1265,8 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     if chat.busy {
         tail.extend(wrap_display(
             vec![Line::from(vec![
-                span(
-                    format!("{} ", crate::tools::spinner(phase)),
-                    t::ACCENT_MODEL,
-                ),
-                span("Working", t::GRAY),
+                span(format!("{} ", crate::tools::spinner(phase)), t::COMMAND),
+                span("Working", t::COMMAND),
             ])],
             content,
         ));
@@ -1745,6 +1730,32 @@ mod streaming_tests {
 #[cfg(test)]
 mod run_viewport_tests {
     #[test]
+    fn delegate_label_and_indicator_match_the_outcome() {
+        for (running, output, color) in [
+            (true, serde_json::json!({}), t::COMMAND),
+            (
+                false,
+                serde_json::json!({"error": "Failed"}),
+                t::DIFF_DELETE_FG,
+            ),
+            (false, serde_json::json!({}), t::ACCENT_SUCCESS),
+        ] {
+            let entry = crate::live::Entry::Delegation {
+                id: "test".into(),
+                name: "Coder".into(),
+                task: "Example".into(),
+                running,
+                output,
+                progress: None,
+            };
+            let lines = entry_lines(&entry, 60, 0);
+            for span in &lines[0].spans[..2] {
+                assert_eq!(span.style.fg, Some(color));
+            }
+        }
+    }
+
+    #[test]
     fn all_tool_headers_use_outcome_colors() {
         for name in [
             "Run",
@@ -1757,11 +1768,7 @@ mod run_viewport_tests {
             "example.plugin",
         ] {
             for (running, output, color) in [
-                (
-                    true,
-                    serde_json::json!({"error": "old error"}),
-                    t::ACCENT_SKILL,
-                ),
+                (true, serde_json::json!({"error": "old error"}), t::COMMAND),
                 (
                     false,
                     serde_json::json!({"error": "Failed"}),
@@ -1816,7 +1823,7 @@ mod run_viewport_tests {
             assert_eq!(lines[0].spans[0].style.fg, Some(color));
             assert_eq!(lines[0].spans[1].style.fg, Some(color));
             let running = run_lines(&serde_json::json!({}), &output, true, 60, 0);
-            assert_eq!(running[0].spans[0].style.fg, Some(t::ACCENT_SKILL));
+            assert_eq!(running[0].spans[0].style.fg, Some(t::COMMAND));
             assert_eq!(
                 running[0].spans[0].content,
                 format!("{} ", crate::tools::spinner(0))
