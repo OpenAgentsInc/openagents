@@ -750,7 +750,20 @@ fi
         tokio::spawn(async move {
             let mut last = None;
             for zone in this.cfg.zones.clone() {
-                match this.compute.insert_instance(&zone, bodies(&zone)).await {
+                let mut inserted = this.compute.insert_instance(&zone, bodies(&zone)).await;
+                // A failure while waiting can still have made the VM: never
+                // leave one running that no record holds.
+                if let Err(e) = &inserted
+                    && !e.capacity()
+                    && let Ok(Some(_)) = this
+                        .compute
+                        .get_instance(&zone, &format!("{PREFIX}{suffix}"))
+                        .await
+                {
+                    eprintln!("oa-boat: bx_{suffix}: {e}, but the VM exists; using it");
+                    inserted = Ok(());
+                }
+                match inserted {
                     Ok(()) => {
                         {
                             let mut st = this.st();
@@ -2105,6 +2118,12 @@ wc -c < "$d/err" 2>/dev/null || echo 0
                     self.st().ready.remove(&suffix);
                 }
                 "RUNNING" => {
+                    // A VM this process never made ready (it restarted, or
+                    // a start failed half way) is made ready again, so its
+                    // idle stop applies.
+                    if !self.ready_for(&suffix, &i) && !self.st().preparing.contains(&suffix) {
+                        self.spawn_prepare(suffix.clone(), i.zone.clone(), true);
+                    }
                     let deadline = label_i64(&i, "oa-boat-deadline");
                     let idle = label_i64(&i, "oa-boat-idle");
                     let reason = if deadline > 0 && now > deadline {
