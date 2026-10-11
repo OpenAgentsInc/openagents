@@ -1,6 +1,7 @@
 use coder_new::{
     App, Mode,
     live::{Entry, Update},
+    microclaude,
     models::DEFAULT_MODEL,
     theme, ui,
 };
@@ -175,6 +176,27 @@ fn composer_registration_follows_enablement_and_preserves_input_geometry() {
     assert_eq!(label(&text[top]), "auto");
     assert_eq!(cursor, (8, (top + 3) as u16));
     assert!(text[top + 4].starts_with('└'));
+}
+
+/// microclaude names itself on the same rule, and its answer reads as a
+/// reply rather than an error.
+#[test]
+fn microclaude_names_the_mode_and_answers_in_one_sentence() {
+    let mut app = app();
+    app.set_mode(Mode::Microclaude);
+    app.draft.text = "hello".into();
+    app.draft.cursor = 5;
+    app.submit_live();
+    let (buffer, _) = render(&mut app, 110, 36);
+    let text = rows(&buffer);
+    let top = top_rule(&text).unwrap();
+    assert_eq!(label(&text[top]), microclaude::LABEL);
+    assert!(text.iter().any(|line| line.contains("hello")));
+    let answer = text
+        .iter()
+        .position(|line| line.contains(microclaude::ANSWER))
+        .unwrap();
+    assert_eq!(transcript(&buffer)[answer].trim().chars().next(), Some('●'));
 }
 
 #[test]

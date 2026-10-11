@@ -21,7 +21,7 @@ pub(crate) fn outcome_header(running: bool, failed: bool, phase: u8) -> (&'stati
     if running {
         (spinner(phase), t::GRAY)
     } else if failed {
-        ("×", t::DIFF_DELETE_FG)
+        ("×", t::TOOL_FAILED)
     } else {
         ("●", t::ACCENT_SUCCESS)
     }
@@ -156,8 +156,8 @@ pub fn tool_lines(call: &ToolCall, phase: u8, width: u16) -> Vec<Line<'static>> 
         ])),
         ToolState::Failed => lines.push(Line::from(vec![
             styled("  ⎿  ", t::GRAY_DIM),
-            styled("Failed", t::DIFF_DELETE_FG),
-            styled(format!(" · {}", call.output), t::DIFF_DELETE_FG),
+            styled("Failed", t::TOOL_FAILED),
+            styled(format!(" · {}", call.output), t::TOOL_FAILED),
         ])),
         ToolState::Complete => {
             for (index, output) in call.output.lines().enumerate() {
@@ -247,7 +247,7 @@ pub fn file_tool_lines(
         return lines;
     }
     if failed {
-        lines.push(detail(text("error"), t::DIFF_DELETE_FG));
+        lines.push(detail(text("error"), t::TOOL_FAILED));
         return lines;
     }
     match name {
@@ -370,8 +370,8 @@ pub fn plugin_lines(call: &PluginCall, phase: u8) -> Vec<Line<'static>> {
             styled(format!(" · {}", call.output), t::GRAY_BRIGHT),
         ]),
         ToolState::Failed => result.extend([
-            styled("Failed", t::DIFF_DELETE_FG),
-            styled(format!(" · {}", call.output), t::DIFF_DELETE_FG),
+            styled("Failed", t::TOOL_FAILED),
+            styled(format!(" · {}", call.output), t::TOOL_FAILED),
         ]),
     }
     vec![header, Line::from(result)]

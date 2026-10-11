@@ -18,6 +18,9 @@ pub const TEXT_SECONDARY: Color = rgb(coder_ui::coder_noir::CONTENT);
 pub const GRAY_DIM: Color = rgb(coder_ui::coder_noir::CONTENT_TERTIARY);
 pub const GRAY: Color = rgb(coder_ui::coder_noir::CONTENT_TERTIARY);
 pub const GRAY_BRIGHT: Color = rgb(coder_ui::coder_noir::CONTENT_SECONDARY);
+/// A tool call that failed. Dark on purpose: red is kept for the errors the
+/// person has to know about, not for every command that exits non-zero.
+pub const TOOL_FAILED: Color = GRAY_DIM;
 pub const PROMPT_BORDER_ACTIVE: Color = rgb(coder_ui::coder_noir::CONTENT_SECONDARY);
 pub const ACCENT_MODEL: Color = rgb(coder_ui::coder_noir::ANSI[6]);
 pub const ACCENT_DELEGATE: Color = rgb(coder_ui::coder_noir::ANSI[5]);

@@ -157,6 +157,10 @@ fn run() -> io::Result<()> {
         return io::stdout().write_all(snapshot::svg(&mut app, 110, 36).as_bytes());
     }
     app.interactive_disclosures = true;
+    // The rail must name the right mode on the first frame, so the Claude
+    // account login is read once here, before the terminal starts
+    // (`--snapshot` renders without one, so it never asks).
+    let _ = coder_new::microclaude::available();
     let openagents_root = model_access::store::openagents_dir();
     let update = state
         .clone()

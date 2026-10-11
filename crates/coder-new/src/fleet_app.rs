@@ -87,7 +87,8 @@ impl App {
     }
 
     /// Shows what background agents did since the last frame, and hands
-    /// each finished agent's notice to the chat.
+    /// each finished agent's notice to the chat. This reads the fleet, not
+    /// the transcript, so it runs in every mode.
     pub(crate) fn poll_fleet(&mut self) {
         for (id, event) in self.fleet.drain_events() {
             let Some(row) = self.fleet.get(&id) else {
@@ -188,7 +189,7 @@ impl App {
 
     /// `/agent ENGINE TASK`.
     pub(crate) fn agent_command(&mut self, argument: &str) {
-        if self.mode != Mode::Live {
+        if !matches!(self.mode, Mode::Live | Mode::Microclaude) {
             self.notice = Some("Background agents run in live mode only.".into());
             return;
         }

@@ -694,7 +694,9 @@ fn run_component_has_one_command_one_status_row_and_multiline_preview() {
         assert!(rows[2 + row].contains(text), "{canvas}");
     }
     assert!(!canvas.contains("first"));
-    assert!(canvas.contains("2–6 of 6 · scroll at the left edge"));
+    // The Run box's own scrollbar is its left edge; the wheel grabs it
+    // only there, and scrolls the chat anywhere else.
+    assert!(canvas.contains("2–6 of 6"));
     assert!(!canvas.contains("more lines"));
     assert!(!canvas.contains("value:"));
     for width in [24, 40] {

@@ -41,6 +41,8 @@ mod loops;
 pub mod media;
 pub mod memory;
 mod memory_sync;
+/// The mode that runs turns on this computer's Claude account login.
+pub mod microclaude;
 pub mod model_catalog;
 pub mod models;
 pub mod ops_tool;
@@ -95,10 +97,14 @@ pub enum Screen {
     Appearance,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
     Demo,
     Live,
+    /// Turns run on the Claude Code login this computer holds
+    /// ([`microclaude`]). Offered only where this process found that
+    /// login, because finding it starts `claude auth status`.
+    Microclaude,
 }
 
 impl Default for Mode {
@@ -478,6 +484,12 @@ impl App {
             return;
         }
         self.cancel_request();
+        if mode == Mode::Microclaude {
+            // Nothing ran, so no stopped-reply notice: leave no tool that
+            // looks like it is still running.
+            self.live.notice = None;
+            self.live.stop_tools("microclaude does not run work yet.");
+        }
         if !self.persist_session(true) {
             return;
         }
@@ -637,6 +649,7 @@ impl App {
     }
 
     pub fn apply_update(&mut self, update: live::Update) {
+        // Only Live runs a turn; another mode's updates are ignored.
         if update.id() != self.request_id || self.mode != Mode::Live {
             return;
         }
@@ -911,6 +924,25 @@ impl App {
         if let Some(error) = self.plugins.storage_error.clone() {
             self.notice = Some(error);
         }
+    }
+
+    /// Shift+Tab: `microclaude` (turns on this computer's Claude account
+    /// login) and back to `auto`. Offered only where [`microclaude`] found
+    /// that login in this process.
+    fn toggle_microclaude(&mut self) {
+        if self.mode == Mode::Microclaude {
+            self.set_mode(Mode::Live);
+            return;
+        }
+        if self.mode != Mode::Live {
+            return;
+        }
+        if !crate::microclaude::available() {
+            self.notice = Some(microclaude::NEEDS_LOGIN.into());
+            return;
+        }
+        self.set_mode(Mode::Microclaude);
+        self.notice = None;
     }
 
     fn command(&mut self, command: slash::Command) {
@@ -1255,7 +1287,36 @@ impl App {
         }
     }
 
+    /// The microclaude placeholder: the person's message, then what the
+    /// mode answers until it runs turns of its own. No engine starts and
+    /// no session is written.
+    fn submit_microclaude(&mut self) {
+        if self.draft.text.trim().is_empty() && self.composer.images.is_empty() {
+            return;
+        }
+        self.record_prompt();
+        let text = self.draft.text.clone();
+        self.draft = Draft::default();
+        self.composer = Default::default();
+        self.screen = Screen::Conversation;
+        self.live.entries.push(live::Entry::User(text));
+        self.live.entries.push(live::Entry::Assistant {
+            elapsed_ms: None,
+            text: microclaude::ANSWER.into(),
+            model: None,
+        });
+        self.live.notice = None;
+        self.history.dirty = true;
+        self.scroll_main_to_end();
+    }
+
     pub fn submit_live(&mut self) {
+        // microclaude answers from the host until it runs turns of its own,
+        // so nothing is queued behind an engine that never started.
+        if self.mode == Mode::Microclaude {
+            self.submit_microclaude();
+            return;
+        }
         if self.live.busy
             || self.checking_key
             || self.checking_jev
@@ -1498,7 +1559,7 @@ impl App {
             models::OPENROUTER_PLUGIN,
             &self.plugins.model,
             self.plugins.options.clone(),
-            self.mode == Mode::Live,
+            matches!(self.mode, Mode::Live | Mode::Microclaude),
         ));
     }
 
@@ -2040,6 +2101,9 @@ impl App {
                 match key.code {
                     KeyCode::F(2) => self.open_plugins(),
                     KeyCode::Tab if self.mode == Mode::Live => self.toggle_flash(),
+                    // Shift+Tab steps between Live and microclaude on a
+                    // computer that has a Claude account login.
+                    KeyCode::BackTab => self.toggle_microclaude(),
                     KeyCode::Up | KeyCode::Down => self.composer_arrow(key.code == KeyCode::Up),
                     KeyCode::Esc => {
                         if self.footer_focused {
@@ -2182,7 +2246,7 @@ impl App {
                             self.draft = Draft::default();
                             self.composer = Default::default();
                             self.composer_history.reset();
-                        } else if self.mode == Mode::Live
+                        } else if matches!(self.mode, Mode::Live | Mode::Microclaude)
                             && (!self.draft.text.trim().is_empty()
                                 || !self.composer.images.is_empty())
                         {
@@ -2496,5 +2560,77 @@ mod select_all_tests {
         let mut app = App::default();
         press(&mut app, KeyCode::Char('a'), KeyModifiers::SUPER);
         assert!(!app.composer_selected);
+    }
+}
+
+#[cfg(test)]
+mod microclaude_tests {
+    use super::*;
+
+    /// Entering a mode swaps the composer's draft with that mode's, so the
+    /// message is typed after the switch, as a person would.
+    fn typed(mode: Mode, text: &str) -> App {
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.set_mode(mode);
+        app.draft.text = text.into();
+        app.draft.cursor = text.len();
+        app
+    }
+
+    #[test]
+    fn the_mode_answers_one_sentence_and_starts_no_engine() {
+        let mut app = typed(Mode::Microclaude, "hello");
+        app.submit_live();
+        assert_eq!(
+            app.live.entries,
+            vec![
+                live::Entry::User("hello".into()),
+                live::Entry::Assistant {
+                    elapsed_ms: None,
+                    text: microclaude::ANSWER.into(),
+                    model: None,
+                },
+            ]
+        );
+        // The draft is sent, nothing is busy, and no request left.
+        assert!(app.draft.text.is_empty());
+        assert!(!app.live.busy);
+        assert!(app.request.is_none());
+        assert!(app.notice.is_none());
+    }
+
+    /// The path a person takes: type, press Enter. Microclaude answers with
+    /// its message rather than starting an engine or appending a demo line.
+    #[test]
+    fn enter_answers_and_leaving_the_mode_carries_no_stopped_reply_notice() {
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.set_mode(Mode::Microclaude);
+        for ch in "hello".chars() {
+            app.handle(Event::Key(crossterm::event::KeyEvent::new(
+                KeyCode::Char(ch),
+                KeyModifiers::NONE,
+            )));
+        }
+        app.handle(Event::Key(crossterm::event::KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::NONE,
+        )));
+        assert!(matches!(
+            app.live.entries.as_slice(),
+            [live::Entry::User(text), live::Entry::Assistant { text: answer, .. }]
+                if text == "hello" && answer == microclaude::ANSWER
+        ));
+        assert!(app.messages.is_empty(), "no demo message is appended");
+        app.set_mode(Mode::Live);
+        assert_eq!(app.mode, Mode::Live);
+        assert!(app.live.notice.is_none(), "{:?}", app.live.notice);
+        // An update that arrives after leaving never reaches the chat.
+        app.apply_update(live::Update::Delta {
+            id: app.request_id,
+            text: "late".into(),
+        });
+        assert!(app.live.partial.is_empty());
     }
 }

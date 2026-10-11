@@ -531,12 +531,28 @@ fn bootstrap(context: &Context) -> Result<App, Error> {
 
 fn status(app: &App, context: &Context) -> Value {
     json!({"schema":"openagents.coder.status.v1","cwd":context.cwd,"model":active_model(app),
+        "mode":mode_name(app),
         "provider":if app.plugins.enabled && app.plugins.key_configured {"openrouter-byok"} else {"openagents-gateway"},
         "openrouter_connected":app.plugins.key_configured,"plugins":plugin_list(app),"agents":agent_list(app)})
 }
 
+/// The mode's name: `microclaude` runs turns here rather than through a
+/// model the plugin chose.
+fn mode_name(app: &App) -> &'static str {
+    if app.mode == crate::Mode::Microclaude {
+        crate::microclaude::LABEL
+    } else {
+        "live"
+    }
+}
+
 fn active_model(app: &App) -> String {
-    if app.plugins.enabled && app.plugins.key_configured && models::pinned(&app.plugins.model) {
+    if app.mode == crate::Mode::Microclaude {
+        crate::microclaude::LABEL.into()
+    } else if app.plugins.enabled
+        && app.plugins.key_configured
+        && models::pinned(&app.plugins.model)
+    {
         app.plugins.options.slug(&app.plugins.model)
     } else {
         "auto".into()

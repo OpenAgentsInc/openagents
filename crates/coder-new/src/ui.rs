@@ -439,7 +439,7 @@ pub(crate) fn truncate(text: &str, width: u16) -> String {
 }
 
 fn new_chat_heading(app: &App) -> bool {
-    app.mode == Mode::Live
+    matches!(app.mode, Mode::Live | Mode::Microclaude)
         && app.screen == Screen::Conversation
         && app.selected_agent.is_none()
         && app.live.entries.is_empty()
@@ -537,9 +537,12 @@ fn repository_rail(app: &App) -> String {
     text
 }
 
-/// The mode the input's rail names: `flash` (Tab), else `auto` unless the
-/// person picked a model of their own.
+/// The mode the input's rail names: `flash` (Tab), `microclaude`
+/// (Shift+Tab), else `auto` unless the person picked a model of their own.
 fn rail_mode(app: &App) -> Option<&'static str> {
+    if app.mode == Mode::Microclaude {
+        return Some(crate::microclaude::LABEL);
+    }
     if app.mode != Mode::Live {
         return None;
     }
@@ -656,7 +659,8 @@ fn wrap_display(lines: Vec<Line<'static>>, width: u16) -> Vec<Line<'static>> {
 
 fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     let content = area.width.saturating_sub(GUTTER);
-    if app.mode == Mode::Live {
+    // microclaude's conversation is drawn like a live chat's.
+    if matches!(app.mode, Mode::Live | Mode::Microclaude) {
         live_conversation(frame, area, app);
         return;
     }
@@ -1106,7 +1110,7 @@ impl CachedEntry {
         if rows.len() > RUN_OUTPUT_HEIGHT {
             self.lines.push(Line::from(span(
                 format!(
-                    "     {}–{} of {} · scroll at the left edge",
+                    "     {}–{} of {}",
                     offset + 1,
                     (offset + RUN_OUTPUT_HEIGHT).min(rows.len()),
                     rows.len()
@@ -1463,6 +1467,7 @@ fn composer_view(
                 Style::default().fg(match contribution.text.as_str() {
                     crate::models::AUTO => t::ACCENT_SKILL,
                     crate::models::FLASH_LABEL => t::ACCENT_MODEL,
+                    crate::microclaude::LABEL => t::ACCENT_DELEGATE,
                     _ => t::GRAY,
                 }),
             )),
@@ -1665,6 +1670,22 @@ mod export_notice_tests {
     }
 
     #[test]
+    fn the_rail_names_microclaude_without_asking_a_login() {
+        let mut app = App::default();
+        app.mode = Mode::Microclaude;
+        let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let shown: String = (0..20)
+            .map(|y| (0..60).map(|x| buffer[(x, y)].symbol()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(shown.contains(crate::microclaude::LABEL));
+        // Entering the mode must not read this computer's login: a test
+        // environment never starts `claude auth status`.
+    }
+
+    #[test]
     fn populated_footer_keeps_its_row_below_the_composer() {
         let mut app = App::default();
         app.mode = Mode::Live;
@@ -1851,7 +1872,7 @@ mod run_viewport_tests {
             (
                 false,
                 serde_json::json!({"error": "Failed"}),
-                t::DIFF_DELETE_FG,
+                t::TOOL_FAILED,
             ),
             (false, serde_json::json!({}), t::ACCENT_SUCCESS),
         ] {
@@ -1887,9 +1908,9 @@ mod run_viewport_tests {
                 (
                     false,
                     serde_json::json!({"error": "Failed"}),
-                    t::DIFF_DELETE_FG,
+                    t::TOOL_FAILED,
                 ),
-                (false, serde_json::json!({"exit": 1}), t::DIFF_DELETE_FG),
+                (false, serde_json::json!({"exit": 1}), t::TOOL_FAILED),
                 (false, serde_json::json!({}), t::ACCENT_SUCCESS),
             ] {
                 let entry = crate::live::Entry::Tool {
@@ -1910,22 +1931,10 @@ mod run_viewport_tests {
     fn run_indicators_use_outcome_colors() {
         for (output, glyph, color) in [
             (serde_json::json!({"exit": 0}), "● ", t::ACCENT_SUCCESS),
-            (
-                serde_json::json!({"error": "Failed"}),
-                "× ",
-                t::DIFF_DELETE_FG,
-            ),
-            (serde_json::json!({"exit": 1}), "× ", t::DIFF_DELETE_FG),
-            (
-                serde_json::json!({"timed_out": true}),
-                "× ",
-                t::DIFF_DELETE_FG,
-            ),
-            (
-                serde_json::json!({"canceled": true}),
-                "× ",
-                t::DIFF_DELETE_FG,
-            ),
+            (serde_json::json!({"error": "Failed"}), "× ", t::TOOL_FAILED),
+            (serde_json::json!({"exit": 1}), "× ", t::TOOL_FAILED),
+            (serde_json::json!({"timed_out": true}), "× ", t::TOOL_FAILED),
+            (serde_json::json!({"canceled": true}), "× ", t::TOOL_FAILED),
         ] {
             let lines = run_lines(
                 &serde_json::json!({"command": "example"}),
@@ -2037,6 +2046,25 @@ mod run_viewport_tests {
         assert!(exported.contains("row 1\n"));
         assert!(exported.contains("row 10"));
         assert!(!exported.contains('█'));
+    }
+
+    /// A truncated box says which rows it is showing and no more:
+    /// instructions for the wheel do not belong under a command.
+    #[test]
+    fn a_truncated_box_shows_only_its_row_count() {
+        let mut chat = crate::live::Chat::default();
+        output(&mut chat, 10, false);
+        let mut cache = TranscriptCache::default();
+        cache.refresh(&chat, 40, 0);
+        let shown = cache.entries[0]
+            .lines
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(shown.contains("6–10 of 10"), "{shown}");
+        assert!(!shown.contains("scroll"), "{shown}");
+        assert!(!shown.contains("left edge"), "{shown}");
     }
 }
 
