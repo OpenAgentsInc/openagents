@@ -18,10 +18,18 @@ use metal::{
 };
 
 use crate::clef_attention::{ClefAttentionPlan, ClefMetalAttention, CLEF_FUSED_THREADS};
+use crate::clef_gemm::{ClefGemmPlan, ClefMetalGemm, CLEF_GEMM_THREADS};
 
 const SOURCE: &str = include_str!("kernels/clef_prefill.metal");
 const FUSED_SOURCE: &str = include_str!("kernels/clef_fused_attention.metal");
 const FUSED_KERNEL: &str = "clef_flash_attention256_tensorops";
+const GEMM_SHAPES_SOURCE: &str = include_str!("kernels/clef_gemm_shapes.metal");
+const GEMM_SHAPES_KERNELS: &[&str] = &[
+    "clef_gemm_64x32",
+    "clef_gemm_64x32_accumulate",
+    "clef_gemm_64x128",
+    "clef_gemm_64x128_accumulate",
+];
 
 /// A weight layout the lane dequantizes to f16 at load.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -132,6 +140,7 @@ pub struct ClefMetal {
     pipelines: HashMap<&'static str, ComputePipelineState>,
     name: String,
     attention: ClefMetalAttention,
+    gemm: ClefMetalGemm,
 }
 
 // SAFETY: the device, queue and pipeline states are Objective-C objects
@@ -178,6 +187,12 @@ impl ClefMetal {
     /// Compiles the selected attention path. The experimental fused source is
     /// compiled only when explicitly selected, leaving default startup unchanged.
     pub fn new_with_attention(attention: ClefMetalAttention) -> Result<Self, String> {
+        Self::new_with_options(attention, ClefMetalGemm::default())
+    }
+
+    /// Compiles the selected attention and projection implementations. Each
+    /// experimental library is compiled only when its mode is selected.
+    pub fn new_with_options(attention: ClefMetalAttention, gemm: ClefMetalGemm) -> Result<Self, String> {
         let device = Device::system_default().ok_or("no Metal device is available")?;
         let library = device
             .new_library_with_source(SOURCE, &CompileOptions::new())
@@ -212,6 +227,28 @@ impl ClefMetal {
             }
             pipelines.insert(FUSED_KERNEL, pipeline);
         }
+        if gemm == ClefMetalGemm::WeightShapes {
+            let library = device
+                .new_library_with_source(GEMM_SHAPES_SOURCE, &CompileOptions::new())
+                .map_err(|error| format!("clef weight-shape GEMM kernels: {error}"))?;
+            for name in GEMM_SHAPES_KERNELS {
+                let function = library
+                    .get_function(name, None)
+                    .map_err(|error| format!("clef weight-shape GEMM kernel {name}: {error}"))?;
+                let pipeline = device
+                    .new_compute_pipeline_state_with_function(&function)
+                    .map_err(|error| format!("clef weight-shape GEMM pipeline {name}: {error}"))?;
+                if pipeline.thread_execution_width() != 32
+                    || pipeline.max_total_threads_per_threadgroup() < CLEF_GEMM_THREADS as u64
+                {
+                    return Err(String::from("clef weight-shape GEMM requires four 32-thread SIMD groups"));
+                }
+                if pipeline.static_threadgroup_memory_length() > device.max_threadgroup_memory_length() {
+                    return Err(String::from("clef weight-shape GEMM exceeds device threadgroup memory"));
+                }
+                pipelines.insert(*name, pipeline);
+            }
+        }
         let queue = device.new_command_queue();
         let name = device.name().to_string();
         Ok(Self {
@@ -220,6 +257,7 @@ impl ClefMetal {
             pipelines,
             name,
             attention,
+            gemm,
         })
     }
 
@@ -227,6 +265,12 @@ impl ClefMetal {
     #[must_use]
     pub fn attention_mode(&self) -> ClefMetalAttention {
         self.attention
+    }
+
+    /// The projection tiling fixed when this device state was created.
+    #[must_use]
+    pub fn gemm_mode(&self) -> ClefMetalGemm {
+        self.gemm
     }
 
     /// The device name.
@@ -459,16 +503,16 @@ impl ClefMetalBatch<'_> {
         if n == 0 {
             return Ok(());
         }
-        x16.check(x_offset * 2, n * k * 2, "gemm x")?;
-        w16.check(0, m * k * 2, "gemm w")?;
-        out.check(out_offset * 4, n * m * 4, "gemm out")?;
-        self.pipeline(if accumulate { "clef_gemm_accumulate" } else { "clef_gemm" })?;
-        self.bind(0, x16, x_offset * 2);
+        let plan = ClefGemmPlan::new(self.metal.gemm, n, m, k, x_offset, out_offset, accumulate)?;
+        x16.check(plan.input_offset_bytes, plan.input_bytes, "gemm x")?;
+        w16.check(0, plan.weight_bytes, "gemm w")?;
+        out.check(plan.output_offset_bytes, plan.output_bytes, "gemm out")?;
+        self.pipeline(plan.kernel)?;
+        self.bind(0, x16, plan.input_offset_bytes);
         self.bind(1, w16, 0);
-        self.bind(2, out, out_offset * 4);
-        let nmk = [int(n, "n")?, int(m, "m")?, int(k, "k")?, 0];
-        self.bytes(3, &nmk);
-        self.groups(size(m.div_ceil(64), n.div_ceil(64), 1), size(128, 1, 1));
+        self.bind(2, out, plan.output_offset_bytes);
+        self.bytes(3, &plan.nmk);
+        self.groups(size(plan.groups[0], plan.groups[1], 1), size(CLEF_GEMM_THREADS, 1, 1));
         Ok(())
     }
 
@@ -1068,3 +1112,6 @@ impl ClefMetalBatch<'_> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod gemm_tests;

@@ -23,6 +23,7 @@
 use std::sync::Mutex;
 
 use psionic_backend_metal::clef_attention::{ClefAttentionPlan, ClefMetalAttention};
+use psionic_backend_metal::clef_gemm::ClefMetalGemm;
 use psionic_backend_metal::clef_prefill::{ClefMetal, ClefMetalBatch, ClefMetalBuffer, ClefMetalWeightFormat};
 use rayon::prelude::*;
 
@@ -245,7 +246,14 @@ impl ClefMetalTrunk {
                 return Err(String::from("PSIONIC_CLEF_METAL_ATTENTION must be valid text"));
             }
         };
-        let metal = ClefMetal::new_with_attention(attention)?;
+        let gemm = match std::env::var("PSIONIC_CLEF_METAL_GEMM") {
+            Ok(value) => value.parse::<ClefMetalGemm>()?,
+            Err(std::env::VarError::NotPresent) => ClefMetalGemm::default(),
+            Err(std::env::VarError::NotUnicode(_)) => {
+                return Err(String::from("PSIONIC_CLEF_METAL_GEMM must be valid text"));
+            }
+        };
+        let metal = ClefMetal::new_with_options(attention, gemm)?;
         let device_name = metal.device_name().to_string();
         let model = &cpu.model;
         let config = &model.descriptor.config;

@@ -996,8 +996,61 @@ five model-dependent tests returned early with all `PSIONIC_CLEF_*` settings
 cleared. The build used a build lease and two Cargo jobs. No quiet lease,
 GPU run, or desktop-app or system-service control was used.
 
+### Experimental projection tiles for the checkpoint's weights (2026-10-10)
+
+`PSIONIC_CLEF_METAL_GEMM=weight-shapes` selects shape-specific f16 projection
+kernels at model load. The default is `fixed-64`; invalid setting values fail
+loading. This setting is independent of the attention setting. Its shader
+library and four pipelines are created only when selected.
+
+A header-only inventory of Clef-Flash Q4_K_M (recorded SHA-256
+`fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c`)
+found six weight shapes across 248 trunk projections. Dimensions below are
+`W[output, input]`; tiles are token rows by output columns.
+
+| Weight shape | Projections per chunk | Operations | Experimental tile |
+| --- | ---: | --- | --- |
+| 12,288 × 4,096 | 64 | Feed-forward gate and up | 64 × 128 |
+| 4,096 × 12,288 | 32 | Feed-forward down | 64 × 128 |
+| 8,192 × 4,096 | 32 | Hybrid QKV and attention query/gate | 64 × 128 |
+| 4,096 × 4,096 | 56 | Hybrid gate and mixer output | 64 × 128 |
+| 1,024 × 4,096 | 16 | Attention key and value | 64 × 64 |
+| 32 × 4,096 | 48 | DeltaNet alpha and beta | 64 × 32 |
+
+Feed-forward weights account for 69.84% of theoretical trunk projection
+arithmetic. The wider tile halves the number of threadgroups for the four
+large shapes and lets each group reuse input rows across twice as many output
+columns. The narrow tile removes the 32 unused logical columns in alpha/beta
+tiles. Neither calculation establishes a speedup: edge handling may already
+skip some unused work, and wider tiles can increase register pressure.
+
+Both variants keep 64 token rows, four SIMD groups, dynamic full-width reduction,
+f32 accumulation, and the existing dispatch barriers. Selection depends on the
+exact weight dimensions, including the input width, rather than the chunk
+length. The 1,024-column weights, unknown shapes, and f32 head products keep
+their existing kernels. The planner checks signed TensorOps extents, buffer
+sizes, and element offsets before binding buffers; device setup checks thread
+width, threadgroup capacity, and static memory use.
+
+Offline Metal 4 compilation passed. Numerical agreement, chunk equivalence,
+answer accuracy, and end-to-end speed remain unmeasured for these tiles.
+The ignored hardware checks cover all six real weight shapes, residual
+accumulation, nonaligned chunks, partial token tiles, and output guards against
+the original kernel and sampled f64 products. Keep the mode experimental until
+these checks and paired full-model comparisons pass. This implementation round
+uses no quiet lease, GPU execution, or desktop-app or system-service control.
+
+Validation: the backend Clef filter passed 13 CPU tests, including six new
+projection-planner tests; seven hardware tests compiled but remained ignored.
+The serving filter reported 28 passes: 23 CPU checks and five model-dependent
+early returns with `PSIONIC_CLEF_*` settings cleared. Both checks used release
+builds under build leases with two Cargo jobs. The new Rust modules pass pinned
+formatting, and the patch passes whitespace checks.
+
 ### Next
 
+- Validate `weight-shapes` against `fixed-64` for numerical agreement and
+  end-to-end latency at 1k, 4k, and 16k tokens, including short final chunks.
 - Validate the experimental fused path's partial tiles, causal masking, grouped
   heads, large score changes, repeated calls, and nonaligned chunks against the
   staged and CPU paths.

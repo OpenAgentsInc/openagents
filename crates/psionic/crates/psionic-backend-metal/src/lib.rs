@@ -52,6 +52,9 @@ pub const CRATE_ROLE: &str = "Metal backend discovery, allocation, and submissio
 /// Portable shape checks and mode selection for Clef attention.
 pub mod clef_attention;
 
+/// Portable shape checks and tile selection for Clef weight projections.
+pub mod clef_gemm;
+
 /// The Clef decision lane's sequence-prefill kernels (#11196).
 #[cfg(target_os = "macos")]
 pub mod clef_prefill;
