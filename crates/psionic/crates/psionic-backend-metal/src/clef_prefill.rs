@@ -17,7 +17,11 @@ use metal::{
     MTLResourceOptions, MTLSize,
 };
 
+use crate::clef_attention::{ClefAttentionPlan, ClefMetalAttention, CLEF_FUSED_THREADS};
+
 const SOURCE: &str = include_str!("kernels/clef_prefill.metal");
+const FUSED_SOURCE: &str = include_str!("kernels/clef_fused_attention.metal");
+const FUSED_KERNEL: &str = "clef_flash_attention256_tensorops";
 
 /// A weight layout the lane dequantizes to f16 at load.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -127,6 +131,7 @@ pub struct ClefMetal {
     queue: CommandQueue,
     pipelines: HashMap<&'static str, ComputePipelineState>,
     name: String,
+    attention: ClefMetalAttention,
 }
 
 // SAFETY: the device, queue and pipeline states are Objective-C objects
@@ -167,6 +172,12 @@ const KERNELS: &[&str] = &[
 impl ClefMetal {
     /// Compiles the Clef kernels on the system default device.
     pub fn new() -> Result<Self, String> {
+        Self::new_with_attention(ClefMetalAttention::default())
+    }
+
+    /// Compiles the selected attention path. The experimental fused source is
+    /// compiled only when explicitly selected, leaving default startup unchanged.
+    pub fn new_with_attention(attention: ClefMetalAttention) -> Result<Self, String> {
         let device = Device::system_default().ok_or("no Metal device is available")?;
         let library = device
             .new_library_with_source(SOURCE, &CompileOptions::new())
@@ -181,6 +192,26 @@ impl ClefMetal {
                 .map_err(|error| format!("clef metal pipeline {name}: {error}"))?;
             pipelines.insert(*name, pipeline);
         }
+        if attention == ClefMetalAttention::FusedTensorOps {
+            let library = device
+                .new_library_with_source(FUSED_SOURCE, &CompileOptions::new())
+                .map_err(|error| format!("clef fused attention kernels: {error}"))?;
+            let function = library
+                .get_function(FUSED_KERNEL, None)
+                .map_err(|error| format!("clef fused attention kernel: {error}"))?;
+            let pipeline = device
+                .new_compute_pipeline_state_with_function(&function)
+                .map_err(|error| format!("clef fused attention pipeline: {error}"))?;
+            if pipeline.thread_execution_width() != 32
+                || pipeline.max_total_threads_per_threadgroup() < CLEF_FUSED_THREADS as u64
+            {
+                return Err(String::from("clef fused attention requires four 32-thread SIMD groups"));
+            }
+            if pipeline.static_threadgroup_memory_length() > device.max_threadgroup_memory_length() {
+                return Err(String::from("clef fused attention exceeds device threadgroup memory"));
+            }
+            pipelines.insert(FUSED_KERNEL, pipeline);
+        }
         let queue = device.new_command_queue();
         let name = device.name().to_string();
         Ok(Self {
@@ -188,7 +219,14 @@ impl ClefMetal {
             queue,
             pipelines,
             name,
+            attention,
         })
+    }
+
+    /// The attention path fixed when this device state was created.
+    #[must_use]
+    pub fn attention_mode(&self) -> ClefMetalAttention {
+        self.attention
     }
 
     /// The device name.
@@ -302,6 +340,14 @@ struct AttnArgs {
     heads: u32,
     kv_heads: u32,
     head: u32,
+}
+
+#[repr(C)]
+struct FusedAttnArgs {
+    n: u32,
+    heads: u32,
+    kv_heads: u32,
+    first: u32,
 }
 
 impl ClefMetalBatch<'_> {
@@ -779,16 +825,17 @@ impl ClefMetalBatch<'_> {
         dim: usize,
         first: usize,
     ) -> Result<(), String> {
-        if dim != 256 || kv_heads == 0 || heads % kv_heads != 0 {
-            return Err(format!("clef metal attention: head dim {dim} (this lane takes 256)"));
-        }
+        let plan = ClefAttentionPlan::new(n, heads, kv_heads, dim, first)?;
         if n == 0 {
             return Ok(());
         }
-        let keys = first + n;
-        scores.check(0, n * keys * 4, "attention scores")?;
-        probs.check(0, n * keys * 2, "attention probabilities")?;
-        out.check(0, n * heads * dim * 4, "attention out")?;
+        let keys = plan.keys;
+        query16.check(0, plan.query_bytes, "attention query")?;
+        key_cache.check(0, plan.key_value_bytes, "attention key cache")?;
+        value_cache.check(0, plan.key_value_bytes, "attention value cache")?;
+        scores.check(0, plan.score_bytes, "attention scores")?;
+        probs.check(0, plan.probability_bytes, "attention probabilities")?;
+        out.check(0, plan.output_bytes, "attention out")?;
         for head in 0..heads {
             let args = AttnArgs {
                 n: int(n, "n")?,
@@ -816,6 +863,46 @@ impl ClefMetalBatch<'_> {
             self.bytes(3, &args);
             self.groups(size(dim.div_ceil(64), n.div_ceil(64), 1), size(128, 1, 1));
         }
+        Ok(())
+    }
+
+    /// Experimental tiled attention without full score or probability buffers.
+    /// Requires a device created with `FusedTensorOps`. Online normalization and
+    /// f16 tile probabilities can round differently from the staged path.
+    #[allow(clippy::too_many_arguments)]
+    pub fn attention_fused(
+        &self,
+        query16: &ClefMetalBuffer,
+        key_cache: &ClefMetalBuffer,
+        value_cache: &ClefMetalBuffer,
+        out: &ClefMetalBuffer,
+        n: usize,
+        heads: usize,
+        kv_heads: usize,
+        dim: usize,
+        first: usize,
+    ) -> Result<(), String> {
+        let plan = ClefAttentionPlan::new(n, heads, kv_heads, dim, first)?;
+        if n == 0 {
+            return Ok(());
+        }
+        query16.check(0, plan.query_bytes, "fused attention query")?;
+        key_cache.check(0, plan.key_value_bytes, "fused attention key cache")?;
+        value_cache.check(0, plan.key_value_bytes, "fused attention value cache")?;
+        out.check(0, plan.output_bytes, "fused attention out")?;
+        let args = FusedAttnArgs {
+            n: plan.n,
+            heads: plan.heads,
+            kv_heads: plan.kv_heads,
+            first: plan.first,
+        };
+        self.pipeline(FUSED_KERNEL)?;
+        self.bind(0, query16, 0);
+        self.bind(1, key_cache, 0);
+        self.bind(2, value_cache, 0);
+        self.bind(3, out, 0);
+        self.bytes(4, &args);
+        self.groups(size(plan.fused_query_groups, heads, 1), size(CLEF_FUSED_THREADS, 1, 1));
         Ok(())
     }
 
@@ -978,3 +1065,6 @@ impl ClefMetalBatch<'_> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

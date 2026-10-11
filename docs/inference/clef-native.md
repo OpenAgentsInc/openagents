@@ -947,10 +947,64 @@ What the attempt shows:
   idle for the whole run (about 10 minutes), not just at its start. The
   watcher's trigger should hold for the run.
 
+### Experimental fused TensorOps attention (2026-10-10)
+
+`PSIONIC_CLEF_METAL_ATTENTION=fused-tensorops` selects a separate experimental
+kernel at model load. The default, `staged`, keeps the existing score, softmax,
+and value-product path. Unknown setting values fail loading. The fused source
+is compiled only when selected, so it does not change default shader startup.
+
+The fused dispatch streams 32-key tiles for 16 queries per threadgroup, using
+TensorOps for QK and PV, stable online softmax, and f32 output accumulation.
+It declares 19,456 bytes of threadgroup scratch and omits the full trunk score
+and probability allocations: 192 MiB avoided for a 2,048-token chunk in a 16k
+request. This is an allocation calculation, not a measured speed improvement.
+Host checks cover grouped heads, absolute positions, tensor strides, integer
+overflow, and all input/output buffer lengths.
+
+Online softmax rounds unnormalized tile probabilities to f16; the staged path
+rounds normalized probabilities. Their outputs need tolerance-based validation.
+Offline Metal compilation and CPU shape checks do not establish GPU correctness,
+chunk equivalence, answer accuracy, or latency. The hardware conformance tests
+are explicitly ignored by default. No quiet lease or GPU run is part of this
+implementation round, as requested by the owner. Keep the path experimental until
+those checks and a paired full-model comparison pass.
+
+Validation in this round: offline Metal 4 compilation passed, all seven host-plan
+tests passed, and the Clef serving filter reported 20 passes. Five serving tests
+returned early with model settings unset; the other 15 exercised CPU behavior.
+All five ignored hardware tests compiled, including large score changes across
+key tiles, but none ran. This provides no GPU parity or performance result.
+
+### Evidence normalization shares the attention batch (2026-10-10)
+
+The first use of an evidence layer now encodes `LN_m(M)` in its attention
+consumer's command buffer. `attend_memory`, `attend_memory_projected`, and
+`head_attend_block` each submit and wait once, including on a cold view, instead
+of waiting separately for normalization. This applies to both trunk attention
+settings and keeps the existing kernels, arguments, and dispatch barriers.
+
+The request owns the normalized view only after the combined batch completes
+successfully. An encoding or completion error leaves that cache
+entry empty and its byte count unchanged. A warm view reuses the completed
+buffer, and a new prefill starts a fresh cache. CPU tests cover these ownership
+and cache transitions; GPU output parity and latency remain unmeasured.
+
+Validation: the release-profile Clef filter in `psionic-serve` reported 28 passes.
+Eight new cache tests and 15 existing CPU checks exercised their assertions;
+five model-dependent tests returned early with all `PSIONIC_CLEF_*` settings
+cleared. The build used a build lease and two Cargo jobs. No quiet lease,
+GPU run, or desktop-app or system-service control was used.
+
 ### Next
 
-- The M3 gate on a quiet Mac, against Ollama and MLX, with a per-phase
-  profile to show where 1k goes.
+- Validate the experimental fused path's partial tiles, causal masking, grouped
+  heads, large score changes, repeated calls, and nonaligned chunks against the
+  staged and CPU paths.
+- Compare cold and warm evidence attention before and after the combined batch,
+  checking output parity and per-call submission counts on hardware.
+- Run a paired Mac comparison against Ollama and MLX with per-phase profiling,
+  reporting desktop contention separately.
 
 ## File-relevance calibration (X1, 2026-10-10)
 

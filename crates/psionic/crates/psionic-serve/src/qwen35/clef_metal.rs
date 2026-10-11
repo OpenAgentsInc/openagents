@@ -16,11 +16,13 @@
 //!   span sums accumulate there, and only the span sums and the last row
 //!   come back. The head's memory attention reads the device rows.
 //!
-//! A chunk's whole layer stack is one command buffer. Every reduction has a
-//! fixed order, so a token's rows do not depend on the chunk it came in.
+//! A chunk's whole layer stack is one command buffer. The default attention
+//! path keeps the existing reduction order. An explicitly selected experimental
+//! fused path uses tiled online softmax and needs separate numerical validation.
 
 use std::sync::Mutex;
 
+use psionic_backend_metal::clef_attention::{ClefAttentionPlan, ClefMetalAttention};
 use psionic_backend_metal::clef_prefill::{ClefMetal, ClefMetalBatch, ClefMetalBuffer, ClefMetalWeightFormat};
 use rayon::prelude::*;
 
@@ -30,6 +32,9 @@ use super::{
     CpuGgufQwen35TextGenerationService, CpuQwen35LayerKind, HostMatrix, HostMatrixKind, QuantizationMode, TokenId,
     qwen35_attention_scale,
 };
+
+mod memory_view;
+use memory_view::{MemoryViews, PendingMemoryView};
 
 struct DeviceWeight {
     buffer: ClefMetalBuffer,
@@ -112,6 +117,21 @@ struct Scratch {
     bytes: u64,
 }
 
+enum TrunkAttentionScratch {
+    Staged { scores: ClefMetalBuffer, probs: ClefMetalBuffer },
+    Fused,
+    Unused,
+}
+
+impl TrunkAttentionScratch {
+    fn byte_len(&self) -> usize {
+        match self {
+            Self::Staged { scores, probs } => scores.byte_len() + probs.byte_len(),
+            Self::Fused | Self::Unused => 0,
+        }
+    }
+}
+
 /// Per-request device state.
 struct Request {
     tokens: usize,
@@ -120,10 +140,9 @@ struct Request {
     key_cache: Vec<Option<ClefMetalBuffer>>,
     value_cache: Vec<Option<ClefMetalBuffer>>,
     memory: ClefMetalBuffer,
-    normalized_memory: Vec<Option<ClefMetalBuffer>>,
-    /// Attention scores (f32) and probabilities (f16): chunk x tokens.
-    scores: ClefMetalBuffer,
-    probs: ClefMetalBuffer,
+    normalized_memory: MemoryViews<ClefMetalBuffer>,
+    /// Full score and probability buffers exist only for staged attention.
+    attention: TrunkAttentionScratch,
     bytes: u64,
 }
 
@@ -219,7 +238,14 @@ impl ClefMetalTrunk {
     /// Uploads the trunk of a loaded CPU qwen35 model (the CPU copy keeps
     /// `token_embd` and `output`) and the head's device-side parameters.
     pub fn load(cpu: &CpuGgufQwen35TextGenerationService, head: &ClefHeadParams<'_>) -> Result<Self, String> {
-        let metal = ClefMetal::new()?;
+        let attention = match std::env::var("PSIONIC_CLEF_METAL_ATTENTION") {
+            Ok(value) => value.parse::<ClefMetalAttention>()?,
+            Err(std::env::VarError::NotPresent) => ClefMetalAttention::default(),
+            Err(std::env::VarError::NotUnicode(_)) => {
+                return Err(String::from("PSIONIC_CLEF_METAL_ATTENTION must be valid text"));
+            }
+        };
+        let metal = ClefMetal::new_with_attention(attention)?;
         let device_name = metal.device_name().to_string();
         let model = &cpu.model;
         let config = &model.descriptor.config;
@@ -399,7 +425,7 @@ impl ClefMetalTrunk {
         let state = &mut *guard;
         state.request = None;
         ensure_scratch(state, dims, chunk);
-        let mut request = new_request(state, dims, length, chunk);
+        let mut request = new_request(state, dims, length, chunk)?;
         let span_values: Vec<i32> = spans
             .iter()
             .flat_map(|(start, end)| [*start as i32, *end as i32])
@@ -555,18 +581,19 @@ impl ClefMetalTrunk {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let state = &mut *guard;
-        ensure_view(state, self.dims, evidence)?;
+        let pending = prepare_view(state, self.dims, evidence)?;
         let length = state.request.as_ref().ok_or("no prefill on the device")?.tokens;
         ensure_head_attention(state, rows, length, w);
         let scratch = state.head_attention.as_ref().ok_or("head attention scratch")?;
         scratch.side.write_f32(0, queries)?;
-        let request = state.request.as_ref().ok_or("no prefill")?;
-        let memory = memory_view(request, evidence)?;
         let batch = state.metal.batch();
+        let memory = encode_view(state, self.dims, evidence, pending.as_ref(), &batch)?;
         batch.gemm_f32(&scratch.side, memory, &scratch.scores, rows, length, w)?;
         batch.softmax_rows_f32(&scratch.scores, rows, length, scale)?;
         batch.gemm_f32_nn(&scratch.scores, memory, &scratch.mixed, rows, w, length)?;
-        batch.commit_wait()?;
+        let completion = batch.commit_wait();
+        let request = state.request.as_mut().ok_or("no prefill")?;
+        request.bytes += request.normalized_memory.complete(pending, completion)? as u64;
         scratch.mixed.read_f32(0, rows * w)
     }
 
@@ -598,24 +625,25 @@ impl ClefMetalTrunk {
         if !state.head_matrices.contains_key(&key) || !state.head_matrices.contains_key(&value) {
             return Ok(None);
         }
-        ensure_view(state, self.dims, evidence)?;
+        let pending = prepare_view(state, self.dims, evidence)?;
         let length = state.request.as_ref().ok_or("no prefill on the device")?.tokens;
         let side_rows = rows * heads;
         ensure_head_attention(state, side_rows.max(rows), length, w);
         let scratch = state.head_attention.as_ref().ok_or("head attention scratch")?;
         scratch.query.write_f32(0, projected)?;
         scratch.bias.write_f32(0, value_bias)?;
-        let request = state.request.as_ref().ok_or("no prefill")?;
-        let memory = memory_view(request, evidence)?;
         let (wk, _, _) = state.head_matrices.get(&key).ok_or("W_k")?;
         let (wv, _, _) = state.head_matrices.get(&value).ok_or("W_v")?;
         let batch = state.metal.batch();
+        let memory = encode_view(state, self.dims, evidence, pending.as_ref(), &batch)?;
         batch.head_side(&scratch.query, wk, &scratch.side, rows, heads, w)?;
         batch.gemm_f32(&scratch.side, memory, &scratch.scores, side_rows, length, w)?;
         batch.softmax_rows_f32(&scratch.scores, side_rows, length, scale)?;
         batch.gemm_f32_nn(&scratch.scores, memory, &scratch.mixed, side_rows, w, length)?;
         batch.head_context(&scratch.mixed, wv, &scratch.bias, &scratch.context, rows, heads, w)?;
-        batch.commit_wait()?;
+        let completion = batch.commit_wait();
+        let request = state.request.as_mut().ok_or("no prefill")?;
+        request.bytes += request.normalized_memory.complete(pending, completion)? as u64;
         scratch.context.read_f32(0, rows * w).map(Some)
     }
 
@@ -728,19 +756,16 @@ impl ClefMetalTrunk {
         if queries.len() != rows * w || heads == 0 || w % heads != 0 {
             return Err(String::from("memory attention block: shape mismatch"));
         }
-        ensure_view(state, self.dims, evidence)?;
+        let pending = prepare_view(state, self.dims, evidence)?;
         let length = state.request.as_ref().ok_or("no prefill on the device")?.tokens;
         let side_rows = rows * heads;
         ensure_head_attention(state, side_rows.max(rows), length, w);
-        let state = &*state;
         let scratch = state.head_attention.as_ref().ok_or("head attention scratch")?;
         let input = state.metal.buffer_f32(queries);
         let q_bias = state.metal.buffer_f32(q.1);
         let out_bias = state.metal.buffer_f32(out.1);
         let result = state.metal.buffer(rows * w * 4);
         scratch.bias.write_f32(0, value_bias)?;
-        let request = state.request.as_ref().ok_or("no prefill")?;
-        let memory = memory_view(request, evidence)?;
         let matrix = |values: &[f32]| state.head_matrices.get(&(values.as_ptr() as usize)).map(|entry| &entry.0);
         let (qm, wk, wv, om) = (
             matrix(q.0).ok_or("q")?,
@@ -749,6 +774,7 @@ impl ClefMetalTrunk {
             matrix(out.0).ok_or("out")?,
         );
         let batch = state.metal.batch();
+        let memory = encode_view(state, self.dims, evidence, pending.as_ref(), &batch)?;
         batch.gemm_f32(&input, qm, &scratch.query, rows, w, w)?;
         batch.bias_act(&scratch.query, &q_bias, rows, w, false)?;
         batch.head_side(&scratch.query, wk, &scratch.side, rows, heads, w)?;
@@ -758,7 +784,9 @@ impl ClefMetalTrunk {
         batch.head_context(&scratch.mixed, wv, &scratch.bias, &scratch.context, rows, heads, w)?;
         batch.gemm_f32(&scratch.context, om, &result, rows, w, w)?;
         batch.bias_act(&result, &out_bias, rows, w, false)?;
-        batch.commit_wait()?;
+        let completion = batch.commit_wait();
+        let request = state.request.as_mut().ok_or("no prefill")?;
+        request.bytes += request.normalized_memory.complete(pending, completion)? as u64;
         result.read_f32(0, rows * w).map(Some)
     }
 
@@ -800,38 +828,42 @@ fn rope_table(rope: &RopeTable, first: usize, n: usize, rotary: usize) -> Vec<f3
     rope.table(first, n, rotary)
 }
 
-fn memory_view(request: &Request, evidence: Option<usize>) -> Result<&ClefMetalBuffer, String> {
-    match evidence {
-        Some(layer) => request
-            .normalized_memory
-            .get(layer)
-            .and_then(Option::as_ref)
-            .ok_or_else(|| String::from("normalized memory")),
-        None => Ok(&request.memory),
-    }
+/// Allocates a cold evidence view without publishing it to the request cache.
+fn prepare_view(
+    state: &DeviceState,
+    dims: Dims,
+    evidence: Option<usize>,
+) -> Result<Option<PendingMemoryView<ClefMetalBuffer>>, String> {
+    let request = state.request.as_ref().ok_or("no prefill on the device")?;
+    request.normalized_memory.prepare(evidence, |_| {
+        let buffer = state.metal.buffer(request.tokens * dims.width * 4);
+        let bytes = buffer.byte_len();
+        Ok((buffer, bytes))
+    })
 }
 
-/// Builds an evidence layer's `LN_m(M)` view once per request.
-fn ensure_view(state: &mut DeviceState, dims: Dims, evidence: Option<usize>) -> Result<(), String> {
-    let Some(layer) = evidence else {
-        return Ok(());
-    };
-    let w = dims.width;
-    let length = state.request.as_ref().ok_or("no prefill on the device")?.tokens;
-    let request = state.request.as_mut().ok_or("no prefill")?;
-    if request.normalized_memory.len() <= layer {
-        request.normalized_memory.resize_with(layer + 1, || None);
+/// Encodes normalization in its consumer's batch. The batch's existing buffer
+/// barriers order normalization before any attention dispatch reads the view.
+fn encode_view<'a>(
+    state: &'a DeviceState,
+    dims: Dims,
+    evidence: Option<usize>,
+    pending: Option<&'a PendingMemoryView<ClefMetalBuffer>>,
+    batch: &ClefMetalBatch<'_>,
+) -> Result<&'a ClefMetalBuffer, String> {
+    let request = state.request.as_ref().ok_or("no prefill on the device")?;
+    if let Some(pending) = pending {
+        let (nw, nb) = state.evidence_norms.get(pending.layer).ok_or("no evidence layer")?;
+        batch.layer_norm_f32(
+            &request.memory,
+            Some((nw, nb)),
+            &pending.buffer,
+            request.tokens,
+            dims.width,
+            dims.head_eps,
+        )?;
     }
-    if request.normalized_memory[layer].is_none() {
-        let buffer = state.metal.buffer(length * w * 4);
-        let (nw, nb) = state.evidence_norms.get(layer).ok_or("no evidence layer")?;
-        let batch = state.metal.batch();
-        batch.layer_norm_f32(&request.memory, Some((nw, nb)), &buffer, length, w, dims.head_eps)?;
-        batch.commit_wait()?;
-        request.bytes += buffer.byte_len() as u64;
-        request.normalized_memory[layer] = Some(buffer);
-    }
-    Ok(())
+    request.normalized_memory.select(&request.memory, evidence, pending)
 }
 
 fn ensure_head_attention(state: &mut DeviceState, rows: usize, length: usize, w: usize) {
@@ -914,11 +946,22 @@ fn ensure_scratch(state: &mut DeviceState, dims: Dims, chunk: usize) {
     });
 }
 
-fn new_request(state: &DeviceState, dims: Dims, length: usize, chunk: usize) -> Request {
+fn new_request(state: &DeviceState, dims: Dims, length: usize, chunk: usize) -> Result<Request, String> {
     let layers = state.layers.len();
     let metal = &state.metal;
-    let scores = metal.buffer(chunk * length * 4);
-    let probs = metal.buffer(chunk * length * 2);
+    let attention = if state.layers.iter().any(|layer| matches!(&layer.mixer, DeviceMixer::Attention { .. })) {
+        let first = length.checked_sub(chunk).ok_or("attention chunk exceeds request length")?;
+        let plan = ClefAttentionPlan::new(chunk, dims.heads, dims.kv_heads, dims.head_dim, first)?;
+        match metal.attention_mode() {
+            ClefMetalAttention::Staged => TrunkAttentionScratch::Staged {
+                scores: metal.buffer(plan.score_bytes),
+                probs: metal.buffer(plan.probability_bytes),
+            },
+            ClefMetalAttention::FusedTensorOps => TrunkAttentionScratch::Fused,
+        }
+    } else {
+        TrunkAttentionScratch::Unused
+    };
     let memory = metal.buffer(length * dims.width * 4);
     let mut request = Request {
         tokens: length,
@@ -926,11 +969,10 @@ fn new_request(state: &DeviceState, dims: Dims, length: usize, chunk: usize) -> 
         delta: (0..layers).map(|_| None).collect(),
         key_cache: (0..layers).map(|_| None).collect(),
         value_cache: (0..layers).map(|_| None).collect(),
-        bytes: (scores.byte_len() + probs.byte_len() + memory.byte_len()) as u64,
+        bytes: (attention.byte_len() + memory.byte_len()) as u64,
         memory,
-        normalized_memory: Vec::new(),
-        scores,
-        probs,
+        normalized_memory: MemoryViews::new(state.evidence_norms.len()),
+        attention,
     };
     for (index, layer) in state.layers.iter().enumerate() {
         match &layer.mixer {
@@ -951,7 +993,7 @@ fn new_request(state: &DeviceState, dims: Dims, length: usize, chunk: usize) -> 
             }
         }
     }
-    request
+    Ok(request)
 }
 
 /// Profiling knobs: `PSIONIC_CLEF_SKIP=gemm,delta,attention` leaves those
@@ -1068,19 +1110,35 @@ fn encode_layer(
                 dims.eps,
             )?;
             if !skips().2 {
-            batch.attention(
-                &s.query16,
-                key_cache,
-                value_cache,
-                &s.mid_b,
-                &request.scores,
-                &request.probs,
-                n,
-                dims.heads,
-                dims.kv_heads,
-                dims.head_dim,
-                first,
-            )?;
+                match &request.attention {
+                    TrunkAttentionScratch::Staged { scores, probs } => batch.attention(
+                        &s.query16,
+                        key_cache,
+                        value_cache,
+                        &s.mid_b,
+                        scores,
+                        probs,
+                        n,
+                        dims.heads,
+                        dims.kv_heads,
+                        dims.head_dim,
+                        first,
+                    )?,
+                    TrunkAttentionScratch::Fused => batch.attention_fused(
+                        &s.query16,
+                        key_cache,
+                        value_cache,
+                        &s.mid_b,
+                        n,
+                        dims.heads,
+                        dims.kv_heads,
+                        dims.head_dim,
+                        first,
+                    )?,
+                    TrunkAttentionScratch::Unused => {
+                        return Err(String::from("attention scratch is missing for an attention layer"));
+                    }
+                }
             }
             batch.sigmoid_gate_to_f16(&s.mid_b, &s.mid_a, &s.act16, n * dims.heads * dims.head_dim)?;
             linear(batch, out, &s.act16, &s.x, n, true)?;
