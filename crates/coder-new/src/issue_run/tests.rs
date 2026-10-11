@@ -133,7 +133,10 @@ fn sdk_tool_calls_become_coder_tool_items() {
     );
     assert_eq!(name, "Run");
     // Filter words that are not test names are dropped.
-    assert_eq!(input["command"], "cargo test -p coder-new -- issue_run");
+    assert_eq!(
+        input["command"],
+        "cargo test --tests -p coder-new -- issue_run"
+    );
 }
 
 #[test]

@@ -107,6 +107,14 @@ pub fn inside(root: &Path, input: &Value) -> Option<Option<String>> {
 #[must_use]
 pub fn check_argv(check: &Check, filter: Option<&str>) -> Vec<String> {
     let mut argv = check.argv.clone();
+    // `cargo test` rebuilds and runs every doc test on each call, whatever
+    // the filter: minutes per check on a big crate. Unit and integration
+    // tests are what a change is checked against.
+    if argv.get(..2) == Some(&["cargo".to_owned(), "test".to_owned()][..])
+        && !argv.iter().any(|a| a == "--doc" || a == "--tests")
+    {
+        argv.insert(2, "--tests".into());
+    }
     if check.filter
         && let Some(filter) = filter
     {
@@ -210,12 +218,23 @@ pub async fn run_check(
     let Some((program, args)) = argv.split_first() else {
         return ("This check has no command.".into(), false);
     };
-    let result = tokio::process::Command::new(program)
+    let mut command = tokio::process::Command::new(program);
+    command
         .args(args)
         .current_dir(worktree)
-        .stdin(std::process::Stdio::null())
-        .output()
-        .await;
+        .stdin(std::process::Stdio::null());
+    // Every run's worktree is new, so its own target folder would build the
+    // crates from scratch each time. Runs share one build folder instead,
+    // unless the person set their own.
+    if std::env::var_os("CARGO_TARGET_DIR").is_none()
+        && let Some(home) = std::env::var_os("HOME")
+    {
+        command.env(
+            "CARGO_TARGET_DIR",
+            std::path::Path::new(&home).join(".openagents/coder-new/target"),
+        );
+    }
+    let result = command.output().await;
     let Ok(out) = result else {
         return (format!("Cannot run {program}."), false);
     };

@@ -211,6 +211,11 @@ pub struct App {
     saved_chats: [Chat; 6],
     /// A `coder issue-run` in this terminal (#11214).
     issue_run: Option<issue_run::Feed>,
+    /// Where the watched run's rows start: after the conversation that led
+    /// to it (the solver's Intaker chat), which the run must not overwrite.
+    issue_run_base: usize,
+    /// Whether the watched run's cost is already on the chat's total.
+    issue_run_costed: bool,
 }
 
 #[derive(Default)]
@@ -435,6 +440,8 @@ impl App {
     /// Shows a `coder issue-run` in this conversation as it happens.
     pub fn watch_issue_run(&mut self, feed: issue_run::Feed) {
         self.issue_run = Some(feed);
+        self.issue_run_base = self.live.entries.len();
+        self.issue_run_costed = false;
         self.scroll = u16::MAX;
     }
 
@@ -445,8 +452,14 @@ impl App {
         };
         let events = feed.drain();
         let changed = !events.is_empty();
+        let mut ended = false;
         for event in events {
+            ended |= matches!(event, issue_run::Event::Busy(false));
             self.apply_issue_run(event);
+        }
+        // A finished run lets the next one start in this conversation.
+        if ended {
+            self.issue_run = None;
         }
         changed
     }
@@ -455,6 +468,24 @@ impl App {
     pub fn apply_issue_run(&mut self, event: issue_run::Event) {
         match event {
             issue_run::Event::Set { index, entry } => {
+                // The run's summary carries its whole cost: count it once.
+                if !self.issue_run_costed
+                    && let live::Entry::Tool {
+                        name,
+                        output,
+                        running: false,
+                        ..
+                    } = &entry
+                    && name == issue_run::SUMMARY
+                    && let Some(usd) = output
+                        .pointer("/cost/total_usd")
+                        .or_else(|| output.pointer("/total_usd"))
+                        .and_then(serde_json::Value::as_f64)
+                {
+                    self.live.cost_usd += usd;
+                    self.issue_run_costed = true;
+                }
+                let index = self.issue_run_base + index;
                 if index < self.live.entries.len() {
                     self.live.entries[index] = entry;
                 } else {
@@ -2582,6 +2613,42 @@ mod export_notice_tests {
 
 #[cfg(test)]
 mod select_all_tests {
+    #[test]
+    fn a_solver_run_follows_the_intake_chat_and_adds_its_cost_once() {
+        let mut app = App::default();
+        app.live
+            .entries
+            .push(live::Entry::User("pick something".into()));
+        app.live.entries.push(live::Entry::Assistant {
+            elapsed_ms: None,
+            text: "ISSUE: #7".into(),
+            model: None,
+        });
+        app.issue_run_base = app.live.entries.len();
+        app.apply_issue_run(issue_run::Event::Set {
+            index: 0,
+            entry: live::Entry::User("Solve issue #7".into()),
+        });
+        let summary = live::Entry::Tool {
+            name: issue_run::SUMMARY.into(),
+            input: serde_json::json!({}),
+            output: serde_json::json!({"cost": {"total_usd": 0.49}}),
+            running: false,
+        };
+        app.apply_issue_run(issue_run::Event::Set {
+            index: 1,
+            entry: summary.clone(),
+        });
+        app.apply_issue_run(issue_run::Event::Set {
+            index: 1,
+            entry: summary,
+        });
+        assert!(matches!(&app.live.entries[0], live::Entry::User(t) if t == "pick something"));
+        assert!(matches!(&app.live.entries[2], live::Entry::User(t) if t == "Solve issue #7"));
+        assert_eq!(app.live.entries.len(), 4);
+        assert!((app.live.cost_usd - 0.49).abs() < 1e-9);
+    }
+
     use super::*;
     use crossterm::event::KeyEvent;
 
