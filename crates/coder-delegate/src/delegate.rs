@@ -46,6 +46,14 @@ pub const DEFAULT_CODEX_MODEL: &str = "gpt-6.1-sol";
 /// A named model is OpenCode's `provider/model`.
 pub const DEFAULT_OPENCODE_MODEL: &str = "";
 
+/// The model Coder's delegate door runs an automatic OpenCode turn on when
+/// the operator names none: OpenCode Zen's free `opencode/big-pickle`, so a
+/// delegated turn needs no third-party credit. `CODER_OPENCODE_MODEL` (or
+/// `CODER_DELEGATE_MODEL`) names another. Coder One keeps
+/// [`DEFAULT_OPENCODE_MODEL`] (empty), so its `--delegate-agent opencode`
+/// still runs OpenCode's configured model.
+pub const OPENCODE_AUTO_MODEL: &str = "opencode/big-pickle";
+
 /// Which CLI runs the briefing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Agent {
@@ -4231,7 +4239,17 @@ pub mod tests {
     #[test]
     fn opencode_is_chosen_by_name_and_found_with_its_login() {
         assert_eq!(Agent::parse("opencode"), Ok(Agent::OpenCode));
+        // Coder One keeps OpenCode's configured model; Coder's delegate door
+        // names the free OpenCode model for an automatic turn.
         assert_eq!(Agent::OpenCode.default_model(), "");
+        assert_eq!(OPENCODE_AUTO_MODEL, "opencode/big-pickle");
+        assert_eq!(
+            acp_client::opencode::Model::parse(OPENCODE_AUTO_MODEL),
+            Ok(acp_client::opencode::Model {
+                provider: "opencode".into(),
+                model: "big-pickle".into(),
+            })
+        );
         let dir = tempfile::tempdir().unwrap();
         let installed = dir.path().join(".opencode/bin");
         std::fs::create_dir_all(&installed).unwrap();

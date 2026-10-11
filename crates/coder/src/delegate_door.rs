@@ -28,11 +28,12 @@
 //! - `CODER_DELEGATE=auto`, the default, delegates to Microcoder when a
 //!   provider it can use is connected and has capacity; Microcoder runs in
 //!   this process, so nothing needs installing. Otherwise it delegates to
-//!   an installed and authenticated `claude`, then `codex`, when its login
-//!   has capacity, and falls back to the door [`Door::from_env`] builds
-//!   when none is available, saying why. When that fallback would be the
-//!   stub and a target was skipped for capacity, every turn ends with one
-//!   sentence naming each provider and when it resets.
+//!   an installed and authenticated OpenCode (the free `opencode/big-pickle`
+//!   model, unless `CODER_OPENCODE_MODEL` names another), then `claude`,
+//!   then `codex`, when its login has capacity, and falls back to the door
+//!   [`Door::from_env`] builds when none is available, saying why. When that
+//!   fallback would be the stub and a target was skipped for capacity, every
+//!   turn ends with one sentence naming each provider and when it resets.
 //! - `CODER_DELEGATE=always` delegates or refuses to start.
 //! - `CODER_DELEGATE=off` never delegates.
 //!
@@ -78,8 +79,9 @@ use microcoder::ProviderState;
 /// value is none of those three words. See [`crate::agent::DELEGATE_VAR`].
 pub const MODE_VAR: &str = "CODER_DELEGATE";
 
-/// The variable that names the target: `microcoder`, `claude-code`, or
-/// `codex`. `microluna` still names Microcoder, which replaced it.
+/// The variable that names the target: `microcoder`, `opencode`,
+/// `claude-code`, or `codex`. `microluna` still names Microcoder, which
+/// replaced it.
 pub const AGENT_VAR: &str = "CODER_DELEGATE_AGENT";
 
 /// The variable that names the target's model. For Microcoder it names
@@ -172,12 +174,14 @@ impl Agent {
     }
 
     /// The provider whose capacity a CLI spends: Claude Code spends the
-    /// Claude login, Codex CLI the Codex login.
+    /// Claude login, Codex CLI the Codex login, and OpenCode its own login
+    /// (the `Provider::OpenCode` book entry).
     #[must_use]
     pub fn provider(self) -> Option<Provider> {
         match self {
             Agent::Cli(Cli::ClaudeCode) => Some(Provider::Claude),
             Agent::Cli(Cli::Codex) => Some(Provider::Codex),
+            Agent::Cli(Cli::OpenCode) => Some(Provider::OpenCode),
             _ => None,
         }
     }
@@ -347,10 +351,17 @@ pub fn capacity_dir() -> Option<PathBuf> {
     std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents/tasks"))
 }
 
+/// The model an automatic OpenCode turn runs unless the operator names
+/// another: OpenCode Zen's free `opencode/big-pickle`
+/// ([`coder_delegate::delegate::OPENCODE_AUTO_MODEL`]). `CODER_OPENCODE_MODEL`
+/// names another. `CODER_DELEGATE_MODEL` stays Microcoder's Codex model and
+/// never leaks into an OpenCode turn.
+pub const OPENCODE_AUTO_MODEL: &str = coder_delegate::delegate::OPENCODE_AUTO_MODEL;
+
 /// The targets this machine has, in the order `auto` prefers them:
-/// Microcoder, then Claude Code, then Codex CLI. `model` names
-/// Microcoder's Codex model; `book` is the capacity book's directory,
-/// and `probe` says whether a provider has a usable login.
+/// Microcoder, then OpenCode, then Claude Code, then Codex CLI. `model`
+/// names Microcoder's Codex model; `book` is the capacity book's
+/// directory, and `probe` says whether a provider has a usable login.
 ///
 /// The OpenAgents cloud is the fallback when nothing else is set up, so an
 /// own door key (`CODER_DOOR_KEY` or `CODER_AI_GATEWAY_KEY`) takes it off
@@ -377,7 +388,7 @@ pub fn targets(
         now,
     ))];
     found.extend(
-        [Cli::ClaudeCode, Cli::Codex]
+        [Cli::OpenCode, Cli::ClaudeCode, Cli::Codex]
             .into_iter()
             .map(|agent| Target::find(agent, &env, &recorded, now)),
     );
@@ -538,8 +549,13 @@ pub struct Settings {
     pub mode: Mode,
     /// [`AGENT_VAR`], when it names a target.
     pub preferred: Option<Agent>,
-    /// [`MODEL_VAR`], when it names a model.
+    /// [`MODEL_VAR`], when it names a model. It names Microcoder's Codex
+    /// model, and an OpenCode turn only through `coder_delegate::resolve`.
     pub model: Option<String>,
+    /// The model an OpenCode turn runs: `CODER_OPENCODE_MODEL` when set,
+    /// else the free [`OPENCODE_AUTO_MODEL`]. Kept apart from `model` so a
+    /// Codex model named for Microcoder never leaks into OpenCode.
+    pub opencode_model: String,
     /// The door the environment names explicitly, in a sentence.
     pub explicit: Option<String>,
     /// The capacity book's directory.
@@ -557,6 +573,8 @@ impl Settings {
     /// Returns a sentence when [`AGENT_VAR`] names no target.
     pub fn read() -> Result<Self, String> {
         let model = env_value(MODEL_VAR);
+        let opencode_model = env_value(coder_delegate::delegate::OPENCODE_MODEL_VAR)
+            .unwrap_or_else(|| OPENCODE_AUTO_MODEL.to_string());
         let book = capacity_dir().unwrap_or_else(std::env::temp_dir);
         Ok(Settings {
             mode: Mode::read(env_value(MODE_VAR).as_deref()),
@@ -572,6 +590,7 @@ impl Settings {
                 microcoder::now(),
             ),
             model,
+            opencode_model,
             book,
         })
     }
@@ -626,7 +645,15 @@ pub fn open() -> Result<(Door, String), String> {
             let workdir = std::env::current_dir()
                 .map_err(|error| format!("the working directory: {error}"))?;
             let (jev, jev_source) = jev_from(&env_value);
-            let door = DelegateDoor::new(target, settings.model, workdir, jev, jev_source)
+            // An OpenCode turn runs the free OpenCode model (or
+            // CODER_OPENCODE_MODEL), never CODER_DELEGATE_MODEL, which names
+            // Microcoder's Codex model.
+            let model = if target.agent == Agent::Cli(Cli::OpenCode) {
+                Some(settings.opencode_model)
+            } else {
+                settings.model
+            };
+            let door = DelegateDoor::new(target, model, workdir, jev, jev_source)
                 .reading_capacity_in(settings.book);
             Ok((Door::Delegate(std::sync::Arc::new(door)), choice.reason))
         }
@@ -1409,6 +1436,58 @@ mod tests {
         let mut targets = vec![Target::microcoder(providers)];
         targets.extend(both(claude, codex));
         targets
+    }
+
+    /// An OpenCode target, installed and signed in, or not.
+    fn opencode(installed: bool) -> Target {
+        target(
+            Cli::OpenCode,
+            installed,
+            if installed {
+                Credential::OpenCodeLogin
+            } else {
+                Credential::Missing
+            },
+        )
+    }
+
+    #[test]
+    fn auto_reaches_opencode_before_claude_code_and_codex() {
+        let chosen = |targets: &[Target]| choose(Mode::Auto, None, None, targets).unwrap();
+        // Microcoder has no provider it can use, OpenCode is installed and
+        // signed in: OpenCode answers ahead of Claude Code and Codex.
+        let usable = vec![
+            Target::microcoder(providers(false, false, false)),
+            opencode(true),
+            target(Cli::ClaudeCode, true, Credential::CliLogin),
+            target(Cli::Codex, true, Credential::CodexAuthFile),
+        ];
+        assert_eq!(chosen(&usable).chosen, Chosen::Delegate(usable[1].clone()));
+        // An OpenCode out of its usage limit is skipped, and Claude Code
+        // answers.
+        let refusal = Refusal::new(
+            Provider::OpenCode,
+            capacity::Kind::UsageLimit,
+            1_000,
+            Some(5_000),
+        );
+        let mut refused = opencode(true);
+        refused.problem = Some(format!("its login {}", microcoder::blocked(&refusal)));
+        refused.refusal = Some(refusal);
+        let limited = vec![
+            Target::microcoder(providers(false, false, false)),
+            refused,
+            target(Cli::ClaudeCode, true, Credential::CliLogin),
+        ];
+        assert_eq!(
+            chosen(&limited).chosen,
+            Chosen::Delegate(limited[2].clone())
+        );
+        // The operator names OpenCode: it is the only target considered.
+        let only = vec![opencode(true)];
+        let named = choose(Mode::Auto, Some(Agent::Cli(Cli::OpenCode)), None, &only).unwrap();
+        assert_eq!(named.chosen, Chosen::Delegate(only[0].clone()));
+        assert!(named.reason.contains(AGENT_VAR));
     }
 
     #[test]

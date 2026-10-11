@@ -3,8 +3,12 @@
 Coder can hand a task's turn to [OpenCode](https://opencode.ai), as it hands
 turns to Claude Code, Codex, and Devin. The supported coding agents for
 delegation are Claude Code, Codex, Devin, OpenCode, and Grok Build. OpenCode runs on the
-host with its own logins, in two ways:
+host with its own logins, in three ways:
 
+- **A terminal or `coder -p` turn**: the [delegate door](delegate-door.md)
+  reaches OpenCode under `CODER_DELEGATE=auto` (after Microcoder) or
+  `CODER_DELEGATE_AGENT=opencode`, running the free `opencode/big-pickle`
+  model unless `CODER_OPENCODE_MODEL` names another.
 - **A repository turn on an `opencode` route**: `opencode acp`, OpenCode's
   Agent Client Protocol (ACP) server, takes the whole turn of an
   auto-started task, as `devin acp` does on a [Devin route](devin.md).

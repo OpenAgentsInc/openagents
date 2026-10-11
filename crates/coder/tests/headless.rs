@@ -704,3 +704,72 @@ fn a_turn_with_a_target_is_delegated_and_streams_its_progress() {
         "{document:#}"
     );
 }
+
+/// An OpenCode target that auto picks up: a stand-in `opencode` binary with
+/// its provider login, so `CODER_DELEGATE=auto` delegates to OpenCode on the
+/// free OpenCode model, and the trace names it. The stand-in spends nothing.
+#[test]
+fn auto_delegates_to_an_opencode_target_named_by_its_login() {
+    if coder_boundary::Boundary::readonly().build().is_err() {
+        eprintln!("skipped: this host cannot enforce a boundary");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path().join("home");
+    let work = dir.path().join("work");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::create_dir_all(&work).unwrap();
+    let opencode = coder_delegate::adapter::standin::install(
+        &dir.path().join("bin"),
+        "opencode",
+        coder_delegate::adapter::standin::OPENCODE,
+    );
+    // OpenCode's stored login, under the HOME these tests give it.
+    let data = home.join(".local/share/opencode");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::write(
+        data.join("auth.json"),
+        r#"{"opencode":{"type":"api","key":"stand-in"}}"#,
+    )
+    .unwrap();
+    let trace = dir.path().join("delegated-opencode.atif.jsonl");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_coder"));
+    for name in CREDENTIALS {
+        command.env_remove(name);
+    }
+    let output = command
+        .current_dir(&work)
+        .env("HOME", &home)
+        .env("OPENAGENTS_JEV_HOSTED", "off")
+        // `auto`: with a target installed and signed in, the door delegates
+        // to it. Microcoder must have no provider to use, so this HOME has
+        // no Codex or Claude Code login and the cloud is off.
+        .env("CODER_DELEGATE", "auto")
+        .env("CODER_CLOUD", "off")
+        // Naming a claude that is not there keeps Microcoder from a system
+        // `claude` a developer's machine might carry.
+        .env("CLAUDE_BIN", "/nonexistent/claude")
+        .env_remove("CODER_DELEGATE_AGENT")
+        .env_remove("CODER_DELEGATE_MODEL")
+        .env_remove("CODER_OPENCODE_MODEL")
+        // The delegate door names OpenCode's binary with CODER_ONE_OPENCODE_BIN.
+        .env("CODER_ONE_OPENCODE_BIN", &opencode)
+        .env("CODER_SHELL", "off")
+        .args(["-p", "--json", "what is here?", "--trace"])
+        .arg(&trace)
+        .output()
+        .expect("the binary runs");
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("answering with delegate"),
+        "the door is delegation: {stderr}"
+    );
+    let recording = atif::log::read(&trace).expect("the trace reads back");
+    assert_eq!(recording.session.door, "delegate");
+    assert_eq!(
+        recording.session.model, "opencode/opencode/big-pickle",
+        "an automatic OpenCode turn names the free OpenCode model"
+    );
+}

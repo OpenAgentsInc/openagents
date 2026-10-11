@@ -6,10 +6,10 @@ Jev judges the state, one structured model call returns the next
 commands, and the commands run in the working directory. Microcoder runs
 in this process and generates through the first connected provider with
 capacity: GPT-6 Luna on the operator's Codex login, then Claude Code's
-login. When Microcoder has no provider to use, the executor is Claude
-Code, then Codex CLI, briefed with what Jev chose from the workspace. The
-Open Responses door, Gemini today, answers only when this machine has no
-delegation target.
+login. When Microcoder has no provider to use, the executor is OpenCode
+(the free `opencode/big-pickle` model), then Claude Code, then Codex CLI,
+briefed with what Jev chose from the workspace. The Open Responses door,
+Gemini today, answers only when this machine has no delegation target.
 
 Status: implemented in `crates/coder` (`delegate_door.rs` and
 `delegate_door/microcoder.rs`, wired through `agent.rs` and
@@ -111,7 +111,7 @@ sentence reports, so the next turn and every other agent pass over that
 login. [The usage-limit book](capacity.md) covers the detector, resume
 after a limit, and `openagents capacity`.
 
-## A Claude Code or Codex turn
+## A Claude Code, Codex, or OpenCode turn
 
 ```text
 probe    the host runs the read-only probe battery in the working directory
@@ -148,11 +148,12 @@ with it. The terminal and `coder -p` choose through
 
 | Setting | Effect |
 | --- | --- |
-| `CODER_DELEGATE=auto` | The default. Delegate to Microcoder when one of its providers is connected and has capacity. Otherwise delegate to an installed and authenticated `claude`, then `codex`, when its login has capacity. Otherwise fall back. Each choice says why. |
+| `CODER_DELEGATE=auto` | The default. Delegate to Microcoder when one of its providers is connected and has capacity. Otherwise delegate to an installed and authenticated OpenCode, then `claude`, then `codex`, when its login has capacity. Otherwise fall back. Each choice says why. |
 | `CODER_DELEGATE=always` | Delegate, or refuse to start. |
 | `CODER_DELEGATE=off` | Never delegate. |
-| `CODER_DELEGATE_AGENT` | `microcoder`, `claude-code`, or `codex`: consider only that target. `microluna` names Microcoder, which replaced it. |
-| `CODER_DELEGATE_MODEL` | The target's model. For Microcoder it names the Codex model. Unset, Microcoder and Codex run `gpt-6-luna`, and Claude Code runs `claude-opus-5-5`. |
+| `CODER_DELEGATE_AGENT` | `microcoder`, `opencode`, `claude-code`, or `codex`: consider only that target. `microluna` names Microcoder, which replaced it. |
+| `CODER_DELEGATE_MODEL` | The target's model. For Microcoder it names the Codex model. Unset, Microcoder and Codex run `gpt-6-luna`, and Claude Code runs `claude-opus-5-5`. It never names the OpenCode model. |
+| `CODER_OPENCODE_MODEL` | The OpenCode turn's model, in OpenCode's `PROVIDER/MODEL` form. Unset, an automatic OpenCode turn runs the free `opencode/big-pickle`. |
 | `CODER_WORKER`, `CODER_EXECUTOR` | An explicit request for the relay or a local executor. It outranks `auto` and contradicts `always`. |
 
 Microcoder needs no binary of its own. The door only reads the Codex
@@ -161,12 +162,15 @@ near expiry, Codex counts as not connected, and `coder doctor` says so;
 any Codex command refreshes the login.
 
 A CLI target is available when its binary is found (`CODER_ONE_CLAUDE_BIN` or
-`CODER_ONE_CODEX_BIN`, then `PATH`, then `~/.local/bin`), a credential
+`CODER_ONE_CODEX_BIN`, then `PATH`, then `~/.local/bin`; OpenCode through
+`OPENCODE_BIN`, `PATH`, `~/.opencode/bin`, or `~/.local/bin`), a credential
 is (`CLAUDE_CODE_OAUTH_TOKEN`, an Anthropic API key, or the CLI's stored
 login for Claude Code; `~/.codex/auth.json` or `OPENAI_API_KEY` for
-Codex), and the capacity book holds no refusal for its login. Claude Code
-spends the Claude login and Codex CLI the Codex login. An Open Responses
-key such as `CODER_DOOR_KEY` names the fallback rather than asking for it.
+Codex; a stored or configured OpenCode login for OpenCode), and the capacity
+book holds no refusal for its login. Claude Code spends the Claude login,
+Codex CLI the Codex login, and OpenCode its own, so one OpenCode refusal
+holds every OpenCode turn. An Open Responses key such as `CODER_DOOR_KEY`
+names the fallback rather than asking for it.
 
 When no target is available and a target was skipped only for capacity,
 and no Open Responses key is set, every turn of the session ends with one

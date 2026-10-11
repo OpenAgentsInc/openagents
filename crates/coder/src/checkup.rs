@@ -137,6 +137,13 @@ fn report() -> (Vec<String>, bool) {
             lines.push(codex_executor(settings.model.as_deref()));
             lines.push(policy_line());
         }
+        Some(Chosen::Delegate(target))
+            if target.agent
+                == delegate_door::Agent::Cli(coder_delegate::delegate::Agent::OpenCode) =>
+        {
+            lines.push(opencode_executor(&settings.opencode_model));
+            lines.push(policy_line());
+        }
         _ => {
             let model = settings
                 .model
@@ -246,6 +253,16 @@ fn codex_executor(model: Option<&str>) -> String {
     )
 }
 
+/// The selected OpenCode CLI runs the free OpenCode model (or the one the
+/// operator named), with its own tool and cache settings.
+fn opencode_executor(model: &str) -> String {
+    format!(
+        "{:<10} opencode runs {model} · CLI-owned tools and cache settings · runs until done · stops after {} min silent",
+        "executor",
+        delegate_door::quiet().as_secs() / 60,
+    )
+}
+
 fn policy_line() -> String {
     format!(
         "{:<10} {} ({}), sha256 {}",
@@ -273,5 +290,18 @@ mod tests {
         let named = codex_executor(Some("fixture-model"));
         assert!(named.contains("codex runs fixture-model"));
         assert!(!named.contains(coder_delegate::delegate::Agent::Codex.default_model()));
+    }
+
+    #[test]
+    fn selected_opencode_diagnostics_name_its_model() {
+        let default = opencode_executor(delegate_door::OPENCODE_AUTO_MODEL);
+        assert!(default.contains(&format!(
+            "opencode runs {}",
+            delegate_door::OPENCODE_AUTO_MODEL
+        )));
+        assert!(default.contains("CLI-owned tools and cache settings"));
+        assert!(!default.contains("claude-code"));
+        let named = opencode_executor("anthropic/claude-sonnet-5");
+        assert!(named.contains("opencode runs anthropic/claude-sonnet-5"));
     }
 }

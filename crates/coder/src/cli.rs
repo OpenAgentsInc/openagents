@@ -89,12 +89,13 @@ Exit codes with --print:
   2   The turn finished and the classifier declined it.
   64  The command line was wrong.
 
-Environment variables choose what answers a turn. If Claude Code or
-Codex is installed and signed in, Coder hands the turn to it with a
+Environment variables choose what answers a turn. If OpenCode, Claude Code,
+or Codex is installed and signed in, Coder hands the turn to it with a
 briefing that Jev prepares. CODER_DELEGATE sets when that happens: auto
-(the default), always, or off. CODER_DELEGATE_AGENT picks claude-code or
-codex, and CODER_DELEGATE_MODEL picks its model. If no agent is
-available, Coder answers through an Open Responses endpoint instead.
+(the default), always, or off. CODER_DELEGATE_AGENT picks opencode,
+claude-code, or codex; CODER_DELEGATE_MODEL picks its model, and
+CODER_OPENCODE_MODEL picks the OpenCode one. If no agent is available,
+Coder answers through an Open Responses endpoint instead.
 
 CODER_DECISION_PROFILE and the other CODER_DECISION_* variables set the
 decision service that classifies each turn. If they are unset, Coder
