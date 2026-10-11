@@ -74,14 +74,15 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
     let engine_fallback = args.switch("engine-fallback");
     // The briefed agent is the default engine (#11258); `--engine bare`
     // keeps the Coder issue flow.
-    // `briefed:codex` runs the same briefing and checks on Codex (#11308).
+    // `briefed:codex`, `briefed:opencode` and `briefed:gemini` run the same
+    // briefing and checks on Codex, OpenCode and Gemini (#11308).
     let engine = args.option("engine").unwrap_or("briefed");
     let briefed = match engine {
-        "briefed" | "briefed:codex" => true,
+        "briefed" | "briefed:codex" | "briefed:opencode" | "briefed:gemini" => true,
         "bare" => false,
         other => {
             return Err(Failure::Usage(format!(
-                "--engine is `briefed`, `briefed:codex`, or `bare`, not `{other}`"
+                "--engine is `briefed`, `briefed:codex`, `briefed:opencode`, `briefed:gemini`, or `bare`, not `{other}`"
             )));
         }
     };

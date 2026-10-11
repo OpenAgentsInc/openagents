@@ -2,7 +2,8 @@
 """Work one GitHub issue with the briefed agent (#11211, #11258).
 
     work_issue.py --repo OWNER/NAME --issue N [--land queue|pr|none]
-                  [--engine briefed|briefed:codex|bare] [--out DIR] [--checkout PATH]
+                  [--engine briefed|briefed:codex|briefed:opencode|briefed:gemini|bare]
+                  [--out DIR] [--checkout PATH]
 
 The one engine entry point behind `POST /v1/work`, the web's "Work on this
 issue", agent fleet runs, and `openagents chat work` (the default engine):
@@ -15,7 +16,10 @@ issue", agent fleet runs, and `openagents chat work` (the default engine):
    `verify`, which compiles, runs the change's tests and formats. `briefed`
    runs it on Claude; `briefed:codex` runs the same briefing and checks on
    Codex CLI (#11308), on Codex's own login, with `verify` served to it over
-   MCP by the same binary.
+   MCP by the same binary. `briefed:opencode` runs it on OpenCode (an open
+   model Vertex serves, `OA_WORK_OPENCODE_MODEL` to pick another) and
+   `briefed:gemini` on Vertex AI's Gemini through OpenCode
+   (`OA_WORK_GEMINI_MODEL`), on Google's application default credentials.
 3. **Judged by the diff**: the driver replays the checks itself on what the
    agent actually changed: `cargo fmt` and `cargo test` for each package the
    diff touches. A run passes only when there is a diff and every replayed
@@ -169,6 +173,8 @@ def signed_in(engine: str) -> str | None:
     """None when `engine`'s login is here; otherwise what is missing."""
     if backend_of(engine) == "codex" and engine.startswith("briefed"):
         return None if codex_signed_in() else "no Codex sign-in in this environment (~/.codex/auth.json)"
+    if backend_of(engine) in ("opencode", "gemini"):
+        return None if shutil.which("opencode") else "OpenCode is not installed in this environment"
     return None if claude_signed_in() else "no Claude sign-in in this environment (CLAUDE_CODE_OAUTH_TOKEN or ~/.claude)"
 
 
@@ -374,7 +380,7 @@ def usage_of(result: dict | None) -> dict:
 
 
 def backend_of(engine: str) -> str:
-    """`claude` or `codex`: the engine the briefed agent runs on."""
+    """`claude`, `codex`, `opencode` or `gemini`: the engine the briefed agent runs on."""
     return engine.split(":", 1)[1] if ":" in engine else "claude"
 
 
@@ -410,9 +416,12 @@ def run_briefed(run: Run, b: dict, root: Path, out: Path, model: str, timeout: i
     if backend == "codex":
         config["model"] = os.environ.get("OA_WORK_CODEX_MODEL", "")  # empty: Codex's own default
         config["codex_bin"] = shutil.which("codex") or "codex"
+    if backend in ("opencode", "gemini"):  # empty: the engine's default model (#11308)
+        config["model"] = os.environ.get(f"OA_WORK_{backend.upper()}_MODEL", "")
+        config["opencode_bin"] = shutil.which("opencode") or "opencode"
     (out / "agent.json").write_text(json.dumps(config, indent=2))
     agent = os.environ.get("OA_BRIEFED_AGENT") or shutil.which("briefed-agent") or "briefed-agent"
-    run.say("agent", f"the briefed agent is working on {'Codex' if backend == 'codex' else 'Claude'}",
+    run.say("agent", f"the briefed agent is working on {BACKEND_NAMES.get(backend, 'Claude')}",
             engine=f"briefed:{backend}" if backend != "claude" else "briefed")
     t0 = time.time()
     proc = subprocess.Popen([agent, str(out / "agent.json")], cwd=root, env=agent_env(out),
@@ -482,8 +491,15 @@ def run_bare(run: Run, issue: dict, root: Path, out: Path, model: str, timeout: 
 
 # ------------------------------------------------------------------ landing
 
+BACKEND_NAMES = {"claude": "Claude", "codex": "Codex", "opencode": "OpenCode", "gemini": "Gemini"}
+
+
 def engine_words(engine: str) -> str:
-    return {"briefed": "briefed agent", "briefed:codex": "briefed agent on Codex"}.get(engine, "bare Claude Code")
+    if engine == "briefed":
+        return "briefed agent"
+    if engine.startswith("briefed:"):
+        return f"briefed agent on {BACKEND_NAMES.get(backend_of(engine), backend_of(engine))}"
+    return "bare Claude Code"
 
 
 def commit(root: Path, issue: dict, engine: str, base: str) -> str:
@@ -641,7 +657,8 @@ def main() -> int:
     ap.add_argument("--repo", required=True)
     ap.add_argument("--issue", type=int, required=True)
     ap.add_argument("--land", choices=["queue", "pr", "none"], default="pr")
-    ap.add_argument("--engine", choices=["briefed", "briefed:codex", "bare"], default="briefed")
+    ap.add_argument("--engine", choices=["briefed", "briefed:codex", "briefed:opencode", "briefed:gemini", "bare"],
+                    default="briefed")
     ap.add_argument("--checkout")
     ap.add_argument("--out")
     ap.add_argument("--run-id")

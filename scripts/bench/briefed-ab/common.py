@@ -53,6 +53,7 @@ LEVERS: dict[str, object] = {
     # 4 Plugins / MCP / skills
     "mcp": "checks",             # only the bench's check server
     # 5 Model routing
+    "engine": "claude",          # claude | codex | opencode | gemini (#11308)
     "model": "claude-opus-5-5",
     "effort": "default",         # default | low | medium | high
     # 6 Loop control

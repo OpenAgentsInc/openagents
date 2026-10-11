@@ -149,6 +149,8 @@ fn finished(output: &Output, issue: u64, result: &Value) -> Value {
     let engine = match result["engine"].as_str() {
         Some("briefed") => "briefed agent",
         Some("briefed:codex") => "briefed agent on Codex",
+        Some("briefed:opencode") => "briefed agent on OpenCode",
+        Some("briefed:gemini") => "briefed agent on Gemini",
         Some("bare") => "Claude Code",
         _ => "no engine",
     };
@@ -247,10 +249,11 @@ pub(super) fn work_here(
     if !output.json() {
         eprintln!(
             "The briefed agent{} works {} issue{} of {repository}, {parallel} at a time{}",
-            if engine == "briefed:codex" {
-                " on Codex"
-            } else {
-                ""
+            match engine.as_str() {
+                "briefed:codex" => " on Codex",
+                "briefed:opencode" => " on OpenCode",
+                "briefed:gemini" => " on Gemini",
+                _ => "",
             },
             numbers.len(),
             if numbers.len() == 1 { "" } else { "s" },

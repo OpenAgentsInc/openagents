@@ -409,6 +409,11 @@ def run_arm_b(task: dict, root: Path, out: Path, levers: dict, slot: int, seeds:
         "finish_path": str(out / "finish.json"),
         "related": {"repo": str(REPO), "rev": task["parent"]},
     }
+    engine = levers.get("engine", "claude")
+    if engine != "claude":  # the same briefing and checks on another engine (#11308)
+        config["engine"] = engine
+        config["codex_bin"] = shutil.which("codex") or "codex"
+        config["opencode_bin"] = shutil.which("opencode") or "opencode"
     if checks:
         mcp_env = {k: env[k] for k in ("PATH", "AB_ROOT", "AB_BASE", "AB_SLOT", "HOME") if k in env}
         mcp_env.update({"AB_CHECKS": json.dumps(b["checks"]), "AB_CHECK_OUTPUT": levers["check_output"],
@@ -444,16 +449,32 @@ def run_arm_b(task: dict, root: Path, out: Path, levers: dict, slot: int, seeds:
         "denied": summary.get("denied", []), "result": summary.get("result"),
         "finished": summary.get("finished"), "briefing_digest": rebrief_mod.digest(md),
         "acceptance_source": (b.get("acceptance") or {}).get("source"),
+        "engine": summary.get("engine", "claude"),
+        "engine_model": summary.get("model") or config["model"], "agent_error": summary.get("error"),
     }
 
 
 # -------------------------------------------------------------------- trial
 
-def usage_of(result: dict | None) -> dict:
+# Codex on a ChatGPT login reports tokens, no cost (#11308): its cost is
+# the tokens at the model's API list price, dollars per million (uncached
+# input, cached input, output; output includes reasoning), from OpenRouter's
+# listing of OpenAI's prices on 2026-10-11.
+CODEX_PRICES = {"gpt-6.1-sol": (2.0, 0.10, 10.0)}
+
+
+def usage_of(result: dict | None, model: str | None = None) -> dict:
     if not result:
         return {"cost_usd": None, "turns": None, "input_tokens": None, "output_tokens": None,
                 "cache_read": None, "cache_write": None, "is_error": True, "subtype": None}
     u = result.get("usage") or {}
+    if "cached_input_tokens" in u:  # Codex
+        inp, cached, out = u.get("input_tokens") or 0, u.get("cached_input_tokens") or 0, u.get("output_tokens") or 0
+        price = CODEX_PRICES.get(model or "")
+        cost = round(((inp - cached) * price[0] + cached * price[1] + out * price[2]) / 1e6, 4) if price else None
+        return {"cost_usd": cost, "cost_basis": "tokens at API list price" if price else None,
+                "turns": result.get("num_turns"), "input_tokens": inp, "output_tokens": out,
+                "cache_read": cached, "cache_write": None, "is_error": False, "subtype": None}
     return {
         "cost_usd": result.get("total_cost_usd"), "turns": result.get("num_turns"),
         "input_tokens": u.get("input_tokens"), "output_tokens": u.get("output_tokens"),
@@ -547,6 +568,10 @@ ARMS: dict[str, dict] = {
     # #11311: B0 plus one re-brief from the first attempt's evidence when it
     # fails its replayed checks or makes no change.
     "B0R": {"tools": "verify", "rebrief": 1},
+    # B0 on other engines, same briefing and verify (#11308)
+    "Bcodex": {"tools": "verify", "engine": "codex", "model": "gpt-6.1-sol"},
+    "Bopencode": {"tools": "verify", "engine": "opencode", "model": "google-vertex/zai-org/glm-5.2-maas"},
+    "Bgemini": {"tools": "verify", "engine": "gemini", "model": "google-vertex/gemini-3.1-pro-preview"},
 }
 
 
@@ -689,21 +714,32 @@ def grade_kinds(task: dict, diff: str, slot: int = 0, hidden_only: bool = False)
 
 def limited(m: dict) -> bool:
     res = m.get("result") or {}
-    text = json.dumps(res)[:4000] if res else ""
-    return res.get("api_error_status") == 429 or "hit your" in text or "usage limit" in text
+    text = (json.dumps(res)[:4000] if res else "") + " " + str(m.get("agent_error") or "")[:2000]
+    return (res.get("api_error_status") == 429 or "hit your" in text or "usage limit" in text
+            or "RESOURCE_EXHAUSTED" in text or "Resource exhausted" in text or "rate limit" in text.lower())
 
 
-def wait_for_login() -> None:
-    """Block until the Claude Code login answers again (after a limit)."""
+def wait_for_login(engine: str = "claude") -> None:
+    """Block until the engine's login answers again (after a limit)."""
     while True:
-        proc = subprocess.run([CLAUDE, "-p", "Reply ok", "--output-format", "json", "--model", "haiku"],
-                              capture_output=True, text=True, cwd=str(WORK))
-        try:
-            if not json.loads(proc.stdout).get("is_error"):
+        if engine == "codex":
+            proc = subprocess.run(["codex", "exec", "--json", "--skip-git-repo-check", "--ephemeral",
+                                   "--ignore-user-config", "-"], input="Reply ok", capture_output=True,
+                                  text=True, cwd=str(WORK))
+            if proc.returncode == 0 and "turn.completed" in proc.stdout:
                 return
-        except json.JSONDecodeError:
-            pass
-        print("login is at its usage limit; waiting 10 minutes", flush=True)
+        elif engine in ("opencode", "gemini"):
+            time.sleep(120)  # a provider's per-minute quota: wait it out
+            return
+        else:
+            proc = subprocess.run([CLAUDE, "-p", "Reply ok", "--output-format", "json", "--model", "haiku"],
+                                  capture_output=True, text=True, cwd=str(WORK))
+            try:
+                if not json.loads(proc.stdout).get("is_error"):
+                    return
+            except json.JSONDecodeError:
+                pass
+        print(f"{engine} login is at its usage limit; waiting 10 minutes", flush=True)
         time.sleep(600)
 
 
@@ -764,7 +800,7 @@ def run_trial(task: dict, arm: str, rep: int, levers: dict, slot: int, out: Path
     record = {
         "issue": task["issue"], "arm": arm, "rep": rep, "slot": slot, "levers": lv,
         **{k: v for k, v in m.items() if k not in ("result",)},
-        **usage_of(m.get("result")),
+        **usage_of(m.get("result"), m.get("engine_model")),
         "lock_wait_secs": lock_wait,
         "files_changed": changed,
         "tool_log": tlog,
@@ -778,6 +814,8 @@ def run_trial(task: dict, arm: str, rep: int, levers: dict, slot: int, out: Path
         "finished_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "claude_version": claude_version(),
         "agent_sha256": sha256_of(AGENT_BIN) if arm != "A" else None,
+        "engine_version": tool_version(lv["engine"] if lv.get("engine") in ("codex", "opencode") else
+                                       "opencode" if lv.get("engine") == "gemini" else CLAUDE),
     }
     dump_json(out / "result.json", record)
     try:  # a trace for verify-replay before corpus admission (#11218)
@@ -839,12 +877,19 @@ def claude_version() -> str:
     return run([CLAUDE, "--version"], check=False).stdout.strip()
 
 
+def tool_version(name: str) -> str:
+    return run([name, "--version"], check=False).stdout.strip()
+
+
 def check_pins(plan: dict) -> None:
     pins = plan["pins"]
     if sha256_of(AGENT_BIN) != pins["agent_sha256"]:
         raise SystemExit(f"{AGENT_BIN} is not the plan's pinned agent binary")
     if claude_version() != pins["claude_version"]:
         raise SystemExit(f"claude is {claude_version()}, the plan pins {pins['claude_version']}")
+    for name in ("codex", "opencode"):  # the other engines' CLIs (#11308)
+        if pins.get(f"{name}_version") and tool_version(name) != pins[f"{name}_version"]:
+            raise SystemExit(f"{name} is {tool_version(name)}, the plan pins {pins[f'{name}_version']}")
 
 
 def budget_spent(tag_dir: Path) -> float:
@@ -929,7 +974,7 @@ def batch(args) -> None:
                         r = run_trial(task, arm, rep, levers, slot, out)
                     except RateLimited:
                         shutil.rmtree(out, ignore_errors=True)
-                        wait_for_login()
+                        wait_for_login(dict(levers, **ARMS.get(arm, {})).get("engine", "claude"))
                         r = run_trial(task, arm, rep, levers, slot, out)
                     print(f"[slot{slot}] {issue} {arm}{rep}: ${r['cost_usd']} {r['wall_secs']}s "
                           f"compiles={r['compiles']} tests={r['tests_pass']} overlap={r['overlap_recall']}", flush=True)
@@ -1256,8 +1301,27 @@ def mean_of(xs):
     return sum(xs) / len(xs) if xs else None
 
 
+def rows_of_csv(path: str) -> list[dict]:
+    """Trial rows from a published `--csv` (another plan's, such as S2's),
+    for comparing arms across plans."""
+    import csv
+    out = []
+    for r in csv.DictReader(open(path)):
+        num = lambda k: float(r[k]) if r.get(k) not in (None, "") else None  # noqa: E731
+        flag = lambda k: r.get(k) == "True"  # noqa: E731
+        out.append({"tag": r["tag"], "issue": int(r["issue"]), "arm": r["arm"], "accepted": flag("accepted"),
+                    "tests_pass": flag("tests_pass"), "judge_accept": (num("judge_score") or 0) >= 4,
+                    "accepted_judge": flag("accepted_judge"), "compiles": flag("compiles"),
+                    "judge_score": num("judge_score"), "cost_usd": num("cost_usd"), "wall_secs": num("wall_secs"),
+                    "turns": num("turns"), "output_tokens": num("output_tokens"), "overlap_recall": num("overlap_recall") or 0,
+                    "timed_out": flag("timed_out"), "tool_calls": {}, "files_read": []})
+    return out
+
+
 def report(args) -> None:
-    rows = rows_of(args.tag)
+    rows = rows_of(args.tag) if args.tag != ["-"] else []
+    for path in args.with_csv or []:
+        rows += rows_of_csv(path)
     if args.s2:
         base, cand = args.s2.split(",")
         print(s2_analysis(rows, base, cand))
@@ -1329,6 +1393,7 @@ def main() -> None:
     r.add_argument("--md", action="store_true", help="a Markdown table")
     r.add_argument("--s2", help="BASE,CANDIDATE: the frozen S2 analysis")
     r.add_argument("--issues", help="only these issues (e.g. the behavioral subset)")
+    r.add_argument("--with-csv", action="append", help="also another plan's published trial rows (results/*.csv)")
     g = sub.add_parser("regrade")
     g.add_argument("--tag", action="append", required=True)
     g.add_argument("--issue", type=int, action="append")

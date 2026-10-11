@@ -19,6 +19,12 @@
 //!   config sets `inherit_api_key` (the person's own API key is the run's
 //!   credential).
 //!
+//! Other engines run the same briefing and checks behind the same summary
+//! (#11308): `engine: "codex"` (Codex CLI, `codex.rs`), `engine:
+//! "opencode"` and `engine: "gemini"` (OpenCode, Gemini on Vertex through
+//! OpenCode, `opencode.rs`). They reach the check tools over MCP from this
+//! binary's `--serve CONFIG.json` mode.
+//!
 //! Usage: `briefed-agent CONFIG.json`. The config names the worktree, the
 //! system prompt and first message files, the model, the effort, the time
 //! limit, and where to write the event log (one JSON line per message) and
@@ -42,6 +48,7 @@ use futures::StreamExt;
 use serde_json::{Value, json};
 
 mod codex;
+mod opencode;
 
 /// Credentials the CLI must not inherit, so it uses the Claude Code login.
 const REMOVED_ENV: [&str; 2] = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"];
@@ -169,7 +176,14 @@ async fn run() -> Result<(), String> {
     match config["engine"].as_str() {
         None | Some("claude") => {}
         Some("codex") => return codex::run(&config, &path).await,
-        Some(other) => return Err(format!("config: engine `{other}` is not claude or codex")),
+        Some(engine @ ("opencode" | "gemini")) => {
+            return opencode::run(&config, &path, engine).await;
+        }
+        Some(other) => {
+            return Err(format!(
+                "config: engine `{other}` is not claude, codex, opencode, or gemini"
+            ));
+        }
     }
 
     let worktree = PathBuf::from(text(&config, "worktree")?);
