@@ -173,20 +173,18 @@ impl DeviceTrunk {
         }
     }
 
-    /// Independent head products in one round trip (Metal); `None` where
-    /// the device has no batched path or a matrix is not resident.
+    /// Independent head products in one round trip; `None` when a matrix
+    /// is not resident.
     pub fn head_linear_batch(&self, jobs: &[(&[f32], &[f32], usize, Option<&[f32]>)]) -> Result<Option<Vec<Vec<f32>>>, String> {
         match self {
-            Self::Cuda(_) => {
-                let _ = jobs;
-                Ok(None)
-            }
+            Self::Cuda(trunk) => trunk.head_linear_batch(jobs),
             #[cfg(target_os = "macos")]
             Self::Metal(trunk) => trunk.head_linear_batch(jobs),
         }
     }
 
-    /// The head's feed-forward in one round trip (Metal); `None` otherwise.
+    /// The head's feed-forward in one round trip; `None` when a matrix is
+    /// not resident.
     #[allow(clippy::too_many_arguments)]
     pub fn head_feedforward(
         &self,
@@ -198,16 +196,14 @@ impl DeviceTrunk {
         n: usize,
     ) -> Result<Option<Vec<f32>>, String> {
         match self {
-            Self::Cuda(_) => {
-                let _ = (up, up_bias, down, down_bias, input, n);
-                Ok(None)
-            }
+            Self::Cuda(trunk) => trunk.head_feedforward(up, up_bias, down, down_bias, input, n),
             #[cfg(target_os = "macos")]
             Self::Metal(trunk) => trunk.head_feedforward(up, up_bias, down, down_bias, input, n),
         }
     }
 
-    /// A memory-attention block in one round trip (Metal); `None` otherwise.
+    /// A memory-attention block in one round trip; `None` when a matrix is
+    /// not resident.
     #[allow(clippy::too_many_arguments)]
     pub fn head_attend_block(
         &self,
@@ -223,10 +219,9 @@ impl DeviceTrunk {
         scale: f32,
     ) -> Result<Option<Vec<f32>>, String> {
         match self {
-            Self::Cuda(_) => {
-                let _ = (evidence, q, key_matrix, value_matrix, value_bias, out, queries, rows, heads, scale);
-                Ok(None)
-            }
+            Self::Cuda(trunk) => trunk.head_attend_block(
+                evidence, q, key_matrix, value_matrix, value_bias, out, queries, rows, heads, scale,
+            ),
             #[cfg(target_os = "macos")]
             Self::Metal(trunk) => trunk.head_attend_block(
                 evidence, q, key_matrix, value_matrix, value_bias, out, queries, rows, heads, scale,
@@ -371,6 +366,8 @@ pub struct ClefDecisionLane {
     /// deterministic (a repeat is bitwise identical), so a repeated prompt
     /// (the same router state, say) is answered without the device.
     logit_cache: std::sync::Mutex<std::collections::VecDeque<([u8; 32], Vec<Vec<f32>>)>>,
+    /// The last decision's prefill and head seconds (for its receipt).
+    last_phases: std::sync::Mutex<(f64, f64)>,
 }
 
 /// Prompts whose logits [`ClefDecisionLane`] keeps.
@@ -578,6 +575,7 @@ impl ClefDecisionLane {
             waiting: AtomicUsize::new(0),
             running: std::sync::Mutex::new(()),
             logit_cache: std::sync::Mutex::new(std::collections::VecDeque::new()),
+            last_phases: std::sync::Mutex::new((0.0, 0.0)),
         })
     }
 
@@ -746,6 +744,7 @@ impl ClefDecisionLane {
                 .map_err(|error| error.to_string())
         };
         if let Some(trunk) = &self.cuda {
+            let prefill_began = Instant::now();
             let spans = head_spans(record);
             let width = self.head.config.hidden_size;
             let mut final_rows = observe.as_mut().map(|observe| {
@@ -819,6 +818,7 @@ impl ClefDecisionLane {
                 capture.span_means.clone_from(&span_means);
                 capture.last.clone_from(&prefill.last);
             }
+            let prefill_seconds = prefill_began.elapsed().as_secs_f64();
             let head_began = Instant::now();
             let mut memory = DeviceMemory::new(trunk);
             let lexical_time = std::cell::Cell::new(0.0f64);
@@ -842,6 +842,8 @@ impl ClefDecisionLane {
                 &timed_lexical,
             )
             .map_err(ClefRefusal::internal);
+            *self.last_phases.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
+                (prefill_seconds, head_began.elapsed().as_secs_f64());
             if std::env::var_os("PSIONIC_CLEF_PROFILE").is_some() {
                 eprintln!(
                     "clef head: {:.1} ms (lexical rows {:.1} ms; {} linears {:.1} ms; {} memory attentions {:.1} ms)",
@@ -855,6 +857,7 @@ impl ClefDecisionLane {
             }
             return logits;
         }
+        let cpu_began = Instant::now();
         let mut stream = ClefHeadStream::new(&self.head, record);
         let mut push_error = None;
         let mut sink = |index: usize, row: &[f32]| {
@@ -886,9 +889,14 @@ impl ClefDecisionLane {
             capture.span_means = span_means;
             capture.last = last;
         }
-        stream
+        let backbone_seconds = cpu_began.elapsed().as_secs_f64();
+        let head_began = Instant::now();
+        let logits = stream
             .finish(record, &lexical)
-            .map_err(ClefRefusal::internal)
+            .map_err(ClefRefusal::internal);
+        *self.last_phases.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
+            (backbone_seconds, head_began.elapsed().as_secs_f64());
+        logits
     }
 
     /// Answers one request body (blocking; one decision runs at a time).
@@ -902,6 +910,7 @@ impl ClefDecisionLane {
                 began.elapsed().as_secs_f64() * 1e3
             );
         }
+        let encoded_seconds = began.elapsed().as_secs_f64();
         let queued = self.waiting.fetch_add(1, Ordering::SeqCst);
         let _waiting = WaitingGuard(&self.waiting);
         if queued > self.limits.max_queue {
@@ -961,7 +970,25 @@ impl ClefDecisionLane {
                 if hit { ", cached" } else { "" }
             );
         }
-        let answer = self.answer(&request, &record, &logits, began);
+        let mut answer = self.answer(&request, &record, &logits, began);
+        {
+            // server-side phases, so a client can tell queue and inference
+            // from transport; a cached answer ran no prefill or head
+            let (prefill, head) = if hit {
+                (0.0, 0.0)
+            } else {
+                *self.last_phases.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+            };
+            let ms = |seconds: f64| (seconds * 1e4).round() / 10.0;
+            answer["psionic"]["timing"] = json!({
+                "encode_ms": ms(encoded_seconds),
+                "queue_ms": ms(waited),
+                "prefill_ms": ms(prefill),
+                "head_ms": ms(head),
+                "total_ms": ms(began.elapsed().as_secs_f64()),
+                "cached": hit,
+            });
+        }
         if let Some(export) = &self.export {
             let questions: Vec<(String, Vec<String>, Vec<f32>)> = request
                 .questions

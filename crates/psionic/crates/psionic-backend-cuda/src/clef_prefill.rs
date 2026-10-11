@@ -34,6 +34,8 @@ unsafe extern "C" {
     fn psionic_clef_stream_destroy(stream: *mut c_void) -> i32;
     fn psionic_clef_event_create(event: *mut *mut c_void) -> i32;
     fn psionic_clef_event_destroy(event: *mut c_void) -> i32;
+    fn psionic_clef_timing_event_create(event: *mut *mut c_void) -> i32;
+    fn psionic_clef_event_elapsed(start: *mut c_void, end: *mut c_void, ms: *mut f32) -> i32;
     fn psionic_clef_event_record(event: *mut c_void, stream: *mut c_void) -> i32;
     fn psionic_clef_stream_wait_event(stream: *mut c_void, event: *mut c_void) -> i32;
     fn psionic_clef_fused_linear(x: *const c_void, w: *const c_void, out: *mut c_void, n: i32, rows: i32, k: i32, format: i32, segment: i32, accumulate: i32, stream: *mut c_void) -> i32;
@@ -41,6 +43,7 @@ unsafe extern "C" {
     fn psionic_clef_linear_f32_ordered(x: *const c_void, w: *const c_void, out: *mut c_void, n: i32, m: i32, k: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_head_side(q: *const c_void, wk: *const c_void, side: *mut c_void, n: i32, heads: i32, width: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_head_context(mixed: *const c_void, wv: *const c_void, bv: *const c_void, out: *mut c_void, n: i32, heads: i32, width: i32, stream: *mut c_void) -> i32;
+    fn psionic_clef_bias_act(x: *mut c_void, b: *const c_void, rows: i64, cols: i32, gelu: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_span_sums(rows: *const c_void, spans: *const c_void, sums: *mut c_void, span_count: i32, d: i32, first: i32, n: i32, stream: *mut c_void) -> i32;
 }
 
@@ -238,6 +241,23 @@ impl ClefEvent {
     }
 }
 
+impl ClefEvent {
+    /// An event that records a device timestamp (for profiles: recorded
+    /// inside a submission, read after it completes, no extra waits).
+    pub fn timing() -> Result<Self, RuntimeError> {
+        let mut raw = std::ptr::null_mut();
+        check(unsafe { psionic_clef_timing_event_create(&mut raw) }, "cudaEventCreate")?;
+        Ok(Self { raw })
+    }
+
+    /// Milliseconds from `self` to `end` (both recorded and completed).
+    pub fn elapsed_ms(&self, end: &ClefEvent) -> Result<f32, RuntimeError> {
+        let mut ms = 0.0f32;
+        check(unsafe { psionic_clef_event_elapsed(self.raw, end.raw, &mut ms) }, "cudaEventElapsedTime")?;
+        Ok(ms)
+    }
+}
+
 impl Drop for ClefEvent {
     fn drop(&mut self) {
         let _ = unsafe { psionic_clef_event_destroy(self.raw) };
@@ -350,6 +370,29 @@ impl CudaSubmission {
             psionic_clef_linear_f32_ordered(xp, wp, op, int(n, "n")?, int(m, "m")?, int(k, "k")?, stream)
         };
         self.clef_launch(code, "psionic_clef_linear_f32_ordered")
+    }
+
+    /// `x[r, c] += b[c]` over `rows x cols` f32 from element `x_offset`
+    /// (and `b` from `b_offset`), then GELU (erf form, computed in double)
+    /// when `gelu`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn clef_bias_act(
+        &mut self,
+        x: &CudaBuffer,
+        x_offset: usize,
+        b: &CudaBuffer,
+        b_offset: usize,
+        rows: usize,
+        cols: usize,
+        gelu: bool,
+    ) -> Result<(), RuntimeError> {
+        let xp = span(x, x_offset, rows * cols, 4, "bias x")?;
+        let bp = span(b, b_offset, cols, 4, "bias b")?;
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe {
+            psionic_clef_bias_act(xp, bp, rows as i64, int(cols, "cols")?, i32::from(gelu), stream)
+        };
+        self.clef_launch(code, "psionic_clef_bias_act")
     }
 
     /// The joint head's memory-attention query side:

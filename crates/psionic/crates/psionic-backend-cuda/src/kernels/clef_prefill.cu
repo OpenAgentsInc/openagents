@@ -1138,6 +1138,21 @@ __global__ void head_context_kernel(const float *__restrict__ mixed, const float
     }
 }
 
+// x[r, c] += b[c], then GELU (erf form, in double like the host head) when
+// `gelu` is set. In place.
+__global__ void bias_act_kernel(float *x, const float *b, long long count, int cols, int gelu) {
+    const long long i = blockIdx.x * (long long)blockDim.x + threadIdx.x;
+    if (i >= count) {
+        return;
+    }
+    float v = x[i] + b[i % cols];
+    if (gelu) {
+        const double d = static_cast<double>(v);
+        v = static_cast<float>(0.5 * d * (1.0 + erf(d / 1.4142135623730951)));
+    }
+    x[i] = v;
+}
+
 // ---- causal flash attention, fixed order ----
 //
 // out[t, h, :] = softmax_j(q[t, h] . k[j]) v[j] over keys j <= first + t,
@@ -1615,6 +1630,16 @@ extern "C" int psionic_clef_linear_f32_ordered(const void *x, const void *w, voi
     DONE;
 }
 
+extern "C" int psionic_clef_bias_act(void *x, const void *b, long long rows, int cols, int gelu, void *stream) {
+    const long long count = rows * cols;
+    if (count <= 0) {
+        return 0;
+    }
+    bias_act_kernel<<<blocks_for(count, 256), 256, 0, STREAM>>>(static_cast<float *>(x), static_cast<const float *>(b),
+                                                                count, cols, gelu);
+    DONE;
+}
+
 extern "C" int psionic_clef_head_side(const void *q, const void *wk, void *side, int n, int heads, int width,
                                       void *stream) {
     if (n <= 0) {
@@ -1690,6 +1715,19 @@ extern "C" int psionic_clef_event_create(void **event) {
     const cudaError_t code = cudaEventCreateWithFlags(&created, cudaEventDisableTiming);
     *event = created;
     return static_cast<int>(code);
+}
+
+// A timing event (for device timestamps in profiles).
+extern "C" int psionic_clef_timing_event_create(void **event) {
+    cudaEvent_t created = nullptr;
+    const cudaError_t code = cudaEventCreate(&created);
+    *event = created;
+    return static_cast<int>(code);
+}
+
+// Milliseconds between two completed timing events.
+extern "C" int psionic_clef_event_elapsed(void *start, void *end, float *ms) {
+    return static_cast<int>(cudaEventElapsedTime(ms, static_cast<cudaEvent_t>(start), static_cast<cudaEvent_t>(end)));
 }
 
 extern "C" int psionic_clef_event_destroy(void *event) {

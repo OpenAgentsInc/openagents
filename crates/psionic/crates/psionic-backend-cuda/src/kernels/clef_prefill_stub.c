@@ -277,3 +277,25 @@ int psionic_clef_head_context(const void *mixed, const void *wv, const void *bv,
     (void)stream;
     return 1;
 }
+
+int psionic_clef_bias_act(void *x, const void *b, long long rows, int cols, int gelu, void *stream) {
+    (void)x;
+    (void)b;
+    (void)rows;
+    (void)cols;
+    (void)gelu;
+    (void)stream;
+    return 1;
+}
+
+int psionic_clef_timing_event_create(void **event) {
+    (void)event;
+    return 1;
+}
+
+int psionic_clef_event_elapsed(void *start, void *end, float *ms) {
+    (void)start;
+    (void)end;
+    (void)ms;
+    return 1;
+}

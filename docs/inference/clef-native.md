@@ -710,6 +710,40 @@ same hour, with and without the Clef calibration map.
   stays the first door. A 27B calibration map, and fewer `answer`
   options (see above), are the next steps on accuracy.
 
+### Round 5 (2026-10-11): receipt timing and CUDA head batching
+
+- **Receipt timing.** Every `/v1/systemone` answer now carries
+  `psionic.timing`:
+  - `encode_ms`, `queue_ms`, `prefill_ms`, `head_ms` and `total_ms`,
+    measured on the server;
+  - `cached`, which is true for an answer from the exact logit cache. That
+    answer ran no prefill or head.
+
+  With this, queue time and inference can be separated from transport.
+- **CUDA head batching.** The CUDA trunk now implements the batched head
+  calls:
+  - independent products in one submission;
+  - each feed-forward in one submission, with the GELU in double like the
+    host;
+  - each memory-attention block in one submission.
+
+  The head at 1k takes 3.5 ms, against about 5 ms before.
+- **Fewer waits and less memory.**
+  - The layer stack and the final memory/span step share one submission
+    and one wait per chunk.
+  - The cuBLAS attention score workspace is allocated only when that path
+    is in use: about 364 MiB less at 16k with flash attention.
+- **Device timestamps.** `ClefEvent::timing` records device timestamps
+  for profiles.
+- **Parity on the 40 e2e requests.**
+  - Against the CPU lane: top answer 100 %, max |Δp| 0.0045.
+  - Against the previous CUDA build: 100 %, max |Δp| 0.0026, median 0.
+- **Speed.** It matches the deployed build `a9ab2671be` in the same
+  session, two interleaved rounds of median-of-7:
+  - 1k: 0.193 s, against 0.192;
+  - 4k: 0.589 s, against 0.590;
+  - 16k: 2.45 s, against 2.46.
+
 ## M3 status (2026-10-10, in progress)
 
 The Metal lane exists and its kernels are checked. It has not yet run the
