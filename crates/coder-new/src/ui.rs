@@ -1368,11 +1368,11 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
         .saturating_sub(usize::from(area.height))
         .min(usize::from(u16::MAX)) as u16;
     app.scroll_max = max_scroll;
-    let following = app.scroll == u16::MAX;
-    let position = app.scroll.min(max_scroll);
-    if !following {
-        app.scroll = position;
+    // Back at the bottom after scrolling up: follow new output again.
+    if app.scroll >= max_scroll {
+        app.scroll = u16::MAX;
     }
+    let position = app.scroll.min(max_scroll);
     cache.locate_runs(area, usize::from(position));
     let visible = cache.visible(&tail, usize::from(position), usize::from(area.height));
     frame.render_widget(Paragraph::new(visible), area);
@@ -1704,6 +1704,35 @@ mod export_notice_tests {
         assert!(shown.contains(crate::microclaude::LABEL));
         // Entering the mode must not read this computer's login: a test
         // environment never starts `claude auth status`.
+    }
+
+    #[test]
+    fn scrolling_back_to_the_bottom_follows_new_output_again() {
+        let mut app = App::default();
+        app.mode = Mode::Live;
+        for i in 0..40 {
+            app.live
+                .entries
+                .push(crate::live::Entry::User(format!("message {i}")));
+        }
+        let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
+        let mut draw = |app: &mut App| {
+            terminal.draw(|frame| render(frame, app)).unwrap();
+        };
+        app.scroll = u16::MAX;
+        draw(&mut app);
+        assert_eq!(app.scroll, u16::MAX);
+        // Scrolled up: it stays put while output arrives.
+        app.scroll = 3;
+        app.live
+            .entries
+            .push(crate::live::Entry::User("newer".into()));
+        draw(&mut app);
+        assert_eq!(app.scroll, 3);
+        // Scrolled back down past the end: following again.
+        app.scroll = app.scroll_max.saturating_add(3);
+        draw(&mut app);
+        assert_eq!(app.scroll, u16::MAX);
     }
 
     #[test]
