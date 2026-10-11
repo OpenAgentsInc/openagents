@@ -15,6 +15,7 @@
 //!   whole page, which the frames load.
 
 mod auth;
+mod chat;
 
 use axum::Router;
 use axum::extract::{Path, Query};
@@ -80,6 +81,7 @@ pub(crate) const fn state(id: &'static str, label: &'static str, render: Render)
 pub(crate) fn screens() -> Vec<Screen> {
     let mut all = Vec::new();
     all.extend(auth::screens());
+    all.extend(chat::screens());
     all
 }
 

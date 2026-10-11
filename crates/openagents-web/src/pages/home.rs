@@ -11,7 +11,7 @@ use axum::extract::{Query, State};
 use axum::http::HeaderMap;
 use axum::response::Response;
 use axum::routing::get;
-use maud::html;
+use maud::{Markup, html};
 use openagents_chat::home_cards::{HOME_CARDS, HomeCard};
 use openagents_ui::content::{LinkCard, LinkCards};
 use openagents_ui::icons::Icon;
@@ -71,6 +71,26 @@ async fn home(
     page(&app, &headers, query.project.as_deref(), None).await
 }
 
+/// The new chat's page around `dock`: the cards in the middle, the
+/// composer at the bottom.
+pub(crate) fn stage(dock: Markup) -> UiPage {
+    let content = html! {
+        div.oa-thread-view {
+            div.oa-thread {
+                div.oa-thread-column.oa-home-stage { (learn_cards()) }
+            }
+        }
+    };
+    UiPage::new("OpenAgents")
+        .section("/")
+        .path("/")
+        .app()
+        .head(crate::chat_html::head())
+        .boosted()
+        .content(content)
+        .composer(dock)
+}
+
 /// The new chat's page; with `notice`, a refused first message shown in
 /// the composer with its text back in the box
 /// ([`super::chat::Notice`], a plain-form submit that was refused).
@@ -93,13 +113,6 @@ pub(crate) async fn page(
     // Project, Branch, and Where it runs above the composer, for a
     // signed-in person (`crate::composer_row`).
     let row = crate::composer_row::home(&app, &headers, &owner, project).await;
-    let content = html! {
-        div.oa-thread-view {
-            div.oa-thread {
-                div.oa-thread-column.oa-home-stage { (learn_cards()) }
-            }
-        }
-    };
     let dock = html! {
         (crate::suggestions::starters(&app, &owner, &used))
         (super::chat::composer_with("/chat", "Start a chat", row, html! {}, notice))
@@ -108,14 +121,7 @@ pub(crate) async fn page(
         input type="hidden" name="csrf" value=(super::chat::csrf(&app,&owner)) form="chat-form";
         (crate::ui_page::legal_links())
     };
-    let mut page = UiPage::new("OpenAgents")
-        .section("/")
-        .path("/")
-        .app()
-        .head(crate::chat_html::head())
-        .boosted()
-        .content(content)
-        .composer(dock);
+    let mut page = stage(dock);
     // A visitor without the cookie has no chats yet; a move in place
     // keeps the list it has (`crate::chat_html::main_only`).
     if fresh.is_none() && !crate::chat_html::main_only(&headers) {
