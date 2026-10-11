@@ -399,6 +399,9 @@ impl Verify {
             if let Some(mut verdict) = hit {
                 verdict["cached"] = json!(true);
                 verdict["note"] = json!("nothing changed since the last verify; same result");
+                self.log_call(json!({"filter": words(filter).join(" "), "fast": fast,
+                                     "final": false, "status": verdict["status"],
+                                     "secs": 0, "cached": true}));
                 return verdict;
             }
         }
@@ -579,19 +582,24 @@ impl Verify {
                 .collect::<Vec<_>>()
         );
         verdict["secs"] = json!(started.elapsed().as_secs());
-        if let Some(log) = &self.log {
-            let line = json!({"filter": words.join(" "), "fast": fast, "final": required.is_some(),
-                              "status": status, "secs": verdict["secs"]});
-            if let Ok(mut file) = std::fs::OpenOptions::new()
+        self.log_call(
+            json!({"filter": words.join(" "), "fast": fast, "final": required.is_some(),
+                             "status": status, "secs": verdict["secs"]}),
+        );
+        verdict
+    }
+
+    /// Appends one line to the `verify` log, if the run keeps one.
+    fn log_call(&self, line: Value) {
+        if let Some(log) = &self.log
+            && let Ok(mut file) = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(log)
-            {
-                use std::io::Write as _;
-                let _ = writeln!(file, "{line}");
-            }
+        {
+            use std::io::Write as _;
+            let _ = writeln!(file, "{line}");
         }
-        verdict
     }
 
     fn implicate_errors(
