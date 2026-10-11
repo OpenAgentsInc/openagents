@@ -406,13 +406,17 @@ impl Workspace {
         std::fs::write(&path, &updated).map_err(|error| format!("{shown}: {error}"))?;
         remember(&path, updated.as_bytes());
         let diff = unified(&text, &updated);
-        Ok(json!({
-            "path": shown,
-            "replacements": count.min(if args.replace_all { usize::MAX } else { 1 }),
-            "added": diff.added,
-            "removed": diff.removed,
-            "diff": diff.text,
-        }))
+        Ok(with_check(
+            json!({
+                "path": shown,
+                "replacements": count.min(if args.replace_all { usize::MAX } else { 1 }),
+                "added": diff.added,
+                "removed": diff.removed,
+                "diff": diff.text,
+            }),
+            &path,
+            &updated,
+        ))
     }
 
     fn write(&self, args: &WriteArguments) -> Result<Value, String> {
@@ -451,14 +455,18 @@ impl Workspace {
         std::fs::write(&path, &args.content).map_err(|error| format!("{shown}: {error}"))?;
         remember(&path, args.content.as_bytes());
         let diff = unified(previous.as_deref().unwrap_or(""), &args.content);
-        Ok(json!({
-            "path": shown,
-            "created": previous.is_none(),
-            "bytes": args.content.len(),
-            "added": diff.added,
-            "removed": diff.removed,
-            "diff": diff.text,
-        }))
+        Ok(with_check(
+            json!({
+                "path": shown,
+                "created": previous.is_none(),
+                "bytes": args.content.len(),
+                "added": diff.added,
+                "removed": diff.removed,
+                "diff": diff.text,
+            }),
+            &path,
+            &args.content,
+        ))
     }
 
     fn walker(&self, path: Option<&str>) -> Result<(PathBuf, ignore::Walk), String> {
@@ -582,6 +590,72 @@ impl Workspace {
         }
         Ok(result)
     }
+}
+
+/// Adds advisory findings without changing the saved file or failing the edit.
+fn with_check(mut result: Value, path: &Path, content: &str) -> Value {
+    let finding = match path.extension().and_then(|s| s.to_str()) {
+        Some("json") => serde_json::from_str::<Value>(content)
+            .err()
+            .map(|error| format!("JSON check: {error}")),
+        Some("rs") => rust_check(path),
+        _ => None,
+    };
+    if let Some(finding) = finding {
+        result["check"] = json!(finding);
+    }
+    result
+}
+
+fn rust_check(path: &Path) -> Option<String> {
+    use std::process::{Command, Stdio};
+    let mut command = Command::new("rustfmt");
+    command
+        .args([
+            "--check",
+            "--edition",
+            "2024",
+            "--config",
+            "skip_children=true",
+        ])
+        .arg(path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    run_check(command)
+}
+
+fn run_check(mut command: std::process::Command) -> Option<String> {
+    supervise::blocking::own_group(&mut command);
+    let mut child = command.spawn().ok()?;
+    // Drain both pipes throughout the check, retaining only a small diagnostic.
+    fn drain(mut pipe: impl std::io::Read) -> String {
+        let mut kept = Vec::new();
+        let mut buf = [0u8; 4096];
+        while let Ok(n) = pipe.read(&mut buf) {
+            if n == 0 {
+                break;
+            }
+            let room = 8192usize.saturating_sub(kept.len());
+            kept.extend_from_slice(&buf[..n.min(room)]);
+        }
+        String::from_utf8_lossy(&kept).into_owned()
+    }
+    let stdout = child.stdout.take()?;
+    let stderr = child.stderr.take()?;
+    std::thread::scope(|scope| {
+        let out = scope.spawn(|| drain(stdout));
+        let err = scope.spawn(|| drain(stderr));
+        let ending = supervise::blocking::wait(&mut child, std::time::Duration::from_millis(750));
+        let out = out.join().unwrap_or_default();
+        let err = err.join().unwrap_or_default();
+        match ending {
+            supervise::Ending::Exited(_) if !ending.success() => {
+                Some(format!("Rust check:\n{out}{err}"))
+            }
+            _ => None, // Unavailable tools and timeouts are deliberately silent.
+        }
+    })
 }
 
 fn glob_matcher(pattern: &str) -> Result<globset::GlobMatcher, String> {
@@ -726,6 +800,55 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         execute(name, arguments, cwd)
+    }
+
+    #[test]
+    fn checks_report_json_errors_after_write_and_edit_without_undoing_changes() {
+        let (_dir, root) = workspace();
+        let made = run("Write", json!({"path":"a.json","content":"{"}), &root).unwrap();
+        assert!(made["check"].as_str().unwrap().contains("JSON check"));
+        let fixed = run(
+            "Edit",
+            json!({"path":"a.json","old_string":"{","new_string":"{}"}),
+            &root,
+        )
+        .unwrap();
+        assert!(fixed.get("check").is_none());
+        let broken = run(
+            "Edit",
+            json!({"path":"a.json","old_string":"{}","new_string":"["}),
+            &root,
+        )
+        .unwrap();
+        assert!(broken.get("check").is_some());
+        assert_eq!(std::fs::read_to_string(root.join("a.json")).unwrap(), "[");
+        let text = run("Write", json!({"path":"a.txt","content":"{"}), &root).unwrap();
+        assert!(text.get("check").is_none());
+    }
+
+    #[test]
+    fn rust_check_is_read_only_and_reports_syntax_errors() {
+        let (_dir, root) = workspace();
+        let file = root.join("bad.rs");
+        std::fs::write(&file, "fn broken( {\n").unwrap();
+        let finding = rust_check(&file).expect("installed rustfmt reports the parse error");
+        assert!(finding.contains("error"), "{finding}");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "fn broken( {\n");
+        std::fs::write(&file, "fn good() {}\n").unwrap();
+        assert!(rust_check(&file).is_none());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn slow_checks_are_silently_skipped() {
+        let mut command = std::process::Command::new("sh");
+        command
+            .args(["-c", "sleep 5"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        let start = std::time::Instant::now();
+        assert!(run_check(command).is_none());
+        assert!(start.elapsed() < std::time::Duration::from_secs(2));
     }
 
     #[test]
