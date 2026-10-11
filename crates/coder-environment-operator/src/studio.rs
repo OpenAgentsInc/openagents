@@ -26,6 +26,7 @@
 pub mod claude;
 pub mod github;
 pub mod push;
+pub mod sign_in;
 
 use crate::activity::{CheckLine, Entry, Logs, Record, plain};
 use crate::agent::{Agent, Brief, Phase, State};
@@ -257,6 +258,8 @@ pub struct Studio {
     layout: crate::Layout,
     logs: Arc<Logs>,
     runs: claude::Runs,
+    sign_ins: sign_in::Sessions,
+    homes: sign_in::Homes,
     github: github::GitHub,
     base: ImagePin,
     runtime: ArtifactPin,
@@ -404,6 +407,8 @@ impl Studio {
             layout,
             logs,
             runs: claude::Runs::under(claude::root(&config.state)),
+            sign_ins: sign_in::Sessions::default(),
+            homes: sign_in::Homes::under(sign_in::root(&config.state)),
             github: github::GitHub::new(token),
             config,
             work,
@@ -780,6 +785,25 @@ impl Studio {
                 .as_deref()
                 .is_some_and(|repo| repo.eq_ignore_ascii_case(push.repository()))
         });
+        // The person's own key first; then the environment's computer they
+        // signed in to Claude on (#11294); then this server's key.
+        if own.is_none()
+            && let Some(home) = self.claude_home(&env)
+        {
+            return self
+                .runs
+                .start_on(
+                    &env,
+                    prompt,
+                    &self.config.machines.workdir,
+                    &self.config.size(),
+                    None,
+                    files,
+                    push,
+                    Some(home.sandbox),
+                )
+                .map_err(|e| plain(&e, "Claude Code didn't start. Try again."));
+        }
         let key = match own {
             Some(key) => key,
             // The server's own key may be an API key or a subscription
@@ -803,6 +827,89 @@ impl Studio {
                 push,
             )
             .map_err(|e| plain(&e, "Claude Code didn't start. Try again."))
+    }
+
+    /// The environment's computer signed in to Claude for its selected
+    /// version, if the person signed in there (#11294).
+    fn claude_home(&self, env: &Environment) -> Option<sign_in::Home> {
+        let pin = env.pin()?;
+        self.homes.signed_in(&env.id, pin.number)
+    }
+
+    /// Whether Claude Code can run in environment `id` on the login the
+    /// person made inside it.
+    pub fn claude_signed_in(&self, id: &str) -> bool {
+        self.envs()
+            .read(id)
+            .ok()
+            .filter(|env| env.project.workspace == self.config.owner.workspace)
+            .and_then(|env| self.claude_home(&env))
+            .is_some()
+    }
+
+    /// Open Claude Code's own sign-in on the environment's computer: made
+    /// from its saved version the first time, started again after. The
+    /// web follows it with [`Self::sign_in_view`] and types into it with
+    /// [`Self::sign_in_send`].
+    pub fn start_sign_in(&self, id: &str) -> Result<(), String> {
+        let env = self.envs().read(id).map_err(|e| e.to_string())?;
+        if env.project.workspace != self.config.owner.workspace {
+            return Err("That environment isn't yours.".into());
+        }
+        let pin = env
+            .pin()
+            .ok_or("Save the environment before signing in to Claude there.")?;
+        let job = sign_in::Job {
+            environment: env.id.clone(),
+            image: pin.image.image_id.clone(),
+            version: pin.number,
+            size: self.config.size(),
+        };
+        let input = self.sign_ins.begin(&env.id)?;
+        let (sessions, homes) = (self.sign_ins.clone(), self.homes.clone());
+        std::thread::Builder::new()
+            .name(format!("claude-sign-in-{}", env.id))
+            .spawn(move || {
+                let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                else {
+                    return;
+                };
+                runtime.block_on(async {
+                    match boat::Client::from_env().await {
+                        Ok(client) => {
+                            sign_in::drive(
+                                &sign_in::Boat { client },
+                                &homes,
+                                &sessions,
+                                &job,
+                                input,
+                                Duration::from_secs(1),
+                            )
+                            .await;
+                        }
+                        Err(_) => sessions.set(&job.environment, |v| {
+                            v.phase = sign_in::Phase::Failed(
+                                "Computers aren't available right now. Try again in a minute."
+                                    .into(),
+                            );
+                        }),
+                    }
+                });
+            })
+            .map_err(|_| "Sign-in couldn't start. Try again.")?;
+        Ok(())
+    }
+
+    /// The environment's sign-in as it stands, if one was started.
+    pub fn sign_in_view(&self, id: &str) -> Option<sign_in::View> {
+        self.sign_ins.view(id)
+    }
+
+    /// Type a line into the environment's open sign-in.
+    pub fn sign_in_send(&self, id: &str, text: &str) -> Result<(), String> {
+        self.sign_ins.send(id, text)
     }
 
     pub fn claude_run(&self, id: &str, run: &str) -> Option<claude::Run> {

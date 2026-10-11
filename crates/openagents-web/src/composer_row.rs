@@ -148,11 +148,17 @@ pub(crate) struct Choices {
     /// subscription-token allowlist): the connect card leads with it and
     /// opens its dialog in place ([`crate::settings::subscription`]).
     pub claude_subscription: bool,
+    /// Environments (ids) where the person signed in to Claude inside
+    /// the environment (#11294): Claude Code runs there without a key.
+    pub claude_signed_in: Vec<String>,
+    /// This server keeps people's own Claude keys, so the connect card
+    /// offers Use a key.
+    pub claude_keys: bool,
 }
 
 /// Why a message for Claude Code wasn't sent while Claude isn't connected
 /// yet; the message stays in the box (#11234).
-pub(crate) const CONNECT: Refused = "Claude Code needs your Claude key before it can run here. Add it in Settings, Claude, then send again: your message stays in the box.";
+pub(crate) const CONNECT: Refused = "Claude Code needs Claude connected before it can run here. Sign in to Claude, or add your key in Settings, Claude, then send again: your message stays in the box.";
 
 /// Where the connect card's button goes: Settings, Claude, at the key.
 pub(crate) const CONNECT_KEY: &str = "/settings/claude#key";
@@ -166,6 +172,11 @@ pub(crate) struct Picked {
 }
 
 impl Choices {
+    /// Claude Code in `env` can't run until the person connects Claude.
+    pub(crate) fn needs_connect(&self, env: &str) -> bool {
+        self.claude_connect && !self.claude_signed_in.iter().any(|id| id == env)
+    }
+
     fn project(&self, id: &str) -> Option<&Project> {
         self.projects.iter().find(|project| project.id == id)
     }
@@ -237,13 +248,14 @@ pub(crate) async fn choices(
     let connected = !matches!(sidebar.status.access, Access::None);
     let mut environments = Vec::new();
     let mut claude_connect = false;
+    let mut claude_signed_in = Vec::new();
     if let Some(studio) = app.config.environments.studio()
         && let Some(scope) = crate::agent_work::scope(app, headers).await
-        // Not connected yet, but the person can add their own key here:
-        // offered, with the connect card (#11234).
-        && let Some(ready) = Some(crate::environments::claude_ready(app, studio, headers).await)
-            .filter(|ready| *ready || app.config.cloud_byo.is_some())
     {
+        // Not connected yet: offered with the connect card, which signs
+        // in to Claude inside the environment (#11294) or takes the
+        // person's own key (#11234).
+        let ready = crate::environments::claude_ready(app, studio, headers).await;
         claude_connect = !ready;
         environments = scope
             .rows(studio)
@@ -257,6 +269,13 @@ pub(crate) async fn choices(
                 })
             })
             .collect();
+        if claude_connect {
+            claude_signed_in = environments
+                .iter()
+                .filter(|env| studio.claude_signed_in(&env.id))
+                .map(|env| env.id.clone())
+                .collect();
+        }
     }
     let claude_subscription =
         claude_connect && crate::settings::subscription::offered(app, headers).await;
@@ -281,6 +300,8 @@ pub(crate) async fn choices(
         computers,
         claude_connect,
         claude_subscription,
+        claude_signed_in,
+        claude_keys: app.config.cloud_byo.is_some(),
     })
 }
 
@@ -309,7 +330,9 @@ pub(crate) async fn checked(
         });
     };
     let picked = choices.resolve(wanted);
-    if matches!(picked.target, Target::Claude(_)) && choices.claude_connect {
+    if let Target::Claude(env) = &picked.target
+        && choices.needs_connect(env)
+    {
         return Err(CONNECT);
     }
     if !wanted.project.trim().is_empty() && picked.project.is_none() {
@@ -421,8 +444,8 @@ pub(crate) fn row(
                         .hx(load("target"))
                         .autofocus(focus == Some("target")))
                 }
-                @if matches!(picked.target, Target::Claude(_)) && choices.claude_connect {
-                    (connect_card(choices.claude_subscription, chat))
+                @if let Target::Claude(env) = &picked.target && choices.needs_connect(env) {
+                    (connect_card(env, choices.claude_subscription, choices.claude_keys, chat))
                 }
             }
         }
@@ -431,32 +454,50 @@ pub(crate) fn row(
 
 /// The card shown when Claude Code is picked before Claude is connected
 /// (#11234): what it needs, in plain words, and the controls that work
-/// from here. With `subscription` (the allowlist) it leads with Use your
-/// Claude subscription, which loads the Settings, Claude dialog over the
-/// page (`hx-get`, appended to the body, outside this form) and, without
-/// script, opens the same steps as a page; it returns to `chat`.
-pub(crate) fn connect_card(subscription: bool, chat: Option<&str>) -> Markup {
+/// from here. **Sign in to Claude** opens Claude Code's own sign-in on the
+/// environment's computer (`env`) in a dialog over the page, or its page
+/// without script (#11294); once signed in, the dialog sends the message
+/// waiting in the box. With `subscription` (the allowlist) it also offers
+/// Use your Claude subscription, which loads the Settings, Claude dialog
+/// over the page (`hx-get`, appended to the body, outside this form) and,
+/// without script, opens the same steps as a page; it returns to `chat`.
+/// With `keys` (this server keeps people's own keys), Use a key.
+pub(crate) fn connect_card(
+    env: &str,
+    subscription: bool,
+    keys: bool,
+    chat: Option<&str>,
+) -> Markup {
     use crate::settings::subscription::PATH;
     let back = chat.map_or_else(|| "/".to_owned(), |chat| format!("/chat/{chat}"));
     let page = href(PATH, &[("back", back.clone())]);
-    let dialog = href(PATH, &[("part", "dialog".to_owned()), ("back", back)]);
+    let dialog = href(
+        PATH,
+        &[("part", "dialog".to_owned()), ("back", back.clone())],
+    );
+    let sign_in = format!("/environments/{env}/sign-in");
     html! {
         div.oa-composer-connect #composer-connect role="status" {
             strong { "Connect Claude to run Claude Code" }
+            span {
+                "Sign in to Claude once inside this environment"
+                @if keys { ", or use your own key" }
+                ". Your message stays in the box."
+            }
+            a.oa-composer-connect-action href=(href(&sign_in, &[("back", back.clone())]))
+                hx-post=(href(&sign_in, &[("back", back), ("part", "dialog".to_owned())]))
+                hx-target="body" hx-swap="beforeend" aria-haspopup="dialog" {
+                "Sign in to Claude"
+            }
             @if subscription {
-                span {
-                    "Each run starts on a fresh computer, so it needs your Claude subscription, Anthropic API key, or cloud credential. Your message stays in the box."
-                }
                 a.oa-composer-connect-action href=(page) hx-get=(dialog) hx-target="body"
                     hx-swap="beforeend" aria-haspopup="dialog" {
                     "Use your Claude subscription"
                 }
-            } @else {
-                span {
-                    "Each run starts on a fresh computer, so it needs your Anthropic API key or cloud credential. Your message stays in the box."
-                }
             }
-            a.oa-composer-connect-action href=(CONNECT_KEY) { "Use a key" }
+            @if keys {
+                a.oa-composer-connect-action href=(CONNECT_KEY) { "Use a key" }
+            }
         }
     }
 }

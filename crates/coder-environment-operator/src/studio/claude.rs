@@ -14,8 +14,9 @@
 //! person saved in Settings, released for this run only, else the key this
 //! server's environment names (BYO-04/05: applied fresh at the turn, never
 //! stored in the record or the image). A fresh computer from a saved image
-//! has no Claude login inside it, so the web offers runs only when a
-//! credential is available.
+//! has no Claude login inside it; without a credential, a run uses the
+//! environment's own computer the person signed in to Claude on
+//! ([`super::sign_in`], #11294), started again with its disk.
 
 use coder_cloud::claude::OwnCredential;
 use coder_cloud::claude_task::{self, Applied, PauseChoice};
@@ -276,7 +277,7 @@ impl Runs {
                     let run = record.clone();
                     std::thread::Builder::new()
                         .name(format!("claude-{id}"))
-                        .spawn(move || drive(lease, run, key, Vec::new(), None, &state, slot))
+                        .spawn(move || drive(lease, run, key, Vec::new(), None, None, &state, slot))
                         .map_err(|_| "The run couldn't continue.")?;
                 }
                 (applied, record)
@@ -309,7 +310,7 @@ impl Runs {
         let slot = self.root.join(environment).join(&id);
         std::thread::Builder::new()
             .name(format!("openagents-{n}"))
-            .spawn(move || drive(lease, record, None, Vec::new(), None, &state, slot))
+            .spawn(move || drive(lease, record, None, Vec::new(), None, None, &state, slot))
             .map_err(|_| "OpenAgents couldn't start.")?;
         Ok(id)
     }
@@ -356,6 +357,31 @@ impl Runs {
         files: Vec<Attachment>,
         push: Option<super::push::Push>,
     ) -> Result<String, String> {
+        self.start_on(env, prompt, workdir, size, key, files, push, None)
+    }
+
+    /// [`Self::start_pushing`], on the environment's own signed-in
+    /// computer `home` when one is given ([`super::sign_in::Home`]): that
+    /// computer starts again instead of a fresh one, Claude Code runs on
+    /// the login inside it, and it stops with its disk kept afterwards.
+    /// One run at a time uses it.
+    #[allow(clippy::too_many_arguments)]
+    pub fn start_on(
+        &self,
+        env: &Environment,
+        prompt: &str,
+        workdir: &str,
+        size: &str,
+        key: Option<Key>,
+        files: Vec<Attachment>,
+        push: Option<super::push::Push>,
+        home: Option<String>,
+    ) -> Result<String, String> {
+        if home.is_some() && self.list(&env.id).iter().any(|run| !run.state.finished()) {
+            return Err(
+                "Claude Code is still working on your computer for this environment. Wait for it to finish, or stop it.".into(),
+            );
+        }
         if files.len() > MAX_FILES {
             return Err("Send up to four files with one message.".into());
         }
@@ -405,7 +431,7 @@ impl Runs {
             .spawn({
                 let state = self.root.clone();
                 let slot = self.root.join(&env.id).join(&id);
-                move || drive(lease, record, key, files, push, &state, slot)
+                move || drive(lease, record, key, files, push, home, &state, slot)
             })
             .map_err(|_| "The run couldn't start.")?;
         Ok(id)
@@ -439,6 +465,9 @@ struct WithFiles {
     /// The command that readies the working directory for pushing
     /// ([`super::push::setup_script`]); it holds no credential.
     push: Option<String>,
+    /// The environment's own signed-in computer, started again instead of
+    /// a fresh one.
+    home: Option<String>,
 }
 
 impl WithFiles {
@@ -485,7 +514,34 @@ impl WithFiles {
 
 impl Backend for WithFiles {
     async fn provision(&self, r: &mut Record) -> coder_cloud::Result<String> {
-        self.boat.provision(r).await
+        let Some(home) = &self.home else {
+            return self.boat.provision(r).await;
+        };
+        let pin = r
+            .environment
+            .clone()
+            .ok_or("A run on your computer needs a saved environment.")?;
+        r.binding = serde_json::json!({
+            "origin": self.boat.client.origin(),
+            "template": pin.image.image_id,
+            "environment": pin.version_id,
+            "home": home,
+        });
+        self.boat
+            .client
+            .resume(&boat::models::ResumeParams {
+                sandbox_id: home.clone(),
+                body: Some(boat::models::ResumeRequest {
+                    no_env: Some(true),
+                    env: Some(Default::default()),
+                    ttl_seconds: boat::Nullable::Value(r.spec.timeout_seconds as i64),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(home.clone())
     }
     async fn resolve(&self, r: &mut Record) -> coder_cloud::Result<()> {
         self.boat.resolve(r).await
@@ -626,6 +682,7 @@ fn drive(
     key: Option<Key>,
     files: Vec<Attachment>,
     push: Option<super::push::Push>,
+    home: Option<String>,
     state: &Path,
     slot: PathBuf,
 ) {
@@ -663,6 +720,7 @@ fn drive(
             },
             files,
             push: script,
+            home,
         };
         // The person's own key, released for one turn after a pause.
         let mut one_turn: Option<Credentials> = None;

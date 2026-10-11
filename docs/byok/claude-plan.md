@@ -118,9 +118,17 @@ subscription token only to the allowlist (`cloud::byo::TokenAllow`, #11235).
 On the web, picking "Claude Code in REPO" before Claude is connected shows a
 card in the composer row with **Use a key** (`composer_row::connect_card`),
 and a message sent anyway is refused with the same words and kept in the box
-(#11234). **Sign in to Claude** for an environment run is not offered yet:
-each run starts on a fresh computer with no terminal to sign in from, so it
-needs a sign-in terminal on the environment and a per-person checkpoint first.
+(#11234). Since #11294 the card leads with **Sign in to Claude**: a dialog
+runs the unmodified `claude auth login` in a terminal on the environment's own
+computer (made from the saved version's image, `studio::sign_in`), shows what
+it prints with Anthropic's sign-in page as a link, and types the pasted code
+into that terminal; nothing on our side keeps it. The computer then stops with
+its disk kept, which is the person's own checkpoint holding the login (rule
+4 of `docs/cloud/claude-code-byo.md`); later runs without a key start that
+computer again instead of a fresh one, one at a time, and **Send your
+message** sends the message waiting in the box. A new saved version needs
+signing in again. The phone app has no Claude Code in environments yet, so
+it has no card; the sign-in page works in a phone browser.
 
 ### 2. Your computer (Coder) or our Cloud Environments
 

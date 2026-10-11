@@ -238,8 +238,17 @@ fn a_stopped_setup_offers_a_retry_and_a_saved_one_offers_claude_code() {
         created_ms: 1,
     }];
     let without = view::transcript(&v, view::Claude::Unavailable, None).into_string();
-    assert!(without.contains("add your Anthropic API key"));
+    // Without any key: sign in to Claude inside the environment (#11294).
+    assert!(without.contains("sign in to Claude once inside this environment"));
+    assert!(
+        without.contains("href=\"/environments/env-1/sign-in\""),
+        "{without}"
+    );
     assert!(!without.contains("/environments/env-1/claude"));
+    let signed = view::transcript(&v, view::Claude::SignedIn, None).into_string();
+    assert!(signed.contains("action=\"/environments/env-1/claude\""));
+    assert!(signed.contains("runs on your computer for this environment"));
+    assert!(!signed.contains("/environments/env-1/sign-in"));
     let with = view::transcript(&v, view::Claude::Ready, None).into_string();
     assert!(with.contains("Run Claude Code on version 1"));
     assert!(with.contains("action=\"/environments/env-1/claude\""));
@@ -763,4 +772,82 @@ async fn a_backend_outage_reads_temporarily_unavailable_and_clears_itself() {
     let (status, body) = send(config, get("/environments", "127.0.0.1:4300")).await;
     assert_ne!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
     assert!(!unavailable(&body));
+}
+
+/// Sign in to Claude inside an environment (#11294): the panel at each
+/// step, with only controls that work, in plain words.
+#[test]
+fn the_sign_in_panel_shows_the_terminal_then_sends_the_held_message() {
+    use coder_environment_operator::studio::sign_in::{Phase as SignIn, View as Screen};
+    let back = Some("/chat/chat-1");
+    let first = view::sign_in_panel("env-1", None, back).into_string();
+    assert!(first.contains("Start sign-in") && first.contains("OpenAgents never sees your login"));
+    assert!(
+        first.contains(
+            r#"hx-post="/environments/env-1/sign-in?back=%2Fchat%2Fchat-1&amp;part=panel""#
+        ),
+        "{first}"
+    );
+    let starting = Screen {
+        phase: SignIn::Starting,
+        screen: String::new(),
+        link: None,
+    };
+    let html = view::sign_in_panel("env-1", Some(&starting), back).into_string();
+    assert!(html.contains("Starting your computer for this environment"));
+    assert!(html.contains(r#"hx-trigger="every 2s""#));
+    let open = Screen {
+        phase: SignIn::Open,
+        screen: "Visit https://claude.ai/oauth/authorize?x=1\nPaste code here if prompted >".into(),
+        link: Some("https://claude.ai/oauth/authorize?x=1".into()),
+    };
+    let html = view::sign_in_panel("env-1", Some(&open), back).into_string();
+    assert!(
+        html.contains(r#"href="https://claude.ai/oauth/authorize?x=1""#),
+        "{html}"
+    );
+    assert!(
+        html.contains("Open Anthropic&#39;s sign-in page")
+            || html.contains("Open Anthropic's sign-in page")
+    );
+    assert!(html.contains("Paste code here if prompted"));
+    assert!(
+        html.contains(r#"action="/environments/env-1/sign-in/input?back=%2Fchat%2Fchat-1""#),
+        "{html}"
+    );
+    let done = Screen {
+        phase: SignIn::SignedIn,
+        screen: String::new(),
+        link: None,
+    };
+    let html = view::sign_in_panel("env-1", Some(&done), back).into_string();
+    assert!(html.contains("Signed in to Claude"));
+    // The waiting message is sent by the chat's own form, no retyping.
+    assert!(
+        html.contains(r#"form="chat-form""#) && html.contains("Send your message"),
+        "{html}"
+    );
+    let html = view::sign_in_panel("env-1", Some(&done), None).into_string();
+    assert!(!html.contains("chat-form") && html.contains("href=\"/environments/env-1\""));
+    let failed = Screen {
+        phase: SignIn::Failed("Claude isn't signed in yet.".into()),
+        screen: String::new(),
+        link: None,
+    };
+    let html = view::sign_in_panel("env-1", Some(&failed), back).into_string();
+    assert!(html.contains("Start again") && html.contains("role=\"alert\""));
+    for panel in [
+        None,
+        Some(&starting),
+        Some(&open),
+        Some(&done),
+        Some(&failed),
+    ] {
+        let html = view::sign_in_panel("env-1", panel, back).into_string();
+        assert!(
+            oa_copy::violations(&text(&html), &[]).is_empty(),
+            "{:?}",
+            oa_copy::violations(&text(&html), &[])
+        );
+    }
 }
