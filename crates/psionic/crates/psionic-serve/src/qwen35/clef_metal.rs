@@ -16,11 +16,13 @@
 //!   span sums accumulate there, and only the span sums and the last row
 //!   come back. The head's memory attention reads the device rows.
 //!
-//! A chunk's whole layer stack is one command buffer. Every reduction has a
-//! fixed order, so a token's rows do not depend on the chunk it came in.
+//! A chunk's whole layer stack is one command buffer. The default attention
+//! path keeps the existing reduction order. An explicitly selected experimental
+//! fused path uses tiled online softmax and needs separate numerical validation.
 
 use std::sync::Mutex;
 
+use psionic_backend_metal::clef_attention::{ClefAttentionPlan, ClefMetalAttention};
 use psionic_backend_metal::clef_prefill::{ClefMetal, ClefMetalBatch, ClefMetalBuffer, ClefMetalWeightFormat};
 use rayon::prelude::*;
 
@@ -112,6 +114,21 @@ struct Scratch {
     bytes: u64,
 }
 
+enum TrunkAttentionScratch {
+    Staged { scores: ClefMetalBuffer, probs: ClefMetalBuffer },
+    Fused,
+    Unused,
+}
+
+impl TrunkAttentionScratch {
+    fn byte_len(&self) -> usize {
+        match self {
+            Self::Staged { scores, probs } => scores.byte_len() + probs.byte_len(),
+            Self::Fused | Self::Unused => 0,
+        }
+    }
+}
+
 /// Per-request device state.
 struct Request {
     tokens: usize,
@@ -121,9 +138,8 @@ struct Request {
     value_cache: Vec<Option<ClefMetalBuffer>>,
     memory: ClefMetalBuffer,
     normalized_memory: Vec<Option<ClefMetalBuffer>>,
-    /// Attention scores (f32) and probabilities (f16): chunk x tokens.
-    scores: ClefMetalBuffer,
-    probs: ClefMetalBuffer,
+    /// Full score and probability buffers exist only for staged attention.
+    attention: TrunkAttentionScratch,
     bytes: u64,
 }
 
@@ -219,7 +235,14 @@ impl ClefMetalTrunk {
     /// Uploads the trunk of a loaded CPU qwen35 model (the CPU copy keeps
     /// `token_embd` and `output`) and the head's device-side parameters.
     pub fn load(cpu: &CpuGgufQwen35TextGenerationService, head: &ClefHeadParams<'_>) -> Result<Self, String> {
-        let metal = ClefMetal::new()?;
+        let attention = match std::env::var("PSIONIC_CLEF_METAL_ATTENTION") {
+            Ok(value) => value.parse::<ClefMetalAttention>()?,
+            Err(std::env::VarError::NotPresent) => ClefMetalAttention::default(),
+            Err(std::env::VarError::NotUnicode(_)) => {
+                return Err(String::from("PSIONIC_CLEF_METAL_ATTENTION must be valid text"));
+            }
+        };
+        let metal = ClefMetal::new_with_attention(attention)?;
         let device_name = metal.device_name().to_string();
         let model = &cpu.model;
         let config = &model.descriptor.config;
@@ -399,7 +422,7 @@ impl ClefMetalTrunk {
         let state = &mut *guard;
         state.request = None;
         ensure_scratch(state, dims, chunk);
-        let mut request = new_request(state, dims, length, chunk);
+        let mut request = new_request(state, dims, length, chunk)?;
         let span_values: Vec<i32> = spans
             .iter()
             .flat_map(|(start, end)| [*start as i32, *end as i32])
@@ -914,11 +937,22 @@ fn ensure_scratch(state: &mut DeviceState, dims: Dims, chunk: usize) {
     });
 }
 
-fn new_request(state: &DeviceState, dims: Dims, length: usize, chunk: usize) -> Request {
+fn new_request(state: &DeviceState, dims: Dims, length: usize, chunk: usize) -> Result<Request, String> {
     let layers = state.layers.len();
     let metal = &state.metal;
-    let scores = metal.buffer(chunk * length * 4);
-    let probs = metal.buffer(chunk * length * 2);
+    let attention = if state.layers.iter().any(|layer| matches!(&layer.mixer, DeviceMixer::Attention { .. })) {
+        let first = length.checked_sub(chunk).ok_or("attention chunk exceeds request length")?;
+        let plan = ClefAttentionPlan::new(chunk, dims.heads, dims.kv_heads, dims.head_dim, first)?;
+        match metal.attention_mode() {
+            ClefMetalAttention::Staged => TrunkAttentionScratch::Staged {
+                scores: metal.buffer(plan.score_bytes),
+                probs: metal.buffer(plan.probability_bytes),
+            },
+            ClefMetalAttention::FusedTensorOps => TrunkAttentionScratch::Fused,
+        }
+    } else {
+        TrunkAttentionScratch::Unused
+    };
     let memory = metal.buffer(length * dims.width * 4);
     let mut request = Request {
         tokens: length,
@@ -926,11 +960,10 @@ fn new_request(state: &DeviceState, dims: Dims, length: usize, chunk: usize) -> 
         delta: (0..layers).map(|_| None).collect(),
         key_cache: (0..layers).map(|_| None).collect(),
         value_cache: (0..layers).map(|_| None).collect(),
-        bytes: (scores.byte_len() + probs.byte_len() + memory.byte_len()) as u64,
+        bytes: (attention.byte_len() + memory.byte_len()) as u64,
         memory,
         normalized_memory: Vec::new(),
-        scores,
-        probs,
+        attention,
     };
     for (index, layer) in state.layers.iter().enumerate() {
         match &layer.mixer {
@@ -951,7 +984,7 @@ fn new_request(state: &DeviceState, dims: Dims, length: usize, chunk: usize) -> 
             }
         }
     }
-    request
+    Ok(request)
 }
 
 /// Profiling knobs: `PSIONIC_CLEF_SKIP=gemm,delta,attention` leaves those
@@ -1068,19 +1101,35 @@ fn encode_layer(
                 dims.eps,
             )?;
             if !skips().2 {
-            batch.attention(
-                &s.query16,
-                key_cache,
-                value_cache,
-                &s.mid_b,
-                &request.scores,
-                &request.probs,
-                n,
-                dims.heads,
-                dims.kv_heads,
-                dims.head_dim,
-                first,
-            )?;
+                match &request.attention {
+                    TrunkAttentionScratch::Staged { scores, probs } => batch.attention(
+                        &s.query16,
+                        key_cache,
+                        value_cache,
+                        &s.mid_b,
+                        scores,
+                        probs,
+                        n,
+                        dims.heads,
+                        dims.kv_heads,
+                        dims.head_dim,
+                        first,
+                    )?,
+                    TrunkAttentionScratch::Fused => batch.attention_fused(
+                        &s.query16,
+                        key_cache,
+                        value_cache,
+                        &s.mid_b,
+                        n,
+                        dims.heads,
+                        dims.kv_heads,
+                        dims.head_dim,
+                        first,
+                    )?,
+                    TrunkAttentionScratch::Unused => {
+                        return Err(String::from("attention scratch is missing for an attention layer"));
+                    }
+                }
             }
             batch.sigmoid_gate_to_f16(&s.mid_b, &s.mid_a, &s.act16, n * dims.heads * dims.head_dim)?;
             linear(batch, out, &s.act16, &s.x, n, true)?;

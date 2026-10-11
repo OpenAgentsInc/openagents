@@ -947,10 +947,45 @@ What the attempt shows:
   idle for the whole run (about 10 minutes), not just at its start. The
   watcher's trigger should hold for the run.
 
+### Experimental fused TensorOps attention (2026-10-10)
+
+`PSIONIC_CLEF_METAL_ATTENTION=fused-tensorops` selects a separate experimental
+kernel at model load. The default, `staged`, keeps the existing score, softmax,
+and value-product path. Unknown setting values fail loading. The fused source
+is compiled only when selected, so it does not change default shader startup.
+
+The fused dispatch streams 32-key tiles for 16 queries per threadgroup, using
+TensorOps for QK and PV, stable online softmax, and f32 output accumulation.
+It declares 19,456 bytes of threadgroup scratch and omits the full trunk score
+and probability allocations: 192 MiB avoided for a 2,048-token chunk in a 16k
+request. This is an allocation calculation, not a measured speed improvement.
+Host checks cover grouped heads, absolute positions, tensor strides, integer
+overflow, and all input/output buffer lengths.
+
+Online softmax rounds unnormalized tile probabilities to f16; the staged path
+rounds normalized probabilities. Their outputs need tolerance-based validation.
+Offline Metal compilation and CPU shape checks do not establish GPU correctness,
+chunk equivalence, answer accuracy, or latency. The hardware conformance tests
+are explicitly ignored by default. No quiet lease or GPU run is part of this
+implementation round, as requested by the owner. Keep the path experimental until
+those checks and a paired full-model comparison pass.
+
+Validation in this round: offline Metal 4 compilation passed, all seven host-plan
+tests passed, and the Clef serving filter reported 20 passes. Five serving tests
+returned early with model settings unset; the other 15 exercised CPU behavior.
+All five ignored hardware tests compiled, including large score changes across
+key tiles, but none ran. This provides no GPU parity or performance result.
+
 ### Next
 
-- The M3 gate on a quiet Mac, against Ollama and MLX, with a per-phase
-  profile to show where 1k goes.
+- Validate the experimental fused path's partial tiles, causal masking, grouped
+  heads, large score changes, repeated calls, and nonaligned chunks against the
+  staged and CPU paths.
+- Combine `ensure_view`'s evidence-memory normalization with its first attention
+  consumer's command buffer. This can remove one submission and host wait per
+  newly used evidence layer; cache the view only after successful completion.
+- Run a paired Mac comparison against Ollama and MLX with per-phase profiling,
+  reporting desktop contention separately.
 
 ## File-relevance calibration (X1, 2026-10-10)
 
