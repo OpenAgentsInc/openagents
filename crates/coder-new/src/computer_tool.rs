@@ -70,7 +70,7 @@ enum Action {
 pub fn definition() -> Value {
     json!({"type":"function","function":{
         "name":"computer",
-        "description":"Work with the user's own linked computers over their OpenAgents host connection. Actions: list (the computers and whether each is connected), screenshot (a PNG of a computer's screen, or of an Android device attached to it; set look to see it yourself), apps (the windows open on its screen), pull (copy a file from it to here), push (copy a file from here to it; it never replaces a file unless overwrite is set, which asks the user), run (one shell command on it; read-only commands run, anything that changes the computer asks the user first). Paths on the computer are absolute or start with ~/. Files are at most 256 MiB and are checked by SHA-256 both ways. Use only for what the user asked.",
+        "description":"Work with the user's OTHER linked computers over their OpenAgents host connection. This chat already runs on the user's computer: its working directory, its files (including paths the user pastes, such as a screenshot on their Desktop) and its shell are reached with Run and the file tools, never with this tool. Use this tool only when the user asks about a different, named computer. Actions: list (the computers and whether each is connected), screenshot (a PNG of a computer's screen, or of an Android device attached to it; set look to see it yourself), apps (the windows open on its screen), pull (copy a file from it to here), push (copy a file from here to it; it never replaces a file unless overwrite is set, which asks the user), run (one shell command on it; read-only commands run, anything that changes the computer asks the user first). Paths on the computer are absolute or start with ~/. Files are at most 256 MiB and are checked by SHA-256 both ways. Use only for what the user asked.",
         "parameters":{"type":"object","properties":{
             "action":{"type":"string","enum":["list","screenshot","apps","pull","push","run"]},
             "computer":{"type":"string","maxLength":200,"description":"The computer: its name from list, an alias, or its key. Every action but list needs it."},
@@ -89,7 +89,7 @@ pub fn definition() -> Value {
 
 /// What the model reads about the tool each turn.
 pub fn instructions() -> &'static str {
-    "The computer tool reaches the user's own linked computers through their OpenAgents host: list them, take a screenshot, list open apps, copy files with pull and push, and run a command. The host checks this device's rights on every action. Commands that change the other computer, and pushes that replace a file, wait for the user's approval; a rejected action stays rejected. Use list first when you do not know the computer's name.\n"
+    "The computer tool reaches the user's OTHER linked computers through their OpenAgents host. This chat runs on the user's own computer, so the working directory, the repository, and any path the user pastes are here: read, search, edit, and run them with Run and the file tools. Never use the computer tool to work on this repository or to fetch a file the user pasted; use it only when the user asks about another named computer. It can list them, take a screenshot, list open apps, copy files with pull and push, and run a command. The host checks this device's rights on every action. Commands that change the other computer, and pushes that replace a file, wait for the user's approval; a rejected action stays rejected. Use list first when you do not know the computer's name.\n"
 }
 
 /// The command a person would type for the same action, for the
@@ -166,6 +166,11 @@ fn words(arguments: &Arguments, cwd: &Path, captures: &Path) -> Result<Vec<Strin
         Action::Pull | Action::Push => {
             let remote = required(arguments.remote.as_ref(), "remote", "pull and push")?;
             let local = required(arguments.local.as_ref(), "local", "pull and push")?;
+            if arguments.action == Action::Pull && here(remote).exists() {
+                return Err(format!(
+                    "{remote} is on this computer, where this chat runs. Read it here with the file tools or Run; do not fetch it from another computer."
+                ));
+            }
             let local = cwd.join(local).display().to_string();
             if arguments.action == Action::Pull {
                 words.extend(["pull".into(), host()?.to_owned(), remote.into(), local]);
@@ -178,6 +183,12 @@ fn words(arguments: &Arguments, cwd: &Path, captures: &Path) -> Result<Vec<Strin
         }
         Action::Run => {
             let command = required(arguments.command.as_ref(), "command", "run")?;
+            let repository = cwd.display().to_string();
+            if repository.len() > 1 && command.contains(&repository) {
+                return Err(format!(
+                    "{repository} is this chat's working directory, on this computer. Work on it here with Run and the file tools, not on another computer."
+                ));
+            }
             words.extend([
                 "exec".into(),
                 host()?.to_owned(),
@@ -195,6 +206,14 @@ fn words(arguments: &Arguments, cwd: &Path, captures: &Path) -> Result<Vec<Strin
         }
     }
     Ok(words)
+}
+
+/// `path` as it would be read on this computer (`~/` is this user's home).
+fn here(path: &str) -> PathBuf {
+    match (path.strip_prefix("~/"), std::env::var_os("HOME")) {
+        (Some(rest), Some(home)) => PathBuf::from(home).join(rest),
+        _ => PathBuf::from(path),
+    }
 }
 
 /// Where screenshots taken for the model go on this computer.
@@ -411,6 +430,38 @@ mod tests {
                 .contains("computer")
         );
         assert!(serde_json::from_value::<Arguments>(json!({"action":"format"})).is_err());
+    }
+
+    #[test]
+    fn work_on_this_computer_is_sent_back_to_the_local_tools() {
+        let parse = |value: Value| serde_json::from_value::<Arguments>(value).unwrap();
+        let cwd = std::env::temp_dir().join(format!("computer-tool-{}", std::process::id()));
+        std::fs::create_dir_all(&cwd).unwrap();
+        let pasted = cwd.join("Screenshot 10.28.36 PM.png");
+        std::fs::write(&pasted, b"png").unwrap();
+        let pull = parse(
+            json!({"action":"pull","computer":"c","remote":pasted.display().to_string(),"local":"s.png"}),
+        );
+        assert!(
+            words(&pull, &cwd, Path::new("/tmp"))
+                .unwrap_err()
+                .contains("on this computer")
+        );
+        let run = parse(
+            json!({"action":"run","computer":"c","command":format!("git -C {} status", cwd.display())}),
+        );
+        assert!(
+            words(&run, &cwd, Path::new("/tmp"))
+                .unwrap_err()
+                .contains("working directory")
+        );
+        let elsewhere = parse(
+            json!({"action":"pull","computer":"c","remote":"/no/such/file-here","local":"a"}),
+        );
+        assert!(words(&elsewhere, &cwd, Path::new("/tmp")).is_ok());
+        let uptime = parse(json!({"action":"run","computer":"c","command":"uptime"}));
+        assert!(words(&uptime, &cwd, Path::new("/tmp")).is_ok());
+        std::fs::remove_dir_all(&cwd).unwrap();
     }
 
     #[tokio::test]
