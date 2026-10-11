@@ -13,6 +13,10 @@ pub const AUTO: &str = "auto";
 /// The OpenAgents inference gateway's own router, the first door of an
 /// `auto` turn when the person is signed in (docs/inference/providers.md).
 pub const GATEWAY_AUTO: &str = "openagents/auto";
+/// The `flash` mode Tab switches to: DeepSeek V4.1 Flash on the person's
+/// own OpenRouter key. The input shows only `flash`.
+pub const FLASH: &str = "deepseek/deepseek-v4.1-flash";
+pub const FLASH_LABEL: &str = "flash";
 pub const SHORTLIST: [&str; 7] = [
     DEFAULT_MODEL,
     "openai/gpt-6-luna",

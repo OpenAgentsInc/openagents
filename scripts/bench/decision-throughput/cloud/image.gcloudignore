@@ -1,0 +1,22 @@
+# Build context for scripts/bench/decision-throughput/cloud/Dockerfile: the
+# workspace (oa-att builds inside it) and the harness.
+/*
+!/Cargo.toml
+!/Cargo.lock
+!/vendor/
+!/.cargo/
+!/crates/
+!/nips/
+!/migrations/
+!/assets/
+!/knowledge/
+!/programs/
+!/questions/
+!/plugins/
+!/packages/
+!/scripts/
+/scripts/*
+!/scripts/bench/
+/scripts/bench/*
+!/scripts/bench/decision-throughput/
+**/target/

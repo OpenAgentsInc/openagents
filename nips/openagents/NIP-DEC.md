@@ -119,7 +119,7 @@ constant.
 | `state` | 128 KiB serialized; an object nests at most 32 levels. |
 | Questions | 1 to 64 (`too_many_questions` above 64). |
 | Question ID | 1 to 64 bytes. |
-| One question | 32 KiB serialized, its entries included. |
+| One question | 64 KiB serialized, its entries included. |
 | Entry nesting | 8 levels: a string or `null` is depth 0, and each object or array adds one. |
 | `choice` options | 1 to 255 (`too_many_options` above 255); option IDs 1 to 128 bytes. |
 | `score` levels | 2 to 10 (`too_many_options` above 10). |

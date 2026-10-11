@@ -272,6 +272,37 @@ async fn main() -> ExitCode {
     }
 }
 
+/// With `CHAT_GOLDENS_REQUESTS=FILE`, append the turn's split router
+/// requests (the NIP-DEC bodies, main first) as one JSON line: the decision
+/// throughput bench replays them (`scripts/bench/decision-throughput/`).
+fn record_requests(case: &Case<'_>, split: &router::Split) {
+    let Some(path) = std::env::var_os("CHAT_GOLDENS_REQUESTS") else {
+        return;
+    };
+    let ids = std::iter::once("main")
+        .chain(split.sides.iter().map(|(id, _)| *id))
+        .chain(split.later.iter().map(|(id, _)| *id));
+    let requests: Vec<serde_json::Value> = ids
+        .zip(split.requests())
+        .filter_map(|(id, request)| {
+            let body = request.body("jev-latest").ok()?;
+            Some(serde_json::json!({"id": id, "body": body}))
+        })
+        .collect();
+    let line = serde_json::json!({"case": case.id(), "requests": requests});
+    let written = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .and_then(|mut file| {
+            use std::io::Write;
+            writeln!(file, "{line}")
+        });
+    if let Err(e) = written {
+        eprintln!("CHAT_GOLDENS_REQUESTS: {e}");
+    }
+}
+
 fn progress(grade: Grade) -> Grade {
     let o = &grade.observed;
     let timing = o
@@ -410,6 +441,9 @@ impl Routed {
         } else {
             request
         };
+        // Only the questions a rule reads on the website (#11247).
+        let request = request.for_surface(context.surface());
+        record_requests(case, &request);
         let response = match router::ask(&self.judge, request).await {
             Ok(r) => r,
             Err(e) => {
@@ -421,16 +455,14 @@ impl Routed {
             }
         };
         let mut routing = router::reading(&response, self.bank, &self.facts, &self.admitted);
-        // As the worker reads it: the map for the model that answered
-        // (Jev's, or Clef's when a Clef door answered).
-        let map = if router::calibration::response_from_clef(&response) {
-            self.clef_calibration.as_ref()
-        } else {
-            self.calibration.as_ref()
-        };
-        if let Some(map) = map {
-            map.apply(&mut routing);
-        }
+        // As the worker reads it: each question on the map of the model
+        // that answered it (Jev's, or Clef's when a Clef door answered).
+        router::calibration::apply_served(
+            &response,
+            &mut routing,
+            self.calibration.as_ref(),
+            self.clef_calibration.as_ref(),
+        );
         let tier = router::decide(&routing, self.bank, &self.facts, &situation);
         let mut why = format!("route {} {:.2}", routing.route.word(), routing.route_p);
         if let Some((second, p)) = routing.runner_up {

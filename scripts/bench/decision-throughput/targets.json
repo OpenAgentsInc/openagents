@@ -1,0 +1,242 @@
+{
+  "jev": {
+    "kind": "http",
+    "base": "https://api.typesafe.ai",
+    "model": "jev-latest",
+    "key_env": "TYPESAFE_API_KEY",
+    "price": {
+      "usd_per_m_input": 0.042,
+      "source": "TypeSafe list price, crates/jev/src/nip_dec.rs"
+    },
+    "hardware": "TypeSafe hosted",
+    "duration": 120,
+    "budget_usd": 2.5,
+    "shape_conc_max": 4,
+    "daily_conc": [
+      1,
+      4
+    ],
+    "daily_budget_usd": 0.4,
+    "daily_shape_conc": 1,
+    "daily_skip_long": true
+  },
+  "gateway-jev": {
+    "kind": "http",
+    "base": "https://openagents.com/api",
+    "model": "jev-latest",
+    "price": {
+      "usd_per_m_input": 0.042,
+      "source": "Jev list price under the gateway's house key (keyless to the caller)"
+    },
+    "hardware": "openagents.com gateway, Jev first",
+    "duration": 120,
+    "budget_usd": 1.5,
+    "max_conc": 32,
+    "shape_conc_max": 8,
+    "daily_conc": [
+      1,
+      4
+    ],
+    "daily_budget_usd": 0.3,
+    "daily_shape_conc": 1,
+    "daily_skip_long": true
+  },
+  "gateway-pylon": {
+    "kind": "http",
+    "base": "https://openagents.com/api",
+    "model": "jev-latest",
+    "headers": {
+      "X-Decision-Order": "pylon"
+    },
+    "price": {
+      "usd_per_hour": 0.12,
+      "source": "CoderOS-4080 amortized hardware + power (assumption, see doc)"
+    },
+    "hardware": "gateway, Pylon first: the production CoderOS-4080 Clef pylon over NIP-DEC",
+    "duration": 120,
+    "max_conc": 8,
+    "shape_conc_max": 4,
+    "daily_conc": [
+      1,
+      4
+    ],
+    "daily_shape_conc": 1
+  },
+  "coderos-clef": {
+    "kind": "http",
+    "base": "http://127.0.0.1:18097",
+    "model": "clef-flash",
+    "price": {
+      "usd_per_hour": 0.12,
+      "source": "CoderOS-4080 amortized hardware + power (assumption, see doc)"
+    },
+    "hardware": "RTX 4080 16 GB, Psionic Clef-Flash Q4_K_M CUDA (bench instance, port 18097)",
+    "duration": 150,
+    "max_conc": 32,
+    "daily_conc": [
+      1,
+      4,
+      16
+    ],
+    "shape_conc_max": 2
+  },
+  "coderos-llamacpp": {
+    "kind": "http",
+    "base": "http://127.0.0.1:18091",
+    "model": "clef-flash",
+    "price": {
+      "usd_per_hour": 0.12,
+      "source": "CoderOS-4080 amortized hardware + power (assumption, see doc)"
+    },
+    "hardware": "RTX 4080 16 GB, llama.cpp b11538 Clef-Flash Q4_K_M",
+    "duration": 120,
+    "max_conc": 16,
+    "shape_conc_max": 4
+  },
+  "coderos-ollama": {
+    "kind": "http",
+    "base": "http://127.0.0.1:11436",
+    "model": "clef-flash",
+    "price": {
+      "usd_per_hour": 0.12,
+      "source": "CoderOS-4080 amortized hardware + power (assumption, see doc)"
+    },
+    "hardware": "RTX 4080 16 GB, Ollama 0.40 Clef-Flash",
+    "duration": 120,
+    "max_conc": 16,
+    "shape_conc_max": 4
+  },
+  "h100-clef-flash": {
+    "kind": "http",
+    "base": "http://127.0.0.1:18096",
+    "model": "clef-flash",
+    "price": {
+      "usd_per_hour": 6.4,
+      "source": "spot a3-highgpu-1g us-east5 (H100 $5.71 + vCPU/RAM)"
+    },
+    "hardware": "1x H100 80GB, Psionic Clef-Flash Q4_K_M CUDA",
+    "duration": 120,
+    "max_conc": 32,
+    "conc_list": [
+      1,
+      4,
+      8,
+      16,
+      32
+    ],
+    "shape_conc_max": 4
+  },
+  "h100-clef-27b": {
+    "kind": "http",
+    "base": "http://127.0.0.1:18098",
+    "model": "clef",
+    "price": {
+      "usd_per_hour": 6.4,
+      "source": "spot a3-highgpu-1g us-east5 (H100 $5.71 + vCPU/RAM)"
+    },
+    "hardware": "1x H100 80GB, Psionic Clef 27B Q4_K_M CUDA",
+    "duration": 120,
+    "max_conc": 16,
+    "conc_list": [
+      1,
+      4,
+      16
+    ],
+    "shape_conc_max": 4
+  },
+  "sealed-cpu": {
+    "kind": "att",
+    "publisher": "77fabebbeb49a7b9b384422ee6ef5662cf4db7da70acc94981378c0017ecc56e",
+    "workload": "clef-decisions",
+    "model": "clef-flash",
+    "price": {
+      "usd_per_hour": 0.45,
+      "source": "c3-standard-8 + TDX surcharge, us-central1 (always on)"
+    },
+    "hardware": "oa-att-tdx-1: 8 TDX vCPUs, Psionic Clef-Flash CPU, NIP-ATT sealed",
+    "duration": 150,
+    "questions_max": 1,
+    "tokens_max": 1500,
+    "base_tokens": 500,
+    "max_conc": 4,
+    "conc_list": [
+      1,
+      2,
+      4
+    ],
+    "daily_conc": [
+      1,
+      2
+    ],
+    "timeout": 300
+  },
+  "sealed-gpu": {
+    "kind": "att",
+    "publisher": "77fabebbeb49a7b9b384422ee6ef5662cf4db7da70acc94981378c0017ecc56e",
+    "workload": "clef-decisions-gpu",
+    "model": "clef-flash",
+    "price": {
+      "usd_per_hour": 6.83,
+      "source": "spot a3-highgpu-1g us-east5 + Confidential Computing surcharge"
+    },
+    "hardware": "oa-att-h100-1: H100 in CC mode + TDX, Psionic Clef-Flash CUDA, NIP-ATT sealed",
+    "duration": 120,
+    "questions_max": 1,
+    "tokens_max": 16000,
+    "max_conc": 8,
+    "conc_list": [
+      1,
+      2,
+      4,
+      8
+    ]
+  },
+  "vertex-gemini": {
+    "kind": "vertex",
+    "model": "gemini-3.8-flash",
+    "project": "openagentsgemini",
+    "location": "global",
+    "price": {
+      "usd_per_m_input": 0.75,
+      "usd_per_m_output": 3.75,
+      "source": "crates/inference/src/upstream/vertex.rs list price; output includes thinking tokens"
+    },
+    "hardware": "Vertex AI Gemini 3.8 Flash, structured output, thinking low",
+    "duration": 120,
+    "budget_usd": 2.0,
+    "max_conc": 16,
+    "shape_conc_max": 4,
+    "conc_list": [
+      1,
+      4,
+      16
+    ],
+    "daily_conc": [
+      1,
+      4
+    ],
+    "daily_budget_usd": 0.3,
+    "daily_shape_conc": 1,
+    "daily_skip_long": true
+  },
+  "mac-clef": {
+    "kind": "http",
+    "base": "http://127.0.0.1:18096",
+    "model": "clef-flash",
+    "price": {
+      "usd_per_hour": 0.19,
+      "source": "M5 Max MacBook amortized + power (assumption, see doc)"
+    },
+    "hardware": "Apple M5 Max, Psionic Clef-Flash Metal (run only when the Mac is idle)",
+    "duration": 150,
+    "max_conc": 16,
+    "conc_list": [
+      1,
+      2,
+      4,
+      8,
+      16
+    ],
+    "shape_conc_max": 4
+  }
+}

@@ -413,6 +413,9 @@ impl ExecutionSettings {
             "Run" if self.shell => {
                 let args: RunArguments = serde_json::from_value(arguments)
                     .map_err(|_| "Run requires a command and no other fields.")?;
+                if let Some(refusal) = crate::git_guard::refusal(&args.command) {
+                    return Err(refusal);
+                }
                 if args.background == Some(true) {
                     return crate::shells::start_shell(self, &args.command);
                 }

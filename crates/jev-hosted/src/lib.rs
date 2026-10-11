@@ -182,6 +182,9 @@ pub fn resolve(
             }
             return match local_key(env, dir) {
                 Some((key, source)) => jev_first(env, key, source, door, tune, None),
+                None if env(HOSTED_VAR).is_some_and(|value| value.trim() == "off") => Err(format!(
+                    "no TypeSafe key here, and {HOSTED_VAR}=off turns the keyless decision service off"
+                )),
                 None => ours(env, door, tune),
             };
         }
@@ -1723,6 +1726,10 @@ mod tests {
     fn the_hosted_service_is_off_on_request_and_for_other_doors() {
         let dir = tempfile::tempdir().unwrap();
         let off = jev(|name: &str| (name == HOSTED_VAR).then(|| "off".to_string()));
+        let error = resolve(&off, dir.path(), &DOOR_PIN, &|config| config).unwrap_err();
+        assert!(error.contains(HOSTED_VAR), "{error}");
+        // The default route (Jev first) honours it too: no key, no Jev.
+        let off = |name: &str| (name == HOSTED_VAR).then(|| "off".to_string());
         let error = resolve(&off, dir.path(), &DOOR_PIN, &|config| config).unwrap_err();
         assert!(error.contains(HOSTED_VAR), "{error}");
         let other = Door {

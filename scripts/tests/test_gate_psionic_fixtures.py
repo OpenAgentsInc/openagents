@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""Check the Psionic fixture-existence checker's ratchet behavior."""
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent.parent
+CHECKER = ROOT / "scripts" / "dev" / "check-psionic-fixtures.py"
+
+
+def call(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, str(CHECKER), *args],
+                          capture_output=True, text=True)
+
+
+class FixtureCheckTests(unittest.TestCase):
+    def test_the_allowlist_covers_every_current_miss(self):
+        """A bare run passes only while the allowlist is complete."""
+        out = call()
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("no new missing fixtures", out.stdout)
+
+    def test_a_dropped_allowlist_entry_is_a_new_miss(self):
+        """Removing a name makes that path fail, so the list cannot grow
+        silently in the other direction."""
+        original = (ROOT / "scripts" / "dev"
+                    / "psionic-missing-fixtures.txt").read_text()
+        lines = [line for line in original.splitlines()
+                 if line and not line.startswith("#")]
+        self.assertTrue(lines, "the allowlist should not be empty")
+        with tempfile.TemporaryDirectory() as tmp:
+            trimmed = Path(tmp) / "allow.txt"
+            trimmed.write_text("\n".join(lines[1:]) + "\n")
+            # Point the checker at the trimmed list by copying it in place.
+            target = ROOT / "scripts" / "dev" / "psionic-missing-fixtures.txt"
+            try:
+                target.write_text(trimmed.read_text())
+                out = call()
+            finally:
+                target.write_text(original)
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+        self.assertIn("do not resolve and are not allowlisted", out.stdout)
+
+    def test_list_prints_name_and_path_pairs(self):
+        out = call("--list")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        rows = [line for line in out.stdout.splitlines() if "\t" in line]
+        self.assertGreater(len(rows), 0)
+        for row in rows:
+            name, path = row.split("\t", 1)
+            self.assertTrue(name.endswith("_FIXTURE_PATH"), name)
+            self.assertIn(".", Path(path).name)
+
+
+if __name__ == "__main__":
+    unittest.main()

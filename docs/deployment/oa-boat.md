@@ -25,12 +25,49 @@ commit:
 | `oa-boat-00001-wsn` | `c80c5266f1` | First deploy. Every create failed: Compute Engine answers 411 to a POST with no body (the operation wait) |
 | `oa-boat-00002-dw9` | `852d03aabe` | Empty JSON body on such POSTs; `/health` (Google's front end keeps `/healthz`) |
 | `oa-boat-00003-r29` | `f8c4754ba4` | A VM whose insert wait failed but exists is used, not leaked; the reaper readies VMs it never prepared |
-| next | `4ec6a2ed96` | After a restart, a VM already ready for its boot answers at once (the `00003` rollout made the template build's next command answer 409) |
+| `oa-boat-00004-8ct` | `4ec6a2ed96` | After a restart, a VM already ready for its boot answers at once (the `00003` rollout made the template build's next command answer 409) |
+| `oa-boat-00005-k6h` | `c1008ae902` | A VM that keeps refusing our SSH key gets its `ssh-keys` metadata rewritten once a minute, so the guest agent puts the key back (a staging setup VM lost key login for 90 minutes) |
 
 Two client-side finds on the way: Cloud Run's front end also answers 411 to
 the SDK's body-less `stop` (the SDK now sends `Content-Length: 0`), and the
 service's first `--allow-unauthenticated` did not take; `--no-invoker-iam-check`
 lets our own bearer token through.
+
+## Environments on our backend
+
+| Where | Revision | Result |
+| --- | --- | --- |
+| Staging | `6cc41064ec` | Smoke `92 passed`; a full setup of `octocat/Hello-World` (setup machine, clean build image, fresh-machine check) ready to save in `594 s`, all on oa-boat VMs |
+| Production | `coder-web-2785ffe336-20261011034506` (same image, promoted with the candidate smoke, then shifted) | Candidate smoke `51 passed`, `8` waiting for traffic; after the shift `59 passed`. The log says "Environments are on at /environments", and the backend probe answers 200 every 30 s |
+
+The first staging setup failed at its last step: the fresh-machine check's
+start met its own job's lock, held by the owners' loop while a verifier VM
+came up. Starting is idempotent, so the setup now waits and asks again
+(`6cc41064ec`).
+
+Production's previous revision, for rollback:
+`scripts/deploy/web.sh rollback coder-web-a74a2376f9-20261011031455`.
+
+## Idle stop and TTL, live
+
+- `bx_glifpdc4gk` (a staging setup machine) was stopped by the reaper
+  after 30 idle minutes ("stop bx_glifpdc4gk (idle)").
+- `bx_gh548gv7v2`, which the service could not reach, was stopped at its
+  TTL ("stop bx_gh548gv7v2 (ttl)"): the deadline does not need SSH.
+
+## The daily template on our backend
+
+The Cloud Run job `oa-boat-template` (image from `9e82dc419e`, key
+`oa-boat-api-key`, base `BOAT_API_BASE` = this service) built
+`oa-coder-main-20261011` on a `large` sandbox: cold build (no shared cache
+on sandboxes) from `02:44` to `03:52` UTC, then a `32498907520`-byte GCE
+image saved in `214.5s`; the job exited 0. The schedule
+`oa-boat-template-daily` runs the same job each day.
+
+A sandbox from it (`bx_olo0d58cat`, `large`): ready in `33 s`; the first
+`cargo build -p openagents-cli` in the warm slot compiled one crate in
+`93 s`; the whole check cost `$0.010421`. There is no lazy restore to wait
+for, which on hosted Boat took minutes before a warm build could start.
 
 ## Measured
 

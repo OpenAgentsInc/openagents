@@ -1,0 +1,53 @@
+# The H100 decision-throughput bundle (scripts/bench/decision-throughput/h100):
+# psionic-openai-server for sm_90 and its CUDA 13 runtime libraries, taken
+# from an att-provider-gpu image (deploy/att/Dockerfile.gpu, built from one
+# commit), plus oa-att (the NIP-ATT client) built for glibc 2.36+, packed as
+# gs://openagentsgemini-decision-throughput/bin/<_TAG>/bundle.tar.gz. A plain
+# Deep Learning VM runs them on the host driver, no container runtime needed.
+#
+#   gcloud builds submit --config scripts/bench/decision-throughput/h100/cloudbuild-bundle.yaml \
+#     --ignore-file deploy/att/att.gcloudignore --substitutions _TAG=<sha10>,_IMAGE=<image@digest> .
+steps:
+  - name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
+        mkdir -p /workspace/bundle/lib
+        docker run --rm --entrypoint sh -v /workspace/bundle:/out ${_IMAGE} -c '
+          set -eu
+          cp /usr/local/bin/psionic-openai-server /out/
+          for l in libcudart.so.13 libcublas.so.13 libcublasLt.so.13; do cp -L /usr/local/cuda/lib64/$l /out/lib/; done
+          ldd /usr/local/bin/psionic-openai-server | awk "/cuda/ {print \$3}" | while read f; do [ -f "$f" ] && cp -L "$f" /out/lib/ || true; done'
+        ls -la /workspace/bundle /workspace/bundle/lib
+  - name: rust:1.97.1-bookworm
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
+        cargo build --locked --release -p oa-att --features net --bin oa-att
+        strip target/release/oa-att
+        cp target/release/oa-att /workspace/bundle/
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
+        cd /workspace/bundle
+        printf '%s\n' "${_IMAGE}" > image.txt
+        printf '%s\n' "${_TAG}" > commit.txt
+        sha256sum psionic-openai-server oa-att lib/* > SHA256SUMS
+        tar -czf /workspace/bundle.tar.gz .
+        gcloud storage cp /workspace/bundle.tar.gz gs://openagentsgemini-decision-throughput/bin/${_TAG}/bundle.tar.gz
+        printf '%s\n' "${_TAG}" > /workspace/latest
+        gcloud storage cp /workspace/latest gs://openagentsgemini-decision-throughput/bin/latest
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_32
+timeout: 3600s
+substitutions:
+  _TAG: dev
+  _IMAGE: ""

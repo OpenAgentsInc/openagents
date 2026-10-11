@@ -46,8 +46,8 @@
 
 pub mod about;
 pub mod activity;
-pub mod answer_ui;
 pub mod agent;
+pub mod answer_ui;
 pub mod argv;
 pub mod branch_checkout;
 pub mod builtin_plugins;
@@ -75,6 +75,7 @@ pub mod first;
 pub mod generate;
 pub mod gym_kb;
 pub mod identity;
+pub mod local_chain;
 pub mod package;
 pub mod permit;
 mod private;

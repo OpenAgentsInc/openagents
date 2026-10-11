@@ -36,7 +36,10 @@ Options:
                      claude (the operator's Claude Code login through the
                      claude binary on PATH or CLAUDE_BIN; name an alias such
                      as --model opus or sonnet, or a full model name; the
-                     default model names map to opus)
+                     default model names map to opus), or local (the chain
+                     Coder's microcoder tool uses: the Codex login, then the
+                     Claude Code login, then the OpenAgents gateway, falling
+                     over mid-task; --model sets the Codex model)
   --effort LEVEL     low, medium, or high (default medium); claude also takes
                      xhigh and max
   --strong-model SLUG  the model that writes the acceptance tests on
@@ -186,11 +189,11 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--model" => options.model = value()?,
             "--provider" => {
                 options.provider = value()?;
-                if !["codex", "openrouter", "door", "vertex", "claude"]
+                if !["codex", "openrouter", "door", "vertex", "claude", "local"]
                     .contains(&options.provider.as_str())
                 {
                     return Err(format!(
-                        "--provider wants codex, openrouter, door, vertex, or claude, not {}",
+                        "--provider wants codex, openrouter, door, vertex, claude, or local, not {}",
                         options.provider
                     ));
                 }
@@ -359,7 +362,7 @@ async fn go(options: Options) -> Result<u8, String> {
         .network
         .clone()
         .unwrap_or_else(|| task.agent_network.docker().to_string());
-    let make = |model: &str| -> Result<(AnyGenerator, String), String> {
+    let make_one = |model: &str| -> Result<(AnyGenerator, String), String> {
         if options.provider == "openrouter" {
             let slug = if model.contains('/') {
                 model.to_string()
@@ -422,23 +425,38 @@ async fn go(options: Options) -> Result<u8, String> {
             recipient,
         ))
     };
-    let (generator, generation_recipient) = make(&options.model)?;
+    let make = |model: &str| -> Result<(Generator, Vec<String>), String> {
+        if options.provider == "local" {
+            if options.kb_private.is_some() {
+                return Err("private knowledge delivery through the local chain is not supported: its gateway fallback has no exact endpoint binding".into());
+            }
+            let session = format!("microcoder-{}-{}", options.task, std::process::id());
+            let generator = coder::local_chain::local_generator(
+                &session,
+                Some(model.rsplit('/').next().unwrap_or(model).to_string()),
+                options.effort.clone(),
+            )?;
+            let recipients = generator.recipients();
+            return Ok((Generator::Local(generator), recipients));
+        }
+        make_one(model).map(|(generator, recipient)| (Generator::Any(generator), vec![recipient]))
+    };
+    let (generator, generation_recipients) = make(&options.model)?;
     let (strong, strong_recipient) = make(&options.strong_model)?;
     let set = question_set();
     let route = route_set();
     let judge = JevJudge {
         client: jev_client()?,
     };
-    let mut recipients = std::collections::BTreeSet::from([
-        generation_recipient,
-        format!(
-            "typesafe:{}#{}",
-            judge.client.base_url(),
-            judge.client.default_model()
-        ),
-    ]);
+    let mut recipients: std::collections::BTreeSet<String> =
+        generation_recipients.into_iter().collect();
+    recipients.insert(format!(
+        "typesafe:{}#{}",
+        judge.client.base_url(),
+        judge.client.default_model()
+    ));
     if !matches!(options.limits.route, Route::Never) {
-        recipients.insert(strong_recipient);
+        recipients.extend(strong_recipient);
     }
     let mut pinned = microcoder::kbinput::load(
         options.kb_snapshot.as_deref(),
@@ -720,7 +738,13 @@ async fn go(options: Options) -> Result<u8, String> {
     println!("{}", indent_block(&tail));
     let passed = verdict.reward.is_some_and(|r| r >= 1.0);
     let total = microcoder::run::total_text(&outcome);
-    let basis = if ["codex", "vertex", "claude"].contains(&options.provider.as_str()) {
+    // The local chain's basis is the provider that answered last: the
+    // logins report tokens at list price, the gateway what it billed.
+    let provider = match &generator {
+        Generator::Local(local) => local.provider(),
+        Generator::Any(_) => options.provider.as_str(),
+    };
+    let basis = if ["codex", "vertex", "claude"].contains(&provider) {
         Basis::ListPrice
     } else {
         Basis::Billed
@@ -771,6 +795,7 @@ async fn go(options: Options) -> Result<u8, String> {
         // login reports tokens, priced at list price; OpenRouter bills.
         // Jev is always its published rate times reported tokens.
         "provider": options.provider,
+        "local_provider": matches!(generator, Generator::Local(_)).then_some(provider),
         "cost_basis": basis,
         "cost_bases": {
             "model": basis,
@@ -973,4 +998,25 @@ fn indent_block(text: &str) -> String {
         .map(|l| format!("        {l}"))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// The generator `--provider` names: one provider, or the local chain.
+enum Generator {
+    Any(AnyGenerator),
+    Local(coder::local_chain::LocalGenerator),
+}
+
+impl microcoder::models::Generate for Generator {
+    async fn generate(&self, system: &str, prompt: &str) -> microcoder::models::Generated {
+        match self {
+            Generator::Any(generator) => generator.generate(system, prompt).await,
+            Generator::Local(generator) => generator.generate(system, prompt).await,
+        }
+    }
+
+    fn warm(&self, system: &str) {
+        if let Generator::Any(generator) = self {
+            generator.warm(system);
+        }
+    }
 }

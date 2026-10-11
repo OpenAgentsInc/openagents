@@ -27,7 +27,9 @@ mod demo;
 pub mod file_tools;
 pub mod fleet;
 mod fleet_app;
+mod git_guard;
 pub mod github_tool;
+pub mod identity;
 pub mod issue_run;
 pub mod jev_plugin;
 pub mod live;
@@ -125,7 +127,6 @@ pub struct App {
     pub scroll: u16,
     pub selected_agent: Option<usize>,
     pub animation_frame: u8,
-    pub cursor_blink_frame: u8,
     pub elapsed_seconds: u64,
     pub plugins: plugins::Plugins,
     pub appearance: appearance::Appearance,
@@ -330,6 +331,7 @@ impl App {
         let child = &mut self.delegations[index];
         match event {
             bundled_runtime::RuntimeEvent::Tokens(tokens) => child.chat.tokens = tokens,
+            bundled_runtime::RuntimeEvent::Usage(usage) => child.chat.round(*usage),
             bundled_runtime::RuntimeEvent::Text(text) => child.chat.partial.push_str(&text),
             bundled_runtime::RuntimeEvent::Model(model) => {
                 child.chat.partial_model = live::model_slug(&model)
@@ -632,6 +634,12 @@ impl App {
         if update.id() != self.request_id || self.mode != Mode::Live {
             return;
         }
+        self.live.stamp();
+        self.apply_live_update(update);
+        self.live.stamp();
+    }
+
+    fn apply_live_update(&mut self, update: live::Update) {
         // A summary request's result (#11179) never reaches the transcript.
         let Some(update) = self.finish_compaction(update) else {
             return;
@@ -743,6 +751,9 @@ impl App {
                 running,
                 ..
             } if self.live.busy => {
+                // What the model wrote before this call shows above it, not
+                // at the end of the turn.
+                self.live.finish_partial();
                 if let Some(live::Entry::Tool { input: previous_input, output: previous_output, running: previous_running, .. }) = self.live.entries.iter_mut().rev().find(|entry| {
                     matches!(entry, live::Entry::Tool { name: previous, input: previous_input, running: true, .. } if previous == &name && (input.is_null() || previous_input == &input))
                 }) {
@@ -752,7 +763,17 @@ impl App {
                 } else {
                     self.live.entries.push(live::Entry::Tool { name, input, output, running });
                 }
-
+            }
+            live::Update::Usage { usage, .. } if self.live.busy => {
+                // The totals move as each call ends, not only when the turn
+                // finishes.
+                let tokens = usage.prompt_tokens.saturating_add(usage.completion_tokens);
+                let cost = usage.cost.unwrap_or_default();
+                self.live.tokens = self.live.tokens.saturating_add(tokens);
+                self.live.cost_usd += cost;
+                self.live.turn_counted.0 = self.live.turn_counted.0.saturating_add(tokens);
+                self.live.turn_counted.1 += cost;
+                self.live.round(usage);
             }
             live::Update::Delta { text, .. } if self.live.busy => {
                 self.live.partial.push_str(&text);
@@ -801,17 +822,30 @@ impl App {
                 }
                 match result {
                     Ok(reply) => {
-                        self.live.tokens =
-                            self.live.tokens.saturating_add(reply.usage.total_tokens);
+                        // Only what the per-call reports didn't already add.
+                        let (counted_tokens, counted_cost) =
+                            std::mem::take(&mut self.live.turn_counted);
+                        self.live.tokens = self.live.tokens.saturating_add(
+                            reply.usage.total_tokens.saturating_sub(counted_tokens),
+                        );
                         if let Some(cost) = reply.usage.cost.filter(|cost| cost.is_finite()) {
-                            self.live.cost_usd += cost;
+                            self.live.cost_usd += (cost - counted_cost).max(0.0);
                         }
-                        self.live.entries.push(live::Entry::Assistant {
-                            elapsed_ms: self.live.reply_elapsed_ms(),
-                            text: reply.text,
-                            model: live::model_slug(&reply.model)
-                                .map(|model| self.active_options.slug(&model)),
-                        });
+                        let model = live::model_slug(&reply.model)
+                            .map(|model| self.active_options.slug(&model));
+                        if self.live.text_shown_this_turn() {
+                            // The turn's earlier text is already above its
+                            // tool calls; only what came after the last one
+                            // is left.
+                            self.live.partial_model = model;
+                            self.live.finish_partial();
+                        } else {
+                            self.live.entries.push(live::Entry::Assistant {
+                                elapsed_ms: self.live.reply_elapsed_ms(),
+                                text: reply.text,
+                                model,
+                            });
+                        }
                         self.live.partial.clear();
                         self.live.partial_model = None;
                         self.live.notice = None;
@@ -821,6 +855,7 @@ impl App {
                         }
                     }
                     Err(error) => {
+                        self.live.turn_counted = (0, 0.0);
                         if error.contains("HTTP 401") {
                             self.plugins.connection = plugins::Connection::Failed(error.clone());
                         }
@@ -850,6 +885,22 @@ impl App {
                 self.scroll_main_to_end();
             }
             _ => {}
+        }
+    }
+
+    /// Tab: `auto` (OpenAgents picks) or `flash` (DeepSeek V4.1 Flash on
+    /// the person's OpenRouter key, offered only when that key is saved).
+    fn toggle_flash(&mut self) {
+        if self.plugins.model == models::FLASH {
+            self.plugins.switch_model(models::AUTO, false);
+            self.notice = None;
+        } else if !self.plugins.key_configured {
+            self.notice = Some("flash needs an OpenRouter API key. Add one with F2.".into());
+        } else if self.plugins.switch_model(models::FLASH, true) {
+            self.notice = None;
+        }
+        if let Some(error) = self.plugins.storage_error.clone() {
+            self.notice = Some(error);
         }
     }
 
@@ -1504,7 +1555,6 @@ impl App {
         self.poll_login();
         self.poll_sync();
         self.animation_frame = self.animation_frame.wrapping_add(1) % 8;
-        self.cursor_blink_frame = self.cursor_blink_frame.wrapping_add(1) % 8;
     }
 
     fn select_agent(&mut self, selected: Option<usize>) {
@@ -1645,7 +1695,6 @@ impl App {
             Event::Paste(text) => {
                 self.footer_focused = false;
                 self.escape_at = None;
-                self.cursor_blink_frame = 0;
                 if self.resume_picker.is_some() {
                     return true;
                 } else if let Some(picker) = &mut self.model_picker {
@@ -1717,7 +1766,6 @@ impl App {
                 }
             }
             Event::Key(key) if key.kind != KeyEventKind::Release => {
-                self.cursor_blink_frame = 0;
                 let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
                 if ctrl && key.code == KeyCode::Char('c') {
                     return false;
@@ -1980,6 +2028,7 @@ impl App {
                 }
                 match key.code {
                     KeyCode::F(2) => self.open_plugins(),
+                    KeyCode::Tab if self.mode == Mode::Live => self.toggle_flash(),
                     KeyCode::Up | KeyCode::Down => self.composer_arrow(key.code == KeyCode::Up),
                     KeyCode::Esc => {
                         if self.footer_focused {

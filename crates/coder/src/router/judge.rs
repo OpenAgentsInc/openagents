@@ -35,6 +35,14 @@
 //! joins the answers back into one response, so [`reading`] and the policy
 //! read it exactly as they read the single request. A side that fails
 //! reads as not asked: no prepared answer, no command proposal.
+//!
+//! **Only what a rule reads (#11247).** `cli_group` ([`AFTER_MAIN`]) is
+//! asked after the main request, and only when its `route` reading is one
+//! a rule reads the group for ([`needed_after`]), within what is left of
+//! the one deadline. A turn on a surface where no rule reads a question
+//! does not ask it ([`unread_on`], [`Split::for_surface`]). [`merge`] keeps
+//! each side question's serving identity ([`SERVED_BY`]), so a side a
+//! fallback door answered is calibrated on its own model's map.
 
 use indexmap::IndexMap;
 use jev::{Answer, Choice, ChoiceAnswer, Entry as Criterion, Noul, NoulCriteria, Questions};
@@ -398,24 +406,122 @@ pub fn state(task: &str, transcript: &[Message]) -> Value {
 /// answers and the command groups.
 pub const SIDE: [&str; 2] = ["answer", "cli_group"];
 
+/// The side questions asked only after the main request answers, and only
+/// when a policy rule will read them (#11247): `cli_group`, the longest
+/// option list, which only the CLI route (rule 7) and a terminal's wallet
+/// descent (rule 3a) read ([`needed_after`]). Every other side question
+/// goes beside the main request: `answer` is read on most routes (every
+/// route with prepared answers, a dispatch's stem, a clarify), so waiting
+/// for the route would cost most turns a second round trip.
+pub const AFTER_MAIN: [&str; 1] = ["cli_group"];
+
+/// The questions no rule reads on `surface`, which a turn there does not
+/// ask (#11247), derived from every reader in [`super::policy`]:
+///
+/// - `fanout`, `read_only`, and `summarize` shape a plan of several Coder
+///   runs, which only a terminal starts (`policy::fan_out`).
+/// - On the website, `engine` and `capability` only shape a dispatch offer
+///   (`policy::dispatch`) or the missing-capability card (`policy::missing`),
+///   and `tool` only a Gym card (`policy::gym`); the website shows none of
+///   them (`policy::for_web` turns them into the model told
+///   `policy::WEB_NOTE`, whatever they read).
+///
+/// `lane` stays everywhere: on the website it still decides whether a
+/// computer task gets [`super::policy::WEB_NOTE`] or a plain reply.
+#[must_use]
+pub fn unread_on(surface: super::Surface) -> &'static [&'static str] {
+    match surface {
+        super::Surface::Terminal => &[],
+        super::Surface::Web => &[
+            "fanout",
+            "read_only",
+            "summarize",
+            "engine",
+            "capability",
+            "tool",
+        ],
+        _ => &["fanout", "read_only", "summarize"],
+    }
+}
+
+/// Whether a policy rule will read the deferred question `id` given the
+/// main request's answers, read off the typed `route` argmax only, never
+/// the message: `cli_group` for the `cli` route (rule 7, and the
+/// website's GitHub commands that come of it), and for the `wallet` route
+/// on a terminal, whose descent a sure `cli_group` reading of another
+/// group stops (rule 3a, [`super::policy`]).
+#[must_use]
+pub fn needed_after(id: &str, main: &jev::SystemOneResponse, terminal: bool) -> bool {
+    let route = choice(main, "route").map(|answer| RouteId::parse(&answer.choice));
+    match id {
+        "cli_group" => route == Some(RouteId::Cli) || (terminal && route == Some(RouteId::Wallet)),
+        _ => true,
+    }
+}
+
 /// The tokens a Clef decision head was trained at: no request the router
 /// sends should need more (#11193).
 pub const CLEF_TOKENS: usize = 16_384;
 
+/// The most bytes a website turn's requests (the main request and the
+/// sides beside it) may send (#11247): about 40.7 KB, some 11k Clef
+/// tokens, where the split sent about 96 KB (24.7k tokens) on every turn.
+/// A guard against growth; the ~6k-token target needs shorter option
+/// texts that hold Jev's accuracy (#11247 records the try that did not).
+pub const TYPICAL_TURN_BYTES: usize = 42_000;
+
+/// The same bound for a turn in the phone or desktop app, which also asks
+/// `capability` and `engine`.
+pub const APP_TURN_BYTES: usize = 47_000;
+
+/// The same bound for a terminal turn, which also asks the dispatch
+/// plan's questions (`fanout`, `read_only`, `summarize`) and `tool`.
+pub const TERMINAL_TURN_BYTES: usize = 51_000;
+
 /// The router's requests for one turn: the main one and the side ones,
-/// all over the same state, sent at once by [`ask`].
+/// all over the same state. [`ask`] sends the main request and `sides` at
+/// once, and each of `later` once the main request's answer shows a rule
+/// will read it ([`needed_after`]).
 #[derive(Clone, Debug)]
 pub struct Split {
     /// Every question but [`SIDE`].
     pub main: jev::SystemOneRequest,
-    /// One request per [`SIDE`] question the set asks, by its id.
+    /// One request per [`SIDE`] question asked beside the main request,
+    /// by its id.
     pub sides: Vec<(&'static str, jev::SystemOneRequest)>,
+    /// One request per [`AFTER_MAIN`] question the set asks, by its id.
+    pub later: Vec<(&'static str, jev::SystemOneRequest)>,
+    /// Whether the turn is a terminal's, whose wallet route reads
+    /// `cli_group` ([`needed_after`]).
+    pub terminal: bool,
 }
 
 impl Split {
-    /// Every request, main first.
+    /// Every request the turn may send, main first.
     pub fn requests(&self) -> impl Iterator<Item = &jev::SystemOneRequest> {
-        std::iter::once(&self.main).chain(self.sides.iter().map(|(_, request)| request))
+        std::iter::once(&self.main).chain(
+            self.sides
+                .iter()
+                .chain(self.later.iter())
+                .map(|(_, request)| request),
+        )
+    }
+
+    /// The same requests for a turn on `surface`, without the questions
+    /// no rule reads there ([`unread_on`], #11247); a terminal's wallet
+    /// route also reads `cli_group` ([`needed_after`]).
+    #[must_use]
+    pub fn for_surface(mut self, surface: super::Surface) -> Self {
+        self.terminal = surface == super::Surface::Terminal;
+        let unread = unread_on(surface);
+        self.main.questions = self
+            .main
+            .questions
+            .iter()
+            .filter(|(id, _)| !unread.contains(id))
+            .map(|(id, question)| (id.to_string(), question.clone()))
+            .collect();
+        self
     }
 
     /// The same requests and the [`REPOSITORY`] question as a side
@@ -552,20 +658,29 @@ pub fn split(
         .filter(|(id, _)| !SIDE.contains(id))
         .map(|(id, question)| (id.to_string(), question.clone()))
         .collect();
+    let side = |id: &'static str| {
+        let question = asked.get(id)?.clone();
+        Some((id, request(Questions::new().with(id, question))))
+    };
     let sides = SIDE
         .into_iter()
-        .filter_map(|id| {
-            let question = asked.get(id)?.clone();
-            Some((id, request(Questions::new().with(id, question))))
-        })
+        .filter(|id| !AFTER_MAIN.contains(id))
+        .filter_map(side)
         .collect();
+    let later = AFTER_MAIN.into_iter().filter_map(side).collect();
     Split {
         main: request(main),
         sides,
+        later,
+        terminal: false,
     }
 }
 
-/// Asks every request of a [`Split`] at once and [`merge`]s the answers.
+/// Asks a [`Split`]: the main request and its `sides` at once, then each
+/// of its `later` requests a rule will read given the main answer
+/// ([`needed_after`]), within what is left of [`crate::first::LATE`]
+/// since the call began, so every stage counts against the one deadline.
+/// The answers are [`merge`]d.
 ///
 /// The main request's failure is the call's. A side that fails is left
 /// out, so its question reads as not asked (no prepared answer, no command
@@ -576,11 +691,40 @@ pub fn split(
 ///
 /// Returns the main request's error.
 pub async fn ask(judge: &jev::Client, split: Split) -> jev::Result<jev::SystemOneResponse> {
-    let Split { main, sides } = split;
+    let started = std::time::Instant::now();
+    let Split {
+        main,
+        sides,
+        later,
+        terminal,
+    } = split;
     let (ids, requests): (Vec<&'static str>, Vec<jev::SystemOneRequest>) =
         sides.into_iter().unzip();
-    let (main, sides) = futures_util::future::join(
-        judge.system_one(main),
+    let main_then_later = async {
+        let main = judge.system_one(main).await;
+        let Ok(response) = &main else {
+            return (main, Vec::new());
+        };
+        let left = crate::first::LATE.saturating_sub(started.elapsed());
+        let wanted: Vec<(&'static str, jev::SystemOneRequest)> = later
+            .into_iter()
+            .filter(|(id, _)| needed_after(id, response, terminal))
+            .collect();
+        if wanted.is_empty() || left.is_zero() {
+            return (main, Vec::new());
+        }
+        let (ids, requests): (Vec<&'static str>, Vec<jev::SystemOneRequest>) = wanted
+            .into_iter()
+            .map(|(id, request)| (id, request.timeout(left)))
+            .unzip();
+        let answered = futures_util::future::join_all(
+            requests.into_iter().map(|later| judge.system_one(later)),
+        )
+        .await;
+        (main, ids.into_iter().zip(answered).collect())
+    };
+    let ((main, later), sides) = futures_util::future::join(
+        main_then_later,
         futures_util::future::join_all(requests.into_iter().map(|side| judge.system_one(side))),
     )
     .await;
@@ -588,6 +732,7 @@ pub async fn ask(judge: &jev::Client, split: Split) -> jev::Result<jev::SystemOn
     let answered = ids
         .into_iter()
         .zip(sides)
+        .chain(later)
         .filter_map(|(id, side)| match side {
             Ok(response) => Some(response),
             Err(error) => {
@@ -599,9 +744,18 @@ pub async fn ask(judge: &jev::Client, split: Split) -> jev::Result<jev::SystemOn
     Ok(merge(main, answered))
 }
 
+/// The merged response's field naming, per side question, the model that
+/// answered it and whether that model is Clef (#11247):
+/// `{"answer": {"model": "clef-flash@sha256:…", "clef": true}}`. A
+/// question it does not name was answered by the main request.
+pub const SERVED_BY: &str = "served_by";
+
 /// One response holding the main response's answers and then each side's:
 /// the main response's model, `service`, and other fields, with the
-/// sides' input tokens and costs added to its usage. [`reading`] and
+/// sides' input tokens and costs added to its usage, and each side
+/// question's own serving identity under [`SERVED_BY`], so its
+/// calibration is chosen per question
+/// ([`super::calibration::apply_served`]). [`reading`] and
 /// [`super::decisions::capture`] read it as they read a single request's.
 #[must_use]
 pub fn merge(
@@ -638,6 +792,21 @@ pub fn merge(
         (Some(only), None) | (None, Some(only)) => Some(Value::from(only)),
         (None, None) => None,
     };
+    // Each side question's serving identity (#11247): a side answered by
+    // another door than the main request's (a fallback Clef door beside a
+    // Jev main answer) is read on its own model's calibration map, never
+    // on the main response's.
+    let mut served = serde_json::Map::new();
+    for side in &sides {
+        let identity = serde_json::json!({
+            "model": side.model,
+            "clef": super::calibration::response_from_clef(side),
+        });
+        for id in side.answers.keys() {
+            served.insert(id.clone(), identity.clone());
+        }
+    }
+    merged.insert(SERVED_BY.to_string(), Value::Object(served));
     for side in &sides {
         let Some(side) = body(side) else { continue };
         if let (Some(Value::Object(answers)), Some(Value::Object(more))) =
@@ -1146,8 +1315,14 @@ mod tests {
         assert!(asked.main.questions.get("route").is_some());
         assert!(asked.main.questions.get("risk").is_some());
         let sides: Vec<&str> = asked.sides.iter().map(|(id, _)| *id).collect();
-        assert_eq!(sides, ["answer", "cli_group"]);
-        for (id, request) in &asked.sides {
+        assert_eq!(sides, ["answer"]);
+        let later: Vec<&str> = asked.later.iter().map(|(id, _)| *id).collect();
+        assert_eq!(
+            later,
+            ["cli_group"],
+            "asked once the route needs it (#11247)"
+        );
+        for (id, request) in asked.sides.iter().chain(&asked.later) {
             assert_eq!(ids(&request.questions), [id.to_string()]);
             assert_eq!(
                 serde_json::to_value(request.questions.get(id)).unwrap(),
@@ -1173,6 +1348,127 @@ mod tests {
         let bare = split_for(&[]);
         let sides: Vec<&str> = bare.sides.iter().map(|(id, _)| *id).collect();
         assert_eq!(sides, ["answer"]);
+        assert!(bare.later.is_empty());
+    }
+
+    /// `cli_group` is asked after the main request only when a rule reads
+    /// it (#11247): the `cli` route anywhere, and the `wallet` route on a
+    /// terminal, read off the typed route argmax.
+    #[test]
+    fn cli_group_is_asked_only_when_a_rule_reads_it() {
+        let main = |route: &str| {
+            response(json!({ "route": { "type": "choice", "choice": route,
+                "confidence": 1.0, "probabilities": { route: 1.0 } } }))
+        };
+        assert!(needed_after("cli_group", &main("cli"), false));
+        assert!(needed_after("cli_group", &main("cli"), true));
+        assert!(needed_after("cli_group", &main("wallet"), true));
+        assert!(!needed_after("cli_group", &main("wallet"), false));
+        for route in [
+            "meta",
+            "general",
+            "product.kb",
+            "work.dispatch",
+            "smalltalk",
+            "none",
+        ] {
+            assert!(!needed_after("cli_group", &main(route), true), "{route}");
+        }
+        assert!(!needed_after("cli_group", &response(json!({})), true));
+    }
+
+    /// The bytes each question of a typical website turn sends, as the
+    /// worker asks it: the product corpus's tools and the admitted set
+    /// built from them, the bank's selectable answers, no command tree
+    /// (asked only after the main request, #11247).
+    fn typical_turn(surface: crate::router::Surface) -> Split {
+        let root = knowledge::product::repository();
+        let corpus =
+            knowledge::product::Corpus::load(&knowledge::product::default_dir(), Some(&root))
+                .expect("the product corpus loads");
+        let tools = crate::gym_kb::tools(&corpus);
+        let admitted = Admitted::of(&tools, &[]);
+        let transcript = [Message {
+            role: crate::generate::Role::User,
+            text: "What models do you use?".into(),
+        }];
+        split(
+            "What models do you use?",
+            &transcript,
+            Bank::builtin(),
+            &facts().on_web(surface == crate::router::Surface::Web),
+            &groups(),
+            &tools,
+            &admitted,
+            &[],
+        )
+        .for_surface(surface)
+    }
+
+    fn bytes(request: &jev::SystemOneRequest) -> usize {
+        serde_json::to_vec(&json!({
+            "state": request.state.to_value(),
+            "questions": request.questions.to_value(),
+        }))
+        .unwrap()
+        .len()
+    }
+
+    /// A turn's requests (the main request and `answer`, sent at once)
+    /// stay within the measured bound for its surface (#11247).
+    #[test]
+    fn a_typical_turn_fits_the_router_budget() {
+        for surface in [
+            crate::router::Surface::Web,
+            crate::router::Surface::Phone,
+            crate::router::Surface::Terminal,
+        ] {
+            let asked = typical_turn(surface);
+            eprintln!("{surface:?}");
+            check_typical_turn(&asked, surface);
+        }
+    }
+
+    fn check_typical_turn(asked: &Split, surface: crate::router::Surface) {
+        // `ROUTER_TURN_DUMP=<dir>` writes each request's body, to count its
+        // tokens on a judge (#11247).
+        if let Some(dir) = std::env::var_os("ROUTER_TURN_DUMP") {
+            let dir = std::path::PathBuf::from(dir);
+            let _ = std::fs::create_dir_all(&dir);
+            let named = std::iter::once(("main", &asked.main))
+                .chain(asked.sides.iter().map(|(id, request)| (*id, request)))
+                .chain(asked.later.iter().map(|(id, request)| (*id, request)));
+            for (id, request) in named {
+                let body = json!({
+                    "state": request.state.to_value(),
+                    "questions": request.questions.to_value(),
+                });
+                let _ = std::fs::write(
+                    dir.join(format!("{}-{id}.json", surface.word())),
+                    body.to_string(),
+                );
+            }
+        }
+        for (id, question) in asked.main.questions.iter() {
+            let one = serde_json::to_vec(&question).unwrap().len();
+            eprintln!("main {id}: {one} bytes");
+        }
+        let main = bytes(&asked.main);
+        let sides: usize = asked.sides.iter().map(|(_, request)| bytes(request)).sum();
+        eprintln!("main {main} bytes, beside it {sides} bytes");
+        for (id, request) in &asked.later {
+            eprintln!("later {id}: {} bytes", bytes(request));
+        }
+        let budget = match surface {
+            crate::router::Surface::Web => TYPICAL_TURN_BYTES,
+            crate::router::Surface::Terminal => TERMINAL_TURN_BYTES,
+            _ => APP_TURN_BYTES,
+        };
+        assert!(
+            main + sides <= budget,
+            "{surface:?}: {} bytes",
+            main + sides
+        );
     }
 
     /// Each request fits a Clef door (#11193): under Ollama's 64 KiB body

@@ -2067,3 +2067,26 @@ repository from its README, layout, and recent commits in 4.7 s
 
 To roll back: `sudo ln -sfn /opt/coder-worker/releases/f04d57a58a
 /opt/coder-worker/chat && sudo systemctl restart coder-worker-chat`.
+
+Release `d215fa2325` (2026-10-11 UTC, #11247) cuts the router's tokens
+without changing its wording: `cli_group` is asked after the main request,
+only for a `cli` route (or `wallet` on a terminal); a turn skips the
+questions no rule reads on its surface (`router::judge::unread_on`); and
+each merged question is calibrated on the map of the model that answered
+it. A website turn sends about 10.8k Clef tokens, where it sent 24.7k
+(`docs/inference/clef-native.md`, "Router tokens, stage A"). The web chat
+goldens (router mode, Jev) passed 101 and 101 of 123, against 102 and 100
+on `main` before it. Built on `oa-dev-env-1` with `cargo build --locked
+--release -p coder --bin coder-worker --target x86_64-unknown-linux-musl`
+(`CC_x86_64_unknown_linux_musl=musl-gcc`; sha256 `a1df97eb8514ecc2…`),
+installed with `knowledge/` from `git archive d215fa2325 knowledge/` and
+`cba18936e3`'s `codebase-kb.gz`, checked with `--check`, and put live by
+moving the `chat` symlink; the environment file did not change. From the
+Mac, `openagents chat --scratch` answered "What is OpenAgents?" with
+`meta.who.here@4`, "how do I connect my codebase?" with `meta.codebase@2`
+(0.7 s end to end), "Write a haiku about rain" from Gemini (1.4 s), and
+"which of my computers are online" on the `cli` tier, its group read by the
+deferred request.
+
+To roll back: `sudo ln -sfn /opt/coder-worker/releases/cba18936e3
+/opt/coder-worker/chat && sudo systemctl restart coder-worker-chat`.

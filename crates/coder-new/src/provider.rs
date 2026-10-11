@@ -274,7 +274,8 @@ impl Provider {
         if let Some(limit) = options.max_tokens {
             request = request.max_tokens(limit);
         }
-        let mut history = vec![];
+        // Coder's own identity first, whichever model answers (#11264).
+        let mut history = vec![json!({"role":"system","content":crate::identity::prompt(model)})];
         if let Some(standing) = execution
             .instructions
             .as_deref()
@@ -451,6 +452,7 @@ impl Provider {
             };
             aggregate_usage(&mut aggregate.usage, &streamed.reply.usage, !have_usage);
             have_usage = true;
+            event_callback(RuntimeEvent::Usage(Box::new(round_usage(&streamed.reply))));
             if aggregate.first_text_ms.is_none() {
                 aggregate.first_text_ms = streamed.reply.first_text_ms.map(|millis| {
                     u64::try_from(started.elapsed().as_millis())
@@ -856,6 +858,23 @@ impl Provider {
     #[cfg(test)]
     pub(crate) fn with_base(key: ApiKey, base_url: &str) -> Result<Self, String> {
         Self::build(key, base_url)
+    }
+}
+
+/// One streamed call's usage for the transcript and its export.
+fn round_usage(reply: &Streamed) -> crate::bundled_runtime::RoundUsage {
+    crate::bundled_runtime::RoundUsage {
+        model: reply.model.clone(),
+        prompt_tokens: reply.usage.prompt_tokens,
+        completion_tokens: reply.usage.completion_tokens,
+        reasoning_tokens: reply
+            .usage
+            .completion_tokens_details
+            .as_ref()
+            .and_then(|details| details.reasoning_tokens),
+        cost: reply.usage.cost.filter(|cost| cost.is_finite()),
+        milliseconds: reply.milliseconds,
+        first_token_ms: reply.first_text_ms,
     }
 }
 
@@ -1345,7 +1364,11 @@ mod tests {
                 ),
                 &mut |_| {},
                 &mut |_| {},
-                &mut |event| events.push(event),
+                &mut |event| {
+                    if !matches!(event, RuntimeEvent::Usage(_)) {
+                        events.push(event)
+                    }
+                },
                 &Arc::new(AtomicBool::new(false)),
             ))
             .unwrap();
@@ -1415,7 +1438,11 @@ mod tests {
                     &execution,
                     &mut |_| {},
                     &mut |_| {},
-                    &mut |event| events.push(event),
+                    &mut |event| {
+                        if !matches!(event, RuntimeEvent::Usage(_)) {
+                            events.push(event)
+                        }
+                    },
                     &Arc::new(AtomicBool::new(false)),
                 ))
                 .unwrap();
@@ -1424,7 +1451,7 @@ mod tests {
             let followup = requests[1]["messages"].to_string();
             assert!(!followup.contains(FIXTURE_TOKEN));
             assert!(!followup.contains("jev-fixture-secret"));
-            let assistant = &requests[1]["messages"][2];
+            let assistant = &requests[1]["messages"][3];
             let recorded: Value = serde_json::from_str(
                 assistant["tool_calls"][0]["function"]["arguments"]
                     .as_str()
@@ -1519,7 +1546,11 @@ mod tests {
                 &execution,
                 &mut |delta| text.push_str(delta),
                 &mut |_| {},
-                &mut |event| events.push(event),
+                &mut |event| {
+                    if !matches!(event, RuntimeEvent::Usage(_)) {
+                        events.push(event)
+                    }
+                },
                 &Arc::new(AtomicBool::new(false)),
             ))
             .unwrap();
@@ -1535,19 +1566,24 @@ mod tests {
         );
         let requests = model_server.join().unwrap();
         assert_eq!(requests[0]["tools"][0]["function"]["name"], "jev");
+        // Coder's identity leads every route's request (#11264).
+        let identity = requests[0]["messages"][0]["content"].as_str().unwrap();
+        assert_eq!(requests[0]["messages"][0]["role"], "system");
+        assert!(identity.starts_with("You are Coder, OpenAgents' coding agent."));
+        assert!(identity.contains("OpenAgents picks the model"));
         assert!(
-            requests[0]["messages"][0]["content"]
+            requests[0]["messages"][1]["content"]
                 .as_str()
                 .unwrap()
                 .contains("Batch independent questions")
         );
         assert_eq!(
-            requests[1]["messages"][2]["tool_calls"][0]["id"],
+            requests[1]["messages"][3]["tool_calls"][0]["id"],
             "call-jev"
         );
-        assert_eq!(requests[1]["messages"][3]["tool_call_id"], "call-jev");
+        assert_eq!(requests[1]["messages"][4]["tool_call_id"], "call-jev");
         let output: Value =
-            serde_json::from_str(requests[1]["messages"][3]["content"].as_str().unwrap()).unwrap();
+            serde_json::from_str(requests[1]["messages"][4]["content"].as_str().unwrap()).unwrap();
         assert_eq!(output["answers"]["refund"]["noul"], 0.9);
         assert!(
             !requests[1]["messages"]
@@ -1599,13 +1635,13 @@ mod tests {
             );
             let messages = document["messages"].as_array().unwrap();
             assert!(
-                messages[0]["content"]
+                messages[1]["content"]
                     .as_str()
                     .unwrap()
                     .contains("Batch independent questions")
             );
             assert!(
-                messages[1]["content"]
+                messages[2]["content"]
                     .as_str()
                     .unwrap()
                     .contains("Keep the refund judgment")
@@ -1653,7 +1689,11 @@ mod tests {
             &execution,
             &mut |delta| text.push_str(delta),
             &mut |model| models.push(model.to_owned()),
-            &mut |event| events.push(event),
+            &mut |event| {
+                    if !matches!(event, RuntimeEvent::Usage(_)) {
+                        events.push(event)
+                    }
+                },
             &Arc::new(AtomicBool::new(false)),
         )).unwrap();
         assert_eq!(
@@ -1932,7 +1972,11 @@ mod tests {
                 ),
                 &mut |_| {},
                 &mut |_| {},
-                &mut |event| events.push(event),
+                &mut |event| {
+                    if !matches!(event, RuntimeEvent::Usage(_)) {
+                        events.push(event)
+                    }
+                },
                 &Arc::new(AtomicBool::new(false)),
             ))
             .unwrap();
@@ -2042,7 +2086,11 @@ mod tests {
                 &jev_settings(jev_plugin_endpoint(), None),
                 &mut |_| {},
                 &mut |_| {},
-                &mut |event| events.push(event),
+                &mut |event| {
+                    if !matches!(event, RuntimeEvent::Usage(_)) {
+                        events.push(event)
+                    }
+                },
                 &Arc::new(AtomicBool::new(false)),
             ))
             .unwrap();
@@ -2129,7 +2177,11 @@ mod tests {
                         &jev_settings(jev_plugin_endpoint(), None),
                         &mut |_| {},
                         &mut |_| {},
-                        &mut |event| events.push(event),
+                        &mut |event| {
+                            if !matches!(event, RuntimeEvent::Usage(_)) {
+                                events.push(event)
+                            }
+                        },
                         &cancel,
                     )
                     .await
@@ -2237,7 +2289,11 @@ mod tests {
                 &settings,
                 &mut |_| {},
                 &mut |_| {},
-                &mut |event| events.push(event),
+                &mut |event| {
+                    if !matches!(event, RuntimeEvent::Usage(_)) {
+                        events.push(event)
+                    }
+                },
                 &Arc::new(AtomicBool::new(false)),
             ))
             .unwrap();
@@ -2306,7 +2362,11 @@ mod tests {
                 &settings,
                 &mut |_| {},
                 &mut |_| {},
-                &mut |event| events.push(event),
+                &mut |event| {
+                    if !matches!(event, RuntimeEvent::Usage(_)) {
+                        events.push(event)
+                    }
+                },
                 &Arc::new(AtomicBool::new(false)),
             ))
             .unwrap();

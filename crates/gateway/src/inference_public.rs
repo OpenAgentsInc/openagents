@@ -10,6 +10,14 @@
 //!   only on the models `inference.public.free_tier.models` lists, and only
 //!   when every planned attempt is one of them. A free request that fails
 //!   before its first token gives its count back.
+//! - **Free allowance** (#11264). A signed-in account's `sess_` session
+//!   gets up to `inference.public.free_allowance.usd_micros_per_day` of
+//!   model cost a day (UTC) on the router models it lists
+//!   (`openagents/auto`, `openagents/fast`), before its own balance. Each
+//!   request reserves its worst case from the day's allowance and settles
+//!   at the cost the upstream reported; one that fails first gives it
+//!   back. When the day's allowance can't cover a request and the balance
+//!   can't either, the refusal says so in plain words.
 //! - **Paying.** Every other request holds its worst-case price from the
 //!   workspace's balance (`tenancy::money`, policy `observed-usage-v1`)
 //!   before anything is sent: one hold per distinct model the plan may
@@ -68,6 +76,11 @@ pub const CAPACITY: &str = "inference";
 
 /// The price version inference holds are taken under.
 pub const PRICE_VERSION: &str = "inference-rate-card-v1";
+
+/// The refusal when the day's free allowance is spent and the account's
+/// balance can't pay either (#11264).
+pub const ALLOWANCE_USED_UP: &str =
+    "Today's free allowance is used up. Add credit or use your own key.";
 
 /// Runs admitted by this process, so each run's hold has its own name.
 static RUNS: AtomicU64 = AtomicU64::new(0);
@@ -252,6 +265,16 @@ struct Saved {
     free: BTreeMap<String, DayCount>,
     #[serde(default)]
     spend: BTreeMap<String, Spend>,
+    /// Each signed-in account's free allowance used today, micros of USD
+    /// (reserved worst cases included until they settle).
+    #[serde(default)]
+    allowance: BTreeMap<String, DayMicros>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+struct DayMicros {
+    day: u64,
+    micros: u64,
 }
 
 /// What one request was charged.
@@ -363,6 +386,44 @@ impl Book {
             && count.day == now_day
         {
             count.used = count.used.saturating_sub(1);
+            let _ = self.save();
+        }
+    }
+
+    /// The free allowance `account` used on `day`, micros of USD.
+    #[must_use]
+    pub fn allowance_used(&self, account: &str, day: u64) -> u64 {
+        self.saved
+            .allowance
+            .get(account)
+            .filter(|used| used.day == day)
+            .map_or(0, |used| used.micros)
+    }
+
+    /// Reserves `worst` of `account`'s allowance for `day`, if the day's
+    /// `per_day` still covers it.
+    fn reserve_allowance(&mut self, account: &str, worst: u64, per_day: u64, day: u64) -> bool {
+        let used = self.allowance_used(account, day);
+        if worst > per_day || used.saturating_add(worst) > per_day {
+            return false;
+        }
+        self.saved.allowance.insert(
+            account.to_owned(),
+            DayMicros {
+                day,
+                micros: used.saturating_add(worst),
+            },
+        );
+        self.save().is_ok()
+    }
+
+    /// Replaces a reservation of `reserved` on `day` with what the request
+    /// cost (`actual`; zero when it failed first).
+    fn settle_allowance(&mut self, account: &str, reserved: u64, actual: u64, day: u64) {
+        if let Some(used) = self.saved.allowance.get_mut(account)
+            && used.day == day
+        {
+            used.micros = used.micros.saturating_sub(reserved).saturating_add(actual);
             let _ = self.save();
         }
     }
@@ -510,7 +571,7 @@ struct Held {
 impl inference::run::Admitted for Held {
     fn payment(&self) -> inference::meter::Payment {
         match self.ticket.kind {
-            Kind::Free => inference::meter::Payment::Free,
+            Kind::Free | Kind::Allowance { .. } => inference::meter::Payment::Free,
             Kind::Mine => inference::meter::Payment::OwnKey,
             Kind::Paid { .. } => inference::meter::Payment::Paid,
         }
@@ -534,6 +595,9 @@ pub(crate) struct Public {
     /// The workspace the key acts in ([`key_scope`]): its free count, its
     /// balance, its own provider keys and stored responses.
     pub scope: String,
+    /// The signed-in account a `sess_` session acts for: the one whose
+    /// free allowance it spends. `None` for an `oak_` key.
+    pub account: Option<String>,
 }
 
 fn limit(param: &str, message: impl Into<String>) -> ApiError {
@@ -622,6 +686,15 @@ pub(crate) struct Ticket {
 
 enum Kind {
     Free,
+    /// On the signed-in account's free allowance (#11264).
+    Allowance {
+        account: String,
+        day: u64,
+        /// The worst case reserved from the day's allowance.
+        reserved: u64,
+        /// Each model's price, to settle the answering one.
+        priced: Vec<(String, money::Priced)>,
+    },
     /// Every attempt is on the caller's own key: no fee in P1.
     Mine,
     Paid {
@@ -933,7 +1006,46 @@ pub(crate) async fn admit(
             }
         }
     }
+    // The signed-in account's free allowance on the router models comes
+    // before its balance (#11264).
+    let allowance = state
+        .config
+        .inference
+        .as_ref()
+        .and_then(|inference| inference.public.as_ref())
+        .and_then(|public| public.free_allowance.as_ref())
+        .filter(|allowance| {
+            request
+                .model
+                .as_deref()
+                .is_some_and(|model| allowance.models.iter().any(|listed| listed == model))
+        });
+    let mut allowance_used_up = false;
+    if let (Some(allowance), Some(account)) = (allowance, &public.account) {
+        let mut book = book.lock().await;
+        if book.reserve_allowance(account, worst, allowance.usd_micros_per_day, day) {
+            book.record_charge(
+                request_id,
+                Charge {
+                    tenant: public.tenant.clone(),
+                    free: true,
+                    micros: None,
+                    settlement: "allowance",
+                },
+            );
+            return Ok(ticket(Kind::Allowance {
+                account: account.clone(),
+                day,
+                reserved: worst,
+                priced: priced_models,
+            }));
+        }
+        allowance_used_up = true;
+    }
     let no_balance = || {
+        if allowance_used_up {
+            return ApiError::new(ErrorType::InsufficientBalance, ALLOWANCE_USED_UP);
+        }
         ApiError::new(
             ErrorType::InsufficientBalance,
             "Add credit to your account to call this model. Free models are listed at GET /v1/models.",
@@ -952,6 +1064,9 @@ pub(crate) async fn admit(
     if let Err(why) =
         crate::card_funding::controller::check_money_profile(state, &ledger, &workspace)
     {
+        if allowance_used_up {
+            return Err(no_balance());
+        }
         return Err(ApiError::new(ErrorType::InsufficientBalance, why));
     }
     let mut holds = Vec::new();
@@ -973,6 +1088,7 @@ pub(crate) async fn admit(
                     money::release(&mut ledger, hold);
                 }
                 return Err(match refusal {
+                    money::Refusal::Funds(_) if allowance_used_up => no_balance(),
                     money::Refusal::Funds(_) => ApiError::new(
                         ErrorType::InsufficientBalance,
                         format!(
@@ -1011,6 +1127,18 @@ pub(crate) async fn abandon(state: &ServeState, ticket: Ticket) {
             }
         }
         Kind::Mine => {}
+        Kind::Allowance {
+            account,
+            day,
+            reserved,
+            ..
+        } => {
+            if let Some(book) = &state.inference_book {
+                book.lock()
+                    .await
+                    .settle_allowance(account, *reserved, 0, *day);
+            }
+        }
         Kind::Paid { holds } => {
             if let Some(mut ledger) = state.money_lock().await {
                 for (_, hold) in holds {
@@ -1024,7 +1152,7 @@ pub(crate) async fn abandon(state: &ServeState, ticket: Ticket) {
             &ticket.request_id,
             Charge {
                 tenant: ticket.tenant.clone(),
-                free: matches!(ticket.kind, Kind::Free),
+                free: matches!(ticket.kind, Kind::Free | Kind::Allowance { .. }),
                 micros: Some(0),
                 settlement: "released",
             },
@@ -1060,6 +1188,19 @@ impl Drop for Settler {
 }
 
 async fn settle(state: &ServeState, ticket: Ticket, model: Option<String>, usage: Option<Usage>) {
+    if let Kind::Allowance {
+        account,
+        day,
+        reserved,
+        priced,
+    } = &ticket.kind
+    {
+        settle_allowance(
+            state, &ticket, account, *day, *reserved, priced, model, usage,
+        )
+        .await;
+        return;
+    }
     let Kind::Paid { holds } = &ticket.kind else {
         return;
     };
@@ -1102,6 +1243,67 @@ async fn settle(state: &ServeState, ticket: Ticket, model: Option<String>, usage
             },
         );
     }
+}
+
+/// Settles a request on the free allowance: the answering model's cost at
+/// the usage reported. Without usage the reserved worst case stays spent.
+#[allow(clippy::too_many_arguments)]
+async fn settle_allowance(
+    state: &ServeState,
+    ticket: &Ticket,
+    account: &str,
+    day: u64,
+    reserved: u64,
+    priced: &[(String, money::Priced)],
+    model: Option<String>,
+    usage: Option<Usage>,
+) {
+    let answering = model
+        .as_deref()
+        .and_then(|model| priced.iter().find(|(held, _)| held == model))
+        .or_else(|| priced.first());
+    let cost = usage
+        .as_ref()
+        .and_then(|usage| answering.and_then(|(_, priced)| priced.price.quote(usage).ok()));
+    let Some(book) = &state.inference_book else {
+        return;
+    };
+    let mut book = book.lock().await;
+    book.settle_allowance(account, reserved, cost.unwrap_or(reserved), day);
+    book.record_charge(
+        &ticket.request_id,
+        Charge {
+            tenant: ticket.tenant.clone(),
+            free: true,
+            micros: Some(cost.unwrap_or(reserved)),
+            settlement: "allowance",
+        },
+    );
+}
+
+/// A signed-in account's free allowance today, for its usage page
+/// (#11264); `Null` when no allowance is configured.
+pub(crate) async fn allowance_view(state: &ServeState, account: &str) -> Value {
+    let Some(allowance) = state
+        .config
+        .inference
+        .as_ref()
+        .and_then(|inference| inference.public.as_ref())
+        .and_then(|public| public.free_allowance.as_ref())
+    else {
+        return Value::Null;
+    };
+    let used = match &state.inference_book {
+        Some(book) => book.lock().await.allowance_used(account, today()),
+        None => 0,
+    };
+    let per_day = allowance.usd_micros_per_day;
+    json!({
+        "usd_per_day": usd(per_day),
+        "used_today_usd": usd(used.min(per_day)),
+        "left_today_usd": usd(per_day.saturating_sub(used)),
+        "models": allowance.models,
+    })
 }
 
 /// The usage an answer reports, under the inference price's resources.

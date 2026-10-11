@@ -343,6 +343,21 @@ pub struct PublicInference {
     /// Free requests per workspace per day (UTC) on free-capacity models.
     #[serde(default)]
     pub free_tier: Option<FreeTier>,
+    /// A signed-in account's free daily allowance of model cost on the
+    /// router models (#11264): Coder's `auto` answers on it before the
+    /// account's own balance.
+    #[serde(default)]
+    pub free_allowance: Option<FreeAllowance>,
+}
+
+/// The free daily allowance: up to `usd_micros_per_day` of model cost a
+/// day (UTC) per signed-in account, only on the models listed, funded from
+/// our own provider credit.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FreeAllowance {
+    pub usd_micros_per_day: u64,
+    pub models: Vec<String>,
 }
 
 /// The free tier: a fixed number of requests a day, only on the models

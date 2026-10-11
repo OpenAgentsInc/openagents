@@ -302,10 +302,6 @@ fn run() -> io::Result<()> {
             }
             execute!(io::stdout(), BeginSynchronizedUpdate)?;
             terminal.draw(|frame| ui::render(frame, &mut app))?;
-            // Keep the block blinking while progress updates move the terminal cursor.
-            if app.cursor_blink_frame >= 4 {
-                terminal.hide_cursor()?;
-            }
             execute!(io::stdout(), EndSynchronizedUpdate)?;
             if event::poll(next_tick.saturating_duration_since(Instant::now()))? {
                 let mut keep_running = app.handle(event::read()?);

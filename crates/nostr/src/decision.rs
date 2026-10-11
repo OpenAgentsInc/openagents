@@ -68,8 +68,9 @@ pub const MAX_STATE_BYTES: usize = 128 * 1024;
 pub const MAX_QUESTIONS: usize = 64;
 /// The most bytes a question id carries.
 pub const MAX_QUESTION_ID_BYTES: usize = 64;
-/// The most serialized bytes one question carries.
-pub const MAX_QUESTION_BYTES: usize = 32 * 1024;
+/// The most serialized bytes one question carries: enough for the chat
+/// router's `cli_group` question (about 33 KB, #11273).
+pub const MAX_QUESTION_BYTES: usize = 64 * 1024;
 /// The most options a `choice` question names, matching the SDK bound.
 pub const MAX_CHOICE_OPTIONS: usize = 255;
 /// The fewest levels a `score` question names, matching the SDK bound.

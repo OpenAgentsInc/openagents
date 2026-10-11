@@ -511,11 +511,11 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         let none = |_: &str| None;
         assert!(keyless_available(&none));
-        // No key anywhere: the hosted decision service, signed by a key
-        // made on first use, and no TypeSafe key on this computer.
+        // No key anywhere: our decision API, keyless, and no decision key
+        // or TypeSafe key made on this computer.
         let client = keyless_client(&none, home.path(), jev::defaults::MODEL).unwrap();
         assert_eq!(jev_hosted::via(&client), "hosted");
-        assert!(home.path().join(jev_hosted::KEY_FILE).exists());
+        assert!(!home.path().join(jev_hosted::KEY_FILE).exists());
         // This computer's own TypeSafe key is used before the hosted service.
         let own = |name: &str| (name == "TYPESAFE_API_KEY").then(|| "fixture-own-key".into());
         let client = keyless_client(&own, home.path(), jev::defaults::MODEL).unwrap();

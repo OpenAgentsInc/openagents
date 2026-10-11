@@ -69,7 +69,7 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
                     } else {
                         Outcome::Completed
                     },
-                    milliseconds: 0,
+                    milliseconds: chat.tool_ms.get(&index).copied().unwrap_or_default(),
                     purpose: None,
                     extra,
                 })
@@ -104,6 +104,14 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
                 })
             }
         };
+        let mut step = step;
+        if let Some(at) = chat.stamps.get(index) {
+            step.at = *at;
+        }
+        // The model calls whose output starts at this entry.
+        for (_, usage) in chat.rounds.iter().filter(|(first, _)| *first == index) {
+            step = with_round(step, usage);
+        }
         if session.directive.is_empty() && step.source == Source::User {
             session.directive = step.message.clone();
         }
@@ -128,12 +136,74 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
             step.as_object_mut().unwrap().remove("observation");
         }
     }
-    result["extra"]["timestamps"] = json!("export-time");
+    // Steps carry the time each entry appeared; entries from before this
+    // run of Coder (a resumed chat) fall back to the export time.
+    result["extra"]["timestamps"] = json!(if chat.stamps.len() >= chat.entries.len() {
+        "observed"
+    } else {
+        "export-time"
+    });
     result["final_metrics"]["extra"]["reported_total_tokens"] = json!(chat.tokens);
+    if chat.cost_usd > 0.0 {
+        result["final_metrics"]["extra"]["total_cost_usd"] = json!(chat.cost_usd);
+    }
+    let priced: Vec<f64> = chat
+        .rounds
+        .iter()
+        .filter_map(|(_, usage)| usage.cost)
+        .collect();
+    result["final_metrics"]["extra"]["model_calls"] = json!(chat.rounds.len());
+    if !priced.is_empty() {
+        result["final_metrics"]["extra"]["model_calls_cost_usd"] =
+            json!(priced.iter().sum::<f64>());
+    }
+    result["final_metrics"]["extra"]["model_seconds"] = json!(
+        chat.rounds
+            .iter()
+            .map(|(_, usage)| usage.milliseconds)
+            .sum::<u64>() as f64
+            / 1000.0
+    );
+    if let (Some(first), Some(last)) = (chat.stamps.first(), chat.stamps.last()) {
+        result["final_metrics"]["extra"]["wall_seconds"] =
+            json!(last.saturating_sub(*first) as f64 / 1000.0);
+    }
     if let Some(notice) = &chat.notice {
         result["extra"]["notice"] = json!(notice);
     }
     result
+}
+
+/// One model call's usage on the step it produced: tokens as ATIF metrics,
+/// the rest as evidence beside them. Two calls on one step add up.
+fn with_round(mut step: Step, usage: &crate::bundled_runtime::RoundUsage) -> Step {
+    let (prompt, completion) = step.tokens.unwrap_or_default();
+    step.spent(atif::Usage {
+        prompt: prompt.saturating_add(usage.prompt_tokens),
+        completion: completion.saturating_add(usage.completion_tokens),
+    });
+    let mut call = json!({
+        "model": usage.model,
+        "prompt_tokens": usage.prompt_tokens,
+        "completion_tokens": usage.completion_tokens,
+        "duration_ms": usage.milliseconds,
+    });
+    if let Some(reasoning) = usage.reasoning_tokens {
+        call["reasoning_tokens"] = json!(reasoning);
+    }
+    if let Some(cost) = usage.cost {
+        call["cost_usd"] = json!(cost);
+    }
+    if let Some(first) = usage.first_token_ms {
+        call["first_token_ms"] = json!(first);
+    }
+    let mut calls = step
+        .extensions
+        .remove("model_calls")
+        .and_then(|calls| calls.as_array().cloned())
+        .unwrap_or_default();
+    calls.push(call);
+    step.noting("model_calls", json!(calls))
 }
 
 /// Export the selected chat, or the main chat with its delegated trajectories.

@@ -800,17 +800,40 @@ fi
             let mut last = None;
             for zone in this.cfg.zones.clone() {
                 let mut inserted = this.compute.insert_instance(&zone, bodies(&zone)).await;
-                // A failure while waiting can still have made the VM: never
-                // leave one running that no record holds.
+                // A failure while waiting (the transport, not GCE's answer)
+                // leaves the outcome open: watch the VM itself until it runs
+                // (use it) or is gone (GCE's create failed; try the next
+                // zone). Never leave one running that no record holds.
                 if let Err(e) = &inserted
                     && !e.capacity()
-                    && let Ok(Some(_)) = this
-                        .compute
-                        .get_instance(&zone, &format!("{PREFIX}{suffix}"))
-                        .await
                 {
-                    eprintln!("oa-boat: bx_{suffix}: {e}, but the VM exists; using it");
-                    inserted = Ok(());
+                    let name = format!("{PREFIX}{suffix}");
+                    let mut outcome = None;
+                    for _ in 0..60 {
+                        match this.compute.get_instance(&zone, &name).await {
+                            Ok(Some(i)) if i.status == "RUNNING" => {
+                                outcome = Some(true);
+                                break;
+                            }
+                            Ok(None) => {
+                                outcome = Some(false);
+                                break;
+                            }
+                            _ => tokio::time::sleep(Duration::from_secs(5)).await,
+                        }
+                    }
+                    match outcome {
+                        Some(true) => {
+                            eprintln!("oa-boat: bx_{suffix}: {e}, but the VM runs; using it");
+                            inserted = Ok(());
+                        }
+                        Some(false) => {
+                            eprintln!("oa-boat: bx_{suffix}: {e}, and the VM is gone; next zone");
+                            inserted =
+                                Err(GceError::new(409, "ZONE_RESOURCE_POOL_EXHAUSTED", "gone"));
+                        }
+                        None => {}
+                    }
                 }
                 match inserted {
                     Ok(()) => {

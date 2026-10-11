@@ -245,7 +245,9 @@ impl Rest {
     pub fn new(project: impl Into<String>, source: TokenSource) -> Self {
         Self {
             http: reqwest::Client::builder()
-                .timeout(Duration::from_secs(60))
+                // An operation's /wait can hold the request for up to two
+                // minutes before it answers.
+                .timeout(Duration::from_secs(200))
                 .build()
                 .expect("http client"),
             project: project.into(),

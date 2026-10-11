@@ -200,11 +200,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         app.composer_selected && !app.draft.text.is_empty(),
         // OpenAgents picks the model here, so the rail says `auto` and never
         // the name of whichever vendor answered.
-        if app.mode == Mode::Live && !(app.plugins.enabled && app.plugins.key_configured) {
-            Some(crate::models::AUTO)
-        } else {
-            None
-        },
+        rail_mode(app),
     );
     let path = repository_rail(app);
     let composer_area = Rect {
@@ -522,6 +518,22 @@ fn repository_rail(app: &App) -> String {
     text
 }
 
+/// The mode the input's rail names: `flash` (Tab), else `auto` unless the
+/// person picked a model of their own.
+fn rail_mode(app: &App) -> Option<&'static str> {
+    if app.mode != Mode::Live {
+        return None;
+    }
+    let keyed = app.plugins.enabled && app.plugins.key_configured;
+    if keyed && app.plugins.model == crate::models::FLASH {
+        Some(crate::models::FLASH_LABEL)
+    } else if !keyed || !crate::models::pinned(&app.plugins.model) {
+        Some(crate::models::AUTO)
+    } else {
+        None
+    }
+}
+
 fn context_text(app: &App) -> String {
     let mut parts = Vec::new();
     if let Some(until) = crate::long_session::paused_until(app) {
@@ -530,9 +542,7 @@ fn context_text(app: &App) -> String {
             crate::long_session::clock(until)
         ));
     }
-    if let Some(name) = &app.account {
-        parts.push(name.clone());
-    }
+    // The signed-in account's name is never shown under the input.
     if let Some(update) = &app.update_line {
         parts.push(update.clone());
     }
@@ -977,6 +987,8 @@ struct CachedEntry {
     run_output: Option<(usize, Vec<Line<'static>>, usize, bool)>,
 }
 
+/// Columns at a Run box's left edge where the wheel scrolls the box.
+const RUN_GRAB: u16 = 8;
 const RUN_OUTPUT_HEIGHT: usize = 5;
 
 impl CachedEntry {
@@ -1032,25 +1044,29 @@ impl CachedEntry {
             .cloned()
             .enumerate()
         {
+            // The scrollbar is the box's left edge, where the wheel scrolls
+            // the box (`RUN_GRAB`); elsewhere the wheel scrolls the chat.
             let width = usize::from(self.width);
-            line.spans.push(Span::raw(
-                " ".repeat(width.saturating_sub(line.width() + 1)),
-            ));
-            line.spans.push(span(
-                if max == 0 || index == thumb {
-                    "█"
-                } else {
-                    "│"
-                },
-                t::GRAY,
-            ));
+            line.spans.insert(
+                0,
+                span(
+                    if max == 0 || index == thumb {
+                        "█ "
+                    } else {
+                        "│ "
+                    },
+                    t::GRAY,
+                ),
+            );
+            line.spans
+                .push(Span::raw(" ".repeat(width.saturating_sub(line.width()))));
             line.style = line.style.bg(t::BG_LIGHT);
             self.lines.push(line);
         }
         if rows.len() > RUN_OUTPUT_HEIGHT {
             self.lines.push(Line::from(span(
                 format!(
-                    "     {}–{} of {}",
+                    "     {}–{} of {} · scroll at the left edge",
                     offset + 1,
                     (offset + RUN_OUTPUT_HEIGHT).min(rows.len()),
                     rows.len()
@@ -1101,6 +1117,7 @@ impl TranscriptCache {
                         Rect {
                             y: area.y + (visible_start - position) as u16,
                             height: (visible_end - visible_start) as u16,
+                            width: area.width.min(RUN_GRAB),
                             ..area
                         },
                     ));
@@ -1403,10 +1420,10 @@ fn composer_view(
             if offset == 0 { left } else { None },
             Some((
                 &text,
-                Style::default().fg(if contribution.text == crate::models::AUTO {
-                    t::ACCENT_SKILL
-                } else {
-                    t::GRAY
+                Style::default().fg(match contribution.text.as_str() {
+                    crate::models::AUTO => t::ACCENT_SKILL,
+                    crate::models::FLASH_LABEL => t::ACCENT_MODEL,
+                    _ => t::GRAY,
                 }),
             )),
         );
@@ -1573,16 +1590,53 @@ mod export_notice_tests {
     }
 
     #[test]
+    fn tab_switches_between_auto_and_flash_only_with_an_openrouter_key() {
+        use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+        let tab = || Event::Key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        let rail = |app: &mut App| {
+            let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
+            terminal.draw(|frame| render(frame, app)).unwrap();
+            let buffer = terminal.backend().buffer();
+            (0..20)
+                .map(|y| (0..60).map(|x| buffer[(x, y)].symbol()).collect::<String>())
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let mut app = App::default();
+        app.mode = Mode::Live;
+        app.plugins.model = crate::models::AUTO.into();
+        app.handle(tab());
+        assert_eq!(app.plugins.model, crate::models::AUTO);
+        assert!(
+            app.notice
+                .as_deref()
+                .is_some_and(|notice| notice.contains("OpenRouter API key"))
+        );
+
+        app.plugins.key_configured = true;
+        app.handle(tab());
+        assert_eq!(app.plugins.model, crate::models::FLASH);
+        assert!(app.plugins.enabled);
+        let shown = rail(&mut app);
+        assert!(shown.contains("flash") && !shown.contains("deepseek"));
+        app.handle(tab());
+        assert_eq!(app.plugins.model, crate::models::AUTO);
+        assert!(rail(&mut app).contains("auto"));
+    }
+
+    #[test]
     fn populated_footer_keeps_its_row_below_the_composer() {
         let mut app = App::default();
         app.mode = Mode::Live;
-        app.account = Some("Signed in".into());
+        app.account = Some("Christopher David".into());
+        app.update_line = Some("Update ready".into());
         let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
         terminal.draw(|frame| render(frame, &mut app)).unwrap();
         let buffer = terminal.backend().buffer();
         assert_eq!(buffer[(0, 18)].symbol(), "└");
         let text: String = (0..60).map(|x| buffer[(x, 19)].symbol()).collect();
-        assert_eq!(text.trim(), "Signed in");
+        // The account's name never shows under the input.
+        assert_eq!(text.trim(), "Update ready");
     }
 
     #[test]
@@ -1623,6 +1677,27 @@ mod export_notice_tests {
         assert!(!selected(&mut app));
         app.composer_selected = true;
         assert!(selected(&mut app));
+    }
+
+    #[test]
+    fn the_composer_cursor_is_placed_and_never_hidden() {
+        // The terminal blinks the block itself; the renderer must not hide it,
+        // or the two blinks fight and the caret reads wrong (#11267).
+        for width in [24, 60, 100] {
+            let mut app = App::default();
+            app.mode = Mode::Live;
+            app.draft.text = "the caret sits after this".into();
+            app.draft.cursor = app.draft.text.len();
+            let mut terminal = Terminal::new(TestBackend::new(width, 20)).unwrap();
+            terminal.draw(|frame| render(frame, &mut app)).unwrap();
+            let backend = terminal.backend();
+            assert!(backend.cursor_visible(), "the caret draws at width {width}");
+            let x = backend.cursor_position().x;
+            assert!(
+                x >= 3 && x <= app.composer_width,
+                "the caret sits inside the input at width {width}, got {x}"
+            );
+        }
     }
 
     #[test]
@@ -1881,7 +1956,11 @@ mod run_viewport_tests {
         cache.locate_runs(Rect::new(0, 0, 42, 20), 0);
         assert!(!cache.scroll_run(0, 19, true));
         let area = cache.run_regions[0].1;
-        assert!(cache.scroll_run(39, area.y, true));
+        // Away from the left edge the wheel scrolls the chat, not the box.
+        assert!(!cache.scroll_run(39, area.y, true));
+        assert!(!cache.scroll_run(RUN_GRAB, area.y, true));
+        assert_eq!(cache.entries[0].run_output.as_ref().unwrap().2, 7);
+        assert!(cache.scroll_run(1, area.y, true));
         assert_eq!(cache.entries[0].run_output.as_ref().unwrap().2, 4);
         output(&mut chat, 16, false);
         cache.refresh(&chat, 40, 2);
@@ -1892,7 +1971,7 @@ mod run_viewport_tests {
     }
 
     #[test]
-    fn five_output_rows_have_a_background_and_right_hand_scrollbar() {
+    fn five_output_rows_have_a_background_and_left_hand_scrollbar() {
         let mut chat = crate::live::Chat::default();
         output(&mut chat, 10, false);
         let mut cache = TranscriptCache::default();
@@ -1909,9 +1988,10 @@ mod run_viewport_tests {
             assert_eq!(buffer[(20, y as u16)].bg, t::BG_LIGHT);
             assert_eq!(buffer[(39, y as u16)].bg, t::BG_LIGHT);
             assert_eq!(
-                buffer[(39, y as u16)].symbol(),
+                buffer[(0, y as u16)].symbol(),
                 if y == start + 4 { "█" } else { "│" }
             );
+            assert_ne!(buffer[(39, y as u16)].symbol(), "│");
         }
         let exported = transcript_text(&chat.entries, 40).join("\n");
         assert!(exported.contains("row 1\n"));

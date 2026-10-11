@@ -2,6 +2,13 @@
 
 Chatting with OpenAgents is free, and so is Coder on your own computer.
 
+## Free daily allowance
+
+When you're signed in, Coder's `auto` model is free up to about $1 of model
+use a day. When today's allowance is used up, Coder tells you and keeps
+going on your own keys or subscriptions, or on credit you add. The
+allowance starts again each day at midnight UTC.
+
 ## Pro
 
 Pro is for cloud environments: a repository set up, built, checked, and

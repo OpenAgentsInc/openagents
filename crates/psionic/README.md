@@ -13,9 +13,12 @@ Imported from OpenAgentsInc/psionic at
 The dependency closure of `psionic-openai-server` (the OpenAI-compatible
 server in `psionic-serve`), plus `psionic-provider` and
 `psionic-backend-tests`, which its tests need: 30 crates under `crates/`.
-`fixtures/` holds only the 23 files those crates embed with `include_str!`.
-The rest of the upstream repository (training programs, research lanes,
-reports, and its other crates) was not imported.
+`fixtures/` holds the files those crates embed with `include_str!`. The rest of
+the upstream repository (training programs, research lanes, reports, and its
+other crates) was not imported, so most `*_FIXTURE_PATH` constants name files
+that are not here. `scripts/dev/check-psionic-fixtures.py` lists them and
+fails when a new one appears; the recorded set is
+`scripts/dev/psionic-missing-fixtures.txt`, which may only shrink.
 
 ## Why its own workspace
 

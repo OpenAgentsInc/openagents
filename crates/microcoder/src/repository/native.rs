@@ -380,7 +380,12 @@ mod tests {
         let relay = format!("ws://{}", closed.local_addr().unwrap());
         drop(closed);
         let home = tempfile::tempdir().unwrap();
-        let env = |name: &str| (name == jev_hosted::RELAY_VAR).then(|| relay.clone());
+        // The hosted relay path, not the default route to our decision API.
+        let env = |name: &str| match name {
+            jev_hosted::RELAY_VAR => Some(relay.clone()),
+            jev_hosted::DECISIONS_VAR => Some("legacy".to_owned()),
+            _ => None,
+        };
         let client = jev_hosted::resolve(
             &env,
             home.path(),
