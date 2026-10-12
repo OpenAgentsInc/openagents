@@ -143,7 +143,11 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
     })
     .min(usize::from(area.height.saturating_sub(6))) as u16;
     let composer_height = (draft.len() as u16).clamp(1, 6) + 2;
-    let header_height = u16::from(app.selected_agent.is_some() || new_chat_heading(app));
+    let header_height = if new_chat_heading(app) {
+        BANNER.len() as u16
+    } else {
+        u16::from(app.selected_agent.is_some())
+    };
     let context_text = context_text(app);
     let context_height = u16::from(!context_text.is_empty());
     let reserved = rail_height + 1 + context_height + header_height;
@@ -473,15 +477,29 @@ fn new_chat_heading(app: &App) -> bool {
         && !app.live.busy
 }
 
+/// The mark above an empty chat: a power symbol, with the name beside it and
+/// the version on the next line.
+const BANNER: [&str; 5] = ["    █", " ▄▄ █ ▄▄", " ██ █ ██", " ██   ██", "  ▀▄▄▄▄▀"];
+
 fn header_view(frame: &mut Frame, area: Rect, app: &App) {
     if new_chat_heading(app) {
-        frame.render_widget(
-            Paragraph::new(Line::from(vec![
-                span("OpenAgents Coder ", t::TEXT_PRIMARY),
-                span(concat!("v", env!("CARGO_PKG_VERSION")), t::GRAY_BRIGHT),
-            ])),
-            area,
-        );
+        let lines = BANNER
+            .iter()
+            .enumerate()
+            .map(|(row, mark)| {
+                let mut line = vec![span(*mark, t::TEXT_PRIMARY)];
+                match row {
+                    1 => line.push(span("  OpenAgents Coder", t::TEXT_PRIMARY)),
+                    2 => line.push(span(
+                        concat!("  v", env!("CARGO_PKG_VERSION")),
+                        t::GRAY_BRIGHT,
+                    )),
+                    _ => {}
+                }
+                Line::from(line)
+            })
+            .collect::<Vec<_>>();
+        frame.render_widget(Paragraph::new(lines), area);
         return;
     }
     let agent = if app.screen == Screen::Conversation {

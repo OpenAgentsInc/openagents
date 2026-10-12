@@ -1014,14 +1014,18 @@ fn a_judged_step_shows_jevs_estimate_on_the_run_row_and_never_a_budget() {
 #[test]
 fn new_chat_heading_shows_the_version_and_disappears_on_send() {
     let mut app = live_app();
-    let title = concat!("OpenAgents Coder v", env!("CARGO_PKG_VERSION"));
+    let title = "OpenAgents Coder";
+    let version = concat!("v", env!("CARGO_PKG_VERSION"));
     let buffer = draw(&mut app, 80, 24);
-    assert_eq!(row(&buffer, 0).trim(), title);
-    for x in 2..18 {
-        assert_eq!(buffer[(x, 0)].fg, theme::TEXT_PRIMARY);
+    // The mark takes rows 0-4 at x=2; the name sits beside row 1 and the
+    // version on row 2, each two cells past the mark at x=12.
+    assert!(row(&buffer, 1).contains(title));
+    assert!(row(&buffer, 2).contains(version));
+    for x in 12..(12 + title.len() as u16) {
+        assert_eq!(buffer[(x, 1)].fg, theme::TEXT_PRIMARY);
     }
-    for x in 19..(2 + title.len() as u16) {
-        assert_eq!(buffer[(x, 0)].fg, theme::GRAY_BRIGHT);
+    for x in 12..(12 + version.len() as u16) {
+        assert_eq!(buffer[(x, 2)].fg, theme::GRAY_BRIGHT);
     }
     key(&mut app, KeyCode::Char('H'));
     assert!(canvas(&draw(&mut app, 80, 24)).contains(title));
@@ -1040,5 +1044,5 @@ fn new_chat_heading_shows_the_version_and_disappears_on_send() {
 fn existing_chat_does_not_show_the_new_chat_heading() {
     let mut app = live_app();
     app.live.entries.push(Entry::User("Earlier message".into()));
-    assert!(!canvas(&draw(&mut app, 80, 24)).contains("OpenAgents Coder v"));
+    assert!(!canvas(&draw(&mut app, 80, 24)).contains("OpenAgents Coder"));
 }
