@@ -529,6 +529,17 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
             .conclude(Outcome::stopped(Status::SetupFailed, why), transcript)
             .await;
     }
+    if let Some(commit) = hands::landed_commit(&options.inner.repo, options.inner.issue).await {
+        return end
+            .conclude(
+                Outcome::stopped(
+                    Status::AlreadyDone,
+                    format!("Main already has a commit for this issue: {commit}"),
+                ),
+                transcript,
+            )
+            .await;
+    }
     let Some(base) = setup::prepare(&options.inner, folder, transcript).await else {
         let outcome = if transcript.cancelled() {
             Outcome::stopped(Status::Cancelled, "The run was stopped during intake.")
