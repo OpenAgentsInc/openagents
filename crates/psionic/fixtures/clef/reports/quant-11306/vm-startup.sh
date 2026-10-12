@@ -90,3 +90,15 @@ echo "up $which on $port"
 EOF
 chmod +x "$ROOT/serve.sh"
 state ready
+
+# Unattended run: when the instance carries the runner as metadata (oa-runner)
+# and oa-autorun=1, start it in the background. The startup script runs on every
+# boot, and run-goldens.sh skips rows that already finished, so a restarted VM
+# resumes where it stopped. Keys come from Secret Manager inside the runner.
+md=http://metadata.google.internal/computeMetadata/v1/instance/attributes
+if [ "$(curl -sf -H 'Metadata-Flavor: Google' "$md/oa-autorun" || true)" = 1 ] \
+   && curl -sf -H 'Metadata-Flavor: Google' "$md/oa-runner" > "$ROOT/run-goldens.sh.new"; then
+  mv "$ROOT/run-goldens.sh.new" "$ROOT/run-goldens.sh"; chmod +x "$ROOT/run-goldens.sh"
+  pgrep -f 'run-goldens.sh all' >/dev/null || \
+    setsid nohup "$ROOT/run-goldens.sh" all > "$LOG/run.log" 2>&1 < /dev/null &
+fi

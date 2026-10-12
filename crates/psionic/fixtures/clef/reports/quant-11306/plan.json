@@ -26,7 +26,7 @@
     "product_notes": "on (OPENAGENTS_PRODUCT_KB_EMBEDDINGS from the AI Gateway key) for every row, Jev included",
     "cache": "each Clef row starts a fresh psionic-openai-server, so the exact logit cache is empty; Jev is hosted and uncached on our side",
     "server_flags": "--decision-device cuda --decision-chunk 2048 --decision-max-tokens 65536 (f16 accumulate)",
-    "device": "NVIDIA H100 80GB HBM3, GCE a3-highgpu-1g spot, us-east5-a (27B Q4 needs 18.1 GB of VRAM; the RTX 4080's 16 GB cannot hold it)"
+    "device": "NVIDIA H100 80GB HBM3, GCE a3-highgpu-1g spot, us-central1-a after the us-east5-a VM was preempted (27B Q4 needs 18.1 GB of VRAM; the RTX 4080's 16 GB cannot hold it)"
   },
   "candidates": [
     {

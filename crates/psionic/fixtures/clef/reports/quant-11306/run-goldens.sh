@@ -8,9 +8,15 @@
 #                                     and score held-out raw and calibrated (ROUTER_EVAL_PUBLISH=1)
 #   run-goldens.sh all                build, then every row of plan.json in order
 #
-# Keys come from the caller's environment over SSH (TYPESAFE_API_KEY for Jev,
-# AI_GATEWAY_API_KEY for the product notes' embeddings); nothing is written
-# to disk. Every run uses the same request shape, answer bank, product-note
+# Keys come from the caller's environment (TYPESAFE_API_KEY for Jev,
+# AI_GATEWAY_API_KEY for the product notes' embeddings) or, when unset, from
+# Secret Manager through the VM's service account (decision-throughput-typesafe-key,
+# coder-ai-gateway-key); nothing is written to disk.
+#
+# Resumable: a row that finished leaves results/<row>/done and is skipped on a
+# rerun. After every row the results directory is copied to
+# $RESULTS_URI (default gs://openagentsgemini-decision-throughput/clef-11306/),
+# so a preempted or deleted VM keeps every finished row. Every run uses the same request shape, answer bank, product-note
 # availability, router revision and cache setting: a freshly started Clef
 # server (empty exact-logit cache) per row, product notes on, staged routing
 # as shipped. Results: /var/log/clef-11306/results/<system>-<map>/.
@@ -21,6 +27,35 @@ OUT=$LOG/results
 REV=$(cat "$LOG/rev")
 export PATH=/root/.cargo/bin:/usr/local/cuda/bin:$PATH
 export CARGO_TARGET_DIR=$ROOT/target-coder
+RESULTS_URI=${RESULTS_URI:-gs://openagentsgemini-decision-throughput/clef-11306}
+
+secret() { # Secret Manager name -> value on stdout, through the VM's account
+  local tok
+  tok=$(curl -sf -H 'Metadata-Flavor: Google' \
+    http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])') || return 0
+  curl -sf -H "Authorization: Bearer $tok" \
+    "https://secretmanager.googleapis.com/v1/projects/openagentsgemini/secrets/$1/versions/latest:access" \
+    | python3 -c 'import base64,json,sys; sys.stdout.write(base64.b64decode(json.load(sys.stdin)["payload"]["data"]).decode())' \
+    2>/dev/null || true
+}
+keys() {
+  [ -n "${TYPESAFE_API_KEY:-}" ] || TYPESAFE_API_KEY=$(secret decision-throughput-typesafe-key)
+  [ -n "${AI_GATEWAY_API_KEY:-}" ] || AI_GATEWAY_API_KEY=$(secret coder-ai-gateway-key)
+  export TYPESAFE_API_KEY AI_GATEWAY_API_KEY
+}
+push_results() { # copy logs and results (not the models or targets) off the VM
+  gcloud storage rsync -r -q "$LOG" "$RESULTS_URI/$(hostname)" >/dev/null 2>&1 || true
+}
+row() { # row NAME CMD...: run once, mark done, copy off the VM
+  local name=$1; shift
+  if [ -f "$OUT/$name/done" ]; then echo "skip $name (done)"; return; fi
+  echo "$(date -u +%FT%TZ) start $name" >> "$LOG/progress.log"
+  "$@"
+  mkdir -p "$OUT/$name"; date -u +%FT%TZ > "$OUT/$name/done"
+  echo "$(date -u +%FT%TZ) done $name" >> "$LOG/progress.log"
+  push_results
+}
 
 build() {
   if [ ! -d "$ROOT/full/.git" ]; then
@@ -77,13 +112,16 @@ fit() {
 
 case "${1:-}" in
   build) build ;;
-  run) shift; run "$@" ;;
-  fit) shift; fit "$@" ;;
+  run) shift; keys; run "$@"; push_results ;;
+  fit) shift; keys; fit "$@"; push_results ;;
   all) # Keys arrive in a root-only file that is read and removed at once.
        if [ -f /run/clef-11306.env ]; then set -a; . /run/clef-11306.env; set +a; rm -f /run/clef-11306.env; fi
+       keys
+       ( while sleep 600; do push_results; done ) &
        [ -f "$LOG/coder-state" ] || build
        until [ "$(cat "$LOG/state")" = ready ]; do sleep 30; done
-       run jev on; run q4 on; run q4 off; fit q4; run q8 on; run q8 off; fit q8
-       echo done > "$LOG/run-state" ;;
+       row jev-on run jev on; row q4-on run q4 on; row q4-off run q4 off; row q4-fit fit q4
+       row q8-on run q8 on; row q8-off run q8 off; row q8-fit fit q8
+       echo done > "$LOG/run-state"; push_results ;;
   *) sed -n 2,6p "$0"; exit 2 ;;
 esac

@@ -44,26 +44,65 @@ The 27B Q4 holds 18.1 GB of VRAM after load in psionic's CUDA lane (H100
 measurement, 2026-10-10). The RTX 4080 on `coderos-4080` has 16 GB, about
 10 GB of it already held by the running Clef-Flash servers, so 27B cannot run
 there; Q8_0 needs more still. The run uses a GCE `a3-highgpu-1g` spot VM
-(H100 80 GB, `us-east5-a`), deleted after the run.
+(H100 80 GB). The project has no on-demand H100 quota (`GPUS_PER_GPU_FAMILY`
+is 0 in every region tried), so spot is the only option.
+
+## History
+
+- 2026-10-12 04:30 UTC: first VM (`us-east5-a`, spot, deleted on termination)
+  was preempted at 05:31 before any row finished. Its results lived only on
+  its disk and were lost.
+- 2026-10-12 10:40 UTC: relaunched in `us-central1-a`, spot, **stopped** (not
+  deleted) on preemption, 10-hour cap. The run is now unattended and
+  resumable, and each finished row is copied to GCS.
 
 ## Running it
 
-1. `vm-startup.sh` (the VM's startup script) builds `psionic-openai-server`
-   at the plan's revision, downloads both GGUFs, checks their sizes, records
-   their SHA-256 and the binary's, and writes `serve.sh q4|q8`.
+1. `vm-startup.sh` (the VM's startup script, run on every boot) builds
+   `psionic-openai-server` at the plan's revision, downloads both GGUFs,
+   checks their sizes, records their SHA-256 and the binary's, and writes
+   `serve.sh q4|q8`. When the instance has `oa-autorun=1` and carries
+   `run-goldens.sh` as the `oa-runner` metadata value, it then starts
+   `run-goldens.sh all` in the background.
 2. `run-goldens.sh all` builds `chat-goldens` and the routes-v5 eval at the
    same revision, then runs, in order: Jev; Q4 with map, Q4 raw, Q4 fit; Q8
-   with map, Q8 raw, Q8 fit. Keys reach the VM in a root-only file that the
-   runner reads and deletes; nothing writes them elsewhere.
+   with map, Q8 raw, Q8 fit. A finished row writes `results/<row>/done` and is
+   skipped on a rerun. Keys are read from Secret Manager through the VM's
+   service account (`oa-decision-bench`: `decision-throughput-typesafe-key`
+   for Jev, `coder-ai-gateway-key` for product notes) and never written to
+   disk.
+3. After every row, and every 10 minutes, `/var/log/clef-11306` (logs and
+   results, not models or build trees) is copied to
+   `gs://openagentsgemini-decision-throughput/clef-11306/clef-11306-h100/`.
 
-Read progress and results on the VM:
+Launch (as the automation account):
 
 ```sh
 export CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config
-gcloud compute ssh clef-11306-h100 --zone us-east5-a --project openagentsgemini \
-  --command 'cat /var/log/clef-11306/state /var/log/clef-11306/run-state; ls /var/log/clef-11306/results'
-gcloud compute scp --recurse --zone us-east5-a --project openagentsgemini \
-  clef-11306-h100:/var/log/clef-11306 ./crates/psionic/fixtures/clef/reports/quant-11306/vm-logs
+cd crates/psionic/fixtures/clef/reports/quant-11306
+gcloud compute instances create clef-11306-h100 --project openagentsgemini --zone us-central1-a \
+  --machine-type a3-highgpu-1g --provisioning-model SPOT --max-run-duration=10h \
+  --maintenance-policy TERMINATE --instance-termination-action STOP \
+  --discard-local-ssds-at-termination-timestamp=true \
+  --image-family common-cu129-ubuntu-2204-nvidia-580 --image-project deeplearning-platform-release \
+  --boot-disk-size 400GB --boot-disk-type pd-ssd \
+  --service-account oa-decision-bench@openagentsgemini.iam.gserviceaccount.com --scopes cloud-platform \
+  --metadata oa-rev=dcf31b1e8bfbdc5d867c1c1325715eac3f6589cd,oa-autorun=1,install-nvidia-driver=True \
+  --metadata-from-file startup-script=vm-startup.sh,oa-runner=run-goldens.sh
+```
+
+Check progress, resume after a preemption, and collect results:
+
+```sh
+export CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config
+gcloud compute instances describe clef-11306-h100 --zone us-central1-a --project openagentsgemini --format='value(status)'
+gcloud storage cat gs://openagentsgemini-decision-throughput/clef-11306/clef-11306-h100/progress.log
+# TERMINATED means preempted or out of time: start it again, it resumes at the next unfinished row
+gcloud compute instances start clef-11306-h100 --zone us-central1-a --project openagentsgemini
+# results into this directory
+gcloud storage rsync -r gs://openagentsgemini-decision-throughput/clef-11306/clef-11306-h100 ./vm-logs
+# when run-state says done: delete the VM (its 400 GB disk costs money while stopped)
+gcloud compute instances delete clef-11306-h100 --zone us-central1-a --project openagentsgemini -q
 ```
 
 Each `results/<system>-<map>/chat-goldens/report.json` holds route, tier,
