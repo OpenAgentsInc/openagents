@@ -330,3 +330,35 @@ machine; the Mac and coderos-4080 are no longer used) by
 Each ablation reports every arm against B0 run in the same plan: the
 success difference with its issue-level CI first, then the change in cost
 per accepted change.
+
+## Acceptance on real issues (#11313)
+
+The epic is done when a production run of the briefed flow on an open issue,
+on Claude or Codex, is accepted at a lower cost per accepted change than bare
+Claude Code on the same issue, three issues in a row. Three prepared issues,
+small real defects of different kinds verified in the code:
+
+| Issue | Kind | Defect | Check |
+|---|---|---|---|
+| #11416 | Rust | `town-clock` `Mode::parse("wall:-2147483648")` panics (`i32::MIN.abs()`) | `cargo test -p town-clock` |
+| #11417 | Python | `scripts/report-kev-candidate.py` divides by zero on an empty group | a new `scripts/test_report_kev_candidate.py` |
+| #11418 | Docs | `docs/verse/workshop-agent.md` links a moved `studio.rs` | every relative link resolves |
+
+(The handoff's first docs defect, `docs/verse/zones.md` → `water.rs`, was
+filed as #11338 and fixed before the run, so #11418 replaces it.)
+
+`scripts/work/acceptance.py` runs both arms of each issue with
+`scripts/work/work_issue.py`: bare Claude Code first with `--land none`, then
+the briefed flow (`--engine briefed` or `briefed:codex`, landing a PR), both
+from `origin/main`. An arm is accepted when its change passes the replayed
+checks; the briefed flow wins an issue when it is accepted without falling
+back to bare and costs less per accepted change (a rejected bare arm counts as
+infinite cost). It stops at the first loss, writes `acceptance.json`, and
+prints the table below. It needs `briefed-agent` installed and a Claude
+sign-in, so it runs on a cloud dev env, not the Mac:
+
+    python3 scripts/work/acceptance.py --issues 11416 11417 11418 \
+        --out ~/.openagents/work/acceptance/run1
+    python3 scripts/work/acceptance.py --report ~/.openagents/work/acceptance/run1
+
+Results: not run yet (waiting on #11308-#11311 on main).
