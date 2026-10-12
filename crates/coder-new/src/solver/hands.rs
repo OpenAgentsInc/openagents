@@ -1,14 +1,15 @@
 //! The solver's four hands, each one constrained [`agent::Session`].
 
 use std::path::Path;
+use std::time::Instant;
 
 use claude_agent_sdk::{SdkMcpServer, ToolResult};
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::{Engine, Hand, Options, Turn};
 use crate::issue_run::{
     Transcript,
-    agent::{self, Baseline, Session},
+    agent::{self, Baseline, Session, Work},
     decide::{Briefing, Check},
     setup::{self, Base},
 };
@@ -290,6 +291,61 @@ pub async fn intake(options: &Options, folder: &Path, transcript: &mut Transcrip
         transcript,
     )
     .await
+}
+
+/// Intake on a named issue, in code and with no model call: the
+/// environment probes, the issue's state, and the claim. The turn's verdict
+/// is the same `INTAKE:` line a conversational Intaker would write, so
+/// [`blocked`] and the summary read it the same way.
+pub async fn intake_in_code(options: &Options, transcript: &mut Transcript) -> Turn {
+    let started = Instant::now();
+    transcript.notice(format!(
+        "Intaker: checking the environment and issue #{} in {}.",
+        options.inner.issue, options.inner.github
+    ));
+    let verdict = match intake_blocker(options).await {
+        None => "INTAKE: ready".to_string(),
+        Some(why) => format!("INTAKE: blocked: {why}"),
+    };
+    Turn {
+        hand: Hand::Intaker,
+        round: 0,
+        work: Work {
+            wall_ms: started.elapsed().as_millis() as u64,
+            reply: Some(verdict.clone()),
+            ..Default::default()
+        },
+        verdict: Some(verdict),
+    }
+}
+
+/// The first reason intake in code cannot start the run: a missing
+/// program, an issue that cannot be read or is closed, or a claim another
+/// run holds.
+async fn intake_blocker(options: &Options) -> Option<String> {
+    let environment = environment_text(&options.inner.repo, options.engine).await;
+    if let Some(line) = environment.lines().find(|line| line.ends_with(": missing")) {
+        return Some(format!("{line}."));
+    }
+    let number = options.inner.issue.to_string();
+    let issue = match issue_text(&options.inner.github, options.inner.issue).await {
+        Ok(text) => text,
+        Err(why) => return Some(format!("the issue could not be read: {why}")),
+    };
+    let state = serde_json::from_str::<Value>(&issue)
+        .ok()
+        .and_then(|issue| issue["state"].as_str().map(str::to_string));
+    if state.as_deref() == Some("CLOSED") {
+        return Some(format!("issue #{number} is closed."));
+    }
+    if installed("openagents") {
+        let args = ["issue", "claim", &number];
+        if let Err(why) = setup::output("openagents", &args, &options.inner.repo).await {
+            let why = why.lines().last().unwrap_or_default().trim();
+            return Some(format!("issue #{number} could not be claimed: {why}"));
+        }
+    }
+    None
 }
 
 /// Why the Intaker's turn stops the run, if it does: the session failed,
