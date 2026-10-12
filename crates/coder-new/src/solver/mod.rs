@@ -582,6 +582,7 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
         .map(|check| check.id.clone())
         .collect();
     let mut round = 0;
+    let mut hand_backs: Vec<hands::HandBack> = Vec::new();
     let outcome = loop {
         if transcript.cancelled() {
             break Outcome::stopped(Status::Cancelled, "The run was stopped.");
@@ -658,6 +659,28 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
             )),
             other => other,
         };
+        if let Some(record) = hands::HandBack::new(&back, failed.clone(), &errors) {
+            transcript.push(Entry::Tool {
+                name: "hand_back".into(),
+                input: record.json(round),
+                output: Value::Null,
+                running: false,
+            });
+            if hand_backs
+                .last()
+                .is_some_and(|earlier| record.repeats(earlier))
+            {
+                break Outcome::stopped(
+                    Status::Failed,
+                    format!(
+                        "The same checks ({}) failed twice with the same diagnosis, so another round would repeat it: {}",
+                        record.failing_checks.join(", "),
+                        record.hypothesis
+                    ),
+                );
+            }
+            hand_backs.push(record);
+        }
         // The next hand sees the errors themselves, not only the check's name.
         let back = match back {
             hands::Verdict::Coder(text) => hands::Verdict::Coder(format!("{text}{errors}")),

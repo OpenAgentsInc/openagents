@@ -707,6 +707,61 @@ impl Verdict {
     }
 }
 
+/// One hand-back between hands, as a record rather than prose: who gets
+/// it, which checks failed, the error lines the Tester read, and the
+/// Tester's own hypothesis of what to fix.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HandBack {
+    pub target: Hand,
+    pub failing_checks: Vec<String>,
+    pub evidence_lines: Vec<String>,
+    pub hypothesis: String,
+}
+
+impl HandBack {
+    #[must_use]
+    pub fn new(verdict: &Verdict, failing_checks: Vec<String>, errors: &str) -> Option<Self> {
+        let (target, hypothesis) = match verdict {
+            Verdict::Pass => return None,
+            Verdict::Coder(text) => (Hand::Coder, text),
+            Verdict::Briefer(text) => (Hand::Briefer, text),
+        };
+        Some(Self {
+            target,
+            failing_checks,
+            evidence_lines: errors
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::to_owned)
+                .collect(),
+            hypothesis: hypothesis.trim().to_owned(),
+        })
+    }
+
+    /// The record as it lands in `events.jsonl` and the trace.
+    #[must_use]
+    pub fn json(&self, round: usize) -> Value {
+        json!({
+            "round": round,
+            "target": self.target.as_str(),
+            "failing_checks": self.failing_checks,
+            "evidence_lines": self.evidence_lines,
+            "hypothesis": self.hypothesis,
+        })
+    }
+
+    /// Whether this hand-back repeats `earlier`: the same checks fail and
+    /// the Tester says the same thing about them, so another round of the
+    /// same repair would loop.
+    #[must_use]
+    pub fn repeats(&self, earlier: &Self) -> bool {
+        self.target == earlier.target
+            && self.failing_checks == earlier.failing_checks
+            && self.hypothesis.eq_ignore_ascii_case(&earlier.hypothesis)
+    }
+}
+
 /// The hands' known costs added up; `None` when none reported one.
 #[must_use]
 pub fn total_cost(turns: &[Turn]) -> Option<f64> {
