@@ -1323,6 +1323,31 @@ below 120 MB per case and evidence fixtures below 1 MiB; these bounds exclude
 driver and shader allocations. Completed test commands drain their temporary
 Metal objects before the next case. Experimental modes remain opt-in.
 
+### Layer-major prefill order (2026-10-12)
+
+`PSIONIC_CLEF_METAL_PREFILL_ORDER=auto|chunk-major|layer-major` picks how a
+multi-chunk prefill walks the layer x chunk grid.
+
+- **Layer-major** runs one layer across every chunk, with one command buffer
+  per layer and the whole prompt's residual stream on the device. It encodes
+  the same kernels on the same inputs in the same causal order, so logits are
+  bitwise equal to chunk-major.
+- **What it saves.** With `PSIONIC_CLEF_METAL_FFN_WEIGHTS=q4k-on-demand`, each
+  Q4_K feed-forward weight is converted to f16 once per layer instead of once
+  per layer per chunk.
+- **When `auto` uses it.** Only with on-demand weights and more than one
+  chunk. Observers, profiling, phase skips and a prefix-snapshot boundary
+  keep the chunk-major walk.
+- **Effect on the M3 gate.** None by default. Flash runs with resident f16
+  weights, where `auto` stays chunk-major and nothing is converted per chunk.
+  The change speeds up the bounded 27B on-demand configuration, not the Flash
+  medians that the gate measures.
+- **Not yet measured.** On 2026-10-12 the Mac's one-minute load stayed at
+  87–100 from parallel builds. That is far above the harness's quiet
+  threshold (below 5 for 600 s), and no release server binary on the Mac
+  includes this order yet. The Flash numbers to beat are still 0.511 s at
+  about 1k and 10.326 s at about 16k, against 0.35 s and 7.5 s.
+
 ### Next
 
 - Compare full-model accuracy, chunk equivalence, and end-to-end latency with
