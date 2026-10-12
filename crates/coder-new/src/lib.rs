@@ -240,6 +240,9 @@ pub struct App {
     /// A transcript selection went to the clipboard: the input's top-left
     /// rail says so until then.
     pub(crate) copied_until: Option<std::time::Instant>,
+    /// A passing status ("Answering a reply from openagents.com") on the
+    /// input's bottom-left rail until the instant, never a transcript row.
+    pub(crate) rail_status: Option<(std::time::Instant, String)>,
     export_notice_expiry: Option<(std::time::Instant, String)>,
     active_delegation: Option<String>,
     main_draft: Draft,

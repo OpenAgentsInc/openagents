@@ -32,8 +32,9 @@ pub const OFF: &str = "Saving chats to your account is off. /sync on saves all y
 pub const ON: &str = "Chats and memory save to your account, and you can reply to them on openagents.com while Coder is open here. /sync off stops; /sync delete removes the chats already there.";
 /// What Coder asks, once, when signed in and nobody chose yet (#11089).
 pub const QUESTION: &str = "Where should this computer's chats live? /sync all syncs all your chats to your account; /sync off keeps them on this computer.";
-/// What Coder says when it answers a reply typed on the website.
-pub const ANSWERING: &str = "Answering your reply from openagents.com.";
+/// What the input's bottom-left rail says for a few seconds when Coder
+/// answers a reply sent from openagents.com or the phone.
+pub const ANSWERING: &str = "Answering a reply from openagents.com";
 /// The folder, beside the saved chats, where background agents write
 /// their transcripts (`fleet::Host::transcripts`): one folder per parent
 /// chat, one file per agent.
@@ -544,7 +545,13 @@ impl App {
         self.draft.cursor = self.draft.text.len();
         self.submit_live();
         self.draft = typed;
-        self.notice = Some(ANSWERING.into());
+        // Opening the chat's own notice ("Resumed …") would land in the
+        // transcript; the rail says what is happening instead.
+        self.notice = None;
+        self.rail_status = Some((
+            std::time::Instant::now() + std::time::Duration::from_secs(6),
+            ANSWERING.into(),
+        ));
     }
 
     /// Add messages from the website to a saved chat that isn't open here,
@@ -1155,7 +1162,11 @@ mod tests {
             Some(crate::live::Entry::User(text)) if text == "Now the tests"
         ));
         assert!(app.live.busy && app.request.is_some());
-        assert_eq!(app.notice.as_deref(), Some(ANSWERING));
+        assert_eq!(app.notice, None);
+        assert_eq!(
+            app.rail_status.as_ref().map(|(_, s)| s.as_str()),
+            Some(ANSWERING)
+        );
 
         // While it runs, the next waits; then it runs in the open chat and
         // keeps what is being typed.
@@ -1219,7 +1230,11 @@ mod tests {
         assert_eq!(app.session_id(), Some(session), "{:?}", app.notice);
         assert_eq!(texts(&app.live), ["you: Fix the login"]);
         assert!(app.live.busy && app.request.is_some());
-        assert_eq!(app.notice.as_deref(), Some(ANSWERING));
+        assert_eq!(app.notice, None);
+        assert_eq!(
+            app.rail_status.as_ref().map(|(_, s)| s.as_str()),
+            Some(ANSWERING)
+        );
         // It saves under the website's id, so the answer syncs to that chat.
         app.history.dirty = true;
         assert!(app.persist_session(true));

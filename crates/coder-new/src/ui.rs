@@ -255,12 +255,19 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         width: terminal_width,
         ..composer
     };
-    let path = truncate(&path, terminal_width.saturating_sub(6));
+    // A passing status shares the bottom rail with the path, on the left.
+    let status = app
+        .rail_status
+        .as_ref()
+        .filter(|(until, _)| std::time::Instant::now() < *until)
+        .map(|(_, text)| text.as_str());
+    let status_width = status.map_or(0, |s| s.chars().count() as u16 + 3);
+    let path = truncate(&path, terminal_width.saturating_sub(6 + status_width));
     coder_terminal::rail(
         composer_area,
         frame.buffer_mut(),
         composer.height.saturating_sub(1),
-        None,
+        status.map(|s| (s, Style::default().fg(t::GRAY))),
         Some((&path, Style::default().fg(t::GRAY))),
     );
     agent_rail(frame, rail, app);
