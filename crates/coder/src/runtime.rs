@@ -2760,6 +2760,17 @@ impl Runtime {
             }
             match outcome {
                 Ok(output) => {
+                    if step.kind == Kind::Decide {
+                        if let Some(answers) = ctx.run.answers.get(&step.name) {
+                            let gate = step
+                                .question
+                                .as_deref()
+                                .and_then(|id| self.questions.get(id))
+                                .map(|set| set.gate.as_str())
+                                .unwrap_or_default();
+                            decision_sidecar(&name, gate, answers, ctx.produced);
+                        }
+                    }
                     if let Err(refused) = collect_produced(step, &name, &output, ctx.produced) {
                         self.advance_runstate(
                             ctx.record,
@@ -5316,16 +5327,41 @@ fn requirement_unmet(
     ))
 }
 
+/// A `decide` step's decision in state (#11377): the typed value of its
+/// gate at the step's own key — a choice's option, a noul's probability, a
+/// score's level — and every raw answer with its confidences at
+/// `<name>$answers`. A later step routes by the value; nothing asks the
+/// model again for a choice the state already holds.
+fn decision_sidecar(
+    name: &str,
+    gate: &str,
+    answers: &Value,
+    produced: &mut BTreeMap<String, Value>,
+) {
+    produced.insert(format!("{name}$answers"), answers.clone());
+    let read = &answers[gate];
+    let typed = read
+        .get("choice")
+        .or_else(|| read.get("noul"))
+        .or_else(|| read.get("score"))
+        .cloned();
+    if let Some(typed) = typed {
+        produced.insert(name.to_string(), typed);
+    }
+}
+
 fn collect_produced(
     step: &Step,
     name: &str,
     output: &str,
     produced: &mut BTreeMap<String, Value>,
 ) -> Result<(), Refused> {
-    produced.insert(
-        name.to_string(),
-        serde_json::from_str(output).unwrap_or_else(|_| Value::String(output.to_string())),
-    );
+    if step.kind != Kind::Decide || !produced.contains_key(name) {
+        produced.insert(
+            name.to_string(),
+            serde_json::from_str(output).unwrap_or_else(|_| Value::String(output.to_string())),
+        );
+    }
     let binding = crate::child::Binding::of(step)
         .map_err(|reason| Refused::at(name, "contract_invalid", reason))?;
     let Some(binding) = binding else {
@@ -9788,5 +9824,21 @@ mod tests {
             run.verification[0].verdict,
             crate::verification::Verdict::Passed
         );
+    }
+
+    #[test]
+    fn a_decision_lands_typed_at_its_key_and_raw_under_answers() {
+        let mut produced = BTreeMap::new();
+        let answers = json!({"kind": {"choice": "fix", "confidence": 0.8,
+            "probabilities": {"fix": 0.8, "feature": 0.2}}});
+        super::decision_sidecar("ask", "kind", &answers, &mut produced);
+        assert_eq!(produced["ask"], json!("fix"));
+        assert_eq!(
+            produced["ask$answers"]["kind"]["probabilities"]["fix"],
+            json!(0.8)
+        );
+        let mut produced = BTreeMap::new();
+        super::decision_sidecar("ok", "yes", &json!({"yes": {"noul": 0.4}}), &mut produced);
+        assert_eq!(produced["ok"], json!(0.4));
     }
 }
