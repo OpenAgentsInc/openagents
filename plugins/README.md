@@ -10,6 +10,7 @@ environment values for your deployment.
 | `claude/` | `.claude-plugin/plugin.json` + `.mcp.json` + `skills/` | Claude Code plugin directory |
 | `codex/` | `.codex-plugin/plugin.json` + `.mcp.json` + `skills/` | Codex plugin directory |
 | `skills/openagents-decision-api/` | bare `SKILL.md` | Any client that reads the Agent Skills format |
+| `skills/openagents-workflow/` | bare `SKILL.md` | Any client that reads the Agent Skills format. Coder's harness also loads this file into a run's instructions. |
 
 ## Manual installation
 

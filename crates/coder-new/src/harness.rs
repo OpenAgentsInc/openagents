@@ -222,6 +222,13 @@ impl Config {
         !(self.tools == Tools::Shell && crate::file_tools::is_tool(name))
     }
 
+    /// The workflow authoring skill, loaded into every run's instructions.
+    ///
+    /// Agents that read the Agent Skills format load the same file from
+    /// `plugins/skills/openagents-workflow/SKILL.md`.
+    pub const WORKFLOW_SKILL: &str =
+        include_str!("../../../plugins/skills/openagents-workflow/SKILL.md");
+
     /// Extra guidance this configuration adds to the tool instructions.
     #[must_use]
     pub fn guidance(&self) -> Option<&'static str> {
@@ -504,6 +511,25 @@ mod tests {
             ..weak
         };
         assert!(!shell.offers("Edit") && shell.offers("Run"));
+    }
+
+    #[test]
+    fn workflow_skill_is_loadable() {
+        let skill = Config::WORKFLOW_SKILL;
+        assert!(skill.starts_with("---\nname: openagents-workflow\n"));
+        assert!(skill.contains("export const meta"));
+        assert!(skill.contains("pipeline("));
+        assert!(skill.contains("amount_sats"));
+        for word in [
+            "anthropic",
+            "claude",
+            "ultracode",
+            "opus",
+            "sonnet",
+            "haiku",
+        ] {
+            assert!(!skill.to_lowercase().contains(word), "{word}");
+        }
     }
 
     #[test]
