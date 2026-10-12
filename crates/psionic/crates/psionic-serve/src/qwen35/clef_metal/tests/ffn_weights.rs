@@ -132,3 +132,23 @@ fn q4_ffn_reuses_one_conversion_slot_without_changing_outputs() {
         }
     }
 }
+
+#[test]
+fn prefill_order_is_explicit_and_layer_major_only_spans_chunks() {
+    assert_eq!(PrefillOrder::default(), PrefillOrder::Auto);
+    assert_eq!("auto".parse(), Ok(PrefillOrder::Auto));
+    assert_eq!("chunk-major".parse(), Ok(PrefillOrder::ChunkMajor));
+    assert_eq!("layer-major".parse(), Ok(PrefillOrder::LayerMajor));
+    for value in ["", "layer", "Layer-Major", " layer-major"] {
+        assert!(value.parse::<PrefillOrder>().is_err());
+    }
+    // Auto: layer-major exactly for on-demand weights over several chunks.
+    assert!(PrefillOrder::Auto.layer_major(2, true, false));
+    assert!(!PrefillOrder::Auto.layer_major(8, false, false));
+    assert!(!PrefillOrder::Auto.layer_major(1, true, false));
+    // Forced orders, but never for a single chunk or with per-chunk hooks.
+    assert!(PrefillOrder::LayerMajor.layer_major(2, false, false));
+    assert!(!PrefillOrder::LayerMajor.layer_major(1, false, false));
+    assert!(!PrefillOrder::LayerMajor.layer_major(8, true, true));
+    assert!(!PrefillOrder::ChunkMajor.layer_major(8, true, false));
+}

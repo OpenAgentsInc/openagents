@@ -276,6 +276,7 @@ impl Fixture {
             head_fields: None,
             weight_bytes: 0,
             weight_workspace_bytes: 0,
+            prefill_order: PrefillOrder::default(),
         };
         ClefMetalTrunk {
             device: Arc::new(Mutex::new(state)),

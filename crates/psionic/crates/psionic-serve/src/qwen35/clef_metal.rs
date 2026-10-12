@@ -127,6 +127,55 @@ impl WeightUploadMode {
     }
 }
 
+/// How a multi-chunk prefill walks the layer x chunk grid.
+///
+/// `ChunkMajor` runs every layer for one chunk before the next chunk (one
+/// command buffer per chunk). `LayerMajor` runs one layer across every chunk
+/// before the next layer (one command buffer per layer), keeping the whole
+/// prompt's residual stream on the device. Both encode the same kernels on the
+/// same inputs in the same causal order, so their outputs are bitwise equal;
+/// layer-major converts each on-demand Q4_K feed-forward weight once per layer
+/// instead of once per layer per chunk. `Auto` picks layer-major exactly when
+/// on-demand weights are present and the prompt spans more than one chunk.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum PrefillOrder {
+    #[default]
+    Auto,
+    ChunkMajor,
+    LayerMajor,
+}
+
+impl std::str::FromStr for PrefillOrder {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, String> {
+        match value {
+            "auto" => Ok(Self::Auto),
+            "chunk-major" => Ok(Self::ChunkMajor),
+            "layer-major" => Ok(Self::LayerMajor),
+            _ => Err(String::from(
+                "clef metal prefill order must be auto, chunk-major, or layer-major",
+            )),
+        }
+    }
+}
+
+impl PrefillOrder {
+    /// Whether this prefill runs layer-major. Observers, profiling, phase
+    /// skips, and a prefix-snapshot boundary need per-chunk completion, so
+    /// they keep the chunk-major walk.
+    fn layer_major(self, chunks: usize, on_demand_weights: bool, per_chunk_hooks: bool) -> bool {
+        if chunks < 2 || per_chunk_hooks {
+            return false;
+        }
+        match self {
+            Self::Auto => on_demand_weights,
+            Self::ChunkMajor => false,
+            Self::LayerMajor => true,
+        }
+    }
+}
+
 const MAX_FFN_CONVERSION_BYTES: usize = 256 * 1024 * 1024;
 
 fn ffn_conversion_bytes(rows: usize, columns: usize) -> Result<usize, String> {
@@ -285,6 +334,7 @@ struct DeviceState {
     head_fields: Option<head_blocks::FieldStack>,
     weight_bytes: u64,
     weight_workspace_bytes: usize,
+    prefill_order: PrefillOrder,
 }
 
 /// The Clef trunk on the Metal device.
@@ -446,6 +496,15 @@ impl ClefMetalTrunk {
             Err(std::env::VarError::NotUnicode(_)) => {
                 return Err(String::from(
                     "PSIONIC_CLEF_METAL_FFN_WEIGHTS must be valid text",
+                ));
+            }
+        };
+        let prefill_order = match std::env::var("PSIONIC_CLEF_METAL_PREFILL_ORDER") {
+            Ok(value) => value.parse::<PrefillOrder>()?,
+            Err(std::env::VarError::NotPresent) => PrefillOrder::default(),
+            Err(std::env::VarError::NotUnicode(_)) => {
+                return Err(String::from(
+                    "PSIONIC_CLEF_METAL_PREFILL_ORDER must be valid text",
                 ));
             }
         };
@@ -641,6 +700,7 @@ impl ClefMetalTrunk {
             head_fields: None,
             weight_bytes,
             weight_workspace_bytes,
+            prefill_order,
             metal,
         };
         Ok(Self {
@@ -747,6 +807,19 @@ impl ClefMetalTrunk {
         state.weight_bytes = state.weight_bytes - before + ffn_bytes(&state.layers);
         state.weight_workspace_bytes = ffn_workspace_bytes(&state.layers)?;
         Ok(())
+    }
+
+    /// Selects the prefill walk for a parity test.
+    #[cfg(test)]
+    pub(crate) fn set_prefill_order_for_test(&self, layer_major: bool) {
+        self.device
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .prefill_order = if layer_major {
+            PrefillOrder::LayerMajor
+        } else {
+            PrefillOrder::ChunkMajor
+        };
     }
 
     /// Bytes of resident trunk weights and head matrices, excluding scratch.
@@ -892,11 +965,119 @@ impl ClefMetalTrunk {
             };
             Ok((embedded, table))
         };
+        let chunk_count = {
+            let (mut count, mut at) = (0usize, cached_tokens);
+            while at < length {
+                at += chunk_len(at, length, chunk, boundary);
+                count += 1;
+            }
+            count
+        };
+        let layer_major = state.prefill_order.layer_major(
+            chunk_count,
+            state.weight_workspace_bytes != 0,
+            layer_observer.is_some() || profile || std::env::var_os("PSIONIC_CLEF_SKIP").is_some(),
+        );
         let mut first = cached_tokens;
-        let mut prepared = Some(build_inputs(
-            first,
-            chunk_len(first, length, chunk, boundary),
-        )?);
+        // Prompt-wide buffers of a layer-major walk, freed when it returns.
+        let mut transient_bytes = 0u64;
+        if layer_major {
+            // Segments end at the prefix-snapshot boundary so the snapshot
+            // sees every layer's state after exactly `boundary` tokens.
+            let mut segments: Vec<Vec<(usize, usize)>> = Vec::new();
+            let mut current = Vec::new();
+            let mut at = cached_tokens;
+            while at < length {
+                let n = chunk_len(at, length, chunk, boundary);
+                current.push((at, n));
+                at += n;
+                if cached_tokens == 0 && boundary == Some(at) {
+                    segments.push(std::mem::take(&mut current));
+                }
+            }
+            if !current.is_empty() {
+                segments.push(current);
+            }
+            let hidden = dims.hidden;
+            let width = dims.rotary / 2 * 2;
+            let x_all = state.metal.buffer((length * hidden).max(1) * 4);
+            let cos_all = state.metal.buffer((length * width).max(1) * 4);
+            transient_bytes += (x_all.byte_len() + cos_all.byte_len()) as u64;
+            for &(at, n) in segments.iter().flatten() {
+                let (embedded, table) = build_inputs(at, n)?;
+                if table.len() != n * width {
+                    return Err(String::from("clef metal prefill: rope table width changed"));
+                }
+                x_all.write_f32(at * hidden, &embedded)?;
+                cos_all.write_f32(at * width, &table)?;
+            }
+            let device_began = std::time::Instant::now();
+            // One conversion slot per feed-forward projection, live for a layer.
+            let extra_slots: Vec<ClefMetalBuffer> = if state.weight_workspace_bytes != 0 {
+                (0..2)
+                    .map(|_| state.metal.buffer(state.weight_workspace_bytes))
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            transient_bytes += extra_slots
+                .iter()
+                .map(|slot| slot.byte_len() as u64)
+                .sum::<u64>();
+            for segment in &segments {
+                let scratch = state.scratch.as_ref().ok_or("scratch")?;
+                let slots = match (scratch.weight16.as_ref(), extra_slots.as_slice()) {
+                    (Some(first_slot), [second, third]) => Some([first_slot, second, third]),
+                    _ => None,
+                };
+                for (layer_index, layer) in state.layers.iter().enumerate() {
+                    let batch = state.metal.batch();
+                    let converted = convert_ffn_weights(&batch, layer, slots)?;
+                    for &(at, n) in segment {
+                        batch.copy_f32(&x_all, at * hidden, &scratch.x, 0, n * hidden)?;
+                        batch.copy_f32(&cos_all, at * width, &scratch.cos_sin, 0, n * width)?;
+                        encode_mixer(&batch, layer, scratch, &request, layer_index, dims, at, n)?;
+                        encode_ffn_with(&batch, layer, scratch, dims, n, converted)?;
+                        batch.copy_f32(&scratch.x, 0, &x_all, at * hidden, n * hidden)?;
+                    }
+                    batch.commit_wait()?;
+                }
+                for &(at, n) in segment {
+                    let batch = state.metal.batch();
+                    batch.copy_f32(&x_all, at * hidden, &scratch.x, 0, n * hidden)?;
+                    encode_tail(
+                        &batch,
+                        state,
+                        scratch,
+                        &request,
+                        (&span_buffer, &span_sums, spans.len()),
+                        dims,
+                        at,
+                        n,
+                    )?;
+                    batch.commit_wait()?;
+                    if let Some(observer) = final_observer.as_mut() {
+                        let rows = scratch.final_rows.read_f32(0, n * dims.hidden)?;
+                        observer(state.layers.len(), at, &rows);
+                    }
+                    if at + n == length {
+                        last = scratch
+                            .norm_rows
+                            .read_f32((n - 1) * dims.hidden, dims.hidden)?;
+                    }
+                    first = at + n;
+                }
+                if cached_tokens == 0 && boundary == Some(first) {
+                    // Release the previous entry before allocating the replacement.
+                    state.prefix.clear();
+                    pending_prefix = Some(Snapshot::capture(&request, dims, first)?);
+                }
+            }
+            device_time += device_began.elapsed().as_secs_f64();
+        }
+        let mut prepared = (first < length)
+            .then(|| build_inputs(first, chunk_len(first, length, chunk, boundary)))
+            .transpose()?;
         while first < length {
             let n = chunk_len(first, length, chunk, boundary);
             let (embedded, table) = prepared.take().ok_or("chunk inputs")?;
@@ -959,38 +1140,13 @@ impl ClefMetalTrunk {
                         }
                         state.metal.batch()
                     };
-                    // output norm, hidden LayerNorm, memory rows, span sums
-                    batch.rms_norm_f32(
-                        &scratch.x,
-                        &state.output_norm,
-                        &scratch.final_rows,
-                        n,
-                        dims.hidden,
-                        dims.eps,
-                    )?;
-                    batch.layer_norm_f32(
-                        &scratch.final_rows,
-                        Some((&state.hidden_norm_weight, &state.hidden_norm_bias)),
-                        &scratch.norm_rows,
-                        n,
-                        dims.hidden,
-                        dims.head_eps,
-                    )?;
-                    batch.linear_f32_ordered(
-                        &scratch.norm_rows,
-                        &state.memory_projection,
-                        &request.memory,
-                        first * dims.width,
-                        n,
-                        dims.width,
-                        dims.hidden,
-                    )?;
-                    batch.span_sums(
-                        &scratch.norm_rows,
-                        &span_buffer,
-                        &span_sums,
-                        spans.len(),
-                        dims.hidden,
+                    encode_tail(
+                        &batch,
+                        state,
+                        scratch,
+                        &request,
+                        (&span_buffer, &span_sums, spans.len()),
+                        dims,
                         first,
                         n,
                     )?;
@@ -1035,7 +1191,7 @@ impl ClefMetalTrunk {
             span_sums.read_f32(0, spans.len() * dims.hidden)?
         };
         let scratch_bytes = state.scratch.as_ref().map_or(0, |scratch| scratch.bytes);
-        let request_device_bytes = request.bytes + scratch_bytes;
+        let request_device_bytes = request.bytes + scratch_bytes + transient_bytes;
         if let Some(snapshot) = pending_prefix {
             let bytes = Snapshot::byte_len(&request, dims, prefix_ids.len())?;
             state.prefix.insert(&prefix_ids, chunk, bytes, snapshot);
@@ -1925,6 +2081,55 @@ fn encode_mixer(
     Ok(())
 }
 
+/// Output norm, hidden LayerNorm, memory rows, and span sums for one chunk
+/// whose final residual rows are in `scratch.x`.
+#[allow(clippy::too_many_arguments)]
+fn encode_tail(
+    batch: &ClefMetalBatch<'_>,
+    state: &DeviceState,
+    scratch: &Scratch,
+    request: &Request,
+    (span_buffer, span_sums, span_count): (&ClefMetalBuffer, &ClefMetalBuffer, usize),
+    dims: Dims,
+    first: usize,
+    n: usize,
+) -> Result<(), String> {
+    batch.rms_norm_f32(
+        &scratch.x,
+        &state.output_norm,
+        &scratch.final_rows,
+        n,
+        dims.hidden,
+        dims.eps,
+    )?;
+    batch.layer_norm_f32(
+        &scratch.final_rows,
+        Some((&state.hidden_norm_weight, &state.hidden_norm_bias)),
+        &scratch.norm_rows,
+        n,
+        dims.hidden,
+        dims.head_eps,
+    )?;
+    batch.linear_f32_ordered(
+        &scratch.norm_rows,
+        &state.memory_projection,
+        &request.memory,
+        first * dims.width,
+        n,
+        dims.width,
+        dims.hidden,
+    )?;
+    batch.span_sums(
+        &scratch.norm_rows,
+        span_buffer,
+        span_sums,
+        span_count,
+        dims.hidden,
+        first,
+        n,
+    )
+}
+
 fn encode_ffn(
     batch: &ClefMetalBatch<'_>,
     layer: &DeviceLayer,
@@ -1932,6 +2137,77 @@ fn encode_ffn(
     dims: Dims,
     n: usize,
 ) -> Result<(), String> {
+    encode_ffn_with(batch, layer, s, dims, n, None)
+}
+
+/// Converts a layer's on-demand feed-forward weights once into `slots`
+/// (gate, up, down), for every chunk of a layer-major walk. `None` when the
+/// layer has no on-demand weight.
+fn convert_ffn_weights<'a>(
+    batch: &ClefMetalBatch<'_>,
+    layer: &DeviceLayer,
+    slots: Option<[&'a ClefMetalBuffer; 3]>,
+) -> Result<Option<[&'a ClefMetalBuffer; 3]>, String> {
+    let weights = [&layer.gate, &layer.up, &layer.down];
+    if weights.iter().all(|weight| weight.format.is_none()) {
+        return Ok(None);
+    }
+    let slots = slots.ok_or("clef FFN layer-major conversion slots are missing")?;
+    for (weight, slot) in weights.iter().zip(slots) {
+        if let Some(format) = weight.format {
+            let elements = weight
+                .rows
+                .checked_mul(weight.columns)
+                .ok_or("clef FFN weight size overflows")?;
+            batch.dequantize_to_f16(format, &weight.buffer, slot, elements)?;
+        }
+    }
+    Ok(Some(slots))
+}
+
+/// The feed-forward block. With `converted`, on-demand weights read their
+/// already-converted slot (gate, up, down) instead of converting again.
+fn encode_ffn_with(
+    batch: &ClefMetalBatch<'_>,
+    layer: &DeviceLayer,
+    s: &Scratch,
+    dims: Dims,
+    n: usize,
+    converted: Option<[&ClefMetalBuffer; 3]>,
+) -> Result<(), String> {
+    let project = |index: usize,
+                   weight: &DeviceWeight,
+                   out: &ClefMetalBuffer,
+                   accumulate: bool|
+     -> Result<(), String> {
+        match converted {
+            Some(slots) if weight.format.is_some() => {
+                if skips().0 {
+                    return Ok(());
+                }
+                batch.gemm(
+                    &s.act16,
+                    0,
+                    slots[index],
+                    out,
+                    0,
+                    n,
+                    weight.rows,
+                    weight.columns,
+                    accumulate,
+                )
+            }
+            _ => linear_with_workspace(
+                batch,
+                weight,
+                &s.act16,
+                out,
+                n,
+                accumulate,
+                s.weight16.as_ref(),
+            ),
+        }
+    };
     batch.rms_norm_to_f16(
         &s.x,
         &layer.post_attention_norm,
@@ -1940,33 +2216,9 @@ fn encode_ffn(
         dims.hidden,
         dims.eps,
     )?;
-    linear_with_workspace(
-        batch,
-        &layer.gate,
-        &s.act16,
-        &s.big_a,
-        n,
-        false,
-        s.weight16.as_ref(),
-    )?;
-    linear_with_workspace(
-        batch,
-        &layer.up,
-        &s.act16,
-        &s.big_b,
-        n,
-        false,
-        s.weight16.as_ref(),
-    )?;
+    project(0, &layer.gate, &s.big_a, false)?;
+    project(1, &layer.up, &s.big_b, false)?;
     batch.silu_mul_to_f16(&s.big_a, &s.big_b, &s.act16, n * dims.ffn)?;
-    linear_with_workspace(
-        batch,
-        &layer.down,
-        &s.act16,
-        &s.x,
-        n,
-        true,
-        s.weight16.as_ref(),
-    )?;
+    project(2, &layer.down, &s.x, true)?;
     Ok(())
 }
