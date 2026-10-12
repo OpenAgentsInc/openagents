@@ -13,9 +13,10 @@ directories, such as the `partial-*` ones), and writes the union into
 
 A trial directory counts only when it holds `result.json`. When two
 sources hold the same trial, the copies must be the same run: the merge
-keeps the one with the most judge files and reports a conflict when their
-`result.json` differ (that would mean a trial ran twice, which the frozen
-plans forbid, so it is shown, never silently chosen). Nothing already in
+keeps the one with the most judge files. When their `result.json` differ
+the trial ran twice (a machine restored from a partial archive that lacked
+it): the merge keeps the first run by `result.json` time, drops the rerun
+and names every such trial. Nothing already in
 `.work/results/TAG` is deleted; existing judge files are kept.
 """
 
@@ -93,8 +94,13 @@ def main() -> None:
                 if name in best:
                     a, b = json.loads((best[name] / "result.json").read_text()), json.loads((d / "result.json").read_text())
                     if a != b:
+                        # The trial ran twice (a machine restored from a partial
+                        # archive that lacked it). The first run is the observation;
+                        # the rerun is a harness duplicate and is dropped.
                         conflicts.append(name)
-                    if score(d) <= score(best[name]):
+                        if (d / "result.json").stat().st_mtime >= (best[name] / "result.json").stat().st_mtime:
+                            continue
+                    elif score(d) <= score(best[name]):
                         continue
                 best[name] = d
         existing = trials(dest, args.tag) if dest.is_dir() else {}
@@ -111,7 +117,8 @@ def main() -> None:
     print(f"{args.tag}: {len(best)} trials across {len(sources)} sources; {added} added to {dest}; "
           f"{len(existing)} were there")
     if conflicts:
-        print(f"CONFLICT: {len(conflicts)} trials differ between sources: {', '.join(sorted(set(conflicts))[:20])}")
+        names = ", ".join(sorted(set(conflicts)))
+        print(f"RAN TWICE: {len(set(conflicts))} trials; kept the first run of each: {names}")
 
 
 if __name__ == "__main__":
