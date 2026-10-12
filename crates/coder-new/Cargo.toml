@@ -69,6 +69,8 @@ workflow-run = { path = "../workflow-run" }
 
 [target.'cfg(unix)'.dependencies]
 background = { path = "../background" }
+# OpenCode's saved reason for a failed delegated turn (#11464).
+coder-history = { path = "../coder-history", default-features = false, features = ["opencode"] }
 
 [dev-dependencies]
 axum = "0.8"

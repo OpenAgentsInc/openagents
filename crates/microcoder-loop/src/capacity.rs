@@ -58,6 +58,31 @@ pub const CLOUD_VAR: &str = "CODER_CLOUD";
 /// The worker's day: a caller's daily quota resets at UTC midnight.
 const DAY: u64 = 86_400;
 
+/// What starts the line a delegation's error text carries its refusal on
+/// ([`Refusal::carry`]).
+pub const REFUSAL_MARK: &str = "refusal: ";
+
+/// The kind of limit a provider's words name: a usage, session, or weekly
+/// allowance is a usage limit; anything else (a bare 429, a rate limit) is
+/// a rate limit.
+#[must_use]
+pub fn kind_of_message(message: &str) -> Kind {
+    let message = message.to_lowercase();
+    if [
+        "usage limit",
+        "session limit",
+        "weekly limit",
+        "hit your limit",
+    ]
+    .iter()
+    .any(|phrase| message.contains(phrase))
+    {
+        Kind::UsageLimit
+    } else {
+        Kind::RateLimit
+    }
+}
+
 /// How long a cloud rate limit or busy worker with no reported wait holds:
 /// the worker's per-key window is one minute.
 pub const CLOUD_UNKNOWN_RETRY: u64 = 60;
@@ -296,6 +321,45 @@ impl Refusal {
             window_minutes: None,
             account: None,
         }
+    }
+
+    /// The refusal a delegation's error text carries after
+    /// [`REFUSAL_MARK`] on a line of its own, as [`Refusal::carry`] wrote
+    /// it, so a delegation that ended on a limit (`acp_subagent`) reports
+    /// the same record Microcoder keeps in its result's `refusals` (#11466).
+    #[must_use]
+    pub fn carried(text: &str) -> Option<Refusal> {
+        text.lines()
+            .find_map(|line| serde_json::from_str(line.trim().strip_prefix(REFUSAL_MARK)?).ok())
+    }
+
+    /// This refusal as the line [`Refusal::carried`] reads back.
+    #[must_use]
+    pub fn carry(&self) -> String {
+        format!(
+            "{REFUSAL_MARK}{}",
+            serde_json::to_string(self).unwrap_or_default()
+        )
+    }
+
+    /// The refusal in a few words: `a usage limit on the pro plan, until
+    /// 2026-10-17 22:58 UTC`.
+    #[must_use]
+    pub fn describe(&self) -> String {
+        let kind = match self.kind {
+            Kind::UsageLimit => "a usage limit",
+            Kind::RateLimit => "a rate limit",
+        };
+        let plan = self
+            .plan
+            .as_deref()
+            .map(|plan| format!(" on the {plan} plan"))
+            .unwrap_or_default();
+        let until = match self.resets_at {
+            Some(_) => format!("until {}", utc(self.until)),
+            None => format!("for now (no reset given; held until {})", utc(self.until)),
+        };
+        format!("{kind}{plan}, {until}")
     }
 
     /// The refusal a Codex error response carries: a typed usage limit
@@ -1289,6 +1353,25 @@ mod tests {
     #[test]
     fn utc_text_names_the_date_and_minute() {
         assert_eq!(utc(1_791_050_823), "2026-10-03 18:07 UTC");
+    }
+
+    #[test]
+    fn a_refusal_carried_in_error_text_reads_back_the_same() {
+        let mut refusal = Refusal::new(
+            Provider::Codex,
+            kind_of_message("You've hit your usage limit."),
+            1_790_000_000,
+            Some(1_791_050_823),
+        );
+        refusal.plan = Some("pro".into());
+        let text = format!("Codex is out of capacity.\n{}", refusal.carry());
+        assert_eq!(Refusal::carried(&text), Some(refusal.clone()));
+        assert_eq!(
+            refusal.describe(),
+            "a usage limit on the pro plan, until 2026-10-03 18:07 UTC"
+        );
+        assert_eq!(kind_of_message("429 Too Many Requests"), Kind::RateLimit);
+        assert_eq!(Refusal::carried("no refusal here"), None);
     }
 
     #[test]

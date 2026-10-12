@@ -39,6 +39,10 @@ pub const INSTALL_TREE: &str = ".local/share/cursor-agent";
 pub const SIGN_IN: &str =
     "Cursor is not signed in. Run `cursor-agent login`, or set CURSOR_API_KEY, then try again.";
 
+/// What a person does when Cursor's service refuses this `cursor-agent`
+/// build (`Update Required`, error code `cursor_stream_error`).
+pub const UPDATE: &str = "Cursor says this version of cursor-agent is no longer supported. Run `cursor-agent update`, then try again.";
+
 /// Cursor's extension method names.
 pub mod method {
     /// A request: multiple-choice questions for the person.

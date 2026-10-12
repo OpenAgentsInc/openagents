@@ -83,7 +83,7 @@ impl std::fmt::Display for ClientError {
             ClientError::Closed => write!(f, "the agent exited before it answered"),
             ClientError::Io(why) => write!(f, "the agent's streams failed: {why}"),
             ClientError::Refused { method, error } => {
-                let mut message = error.message.clone();
+                let mut message = error.reason();
                 if message.len() > 300 {
                     let mut end = 300;
                     while !message.is_char_boundary(end) {

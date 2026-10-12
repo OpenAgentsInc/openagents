@@ -3623,6 +3623,7 @@ dependencies = [
  "coder-delegate",
  "coder-demo-ui",
  "coder-engine-status",
+ "coder-history",
  "coder-lease",
  "coder-sync",
  "coder-terminal",

@@ -783,87 +783,235 @@ pub async fn acp_with(
         mode,
         authenticate: cursor.then(|| acp_client::cursor::AUTH_METHOD.to_owned()),
     };
-    let mut session =
-        Session::open(&opening, &canceled)
-            .await
-            .map_err(|failure| match &failure {
-                _ if cursor && failure.unauthenticated() => acp_client::cursor::SIGN_IN.to_owned(),
-                acp_client::Failure::Protocol {
-                    error: acp_client::ClientError::Silent { method, .. },
-                    ..
-                } if cursor && method == acp_client::wire::method::AUTHENTICATE => {
-                    acp_client::cursor::SILENT_SIGN_IN.to_owned()
-                }
-                _ => failure.to_string(),
-            })?;
-    // A read-only task switches the agent to a mode of its own that makes
-    // no changes, when it offers one; its asks to change anything are
-    // refused either way.
-    let held = if !read_only {
-        None
-    } else if cursor {
-        Some(acp_client::cursor::Mode::Ask.id().to_owned())
-    } else {
-        let offered = session
-            .opened
-            .modes
-            .as_ref()
-            .map(|modes| modes.available_modes.clone())
-            .unwrap_or_default();
-        match READ_ONLY_MODES
-            .iter()
-            .find(|wanted| offered.iter().any(|mode| mode.id == **wanted))
-        {
-            Some(wanted) => match session.set_mode(wanted, &canceled).await {
-                Ok(()) => Some((*wanted).to_owned()),
-                Err(error) => {
-                    session.close(Duration::from_secs(2)).await;
-                    return Err(format!(
-                        "{} could not switch to its read-only mode: {error}",
-                        agent.name
-                    ));
-                }
-            },
-            None => None,
+    // A temporary failure before the agent did anything (a provider whose
+    // endpoint is down, Devin's retryable internal error) is tried again
+    // after a pause, a bounded number of times (#11464, #11465).
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        let mut session =
+            Session::open(&opening, &canceled)
+                .await
+                .map_err(|failure| match &failure {
+                    _ if cursor && failure.unauthenticated() => {
+                        acp_client::cursor::SIGN_IN.to_owned()
+                    }
+                    acp_client::Failure::Protocol {
+                        error: acp_client::ClientError::Silent { method, .. },
+                        ..
+                    } if cursor && method == acp_client::wire::method::AUTHENTICATE => {
+                        acp_client::cursor::SILENT_SIGN_IN.to_owned()
+                    }
+                    _ => failure.to_string(),
+                })?;
+        // A read-only task switches the agent to a mode of its own that
+        // makes no changes, when it offers one; its asks to change anything
+        // are refused either way.
+        let held = if !read_only {
+            None
+        } else if cursor {
+            Some(acp_client::cursor::Mode::Ask.id().to_owned())
+        } else {
+            let offered = session
+                .opened
+                .modes
+                .as_ref()
+                .map(|modes| modes.available_modes.clone())
+                .unwrap_or_default();
+            match READ_ONLY_MODES
+                .iter()
+                .find(|wanted| offered.iter().any(|mode| mode.id == **wanted))
+            {
+                Some(wanted) => match session.set_mode(wanted, &canceled).await {
+                    Ok(()) => Some((*wanted).to_owned()),
+                    Err(error) => {
+                        session.close(Duration::from_secs(2)).await;
+                        return Err(format!(
+                            "{} could not switch to its read-only mode: {error}",
+                            agent.name
+                        ));
+                    }
+                },
+                None => None,
+            }
+        };
+        let access = match (&held, read_only) {
+            (Some(mode), _) => permissions(true, true, &format!("the agent's {mode} mode")),
+            (None, true) => permissions(
+                true,
+                false,
+                "This agent has no read-only mode. Its asks to change files are refused, but it can still change them without asking.",
+            ),
+            (None, false) if crate::approval::gated() => permissions(
+                false,
+                false,
+                "The agent's asks to change files are refused.",
+            ),
+            (None, false) => permissions(false, false, "The agent's asks are approved."),
+        };
+        let id = session.id().to_owned();
+        let model = session.opened.model().map(str::to_owned);
+        if let Some(model) = &model {
+            emit(RuntimeEvent::Model(model.clone()));
         }
-    };
-    let access = match (&held, read_only) {
-        (Some(mode), _) => permissions(true, true, &format!("the agent's {mode} mode")),
-        (None, true) => permissions(
-            true,
-            false,
-            "This agent has no read-only mode. Its asks to change files are refused, but it can still change them without asking.",
-        ),
-        (None, false) if crate::approval::gated() => permissions(
-            false,
-            false,
-            "The agent's asks to change files are refused.",
-        ),
-        (None, false) => permissions(false, false, "The agent's asks are approved."),
-    };
-    let id = session.id().to_owned();
-    let model = session.opened.model().map(str::to_owned);
-    if let Some(model) = &model {
-        emit(RuntimeEvent::Model(model.clone()));
+        let mut handler = AcpEvents {
+            emit: &mut *emit,
+            text: String::new(),
+            tools: BTreeMap::new(),
+            read_only,
+        };
+        let result = session
+            .prompt(
+                task,
+                Duration::from_secs(120),
+                &canceled,
+                Duration::from_secs(2),
+                &mut handler,
+            )
+            .await;
+        let text = handler.text;
+        let worked = !handler.tools.is_empty() || !text.is_empty();
+        let group_clear = session.close(Duration::from_secs(2)).await;
+        let error = match result {
+            Ok(reply) => {
+                return Ok(with(
+                    json!({"session":id,"reply":text,"model":model,"stop_reason":reply.stop_reason.as_str(),"usage":reply.usage,"group_clear":group_clear,"attempts":attempt}),
+                    access,
+                ));
+            }
+            Err(error) => error,
+        };
+        let refusal = match &error {
+            acp_client::ClientError::Refused { error, .. } => Some(saved_reason(agent, &id, error)),
+            _ => None,
+        };
+        if let Some(refusal) = &refusal
+            && refusal.transient()
+            && !worked
+            && group_clear
+            && attempt <= ACP_RETRY_PAUSES.len()
+            && !canceled()
+        {
+            let pause = ACP_RETRY_PAUSES[attempt - 1];
+            let until = Instant::now() + pause;
+            while Instant::now() < until && !canceled() {
+                tokio::time::sleep(POLL).await;
+            }
+            if !canceled() {
+                continue;
+            }
+        }
+        return Err(acp_failure(
+            agent,
+            model.as_deref(),
+            &error,
+            refusal.as_ref(),
+            cwd,
+            attempt,
+            group_clear,
+        ));
     }
-    let mut handler = AcpEvents {
-        emit,
-        text: String::new(),
-        tools: BTreeMap::new(),
-        read_only,
+}
+
+/// The pauses before each new try of a turn that failed for a temporary
+/// reason; their count is how many more tries a turn gets.
+#[cfg(not(test))]
+const ACP_RETRY_PAUSES: [Duration; 2] = [Duration::from_secs(5), Duration::from_secs(20)];
+#[cfg(test)]
+const ACP_RETRY_PAUSES: [Duration; 2] = [Duration::from_millis(10), Duration::from_millis(10)];
+
+/// The refusal `error`, with the provider's own words OpenCode saved on the
+/// failed message added to it: OpenCode's ACP server answers a failed
+/// prompt with a bare `Internal error`, and keeps the reason (`Endpoint is
+/// unavailable`, Cursor's `Update Required`) in its database.
+fn saved_reason(
+    agent: &AcpAgent,
+    session: &str,
+    error: &acp_client::wire::RpcError,
+) -> acp_client::wire::RpcError {
+    let mut error = error.clone();
+    if agent.id != "opencode" {
+        return error;
+    }
+    #[cfg(unix)]
+    {
+        let variable = |name: &str| std::env::var_os(name);
+        let database = std::env::var_os(acp_client::opencode::DATABASE_VAR)
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+            .or_else(|| {
+                acp_client::opencode::data_dir(&variable).map(|dir| dir.join("opencode.db"))
+            });
+        if let Some(saved) =
+            database.and_then(|database| coder_history::opencode::last_error(&database, session))
+        {
+            let mut data = error.data.take().unwrap_or_else(|| json!({}));
+            if let Some(object) = data.as_object_mut() {
+                object.insert("details".into(), saved);
+            }
+            error.data = Some(data);
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = session;
+    error
+}
+
+/// What a failed ACP turn tells the model that asked for it: the agent, the
+/// model it ran, what went wrong in the agent's own words, and what to do.
+fn acp_failure(
+    agent: &AcpAgent,
+    model: Option<&str>,
+    error: &acp_client::ClientError,
+    refusal: Option<&acp_client::wire::RpcError>,
+    cwd: &Path,
+    attempts: usize,
+    group_clear: bool,
+) -> String {
+    let on = model
+        .map(|model| format!(" on {model}"))
+        .unwrap_or_default();
+    let tries = if attempts > 1 {
+        format!(" It failed the same way {attempts} times.")
+    } else {
+        String::new()
     };
-    let result = session
-        .prompt(
-            task,
-            Duration::from_secs(120),
-            &canceled,
-            Duration::from_secs(2),
-            &mut handler,
-        )
-        .await;
-    let text = handler.text;
-    let group_clear = session.close(Duration::from_secs(2)).await;
-    result.map(|reply| with(json!({"session":id,"reply":text,"model":model,"stop_reason":reply.stop_reason.as_str(),"usage":reply.usage,"group_clear":group_clear}), access)).map_err(|error| format!("The agent could not finish the task: {error}.{}", still_running(group_clear)))
+    let still = still_running(group_clear);
+    let Some(refusal) = refusal else {
+        return format!("The agent could not finish the task: {error}.{still}");
+    };
+    let reason = refusal.reason();
+    if reason.to_lowercase().contains("untrusted workspace") {
+        return format!(
+            "{} does not trust {} yet, so it refused to run there. Open {} in that folder once and trust it, then try again.{still}",
+            agent.name,
+            cwd.display(),
+            agent.name
+        );
+    }
+    if refusal.needs_update() {
+        if agent.id == "cursor" {
+            return format!("{} It said: {reason}.{still}", acp_client::cursor::UPDATE);
+        }
+        return format!(
+            "{}{on} refused this version: {reason}. Update {} (or the provider its model uses), then try again.{still}",
+            agent.name, agent.name
+        );
+    }
+    if refusal.transient() {
+        let trace = refusal
+            .trace_id()
+            .map(|id| format!(" Trace ID: {id}."))
+            .unwrap_or_default();
+        return format!(
+            "{}{on} reported a temporary error: {reason}.{tries} Trying again later usually works.{trace}{still}",
+            agent.name
+        );
+    }
+    format!(
+        "The agent could not finish the task: {}{on} said: {reason} ({}).{still}",
+        agent.name, refusal.code
+    )
 }
 
 /// Refuse a Cursor delegation that has neither a credential variable nor a
@@ -897,6 +1045,38 @@ fn codex_failure_reason(ending: &supervise::Ending, error: Option<&str>, stderr:
         supervise::Ending::Failed(error) => bounded(&error.replace(['\n', '\r'], " "), 512),
         supervise::Ending::TimedOut => unreachable!(),
     }
+}
+
+/// The refusal a Codex limit's words carry: Codex's typed
+/// `usage_limit_reached` body when the reason is one, else the kind and the
+/// reset its message names. The same record Microcoder keeps in its
+/// result's `refusals` (#11466).
+fn codex_refusal(reason: &str, now: u64) -> microcoder_loop::capacity::Refusal {
+    use microcoder_loop::capacity::{Provider, Refusal, kind_of_message};
+    Refusal::codex(429, reason, now).unwrap_or_else(|| {
+        Refusal::new(
+            Provider::Codex,
+            kind_of_message(reason),
+            now,
+            coder_delegate::limit::reset_from_message(reason, now),
+        )
+    })
+}
+
+/// The error a Codex delegation that hit a limit ends with: one sentence
+/// that names the limit and its reset, says no other engine ran the task,
+/// what Codex said, and, on its own last line, the typed refusal.
+fn codex_out_of_capacity(
+    refusal: &microcoder_loop::capacity::Refusal,
+    reason: &str,
+    group_clear: bool,
+) -> String {
+    format!(
+        "Codex is out of capacity ({}), so continue without Codex. No other engine ran this task: it is back with you, to do on your own model or hand to another agent. Codex said: {reason}.{}\n{}",
+        refusal.describe(),
+        still_running(group_clear),
+        refusal.carry()
+    )
 }
 
 /// Drive Codex's native protocol without treating its executable as an ACP server.
@@ -1009,13 +1189,15 @@ async fn codex_cli(
         );
         // A usage or rate limit says so first, in one sentence, so the
         // chat carries on without Codex and the host can book the limit.
-        let limited = if coder_delegate::limit::says_limited(&reason) {
-            "Codex is out of capacity, so continue without Codex. "
-        } else {
-            ""
-        };
+        if coder_delegate::limit::says_limited(&reason) {
+            return Err(codex_out_of_capacity(
+                &codex_refusal(&reason, coder_delegate::limit::now()),
+                &reason,
+                stopped.group_clear,
+            ));
+        }
         return Err(format!(
-            "{limited}Codex could not finish the task: {reason}.{}",
+            "Codex could not finish the task: {reason}.{}",
             still_running(stopped.group_clear)
         ));
     }
@@ -2437,9 +2619,41 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         .await
         .unwrap_err();
         assert!(
-            error.starts_with("Codex is out of capacity, so continue without Codex."),
+            error.starts_with("Codex is out of capacity (a usage limit, "),
             "{error}"
         );
+        assert!(error.contains("No other engine ran this task"), "{error}");
+        let refusal = microcoder_loop::capacity::Refusal::carried(&error).unwrap();
+        assert_eq!(refusal.provider, microcoder_loop::capacity::Provider::Codex);
+        assert_eq!(refusal.kind, microcoder_loop::capacity::Kind::UsageLimit);
+    }
+
+    #[test]
+    fn a_codex_limit_carries_its_kind_and_reset_in_microcoders_shape() {
+        // 2026-10-12T21:00:00Z, the demo's run.
+        let now = 1_791_838_800;
+        let said =
+            "You've hit your usage limit. Upgrade to Pro or try again at Oct 17th, 2026 10:58 PM.";
+        let refusal = codex_refusal(said, now);
+        assert_eq!(refusal.kind, microcoder_loop::capacity::Kind::UsageLimit);
+        assert_eq!(
+            refusal
+                .resets_at
+                .map(microcoder_loop::capacity::utc)
+                .as_deref(),
+            Some("2026-10-17 22:58 UTC")
+        );
+        let error = codex_out_of_capacity(&refusal, said, true);
+        assert!(error.starts_with(
+            "Codex is out of capacity (a usage limit, until 2026-10-17 22:58 UTC), so continue without Codex."
+        ), "{error}");
+        assert_eq!(
+            microcoder_loop::capacity::Refusal::carried(&error),
+            Some(refusal)
+        );
+        // Codex's typed body keeps its plan, as Microcoder's record does.
+        let body = r#"{"error":{"type":"usage_limit_reached","message":"The usage limit has been reached","plan_type":"pro","resets_at":1791050823,"eligible_promo":null,"limit_window_minutes":10080,"resets_in_seconds":478613}}"#;
+        assert_eq!(codex_refusal(body, now).plan.as_deref(), Some("pro"));
     }
 
     #[test]
@@ -2714,6 +2928,129 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         let sent = acp_client::replay::received(dir.path());
         assert_eq!(sent[1]["method"], "session/new");
         assert_eq!(sent[2]["method"], "session/prompt");
+    }
+
+    /// The recorded Grok turn with its prompt refused by Devin's retryable
+    /// internal error; with `once`, only the first process refuses.
+    #[cfg(unix)]
+    fn refusing(dir: &Path, once: bool) -> PathBuf {
+        let mut blocks = acp_client::replay::blocks(acp_client::replay::GROK_TURN);
+        let completed = std::mem::replace(
+            &mut blocks[2],
+            vec![
+                json!({"jsonrpc":"2.0","id":3,"error":{"code":-32013,"message":"Permission denied: an internal error occurred (trace ID: 4843f770cc)","data":{"cognition.ai/errorKind":"internal","cognition.ai/retryable":true}}}),
+            ],
+        );
+        blocks.push(completed);
+        let program = acp_client::replay::script(dir, &blocks);
+        if once {
+            let script = std::fs::read_to_string(&program).unwrap().replace(
+                "if [ -f \"$dir/$n.jsonl\" ]; then cat \"$dir/$n.jsonl\"; fi",
+                "if [ $n = 3 ] && [ -f \"$dir/refused\" ]; then cat \"$dir/4.jsonl\"; elif [ $n = 3 ]; then touch \"$dir/refused\"; cat \"$dir/3.jsonl\"; elif [ -f \"$dir/$n.jsonl\" ]; then cat \"$dir/$n.jsonl\"; fi",
+            );
+            std::fs::write(&program, script).unwrap();
+        }
+        program
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_temporary_refusal_is_tried_again_and_then_named_with_its_trace() {
+        let dir = tempfile::tempdir().unwrap();
+        let program = refusing(dir.path(), false);
+        let error = acp(
+            &agent(program),
+            "Review this scratch task.",
+            dir.path(),
+            None,
+            &Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            error.starts_with("Reviewer on grok-4.6 reported a temporary error: Permission denied"),
+            "{error}"
+        );
+        assert!(error.contains("It failed the same way 3 times."), "{error}");
+        assert!(error.contains("Trace ID: 4843f770cc."), "{error}");
+        let prompts = acp_client::replay::received(dir.path())
+            .iter()
+            .filter(|frame| frame["method"] == "session/prompt")
+            .count();
+        assert_eq!(prompts, 3);
+
+        let dir = tempfile::tempdir().unwrap();
+        let program = refusing(dir.path(), true);
+        let result = acp(
+            &agent(program),
+            "Review this scratch task.",
+            dir.path(),
+            None,
+            &Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["reply"], "done");
+        assert_eq!(result["attempts"], 2);
+    }
+
+    #[test]
+    fn an_update_required_refusal_names_the_update() {
+        let mut cursor = agent(PathBuf::from("cursor-agent"));
+        cursor.id = "cursor".into();
+        cursor.name = "Cursor".into();
+        let refusal = acp_client::wire::RpcError {
+            code: acp_client::wire::INTERNAL_ERROR,
+            message: "Internal error".into(),
+            data: Some(
+                json!({"details":{"name":"UnknownError","data":{"message":"{\"message\":\"Update Required Your version of Cursor is no longer supported. Please update to the latest version at cursor.com/downloads to continue.\",\"type\":\"cursor_error\",\"code\":\"cursor_stream_error\"}"}}}),
+            ),
+        };
+        let error = acp_client::ClientError::Refused {
+            method: "session/prompt".into(),
+            error: refusal.clone(),
+        };
+        let said = acp_failure(
+            &cursor,
+            None,
+            &error,
+            Some(&refusal),
+            Path::new("/w"),
+            1,
+            true,
+        );
+        assert!(said.starts_with(acp_client::cursor::UPDATE), "{said}");
+        assert!(said.contains("Update Required"), "{said}");
+        let mut opencode = cursor.clone();
+        opencode.id = "opencode".into();
+        opencode.name = "OpenCode".into();
+        let said = acp_failure(
+            &opencode,
+            Some("cursor/composer-2.5"),
+            &error,
+            Some(&refusal),
+            Path::new("/w"),
+            1,
+            true,
+        );
+        assert!(
+            said.starts_with("OpenCode on cursor/composer-2.5 refused this version: Internal error: Update Required"),
+            "{said}"
+        );
+        let untrusted =
+            acp_client::wire::RpcError::new(-32000, "Refusing to run in an untrusted workspace");
+        let said = acp_failure(
+            &opencode,
+            None,
+            &error,
+            Some(&untrusted),
+            Path::new("/w"),
+            1,
+            true,
+        );
+        assert!(said.starts_with("OpenCode does not trust /w yet"), "{said}");
     }
 
     #[tokio::test]

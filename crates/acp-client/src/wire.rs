@@ -99,6 +99,116 @@ impl RpcError {
         let message = self.message.to_lowercase();
         self.code == 429 || PHRASES.iter().any(|phrase| message.contains(phrase))
     }
+
+    /// The refusal's message with whatever its `data` adds: a nested
+    /// `message`, `error`, or `details` string the agent put there, such as
+    /// the provider's own words behind a bare `Internal error`. A JSON
+    /// string inside is read for its `message`. Each part appears once.
+    #[must_use]
+    pub fn reason(&self) -> String {
+        let mut parts = vec![self.message.trim().to_owned()];
+        if let Some(data) = &self.data {
+            collect_messages(data, 0, &mut parts);
+        }
+        let mut kept: Vec<String> = Vec::new();
+        for part in parts {
+            let part = part.trim().trim_end_matches('.').to_owned();
+            if part.is_empty() || kept.iter().any(|kept| kept.contains(&part)) {
+                continue;
+            }
+            kept.retain(|kept| !part.contains(kept.as_str()));
+            kept.push(part);
+        }
+        kept.join(": ")
+    }
+
+    /// Whether the agent marked this a temporary failure worth trying
+    /// again: `retryable: true` in `data` or its `_meta`, under that name or
+    /// Devin's `cognition.ai/retryable`, or a provider that said its
+    /// endpoint is unavailable or overloaded. A usage or rate limit is
+    /// never temporary in this sense: it holds until its reset.
+    #[must_use]
+    pub fn transient(&self) -> bool {
+        if self.limited() {
+            return false;
+        }
+        let marked = |value: &Value| {
+            ["retryable", "cognition.ai/retryable"]
+                .iter()
+                .any(|key| value.get(key).and_then(Value::as_bool) == Some(true))
+        };
+        let flagged = self
+            .data
+            .as_ref()
+            .is_some_and(|data| marked(data) || data.get("_meta").is_some_and(marked));
+        const PHRASES: &[&str] = &[
+            "endpoint is unavailable",
+            "temporarily unavailable",
+            "service unavailable",
+            "overloaded",
+            "status: 502",
+            "status: 503",
+            "status: 504",
+            "bad gateway",
+            "gateway timeout",
+        ];
+        let reason = self.reason().to_lowercase();
+        flagged || PHRASES.iter().any(|phrase| reason.contains(phrase))
+    }
+
+    /// Whether the agent, or the service behind it, refused this version of
+    /// its program: Cursor's `Update Required. Your version of Cursor is no
+    /// longer supported`.
+    #[must_use]
+    pub fn needs_update(&self) -> bool {
+        let reason = self.reason().to_lowercase();
+        reason.contains("update required") || reason.contains("version of cursor is no longer")
+    }
+
+    /// The trace ID the agent gave for the failure: `data`'s `traceId` or
+    /// `cognition.ai/traceId`, else `trace ID: X` in its message.
+    #[must_use]
+    pub fn trace_id(&self) -> Option<String> {
+        let data = self.data.as_ref();
+        for key in ["traceId", "trace_id", "cognition.ai/traceId"] {
+            if let Some(id) = data
+                .and_then(|data| data.get(key).or_else(|| data.get("_meta")?.get(key)))
+                .and_then(Value::as_str)
+            {
+                return Some(id.to_owned());
+            }
+        }
+        let reason = self.reason();
+        let lower = reason.to_lowercase();
+        let start = lower.find("trace id:")? + "trace id:".len();
+        let id: String = reason[start..]
+            .trim_start()
+            .chars()
+            .take_while(char::is_ascii_alphanumeric)
+            .collect();
+        (!id.is_empty()).then_some(id)
+    }
+}
+
+/// The message strings `value` carries, at most six levels down.
+fn collect_messages(value: &Value, depth: usize, into: &mut Vec<String>) {
+    if depth > 6 {
+        return;
+    }
+    match value {
+        Value::String(text) => match serde_json::from_str::<Value>(text) {
+            Ok(inner @ Value::Object(_)) => collect_messages(&inner, depth + 1, into),
+            _ => into.push(text.clone()),
+        },
+        Value::Object(map) => {
+            for key in ["message", "error", "details", "detail", "data"] {
+                if let Some(inner) = map.get(key) {
+                    collect_messages(inner, depth + 1, into);
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 impl std::fmt::Display for RpcError {
@@ -850,6 +960,53 @@ mod tests {
         assert!(!error.retryable());
         error.data = Some(json!({"retryable": true}));
         assert!(error.retryable());
+    }
+
+    #[test]
+    fn a_bare_internal_error_carries_what_its_data_says() {
+        let mut error = RpcError::new(INTERNAL_ERROR, "Internal error");
+        assert_eq!(error.reason(), "Internal error");
+        error.data = Some(
+            json!({"errorName":"UnknownError","message":"{\"message\":\"Update Required Your version of Cursor is no longer supported. Please update to the latest version at cursor.com/downloads to continue.\",\"type\":\"cursor_error\",\"code\":\"cursor_stream_error\"}"}),
+        );
+        assert!(
+            error
+                .reason()
+                .starts_with("Internal error: Update Required Your version of Cursor")
+        );
+        assert!(error.needs_update());
+        assert!(!error.transient());
+        // A message already in the top line is not repeated.
+        let error = RpcError {
+            code: INTERNAL_ERROR,
+            message: "Internal error: Upstream request failed: Endpoint is unavailable.".into(),
+            data: Some(json!({"message": "Upstream request failed: Endpoint is unavailable."})),
+        };
+        assert_eq!(
+            error.reason(),
+            "Internal error: Upstream request failed: Endpoint is unavailable"
+        );
+        assert!(error.transient());
+    }
+
+    #[test]
+    fn devins_retryable_internal_error_is_temporary_and_names_its_trace() {
+        let error = RpcError {
+            code: -32013,
+            message: "Permission denied: an internal error occurred (trace ID: 4843f770cc4441cc)"
+                .into(),
+            data: Some(json!({"cognition.ai/errorKind":"internal","cognition.ai/retryable":true})),
+        };
+        assert!(error.transient());
+        assert!(!error.retryable());
+        assert_eq!(error.trace_id().as_deref(), Some("4843f770cc4441cc"));
+        // A limit is never retried at once, even when marked retryable.
+        let limited = RpcError {
+            code: 429,
+            message: "rate limit".into(),
+            data: Some(json!({"retryable": true})),
+        };
+        assert!(!limited.transient());
     }
 
     #[test]

@@ -31,20 +31,10 @@ pub fn default_dir() -> Option<PathBuf> {
 /// reset holds for the provider's unknown-reset hold.
 #[must_use]
 pub fn from_limit(provider: Provider, limit: &Limit, now: u64) -> Refusal {
-    let message = limit.message.to_lowercase();
-    let usage = limit.window.is_some()
-        || [
-            "usage limit",
-            "session limit",
-            "weekly limit",
-            "hit your limit",
-        ]
-        .iter()
-        .any(|phrase| message.contains(phrase));
-    let kind = if usage {
+    let kind = if limit.window.is_some() {
         Kind::UsageLimit
     } else {
-        Kind::RateLimit
+        kind_of_message(&limit.message)
     };
     let mut refusal = Refusal::new(provider, kind, now, limit.resets_at);
     refusal.window_minutes = limit.window.as_deref().and_then(window_minutes);
@@ -59,6 +49,10 @@ pub fn from_limit(provider: Provider, limit: &Limit, now: u64) -> Refusal {
 /// quote a limit message.
 #[must_use]
 pub fn detect(provider: Provider, output: &str, now: u64) -> Option<Refusal> {
+    // A delegation that ended on a limit carries the typed record itself.
+    if let Some(refusal) = Refusal::carried(output).filter(|refusal| refusal.provider == provider) {
+        return Some(refusal);
+    }
     for line in output.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -177,6 +171,22 @@ mod tests {
 
     fn none(_: Provider) -> Option<String> {
         None
+    }
+
+    /// A delegation error that carries its typed refusal is booked as
+    /// that record, plan and all, not re-read from its words (#11466).
+    #[test]
+    fn a_carried_refusal_is_read_as_is() {
+        let mut refusal = Refusal::new(Provider::Codex, Kind::UsageLimit, NOW, Some(RESET));
+        refusal.plan = Some("pro".into());
+        let error = format!(
+            "Codex is out of capacity ({}), so continue without Codex.\n{}",
+            refusal.describe(),
+            refusal.carry()
+        );
+        assert_eq!(detect(Provider::Codex, &error, NOW + 5), Some(refusal));
+        // Another provider's record is not this provider's limit.
+        assert_eq!(detect(Provider::Devin, "refusal: {}", NOW), None);
     }
 
     /// Claude Code's recorded limit messages, in each form it has printed,
