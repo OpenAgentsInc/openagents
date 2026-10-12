@@ -1,0 +1,79 @@
+{
+  "source": "recorded solver run 11348-1791752641-bdca19517e4aa9ae, drive() before d1c6e482eb; summary.json trimmed to the fields the replay reads",
+  "note": "Two hand-backs to the Briefer, then out of rounds.",
+  "conforms": true,
+  "summary": {
+    "issue": 11348,
+    "repository": "OpenAgentsInc/openagents",
+    "outcome": {
+      "status": "failed",
+      "reason": "The required check check:openagents-mobile failed after 2 hand-backs."
+    },
+    "solver": {
+      "hands": [
+        {
+          "hand": "intaker",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "briefer",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 0,
+          "verdict": "VERDICT: briefer: The `run_check` tool isn't available to the Tester, and the briefing lists no checks. Please provide the tool and the check list. A likely list is `cargo test --manifest-path crates/openagents-mobile/Cargo.toml`, `cargo test -p rust-native layout`, and `cargo fmt --check`.",
+          "error": null
+        },
+        {
+          "hand": "briefer",
+          "round": 1,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 1,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 1,
+          "verdict": "VERDICT: briefer: the Tester has no `run_check` tool or shell in this session, so none of the briefing's checks could run. Provide `run_check` access, or the exact commands for the touched crates (`cargo test --manifest-path crates/openagents-mobile/Cargo.toml`, the `rust-native` layout tests, and `cargo fmt --check`).",
+          "error": null
+        },
+        {
+          "hand": "briefer",
+          "round": 2,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 2,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 2,
+          "verdict": "VERDICT: briefer: `run_check` isn't available to the Tester and the briefing lists no checks. Give the Tester the `run_check` tool and the checks to run. By the velocity memory these would be the `openagents-mobile` and `rust-native` tests (with `--manifest-path` for mobile) plus fmt.",
+          "error": null
+        }
+      ],
+      "rounds": 2,
+      "pull_request": null
+    }
+  }
+}

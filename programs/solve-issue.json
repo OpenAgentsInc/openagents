@@ -3,7 +3,7 @@
     "v": 1,
     "requires": [],
     "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/solve-issue",
-    "summary": "Takes one issue from intake to a pull request: brief, code, check, land.",
+    "summary": "Takes one issue from intake to a pull request: brief, then up to three rounds of code, check, and diagnosis, then land.",
     "input": {
       "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
       "size": 17,
@@ -17,9 +17,9 @@
     "steps": [
       {
         "name": "intake",
-        "kind": "query",
+        "kind": "delegate",
         "target": {
-          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/request",
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/solver-intaker",
           "artifact": {
             "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
             "size": 17,
@@ -40,10 +40,10 @@
         "on_error": "stop"
       },
       {
-        "name": "brief",
-        "kind": "delegate",
+        "name": "plan",
+        "kind": "invoke",
         "target": {
-          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/brief",
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/code-brief",
           "artifact": {
             "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
             "size": 17,
@@ -54,8 +54,16 @@
           "intake"
         ],
         "input": {
-          "from": "input",
-          "pointer": ""
+          "object": {
+            "request": {
+              "from": "input",
+              "pointer": ""
+            },
+            "intake": {
+              "from": "step:intake",
+              "pointer": "/value"
+            }
+          }
         },
         "output": {
           "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
@@ -63,13 +71,61 @@
           "media_type": "application/schema+json"
         },
         "bounds": {},
-        "on_error": "stop"
+        "on_error": "stop",
+        "when": {
+          "source": {
+            "from": "step:intake",
+            "pointer": "/value/status"
+          },
+          "equals": "ready"
+        }
       },
       {
-        "name": "code",
+        "name": "brief",
         "kind": "delegate",
         "target": {
-          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/code",
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/solver-briefer",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "plan"
+        ],
+        "input": {
+          "object": {
+            "request": {
+              "from": "input",
+              "pointer": ""
+            },
+            "plan": {
+              "from": "step:plan",
+              "pointer": "/value"
+            }
+          }
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop",
+        "when": {
+          "source": {
+            "from": "step:plan",
+            "pointer": "/value/status"
+          },
+          "equals": "briefed"
+        }
+      },
+      {
+        "name": "code_0",
+        "kind": "delegate",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/solver-coder",
           "artifact": {
             "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
             "size": 17,
@@ -80,8 +136,12 @@
           "brief"
         ],
         "input": {
-          "from": "input",
-          "pointer": ""
+          "object": {
+            "brief": {
+              "from": "step:brief",
+              "pointer": "/value"
+            }
+          }
         },
         "output": {
           "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
@@ -89,13 +149,20 @@
           "media_type": "application/schema+json"
         },
         "bounds": {},
-        "on_error": "stop"
+        "on_error": "stop",
+        "when": {
+          "source": {
+            "from": "step:brief",
+            "pointer": "/value"
+          },
+          "present": true
+        }
       },
       {
-        "name": "check",
+        "name": "check_0",
         "kind": "check",
         "target": {
-          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/check",
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/solver-checks",
           "artifact": {
             "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
             "size": 17,
@@ -103,11 +170,491 @@
           }
         },
         "after": [
-          "code"
+          "code_0"
         ],
         "input": {
-          "from": "input",
-          "pointer": ""
+          "object": {
+            "brief": {
+              "from": "step:brief",
+              "pointer": "/value"
+            },
+            "change": {
+              "from": "step:code_0",
+              "pointer": "/value"
+            }
+          }
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop",
+        "when": {
+          "source": {
+            "from": "step:code_0",
+            "pointer": "/value/status"
+          },
+          "equals": "done"
+        }
+      },
+      {
+        "name": "diagnose_0",
+        "kind": "delegate",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/solver-tester",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "check_0"
+        ],
+        "input": {
+          "object": {
+            "check": {
+              "from": "step:check_0",
+              "pointer": "/value"
+            },
+            "change": {
+              "from": "step:code_0",
+              "pointer": "/value"
+            }
+          }
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop",
+        "when": {
+          "source": {
+            "from": "step:check_0",
+            "pointer": "/value/status"
+          },
+          "equals": "failed"
+        }
+      },
+      {
+        "name": "rebrief_1",
+        "kind": "delegate",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/solver-briefer",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "diagnose_0"
+        ],
+        "input": {
+          "object": {
+            "brief": {
+              "from": "step:brief",
+              "pointer": "/value"
+            },
+            "notes": {
+              "from": "step:diagnose_0",
+              "pointer": "/value"
+            }
+          }
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop",
+        "when": {
+          "source": {
+            "from": "step:diagnose_0",
+            "pointer": "/value/route"
+          },
+          "equals": "briefer"
+        }
+      },
+      {
+        "name": "code_1",
+        "kind": "delegate",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/solver-coder",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "diagnose_0",
+          "rebrief_1"
+        ],
+        "input": {
+          "object": {
+            "brief": {
+              "from": "step:brief",
+              "pointer": "/value"
+            },
+            "rebrief": {
+              "from": "step:rebrief_1",
+              "pointer": ""
+            },
+            "notes": {
+              "from": "step:diagnose_0",
+              "pointer": "/value"
+            }
+          }
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop",
+        "when": {
+          "source": {
+            "from": "step:diagnose_0",
+            "pointer": "/value/again"
+          },
+          "equals": true
+        }
+      },
+      {
+        "name": "check_1",
+        "kind": "check",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/solver-checks",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "code_1"
+        ],
+        "input": {
+          "object": {
+            "brief": {
+              "from": "step:brief",
+              "pointer": "/value"
+            },
+            "change": {
+              "from": "step:code_1",
+              "pointer": "/value"
+            }
+          }
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop",
+        "when": {
+          "source": {
+            "from": "step:code_1",
+            "pointer": "/value/status"
+          },
+          "equals": "done"
+        }
+      },
+      {
+        "name": "diagnose_1",
+        "kind": "delegate",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/solver-tester",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "check_1"
+        ],
+        "input": {
+          "object": {
+            "check": {
+              "from": "step:check_1",
+              "pointer": "/value"
+            },
+            "change": {
+              "from": "step:code_1",
+              "pointer": "/value"
+            }
+          }
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop",
+        "when": {
+          "source": {
+            "from": "step:check_1",
+            "pointer": "/value/status"
+          },
+          "equals": "failed"
+        }
+      },
+      {
+        "name": "rebrief_2",
+        "kind": "delegate",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/solver-briefer",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "diagnose_1"
+        ],
+        "input": {
+          "object": {
+            "brief": {
+              "from": "step:brief",
+              "pointer": "/value"
+            },
+            "notes": {
+              "from": "step:diagnose_1",
+              "pointer": "/value"
+            }
+          }
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop",
+        "when": {
+          "source": {
+            "from": "step:diagnose_1",
+            "pointer": "/value/route"
+          },
+          "equals": "briefer"
+        }
+      },
+      {
+        "name": "code_2",
+        "kind": "delegate",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/solver-coder",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "diagnose_1",
+          "rebrief_2"
+        ],
+        "input": {
+          "object": {
+            "brief": {
+              "from": "step:brief",
+              "pointer": "/value"
+            },
+            "rebrief": {
+              "from": "step:rebrief_2",
+              "pointer": ""
+            },
+            "notes": {
+              "from": "step:diagnose_1",
+              "pointer": "/value"
+            }
+          }
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop",
+        "when": {
+          "source": {
+            "from": "step:diagnose_1",
+            "pointer": "/value/again"
+          },
+          "equals": true
+        }
+      },
+      {
+        "name": "check_2",
+        "kind": "check",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/solver-checks",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "code_2"
+        ],
+        "input": {
+          "object": {
+            "brief": {
+              "from": "step:brief",
+              "pointer": "/value"
+            },
+            "change": {
+              "from": "step:code_2",
+              "pointer": "/value"
+            }
+          }
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop",
+        "when": {
+          "source": {
+            "from": "step:code_2",
+            "pointer": "/value/status"
+          },
+          "equals": "done"
+        }
+      },
+      {
+        "name": "diagnose_2",
+        "kind": "delegate",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/solver-tester",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "check_2"
+        ],
+        "input": {
+          "object": {
+            "check": {
+              "from": "step:check_2",
+              "pointer": "/value"
+            },
+            "change": {
+              "from": "step:code_2",
+              "pointer": "/value"
+            }
+          }
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop",
+        "when": {
+          "source": {
+            "from": "step:check_2",
+            "pointer": "/value/status"
+          },
+          "equals": "failed"
+        }
+      },
+      {
+        "name": "verdict",
+        "kind": "check",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/solver-verdict",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "diagnose_2"
+        ],
+        "input": {
+          "object": {
+            "intake": {
+              "from": "step:intake",
+              "pointer": ""
+            },
+            "plan": {
+              "from": "step:plan",
+              "pointer": ""
+            },
+            "rounds": {
+              "array": [
+                {
+                  "object": {
+                    "code": {
+                      "from": "step:code_0",
+                      "pointer": ""
+                    },
+                    "check": {
+                      "from": "step:check_0",
+                      "pointer": ""
+                    },
+                    "diagnose": {
+                      "from": "step:diagnose_0",
+                      "pointer": ""
+                    }
+                  }
+                },
+                {
+                  "object": {
+                    "code": {
+                      "from": "step:code_1",
+                      "pointer": ""
+                    },
+                    "check": {
+                      "from": "step:check_1",
+                      "pointer": ""
+                    },
+                    "diagnose": {
+                      "from": "step:diagnose_1",
+                      "pointer": ""
+                    }
+                  }
+                },
+                {
+                  "object": {
+                    "code": {
+                      "from": "step:code_2",
+                      "pointer": ""
+                    },
+                    "check": {
+                      "from": "step:check_2",
+                      "pointer": ""
+                    },
+                    "diagnose": {
+                      "from": "step:diagnose_2",
+                      "pointer": ""
+                    }
+                  }
+                }
+              ]
+            }
+          }
         },
         "output": {
           "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
@@ -119,9 +666,9 @@
       },
       {
         "name": "land",
-        "kind": "delegate",
+        "kind": "invoke",
         "target": {
-          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/land",
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/open-pull-request",
           "artifact": {
             "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
             "size": 17,
@@ -129,11 +676,15 @@
           }
         },
         "after": [
-          "check"
+          "verdict"
         ],
         "input": {
-          "from": "input",
-          "pointer": ""
+          "object": {
+            "verdict": {
+              "from": "step:verdict",
+              "pointer": "/value"
+            }
+          }
         },
         "output": {
           "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
@@ -141,7 +692,14 @@
           "media_type": "application/schema+json"
         },
         "bounds": {},
-        "on_error": "stop"
+        "on_error": "stop",
+        "when": {
+          "source": {
+            "from": "step:verdict",
+            "pointer": "/value/status"
+          },
+          "equals": "passed"
+        }
       },
       {
         "name": "done",
@@ -158,8 +716,16 @@
           "land"
         ],
         "input": {
-          "from": "input",
-          "pointer": ""
+          "object": {
+            "verdict": {
+              "from": "step:verdict",
+              "pointer": "/value"
+            },
+            "land": {
+              "from": "step:land",
+              "pointer": "/value"
+            }
+          }
         },
         "output": {
           "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
@@ -167,11 +733,18 @@
           "media_type": "application/schema+json"
         },
         "bounds": {},
-        "on_error": "stop"
+        "on_error": "stop",
+        "when": {
+          "source": {
+            "from": "step:verdict",
+            "pointer": "/value/status"
+          },
+          "equals": "passed"
+        }
       }
     ],
     "result": {
-      "from": "step:done",
+      "from": "step:verdict",
       "pointer": "/value"
     },
     "bounds": {}
@@ -183,48 +756,115 @@
       "repository": "string"
     },
     "outputs": {
-      "pull_request": "string"
+      "status": "string",
+      "rounds": "integer"
     },
     "steps": {
       "intake": {
-        "source": "request",
+        "executor": "solver-intaker",
         "bounds": {
-          "max_results": 1,
-          "on_overflow": "refuse"
+          "isolation": "worktree",
+          "minutes": 10
         }
       },
+      "plan": {
+        "operation": "code-brief",
+        "requires": [
+          "intake"
+        ]
+      },
       "brief": {
+        "executor": "solver-briefer",
+        "requires": [
+          "plan"
+        ],
+        "bounds": {
+          "isolation": "worktree",
+          "minutes": 15
+        }
+      },
+      "code_0": {
+        "executor": "solver-coder",
+        "bounds": {
+          "isolation": "worktree",
+          "minutes": 60
+        }
+      },
+      "check_0": {
+        "bounds": {
+          "refuse_on": "gate_not_met",
+          "max_tests": 16
+        }
+      },
+      "diagnose_0": {
+        "executor": "solver-tester",
+        "bounds": {
+          "isolation": "worktree",
+          "minutes": 30
+        }
+      },
+      "rebrief_1": {
         "executor": "solver-briefer",
         "bounds": {
           "isolation": "worktree",
           "minutes": 15
         }
       },
-      "code": {
+      "code_1": {
         "executor": "solver-coder",
-        "requires": [
-          "brief"
-        ],
         "bounds": {
           "isolation": "worktree",
           "minutes": 60
         }
       },
-      "check": {
+      "check_1": {
         "bounds": {
           "refuse_on": "gate_not_met",
           "max_tests": 16
         }
       },
-      "land": {
+      "diagnose_1": {
         "executor": "solver-tester",
-        "requires": [
-          "code"
-        ],
         "bounds": {
           "isolation": "worktree",
           "minutes": 30
         }
+      },
+      "rebrief_2": {
+        "executor": "solver-briefer",
+        "bounds": {
+          "isolation": "worktree",
+          "minutes": 15
+        }
+      },
+      "code_2": {
+        "executor": "solver-coder",
+        "bounds": {
+          "isolation": "worktree",
+          "minutes": 60
+        }
+      },
+      "check_2": {
+        "bounds": {
+          "refuse_on": "gate_not_met",
+          "max_tests": 16
+        }
+      },
+      "diagnose_2": {
+        "executor": "solver-tester",
+        "bounds": {
+          "isolation": "worktree",
+          "minutes": 30
+        }
+      },
+      "verdict": {
+        "bounds": {}
+      },
+      "land": {
+        "operation": "open-pull-request",
+        "requires": [
+          "verdict"
+        ]
       },
       "done": {
         "question": "openagents.completion.v1",

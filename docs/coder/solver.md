@@ -64,14 +64,40 @@ the worktree the Coder changed. `summary.json` carries `issue-run`'s summary
 plus a `solver` object that names each hand's time, tokens, cost and
 verdict, the rounds, and the pull request URL when one was opened.
 
-`coder solver conform --run DIR [--run DIR ...]` judges recorded runs
-against `programs/solve-issue.json`: it maps each hand onto the program's
-step (`intaker` to `intake`, `briefer` to `brief`, `coder` to `code`, a
-Tester turn to `check`, the last Tester turn of a landed run to `land`, and
-a landed run ends in `done`), unrolls the program's code and check pair per
-coding round, and prints one JSON line per run with `recorded`, `program`,
-and `conforms`. It exits with an error when any run does not conform. The
-program replaces the hand-coded loop only when every recorded run conforms.
+## The solver as a program
+
+`programs/solve-issue.json` is the same loop as a NIP-PRG program (#11392).
+Each hand is a `delegate` step (`solver-intaker`, `solver-briefer`,
+`solver-coder`, `solver-tester`), the code brief and the pull request are
+`invoke` steps (`code-brief`, `open-pull-request`), the harness checks and
+the verdict are `check` steps, and the done judgment is a `decide` step on
+`openagents.completion.v1` that writes its answers at `done$answers`. The
+hand-backs are unrolled, as NIP-PRG asks of bounded repair: up to three
+rounds of `code_N`, `check_N` and `diagnose_N`, each guarded by `when` on the
+step before (a round's check failed, the Tester's route is `briefer` for a
+`rebrief_N`, another round is allowed unless the diagnosis repeats). Two
+hand-backs is `--rounds`' default; a run with more rounds is a different
+program.
+
+`crates/coder-new/src/solver/host.rs` interprets any such document: steps in
+array order, `after` blocking on a failed dependency, `when` recording
+`skipped`, bindings into step envelopes, the binding's `requires`, and the
+`<name>$answers` sidecar. It refuses `each`, retries, and step kinds it does
+not dispatch rather than skipping them. Effects go through a trait, so a
+replay and a live host share the graph.
+
+`coder solver conform --run DIR [--run DIR ...] [--pin sha256:...]` replays
+recorded runs through the pinned program: each delegate step takes the next
+recorded hand, a check fails when the recording's next hand is a Tester, and
+the program's own verdict settles the outcome. A run conforms when the
+program asked for exactly the recorded hands and came to the same rounds and
+outcome; one JSON line per run, and an error when any run does not. The
+corpus in `crates/coder-new/tests/solver-corpus` holds trimmed recordings of
+real runs and constructed cases for paths no recording covers yet. Runs
+recorded before the harness ran checks first carry a Tester turn after
+passing checks and do not conform; that is the older loop, not this one.
+The hand-coded `drive()` stays the reference until live runs through the
+host match it.
 
 In the terminal, the `solver` mode's conversation takes an issue number or
 `owner/repo#N`; anything else gets the Intaker's question back.

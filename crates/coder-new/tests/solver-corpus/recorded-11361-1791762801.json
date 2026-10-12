@@ -1,0 +1,49 @@
+{
+  "source": "recorded solver run 11361-1791762801-57a624c5d269b776, drive() at or after d1c6e482eb (harness checks first); summary.json trimmed to the fields the replay reads",
+  "note": "The Coder stops with an error in round 1.",
+  "conforms": true,
+  "summary": {
+    "issue": 11361,
+    "repository": "OpenAgentsInc/openagents",
+    "outcome": {
+      "status": "failed",
+      "reason": "The Coder stopped: You've hit your session limit \u00b7 resets 11:10pm (America/Chicago)"
+    },
+    "solver": {
+      "hands": [
+        {
+          "hand": "intaker",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "briefer",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 0,
+          "verdict": "",
+          "error": "You've hit your session limit \u00b7 resets 11:10pm (America/Chicago)"
+        },
+        {
+          "hand": "coder",
+          "round": 1,
+          "verdict": null,
+          "error": "You've hit your session limit \u00b7 resets 11:10pm (America/Chicago)"
+        }
+      ],
+      "rounds": 1,
+      "pull_request": null
+    }
+  }
+}

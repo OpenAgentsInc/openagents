@@ -1,0 +1,55 @@
+{
+  "source": "constructed from drive()'s control flow for a path no recording covers yet",
+  "note": "The same checks fail twice with the same diagnosis, so the run stops before its rounds run out.",
+  "conforms": true,
+  "summary": {
+    "issue": 1,
+    "repository": "OpenAgentsInc/openagents",
+    "outcome": {
+      "status": "failed",
+      "reason": "The same checks (test:x) failed twice with the same diagnosis, so another round would repeat it: x"
+    },
+    "solver": {
+      "hands": [
+        {
+          "hand": "intaker",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "briefer",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 0,
+          "verdict": "VERDICT: coder: x",
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 1,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 1,
+          "verdict": "VERDICT: coder: x",
+          "error": null
+        }
+      ],
+      "rounds": 1,
+      "pull_request": null
+    }
+  }
+}

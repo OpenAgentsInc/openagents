@@ -1,0 +1,37 @@
+{
+  "source": "constructed from drive()'s control flow for a path no recording covers yet",
+  "note": "The harness checks pass on the first round: no Tester, a pull request.",
+  "conforms": true,
+  "summary": {
+    "issue": 1,
+    "repository": "OpenAgentsInc/openagents",
+    "outcome": {
+      "status": "passed",
+      "reason": null
+    },
+    "solver": {
+      "hands": [
+        {
+          "hand": "intaker",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "briefer",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        }
+      ],
+      "rounds": 0,
+      "pull_request": "https://github.com/OpenAgentsInc/openagents/pull/1"
+    }
+  }
+}

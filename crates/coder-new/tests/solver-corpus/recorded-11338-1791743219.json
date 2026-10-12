@@ -1,0 +1,73 @@
+{
+  "source": "recorded solver run 11338-1791743219-238cb5f76467d0f5, drive() before d1c6e482eb; summary.json trimmed to the fields the replay reads",
+  "note": "Hand-backs to the Coder, then to the Briefer, then out of rounds.",
+  "conforms": true,
+  "summary": {
+    "issue": 11338,
+    "repository": "OpenAgentsInc/openagents",
+    "outcome": {
+      "status": "failed",
+      "reason": "The required check check:verse-pbr failed after 2 hand-backs."
+    },
+    "solver": {
+      "hands": [
+        {
+          "hand": "intaker",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "briefer",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 0,
+          "verdict": "VERDICT: pass",
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 1,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 1,
+          "verdict": "VERDICT: briefer: `verse-world` fails to compile with 29 errors, so `check:verse-pbr` and `check:verse` can't pass for any change. This is unrelated to the docs link fix in #11338. The briefing needs to say whether `verse-world` is already known to be broken on this base. If it isn't, someone needs to fix it or rebase onto a commit where it builds.",
+          "error": null
+        },
+        {
+          "hand": "briefer",
+          "round": 2,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 2,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 2,
+          "verdict": "VERDICT: pass",
+          "error": null
+        }
+      ],
+      "rounds": 2,
+      "pull_request": null
+    }
+  }
+}

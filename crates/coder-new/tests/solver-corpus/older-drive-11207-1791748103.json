@@ -1,0 +1,43 @@
+{
+  "source": "recorded solver run 11207-1791748103-d8efd41762167e3e, drive() before d1c6e482eb; summary.json trimmed to the fields the replay reads",
+  "note": "Recorded before the harness ran checks first: a Tester turn follows checks that passed, which drive() no longer makes, so the program does not ask for it.",
+  "conforms": false,
+  "summary": {
+    "issue": 11207,
+    "repository": "OpenAgentsInc/openagents",
+    "outcome": {
+      "status": "passed",
+      "reason": null
+    },
+    "solver": {
+      "hands": [
+        {
+          "hand": "intaker",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "briefer",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 0,
+          "verdict": "VERDICT: pass",
+          "error": null
+        }
+      ],
+      "rounds": 0,
+      "pull_request": "https://github.com/OpenAgentsInc/openagents/pull/11343"
+    }
+  }
+}

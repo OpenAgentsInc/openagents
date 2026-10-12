@@ -1,0 +1,25 @@
+{
+  "source": "constructed from drive()'s control flow for a path no recording covers yet",
+  "note": "Main already has a commit for the issue.",
+  "conforms": true,
+  "summary": {
+    "issue": 1,
+    "repository": "OpenAgentsInc/openagents",
+    "outcome": {
+      "status": "already_done",
+      "reason": "Main already has a commit for this issue: abc123"
+    },
+    "solver": {
+      "hands": [
+        {
+          "hand": "intaker",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        }
+      ],
+      "rounds": 0,
+      "pull_request": null
+    }
+  }
+}

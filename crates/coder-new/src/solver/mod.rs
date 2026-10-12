@@ -25,6 +25,7 @@
 
 pub mod conform;
 pub mod hands;
+pub mod host;
 pub mod ledger;
 pub mod merge;
 pub mod queue;

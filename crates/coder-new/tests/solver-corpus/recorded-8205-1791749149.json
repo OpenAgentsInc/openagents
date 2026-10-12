@@ -1,0 +1,67 @@
+{
+  "source": "recorded solver run 8205-1791749149-ad4dc40b37bb8b9e, drive() before d1c6e482eb; summary.json trimmed to the fields the replay reads",
+  "note": "The Tester passes but the harness checks fail, so each round hands back to the Coder.",
+  "conforms": true,
+  "summary": {
+    "issue": 8205,
+    "repository": "OpenAgentsInc/openagents",
+    "outcome": {
+      "status": "failed",
+      "reason": "The required check check:psionic-train failed after 2 hand-backs."
+    },
+    "solver": {
+      "hands": [
+        {
+          "hand": "intaker",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "briefer",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 0,
+          "verdict": "VERDICT: pass",
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 1,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 1,
+          "verdict": "VERDICT: pass",
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 2,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 2,
+          "verdict": "VERDICT: pass",
+          "error": null
+        }
+      ],
+      "rounds": 2,
+      "pull_request": null
+    }
+  }
+}

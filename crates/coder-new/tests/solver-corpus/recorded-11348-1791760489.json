@@ -1,0 +1,49 @@
+{
+  "source": "recorded solver run 11348-1791760489-cc9c38c5c35ae792, drive() at or after d1c6e482eb (harness checks first); summary.json trimmed to the fields the replay reads",
+  "note": "One hand-back to the Coder, then a pass and a pull request.",
+  "conforms": true,
+  "summary": {
+    "issue": 11348,
+    "repository": "OpenAgentsInc/openagents",
+    "outcome": {
+      "status": "passed",
+      "reason": null
+    },
+    "solver": {
+      "hands": [
+        {
+          "hand": "intaker",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "briefer",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 0,
+          "verdict": "VERDICT: coder: The mobile test helper does not compile. In `crates/openagents-mobile/src/link_tests.rs`, the closure `file_rows` at line 1397 is declared as `|f: &Fixture|` and calls `f.link.packet()` at line 1398. `Link::packet` takes `&mut self` (`crates/openagents-mobile/src/account_link.rs:2256`), so that call borrows through a shared reference and produces the E0596 error. This is the one error behind both `check:openagents-mobile` and `test:openagents-mobile`. Fix: change the closure parameter to `f: &mut Fixture` and call it as `file_rows(&mut f)` at lines 1407 and 1442. The fixture binding must be `let mut f`, which it already needs for `f.link.act(...)`. Then rerun `cargo test --tests --manifest-path crates/openagents-mobile/Cargo.toml`. The rest of the diff (the `MessageFile` and `Message` changes, `link_view.rs`, and the Swift and Kotlin edits) is not implicated by these two failures.",
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 1,
+          "verdict": null,
+          "error": null
+        }
+      ],
+      "rounds": 1,
+      "pull_request": "https://github.com/OpenAgentsInc/openagents/pull/11363"
+    }
+  }
+}

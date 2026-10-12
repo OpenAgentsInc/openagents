@@ -1,0 +1,25 @@
+{
+  "source": "recorded solver run 11279-1791743551-fc5069e987b86cd8, drive() before d1c6e482eb; summary.json trimmed to the fields the replay reads",
+  "note": "The worktree could not be prepared: intake stops the run.",
+  "conforms": true,
+  "summary": {
+    "issue": 11279,
+    "repository": "OpenAgentsInc/openagents",
+    "outcome": {
+      "status": "setup_failed",
+      "reason": "The issue, its base commit, or the worktree could not be prepared."
+    },
+    "solver": {
+      "hands": [
+        {
+          "hand": "intaker",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        }
+      ],
+      "rounds": 0,
+      "pull_request": null
+    }
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "source": "recorded solver run 11331-1791760489-24cce921eed8833d, drive() at or after d1c6e482eb (harness checks first); summary.json trimmed to the fields the replay reads",
+  "note": "Three rounds whose checks all failed: the program ends at the last diagnosis.",
+  "conforms": true,
+  "summary": {
+    "issue": 11331,
+    "repository": "OpenAgentsInc/openagents",
+    "outcome": {
+      "status": "failed",
+      "reason": "The required check test:coder-environment-operator has no result after 2 hand-backs."
+    },
+    "solver": {
+      "hands": [
+        {
+          "hand": "intaker",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "briefer",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 0,
+          "verdict": "VERDICT: coder: `test:coder-environment-operator` (full run, not the filtered run) fails 2 tests: `a_paused_run_offers_its_choices_and_never_continues_on_a_subscription_token` and `handing_a_paused_run_to_openagents_starts_coders_own_agent_never_claude`, both in `crates/coder-environment-operator/src/studio/claude.rs` (lines ~1657 and ~1678). Both fail with \"Another process is using this remote job.\" only when run in parallel, and pass alone with the `paused_run` filter. Check whether `claude_task::book(&runs.root, ...)` or any other shared path/lock is common to these tests and to the new `a_restart_mid_run` (same run id `claude-env-1-1`), and isolate them: use unique run ids or a per-test root so no lease or book file is shared across tests. Then rerun the full `test:coder-environment-operator`.",
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 1,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 1,
+          "verdict": "VERDICT: coder: The full `test:coder-environment-operator` check fails intermittently with \"Another process is using this remote job.\" while the filtered `a_restart_mid_run_continues_or_ends_each_unfinished_run` passes. Fix the lease contention in `crates/coder-environment-operator/src/studio/claude.rs`: `Runs::restart()` (around lines 510-560) spawns threads that take leases and are never joined, and `Studio` construction in `crates/coder-environment-operator/src/studio.rs:467` calls it. Make the restart threads release their leases deterministically, or keep the new restart test from sharing lock state with the other tests, so that the `test:coder-environment-operator` run passes repeatedly. The older tests `handing_a_paused_run_to_openagents_starts_coders_own_agent_never_claude` and `a_paused_run_offers_its_choices_and_never_continues_on_a_subscription_token` must pass as well.",
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 2,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 2,
+          "verdict": "VERDICT: coder: the full `test:coder-environment-operator` check fails on `studio::claude::tests::handing_a_paused_run_to_openagents_starts_coders_own_agent_never_claude` (crates/coder-environment-operator/src/studio/claude.rs:1684, \"expected a hand-off\"). Check whether it also fails on the base commit. If it does, say so as pre-existing. If it doesn't, print the `Err` returned by `Runs::choose` (via `claude_task::choose` or `hand_off`) in that test and fix the cause. The restart tests in this diff pass.",
+          "error": null
+        }
+      ],
+      "rounds": 2,
+      "pull_request": null
+    }
+  }
+}

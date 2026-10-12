@@ -1,0 +1,61 @@
+{
+  "source": "recorded solver run 11355-1791762019-1e9f2ae080366e9b, drive() at or after d1c6e482eb (harness checks first); summary.json trimmed to the fields the replay reads",
+  "note": "The Coder stops with an error in round 2 after a Tester turn that also errored.",
+  "conforms": true,
+  "summary": {
+    "issue": 11355,
+    "repository": "OpenAgentsInc/openagents",
+    "outcome": {
+      "status": "failed",
+      "reason": "The Coder stopped: You've hit your session limit \u00b7 resets 11:10pm (America/Chicago)"
+    },
+    "solver": {
+      "hands": [
+        {
+          "hand": "intaker",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "briefer",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 0,
+          "verdict": "VERDICT: coder: The failure is a borrow error in the new test `load_more_reaches_older_chats_a_page_at_a_time` in `crates/openagents-mobile/src/link_tests.rs` (around line 370). The `shown` closure is declared as `let shown = |f: &Fixture| { ... f.link.packet() ... }`. But `Link::packet` takes `&mut self` (`crates/openagents-mobile/src/account_link.rs:2286`), so it can't be called through a shared reference. Fix: change the closure parameter to `|f: &mut Fixture|` and update its four call sites from `shown(&f)` to `shown(&mut f)`. That resolves both the `check:openagents-mobile` and `test:openagents-mobile` failures (E0596). The production code in `account_link.rs`, `link_view.rs`, and the web crates is not implicated by these errors.",
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 1,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 1,
+          "verdict": "",
+          "error": "You've hit your session limit \u00b7 resets 11:10pm (America/Chicago)"
+        },
+        {
+          "hand": "coder",
+          "round": 2,
+          "verdict": null,
+          "error": "You've hit your session limit \u00b7 resets 11:10pm (America/Chicago)"
+        }
+      ],
+      "rounds": 2,
+      "pull_request": null
+    }
+  }
+}

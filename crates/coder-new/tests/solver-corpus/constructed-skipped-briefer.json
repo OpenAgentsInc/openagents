@@ -1,0 +1,31 @@
+{
+  "source": "constructed from drive()'s control flow for a path no recording covers yet",
+  "note": "A run that went from intake straight to the Coder is not the program's path.",
+  "conforms": false,
+  "summary": {
+    "issue": 1,
+    "repository": "OpenAgentsInc/openagents",
+    "outcome": {
+      "status": "passed",
+      "reason": null
+    },
+    "solver": {
+      "hands": [
+        {
+          "hand": "intaker",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        }
+      ],
+      "rounds": 0,
+      "pull_request": null
+    }
+  }
+}

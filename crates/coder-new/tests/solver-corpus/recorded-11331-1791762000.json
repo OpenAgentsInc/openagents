@@ -1,0 +1,49 @@
+{
+  "source": "recorded solver run 11331-1791762000-6e41f83cfd439efc, drive() at or after d1c6e482eb (harness checks first); summary.json trimmed to the fields the replay reads",
+  "note": "One hand-back to the Coder, then the harness checks pass with no Tester.",
+  "conforms": true,
+  "summary": {
+    "issue": 11331,
+    "repository": "OpenAgentsInc/openagents",
+    "outcome": {
+      "status": "passed",
+      "reason": null
+    },
+    "solver": {
+      "hands": [
+        {
+          "hand": "intaker",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "briefer",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 0,
+          "verdict": null,
+          "error": null
+        },
+        {
+          "hand": "tester",
+          "round": 0,
+          "verdict": "VERDICT: coder: Make `crates/coder-environment-operator/src/studio/claude.rs` tests deterministic under the full `test:coder-environment-operator` run. The failures are \"Another process is using this remote job.\" from `Store::lease` (`crates/coder-cloud/src/lib.rs:236`), seen in `a_paused_run_offers_its_choices_and_never_continues_on_a_subscription_token` (claude.rs:1592), `handing_a_paused_run_to_openagents_starts_coders_own_agent_never_claude` (claude.rs:1613), and `a_run_in_flight_when_the_server_restarts_is_picked_up_again` (claude.rs:1707). Identify which background thread holds the lock: the new `pick_up_after_restart` hook in `crates/coder-environment-operator/src/studio.rs:466-468`, or the detached `drive` threads from `choose` (claude.rs:325) and `hand_off` (claude.rs:358). Join or release them within each test. The filtered `paused_run` run passes, so the fault only appears under concurrency.",
+          "error": null
+        },
+        {
+          "hand": "coder",
+          "round": 1,
+          "verdict": null,
+          "error": null
+        }
+      ],
+      "rounds": 1,
+      "pull_request": "https://github.com/OpenAgentsInc/openagents/pull/11364"
+    }
+  }
+}

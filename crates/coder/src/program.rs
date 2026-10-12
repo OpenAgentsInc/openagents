@@ -960,15 +960,36 @@ mod tests {
                 "solve-issue"
             ]
         );
-        // The solver's hands as a program (#11392): intake, brief, code,
-        // check, land, and the done judgment through the configured door.
+        // The solver as a program (#11392): intake, the code brief, the
+        // Briefer, then up to three rounds of code, check, and diagnosis
+        // unrolled with `when` guards, the verdict, land, and the done
+        // judgment through the configured door.
         let solve = registry.get("solve-issue").unwrap();
         assert_eq!(
             solve.step_names(),
-            ["intake", "brief", "code", "check", "land", "done"]
+            [
+                "intake",
+                "plan",
+                "brief",
+                "code_0",
+                "check_0",
+                "diagnose_0",
+                "rebrief_1",
+                "code_1",
+                "check_1",
+                "diagnose_1",
+                "rebrief_2",
+                "code_2",
+                "check_2",
+                "diagnose_2",
+                "verdict",
+                "land",
+                "done"
+            ]
         );
-        assert_eq!(solve.steps[5].kind, Kind::Decide);
-        assert_eq!(solve.steps[5].requires, ["land"]);
+        let done = solve.steps.last().unwrap();
+        assert_eq!(done.kind, Kind::Decide);
+        assert_eq!(done.requires, ["land"]);
         assert_eq!(
             registry.get("delegate-fan-out").unwrap().step_names(),
             ["select", "independence", "admit", "fan_out", "accept"]
