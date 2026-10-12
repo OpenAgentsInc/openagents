@@ -1,7 +1,8 @@
 //! The merge pass over the landed-work ledger: every unlanded run with a
 //! pull request, oldest run first, is brought up to date with `main` and
 //! merged when GitHub reports it mergeable. A run whose pull request
-//! conflicts gets a handoff comment naming what landed ahead of it. Push
+//! conflicts is rebased once in a scratch worktree and rechecked; one
+//! still conflicting gets a handoff comment naming what landed ahead of it. Push
 //! and merge are effects: when the merge command itself fails after being
 //! sent, the outcome is `unknown` and nothing retries it here.
 
@@ -10,7 +11,7 @@ use std::path::Path;
 use serde_json::{Value, json};
 
 use super::ledger;
-use crate::issue_run::setup::output;
+use crate::issue_run::setup::{main_remote, output};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Merged {
@@ -63,6 +64,65 @@ pub fn handoff(landed: &[String], branch: &str) -> String {
 
 async fn gh(args: &[&str], repo: &Path) -> Result<String, String> {
     output("gh", args, repo).await
+}
+
+/// Rebases `branch` onto the remote's current `main` in a scratch worktree
+/// and pushes it with a lease. `Ok(true)` when the branch was rebased and
+/// pushed, `Ok(false)` when the rebase hit a conflict (nothing pushed),
+/// `Err` when the push was sent and did not confirm.
+pub async fn rebase(repo: &Path, branch: &str) -> Result<bool, String> {
+    let remote = main_remote(repo).await;
+    let dir = std::env::temp_dir().join(format!(
+        "solver-merge-{}-{}",
+        std::process::id(),
+        branch.replace('/', "-")
+    ));
+    let dir_s = dir.to_string_lossy().into_owned();
+    output("git", &["fetch", &remote, "main", branch], repo)
+        .await
+        .map_err(|e| format!("fetch failed: {e}"))?;
+    let _ = output("git", &["worktree", "remove", "--force", &dir_s], repo).await;
+    output(
+        "git",
+        &[
+            "worktree",
+            "add",
+            "--detach",
+            &dir_s,
+            &format!("{remote}/{branch}"),
+        ],
+        repo,
+    )
+    .await
+    .map_err(|e| format!("worktree failed: {e}"))?;
+    let rebased = output("git", &["rebase", &format!("{remote}/main")], &dir)
+        .await
+        .is_ok();
+    let pushed = if rebased {
+        output(
+            "git",
+            &[
+                "push",
+                "--force-with-lease",
+                &remote,
+                &format!("HEAD:{branch}"),
+            ],
+            &dir,
+        )
+        .await
+        .map(|_| true)
+        .map_err(|e| {
+            format!(
+                "push sent, not confirmed: {}",
+                e.lines().last().unwrap_or_default().trim()
+            )
+        })
+    } else {
+        let _ = output("git", &["rebase", "--abort"], &dir).await;
+        Ok(false)
+    };
+    let _ = output("git", &["worktree", "remove", "--force", &dir_s], repo).await;
+    pushed
 }
 
 pub async fn run(state: &Path, repo: &Path, github: &str, dry_run: bool) -> Vec<Merged> {
@@ -131,7 +191,61 @@ pub async fn run(state: &Path, repo: &Path, github: &str, dry_run: bool) -> Vec<
             "conflicting" => {
                 result.outcome = "conflicting";
                 result.why = handoff(&landed, &branch);
-                if !dry_run {
+                if dry_run {
+                    results.push(result);
+                    continue;
+                }
+                match rebase(repo, &branch).await {
+                    Ok(true) => {
+                        let again = gh(
+                            &[
+                                "pr",
+                                "view",
+                                &url,
+                                "-R",
+                                github,
+                                "--json",
+                                "mergeable",
+                                "-q",
+                                ".mergeable",
+                            ],
+                            repo,
+                        )
+                        .await
+                        .unwrap_or_default();
+                        if again.trim() == "MERGEABLE" {
+                            match gh(&["pr", "merge", &url, "-R", github, "--squash"], repo).await {
+                                Ok(_) => {
+                                    result.outcome = "merged";
+                                    result.why = "rebased onto main, then merged".into();
+                                    landed.push(format!("#{} ({url})", row.issue));
+                                }
+                                Err(why) => {
+                                    result.outcome = "unknown";
+                                    result.why = format!(
+                                        "the merge command failed after being sent; check the pull request before retrying: {}",
+                                        why.lines().last().unwrap_or_default().trim()
+                                    );
+                                }
+                            }
+                            results.push(result);
+                            continue;
+                        }
+                        result.why = format!(
+                            "rebased and pushed, but GitHub still says {}; {}",
+                            again.trim(),
+                            result.why
+                        );
+                    }
+                    Ok(false) => {}
+                    Err(why) => {
+                        result.outcome = "unknown";
+                        result.why = why;
+                        results.push(result);
+                        continue;
+                    }
+                }
+                {
                     let _ = gh(
                         &["pr", "comment", &url, "-R", github, "--body", &result.why],
                         repo,
