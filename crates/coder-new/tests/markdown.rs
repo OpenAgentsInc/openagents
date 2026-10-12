@@ -276,11 +276,8 @@ fn narrow_transcripts_keep_long_code_and_table_content_accessible_by_scrolling()
         saw_end |= text.contains("After the table.");
         assert!(text.contains("❯ draft"));
         assert_eq!(cursor.0, 8);
-        assert!(
-            rows(&buffer)
-                .iter()
-                .any(|row| row.starts_with('┌') && row.contains(" auto "))
-        );
+        assert!(rows(&buffer).iter().any(|row| row.starts_with('┌')
+            && row.contains(&format!(" {} ", coder_new::models::AUTO_LABEL))));
         maximum_scroll = maximum_scroll.max(app.scroll);
         if app.scroll < requested {
             break;

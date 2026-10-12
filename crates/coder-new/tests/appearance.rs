@@ -78,10 +78,15 @@ fn assert_background_switching(mut app: App, width: u16, height: u16) {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
     let original = draw(&mut terminal, &mut app);
     assert_eq!(original[(0, height - 1)].bg, theme::BG_BASE);
+    // The terminal's own background replaces Coder's base only; the bands
+    // on top (your messages, diff rows, Run output) keep their color.
     let mut expected = original.clone();
     for cell in &mut expected.content {
-        cell.bg = Color::Reset;
+        if cell.bg == theme::BG_BASE {
+            cell.bg = Color::Reset;
+        }
     }
+    assert_ne!(expected, original);
     for enabled in [true, false, true] {
         app.appearance.use_system_terminal_background = enabled;
         let actual = draw(&mut terminal, &mut app);

@@ -8,7 +8,21 @@ use openrouter::Streamed;
 use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
 use unicode_width::UnicodeWidthStr;
 
+/// Points the plan's usage book at an empty folder, so the bottom rule never
+/// carries this computer's Claude plan ("5h 33% · week 82%").
+fn without_this_computers_plan() {
+    static EMPTY: std::sync::OnceLock<tempfile::TempDir> = std::sync::OnceLock::new();
+    EMPTY.get_or_init(|| {
+        let empty = tempfile::tempdir().unwrap();
+        // Tests run in threads; every one renders through here first and
+        // wants the book empty, so the write races with nothing that cares.
+        unsafe { std::env::set_var("OPENAGENTS_TASKS", empty.path()) };
+        empty
+    });
+}
+
 fn render(app: &mut App, width: u16, height: u16) -> (Buffer, (u16, u16)) {
+    without_this_computers_plan();
     let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
     terminal.draw(|frame| ui::render(frame, app)).unwrap();
     let cursor = terminal.get_cursor_position().unwrap();

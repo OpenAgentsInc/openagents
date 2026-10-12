@@ -101,14 +101,21 @@ fn acp_ids(app: &App) -> Vec<&str> {
 #[test]
 fn bundled_plugins_are_selectable_and_default_on_with_router_off() {
     let mut app = App::default();
-    assert_eq!(DEFINITIONS.len(), 11);
+    // Claude Code joined as the twelfth bundled plugin (837f848960).
+    assert_eq!(DEFINITIONS.len(), 12);
+    assert!(
+        DEFINITIONS
+            .iter()
+            .any(|definition| definition.id == coder_new::claude::PLUGIN)
+    );
     app.open_plugins();
     for definition in DEFINITIONS {
         assert_eq!(app.plugins.selected_definition().id, definition.id);
-        assert_eq!(
-            app.plugins.enabled_for(definition.id),
-            definition.default_enabled
-        );
+        // Claude Code is on by default only where this computer is signed
+        // in to it; the test never depends on which.
+        let expected = definition.default_enabled
+            && (definition.id != coder_new::claude::PLUGIN || coder_new::claude::available());
+        assert_eq!(app.plugins.enabled_for(definition.id), expected);
         // The demo draws the frozen original plugin list, which predates
         // later plugins such as Solver.
         let in_demo = coder_ui::demo::plugin_definition::DEFINITIONS
@@ -121,7 +128,9 @@ fn bundled_plugins_are_selectable_and_default_on_with_router_off() {
         key(&mut app, KeyCode::Esc);
         key(&mut app, KeyCode::Down);
     }
+    // With Claude Code off, a new chat runs on Coder's own loop.
     app.set_mode(Mode::Live);
+    app.plugins.bundled.claude = false;
     assert!(app.handle(Event::Paste("Explain this checkout.".into())));
     key(&mut app, KeyCode::Enter);
     let request = app.request.take().unwrap();

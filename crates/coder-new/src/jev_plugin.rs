@@ -507,7 +507,7 @@ mod tests {
     }
 
     #[test]
-    fn no_key_resolves_to_the_hosted_service_and_a_key_here_wins() {
+    fn our_service_answers_with_or_without_a_key_and_jev_first_uses_the_key_here() {
         let home = tempfile::tempdir().unwrap();
         let none = |_: &str| None;
         assert!(keyless_available(&none));
@@ -516,9 +516,18 @@ mod tests {
         let client = keyless_client(&none, home.path(), jev::defaults::MODEL).unwrap();
         assert_eq!(jev_hosted::via(&client), "hosted");
         assert!(!home.path().join(jev_hosted::KEY_FILE).exists());
-        // This computer's own TypeSafe key is used before the hosted service.
+        // Clef first: a TypeSafe key on this computer no longer jumps ahead
+        // of our decision API (392f0f7ed3).
         let own = |name: &str| (name == "TYPESAFE_API_KEY").then(|| "fixture-own-key".into());
         let client = keyless_client(&own, home.path(), jev::defaults::MODEL).unwrap();
+        assert_eq!(jev_hosted::via(&client), "hosted");
+        // Jev first is a choice: then this computer's own key goes direct.
+        let jev_first = |name: &str| match name {
+            "TYPESAFE_API_KEY" => Some("fixture-own-key".into()),
+            jev_hosted::DECISIONS_VAR => Some("jev".into()),
+            _ => None,
+        };
+        let client = keyless_client(&jev_first, home.path(), jev::defaults::MODEL).unwrap();
         assert_eq!(jev_hosted::via(&client), "direct");
         // Turned off on this computer: no Jev, and the reason, never a key.
         let off = |name: &str| (name == jev_hosted::HOSTED_VAR).then(|| "off".into());

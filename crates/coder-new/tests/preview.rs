@@ -675,7 +675,15 @@ fn header_and_rail_keep_compact_spacing_above_the_bottom_margin() {
         let rendered = screen(&mut live, 110, 36);
         let header = rendered.lines().nth(1).unwrap();
         if target == Screen::Conversation {
-            assert!(header.trim().is_empty());
+            // An empty chat is headed by the name, then the version
+            // (f3178adbc9), and nothing else.
+            assert_eq!(rendered.lines().next().unwrap().trim(), "OpenAgents Coder");
+            assert_eq!(
+                header.trim(),
+                concat!("v", env!("CARGO_PKG_VERSION")),
+                "{rendered}"
+            );
+            assert!(rendered.lines().nth(2).unwrap().trim().is_empty());
             let bottom = composer_rules(&rendered)[1].0;
             assert!(rendered.lines().nth(bottom).unwrap().contains("openagents"));
             assert!(

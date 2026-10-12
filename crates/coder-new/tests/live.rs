@@ -533,9 +533,15 @@ fn live_streaming_preserves_stopped_text_and_ignores_stale_updates() {
         }
         _ => panic!("expected a chat request"),
     }
+    // The finished reply carries every streamed word again; the streamed
+    // text is what stays (a17201301e).
     app.apply_update(Update::Delta {
         id: second.id,
         text: "complete".into(),
+    });
+    app.apply_update(Update::Delta {
+        id: second.id,
+        text: " reply".into(),
     });
     app.apply_update(Update::Finished {
         id: second.id,
@@ -802,33 +808,32 @@ fn running_and_failed_run_keep_the_command_visible() {
 }
 
 #[test]
-/// OpenAgents picks the model when none is chosen, so the rail says `auto`
-/// and never the name of whichever model answered.
+/// OpenAgents picks the model when none is chosen, so the rail says `coder`
+/// before the chat is routed and `Coder · auto` once Coder's own loop runs
+/// it, and never the name of whichever model answered.
 fn local_login_turns_show_auto_above_the_input_rail() {
+    let rail = |screen: &str, label: &str| {
+        screen
+            .lines()
+            .any(|line| line.contains(&format!(" {label} ")) && line.contains('─'))
+    };
     let mut app = coder_loop_app();
     app.set_mode(Mode::Live);
     app.plugins.enabled = false;
     app.live.partial_model = Some("codex:gpt-6.1-sol".into());
     let screen = render(&mut app, 80, 24);
-    assert!(
-        screen
-            .lines()
-            .any(|line| line.contains(" auto ") && line.contains('─'))
-    );
+    assert!(rail(&screen, coder_new::models::AUTO_LABEL), "{screen}");
     assert!(!screen.contains("gpt-6.1-sol"));
 
     app.live.partial_model = None;
+    app.live.runs_on = Some(coder_new::harness_plugin::Harness::CoderLoop);
     app.live.entries.push(Entry::Assistant {
         text: "Done".into(),
         model: Some("codex:gpt-6.1-sol".into()),
         elapsed_ms: None,
     });
     let screen = render(&mut app, 80, 24);
-    assert!(
-        screen
-            .lines()
-            .any(|line| line.contains(" auto ") && line.contains('─'))
-    );
+    assert!(rail(&screen, "Coder · auto"), "{screen}");
     assert!(!screen.contains("gpt-6.1-sol"));
 }
 
