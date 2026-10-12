@@ -58,6 +58,7 @@
 //! ```
 
 pub mod activity;
+pub mod analysis;
 pub mod content;
 pub mod document;
 pub mod log;
