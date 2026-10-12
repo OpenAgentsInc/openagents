@@ -90,9 +90,13 @@ room for idle time; each issue reports its measured result.
   `openagents pylon serve --decide`, with the gateway asking Pylons first.
 - Keep H100s for what Pylons cannot give: a latency guarantee, 27B at speed,
   sealed decisions over NIP-ATT, and a floor of capacity that is always on.
-- Price other cloud GPUs per token before committing: A100s (on-demand
-  quota exists, unlike H100s), L4s, committed-use discounts. See the
-  exploration linked from #11446.
+- Price other cloud GPUs per token before committing: measured in
+  [gpu-options.md](gpu-options.md). An on-demand A100 40GB ($3.67/h, no
+  preemption, quota in every US region) costs about the same per token as
+  the spot H100 ($0.120 against $0.112 per million Flash tokens). A spot
+  A100 is 36 % cheaper per token and clears 27B at $0.24 per million from
+  about 88 % busy. No cloud GPU reaches Jev's $0.042 for Flash at
+  realistic use.
 
 ### 5. Price by model and tier, not one flat rate
 
