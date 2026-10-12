@@ -104,6 +104,8 @@ balances, and error shapes. The agent is one more model id there
 | WebSocket `/v1/responses` | Open Responses WebSocket transport (optional in the spec). | P2 (built) |
 | `GET /v1/responses/{id}`, `DELETE /v1/responses/{id}` | The caller's stored response (`store: true`), read or deleted at once. Not in the spec; OpenAI's shape. | P2 (built) |
 
+Token counts, response batches, file references, cache breakpoints, citations, refusal details, and context edits are proposed in [Model calls](../api/model-calls.md). They use this request shape. They are not mounted.
+
 ### Open Responses
 
 We implement the specification at version 2026-04-24
@@ -705,6 +707,7 @@ and OpenRouter's: start in three lines, then reference, then guides.
 | Quickstart | Three lines: get a key, `curl` to `/v1/responses`, then the OpenAI SDK with its base URL set to ours |
 | Models and prices | Every model with its live rate card row, context, capabilities, and current speed |
 | Open Responses reference | Request, response, items, streaming events, tools, errors |
+| Model-call extras | Counts, batches, files in a call, cache breakpoints, citations, refusals, and context edits. Proposed in [Model calls](../api/model-calls.md) |
 | Chat Completions reference | The same, and what does not carry over (section 3's table) |
 | Routing and credits | Model ids, task classes, `route`, fallbacks, and how we pick |
 | Bring your own key | Adding keys, `pay: "mine"`, and what we charge (nothing) |

@@ -226,7 +226,10 @@ Use `POST /v1/responses` when you want one answer, a function tool, or a short l
 | Reasoning you can send back | A reasoning item. Pass `encrypted_content` through unchanged when the response includes it. |
 | A shorter stored conversation | `POST /v1/responses/compact`. |
 | JSON that matches a schema | The response text format. |
+| How many input tokens a body will use | `POST /v1/responses/count`. The count is not billed. |
+| Many calls at half the rate-card price | `POST /v1/responses/batches`. |
+| A file, citations, a cache breakpoint, a refusal, or a context edit | [Model calls](model-calls.md). |
 
 A session is that loop plus a container, permissions, memory, files, and a schedule. Bash and the file tools in the container are how a session runs code. Screen control is not a session tool. Wrap a host-side action in a custom tool.
 
-Documents and images go in as files: upload, then a `file` resource on the session, or a file content block on `/v1/responses`. Citation metadata, when the model returns it, stays on that response. A session's outputs are the files under `/mnt/session/outputs/`.
+Documents and images on a response, including citations, are in [Model calls](model-calls.md). On a session, upload a file and attach it as a `file` resource. A session's outputs are the files under `/mnt/session/outputs/`.

@@ -82,7 +82,7 @@ thread, run, computer.
 - Plural nouns from the glossary, lowercase, kebab-case when a noun is two
   words: `/v1/threads`, `/v1/provider-keys`. Ids are opaque, typed
   prefixes: `acct_`, `ws_`, `key_`, `th_`, `msg_`, `run_`, `tr_`, `pl_`,
-  `resp_`, `pr_`.
+  `resp_`, `batch_`, `pr_`.
 - `GET` reads, `POST` creates or acts (`/stop`, `/share`), `PATCH` edits,
   `PUT` replaces a whole settable thing (limits, a provider key), `DELETE`
   removes.
@@ -403,7 +403,7 @@ website cookie), `app` (`sess_` from device sign-in), `nostr` (NIP-98),
 | `GET`/`DELETE /v1/traces/{id}`, `POST /v1/traces/{id}/share` | web `/api/traces/{id}`, `/api/traces/{id}/share` | Read, delete, share a trace | PUBLIC | key `traces` / app / session | `work.traces` + bucket | launch (first-party) |
 | `GET /v1/traces/{id}/public` | page `GET /trace/{id}` | A shared trace, no key | PUBLIC | none | `work.traces` (public) | launch (page) |
 
-Managed agents are proposed in [Managed Agents](managed-agents.md) and are not built. That API adds `/v1/agents` and reuses `/v1/sessions`, `/v1/environments`, `/v1/files`, and `/v1/skills` for a different object than account sign-in and the website's repository-environment routes. The managed-agents doc says how the shared paths stay distinct. Steering, outcomes, and usage are in [Managed agent events](managed-agents-events.md). Webhook endpoints, cron deployments, and on-disk files are in [Managed agent operations](managed-agents-operations.md). Webhook signatures match the decision-job shape (`x-openagents-event`, `x-openagents-signature`).
+Managed agents are proposed in [Managed Agents](managed-agents.md) and are not built. That API adds `/v1/agents` and reuses `/v1/sessions`, `/v1/environments`, `/v1/files`, and `/v1/skills` for a different object than account sign-in and the website's repository-environment routes. The managed-agents doc says how the shared paths stay distinct. Steering, outcomes, and usage are in [Managed agent events](managed-agents-events.md). Webhook endpoints, cron deployments, and on-disk files are in [Managed agent operations](managed-agents-operations.md). Webhook signatures match the decision-job shape (`x-openagents-event`, `x-openagents-signature`). Counts, batches, file references, cache breakpoints, citations, refusal details, and context edits on a model call are proposed in [Model calls](model-calls.md).
 
 ### 4.5 registry
 
@@ -477,6 +477,8 @@ Managed agents are proposed in [Managed Agents](managed-agents.md) and are not b
 | `POST /v1/chat/completions` | same | Chat Completions, same routing | PUBLIC | key `responses` / pay | same | launch |
 | `GET /v1/responses` (WebSocket) | same | Many responses on one connection | PUBLIC | key `responses` | same | launch #11071 |
 | `POST /v1/responses/compact` | same | Compact a conversation | PUBLIC | key `responses` | same | launch |
+| `POST /v1/responses/count` | — | Count input tokens for a response body. Not billed. | PUBLIC | key `responses` | — | proposed |
+| `POST /v1/responses/batches`, `GET` list and `GET {id}`, `GET .../results`, `POST .../cancel` | — | Asynchronous response calls at half the rate-card price | PUBLIC | key `responses` | `money.usage` | proposed |
 | `GET`/`DELETE /v1/responses/{id}` | same | A stored response (`store: true`) | PUBLIC | key `responses` | stored responses (sealed) | launch |
 | `GET /v1/models`, `GET /v1/models/{id}` | `GET /v1/models` | Catalog with prices and live speed | PUBLIC | none / key | rate card | launch; `{id}` planned |
 | `GET /v1/rates` | same | Rate card with cost and margin | PUBLIC | none | rate card | launch |

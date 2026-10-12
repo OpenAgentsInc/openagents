@@ -6,7 +6,7 @@ This is the public API for a saved agent that runs in a session: a model, a syst
 
 It is a PUBLIC surface on `https://api.openagents.com/v1` (alias `https://openagents.com/api/v1`). It follows [the API design](design.md) and [the owner's decisions](2026-10-02-openagents-api.md): one error object, cursor lists, `oak_` keys, sats, and no house rate limit on your own keys. The JSON bodies, event names, and paths below are the contract. A client library may name the calls `agents.create` or `sessions.events.send`; the wire format is HTTP.
 
-How you steer a session, including outcomes, previews, and the budget pause, is in [Managed agent events](managed-agents-events.md). Webhooks, cron fires, the files you keep, and spend are in [Managed agent operations](managed-agents-operations.md). A single model call with no session is [`POST /v1/responses`](../inference/gateway.md).
+How you steer a session, including outcomes, previews, and the budget pause, is in [Managed agent events](managed-agents-events.md). Webhooks, cron fires, the files you keep, and spend are in [Managed agent operations](managed-agents-operations.md). A single model call with no session is [`POST /v1/responses`](../inference/gateway.md). Counts, batches, files, citations, and cache breakpoints on that call are in [Model calls](model-calls.md).
 
 The agent loop stays on OpenAgents. On a `cloud` environment, OpenAgents also runs the container, on a cloud computer admitted for the workspace and billed to its balance. On a `self_hosted` environment, bash and file tools run on a computer the workspace granted to the key ([decision D4](2026-10-02-openagents-api.md)). OpenAgents never dials into that computer. `web_search` and `web_fetch` run on OpenAgents in both cases.
 
