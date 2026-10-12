@@ -143,6 +143,54 @@ pub async fn read(github: &str, repo: &Path, state: &Path) -> Result<Vec<Entry>,
     Ok(entries)
 }
 
+/// The queue verdict for one issue, as `read` would judge it; `except`
+/// is a run id to leave out of the in-flight set (the run asking).
+pub async fn verdict(
+    github: &str,
+    repo: &Path,
+    state: &Path,
+    issue: u64,
+    except: &str,
+) -> Option<Entry> {
+    let number = issue.to_string();
+    let args = [
+        "issue",
+        "view",
+        &number,
+        "-R",
+        github,
+        "--json",
+        "number,title,assignees,updatedAt",
+    ];
+    let text = crate::issue_run::setup::output("gh", &args, repo)
+        .await
+        .ok()?;
+    let item: Value = serde_json::from_str(&text).ok()?;
+    let assignees: Vec<String> = item["assignees"]
+        .as_array()
+        .map(|list| {
+            list.iter()
+                .filter_map(|a| a["login"].as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default();
+    let in_flight: Vec<String> = ledger::read(state, repo)
+        .await
+        .into_iter()
+        .filter(|row| row.issue == issue && row.merged.is_none() && row.run_id != except)
+        .map(|row| row.run_id)
+        .collect();
+    let landed = landed_commit(repo, issue).await;
+    Some(judge(
+        issue,
+        item["title"].as_str().unwrap_or_default(),
+        landed.as_deref(),
+        &assignees,
+        &in_flight,
+        age_days(item["updatedAt"].as_str().unwrap_or_default()),
+    ))
+}
+
 pub async fn command(args: &[String]) -> Result<String, String> {
     let mut state = super::default_state();
     let mut repo = std::env::current_dir().map_err(|error| error.to_string())?;

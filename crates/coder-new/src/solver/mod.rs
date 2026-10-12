@@ -543,6 +543,7 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
             options.inner.kind_decider(),
             options.inner.relevance_decider(),
         ),
+        verdict: None,
         started,
     };
 
@@ -564,6 +565,24 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
                 transcript,
             )
             .await;
+    }
+    end.verdict = queue::verdict(
+        &options.inner.github,
+        &options.inner.repo,
+        folder.parent().unwrap_or(folder),
+        options.inner.issue,
+        &run.id,
+    )
+    .await;
+    if let Some(entry) = end
+        .verdict
+        .as_ref()
+        .filter(|entry| entry.verdict == "in_flight")
+    {
+        transcript.notice(format!(
+            "Another run already works this issue: {}.",
+            entry.why
+        ));
     }
     let Some(base) = setup::prepare(&options.inner, folder, transcript).await else {
         let outcome = if transcript.cancelled() {
@@ -806,6 +825,8 @@ struct End<'a> {
     /// The decision door that judged the briefing, as `--decisions` named
     /// it: one name, or `{"kind": door, "relevance": door}` when mixed.
     decisions: Value,
+    /// The queue's verdict on the issue when the run started (#11388).
+    verdict: Option<queue::Entry>,
     started: Instant,
 }
 
@@ -868,6 +889,7 @@ impl End<'_> {
             "pull_request": url,
             "queue": queue,
             "judgments": judgments,
+            "verdict": self.verdict.as_ref().map(queue::Entry::json),
             "merge": if delivery.status.is_empty() { "none" } else { delivery.status },
         });
         with_hands_cost(&mut summary, &self.turns);
