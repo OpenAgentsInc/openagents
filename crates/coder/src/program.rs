@@ -511,6 +511,17 @@ fn project(
             .and_then(Value::as_str)
             .map(str::to_string);
         let module = host.and_then(|host| host.get("module")).cloned();
+        let requires = host
+            .and_then(|host| host.get("requires"))
+            .and_then(Value::as_array)
+            .map(|names| {
+                names
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
         let bounds = host
             .and_then(|host| host.get("bounds"))
             .and_then(Value::as_object)
@@ -521,7 +532,7 @@ fn project(
             for (key, value) in host {
                 if !matches!(
                     key.as_str(),
-                    "source" | "question" | "bounds" | "program" | "module"
+                    "source" | "question" | "bounds" | "program" | "module" | "requires"
                 ) {
                     rest.insert(key.clone(), value.clone());
                 }
@@ -544,7 +555,7 @@ fn project(
             source,
             program,
             module,
-            requires: Vec::new(),
+            requires,
             bounds,
             rest,
         });
@@ -825,7 +836,7 @@ mod tests {
     }
 
     #[test]
-    fn the_registry_lists_the_seven_programs_the_repository_carries() {
+    fn the_registry_lists_the_eight_programs_the_repository_carries() {
         let registry = repository_programs();
         assert!(registry.refused().is_empty(), "{:?}", registry.refused());
         let mut slugs = registry.slugs();
@@ -839,9 +850,19 @@ mod tests {
                 "evidence-guests",
                 "review-changes",
                 "review-runs",
-                "run-suite"
+                "run-suite",
+                "solve-issue"
             ]
         );
+        // The solver's hands as a program (#11392): intake, brief, code,
+        // check, land, and the done judgment through the configured door.
+        let solve = registry.get("solve-issue").unwrap();
+        assert_eq!(
+            solve.step_names(),
+            ["intake", "brief", "code", "check", "land", "done"]
+        );
+        assert_eq!(solve.steps[5].kind, Kind::Decide);
+        assert_eq!(solve.steps[5].requires, ["land"]);
         assert_eq!(
             registry.get("delegate-fan-out").unwrap().step_names(),
             ["select", "independence", "admit", "fan_out", "accept"]
@@ -905,7 +926,7 @@ mod tests {
             call.extra["programs"]["delegate-fan-out"]["steps"],
             json!(["select", "independence", "admit", "fan_out", "accept"])
         );
-        assert!(call.output.starts_with("7 programs: "));
+        assert!(call.output.starts_with("8 programs: "));
     }
 
     #[test]

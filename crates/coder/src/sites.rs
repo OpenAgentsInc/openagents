@@ -683,6 +683,7 @@ mod tests {
                 "repository/select",
                 "review-changes/review",
                 "shell_judge",
+                "solve-issue/done",
             ]
         );
         assert_eq!(
@@ -810,7 +811,11 @@ mod tests {
         assert_eq!(set.template, Some(Template::Requirement));
         assert_eq!(
             set.bound_by,
-            ["burn-down/accept", "delegate-fan-out/accept"]
+            [
+                "burn-down/accept",
+                "delegate-fan-out/accept",
+                "solve-issue/done"
+            ]
         );
     }
 
