@@ -38,6 +38,15 @@ pub(crate) fn output_failed(output: &serde_json::Value) -> bool {
         || output.get("canceled").and_then(serde_json::Value::as_bool) == Some(true)
 }
 
+/// The keys a call names the file or folder it works on with, in the order
+/// they are preferred.
+const PATH_KEYS: [&str; 5] = ["path", "file_path", "notebook_path", "folder", "directory"];
+
+/// Whether a flattened key is a top-level path key.
+fn is_path_key(key: &str) -> bool {
+    PATH_KEYS.contains(&key)
+}
+
 /// A value's `key: value` pairs, nested keys joined with a dot, at most two
 /// levels deep, with a lone value named `value`.
 fn fields(value: &serde_json::Value) -> Vec<(String, String)> {
@@ -76,14 +85,37 @@ fn fields(value: &serde_json::Value) -> Vec<(String, String)> {
     values
 }
 
-/// A call's parameters on one row, `key: value` joined with ` · `, for the
-/// compact view. Empty when the call has none.
+/// A call's parameters, its path first: a nested `questions.refund` key is
+/// never a path, so only a top-level key moves.
+fn path_first(value: &serde_json::Value) -> Vec<(String, String)> {
+    let mut values = fields(value);
+    if let Some(index) = values.iter().position(|(key, _)| is_path_key(key)) {
+        let path = values.remove(index);
+        values.insert(0, path);
+    }
+    values
+}
+
+/// A call's parameters on one row, for the compact view: the path it works
+/// on first and bare, then the rest as `key: value` joined with ` · `, all
+/// together truncated to `width`. Empty when the call has none.
 pub fn compact_params(value: &serde_json::Value, width: u16) -> String {
-    let text = fields(value)
+    let values = path_first(value);
+    let path = values
+        .first()
+        .filter(|(key, _)| is_path_key(key))
+        .map(|(_, value)| value.as_str());
+    let rest = values
         .iter()
+        .filter(|(key, _)| !is_path_key(key))
         .map(|(key, value)| format!("{key}: {value}"))
         .collect::<Vec<_>>()
         .join(" · ");
+    let text = match (path, rest.is_empty()) {
+        (Some(path), true) => path.to_owned(),
+        (Some(path), false) => format!("{path} · {rest}"),
+        (None, _) => rest,
+    };
     if text.is_empty() {
         text
     } else {
@@ -92,8 +124,9 @@ pub fn compact_params(value: &serde_json::Value, width: u16) -> String {
 }
 
 /// Display bounded parameter rows without letting serialized objects run off screen.
+/// A path the call names comes first, under the tool's name.
 pub fn parameter_lines(value: &serde_json::Value, width: u16) -> Vec<Line<'static>> {
-    let values = fields(value);
+    let values = path_first(value);
     let omitted = values
         .len()
         .saturating_sub(if values.len() > 5 { 4 } else { 5 });

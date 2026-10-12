@@ -227,12 +227,51 @@ fn the_compact_view_keeps_each_tool_call_on_one_row_with_no_gaps() {
     let text = canvas(&buffer);
     // Each call is one row: its name and its parameters, and nothing else.
     assert!(row(&buffer, 0).contains("Read"), "{}", row(&buffer, 0));
-    assert!(row(&buffer, 0).contains("path: src/read.rs"));
+    assert!(row(&buffer, 0).contains("src/read.rs"));
     assert_eq!(row(&buffer, 1).trim(), "● Grep pattern: fn read");
     // No blank row between them, and no result rows below.
     assert!(!text.contains("⎿"));
     assert!(!text.contains("120 lines"));
     assert!(!text.contains("2 matches"));
+}
+
+/// The file or folder a call works on leads its row, bare, the way the call
+/// names it: `Grep crates/coder-new · pattern: ...`, not `pattern: ...`
+/// first and a `path:` label in the middle.
+#[test]
+fn the_compact_view_leads_each_call_with_the_path_it_works_on() {
+    assert_eq!(
+        tools::compact_params(
+            &json!({"path":"crates/coder-new","pattern":"fn rows","max_results":40}),
+            80
+        ),
+        "crates/coder-new · pattern: fn rows · max_results: 40"
+    );
+    // A call with no path is unchanged, and one with only a path shows it
+    // alone.
+    assert_eq!(
+        tools::compact_params(&json!({"pattern":"fn rows"}), 80),
+        "pattern: fn rows"
+    );
+    assert_eq!(
+        tools::compact_params(&json!({"path":"src/read.rs"}), 80),
+        "src/read.rs"
+    );
+    // An Edit's path comes first even though its other keys sort before it.
+    assert_eq!(
+        tools::compact_params(
+            &json!({"path":"a.rs","old_string":"one","new_string":"two"}),
+            80
+        ),
+        "a.rs · old_string: one · new_string: two"
+    );
+    // The verbose parameter rows lead with the path too.
+    let lines = tools::parameter_lines(&json!({"path":"a.rs","old_string":"one"}), 40);
+    assert!(
+        lines[0].to_string().contains("path: a.rs"),
+        "{}",
+        lines[0].to_string()
+    );
 }
 
 #[test]
