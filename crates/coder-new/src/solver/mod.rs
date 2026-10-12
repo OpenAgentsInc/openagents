@@ -522,7 +522,7 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
     };
 
     // Intaker.
-    let intake = hands::intake(options, folder, transcript).await;
+    let intake = hands::intake_in_code(options, transcript).await;
     end.turns.push(intake.clone());
     if let Some(why) = hands::blocked(&intake) {
         return end
