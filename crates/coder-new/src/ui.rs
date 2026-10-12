@@ -570,7 +570,7 @@ fn repository_rail(app: &App) -> String {
     text
 }
 
-/// The mode the input's rail names: `flash` or `claude` (Shift+Tab),
+/// The mode the input's rail names: `openrouter` or `claude` (Shift+Tab),
 /// `solver` while `coder solver` watches a run, else `coder` unless the
 /// person picked a model of their own.
 fn rail_mode(app: &App) -> Option<&'static str> {
@@ -584,8 +584,8 @@ fn rail_mode(app: &App) -> Option<&'static str> {
         return None;
     }
     let keyed = app.plugins.enabled && app.plugins.key_configured;
-    if keyed && app.plugins.model == crate::models::FLASH {
-        Some(crate::models::FLASH_LABEL)
+    if keyed && app.plugins.model == crate::models::OPENROUTER {
+        Some(crate::models::OPENROUTER_LABEL)
     } else if !keyed || !crate::models::pinned(&app.plugins.model) {
         Some(crate::models::AUTO_LABEL)
     } else {
@@ -1888,7 +1888,7 @@ fn composer_view(
                 &text,
                 Style::default().fg(match contribution.text.as_str() {
                     crate::models::AUTO_LABEL => t::ACCENT_SKILL,
-                    crate::models::FLASH_LABEL => t::ACCENT_MODEL,
+                    crate::models::OPENROUTER_LABEL => t::ACCENT_MODEL,
                     crate::claude::LABEL | crate::solver::LABEL => t::ACCENT_DELEGATE,
                     _ => t::GRAY,
                 }),
@@ -2059,7 +2059,7 @@ mod export_notice_tests {
     }
 
     #[test]
-    fn shift_tab_cycles_auto_and_flash_and_tab_changes_nothing() {
+    fn shift_tab_cycles_coder_and_openrouter_and_tab_changes_nothing() {
         use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
         let press = |code| Event::Key(KeyEvent::new(code, KeyModifiers::NONE));
         let rail = |app: &mut App| {
@@ -2074,21 +2074,42 @@ mod export_notice_tests {
         let mut app = App::default();
         app.mode = Mode::Live;
         app.plugins.model = crate::models::AUTO.into();
+        app.plugins.enabled = true;
         app.plugins.key_configured = true;
         // Tab no longer switches modes.
         app.handle(press(KeyCode::Tab));
         assert_eq!(app.plugins.model, crate::models::AUTO);
         app.handle(press(KeyCode::BackTab));
-        assert_eq!(app.plugins.model, crate::models::FLASH);
+        assert_eq!(app.plugins.model, crate::models::OPENROUTER);
         let shown = rail(&mut app);
-        assert!(shown.contains("flash") && !shown.contains("deepseek"));
-        // Without a Claude login here, the next mode is auto again.
+        assert!(shown.contains("openrouter") && !shown.contains("deepseek"));
+        // Without a Claude login here, the next mode is coder again.
         if !crate::claude::available() {
             app.handle(press(KeyCode::BackTab));
             assert_eq!(app.plugins.model, crate::models::AUTO);
             assert!(app.mode == Mode::Live);
             assert!(rail(&mut app).contains("auto"));
         }
+    }
+
+    /// The openrouter mode is offered only where the plugin is on and holds
+    /// a key: with the plugin off, Shift+Tab skips it even when a key is
+    /// saved.
+    #[test]
+    fn the_openrouter_mode_needs_the_plugin_on() {
+        use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+        let mut app = App::default();
+        app.mode = Mode::Live;
+        app.plugins.model = crate::models::AUTO.into();
+        app.plugins.enabled = false;
+        app.plugins.key_configured = true;
+        app.handle(Event::Key(KeyEvent::new(
+            KeyCode::BackTab,
+            KeyModifiers::NONE,
+        )));
+        // It moves on to claude where this computer holds that login, but
+        // never to the openrouter model while the plugin is off.
+        assert_ne!(app.plugins.model, crate::models::OPENROUTER);
     }
 
     #[test]

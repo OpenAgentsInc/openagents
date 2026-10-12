@@ -34,7 +34,7 @@ fn transcript(buffer: &Buffer) -> Vec<String> {
         .collect()
 }
 
-/// The input box's top rule, which names the mode (`coder`, `flash`, or
+/// The input box's top rule, which names the mode (`coder`, `openrouter`, or
 /// `claude`) or the model the person chose in /models.
 fn top_rule(text: &[String]) -> Option<usize> {
     text.iter().position(|line| line.starts_with('┌'))
@@ -169,7 +169,7 @@ fn composer_registration_follows_enablement_and_preserves_input_geometry() {
         assert_eq!(cursor, (3, (top + 1) as u16));
         let byte = text[top].find("coder").unwrap();
         let x = UnicodeWidthStr::width(&text[top][..byte]) as u16;
-        // `coder` is blue; a chosen model would be gray, `flash` cyan.
+        // `coder` is blue; a chosen model would be gray, `openrouter` cyan.
         assert_eq!(buffer[(x, top as u16)].fg, theme::ACCENT_SKILL);
     }
     app.plugins.enabled = false;

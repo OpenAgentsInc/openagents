@@ -237,10 +237,11 @@ the call. Demo tools
 and agents remain presentation fixtures; live mode
 runs enabled plugin tools and configured ACP delegations.
 
-Shift+Tab steps the mode from `coder` to `claude` and back. When your own
-OpenRouter key is saved, a `flash` step between them runs DeepSeek V4.1 Flash
-on that key; `coder` lets OpenAgents pick the model. `claude` is offered only
-where this computer holds a Claude account login; it runs turns through the
+Shift+Tab steps the mode from `coder` to `claude` and back. When the
+OpenRouter plugin is on and holds a key, an `openrouter` step between them
+runs DeepSeek V4.1 Flash on that key; `coder` lets OpenAgents pick the model.
+`claude` is offered only where this computer holds a Claude account login; it
+runs turns through the
 Claude Agent SDK on that login, on Haiku 5.5, with the basic file tools
 (Read, Write, Edit, Glob, and Grep) and no shell. `coder solver N` takes an
 issue number (or `owner/repo#N`) and solves it to a pull request in four

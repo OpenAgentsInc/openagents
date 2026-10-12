@@ -271,7 +271,7 @@ impl Plugins {
     }
 
     /// Switch to `id` with the current options, turning the OpenRouter
-    /// plugin on when `on` (Tab's auto/flash switch).
+    /// plugin on when `on` (Shift+Tab's coder/openrouter switch).
     pub fn switch_model(&mut self, id: &str, on: bool) -> bool {
         let enabled = self.enabled || on;
         let options = self.options.clone();

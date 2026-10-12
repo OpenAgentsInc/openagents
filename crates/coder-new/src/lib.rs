@@ -1018,7 +1018,7 @@ impl App {
     }
 
     /// Shift+Tab, the one mode switch: `coder` (OpenAgents picks) →
-    /// `flash` (DeepSeek V4.1 Flash on the person's OpenRouter key) →
+    /// `openrouter` (DeepSeek V4.1 Flash on the person's OpenRouter key) →
     /// `claude` (this computer's Claude login) → back to `coder`. A mode
     /// this computer can't use is skipped; when only `coder` is available,
     /// it says what the others need.
@@ -1026,23 +1026,24 @@ impl App {
         if self.mode == Mode::Demo {
             return;
         }
-        let flash = self.plugins.key_configured;
+        // Offered only where the OpenRouter plugin is on and holds a key.
+        let openrouter = self.plugins.enabled && self.plugins.key_configured;
         let claude = crate::claude::available();
-        let on_flash = self.mode == Mode::Live && self.plugins.model == models::FLASH;
+        let on_openrouter = self.mode == Mode::Live && self.plugins.model == models::OPENROUTER;
         // The modes after the current one, in order, ending at coder.
         let next = match self.mode {
-            Mode::Live if !on_flash && flash => "flash",
+            Mode::Live if !on_openrouter && openrouter => "openrouter",
             Mode::Live if claude => "claude",
             _ => "coder",
         };
         match next {
-            "flash" => {
-                if self.plugins.switch_model(models::FLASH, true) {
+            "openrouter" => {
+                if self.plugins.switch_model(models::OPENROUTER, true) {
                     self.notice = None;
                 }
             }
             "claude" => {
-                if on_flash {
+                if on_openrouter {
                     self.plugins.switch_model(models::AUTO, false);
                 }
                 self.set_mode(Mode::Claude);
@@ -1052,11 +1053,11 @@ impl App {
                 if self.mode != Mode::Live {
                     self.set_mode(Mode::Live);
                 }
-                if self.plugins.model == models::FLASH {
+                if self.plugins.model == models::OPENROUTER {
                     self.plugins.switch_model(models::AUTO, false);
                 }
-                self.notice = (!flash && !claude && self.mode == Mode::Live).then(|| {
-                    "flash needs an OpenRouter API key (F2); claude needs Claude Code signed in on this computer.".into()
+                self.notice = (!openrouter && !claude && self.mode == Mode::Live).then(|| {
+                    "openrouter needs the OpenRouter plugin on with an API key (F2); claude needs Claude Code signed in on this computer.".into()
                 });
             }
         }

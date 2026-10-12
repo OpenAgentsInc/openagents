@@ -1289,7 +1289,7 @@ fn check_error(error: reqwest::Error) -> String {
 /// than OpenRouter's, which it is not.
 fn gateway_error(error: openrouter::Error) -> String {
     if let openrouter::Error::Api { status: 402, .. } = error {
-        return "Today's free allowance on OpenAgents is used up (HTTP 402). Add credit at openagents.com, or switch to flash with Shift+Tab.".into();
+        return "Today's free allowance on OpenAgents is used up (HTTP 402). Add credit at openagents.com, or switch to openrouter with Shift+Tab.".into();
     }
     stream_error(error).replace("OpenRouter", "OpenAgents")
 }
@@ -1341,7 +1341,7 @@ fn status_error(status: u16) -> String {
     match StatusCode::from_u16(status).ok() {
         Some(StatusCode::UNAUTHORIZED) => "OpenRouter rejected the API key (HTTP 401).".into(),
         Some(StatusCode::PAYMENT_REQUIRED) => {
-            "Your OpenRouter balance doesn't cover this request (HTTP 402). Add credit at openrouter.ai/settings/credits, or switch to flash with Shift+Tab.".into()
+            "Your OpenRouter balance doesn't cover this request (HTTP 402). Add credit at openrouter.ai/settings/credits, or switch to openrouter with Shift+Tab.".into()
         }
         Some(StatusCode::TOO_MANY_REQUESTS) => crate::long_session::rate_limited(None),
         Some(StatusCode::FORBIDDEN) => "OpenRouter denied this request (HTTP 403).".into(),

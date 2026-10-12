@@ -151,7 +151,7 @@ pub fn openrouter_model(favor: Favor) -> &'static str {
     if favor.intelligence >= 4 && favor.cost < 4 {
         "anthropic/claude-fable-5.1"
     } else if favor.speed >= 4 && favor.cost < 4 {
-        crate::models::FLASH
+        crate::models::OPENROUTER
     } else {
         crate::models::DEFAULT_MODEL
     }
@@ -309,6 +309,6 @@ mod tests {
             speed: 5,
             ..BALANCED
         };
-        assert_eq!(openrouter_model(fast), crate::models::FLASH);
+        assert_eq!(openrouter_model(fast), crate::models::OPENROUTER);
     }
 }
