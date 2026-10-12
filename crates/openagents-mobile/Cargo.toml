@@ -101,6 +101,8 @@ ndk-sys = "0.6"
 # The machine-talk guard over the copy in this crate's sources (#11031).
 oa-copy = { path = "../oa-copy" }
 openagents-chat-app = { path = "../openagents-chat-app", features = ["test-support"] }
+# Where a turn runs, in the gateway-fallback tests (#11456).
+route-contract = { path = "../route-contract" }
 # Nearby computers' iroh keys in tests.
 openagents-connect = { path = "../openagents-connect" }
 # Signed BOLT11 invoices for the agent-spending tests.

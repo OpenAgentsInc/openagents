@@ -621,6 +621,11 @@ pub struct Context {
     /// person's GitHub connection (the web chat, when the chat is in a
     /// project): what the chat answers questions about the repository from.
     pub repository: Option<RepositorySnapshot>,
+    /// Where this turn runs (#11456): on the person's computer while it is
+    /// online, else on the gateway with the reason, so the worker answers
+    /// here instead of asking for a computer and its records keep why.
+    /// `None` from a surface that does not place turns.
+    pub placement: Option<route_contract::placement::Placement>,
 }
 
 /// The most bytes of a repository snapshot's text.
@@ -730,6 +735,9 @@ impl Context {
         }
         if let Some(repository) = self.repository.as_ref().and_then(RepositorySnapshot::json) {
             context["repository"] = repository;
+        }
+        if let Some(placement) = &self.placement {
+            context["placement"] = placement.json();
         }
         context
     }
@@ -1392,6 +1400,23 @@ impl Meta {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_offline_computer_sends_the_gateway_placement_and_its_reason() {
+        use route_contract::placement::{Linked, Presence, place};
+        let context = Context {
+            computer_ready: false,
+            placement: Some(place(Some(&Linked {
+                presence: Presence::Offline,
+                ready: vec![],
+            }))),
+            ..Context::default()
+        };
+        assert_eq!(
+            context.json()["placement"],
+            json!({"place": "gateway", "candidates": ["coder-loop"], "because": "computer-offline"})
+        );
+    }
 
     #[test]
     fn the_context_names_no_host_and_bounds_the_build() {

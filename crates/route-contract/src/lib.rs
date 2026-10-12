@@ -42,6 +42,11 @@
 //!   dependencies, per-node admissions, cancellation, and funded rework.
 //! - [`eval`]: the labeled evaluation split for route families
 //!   (`fixtures/route-families-v1.json`).
+//! - [`harness`]: the harnesses a Coder turn can run on (Claude Code, the
+//!   Coder loop, Codex), each declared the same way (#11452).
+//! - [`placement`]: where a turn from the phone or the web runs: on the
+//!   person's computer while it is online, else on the gateway, with the
+//!   reason (#11456).
 //!
 //! Every document carries a versioned `schema`. Immutable definitions are
 //! named by [`Digest`]: SHA-256 over canonical JSON (object keys sorted, no
@@ -52,8 +57,10 @@ pub mod decision;
 pub mod digest;
 pub mod eval;
 pub mod graph;
+pub mod harness;
 pub mod lifecycle;
 pub mod offer;
+pub mod placement;
 pub mod price_book;
 pub mod qualify;
 pub mod recipe;

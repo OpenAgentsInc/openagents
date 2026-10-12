@@ -62,6 +62,21 @@ pub fn reply_actions(
     reply_actions_for(meta, used, computer_lane, &target, has_result)
 }
 
+/// Where a coding reply ran while `host` is offline: on OpenAgents, in
+/// this chat, with the work going back to the computer once it is online.
+#[must_use]
+pub fn offline_line(host: &str) -> String {
+    format!(
+        "{host} is offline, so OpenAgents answered here. The work goes back to {host} when it's online."
+    )
+}
+
+/// Where a coding reply ran while `host` is still connecting.
+#[must_use]
+pub fn connecting_line(host: &str) -> String {
+    format!("Connecting to {host}… OpenAgents answered here meanwhile.")
+}
+
 pub fn reply_actions_for(
     meta: Option<&Meta>,
     used: &[String],
@@ -89,14 +104,13 @@ pub fn reply_actions_for(
             glyph: Glyph::Add,
             action: Action::ConnectComputer,
         }),
+        // The computer is away, so the turn ran on the gateway (#11456):
+        // the line says where, and that the work goes back to the computer.
         Target::Connecting(host) if judged => {
-            output.notice = Some((
-                "coder-connecting".into(),
-                format!("Connecting to {}…", host),
-            ))
+            output.notice = Some(("coder-connecting".into(), connecting_line(host)))
         }
         Target::Offline(host) if judged => {
-            output.notice = Some(("coder-offline".into(), format!("{} is offline.", host)))
+            output.notice = Some(("coder-offline".into(), offline_line(host)))
         }
         _ => {}
     }

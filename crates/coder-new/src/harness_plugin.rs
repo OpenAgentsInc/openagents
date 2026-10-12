@@ -21,31 +21,10 @@
 
 use crate::{App, Mode, plugin_tools::ExecutionSettings};
 
-/// A harness's identity.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Harness {
-    /// Claude Code through the Claude Agent SDK (`crate::claude`,
-    /// `crate::claude_chat`): one long-lived process per chat, every call
-    /// approved, the person's settings loaded, Coder's tools over MCP.
-    ClaudeCode,
-    /// Coder's own loop (`crate::live`) on the OpenAgents gateway, or on
-    /// the person's OpenRouter key, with Coder's tools.
-    CoderLoop,
-    /// Codex on this computer's ChatGPT login. Today it runs only as a
-    /// background agent (`crate::fleet`, an ACP agent with the id `codex`);
-    /// a chat turn on it is not built yet ([`Turn::NotYet`]).
-    Codex,
-}
-
-/// Where a harness runs.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Place {
-    ThisComputer,
-    LinkedComputer,
-    Gateway,
-}
+// The harness contract itself (identity, place, abilities, turn, and the
+// declarations) lives in `route_contract::harness`, so the phone and the
+// web read the same table (#11456).
+pub use route_contract::harness::{Can, DECLARATIONS, Declaration, Harness, Place, Turn};
 
 /// Who pays for a harness's work.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
@@ -59,94 +38,6 @@ pub enum Payer {
     GatewayCredits,
     /// The person's own OpenRouter key.
     OpenRouterKey,
-}
-
-/// What a harness can do.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Can {
-    Answer,
-    RepoEdits,
-    Shell,
-    IssueToPullRequest,
-    BackgroundWork,
-    Images,
-}
-
-/// How a harness takes a chat's turn.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Turn {
-    /// A long-lived session per chat, which later turns continue.
-    Session,
-    /// One request per turn over the chat's transcript.
-    Transcript,
-    /// No chat turn yet; the harness runs only as background work.
-    NotYet,
-}
-
-/// One harness's declaration.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
-pub struct Declaration {
-    pub harness: Harness,
-    pub name: &'static str,
-    /// The plugin in /plugins that turns it on, when one does.
-    pub plugin: Option<&'static str>,
-    pub place: Place,
-    pub can: &'static [Can],
-    pub turn: Turn,
-}
-
-/// Every harness Coder knows, in the order a fixed rule prefers them.
-pub const DECLARATIONS: [Declaration; 3] = [
-    Declaration {
-        harness: Harness::ClaudeCode,
-        name: "Claude Code",
-        plugin: Some(crate::claude::PLUGIN),
-        place: Place::ThisComputer,
-        can: &[
-            Can::Answer,
-            Can::RepoEdits,
-            Can::Shell,
-            Can::IssueToPullRequest,
-            Can::BackgroundWork,
-            Can::Images,
-        ],
-        turn: Turn::Session,
-    },
-    Declaration {
-        harness: Harness::CoderLoop,
-        name: "Coder",
-        plugin: None,
-        place: Place::Gateway,
-        can: &[
-            Can::Answer,
-            Can::RepoEdits,
-            Can::Shell,
-            Can::IssueToPullRequest,
-            Can::BackgroundWork,
-        ],
-        turn: Turn::Transcript,
-    },
-    Declaration {
-        harness: Harness::Codex,
-        name: "Codex",
-        plugin: Some("acp-subagents"),
-        place: Place::ThisComputer,
-        can: &[Can::RepoEdits, Can::Shell, Can::BackgroundWork],
-        turn: Turn::NotYet,
-    },
-];
-
-impl Harness {
-    /// This harness's declaration.
-    #[must_use]
-    pub fn declaration(self) -> &'static Declaration {
-        DECLARATIONS
-            .iter()
-            .find(|declaration| declaration.harness == self)
-            .expect("every harness is declared")
-    }
 }
 
 /// Why a harness is not a candidate for this chat.
@@ -419,6 +310,14 @@ mod tests {
             openrouter_key: false,
             leaning: crate::routing_preferences::Leaning::default(),
         }
+    }
+
+    #[test]
+    fn the_shared_declaration_names_the_claude_plugin_coder_turns_on() {
+        assert_eq!(
+            Harness::ClaudeCode.declaration().plugin,
+            Some(crate::claude::PLUGIN)
+        );
     }
 
     #[test]

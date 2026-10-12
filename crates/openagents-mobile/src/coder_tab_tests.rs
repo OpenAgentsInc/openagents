@@ -1447,6 +1447,12 @@ fn a_turn_asks_for_routing_with_a_bounded_context() {
                 name: "Studio Mac".into(),
                 engines: vec![],
             }),
+            // The computer is online, so the turn's work can go there.
+            placement: Some(route_contract::placement::Placement {
+                place: route_contract::harness::Place::LinkedComputer,
+                candidates: vec![route_contract::harness::Harness::CoderLoop],
+                because: None,
+            }),
             ..crate::router::Context::default()
         }]
     );
@@ -1464,6 +1470,13 @@ fn a_turn_asks_for_routing_with_a_bounded_context() {
     let context = bare.contexts.lock().unwrap()[0].clone();
     assert!(!context.computer_ready);
     assert_eq!(context.computer, None);
+    assert_eq!(
+        context
+            .placement
+            .as_ref()
+            .and_then(|placement| placement.because),
+        Some(route_contract::placement::Because::NoComputer)
+    );
     assert!(context.json().get("computer").is_none());
 }
 
@@ -3417,6 +3430,10 @@ fn a_finished_start_on_an_unlinked_computer_says_so() {
 /// An offline computer, even one whose last presence said it starts Coder
 /// at once, starts nothing: the reply says it is offline, as before
 /// (#10101).
+/// With the computer offline, a Coder request runs on the gateway in the
+/// same chat (#11456): the turn carries the gateway placement and its
+/// reason, nothing starts on the computer, no question or error shows, and
+/// the line under the reply says where it ran.
 #[test]
 fn an_offline_computer_leaves_the_offer_unchanged() {
     use coder_host::access::protocol::CODER_START_AT_ONCE;
@@ -3438,10 +3455,24 @@ fn an_offline_computer_leaves_the_offer_unchanged() {
     assert!(delivery.lock().unwrap().engines.is_empty());
     assert!(node(&view, "coder-start").is_none());
     assert!(
-        texts(&view).iter().any(|t| t == "Old laptop is offline."),
+        texts(&view).iter().any(|t| t
+            == "Old laptop is offline, so OpenAgents answered here. The work goes back to Old laptop when it's online."),
         "{:?}",
         texts(&view)
     );
+    assert!(node(&view, "talk-failed").is_none());
+    assert!(node(&view, "coder-connect").is_none());
+    let contexts = hand.contexts.lock().unwrap().clone();
+    let placement = contexts
+        .last()
+        .and_then(|context| context.placement.clone())
+        .expect("a placement");
+    assert_eq!(placement.place, route_contract::harness::Place::Gateway);
+    assert_eq!(
+        placement.because,
+        Some(route_contract::placement::Because::ComputerOffline)
+    );
+    assert_eq!(fixture.coder.open_placement(), Some(&placement));
 }
 
 /// A reply that answered the question (a route other than the dispatch,

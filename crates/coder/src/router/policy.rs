@@ -647,6 +647,11 @@ fn canned(routing: &Routing, facts: &Facts, offers: bool) -> Option<Tier> {
 /// A capability the reading named that is usable only in a Coder run
 /// is named in the stem ([`named_capability`]).
 fn dispatch(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation) -> Option<Tier> {
+    // The person's computer is away: the turn runs here on the gateway,
+    // so there is nothing to dispatch and nothing to ask (#11456).
+    if situation.context.computer_away() {
+        return None;
+    }
     if situation.context.computer_ready == Some(false) {
         return final_of(bank, facts, "dispatch.no_computer");
     }
@@ -2041,6 +2046,26 @@ mod tests {
             })
         ));
         assert_eq!(tier.word(), "offer");
+
+        // A paired computer that is offline: the phone placed the turn on
+        // the gateway, so nothing is dispatched and nothing asks for a
+        // computer; the model answers here (#11456).
+        let offline = Context {
+            computer_ready: Some(false),
+            placement: Some(route_contract::placement::place(Some(
+                &route_contract::placement::Linked {
+                    presence: route_contract::placement::Presence::Offline,
+                    ready: vec![],
+                },
+            ))),
+            ..Context::default()
+        };
+        let tier = decided(&routing, &offline, true);
+        assert!(
+            !matches!(&tier, Tier::CannedFinal { answer, .. } if answer.id == "dispatch.no_computer"),
+            "{tier:?}"
+        );
+        assert_ne!(tier.word(), "offer", "{tier:?}");
 
         // The lane alone is enough.
         let mut lane = routed(RouteId::General, 0.6, "none", 0.0, 0.9);

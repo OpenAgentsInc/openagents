@@ -51,6 +51,7 @@
 //! open, so nothing runs a message being edited: edit, move up, send now,
 //! or remove this device's own queued messages.
 
+use route_contract::placement::Placement;
 use std::sync::{Arc, Mutex};
 
 use crate::basic_chats::{BasicChats, Tail};
@@ -484,6 +485,12 @@ pub struct CoderTab {
     /// one starts Coder at once where the computer allows it (#10101); a
     /// reply read any other way (an old chat, a relaunch) never does.
     awaiting: Vec<(String, usize)>,
+    /// Where each conversation's newest turn ran and why (#11456), newest
+    /// last, at most [`MAX_PLACEMENTS`]: the record #11454's routing
+    /// records read through [`CoderTab::placement_record`].
+    placements: std::collections::VecDeque<(String, Placement)>,
+    /// The router context's placement, until a new conversation has its id.
+    placed: Option<Placement>,
     /// The read of the shown conversation's ended Coder task for the
     /// outcome its start card shows, and each ended summary already read,
     /// by task and sequence, so each is read once.
@@ -572,6 +579,8 @@ impl CoderTab {
             images: crate::attachments::Drafts::default(),
             talk_runs: std::collections::BTreeMap::new(),
             awaiting: Vec::new(),
+            placements: std::collections::VecDeque::new(),
+            placed: None,
             outcome_read: None,
             outcome_tried: std::collections::BTreeSet::new(),
             attachments: ATTACHMENTS_ENABLED,
@@ -723,7 +732,12 @@ impl CoderTab {
                     Some(id) => {
                         self.basic.send(&id, text, now);
                     }
-                    None => self.talk = self.basic.start(text, now),
+                    None => {
+                        self.talk = self.basic.start(text, now);
+                        if let Some(id) = self.talk.clone() {
+                            self.record_placement(&id);
+                        }
+                    }
                 }
             }
         }
@@ -847,6 +861,13 @@ impl CoderTab {
             .and_then(|summary| summary.coder.as_ref())
             .and_then(|spawned| spawned.project.clone())
             .map(|name| crate::router::Project { name, path: None });
+        // Where this turn runs: on the computer while it is online, else
+        // on the gateway, with the reason. Never a question (#11456).
+        let placement = placement_of(&availability);
+        self.placed = Some(placement.clone());
+        if let Some(id) = self.talk.clone() {
+            self.record_placement(&id);
+        }
         Context {
             surface: crate::router::Surface::Phone,
             client: None,
@@ -863,7 +884,40 @@ impl CoderTab {
             runs: Vec::new(),
             memory: self.memory.clone(),
             repository: None,
+            placement: Some(placement),
         }
+    }
+
+    /// Keeps the placement the last router context chose as conversation
+    /// `id`'s newest. The hook #11454's routing records call
+    /// [`CoderTab::placement_record`] to read.
+    fn record_placement(&mut self, id: &str) {
+        let Some(placement) = self.placed.clone() else {
+            return;
+        };
+        self.placements.retain(|(talk, _)| talk != id);
+        if self.placements.len() >= MAX_PLACEMENTS {
+            self.placements.pop_front();
+        }
+        self.placements.push_back((id.to_owned(), placement));
+    }
+
+    /// Where the open conversation's newest turn ran.
+    #[must_use]
+    pub fn open_placement(&self) -> Option<&Placement> {
+        self.placement_record(self.talk.as_deref()?)
+    }
+
+    /// Where conversation `id`'s newest turn ran, and why when it ran on
+    /// the gateway (the computer offline, still connecting, or none): the
+    /// routing-record hook for #11454.
+    #[must_use]
+    pub fn placement_record(&self, id: &str) -> Option<&Placement> {
+        self.placements
+            .iter()
+            .rev()
+            .find(|(talk, _)| talk == id)
+            .map(|(_, placement)| placement)
     }
 
     /// The open conversation's Coder task, as the router's context: once
@@ -1973,6 +2027,7 @@ impl CoderTab {
         let context = self.router_context(computers);
         self.basic.set_context(context);
         if let Some(id) = self.basic.start(text, unix_now()) {
+            self.record_placement(&id);
             self.await_reply(&id);
             self.composers += 1;
             self.notice = None;
@@ -2481,6 +2536,7 @@ impl CoderTab {
                 .basic
                 .start_tagged(prompt, unix_now(), Some(request.clone()))
             {
+                self.record_placement(&id);
                 self.await_reply(&id);
                 self.composers += 1;
                 let talk = format!("talk:{id}");
@@ -4385,6 +4441,40 @@ pub fn engines_of(host: &HostRecord) -> Vec<crate::router::Engine> {
     .filter(crate::router::Engine::bounded)
     .take(crate::router::MAX_ENGINES)
     .collect()
+}
+
+/// The most conversations whose newest placement the tab keeps.
+pub const MAX_PLACEMENTS: usize = 64;
+
+/// Where a turn runs, from the computer's availability (#11456): a ready
+/// computer keeps its signed-in coding agents (Claude Code, Codex) as
+/// candidates there, as a task on it; one that is offline or still
+/// connecting, or none, sends the turn to the gateway with the reason. Read
+/// from the typed presence, never from words.
+#[must_use]
+pub fn placement_of(availability: &Availability<'_>) -> Placement {
+    use route_contract::harness::Harness;
+    use route_contract::placement::{Linked, Presence, place};
+    let linked = match availability {
+        Availability::Ready(host) => Some(Linked {
+            presence: Presence::Online,
+            ready: engines_of(host)
+                .iter()
+                .filter(|engine| engine.state == crate::router::EngineState::Ready)
+                .filter_map(|engine| Harness::of_engine(&engine.engine))
+                .collect(),
+        }),
+        Availability::Connecting(_) => Some(Linked {
+            presence: Presence::Connecting,
+            ready: vec![],
+        }),
+        Availability::Offline(_) => Some(Linked {
+            presence: Presence::Offline,
+            ready: vec![],
+        }),
+        Availability::NotConfigured => None,
+    };
+    place(linked.as_ref())
 }
 
 /// Whether a new chat can start now, from the typed authority check and host

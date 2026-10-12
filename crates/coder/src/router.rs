@@ -1058,6 +1058,11 @@ pub struct Context {
     /// turn with the person's GitHub connection: questions about the
     /// repository are answered from it ([`Context::repository_note`]).
     pub repository: Option<Repository>,
+    /// Where the client placed this turn (#11456): on the person's
+    /// computer while it is online, else on the gateway with the reason.
+    /// A turn placed on the gateway because the computer is away is
+    /// answered here, never with a request to connect a computer.
+    pub placement: Option<route_contract::placement::Placement>,
 }
 
 /// The most bytes of a repository snapshot `context.repository` carries.
@@ -1239,7 +1244,17 @@ impl Context {
                 .unwrap_or_default(),
             memory: MemoryNote::all(&value["memory"]),
             repository: Repository::of(&value["repository"]),
+            placement: route_contract::placement::Placement::of(&value["placement"]),
         }
+    }
+
+    /// The client placed this turn on the gateway because the person's
+    /// computer is offline or still connecting (#11456).
+    #[must_use]
+    pub fn computer_away(&self) -> bool {
+        self.placement
+            .as_ref()
+            .is_some_and(route_contract::placement::Placement::computer_away)
     }
 
     /// The model's note about the chat's repository: what it is, the
@@ -1462,6 +1477,15 @@ impl Context {
                      connect a computer; explain connecting another computer only when they ask \
                      about that."
                 );
+                if self.computer_away() {
+                    note.push_str(&format!(
+                        " {name:?} is offline right now, so this turn runs here on OpenAgents, \
+                         from this conversation: help as far as we can without running commands \
+                         or reading their files, say plainly that nothing has started on \
+                         {name:?}, and never ask them to bring it online or connect a computer. \
+                         Work goes back to {name:?} when it is online."
+                    ));
+                }
                 if engines.is_empty() {
                     note.push_str(&format!(
                         " Coder runs one of the coding agents installed on {name:?}, such as \

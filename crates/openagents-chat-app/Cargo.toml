@@ -11,6 +11,8 @@ test-support = []
 
 [dependencies]
 openagents-chat = { path = "../openagents-chat" }
+# Where a turn runs: the linked computer while online, else the gateway (#11456).
+route-contract = { path = "../route-contract" }
 openagents-connect = { path = "../openagents-connect" }
 coder-computers = { path = "../coder-computers" }
 coder-host = { path = "../coder-host", default-features = false }
