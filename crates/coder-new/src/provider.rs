@@ -51,13 +51,17 @@ pub struct KeyInfo {
 /// The sign-in the OpenAgents gateway refused (401 or 403), so later
 /// `auto` turns on it go straight to their fallback instead of asking
 /// again every turn. Signing in again, or restarting Coder, asks again.
-static GATEWAY_REFUSED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+/// Kept per sign-in, so one account's refusal never closes another's door.
+static GATEWAY_REFUSED: std::sync::Mutex<std::collections::BTreeSet<String>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
 
 /// The account whose daily free allowance the gateway reported used up
 /// (402), held until `until` (Unix seconds): later `auto` turns skip it
 /// instead of asking again every prompt. A short hold, not the day, so
 /// credit added mid-session takes effect on the next turns.
-static GATEWAY_EXHAUSTED: std::sync::Mutex<Option<(String, u64)>> = std::sync::Mutex::new(None);
+/// Kept per sign-in, like [`GATEWAY_REFUSED`].
+static GATEWAY_EXHAUSTED: std::sync::Mutex<std::collections::BTreeMap<String, u64>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
 
 /// How long a used-up allowance holds before the gateway is tried again.
 const GATEWAY_EXHAUSTED_HOLD: u64 = 30 * 60;
@@ -65,25 +69,22 @@ const GATEWAY_EXHAUSTED_HOLD: u64 = 30 * 60;
 /// Whether `auto` may try the OpenAgents gateway with `account`.
 #[must_use]
 pub fn gateway_open(account: &openagents_login::Saved) -> bool {
-    if !GATEWAY_REFUSED
+    if GATEWAY_REFUSED
         .lock()
-        .map_or(true, |refused| refused.as_deref() != Some(account.token()))
+        .is_ok_and(|refused| refused.contains(account.token()))
     {
         return false;
     }
-    GATEWAY_EXHAUSTED
-        .lock()
-        .map_or(true, |mut exhausted| match *exhausted {
-            Some((ref token, until)) if token == account.token() => {
-                if until > gateway_now() {
-                    false
-                } else {
-                    *exhausted = None;
-                    true
-                }
+    GATEWAY_EXHAUSTED.lock().map_or(true, |mut exhausted| {
+        match exhausted.get(account.token()).copied() {
+            Some(until) if until > gateway_now() => false,
+            Some(_) => {
+                exhausted.remove(account.token());
+                true
             }
-            _ => true,
-        })
+            None => true,
+        }
+    })
 }
 
 fn gateway_now() -> u64 {
@@ -489,15 +490,15 @@ impl Provider {
                                 }
                             ) {
                                 if let Ok(mut refused) = GATEWAY_REFUSED.lock() {
-                                    *refused = Some(self.key.expose().to_owned());
+                                    refused.insert(self.key.expose().to_owned());
                                 }
                             }
                             if matches!(error, openrouter::Error::Api { status: 402, .. }) {
                                 if let Ok(mut exhausted) = GATEWAY_EXHAUSTED.lock() {
-                                    *exhausted = Some((
+                                    exhausted.insert(
                                         self.key.expose().to_owned(),
                                         gateway_now() + GATEWAY_EXHAUSTED_HOLD,
-                                    ));
+                                    );
                                 }
                             }
                             if !produced {

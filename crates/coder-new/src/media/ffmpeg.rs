@@ -278,7 +278,7 @@ pub async fn brightness(
             "0:v:0",
             "-vf",
             "scale=1:1:flags=area,format=gray",
-            "-vsync",
+            "-fps_mode",
             "passthrough",
             "-f",
             "rawvideo",

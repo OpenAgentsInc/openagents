@@ -337,7 +337,13 @@ pub fn command(args: &[String]) -> Result<String, String> {
         match arg.as_str() {
             "--run" => runs.push(args.next().ok_or("--run needs a directory")?.into()),
             "--program" => program = args.next().ok_or("--program needs a file")?.into(),
-            "--pin" => pin = Some(args.next().ok_or("--pin needs a digest")?.clone()),
+            "--pin" => {
+                pin = Some(
+                    args.next()
+                        .ok_or("--pin needs the program's sha256 value")?
+                        .clone(),
+                )
+            }
             other => {
                 return Err(format!(
                     "unknown option {other}; coder solver conform takes --run DIR [--program FILE] [--pin sha256:...]"

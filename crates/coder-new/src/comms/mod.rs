@@ -875,7 +875,9 @@ impl Channel {
             if held.holder != member {
                 return Err(format!("{kind}:{value} is held by {}.", held.holder));
             }
-            held.expires_at = now_ms() + LEASE_SECS * 1000;
+            // A renewal always moves the end later, even within the same
+            // millisecond as the last one.
+            held.expires_at = (now_ms() + LEASE_SECS * 1000).max(held.expires_at + 1);
             Ok(held.clone())
         })?;
         self.log_lease("renew", &lease)?;

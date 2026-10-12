@@ -886,6 +886,10 @@ mod tests {
 
     #[test]
     fn diagnostics_off_skips_the_check() {
+        // A gated chat in another test would ask about these writes.
+        let _lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let temp = tempfile::tempdir().unwrap();
         let written = execute_with_checks(
             "Write",

@@ -2120,8 +2120,36 @@ fn composer_view(
         let accent = Style::default().fg(t::GRAY);
         // The plan and the cost sit before the mode's name, in gray, and a
         // load warning flashes just before the name in yellow.
-        let extra = top_extra.filter(|_| offset == 0);
-        let warning = warning.filter(|_| offset == 0);
+        let mut extra = top_extra.filter(|_| offset == 0);
+        let mut warning = warning.filter(|_| offset == 0);
+        // The agent's name always shows: when the plan, the cost or a
+        // warning would push the rail past the room left of the input's
+        // top-left labels, they give way first, never the name.
+        let left_taken = if offset == 0 && !left_text.is_empty() {
+            left_text.width() + 2
+        } else {
+            0
+        };
+        let room = usize::from(area.width)
+            .saturating_sub(4)
+            .saturating_sub(left_taken);
+        let fits = |extra: Option<&str>, warning: Option<&str>| {
+            extra
+                .into_iter()
+                .chain(warning)
+                .chain([label.as_str()])
+                .collect::<Vec<_>>()
+                .join(" · ")
+                .width()
+                + 2
+                <= room
+        };
+        if !fits(extra, warning) {
+            extra = None;
+        }
+        if !fits(extra, warning) {
+            warning = None;
+        }
         let text = extra
             .into_iter()
             .chain(warning)
@@ -2470,6 +2498,38 @@ mod export_notice_tests {
         assert_eq!(buffer[(at("sign-in"), 0)].fg, t::WARNING);
         assert_eq!(buffer[(at("ctx"), 0)].fg, t::GRAY);
         assert_eq!(buffer[(at("Claude"), 0)].fg, t::GRAY);
+    }
+
+    /// A long warning or plan line gives way on a narrow input; the
+    /// agent's name never does.
+    #[test]
+    fn a_long_rail_drops_the_extras_and_keeps_the_agent() {
+        let width = 48;
+        let mut terminal = Terminal::new(TestBackend::new(width, 6)).unwrap();
+        terminal
+            .draw(|frame| {
+                composer_view(
+                    frame,
+                    frame.area(),
+                    &[String::new()],
+                    (0, 0),
+                    true,
+                    false,
+                    &crate::plugins::Plugins::default(),
+                    &crate::composer_state::ComposerState::default(),
+                    None,
+                    false,
+                    Some("Claude · Haiku 5.5"),
+                    Some("5h 33% · week 83% · ctx 40%"),
+                    Some("stripe and linear need sign-in"),
+                    None,
+                    false,
+                );
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        let rail: String = (0..width).map(|x| buffer[(x, 0)].symbol()).collect();
+        assert!(rail.contains("Claude · Haiku 5.5"), "{rail}");
     }
 
     #[test]
