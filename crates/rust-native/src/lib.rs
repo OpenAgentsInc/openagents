@@ -12,6 +12,7 @@ pub mod input;
 pub mod layout;
 pub mod markdown;
 pub mod motion;
+pub mod presentation;
 pub mod press;
 pub mod selection;
 pub mod style;

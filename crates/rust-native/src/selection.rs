@@ -122,7 +122,7 @@ impl Selection {
                     text.len()
                 };
                 if let Some(part) = text.get(start..end) {
-                    pieces.push(part);
+                    pieces.push(crate::presentation::without_text_presentation(part));
                 }
             }
         }

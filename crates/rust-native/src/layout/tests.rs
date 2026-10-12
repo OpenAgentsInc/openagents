@@ -1350,3 +1350,22 @@ fn https_links_get_tap_targets() {
     );
     assert!(targets.iter().all(|t| t.2 > 0.0));
 }
+
+/// A test runner's summary marks draw as text, not emoji (#11476): the
+/// layout adds U+FE0E after `ℹ` and `✔`, and copying drops it again.
+#[test]
+fn test_summary_marks_draw_as_text() {
+    let mut layout = TranscriptLayout::new();
+    let mut measurer = FixedMeasurer::default();
+    let rows = vec![message(
+        "a0",
+        MessageRole::Assistant,
+        "ℹ tests 12\n\nℹ pass 12\n\n✔ adds",
+    )];
+    layout.update(update(rows, 390.0), &mut measurer).unwrap();
+    let display = layout.display(0).unwrap().clone();
+    let texts = display.texts.join("\n");
+    assert!(texts.contains("ℹ\u{fe0e} tests 12"), "{texts:?}");
+    assert!(texts.contains("✔\u{fe0e} adds"), "{texts:?}");
+    assert!(!texts.contains("ℹ t"), "{texts:?}");
+}

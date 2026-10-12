@@ -73,7 +73,9 @@ impl Para {
             return;
         }
         let start = self.text.len();
-        self.text.push_str(text);
+        // Symbols such as `ℹ` and `✔` draw as text, not emoji (#11476).
+        self.text
+            .push_str(&crate::presentation::text_presentation(text));
         if let Some(last) = self.pieces.last_mut()
             && last.style.same(&style)
             && last.code == code
