@@ -881,6 +881,31 @@ fn reclaim_slots(shortfall: u64) {
         }
         Err(error) => eprintln!("openagents lease: nothing reclaimed: {error}"),
     }
+    run_disk_janitor(&home);
+}
+
+/// The installed disk janitor (`scripts/dev/install-disk-janitor.sh` puts
+/// it at `~/.openagents/bin/disk-janitor`), or `OPENAGENTS_DISK_JANITOR`.
+#[cfg(unix)]
+fn disk_janitor(home: &std::path::Path, set: Option<std::ffi::OsString>) -> Option<PathBuf> {
+    use std::os::unix::fs::PermissionsExt as _;
+    let path = set.map_or_else(|| home.join(".openagents/bin/disk-janitor"), PathBuf::from);
+    let meta = std::fs::metadata(&path).ok()?;
+    (meta.is_file() && meta.permissions().mode() & 0o111 != 0).then_some(path)
+}
+
+/// A build short of disk also runs the disk janitor once, in full, which
+/// removes idle build folders, saved idle worktrees, and old agent scratch
+/// that the slot reclaim does not reach; the broker then looks again.
+#[cfg(unix)]
+fn run_disk_janitor(home: &std::path::Path) {
+    let Some(janitor) = disk_janitor(home, std::env::var_os("OPENAGENTS_DISK_JANITOR")) else {
+        return;
+    };
+    eprintln!("openagents lease: running the disk janitor ({})", janitor.display());
+    if let Err(error) = Command::new("/bin/bash").arg(&janitor).arg("--now").status() {
+        eprintln!("openagents lease: the disk janitor did not run: {error}");
+    }
 }
 
 /// The refusal of a build short of disk after reclaiming, in decimal
@@ -1008,6 +1033,26 @@ mod signals {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_build_short_of_disk_finds_the_installed_janitor_only_when_executable() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let home = tempfile::tempdir().unwrap();
+        assert_eq!(disk_janitor(home.path(), None), None);
+        let bin = home.path().join(".openagents/bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let janitor = bin.join("disk-janitor");
+        std::fs::write(&janitor, "#!/bin/bash\n").unwrap();
+        std::fs::set_permissions(&janitor, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(disk_janitor(home.path(), None), None);
+        std::fs::set_permissions(&janitor, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(disk_janitor(home.path(), None), Some(janitor.clone()));
+        let other = home.path().join("elsewhere");
+        assert_eq!(disk_janitor(home.path(), Some(other.clone().into())), None);
+        std::fs::copy(&janitor, &other).unwrap();
+        assert_eq!(disk_janitor(home.path(), Some(other.clone().into())), Some(other));
+    }
 
     fn words(text: &[&str]) -> Vec<String> {
         text.iter().map(|word| (*word).to_owned()).collect()
