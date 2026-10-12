@@ -577,6 +577,7 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
         folder.parent().unwrap_or(folder),
         options.inner.issue,
         &run.id,
+        options.inner.kind_decider(),
     )
     .await;
     if let Some(entry) = end

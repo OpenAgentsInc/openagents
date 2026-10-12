@@ -95,8 +95,12 @@ cargo shim.
 
 ## Solver swarm
 
-`solver_swarm {issues, no_pr?, concurrency?, budget_usd?}` starts one solver
-per issue, each in its own worktree and run folder as solver runs are today.
+`solver_swarm {issues, no_pr?, decisions?, concurrency?, budget_usd?}` starts
+one solver per issue, each in its own worktree and run folder as solver runs
+are today. `decisions` (`jev` or `clef`) is passed to every solver as
+`--decisions`, so each run's `summary.json` verdict is the same door-weighed
+judgment `coder solver queue --decisions` gives (already landed, still
+current, actionable now).
 Concurrency defaults to what the machine fits (a quarter of the cores, one to
 four, and one when free disk is under 30 GB) and the person may set it. A
 spend limit, when the person sets one, stops new solvers from starting once

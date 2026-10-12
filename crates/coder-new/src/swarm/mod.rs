@@ -41,7 +41,7 @@ pub fn default_concurrency() -> usize {
 /// What the model is told about the tool.
 #[must_use]
 pub const fn instructions() -> &'static str {
-    "Solver swarm hands several GitHub issues to several Solvers at once, one per issue, each in its own worktree and run folder. They post what they mean to change to the agent channel and settle overlaps with each other. Use it when the person asks to solve several issues at once, or a whole list or board column. `issues` is a list of N, #N, or owner/repo#N. Set `no_pr` to stop each run after its checks; `concurrency` and `budget_usd` are limits the person may set. It returns one row per issue: outcome, pull request, cost, and the folder with the run's files.\n"
+    "Solver swarm hands several GitHub issues to several Solvers at once, one per issue, each in its own worktree and run folder. They post what they mean to change to the agent channel and settle overlaps with each other. Use it when the person asks to solve several issues at once, or a whole list or board column. `issues` is a list of N, #N, or owner/repo#N. Set `no_pr` to stop each run after its checks; `decisions` (jev or clef) has each run ask that decision model whether its issue already landed, is still current, conflicts with another agent's declared work, or is actionable now; `concurrency` and `budget_usd` are limits the person may set. It returns one row per issue: outcome, pull request, cost, and the folder with the run's files.\n"
 }
 
 /// The tool's input schema.
@@ -56,6 +56,7 @@ pub fn schema() -> Value {
                 "description": "The issues to solve, each N, #N, or owner/repo#N."
             },
             "no_pr": {"type": "boolean", "description": "Stop after each run's checks; open no pull requests."},
+            "decisions": {"type": "string", "enum": ["jev", "clef", "off"], "description": "The decision model each run asks its judgments at; off by default."},
             "concurrency": {"type": "integer", "description": "How many solvers run at once."},
             "budget_usd": {"type": "number", "description": "Stop starting solvers once the finished ones have spent this."}
         },
@@ -79,6 +80,9 @@ pub fn tool_definition() -> Value {
 pub struct Request {
     pub issues: Vec<(Option<String>, u64)>,
     pub no_pr: bool,
+    /// The door each solver asks its judgments at (`--decisions`); `None`
+    /// leaves the solver's default.
+    pub decisions: Option<String>,
     pub concurrency: usize,
     pub budget_usd: Option<f64>,
 }
@@ -89,12 +93,12 @@ pub struct Request {
 /// The arguments are not `{issues, no_pr?, concurrency?, budget_usd?}`, an
 /// issue is not N, #N, or owner/repo#N, or a limit is out of range.
 pub fn arguments(arguments: &Value) -> Result<Request, String> {
-    const USAGE: &str = "solver_swarm takes issues (a list of N, #N, or owner/repo#N) and optionally no_pr, concurrency, and budget_usd, with no other fields.";
+    const USAGE: &str = "solver_swarm takes issues (a list of N, #N, or owner/repo#N) and optionally no_pr, decisions (jev, clef or off), concurrency, and budget_usd, with no other fields.";
     let object = arguments.as_object().ok_or(USAGE)?;
     if object.keys().any(|key| {
         !matches!(
             key.as_str(),
-            "issues" | "no_pr" | "concurrency" | "budget_usd"
+            "issues" | "no_pr" | "decisions" | "concurrency" | "budget_usd"
         )
     }) {
         return Err(USAGE.into());
@@ -103,6 +107,13 @@ pub fn arguments(arguments: &Value) -> Result<Request, String> {
         None | Some(Value::Null) => false,
         Some(Value::Bool(value)) => *value,
         Some(_) => return Err(USAGE.into()),
+    };
+    let decisions = match object.get("decisions") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(door)) if matches!(door.as_str(), "jev" | "clef" | "off") => {
+            Some(door.clone())
+        }
+        Some(_) => return Err("decisions takes jev, clef or off.".into()),
     };
     let concurrency = match object.get("concurrency") {
         None | Some(Value::Null) => default_concurrency(),
@@ -148,6 +159,7 @@ pub fn arguments(arguments: &Value) -> Result<Request, String> {
     Ok(Request {
         issues,
         no_pr,
+        decisions,
         concurrency,
         budget_usd,
     })
@@ -195,6 +207,9 @@ pub fn options(
     }
     if request.no_pr {
         args.push("--no-pr".into());
+    }
+    if let Some(door) = &request.decisions {
+        args.extend(["--decisions".into(), door.clone()]);
     }
     solver::Options::parse(&args)
 }

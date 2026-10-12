@@ -407,13 +407,7 @@ pub async fn read(
     let main_log = if decider == Decider::Off {
         String::new()
     } else {
-        crate::issue_run::setup::output(
-            "git",
-            &["log", "--oneline", "-n", "40", "origin/main"],
-            repo,
-        )
-        .await
-        .unwrap_or_default()
+        main_log(repo).await
     };
     let issues: Vec<Value> = serde_json::from_str(&text).map_err(|error| error.to_string())?;
     let rows = ledger::read(state, repo).await;
@@ -457,25 +451,37 @@ pub async fn read(
     Ok(entries)
 }
 
+/// The newest subjects on `origin/main`, for a door to read.
+async fn main_log(repo: &Path) -> String {
+    crate::issue_run::setup::output(
+        "git",
+        &["log", "--oneline", "-n", "40", "origin/main"],
+        repo,
+    )
+    .await
+    .unwrap_or_default()
+}
+
 /// The queue verdict for one issue, as `read` would judge it; `except`
-/// is a run id to leave out of the in-flight set (the run asking).
+/// is a run id to leave out of the in-flight set (the run asking). With a
+/// door other than off, a `ready` or `stale` verdict is weighed by that
+/// door's answers, as `coder solver queue --decisions` does, so the run's
+/// summary.json carries the same judgment the queue would.
 pub async fn verdict(
     github: &str,
     repo: &Path,
     state: &Path,
     issue: u64,
     except: &str,
+    decider: Decider,
 ) -> Option<Entry> {
     let number = issue.to_string();
-    let args = [
-        "issue",
-        "view",
-        &number,
-        "-R",
-        github,
-        "--json",
-        "number,title,assignees,updatedAt",
-    ];
+    let fields = if decider == Decider::Off {
+        "number,title,assignees,updatedAt"
+    } else {
+        "number,title,assignees,updatedAt,body,comments"
+    };
+    let args = ["issue", "view", &number, "-R", github, "--json", fields];
     let text = crate::issue_run::setup::output("gh", &args, repo)
         .await
         .ok()?;
@@ -495,14 +501,22 @@ pub async fn verdict(
         .map(|row| row.run_id)
         .collect();
     let landed = landed_commit(repo, issue).await;
-    Some(judge(
+    let entry = judge(
         issue,
         item["title"].as_str().unwrap_or_default(),
         landed.as_deref(),
         &assignees,
         &in_flight,
         age_days(item["updatedAt"].as_str().unwrap_or_default()),
-    ))
+    );
+    if decider == Decider::Off || (entry.verdict != "ready" && entry.verdict != "stale") {
+        return Some(entry);
+    }
+    let state = issue_state(&item, &main_log(repo).await, &[]);
+    Some(match ask(decider, state, false).await {
+        Some(judged) => weigh(entry, &judged),
+        None => entry,
+    })
 }
 
 pub async fn command(args: &[String]) -> Result<String, String> {

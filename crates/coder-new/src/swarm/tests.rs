@@ -21,6 +21,18 @@ fn arguments_take_a_list_of_issues_and_the_persons_limits() {
     assert!(request.no_pr);
     assert_eq!(request.concurrency, 3);
     assert_eq!(request.budget_usd, Some(12.5));
+    assert_eq!(request.decisions, None);
+}
+
+#[test]
+fn a_swarm_hands_its_decision_model_to_every_solver() {
+    let request = arguments(&json!({"issues": [11388], "decisions": "jev"})).unwrap();
+    assert_eq!(request.decisions.as_deref(), Some("jev"));
+    let cwd = std::env::temp_dir();
+    let solver = options(&request, &request.issues[0], &cwd).unwrap();
+    assert_eq!(solver.inner.kind_decider(), crate::issue_run::Decider::Jev);
+    assert!(arguments(&json!({"issues": [1], "decisions": "auto"})).is_err());
+    assert!(arguments(&json!({"issues": [1], "decisions": 3})).is_err());
 }
 
 #[test]
