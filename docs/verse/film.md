@@ -43,6 +43,7 @@ reads as far as it goes, with `failed` unknown.
 openagents film demo OUT.take [--pictures N] [--hold N] [--scene square|desktop] [--image FILE]
 openagents film inspect FILE [--json]
 openagents film render FILE DIR [--picture N] [--background R,G,B]
+openagents film export FILE OUT.mp4 [--background R,G,B] [--crf N]
 ```
 
 `demo` writes a 1280×720, 60 fps take of a square sliding across the frame.
@@ -98,3 +99,12 @@ let take = verse_film::read(&bytes)?;
 
 `openagents film demo OUT --scene desktop --image FILE` composes them into
 a Coder Noir scene over a Verse capture.
+
+## Export (S4)
+
+`verse_film::export::export(take, out, background, crf)` draws every frame
+with the renderer and pipes raw RGBA into `ffmpeg` (`libx264`, `yuv420p`,
+`+faststart`) at the take's frame rate, sending a held picture once per
+held frame. `openagents film export FILE OUT.mp4` prints the frame count,
+size, and file size (`--json` too). It needs `ffmpeg` on the path and an
+even frame size.
