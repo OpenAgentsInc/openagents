@@ -716,6 +716,10 @@ pub struct Open {
     /// Photos for the next reply: each one's name and bytes, as the host's
     /// picker read them ([`Link::attach`]).
     pub photos: Vec<(String, Vec<u8>)>,
+    /// A chat this phone is starting on openagents.com (#11349): its id is
+    /// the first message's request id, and the first send makes it
+    /// (`POST /v1/threads`); false once the website has it.
+    pub new: bool,
 }
 
 /// A local notification for the host to show once.
@@ -827,6 +831,9 @@ pub enum Intent {
     Open {
         id: String,
     },
+    /// Start a chat on openagents.com from the phone, which takes photos
+    /// and files with its first message (#11349).
+    NewChat,
     Back,
     /// Ask the website for the next page of older chats.
     MoreThreads,
@@ -1217,6 +1224,20 @@ impl Link {
                 drop(state);
                 self.nudge.notify_one();
             }
+            Intent::NewChat => {
+                let mut state = self.lock();
+                if state.signed() {
+                    state.open = Some(Open {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        loaded: true,
+                        new: true,
+                        ..Open::default()
+                    });
+                    state.screen = Screen::Chat;
+                    state.notice = None;
+                    state.changed();
+                }
+            }
             Intent::Back => {
                 let mut state = self.lock();
                 state.screen = match state.screen {
@@ -1598,7 +1619,7 @@ impl Link {
             state.changed();
             return;
         }
-        let (origin, token, id, photos) = {
+        let (origin, token, id, photos, new) = {
             let mut state = self.lock();
             let Some(session) = state.session.clone() else {
                 return;
@@ -1612,12 +1633,18 @@ impl Link {
             open.sending = true;
             let id = open.id.clone();
             let photos = open.photos.clone();
+            let new = open.new;
             state.notice = None;
             state.changed();
-            (state.origin.clone(), session.token, id, photos)
+            (state.origin.clone(), session.token, id, photos, new)
         };
         self.composer += 1;
-        let request = uuid::Uuid::new_v4().to_string();
+        // A new chat's first message is the request the chat is named by.
+        let request = if new {
+            id.clone()
+        } else {
+            uuid::Uuid::new_v4().to_string()
+        };
         let http = self.http.clone();
         let state = self.state.clone();
         let wake = self.wake.clone();
@@ -1672,7 +1699,11 @@ impl Link {
                     };
                     http.call(
                         "POST",
-                        format!("{origin}/v1/threads/{id}/messages"),
+                        if new {
+                            format!("{origin}/v1/threads")
+                        } else {
+                            format!("{origin}/v1/threads/{id}/messages")
+                        },
                         Some(token),
                         Some(body),
                     )
@@ -1688,6 +1719,19 @@ impl Link {
                 };
                 if let Some(open) = state.open.as_mut().filter(|open| open.id == id) {
                     open.sending = false;
+                    if notice.is_none() && new {
+                        // The website has the chat now: read it as any
+                        // web chat that takes replies.
+                        open.new = false;
+                        open.loaded = false;
+                        open.thread = Some(Thread {
+                            id: id.clone(),
+                            title: text.chars().take(64).collect(),
+                            surface: "web".into(),
+                            can_reply: true,
+                            ..Thread::default()
+                        });
+                    }
                     if notice.is_none() {
                         // The sent photos show by name until the chat has them.
                         let files = attached
@@ -2401,9 +2445,11 @@ pub(crate) fn attachable_file(bytes: &[u8]) -> Option<Result<(), String>> {
 /// takes replies now. Coder's chats on a computer and the phone's own
 /// take words only.
 pub(crate) fn takes_photos(open: &Open) -> bool {
-    open.thread
-        .as_ref()
-        .is_some_and(|thread| thread.surface == "web" && thread.can_reply)
+    open.new
+        || open
+            .thread
+            .as_ref()
+            .is_some_and(|thread| thread.surface == "web" && thread.can_reply)
 }
 
 /// `value` for a URL query: letters, digits, and `-._~` as they are, every
@@ -2704,7 +2750,11 @@ impl Poller {
                 session.token,
                 state.name.clone(),
                 !state.choice_read,
-                state.open.as_ref().map(|open| open.id.clone()),
+                state
+                    .open
+                    .as_ref()
+                    .filter(|open| !open.new)
+                    .map(|open| open.id.clone()),
                 uploads,
                 !state.memory_read
                     || (state.shown && state.screen == Screen::Memory)

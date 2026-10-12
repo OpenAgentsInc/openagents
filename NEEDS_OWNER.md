@@ -2200,3 +2200,12 @@ fixture. Production's judge is Clef on the VM worker, so a web deploy alone
 doesn't change it: build and release `coder-worker` per
 `docs/deployment/chat-worker.md`, then check that the two messages above
 show `data-oa-route="work.dispatch"` on openagents.com.
+
+## Phone New chat with photos on openagents.com (#11349)
+
+`POST /v1/threads` and the account surface's New chat (Your chats → New
+chat, paperclip in the composer) are on main. The device check is yours: on
+the next TestFlight build, sign in, open Your chats → New chat, attach a
+photo, send, and confirm the chat appears on openagents.com with the photo
+under the first message and answers there. The relay New chat stays
+words-only.

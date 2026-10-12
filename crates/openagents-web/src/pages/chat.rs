@@ -423,6 +423,123 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
     crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
 }
 
+/// A new chat started from an app with its own token (#11349): the web's
+/// [`start`] for the Chat target, without a form, CSRF, selector row, or
+/// GitHub connection. `id` is the request id the app made, which names the
+/// chat too, so a resend is the same chat; files added under it before
+/// the send (`POST /v1/threads/{id}/files`) go with the first message.
+pub(crate) async fn start_from_app(
+    app: &App,
+    owner: &str,
+    id: &str,
+    text: String,
+    files: Vec<crate::chat_files::FileRef>,
+) -> AppSent {
+    if text.trim().is_empty() || text.chars().count() > 4_000 || !valid_id(id) {
+        return AppSent::Invalid;
+    }
+    let store = &app.config.chat_store;
+    let digest = request_digest(&crate::chat_files::with_files(&text, &files), None);
+    match store.load(owner, id).await {
+        Ok(Some(record))
+            if record
+                .conversation
+                .requests
+                .first()
+                .is_some_and(|r| r.digest == digest) =>
+        {
+            return AppSent::Answering;
+        }
+        Ok(Some(_)) => return AppSent::Busy("This message was already sent with different text."),
+        Ok(None) => {}
+        Err(e) => {
+            eprintln!("openagents-web: conversation storage: {e}");
+            return AppSent::Unavailable;
+        }
+    }
+    let admitted_at = now();
+    match store.claim(owner, id, admitted_at + LEASE_SECONDS).await {
+        Ok(true) => {}
+        Ok(false) => {
+            return if saved_soon(app, owner, id, id, &digest).await.is_some() {
+                AppSent::Answering
+            } else {
+                AppSent::Busy("OpenAgents is still answering your previous message.")
+            };
+        }
+        Err(e) => {
+            eprintln!("openagents-web: conversation storage: {e}");
+            return AppSent::Unavailable;
+        }
+    }
+    let record = first_record(owner, id, text, digest, files);
+    match store.create(&record).await {
+        Ok(loaded) => {
+            spawn_answer(app.clone(), loaded, admitted_at, None);
+            AppSent::Answering
+        }
+        Err(Error::Conflict) => AppSent::Answering,
+        Err(e) => {
+            let _ = store.release(owner, id).await;
+            eprintln!("openagents-web: conversation storage: {e}");
+            AppSent::Unavailable
+        }
+    }
+}
+
+/// A chat answered here whose first message is `text` with `files`, as
+/// the web's start and an app's start both save it.
+pub(crate) fn first_record(
+    owner: &str,
+    id: &str,
+    text: String,
+    digest: String,
+    files: Vec<crate::chat_files::FileRef>,
+) -> Conversation {
+    Conversation {
+        id: id.to_owned(),
+        owner: owner.to_owned(),
+        revision: 1,
+        title: text.chars().take(64).collect(),
+        messages: vec![
+            Message {
+                role: Role::User,
+                text,
+                request_id: Some(id.to_owned()),
+            },
+            Message {
+                role: Role::Assistant,
+                text: String::new(),
+                request_id: Some(id.to_owned()),
+            },
+        ],
+        pending: Some(Pending {
+            request_id: id.to_owned(),
+            started_unix: now(),
+            job_id: None,
+        }),
+        requests: vec![Request {
+            id: id.to_owned(),
+            digest,
+            outcome: Outcome::Pending,
+            selection: None,
+            cloud: None,
+            files,
+            reply: None,
+        }],
+        selection: None,
+        updated_unix: now(),
+        pinned_unix: None,
+        archived_unix: None,
+        project: None,
+        terminal: None,
+        environment: None,
+        tasks: Vec::new(),
+        opened_unix: None,
+        branch: None,
+    }
+}
+
 /// The chat `id` once it holds the message `request` with `digest`, if
 /// that happens within two seconds: a second send of the same message (a
 /// double click) waits for the first send to save it, then shows it.
