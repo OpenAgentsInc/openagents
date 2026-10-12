@@ -278,6 +278,7 @@ pub mod nip_dec;
 mod options;
 mod questions;
 mod retry;
+pub mod schema;
 mod transport;
 
 pub use account::{
@@ -317,6 +318,7 @@ pub use nip_dec::{DecisionRequest, Refusal, State};
 pub use options::CallOptions;
 pub use questions::{Choice, Entry, Noul, NoulCriteria, Question, Questions, Score};
 pub use retry::{RetryPolicy, RetryPredicate, parse_retry_after, parse_retry_after_at};
+pub use schema::{Compiled, Decoded, Field, Sift, SiftLimits};
 
 /// The crate version, which every request reports in `User-Agent` and
 /// `X-TypeSafe-SDK`.

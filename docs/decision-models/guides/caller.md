@@ -115,6 +115,46 @@ an invalid input line reports `invalid` rather than vanishing:
 probability of any answer falls under the bound. Progress and the closing
 count go to standard error; `--quiet` leaves only the JSON.
 
+## From a schema to questions
+
+When a decision is a typed object, write it as a flat object schema and let
+the SDK compile it instead of hand-building each question. `jev::schema::compile`
+turns boolean properties into Noul questions, string properties with `enum`
+into Choice questions, and integer properties with `minimum`/`maximum` (or a
+`criteria` array of levels) into Score questions. A property's `description`
+is the question's instructions; `criteria` carries what each option means.
+`Compiled::decode` reads a response back as the typed object with the raw
+answers and their probabilities beside it, the `$answers` sidecar.
+
+```rust
+let compiled = jev::schema::compile(&serde_json::json!({
+    "properties": {
+        "refund": {"type": "boolean", "description": "Does the customer ask for money back?"},
+        "department": {"type": "string", "enum": ["billing", "technical", "none"],
+                       "description": "Which team handles this?",
+                       "criteria": {"billing": "Charges and invoices", "technical": "Bugs and outages"}},
+        "urgency": {"type": "integer", "minimum": 1, "maximum": 3, "description": "How urgent is it?",
+                    "criteria": ["Can wait", "This week", "Today"]}
+    }
+}))?;
+let response = client
+    .system_one(jev::SystemOneRequest::new(ticket, compiled.questions().clone()))
+    .await?;
+let decoded = compiled.decode(&response)?;
+// decoded.value   == {"refund": true, "department": "billing", "urgency": 3}
+// decoded.answers == the door's answers with probabilities, per property
+```
+
+`jev::Sift` asks the same compiled questions of many items. Items and
+questions go into one request until it would carry more than
+`SiftLimits::questions_per_request` questions (64) or more than
+`SiftLimits::state_bytes` of state (64 KiB); the items are then split in
+order, up to `concurrency` (4) requests run at once, the first failure
+cancels the rest, and an item that does not fit a request alone is refused
+before anything is sent. Results come back in item order. This is the
+convention for new callers; a question that needs wording a schema cannot
+carry is still built by hand with `Questions`.
+
 ## Exit codes
 
 | Code | Meaning |
