@@ -1,6 +1,8 @@
-//! `coder solver N` (#11336): four constrained Claude Agent SDK sessions
-//! take an issue to a pull request, each holding only the tools its hand
-//! of the work needs. `docs/coder/solver.md` is the spec.
+//! `coder solver N` (#11336): four constrained agent sessions take an
+//! issue to a pull request, each holding only the tools its hand of the
+//! work needs. The hands run on the Claude Agent SDK by default, or on
+//! Devin over ACP with `--engine devin` (#11373). `docs/coder/solver.md`
+//! is the spec.
 //!
 //! - **Intaker** (Haiku, `environment` and `issue` tools): checks that
 //!   `git`, `gh` and the Claude Code login are present and whether the
@@ -225,13 +227,19 @@ and the issue is open, the run opens a pull request.
 Options:
   --repo PATH           The repository checkout to read (default: this directory).
   --github OWNER/R      The GitHub repository of the issue (default: OpenAgentsInc/openagents).
+  --engine NAME         The agent each hand runs on: claude (default, four Claude
+                        Code sessions) or devin (four `devin acp` sessions on
+                        this computer's Devin login).
   --rounds R            How many times the Tester may hand work back (default 2).
   --no-pr               Stop after the checks; open no pull request.
   --coder-model NAME    The Coder's model on every round. Without it, a change the
                         Briefer judges small starts on sonnet and a large one, or
-                        any hand-back, uses claude-opus-5-5.
-  --briefer-model NAME  The Intaker's and Briefer's model (default haiku).
-  --tester-model NAME   The Tester's model (default haiku).
+                        any hand-back, uses claude-opus-5-5 (with --engine devin,
+                        Devin's own model).
+  --briefer-model NAME  The Intaker's and Briefer's model (default haiku; Devin's
+                        own model with --engine devin).
+  --tester-model NAME   The Tester's model (default haiku; Devin's own model with
+                        --engine devin).
   --files K             Files in the briefing (default 6).
   --timeout SECS        How long each hand may work (default 1800).
   --plain               Print the run as text instead of opening the terminal screen.
@@ -240,6 +248,27 @@ Options:
   --replay FILE         Play a recorded run (its events.jsonl) again.
   --speed X             Play a recording X times faster (default 1).
   --state DIR           Where runs live (default ~/.openagents/coder/solver-runs).";
+
+/// The agent the hands run on.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Engine {
+    /// Four `claude_agent_sdk` sessions on this computer's Claude Code
+    /// login.
+    #[default]
+    Claude,
+    /// Four `devin acp` sessions on this computer's Devin login (#11373).
+    Devin,
+}
+
+impl Engine {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Devin => "devin",
+        }
+    }
+}
 
 /// Which hand works.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -269,6 +298,8 @@ pub struct Options {
     pub inner: issue_run::Options,
     pub rounds: usize,
     pub json: bool,
+    /// The agent the hands run on.
+    pub engine: Engine,
     pub briefer_model: String,
     pub tester_model: String,
     /// The Coder's model for a change the Briefer judged small, when no
@@ -286,8 +317,9 @@ impl Options {
         let mut rounds = 2;
         let mut json = false;
         let mut open_pr = true;
-        let mut briefer_model = "haiku".to_owned();
-        let mut tester_model = "haiku".to_owned();
+        let mut engine = Engine::Claude;
+        let mut briefer_model: Option<String> = None;
+        let mut tester_model: Option<String> = None;
         let mut small_coder = Some("sonnet".to_owned());
         // Claude only: the briefing's ranking is deterministic and the Haiku
         // Briefer judges it; no decision-model door is asked.
@@ -313,13 +345,22 @@ impl Options {
                 }
                 "--no-pr" => open_pr = false,
                 "--json" => json = true,
+                "--engine" => {
+                    engine = match value("--engine")?.as_str() {
+                        "claude" => Engine::Claude,
+                        "devin" => Engine::Devin,
+                        other => {
+                            return Err(format!("--engine takes claude or devin, not {other}."));
+                        }
+                    };
+                }
                 "--coder-model" => {
                     small_coder = None;
                     inner_args.push("--model".into());
                     inner_args.push(value("--coder-model")?);
                 }
-                "--briefer-model" => briefer_model = value("--briefer-model")?,
-                "--tester-model" => tester_model = value("--tester-model")?,
+                "--briefer-model" => briefer_model = Some(value("--briefer-model")?),
+                "--tester-model" => tester_model = Some(value("--tester-model")?),
                 "--model" | "--open-pr" | "--fix" | "--decider" => {
                     return Err(format!("Unknown option {arg}. Run coder solver --help."));
                 }
@@ -329,12 +370,28 @@ impl Options {
         let mut inner = issue_run::Options::parse(&inner_args)
             .map_err(|why| why.replace("coder issue-run", "coder solver"))?;
         inner.open_pr = open_pr;
+        // On the Devin engine every hand's model defaults to the Devin
+        // CLI's own; a model flag still fixes the hand it names.
+        if engine == Engine::Devin && small_coder.is_some() {
+            inner.model = acp_client::devin::DEFAULT_MODEL.to_owned();
+            small_coder = Some(acp_client::devin::DEFAULT_MODEL.to_owned());
+        }
+        let model_default = |given: Option<String>| {
+            given.unwrap_or_else(|| {
+                if engine == Engine::Devin {
+                    acp_client::devin::DEFAULT_MODEL.to_owned()
+                } else {
+                    "haiku".to_owned()
+                }
+            })
+        };
         Ok(Self {
             inner,
             rounds,
             json,
-            briefer_model,
-            tester_model,
+            engine,
+            briefer_model: model_default(briefer_model),
+            tester_model: model_default(tester_model),
             small_coder,
         })
     }

@@ -23,6 +23,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use acp_client::{PermissionAnswer, PermissionRequest, StopReason, Update};
 use claude_agent_sdk::{
     PermissionMode, PermissionResult, QueryOptions, SdkMcpServer, SdkMessage, SystemPromptConfig,
     ToolResult, ToolsConfig,
@@ -101,6 +102,42 @@ pub fn inside(root: &Path, input: &Value) -> Option<Option<String>> {
     let resolved = resolve(root, path);
     let relative = resolved.strip_prefix(root).ok()?;
     Some(Some(relative.to_string_lossy().into_owned()))
+}
+
+/// `path` as an absolute, resolved name: relative to `base`, `.` and `..`
+/// taken lexically, and the longest part that exists resolved through its
+/// symbolic links, so `/tmp` and `/private/tmp` compare equal. Carried
+/// over from `crates/microcoder`'s Devin boundary and reimplemented here.
+#[must_use]
+pub fn resolved(base: &Path, path: &str) -> PathBuf {
+    let mut lexical = PathBuf::new();
+    for component in base.join(path).components() {
+        match component {
+            Component::ParentDir => {
+                lexical.pop();
+            }
+            Component::CurDir => {}
+            other => lexical.push(other),
+        }
+    }
+    let mut existing = lexical.as_path();
+    let mut rest = Vec::new();
+    loop {
+        if let Ok(real) = existing.canonicalize() {
+            let mut out = real;
+            for part in rest.iter().rev() {
+                out.push(part);
+            }
+            return out;
+        }
+        match (existing.parent(), existing.file_name()) {
+            (Some(parent), Some(name)) => {
+                rest.push(name.to_owned());
+                existing = parent;
+            }
+            _ => return lexical,
+        }
+    }
 }
 
 /// The checks' argv with a test filter's words appended.
@@ -440,21 +477,122 @@ struct Call {
     sdk_input: Value,
 }
 
-/// One constrained Claude Agent SDK session: its model, its built-in tools,
-/// its in-process tools, and what it is told. `issue_run` runs one, the
-/// briefed agent; `solver` runs four, each with the tools its hand needs.
+/// The agent runtime a session runs on.
+#[derive(Clone, Debug)]
+pub enum Engine {
+    /// A `claude_agent_sdk` session on this computer's Claude Code login.
+    Claude {
+        /// The built-in tools; file tools among them are held to the
+        /// worktree.
+        tools: Vec<String>,
+        /// An in-process tool server of the hand's own, beside `run_check`.
+        server: Option<SdkMcpServer>,
+    },
+    /// An ACP session (`devin acp`), opened as [`AcpOptions`] describes.
+    Acp(AcpOptions),
+}
+
+/// How an ACP session opens: the agent's binary, arguments, mode, session
+/// `_meta` and whole environment.
+#[derive(Clone, Debug)]
+pub struct AcpOptions {
+    /// The agent binary; `None` when no installed agent was found, which
+    /// surfaces as the session's start error.
+    pub program: Option<PathBuf>,
+    /// The binary's arguments: `devin --sandbox acp [--model NAME]` for a
+    /// solver hand.
+    pub arguments: Vec<String>,
+    /// The session's mode, by the agent's own id (`accept-edits`). A
+    /// solver hand never runs `bypass`.
+    pub mode: Option<String>,
+    /// The session's `_meta` (the engine mark).
+    pub meta: Option<Value>,
+    /// The agent's whole environment, credentials scrubbed.
+    pub environment: Vec<(String, String)>,
+    /// Whether the hand may change files at all: the Coder may, the other
+    /// hands may not, so a writing tool is refused even inside the
+    /// worktree.
+    pub writes: bool,
+}
+
+/// The engine mark a solver hand's ACP session opens with, the same mark
+/// Coder's other engine sessions carry.
+const ENGINE_MARK: &str = "openagents-coder-engine";
+
+impl AcpOptions {
+    /// A solver hand's `devin acp` session on `model`: `--sandbox`,
+    /// `accept-edits` mode, the engine mark in its `_meta`, and the
+    /// credential-scrubbed environment with the shared build folder.
+    /// `writes` says whether the hand may change files.
+    #[must_use]
+    pub fn devin(model: &str, writes: bool) -> Self {
+        let mut arguments = acp_client::devin::arguments(model);
+        arguments.insert(0, "--sandbox".into());
+        Self {
+            program: acp_client::devin::binary(&|name| std::env::var_os(name)),
+            arguments,
+            mode: Some(
+                acp_client::devin::Permission::AcceptEdits
+                    .mode_id()
+                    .to_owned(),
+            ),
+            meta: Some(acp_client::devin::engine_meta(ENGINE_MARK)),
+            environment: acp_environment(),
+            writes,
+        }
+    }
+}
+
+/// The ACP agent's whole environment: this process's, less credential
+/// variables, plus the child environment a fleet worker set, and the
+/// shared build folder so a `cargo` run in the worktree builds beside the
+/// other runs instead of cold-building a `target/` of its own.
+#[must_use]
+pub fn acp_environment() -> Vec<(String, String)> {
+    let mut environment: Vec<(String, String)> = std::env::vars_os()
+        .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)))
+        .filter(|(key, _)| !acp_client::process::is_credential_name(key))
+        .collect();
+    for (name, value) in crate::bundled_runtime::child_env() {
+        let name = name.to_string_lossy().into_owned();
+        environment.retain(|(existing, _)| existing != &name);
+        environment.push((name, value.to_string_lossy().into_owned()));
+    }
+    if !environment.iter().any(|(key, _)| key == "CARGO_TARGET_DIR")
+        && let Some(home) = std::env::var_os("HOME")
+    {
+        environment.push((
+            "CARGO_TARGET_DIR".into(),
+            Path::new(&home)
+                .join(".openagents")
+                .join(crate::home::DIR)
+                .join("target")
+                .display()
+                .to_string(),
+        ));
+    }
+    environment
+}
+
+/// One constrained agent session: its model, its engine, the checks it may
+/// run, and what it is told. `issue_run` runs one, the briefed agent;
+/// `solver` runs four, each with the tools its hand needs.
 pub struct Session {
     /// The agent card's title and detail line.
     pub title: String,
     pub detail: String,
     pub model: String,
     pub timeout: Duration,
-    /// The built-in tools; file tools among them are held to the worktree.
-    pub tools: Vec<String>,
-    /// The checks a `run_check` tool offers; none means no such tool.
+    /// The agent runtime: a `claude_agent_sdk` session holding only the
+    /// tools its hand needs, or a `devin acp` session held to the
+    /// worktree.
+    pub engine: Engine,
+    /// The checks a `run_check` tool offers; none means no such tool. An
+    /// ACP session cannot host an in-process tool, so a Devin hand lists
+    /// the check commands in its prompt instead.
     pub checks: Vec<Check>,
-    /// An in-process tool server of the hand's own, beside `run_check`.
-    pub server: Option<SdkMcpServer>,
+    /// The session's system prompt on the Claude engine; on an ACP session
+    /// it is folded into the prompt, which is the only text channel.
     pub system: String,
     pub prompt: String,
     /// The files the briefing listed; a `Read` of another is a miss.
@@ -464,7 +602,8 @@ pub struct Session {
     pub events_file: String,
     /// What a failed test is compared against: the repository and the
     /// commit the run started from. A test that already fails there is not
-    /// the change's doing, so `run_check` doesn't fail on it.
+    /// the change's doing, so `run_check` doesn't fail on it. Only the
+    /// Claude engine consumes it.
     pub baseline: Option<Baseline>,
 }
 
@@ -765,9 +904,11 @@ impl Session {
             detail: "Claude Agent SDK session on this computer's Claude Code login".into(),
             model: options.model.clone(),
             timeout: options.timeout,
-            tools: TOOLS.iter().map(|t| (*t).to_owned()).collect(),
+            engine: Engine::Claude {
+                tools: TOOLS.iter().map(|t| (*t).to_owned()).collect(),
+                server: None,
+            },
             checks: briefing.checks.clone(),
-            server: None,
             system: briefing.system.clone(),
             prompt: briefing.prompt.clone(),
             briefed: briefing.files.iter().cloned().collect(),
@@ -779,14 +920,19 @@ impl Session {
     /// What the card's `tools` row says.
     #[must_use]
     pub fn tools_text(&self) -> String {
-        let mut names = self.tools.clone();
-        if !self.checks.is_empty() {
-            names.push("run_check".into());
+        match &self.engine {
+            Engine::Claude { tools, server } => {
+                let mut names = tools.clone();
+                if !self.checks.is_empty() {
+                    names.push("run_check".into());
+                }
+                if let Some(server) = server {
+                    names.extend(server.allowed_tool_names());
+                }
+                names.join(", ")
+            }
+            Engine::Acp(_) => "the agent's own tools".into(),
         }
-        if let Some(server) = &self.server {
-            names.extend(server.allowed_tool_names());
-        }
-        names.join(", ")
     }
 }
 
@@ -863,18 +1009,26 @@ fn checks_server(
 }
 
 /// Runs one session to the end in `worktree`, drawing its work as it goes.
+/// The session's engine picks the driver: the Claude Agent SDK, or an ACP
+/// agent ([`run_acp`]).
 pub async fn run(
     session: Session,
     worktree: &Path,
     folder: &Path,
     transcript: &mut Transcript,
 ) -> Work {
+    if matches!(session.engine, Engine::Acp(_)) {
+        return run_acp(session, worktree, folder, transcript).await;
+    }
     let root = worktree
         .canonicalize()
         .unwrap_or_else(|_| worktree.to_path_buf());
     let checks = Arc::new(session.checks.clone());
     let tools_text = session.tools_text();
-    let mut allowed: Vec<String> = session.tools.clone();
+    let Engine::Claude { tools, server } = session.engine else {
+        unreachable!("the ACP arm returned");
+    };
+    let mut allowed: Vec<String> = tools.clone();
     let mut query_options = QueryOptions::new()
         .cwd(&root)
         .model(session.model.clone())
@@ -882,16 +1036,17 @@ pub async fn run(
         .no_session_persistence();
     let mut verdicts = None;
     if !checks.is_empty() {
-        let (server, seen) = checks_server(checks.clone(), root.clone(), session.baseline.clone());
-        allowed.extend(server.allowed_tool_names());
-        query_options = query_options.sdk_mcp_server(server);
+        let (check_server, seen) =
+            checks_server(checks.clone(), root.clone(), session.baseline.clone());
+        allowed.extend(check_server.allowed_tool_names());
+        query_options = query_options.sdk_mcp_server(check_server);
         verdicts = Some(seen);
     }
-    if let Some(server) = session.server {
+    if let Some(server) = server {
         allowed.extend(server.allowed_tool_names());
         query_options = query_options.sdk_mcp_server(server);
     }
-    query_options.tools = Some(ToolsConfig::Names(session.tools.clone()));
+    query_options.tools = Some(ToolsConfig::Names(tools));
     query_options.allowed_tools = Some(allowed.clone());
     query_options.system_prompt = Some(SystemPromptConfig::Custom(session.system.clone()));
     query_options.setting_sources = Some(Vec::new());
@@ -1158,6 +1313,550 @@ pub async fn final_checks(
 #[must_use]
 pub fn harness_runs(check: &Check) -> bool {
     check.id.starts_with("check:") || check.id.starts_with("wasm:") || check.required
+}
+
+/// The Coder tool name and input an ACP tool call draws as: its `kind` and
+/// `rawInput` onto the same `Read`/`Edit`/`Write`/`Grep`/`Run` names the
+/// Claude session's calls produce ([`coder_call`]). A call whose kind has
+/// no file or command shape draws a `Run` showing its own title.
+#[must_use]
+pub fn acp_call(kind: &str, title: &str, raw_input: &Value, root: &Path) -> (String, Value) {
+    let path = |input: &Value| match inside(root, input) {
+        Some(Some(relative)) => relative,
+        _ => [
+            "file_path",
+            "path",
+            "filePath",
+            "target_file",
+            "source_path",
+        ]
+        .iter()
+        .find_map(|key| input[*key].as_str())
+        .unwrap_or_default()
+        .to_owned(),
+    };
+    match kind {
+        "read" => ("Read".into(), json!({"path": path(raw_input)})),
+        "edit" | "move" => ("Edit".into(), json!({"path": path(raw_input)})),
+        "write" | "create" => ("Write".into(), json!({"path": path(raw_input)})),
+        "search" => {
+            let pattern = ["pattern", "query", "regex", "text"]
+                .iter()
+                .find_map(|key| raw_input[*key].as_str())
+                .unwrap_or(title);
+            (
+                "Grep".into(),
+                json!({"pattern": pattern, "path": raw_input["path"]}),
+            )
+        }
+        "execute" => (
+            "Run".into(),
+            json!({"command": raw_input["command"].as_str().unwrap_or(title)}),
+        ),
+        _ => ("Run".into(), json!({"command": title})),
+    }
+}
+
+/// The output a finished ACP tool call's widget reads, in the same shape
+/// [`coder_output`] gives the Claude session's results.
+#[must_use]
+pub fn acp_output(name: &str, input: &Value, text: &str, status: &str) -> Value {
+    match status {
+        "failed" => {
+            let detail = text.trim();
+            json!({"error": if detail.is_empty() { "The tool failed.".to_owned() } else { detail.to_owned() }})
+        }
+        "cancelled" => json!({"error": "The agent stopped before this tool returned."}),
+        _ => match name {
+            "Run" => json!({"output": text}),
+            "Read" => json!({"path": input["path"], "total_lines": text.lines().count()}),
+            "Grep" => json!({"matches": text, "count": text.lines().count()}),
+            "Glob" => json!({"files": text, "count": text.lines().count()}),
+            _ => json!({"path": input["path"], "output": text}),
+        },
+    }
+}
+
+/// The answer to a `session/request_permission` for a hand held to `root`:
+/// when `writes` is false, every writing tool (`edit`, `delete`, `move`)
+/// is refused with the agent's own `reject` option; when it is true, only
+/// a written path that resolves outside `root` is refused. Everything else
+/// is allowed once, so the agent asks again for its next call. A command's
+/// writes carry no paths — `devin --sandbox` bounds those. Carried over
+/// from `crates/microcoder`'s `Answering::Contained` and reimplemented
+/// here.
+#[must_use]
+pub fn boundary_answer(
+    request: &PermissionRequest,
+    root: &Path,
+    writes: bool,
+) -> (PermissionAnswer, Option<String>) {
+    let pick = |option: Option<&str>| {
+        option.map_or(PermissionAnswer::Cancelled, |option| {
+            PermissionAnswer::Selected(option.to_owned())
+        })
+    };
+    if request.tool_call.writes() {
+        if !writes {
+            return (
+                pick(request.reject()),
+                Some("this hand may not change files".to_owned()),
+            );
+        }
+        if let Some(path) = request
+            .tool_call
+            .written_paths()
+            .into_iter()
+            .map(|path| resolved(root, &path))
+            .find(|path| !path.starts_with(root))
+        {
+            return (
+                pick(request.reject()),
+                Some(format!(
+                    "a write to {} would leave the worktree",
+                    path.display()
+                )),
+            );
+        }
+    }
+    (pick(request.allow_once()), None)
+}
+
+/// How long a cancelled ACP prompt gets to end as `cancelled`.
+const ACP_CANCEL_GRACE: Duration = Duration::from_secs(10);
+/// How long the agent gets to exit before its group is killed.
+const ACP_STOP_GRACE: Duration = Duration::from_secs(5);
+
+/// An ACP tool call in flight: its transcript row and its output so far.
+struct AcpCall {
+    index: usize,
+    coder_name: String,
+    coder_input: Value,
+    output: String,
+}
+
+/// One `session/update` as a line for the hand's events file.
+fn update_json(update: &Update) -> Value {
+    match update {
+        Update::AgentText(text) => json!({"kind": "agent_text", "text": text}),
+        Update::Thought(text) => json!({"kind": "thought", "text": text}),
+        Update::UserText(text) => json!({"kind": "user_text", "text": text}),
+        Update::ToolCall {
+            id,
+            title,
+            kind,
+            status,
+            raw_input,
+            tool,
+        } => {
+            json!({"kind": "tool_call", "id": id, "title": title, "tool_kind": kind, "status": status, "input": raw_input, "tool": tool})
+        }
+        Update::ToolCallUpdate {
+            id,
+            status,
+            title,
+            text,
+        } => {
+            json!({"kind": "tool_call_update", "id": id, "status": status, "title": title, "text": text})
+        }
+        Update::Plan(entries) => json!({"kind": "plan", "entries": entries}),
+        Update::Usage(usage) => {
+            json!({"kind": "usage", "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens, "used": usage.used, "size": usage.size, "cost_usd": usage.cost_usd, "subagent": usage.subagent})
+        }
+        Update::CurrentMode(mode) => json!({"kind": "current_mode", "mode": mode}),
+        Update::Title(title) => json!({"kind": "title", "title": title}),
+        Update::Other => json!({"kind": "other"}),
+    }
+}
+
+/// The handler that turns an ACP agent's stream into the same
+/// `Entry::Assistant` and `Entry::Tool` items the Claude session makes,
+/// and answers its permission asks against the worktree boundary.
+struct AcpHandler<'a> {
+    transcript: &'a mut Transcript,
+    root: PathBuf,
+    briefed: BTreeSet<String>,
+    writes: bool,
+    model: String,
+    started: Instant,
+    events: String,
+    /// The reply text so far, and the part not yet shown as an entry.
+    reply: String,
+    text: String,
+    calls: HashMap<String, AcpCall>,
+    opened: BTreeSet<String>,
+    misses: Vec<String>,
+    input_tokens: u64,
+    output_tokens: u64,
+    cost_usd: Option<f64>,
+    refused: Option<String>,
+}
+
+impl AcpHandler<'_> {
+    /// Append one events-file line.
+    fn record(&mut self, body: Value) {
+        let t_ms = self.started.elapsed().as_millis() as u64;
+        self.events
+            .push_str(&json!({"t_ms": t_ms, "body": body}).to_string());
+        self.events.push('\n');
+    }
+
+    /// Show the reply text gathered so far as an assistant entry.
+    fn flush_text(&mut self) {
+        if self.text.trim().is_empty() {
+            self.text.clear();
+            return;
+        }
+        let text = std::mem::take(&mut self.text);
+        self.transcript.push(Entry::Assistant {
+            text,
+            model: Some(self.model.clone()),
+            elapsed_ms: Some(self.started.elapsed().as_millis() as u64),
+        });
+    }
+
+    /// Finish one tool call's transcript row.
+    fn finish_call(&mut self, id: &str, status: &str) {
+        let Some(call) = self.calls.remove(id) else {
+            return;
+        };
+        self.flush_text();
+        let output = acp_output(&call.coder_name, &call.coder_input, &call.output, status);
+        self.transcript.set(
+            call.index,
+            Entry::Tool {
+                name: call.coder_name,
+                input: call.coder_input,
+                output,
+                running: false,
+            },
+        );
+    }
+
+    /// Flush what is still gathered and finish the calls still open as
+    /// cancelled, once the prompt has ended.
+    fn close(&mut self) {
+        self.flush_text();
+        let pending: Vec<String> = self.calls.keys().cloned().collect();
+        for id in pending {
+            self.finish_call(&id, "cancelled");
+        }
+    }
+}
+
+impl acp_client::Handler for AcpHandler<'_> {
+    fn update(&mut self, update: Update) {
+        self.record(update_json(&update));
+        match update {
+            Update::AgentText(piece) => {
+                self.reply.push_str(&piece);
+                self.text.push_str(&piece);
+            }
+            Update::ToolCall {
+                id,
+                title,
+                kind,
+                status,
+                raw_input,
+                tool: _,
+            } => {
+                self.flush_text();
+                if kind == "read"
+                    && let Some(Some(path)) = inside(&self.root, &raw_input)
+                    && !self.briefed.contains(&path)
+                    && self.opened.insert(path.clone())
+                {
+                    self.misses.push(path);
+                }
+                let (name, input) = acp_call(&kind, &title, &raw_input, &self.root);
+                let running = !matches!(status.as_str(), "completed" | "failed" | "cancelled");
+                let index = self.transcript.push(Entry::Tool {
+                    name: name.clone(),
+                    input: input.clone(),
+                    output: Value::Null,
+                    running,
+                });
+                self.calls.insert(
+                    id.clone(),
+                    AcpCall {
+                        index,
+                        coder_name: name,
+                        coder_input: input,
+                        output: String::new(),
+                    },
+                );
+                if !running {
+                    self.finish_call(&id, &status);
+                }
+            }
+            Update::ToolCallUpdate {
+                id, status, text, ..
+            } => {
+                if let Some(call) = self.calls.get_mut(&id)
+                    && let Some(text) = text
+                {
+                    // The agent sends the tool's whole output so far in
+                    // each update; the latest replaces the earlier.
+                    call.output = text;
+                }
+                if let Some(status) = status
+                    && matches!(status.as_str(), "completed" | "failed" | "cancelled")
+                {
+                    self.finish_call(&id, &status);
+                }
+            }
+            Update::Plan(entries) => {
+                self.flush_text();
+                let plan = entries
+                    .iter()
+                    .map(|entry| {
+                        entry
+                            .status
+                            .as_deref()
+                            .map_or(entry.content.clone(), |status| {
+                                format!("{} ({})", entry.content, status)
+                            })
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                if !plan.trim().is_empty() {
+                    self.transcript.push(Entry::Assistant {
+                        text: plan,
+                        model: Some(self.model.clone()),
+                        elapsed_ms: Some(self.started.elapsed().as_millis() as u64),
+                    });
+                }
+            }
+            Update::Usage(usage) if !usage.subagent => {
+                self.input_tokens = self
+                    .input_tokens
+                    .saturating_add(usage.input_tokens.unwrap_or_default());
+                self.output_tokens = self
+                    .output_tokens
+                    .saturating_add(usage.output_tokens.unwrap_or_default());
+                if usage.cost_usd.is_some() {
+                    self.cost_usd = usage.cost_usd;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn notification(&mut self, method: &str, params: &Value) {
+        self.record(json!({"kind": "notification", "method": method, "params": params}));
+    }
+
+    fn permission(&mut self, request: &PermissionRequest) -> PermissionAnswer {
+        let (answer, why) = boundary_answer(request, &self.root, self.writes);
+        self.record(json!({
+            "kind": "permission",
+            "tool_kind": request.tool_call.kind,
+            "title": request.tool_call.title,
+            "refused": why,
+        }));
+        if let Some(why) = why {
+            if self.refused.is_none() {
+                let tool = request
+                    .tool_call
+                    .title
+                    .clone()
+                    .or_else(|| request.tool_call.kind.clone())
+                    .unwrap_or_else(|| "a tool".to_owned());
+                self.refused = Some(format!("{tool}: {why}"));
+            }
+        }
+        answer
+    }
+}
+
+/// Runs one ACP session (`devin acp`) to the end in `worktree`, drawing
+/// its work as it goes: the same cards, entries and `Work` the Claude
+/// driver produces. The session runs `accept-edits` under `--sandbox`,
+/// and the boundary answerer holds its writes to the worktree.
+pub async fn run_acp(
+    session: Session,
+    worktree: &Path,
+    folder: &Path,
+    transcript: &mut Transcript,
+) -> Work {
+    let root = worktree
+        .canonicalize()
+        .unwrap_or_else(|_| worktree.to_path_buf());
+    let started = Instant::now();
+    let mut work = Work::default();
+    let tools_text = session.tools_text();
+    let card = json!({
+        "kind": "agent",
+        "title": session.title,
+        "detail": session.detail,
+        "rows": [
+            {"label": "engine", "text": "devin"},
+            {"label": "model", "text": session.model},
+            {"label": "tools", "text": tools_text},
+            {"label": "checks", "text": session.checks.iter().map(|check| check.id.clone()).collect::<Vec<_>>().join(", ")},
+            {"label": "briefing", "text": format!("{} files, {} characters in the prompt", session.briefed.len(), session.system.chars().count() + session.prompt.chars().count())},
+        ],
+    });
+    let card_index = transcript.card(card.clone());
+    let Engine::Acp(acp) = session.engine else {
+        unreachable!("run_acp takes an ACP session")
+    };
+
+    let Some(program) = acp.program.clone() else {
+        let why =
+            "Devin did not start: no devin binary in DEVIN_BIN, PATH, or ~/.local/bin.".to_owned();
+        transcript.finish(card_index, card, json!({"error": why.clone()}));
+        work.error = Some(why);
+        return work;
+    };
+    let opening = acp_client::session::Opening {
+        spec: acp_client::process::Spec {
+            program,
+            arguments: acp.arguments,
+            cwd: root.clone(),
+            environment: acp.environment,
+        },
+        resume: None,
+        meta: acp.meta,
+        mode: acp.mode,
+        authenticate: None,
+    };
+    let cancel = transcript.cancel.clone();
+    let cancelled = move || cancel.load(std::sync::atomic::Ordering::Relaxed);
+    let mut acp_session = match acp_client::Session::open(&opening, &cancelled).await {
+        Ok(acp_session) => acp_session,
+        Err(failure) => {
+            let why = format!("Devin did not start: {failure}");
+            transcript.finish(card_index, card, json!({"error": why.clone()}));
+            work.error = Some(why);
+            return work;
+        }
+    };
+    let reported = acp_session.opened.model().map(str::to_owned);
+    if !acp_client::devin::admits(&session.model, reported.as_deref()) {
+        let why = format!(
+            "Devin reported a different model ({}) than the hand asked for ({}).",
+            reported.as_deref().unwrap_or("none"),
+            session.model
+        );
+        transcript.finish(card_index, card, json!({"error": why.clone()}));
+        work.error = Some(why);
+        acp_session.close(ACP_STOP_GRACE).await;
+        return work;
+    }
+    transcript.finish(card_index, card, json!({"ok": true}));
+
+    // An ACP session has no system prompt channel (`session/new` carries
+    // only cwd, mcpServers and _meta), so the hand's system text leads its
+    // prompt.
+    let prompt = if session.system.trim().is_empty() {
+        session.prompt.clone()
+    } else {
+        format!("{}\n\n{}", session.system.trim_end(), session.prompt)
+    };
+    // The prompt's bound is the hand's timeout: the cancel flag stops it
+    // as `session/cancel`, the same stop the transcript's own cancel sends.
+    let cancel_flag = {
+        let cancel = transcript.cancel.clone();
+        let timeout = session.timeout;
+        move || cancel.load(std::sync::atomic::Ordering::Relaxed) || started.elapsed() > timeout
+    };
+    let timed_out = |started: Instant| started.elapsed() > session.timeout;
+    let mut handler = AcpHandler {
+        transcript,
+        root,
+        briefed: session.briefed,
+        writes: acp.writes,
+        model: reported.unwrap_or_else(|| session.model.clone()),
+        started,
+        events: String::new(),
+        reply: String::new(),
+        text: String::new(),
+        calls: HashMap::new(),
+        opened: BTreeSet::new(),
+        misses: Vec::new(),
+        input_tokens: 0,
+        output_tokens: 0,
+        cost_usd: None,
+        refused: None,
+    };
+    let reported_model = handler.model.clone();
+    handler.record(json!({
+        "kind": "prompt",
+        "session": acp_session.id(),
+        "model": reported_model,
+        "prompt": prompt,
+    }));
+    let prompted = acp_session
+        .prompt(
+            &prompt,
+            session.timeout,
+            &cancel_flag,
+            ACP_CANCEL_GRACE,
+            &mut handler,
+        )
+        .await;
+    handler.close();
+    work.misses = std::mem::take(&mut handler.misses);
+    work.input_tokens = (handler.input_tokens > 0).then_some(handler.input_tokens);
+    work.output_tokens = (handler.output_tokens > 0).then_some(handler.output_tokens);
+    work.cost_usd = handler.cost_usd;
+    work.reply = (!handler.reply.trim().is_empty()).then(|| std::mem::take(&mut handler.reply));
+    let events = std::mem::take(&mut handler.events);
+    let refused = handler.refused.take();
+    let group_clear = acp_session.close(ACP_STOP_GRACE).await;
+    let _ = std::fs::write(folder.join(&session.events_file), events);
+    if let Some(refused) = refused {
+        transcript.notice(format!(
+            "The agent asked for a tool the run refused: {refused}"
+        ));
+    }
+    if !group_clear {
+        transcript.notice("The agent did not stop cleanly.");
+    }
+    work.wall_ms = started.elapsed().as_millis() as u64;
+    match prompted {
+        Ok(reply) => {
+            work.cache_read = reply.usage.and_then(|usage| usage.cached_read_tokens);
+            if work.input_tokens.is_none()
+                && work.output_tokens.is_none()
+                && let Some(usage) = reply.usage
+            {
+                work.input_tokens = usage.input_tokens;
+                work.output_tokens = usage.output_tokens;
+            }
+            match reply.stop_reason {
+                StopReason::Cancelled => {
+                    work.error = Some(if transcript.cancelled() {
+                        "The run was stopped.".to_owned()
+                    } else if timed_out(started) {
+                        "The agent ran out of its time.".to_owned()
+                    } else {
+                        "The agent ended the turn as cancelled.".to_owned()
+                    });
+                }
+                StopReason::EndTurn => {}
+                other => {
+                    work.error = Some(format!(
+                        "The agent ended its turn early ({}).",
+                        other.as_str()
+                    ));
+                }
+            }
+        }
+        Err(error) => {
+            work.error = Some(if matches!(error, acp_client::ClientError::Cancelled) {
+                if transcript.cancelled() {
+                    "The run was stopped.".to_owned()
+                } else {
+                    "The agent ran out of its time.".to_owned()
+                }
+            } else {
+                format!("Devin's turn failed: {error}")
+            });
+        }
+    }
+    work
 }
 
 /// [`final_checks`] with each check's output, so a hand-back can carry the

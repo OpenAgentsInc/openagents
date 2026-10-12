@@ -805,3 +805,150 @@ fn a_crate_outside_the_root_workspace_is_checked_through_its_manifest() {
     );
     assert!(argv("test:phone").starts_with("cargo test --manifest-path crates/phone/Cargo.toml"));
 }
+
+#[test]
+fn acp_tool_calls_draw_with_coder_widget_names() {
+    let root = std::path::Path::new("/work/tree");
+    assert_eq!(
+        agent::acp_call(
+            "read",
+            "Read lib.rs",
+            &json!({"path": "/work/tree/src/lib.rs"}),
+            root
+        ),
+        ("Read".into(), json!({"path": "src/lib.rs"}))
+    );
+    assert_eq!(
+        agent::acp_call(
+            "edit",
+            "Edit lib.rs",
+            &json!({"file_path": "src/lib.rs"}),
+            root
+        ),
+        ("Edit".into(), json!({"path": "src/lib.rs"}))
+    );
+    assert_eq!(
+        agent::acp_call("create", "Write notes", &json!({"path": "notes.md"}), root),
+        ("Write".into(), json!({"path": "notes.md"}))
+    );
+    let (name, input) = agent::acp_call(
+        "search",
+        "find tests",
+        &json!({"query": "Solver::drive"}),
+        root,
+    );
+    assert_eq!(name, "Grep");
+    assert_eq!(input["pattern"], "Solver::drive");
+    assert_eq!(
+        agent::acp_call(
+            "execute",
+            "Ran cargo test",
+            &json!({"command": "cargo test -p x"}),
+            root
+        ),
+        ("Run".into(), json!({"command": "cargo test -p x"}))
+    );
+    // A kind without a file or command shape draws a Run of its title.
+    assert_eq!(
+        agent::acp_call("think", "Planning the change", &json!({}), root),
+        ("Run".into(), json!({"command": "Planning the change"}))
+    );
+    // A path outside the worktree is shown as named, not remapped.
+    assert_eq!(
+        agent::acp_call("read", "Read x", &json!({"path": "/etc/passwd"}), root),
+        ("Read".into(), json!({"path": "/etc/passwd"}))
+    );
+}
+
+#[test]
+fn acp_tool_results_feed_the_widgets() {
+    assert_eq!(
+        agent::acp_output("Run", &json!({"command": "ls"}), "a\nb", "completed"),
+        json!({"output": "a\nb"})
+    );
+    assert_eq!(
+        agent::acp_output("Read", &json!({"path": "x.rs"}), "l1\nl2\nl3", "completed")["total_lines"],
+        json!(3)
+    );
+    assert_eq!(
+        agent::acp_output("Grep", &json!({}), "a.rs:1:hit\nb.rs:2:hit", "completed")["count"],
+        json!(2)
+    );
+    assert_eq!(
+        agent::acp_output("Run", &json!({}), "", "failed"),
+        json!({"error": "The tool failed."})
+    );
+    assert_eq!(
+        agent::acp_output("Run", &json!({}), "boom", "failed"),
+        json!({"error": "boom"})
+    );
+    assert_eq!(
+        agent::acp_output("Run", &json!({}), "half", "cancelled"),
+        json!({"error": "The agent stopped before this tool returned."})
+    );
+}
+
+#[test]
+fn the_boundary_answerer_holds_writes_to_the_worktree() {
+    use acp_client::{PermissionAnswer, PermissionRequest};
+    let root = std::path::Path::new("/work/tree");
+    let request = |tool: serde_json::Value| {
+        serde_json::from_value::<PermissionRequest>(json!({
+            "toolCall": tool,
+            "options": [
+                {"optionId": "yes", "kind": "allow_once"},
+                {"optionId": "no", "kind": "reject_once"}
+            ]
+        }))
+        .unwrap()
+    };
+    // A write inside the worktree runs once.
+    let (answer, why) = agent::boundary_answer(
+        &request(json!({"kind": "edit", "rawInput": {"file_path": "/work/tree/src/x.rs"}})),
+        root,
+        true,
+    );
+    assert_eq!(answer, PermissionAnswer::Selected("yes".into()));
+    assert_eq!(why, None);
+    // A relative write inside resolves against the worktree.
+    let (answer, _) = agent::boundary_answer(
+        &request(json!({"kind": "edit", "rawInput": {"path": "src/x.rs"}})),
+        root,
+        true,
+    );
+    assert_eq!(answer, PermissionAnswer::Selected("yes".into()));
+    // A write outside is refused, absolute or relative.
+    for tool in [
+        json!({"kind": "edit", "rawInput": {"file_path": "/etc/passwd"}}),
+        json!({"kind": "edit", "rawInput": {"path": "../x.rs"}}),
+        json!({"kind": "delete", "locations": [{"path": "/other/x.rs"}]}),
+    ] {
+        let (answer, why) = agent::boundary_answer(&request(tool), root, true);
+        assert_eq!(answer, PermissionAnswer::Selected("no".into()));
+        assert!(why.is_some());
+    }
+    // A hand that may not write refuses even inside the worktree.
+    let (answer, why) = agent::boundary_answer(
+        &request(json!({"kind": "edit", "rawInput": {"file_path": "/work/tree/x.rs"}})),
+        root,
+        false,
+    );
+    assert_eq!(answer, PermissionAnswer::Selected("no".into()));
+    assert!(why.is_some());
+    // A command carries no written paths; it is allowed once.
+    let (answer, why) = agent::boundary_answer(
+        &request(json!({"kind": "execute", "rawInput": {"command": "cargo test"}})),
+        root,
+        false,
+    );
+    assert_eq!(answer, PermissionAnswer::Selected("yes".into()));
+    assert_eq!(why, None);
+    // With no options to pick, the ask is cancelled rather than allowed.
+    let bare = serde_json::from_value::<PermissionRequest>(json!({
+        "toolCall": {"kind": "read"},
+        "options": []
+    }))
+    .unwrap();
+    let (answer, _) = agent::boundary_answer(&bare, root, false);
+    assert_eq!(answer, PermissionAnswer::Cancelled);
+}

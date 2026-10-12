@@ -5,11 +5,11 @@ use std::path::Path;
 use claude_agent_sdk::{SdkMcpServer, ToolResult};
 use serde_json::json;
 
-use super::{Hand, Options, Turn};
+use super::{Engine, Hand, Options, Turn};
 use crate::issue_run::{
     Transcript,
     agent::{self, Baseline, Session},
-    decide::Briefing,
+    decide::{Briefing, Check},
     setup::{self, Base},
 };
 
@@ -18,9 +18,6 @@ pub const READ_TOOLS: [&str; 3] = ["Read", "Grep", "Glob"];
 /// The Coder's tools.
 pub const CODE_TOOLS: [&str; 5] = ["Read", "Edit", "Write", "Grep", "Glob"];
 
-/// The programs the Intaker's `environment` tool looks for.
-const PROGRAMS: [&str; 3] = ["git", "gh", "claude"];
-
 /// The Intaker's system prompt.
 const INTAKER: &str = "You are the Intaker of a four-hand coding run. Your only job is to \
 confirm the run can start. Call `environment` once and `issue` once, then answer in a few \
@@ -28,6 +25,16 @@ lines: the issue's title and what it asks in one sentence, and a last line that 
 `INTAKE: ready` when git and gh are present and the issue was read, or `INTAKE: blocked: <why>` \
 otherwise. A dirty checkout is not a blocker: the run works in its own fresh worktree. Do not \
 plan or write code.";
+
+/// The Intaker's system prompt on the Devin engine: its `environment` and
+/// `issue` tools cannot reach an ACP session, so the harness's own answers
+/// arrive inside the prompt.
+const INTAKER_ACP: &str = "You are the Intaker of a four-hand coding run. Your only job is to \
+confirm the run can start. The environment check and the issue are below; read them, then answer \
+in a few lines: the issue's title and what it asks in one sentence, and a last line that is \
+exactly `INTAKE: ready` when git, gh and a signed-in Devin are present and the issue was read, \
+or `INTAKE: blocked: <why>` otherwise. A dirty checkout is not a blocker: the run works in its \
+own fresh worktree. Do not plan or write code.";
 
 /// The Briefer's system prompt.
 const BRIEFER: &str = "You are the Briefer of a four-hand coding run. A deterministic \
@@ -76,10 +83,102 @@ fix, with file paths and the failing check's words>` when the change needs work,
 briefer: <what context is missing>` when the briefing sent the Coder to the wrong place. Never \
 answer `VERDICT: pass` while a check fails. You cannot edit files.";
 
+/// The Tester's system prompt on the Devin engine: `run_check` cannot reach
+/// an ACP session, so the checks' commands go in the prompt for its own
+/// shell to rerun.
+const TESTER_ACP: &str = "You are the Tester of a four-hand coding run. The Coder has changed \
+the working copy and the harness has already run the required checks; the failures are in your \
+prompt. Read the failing code (and rerun one of the listed check commands in your shell when you \
+need more of its output), then end your answer with exactly one line: `VERDICT: coder: <what to \
+fix, with file paths and the failing check's words>` when the change needs work, or `VERDICT: \
+briefer: <what context is missing>` when the briefing sent the Coder to the wrong place. Never \
+answer `VERDICT: pass` while a check fails. You cannot edit files.";
+
 /// Whether `program` is on the `PATH`.
 fn installed(program: &str) -> bool {
     std::env::var_os("PATH")
         .is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(program).is_file()))
+}
+
+/// The environment lines the Intaker's `environment` tool and the Devin
+/// Intaker's prompt share: which of git, gh and the hand's engine are
+/// installed, and whether the checkout is clean.
+async fn environment_text(repo: &Path, engine: Engine) -> String {
+    let mut lines = Vec::new();
+    for program in ["git", "gh"] {
+        let found = installed(program);
+        lines.push(format!(
+            "{program}: {}",
+            if found { "present" } else { "missing" }
+        ));
+    }
+    match engine {
+        Engine::Claude => lines.push(format!(
+            "claude: {}",
+            if installed("claude") {
+                "present"
+            } else {
+                "missing"
+            }
+        )),
+        Engine::Devin => {
+            lines.push(format!(
+                "devin: {}",
+                if acp_client::devin::binary(&|name| std::env::var_os(name)).is_some() {
+                    "present"
+                } else {
+                    "missing"
+                }
+            ));
+            lines.push(format!(
+                "devin login: {}",
+                if acp_client::devin::signed_in(&|name| std::env::var_os(name)) {
+                    "stored"
+                } else {
+                    "missing"
+                }
+            ));
+        }
+    }
+    match setup::output("git", &["status", "--porcelain"], repo).await {
+        Ok(status) if status.trim().is_empty() => {
+            lines.push("checkout: clean".into());
+        }
+        Ok(status) => lines.push(format!(
+            "checkout: {} changed path(s), left alone",
+            status.lines().count()
+        )),
+        Err(why) => lines.push(format!("checkout: {why}")),
+    }
+    lines.join("\n")
+}
+
+/// The issue text the Intaker's `issue` tool and the Devin Intaker's
+/// prompt share.
+async fn issue_text(github: &str, issue: u64) -> Result<String, String> {
+    let number = issue.to_string();
+    let args = [
+        "issue",
+        "view",
+        &number,
+        "-R",
+        github,
+        "--json",
+        "title,state,body",
+    ];
+    setup::output("gh", &args, Path::new(".")).await
+}
+
+/// Checks as prompt lines for a Devin hand: an ACP session cannot host the
+/// in-process `run_check` tool, so the commands it may run in its own
+/// shell are listed instead. The harness's own check results stay the
+/// run's deciding verdict either way.
+fn check_lines(checks: &[Check]) -> String {
+    let mut lines = String::new();
+    for check in checks {
+        lines.push_str(&format!("\n- `{}` ({})", check.argv.join(" "), check.id));
+    }
+    lines
 }
 
 /// Runs one hand's session and records it as a turn.
@@ -113,25 +212,9 @@ fn intake_server(options: &Options) -> SdkMcpServer {
             move |_| {
                 let repo = repo.clone();
                 async move {
-                    let mut lines = Vec::new();
-                    for program in PROGRAMS {
-                        let found = installed(program);
-                        lines.push(format!(
-                            "{program}: {}",
-                            if found { "present" } else { "missing" }
-                        ));
-                    }
-                    match setup::output("git", &["status", "--porcelain"], &repo).await {
-                        Ok(status) if status.trim().is_empty() => {
-                            lines.push("checkout: clean".into());
-                        }
-                        Ok(status) => lines.push(format!(
-                            "checkout: {} changed path(s), left alone",
-                            status.lines().count()
-                        )),
-                        Err(why) => lines.push(format!("checkout: {why}")),
-                    }
-                    Ok(ToolResult::text(lines.join("\n")))
+                    Ok(ToolResult::text(
+                        environment_text(&repo, Engine::Claude).await,
+                    ))
                 }
             },
         )
@@ -142,17 +225,7 @@ fn intake_server(options: &Options) -> SdkMcpServer {
             move |_| {
                 let github = github.clone();
                 async move {
-                    let number = issue.to_string();
-                    let args = [
-                        "issue",
-                        "view",
-                        &number,
-                        "-R",
-                        &github,
-                        "--json",
-                        "title,state,body",
-                    ];
-                    match setup::output("gh", &args, Path::new(".")).await {
+                    match issue_text(&github, issue).await {
                         Ok(text) => Ok(ToolResult::text(text)),
                         Err(why) => Ok(ToolResult::error(why)),
                     }
@@ -163,22 +236,50 @@ fn intake_server(options: &Options) -> SdkMcpServer {
 
 /// The Intaker: environment and issue, no files.
 pub async fn intake(options: &Options, folder: &Path, transcript: &mut Transcript) -> Turn {
-    let session = Session {
-        title: "Intaker".into(),
-        detail: "Checks the environment and reads the issue".into(),
-        model: options.briefer_model.clone(),
-        timeout: options.inner.timeout,
-        tools: Vec::new(),
-        checks: Vec::new(),
-        server: Some(intake_server(options)),
-        system: INTAKER.into(),
-        prompt: format!(
-            "Confirm the run for issue #{} in {} can start.",
-            options.inner.issue, options.inner.github
-        ),
-        briefed: Default::default(),
-        events_file: "intaker-events.jsonl".into(),
-        baseline: None,
+    let session = match options.engine {
+        Engine::Claude => Session {
+            title: "Intaker".into(),
+            detail: "Checks the environment and reads the issue".into(),
+            model: options.briefer_model.clone(),
+            timeout: options.inner.timeout,
+            engine: agent::Engine::Claude {
+                tools: Vec::new(),
+                server: Some(intake_server(options)),
+            },
+            checks: Vec::new(),
+            system: INTAKER.into(),
+            prompt: format!(
+                "Confirm the run for issue #{} in {} can start.",
+                options.inner.issue, options.inner.github
+            ),
+            briefed: Default::default(),
+            events_file: "intaker-events.jsonl".into(),
+            baseline: None,
+        },
+        Engine::Devin => {
+            // An ACP session cannot reach the in-process `environment` and
+            // `issue` tools, so the harness's own answers go in its prompt.
+            let environment = environment_text(&options.inner.repo, Engine::Devin).await;
+            let issue = issue_text(&options.inner.github, options.inner.issue)
+                .await
+                .unwrap_or_else(|why| format!("The issue could not be read: {why}"));
+            Session {
+                title: "Intaker".into(),
+                detail: "Checks the environment and reads the issue".into(),
+                model: options.briefer_model.clone(),
+                timeout: options.inner.timeout,
+                engine: agent::Engine::Acp(agent::AcpOptions::devin(&options.briefer_model, false)),
+                checks: Vec::new(),
+                system: INTAKER_ACP.into(),
+                prompt: format!(
+                    "Confirm the run for issue #{} in {} can start.\n\n# Environment\n\n{environment}\n\n# Issue\n\n{issue}",
+                    options.inner.issue, options.inner.github
+                ),
+                briefed: Default::default(),
+                events_file: "intaker-events.jsonl".into(),
+                baseline: None,
+            }
+        }
     };
     turn(
         Hand::Intaker,
@@ -238,9 +339,16 @@ pub async fn brief(
         detail: "Reads the briefed files and writes what the change should look like".into(),
         model: options.briefer_model.clone(),
         timeout: options.inner.timeout,
-        tools: READ_TOOLS.iter().map(|t| (*t).to_owned()).collect(),
+        engine: match options.engine {
+            Engine::Claude => agent::Engine::Claude {
+                tools: READ_TOOLS.iter().map(|t| (*t).to_owned()).collect(),
+                server: None,
+            },
+            Engine::Devin => {
+                agent::Engine::Acp(agent::AcpOptions::devin(&options.briefer_model, false))
+            }
+        },
         checks: Vec::new(),
-        server: None,
         system: BRIEFER.into(),
         prompt,
         briefed: briefing.files.iter().cloned().collect(),
@@ -296,22 +404,41 @@ pub async fn code(
         prompt.push_str(notes);
     }
     prompt.push_str(&so_far(base, round));
-    prompt.push_str(
-        "\n\nYou code: change the files, and reply with what you changed. You have no shell, but `run_check` compiles the changed crates (`check:` entries, and `wasm:` for a browser build's wasm32 half); run it after your edits and fix what fails before you finish. The Tester runs the full checks and tests after you.",
-    );
+    match options.engine {
+        Engine::Claude => prompt.push_str(
+            "\n\nYou code: change the files, and reply with what you changed. You have no shell, but `run_check` compiles the changed crates (`check:` entries, and `wasm:` for a browser build's wasm32 half); run it after your edits and fix what fails before you finish. The Tester runs the full checks and tests after you.",
+        ),
+        Engine::Devin => {
+            prompt.push_str(
+                "\n\nYou code: change the files, and reply with what you changed. After your edits, run the compile checks in the working copy yourself and fix what fails before you finish:",
+            );
+            prompt.push_str(&check_lines(&compile_checks(briefing)));
+            prompt.push_str(
+                "\nThe harness runs the full checks and tests after you; its results decide the run.",
+            );
+        }
+    }
     let session = Session {
         title: "Coder".into(),
         detail: "Changes the working copy from the briefing and the analysis".into(),
         model: model.to_owned(),
         timeout: options.inner.timeout,
-        tools: CODE_TOOLS.iter().map(|t| (*t).to_owned()).collect(),
+        engine: match options.engine {
+            Engine::Claude => agent::Engine::Claude {
+                tools: CODE_TOOLS.iter().map(|t| (*t).to_owned()).collect(),
+                server: None,
+            },
+            Engine::Devin => agent::Engine::Acp(agent::AcpOptions::devin(model, true)),
+        },
         checks: compile_checks(briefing),
-        server: None,
         system: briefing.system.clone(),
         prompt,
         briefed: briefing.files.iter().cloned().collect(),
         events_file: format!("coder-{round}-events.jsonl"),
-        baseline: Some(Baseline::of(base)),
+        baseline: match options.engine {
+            Engine::Claude => Some(Baseline::of(base)),
+            Engine::Devin => None,
+        },
     };
     turn(
         Hand::Coder,
@@ -428,25 +555,50 @@ pub async fn test(
     transcript: &mut Transcript,
 ) -> Turn {
     let diff = setup::working_diff(&base.worktree, &base.base);
+    let diff = diff.chars().take(60_000).collect::<String>();
+    let (system, prompt) = match options.engine {
+        Engine::Claude => (
+            TESTER.to_owned(),
+            format!(
+                "Issue #{}: {}\n\nThe Coder's change:\n\n```diff\n{}\n```\n\nThe harness ran the required checks. What failed:{}\n\nGive your verdict.",
+                base.issue, base.title, diff, failures
+            ),
+        ),
+        Engine::Devin => (
+            TESTER_ACP.to_owned(),
+            format!(
+                "Issue #{}: {}\n\nThe Coder's change:\n\n```diff\n{}\n```\n\nThe harness ran the required checks. What failed:{}\n\nRerun a check in the working copy when you need more of its output:{}\n\nGive your verdict.",
+                base.issue,
+                base.title,
+                diff,
+                failures,
+                check_lines(&briefing.checks)
+            ),
+        ),
+    };
     let session = Session {
         title: "Tester".into(),
         detail: "Runs the briefing's checks and hands back what fails".into(),
         model: options.tester_model.clone(),
         timeout: options.inner.timeout,
-        tools: READ_TOOLS.iter().map(|t| (*t).to_owned()).collect(),
+        engine: match options.engine {
+            Engine::Claude => agent::Engine::Claude {
+                tools: READ_TOOLS.iter().map(|t| (*t).to_owned()).collect(),
+                server: None,
+            },
+            Engine::Devin => {
+                agent::Engine::Acp(agent::AcpOptions::devin(&options.tester_model, false))
+            }
+        },
         checks: briefing.checks.clone(),
-        server: None,
-        system: TESTER.into(),
-        prompt: format!(
-            "Issue #{}: {}\n\nThe Coder's change:\n\n```diff\n{}\n```\n\nThe harness ran the required checks. What failed:{}\n\nGive your verdict.",
-            base.issue,
-            base.title,
-            diff.chars().take(60_000).collect::<String>(),
-            failures
-        ),
+        system,
+        prompt,
         briefed: briefing.files.iter().cloned().collect(),
         events_file: format!("tester-{round}-events.jsonl"),
-        baseline: Some(Baseline::of(base)),
+        baseline: match options.engine {
+            Engine::Claude => Some(Baseline::of(base)),
+            Engine::Devin => None,
+        },
     };
     turn(
         Hand::Tester,

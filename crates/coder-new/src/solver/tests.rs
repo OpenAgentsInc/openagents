@@ -538,3 +538,207 @@ fn a_sweep_removes_only_old_build_outputs() {
         "the binary stays"
     );
 }
+
+#[test]
+fn the_engine_flag_picks_devin_and_shifts_the_model_defaults() {
+    use super::Engine;
+    let options = Options::parse(&args(&["11373", "--engine", "devin"])).unwrap();
+    assert_eq!(options.engine, Engine::Devin);
+    assert_eq!(options.briefer_model, "default");
+    assert_eq!(options.tester_model, "default");
+    assert_eq!(options.small_coder.as_deref(), Some("default"));
+    assert_eq!(options.inner.model, "default");
+    // A model flag still fixes the hand it names.
+    let fixed = Options::parse(&args(&[
+        "11373",
+        "--engine",
+        "devin",
+        "--coder-model",
+        "swe-2-high",
+    ]))
+    .unwrap();
+    assert_eq!(fixed.inner.model, "swe-2-high");
+    assert_eq!(fixed.briefer_model, "default");
+    assert_eq!(fixed.tester_model, "default");
+    let tester = Options::parse(&args(&[
+        "11373",
+        "--engine",
+        "devin",
+        "--tester-model",
+        "swe-2-high",
+    ]))
+    .unwrap();
+    assert_eq!(tester.tester_model, "swe-2-high");
+    assert_eq!(tester.inner.model, "default");
+    // Claude stays the default engine with its own model names.
+    let claude = Options::parse(&args(&["11373", "--engine", "claude"])).unwrap();
+    assert_eq!(claude.engine, Engine::Claude);
+    assert_eq!(claude.briefer_model, "haiku");
+    assert_eq!(claude.inner.model, "claude-opus-5-5");
+    assert!(Options::parse(&args(&["11373", "--engine", "gemini"])).is_err());
+    assert!(Options::parse(&args(&["11373", "--engine"])).is_err());
+}
+
+/// One Coder hand on the Devin engine, driven by the recorded `devin acp`
+/// turn (`crates/acp-client/fixtures/devin-3000.11.3-turn.jsonl`): open,
+/// set `accept-edits`, prompt, stream the tool call and reply, close.
+#[tokio::test]
+#[cfg(unix)]
+async fn a_devin_hand_runs_the_recorded_turn_through_acp() {
+    use crate::issue_run::agent::{self, AcpOptions};
+    let dir = tempfile::tempdir().unwrap();
+    let agent_dir = tempfile::tempdir().unwrap();
+    let program = acp_client::replay::script(
+        agent_dir.path(),
+        &acp_client::replay::blocks(acp_client::replay::DEVIN_TURN),
+    );
+    let (feed, mut transcript) = crate::issue_run::channel(None);
+    let session = agent::Session {
+        title: "Coder".into(),
+        detail: "Changes the working copy".into(),
+        model: "swe-2-high".into(),
+        timeout: std::time::Duration::from_secs(30),
+        engine: agent::Engine::Acp(AcpOptions {
+            program: Some(program),
+            arguments: vec![
+                "--sandbox".into(),
+                "acp".into(),
+                "--model".into(),
+                "swe-2-high".into(),
+            ],
+            mode: Some("accept-edits".into()),
+            meta: Some(acp_client::devin::engine_meta("openagents-coder-engine")),
+            environment: vec![("PATH".into(), "/bin:/usr/bin".into())],
+            writes: true,
+        }),
+        checks: Vec::new(),
+        system: "You are the Coder of a four-hand coding run.".into(),
+        prompt: "Create hello.txt, then run ls.".into(),
+        briefed: Default::default(),
+        events_file: "coder-0-events.jsonl".into(),
+        baseline: None,
+    };
+    let work = agent::run(session, dir.path(), dir.path(), &mut transcript).await;
+    assert_eq!(work.error, None);
+    let reply = work.reply.unwrap_or_default();
+    assert!(reply.contains("Created `hello.txt`"), "{reply}");
+    // Usage sums the turn's non-subagent usage updates; the prompt reply
+    // carries the cache read.
+    assert_eq!(work.output_tokens, Some(95));
+    assert_eq!(work.input_tokens, Some(21_997));
+    assert_eq!(work.cache_read, Some(10_941));
+    // Devin reports no dollar price, so the cost stays unknown.
+    assert_eq!(work.cost_usd, None);
+    // The tool call drew a Run entry with the recorded command, finished.
+    let entries: Vec<crate::live::Entry> = feed
+        .drain()
+        .into_iter()
+        .filter_map(|event| match event {
+            crate::issue_run::Event::Set { entry, .. } => Some(entry),
+            _ => None,
+        })
+        .collect();
+    assert!(entries.iter().any(|entry| matches!(entry,
+        crate::live::Entry::Tool { name, input, running: false, .. }
+            if name == "Run" && input["command"].as_str() == Some("echo hi > hello.txt && ls"))));
+    assert!(entries.iter().any(|entry| matches!(entry,
+        crate::live::Entry::Assistant { text, .. } if text.contains("hello.txt"))));
+    // The process got --sandbox, `acp --model`, and `accept-edits`.
+    assert_eq!(
+        acp_client::replay::arguments(agent_dir.path()),
+        vec!["--sandbox", "acp", "--model", "swe-2-high"]
+    );
+    let sent = acp_client::replay::received(agent_dir.path());
+    assert_eq!(sent[1]["method"], "session/new");
+    assert_eq!(sent[2]["params"]["modeId"], "accept-edits");
+    // The hand's system text leads its prompt: ACP has no system channel.
+    assert!(
+        sent[3]["params"]["prompt"][0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("You are the Coder of a four-hand coding run.\n\nCreate hello.txt"),
+        "{}",
+        sent[3]["params"]["prompt"][0]["text"]
+    );
+    // The hand's events file holds the streamed updates.
+    let events = std::fs::read_to_string(dir.path().join("coder-0-events.jsonl")).unwrap();
+    assert!(events.contains("\"tool_call\""), "{events}");
+    assert!(events.contains("\"usage\""), "{events}");
+}
+
+/// A Devin hand whose binary is missing surfaces the start error instead
+/// of hanging: the same shape "Claude Code did not start" takes.
+#[tokio::test]
+#[cfg(unix)]
+async fn a_devin_hand_without_a_binary_fails_at_start() {
+    use crate::issue_run::agent::{self, AcpOptions};
+    let dir = tempfile::tempdir().unwrap();
+    let (_feed, mut transcript) = crate::issue_run::channel(None);
+    let session = agent::Session {
+        title: "Coder".into(),
+        detail: String::new(),
+        model: "default".into(),
+        timeout: std::time::Duration::from_secs(5),
+        engine: agent::Engine::Acp(AcpOptions {
+            program: None,
+            arguments: Vec::new(),
+            mode: None,
+            meta: None,
+            environment: Vec::new(),
+            writes: true,
+        }),
+        checks: Vec::new(),
+        system: String::new(),
+        prompt: "Do the change.".into(),
+        briefed: Default::default(),
+        events_file: "coder-0-events.jsonl".into(),
+        baseline: None,
+    };
+    let work = agent::run(session, dir.path(), dir.path(), &mut transcript).await;
+    let error = work.error.unwrap_or_default();
+    assert!(error.contains("Devin did not start"), "{error}");
+}
+
+/// A Devin hand that reports a model different from the one it was asked
+/// for is refused before its prompt.
+#[tokio::test]
+#[cfg(unix)]
+async fn a_devin_hand_refuses_a_model_mismatch() {
+    use crate::issue_run::agent::{self, AcpOptions};
+    let dir = tempfile::tempdir().unwrap();
+    let agent_dir = tempfile::tempdir().unwrap();
+    // The recording's session reports `swe-2-high`; ask for another model.
+    let program = acp_client::replay::script(
+        agent_dir.path(),
+        &acp_client::replay::blocks(acp_client::replay::DEVIN_TURN),
+    );
+    let (_feed, mut transcript) = crate::issue_run::channel(None);
+    let session = agent::Session {
+        title: "Coder".into(),
+        detail: String::new(),
+        model: "swe-1".into(),
+        timeout: std::time::Duration::from_secs(30),
+        engine: agent::Engine::Acp(AcpOptions {
+            program: Some(program),
+            arguments: vec!["acp".into(), "--model".into(), "swe-1".into()],
+            mode: None,
+            meta: None,
+            environment: vec![("PATH".into(), "/bin:/usr/bin".into())],
+            writes: true,
+        }),
+        checks: Vec::new(),
+        system: String::new(),
+        prompt: "Do the change.".into(),
+        briefed: Default::default(),
+        events_file: "coder-0-events.jsonl".into(),
+        baseline: None,
+    };
+    let work = agent::run(session, dir.path(), dir.path(), &mut transcript).await;
+    let error = work.error.unwrap_or_default();
+    assert!(error.contains("different model"), "{error}");
+    let sent = acp_client::replay::received(agent_dir.path());
+    assert!(
+        !sent.iter().any(|line| line["method"] == "session/prompt"),
+        "the prompt never went out"
+    );
+}
