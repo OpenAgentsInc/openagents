@@ -838,6 +838,82 @@ fn metal_q4_ffn_matches_resident_weighted_logits() {
     metal_weighted_mode_parity(false);
 }
 
+/// Layer-major and chunk-major prefill encode the same kernels on the same
+/// inputs in the same causal order, so the logits must be bitwise equal, for
+/// resident and on-demand Q4_K feed-forward weights alike.
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires explicit Metal hardware and model validation"]
+fn metal_layer_major_prefill_matches_chunk_major_bitwise() {
+    let gguf = std::env::var("PSIONIC_CLEF_GGUF").expect("set PSIONIC_CLEF_GGUF");
+    let lane = super::ClefDecisionLane::load(
+        std::path::Path::new(&gguf),
+        super::ClefHeadSource::Embedded,
+        super::ClefLimits {
+            device: super::ClefDevice::Metal,
+            accumulate_f16: false,
+            ..super::ClefLimits::default()
+        },
+    )
+    .expect("Metal model");
+    assert!(
+        lane.batching.is_none(),
+        "run order parity with batching disabled"
+    );
+    let corpus = std::fs::read_to_string(fixtures().join("encoder/corpus.jsonl")).unwrap();
+    let mut record = corpus
+        .lines()
+        .filter_map(|body| lane.encode(&lane.parse_request(body).ok()?).ok())
+        .filter(|record| (600..=2048).contains(&record.input_ids.len()))
+        .max_by_key(|record| record.input_ids.len())
+        .expect("a bounded long corpus record");
+    record.prefix_tokens = 0;
+    let configure = |on_demand: Option<bool>, layer_major: bool| {
+        let _running = lane.running.lock().unwrap();
+        lane.logit_cache.lock().unwrap().clear();
+        match lane.cuda.as_ref().unwrap() {
+            super::DeviceTrunk::Metal(trunk) => {
+                if let Some(on_demand) = on_demand {
+                    trunk
+                        .replace_ffn_weights_for_test(&lane.backbone, on_demand)
+                        .unwrap();
+                }
+                trunk.set_prefill_order_for_test(layer_major);
+            }
+            _ => panic!("Metal model required"),
+        }
+    };
+    for on_demand in [false, true] {
+        for chunk in [257, 512] {
+            configure(Some(on_demand), false);
+            let started = std::time::Instant::now();
+            let expected = lane.logits_at_chunk(&record, chunk, None, None).unwrap();
+            let chunk_seconds = started.elapsed().as_secs_f64();
+            configure(None, true);
+            let started = std::time::Instant::now();
+            let actual = lane.logits_at_chunk(&record, chunk, None, None).unwrap();
+            let layer_seconds = started.elapsed().as_secs_f64();
+            eprintln!(
+                "on_demand={on_demand} tokens={} chunk={chunk}: chunk-major {chunk_seconds:.3} s, layer-major {layer_seconds:.3} s",
+                record.input_ids.len()
+            );
+            assert!(!actual.is_empty());
+            for (actual, expected) in actual.iter().zip(&expected) {
+                assert_eq!(actual.len(), expected.len(), "option count");
+                for (&a, &b) in actual.iter().zip(expected) {
+                    assert!(a.is_finite());
+                    assert_eq!(
+                        a.to_bits(),
+                        b.to_bits(),
+                        "on_demand={on_demand} chunk={chunk}: {a} vs {b}"
+                    );
+                }
+            }
+            assert_eq!(actual.len(), expected.len(), "question count");
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn metal_weighted_mode_parity(delta_mode: bool) {
     use psionic_backend_metal::clef_delta::ClefMetalDelta;
