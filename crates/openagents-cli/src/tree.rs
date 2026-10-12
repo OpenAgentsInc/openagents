@@ -227,6 +227,7 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             crate::customer::tree_effects(),
         ),
         group("lease", Some(crate::lease::USAGE), crate::lease::EFFECTS),
+        group("film", Some(crate::film::USAGE), crate::film::EFFECTS),
         group(
             "scratch",
             Some(crate::scratch::USAGE),

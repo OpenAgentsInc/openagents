@@ -11019,6 +11019,7 @@ dependencies = [
  "uuid",
  "verse",
  "verse-engine",
+ "verse-film",
  "verse-lagrange",
  "verse-world",
  "world-tree",
@@ -16891,6 +16892,13 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+]
+
+[[package]]
+name = "verse-film"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]

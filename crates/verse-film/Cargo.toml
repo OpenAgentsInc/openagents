@@ -1,0 +1,13 @@
+[package]
+name = "verse-film"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "The film engine's take: a scene recorded once as a stream of uploads and frames, which any renderer draws on demand. No GPU, no dependencies beyond serde_json for notes."
+publish.workspace = true
+
+[dependencies]
+serde_json = "1"
+
+[lints]
+workspace = true
