@@ -14,6 +14,9 @@ pub(crate) const USAGE: &str = "usage: openagents film COMMAND [ARGS]
   demo OUT [--pictures N] [--hold N]
                             Write a short demo take (a square sliding across a
                             1280×720 frame at 60 fps) to OUT.
+  render FILE DIR [--picture N] [--background R,G,B]
+                            Draw a take's pictures with wgpu into DIR as
+                            frame-NNNN.png (every picture, or only picture N).
 A take is a scene recorded once as uploads and frames, which any renderer
 draws on demand; see docs/verse/film.md.";
 
@@ -22,6 +25,7 @@ draws on demand; see docs/verse/film.md.";
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("inspect", Effect::ReadOnly),
     Declared::computer("demo", Effect::LocalWrite),
+    Declared::computer("render", Effect::LocalWrite),
 ];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
@@ -73,6 +77,44 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             output.emit(&summary, render);
             0
         }
+        "render" => {
+            let [file, dir] = args.positional() else {
+                return output.usage("film render", "FILE and DIR are required", USAGE);
+            };
+            let picture = match args.number("picture", u32::MAX) {
+                Ok(n) => n,
+                Err(_) => return output.usage("film render", "--picture needs a number", USAGE),
+            };
+            let background = match args.option("background") {
+                None => [0.0, 0.0, 0.0, 1.0],
+                Some(text) => match parse_color(text) {
+                    Some(color) => color,
+                    None => {
+                        return output.usage(
+                            "film render",
+                            "--background needs R,G,B between 0 and 1",
+                            USAGE,
+                        );
+                    }
+                },
+            };
+            match render_take(Path::new(file), Path::new(dir), picture, background) {
+                Ok(summary) => {
+                    output.emit(&summary, |v| {
+                        format!(
+                            "{} pictures of {} drawn into {} ({}×{})",
+                            v["drawn"],
+                            v["path"].as_str().unwrap_or(""),
+                            v["dir"].as_str().unwrap_or(""),
+                            v["width"],
+                            v["height"]
+                        )
+                    });
+                    0
+                }
+                Err(message) => output.fail("film render", &message),
+            }
+        }
         other => output.usage("film", &format!("unknown command `{other}`"), USAGE),
     }
 }
@@ -85,6 +127,56 @@ fn inspect(file: &Path) -> Result<Value, String> {
     summary["path"] = json!(file.display().to_string());
     summary["bytes"] = json!(bytes.len());
     Ok(summary)
+}
+
+fn parse_color(text: &str) -> Option<[f32; 4]> {
+    let parts: Vec<f32> = text
+        .split(',')
+        .map(|part| part.trim().parse::<f32>().ok())
+        .collect::<Option<_>>()?;
+    match parts[..] {
+        [r, g, b] if [r, g, b].iter().all(|c| (0.0..=1.0).contains(c)) => Some([r, g, b, 1.0]),
+        _ => None,
+    }
+}
+
+fn render_take(
+    file: &Path,
+    dir: &Path,
+    picture: u32,
+    background: [f32; 4],
+) -> Result<Value, String> {
+    let bytes =
+        std::fs::read(file).map_err(|error| format!("can't read {}: {error}", file.display()))?;
+    let take = verse_film::read(&bytes).map_err(|error| error.to_string())?;
+    std::fs::create_dir_all(dir)
+        .map_err(|error| format!("can't create {}: {error}", dir.display()))?;
+    let mut renderer = verse_film::render::Renderer::new(&take)?;
+    let (width, height) = renderer.size();
+    let mut drawn = 0u32;
+    for (index, frame) in take.frames.iter().enumerate() {
+        if picture != u32::MAX && index as u32 != picture {
+            continue;
+        }
+        let pixels = renderer.draw(frame, background)?;
+        let out = dir.join(format!("frame-{index:04}.png"));
+        verse_film::render::write_png(&out, width, height, &pixels)?;
+        drawn += 1;
+    }
+    if picture != u32::MAX && drawn == 0 {
+        return Err(format!(
+            "the take has {} pictures; there is no picture {picture}",
+            take.frames.len()
+        ));
+    }
+    Ok(json!({
+        "path": file.display().to_string(),
+        "dir": dir.display().to_string(),
+        "width": width,
+        "height": height,
+        "drawn": drawn,
+        "pictures": take.frames.len(),
+    }))
 }
 
 fn render(v: &Value) -> String {

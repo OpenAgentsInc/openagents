@@ -42,11 +42,24 @@ reads as far as it goes, with `failed` unknown.
 ```
 openagents film demo OUT.take [--pictures N] [--hold N]
 openagents film inspect FILE [--json]
+openagents film render FILE DIR [--picture N] [--background R,G,B]
 ```
 
 `demo` writes a 1280×720, 60 fps take of a square sliding across the frame.
 `inspect` prints the header, the counts of uploads, pictures, frames, and
-records, the duration, and the notes.
+records, the duration, and the notes. `render` draws every picture (or
+picture N) with wgpu into `DIR/frame-NNNN.png`; set `WGPU_BACKEND=vulkan` on a
+box without a display to use lavapipe.
+
+## Drawing
+
+`verse_film::render::Renderer` (feature `gpu`) keeps a device and the take's
+uploads between pictures. Paths are flattened on the CPU (16 steps per cubic),
+filled on the GPU by stencil-then-cover under nonzero winding and 4× MSAA,
+and stroked as one quad per segment; images are textured quads over the unit
+square; records draw back to front by `depth`; `reveal` trims the flattened
+polyline by length. Analytic coverage, as ManimGX computes it, is a later
+step if MSAA proves too soft.
 
 ## Rust
 
@@ -63,11 +76,10 @@ let take = verse_film::read(&bytes)?;
 ## Slices
 
 1. This page: the take, `verse-film`, `openagents film inspect` and `demo`.
-2. Draw a frame offscreen with wgpu 29 (analytic path coverage):
-   `openagents film frame FILE N OUT.png`.
+2. This page: draw pictures offscreen with wgpu 29, `openagents film render`.
 3. Records that reference Verse content (a zone capture, a `verse-engine`
    scene) and desktop components as layers of a frame.
-4. `openagents film render FILE OUT.mp4` through ffmpeg, holding unchanged
+4. `openagents film export FILE OUT.mp4` through ffmpeg, holding unchanged
    pictures.
 5. App mockups: a frame that lays out a web, phone, or desktop screen from
    the `/ui/screens` gallery's sample states.

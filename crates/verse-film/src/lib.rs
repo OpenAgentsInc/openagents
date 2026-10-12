@@ -7,6 +7,8 @@
 //! MIT, Academa Inc.), reimplemented here for Verse's own records; see
 //! `docs/verse/film.md`.
 
+#[cfg(feature = "gpu")]
+pub mod render;
 pub mod take;
 
 pub use take::{Error, Film, Frame, Kind, Record, Take, Upload, VERSION, View, read};

@@ -16898,7 +16898,11 @@ dependencies = [
 name = "verse-film"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
+ "png",
+ "pollster",
  "serde_json",
+ "wgpu",
 ]
 
 [[package]]
