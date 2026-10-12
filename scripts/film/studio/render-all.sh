@@ -49,7 +49,7 @@ for shot in "${shots[@]}"; do
     echo "render-all: unknown shot $shot" >&2; status=1; continue
   fi
   if [ "$clip" = none ]; then  # no screen: the empty Grid plate
-    suffix=""; [ ${#preview[@]} -gt 0 ] && suffix=.preview
+    suffix=""; [[ " ${preview[*]-} " == *" --preview "* ]] && suffix=.preview
     "$blender" -b --factory-startup -P "$here/studio.py" -- --shot "$spec" --out "$out/$shot$suffix.mp4" \
       "${preview[@]}" 2>&1 | grep -E "^studio:|Error|Traceback" || status=1
     continue
@@ -68,7 +68,7 @@ for shot in "${shots[@]}"; do
       continue
     fi
   fi
-  suffix=""; [ ${#preview[@]} -gt 0 ] && suffix=.preview
+  suffix=""; [[ " ${preview[*]-} " == *" --preview "* ]] && suffix=.preview
   start=$(date +%s)
   "$blender" -b --factory-startup -P "$here/studio.py" -- --shot "$spec" --video "$video" \
     --out "$out/$shot$suffix.mp4" "${preview[@]}" 2>&1 | grep -E "^studio:|Error|Traceback" || true
