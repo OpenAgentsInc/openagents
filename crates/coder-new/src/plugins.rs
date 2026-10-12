@@ -481,6 +481,7 @@ impl Plugins {
             disclosure_desk: crate::approval::desk(),
             harness: None,
             memory,
+            favor: crate::route::Favor::default(),
         }
     }
 

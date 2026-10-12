@@ -565,6 +565,7 @@ mod tests {
             disclosure_desk: None,
             harness: None,
             memory: None,
+            favor: crate::route::Favor::default(),
         };
         let client = settings.jev_client().unwrap().unwrap();
         assert_eq!(jev_hosted::via(&client), "direct");
@@ -846,6 +847,7 @@ mod tests {
                 disclosure_desk: None,
                 harness: None,
                 memory: None,
+                favor: crate::route::Favor::default(),
             };
             let result = if chat_tool {
                 settings

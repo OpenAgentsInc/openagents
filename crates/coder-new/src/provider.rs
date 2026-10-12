@@ -53,12 +53,43 @@ pub struct KeyInfo {
 /// again every turn. Signing in again, or restarting Coder, asks again.
 static GATEWAY_REFUSED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
+/// The account whose daily free allowance the gateway reported used up
+/// (402), held until `until` (Unix seconds): later `auto` turns skip it
+/// instead of asking again every prompt. A short hold, not the day, so
+/// credit added mid-session takes effect on the next turns.
+static GATEWAY_EXHAUSTED: std::sync::Mutex<Option<(String, u64)>> = std::sync::Mutex::new(None);
+
+/// How long a used-up allowance holds before the gateway is tried again.
+const GATEWAY_EXHAUSTED_HOLD: u64 = 30 * 60;
+
 /// Whether `auto` may try the OpenAgents gateway with `account`.
 #[must_use]
 pub fn gateway_open(account: &openagents_login::Saved) -> bool {
-    GATEWAY_REFUSED
+    if !GATEWAY_REFUSED
         .lock()
         .map_or(true, |refused| refused.as_deref() != Some(account.token()))
+    {
+        return false;
+    }
+    GATEWAY_EXHAUSTED
+        .lock()
+        .map_or(true, |mut exhausted| match *exhausted {
+            Some((ref token, until)) if token == account.token() => {
+                if until > gateway_now() {
+                    false
+                } else {
+                    *exhausted = None;
+                    true
+                }
+            }
+            _ => true,
+        })
+}
+
+fn gateway_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs())
 }
 
 #[derive(Clone)]
@@ -449,7 +480,10 @@ impl Provider {
                         !self.gateway || (!(joined.is_empty() && seen.is_empty()) && failures < 2)
                     });
                     let Some(recovery) = recovered else {
-                        // The gateway's failure goes back to `auto`'s next door.
+                        // A turn that produced text or ran a call may not
+                        // be repeated blindly; a fresh start's may go to
+                        // the next door.
+                        let produced = !joined.is_empty() || !seen.is_empty();
                         if self.gateway {
                             if matches!(
                                 error,
@@ -462,22 +496,42 @@ impl Provider {
                                     *refused = Some(self.key.expose().to_owned());
                                 }
                             }
-                            return Err(gateway_error(error));
-                        }
-                        // A model the person chose is never swapped for
-                        // another (#11132): the turn fails, says why, and
-                        // the app offers another model.
-                        if crate::models::pinned(model) {
+                            if matches!(error, openrouter::Error::Api { status: 402, .. }) {
+                                if let Ok(mut exhausted) = GATEWAY_EXHAUSTED.lock() {
+                                    *exhausted = Some((
+                                        self.key.expose().to_owned(),
+                                        gateway_now() + GATEWAY_EXHAUSTED_HOLD,
+                                    ));
+                                }
+                            }
+                            if !produced {
+                                // The gateway fails over before its first
+                                // words: `auto`'s next door takes the turn.
+                                return Err(gateway_error(error));
+                            }
+                        } else if crate::models::pinned(model) {
+                            // A model the person chose is never swapped for
+                            // another (#11132): the turn fails, says why, and
+                            // the app offers another model.
                             model_callback(PINNED_MISSED);
                             return Err(pinned_failure(model, &stream_error(error)));
+                        } else if !produced {
+                            // A door that answered nothing yields to the
+                            // route's next one (#11374).
+                            return Err(stream_error(error));
                         }
+                        let reason = if self.gateway {
+                            gateway_error(error)
+                        } else {
+                            stream_error(error)
+                        };
                         return self
                             .fallback(
                                 InterruptedTurn {
                                     history: &history,
                                     partial: &partial,
                                     seen: &seen,
-                                    reason: stream_error(error),
+                                    reason,
                                     model,
                                     started,
                                     aggregate,
@@ -1449,6 +1503,7 @@ mod tests {
                 999,
             )),
             memory: None,
+            favor: crate::route::Favor::default(),
         }
     }
 
@@ -1930,8 +1985,11 @@ mod tests {
         );
     }
 
+    /// A door that failed before it streamed or called a tool reports its
+    /// own failure so `auto`'s route moves to the next door (#11374); the
+    /// handoff is for a turn that already did work.
     #[test]
-    fn terminal_http_statuses_use_fallback_without_restarting_the_failed_request() {
+    fn terminal_http_statuses_before_any_output_go_to_the_routes_next_door() {
         for status in [400, 401, 402, 403, 404] {
             let (base, server) = responses(vec![(
                 status,
@@ -1939,22 +1997,12 @@ mod tests {
                 format!("{{\"error\":{{\"message\":\"{FIXTURE_TOKEN}\"}}}}"),
             )]);
             let mut provider = Provider::with_base(ApiKey::new(FIXTURE_TOKEN), &base).unwrap();
-            provider.offline_fallback = Some(Arc::new(move |context, _| {
-                let document: Value =
-                    serde_json::from_slice(&fs::read(&context.path).unwrap()).unwrap();
-                assert!(
-                    document["provider_error"]
-                        .as_str()
-                        .unwrap()
-                        .contains(&format!("HTTP {status}"))
-                );
-                assert_eq!(document["completed_call_ids"], json!([]));
-                assert!(!context.task.contains(FIXTURE_TOKEN));
-                Ok(fallback_reply())
+            provider.offline_fallback = Some(Arc::new(|_, _| -> Result<Value, String> {
+                panic!("a door that produced nothing is not handed off; the route moves on")
             }));
             let mut execution = jev_settings(jev_plugin_endpoint(), None);
             execution.jev_enabled = false;
-            let reply = runtime()
+            let error = runtime()
                 .block_on(provider.chat_with_plugins(
                     crate::models::DEFAULT_MODEL,
                     &crate::models::GenerationOptions::default(),
@@ -1965,11 +2013,8 @@ mod tests {
                     &mut |_| {},
                     &Arc::new(AtomicBool::new(false)),
                 ))
-                .unwrap();
-            assert_eq!(reply.text, "The remaining work is complete.");
-            assert_eq!(reply.model, "fixture/alternate");
-            assert_eq!(reply.usage.total_tokens, 11);
-            assert!(reply.first_text_ms.is_some());
+                .unwrap_err();
+            assert!(error.contains(&format!("HTTP {status}")), "{error}");
             assert_eq!(server.join().unwrap().len(), 1);
         }
     }
@@ -2102,7 +2147,10 @@ mod tests {
     #[test]
     fn fallback_error_and_cancellation_clean_the_handoff_without_replaying_effects() {
         for cancel_after in [false, true] {
-            let (base, server) = responses(vec![(401, String::new(), String::new())]);
+            // The turn streamed text before its refusal, so it is handed
+            // off rather than repeated elsewhere.
+            let failed_mid_turn = "data: {\"choices\":[{\"delta\":{\"content\":\"Checking.\"}}]}\n\ndata: {\"error\":{\"code\":401,\"message\":\"unauthorized\"}}\n\n".to_owned();
+            let (base, server) = responses(vec![(200, String::new(), failed_mid_turn)]);
             let cancel = Arc::new(AtomicBool::new(false));
             let trigger = cancel.clone();
             let retained = Arc::new(std::sync::Mutex::new(None));
