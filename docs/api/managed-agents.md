@@ -706,7 +706,7 @@ A coordinator delegates to other agents inside one session. They share the conta
 
 Use this when the work splits into independent pieces, or when one piece would fill the context with reading. Each piece gets a fresh context. Threads run in parallel. Only the report comes back. You still create one session and read one stream. The coordinator is given `list_agents` and `send_to_agent`. You do not write a second orchestrator.
 
-Do not staff a roster to re-answer one question (a checker, a voter, a second model pass). Give the agent the documents and tools, tell it in `system` to check its own work, and raise `effort`. A check in your own code that calls no model is fine. An advisor the agent consults mid-turn is a separate choice. If you add a checker because you were asked for one, it spends tokens on every answer.
+Do not staff a roster to re-answer one question (a checker, a voter, a second model pass). Give the agent the documents and tools, tell it in `system` to check its own work, and raise `effort`. A check in your own code that calls no model is fine. An advisor the agent consults mid-turn is a separate choice. A check that belongs to one large job goes in a [workflow run](#checks-inside-a-run). If you add a checker because you were asked for one, it spends tokens on every answer.
 
 A small one-step task is a poor fit: every delegation costs a round trip and a re-brief. Subagents do not see the coordinator's conversation. Each task has to carry the paths, the constraints, and the report format. Spawning returns immediately. The report arrives on a later coordinator turn.
 
@@ -758,9 +758,9 @@ When the job is too big to hand out one task at a time (more pieces than 25 chil
 { "type": "multiagent_20261001", "workflows": { "type": "enabled" } }
 ```
 
-The agent writes a plan. OpenAgents runs it in the background as a workflow run. The agent can keep working or end its turn. A run can use agents you list and agents the plan defines. It does not use the roster.
+The agent writes a plan. OpenAgents runs it in the background as a workflow run. The agent can keep working or end its turn. A run can use agents you list and agents the plan defines. It does not use the roster. A run uses the session's environment. It does not start another run. The session agent can start another run on a later turn. Open runs share the session budget and the session ceilings.
 
-On this type, `workflows` and `subagents` default to enabled, and `advisor` defaults to disabled. Write the switch you mean. `workflows.predefined_agents` and `subagents.predefined_agents` take up to 20 entries in the roster forms except advisor. `inline_agents` defaults to `{ "type": "enabled" }`. Set it to `{ "type": "disabled" }` to stop the plan, or the coordinator, from defining agents; the list then needs at least one agent, or the request is `400`. An advisor on this type is the `advisor` member, `{ "type": "enabled", "model" }`, never a roster entry.
+On this type, `workflows` and `subagents` default to enabled, and `advisor` defaults to disabled. Write the switch you mean. `workflows.predefined_agents` and `subagents.predefined_agents` take up to 20 entries in the roster forms except advisor. `inline_agents` defaults to `{ "type": "enabled" }`. Set it to `{ "type": "disabled" }` to stop the plan, or the coordinator, from defining agents; the list then needs at least one agent, or the request is `400`. An advisor on this type is the `advisor` member, `{ "type": "enabled", "model" }`, never a roster entry. `workflows.max_agents` is an optional positive integer, at most 1,000. When the run would open more threads than that over its life, the run ends with `thread_limit_error`. Omit it and the server ceilings alone apply.
 
 For a roster and no workflows, use `coordinator`, or set `workflows` to `{ "type": "disabled" }`. `null` restores the default, and the default for `workflows` is enabled. Say in `system` when a run should start, and name the small tasks the agent should do itself. Every agent in a run spends tokens, so set a session budget. You cannot add a budget after the session exists.
 
@@ -798,7 +798,25 @@ While a run is open, archive, delete, and `sessions.update` of `agent` can be `4
 
 Tool calls from a run's threads appear on the primary stream as they happen. The session can stay `running` with no `requires_action` idle. Act on the tool-use event itself.
 
-Limits, server-set: 64 threads working at once in one run (not a promise); 1,000 threads over a run's life (`thread_limit_error` past the server's limit; the count can still pass 1,000); a default lifetime of 24 hours, which a pause might not freeze (`timeout_error` past it; only the agent can set a shorter lifetime); 10 runs open at once per session, idle runs included. Run and phase names are cut to 64 characters and descriptions to 256.
+Limits, server-set: 64 threads working at once in one run (not a promise); 1,000 threads over a run's life (`thread_limit_error` past the server's limit or past `max_agents`; the count can still pass 1,000); a default lifetime of 24 hours, which a pause might not freeze (`timeout_error` past it; only the agent can set a shorter lifetime); 10 runs open at once per session, idle runs included. Run and phase names are cut to 64 characters and descriptions to 256.
+
+### How a run proceeds
+
+A run does not read the clock and does not draw random numbers. Put a timestamp in the user message when a step needs one.
+
+The service keeps each step's result. After a restart, a step whose inputs are unchanged is reused, and the run continues at the first step whose inputs differ.
+
+Work streams forward. A later phase can start on one item while an earlier phase is still working on another. A step that needs every item in a set waits until each of those items has finished or failed. A failed item is skipped and does not fail the others. The agent can skip one thread. That thread ends with no result, and the run continues.
+
+When a step drops items to stay inside a limit, the ending notice names how many were dropped and why.
+
+### Checks inside a run
+
+A standing roster is a poor place for a second model to re-answer every turn. A run is where a large job checks itself. Say in `system` which of these to use, and say when the job is too small for a run.
+
+- Cited research. Search several angles, fetch the sources, then try to refute each claim. Keep a claim that survives the refutations, and cite a source for every claim you keep.
+- Code review. Read the tree in slices, read each slice again, then prove a candidate by writing a failing test. Drop a candidate the proof does not support.
+- A list with a second pass. One agent per item, then one review of every report before the combined answer.
 
 ### Thread events
 
@@ -845,6 +863,7 @@ Archive requires the thread to be idle, and `requires_action` counts as idle. A 
 - A second level of delegation is a validation error.
 - On `multiagent_20261001`, omitting `workflows` or sending `null` turns workflows on. For a roster only, use `coordinator` or `"workflows": { "type": "disabled" }`.
 - A workflow run spends tokens for every agent in it. Set a budget, and say in `system` when a run should start.
+- A run does not start another run. `max_agents` counts threads over that run's life.
 
 ## Errors
 

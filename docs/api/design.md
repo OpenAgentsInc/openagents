@@ -426,6 +426,7 @@ A caller sends the HTTP object. The NIP is the record inside OpenAgents. The two
 | Function tools on a response | [NIP-CAP](../../nips/openagents/NIP-CAP.md) | Tools declared on the request, which you run. A capability definition describes a host operation. |
 | A compaction item | [NIP-CTX](../../nips/openagents/NIP-CTX.md) | The summary you send back on `/v1/responses`. NIP-CTX keeps the task frame and its history. |
 | `cmk_` | — | The organization's encryption key, held in its own key service. A bearer key, a provider key, a `vlt_` vault, and NIP-VAULT are other objects. |
+| `wrun_` | — | A workflow run inside a managed-agent session. A NIP-PRG program is a separate workflow. |
 
 ### 4.5 registry
 

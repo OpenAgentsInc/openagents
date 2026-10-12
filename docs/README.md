@@ -33,7 +33,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Put OpenAgents itself behind an API for partner apps, websites, other agents, and self-hosters | [OpenAgents API](api/README.md): plain HTTP, x402 payment |
 | See every endpoint we serve: which are public, which are for our own apps, which stay internal, and how today's routes converge | [API design](api/design.md) |
 | Call the API: authenticate, choose a workspace, page a list, and stay within the body ceiling | [Calling the API](api/calling.md) |
-| Run a saved agent in a session, with tools, memory, and a schedule | [Managed Agents API](api/managed-agents.md), [events](api/managed-agents-events.md), [operations](api/managed-agents-operations.md) |
+| Run a saved agent in a session, with tools, memory, a workflow run, and a schedule | [Managed Agents API](api/managed-agents.md), [events](api/managed-agents-events.md), [operations](api/managed-agents-operations.md) |
 | Count tokens, batch model calls, send files, and keep reasoning valid across turns | [Model calls](api/model-calls.md) |
 | Administer an organization: members, bearer keys, and a customer-managed encryption key | [Organization administration](api/organization.md) |
 | Receive every payment centrally, split it with plugin authors, pay them out, and watch it live | [Payments](payments/README.md): one receiver, a split ledger, payouts, `/live` |
