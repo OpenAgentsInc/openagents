@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 
 use super::hands::landed_commit;
 use super::ledger;
+use crate::comms::{Channel, Intent};
 
 /// Days since an issue's last update after which it is `stale`.
 pub const RECENT_DAYS: i64 = 21;
@@ -115,7 +116,32 @@ pub fn next(entries: &[Entry]) -> Option<Value> {
     }))
 }
 
-pub async fn read(github: &str, repo: &Path, state: &Path) -> Result<Vec<Entry>, String> {
+/// The channel members whose declared intent names `issue` as a
+/// resource (`issue:N`), each marked as a channel claim.
+#[must_use]
+pub fn intended(intents: &[Intent], issue: u64) -> Vec<String> {
+    let resource = format!("issue:{issue}");
+    intents
+        .iter()
+        .filter(|intent| intent.resources.iter().any(|r| r == &resource))
+        .map(|intent| format!("{} (agent channel)", intent.member))
+        .collect()
+}
+
+fn channel_intents(channel: Option<&Path>) -> Result<Vec<Intent>, String> {
+    match channel {
+        Some(dir) => Channel::at(dir)?.intents(),
+        None => Ok(Vec::new()),
+    }
+}
+
+pub async fn read(
+    github: &str,
+    repo: &Path,
+    state: &Path,
+    channel: Option<&Path>,
+) -> Result<Vec<Entry>, String> {
+    let intents = channel_intents(channel)?;
     let args = [
         "issue",
         "list",
@@ -136,7 +162,7 @@ pub async fn read(github: &str, repo: &Path, state: &Path) -> Result<Vec<Entry>,
         let Some(issue) = item["number"].as_u64() else {
             continue;
         };
-        let assignees: Vec<String> = item["assignees"]
+        let mut assignees: Vec<String> = item["assignees"]
             .as_array()
             .map(|list| {
                 list.iter()
@@ -144,6 +170,7 @@ pub async fn read(github: &str, repo: &Path, state: &Path) -> Result<Vec<Entry>,
                     .collect()
             })
             .unwrap_or_default();
+        assignees.extend(intended(&intents, issue));
         let in_flight: Vec<String> = rows
             .iter()
             .filter(|row| row.issue == issue && row.merged.is_none())
@@ -216,16 +243,22 @@ pub async fn command(args: &[String]) -> Result<String, String> {
     let mut repo = std::env::current_dir().map_err(|error| error.to_string())?;
     let mut github = None;
     let mut pick = false;
+    let mut channel = None;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--next" => pick = true,
+            "--channel" => {
+                channel = Some(std::path::PathBuf::from(
+                    args.next().ok_or("--channel needs a directory")?,
+                ));
+            }
             "--state" => state = args.next().ok_or("--state needs a directory")?.into(),
             "--repo" => repo = args.next().ok_or("--repo needs a path")?.into(),
             "--github" => github = Some(args.next().ok_or("--github needs owner/repo")?.clone()),
             other => {
                 return Err(format!(
-                    "unknown option {other}; coder solver queue takes --github OWNER/REPO, --state DIR, --repo PATH, and --next"
+                    "unknown option {other}; coder solver queue takes --github OWNER/REPO, --state DIR, --repo PATH, --channel DIR, and --next"
                 ));
             }
         }
@@ -248,7 +281,7 @@ pub async fn command(args: &[String]) -> Result<String, String> {
         .trim()
         .to_owned(),
     };
-    let entries = read(&github, &repo, &state).await?;
+    let entries = read(&github, &repo, &state, channel.as_deref()).await?;
     if pick {
         return Ok(next(&entries)
             .map(|choice| format!("{choice}\n"))
@@ -278,5 +311,17 @@ mod tests {
         assert_eq!(choice["next"], json!(20));
         assert_eq!(choice["ready"], json!([20, 30]));
         assert!(next(&entries[1..2]).is_none());
+    }
+
+    #[test]
+    fn a_declared_intent_on_an_issue_counts_as_a_claim() {
+        let intents = [
+            Intent::new("alice", vec![], vec!["issue:7".into()]),
+            Intent::new("bob", vec!["src/a.rs".into()], vec![]),
+        ];
+        let held = intended(&intents, 7);
+        assert_eq!(held, ["alice (agent channel)"]);
+        assert_eq!(judge(7, "x", None, &held, &[], 1).verdict, "claimed");
+        assert!(intended(&intents, 8).is_empty());
     }
 }
