@@ -25,6 +25,7 @@
 
 pub mod hands;
 pub mod ledger;
+pub mod merge;
 pub mod queue;
 pub mod rollup;
 
