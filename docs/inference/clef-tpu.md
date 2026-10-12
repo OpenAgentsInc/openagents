@@ -7,6 +7,8 @@ estimate from published chip specifications unless it says measured.
 Tracking: [#11446](https://github.com/OpenAgentsInc/openagents/issues/11446).
 Context: [decision-profitability.md](decision-profitability.md),
 [gpu-options.md](gpu-options.md), [clef-native.md](clef-native.md).
+Survey of existing TPU stacks, kernels, quantization and prices:
+[clef-tpu-survey.md](clef-tpu-survey.md).
 
 ## Why look at TPUs
 
@@ -108,6 +110,16 @@ committed.
 | C. Reuse a TPU serving stack (vLLM's TPU backend, JetStream, MaxText) | Add Clef's architecture and head to an existing engine | Depends entirely on whether the stack already runs the Qwen3.5/Qwen3-Next hybrid (Gated DeltaNet + gated attention). Not verified here; P0 checks it | If supported, lowest effort; if not, we inherit an engine we do not own | High | No (Python), same exception |
 | D. Rust over PJRT | Author the graph in JAX once, export StableHLO, and execute it from a Rust server through the PJRT C API, with Psionic's encoder and head in Rust | Highest | Rust PJRT bindings are thin; custom Pallas kernels export as custom calls that must be carried along | Same as A for the compiled graph | Yes, run time is Rust; JAX only at build time |
 
+**Update (2026-10-12, [clef-tpu-survey.md](clef-tpu-survey.md)):** path C's
+open question is answered. vLLM TPU (tpu-inference) ships a fused, chunked
+Gated DeltaNet Pallas kernel, SGL-JAX runs the Qwen3.5 hybrid natively
+(Qwen3.8-27B validated on v6e-4), and both load the Clef checkpoints'
+`Qwen3_5ForConditionalGeneration` class. Neither serves a prefill-only
+custom-head workload, so the survey recommends path A built from those
+parts (SGL-JAX backbone code, the tpu-inference `gdn/v3` kernel, JAX flash
+attention, MaxText as the reference). Ironwood is not cheaper per Flash token
+than v6e, and spot v6e is $0.243/chip-h in us-east4.
+
 **Recommendation:** A for P0–P2 (fastest way to learn whether the
 throughput is real), with the server split so the request edge is Rust from
 the start: Psionic's byte-exact encoder in front (token ids and spans), the
@@ -200,6 +212,8 @@ moving the run time to D.
   slice shapes), read 2026-10-12.
 - Cloud Billing Catalog API, Compute Engine SKUs for `TpuV5e`, `TpuV6e`,
   `TpuV5p` (on-demand, spot, commitment), read 2026-10-12.
+- [clef-tpu-survey.md](clef-tpu-survey.md): stacks, kernels, quantization,
+  prices and quotas, 2026-10-12.
 - Our measurements: [gpu-options.md](gpu-options.md),
   [decision-throughput.md](decision-throughput.md),
   [clef-native.md](clef-native.md).
