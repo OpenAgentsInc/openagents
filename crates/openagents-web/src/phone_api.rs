@@ -73,7 +73,10 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route("/v1/threads", get(threads).post(start))
         .route("/v1/threads/{id}", get(thread))
-        .route("/v1/threads/{id}/messages", post(reply))
+        .route(
+            "/v1/threads/{id}/messages",
+            get(crate::projects::api::messages).post(reply),
+        )
         .route(
             "/v1/threads/{id}/files",
             post(add_file).layer(axum::extract::DefaultBodyLimit::max(
@@ -202,6 +205,13 @@ pub(crate) struct ThreadsQuery {
     offset: usize,
     #[serde(default)]
     limit: Option<usize>,
+    /// A project's threads in the API's list shape (#11471,
+    /// [`crate::projects::api::threads_in`]): its id, `name:NAME`, or
+    /// `none`.
+    #[serde(default)]
+    project: Option<String>,
+    #[serde(default)]
+    after: Option<String>,
 }
 
 async fn threads(
@@ -209,6 +219,13 @@ async fn threads(
     headers: HeaderMap,
     Query(query): Query<ThreadsQuery>,
 ) -> Response {
+    if let Some(project) = &query.project {
+        let page = crate::projects::api::Page {
+            limit: query.limit,
+            after: query.after.clone(),
+        };
+        return crate::projects::api::threads_in(&app, &headers, project, &page).await;
+    }
     let owner = match coder_sync::owner(&app, &headers).await {
         Ok(owner) => owner,
         Err(response) => return response,

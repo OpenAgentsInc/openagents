@@ -254,6 +254,41 @@ impl CloudSession {
         .map(|_| ())
     }
 
+    /// [`Self::add_project`] under a signed-in app's own token (`openagents
+    /// projects add`, #11471).
+    pub(crate) async fn add_project_as(&self, token: &str, repository: &str) -> Result<Project> {
+        if !oa_auth::repos::full_name(repository) {
+            return Err(RepoCallError::Repo(RepoError::Invalid));
+        }
+        let body = self
+            .account_call_as(
+                token,
+                Method::POST,
+                "/v1/projects",
+                Some("/v1/account/projects"),
+                Some(json!({"repository": repository})),
+            )
+            .await?;
+        serde_json::from_value(body["project"].clone())
+            .map_err(|_| RepoCallError::Session(SessionError::Unavailable))
+    }
+
+    /// [`Self::remove_project`] under a signed-in app's own token.
+    pub(crate) async fn remove_project_as(&self, token: &str, id: &str) -> Result<()> {
+        if !oa_auth::repos::project_id(id) {
+            return Err(RepoCallError::Repo(RepoError::Invalid));
+        }
+        self.account_call_as(
+            token,
+            Method::DELETE,
+            &format!("/v1/projects/{id}"),
+            Some(&format!("/v1/account/projects/{id}")),
+            None,
+        )
+        .await
+        .map(|_| ())
+    }
+
     /// One account-service call under the request's session cookie.
     async fn account_call(
         &self,

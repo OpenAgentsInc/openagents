@@ -15,6 +15,7 @@ The owner's ask: "our CLI needs to interact with that via api first class".
 ## Contents
 
 - [What exists today](#what-exists-today)
+- [Built so far (2026-10-12)](#built-so-far-2026-10-12)
 - [Setup: credentials and base URL](#setup-credentials-and-base-url)
 - [Objects](#objects)
 - [Projects](#projects)
@@ -52,6 +53,36 @@ What is missing:
   about "my finances project" searched GitHub boards and Claude Docs.
 - **Project data.** No route reads a project's chats, or adds a file or a
   text document to a project.
+
+## Built so far (2026-10-12)
+
+Steps 1 to 3 below are built. Where the proposal above and below differs
+from the code, this is how it works today:
+
+| Route (served by the website, `https://openagents.com/v1/...`) | Answer |
+| --- | --- |
+| `GET /v1/projects` | `{data: [Project], next}`, oldest first, `?limit` (default 100, at most 200) and `?after` |
+| `POST /v1/projects` `{"repository": "owner/name"}` | `201` Project. A project is one connected GitHub repository, so `repository` is required and the name is the repository's |
+| `GET /v1/projects/{id}` | One Project; `{id}` is its id or `name:NAME` |
+| `DELETE /v1/projects/{id}` | `{id, object: "project.deleted"}`; `409 project_has_threads` while chats are in it, unless `?detach_threads=true` |
+| `GET /v1/threads?project=ID\|name:NAME\|none` | `{data: [Thread], next}`, by last activity, oldest first, `?limit`, `?after` |
+| `GET /v1/threads/{id}/messages` | `{data: [Message], next}`, oldest first; each message's `content` is one `text` block |
+
+- **Credential.** The sign-in `openagents login` or `coder login` saves
+  (`sess_`), or a sign-in key from Settings (`oa_sk_`). `oak_` API keys and
+  their `projects:*` scopes come with step 5; until then these routes are
+  on `openagents.com/v1`, not `api.openagents.com/v1` or
+  `openagents.com/api/v1`.
+- **Ids.** Projects are `prj_` and 16 hex characters; threads keep their
+  chat ids (UUIDs); messages are `msg_` and their position in the thread.
+- **Project object.** `{id, object: "project", name, instructions (null),
+  repository, default_branch, private, created_at, updated_at, counts:
+  {threads, files, documents, sources}}`. `updated_at` is the latest
+  activity in its chats.
+- **Not yet:** `PATCH /v1/projects/{id}` (renaming and instructions need the
+  account service to keep them), `GET /v1/threads` filters other than
+  `project` (without `project` it still answers the apps' older shape), and
+  step 4 (files, documents, attachments, protection).
 
 ## Setup: credentials and base URL
 

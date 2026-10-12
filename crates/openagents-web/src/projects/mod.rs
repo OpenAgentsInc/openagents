@@ -57,9 +57,11 @@ pub(crate) const RECONNECT: &str = "/auth/github/reconnect";
 const CLOSED_COOKIE: &str = "oa_project_groups";
 const CSRF_SCOPE: &str = "projects";
 /// The most repositories the page lists at once.
+pub(crate) mod api;
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
+        .merge(api::routes())
         .route(PAGE, get(page).post(add))
         .route(REPOS, get(repositories))
         .route("/projects/{id}/remove", post(remove))
