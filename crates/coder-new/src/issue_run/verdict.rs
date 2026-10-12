@@ -32,6 +32,9 @@ pub enum Status {
     SetupFailed,
     /// The decision steps stopped before a briefing existed.
     DecisionFailed,
+    /// Main already carries a commit for the issue, so there is nothing to
+    /// code; the reason names the commit.
+    AlreadyDone,
 }
 
 impl Status {
@@ -44,6 +47,7 @@ impl Status {
             Self::Cancelled => "cancelled",
             Self::SetupFailed => "setup_failed",
             Self::DecisionFailed => "decision_failed",
+            Self::AlreadyDone => "already_done",
         }
     }
 }

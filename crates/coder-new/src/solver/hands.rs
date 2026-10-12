@@ -319,6 +319,30 @@ pub async fn intake_in_code(options: &Options, transcript: &mut Transcript) -> T
     }
 }
 
+/// The commit on `origin/main` (or the checkout's own history when there
+/// is no such ref) whose subject closes the issue, as "`hash` subject":
+/// this repository's commits name their issue as `(#N)`. `None` when main
+/// carries no such commit.
+pub async fn landed_commit(repo: &Path, issue: u64) -> Option<String> {
+    let grep = format!("(#{issue})");
+    for start in ["origin/main", "HEAD"] {
+        let args = [
+            "log",
+            start,
+            "-1",
+            "--fixed-strings",
+            &format!("--grep={grep}"),
+            "--format=%h %s",
+        ];
+        match setup::output("git", &args, repo).await {
+            Ok(text) if !text.trim().is_empty() => return Some(text.trim().to_owned()),
+            Ok(_) => return None,
+            Err(_) => continue,
+        }
+    }
+    None
+}
+
 /// The first reason intake in code cannot start the run: a missing
 /// program, an issue that cannot be read or is closed, or a claim another
 /// run holds.
