@@ -770,3 +770,33 @@ fn decisions_names_one_door_and_only_that_door() {
         "{refused}"
     );
 }
+
+#[test]
+fn ledger_rows_cross_only_unlanded_runs_sharing_a_file() {
+    let row = |id: &str, files: &[&str], merged: Option<&str>| super::ledger::Row {
+        run_id: id.into(),
+        issue: 1,
+        status: "passed".into(),
+        pull_request: None,
+        files: files.iter().map(|f| (*f).to_owned()).collect(),
+        merged: merged.map(str::to_owned),
+        conflicts_with: Vec::new(),
+    };
+    let mut rows = vec![
+        row("c", &["src/lib.rs"], None),
+        row("a", &["src/lib.rs"], Some("abc1234")),
+        row("b", &["src/lib.rs", "README.md"], None),
+        row("d", &["docs/x.md"], None),
+    ];
+    super::ledger::cross(&mut rows);
+    let ids: Vec<&str> = rows.iter().map(|r| r.run_id.as_str()).collect();
+    assert_eq!(ids, ["a", "b", "c", "d"]);
+    assert!(
+        rows[0].conflicts_with.is_empty(),
+        "a landed run conflicts with nothing"
+    );
+    assert_eq!(rows[1].conflicts_with, vec!["c".to_string()]);
+    assert_eq!(rows[2].conflicts_with, vec!["b".to_string()]);
+    assert!(rows[3].conflicts_with.is_empty());
+    assert_eq!(rows[1].json()["files"][1], "README.md");
+}
