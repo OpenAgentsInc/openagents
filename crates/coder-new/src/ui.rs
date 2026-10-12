@@ -144,7 +144,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
     .min(usize::from(area.height.saturating_sub(6))) as u16;
     let composer_height = (draft.len() as u16).clamp(1, 6) + 2;
     let header_height = if new_chat_heading(app) {
-        BANNER.len() as u16
+        2
     } else {
         u16::from(app.selected_agent.is_some())
     };
@@ -477,39 +477,18 @@ fn new_chat_heading(app: &App) -> bool {
         && !app.live.busy
 }
 
-/// The mark above an empty chat: the power symbol from the favicon, with the
-/// name beside it and the version on the next line.
-const BANNER: [&str; 8] = [
-    "         +*",
-    "         %#",
-    "     @@  #%  @@",
-    "    @#   #%   *@",
-    "    @    #%    @.",
-    "    @-        -@",
-    "    -@-      :@=",
-    "      #@@@@@@%",
-];
-
 fn header_view(frame: &mut Frame, area: Rect, app: &App) {
     if new_chat_heading(app) {
-        let mark_width = BANNER.iter().map(|mark| mark.len()).max().unwrap_or(0);
-        let lines = BANNER
-            .iter()
-            .enumerate()
-            .map(|(row, mark)| {
-                let mut line = vec![span(format!("{mark:<mark_width$}"), t::TEXT_PRIMARY)];
-                match row {
-                    4 => line.push(span("   OpenAgents Coder", t::TEXT_PRIMARY)),
-                    5 => line.push(span(
-                        concat!("   v", env!("CARGO_PKG_VERSION")),
-                        t::GRAY_BRIGHT,
-                    )),
-                    _ => {}
-                }
-                Line::from(line)
-            })
-            .collect::<Vec<_>>();
-        frame.render_widget(Paragraph::new(lines), area);
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from(span("OpenAgents Coder", t::TEXT_PRIMARY)),
+                Line::from(span(
+                    concat!("v", env!("CARGO_PKG_VERSION")),
+                    t::GRAY_BRIGHT,
+                )),
+            ]),
+            area,
+        );
         return;
     }
     let agent = if app.screen == Screen::Conversation {
