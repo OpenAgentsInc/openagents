@@ -494,4 +494,23 @@ sign-in, so it runs on a cloud dev env, not the Mac:
         --out ~/.openagents/work/acceptance/run1
     python3 scripts/work/acceptance.py --report ~/.openagents/work/acceptance/run1
 
-Results: not run yet (waiting on #11308-#11311 on main).
+Other blitz agents fixed all three by hand on 2026-10-12 (#11422, #11421,
+#11420), so the three are closed. The run now replays them: `--replay` finds
+the commit on `origin/main` that names `(#N)` and starts both arms from its
+first parent, where the defect is still present; `work_issue.py --base <sha>
+--allow-closed` works a closed issue from that commit and lands nothing. The
+hand fix is recorded beside each arm for comparison. Bases:
+
+| Issue | Base (fix's parent) | Hand fix |
+|---|---|---|
+| #11416 | f413f408ee | e4699af065 |
+| #11417 | 73943d3992 | f413f408ee |
+| #11418 | 610e829e1d | 73943d3992 |
+
+    python3 scripts/work/acceptance.py --replay --issues 11416 11417 11418 \
+        --out ~/.openagents/work/acceptance/replay1
+
+A replay cannot show the landing step; three new open issues are still needed
+for a run that lands. Results: not run yet (waiting on #11308, #11309 and
+#11311 on main, and a cloud dev env with `briefed-agent` and a Claude
+sign-in).

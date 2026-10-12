@@ -14,6 +14,11 @@ done when the briefed flow wins every issue, in order.
     python3 scripts/work/acceptance.py --issues 11416 11417 11418 \\
         --out ~/.openagents/work/acceptance/$(date +%Y%m%d-%H%M)
 
+    # replay issues already fixed by hand on main: both arms start from the
+    # parent of the commit that fixed each issue, and nothing lands
+    python3 scripts/work/acceptance.py --replay --issues 11416 11417 11418 \\
+        --out ~/.openagents/work/acceptance/replay-$(date +%Y%m%d-%H%M)
+
     # re-read results already on disk (no runs)
     python3 scripts/work/acceptance.py --report ~/.openagents/work/acceptance/<dir>
 
@@ -44,6 +49,25 @@ def run_arm(repo: str, issue: int, engine: str, land: str, out: Path, checkout: 
     with open(out / "stdout.log", "w") as log:
         subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, check=False)
     return read_result(out)
+
+
+def fix_commit(checkout: str, issue: int) -> str | None:
+    """The oldest commit on origin/main whose message names `(#issue)`: the
+    hand fix a replay starts just before."""
+    proc = subprocess.run(["git", "-C", checkout, "log", "origin/main", "--format=%H", "--fixed-strings",
+                           f"--grep=(#{issue})"], capture_output=True, text=True, check=False)
+    shas = proc.stdout.split()
+    return shas[-1] if shas else None
+
+
+def replay_base(checkout: str, issue: int) -> tuple[str, str]:
+    """(base, fix) for a replay: the fix's first parent and the fix itself."""
+    fix = fix_commit(checkout, issue)
+    if not fix:
+        raise SystemExit(f"--replay: no commit on origin/main names (#{issue})")
+    base = subprocess.run(["git", "-C", checkout, "rev-parse", f"{fix}^1"], capture_output=True, text=True,
+                          check=True).stdout.strip()
+    return base, fix
 
 
 def read_result(out: Path) -> dict:
@@ -106,6 +130,8 @@ def main() -> int:
     ap.add_argument("--out", type=Path)
     ap.add_argument("--checkout")
     ap.add_argument("--report", type=Path, help="read results already under this directory; run nothing")
+    ap.add_argument("--replay", action="store_true",
+                    help="issues already fixed on main: start both arms at the fix's parent; land nothing")
     ap.add_argument("--keep-going", action="store_true", help="run every issue even after a loss")
     args, extra = ap.parse_known_args()
 
@@ -114,14 +140,24 @@ def main() -> int:
         ap.error("--out or --report is required")
     root = root.expanduser()
     rows = []
+    checkout = args.checkout or str(HERE.parent.parent)
+    if args.replay and not args.report:
+        subprocess.run(["git", "-C", checkout, "fetch", "-q", "origin", "main"], check=False)
     for issue in args.issues:
         bdir, adir = root / str(issue) / "briefed", root / str(issue) / "bare"
         if args.report:
             briefed, bare = read_result(bdir), read_result(adir)
         else:
+            land, arm_extra, fix = args.land, list(extra), None
+            if args.replay:
+                base, fix = replay_base(checkout, issue)
+                land, arm_extra = "none", arm_extra + ["--base", base, "--allow-closed"]
+                print(f"#{issue}: replay from {base[:10]} (hand fix {fix[:10]})", file=sys.stderr, flush=True)
             # Bare first and without landing, so both arms see the same origin/main.
-            bare = run_arm(args.repo, issue, "bare", "none", adir, args.checkout, extra)
-            briefed = run_arm(args.repo, issue, args.engine, args.land, bdir, args.checkout, extra)
+            bare = run_arm(args.repo, issue, "bare", "none", adir, args.checkout, arm_extra)
+            briefed = run_arm(args.repo, issue, args.engine, land, bdir, args.checkout, arm_extra)
+            if fix:
+                briefed["hand_fix"] = bare["hand_fix"] = fix
         win, why = verdict(briefed, bare)
         if briefed.get("base") and bare.get("base") and briefed["base"] != bare["base"]:
             why += f" (main moved between arms: {bare['base'][:10]} -> {briefed['base'][:10]})"
@@ -131,10 +167,10 @@ def main() -> int:
             break
     wins = len(rows) == len(args.issues) and all(r["win"] for r in rows)
     root.mkdir(parents=True, exist_ok=True)
-    summary = {"issues": args.issues, "engine": args.engine, "all_won": wins,
+    summary = {"issues": args.issues, "engine": args.engine, "replay": args.replay, "all_won": wins,
                "rows": [{k: r[k] for k in ("issue", "win", "why")} |
                         {arm: {k: r[arm].get(k) for k in ("ok", "engine", "cost_usd", "secs", "base", "landed",
-                                                           "escalated", "error")}
+                                                           "escalated", "error", "hand_fix")}
                          for arm in ("briefed", "bare")} for r in rows]}
     (root / "acceptance.json").write_text(json.dumps(summary, indent=2))
     print(table(rows))

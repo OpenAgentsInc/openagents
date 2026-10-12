@@ -206,6 +206,11 @@ def default_branch_sha(checkout: Path) -> str:
     return sh(["git", "-C", str(checkout), "rev-parse", "origin/main"]).stdout.strip()
 
 
+def resolve_base(checkout: Path, ref: str) -> str:
+    """The full commit `ref` names in `checkout` (a replay's base)."""
+    return sh(["git", "-C", str(checkout), "rev-parse", "--verify", f"{ref}^{{commit}}"]).stdout.strip()
+
+
 def add_worktree(checkout: Path, dest: Path, base: str) -> Path:
     shutil.rmtree(dest, ignore_errors=True)
     sh(["git", "-C", str(checkout), "worktree", "prune"], check=False)
@@ -684,7 +689,12 @@ def main() -> int:
                     help="one re-briefed attempt before the bare fallback (#11311)")
     ap.add_argument("--budget-usd", type=float, default=float(os.environ.get("OA_WORK_BUDGET_USD", "8")))
     ap.add_argument("--max-secs", type=int, default=int(os.environ.get("OA_WORK_MAX_SECS", "4500")))
+    ap.add_argument("--base", help="start from this commit instead of origin/main (a replay; implies --land none)")
+    ap.add_argument("--allow-closed", action="store_true",
+                    help="work a closed issue (a replay of an issue already fixed on main)")
     args = ap.parse_args()
+    if args.base:
+        args.land = "none"
 
     run_id = args.run_id or uuid.uuid4().hex[:12]
     out = Path(args.out or Path.home() / ".openagents" / "work" / "runs" / run_id)
@@ -701,11 +711,12 @@ def main() -> int:
                                "--json", "number,title,body,state,url"], timeout=120).stdout)
         result["title"], result["url"] = issue["title"], issue["url"]
         run.say("issue", f"#{issue['number']} {issue['title']}", title=issue["title"])
-        if issue["state"] != "OPEN":
+        if issue["state"] != "OPEN" and not args.allow_closed:
             raise RuntimeError(f"issue #{args.issue} is {issue['state'].lower()}")
         checkout = checkout_for(args.repo, args.checkout)
-        base = default_branch_sha(checkout)
+        base = resolve_base(checkout, args.base) if args.base else default_branch_sha(checkout)
         result["base"] = base
+        result["land"] = args.land
         engine, why = args.engine, None
         b = None
         if engine.startswith("briefed"):
