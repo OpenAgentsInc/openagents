@@ -84,7 +84,7 @@ use crate::capability::{self, Presence};
 use crate::delegate::{
     Bounds, Delegation, Delegator, Isolation, Status, Task, Verdict, boundary_supported,
 };
-use crate::program::{Kind, Program, Step};
+use crate::program::{Kind, PROGRAM_VERSION, Program, Step};
 use crate::program_authority::{self, Effects, Grant};
 use crate::questions::{self, Fill, Set};
 use crate::relay::RelayDoor;
@@ -316,6 +316,10 @@ pub fn enforced(kind: Kind) -> &'static [&'static str] {
         // An invoke names a host operation. It carries no command, and
         // this host admits none until one is configured.
         Kind::Invoke => &[],
+        // A parallel step narrows the deadline and the decision-token
+        // ceiling its branches run under — the child's own bounds on
+        // one namespace.
+        Kind::Parallel => &["minutes", "tokens"],
     }
 }
 
@@ -1107,7 +1111,10 @@ impl Runtime {
         // before the first step runs: every reference resolves pinned,
         // every propagation is stated, no chain returns to itself, and no
         // bound exceeds or widens. The first problem is the refusal.
-        if program.steps.iter().any(|step| step.kind == Kind::Program)
+        if program
+            .steps
+            .iter()
+            .any(|step| matches!(step.kind, Kind::Program | Kind::Parallel))
             && let Some(problem) = crate::child::Composition::check(program, &self.survey.programs)
                 .into_iter()
                 .next()
@@ -1161,6 +1168,26 @@ impl Runtime {
                         self.spend_lanes(child, &format!("{prefix}{}/", step.name), lanes);
                     }
                 }
+                Kind::Parallel => {
+                    if let Ok(branches) = step.branches() {
+                        for branch in branches {
+                            let program = Program {
+                                v: PROGRAM_VERSION,
+                                slug: branch.name.clone(),
+                                name: String::new(),
+                                summary: String::new(),
+                                inputs: BTreeMap::new(),
+                                outputs: BTreeMap::new(),
+                                steps: branch.steps.clone(),
+                            };
+                            self.spend_lanes(
+                                &program,
+                                &format!("{prefix}{}/{}/", step.name, branch.name),
+                                lanes,
+                            );
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -1177,6 +1204,16 @@ impl Runtime {
     fn admit_tree(&self, program: &Program) -> Result<(), Refused> {
         for step in &program.steps {
             self.admit_step(program, step)?;
+            if step.kind == Kind::Parallel {
+                let branches = step
+                    .branches()
+                    .map_err(|reason| Refused::at(&step.name, "contract_invalid", reason))?;
+                for branch in branches {
+                    for branch_step in &branch.steps {
+                        self.admit_step(program, branch_step)?;
+                    }
+                }
+            }
         }
         for step in &program.steps {
             if step.kind == Kind::Program
@@ -2233,6 +2270,19 @@ impl Runtime {
                 ..Effects::none()
             },
             Kind::Invoke => Effects::none(),
+            // A parallel step declares what its branches declare: the
+            // effect ceiling is the union of every branch's steps, and
+            // the validator already kept branches from nesting.
+            Kind::Parallel => step
+                .branches()
+                .map(|branches| {
+                    branches.iter().fold(Effects::none(), |union, branch| {
+                        branch.steps.iter().fold(union, |union, step| {
+                            union.union(self.step_effects(step, inputs, visiting))
+                        })
+                    })
+                })
+                .unwrap_or_else(|_| Effects::none()),
         };
         if step.kind == Kind::Delegate {
             match self.survey.capability(&inputs.executor) {
@@ -2708,6 +2758,7 @@ impl Runtime {
                     self.record_module(step, &name, &outcome, started, ctx.trace.as_deref_mut());
                     outcome
                 }
+                Kind::Parallel => self.parallel(ctx, step, &name, depth).await,
             };
             // The deadline reaches inside the step, not only to its
             // boundary: an expiry while the step dispatched ends it.
@@ -3040,6 +3091,209 @@ impl Runtime {
                 ),
             )),
         }
+    }
+
+    /// A `parallel` step: its branches each run their own step list
+    /// against a copy of the state at the fork, in declared order, and
+    /// merge back key-by-key. Every write lands under the branch's own
+    /// `step/branch/` namespace, so two branches can only meet at a host
+    /// key: an object merges recursively, an array appends in declared
+    /// order, and a scalar two branches disagree on refuses as
+    /// `state_conflict` — an unchanged copy is no write. `$host` is the
+    /// channel no step may write; the step records each branch's end
+    /// there itself.
+    ///
+    /// The branches dispatch in declared order rather than concurrently:
+    /// the semantic the merge guarantees — deterministic state,
+    /// conflicts as refusals — is an order property, not a scheduling
+    /// one, and dispatch order stays the document's.
+    async fn parallel(
+        &self,
+        ctx: &mut StepRun<'_>,
+        step: &Step,
+        name: &str,
+        depth: u64,
+    ) -> Result<String, Refused> {
+        let branches = step
+            .branches()
+            .map_err(|reason| Refused::at(name, "contract_invalid", reason))?;
+        let binding = crate::child::Binding::of(step)
+            .map_err(|reason| Refused::at(name, "contract_invalid", reason))?
+            .unwrap_or_default();
+        // A declared `minutes` narrows the branches' deadline to the
+        // tighter of its declaration and what the run has left, and a
+        // declared `tokens` bounds the branches' decision calls to what
+        // the ledger held at fork plus its declaration — the bounds a
+        // `program` step puts on a child, put on a fan-out.
+        let until = [
+            ctx.until,
+            step.bounds
+                .get("minutes")
+                .and_then(Value::as_u64)
+                .and_then(|count| Instant::now().checked_add(Bounds::minutes(count).wall())),
+        ]
+        .into_iter()
+        .flatten()
+        .min();
+        let mut tokens_pushed = false;
+        if let Some(bound) = step.bounds.get("tokens").and_then(Value::as_u64) {
+            let ceiling = ctx
+                .tokens
+                .ceiling()
+                .unwrap_or(u64::MAX)
+                .min(ctx.tokens.spent.saturating_add(bound));
+            ctx.tokens.children.push(ceiling);
+            tokens_pushed = true;
+        }
+        let fork = ctx.produced.clone();
+        let mut host: Vec<Value> = Vec::new();
+        let mut ended: Option<Refused> = None;
+        for branch in &branches {
+            if ended.is_some() {
+                host.push(json!({"branch": branch.name, "outcome": "not_run"}));
+                continue;
+            }
+            let mut produced = fork.clone();
+            let program = Program {
+                v: PROGRAM_VERSION,
+                slug: branch.name.clone(),
+                name: String::new(),
+                summary: String::new(),
+                inputs: BTreeMap::new(),
+                outputs: BTreeMap::new(),
+                steps: branch.steps.clone(),
+            };
+            let mut branch_ctx = StepRun {
+                inputs: ctx.inputs,
+                grant: ctx.grant,
+                until,
+                run_until: ctx.run_until,
+                selection: &mut *ctx.selection,
+                run: &mut *ctx.run,
+                record: &mut *ctx.record,
+                dispatched: &mut *ctx.dispatched,
+                produced: &mut produced,
+                scopes: &mut *ctx.scopes,
+                tokens: &mut *ctx.tokens,
+                trace: ctx.trace.as_deref_mut(),
+            };
+            let branch_prefix = format!("{name}/{}/", branch.name);
+            // `run_steps` and `parallel` recurse through each other, so
+            // this call is boxed to keep the future a size the compiler
+            // can name.
+            let end =
+                Box::pin(self.run_steps(&mut branch_ctx, &program, &branch_prefix, depth)).await;
+            match end {
+                StepsEnd::Finished => {
+                    host.push(json!({"branch": branch.name, "outcome": "completed"}));
+                    if let Err(refused) = merge_produced(ctx.produced, &fork, &produced, name) {
+                        ended = Some(refused);
+                    }
+                }
+                StepsEnd::Ended(refused) => {
+                    host.push(json!({"branch": branch.name, "outcome": "refused"}));
+                    ended = Some(refused);
+                }
+                StepsEnd::Cancelled(refused) => {
+                    host.push(json!({"branch": branch.name, "outcome": "cancelled"}));
+                    ended = Some(refused);
+                }
+            }
+        }
+        // `$host` is the host's own channel: no step writes it, every
+        // branch's end lands there in declared order, and a resume reads
+        // exactly what ran.
+        if let Err(refused) = merge_produced(
+            ctx.produced,
+            &fork,
+            &{
+                let mut produced = fork.clone();
+                produced.insert("$host".to_string(), json!({name: host}));
+                produced
+            },
+            name,
+        ) {
+            ended = Some(refused);
+        }
+        if tokens_pushed {
+            ctx.tokens.children.pop();
+        }
+        if let Some(refused) = ended {
+            return Err(refused);
+        }
+        // The step's `produces` resolve from what the branches wrote:
+        // each field takes every branch's answer for it in declared
+        // order, and answers that disagree are `state_conflict` rather
+        // than a silent last-wins.
+        let mut output = Map::new();
+        output.insert(
+            "branches".to_string(),
+            json!(
+                branches
+                    .iter()
+                    .map(|branch| branch.name.clone())
+                    .collect::<Vec<_>>()
+            ),
+        );
+        for field in binding.produces.keys() {
+            let mut found = None;
+            for branch in &branches {
+                for branch_step in &branch.steps {
+                    let key = format!("{name}/{}/{}.{}", branch.name, branch_step.name, field);
+                    if let Some(value) = ctx.produced.get(&key) {
+                        match &found {
+                            None => found = Some(value.clone()),
+                            Some(first) if *first == *value => {}
+                            Some(_) => {
+                                return Err(Refused::at(
+                                    name,
+                                    "state_conflict",
+                                    format!(
+                                        "branches disagree on field {field:?}, and the conflict is the step's answer"
+                                    ),
+                                ));
+                            }
+                        }
+                    }
+                    if let Some(Value::Object(object)) = ctx
+                        .produced
+                        .get(&format!("{name}/{}/{}", branch.name, branch_step.name))
+                        && let Some(value) = object.get(field)
+                    {
+                        match &found {
+                            None => found = Some(value.clone()),
+                            Some(first) if *first == *value => {}
+                            Some(_) => {
+                                return Err(Refused::at(
+                                    name,
+                                    "state_conflict",
+                                    format!(
+                                        "branches disagree on field {field:?}, and the conflict is the step's answer"
+                                    ),
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+            match found {
+                Some(value) => {
+                    ctx.produced
+                        .insert(format!("{name}.{field}"), value.clone());
+                    output.insert(field.clone(), value);
+                }
+                None => {
+                    return Err(Refused::at(
+                        name,
+                        "output_unproduced",
+                        format!(
+                            "no branch produced field {field:?} this step declares it produces"
+                        ),
+                    ));
+                }
+            }
+        }
+        Ok(Value::Object(output).to_string())
     }
 
     /// Marks `steps[from..]` and their pending children `cancelled`,
@@ -5350,6 +5604,101 @@ fn decision_sidecar(
     }
 }
 
+/// The merge a `parallel` branch's produced map runs back into the
+/// parent's, key-by-key. A key the branch did not change is no write;
+/// every other key inserts outright — branches' step outputs are
+/// namespaced, so two branches can only meet at `$host`, which merges
+/// recursively: objects key-by-key, arrays append in declared order, and
+/// a scalar that disagrees refuses `state_conflict`.
+fn merge_produced(
+    state: &mut BTreeMap<String, Value>,
+    fork: &BTreeMap<String, Value>,
+    branch: &BTreeMap<String, Value>,
+    step: &str,
+) -> Result<(), Refused> {
+    for (key, value) in branch {
+        if fork.get(key) == Some(value) {
+            continue;
+        }
+        if key == "$host" {
+            let Some(object) = value.as_object() else {
+                return Err(Refused::at(
+                    step,
+                    "state_conflict",
+                    "the host channel $host is an object, and no write replaces it",
+                ));
+            };
+            let entry = state
+                .entry(key.clone())
+                .or_insert_with(|| Value::Object(Map::new()));
+            let Some(existing) = entry.as_object_mut() else {
+                return Err(Refused::at(
+                    step,
+                    "state_conflict",
+                    "the host channel $host is an object, and no write replaces it",
+                ));
+            };
+            merge_host(existing, object.clone(), step)?;
+        } else {
+            match state.get(key) {
+                None => {
+                    state.insert(key.clone(), value.clone());
+                }
+                Some(existing) if *existing == *value => {}
+                Some(_) => {
+                    return Err(Refused::at(
+                        step,
+                        "state_conflict",
+                        format!(
+                            "two branches wrote {key:?} differently, and the conflict is the step's answer"
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The `$host` half of [`merge_produced`]: one object merging into
+/// another, key-by-key.
+fn merge_host(
+    state: &mut Map<String, Value>,
+    delta: Map<String, Value>,
+    step: &str,
+) -> Result<(), Refused> {
+    for (key, value) in delta {
+        match state.get_mut(&key) {
+            None => {
+                state.insert(key, value);
+            }
+            Some(existing) => {
+                if *existing == value {
+                    continue;
+                }
+                match (&mut *existing, value) {
+                    (Value::Object(inner), Value::Object(object)) => {
+                        merge_host(inner, object, step)?;
+                    }
+                    (Value::Array(list), Value::Array(appended)) => {
+                        list.extend(appended);
+                    }
+                    (existing, value) => {
+                        return Err(Refused::at(
+                            step,
+                            "state_conflict",
+                            format!(
+                                "two branches wrote $host.{key} differently ({existing} and {value}), and the conflict is the step's answer"
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn collect_produced(
     step: &Step,
     name: &str,
@@ -5472,7 +5821,10 @@ fn resolve_input(
             )),
         },
         crate::child::Input::Step { step, field } => {
+            // A `$` field names the producer's host sidecar — `<step>$answers`
+            // beside its output — which is a state key like any other.
             let key = match field {
+                Some(field) if field.starts_with('$') => format!("{prefix}{step}{field}"),
                 Some(field) => format!("{prefix}{step}.{field}"),
                 None => format!("{prefix}{step}"),
             };
@@ -9840,5 +10192,152 @@ mod tests {
         let mut produced = BTreeMap::new();
         super::decision_sidecar("ok", "yes", &json!({"yes": {"noul": 0.4}}), &mut produced);
         assert_eq!(produced["ok"], json!(0.4));
+    }
+
+    /// The merge a `parallel` step runs on a branch's produced state:
+    /// `$host` arrays append in declared order. Either declaration
+    /// order is deterministic — the document's order is the order —
+    /// and the merge is what makes it so rather than the dispatch.
+    #[test]
+    fn a_branch_merge_appends_arrays_in_declared_order() {
+        let delta = |items: &[&str]| {
+            let mut branch = BTreeMap::new();
+            branch.insert("$host".to_string(), json!({"fan": items}));
+            branch
+        };
+        let fork = BTreeMap::new();
+        let mut state = BTreeMap::new();
+        merge_produced(&mut state, &fork, &delta(&["a"]), "fan").unwrap();
+        merge_produced(&mut state, &fork, &delta(&["b"]), "fan").unwrap();
+        assert_eq!(state["$host"]["fan"], json!(["a", "b"]));
+
+        let mut state = BTreeMap::new();
+        merge_produced(&mut state, &fork, &delta(&["b"]), "fan").unwrap();
+        merge_produced(&mut state, &fork, &delta(&["a"]), "fan").unwrap();
+        assert_eq!(state["$host"]["fan"], json!(["b", "a"]));
+    }
+
+    /// A scalar two branches disagree on is `state_conflict` — in
+    /// either order, which is what the merge's determinism requires.
+    #[test]
+    fn a_branch_merge_refuses_scalar_disagreement_in_either_order() {
+        let delta = |value: Value| {
+            let mut branch = BTreeMap::new();
+            branch.insert("$host".to_string(), json!({"fan": {"mark": value}}));
+            branch
+        };
+        for (first, second) in [(json!(1), json!(2)), (json!(2), json!(1))] {
+            let mut state = BTreeMap::new();
+            let fork = BTreeMap::new();
+            merge_produced(&mut state, &fork, &delta(first), "fan").unwrap();
+            let refused = merge_produced(&mut state, &fork, &delta(second), "fan").unwrap_err();
+            assert_eq!(refused.code, "state_conflict");
+        }
+    }
+
+    /// The order-independence case a merge can silently get wrong: a
+    /// scalar and an array written to one host key conflict whichever
+    /// branch wrote first.
+    #[test]
+    fn a_branch_merge_refuses_a_scalar_and_an_array_to_one_key() {
+        let delta = |value: Value| {
+            let mut branch = BTreeMap::new();
+            branch.insert("$host".to_string(), json!({"fan": {"mark": value}}));
+            branch
+        };
+        for (first, second) in [(json!(1), json!([1])), (json!([1]), json!(1))] {
+            let mut state = BTreeMap::new();
+            let fork = BTreeMap::new();
+            merge_produced(&mut state, &fork, &delta(first), "fan").unwrap();
+            let refused = merge_produced(&mut state, &fork, &delta(second), "fan").unwrap_err();
+            assert_eq!(refused.code, "state_conflict");
+        }
+    }
+
+    /// An unchanged copy is no write: a branch whose map differs from
+    /// the fork only by its namespaced keys merges those keys alone,
+    /// and a same-valued write conflicts with nothing.
+    #[test]
+    fn an_unchanged_copy_is_no_write() {
+        let mut fork = BTreeMap::new();
+        fork.insert("earlier".to_string(), json!("done"));
+        let mut branch = fork.clone();
+        branch.insert("fan/left/peek".to_string(), json!("looked"));
+        let mut state = fork.clone();
+        merge_produced(&mut state, &fork, &branch, "fan").unwrap();
+        assert_eq!(state["fan/left/peek"], json!("looked"));
+        assert_eq!(state["earlier"], json!("done"));
+    }
+
+    /// Branch namespaces keep step outputs from meeting; a genuine
+    /// collision — the same key written differently — is still a
+    /// refusal, not a last-wins.
+    #[test]
+    fn a_branch_merge_refuses_one_key_written_differently() {
+        let mut fork = BTreeMap::new();
+        fork.insert("x".to_string(), json!(1));
+        let mut branch = fork.clone();
+        branch.insert("x".to_string(), json!(2));
+        let mut state = fork.clone();
+        let refused = merge_produced(&mut state, &fork, &branch, "fan").unwrap_err();
+        assert_eq!(refused.code, "state_conflict");
+    }
+
+    /// The host channel is an object: a branch carrying something else
+    /// at `$host` conflicts with what it is, not with any one key.
+    #[test]
+    fn the_host_channel_cannot_be_overwritten() {
+        let mut branch = BTreeMap::new();
+        branch.insert("$host".to_string(), json!("not-an-object"));
+        let mut state = BTreeMap::new();
+        let fork = BTreeMap::new();
+        let refused = merge_produced(&mut state, &fork, &branch, "fan").unwrap_err();
+        assert_eq!(refused.code, "state_conflict");
+    }
+
+    /// A decide step's raw answers sit in state at `<step>$answers` —
+    /// a `$` field is how an input names a host sidecar, so a later
+    /// step routes on the decision already made.
+    #[test]
+    fn a_decide_steps_answers_are_state_an_input_reads() {
+        let mut produced = BTreeMap::new();
+        produced.insert("judge$answers".to_string(), json!({"gate": {"noul": 0.9}}));
+        let inputs = Inputs::read("do it", "stub-local");
+        let found = resolve_input(
+            &crate::child::Input::Step {
+                step: "judge".to_string(),
+                field: Some("$answers".to_string()),
+            },
+            &inputs,
+            &produced,
+            "",
+            "call",
+        )
+        .unwrap();
+        assert_eq!(found, json!({"gate": {"noul": 0.9}}));
+    }
+
+    /// A `parallel` step runs its branches in declared order under
+    /// their own `step/branch/` namespaces and answers one mark —
+    /// the fan-out is one step to the run's records.
+    #[tokio::test]
+    async fn a_parallel_step_runs_its_branches_against_one_state() {
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "fan-out",
+            "steps": [
+                {"name": "fan", "kind": "parallel", "bounds": {}, "branches": [
+                    {"name": "left", "steps": [{"name": "peek", "kind": "query", "bounds": {}}]},
+                    {"name": "right", "steps": [{"name": "peek", "kind": "query", "bounds": {}}]}
+                ]}
+            ]
+        }))
+        .unwrap();
+        program.validate().unwrap();
+        let runtime = empty_runtime();
+        let inputs = Inputs::read("do the list\n- one\n- two", "stub-local");
+        let run = runtime.run(&program, &inputs, &Grant::all(), None).await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        let names: Vec<&str> = run.steps.iter().map(|step| step.name.as_str()).collect();
+        assert_eq!(names, ["fan/left/peek", "fan/right/peek", "fan"]);
     }
 }

@@ -133,6 +133,16 @@ pub struct Verify {
     pub refuse_below: f64,
 }
 
+/// One named branch of a `parallel` step: a step list that runs against
+/// its own `parent/branch/` namespace and merges back when it finishes.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Branch {
+    /// The branch's name, the middle of every state key it writes.
+    pub name: String,
+    /// The steps the branch runs, in order.
+    pub steps: Vec<Step>,
+}
+
 /// The key a `verify` clause lives under.
 pub const VERIFY: &str = "verify";
 /// Drives a `verify` clause gets when it names none.
@@ -211,6 +221,21 @@ impl Step {
             refuse_below,
         }))
     }
+
+    /// The branches a `parallel` step declares under `branches`, when it
+    /// declares them.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence when the field is present and does not read as a
+    /// list of named step lists.
+    pub fn branches(&self) -> Result<Vec<Branch>, String> {
+        match self.rest.get("branches") {
+            None => Ok(Vec::new()),
+            Some(value) => serde_json::from_value(value.clone())
+                .map_err(|e| format!("branches does not read as named step lists: {e}")),
+        }
+    }
 }
 
 /// What a step does.
@@ -237,6 +262,12 @@ pub enum Kind {
     /// A native or adapter operation. The step names the operation. It
     /// does not carry a command or a path.
     Invoke,
+    /// Named branches over the same shared state. Each runs against its
+    /// own namespace and merges back key-by-key: an object merges
+    /// recursively, an array appends in declared order, and a scalar two
+    /// branches disagree on refuses as `state_conflict`. An unchanged
+    /// copy is no write.
+    Parallel,
 }
 
 impl Kind {
@@ -251,6 +282,7 @@ impl Kind {
             Kind::Program => "program",
             Kind::Module => "module",
             Kind::Invoke => "invoke",
+            Kind::Parallel => "parallel",
         }
     }
 }
@@ -345,105 +377,67 @@ impl Program {
             if seen.contains(&step.name) {
                 return Err(format!("step name {:?} is used twice", step.name));
             }
-            // A step's name is the state key its output is addressed by,
-            // and `$`-prefixed keys are the host's sidecars (`<name>$verify`,
-            // `<name>$answers`): a step under one could be read as the
-            // host's record of another.
-            if step.name.starts_with('$') || step.name.contains('$') {
-                return Err(format!(
-                    "step name {:?} carries '$', which marks a host-owned state key",
-                    step.name
-                ));
-            }
-            // `meta` is inert: kept and digested with the definition, never
-            // read by the interpreter. Anything but an object is a field
-            // the author meant something by, which inert data cannot be.
-            if let Some(meta) = step.rest.get("meta") {
-                if !meta.is_object() {
-                    return Err(format!(
-                        "step {:?} carries a meta that is not an object",
-                        step.name
-                    ));
-                }
-            }
-            for required in &step.requires {
-                if !seen.contains(required) {
-                    return Err(format!(
-                        "step {:?} requires {required:?}, which is not an earlier step",
-                        step.name
-                    ));
-                }
-            }
-            seen.push(step.name.clone());
-            if step.kind == Kind::Decide {
-                if step.question.is_none() {
-                    return Err(format!("decide step {:?} names no question", step.name));
-                }
-                if let Some(field) = QUESTION_TEXT
-                    .iter()
-                    .find(|field| step.rest.contains_key(**field))
-                {
-                    return Err(format!(
-                        "decide step {:?} carries {field}, which is a question's wording and belongs to a question set",
-                        step.name
-                    ));
-                }
-            }
-            if step.kind == Kind::Invoke {
-                match step.rest.get("operation").and_then(Value::as_str) {
-                    Some(operation) if is_slug(operation) => {}
-                    _ => {
+            validate_step(step, &seen)?;
+            match step.kind {
+                Kind::Parallel => {
+                    let branches = step.branches()?;
+                    if branches.is_empty() {
                         return Err(format!(
-                            "invoke step {:?} names no admitted host operation",
+                            "parallel step {:?} declares no branches",
                             step.name
                         ));
                     }
+                    let mut names = Vec::new();
+                    for branch in &branches {
+                        if branch.name.is_empty()
+                            || branch.name.contains('$')
+                            || branch.name.contains('/')
+                            || names.contains(&branch.name)
+                        {
+                            return Err(format!(
+                                "parallel step {:?} names a branch {:?}, which is empty, repeated, or carries a character a state key cannot hold",
+                                step.name, branch.name
+                            ));
+                        }
+                        names.push(branch.name.clone());
+                        if branch.steps.is_empty() {
+                            return Err(format!(
+                                "parallel step {:?} branch {:?} declares no steps",
+                                step.name, branch.name
+                            ));
+                        }
+                        // A branch reads outer state at the fork plus its
+                        // own earlier steps — never a sibling's namespace,
+                        // and never a parallel of its own.
+                        let mut branch_seen = seen.clone();
+                        for branch_step in &branch.steps {
+                            validate_step(branch_step, &branch_seen)?;
+                            if branch_step.kind == Kind::Parallel {
+                                return Err(format!(
+                                    "parallel step {:?} branch {:?} carries a parallel step, and branches do not nest",
+                                    step.name, branch.name
+                                ));
+                            }
+                            if branch_step.kind == Kind::Program {
+                                return Err(format!(
+                                    "parallel step {:?} branch {:?} carries a program step, and a branch does not nest a child program",
+                                    step.name, branch.name
+                                ));
+                            }
+                            branch_seen.push(branch_step.name.clone());
+                        }
+                    }
                 }
-            }
-            match (&step.source, step.kind) {
-                (Some(source), Kind::Query) if !is_slug(source) => {
+                _ if step.rest.contains_key("branches") => {
                     return Err(format!(
-                        "query step {:?} names {source:?}, which is not a source slug",
-                        step.name
-                    ));
-                }
-                (Some(source), kind) if kind != Kind::Query => {
-                    return Err(format!(
-                        "step {:?} is a {} step and names the source {source:?}, which only a query step reads",
+                        "step {:?} is a {} step and declares branches, which only a parallel step runs",
                         step.name,
-                        kind.word()
+                        step.kind.word()
                     ));
                 }
                 _ => {}
             }
-            // A `delegate` step may name the capability that does its
-            // work, by slug: the program says which executor answers,
-            // never how to run it. No other step hands work over.
-            match (step.rest.get("executor"), step.kind) {
-                (Some(executor), Kind::Delegate) => {
-                    if !executor.as_str().is_some_and(is_slug) {
-                        return Err(format!(
-                            "delegate step {:?} names executor {executor}, which is not a capability slug",
-                            step.name
-                        ));
-                    }
-                }
-                (Some(_), kind) => {
-                    return Err(format!(
-                        "step {:?} is a {} step and names an executor, which only a delegate step hands work to",
-                        step.name,
-                        kind.word()
-                    ));
-                }
-                (None, _) => {}
-            }
-            step.verify()?;
-            if step.kind == Kind::Program && step.program.is_none() {
-                return Err(format!("program step {:?} names no program", step.name));
-            }
-            if step.kind == Kind::Module && step.module.is_none() {
-                return Err(format!("module step {:?} names no module", step.name));
-            }
+            seen.push(step.name.clone());
         }
         Ok(())
     }
@@ -476,6 +470,118 @@ impl Program {
         }
         kinds
     }
+}
+
+/// The checks one step carries, whatever list it sits in — a program's
+/// own or a `parallel` step's branch. `earlier` names every step whose
+/// output may already exist where this step runs: the list's own earlier
+/// steps plus, inside a branch, the outer steps before the fork.
+fn validate_step(step: &Step, earlier: &[String]) -> Result<(), String> {
+    // A step's name is the state key its output is addressed by, and
+    // `$`-marked keys are the host's sidecars (`<name>$verify`,
+    // `<name>$answers`): a step under one could be read as the host's
+    // record of another.
+    if step.name.starts_with('$') || step.name.contains('$') {
+        return Err(format!(
+            "step name {:?} carries '$', which marks a host-owned state key",
+            step.name
+        ));
+    }
+    if step.name.contains('/') {
+        return Err(format!(
+            "step name {:?} carries '/', which separates a state key's namespaces",
+            step.name
+        ));
+    }
+    // `meta` is inert: kept and digested with the definition, never read
+    // by the interpreter. Anything but an object is a field the author
+    // meant something by, which inert data cannot be.
+    if let Some(meta) = step.rest.get("meta") {
+        if !meta.is_object() {
+            return Err(format!(
+                "step {:?} carries a meta that is not an object",
+                step.name
+            ));
+        }
+    }
+    for required in &step.requires {
+        if !earlier.contains(required) {
+            return Err(format!(
+                "step {:?} requires {required:?}, which is not an earlier step",
+                step.name
+            ));
+        }
+    }
+    if step.kind == Kind::Decide {
+        if step.question.is_none() {
+            return Err(format!("decide step {:?} names no question", step.name));
+        }
+        if let Some(field) = QUESTION_TEXT
+            .iter()
+            .find(|field| step.rest.contains_key(**field))
+        {
+            return Err(format!(
+                "decide step {:?} carries {field}, which is a question's wording and belongs to a question set",
+                step.name
+            ));
+        }
+    }
+    if step.kind == Kind::Invoke {
+        match step.rest.get("operation").and_then(Value::as_str) {
+            Some(operation) if is_slug(operation) => {}
+            _ => {
+                return Err(format!(
+                    "invoke step {:?} names no admitted host operation",
+                    step.name
+                ));
+            }
+        }
+    }
+    match (&step.source, step.kind) {
+        (Some(source), Kind::Query) if !is_slug(source) => {
+            return Err(format!(
+                "query step {:?} names {source:?}, which is not a source slug",
+                step.name
+            ));
+        }
+        (Some(source), kind) if kind != Kind::Query => {
+            return Err(format!(
+                "step {:?} is a {} step and names the source {source:?}, which only a query step reads",
+                step.name,
+                kind.word()
+            ));
+        }
+        _ => {}
+    }
+    // A `delegate` step may name the capability that does its work, by
+    // slug: the program says which executor answers, never how to run it.
+    // No other step hands work over.
+    match (step.rest.get("executor"), step.kind) {
+        (Some(executor), Kind::Delegate) => {
+            if !executor.as_str().is_some_and(is_slug) {
+                return Err(format!(
+                    "delegate step {:?} names executor {executor}, which is not a capability slug",
+                    step.name
+                ));
+            }
+        }
+        (Some(_), kind) => {
+            return Err(format!(
+                "step {:?} is a {} step and names an executor, which only a delegate step hands work to",
+                step.name,
+                kind.word()
+            ));
+        }
+        (None, _) => {}
+    }
+    step.verify()?;
+    if step.kind == Kind::Program && step.program.is_none() {
+        return Err(format!("program step {:?} names no program", step.name));
+    }
+    if step.kind == Kind::Module && step.module.is_none() {
+        return Err(format!("module step {:?} names no module", step.name));
+    }
+    Ok(())
 }
 
 fn project(
@@ -1140,5 +1246,116 @@ mod tests {
             .validate()
             .expect_err("a later step cannot be required");
         assert!(reason.contains("not an earlier step"), "{reason}");
+    }
+
+    /// A `parallel` step declares named branches, each a nonempty step
+    /// list — and nothing else carries `branches`.
+    #[test]
+    fn a_parallel_step_declares_its_branches() {
+        let program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"fan","steps":[
+                {"name":"fan","kind":"parallel","bounds":{},"branches":[
+                    {"name":"left","steps":[{"name":"peek","kind":"query","bounds":{}}]},
+                    {"name":"right","steps":[{"name":"peek","kind":"query","bounds":{}}]}]}]}"#,
+        )
+        .unwrap();
+        program
+            .validate()
+            .expect("branches of steps are a parallel");
+    }
+
+    #[test]
+    fn a_parallel_step_needs_branches() {
+        for branches in ["[]", r#"[{"name":"empty","steps":[]}]"#] {
+            let program: Program = serde_json::from_str(&format!(
+                r#"{{"v":1,"slug":"fan","steps":[
+                    {{"name":"fan","kind":"parallel","bounds":{{}},"branches":{branches}}}]}}"#,
+            ))
+            .unwrap();
+            assert!(
+                program.validate().is_err(),
+                "branches {branches} is not a parallel"
+            );
+        }
+    }
+
+    /// A branch's `requires` reaches the outer steps before the fork
+    /// and its own earlier steps — never a sibling branch's or a later
+    /// step's.
+    #[test]
+    fn a_branch_requires_reads_the_fork_and_its_own_list() {
+        let program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"fan","steps":[
+                {"name":"seed","kind":"query","bounds":{}},
+                {"name":"fan","kind":"parallel","bounds":{},"branches":[
+                    {"name":"left","steps":[
+                        {"name":"peek","kind":"query","requires":["seed"],"bounds":{}}]},
+                    {"name":"right","steps":[
+                        {"name":"peek","kind":"query","requires":["peek"],"bounds":{}}]}]}]}"#,
+        )
+        .unwrap();
+        let reason = program
+            .validate()
+            .expect_err("a sibling branch's step is not earlier state");
+        assert!(reason.contains("not an earlier step"), "{reason}");
+        let program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"fan","steps":[
+                {"name":"seed","kind":"query","bounds":{}},
+                {"name":"fan","kind":"parallel","bounds":{},"branches":[
+                    {"name":"left","steps":[
+                        {"name":"peek","kind":"query","requires":["seed"],"bounds":{}}]},
+                    {"name":"right","steps":[
+                        {"name":"peek","kind":"query","bounds":{}}]}]}]}"#,
+        )
+        .unwrap();
+        program
+            .validate()
+            .expect("an outer step before the fork is earlier state");
+    }
+
+    /// Branches do not nest: a `parallel` inside a branch is refused
+    /// rather than discovered mid-run.
+    #[test]
+    fn a_branch_does_not_nest() {
+        let program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"fan","steps":[
+                {"name":"fan","kind":"parallel","bounds":{},"branches":[
+                    {"name":"left","steps":[
+                        {"name":"inner","kind":"parallel","bounds":{},"branches":[
+                            {"name":"deep","steps":[{"name":"peek","kind":"query","bounds":{}}]}]}]}]}]}"#,
+        )
+        .unwrap();
+        let reason = program
+            .validate()
+            .expect_err("a parallel inside a branch nests");
+        assert!(reason.contains("do not nest"), "{reason}");
+    }
+
+    /// `branches` is the parallel step's field: another kind carrying
+    /// it is refused rather than ignored.
+    #[test]
+    fn branches_on_a_non_parallel_step_is_refused() {
+        let program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"fan","steps":[
+                {"name":"look","kind":"query","bounds":{},"branches":[
+                    {"name":"left","steps":[{"name":"peek","kind":"query","bounds":{}}]}]}]}"#,
+        )
+        .unwrap();
+        assert!(program.validate().is_err());
+    }
+
+    /// A step name is a state key: '/' separates its namespaces and a
+    /// name carrying one writes outside its own.
+    #[test]
+    fn a_step_name_cannot_carry_a_separator() {
+        let program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"fan","steps":[
+                {"name":"left/peek","kind":"query","bounds":{}}]}"#,
+        )
+        .unwrap();
+        let reason = program
+            .validate()
+            .expect_err("a separator in a name writes another namespace's keys");
+        assert!(reason.contains("'/'"), "{reason}");
     }
 }

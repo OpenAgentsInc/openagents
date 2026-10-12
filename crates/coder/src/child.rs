@@ -579,6 +579,7 @@ impl<'a> Walk<'a> {
     /// one program, not three times.
     fn contract(&mut self, program: &Program) {
         let mut produced: BTreeMap<String, Binding> = BTreeMap::new();
+        let mut decided: BTreeSet<String> = BTreeSet::new();
         for step in &program.steps {
             for field in EXECUTABLE_FIELDS {
                 if step.rest.contains_key(*field) {
@@ -594,13 +595,61 @@ impl<'a> Walk<'a> {
                     reason,
                 }),
                 Ok(Some(binding)) => {
-                    self.binding(step, &binding, &produced);
+                    self.binding(step, &binding, &produced, &decided);
                     produced.insert(step.name.clone(), binding);
                 }
                 Ok(None) => {}
             }
+            if step.kind == Kind::Decide {
+                decided.insert(step.name.clone());
+            }
             if step.kind == Kind::Program {
                 self.child_ref(step);
+            }
+            if step.kind == Kind::Parallel {
+                self.branches(step, &produced, &decided);
+            }
+        }
+    }
+
+    /// The bindings a `parallel` step's branches carry. A branch reads
+    /// what the fork produced plus what its own earlier steps declared —
+    /// never a sibling branch's namespace.
+    fn branches(
+        &mut self,
+        step: &Step,
+        fork: &BTreeMap<String, Binding>,
+        fork_decided: &BTreeSet<String>,
+    ) {
+        let Ok(branches) = step.branches() else {
+            return;
+        };
+        for branch in branches {
+            let mut produced = fork.clone();
+            let mut decided = fork_decided.clone();
+            for branch_step in &branch.steps {
+                for field in EXECUTABLE_FIELDS {
+                    if branch_step.rest.contains_key(*field) {
+                        self.problems.push(Problem::Executable {
+                            step: format!("{}/{}/{}", step.name, branch.name, branch_step.name),
+                            field: (*field).to_string(),
+                        });
+                    }
+                }
+                match Binding::of(branch_step) {
+                    Err(reason) => self.problems.push(Problem::Contract {
+                        step: format!("{}/{}/{}", step.name, branch.name, branch_step.name),
+                        reason,
+                    }),
+                    Ok(Some(binding)) => {
+                        self.binding(branch_step, &binding, &produced, &decided);
+                        produced.insert(branch_step.name.clone(), binding);
+                    }
+                    Ok(None) => {}
+                }
+                if branch_step.kind == Kind::Decide {
+                    decided.insert(branch_step.name.clone());
+                }
             }
         }
     }
@@ -609,7 +658,13 @@ impl<'a> Walk<'a> {
     /// output consumed has an earlier producer that declared it, every
     /// field addressed is one the producer exposes, and every field
     /// exposed is one the step produces.
-    fn binding(&mut self, step: &Step, binding: &Binding, produced: &BTreeMap<String, Binding>) {
+    fn binding(
+        &mut self,
+        step: &Step,
+        binding: &Binding,
+        produced: &BTreeMap<String, Binding>,
+        decided: &BTreeSet<String>,
+    ) {
         for field in &binding.exposes {
             if !binding.produces.contains_key(field) {
                 self.problems.push(Problem::Unproduced {
@@ -626,7 +681,13 @@ impl<'a> Walk<'a> {
             else {
                 continue;
             };
+            // `field` may name a host sidecar: `$answers` is the raw
+            // answers a decide step writes beside its output — readable
+            // here even when the decide declares no binding — and no
+            // other `$` field is addressable.
+            let sidecar = field.as_deref() == Some("$answers") && decided.contains(producer);
             match produced.get(producer) {
+                None if sidecar => {}
                 None => self.problems.push(Problem::MissingProducer {
                     step: step.name.clone(),
                     input: name.clone(),
@@ -634,6 +695,7 @@ impl<'a> Walk<'a> {
                 }),
                 Some(makes) => {
                     if let Some(field) = field
+                        && !sidecar
                         && !makes.exposes.contains(field)
                     {
                         self.problems.push(Problem::Unexposed {
@@ -1262,5 +1324,103 @@ mod tests {
         .expect("a step");
         let error = Binding::of(&step).unwrap_err();
         assert!(error.contains("host-owned"), "{error}");
+    }
+
+    /// A `parallel` step's branches are checked like the list they run:
+    /// a branch reads what the fork produced, never a sibling's — the
+    /// branch's own earlier steps included.
+    #[test]
+    fn a_branch_reads_the_fork_but_never_a_sibling() {
+        let dir = tempfile::tempdir().unwrap();
+        stage(
+            dir.path(),
+            "fan",
+            r#"{
+                "name":"gather","kind":"query","bounds":{},
+                "binding":{"produces":{"items":"list"},"exposes":["items"]}},
+                {
+                    "name":"fan","kind":"parallel","bounds":{},"branches":[
+                        {"name":"left","steps":[
+                            {"name":"good","kind":"query","bounds":{},
+                             "binding":{"inputs":{"work":{"from":"step","step":"gather","field":"items"}}}}]},
+                        {"name":"right","steps":[
+                            {"name":"bad","kind":"query","bounds":{},
+                             "binding":{"inputs":{"work":{"from":"step","step":"good"}}}}]}]}"#,
+        );
+        let registry = registry(dir.path());
+        let problems = Composition::check(registry.get("fan").unwrap(), &registry);
+        assert_eq!(
+            problems,
+            [Problem::MissingProducer {
+                step: "bad".to_string(),
+                input: "work".to_string(),
+                producer: "good".to_string(),
+            }],
+            "the fork's producers resolve and a sibling's never do"
+        );
+    }
+
+    /// A decide step's raw answers are a producer a `from` may name:
+    /// `field: "$answers"` reads the host sidecar at `<step>$answers`,
+    /// and the producer needs no binding of its own.
+    #[test]
+    fn a_decide_steps_answers_are_a_producer() {
+        let dir = tempfile::tempdir().unwrap();
+        stage(
+            dir.path(),
+            "routes",
+            &format!(
+                r#"{{"name":"judge","kind":"decide","question":"q","bounds":{{}}}},{}"#,
+                call_step_with(
+                    "route",
+                    "leaf@1.0.0",
+                    "{}",
+                    r#","binding":{"inputs":{"work":{"from":"step","step":"judge","field":"$answers"}}}"#,
+                ),
+            ),
+        );
+        stage(
+            dir.path(),
+            "leaf",
+            r#"{"name":"look","kind":"query","bounds":{}}"#,
+        );
+        let registry = registry(dir.path());
+        let problems = Composition::check(registry.get("routes").unwrap(), &registry);
+        assert_eq!(problems, Vec::new(), "{problems:?}");
+    }
+
+    /// A `$` field on a producer that never decided is still nothing to
+    /// read: `$answers` names a decide step's sidecar, not any step's.
+    #[test]
+    fn an_answers_field_on_a_non_decide_reads_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        stage(
+            dir.path(),
+            "routes",
+            &format!(
+                r#"{{"name":"look","kind":"query","bounds":{{}}}},{}"#,
+                call_step_with(
+                    "route",
+                    "leaf@1.0.0",
+                    "{}",
+                    r#","binding":{"inputs":{"work":{"from":"step","step":"look","field":"$answers"}}}"#,
+                ),
+            ),
+        );
+        stage(
+            dir.path(),
+            "leaf",
+            r#"{"name":"look","kind":"query","bounds":{}}"#,
+        );
+        let registry = registry(dir.path());
+        let problems = Composition::check(registry.get("routes").unwrap(), &registry);
+        assert_eq!(
+            problems,
+            [Problem::MissingProducer {
+                step: "route".to_string(),
+                input: "work".to_string(),
+                producer: "look".to_string(),
+            }]
+        );
     }
 }
