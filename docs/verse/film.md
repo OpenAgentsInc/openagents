@@ -108,3 +108,34 @@ with the renderer and pipes raw RGBA into `ffmpeg` (`libx264`, `yuv420p`,
 held frame. `openagents film export FILE OUT.mp4` prints the frame count,
 size, and file size (`--json` too). It needs `ffmpeg` on the path and an
 even frame size.
+
+## Launch film (S5)
+
+`verse_film::layers::Launch` reads a JSON manifest: `title`, `subtitle`,
+`shots`, and `closing` lines. Each shot has an `image` (relative paths
+resolve from the manifest's directory), a `kind` (`desktop` draws a
+bordered window, `phone` a tall bezel, `verse` fills the frame under a
+caption bar), a `title`, and a `caption`. `layers::launch` turns it into a
+1280×720, 60 fps take: a title card, each shot sliding in while its words
+write themselves, and a closing card.
+
+```sh
+openagents film launch MANIFEST OUT.take [--hold N]   # N frames per shot, 150 by default
+```
+
+The V1 launch film is `docs/verse/film/launch.json`. Its web and phone
+screens come from the `/ui/screens` gallery's sample states, captured with
+headless Chrome by `scripts/film/launch-shots.sh DIR [BASE_URL]` from a
+local `openagents-web`; the Verse frames are checked-in captures. To
+rebuild the film:
+
+```sh
+openagents-web --listen 127.0.0.1:4311 ... &
+scripts/film/launch-shots.sh docs/verse/film/shots
+openagents film launch docs/verse/film/launch.json launch.take
+openagents film export launch.take launch.mp4
+```
+
+Known limits: the gallery's chat screens overflow below about 700 px, so
+the phone shots are captured at 700×1400; and a fill with alpha below 1
+draws opaque, so the caption bar is a solid surface.
