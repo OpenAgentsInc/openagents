@@ -62,9 +62,6 @@ pub(crate) const MAX_BODY: usize = 8 * 1024 * 1024;
 pub(crate) const MAX_MESSAGES: usize = 4000;
 /// The longest one message may be.
 pub(crate) const MAX_TEXT: usize = 256 * 1024;
-/// The most chats (web and Coder) an account may have before new Coder
-/// chats are refused; the store's own list limit is 256.
-pub(crate) const MAX_CHATS: usize = 200;
 
 /// Synced terminal chats under `/v1` (#11158).
 pub(crate) const SYNCED: &str = "/v1/threads/synced";
@@ -142,8 +139,6 @@ pub(crate) enum Saved {
     Deleted,
     /// No chat with that session (a status before the first upload).
     Unknown,
-    /// The account has [`MAX_CHATS`] chats.
-    Full,
     /// A message looks like it holds a credential.
     Secret,
     Invalid(&'static str),
@@ -269,9 +264,6 @@ pub(crate) async fn save(
     let id = chat_id(owner, session);
     for _ in 0..4 {
         let Some(loaded) = store.load(owner, &id).await? else {
-            if store.list_with_deleted(owner).await?.len() >= MAX_CHATS {
-                return Ok(Saved::Full);
-            }
             let chat = Conversation {
                 id: id.clone(),
                 owner: owner.to_owned(),
@@ -888,8 +880,6 @@ pub(crate) enum Started {
     Started(String),
     /// Coder on the computer hasn't checked in lately.
     Offline,
-    /// The account has [`MAX_CHATS`] chats.
-    Full,
     /// The message looks like it holds a credential.
     Secret,
     /// [`MAX_WAITING_CHATS`] chats already wait for Coder.
@@ -934,9 +924,6 @@ pub(crate) async fn start_from_web(
         let computer = line(computer, 64);
         if computer.is_empty() || !online(&store.computers(owner).await?, &computer) {
             return Ok(Started::Offline);
-        }
-        if store.list_with_deleted(owner).await?.len() >= MAX_CHATS {
-            return Ok(Started::Full);
         }
         let earlier = carried(earlier);
         let chat = Conversation {
@@ -1221,11 +1208,6 @@ fn respond(result: Result<Saved, Error>) -> Response {
             "This chat was deleted on the website.",
         ),
         Ok(Saved::Unknown) => refused(StatusCode::NOT_FOUND, "unknown", "No such chat."),
-        Ok(Saved::Full) => refused(
-            StatusCode::PAYLOAD_TOO_LARGE,
-            "full",
-            "Your account has no room for more chats. Delete some on openagents.com.",
-        ),
         Ok(Saved::Secret) => refused(
             StatusCode::UNPROCESSABLE_ENTITY,
             "secret",

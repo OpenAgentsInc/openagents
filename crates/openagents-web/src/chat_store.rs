@@ -21,7 +21,7 @@ use tokio::sync::{Mutex, broadcast};
 
 const SCHEMA: &str = "openagents.web.chat.v1";
 const MAX_RECORD_BYTES: usize = 16 * 1024 * 1024;
-const MAX_LIST: usize = 256;
+const MAX_LIST: usize = 10_000;
 const STORAGE_API: &str = "https://storage.googleapis.com";
 const METADATA_TOKEN: &str =
     "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token";
@@ -806,7 +806,7 @@ impl Store {
         })
     }
 
-    /// The list is private to one visitor. Fail explicitly if it exceeds 256.
+    /// The list is private to one visitor. Fail explicitly if it exceeds [`MAX_LIST`].
     /// Coder chats deleted on the web are left out ([`Conversation::deleted`]).
     pub(crate) async fn list(&self, owner: &str) -> Result<Vec<Conversation>, Error> {
         let mut rows = self.list_with_deleted(owner).await?;

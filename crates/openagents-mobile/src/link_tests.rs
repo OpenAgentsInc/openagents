@@ -82,13 +82,15 @@ impl Http for Site {
             .iter_mut()
             .find(|(r, _)| *r == route)
             .and_then(|(_, replies)| replies.pop_front());
+        // A standing answer may be keyed without the query string.
+        let bare = route.split('?').next().unwrap_or(&route).to_owned();
         let reply = queued.or_else(|| {
-            self.standing
-                .lock()
-                .unwrap()
+            let standing = self.standing.lock().unwrap();
+            standing
                 .iter()
                 .rev()
                 .find(|(r, _)| *r == route)
+                .or_else(|| standing.iter().rev().find(|(r, _)| *r == bare))
                 .map(|(_, reply)| reply.clone())
         });
         Box::pin(async move {
@@ -246,9 +248,11 @@ fn sign_in_shows_a_code_and_keeps_the_session_once() {
     assert!(!format!("{stored:?}").contains("sess_phone"));
     assert!(f.link.packet().store.is_none(), "handed over once");
     // Signed in, it reads the account with the new session.
-    until(|| !f.site.calls("GET /v1/threads").is_empty());
+    until(|| !f.site.calls("GET /v1/threads?offset=0&limit=200").is_empty());
     assert_eq!(
-        f.site.calls("GET /v1/threads")[0].token.as_deref(),
+        f.site.calls("GET /v1/threads?offset=0&limit=200")[0]
+            .token
+            .as_deref(),
         Some("sess_phone")
     );
     drop(f.runtime);
@@ -525,7 +529,11 @@ fn a_landing_queue_entry_shows_its_stage_without_controls() {
         .filter(|(key, node)| key.starts_with("link-item-") && node["style"]["radius"] == 14)
         .collect();
     assert_eq!(cards.len(), 2, "{found:?}");
-    assert!(cards.iter().all(|(_, node)| node["style"]["background"].is_object()));
+    assert!(
+        cards
+            .iter()
+            .all(|(_, node)| node["style"]["background"].is_object())
+    );
 }
 
 /// #11228, #11250: a fleet row's issue, commit, and pull request open on
@@ -1443,7 +1451,10 @@ fn a_reply_to_a_web_chat_carries_its_photos() {
     assert_eq!(
         rows,
         vec![
-            ("link-file-3-0".to_owned(), json!("Photo.png · PNG · 70 bytes")),
+            (
+                "link-file-3-0".to_owned(),
+                json!("Photo.png · PNG · 70 bytes")
+            ),
             ("link-file-3-1".to_owned(), json!("Notes.pdf · PDF · 2 KB")),
         ]
     );
@@ -1452,4 +1463,55 @@ fn a_reply_to_a_web_chat_carries_its_photos() {
     find_keys(&view, &mut found);
     let at = |key: &str| found.iter().position(|(k, _)| k == key).unwrap();
     assert!(at("link-m2") < at("link-file-3-0"));
+}
+
+#[test]
+fn chats_list_pages_older_chats_in_on_request() {
+    let mut f = fixture();
+    let rows = |from: usize, to: usize| -> Vec<Value> {
+        (from..to)
+            .map(|n| {
+                json!({"id": format!("w{n}"), "title": format!("Chat {n}"), "surface": "web",
+                       "updated_unix": 10_000 - n as i64, "can_reply": true})
+            })
+            .collect()
+    };
+    f.site.answer(
+        "GET /v1/threads?offset=0&limit=200",
+        200,
+        json!({"threads": rows(0, 200), "computers": [], "total": 250, "more": true,
+               "next_offset": 200}),
+    );
+    f.site.answer(
+        "GET /v1/threads?offset=200&limit=200",
+        200,
+        json!({"threads": rows(200, 250), "computers": [], "total": 250, "more": false,
+               "next_offset": null}),
+    );
+    signed(&mut f);
+    until(|| f.link.lock().threads_read);
+    assert_eq!(f.link.lock().threads.len(), 200);
+    assert!(f.link.lock().threads_more);
+    f.link.act(Action::Show {
+        screen: Screen::Chats,
+        id: None,
+    });
+    let mut words = vec![];
+    texts(f.link.packet().view.as_ref().unwrap(), &mut words);
+    // Every fetched chat shows, not only the newest 120, and older ones are offered.
+    assert!(words.iter().any(|w| w == "Chat 199"), "{words:?}");
+    assert!(words.iter().any(|w| w == "Show older chats"), "{words:?}");
+
+    f.link.tap(Intent::MoreThreads);
+    until(|| f.link.lock().threads.len() == 250);
+    assert!(!f.link.lock().threads_more);
+    assert!(
+        !f.site
+            .calls("GET /v1/threads?offset=200&limit=200")
+            .is_empty()
+    );
+    let mut words = vec![];
+    texts(f.link.packet().view.as_ref().unwrap(), &mut words);
+    assert!(words.iter().any(|w| w == "Chat 249"), "{words:?}");
+    assert!(!words.iter().any(|w| w == "Show older chats"), "{words:?}");
 }

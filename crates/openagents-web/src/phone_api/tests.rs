@@ -311,3 +311,48 @@ async fn pause_choices_are_cleaned_and_only_offered_ones_queue() {
     let json = serde_json::to_value(item("x", "working")).unwrap();
     assert!(json.get("choices").is_none(), "no choices, no field");
 }
+
+#[tokio::test]
+async fn coder_chats_pass_the_former_two_hundred_cap_and_page_out() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::local(dir.path().to_path_buf());
+    for n in 0..205 {
+        let upload = Upload {
+            computer: "Studio".into(),
+            title: format!("Chat {n}"),
+            messages: vec![WireMessage {
+                role: "user".into(),
+                text: "Hi".into(),
+            }],
+        };
+        let saved = save(&store, &owner(), &format!("s{n:04}"), &upload)
+            .await
+            .unwrap();
+        assert!(matches!(saved, Saved::Saved { .. }), "chat {n}: {saved:?}");
+    }
+    let (first, _, total) = listed_page(&store, &owner(), 0, SHOWN_THREADS)
+        .await
+        .unwrap();
+    assert_eq!(total, 205);
+    assert_eq!(first.len(), SHOWN_THREADS);
+    let (rest, _, _) = listed_page(&store, &owner(), SHOWN_THREADS, SHOWN_THREADS)
+        .await
+        .unwrap();
+    assert_eq!(rest.len(), 5);
+    assert!(
+        first
+            .iter()
+            .chain(&rest)
+            .map(|r| r["id"].clone())
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            == 205
+    );
+    let (beyond, _, _) = listed_page(&store, &owner(), 205, SHOWN_THREADS)
+        .await
+        .unwrap();
+    assert!(beyond.is_empty());
+    // A limit is clamped to one page.
+    let (clamped, _, _) = listed_page(&store, &owner(), 0, 10_000).await.unwrap();
+    assert_eq!(clamped.len(), SHOWN_THREADS);
+}
