@@ -42,6 +42,9 @@ macro_rules! command_usage {
        [--revision REF] [--workspace-path PATH] [--include FILE] [--no-workspace]
                                       Run Microcoder, Solver (--task \"#N [--no-pr]\"),
                                       or an enabled ACP subagent.
+  comms SUBCOMMAND --channel DIR --as NAME
+                                      Talk on a session's agent channel
+                                      (comms --help lists the subcommands).
   remote list                         List saved remote jobs.
   remote status ID                    Read one saved remote job.
   remote follow ID                    Observe a remote job to completion.
@@ -178,6 +181,17 @@ fn check_demo(arguments: &[String], available: bool) -> Result<(), Error> {
 
 /// Dispatch one CLI call. JSON mode streams events, followed by a result document.
 pub fn run(arguments: &[String], json_mode: bool) -> u8 {
+    // `openagents coder comms`: the agent channel's command, the one a
+    // delegated agent is told to run (#11468).
+    if arguments.first().is_some_and(|command| command == "comms") {
+        return match crate::comms::command(&arguments[1..]) {
+            Ok(()) => 0,
+            Err(error) => {
+                eprintln!("{error}");
+                1
+            }
+        };
+    }
     if let Err(error) = check_demo(arguments, crate::DEMO_AVAILABLE) {
         return print_error(error, json_mode);
     }

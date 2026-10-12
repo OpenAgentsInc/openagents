@@ -590,9 +590,10 @@ impl ExecutionSettings {
                     .find(|agent| agent.id == args.agent && agent.enabled)
                     .or(builtin.as_ref())
                     .ok_or("The requested ACP agent is not configured or is turned off.")?;
-                // An external engine reaches the channel through the
-                // `coder comms` command; the preamble names the folder and
-                // the member. Without a channel, the task is unchanged.
+                // An external engine reaches the channel through this
+                // program's `comms` command; the preamble names the command
+                // by its full path, the folder, and the member. Without a
+                // channel, the task is unchanged.
                 // The member is the agent id and a number, never the task
                 // text (#11467).
                 let task =
@@ -601,7 +602,7 @@ impl ExecutionSettings {
                     }) {
                         Some((channel, member)) => format!(
                             "{}\n\n{}",
-                            crate::comms::preamble(channel, &member, "coder"),
+                            crate::comms::preamble(channel, &member, &crate::comms::invocation()),
                             args.task
                         ),
                         None => args.task.clone(),

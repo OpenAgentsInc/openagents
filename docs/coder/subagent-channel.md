@@ -34,8 +34,10 @@ task naming the channel folder, their member name and the command:
 <coder-or-openagents> [coder] comms post|read|intent|lease|agree --channel DIR --as NAME ...
 ```
 
-and, as a fallback that needs no binary, they may append a JSON line
-`{"from":NAME,"to":"all","text":"..."}` to `log.jsonl`. The session is the
+The preamble names the program that started the agent by its full path,
+so an older `coder` on the agent's `PATH` without `comms` is never used. An
+agent that cannot run it says so and carries on; nothing writes to the
+channel folder except through `crate::comms` (#11468). The session is the
 Coder process (or `chat --session ID`); a nested Coder started by a delegate
 joins the parent's channel through `CODER_COMMS_CHANNEL`.
 

@@ -293,17 +293,36 @@ fn the_log_records_every_kind_of_event_as_one_line() {
 #[test]
 fn the_preamble_names_the_folder_member_and_command() {
     let (dir, channel) = channel();
-    let text = preamble(&channel, "solver-11346", "coder");
+    let text = preamble(&channel, "solver-11346", "/opt/oa/coder comms");
     // `dir.path()` and the channel can differ on macOS (`/var` is a link to
     // `/private/var`), so compare the folder the channel itself reports.
     let folder = channel.dir().to_path_buf();
     assert!(text.contains(&folder.display().to_string()));
     let _ = dir;
     assert!(text.contains("--as solver-11346"));
-    assert!(text.contains("coder comms post"));
-    assert!(
-        text.contains(&folder.join(LOG).display().to_string()),
-        "the no-binary fallback"
+    assert!(text.contains("`/opt/oa/coder comms post"));
+    // No side file: an agent that can't run the command says so (#11468).
+    assert!(!text.contains(&folder.join(LOG).display().to_string()));
+    assert!(text.contains("Never write to the channel folder yourself."));
+}
+
+#[test]
+fn the_command_is_this_program_by_its_full_path() {
+    assert_eq!(
+        invocation_for(Path::new("/Users/a/.openagents/bin/coder")),
+        "/Users/a/.openagents/bin/coder comms"
+    );
+    assert_eq!(
+        invocation_for(Path::new("/usr/local/bin/openagents")),
+        "/usr/local/bin/openagents coder comms"
+    );
+    assert_eq!(
+        invocation_for(Path::new("/Applications/Open Agents/coder")),
+        "'/Applications/Open Agents/coder' comms"
+    );
+    assert_eq!(
+        invocation_for(Path::new("/tmp/deps/coder_new-1234")),
+        "coder comms"
     );
 }
 

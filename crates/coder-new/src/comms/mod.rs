@@ -26,6 +26,9 @@ use std::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+mod cli;
+pub use cli::command;
+
 /// The plugin's ID in /plugins and in `bundled-plugins.json`.
 pub const PLUGIN: &str = "comms";
 
@@ -1055,17 +1058,49 @@ pub fn preamble(channel: &Channel, member: &str, binary: &str) -> String {
 working at the same time can see what you post. Post what you are about to change and read what \
 the others posted before you edit a shared file.\n\
 \n\
-- Post a message: `{binary} comms post --channel {dir} --as {member} --to all --text \"...\"`\n\
-- Read what is new: `{binary} comms read --channel {dir} --as {member} --since N`\n\
-- Say what you intend to change: `{binary} comms intent --channel {dir} --as {member} --file PATH [--file PATH] [--resource KIND:VALUE]`\n\
-- Take a lease on a scarce thing: `{binary} comms lease acquire --channel {dir} --as {member} --kind KIND --value VALUE` (renew and release take the same flags)\n\
-- Agree how to settle an overlap: `{binary} comms agree --channel {dir} --as {member} --with NAME --outcome first|split|merge --why \"...\"`\n\
+- Post a message: `{binary} post --channel {dir} --as {member} --to all --text \"...\"`\n\
+- Read what is new: `{binary} read --channel {dir} --as {member} --since N`\n\
+- Say what you intend to change: `{binary} intent --channel {dir} --as {member} --file PATH [--file PATH] [--resource KIND:VALUE]`\n\
+- Take a lease on a scarce thing: `{binary} lease acquire --channel {dir} --as {member} --kind KIND --value VALUE` (renew and release take the same flags)\n\
+- Agree how to settle an overlap: `{binary} agree --channel {dir} --as {member} --with NAME --outcome first|split|merge --why \"...\"`\n\
 \n\
-If the command is not on your PATH, append one JSON line to {log}: \
-{{\"from\":\"{member}\",\"to\":\"all\",\"kind\":\"message\",\"text\":\"...\"}}. The channel folder is {dir}.\n",
+Use exactly this command; it is the program that started you. If it fails, say so in your \
+reply and carry on without the channel. Never write to the channel folder yourself.\n",
         dir = channel.dir().display(),
-        log = channel.dir().join(LOG).display(),
     )
+}
+
+/// The command a delegated agent runs to reach the channel: this very
+/// program by its full path, as `PATH comms` for `coder` or `PATH coder
+/// comms` for `openagents`, so the agent never meets another `coder` on its
+/// `PATH` that has no `comms` (#11468). Without a known path, `coder comms`.
+#[must_use]
+pub fn invocation() -> String {
+    let Ok(exe) = std::env::current_exe() else {
+        return "coder comms".into();
+    };
+    invocation_for(&exe)
+}
+
+fn invocation_for(exe: &Path) -> String {
+    let path = exe.display().to_string();
+    let path = if path.contains(|c: char| c.is_whitespace() || c == '\'' || c == '"') {
+        format!("'{}'", path.replace('\'', "'\\''"))
+    } else {
+        path
+    };
+    let stem = exe
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or_default();
+    if stem == "openagents" {
+        format!("{path} coder comms")
+    } else if stem == "coder" {
+        format!("{path} comms")
+    } else {
+        // A test binary or another host: the installed `coder`.
+        "coder comms".into()
+    }
 }
 
 /// What the model is told about the `comms` tool.
