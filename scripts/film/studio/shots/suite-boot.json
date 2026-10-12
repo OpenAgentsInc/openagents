@@ -1,7 +1,7 @@
 {
   "extends": "sync-base.json",
   "name": "suite-boot",
-  "cut": "The suite boots: MacBook, Studio Display and iPhone go from dark to the app to home, together on the Grid.",
+  "cut": "The suite boots on the Grid: the terminal starts Coder on the MacBook, the website opens on the display, and the iPhone app launches from the home screen.",
   "duration": 6.5,
   "devices": [
     {
@@ -22,8 +22,8 @@
         ]
       },
       "screen": {
-        "video": "$SYNC/boot-desktop.mp4",
-        "in": 0,
+        "video": "$SYNC/boot-terminal.mp4",
+        "in": -1.4,
         "brightness": 1.35,
         "fit": "cover"
       }
@@ -45,8 +45,8 @@
       },
       "screen": {
         "video": "$SYNC/boot-web.mp4",
-        "in": 0,
-        "brightness": 1.35,
+        "in": -2.2,
+        "brightness": 1.6,
         "fit": "contain"
       }
     },
@@ -94,8 +94,8 @@
         "t": 6.5,
         "orbit": [
           -3,
-          11,
-          1.12
+          13,
+          1.32
         ],
         "target": [
           0.02,

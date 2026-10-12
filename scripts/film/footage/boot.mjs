@@ -7,7 +7,7 @@
 //   boot-phone.mp4     the iPhone home screen, the OpenAgents app opening
 //                      to its signed-in home (a simulator debug build)
 //
-// The desktop app is not recorded: see the report in sync-v1/README.txt.
+// The desktop app is not recorded: see docs/verse/film/handoff-footage.md.
 //
 // env: FILM_BASE, FILM_GATEWAY, FILM_OUT, FILM_WORK, FILM_SIM, FILM_CODER
 import { execFileSync, spawnSync } from "node:child_process";

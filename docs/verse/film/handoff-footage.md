@@ -1,15 +1,19 @@
 # Launch film footage: handoff (#11432)
 
-State on 2026-10-12, when work paused. All of it runs locally against the
+State on 2026-10-12 (evening, cut 3). All of it runs locally against the
 1.0 stack on this Mac; nothing touches staging or production.
 
 ## What is recorded
 
-`~/work/film-out/sync-v1/` (the "one conversation across devices" shot):
+`~/work/film-out/sync-v2/` (the "one conversation across devices" shot,
+reshot with Coder and the iPhone app built from `origin/main` at
+`b22acbdb31`, so the terminal shows "Answering a reply from openagents.com"
+on the input's bottom rail rather than in the transcript). `sync-v1/` is
+the earlier take; its terminal shows the old transcript line.
 
 | File | Size | What |
 |---|---|---|
-| `terminal.mp4` | 3024×1964, 30 fps, 42.8 s | Coder in `~/code/slugkit`: the person asks why the tests fail, then sees the phone's and the website's replies arrive and Coder act on them |
+| `terminal.mp4` | 3024×1964, 30 fps, 38.9 s | Coder in `~/code/slugkit`: the person asks why the tests fail, then sees the phone's and the website's replies arrive and Coder act on them |
 | `web.mp4` | 3024×1964, same length | The signed-in website: the terminal chat appears in the sidebar, opens, and updates live; the person types the third message there |
 | `phone.mp4` | 1206×2622 (iPhone 17 Pro simulator), same length | The iPhone app on Your chats: the chat lists, opens, updates live; the person types the second message there |
 | `beats.json` | | Each beat's time in the clips (`clip`) and on the shared clock (`clock`), the cuts, and the three messages |
@@ -17,17 +21,25 @@ State on 2026-10-12, when work paused. All of it runs locally against the
 The three clips are cut alike on one wall clock: a stretch of more than
 2 s where nothing changes on any surface keeps 0.7 s at each end and jumps
 over its middle, on all three at once, so they play in sync side by side.
-Spinners run at real speed. Checked: at clip time 29 s all three show the
-same answer to "Fix it and run the tests."
+Spinners run at real speed (the web spinner changes on about 25 of 30
+frames). The phone clip runs the full length: `simctl recordVideo` writes
+frames only on change, so the cut holds its last frame to the end of the
+shared clock (it was 1.4 s short in `sync-v1`). The terminal's cursor is
+steady on every frame (checked by sampling its cell across the clip).
 
 The messages: terminal "Why are the tests failing? Look, but don't change
 anything yet."; phone "Fix it and run the tests."; web "Commit it with a
 short message." All answers are real (Coder and the chat worker call real
 models through the local gateway).
 
-Not yet recorded: the boot clips (`boot-{terminal,web,phone}.mp4`).
-`boot.mjs` is written but has not been run. There is no desktop clip (see
-below).
+The boot clips are in `sync-v2/` too, on the same account:
+`boot-terminal.mp4` (2.4 s: `coder` typed in `~/code/slugkit`, Coder's
+home), `boot-web.mp4` (3.5 s: a dark page, then the signed-in website
+home), `boot-phone.mp4` (6.4 s: the iPhone home screen, the OpenAgents
+icon, the app opening to its signed-in home). `boot.mjs` removes the UI
+tests' runner app from the home screen first. `FILM_BOOT=phone` (any of
+`terminal,web,phone`) with `FILM_SETUP=WORK/setup.json` records a clip
+again on the same account. There is no desktop clip (see below).
 
 Earlier footage: `~/work/film-out/footage/`, `footage-v2/` (including
 `phone-app.mp4`, the app's Running screen), `footage-v3/`.
@@ -37,7 +49,7 @@ Earlier footage: `~/work/film-out/footage/`, `footage-v2/` (including
 | Script | What |
 |---|---|
 | `record-all.sh` | The single-surface clips (web-chat, phone-approve, terminal-coder, web-sync, phone-app). Rebuilds the binaries unless `--no-build`, restarts a stale stack, `FILM_IOS=0` skips the phone |
-| `boot.mjs` | Makes the test account, the demo repo, and Coder's sign-in (writes `FILM_WORK/setup.json`), then the three boot clips. **Untested** |
+| `boot.mjs` | Makes the test account, the demo repo, and Coder's sign-in (writes `FILM_WORK/setup.json`), then the three boot clips. `FILM_SETUP` reuses an account, `FILM_BOOT` picks clips |
 | `sync-shoot.mjs` | The sync shot. Uses `FILM_SETUP` (a `setup.json`) or makes its own account. Keeps the take in `FILM_WORK/take.json`; `node sync-shoot.mjs --edit WORK` re-cuts it |
 | `setup.mjs` | Account, demo repo, `coder login` approved on the website, simulator status bar and `recordVideo`, video change detection, cutting a simulator video at given times |
 | `phone-app.mjs` | The app's Running screen while Coder works (`--edit RAW` re-cuts) |
@@ -57,16 +69,18 @@ export CARGO_TARGET_DIR=~/work/openagents-target-film
 SIM=$(cat ~/work/film-out/.film-sim-udid)
 W=~/work/film-out/.work/sync-$(date +%H%M%S); mkdir -p $W
 common="FILM_BASE=http://127.0.0.1:4301 FILM_GATEWAY=http://127.0.0.1:8791 FILM_SIM=$SIM FILM_WORK=$W \
-  FILM_OUT=$HOME/work/film-out/sync-v1 FILM_CODER=$CARGO_TARGET_DIR/debug/coder-new"
-env $common node scripts/film/footage/boot.mjs                                # boot clips (untested)
+  FILM_OUT=$HOME/work/film-out/sync-v2 FILM_CODER=$CARGO_TARGET_DIR/debug/coder-new"
+env $common node scripts/film/footage/boot.mjs                                # boot clips
 env $common FILM_SETUP=$W/setup.json node scripts/film/footage/sync-shoot.mjs # the sync shot (about 4 min)
-node scripts/film/footage/sync-shoot.mjs --edit ~/work/film-out/.work/sync-162719 # re-cut the kept take
+FILM_OUT=~/work/film-out/sync-v2 node scripts/film/footage/sync-shoot.mjs --edit ~/work/film-out/.work/sync-170709 # re-cut the kept take
 ```
 
-The kept take is `~/work/film-out/.work/sync-162719` (300 MB: web frames,
-the phone's raw video, the terminal cast, `take.json`). Older scratch
-frames are deleted. The iOS app must be built once with
-`bins/openagents-ios/build.sh sim` (`OPENAGENTS_IOS_DEVICE=$SIM`); the
+The kept take is `~/work/film-out/.work/sync-170709` (470 MB: web frames,
+the phone's raw video, the terminal cast, `take.json`), shot on the boot
+account in `.work/boot-165735/setup.json` (which also keeps
+`boot-terminal.cast`). Older takes are deleted. The iOS app must be built once with
+`bins/openagents-ios/build.sh sim` (it also generates the Xcode project the
+shoot's UI test needs) (`OPENAGENTS_IOS_DEVICE=$SIM`); the
 shoot's UI test builds its own Debug app into
 `$CARGO_TARGET_DIR/openagents-ios/DerivedData-film`.
 
@@ -97,7 +111,10 @@ shoot's UI test builds its own Debug app into
   (later replaced by `8b479fd4c4`, which removes the line).
 
 Found, not fixed:
-- The terminal's notice for a phone reply says "from openagents.com".
+- The terminal's notice for a phone reply says "from openagents.com" (the
+  phone does reply through openagents.com, so it's not false).
+- The iPhone app draws Coder's `ℹ` test-summary marks as blue emoji
+  (U+2139 without a text presentation selector).
 - The web chat answers coding questions with a closing line about Coder
   and refuses "write code" asks (the web policy), which shows in web-chat
   takes.
@@ -106,10 +123,9 @@ Found, not fixed:
 
 ## What's left
 
-1. Run `boot.mjs` and check the three boot clips (fix what breaks).
-2. Desktop: account sign-in and synced chats in the desktop app (product
+1. Desktop: account sign-in and synced chats in the desktop app (product
    work), and the Screen Recording permission to film its window.
-3. Approve on the phone: needs Coder to ask for a risky ability (a
+2. Approve on the phone: needs Coder to ask for a risky ability (a
    production deploy, a PR merge, DNS, secrets, payments). None can be
    staged honestly for the film yet.
-4. Second-person editing: needs shared chats in the product.
+3. Second-person editing: needs shared chats in the product.

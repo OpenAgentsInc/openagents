@@ -532,12 +532,12 @@ def animate_device(dev, root, nframes, duration):
             kp.interpolation = "LINEAR"
 
 
-SYNC_DIR = os.path.expanduser(os.environ.get("SYNC", "~/work/film-out/sync-v1"))
+SYNC_DIR = os.path.expanduser(os.environ.get("SYNC", "~/work/film-out/sync-v2"))
 
 
 def resolve_video(path):
     """Expand ~ and $SYNC (the shared-clock footage dir, default
-    ~/work/film-out/sync-v1) in a screen clip's path."""
+    ~/work/film-out/sync-v2) in a screen clip's path."""
     if not path:
         return None
     path = path.replace("$SYNC", SYNC_DIR).replace("${SYNC}", SYNC_DIR)

@@ -54,13 +54,17 @@ export function pageHtml(cols, rows) {
 html, body { margin: 0; background: ${THEME.background}; width: ${WIDTH}px; height: ${HEIGHT}px; overflow: hidden; }
 #t { position: absolute; left: ${PAD}px; top: ${PAD}px; }
 .xterm-viewport { overflow: hidden !important; background: ${THEME.background} !important; }
+/* The block cursor always drawn, never blinking or switching to its
+   unfocused look between shots: a frame without it flickers on film. */
+.xterm-rows .xterm-cursor { background-color: ${THEME.cursor} !important; color: ${THEME.cursorAccent} !important;
+  animation: none !important; outline: none !important; box-shadow: none !important; }
 </style></head><body><div id="t"></div>
 <script src="file://${xterm}/lib/xterm.js"></script>
 <script>
 window.ready = document.fonts.load("${FONT_SIZE}px 'Paper Mono'").then(() => {
   const term = new Terminal({ cols: ${cols}, rows: ${rows}, fontFamily: "'Paper Mono', monospace",
     fontSize: ${FONT_SIZE}, lineHeight: 1.22, fontWeight: 400, fontWeightBold: 650,
-    cursorBlink: false, cursorStyle: "block", allowProposedApi: true, scrollback: 0,
+    cursorBlink: false, cursorStyle: "block", cursorInactiveStyle: "block", allowProposedApi: true, scrollback: 0,
     theme: ${JSON.stringify(THEME)} });
   term.open(document.getElementById("t"));
   term.focus();
@@ -68,7 +72,16 @@ window.ready = document.fonts.load("${FONT_SIZE}px 'Paper Mono'").then(() => {
   const d = term._core._renderService.dimensions.css.cell;
   return { cellW: d.width, cellH: d.height };
 });
-window.feed = (s) => new Promise((ok) => term.write(s, () => requestAnimationFrame(() => requestAnimationFrame(ok))));
+// After each write, wait until the cursor is drawn again before the shot
+// (two frames at least, at most ten): the DOM renderer redraws the
+// cursor's row a frame or so after the text, and a shot in between shows
+// the cursor missing, a flicker on film.
+window.feed = (s) => new Promise((ok) => term.write(s, () => {
+  let n = 0;
+  const drawn = () => term._core.coreService.isCursorHidden || !!document.querySelector(".xterm-rows .xterm-cursor");
+  const tick = () => (++n >= 2 && (drawn() || n >= 10) ? ok() : requestAnimationFrame(tick));
+  requestAnimationFrame(tick);
+}));
 </script></body></html>`;
 }
 
@@ -114,6 +127,11 @@ function timeline(events, { maxGap, speed, idle }) {
   });
 }
 
+/// How many frames a half-finished redraw may wait. Coder's synchronized
+/// updates can stay open for a few hundred ms around a reply arriving; a
+/// shorter wait shows the half-drawn screen, cursor missing.
+const HOLD_FRAMES = 12;
+
 /// Where `s` starts a redraw it doesn't finish: the last cursor hide or
 /// synchronized-update start with no show or end after it; -1 when settled.
 function unsettled(s) {
@@ -152,7 +170,7 @@ export async function replay(castFile, out, opts = {}) {
   // A frame never shows half a redraw: output after the last point where
   // Coder hides the cursor (or opens a synchronized update) without showing
   // it again waits for the next frame, so the cursor doesn't flicker. It
-  // waits at most a few frames.
+  // waits at most HOLD_FRAMES.
   let carry = "";
   let held = 0;
   for (let t = start; t < endAt; t += 1 / 30) {
@@ -162,7 +180,7 @@ export async function replay(castFile, out, opts = {}) {
       k++;
     }
     const cut = unsettled(chunk);
-    if (cut >= 0 && held < 4 && k < last) {
+    if (cut >= 0 && held < HOLD_FRAMES && k < last) {
       carry = chunk.slice(cut);
       chunk = chunk.slice(0, cut);
       held++;
@@ -203,7 +221,7 @@ export async function replayAt(castFile, out, times) {
     let chunk = carry;
     while (k < events.length && events[k][0] <= t) chunk += events[k++][2];
     const cut = unsettled(chunk);
-    if (cut >= 0 && held < 4 && k < events.length) {
+    if (cut >= 0 && held < HOLD_FRAMES && k < events.length) {
       carry = chunk.slice(cut);
       chunk = chunk.slice(0, cut);
       held++;

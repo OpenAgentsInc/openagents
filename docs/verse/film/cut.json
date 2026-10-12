@@ -5,7 +5,7 @@
     2160
   ],
   "bpm": 120,
-  "music": "~/work/film-out/audio/score.wav",
+  "music": "~/work/film-out/audio/score-cut3.wav",
   "out": "~/work/film-out/cut/openagents-v1-launch.mp4",
   "sheets": "~/work/film-out/cut",
   "fade_in": 0.5,
@@ -47,30 +47,36 @@
       }
     },
     {
-      "name": "macbook-chat",
-      "src": "~/work/film-out/studio/macbook-chat.mp4",
+      "name": "suite-boot",
+      "src": "~/work/film-out/studio/suite-boot.mp4",
       "in": 0.0,
-      "dur": 8.0,
-      "xfade": 0.5
+      "dur": 6.5,
+      "xfade": 0.5,
+      "dark_ok": true
     },
     {
-      "name": "macbook-terminal",
-      "src": "~/work/film-out/studio/macbook-terminal.mp4",
+      "name": "sync-terminal-web",
+      "src": "~/work/film-out/studio/sync-terminal-web.mp4",
       "in": 0.0,
-      "dur": 8.0
+      "dur": 7.5
     },
     {
-      "name": "macbook-sync",
-      "src": "~/work/film-out/studio/macbook-sync.mp4",
+      "name": "sync-phone",
+      "src": "~/work/film-out/studio/sync-phone.mp4",
+      "in": 0.0,
+      "dur": 7.5
+    },
+    {
+      "name": "sync-web-back",
+      "src": "~/work/film-out/studio/sync-web-back.mp4",
       "in": 0.0,
       "dur": 7.0
     },
     {
-      "name": "iphone-app",
-      "src": "~/work/film-out/studio/iphone-approve.mp4",
+      "name": "trio-wide",
+      "src": "~/work/film-out/studio/trio-wide.mp4",
       "in": 0.0,
-      "dur": 7.0,
-      "dark_ok": true
+      "dur": 5.0
     },
     {
       "name": "end-card",

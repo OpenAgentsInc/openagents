@@ -24,7 +24,7 @@ October 12, 2026, when work paused. The scripts live in
     `screen` (`video`, `in`, `brightness`, `fit`) and optional `motion`.
     All of them run on the shot's one clock.
 
-  Clip paths may use `$SYNC`, which defaults to `~/work/film-out/sync-v1`.
+  Clip paths may use `$SYNC`, which defaults to `~/work/film-out/sync-v2`.
 
   Camera keys give either `pos` or `orbit`, plus `target`, `lens` and
   `fstop`. The keys are eased over the whole shot. A rack focus goes in
@@ -63,16 +63,16 @@ October 12, 2026, when work paused. The scripts live in
 
 ### Multi-device sync
 
-All five shots are 1080p review shots. Each has been previewed with
-stand-ins only and not yet rendered from the real footage.
+All five are rendered at 1080p from `sync-v2` into `~/work/film-out/studio-1080/`
+(cut 3); 4K waits for the owner's approval.
 
-| Spec | Length | Content |
-|---|---|---|
-| `suite-boot` | 6.5 s | The trio boots: dark, then the app, then the home screen. The camera cranes down and pushes in. |
-| `sync-terminal-web` | 7.5 s | MacBook in front, display behind. Focus racks to the display as the terminal's message lands there. |
-| `sync-phone` | 7.5 s | iPhone in front replying. Focus racks to the MacBook terminal as the reply lands. |
-| `sync-web-back` | 6.5 s | Display in front typing. Focus racks to the MacBook terminal as the reply lands. |
-| `trio-wide` | 5.5 s | All three live, in a slow orbit. |
+| Spec | Length | In | Content |
+|---|---|---|---|
+| `suite-boot` | 6.5 s | boot clips | The trio boots on the Grid: the iPhone app opens from the home screen, the terminal starts Coder on the MacBook (in at -1.4 s), the website opens on the display (in at -2.2 s). The camera cranes down and pushes in. |
+| `sync-terminal-web` | 7.5 s | 2.3 | MacBook in front, display behind. The terminal message is sent at 2.4 s; focus racks to the display at 3.5 s as it lands in the sidebar; the thread opens at 4.7 s. |
+| `sync-phone` | 7.5 s | 14.0 | The whole iPhone in front: the reply is sent at 2.7 s; focus racks to the MacBook at 4.1 s as it lands in the terminal. |
+| `sync-web-back` | 7.0 s | 26.0 | Display in front: typing at 2.4 s, sent at 3.8 s; focus racks to the MacBook at 5.4 s as the terminal takes it. |
+| `trio-wide` | 5.5 s | 33.4 | All three live, a slow orbit, as the commit lands on every screen (3.0 s). Tighter than before (orbit 1.3 → 1.25 m) and the display brighter (1.6) so the screens read. |
 
 All of them extend `sync-base.json`, which holds the background and light
 rig. The trio layout is:
@@ -81,26 +81,8 @@ rig. The trio layout is:
 - Display at (0.04, 0.42), rotated -3°.
 - iPhone at (0.30, -0.14), standing.
 
-`sync-web-back` has its own layout.
-
-The real shared-clock footage arrived at `~/work/film-out/sync-v1/` (`terminal`, `web`,
-`phone`, `beats.json`) just before the pause. The in-points are already set
-from its `beats.json` clip times:
-
-- **`sync-terminal-web`**: in at 2.5 s. The message is sent 2.5 s into the
-  shot, and the web sidebar shows it at 3.6 s, where the focus lands.
-- **`sync-phone`**: in at 16.0 s. The phone sends at 2.8 s and the terminal
-  shows the reply at 4.4 s, where the focus lands.
-- **`sync-web-back`**: in at 28.8 s. Web typing starts at 1.5 s, the reply is
-  sent at 2.9 s, and the terminal shows it at 5.0 s, where the focus lands.
-- **`trio-wide`**: in at 16.5 s, so the phone reply lands mid-shot.
-
-Check each of these against a render before approving. The real clips are
-cut, so some beats sit right at a cut boundary.
-
-`suite-boot` still points at `$SYNC/boot-desktop.mp4`, `boot-web.mp4` and
-`boot-phone.mp4`. Those clips don't exist in `sync-v1` yet. There is no
-`desktop.mp4` either; the MacBook shows the terminal in every sync shot.
+`sync-web-back` has its own layout. There is no desktop-app clip: the
+MacBook shows the terminal in every shot (see `handoff-footage.md`).
 
 ## Commands
 
@@ -108,9 +90,9 @@ From an `openagents` checkout:
 
 ```sh
 # 1080p review of the sync shots from the real shared-clock footage
-OUT=~/work/film-out/studio-1080 scripts/film/studio/render-all.sh --resolution=1920x1080 \
+SYNC=~/work/film-out/sync-v2 OUT=~/work/film-out/studio-1080 scripts/film/studio/render-all.sh --resolution=1920x1080 \
   sync-terminal-web sync-phone sync-web-back trio-wide
-# suite-boot, once sync-v1 has boot-desktop/boot-web/boot-phone (or rename in the spec)
+# suite-boot (boot-terminal, boot-web, boot-phone)
 OUT=~/work/film-out/studio-1080 scripts/film/studio/render-all.sh --resolution=1920x1080 suite-boot
 # The same with stand-ins (regenerate them with: python3 scripts/film/studio/standin.py --sync)
 SYNC=~/work/film-out/studio/standin/sync OUT=~/work/film-out/studio-1080 \
@@ -118,7 +100,7 @@ SYNC=~/work/film-out/studio/standin/sync OUT=~/work/film-out/studio-1080 \
 # Single-device 4K finals (the default size); add --resolution=1920x1080 for review
 scripts/film/studio/render-all.sh macbook-chat macbook-terminal macbook-sync iphone-approve grid-plate
 # One look-dev still at T seconds, without a full render
-SYNC=~/work/film-out/sync-v1 /Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup \
+SYNC=~/work/film-out/sync-v2 /Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup \
   -P scripts/film/studio/studio.py -- --shot scripts/film/studio/shots/sync-phone.json \
   --out /tmp/look/sync-phone.mp4 --still 3 --resolution 1920x1080 --samples 16
 ```
@@ -140,12 +122,9 @@ up after itself, but a killed process leaves its frames behind.
 
 ## Left to do
 
-1. Render the four sync shots at 1080p from `sync-v1`. Check that each beat
-   happens on screen mid-shot, then nudge `in` and the `focus_track` times.
-2. Get the boot clips recorded, then render `suite-boot`.
-3. Re-render `macbook-sync` at 4K. Its last run failed, so the existing file
+1. Re-render `macbook-sync` at 4K. Its last run failed, so the existing file
    is the 12:47 render.
-4. Once the owner approves the 1080p review, render the multi-device shots at
+2. Once the owner approves the 1080p review, render the multi-device shots at
    4K by dropping `--resolution`.
 
 ## Known weaknesses

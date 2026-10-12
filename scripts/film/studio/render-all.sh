@@ -10,7 +10,7 @@
 #   --standin   use ~/work/film-out/studio/standin/ clips (standin.py) when a
 #               shot's real footage is missing, instead of skipping the shot
 # Multi-device sync shots (suite-boot, sync-*, trio-wide) read their clips
-# from $SYNC (default ~/work/film-out/sync-v1, recorded on one clock).
+# from $SYNC (default ~/work/film-out/sync-v2, recorded on one clock).
 # Render them by name: render-all.sh --resolution=1920x1080 suite-boot ...
 # BLENDER overrides Blender's path; FOOTAGE, SYNC and OUT override the directories.
 set -uo pipefail
@@ -53,7 +53,7 @@ for shot in "${shots[@]}"; do
     echo "render-all: unknown shot $shot" >&2; status=1; continue
   fi
   if [ "$clip" = devices ]; then  # several devices, each naming its clip under $SYNC
-    sync_dir=${SYNC:-$HOME/work/film-out/sync-v1}
+    sync_dir=${SYNC:-$HOME/work/film-out/sync-v2}
     if [ ! -d "$sync_dir" ]; then
       if [ $standin -eq 1 ]; then
         sync_dir=$standin_dir/sync

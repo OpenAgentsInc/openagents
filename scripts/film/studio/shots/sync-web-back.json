@@ -2,7 +2,7 @@
   "extends": "sync-base.json",
   "name": "sync-web-back",
   "cut": "A reply typed on the web lands in the terminal on the MacBook behind; focus racks to it.",
-  "duration": 6.5,
+  "duration": 7.0,
   "devices": [
     {
       "type": "display",
@@ -21,7 +21,7 @@
       },
       "screen": {
         "video": "$SYNC/web.mp4",
-        "in": 28.8,
+        "in": 26.0,
         "brightness": 1.35,
         "fit": "contain"
       }
@@ -45,7 +45,7 @@
       },
       "screen": {
         "video": "$SYNC/terminal.mp4",
-        "in": 28.8,
+        "in": 26.0,
         "brightness": 1.35,
         "fit": "cover"
       }
@@ -67,7 +67,7 @@
       },
       "screen": {
         "video": "$SYNC/phone.mp4",
-        "in": 28.8,
+        "in": 26.0,
         "brightness": 1.3
       }
     }
@@ -91,7 +91,7 @@
         "fstop": 3.2
       },
       {
-        "t": 6.5,
+        "t": 7.0,
         "pos": [
           -0.05,
           -0.88,
@@ -116,7 +116,7 @@
         ]
       },
       {
-        "t": 5.0,
+        "t": 5.4,
         "pull": 0.7,
         "at": [
           0.474,
