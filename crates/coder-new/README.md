@@ -19,7 +19,7 @@ Type `/` to see commands above the input, following the existing OpenAgents
 terminal's slash suggestions. The command and description occupy separate
 columns. Typing filters the list; Up/Down selects, Tab completes, Enter runs,
 and Esc dismisses it. The supported commands include `/demo`, `/plugins`, `/models`,
-`/appearance`, `/brainstorm`, and `/help`. `/models` appears when a model provider plugin is enabled;
+`/appearance`, `/preferences`, `/brainstorm`, and `/help`. `/models` appears when a model provider plugin is enabled;
 `/brainstorm` appears when its plugin is enabled.
 
 Enter `/appearance` to configure **Use System Terminal Background**. Press Space
@@ -27,6 +27,13 @@ or Enter to toggle it, and Esc to return. When on, Coder leaves backgrounds
 unpainted so your terminal's configured background shows. When off, Coder uses
 its existing background colors. The option defaults to off and persists in
 `~/.openagents/coder/appearance.json` (or your `--state` directory).
+
+Enter `/preferences` to say what Coder should favor when OpenAgents picks a
+model: **Cost efficiency**, **Speed**, and **Intelligence**, each from 1 to 5.
+Up/Down moves between them, and Left/Right (or `-` and `+`) lowers and raises
+the chosen one. Every preference starts at 3, and each choice is saved as you
+make it in `~/.openagents/coder/preferences.json` (or your `--state`
+directory). Esc returns to the screen you came from.
 
 Edit examples reuse Coder's port of Grok Build's diff renderer and syntax
 highlighter. Rust tokens keep their syntax colors on red and green change

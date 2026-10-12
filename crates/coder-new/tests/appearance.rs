@@ -90,6 +90,100 @@ fn assert_background_switching(mut app: App, width: u16, height: u16) {
 }
 
 #[test]
+fn preferences_command_sets_cost_speed_and_intelligence_without_submitting_chat() {
+    let temporary = temporary();
+    let store = Store::under(temporary.path());
+    let mut app = App::default();
+    app.load_plugin_settings(store.clone()).unwrap();
+    assert_eq!(
+        [
+            app.preferences.cost,
+            app.preferences.speed,
+            app.preferences.intelligence
+        ],
+        [coder_new::preferences::DEFAULT; 3]
+    );
+    assert_eq!(slash::matches("/pre"), [slash::Command::Preferences]);
+    assert!(slash::help().contains("/preferences"));
+    assert!(app.handle(Event::Paste("/preferences".into())));
+    key(&mut app, KeyCode::Enter);
+    assert!(app.screen == Screen::Preferences);
+
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    let rendered = text(&draw(&mut terminal, &mut app));
+    assert!(rendered.contains("Cost efficiency"));
+    assert!(rendered.contains("Speed"));
+    assert!(rendered.contains("Intelligence"));
+    assert!(rendered.contains("3/5"));
+    let mut narrow = Terminal::new(TestBackend::new(24, 12)).unwrap();
+    let rendered = text(&draw(&mut narrow, &mut app));
+    assert!(rendered.contains("Esc Back"));
+
+    // Down moves to Speed; Right and Left change only that row.
+    key(&mut app, KeyCode::Down);
+    assert_eq!(app.preferences.selected, 1);
+    key(&mut app, KeyCode::Right);
+    assert_eq!(app.preferences.speed, 4);
+    assert_eq!(app.preferences.cost, coder_new::preferences::DEFAULT);
+    let rendered = text(&draw(&mut terminal, &mut app));
+    assert!(rendered.contains("4/5"));
+    key(&mut app, KeyCode::Left);
+    key(&mut app, KeyCode::Left);
+    assert_eq!(app.preferences.speed, 2);
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(app.preferences.speed, 3);
+
+    let mut release = KeyEvent::new(KeyCode::Right, KeyModifiers::NONE);
+    release.kind = KeyEventKind::Release;
+    assert!(app.handle(Event::Key(release)));
+    assert!(app.handle(Event::Paste("ignored on preferences".into())));
+    key(&mut app, KeyCode::Char('x'));
+    assert_eq!(app.preferences.speed, 3);
+    assert!(app.draft.text.is_empty());
+    assert!(app.messages.is_empty());
+    assert!(app.request.is_none());
+
+    // Up stops at the first row and each choice survives a restart.
+    key(&mut app, KeyCode::Up);
+    key(&mut app, KeyCode::Up);
+    assert_eq!(app.preferences.selected, 0);
+    key(&mut app, KeyCode::Char('+'));
+    assert_eq!(app.preferences.cost, 4);
+    let mut restarted = App::default();
+    restarted.load_plugin_settings(store.clone()).unwrap();
+    assert_eq!(restarted.preferences.cost, 4);
+    assert_eq!(restarted.preferences.speed, 3);
+
+    key(&mut app, KeyCode::Esc);
+    assert!(app.screen == Screen::Conversation);
+
+    assert!(app.handle(Event::Paste("unsent draft".into())));
+    app.open_plugins();
+    app.open_preferences();
+    key(&mut app, KeyCode::Esc);
+    assert!(app.screen == Screen::Plugins);
+    assert_eq!(app.draft.text, "unsent draft");
+}
+
+#[test]
+fn damaged_preferences_show_an_error_and_keep_the_choices_unchanged() {
+    let temporary = temporary();
+    let path = temporary.path().join("preferences.json");
+    std::fs::write(&path, "invalid JSON").unwrap();
+    let mut app = App::default();
+    assert!(
+        app.load_plugin_settings(Store::under(temporary.path()))
+            .is_err()
+    );
+    app.open_preferences();
+    key(&mut app, KeyCode::Right);
+    assert_eq!(app.preferences.cost, coder_new::preferences::DEFAULT);
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "invalid JSON");
+    let mut terminal = Terminal::new(TestBackend::new(110, 24)).unwrap();
+    assert!(text(&draw(&mut terminal, &mut app)).contains("Cannot load the saved preferences"));
+}
+
+#[test]
 fn switching_backgrounds_preserves_text_and_foreground_styles_across_screens() {
     assert_background_switching(App::default(), 110, 70);
     let mut child = App::default();

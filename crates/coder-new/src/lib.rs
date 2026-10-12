@@ -55,6 +55,7 @@ pub mod plugin_definition;
 pub mod plugin_store;
 pub mod plugin_tools;
 pub mod plugins;
+pub mod preferences;
 pub mod programmatic;
 mod prompt_queue;
 pub mod provider;
@@ -98,6 +99,7 @@ pub enum Screen {
     Plugins,
     PluginSettings,
     Appearance,
+    Preferences,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -161,6 +163,7 @@ pub struct App {
     pub elapsed_seconds: u64,
     pub plugins: plugins::Plugins,
     pub appearance: appearance::Appearance,
+    pub preferences: preferences::Preferences,
     pub live: live::Chat,
     pub delegations: Vec<live::Delegation>,
     pub cwd: Option<std::path::PathBuf>,
@@ -230,6 +233,8 @@ pub struct App {
     return_screen: Screen,
     appearance_return_screen: Screen,
     appearance_error: Option<String>,
+    preferences_return_screen: Screen,
+    pub(crate) preferences_error: Option<String>,
     saved_chats: [Chat; 6],
     /// A `coder issue-run` in this terminal (#11214).
     issue_run: Option<issue_run::Feed>,
@@ -528,11 +533,13 @@ impl App {
     pub fn load_plugin_settings(&mut self, store: plugin_store::Store) -> Result<(), String> {
         let appearance = self.appearance.load(store.clone());
         self.appearance_error = appearance.as_ref().err().cloned();
+        let preferences = self.preferences.load(store.clone());
+        self.preferences_error = preferences.as_ref().err().cloned();
         let result = self.plugins.load_settings(store);
         if self.screen == Screen::PluginSettings {
             self.open_plugin_settings();
         }
-        result.and(appearance)
+        result.and(appearance).and(preferences)
     }
 
     pub fn set_mode(&mut self, mode: Mode) {
@@ -1079,6 +1086,7 @@ impl App {
             }),
             slash::Command::Plugins => self.open_plugins(),
             slash::Command::Appearance => self.open_appearance(),
+            slash::Command::Preferences => self.open_preferences(),
             slash::Command::Models => self.open_models(),
             slash::Command::Export => self.export(None),
             slash::Command::Resume => unreachable!("Resume is handled before clearing the draft"),
@@ -1846,6 +1854,15 @@ impl App {
         self.screen = Screen::Appearance;
     }
 
+    pub fn open_preferences(&mut self) {
+        self.resume_picker = None;
+        self.model_picker = None;
+        if self.screen != Screen::Preferences {
+            self.preferences_return_screen = self.screen;
+        }
+        self.screen = Screen::Preferences;
+    }
+
     pub fn open_plugins(&mut self) {
         self.plugins.catalog_revision = self.plugins.catalog_revision.wrapping_add(1);
         self.resume_picker = None;
@@ -2131,7 +2148,10 @@ impl App {
                         self.plugins.connection = plugins::Connection::Unchecked;
                     }
                     self.plugins.paste(&text);
-                } else if !matches!(self.screen, Screen::Plugins | Screen::Appearance) {
+                } else if !matches!(
+                    self.screen,
+                    Screen::Plugins | Screen::Appearance | Screen::Preferences
+                ) {
                     self.composer_history.reset();
                     let cwd = self.cwd.clone().unwrap_or_else(|| {
                         std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
@@ -2211,6 +2231,24 @@ impl App {
                                 self.appearance.toggle_system_terminal_background().err();
                         }
                         KeyCode::Esc => self.screen = self.appearance_return_screen,
+                        _ => {}
+                    }
+                    return true;
+                }
+                if self.screen == Screen::Preferences {
+                    match key.code {
+                        KeyCode::Up => self.preferences.up(),
+                        KeyCode::Down => self.preferences.down(),
+                        KeyCode::Right
+                        | KeyCode::Char('+' | '=')
+                        | KeyCode::Enter
+                        | KeyCode::Char(' ') => {
+                            self.preferences_error = self.preferences.higher().err();
+                        }
+                        KeyCode::Left | KeyCode::Char('-' | '_') => {
+                            self.preferences_error = self.preferences.lower().err();
+                        }
+                        KeyCode::Esc => self.screen = self.preferences_return_screen,
                         _ => {}
                     }
                     return true;

@@ -4,6 +4,7 @@ pub(crate) mod agents;
 mod appearance;
 mod models;
 mod plugins;
+mod preferences;
 mod resume;
 
 use coder_terminal::selection::{self, RowCopy};
@@ -50,6 +51,10 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 fn render_contents(frame: &mut Frame, app: &mut App) {
     if app.screen == Screen::Appearance {
         appearance::render(frame, frame.area(), app);
+        return;
+    }
+    if app.screen == Screen::Preferences {
+        preferences::render(frame, frame.area(), app);
         return;
     }
     // Both composers wrap at the terminal width less the frame and prompt gutter, and
@@ -175,7 +180,9 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
             },
             app,
         ),
-        Screen::Plugins | Screen::PluginSettings | Screen::Appearance => unreachable!(),
+        Screen::Plugins | Screen::PluginSettings | Screen::Appearance | Screen::Preferences => {
+            unreachable!()
+        }
     }
     let hints = app.slash_hints();
     let height = (hints.len() as u16).min(composer.y.saturating_sub(body.y));

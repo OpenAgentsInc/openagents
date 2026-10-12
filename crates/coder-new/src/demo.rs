@@ -106,6 +106,7 @@ pub(crate) fn screen(value: crate::Screen) -> view::Screen {
         crate::Screen::Plugins => view::Screen::Plugins,
         crate::Screen::PluginSettings => view::Screen::PluginSettings,
         crate::Screen::Appearance => view::Screen::Conversation,
+        crate::Screen::Preferences => view::Screen::Conversation,
     }
 }
 impl crate::App {

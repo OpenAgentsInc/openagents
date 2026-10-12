@@ -150,6 +150,7 @@ fn slash_picker_completes_and_executes_commands_without_submitting_messages() {
             Command::Demo,
             Command::Plugins,
             Command::Appearance,
+            Command::Preferences,
             Command::Export,
             Command::Resume,
             Command::Login,
@@ -159,13 +160,13 @@ fn slash_picker_completes_and_executes_commands_without_submitting_messages() {
     );
     key(&mut app, KeyCode::Up);
     assert_eq!(app.slash_selected, 0);
-    for _ in 0..7 {
+    for _ in 0..8 {
         key(&mut app, KeyCode::Down);
     }
-    assert_eq!(app.slash_selected, 7);
+    assert_eq!(app.slash_selected, 8);
     assert_eq!(app.selected_agent, None);
     assert!(render(&mut app, 80, 24).contains("❯ /help"));
-    for _ in 0..6 {
+    for _ in 0..7 {
         key(&mut app, KeyCode::Up);
     }
     key(&mut app, KeyCode::Tab);
