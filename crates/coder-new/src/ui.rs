@@ -708,7 +708,10 @@ fn context_text(app: &App) -> String {
     // In claude mode the plan rides the top rail ([`top_rail`]).
     let now = atif::now_ms() / 1000;
     if app.mode != Mode::Claude
-        && let Some(plan) = crate::claude_plan::status_text(now, &crate::long_session::clock)
+        // Only the 5-hour and weekly percentages: no reset time, which
+        // read as today's clock for a window that resets days later
+        // (owner, 2026-10-12).
+        && let Some(plan) = crate::claude_plan::rail_text(now)
     {
         parts.push(plan);
     }
