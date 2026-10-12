@@ -2300,7 +2300,9 @@ fn turn(
             }
         })
         .author("OpenAgents"),
-        Role::Tool => ThreadMessage::status(&message.text),
+        // Tool steps are progress lines ("Run: npm test"), not failures, so
+        // their "Status" heading stays for screen readers only.
+        Role::Tool => ThreadMessage::status(&message.text).quiet(),
     }
     .id(format!("chat-message-{index}"))
 }
