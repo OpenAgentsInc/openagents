@@ -1,7 +1,7 @@
 //! Signing Coder in to an openagents.com account (#11045): `coder-new
 //! login` / `logout` and `/login` / `/logout`, over the website's device
 //! code ([`openagents_login`]). The token lives in
-//! `~/.openagents/coder-new/account.json` (0600), never in session files,
+//! `~/.openagents/coder/account.json` (0600), never in session files,
 //! and is never shown or logged.
 
 use std::io::Write;

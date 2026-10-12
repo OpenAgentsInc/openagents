@@ -185,15 +185,12 @@ fn run() -> io::Result<()> {
     let openagents_root = model_access::store::openagents_dir();
     let update = state
         .clone()
-        .or_else(|| openagents_root.as_ref().map(|root| root.join("coder-new")))
+        .or_else(|| coder_new::home::data_dir())
         .and_then(|dir| start_update(&dir, &mut app));
     let update_events = update
         .as_ref()
         .and_then(|context| coder_new::update::spawn_check(context.clone()));
-    if let Some(store) = state
-        .clone()
-        .or_else(|| openagents_root.as_ref().map(|root| root.join("coder-new")))
-    {
+    if let Some(store) = state.clone().or_else(|| coder_new::home::data_dir()) {
         app.account = coder_new::account::signed_in(&store);
         app.account_dir = Some(store.clone());
         app.attach_session_store(coder_new::sessions::Store::under(&store));
@@ -501,9 +498,8 @@ fn start_update(dir: &std::path::Path, app: &mut App) -> Option<coder_new::updat
 
 /// `coder update [--check | --rollback | --mode MODE | --channel NAME]` (#11128).
 fn update_command(rest: &[String]) -> io::Result<()> {
-    let dir = model_access::store::openagents_dir()
-        .map(|root| root.join("coder-new"))
-        .ok_or_else(|| io::Error::other("Set HOME to update Coder."))?;
+    let dir =
+        coder_new::home::data_dir().ok_or_else(|| io::Error::other("Set HOME to update Coder."))?;
     coder_new::update::command(rest, &dir, &mut io::stdout()).map_err(|message| {
         if message.starts_with("Unknown option") || message.starts_with("Choose") {
             io::Error::new(io::ErrorKind::InvalidInput, message)
@@ -556,7 +552,7 @@ fn account_command(command: &str, rest: &[String]) -> io::Result<()> {
         }
     }
     let dir = state
-        .or_else(|| model_access::store::openagents_dir().map(|root| root.join("coder-new")))
+        .or_else(|| coder_new::home::data_dir())
         .ok_or_else(|| io::Error::other("Set HOME, or pass --state DIR."))?;
     let mut out = io::stdout();
     if key && pair.is_some() {
@@ -626,7 +622,7 @@ fn trace_command(rest: &[String]) -> io::Result<()> {
         return Ok(());
     }
     let dir = dir
-        .or_else(|| model_access::store::openagents_dir().map(|root| root.join("coder-new")))
+        .or_else(|| coder_new::home::data_dir())
         .ok_or_else(|| io::Error::other("Set HOME, or pass --state DIR."))?;
     let cwd = std::env::current_dir()?;
     match coder_new::trace_upload::run(&args, &dir, &cwd) {
@@ -654,7 +650,7 @@ fn sync_command(rest: &[String]) -> io::Result<()> {
         return Ok(());
     }
     let dir = match rest {
-        [] => model_access::store::openagents_dir().map(|root| root.join("coder-new")),
+        [] => coder_new::home::data_dir(),
         [flag, dir] if flag == "--state" => Some(std::path::PathBuf::from(dir)),
         _ => {
             return Err(io::Error::new(
@@ -695,7 +691,7 @@ fn export_command(rest: &[String]) -> io::Result<()> {
         return Ok(());
     }
     let dir = dir
-        .or_else(|| model_access::store::openagents_dir().map(|root| root.join("coder-new")))
+        .or_else(|| coder_new::home::data_dir())
         .ok_or_else(|| io::Error::other("Set HOME, or pass --state DIR."))?;
     let cwd = std::env::current_dir()?;
     match coder_new::account_export::run(&args, &dir, &cwd) {
@@ -741,7 +737,7 @@ Options:
   --plugins           Open plugins first.
   --plugin-settings   Open the OpenRouter key settings first.
   --follow ID         Watch a chat another program is running; press any key to take it over.
-  --state DIR         Keep Coder's data in DIR instead of ~/.openagents/coder-new.
+  --state DIR         Keep Coder's data in DIR instead of ~/.openagents/coder.
   --live              Use your providers and tools (the default).
 {demo_option}  --snapshot          Print a 110x36 SVG picture of the {snapshot_mode} screen and exit.
   -V, --version       Print the version.

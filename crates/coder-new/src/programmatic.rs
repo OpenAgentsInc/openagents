@@ -84,7 +84,7 @@ Options: --json streams NDJSON events for chat and delegation.
          With --approvals, Codex stays read-only and asks nobody.
          --approvals tool-free refuses all model tools, including reads.
          --in DIR sets the working directory; --state DIR sets the Coder store.
-Settings default to ~/.openagents/coder-new. Sessions use its sessions directory.
+Settings default to ~/.openagents/coder. Sessions use its sessions directory.
 Keys are accepted through environment variables or configuration stdin, never printed."
         )
     };
@@ -193,10 +193,7 @@ pub fn run(arguments: &[String], json_mode: bool) -> u8 {
         Ok(value) => value,
         Err(error) => return print_error(error, json_mode),
     };
-    let root = match state
-        .map(PathBuf::from)
-        .or_else(|| model_access::store::openagents_dir().map(|root| root.join("coder-new")))
-    {
+    let root = match state.map(PathBuf::from).or_else(|| crate::home::data_dir()) {
         Some(root) => root,
         None => {
             return print_error(

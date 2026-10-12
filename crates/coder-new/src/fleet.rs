@@ -38,7 +38,7 @@ pub struct Host {
     pub fleet: Fleet,
     /// The chat that starts agents; their transcripts link to it.
     pub parent_session: Option<String>,
-    /// Where transcripts are written: `~/.openagents/coder-new/agents`.
+    /// Where transcripts are written: `~/.openagents/coder/agents`.
     pub transcripts: Option<PathBuf>,
     /// The lease table, when this machine has one.
     pub leases: Option<PathBuf>,
@@ -63,7 +63,9 @@ impl Host {
         Self {
             fleet,
             parent_session,
-            transcripts: home.as_ref().map(|dir| dir.join("coder-new/agents")),
+            transcripts: home
+                .as_ref()
+                .map(|dir| dir.join(crate::home::DIR).join("agents")),
             leases: if cfg!(test) {
                 None
             } else {

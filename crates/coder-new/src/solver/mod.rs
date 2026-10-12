@@ -239,7 +239,7 @@ Options:
   --snapshot FILE       Also save a picture of the whole run as an SVG file.
   --replay FILE         Play a recorded run (its events.jsonl) again.
   --speed X             Play a recording X times faster (default 1).
-  --state DIR           Where runs live (default ~/.openagents/coder-new/solver-runs).";
+  --state DIR           Where runs live (default ~/.openagents/coder/solver-runs).";
 
 /// Which hand works.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -351,10 +351,9 @@ pub fn coder_model(options: &Options, size: hands::Size, round: usize) -> String
     }
 }
 
-/// `~/.openagents/coder-new/solver-runs`.
+/// `~/.openagents/coder/solver-runs`.
 fn default_state() -> PathBuf {
-    model_access::store::openagents_dir()
-        .map(|root| root.join("coder-new").join("solver-runs"))
+    crate::home::data_path("solver-runs")
         .unwrap_or_else(|| std::env::temp_dir().join("coder-solver-runs"))
 }
 

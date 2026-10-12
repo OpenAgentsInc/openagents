@@ -31,6 +31,7 @@ mod fleet_app;
 mod git_guard;
 pub mod github_tool;
 pub mod harness;
+pub mod home;
 pub mod identity;
 pub mod issue_run;
 pub mod jev_plugin;
@@ -166,7 +167,7 @@ pub struct App {
     pub branch: Option<String>,
     /// The signed-in openagents.com account's name (#11045).
     pub account: Option<String>,
-    /// Where the account sign-in is kept (`~/.openagents/coder-new`).
+    /// Where the account sign-in is kept (`~/.openagents/coder`).
     pub account_dir: Option<std::path::PathBuf>,
     pub(crate) login: Option<account::Login>,
     /// Saving chats to the account (#11046), once read.

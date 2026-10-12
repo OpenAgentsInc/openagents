@@ -650,7 +650,10 @@ fn shared_target(command: &mut tokio::process::Command) {
     {
         command.env(
             "CARGO_TARGET_DIR",
-            std::path::Path::new(&home).join(".openagents/coder-new/target"),
+            std::path::Path::new(&home)
+                .join(".openagents")
+                .join(crate::home::DIR)
+                .join("target"),
         );
     }
 }
@@ -673,7 +676,10 @@ pub async fn sweep_shared_target() {
     let Some(home) = std::env::var_os("HOME") else {
         return;
     };
-    let target = std::path::Path::new(&home).join(".openagents/coder-new/target");
+    let target = std::path::Path::new(&home)
+        .join(".openagents")
+        .join(crate::home::DIR)
+        .join("target");
     if !target.is_dir()
         || free_bytes(&target)
             .await
