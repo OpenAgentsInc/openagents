@@ -505,6 +505,37 @@ impl Channel {
         Ok(())
     }
 
+    /// A new member named `prefix-N`, N the lowest free number from one,
+    /// joins and its name is returned: short and stable, never the task
+    /// (#11467).
+    ///
+    /// # Errors
+    /// The state cannot be written.
+    pub fn join_numbered(&self, prefix: &str) -> Result<String, String> {
+        let prefix = sanitize(prefix);
+        let member = self.with_state(|state| {
+            let member = (1..)
+                .map(|n| format!("{prefix}-{n}"))
+                .find(|name| !state.members.contains_key(name))
+                .unwrap_or_default();
+            state.members.insert(
+                member.clone(),
+                Member {
+                    name: member.clone(),
+                    joined_at: now_ms(),
+                    finished_at: None,
+                },
+            );
+            Ok(member)
+        })?;
+        self.append(&Record {
+            at: now_ms(),
+            kind: "join".into(),
+            body: json!({ "member": member }),
+        })?;
+        Ok(member)
+    }
+
     /// A member finishes: every lease it holds is released and it is marked
     /// finished, so no other member waits on it.
     ///

@@ -326,3 +326,16 @@ fn a_session_channel_name_is_safe_as_one_path_segment() {
     assert!(!session_id(None).is_empty());
     assert_eq!(Channel::member_name("solver", "11346"), "solver-11346");
 }
+
+/// A delegated agent joins as its id and a number, never its task (#11467).
+#[test]
+fn a_delegated_agent_joins_under_a_short_numbered_name() {
+    let (_dir, channel) = channel();
+    assert_eq!(channel.join_numbered("grok-build").unwrap(), "grok-build-1");
+    assert_eq!(channel.join_numbered("grok-build").unwrap(), "grok-build-2");
+    assert_eq!(
+        channel.join_numbered("claude-code").unwrap(),
+        "claude-code-1"
+    );
+    assert_eq!(channel.members().unwrap().len(), 3);
+}
