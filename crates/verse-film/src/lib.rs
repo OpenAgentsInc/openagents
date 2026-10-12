@@ -10,6 +10,9 @@
 #[cfg(feature = "gpu")]
 pub mod render;
 
+#[cfg(feature = "gpu")]
+pub mod export;
+
 #[cfg(feature = "layers")]
 pub mod layers;
 pub mod take;
