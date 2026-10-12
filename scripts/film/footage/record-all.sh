@@ -4,6 +4,11 @@
 #
 #   scripts/film/footage/record-all.sh [--no-build]
 #
+# Unless --no-build, the stack's binaries and Coder are rebuilt first, even
+# when the stack already runs, and a running stack whose binaries are now
+# newer than it is restarted. FILM_IOS=0 skips the iPhone app shot (it
+# builds bins/openagents-ios for a simulator, the first time a while).
+#
 # What runs: the whole 1.0 web stack on this Mac (scripts/dev/full-local.sh:
 # the gateway as account service and inference gateway, the chat worker,
 # the website on 127.0.0.1:4301), in its own state folder so your other
@@ -15,7 +20,10 @@
 #   3. phone-approve.mp4  `coder login` in a real terminal, approved from a
 #                         phone-sized browser at /device;
 #   4. terminal-coder.mp4 Coder fixing a real repository's failing tests,
-#      web-sync.mp4       and the same chat appearing on the website.
+#      web-sync.mp4       and the same chat appearing on the website;
+#   5. phone-app.mp4      the OpenAgents iPhone app (a simulator debug
+#                         build) on Running while Coder works the same task:
+#                         the card appears, works, and turns to Done.
 #
 # Model answers are real (the chat worker and Coder call real models
 # through the local gateway). Long waits are shortened in the edit; nothing
@@ -46,8 +54,31 @@ if [ ! -f "$cache/node_modules/@xterm/xterm/lib/xterm.js" ] || [ ! -d "$cache/no
         && npm install --silent @xterm/xterm@5.5.0 @xterm/headless@5.5.0)
 fi
 
-# The local stack, in its own state folder.
-FULL_LOCAL="$state" FULL_LOCAL_ENVIRONMENTS=0 "$root/scripts/dev/full-local.sh" start "$@"
+build=1
+for arg in "$@"; do [ "$arg" = --no-build ] && build=0; done
+stack() { FULL_LOCAL="$state" FULL_LOCAL_ENVIRONMENTS=0 "$root/scripts/dev/full-local.sh" "$@"; }
+binaries="gateway coder-worker openagents-web coder-new"
+if [ "$build" = 1 ]; then
+    # The same binaries full-local.sh builds, built now even when the stack
+    # runs, so a recording never uses an old Coder or site.
+    echo "Building the stack and Coder into $CARGO_TARGET_DIR ..."
+    cargo build -q --manifest-path "$root/Cargo.toml" -p gateway --bin gateway -p coder --bin coder-worker \
+        -p openagents-web --bin openagents-web -p coder-new --bin coder-new \
+        -p tenancy --example bootstrap_registry
+    # A running stack started before these binaries were built is stale.
+    if [ -f "$state/run/web.pid" ] && kill -0 "$(cat "$state/run/web.pid")" 2>/dev/null; then
+        for bin in $binaries; do
+            if [ "$CARGO_TARGET_DIR/debug/$bin" -nt "$state/run/web.pid" ]; then
+                echo "The running stack is older than $bin; restarting it."
+                stack stop
+                break
+            fi
+        done
+    fi
+fi
+
+# The local stack, in its own state folder (built above, so no build here).
+stack start --no-build
 # shellcheck disable=SC1091
 . "$state/run/ports"
 base="http://127.0.0.1:$web_port"
@@ -83,7 +114,25 @@ echo "Recording terminal-coder.mp4 and web-sync.mp4..."
 "$here/make-demo-repo.sh" "$FILM_REPO"
 node "$here/coder-session.mjs"
 
-for clip in web-chat web-sync phone-approve terminal-coder; do
+if [ "${FILM_IOS:-1}" != 0 ]; then
+    echo "Recording phone-app.mp4 (the iPhone app)..."
+    # One simulator of its own, named plainly, kept between runs.
+    sim_file="$HOME/work/film-out/.film-sim-udid"
+    sim=$(cat "$sim_file" 2>/dev/null || true)
+    if [ -z "$sim" ] || ! xcrun simctl list devices | grep -q "$sim"; then
+        sim=$(xcrun simctl create iPhone com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro)
+        echo "$sim" > "$sim_file"
+    fi
+    xcrun simctl boot "$sim" 2>/dev/null || true
+    if [ "$build" = 1 ] || [ ! -f "$CARGO_TARGET_DIR/aarch64-apple-ios-sim/debug/libopenagents_mobile.a" ]; then
+        OPENAGENTS_IOS_DEVICE="$sim" "$root/bins/openagents-ios/build.sh" sim > "$work/ios-build.log" 2>&1 \
+            || { tail -20 "$work/ios-build.log" >&2; exit 1; }
+    fi
+    FILM_SIM="$sim" FILM_GATEWAY="http://127.0.0.1:$gateway_port" node "$here/phone-app.mjs"
+fi
+
+for clip in web-chat web-sync phone-approve terminal-coder phone-app; do
+    [ -f "$out/$clip.mp4" ] || continue
     ffprobe -v error -select_streams v:0 -show_entries stream=width,height,r_frame_rate:format=duration \
         -of compact=p=0:nk=1 "$out/$clip.mp4" | tr '\n' ' ' | sed "s|^|$clip.mp4: |"
     echo
