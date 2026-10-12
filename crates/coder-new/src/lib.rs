@@ -38,6 +38,7 @@ mod fleet_app;
 mod git_guard;
 pub mod github_tool;
 pub mod harness;
+pub mod harness_plugin;
 pub mod home;
 pub mod identity;
 pub mod issue_run;
