@@ -403,6 +403,8 @@ website cookie), `app` (`sess_` from device sign-in), `nostr` (NIP-98),
 | `GET`/`DELETE /v1/traces/{id}`, `POST /v1/traces/{id}/share` | web `/api/traces/{id}`, `/api/traces/{id}/share` | Read, delete, share a trace | PUBLIC | key `traces` / app / session | `work.traces` + bucket | launch (first-party) |
 | `GET /v1/traces/{id}/public` | page `GET /trace/{id}` | A shared trace, no key | PUBLIC | none | `work.traces` (public) | launch (page) |
 
+Managed agents are proposed in [Managed Agents](managed-agents.md) and are not built. That API adds `/v1/agents` and reuses `/v1/sessions`, `/v1/environments`, `/v1/files`, and `/v1/skills` for a different object than account sign-in and the website's repository-environment routes. The managed-agents doc says how the shared paths stay distinct.
+
 ### 4.5 registry
 
 | Endpoint | Today | Purpose | Aud. | Auth | Data | Status |
