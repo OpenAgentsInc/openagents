@@ -15,7 +15,7 @@ use crate::Args;
 #[cfg(test)]
 use coder::cli_route::tree::{Declared, Effect};
 
-pub(crate) const PROJECT_USAGE: &str = "usage: openagents project COMMAND [OPTIONS]
+pub(crate) const PROJECT_USAGE: &str = "usage: openagents board COMMAND [OPTIONS]
   list [--project N] [--status NAME] [--every-repo] [--repo OWNER/NAME]
         The board's items in board order, with their status; --status keeps
         one status (\"none\" for items without one). Only this repository's
@@ -30,7 +30,8 @@ pub(crate) const PROJECT_USAGE: &str = "usage: openagents project COMMAND [OPTIO
 The board is --project, else `project.number` in .openagents/coder-issues.json;
 the status field is that file's `project.field` (\"Status\"). Uses GH_TOKEN,
 GITHUB_TOKEN, or the GitHub CLI's sign-in; boards need the project scope
-(`gh auth refresh -s project`).";
+(`gh auth refresh -s project`). Your openagents.com projects are
+openagents projects.";
 
 #[cfg(test)]
 pub(crate) const PROJECT_EFFECTS: &[Declared] = &[

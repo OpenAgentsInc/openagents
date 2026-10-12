@@ -285,16 +285,16 @@ fn expires_days(text: &str) -> Result<Option<u64>, String> {
         .ok_or_else(|| format!("--expires is never, 30d, or 90d, not `{text}`"))
 }
 
-/// The website, as the signed-in account.
-struct Site {
-    saved: Saved,
+/// The website, as the signed-in account (also `openagents projects`).
+pub(crate) struct Site {
+    pub(crate) saved: Saved,
     /// The folder the sign-in came from, when it wasn't the environment.
     dir: Option<PathBuf>,
-    http: reqwest::blocking::Client,
+    pub(crate) http: reqwest::blocking::Client,
 }
 
 impl Site {
-    fn open(dir: Option<&str>) -> Result<Self, String> {
+    pub(crate) fn open(dir: Option<&str>) -> Result<Self, String> {
         let from_env = dir
             .is_none()
             .then(|| Saved::from_env(|name| std::env::var(name).ok()))
@@ -321,7 +321,9 @@ impl Site {
         Ok(Self { saved, dir, http })
     }
 
-    fn answer(response: reqwest::Result<reqwest::blocking::Response>) -> Result<Value, String> {
+    pub(crate) fn answer(
+        response: reqwest::Result<reqwest::blocking::Response>,
+    ) -> Result<Value, String> {
         let response = response.map_err(|_| "The website couldn't be reached.".to_owned())?;
         let status = response.status();
         let body: Value = response.json().unwrap_or(Value::Null);
@@ -338,7 +340,7 @@ impl Site {
             .map_or_else(|| format!("The website answered {status}."), str::to_owned))
     }
 
-    fn url(&self, path: &str) -> String {
+    pub(crate) fn url(&self, path: &str) -> String {
         format!("{}{path}", self.saved.origin)
     }
 

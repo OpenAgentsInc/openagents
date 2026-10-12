@@ -392,6 +392,11 @@ openagents projects files remove NAME|ID FILE
 openagents projects notes add NAME|ID --title T (--text TEXT | --file PATH)
 ```
 
+Built today: `list`, `show NAME|ID` (the project and its chats), `threads
+NAME|ID`, `add OWNER/REPO` (a project is one repository), and `remove
+NAME|ID [--detach-threads]`, each with `--json`; a project is found by its
+name, its repository, or its id. `files` and `notes` come with step 4.
+
 It uses the sign-in `openagents login` saved. The GitHub Project board
 command becomes `openagents board`, with `project` kept as a hidden alias
 for one release.

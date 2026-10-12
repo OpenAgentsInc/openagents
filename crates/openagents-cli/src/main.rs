@@ -95,6 +95,7 @@ mod plugin_use;
 #[cfg(unix)]
 mod plugin_workbench;
 mod pr;
+mod projects;
 mod provider_key;
 #[cfg(unix)]
 mod pylon_wallet;
@@ -171,7 +172,10 @@ Coder:
   issue        GitHub issues: create, comment, close, reopen, list, view, and
                claim, release, and pick up (the claim record every agent and
                Coder share).
-  project      GitHub Project boards: list items by status, add an issue, and
+  projects     Your openagents.com projects (the Projects list on the
+               website): list, show one with its chats, add, remove, and
+               private files.
+  board        GitHub Project boards: list items by status, add an issue, and
                move it to a status.
   lease        Run a command under a lease on a shared resource (build slots,
                quiet, the screen, the GPU), and list holders and waiters.
@@ -393,7 +397,9 @@ fn main() -> ExitCode {
         "pair" => runtime().block_on(pair(&rest)),
         "task" => runtime().block_on(coder::task::cli::run_with_json(&rest, json)),
         "issue" => issue::run(&output, &rest),
-        "project" => issue::project(&output, &rest),
+        "projects" => projects::run(&output, &rest),
+        // `project` is the board's older name, kept for one release (#11471).
+        "board" | "project" => issue::project(&output, &rest),
         "lease" | "leases" => lease::run(&output, &rest),
         "sales" => sales::run(&output, &rest),
         "customer" => customer::run(&output, &rest),

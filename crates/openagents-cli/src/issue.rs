@@ -53,7 +53,7 @@ pub(crate) const USAGE: &str = "usage: openagents issue COMMAND [OPTIONS]
 The repository is the checkout here unless --repo names one; field and value
 names come from .openagents/coder-issues.json (`project`). create, comment,
 close, reopen, list, and view use GH_TOKEN, GITHUB_TOKEN, or the GitHub CLI's
-sign-in; `openagents project` lists and moves board items.";
+sign-in; `openagents board` lists and moves board items.";
 
 /// What each command above does and where the phone runs it, for the
 /// chat router's command tree (`coder::cli_route::tree`).
@@ -174,22 +174,22 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     0
 }
 
-/// `openagents project COMMAND`.
+/// `openagents board COMMAND` (also `openagents project`, its older name).
 pub fn project(output: &Output, words: &[String]) -> u8 {
     let usage = crate::github_verbs::PROJECT_USAGE;
     let Some((command, rest)) = words.split_first() else {
-        return output.usage("project", "a command is required", usage);
+        return output.usage("board", "a command is required", usage);
     };
     if matches!(command.as_str(), "help" | "-h" | "--help") {
         println!("{usage}");
         return 0;
     }
     if !matches!(command.as_str(), "list" | "add" | "move") {
-        return output.usage("project", &format!("unknown command `{command}`"), usage);
+        return output.usage("board", &format!("unknown command `{command}`"), usage);
     }
     match Args::parse(rest, &["every-repo"]) {
         Ok(args) => github(output, "project", command, &args, usage),
-        Err(message) => output.usage("project", &message, usage),
+        Err(message) => output.usage("board", &message, usage),
     }
 }
 

@@ -4269,7 +4269,7 @@
               "chat"
             ],
             "usage": [
-              "chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID] [--instructions TEXT | --instructions-file FILE] [--mode auto|coder|claude] [--in-place] [--demo]"
+              "chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID] [--instructions TEXT | --instructions-file FILE] [--mode auto|coder] [--in-place] [--demo]"
             ],
             "forms": [
               {
@@ -4331,11 +4331,10 @@
                   {
                     "kind": "option",
                     "name": "mode",
-                    "value": "auto|coder|claude",
+                    "value": "auto|coder",
                     "choices": [
                       "auto",
-                      "coder",
-                      "claude"
+                      "coder"
                     ],
                     "optional": true
                   },
@@ -5641,11 +5640,10 @@
         {
           "kind": "option",
           "name": "mode",
-          "value": "auto|coder|claude",
+          "value": "auto|coder",
           "choices": [
             "auto",
-            "coder",
-            "claude"
+            "coder"
           ],
           "optional": true,
           "repeated": true
@@ -7137,14 +7135,174 @@
       ]
     },
     {
-      "name": "project",
+      "name": "projects",
+      "summary": "Your openagents.com projects (the Projects list on the website): list, show one with its chats, add, remove, and private files.",
+      "children": [
+        {
+          "name": "list",
+          "leaf": {
+            "path": [
+              "projects",
+              "list"
+            ],
+            "usage": [
+              "list"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "list"
+                  }
+                ]
+              }
+            ],
+            "summary": "Your openagents.com projects: name, repository, chats, and last activity.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "show",
+          "leaf": {
+            "path": [
+              "projects",
+              "show"
+            ],
+            "usage": [
+              "show PROJECT"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "show"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PROJECT"
+                  }
+                ]
+              }
+            ],
+            "summary": "One project, by name, repository, or id, with its chats.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "threads",
+          "leaf": {
+            "path": [
+              "projects",
+              "threads"
+            ],
+            "usage": [
+              "threads PROJECT"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "threads"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PROJECT"
+                  }
+                ]
+              }
+            ],
+            "summary": "The project's chats, oldest activity first.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "add",
+          "leaf": {
+            "path": [
+              "projects",
+              "add"
+            ],
+            "usage": [
+              "add REPOSITORY"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "add"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "REPOSITORY"
+                  }
+                ]
+              }
+            ],
+            "summary": "Add a project from a connected GitHub repository (owner/name).",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "remove",
+          "leaf": {
+            "path": [
+              "projects",
+              "remove"
+            ],
+            "usage": [
+              "remove PROJECT [--detach-threads]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "remove"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PROJECT"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "detach-threads",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Remove a project. With chats in it, --detach-threads keeps them, outside any project.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "detach-threads",
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
+      "name": "board",
       "summary": "GitHub Project boards: list items by status, add an issue, and move it to a status.",
       "children": [
         {
           "name": "list",
           "leaf": {
             "path": [
-              "project",
+              "board",
               "list"
             ],
             "usage": [
@@ -7195,7 +7353,7 @@
           "name": "add",
           "leaf": {
             "path": [
-              "project",
+              "board",
               "add"
             ],
             "usage": [
@@ -7245,7 +7403,7 @@
           "name": "move",
           "leaf": {
             "path": [
-              "project",
+              "board",
               "move"
             ],
             "usage": [

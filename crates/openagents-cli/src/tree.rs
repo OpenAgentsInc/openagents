@@ -216,7 +216,12 @@ pub fn help() -> Vec<GroupHelp<'static>> {
         group("task", Some(coder::task::cli::USAGE), TASK),
         group("issue", Some(crate::issue::USAGE), crate::issue::EFFECTS),
         group(
-            "project",
+            "projects",
+            Some(crate::projects::USAGE),
+            crate::projects::EFFECTS,
+        ),
+        group(
+            "board",
             Some(crate::github_verbs::PROJECT_USAGE),
             crate::github_verbs::PROJECT_EFFECTS,
         ),
