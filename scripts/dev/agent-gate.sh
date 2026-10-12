@@ -6,7 +6,7 @@
 #   pre    PreToolUse on Agent|Workflow: refuses a new agent or workflow when
 #          the capacity book says claude is out (`openagents capacity check
 #          claude`), when a usage limit parked agents and nobody resumed, or
-#          when OA_AGENT_MAX agents (default 3) are already running.
+#          when OA_AGENT_MAX agents (default 4) are already running.
 #   start  SubagentStart: counts a running agent.
 #   stop   SubagentStop: uncounts it.
 #   limit  StopFailure / PostToolUseFailure: when the failure is a usage
@@ -22,7 +22,7 @@
 set -uo pipefail
 
 DIR=${OA_AGENT_GATE_DIR:-$HOME/.openagents/agent-gate}
-MAX=${OA_AGENT_MAX:-3}
+MAX=${OA_AGENT_MAX:-4}
 STALE_MIN=${OA_AGENT_STALE_MIN:-360}
 OPENAGENTS=${OA_OPENAGENTS_BIN:-$(command -v openagents || echo "$HOME/.openagents/bin/openagents")}
 mkdir -p "$DIR/active"
