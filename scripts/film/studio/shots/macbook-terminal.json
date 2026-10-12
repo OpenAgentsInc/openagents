@@ -1,0 +1,30 @@
+{
+  "extends": "macbook-chat.json",
+  "name": "macbook-terminal",
+  "cut": "Row 4, 17-24 s: push in on Coder working a task in the terminal.",
+  "duration": 7.5,
+  "screen": {
+    "video": "~/work/film-out/footage/terminal-coder.mp4",
+    "in": 3.5,
+    "brightness": 1.15
+  },
+  "camera": {
+    "ease": "inout",
+    "keys": [
+      {
+        "t": 0,
+        "orbit": [-22, 19, 1.18],
+        "target": [0.0, 0.06, 0.09],
+        "lens": 50,
+        "fstop": 5.6
+      },
+      {
+        "t": 7.5,
+        "orbit": [0, 22, 0.6],
+        "target": [0, 0.1445, 0.116],
+        "lens": 50,
+        "fstop": 8.0
+      }
+    ]
+  }
+}
