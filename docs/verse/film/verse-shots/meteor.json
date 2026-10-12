@@ -1,0 +1,50 @@
+{
+  "name": "meteor",
+  "notes": "Montage (cut row 7): golden-hour push-in on the two kit houses as the eight meteors arc in and strike; the zone's own blast shake on top of a handheld drift. Render with VERSE_KIT_PACK set to the pinned kit pack.",
+  "scene": {
+    "kind": "meteor",
+    "cast_at": -3.6,
+    "start": 4.1
+  },
+  "duration": 6.0,
+  "subframes": 8,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          -36.0,
+          7.0,
+          -64.0
+        ],
+        "target": [
+          -55.0,
+          9.0,
+          -7.0
+        ],
+        "focal_mm": 28
+      },
+      {
+        "t": 6.0,
+        "eye": [
+          -42.0,
+          5.5,
+          -46.0
+        ],
+        "target": [
+          -55.5,
+          7.0,
+          -7.0
+        ],
+        "focal_mm": 32,
+        "ease": "out"
+      }
+    ],
+    "shake": {
+      "amplitude": 0.002,
+      "position": 0.03,
+      "frequency": 0.5,
+      "seed": 11
+    }
+  }
+}

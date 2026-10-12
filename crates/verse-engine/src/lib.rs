@@ -8,6 +8,7 @@ pub mod audio;
 pub mod audio_bank;
 pub mod audio_cues;
 pub mod audio_stream;
+pub mod camera_rig;
 pub mod core;
 pub mod director;
 pub mod environment;

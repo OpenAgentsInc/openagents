@@ -1,0 +1,82 @@
+{
+  "name": "druid",
+  "notes": "Montage (cut row 7): the druid in the Grove at golden hour. A slow orbit behind her shoulder as she calls a Moonbeam down on a straw dummy, the focus racking from her to the beam. The dummies' bars and numbers are off (Grove film mode).",
+  "scene": {
+    "kind": "grove",
+    "spawn": [
+      0.0,
+      0.0,
+      -15.0
+    ],
+    "yaw": 0.0,
+    "casts": [
+      {
+        "at": 0.6,
+        "slot": 22
+      }
+    ]
+  },
+  "hour": 17.35,
+  "duration": 5.0,
+  "subframes": 8,
+  "near": 0.3,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          1.9,
+          1.75,
+          -18.8
+        ],
+        "target": [
+          0.2,
+          1.35,
+          -9.0
+        ],
+        "focal_mm": 32,
+        "f_stop": 2.0,
+        "focus": 3.4
+      },
+      {
+        "t": 1.6,
+        "eye": [
+          0.6,
+          1.72,
+          -19.1
+        ],
+        "target": [
+          0.4,
+          1.35,
+          -9.0
+        ],
+        "focal_mm": 33,
+        "f_stop": 2.0,
+        "focus": 3.5,
+        "ease": "in_out"
+      },
+      {
+        "t": 5.0,
+        "eye": [
+          -2.3,
+          1.62,
+          -18.2
+        ],
+        "target": [
+          0.6,
+          1.3,
+          -9.0
+        ],
+        "focal_mm": 35,
+        "f_stop": 2.0,
+        "focus": 9.5
+      }
+    ],
+    "shake": {
+      "amplitude": 0.002,
+      "position": 0.01,
+      "frequency": 0.4,
+      "seed": 3
+    }
+  }
+}

@@ -2448,6 +2448,14 @@ impl WorldRuntime {
         self.zone_state.demolition = on;
     }
 
+    /// Draws the Grove without its in-world interface (the dummies' bars,
+    /// names, and numbers, and the target ring), for film shots (#11432).
+    pub fn set_grove_film(&mut self, on: bool) {
+        if let Some(grove) = self.zone_state.grove.as_deref_mut() {
+            grove.film = on;
+        }
+    }
+
     /// Sets the town clock Everglade's sky follows, such as one with its
     /// hour pinned for a capture. It applies to Everglade now and to every
     /// later entry.

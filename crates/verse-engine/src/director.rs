@@ -3,6 +3,7 @@
 //! The director has no keyboard or chat-input path. It emits typed scene events
 //! and presentation state from simulation time. Directed impacts do not claim
 //! multiplayer authority or implement complete combat rules.
+use crate::camera_rig::CameraRig;
 use crate::motion::{Selection, State};
 use glam::{Mat4, Vec3};
 use serde::{Deserialize, Serialize};
@@ -50,6 +51,10 @@ pub struct Scene {
     pub cut_at: f32,
     pub actors: Vec<Actor>,
     pub cues: Vec<Cue>,
+    /// The camera before the cut, in scene time. Without one, the director
+    /// dollies slowly in toward the scene's origin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub camera: Option<CameraRig>,
 }
 #[derive(Clone, Debug)]
 pub struct ActorFrame {
@@ -153,6 +158,9 @@ impl Scene {
         }
         if self.cues.windows(2).any(|w| w[0].at > w[1].at) {
             return Err("Cinematic cues must be ordered".into());
+        }
+        if let Some(rig) = &self.camera {
+            rig.validate()?;
         }
         Ok(())
     }
@@ -273,19 +281,23 @@ impl Scene {
             .iter()
             .find(|a| a.actor.model == "adventurer")
             .map_or(Vec3::new(0.0, 0.0, -17.0), |a| a.actor.position);
-        let (eye, target, fov) = if time < self.cut_at {
-            (
-                Vec3::new((time * 0.045).sin() * 0.7, 1.9, -27.4 + time * 0.07),
-                Vec3::new(0.0, 3.0, 0.0),
-                1.0,
-            )
-        } else {
-            (
-                player + Vec3::new(0.9, 2.5, -5.5),
-                Vec3::new(0.0, 2.8, -1.0),
-                1.0,
-            )
-        };
+        let (eye, target, fov) =
+            if let Some(rig) = self.camera.as_ref().filter(|_| time < self.cut_at) {
+                let camera = rig.sample(time);
+                (camera.eye, camera.target, camera.fov_y)
+            } else if time < self.cut_at {
+                (
+                    Vec3::new((time * 0.045).sin() * 0.7, 1.9, -27.4 + time * 0.07),
+                    Vec3::new(0.0, 3.0, 0.0),
+                    1.0,
+                )
+            } else {
+                (
+                    player + Vec3::new(0.9, 2.5, -5.5),
+                    Vec3::new(0.0, 2.8, -1.0),
+                    1.0,
+                )
+            };
         let yell = self
             .cues
             .iter()
@@ -430,6 +442,35 @@ mod tests {
             .unwrap()
             .friendly = true;
         assert!(s.validate().is_err());
+    }
+
+    #[test]
+    fn a_camera_rig_replaces_the_default_dolly_before_the_cut() {
+        let default = scene();
+        let before = default.frame(5.0);
+        let mut s = scene();
+        s.camera = Some(
+            crate::camera_rig::CameraRig::from_json(
+                br#"{"keys":[{"t":0,"eye":[0,6,-30],"target":[0,2,0],"focal_mm":28},
+                {"t":10,"eye":[4,3,-14],"target":[0,2.5,0],"focal_mm":40}]}"#,
+            )
+            .unwrap(),
+        );
+        s.validate().unwrap();
+        let start = s.frame(0.0);
+        assert_eq!(start.eye, Vec3::new(0.0, 6.0, -30.0));
+        assert!((start.fov - crate::camera_rig::fov_y(28.0)).abs() < 1e-6);
+        assert_ne!(s.frame(5.0).eye, before.eye);
+        // After the cut the gameplay camera takes over as before.
+        let after = s.frame(s.cut_at + 1.0);
+        assert_eq!(after.eye, default.frame(s.cut_at + 1.0).eye);
+        let restored = Scene::from_json(&serde_json::to_vec(&s).unwrap()).unwrap();
+        assert_eq!(restored.camera, s.camera);
+        assert!(
+            !serde_json::to_string(&default)
+                .unwrap()
+                .contains("\"camera\"")
+        );
     }
 
     #[test]

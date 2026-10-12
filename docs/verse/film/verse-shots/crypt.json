@@ -1,0 +1,52 @@
+{
+  "name": "crypt",
+  "notes": "Montage (cut row 7): a tracking shot down the great crypt's nave toward the acolytes chanting round the circle.",
+  "scene": {
+    "kind": "crypt",
+    "walk": 0.0,
+    "start": 2.0
+  },
+  "duration": 5.0,
+  "subframes": 8,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          2.7,
+          2.4,
+          2.0
+        ],
+        "target": [
+          0.0,
+          1.6,
+          -17.8
+        ],
+        "focal_mm": 28,
+        "f_stop": 2.8
+      },
+      {
+        "t": 5.0,
+        "eye": [
+          2.6,
+          2.0,
+          -8.0
+        ],
+        "target": [
+          0.0,
+          1.6,
+          -17.8
+        ],
+        "focal_mm": 30,
+        "f_stop": 2.8,
+        "ease": "out"
+      }
+    ],
+    "shake": {
+      "amplitude": 0.002,
+      "position": 0.015,
+      "frequency": 0.4,
+      "seed": 5
+    }
+  }
+}

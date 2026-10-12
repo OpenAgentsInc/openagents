@@ -514,6 +514,7 @@ pub fn scene() -> Scene {
                 State::Yell,
             ),
         ],
+        camera: None,
     }
 }
 

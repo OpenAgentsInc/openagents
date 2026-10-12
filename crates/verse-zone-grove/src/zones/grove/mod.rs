@@ -195,6 +195,9 @@ pub struct Grove {
     pull: f32,
     /// When the dragon last roared, for the camera's jolt, s.
     roared: f32,
+    /// Draws the world without its interface: no bars, names, numbers, or
+    /// target ring over the dummies, as a film shot wants (#11432).
+    pub film: bool,
     /// The player's height a frame ago, to tell a climb, m.
     last_y: f32,
     /// Where the player stood at the last tick.
@@ -271,6 +274,7 @@ impl Grove {
             next_burn: 0.0,
             pull: 1.0,
             roared: f32::NEG_INFINITY,
+            film: false,
             last_y: 0.0,
             feet: SPAWN,
             chips: Vec::new(),
@@ -923,9 +927,11 @@ impl Grove {
             if dummy.has(Condition::Outlined, now) {
                 painter.outline(dummy, now);
             }
-            painter.bar(dummy, &dummy.conditions(now), target == Some(i));
+            if !self.film {
+                painter.bar(dummy, &dummy.conditions(now), target == Some(i));
+            }
         }
-        if let Some(i) = target {
+        if let Some(i) = target.filter(|_| !self.film) {
             painter.target(&self.dummies[i], now);
         }
         // Newest first, so a renderer that runs out of glow quads under spam
@@ -937,7 +943,7 @@ impl Grove {
             };
             painter.effect(effect, now, at);
         }
-        for floater in &self.floaters {
+        for floater in self.floaters.iter().filter(|_| !self.film) {
             painter.floater(floater, now);
         }
         let mut mesh = painter.mesh;

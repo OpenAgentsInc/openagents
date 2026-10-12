@@ -88,6 +88,7 @@ pub(super) fn input(path: &Path) {
             actor(14, "Visitor", "adventurer", [0., 0., -22.], false),
         ],
         cues: vec![],
+        camera: None,
     };
     std::fs::write(path.join("pack.json"), serde_json::to_vec(&pack).unwrap()).unwrap();
     std::fs::write(path.join("scene.json"), serde_json::to_vec(&scene).unwrap()).unwrap();

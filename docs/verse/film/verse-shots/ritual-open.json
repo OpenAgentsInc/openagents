@@ -1,0 +1,71 @@
+{
+  "name": "ritual-open",
+  "notes": "Cold open (cut row 1): a slow crane down through the ritual chamber toward Claude and the ring of cultists.",
+  "scene": {
+    "kind": "ritual",
+    "start": 0.0
+  },
+  "duration": 7.5,
+  "subframes": 12,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          -4.0,
+          5.8,
+          -23.0
+        ],
+        "target": [
+          0.0,
+          3.2,
+          0.0
+        ],
+        "focal_mm": 24,
+        "f_stop": 4.0
+      },
+      {
+        "t": 3.5,
+        "eye": [
+          -1.8,
+          3.7,
+          -17.6
+        ],
+        "target": [
+          0.0,
+          3.6,
+          0.0
+        ],
+        "focal_mm": 28,
+        "f_stop": 3.2
+      },
+      {
+        "t": 7.5,
+        "eye": [
+          0.6,
+          2.3,
+          -12.8
+        ],
+        "target": [
+          0.0,
+          4.2,
+          0.0
+        ],
+        "focal_mm": 32,
+        "f_stop": 2.8,
+        "ease": "out"
+      }
+    ],
+    "shake": {
+      "amplitude": 0.003,
+      "position": 0.02,
+      "frequency": 0.35,
+      "seed": 7
+    }
+  },
+  "grade": {
+    "exposure": -0.4,
+    "vignette": 0.35,
+    "saturation": 0.9
+  }
+}
