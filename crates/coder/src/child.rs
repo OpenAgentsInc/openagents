@@ -119,9 +119,24 @@ impl Binding {
     pub fn of(step: &Step) -> Result<Option<Self>, String> {
         match step.rest.get("binding") {
             None => Ok(None),
-            Some(value) => serde_json::from_value(value.clone())
-                .map(Some)
-                .map_err(|e| format!("binding does not read as an input/output contract: {e}")),
+            Some(value) => {
+                let binding: Self = serde_json::from_value(value.clone()).map_err(|e| {
+                    format!("binding does not read as an input/output contract: {e}")
+                })?;
+                // `$`-prefixed state keys are the host's channel (`$host`,
+                // `<name>$answers`): no step may produce or expose one.
+                if let Some(field) = binding
+                    .produces
+                    .keys()
+                    .chain(binding.exposes.iter())
+                    .find(|field| field.starts_with('$') || field.contains('$'))
+                {
+                    return Err(format!(
+                        "binding field {field:?} carries '$', which marks a host-owned state key"
+                    ));
+                }
+                Ok(Some(binding))
+            }
         }
     }
 }
@@ -1236,5 +1251,16 @@ mod tests {
             ],
             "step problems in step order, then the descent, every run the same"
         );
+    }
+
+    #[test]
+    fn a_binding_field_under_a_dollar_is_refused_as_host_owned() {
+        let step: Step = serde_json::from_str(
+            r#"{"name":"work","kind":"delegate","bounds":{},
+                "binding":{"produces":{"$host":"text"},"exposes":[]}}"#,
+        )
+        .expect("a step");
+        let error = Binding::of(&step).unwrap_err();
+        assert!(error.contains("host-owned"), "{error}");
     }
 }
