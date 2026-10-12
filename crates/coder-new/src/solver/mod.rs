@@ -755,6 +755,7 @@ impl End<'_> {
         if let Some(base) = &self.base {
             issue_run::agent::Baseline::of(base).remove().await;
         }
+        issue_run::agent::sweep_shared_target().await;
         let worktree = self
             .base
             .as_ref()

@@ -655,6 +655,100 @@ fn shared_target(command: &mut tokio::process::Command) {
     }
 }
 
+/// Free space below which a finished run sweeps the shared build folder.
+const SWEEP_BELOW_BYTES: u64 = 60 * 1024 * 1024 * 1024;
+/// Build outputs untouched this long are swept.
+const SWEEP_AGE: std::time::Duration = std::time::Duration::from_secs(2 * 60 * 60);
+
+/// Sweeps stale outputs from the shared build folder when the disk is low.
+/// Every run builds its workspace crates again (their build hashes include
+/// the worktree's path), so each run leaves ~20 GB in the folder that no
+/// later run reuses; three runs took the Mac from 45 GB free to 6 GB.
+/// Outputs older than [`SWEEP_AGE`] go; cargo rebuilds any it still needs.
+/// A build folder the person chose (`CARGO_TARGET_DIR`) is never touched.
+pub async fn sweep_shared_target() {
+    if std::env::var_os("CARGO_TARGET_DIR").is_some() {
+        return;
+    }
+    let Some(home) = std::env::var_os("HOME") else {
+        return;
+    };
+    let target = std::path::Path::new(&home).join(".openagents/coder-new/target");
+    if !target.is_dir()
+        || free_bytes(&target)
+            .await
+            .is_none_or(|free| free >= SWEEP_BELOW_BYTES)
+    {
+        return;
+    }
+    let _ = tokio::task::spawn_blocking(move || sweep(&target, SWEEP_AGE)).await;
+}
+
+/// The free bytes on the disk holding `path`, from `df`.
+async fn free_bytes(path: &Path) -> Option<u64> {
+    let out = tokio::process::Command::new("df")
+        .arg("-Pk")
+        .arg(path)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .await
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let kib: u64 = text
+        .lines()
+        .nth(1)?
+        .split_whitespace()
+        .nth(3)?
+        .parse()
+        .ok()?;
+    Some(kib * 1024)
+}
+
+/// Removes the files under each profile's `deps`, `build`, `.fingerprint`
+/// and `incremental` folders in `target` last changed more than `age` ago,
+/// and the folders that leaves empty. How many files went.
+pub fn sweep(target: &Path, age: std::time::Duration) -> usize {
+    fn walk(dir: &Path, cutoff: std::time::SystemTime, removed: &mut usize) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(meta) = entry.metadata() else { continue };
+            if meta.is_dir() {
+                walk(&path, cutoff, removed);
+                let _ = std::fs::remove_dir(&path);
+            } else if meta.modified().is_ok_and(|at| at < cutoff)
+                && std::fs::remove_file(&path).is_ok()
+            {
+                *removed += 1;
+            }
+        }
+    }
+    let Some(cutoff) = std::time::SystemTime::now().checked_sub(age) else {
+        return 0;
+    };
+    let mut removed = 0;
+    let Ok(profiles) = std::fs::read_dir(target) else {
+        return 0;
+    };
+    for profile in profiles.flatten() {
+        let Ok(entries) = std::fs::read_dir(profile.path()) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if matches!(name.as_ref(), "deps" | "build" | ".fingerprint")
+                || name.starts_with("incremental")
+            {
+                walk(&entry.path(), cutoff, &mut removed);
+            }
+        }
+    }
+    removed
+}
+
 impl Session {
     /// The briefed agent of `coder issue-run`: Read, Edit, Write, Grep,
     /// Glob and `run_check` over the briefing's checks.

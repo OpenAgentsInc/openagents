@@ -653,6 +653,7 @@ impl End<'_> {
         if let Some(base) = &self.base {
             agent::Baseline::of(base).remove().await;
         }
+        agent::sweep_shared_target().await;
         let worktree = self
             .base
             .as_ref()

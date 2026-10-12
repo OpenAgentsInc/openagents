@@ -513,3 +513,28 @@ async fn a_finished_runs_baseline_checkout_is_removed() {
     // Removing it again, or one never made, does nothing.
     baseline.remove().await;
 }
+
+#[test]
+fn a_sweep_removes_only_old_build_outputs() {
+    use crate::issue_run::agent::sweep;
+    let dir = tempfile::tempdir().unwrap();
+    let deps = dir.path().join("debug/deps");
+    let fingerprint = dir.path().join("debug/.fingerprint/x-1");
+    std::fs::create_dir_all(&deps).unwrap();
+    std::fs::create_dir_all(&fingerprint).unwrap();
+    std::fs::write(deps.join("libx-1.rlib"), "x").unwrap();
+    std::fs::write(fingerprint.join("lib-x"), "x").unwrap();
+    std::fs::write(dir.path().join("debug/coder-new"), "bin").unwrap();
+    // Nothing is old enough yet.
+    assert_eq!(sweep(dir.path(), std::time::Duration::from_secs(3600)), 0);
+    assert!(deps.join("libx-1.rlib").exists());
+    // Everything in the build folders is older than no time at all.
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    assert_eq!(sweep(dir.path(), std::time::Duration::from_millis(1)), 2);
+    assert!(!deps.join("libx-1.rlib").exists());
+    assert!(!fingerprint.exists(), "an emptied folder goes too");
+    assert!(
+        dir.path().join("debug/coder-new").exists(),
+        "the binary stays"
+    );
+}
