@@ -150,16 +150,25 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
     let [header, body, queued, composer, context, rail] = Layout::vertical([
         Constraint::Length(header_height),
         Constraint::Min(1),
-        Constraint::Length(app.queued_prompts.len().min(3) as u16),
+        Constraint::Length(
+            app.queued_prompts
+                .iter()
+                .filter(|p| p.editable)
+                .count()
+                .min(3) as u16,
+        ),
         Constraint::Length(composer_height.min(area.height.saturating_sub(reserved))),
         Constraint::Length(context_height),
         Constraint::Length(rail_height),
     ])
     .areas(area);
     header_view(frame, header, app);
+    // The queued rows are the person's pending messages; a notice (a
+    // monitor line, an agent's report) is a delivery, not input.
     let pending = app
         .queued_prompts
         .iter()
+        .filter(|p| p.editable)
         .map(|p| {
             Line::from(span(
                 format!("Queued: {}", p.text.replace('\n', " ")),

@@ -182,18 +182,25 @@ impl App {
             .and_then(|i| self.delegations.get(i))
             .map(|a| a.id.clone());
         if immediate {
-            if !self.queued_prompts.iter().any(|p| {
-                (p.editable || p.notice) && p.session == session && p.agent == selected_agent
-            }) {
+            // Enter sends the person's next message; a notice (a monitor
+            // line, an agent's report, a loop's turn) is delivered by the
+            // queue itself and never interrupts a turn.
+            if !self
+                .queued_prompts
+                .iter()
+                .any(|p| p.editable && p.session == session && p.agent == selected_agent)
+            {
                 return false;
             }
             // Detach the worker's inbox before choosing the next pending message.
             self.cancel_request();
         }
         let Some(first) = self.queued_prompts.iter().position(|p| {
-            (p.editable || p.notice)
-                && p.session == session
-                && (!immediate || p.agent == selected_agent)
+            if immediate {
+                p.editable && p.session == session && p.agent == selected_agent
+            } else {
+                (p.editable || p.notice) && p.session == session
+            }
         }) else {
             return false;
         };
@@ -214,8 +221,9 @@ impl App {
             || rich.mode == crate::composer_state::InputMode::Bash
             || !rich.images.is_empty();
         let mut batch = Vec::new();
+        let mut kept = Vec::with_capacity(self.queued_prompts.len());
         let mut position = 0;
-        self.queued_prompts.retain(|p| {
+        for p in std::mem::take(&mut self.queued_prompts) {
             let take = if single {
                 position == first
             } else {
@@ -228,29 +236,29 @@ impl App {
             };
             position += 1;
             if take {
-                batch.push(p.text.clone());
-                false
+                batch.push(p);
             } else {
-                true
+                kept.push(p);
             }
-        });
+        }
+        self.queued_prompts = kept;
         let selected = self.selected_agent;
         self.select_agent(index);
         let draft = std::mem::take(&mut self.draft);
         let composer = std::mem::replace(&mut self.composer, rich);
-        let last = batch.pop().unwrap();
+        let mut last = batch.pop().unwrap();
         // Each submission stays a distinct user message.
-        for text in batch {
+        for p in batch {
             let chat = if let Some(i) = index {
                 &mut self.delegations[i].chat
             } else {
                 &mut self.live
             };
-            chat.entries.push(live::Entry::User(text));
+            chat.entries.push(live::Entry::User(p.text));
         }
         self.draft = Draft {
-            cursor: last.len(),
-            text: last,
+            cursor: last.text.len(),
+            text: std::mem::take(&mut last.text),
         };
         self.replaying_prompt = true;
         if self.composer.mode == crate::composer_state::InputMode::Bash {
@@ -267,8 +275,17 @@ impl App {
         }
         self.replaying_prompt = false;
         if !self.draft.text.is_empty() || !self.composer.images.is_empty() {
-            // A disabled agent or failed session admission must not discard input.
-            self.queue_prompt();
+            // A disabled agent or failed session admission must not discard
+            // input, and it goes back as it came: a notice is never made
+            // editable, and nothing reaches prompt history through here.
+            last.text = std::mem::take(&mut self.draft.text);
+            last.composer = std::mem::take(&mut self.composer);
+            // A pending slot mirrors the retried text; a taken one stays
+            // taken, since the worker already owns that delivery.
+            if let Some(pending) = last.slot.lock().unwrap().as_mut() {
+                *pending = last.text.clone();
+            }
+            self.queued_prompts.push(last);
         }
         self.draft = draft;
         self.composer = composer;
@@ -470,6 +487,44 @@ mod tests {
         assert_eq!(a.composer.images[1].id.as_deref(), Some("queued-id"));
         assert_eq!(a.queued_prompts.len(), 1);
         assert!(!a.restore_queued_prompts());
+    }
+    #[test]
+    fn an_undelivered_notice_keeps_its_flags_and_stays_out_of_the_composer() {
+        let mut app = app();
+        // Session admission fails: the store root is a regular file.
+        let dir = tempfile::tempdir().unwrap();
+        let blocker = dir.path().join("store");
+        std::fs::write(&blocker, b"").unwrap();
+        app.attach_session_store(crate::sessions::Store::under(&blocker));
+        app.queue_notice("Monitor b6 (`cmd`): a warning".into());
+        app.process_prompt_queue();
+        assert_eq!(app.queued_prompts.len(), 1);
+        assert!(app.queued_prompts[0].notice);
+        assert!(!app.queued_prompts[0].editable);
+        assert!(!app.restore_queued_prompts());
+        assert!(app.draft.text.is_empty());
+    }
+    #[test]
+    fn enter_sends_the_next_editable_prompt_not_a_notice() {
+        let mut app = app();
+        app.submit("first", std::path::Path::new("."));
+        app.queue_notice("Monitor b6 (`cmd`): a warning".into());
+        app.submit("second", std::path::Path::new("."));
+        app.handle(crossterm::event::Event::Key(
+            crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Enter,
+                crossterm::event::KeyModifiers::NONE,
+            ),
+        ));
+        assert!(app.live.busy);
+        assert_eq!(app.queued_prompts.len(), 1);
+        assert!(app.queued_prompts[0].notice);
+        assert!(
+            app.live
+                .entries
+                .iter()
+                .any(|entry| matches!(entry, live::Entry::User(text) if text == "second"))
+        );
     }
     #[test]
     fn queue_hint_shows_only_for_editable_messages_and_a_few_times() {
