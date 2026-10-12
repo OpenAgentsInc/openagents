@@ -2,7 +2,7 @@
 # Renders the launch film's studio shots (cut rows 3-6, #11432) with headless
 # Blender: each shot's screen footage from ~/work/film-out/footage/ onto a
 # device, to ~/work/film-out/studio/<shot>.mp4 at 3840x2160, plus the empty
-# Grid plate under the title cards. Takes in ~/work/film-out/footage-v2/ win.
+# Grid plate under the title cards. The newest take wins: footage-v3/, then footage-v2/, then footage/.
 #
 # Usage: scripts/film/studio/render-all.sh [--preview] [--standin] [SHOT...]
 #   --preview   quarter-pixel, low-sample renders for checking moves
@@ -13,7 +13,8 @@ set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 blender=${BLENDER:-/Applications/Blender.app/Contents/MacOS/Blender}
 footage=${FOOTAGE:-$HOME/work/film-out/footage}
-footage2=${FOOTAGE2:-$HOME/work/film-out/footage-v2}  # newer takes win when present
+footage2=${FOOTAGE2:-$HOME/work/film-out/footage-v2}
+footage3=${FOOTAGE3:-$HOME/work/film-out/footage-v3}  # newer takes win when present
 out=${OUT:-$HOME/work/film-out/studio}
 standin_dir=$out/standin
 preview=() standin=0 shots=()
@@ -24,7 +25,7 @@ for a in "$@"; do
     *) shots+=("$a") ;;
   esac
 done
-[ ${#shots[@]} -eq 0 ] && shots=(grid-plate macbook-chat macbook-terminal macbook-sync iphone-approve)
+[ ${#shots[@]} -eq 0 ] && shots=(macbook-chat macbook-terminal macbook-sync iphone-approve grid-plate)
 
 clip_for() {
   case $1 in
@@ -51,7 +52,8 @@ for shot in "${shots[@]}"; do
       "${preview[@]}" 2>&1 | grep -E "^studio:|Error|Traceback" || status=1
     continue
   fi
-  video=$footage2/$clip.mp4
+  video=$footage3/$clip.mp4
+  [ -f "$video" ] || video=$footage2/$clip.mp4
   [ -f "$video" ] || video=$footage/$clip.mp4
   # The phone shot was first recorded on the web as phone-approve.
   [ -f "$video" ] || { [ "$clip" = phone-app ] && video=$footage/phone-approve.mp4; }

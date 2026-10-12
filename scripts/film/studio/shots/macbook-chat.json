@@ -10,8 +10,8 @@
     "open": 112
   },
   "screen": {
-    "video": "~/work/film-out/footage/web-chat.mp4",
-    "in": 1.0,
+    "video": "~/work/film-out/footage-v3/web-chat.mp4",
+    "in": 3.0,
     "brightness": 1.35
   },
   "background": {

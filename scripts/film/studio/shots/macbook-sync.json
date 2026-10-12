@@ -4,7 +4,7 @@
   "cut": "Row 5, 24-30 s: match cut, the same chat appears live in the web sidebar.",
   "duration": 7.5,
   "screen": {
-    "video": "~/work/film-out/footage/web-sync.mp4",
+    "video": "~/work/film-out/footage-v3/web-sync.mp4",
     "in": 0.5,
     "brightness": 1.35
   },
