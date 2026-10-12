@@ -358,8 +358,9 @@ pub enum Work {
         /// door when it takes the turn; the house doors ignore them.
         options: crate::models::GenerationOptions,
     },
-    /// A claude turn: one Claude Agent SDK session on Haiku 5.5
-    /// ([`crate::claude`]) with the basic file tools, here.
+    /// A claude turn: the person's message to the chat's long-lived Claude
+    /// Code process ([`crate::claude_chat`]), started for it when the chat
+    /// has none.
     Claude {
         messages: Vec<Message>,
         cwd: std::path::PathBuf,
@@ -439,11 +440,6 @@ pub enum Update {
         id: u64,
         model: String,
     },
-    /// The Claude Code session a claude turn runs in (#11435).
-    ClaudeSession {
-        id: u64,
-        session: String,
-    },
     Finished {
         id: u64,
         result: Result<Streamed, String>,
@@ -462,7 +458,6 @@ impl Update {
             | Self::Usage { id, .. }
             | Self::Harness { id, .. }
             | Self::Model { id, .. }
-            | Self::ClaudeSession { id, .. }
             | Self::Finished { id, .. } => *id,
         }
     }
@@ -472,6 +467,16 @@ impl Update {
 #[derive(Default)]
 pub struct Background {
     active: Option<(u64, oneshot::Sender<()>, mpsc::Receiver<Update>)>,
+    /// The claude chat's long-lived Claude Code process (#11447).
+    claude: Option<crate::claude_chat::Chat>,
+    /// The claude turn on screen: its request id and the process's number
+    /// for it.
+    claude_turn: Option<(u64, u64)>,
+    /// The newest process turn that was stopped; what it still reports is
+    /// dropped.
+    claude_stopped: u64,
+    /// Processes of chats that were closed, finishing their work.
+    claude_closing: Vec<crate::claude_chat::Chat>,
 }
 
 impl Background {
@@ -482,6 +487,35 @@ impl Background {
             .is_some_and(|(id, _, _)| *id != app.request_id)
         {
             self.cancel();
+        }
+        // Stopping a claude turn interrupts it; the process stays.
+        if let Some((request_id, turn)) = self.claude_turn
+            && request_id != app.request_id
+        {
+            self.claude_turn = None;
+            if let Some(chat) = &self.claude {
+                self.claude_stopped = self.claude_stopped.max(chat.interrupt(turn));
+            }
+        }
+        // A process belongs to the chat that holds its session; another chat
+        // on screen closes it.
+        if self.claude.as_ref().is_some_and(|chat| {
+            chat.session.is_some()
+                && chat.session.as_deref()
+                    != app
+                        .live
+                        .claude_session
+                        .as_ref()
+                        .map(|session| session.id.as_str())
+        }) {
+            self.close_claude();
+        }
+        if let Some(request) = app
+            .request
+            .take_if(|request| matches!(request.kind, Work::Claude { .. }))
+        {
+            self.cancel();
+            self.claude_request(request, app);
         }
         if let Some(request) = app.request.take() {
             self.cancel();
@@ -542,6 +576,8 @@ impl Background {
         if finished {
             self.active = None;
         }
+        self.poll_claude(app);
+        app.claude_turn = self.claude_turn.is_some();
         app.poll_disclosure();
         app.poll_fleet();
         app.poll_shells();
@@ -552,6 +588,159 @@ impl Background {
     fn cancel(&mut self) {
         if let Some((_, sender, _)) = self.active.take() {
             let _ = sender.send(());
+        }
+    }
+
+    /// Hands a claude message to the chat's process: sent at once to the
+    /// one already running this chat, mid-turn included, or to a new one
+    /// started on the chat's session.
+    fn claude_request(&mut self, request: Request, app: &mut crate::App) {
+        let Work::Claude {
+            messages,
+            cwd,
+            solver,
+            session,
+        } = request.kind
+        else {
+            return;
+        };
+        let newest = messages
+            .last()
+            .map(|message| message.content.clone())
+            .unwrap_or_default();
+        let running = self.claude.as_ref().is_some_and(|chat| {
+            !chat.exited() && chat.cwd == cwd && chat.solver == solver && chat.session == session
+        });
+        if !running {
+            self.close_claude();
+            let seed = crate::claude::task_with(&messages, solver);
+            self.claude = Some(crate::claude_chat::Chat::start(
+                cwd, solver, session, newest, seed,
+            ));
+        } else if let Some(chat) = &self.claude {
+            chat.say(&newest, self.claude_turn.is_some());
+            // The session has read this message too.
+            let users = app.live.user_count();
+            if let Some(session) = &mut app.live.claude_session {
+                session.users = users;
+            }
+        }
+        let turn = self
+            .claude
+            .as_ref()
+            .map_or(1, crate::claude_chat::Chat::turn);
+        self.claude_turn = Some((request.id, turn));
+    }
+
+    /// Ends the input of the chat's process, which finishes its work and
+    /// exits; its handle is kept so quitting can still end it.
+    fn close_claude(&mut self) {
+        if let Some(mut chat) = self.claude.take() {
+            if !chat.exited() {
+                chat.close();
+                self.claude_closing.push(chat);
+            }
+        }
+        self.claude_turn = None;
+        self.claude_stopped = 0;
+    }
+
+    /// What the claude process reported, onto the chat: the turn on screen
+    /// takes its events; a turn the process starts on its own (a background
+    /// job's follow-up) opens one; a stopped turn's tail is dropped.
+    fn poll_claude(&mut self, app: &mut crate::App) {
+        for chat in &mut self.claude_closing {
+            chat.poll();
+        }
+        self.claude_closing.retain(|chat| !chat.exited());
+        let Some(chat) = self.claude.as_mut() else {
+            return;
+        };
+        for event in chat.poll() {
+            match event {
+                crate::claude_chat::Event::Session(session) => {
+                    app.live.claude_session = Some(ClaudeSession {
+                        id: session,
+                        users: app.live.user_count(),
+                    });
+                    app.history.dirty = true;
+                }
+                crate::claude_chat::Event::Runtime { turn, event } => {
+                    if turn <= self.claude_stopped {
+                        continue;
+                    }
+                    let id = match &mut self.claude_turn {
+                        Some((id, on_screen)) => {
+                            *on_screen = (*on_screen).max(turn);
+                            *id
+                        }
+                        None if app.begin_claude_turn() => {
+                            self.claude_turn = Some((app.request_id, turn));
+                            app.request_id
+                        }
+                        None => continue,
+                    };
+                    let update = match event {
+                        RuntimeEvent::Text(text) => Update::Delta { id, text },
+                        RuntimeEvent::Model(model) => Update::Model { id, model },
+                        RuntimeEvent::Tool {
+                            name,
+                            input,
+                            output,
+                            running,
+                        } => Update::Tool {
+                            id,
+                            name,
+                            input,
+                            output,
+                            running,
+                        },
+                        RuntimeEvent::Delegation {
+                            id: delegation,
+                            name,
+                            task,
+                            event,
+                        } => Update::Delegation {
+                            id,
+                            delegation,
+                            name,
+                            task,
+                            event: *event,
+                        },
+                        RuntimeEvent::Usage(usage) => Update::Usage { id, usage: *usage },
+                        RuntimeEvent::Harness(run) => Update::Harness { id, run: *run },
+                        _ => continue,
+                    };
+                    app.apply_update(update);
+                }
+                crate::claude_chat::Event::TurnEnd { turn, result } => {
+                    if turn <= self.claude_stopped {
+                        continue;
+                    }
+                    if let Some((id, on_screen)) = self.claude_turn
+                        && turn >= on_screen
+                    {
+                        self.claude_turn = None;
+                        app.apply_update(Update::Finished { id, result });
+                    }
+                }
+                crate::claude_chat::Event::Exited => {
+                    if let Some((id, _)) = self.claude_turn.take() {
+                        app.apply_update(Update::Finished {
+                            id,
+                            result: Err("Claude Code stopped before the turn ended.".into()),
+                        });
+                    }
+                }
+            }
+        }
+        if self
+            .claude
+            .as_ref()
+            .is_some_and(crate::claude_chat::Chat::exited)
+        {
+            self.claude = None;
+            self.claude_stopped = 0;
         }
     }
 }
@@ -659,12 +848,9 @@ fn run_with_provider(
                 Work::Microcoder { messages, execution, options } => {
                     auto_route(id, messages, execution, &request.key, options, &create, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
                 }
-                Work::Claude { messages, cwd, solver, session } => {
-                    let mut session_callback = |session: &str| {
-                        let _ = sender.send(Update::ClaudeSession { id, session: session.into() });
-                    };
-                    claude_turn(id, messages, cwd, solver, session, &cancel, &mut session_callback, &mut text_callback, &mut model_callback, &mut event_callback).await
-                }
+                // A claude turn runs in its chat's own process
+                // ([`Background::claude_request`]), never on a worker.
+                Work::Claude { .. } => Update::Finished { id, result: Err("The claude chat has no process to run in.".into()) },
                 Work::SolverIntake { messages, cwd, github } => {
                     let prompt = crate::solver::intake_task(&messages, &github);
                     let mut events = |event: RuntimeEvent| match event {
@@ -1045,42 +1231,6 @@ async fn local_turn(
         }
         Ok(reply)
     }.await;
-    Update::Finished { id, result }
-}
-
-/// One claude turn: the Claude Agent SDK session
-/// ([`crate::claude`]) on Haiku 5.5, drawn as it works. Its text, model,
-/// and tool calls reach the chat through the same callbacks a live turn uses.
-/// It continues the chat's Claude Code `session` when there is one
-/// ([`crate::claude::chat`]).
-#[allow(clippy::too_many_arguments)]
-async fn claude_turn(
-    id: u64,
-    messages: Vec<Message>,
-    cwd: std::path::PathBuf,
-    solver: bool,
-    session: Option<String>,
-    cancel: &Arc<AtomicBool>,
-    session_callback: &mut (dyn FnMut(&str) + Send),
-    text_callback: &mut (dyn FnMut(&str) + Send),
-    model_callback: &mut (dyn FnMut(&str) + Send),
-    event_callback: &mut (dyn FnMut(RuntimeEvent) + Send),
-) -> Update {
-    let mut events = |event: RuntimeEvent| match event {
-        RuntimeEvent::Text(text) => text_callback(&text),
-        RuntimeEvent::Model(model) => model_callback(&model),
-        event => event_callback(event),
-    };
-    let result = crate::claude::chat(
-        &messages,
-        session.as_deref(),
-        &cwd,
-        solver,
-        cancel,
-        session_callback,
-        &mut events,
-    )
-    .await;
     Update::Finished { id, result }
 }
 

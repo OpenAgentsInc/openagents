@@ -312,7 +312,7 @@ pub fn note(label: &str, number: usize, path: &Path) -> String {
 /// The saved files a message's note lines name: only files in a folder
 /// named `attachments` with the digest names [`Attachment::save`] gives, so
 /// a note cannot send any other file.
-fn noted(text: &str) -> Vec<PathBuf> {
+pub(crate) fn noted(text: &str) -> Vec<PathBuf> {
     text.lines()
         .filter_map(|line| {
             let inner = line.trim().strip_prefix('[')?.strip_suffix(']')?;

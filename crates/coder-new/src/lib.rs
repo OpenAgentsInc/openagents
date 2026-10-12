@@ -14,6 +14,7 @@ pub mod bundled_settings;
 mod checkout_guard;
 /// The mode that runs turns on this computer's Claude account login.
 pub mod claude;
+pub mod claude_chat;
 pub mod claude_plan;
 pub mod cloud;
 pub mod cloud_settings;
@@ -186,6 +187,9 @@ pub struct App {
     pub(crate) sync: Option<account_sync::SyncState>,
     pub request: Option<live::Request>,
     pub request_id: u64,
+    /// Whether the turn under way is the claude chat's, so a message sent
+    /// now goes to Claude Code at once (#11447). The worker sets it.
+    pub(crate) claude_turn: bool,
     pub(crate) prompt_inbox: prompt_queue::Inbox,
     pub(crate) queued_prompts: Vec<prompt_queue::Prompt>,
     /// Background agents started from this terminal (#11163).
@@ -966,13 +970,6 @@ impl App {
             live::Update::Harness { run, .. } if self.live.busy => {
                 self.live.harness = Some(run);
             }
-            live::Update::ClaudeSession { session, .. } => {
-                self.live.claude_session = Some(live::ClaudeSession {
-                    id: session,
-                    users: self.live.user_count(),
-                });
-                self.history.dirty = true;
-            }
             live::Update::Delta { text, .. } if self.live.busy => {
                 self.live.text_streamed = true;
                 self.live.partial.push_str(&text);
@@ -1590,32 +1587,38 @@ impl App {
         }
     }
 
-    /// A claude turn: the person's message, then one Claude Agent SDK
-    /// session with Claude Code's whole toolset and every call approved, on
-    /// the model picked in /models ([`crate::claude`]). The mode keeps one conversation with the
-    /// person; only the engine behind each turn differs from live.
+    /// A claude turn: the person's message to the chat's own Claude Code
+    /// process ([`crate::claude_chat`]), with Claude Code's whole toolset and
+    /// every call approved, on the model picked in /models
+    /// ([`crate::claude`]). A message sent while a turn runs goes to Claude
+    /// Code at once rather than waiting. Pictures go as pictures. The mode
+    /// keeps one conversation with the person; only the engine behind each
+    /// turn differs from live.
     fn submit_claude(&mut self) {
         if self.draft.text.trim().is_empty() && self.composer.images.is_empty() {
             return;
         }
-        if self.live.busy || self.checking_key || self.checking_jev {
+        if self.checking_key || self.checking_jev {
             self.queue_prompt();
             return;
         }
+        if self.live.busy && !self.claude_turn {
+            self.queue_prompt();
+            return;
+        }
+        let midturn = self.live.busy;
+        if let Err(error) = self.attach_to_prompt() {
+            self.live.notice = Some(error);
+            return;
+        }
         self.record_prompt();
-        self.cancel_request();
+        if !midturn {
+            self.cancel_request();
+        }
         let cwd = self.cwd.clone().unwrap_or_else(|| {
             std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
         });
-        let mut text = std::mem::take(&mut self.draft.text);
-        if !self.composer.images.is_empty() {
-            // The mode reads text only. The files stay beside the checkout
-            // and the prompt names them, as a text-only live model gets.
-            if !text.trim().is_empty() {
-                text.push('\n');
-            }
-            text.push_str(crate::claude::TEXT_ONLY);
-        }
+        let text = std::mem::take(&mut self.draft.text);
         self.draft.cursor = 0;
         self.composer = Default::default();
         self.screen = Screen::Conversation;
@@ -1623,15 +1626,11 @@ impl App {
         self.live.entries.push(live::Entry::User(text));
         let messages = self.live.messages();
         let session = self.live.claude_resume();
-        self.live.notice = None;
-        self.live.partial.clear();
-        self.live.partial_model = None;
-        self.live.text_streamed = false;
-        self.live.busy = true;
-        self.live.pinned_missed = false;
-        self.live.reply_started_at = Some(std::time::Instant::now());
         self.history.dirty = true;
         self.scroll = u16::MAX;
+        if !midturn {
+            self.begin_claude_turn();
+        }
         self.request = Some(live::Request {
             id: self.request_id,
             key: model_access::ApiKey::new(""),
@@ -1642,6 +1641,26 @@ impl App {
                 session,
             },
         });
+    }
+
+    /// The chat shows a claude turn under way: one the person started, or
+    /// one Claude Code started itself when a background job it left running
+    /// came back. Returns false while the chat is busy with something else.
+    pub(crate) fn begin_claude_turn(&mut self) -> bool {
+        if self.live.busy || self.request.is_some() {
+            return false;
+        }
+        self.live.finish_partial();
+        self.live.notice = None;
+        self.live.partial.clear();
+        self.live.partial_model = None;
+        self.live.text_streamed = false;
+        self.live.busy = true;
+        self.live.pinned_missed = false;
+        self.live.reply_started_at = Some(std::time::Instant::now());
+        self.history.dirty = true;
+        self.scroll = u16::MAX;
+        true
     }
 
     /// The solver conversation: an issue reference starts a run in this
@@ -3233,34 +3252,60 @@ mod claude_tests {
         assert!(app.live.notice.is_none(), "{:?}", app.live.notice);
     }
 
-    /// A picture is left out with one note, and the turn is still asked.
+    /// A picture reaches Claude Code as a picture (#11447): the message
+    /// keeps its attachment line, and the turn's content carries the image.
     #[test]
-    fn a_picture_is_left_out_and_the_turn_still_runs() {
+    fn a_picture_goes_to_claude_code_as_an_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let shot = dir.path().join("shot.png");
+        std::fs::write(&shot, b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR").unwrap();
         let mut app = typed(Mode::Claude, "look");
-        app.attach_image("embedded".into(), Some("image-id".into()));
+        app.attachment_dir = Some(dir.path().join("attachments"));
+        app.attach_image(shot.display().to_string(), None);
         app.submit_live();
         let request = app.request.take().expect("a claude turn was queued");
-        match request.kind {
-            live::Work::Claude { messages, .. } => {
-                assert!(messages[0].content.contains("look"));
-                assert!(messages[0].content.contains(claude::TEXT_ONLY));
-            }
-            _ => panic!("a claude turn"),
-        }
+        let live::Work::Claude { messages, .. } = request.kind else {
+            panic!("a claude turn");
+        };
+        let content = &messages.last().unwrap().content;
+        assert!(content.starts_with("look"), "{content}");
+        assert!(content.contains("[Image #1: "), "{content}");
+        let blocks = claude::content(content);
+        assert_eq!(blocks.len(), 2, "{blocks:?}");
+        assert_eq!(blocks[0]["type"], "text");
+        assert_eq!(blocks[1]["type"], "image");
+        assert_eq!(blocks[1]["source"]["media_type"], "image/png");
     }
 
-    /// A turn in progress queues the next message rather than dropping it.
+    /// A message sent while the claude turn runs goes to Claude Code at
+    /// once, in the same turn (#11447); while something else keeps the chat
+    /// busy it waits in the queue.
     #[test]
-    fn a_message_while_busy_is_queued() {
+    fn a_message_during_a_claude_turn_is_sent_at_once() {
         let mut app = typed(Mode::Claude, "first");
         app.submit_live();
         let first = app.request.take().unwrap().id;
+        app.claude_turn = true;
         app.draft.text = "second".into();
         app.draft.cursor = 6;
         app.submit_live();
+        assert!(app.queued_prompts.is_empty());
+        let request = app.request.take().expect("the message was sent");
+        assert_eq!(request.id, first, "it joins the running turn");
+        assert!(app.live.busy);
+        match request.kind {
+            live::Work::Claude { messages, .. } => {
+                assert_eq!(messages.last().unwrap().content, "second");
+            }
+            _ => panic!("a claude message"),
+        }
+
+        app.claude_turn = false;
+        app.draft.text = "third".into();
+        app.draft.cursor = 5;
+        app.submit_live();
         assert_eq!(app.queued_prompts.len(), 1);
-        assert_eq!(app.queued_prompts[0].text, "second");
-        // The queued message did not start a second turn.
+        assert_eq!(app.queued_prompts[0].text, "third");
         assert!(app.request.is_none());
         assert_eq!(app.request_id, first);
     }

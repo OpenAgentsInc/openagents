@@ -86,9 +86,6 @@ const CHOICE_FILE: &str = "claude-model.json";
 /// tools use.
 pub const TOOLS: [&str; 5] = ["Read", "Write", "Edit", "Glob", "Grep"];
 
-/// What a message with a picture says: the mode reads text only.
-pub const TEXT_ONLY: &str = "Claude reads text only, so your picture was left out.";
-
 /// What a stopped turn says.
 pub const STOPPED: &str = "The turn was stopped.";
 
@@ -422,110 +419,127 @@ fn probe() -> bool {
     )
 }
 
-/// Whether a turn keeps a Claude Code session, and which one it continues.
-enum Session<'a> {
-    /// Nothing is saved: the turn is a one-off (Solver's Intaker, a check).
-    Off,
-    /// Claude Code saves the session, and `report` hears its id as soon as
-    /// Claude Code names it.
-    Saved {
-        resume: Option<Resume<'a>>,
-        report: &'a mut (dyn FnMut(&str) + 'a),
-    },
-}
-
-/// The saved session `id` a turn continues with the newest message alone.
+/// The saved session `id` a chat's Claude Code process continues.
 /// `note` is Coder's identity note, appended to Claude Code's own system
 /// prompt so the model still knows whose agent it is.
-struct Resume<'a> {
-    id: &'a str,
-    note: String,
+pub(crate) struct Resume {
+    pub(crate) id: String,
+    pub(crate) note: String,
 }
 
-/// Runs one turn of a claude chat. The first turn starts a Claude Code
-/// session and gives its id to `report`; a later
-/// turn passes that id as `resume` and sends only the newest message, so
-/// Claude Code holds the conversation and can compact, rewind or resume it.
-///
-/// A session Claude Code no longer has (deleted, or saved under another
-/// checkout) fails before it reports itself. That turn is run again as a new
-/// session seeded with the pasted conversation ([`task_with`]), which is safe
-/// because nothing ran yet.
+/// Whether Claude Code still keeps session `id` on this computer: a
+/// `<id>.jsonl` under one of its project folders (`~/.claude/projects`, or
+/// `CLAUDE_CONFIG_DIR`). A resume of a session it lost waits out the start
+/// before failing, so a chat whose session is gone starts anew at once.
+#[must_use]
+pub fn kept(id: &str) -> bool {
+    let root = std::env::var_os("CLAUDE_CONFIG_DIR")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".claude")));
+    let Some(projects) = root.map(|root| root.join("projects")) else {
+        return false;
+    };
+    let file = format!("{id}.jsonl");
+    // An id is a UUID; anything that could name a path is not one.
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return false;
+    }
+    std::fs::read_dir(projects)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|project| project.path().join(&file).is_file())
+}
+
+/// Coder's identity note for a claude chat, with the Solver tool's
+/// instructions when `solver` is on.
+pub(crate) fn note(solver: bool) -> String {
+    let tools = if solver {
+        crate::solver_plugin::instructions()
+    } else {
+        ""
+    };
+    format!("{}\n{tools}", crate::identity::prompt(&choice().model))
+}
+
+/// A chat's Claude Code process on streaming input, ready for its first
+/// message, and the Solver delegations its tool server reports.
+pub(crate) struct Opened {
+    pub(crate) query: claude_agent_sdk::Query,
+    pub(crate) delegations: Option<Delegations>,
+}
+
+/// Starts the long-lived Claude Code process of one claude chat
+/// ([`crate::claude_chat`]): Claude Code's whole toolset, the session saved,
+/// continuing `resume` when the chat holds one, and the Solver tool beside
+/// the rest when `solver` is on.
 ///
 /// # Errors
-/// As [`run`].
-pub async fn chat(
-    messages: &[Message],
-    resume: Option<&str>,
+/// Claude Code did not start, or this host refuses every tool.
+pub(crate) async fn open(
     cwd: &Path,
     solver: bool,
-    cancel: &AtomicBool,
-    report: &mut dyn FnMut(&str),
-    emit: &mut dyn FnMut(RuntimeEvent),
-) -> Result<Streamed, String> {
-    if let Some(id) = resume {
-        let newest = messages
-            .last()
-            .map(|message| message.content.clone())
-            .unwrap_or_default();
-        let tools = if solver {
-            crate::solver_plugin::instructions()
-        } else {
-            ""
-        };
-        let note = format!("{}\n{tools}", crate::identity::prompt(&choice().model));
-        let mut reported = false;
-        let result = {
-            let mut watch = |session: &str| {
-                reported = true;
-                report(session);
-            };
-            let session = Session::Saved {
-                resume: Some(Resume { id, note }),
-                report: &mut watch,
-            };
-            turn(&newest, cwd, solver, session, cancel, emit).await
-        };
-        if result.is_ok() || reported || cancel.load(Ordering::Relaxed) {
-            return result;
-        }
+    resume: Option<Resume>,
+) -> Result<Opened, String> {
+    if !crate::approval::tools_allowed() {
+        return Err("This host refuses every tool, so claude cannot work here.".into());
     }
-    let prompt = task_with(messages, solver);
-    let session = Session::Saved {
-        resume: None,
-        report,
+    let (server, delegations) = if solver {
+        let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+        let stop = std::sync::Arc::new(AtomicBool::new(false));
+        let server = crate::solver_plugin::mcp_server(cwd.to_owned(), sender, stop.clone());
+        (Some(server), Some(Delegations { receiver, stop }))
+    } else {
+        (None, None)
     };
-    turn(&prompt, cwd, solver, session, cancel, emit).await
+    let (options, _) = turn_options(cwd, Access::Full, server);
+    let options = with_session(options, resume);
+    let query = claude_agent_sdk::Query::streaming(options, Some(full_handler()))
+        .await
+        .map_err(|error| {
+            recheck();
+            format!("Claude Code did not start: {error}")
+        })?;
+    Ok(Opened { query, delegations })
 }
 
-/// One turn on the file tools, with the Solver tool beside them when
-/// `solver` is on.
-async fn turn(
-    prompt: &str,
-    cwd: &Path,
-    solver: bool,
-    session: Session<'_>,
-    cancel: &AtomicBool,
-    emit: &mut dyn FnMut(RuntimeEvent),
-) -> Result<Streamed, String> {
-    if !solver {
-        return run_inner(prompt, cwd, Access::Full, None, None, session, cancel, emit).await;
+/// What a full turn's permission handler decides: every call approved but
+/// the one that would ask the person mid-turn.
+fn full_handler() -> std::sync::Arc<dyn claude_agent_sdk::PermissionHandler> {
+    claude_agent_sdk::permission_handler(|request| {
+        let decision = if request.tool_name == ASKS_PERSON {
+            PermissionResult::deny("Ask the person in your reply instead; they answer there.")
+        } else {
+            PermissionResult::allow(request.input.clone())
+        };
+        async move { Ok::<_, claude_agent_sdk::Error>(decision) }
+    })
+}
+
+/// A message as the content blocks Claude Code reads: the text, then each
+/// image or PDF its attachment note lines name (`[Image #1: /path]`), so a
+/// pasted picture reaches the model rather than only its path.
+#[must_use]
+pub fn content(text: &str) -> Vec<Value> {
+    let mut blocks = vec![claude_agent_sdk::text_block(text)];
+    for path in crate::attachments::noted(text) {
+        let Ok(attachment) = crate::attachments::from_path(&path) else {
+            continue;
+        };
+        let data = base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            &attachment.bytes,
+        );
+        blocks.push(if attachment.is_image() {
+            claude_agent_sdk::image_block(attachment.media_type, data)
+        } else {
+            serde_json::json!({
+                "type": "document",
+                "source": {"type": "base64", "media_type": attachment.media_type, "data": data},
+            })
+        });
     }
-    let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
-    let stop = std::sync::Arc::new(AtomicBool::new(false));
-    let server = crate::solver_plugin::mcp_server(cwd.to_owned(), sender, stop.clone());
-    let delegations = Delegations { receiver, stop };
-    run_inner(
-        prompt,
-        cwd,
-        Access::Full,
-        Some(server),
-        Some(delegations),
-        session,
-        cancel,
-        emit,
-    )
-    .await
+    blocks
 }
 
 /// One running tool call, kept between its `tool_use` and its `tool_result`.
@@ -547,17 +561,7 @@ pub async fn run(
     cancel: &AtomicBool,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Streamed, String> {
-    run_inner(
-        prompt,
-        cwd,
-        Access::Full,
-        None,
-        None,
-        Session::Off,
-        cancel,
-        emit,
-    )
-    .await
+    run_inner(prompt, cwd, Access::Full, None, None, cancel, emit).await
 }
 
 /// Runs one narrow Haiku turn, with `tools` from [`TOOLS`] alone and,
@@ -590,7 +594,6 @@ pub async fn run_with(
         Access::Files(tools),
         server,
         None,
-        Session::Off,
         cancel,
         emit,
     )
@@ -610,7 +613,20 @@ pub async fn run_with_solver(
     cancel: &AtomicBool,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Streamed, String> {
-    turn(prompt, cwd, true, Session::Off, cancel, emit).await
+    let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+    let stop = std::sync::Arc::new(AtomicBool::new(false));
+    let server = crate::solver_plugin::mcp_server(cwd.to_owned(), sender, stop.clone());
+    let delegations = Delegations { receiver, stop };
+    run_inner(
+        prompt,
+        cwd,
+        Access::Full,
+        Some(server),
+        Some(delegations),
+        cancel,
+        emit,
+    )
+    .await
 }
 
 /// What one turn may do.
@@ -679,7 +695,7 @@ fn turn_options(
 
 /// Delegation events a tool server sends while the turn waits on it, and
 /// the flag that stops what it runs when the turn ends.
-struct Delegations {
+pub(crate) struct Delegations {
     receiver: tokio::sync::mpsc::UnboundedReceiver<RuntimeEvent>,
     stop: std::sync::Arc<AtomicBool>,
 }
@@ -690,29 +706,19 @@ impl Drop for Delegations {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn run_inner(
     prompt: &str,
     cwd: &Path,
     access: Access<'_>,
     server: Option<claude_agent_sdk::SdkMcpServer>,
     mut delegations: Option<Delegations>,
-    session: Session<'_>,
     cancel: &AtomicBool,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Streamed, String> {
     if !crate::approval::tools_allowed() {
         return Err("This host refuses every tool, so claude cannot work here.".into());
     }
-    let (mut options, allowed) = turn_options(cwd, access, server);
-    let saved = !matches!(session, Session::Off);
-    let mut report = match session {
-        Session::Off => None,
-        Session::Saved { resume, report } => {
-            options = with_session(options, resume);
-            Some(report)
-        }
-    };
+    let (options, allowed) = turn_options(cwd, access, server);
     let root = cwd.to_owned();
     let full = matches!(access, Access::Full);
     let handler = claude_agent_sdk::permission_handler(move |request| {
@@ -738,14 +744,44 @@ async fn run_inner(
             recheck();
             format!("Claude Code did not start: {error}")
         })?;
-    let started = Instant::now();
+    read_turn(
+        &mut query,
+        cwd,
+        &mut delegations,
+        false,
+        cancel,
+        &mut |_| {},
+        emit,
+    )
+    .await
+}
+
+/// Reads one turn of `query` to its `result`, emitting the reply's text, the
+/// model the engine reported, and each tool call as Coder's own shapes.
+/// `report` hears the session id with the turn's first message.
+///
+/// A one-off turn (`keep` false) ends its process with the turn. A chat's
+/// long-lived process (`keep`, [`crate::claude_chat`]) stays up after the
+/// result, and a stopped turn is interrupted rather than ended.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn read_turn(
+    query: &mut claude_agent_sdk::Query,
+    cwd: &Path,
+    delegations: &mut Option<Delegations>,
+    keep: bool,
+    cancel: &AtomicBool,
+    report: &mut dyn FnMut(&str),
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Streamed, String> {
+    let mut started = Instant::now();
+    let mut waiting = keep;
     let mut reply = Streamed::default();
     let mut calls: HashMap<String, Call> = HashMap::new();
     let mut first_text_ms = None;
     let mut reported: Option<String> = None;
     loop {
         if cancel.load(Ordering::Relaxed) {
-            stop(&mut query, saved).await;
+            stop(query, keep).await;
             return Err(STOPPED.into());
         }
         let next = match delegations.as_mut() {
@@ -768,11 +804,16 @@ async fn run_inner(
         let Some(message) = next else {
             break;
         };
+        // A long-lived process waits between turns; the turn's time starts
+        // with its first message, not with the wait.
+        if waiting {
+            waiting = false;
+            started = Instant::now();
+        }
         // The session id arrives with Claude Code's first message. It is
         // reported at once, so a turn stopped part way still leaves the chat
         // holding its session.
-        if let Some(report) = report.as_mut()
-            && let Some(id) = query.session_id()
+        if let Some(id) = query.session_id()
             && reported.as_deref() != Some(id)
         {
             reported = Some(id.to_owned());
@@ -869,7 +910,9 @@ async fn run_inner(
                 }
             }
             Ok(SdkMessage::Result(result)) => {
-                let _ = query.kill().await;
+                if !keep {
+                    let _ = query.kill().await;
+                }
                 if let Some(delegations) = delegations.as_mut() {
                     while let Ok(event) = delegations.receiver.try_recv() {
                         emit(event);
@@ -881,7 +924,9 @@ async fn run_inner(
                 return Ok(done);
             }
             Ok(SdkMessage::Unknown { type_name, raw }) if type_name == "result" => {
-                let _ = query.kill().await;
+                if !keep {
+                    let _ = query.kill().await;
+                }
                 if let Some(delegations) = delegations.as_mut() {
                     while let Ok(event) = delegations.receiver.try_recv() {
                         emit(event);
@@ -914,7 +959,7 @@ async fn run_inner(
 
 /// `options` for a session Claude Code saves, continuing `resume` when the
 /// chat already holds one.
-fn with_session(mut options: QueryOptions, resume: Option<Resume<'_>>) -> QueryOptions {
+fn with_session(mut options: QueryOptions, resume: Option<Resume>) -> QueryOptions {
     options.persist_session = true;
     if let Some(Resume { id, note }) = resume {
         options = options.resume(id);
@@ -923,22 +968,35 @@ fn with_session(mut options: QueryOptions, resume: Option<Resume<'_>>) -> QueryO
     options
 }
 
-/// Stop a running turn. A saved session is interrupted, so Claude Code ends
-/// the turn itself and its saved session survives for the next one; the
-/// process is ended once the interrupted turn reports its end, or at once
-/// when the interrupt is refused. A one-off turn is simply ended.
-async fn stop(query: &mut claude_agent_sdk::Query, saved: bool) {
-    if saved && query.interrupt().await.is_ok() {
-        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+/// Stop a running turn. A chat's long-lived process (`keep`) is
+/// interrupted, so Claude Code ends the turn itself and the process and its
+/// session stay for the next message; it is ended only when the interrupt is
+/// refused or the turn does not report its end. A one-off turn is ended.
+async fn stop(query: &mut claude_agent_sdk::Query, keep: bool) {
+    if keep && query.interrupt().await.is_ok() {
+        let ended = tokio::time::timeout(std::time::Duration::from_secs(5), async {
             while let Some(message) = query.next().await {
-                if matches!(message, Ok(SdkMessage::Result(_))) {
-                    break;
+                if message.as_ref().is_ok_and(is_result) {
+                    return true;
                 }
             }
+            false
         })
         .await;
+        if ended == Ok(true) {
+            return;
+        }
     }
     let _ = query.kill().await;
+}
+
+/// Whether `message` is a turn's `result`, modeled or not.
+fn is_result(message: &SdkMessage) -> bool {
+    match message {
+        SdkMessage::Result(_) => true,
+        SdkMessage::Unknown { type_name, .. } => type_name == "result",
+        _ => false,
+    }
 }
 
 fn elapsed_ms(started: Instant) -> u64 {
@@ -1390,7 +1448,7 @@ mod tests {
         let resumed = with_session(
             base(),
             Some(Resume {
-                id: "5b0c1d2e",
+                id: "5b0c1d2e".into(),
                 note: note.clone(),
             }),
         );
