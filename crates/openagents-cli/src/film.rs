@@ -11,9 +11,10 @@ use crate::{Args, Output};
 
 pub(crate) const USAGE: &str = "usage: openagents film COMMAND [ARGS]
   inspect FILE              Read a take and print its header, counts, and notes.
-  demo OUT [--pictures N] [--hold N]
+  demo OUT [--pictures N] [--hold N] [--scene square|desktop] [--image FILE]
                             Write a short demo take (a square sliding across a
-                            1280×720 frame at 60 fps) to OUT.
+                            1280×720 frame at 60 fps, or a Coder Noir desktop
+                            scene over FILE, a PNG or JPEG) to OUT.
   render FILE DIR [--picture N] [--background R,G,B]
                             Draw a take's pictures with wgpu into DIR as
                             frame-NNNN.png (every picture, or only picture N).
@@ -65,7 +66,19 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                 Ok(n) if n > 0 => n,
                 _ => return output.usage("film demo", "--hold needs a count above 0", USAGE),
             };
-            let bytes = verse_film::take::demo(pictures, hold);
+            let bytes = match args.option("scene").unwrap_or("square") {
+                "square" => verse_film::take::demo(pictures, hold),
+                "desktop" => {
+                    let image = args.option("image").map(Path::new);
+                    match verse_film::layers::demo(image, pictures, hold) {
+                        Ok(bytes) => bytes,
+                        Err(message) => return output.fail("film demo", &message),
+                    }
+                }
+                other => {
+                    return output.usage("film demo", &format!("unknown scene `{other}`"), USAGE);
+                }
+            };
             if let Err(error) = std::fs::write(out, &bytes) {
                 return output.fail("film demo", &format!("can't write {out}: {error}"));
             }

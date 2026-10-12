@@ -40,7 +40,7 @@ reads as far as it goes, with `failed` unknown.
 ## Commands
 
 ```
-openagents film demo OUT.take [--pictures N] [--hold N]
+openagents film demo OUT.take [--pictures N] [--hold N] [--scene square|desktop] [--image FILE]
 openagents film inspect FILE [--json]
 openagents film render FILE DIR [--picture N] [--background R,G,B]
 ```
@@ -83,3 +83,18 @@ let take = verse_film::read(&bytes)?;
    pictures.
 5. App mockups: a frame that lays out a web, phone, or desktop screen from
    the `/ui/screens` gallery's sample states.
+
+## Layers (S3)
+
+`verse_film::layers` (feature `layers`) builds product content into a take:
+
+- `Font` sets text in Paper Mono as closed cubic paths, one upload per
+  glyph; `Font::text` returns the glyph records and the advance.
+- `Theme::light()` and `Theme::noir()` read Coder Light and Coder Noir from
+  `oa-tokens`; `panel`, `button`, and `chat_row` paint desktop components
+  with them.
+- `image_file` uploads a PNG or JPEG (a Verse capture) as an image layer;
+  `fit` sizes it, `place` moves a component's records.
+
+`openagents film demo OUT --scene desktop --image FILE` composes them into
+a Coder Noir scene over a Verse capture.
