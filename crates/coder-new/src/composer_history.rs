@@ -134,7 +134,9 @@ impl App {
             .map(|root| root.join("prompt-history.jsonl"))
     }
 
-    fn prompt_session(&mut self) -> String {
+    /// The chat's saved session id, or, for a chat with nowhere to save
+    /// it, an id that stays the same for this chat.
+    pub(crate) fn prompt_session(&mut self) -> String {
         if let Some(session) = self.session_id() {
             return session.to_owned();
         }

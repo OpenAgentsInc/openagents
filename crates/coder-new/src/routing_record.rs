@@ -142,7 +142,8 @@ pub enum Rule {
 /// The selector's call when it gives a turn to a harness.
 #[derive(Clone, Debug)]
 pub struct Choice<'a> {
-    /// The chat's saved session id, when it has one yet.
+    /// The chat: its saved session id, or an id of its own when it has
+    /// nowhere to save.
     pub chat: Option<String>,
     /// The turn's number in the chat, from one.
     pub turn: u32,
@@ -266,7 +267,7 @@ pub fn turn_checks(entries: &[crate::live::Entry]) -> Option<bool> {
             .get("command")
             .or_else(|| input.get("cmd"))
             .and_then(serde_json::Value::as_str);
-        if let Some(command) = command.filter(|c| atif::activity::is_check_command(c)) {
+        if command.is_some_and(atif::activity::is_check_command) {
             last_command = Some(!crate::tools::output_failed(output));
             continue;
         }
@@ -789,7 +790,9 @@ impl crate::App {
         let Some(recorder) = self.recorder() else {
             return;
         };
-        let chat = self.session_id().map(str::to_owned);
+        // A chat with nowhere to save it (`coder chat` without a session)
+        // still gets an id of its own, so its turns group together.
+        let chat = Some(self.prompt_session());
         let prompt = self
             .live
             .entries

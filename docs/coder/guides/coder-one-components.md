@@ -431,6 +431,7 @@ coder-one component suite task.profile --no-record \
   --export bench/terminal-bench/profiles/task-features.json
 gym coder matrix       # task by policy: Wilson intervals, frontiers, oracles
 gym coder router       # features, picks, and leave-one-task-out regret
+gym coder routing      # Coder's harness router vs the oracle and the fixed rule
 ```
 
 [Route each task](../../terminal-bench/2026-09-22-routing.md) has the

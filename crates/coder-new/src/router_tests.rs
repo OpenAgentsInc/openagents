@@ -815,3 +815,136 @@ fn the_same_message_again_marks_the_earlier_turn_redone() {
     assert_eq!(redone[0].id, first);
     assert_eq!(redone[0].why, crate::routing_record::Redo::SameMessage);
 }
+
+/// Router v0 on the Terminal-Bench development tasks (#11461): each
+/// task's instruction as a chat's first message, with System One's
+/// recorded judgment and the pick the frozen policy makes from it. The
+/// Gym (`gym coder router`) prices those picks against the oracle and the
+/// fixed rule.
+const TASKS: &str = include_str!("../../../bench/terminal-bench/profiles/route-v1-tasks.json");
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+struct TaskPick {
+    harness: Harness,
+    step: Step,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+struct TaskRow {
+    task: String,
+    instruction: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    judged: Option<Recorded>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    door: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pick: Option<TaskPick>,
+}
+
+/// The situation every task row is routed in: a first message, Claude
+/// Code and the Coder loop admitted, default sliders.
+fn task_situation() -> Situation {
+    situation_of(&Row {
+        id: String::new(),
+        earlier: Vec::new(),
+        latest: String::new(),
+        chat_on: None,
+        situation: None,
+        label: Judgment {
+            kind: Kind::Answer,
+            size: Size::Small,
+            needs_repo: false,
+            own_tools: false,
+            risk: Risk::Low,
+            new_work: None,
+        },
+        expect: Expect {
+            harness: Harness::CoderLoop,
+            step: Step::OnlyOne,
+        },
+        judged: None,
+    })
+}
+
+fn task_rows() -> (serde_json::Value, Vec<TaskRow>) {
+    let value: serde_json::Value = serde_json::from_str(TASKS).expect("the task set parses");
+    let rows = serde_json::from_value(value["rows"].clone()).expect("the rows parse");
+    (value, rows)
+}
+
+/// The picks in the checked-in file are what the frozen policy makes of
+/// the recorded judgments, so the Gym's report prices this policy.
+#[test]
+fn the_terminal_bench_picks_are_the_frozen_policys() {
+    let (value, rows) = task_rows();
+    assert_eq!(value["set"], QUESTION_SET);
+    assert_eq!(value["policy"], POLICY);
+    assert_eq!(rows.len(), 8);
+    for row in rows {
+        let judgment = row
+            .judged
+            .as_ref()
+            .and_then(Recorded::judgment)
+            .unwrap_or_else(|| panic!("{} has a recorded judgment", row.task));
+        let decision = policy(&judgment, &task_situation());
+        let pick = row.pick.as_ref().expect("a pick");
+        assert_eq!(
+            (pick.harness, pick.step),
+            (decision.harness, decision.step),
+            "{}",
+            row.task
+        );
+    }
+}
+
+/// Asks the gateway door about each Terminal-Bench task. With
+/// `ROUTER_RECORD=1` it writes the judgments and picks into
+/// `bench/terminal-bench/profiles/route-v1-tasks.json`.
+#[test]
+#[ignore = "asks openagents.com"]
+fn the_gateway_judges_the_terminal_bench_tasks() {
+    let (mut value, mut rows) = task_rows();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    for row in &mut rows {
+        let request = jev::SystemOneRequest::new(state(&[], &row.instruction), questions(false));
+        let (response, door) = runtime
+            .block_on(crate::issue_run::decide::ask(
+                crate::issue_run::Decider::Gateway,
+                request,
+            ))
+            .unwrap_or_else(|error| panic!("{}: {error}", row.task));
+        let recorded = Recorded::from_response(&response).expect("every question answered");
+        let judgment = recorded.judgment().expect("the answers read");
+        let decision = policy(&judgment, &task_situation());
+        println!(
+            "{:<24} {:?}/{:?} repo={} own={} risk={:?} -> {:?} by {:?}",
+            row.task,
+            judgment.kind,
+            judgment.size,
+            judgment.needs_repo,
+            judgment.own_tools,
+            judgment.risk,
+            decision.harness,
+            decision.step
+        );
+        row.judged = Some(recorded);
+        row.model = Some(response.model.clone());
+        row.door = Some(door);
+        row.pick = Some(TaskPick {
+            harness: decision.harness,
+            step: decision.step,
+        });
+    }
+    if std::env::var_os("ROUTER_RECORD").is_some() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../bench/terminal-bench/profiles/route-v1-tasks.json");
+        value["rows"] = serde_json::to_value(&rows).unwrap();
+        std::fs::write(&path, serde_json::to_string_pretty(&value).unwrap() + "\n").unwrap();
+        println!("recorded into {}", path.display());
+    }
+}

@@ -64,6 +64,10 @@ gym coder handoff [--json] control.handoff's patterns on the mini-tasks: pass, m
                            cost, episode time, and the objective per policy
 gym coder router [--json]  task features, router picks, and leave-one-task-out
                            regret compared with fixed and hand-written baselines
+gym coder routing [--json] Coder's harness router (Claude Code or Coder's loop)
+                           against the oracle and the fixed rule, on the
+                           Terminal-Bench tasks and recorded real turns, with
+                           the promotion gate's verdict
 gym coder monitor [--json] control.monitor's replay over retained streams: trigger
                            precision for the rules and Jev, stale answers, and cost
 gym coder coverage [--attempt JOB/TRIAL | --run ID] [--json]
@@ -207,6 +211,9 @@ fn execute(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     }
     if args.first().map(String::as_str) == Some("router") {
         return gym::coder_router::command(&args[1..], out);
+    }
+    if args.first().map(String::as_str) == Some("routing") {
+        return gym::coder_routing::command(&args[1..], out);
     }
     if args.first().map(String::as_str) == Some("study") {
         return gym::coder_study::command(&args[1..], out);
