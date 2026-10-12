@@ -711,6 +711,10 @@ async fn cors(State(state): State<Arc<ServeState>>, request: Request, next: Next
 fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
     let mut routes = vec![
         ("/v1/systemone", post(systemone)),
+        (
+            crate::decisions::PATH,
+            post(crate::decisions::create).layer(DefaultBodyLimit::max(crate::decisions::MAX_BODY)),
+        ),
         ("/v1/classify", post(classify)),
         ("/v1/jobs", post(jobs::submit)),
         ("/v1/jobs/{id}", get(jobs::status).delete(jobs::remove)),

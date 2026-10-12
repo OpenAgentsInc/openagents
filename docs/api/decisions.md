@@ -1,9 +1,18 @@
 # Decisions
 
-2026-10-12. Proposed. `POST /v1/decisions` is not mounted yet. Everything it
-runs on is live: the decision itself is the [NIP-DEC](../../nips/openagents/NIP-DEC.md)
-request that `POST /v1/systemone` answers today, keyless, at
-`https://openagents.com/api/v1/systemone`.
+2026-10-12. **Live** at `https://openagents.com/api/v1/decisions`, keyless
+and free, answered first by our own always-on H100
+([clef-decisions-h100.md](../inference/clef-decisions-h100.md)). Underneath,
+each call is the [NIP-DEC](../../nips/openagents/NIP-DEC.md) request that
+`POST /v1/systemone` answers.
+
+What is not live yet: images are accepted but answered with a per-question
+`refusal` (`unsupported_input`), because our CUDA Clef does not read them;
+`openagents.receipt` is not filled (the decision route keeps the decision
+record, not a sealed receipt); the rate card and x402 payment do not list
+decisions (calls are free); `api.openagents.com` does not answer yet, so use
+`https://openagents.com/api/v1`; `GET /v1/models` does not list the
+decision models.
 
 The Decisions API reads text, images, or both and returns typed answers: the
 probability that a condition is true, one choice from a fixed set, or a score
@@ -18,8 +27,8 @@ relay: open-weight Clef models on Pylons and our own GPUs first, then
 backups. The same call can go over HTTP with an API key, over Nostr as a
 decision job, or to a Pylon you run yourself.
 
-It is a PUBLIC surface on `https://api.openagents.com/v1` (alias
-`https://openagents.com/api/v1`) and follows [the API design](design.md):
+It is a PUBLIC surface on `https://openagents.com/api/v1` (later also
+`https://api.openagents.com/v1`) and follows [the API design](design.md):
 one error object, `oak_` keys, sats, and no house rate limit on your own
 keys. Headers, the workspace, and body size that every call shares are in
 [Calling the API](calling.md).
@@ -46,8 +55,7 @@ keys. Headers, the workspace, and body size that every call shares are in
 ## Quick start
 
 ```bash
-curl https://api.openagents.com/v1/decisions \
-  -H "Authorization: Bearer $OPENAGENTS_API_KEY" \
+curl https://openagents.com/api/v1/decisions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "openagents/decide",
@@ -87,19 +95,24 @@ curl https://api.openagents.com/v1/decisions \
   ],
   "usage": {"input_tokens": 212},
   "openagents": {
-    "door": "pylon:coderos-4080-clef",
+    "door": "clef",
     "latency_ms": 184,
     "cost": {"price_sats": 0, "price_usd": "0.000000"}
   }
 }
 ```
 
-With an OpenAI SDK, set the base URL and the key; nothing else changes:
+With an OpenAI SDK, set the base URL; nothing else changes. (The Python SDK
+as of 2.48.0 has no `client.decisions` resource yet; until it does,
+`client.post("/decisions", body=..., cast_to=object)` sends the same request
+through the SDK, which is what
+[`scripts/dev/decisions-conformance.py`](../../scripts/dev/decisions-conformance.py)
+checks.)
 
 ```python
 from openai import OpenAI
 
-client = OpenAI(base_url="https://api.openagents.com/v1", api_key=OPENAGENTS_API_KEY)
+client = OpenAI(base_url="https://openagents.com/api/v1", api_key=OPENAGENTS_API_KEY or "none")
 decision = client.decisions.create(
     model="openagents/decide",
     input="Export fails in Safari but works in Chrome.",
@@ -117,7 +130,8 @@ decision = client.decisions.create(
 print(decision.answers[0].score)
 ```
 
-In Rust, `crates/jev` already speaks the same decision; see
+In Rust, `jev::decisions::DecisionsClient` sends this page's request (and
+`jev_hosted::decisions()` points it at openagents.com); see
 [Three ways to call it](#three-ways-to-call-it).
 
 ## The request
@@ -144,7 +158,10 @@ Headers: `Authorization` (an `oak_` key, a session, or none for the free
 lane), `X-Workspace-Id` for a session with more than one workspace,
 `Idempotency-Key` (the same key and body within 24 hours returns the first
 answer without a second charge; a different body is `409`
-`idempotency_conflict`), and `X-Attempt` on a deliberate retry.
+`idempotency_conflict`; the gateway keeps the last 4,096 answers in memory,
+so a gateway restart forgets them), `X-Attempt` on a deliberate retry, and
+`X-Decision-Order` (`pylon` or `hosted`, see
+[How a call is served](#how-a-call-is-served)).
 
 ## Question types
 
@@ -207,14 +224,15 @@ Answers:
 
 | Model | What answers | Reads images | Notes |
 | --- | --- | --- | --- |
-| `openagents/decide` | The best available door for the request: Clef on Pylons and our GPUs first, then the backups ([How a call is served](#how-a-call-is-served)). The default. | When the chosen door does | `model` in the response names what answered. |
-| `clef-flash` | Cloudflare's open-weight Clef-Flash (9B), Q4_K_M, served natively by Psionic | Planned (Psionic serves images on CPU and Metal; CUDA refuses them today) | Fastest. Under-confident on file relevance; calibrate thresholds per use. |
-| `clef` | Clef (27B), the same family's larger model | Planned, as above | The quality tier. Best of our models on file relevance (AUC 0.91 on closed issues); about 2.6× slower than Flash on an H100. |
+| `openagents/decide` | Clef-Flash on our H100 first, then the backups ([How a call is served](#how-a-call-is-served)). The default. | Not yet | `model` in the response names what answered. |
+| `clef-flash` | Cloudflare's open-weight Clef-Flash (9B), Q4_K_M, served natively by Psionic on our H100 | Planned (Psionic serves images on CPU and Metal; CUDA refuses them today) | Fastest. Under-confident on file relevance; calibrate thresholds per use. |
+| `clef` | Clef (27B), the same family's larger model, Q4_K_M, on the same H100 | Planned, as above | The quality tier. Best of our models on file relevance (AUC 0.91 on closed issues); about 2.6× slower than Flash on an H100. |
 | `jev-latest` | TypeSafe's Jev, relayed | No | A backup door. Callers with their own TypeSafe key can still call TypeSafe directly. |
 
-`GET /v1/models` lists them with `capabilities: ["decision"]`, each model's
-limits, and whether it reads images. A model name authorizes nothing; the
-gateway admits it and says which door served it.
+Another name answers `404` `model_not_found`. Planned: `GET /v1/models`
+lists them with `capabilities: ["decision"]`, each model's limits, and
+whether it reads images. A model name authorizes nothing; the gateway admits
+it and says which door served it.
 
 ## Asking many questions at once
 
@@ -250,6 +268,9 @@ and file ids are not fetched. The image is placed before the text, as the
 Clef reference does. A model or door that does not read images answers that
 request's questions with `refusal` `unsupported_input`, and
 `openagents/decide` routes an image request only to doors that read images.
+Today no door does (our H100 runs Clef on CUDA, which refuses images), so
+every request with an image answers each question with that refusal and
+`openagents.door: null`, without asking a door.
 
 Images travel over HTTP only. A NIP-DEC decision job carries text; its
 payload bound (256 KiB) is too small for images, and an image job form
@@ -280,8 +301,25 @@ The same decision, three transports:
 
 In Rust, `crates/jev` is the client for all three: `jev::Config::new` for a
 hosted door, `Config::local` for a server on this computer, and
-`jev_hosted::resolve` for the failover chain. It speaks the NIP-DEC body;
-it gains a `decisions()` call that takes and returns this page's shapes.
+`jev_hosted::resolve` for the failover chain, all in the NIP-DEC body. For
+this page's shapes, `jev::decisions::DecisionsClient` (built by
+`jev_hosted::decisions()` for openagents.com, or `OPENAGENTS_DECISIONS_URL`):
+
+```rust
+let client = jev_hosted::decisions()?;
+let request = jev::decisions::DecisionsRequest::new("openagents/decide", "I was charged twice.")
+    .predicate("refund", "Does the customer ask for money back?")
+    .choice("department", "Which department?", [("billing", "Payments."), ("technical", "Product problems.")]);
+let decision = client.create(&request).await?;
+let refund = decision.probability("refund");
+```
+
+Our chat router and solver still call `jev_hosted::resolve` (Jev first, its
+calibration maps) and stay there until the router gate passes. A caller of
+ours opts in by building its request with `DecisionsRequest` and calling
+`jev_hosted::decisions()?.create(...)`; to keep the payload on our
+machines it names `clef-flash` or `clef` (or sends `X-Decision-Order:
+hosted` with `create_with`).
 
 ### The translation
 
@@ -305,29 +343,47 @@ back in this page's shape. Nothing is lost either way.
 
 ## How a call is served
 
-`openagents/decide` asks these doors in order, each only when every door
-before it could not answer for its own reasons (busy, unreachable, out of
-credit); a refusal of the question itself never moves on:
+`/v1/decisions` asks doors in this order, each only when every door before
+it could not answer for its own reasons (busy, unreachable, out of credit,
+a timeout); a refusal of the question itself never moves on:
 
-1. **Clef on our capacity.** Pylons that advertise `pylon/decision` and have
-   a free slot, best standing first, over NIP-DEC on our relay; then our
-   hosted Clef servers (Psionic on CUDA, the RTX 4080 today, H100s as the
-   [throughput plan](https://github.com/OpenAgentsInc/openagents/issues/11446) lands).
-2. **Jev** on TypeSafe, under our house key.
-3. **Gemini on Vertex**, with a schema that asks one probability per option.
+| Request | Doors, in order |
+| --- | --- |
+| `openagents/decide` | 1. **Clef-Flash on our H100** (`clef-decisions-h100`, over our private network). 2. **Jev** on TypeSafe, under our house key. 3. **Gemini on Vertex**, with a schema that asks one probability per option. |
+| `clef-flash` | Our H100's Clef-Flash only. It fails (`503 unavailable`) rather than falling through to another model family. |
+| `clef` | Our H100's Clef 27B only, likewise. |
+| `jev-latest` | As `/v1/systemone`: Jev, the Pylons, our H100, Vertex. |
+| any, with `X-Decision-Order: pylon` | Connected Pylons that advertise `pylon/decision` (best standing first, over NIP-DEC on our relay), then our H100, then Vertex, then Jev. |
+| any, with `X-Decision-Order: hosted` | Our H100 only. The payload never leaves our machines, and no second opinion is asked elsewhere. |
 
-`/v1/systemone` today asks Jev first and the Pylons second, because the
-Pylon judge was too slow and unsure for production routing on one RTX 4080
-(NIP-DEC, "The OpenAgents decision API"). `/v1/decisions` starts with the
-same order, and moves Clef first once the H100 lanes and the router gate
-pass. `X-Decision-Order: pylon` asks the Pylons first on either route.
-Naming `clef-flash` or `clef` asks only our Clef capacity; it fails rather
-than falling through to another model family. Every call is one line in the
-decision record with each attempt's door, outcome, and time, and one answer
-in twenty is asked again at the next door to measure agreement.
+`/v1/systemone` keeps its order: Jev first, then the Pylons, then our H100
+(added there as the hosted Clef door, ahead of Vertex), then Vertex. The
+chat router and its calibration maps depend on Jev answering first; they
+move only when the router gate passes. `X-Decision-Order: pylon` asks the
+Pylons first on either route.
 
-Speed today, per request at about 1.5k input tokens: 0.11 s on an H100 and
-0.24 s on the RTX 4080 for `clef-flash`, 0.26 s on an H100 for `clef`
+Every call is one line in the decision record with each attempt's door,
+outcome, and time, and one answer in twenty (none for `clef-flash`, `clef`,
+or `hosted`) is asked again at another door to measure agreement.
+
+### Our H100
+
+One NVIDIA H100 80 GB (`a3-highgpu-1g`, spot, us-central1), always on: a
+preemption stops it, and a restarter starts it again within minutes, moving
+zones if one is out of capacity. It runs Psionic natively on CUDA, one
+server per model (`clef-flash` Q4_K_M and `clef` 27B Q4_K_M), reachable only
+from the gateway's private subnets. Its operations page is
+[clef-decisions-h100.md](../inference/clef-decisions-h100.md). It costs
+about $6.40 an hour, about $4,700 a month always on.
+
+Speed measured in production from a Mac in the US on 2026-10-12, three
+questions (a predicate, a choice of four, a score of three) about one short
+input, through `https://openagents.com/api/v1/decisions`:
+
+PRODUCTION_LATENCY_TABLE
+
+On the H100 itself, per request at about 1.5k input tokens: 0.11 s for
+`clef-flash` and 0.26 s for `clef`
 ([decision-throughput.md](../inference/decision-throughput.md)).
 
 ## Limits
@@ -356,7 +412,9 @@ and statuses are NIP-DEC's (`nostr::decision::http_status`):
 
 | Status | Codes | Retry? |
 | --- | --- | --- |
-| 400 | `invalid_request`, `too_many_questions`, `too_many_options`, `idempotency_conflict` (409) | No; fix the request. |
+| 400 | `invalid_request`, `too_many_questions`, `too_many_options` | No; fix the request. `param` names the field. |
+| 404 | `model_not_found` | No; use a listed model. |
+| 409 | `idempotency_conflict` | No; use a new key for a new body. |
 | 401 | `unauthenticated` | No. |
 | 402 | `payment_required` | After a top-up. |
 | 403 | `not_admitted` | No. |
@@ -386,9 +444,9 @@ batched 13 questions a request): about $0.002 per 1,000 decisions on the RTX
   ([privacy and retention](../decision-models/service/privacy.md)).
 - The door that answers sees the payload while it answers. A Pylon is
   someone else's machine; Jev and Vertex are third parties. A request that
-  must stay on our machines names `clef-flash` or `clef` with
-  `X-Decision-Order: hosted` (proposed; today the header takes only
-  `pylon`), which skips Pylons and third-party doors.
+  must stay on our machines names `clef-flash` or `clef`, or sends
+  `X-Decision-Order: hosted`; either asks only our H100 and skips Pylons,
+  third-party doors, and the shadow second opinion.
 - Sealed decisions: our H100 in confidential-computing mode answers over
   NIP-ATT, with the endpoint's attestation verified per call (about 3
   decisions/s today; [decision-throughput.md](../inference/decision-throughput.md),
@@ -406,13 +464,15 @@ edge differs.
 
 ## Building it
 
-| Step | Where | Notes |
+| Step | Where | Status |
 | --- | --- | --- |
-| Route and translation | `crates/gateway`, a `decisions` module beside `decision_dispatch` | Parse this page's request, translate to the NIP-DEC body, call the existing dispatch, translate answers back, add `id`, `object`, `openagents`. Bounds checked once by `nostr::decision::check_body` after translation. |
-| OpenAPI and coverage | `GET /v1/openapi.json`, `crates/gateway/tests` | PUBLIC entry; the coverage test fails without it. |
-| Conformance against OpenAI's SDKs | a test that runs the Python and JavaScript SDK examples against a local gateway | Same method as the [acceptance run](../inference/2026-10-09-acceptance-run.md) for `/v1/responses`. |
-| Rust client | `crates/jev` | `decisions()` with these shapes, over HTTP or NIP-DEC. |
+| Route and translation | `crates/gateway/src/decisions.rs`, beside `decision_dispatch` | Live. Parses this page's request, translates to the NIP-DEC body, calls `Dispatch::decide`, and translates answers back. Bounds checked here and again by `nostr::decision::check_body`. |
+| OpenAPI and coverage | `GET /v1/openapi.json` (`createDecision`), `crates/gateway/src/audience.rs`, `docs/agents/` | Live; PUBLIC, and the website's `/api/v1` alias forwards it. |
+| Conformance against OpenAI's SDKs | [`scripts/dev/decisions-conformance.py`](../../scripts/dev/decisions-conformance.py) | Python SDK 2.48.0 through `client.post` (no `client.decisions` yet); raw HTTP with `--raw`. JavaScript: open. |
+| Rust client | `jev::decisions`, `jev_hosted::decisions()` | Live, over HTTP. Over NIP-DEC: open. |
+| Hosted Clef | `clef-decisions-h100`, `decisions.clef_models` | Live. |
 | Images | Psionic CUDA image path; NIP-DEC image jobs | CUDA refuses images today; a job form for images needs a by-reference input. |
-| Per-question refusals | `decision_dispatch` | Today a door refuses a whole request; split unsupported questions out so the rest are answered. |
-| Clef first | after the H100 lanes and the router gate | [#11446](https://github.com/OpenAgentsInc/openagents/issues/11446): CUDA batching (#11441), prefix reuse (#11442), Hopper kernels (#11443, #11444), FP8 (#11445). |
-| Rate card | `crates/inference` rate card, the gateway's metering | Price per million input tokens in sats; the receipt already records tokens. |
+| Per-question refusals | `decision_dispatch` | Today a door refuses a whole request; images are refused per question at the edge. |
+| Receipts | the decision route | Open: `/v1/systemone`'s dispatch path writes the decision record, not a sealed receipt, so `openagents.receipt` is absent. |
+| Faster H100 | [#11446](https://github.com/OpenAgentsInc/openagents/issues/11446) | CUDA batching (#11441), prefix reuse (#11442), Hopper kernels (#11443, #11444), FP8 (#11445); each lands as a new bundle on the H100. |
+| Rate card | `crates/inference` rate card, the gateway's metering | Price per million input tokens in sats; free until then. |

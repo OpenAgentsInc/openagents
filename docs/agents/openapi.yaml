@@ -167,6 +167,46 @@ paths:
           $ref: '#/components/responses/TypedError'
         '503':
           $ref: '#/components/responses/TypedError'
+  /v1/decisions:
+    post:
+      summary: Typed decisions in OpenAI's Decisions shape
+      description: OpenAI's Decisions API request and response over one NIP-DEC decision (docs/api/decisions.md).
+        `openagents/decide` asks our hosted Clef first, then Jev, then Vertex; `clef-flash` and `clef`
+        ask only our hosted Clef. Keyless and free.
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+        description: The same key and body within 24 hours returns the first answer; another body is `409`
+          `idempotency_conflict`.
+      - name: X-Decision-Order
+        in: header
+        required: false
+        schema:
+          type: string
+          enum: [pylon, hosted]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model, input, questions]
+      responses:
+        '200':
+          description: One answer per question, in request order.
+        '400':
+          description: '`invalid_request`, `too_many_questions`, or `too_many_options`.'
+        '404':
+          description: '`model_not_found`.'
+        '409':
+          description: '`idempotency_conflict`.'
+        '413':
+          description: '`limit_exceeded`.'
+        '503':
+          description: No decision door could answer right now (`unavailable`).
   /v1/classify:
     post:
       summary: Classify ordered inputs under an explicit selection policy

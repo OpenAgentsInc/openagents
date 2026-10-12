@@ -51,6 +51,10 @@
 #                               beacons POST /v1/systemone sends decisions to (#11225);
 #                               default CoderOS-4080's pylon key
 #   DECISION_CLEF_URL           optional: our hosted Clef (`/v1/systemone`) after the Pylons
+#   DECISION_CLEF_FLASH_URL     our hosted Clef-Flash; default the always-on H100
+#                               clef-decisions-h100 at http://10.128.0.61:18096 over the VPC
+#                               (docs/inference/clef-decisions-h100.md); set empty to turn it off
+#   DECISION_CLEF_27B_URL       our hosted Clef 27B (`clef`); default the same H100, :18098
 #   DECISION_JEV                ignored since the owner put Jev first again (#11225): the
 #                               gateway asks Jev first under TYPESAFE_API_KEY, else the
 #                               Secret Manager key openagents-gateway-production-typesafe-key
@@ -219,6 +223,18 @@ clef=""
 if [ -n "${DECISION_CLEF_URL:-}" ]; then
     clef="\"clef_url\": \"$DECISION_CLEF_URL\","
 fi
+# Our hosted Clef per model (#11446): the always-on H100's Psionic servers,
+# reached over Direct VPC egress; the firewall admits only the gateway's
+# subnets (deploy/clef-decisions/provision.sh). POST /v1/decisions asks it
+# first for openagents/decide and only it for clef-flash and clef.
+flash_url=${DECISION_CLEF_FLASH_URL-http://10.128.0.61:18096}
+big_url=${DECISION_CLEF_27B_URL-http://10.128.0.61:18098}
+clef_models=""
+[ -n "$flash_url" ] && clef_models="\"clef-flash\": \"$flash_url\""
+if [ -n "$big_url" ]; then
+    clef_models="${clef_models:+$clef_models, }\"clef\": \"$big_url\""
+fi
+clef="$clef \"clef_models\": {$clef_models},"
 jev=false
 [ "${DECISION_JEV:-}" = on ] && jev=true
 cat > "$private/gateway.json" << EOF

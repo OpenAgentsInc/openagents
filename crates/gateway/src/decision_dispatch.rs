@@ -16,9 +16,16 @@
 //!    encrypted, `jev_hosted::RelayExchange`), waits with a deadline,
 //!    checks the answer's shape and the served model identity against the
 //!    beacon, and fails over to the next pylon.
-//! 2. **Our hosted Clef** (`clef_url`), a Psionic `/v1/systemone` over HTTP.
+//! 2. **Our hosted Clef** (`clef_url`, and `clef_models` per model), a
+//!    Psionic `/v1/systemone` over HTTP: the always-on H100
+//!    `clef-decisions-h100` in production, reached over the VPC
+//!    (docs/inference/clef-decisions-h100.md).
 //! 3. **Gemini on Vertex AI** answering the same typed questions with
 //!    structured output (`vertex`), on the prepaid Google credit.
+//!
+//! `POST /v1/decisions` ([`crate::decisions`]) asks in its own order
+//! ([`Order`]): `openagents/decide` our hosted Clef first, then Jev, then
+//! Vertex; `clef-flash` or `clef` our hosted Clef only.
 //!
 //! Pylons stay fallback and shadow until they pass the router gate: one
 //! answer in twenty is asked again at the next door (a Jev answer at the
@@ -86,9 +93,15 @@ pub struct Decisions {
     /// How long one pylon may take, in milliseconds.
     #[serde(default = "default_pylon_ms")]
     pub pylon_ms: u64,
-    /// Our hosted Clef, a Psionic `/v1/systemone` base URL.
+    /// Our hosted Clef, a Psionic `/v1/systemone` base URL, answering as
+    /// `clef-flash`.
     #[serde(default)]
     pub clef_url: Option<String>,
+    /// Our hosted Clef per served model (`clef-flash`, `clef`): a Psionic
+    /// `/v1/systemone` base URL each. `clef-flash` here wins over
+    /// `clef_url`; `clef` (27B) is reached only through this map.
+    #[serde(default)]
+    pub clef_models: std::collections::BTreeMap<String, String>,
     /// Gemini on Vertex AI with structured output; on by default when the
     /// process has a Google credential.
     #[serde(default = "default_vertex")]
@@ -172,6 +185,7 @@ impl Default for Decisions {
             pylon_tries: default_pylon_tries(),
             pylon_ms: default_pylon_ms(),
             clef_url: None,
+            clef_models: std::collections::BTreeMap::new(),
             vertex: default_vertex(),
             jev: false,
             no_jev: false,
@@ -251,6 +265,63 @@ impl Kind {
     }
 }
 
+/// The order a decision asks its doors in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Order {
+    /// `/v1/systemone`'s default: Jev, the Pylons, our hosted Clef, Vertex.
+    JevFirst,
+    /// `X-Decision-Order: pylon`: the Pylons, our hosted Clef, Vertex, Jev.
+    PylonFirst,
+    /// `/v1/decisions` for `openagents/decide`: our hosted Clef, Jev, Vertex.
+    HostedFirst,
+    /// Our hosted Clef only (`/v1/decisions` naming `clef-flash` or
+    /// `clef`, or `X-Decision-Order: hosted`): the payload never leaves our
+    /// machines, and no shadow second opinion is asked elsewhere.
+    HostedOnly,
+}
+
+/// One step of an [`Order`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Step {
+    Jev,
+    Pylons,
+    Clef,
+    Vertex,
+}
+
+impl Order {
+    fn steps(self) -> &'static [Step] {
+        match self {
+            Self::JevFirst => &[Step::Jev, Step::Pylons, Step::Clef, Step::Vertex],
+            Self::PylonFirst => &[Step::Pylons, Step::Clef, Step::Vertex, Step::Jev],
+            Self::HostedFirst => &[Step::Clef, Step::Jev, Step::Vertex],
+            Self::HostedOnly => &[Step::Clef],
+        }
+    }
+
+    /// The order `X-Decision-Order` asks for, when it names one.
+    #[must_use]
+    pub fn from_header(headers: &HeaderMap) -> Option<Self> {
+        let value = headers.get("x-decision-order")?.to_str().ok()?.trim();
+        if value.eq_ignore_ascii_case("pylon") {
+            Some(Self::PylonFirst)
+        } else if value.eq_ignore_ascii_case("hosted") {
+            Some(Self::HostedOnly)
+        } else {
+            None
+        }
+    }
+}
+
+/// A decision answered, or the refusal to send.
+pub enum Decided {
+    /// The door's NIP-DEC response, with `service` and `latency_ms` set.
+    Answered { door: String, response: Value },
+    /// No door answered, or the request was refused: an HTTP status and the
+    /// error body.
+    Refused { status: u16, body: Value },
+}
+
 /// The dispatcher behind `POST /v1/systemone`.
 pub struct Dispatch {
     config: Decisions,
@@ -325,7 +396,14 @@ impl Dispatch {
                 .clef_url
                 .as_ref()
                 .map(|url| format!(" → hosted Clef at {url}"))
-                .unwrap_or_default(),
+                .into_iter()
+                .chain(
+                    config
+                        .clef_models
+                        .iter()
+                        .map(|(model, url)| format!(" → hosted {model} at {url}")),
+                )
+                .collect::<String>(),
             vertex
                 .as_ref()
                 .map(|(door, ..)| format!(" → Vertex {}", door.model))
@@ -454,9 +532,52 @@ impl Dispatch {
         }
         let state = envelope.get("state").cloned().unwrap_or(Value::Null);
         let questions = envelope.get("questions").cloned().unwrap_or(Value::Null);
+        let order = Order::from_header(headers).unwrap_or(
+            if matches!(model.as_str(), "clef-flash" | "openagents/pylon") {
+                Order::PylonFirst
+            } else {
+                Order::JevFirst
+            },
+        );
+        Some(
+            match self.decide(headers, &model, state, questions, order).await {
+                Decided::Answered { door, response } => {
+                    let mut out = (
+                        axum::http::StatusCode::OK,
+                        [("content-type", "application/json")],
+                        serde_json::to_vec(&response).unwrap_or_default(),
+                    )
+                        .into_response();
+                    if let Ok(value) = door.parse() {
+                        out.headers_mut().insert("x-decision-door", value);
+                    }
+                    out
+                }
+                Decided::Refused { status, body } => (
+                    axum::http::StatusCode::from_u16(status)
+                        .unwrap_or(axum::http::StatusCode::BAD_GATEWAY),
+                    [("content-type", "application/json")],
+                    serde_json::to_vec(&body).unwrap_or_default(),
+                )
+                    .into_response(),
+            },
+        )
+    }
+
+    /// Answer one NIP-DEC decision (`model`, `state`, `questions`) by
+    /// asking the doors in `order`. Bounds are checked first.
+    pub async fn decide(
+        self: &Arc<Self>,
+        headers: &HeaderMap,
+        model: &str,
+        state: Value,
+        questions: Value,
+        order: Order,
+    ) -> Decided {
+        let model = model.to_owned();
         if let Err(error) = nostr::decision::check_body(&model, &state, &questions) {
             let code = error.code().unwrap_or("invalid_request");
-            return Some(refusal(code, &error.to_string(), &[]));
+            return refused(code, &error.to_string(), &[]);
         }
         let questions = questions.as_object().cloned().unwrap_or_default();
         let request = headers
@@ -466,24 +587,11 @@ impl Dispatch {
             .map_or_else(random_id, str::to_owned);
         let started = Instant::now();
         let deadline = started + Duration::from_millis(self.config.deadline_ms);
-        let pylon_first = headers
-            .get("x-decision-order")
-            .and_then(|v| v.to_str().ok())
-            .is_some_and(|v| v.trim().eq_ignore_ascii_case("pylon"))
-            || matches!(model.as_str(), "clef-flash" | "openagents/pylon");
         let (answer, attempts) = self
-            .chain(
-                &model,
-                &state,
-                &questions,
-                &request,
-                deadline,
-                None,
-                !pylon_first,
-            )
+            .chain(&model, &state, &questions, &request, deadline, None, order)
             .await;
         let total_ms = millis(started.elapsed());
-        let response = match &answer {
+        match &answer {
             Some((kind, door, response)) => {
                 let mut response = response.clone();
                 response["latency_ms"] = json!(total_ms);
@@ -516,8 +624,13 @@ impl Dispatch {
                     &attempts,
                     total_ms,
                 );
-                // A shadow second opinion a client sent is not shadowed again.
-                if headers.get("x-decision-shadow").is_none() && self.shadow_due() {
+                // A shadow second opinion a client sent is not shadowed
+                // again, and a hosted-only decision never leaves our
+                // machines for one.
+                if order != Order::HostedOnly
+                    && headers.get("x-decision-shadow").is_none()
+                    && self.shadow_due()
+                {
                     let this = Arc::clone(self);
                     let (kind, door) = (*kind, door.clone());
                     let first = response.clone();
@@ -526,16 +639,10 @@ impl Dispatch {
                             .await;
                     });
                 }
-                let mut out = (
-                    axum::http::StatusCode::OK,
-                    [("content-type", "application/json")],
-                    serde_json::to_vec(&response).unwrap_or_default(),
-                )
-                    .into_response();
-                if let Ok(value) = door.parse() {
-                    out.headers_mut().insert("x-decision-door", value);
+                Decided::Answered {
+                    door: door.clone(),
+                    response,
                 }
-                out
             }
             None => {
                 eprintln!(
@@ -558,18 +665,36 @@ impl Dispatch {
                         )
                     })
                     .unwrap_or_else(|| "unavailable".into());
-                refusal(
+                refused(
                     &code,
                     "No decision door could answer right now. Try again shortly.",
                     &attempts,
                 )
             }
-        };
-        Some(response)
+        }
     }
 
-    /// Ask each door in order until one answers. `skip` leaves one door
+    /// Our hosted Clef door for a requested model: its base URL and the
+    /// served name to ask for. `clef` (27B) only through `clef_models`;
+    /// every other name is answered by `clef-flash`.
+    fn clef_door(&self, model: &str) -> Option<(&str, &'static str)> {
+        if model == "clef" {
+            return self
+                .config
+                .clef_models
+                .get("clef")
+                .map(|url| (url.as_str(), "clef"));
+        }
+        self.config
+            .clef_models
+            .get("clef-flash")
+            .or(self.config.clef_url.as_ref())
+            .map(|url| (url.as_str(), "clef-flash"))
+    }
+
+    /// Ask each door in `order` until one answers. `skip` leaves one door
     /// out (the shadow's second opinion).
+    #[allow(clippy::too_many_arguments)]
     async fn chain(
         &self,
         model: &str,
@@ -578,18 +703,83 @@ impl Dispatch {
         request: &str,
         deadline: Instant,
         skip: Option<&str>,
-        jev_first: bool,
+        order: Order,
     ) -> (Option<(Kind, String, Value)>, Vec<Attempt>) {
         let mut attempts = Vec::new();
-        // 0. Jev, first-class unless the caller asked for the Pylons first.
-        if jev_first
-            && let Some(found) = self
-                .try_jev(state, questions, model, deadline, skip, &mut attempts)
-                .await
-        {
-            return (Some(found), attempts);
+        for step in order.steps() {
+            let found = match step {
+                Step::Jev => {
+                    self.try_jev(state, questions, model, deadline, skip, &mut attempts)
+                        .await
+                }
+                Step::Pylons => {
+                    self.try_pylons(
+                        model,
+                        state,
+                        questions,
+                        request,
+                        deadline,
+                        skip,
+                        &mut attempts,
+                    )
+                    .await
+                }
+                Step::Clef => {
+                    self.try_clef(model, state, questions, deadline, skip, &mut attempts)
+                        .await
+                }
+                Step::Vertex => {
+                    if self.vertex.is_some() && skip != Some("vertex") {
+                        let t = Instant::now();
+                        let left = deadline.saturating_duration_since(Instant::now());
+                        let result = self.ask_vertex(state, questions, left).await;
+                        self.settle("vertex", Kind::Vertex, result, questions, t, &mut attempts)
+                    } else {
+                        None
+                    }
+                }
+            };
+            if let Some(found) = found {
+                return (Some(found), attempts);
+            }
         }
-        // 1. Connected pylons.
+        (None, attempts)
+    }
+
+    /// Our hosted Clef, when configured for `model`.
+    async fn try_clef(
+        &self,
+        model: &str,
+        state: &Value,
+        questions: &Map<String, Value>,
+        deadline: Instant,
+        skip: Option<&str>,
+        attempts: &mut Vec<Attempt>,
+    ) -> Option<(Kind, String, Value)> {
+        if skip == Some("clef") {
+            return None;
+        }
+        let (url, served) = self.clef_door(model)?;
+        let t = Instant::now();
+        let left = deadline.saturating_duration_since(Instant::now());
+        let result = self
+            .ask_http(url, None, served, state, questions, left)
+            .await;
+        self.settle("clef", Kind::Clef, result, questions, t, attempts)
+    }
+
+    /// The connected pylons, best first, until one answers.
+    #[allow(clippy::too_many_arguments)]
+    async fn try_pylons(
+        &self,
+        model: &str,
+        state: &Value,
+        questions: &Map<String, Value>,
+        request: &str,
+        deadline: Instant,
+        skip: Option<&str>,
+        attempts: &mut Vec<Attempt>,
+    ) -> Option<(Kind, String, Value)> {
         let candidates = self.candidates(skip).await;
         let mut tries = 0;
         let mut queue: std::collections::VecDeque<(Candidate, u32)> =
@@ -638,7 +828,7 @@ impl Dispatch {
                         code: None,
                         ms,
                     });
-                    return (Some((Kind::Pylon, door, response)), attempts);
+                    return Some((Kind::Pylon, door, response));
                 }
                 Err((outcome, code)) => {
                     if !matches!(code.as_str(), "busy" | "rate_limited") {
@@ -659,41 +849,7 @@ impl Dispatch {
                 }
             }
         }
-        // 2. Our hosted Clef.
-        if let Some(url) = &self.config.clef_url
-            && skip != Some("clef")
-        {
-            let t = Instant::now();
-            let left = deadline.saturating_duration_since(Instant::now());
-            let result = self
-                .ask_http(url, None, "clef-flash", state, questions, left)
-                .await;
-            if let Some(found) =
-                self.settle("clef", Kind::Clef, result, questions, t, &mut attempts)
-            {
-                return (Some(found), attempts);
-            }
-        }
-        // 3. Gemini on Vertex AI, structured output.
-        if self.vertex.is_some() && skip != Some("vertex") {
-            let t = Instant::now();
-            let left = deadline.saturating_duration_since(Instant::now());
-            let result = self.ask_vertex(state, questions, left).await;
-            if let Some(found) =
-                self.settle("vertex", Kind::Vertex, result, questions, t, &mut attempts)
-            {
-                return (Some(found), attempts);
-            }
-        }
-        // 4. Jev last, when the caller asked for the Pylons first.
-        if !jev_first
-            && let Some(found) = self
-                .try_jev(state, questions, model, deadline, skip, &mut attempts)
-                .await
-        {
-            return (Some(found), attempts);
-        }
-        (None, attempts)
+        None
     }
 
     /// Check an HTTP door's answer and add it to the attempts.
@@ -1069,7 +1225,7 @@ impl Dispatch {
                 &random_id(),
                 deadline,
                 Some(&skip),
-                true,
+                Order::JevFirst,
             )
             .await;
         let Some((_, second_door, second)) = second else {
@@ -1405,18 +1561,13 @@ fn agreement(questions: &Map<String, Value>, a: &Value, b: &Value) -> (usize, us
     (agreed, questions.len(), max_dp)
 }
 
-fn refusal(code: &str, message: &str, attempts: &[Attempt]) -> Response {
+fn refused(code: &str, message: &str, attempts: &[Attempt]) -> Decided {
     let status = nostr::decision::http_status(code);
     let mut body = json!({"error": {"code": code, "message": message}});
     if !attempts.is_empty() {
         body["error"]["attempts"] = json!(attempts);
     }
-    (
-        axum::http::StatusCode::from_u16(status).unwrap_or(axum::http::StatusCode::BAD_GATEWAY),
-        [("content-type", "application/json")],
-        serde_json::to_vec(&body).unwrap_or_default(),
-    )
-        .into_response()
+    Decided::Refused { status, body }
 }
 
 fn random_id() -> String {

@@ -43,6 +43,8 @@ const PUBLIC: &[Rule] = &[
     // Decisions (#11225): the one decision entry point, answered by
     // connected Pylons first.
     Rule(POST, "/v1/systemone"),
+    // The Decisions API in OpenAI's shape (docs/api/decisions.md).
+    Rule(POST, "/v1/decisions"),
     // Usage and money (4.5, 4.6).
     Rule(GET, "/v1/key"),
     Rule(GET, "/v1/usage/*"),

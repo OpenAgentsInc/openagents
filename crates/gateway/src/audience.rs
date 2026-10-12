@@ -80,6 +80,7 @@ pub const ROUTES: &[Route] = &[
     // ---- PUBLIC: inference and catalog (described by inference_openapi).
     route("/v1/responses", Public, "Inference", &[]),
     route("/v1/chat/completions", Public, "Inference", &[]),
+    route("/v1/decisions", Public, "Decisions", &[]),
     route("/v1/responses/compact", Public, "Inference", &[]),
     route("/v1/responses/{id}", Public, "Inference", &[]),
     route("/v1/models", Public, "Catalog", &[]),
@@ -429,6 +430,7 @@ mod tests {
     fn every_mountable_path() -> BTreeSet<&'static str> {
         let mut paths: BTreeSet<&'static str> = [
             "/v1/systemone",
+            "/v1/decisions",
             "/v1/classify",
             "/v1/jobs",
             "/v1/jobs/{id}",

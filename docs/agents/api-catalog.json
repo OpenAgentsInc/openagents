@@ -59,6 +59,24 @@
  "routes": [
   {
    "method": "POST",
+   "path": "/v1/decisions",
+   "status": "implemented",
+   "summary": "Typed decisions in OpenAI's Decisions shape: a probability, a choice, or a score per question.",
+   "request": {
+    "content_type": "application/json",
+    "shape": {
+     "model": "openagents/decide | clef-flash | clef | jev-latest",
+     "input": "a string, or user messages of input_text / input_image (base64 data URL) parts",
+     "questions": "array of 1-64: {type: predicate | choice | score, name, instructions, choices | levels | true/false}",
+     "metadata": "optional, up to 16 string pairs, echoed"
+    }
+   },
+   "response": "{id: dec_..., object: decision, model, answers (request order), usage, metadata, openagents: {door, latency_ms, cost}}",
+   "auth": "none needed (free); the same admission as POST /v1/systemone",
+   "docs": "docs/api/decisions.md"
+  },
+  {
+   "method": "POST",
    "path": "/v1/systemone",
    "status": "implemented",
    "summary": "Answer typed questions about one state.",

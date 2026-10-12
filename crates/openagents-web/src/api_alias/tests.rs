@@ -49,6 +49,7 @@ pub(crate) const PUBLIC: &[(&str, &str)] = &[
     ("GET", "/v1/models"),
     ("HEAD", "/v1/models"),
     ("POST", "/v1/systemone"),
+    ("POST", "/v1/decisions"),
     ("GET", "/v1/rates"),
     ("GET", "/v1/openapi.json"),
     ("GET", "/v1/key"),

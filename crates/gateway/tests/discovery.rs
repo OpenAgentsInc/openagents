@@ -131,6 +131,7 @@ async fn every_public_route_answers_without_a_credential() {
     let mut checked = 0usize;
     for path in serve::mounted_paths(&deployment.state) {
         if path.starts_with("/v1/systemone")
+            || path.starts_with("/v1/decisions")
             || path.starts_with("/v1/classify")
             || path.starts_with("/v1/jobs")
             || path.starts_with("/v1/feedback")

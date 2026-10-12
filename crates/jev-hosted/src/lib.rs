@@ -802,6 +802,22 @@ impl Exchange for OpenAgentsExchange {
 
 const OURS_UNREACHABLE: &str = "Decisions are unreachable";
 
+/// A client for our Decisions API in OpenAI's shape, `POST /v1/decisions`
+/// on [`OPENAGENTS`] (or `OPENAGENTS_DECISIONS_URL`): `openagents/decide`
+/// answered by our hosted Clef first, `clef-flash` and `clef` by our hosted
+/// Clef only (docs/api/decisions.md). Keyless; the chat router and the
+/// solver keep their [`resolve`] chain until the router gate moves them.
+///
+/// # Errors
+///
+/// The configured URL is not an http(s) URL.
+pub fn decisions() -> Result<jev::decisions::DecisionsClient, String> {
+    let url = present(std::env::var(DECISIONS_URL_VAR).ok())
+        .map(|url| url.trim_end_matches('/').to_string())
+        .unwrap_or_else(|| OPENAGENTS.to_string());
+    jev::decisions::DecisionsClient::new(url).map_err(|error| format!("Decisions: {error}"))
+}
+
 /// The hosted decision service alone, whatever key this computer holds:
 /// [`resolve`]'s second door, for a caller configured to use it (the
 /// decision profile's `relay`). `RELAY_VAR` and `WORKER_VAR` name another

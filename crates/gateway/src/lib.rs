@@ -49,6 +49,7 @@ pub mod dashboard;
 pub mod decision_dispatch;
 pub mod decision_offer;
 pub mod decision_usage;
+pub mod decisions;
 pub mod discovery;
 #[allow(clippy::result_large_err)]
 pub mod earnings;

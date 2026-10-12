@@ -68,6 +68,9 @@ pub fn inference_paths(state: &ServeState) -> Vec<&'static str> {
         .filter(|path| !UNDOCUMENTED.contains(path) && *path != ROOT)
         .collect();
     paths.push("/v1/models");
+    // The Decisions API (`crate::decisions`), mounted on every gateway and
+    // described in this document beside inference.
+    paths.push(crate::decisions::PATH);
     paths.sort_unstable();
     paths.dedup();
     paths
@@ -396,7 +399,8 @@ pub fn document(origin: &str, methods: &[MethodInfo]) -> Value {
         "tags": [
             {"name": "Inference", "description": "Generate text, with or without streaming."},
             {"name": "Catalog", "description": "Models and prices; no key needed."},
-            {"name": "Account", "description": "Usage, keys, and the limits you set."}
+            {"name": "Account", "description": "Usage, keys, and the limits you set."},
+            {"name": "Decisions", "description": "Typed answers: probabilities, choices, and scores, without generated text."}
         ],
         "paths": {
             "/responses": {
@@ -414,6 +418,29 @@ pub fn document(origin: &str, methods: &[MethodInfo]) -> Value {
             "/chat/completions": {
                 "post": generation("createChatCompletion", "Create a chat completion (OpenAI Chat Completions).", "ChatCompletionRequest", "ChatCompletion",
                     "Chat Completions chunks (`chat.completion.chunk`).", methods)
+            },
+            "/decisions": {
+                "post": {
+                    "operationId": "createDecision",
+                    "summary": "Typed decisions (OpenAI Decisions): the probability a condition is true, one choice from a set, or a score against ordered levels. No key needed; free.",
+                    "description": "One NIP-DEC decision underneath (docs/api/decisions.md). `openagents/decide` asks our hosted Clef first, then the backups; `clef-flash` and `clef` ask only our hosted Clef. `X-Decision-Order: pylon` asks connected Pylons first; `hosted` asks only our hosted Clef.",
+                    "tags": ["Decisions"],
+                    "security": [{}, {"bearer": []}],
+                    "parameters": [
+                        {"name": "Idempotency-Key", "in": "header", "required": false, "schema": {"type": "string", "maxLength": 128},
+                         "description": "The same key and body within 24 hours returns the first answer; a different body is 409 `idempotency_conflict`."},
+                        {"name": "X-Decision-Order", "in": "header", "required": false, "schema": {"type": "string", "enum": ["pylon", "hosted"]}}
+                    ],
+                    "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateDecision"}}}},
+                    "responses": {
+                        "200": json_response("The answers, one per question in request order.", "Decision"),
+                        "400": error_response("The request is not valid (`invalid_request`, `too_many_questions`, `too_many_options`)."),
+                        "404": error_response("No such decision model (`model_not_found`)."),
+                        "409": error_response("The Idempotency-Key was used with another body (`idempotency_conflict`)."),
+                        "413": error_response("Over a bound (`limit_exceeded`)."),
+                        "503": error_response("No decision door could answer right now (`unavailable`); retry with backoff.")
+                    }
+                }
             },
             "/responses/compact": {
                 "post": {
@@ -542,6 +569,60 @@ fn schemas() -> Value {
                         "param": {"type": ["string", "null"]},
                         "message": {"type": "string"},
                         "request_id": {"type": "string", "description": "The answer's `x-request-id`."}
+                    }
+                }));
+    map.insert("CreateDecision".into(), json!({
+                    "type": "object",
+                    "required": ["model", "input", "questions"],
+                    "properties": {
+                        "model": {"type": "string", "examples": ["openagents/decide", "clef-flash", "clef", "jev-latest"]},
+                        "input": {"description": "The shared evidence: a string, or user messages whose content is a string or `input_text` / `input_image` (base64 data URL) parts.",
+                                  "oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "object"}}]},
+                        "questions": {"type": "array", "minItems": 1, "maxItems": 64, "items": {
+                            "type": "object",
+                            "required": ["type", "instructions"],
+                            "properties": {
+                                "type": {"type": "string", "enum": ["predicate", "choice", "score"]},
+                                "name": {"type": "string", "minLength": 1, "maxLength": 64},
+                                "instructions": {"type": "string"},
+                                "choices": {"type": "array", "minItems": 2, "maxItems": 255, "items": {"type": "object", "required": ["value"],
+                                    "properties": {"value": {"type": "string"}, "description": {"type": "string"}}}},
+                                "levels": {"type": "array", "minItems": 2, "maxItems": 10, "items": {"type": "object", "required": ["label"],
+                                    "properties": {"label": {"type": "string"}, "description": {"type": "string"}}}},
+                                "true": {"type": "string"},
+                                "false": {"type": "string"}
+                            }
+                        }},
+                        "metadata": {"type": "object", "maxProperties": 16, "additionalProperties": {"type": "string"}}
+                    }
+                }));
+    map.insert("Decision".into(), json!({
+                    "type": "object",
+                    "required": ["id", "object", "model", "answers", "usage"],
+                    "properties": {
+                        "id": {"type": "string", "description": "`dec_` and an opaque id."},
+                        "object": {"type": "string", "const": "decision"},
+                        "model": {"type": "string", "description": "The model that answered."},
+                        "answers": {"type": "array", "items": {"type": "object", "required": ["type", "name"],
+                            "properties": {
+                                "type": {"type": "string", "enum": ["predicate", "choice", "score", "refusal"]},
+                                "name": {"type": "string"},
+                                "probability": {"type": "number"},
+                                "choice": {"type": "string"},
+                                "score": {"type": "number"},
+                                "probabilities": {"type": "array", "items": {"type": "object"}},
+                                "confidence": {"type": "number"},
+                                "code": {"type": "string"},
+                                "message": {"type": "string"}
+                            }}},
+                        "usage": {"type": "object", "properties": {"input_tokens": {"type": "integer"}, "cached_input_tokens": {"type": "integer"}}},
+                        "metadata": {"type": "object"},
+                        "openagents": {"type": "object", "properties": {
+                            "door": {"type": ["string", "null"], "description": "`clef`, `pylon:<slug>`, `jev`, or `vertex`."},
+                            "latency_ms": {"type": "integer"},
+                            "cost": {"type": "object"},
+                            "receipt": {"type": "string"}
+                        }}
                     }
                 }));
     map.insert("ErrorBody".into(), json!({"type": "object", "required": ["error"], "properties": {"error": {"$ref": "#/components/schemas/Error"}}}));
