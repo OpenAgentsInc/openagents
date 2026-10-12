@@ -24,6 +24,7 @@
 //! `coder solver --replay` plays a recording again.
 
 pub mod hands;
+pub mod ledger;
 
 use std::{path::PathBuf, time::Instant};
 
@@ -251,7 +252,12 @@ Options:
   --snapshot FILE       Also save a picture of the whole run as an SVG file.
   --replay FILE         Play a recorded run (its events.jsonl) again.
   --speed X             Play a recording X times faster (default 1).
-  --state DIR           Where runs live (default ~/.openagents/coder/solver-runs).";
+  --state DIR           Where runs live (default ~/.openagents/coder/solver-runs).
+
+coder solver ledger [--state DIR] [--repo PATH]
+  One JSON line per finished run: issue, status, pull request, files
+  touched, the main commit that landed it, and the unlanded runs that
+  touch the same files.";
 
 /// The agent the hands run on.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
