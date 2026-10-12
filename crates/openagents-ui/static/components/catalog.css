@@ -355,33 +355,32 @@
   margin: 0;
   padding: 0;
   display: grid;
-  gap: var(--oa-space-3, 12px);
+  gap: calc(var(--spacing) * 3);
 }
 
 .oa-screens-item {
   display: grid;
-  gap: var(--oa-space-1, 4px);
-  padding: var(--oa-space-3, 12px) 0;
-  border-bottom: 1px solid var(--oa-color-border, light-dark(#e5e5e5, #333));
+  gap: var(--spacing);
+  padding: calc(var(--spacing) * 3) 0;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .oa-screens-item__title {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 .oa-screens-item__routes,
 .oa-screens-item__states {
-  font-size: var(--oa-text-sm, 0.875rem);
-  color: var(--oa-color-text-secondary, light-dark(#555, #aaa));
+  font-size: var(--font-text-sm-size);
+  color: var(--color-text-secondary);
 }
 
 .oa-screens-frame {
   display: block;
   width: 100%;
   height: 720px;
-  border: 1px solid var(--oa-color-border, light-dark(#e5e5e5, #333));
-  border-radius: var(--oa-radius-md, 8px);
-  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
 }
 
 /* The screens gallery says every sample is one. */

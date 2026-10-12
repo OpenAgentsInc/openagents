@@ -91,14 +91,9 @@ pub(super) fn trusted_depth(parts: &[Component<'_>]) -> usize {
     {
         let temp = std::env::temp_dir();
         let temp = temp.canonicalize().unwrap_or(temp);
-        let above = temp.components().count().saturating_sub(1);
-        if parts.len() > above
-            && temp
-                .components()
-                .take(above)
-                .eq(parts[..above].iter().copied())
-        {
-            return above;
+        let depth = temp.components().count();
+        if parts.len() > depth && temp.components().eq(parts[..depth].iter().copied()) {
+            return depth.saturating_sub(1);
         }
     }
     let _ = parts;

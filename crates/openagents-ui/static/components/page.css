@@ -35,7 +35,8 @@
 }
 
 .oa-page .oa-page-eyebrow,
-.oa-page-eyebrow {
+.oa-page-eyebrow,
+.oa-settings-group > h2 {
   margin: 0 0 calc(var(--spacing) * 2);
   color: var(--color-text-secondary);
   font-size: var(--font-text-sm-size);
@@ -55,7 +56,9 @@
   font-size: var(--font-text-sm-size);
 }
 
-.oa-page-actions {
+/* Page actions, and a short inline form: a label, a field, and its button. */
+.oa-page-actions,
+.oa-terminal-code {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -82,15 +85,6 @@
   background: var(--color-surface-secondary);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-/* A short inline form: a label, a field, and its button. */
-.oa-terminal-code {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: calc(var(--spacing) * 2);
-  margin: calc(var(--spacing) * 4) 0;
 }
 
 /* A form under a page's intro text, set off from it. */
@@ -184,7 +178,9 @@
   border-radius: var(--radius-lg);
 }
 
-.oa-facts dt {
+.oa-facts dt,
+.oa-settings-hint,
+.oa-trace-row-meta {
   color: var(--color-text-secondary);
   font-size: var(--font-text-sm-size);
 }
@@ -304,13 +300,6 @@
   margin: 0 0 calc(var(--spacing) * 8);
 }
 
-.oa-settings-group > h2 {
-  margin: 0 0 calc(var(--spacing) * 2);
-  color: var(--color-text-secondary);
-  font-size: var(--font-text-sm-size);
-  font-weight: var(--font-weight-medium);
-}
-
 .oa-settings-row {
   display: flex;
   align-items: center;
@@ -336,11 +325,6 @@
 .oa-settings-label {
   color: var(--color-text);
   font-weight: var(--font-weight-medium);
-}
-
-.oa-settings-hint {
-  color: var(--color-text-secondary);
-  font-size: var(--font-text-sm-size);
 }
 
 .oa-settings-who {
@@ -417,11 +401,6 @@
   color: var(--color-text);
   font-weight: var(--font-weight-medium);
   overflow-wrap: anywhere;
-}
-
-.oa-trace-row-meta {
-  color: var(--color-text-secondary);
-  font-size: var(--font-text-sm-size);
 }
 
 .oa-trace-bar {
