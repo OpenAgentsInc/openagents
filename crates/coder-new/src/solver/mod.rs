@@ -25,6 +25,7 @@
 
 pub mod hands;
 pub mod ledger;
+pub mod queue;
 
 use std::{path::PathBuf, time::Instant};
 

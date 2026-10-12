@@ -80,10 +80,14 @@ fn run() -> io::Result<()> {
     }
     let mut issue_run = None;
     let mut solver = None;
-    if args.len() >= 2 && args[0] == "solver" && args[1] == "ledger" {
-        let text = tokio::runtime::Runtime::new()?
-            .block_on(coder_new::solver::ledger::command(&args[2..]))
-            .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
+    if args.len() >= 2 && args[0] == "solver" && (args[1] == "ledger" || args[1] == "queue") {
+        let runtime = tokio::runtime::Runtime::new()?;
+        let text = if args[1] == "ledger" {
+            runtime.block_on(coder_new::solver::ledger::command(&args[2..]))
+        } else {
+            runtime.block_on(coder_new::solver::queue::command(&args[2..]))
+        }
+        .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
         print!("{text}");
         return Ok(());
     }
