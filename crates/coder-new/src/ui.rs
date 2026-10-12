@@ -479,7 +479,7 @@ fn new_chat_heading(app: &App) -> bool {
 
 /// The mark above an empty chat: a power symbol, with the name beside it and
 /// the version on the next line.
-const BANNER: [&str; 5] = ["    █", " ▄▄ █ ▄▄", " ██ █ ██", " ██   ██", "  ▀▄▄▄▄▀"];
+const BANNER: [&str; 3] = [" │", "◜│◝", "◟ ◞"];
 
 fn header_view(frame: &mut Frame, area: Rect, app: &App) {
     if new_chat_heading(app) {
