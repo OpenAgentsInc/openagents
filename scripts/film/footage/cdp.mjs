@@ -253,16 +253,26 @@ export class Recorder {
   }
   /// Encodes [from, to] seconds (wall clock since start) into `out` at
   /// 30 fps constant frame rate and the exact device pixel size.
-  /// `speed` lists [{from, to, x}] wall-clock ranges played x times faster
-  /// (a dull wait shortened).
+  /// `speed` lists [{from, to, x}] wall-clock ranges shortened to 1/x of
+  /// their length (a dull wait). They play at their own speed and jump over
+  /// their middle, so spinners keep spinning naturally instead of strobing.
   encode(out, { from = 0, to, speed = [] } = {}) {
     const { width, height, dpr } = this.cdp.size;
     const end = to ?? this.t1 - this.t0;
     const list = [];
     const fps = 30;
-    const rate = (t) => speed.find((s) => t >= s.from && t < s.to)?.x ?? 1;
+    // The wall-clock times each output frame shows.
+    const times = [];
+    for (let t = from; t < end; t += 1 / fps) {
+      const s = speed.find((r) => t >= r.from && t < r.to);
+      if (s) {
+        const keep = (s.to - s.from) / s.x;
+        if (t >= s.from + keep / 2 && t < s.to - keep / 2) t = s.to - keep / 2;
+      }
+      times.push(t);
+    }
     let k = 0;
-    for (let t = from; t < end; t += rate(t) / fps) {
+    for (const t of times) {
       const abs = this.t0 + t;
       while (k + 1 < this.frames.length && this.frames[k + 1].t <= abs) k++;
       list.push(`file '${this.frames[k].file}'\nduration ${1 / fps}`);
