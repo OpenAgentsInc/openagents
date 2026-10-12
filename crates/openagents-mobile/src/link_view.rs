@@ -68,7 +68,13 @@ fn account(state: &State) -> Node<Intent> {
     let mut children = vec![];
     match (&state.session, &state.sign_in) {
         (Some(session), _) => {
-            children.push(heading("link-title", "Your account"));
+            children.push(bar(
+                "link-account-header",
+                Lead::Menu,
+                "Your account",
+                None,
+                None,
+            ));
             children.push(text(
                 "link-signed-in",
                 &format!("Signed in as {}", session.label),
@@ -125,7 +131,13 @@ fn account(state: &State) -> Node<Intent> {
             ));
         }
         (None, SignIn::Waiting { user_code, .. }) => {
-            children.push(heading("link-title", "Approve this phone"));
+            children.push(bar(
+                "link-account-header",
+                Lead::Menu,
+                "Approve this phone",
+                None,
+                None,
+            ));
             children.push(text("link-code", user_code, TextRole::Heading, ink(), true));
             children.push(surface("link-qr", "link-qr", "Sign-in QR code"));
             children.push(status(
@@ -147,11 +159,23 @@ fn account(state: &State) -> Node<Intent> {
             ));
         }
         (None, SignIn::Starting) => {
-            children.push(heading("link-title", "Sign in"));
+            children.push(bar(
+                "link-account-header",
+                Lead::Menu,
+                "Sign in",
+                None,
+                None,
+            ));
             children.push(working("link-starting", "Getting a code…"));
         }
         (None, sign_in) => {
-            children.push(heading("link-title", "Sign in"));
+            children.push(bar(
+                "link-account-header",
+                Lead::Menu,
+                "Sign in",
+                None,
+                None,
+            ));
             children.push(text(
                 "link-why",
                 "See your chats from openagents.com and your computers, reply to them, and watch what Coder runs.",
@@ -210,7 +234,13 @@ fn choice_card(state: &State) -> Node<Intent> {
 /// The account's chats: web chats, then each computer's terminal chats,
 /// then phones'.
 fn chats(state: &State) -> Node<Intent> {
-    let mut children = vec![header("link-chats-header", "Your chats", Intent::Back)];
+    let mut children = vec![bar(
+        "link-chats-header",
+        Lead::of(state.from_account),
+        "Your chats",
+        None,
+        None,
+    )];
     children.extend(notice(state));
     if state.choice.is_none() && state.choice_read {
         children.push(choice_card(state));
@@ -320,10 +350,19 @@ fn chat(state: &State, open: &Open, composer: u64, limit: usize, cut_at: usize) 
                 "Chat".into()
             }
         });
-    let mut children = vec![header("link-chat-header", &title, Intent::Back)];
-    if let Some(thread) = thread {
-        children.push(status("link-chat-place", &place(thread), quiet()));
-    }
+    let where_ = thread.map(place);
+    let mut children = vec![bar(
+        "link-chat-header",
+        Lead::of(state.from_list),
+        &title,
+        where_.as_deref().map(|line| ("link-chat-place", line)),
+        Some(bar_button(
+            "link-chat-new",
+            "New chat",
+            Glyph::Compose,
+            Intent::NewChat,
+        )),
+    )];
     children.extend(notice(state));
     if let Some(error) = &open.error {
         children.push(status("link-chat-error", error, warn()));
@@ -477,7 +516,13 @@ fn chat(state: &State, open: &Open, composer: u64, limit: usize, cut_at: usize) 
 
 /// What runs on each computer: status, time, cost, and its controls.
 fn running(state: &State) -> Node<Intent> {
-    let mut children = vec![header("link-running-header", "Running", Intent::Back)];
+    let mut children = vec![bar(
+        "link-running-header",
+        Lead::of(state.from_account),
+        "Running",
+        None,
+        None,
+    )];
     children.extend(notice(state));
     if !state.agents_read {
         children.push(working("link-running-loading", "Checking your computers…"));
@@ -793,7 +838,7 @@ pub(crate) fn github_refs(item: &Item) -> Vec<(String, String)> {
 /// The memory notes on the account (#11182): those that apply everywhere,
 /// then each project's, each opening to change or delete it.
 fn memory(state: &State) -> Node<Intent> {
-    let mut children = vec![header("link-memory-header", "Memory", Intent::Back)];
+    let mut children = vec![bar("link-memory-header", Lead::Back, "Memory", None, None)];
     children.push(status(
         "link-memory-what",
         "What Coder remembers about you, from computers with sync on. Chats here use the notes that apply everywhere.",
@@ -875,7 +920,7 @@ fn note(state: &State, composer: u64) -> Node<Intent> {
     let title = found
         .and_then(|note| note.name.clone())
         .unwrap_or_else(|| "New note".into());
-    let mut children = vec![header("link-note-header", &title, Intent::Back)];
+    let mut children = vec![bar("link-note-header", Lead::Back, &title, None, None)];
     match found {
         Some(note) => {
             children.push(status(
@@ -941,10 +986,12 @@ fn note(state: &State, composer: u64) -> Node<Intent> {
 /// The scheduled prompts on the account (#11177): when each runs, on which
 /// computer, where it goes, with Pause or Resume and Delete.
 fn schedules(state: &State) -> Node<Intent> {
-    let mut children = vec![header(
+    let mut children = vec![bar(
         "link-schedules-header",
+        Lead::Back,
         "Scheduled prompts",
-        Intent::Back,
+        None,
+        None,
     )];
     children.push(status(
         "link-schedules-what",
@@ -1034,10 +1081,12 @@ fn schedules(state: &State) -> Node<Intent> {
 /// composer for the prompt itself.
 fn new_schedule(state: &State, composer: u64) -> Node<Intent> {
     use crate::account_link::Repeat;
-    let mut children = vec![header(
+    let mut children = vec![bar(
         "link-new-schedule-header",
+        Lead::Back,
         "New scheduled prompt",
-        Intent::Back,
+        None,
+        None,
     )];
     let Some(draft) = &state.draft else {
         return page(children);
@@ -1187,7 +1236,7 @@ fn message(state: &State, composer: u64) -> Node<Intent> {
         .as_ref()
         .map(|(computer, _, _)| computer.clone())
         .unwrap_or_default();
-    let mut children = vec![header("link-message-header", &title, Intent::Back)];
+    let mut children = vec![bar("link-message-header", Lead::Back, &title, None, None)];
     children.push(status(
         "link-message-where",
         &format!("Coder on {computer} reads it at its next step."),
@@ -1269,7 +1318,72 @@ fn card(key: &str, children: Vec<Node<Intent>>) -> Node<Intent> {
     node
 }
 
-fn header(key: &str, title: &str, back: Intent) -> Node<Intent> {
+/// What a top bar starts with: the menu, on a screen the drawer opens, or
+/// a back button, on a screen opened from another one.
+enum Lead {
+    Menu,
+    Back,
+}
+
+impl Lead {
+    /// Back when the screen was opened from another one, else the menu.
+    fn of(pushed: bool) -> Self {
+        if pushed { Lead::Back } else { Lead::Menu }
+    }
+}
+
+/// The longest title a top bar shows on one line; the rest is cut.
+const BAR_TITLE: usize = 28;
+
+/// A screen's one top bar (#11472): the menu or back button at the leading
+/// edge, the title on one line with what it is under it, and an action at
+/// the trailing edge. Nothing else heads the screen.
+fn bar(
+    key: &str,
+    lead: Lead,
+    title: &str,
+    subtitle: Option<(&str, &str)>,
+    trailing: Option<Node<Intent>>,
+) -> Node<Intent> {
+    let (label, glyph, intent, slot) = match lead {
+        Lead::Menu => ("Open menu", Glyph::Menu, Intent::Menu, "menu"),
+        Lead::Back => ("Back", Glyph::Back, Intent::Back, "back"),
+    };
+    let mut lines = vec![text(
+        &format!("{key}-title"),
+        &one_line(title, BAR_TITLE),
+        TextRole::Body,
+        ink(),
+        true,
+    )];
+    if let Some((subtitle_key, subtitle)) = subtitle {
+        lines.push(status(subtitle_key, &one_line(subtitle, 40), quiet()));
+    }
+    let mut children = vec![
+        Node {
+            key: format!("{key}-{slot}"),
+            style: Style {
+                foreground: Some(ink()),
+                ..Style::default()
+            },
+            element: Element::Button {
+                shortcut: None,
+                label: label.into(),
+                enabled: true,
+                icon: Some(Icon {
+                    glyph,
+                    circular: true,
+                    pill: false,
+                }),
+                intent,
+            },
+        },
+        stack(&format!("{key}-titles"), Space::None, lines),
+    ];
+    if let Some(mut trailing) = trailing {
+        trailing.style.align = Some(rust_native::style::TextAlign::End);
+        children.push(trailing);
+    }
     Node {
         key: key.into(),
         style: Style {
@@ -1279,27 +1393,39 @@ fn header(key: &str, title: &str, back: Intent) -> Node<Intent> {
         },
         element: Element::Stack {
             axis: Axis::Horizontal,
-            children: vec![
-                Node {
-                    key: format!("{key}-back"),
-                    style: Style {
-                        foreground: Some(ink()),
-                        ..Style::default()
-                    },
-                    element: Element::Button {
-                        shortcut: None,
-                        label: "Back".into(),
-                        enabled: true,
-                        icon: Some(Icon {
-                            glyph: Glyph::Back,
-                            circular: true,
-                            pill: false,
-                        }),
-                        intent: back,
-                    },
-                },
-                heading(&format!("{key}-title"), title),
-            ],
+            children,
+        },
+    }
+}
+
+/// `text` on one line: its first line, cut to `limit` characters.
+fn one_line(text: &str, limit: usize) -> String {
+    let line = text.lines().next().unwrap_or_default().trim();
+    if line.chars().count() <= limit {
+        return line.to_owned();
+    }
+    let kept: String = line.chars().take(limit.saturating_sub(1)).collect();
+    format!("{}…", kept.trim_end())
+}
+
+/// A round icon button for a top bar's trailing edge.
+fn bar_button(key: &str, label: &str, glyph: Glyph, intent: Intent) -> Node<Intent> {
+    Node {
+        key: key.into(),
+        style: Style {
+            foreground: Some(ink()),
+            ..Style::default()
+        },
+        element: Element::Button {
+            shortcut: None,
+            label: label.into(),
+            enabled: true,
+            icon: Some(Icon {
+                glyph,
+                circular: true,
+                pill: false,
+            }),
+            intent,
         },
     }
 }
@@ -1331,10 +1457,6 @@ fn text(key: &str, value: &str, role: TextRole, foreground: Color, bold: bool) -
             role,
         },
     }
-}
-
-fn heading(key: &str, value: &str) -> Node<Intent> {
-    text(key, value, TextRole::Heading, ink(), true)
 }
 
 fn status(key: &str, value: &str, color: Color) -> Node<Intent> {

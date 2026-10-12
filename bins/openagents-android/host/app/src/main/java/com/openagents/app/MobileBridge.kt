@@ -53,6 +53,8 @@ class MobileBridge(private val context: Context, private val computersFixture: B
     var imagePicks = 0; private set
     /** The account surface's attach control asked for a photo or a file. */
     var attachmentPicks = 0; private set
+    /** Counts taps on the account surface's menu button (#11472). */
+    var linkMenus = 0; private set
     /** Decoded images for the chat's `image:` surfaces, by resource. */
     private val images = HashMap<String, android.graphics.Bitmap>()
 
@@ -578,6 +580,7 @@ class MobileBridge(private val context: Context, private val computersFixture: B
         next.objectOrNull("link")?.let { link ->
             AccountLink.settle(context, link)
             link.textOrNull("open_url")?.let { browse(it) }
+            if (link.optBoolean("menu")) linkMenus += 1
         }
         nearby.hold(next.optBoolean("nearby_listening"))
         next.objectOrNull("gym")?.textOrNull("share")?.let { gymShare = it }

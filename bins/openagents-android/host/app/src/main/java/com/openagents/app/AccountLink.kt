@@ -22,8 +22,8 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import org.json.JSONObject
 
-/** The account surface's page: the menu button, then Rust's view. */
-internal class AccountLink(private val activity: Activity, private val bridge: MobileBridge, menu: android.view.View) {
+/** The account surface's page: Rust's view, whose one top bar has the menu or back button (#11472). */
+internal class AccountLink(private val activity: Activity, private val bridge: MobileBridge) {
     val root: LinearLayout = activity.column()
     private val content = FrameLayout(activity)
     private val qr = ImageView(activity).apply {
@@ -44,12 +44,6 @@ internal class AccountLink(private val activity: Activity, private val bridge: M
     var chat: String? = null; private set
 
     init {
-        val bar = activity.row().apply {
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(activity.dp(16), activity.dp(4), activity.dp(16), activity.dp(6))
-            addView(menu, LinearLayout.LayoutParams(activity.dp(44), activity.dp(44)))
-        }
-        root.addView(bar, LinearLayout.LayoutParams(-1, -2))
         root.addView(content, LinearLayout.LayoutParams(-1, 0, 1f))
     }
 

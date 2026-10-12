@@ -110,6 +110,7 @@ class MainActivity : ComponentActivity() {
     private var computersShown = 0
     private var screensShown = 0
     private var imagePicksShown = 0
+    private var linkMenusShown = 0
     /** Each attached image's card by resource, so a refresh keeps it. */
     private val imageViews = HashMap<String, View>()
 
@@ -316,7 +317,7 @@ class MainActivity : ComponentActivity() {
         buildWallet(walletBody)
         pages.getValue(AppTab.VERSE).addView(verseBar.root, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
         pages.getValue(AppTab.ACCOUNT).addView(accountPage, FrameLayout.LayoutParams(-1, -1))
-        link = AccountLink(this, bridge, menuButton({ openDrawer(true) }) { report() })
+        link = AccountLink(this, bridge)
         pages.getValue(AppTab.LINK).addView(link.root, FrameLayout.LayoutParams(-1, -1))
         // The drawer lies under the app; opening it slides the app aside.
         drawer = ShellDrawer(this, bridge) { place -> go(place) }
@@ -956,6 +957,11 @@ class MainActivity : ComponentActivity() {
             computersShown = bridge.computersRequested
             select(AppTab.ACCOUNT)
             open(AccountRoute.COMPUTERS)
+        }
+        // The account surface's top bar asked for the drawer (#11472).
+        if (bridge.linkMenus != linkMenusShown) {
+            linkMenusShown = bridge.linkMenus
+            openDrawer(true)
         }
         // The chat's attach control asked for a photo.
         if (bridge.imagePicks != imagePicksShown) {

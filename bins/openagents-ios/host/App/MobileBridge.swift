@@ -431,6 +431,8 @@ final class MobileBridge: ObservableObject {
     @Published private(set) var pending = 0
     /// Counts the Coder tab's requests to open Account > Computers.
     @Published private(set) var computersRequested = 0
+    /// Counts taps on the account surface's menu button (#11472).
+    @Published var linkMenuRequested = 0
     /// The Coder tab's last request to open another screen (`wallet`,
     /// `keys`, `playtest`, or `report`), numbered so a repeat still shows.
     @Published private(set) var screenRequest = ScreenRequest(screen: "", serial: 0)

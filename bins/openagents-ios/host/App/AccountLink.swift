@@ -38,6 +38,8 @@ struct LinkPacket: Decodable, Equatable {
     let forget: Bool?
     let notify: [Notice]?
     let open_url: String?
+    /// The top bar's menu button was tapped: open the drawer (#11472).
+    let menu: Bool?
     let live: Bool
 
     static func == (a: LinkPacket, b: LinkPacket) -> Bool {
@@ -144,6 +146,7 @@ extension MobileBridge {
         if let page = packet.open_url, let url = URL(string: page), url.scheme == "https" {
             UIApplication.shared.open(url)
         }
+        if packet.menu == true { linkMenuRequested += 1 }
         if packet.signed_in { LinkBackground.schedule() }
     }
 }
@@ -249,15 +252,13 @@ struct LinkScreen: View {
     /// The screen to show first: `account`, `chats`, `running`, or `chat`.
     let screen: String
     var chat: String?
-    var menu: (() -> AnyView)?
     @Environment(\.appColors) private var appColors
 
     var body: some View {
+        // Rust's view draws the one top bar (#11472): the menu or back
+        // button, the title, and its actions. Its menu button asks for
+        // the drawer through the packet's `menu`.
         VStack(spacing: 0) {
-            if let menu {
-                HStack { menu(); Spacer() }
-                    .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 6)
-            }
             if let view = bridge.packet?.link?.view {
                 NativeRenderer(node: view.root, revision: view.revision, followTarget: nil, followChanged: nil,
                                surface: { resource, label in

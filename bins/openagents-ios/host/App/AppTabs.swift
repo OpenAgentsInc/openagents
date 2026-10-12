@@ -188,6 +188,8 @@ struct AppTabs: View {
         }
         // Coder asked to connect a computer: Account > Computers.
         .onChange(of: bridge.computersRequested) { _, _ in tab = .account }
+        // The account surface's top bar asked for the drawer (#11472).
+        .onChange(of: bridge.linkMenuRequested) { _, _ in openDrawer() }
         // A tap on a notice from Coder: Running.
         .onChange(of: notifier.openRunning) { _, _ in go("running") }
         // An offer under a chat reply opened another screen.
@@ -319,7 +321,7 @@ extension AppTabs {
             AccountTab(bridge: bridge, home: settingsHome, menu: { AnyView(menuButton) },
                        openLink: { go("account") })
         case .link:
-            LinkScreen(bridge: bridge, screen: linkScreen, chat: linkChat, menu: { AnyView(menuButton) })
+            LinkScreen(bridge: bridge, screen: linkScreen, chat: linkChat)
         }
     }
 

@@ -1583,3 +1583,85 @@ fn a_new_chat_starts_on_the_website_with_its_photos() {
     });
     assert_eq!(f.link.lock().open.as_ref().unwrap().messages.len(), 2);
 }
+
+/// Every screen opens on one top bar (#11472): the menu on a screen the
+/// drawer opens, a back button on one opened from another, the title on
+/// one line with what it is under it; nothing heads the screen above it.
+#[test]
+fn every_screen_has_one_top_bar() {
+    use crate::account_link::{Open, Thread};
+    fn lead(root: &rust_native::Node<Intent>) -> (String, String, Vec<String>) {
+        let rust_native::Element::Stack { children, .. } = &root.element else {
+            panic!("a page");
+        };
+        let bar = &children[0];
+        let rust_native::Element::Stack { axis, children } = &bar.element else {
+            panic!("{}: a bar first", bar.key);
+        };
+        assert_eq!(*axis, rust_native::Axis::Horizontal, "{}", bar.key);
+        let rust_native::Element::Button { label, .. } = &children[0].element else {
+            panic!("{}: a button leads", bar.key);
+        };
+        let rust_native::Element::Stack {
+            children: lines, ..
+        } = &children[1].element
+        else {
+            panic!("{}: the titles", bar.key);
+        };
+        let lines = lines
+            .iter()
+            .map(|line| match &line.element {
+                rust_native::Element::Text { value, .. } => value.clone(),
+                _ => panic!("text"),
+            })
+            .collect();
+        (bar.key.clone(), label.clone(), lines)
+    }
+    let mut state = crate::account_link::State::default();
+    let signed_out = lead(&crate::link_view::root(&state, 0));
+    assert_eq!(signed_out.1, "Open menu");
+    state.session = Some(Session::for_test(SITE, "sess_x"));
+    state.threads_read = true;
+    state.agents_read = true;
+    state.schedules_read = true;
+    for (screen, from_account, button) in [
+        (Screen::Account, false, "Open menu"),
+        (Screen::Chats, false, "Open menu"),
+        (Screen::Chats, true, "Back"),
+        (Screen::Running, false, "Open menu"),
+        (Screen::Running, true, "Back"),
+        (Screen::Message, false, "Back"),
+        (Screen::Memory, true, "Back"),
+        (Screen::Schedules, true, "Back"),
+    ] {
+        state.screen = screen.clone();
+        state.from_account = from_account;
+        let (key, label, _) = lead(&crate::link_view::root(&state, 0));
+        assert_eq!(label, button, "{screen:?} {key}");
+    }
+    // A chat: its title cut to one line, where it runs under it.
+    state.screen = Screen::Chat;
+    state.open = Some(Open {
+        id: "t1".into(),
+        loaded: true,
+        thread: Some(Thread {
+            id: "t1".into(),
+            title: "Fix the phone header so the back button shares the menu row".into(),
+            surface: "terminal".into(),
+            computer: Some("MacBook Pro".into()),
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    for (from_list, button) in [(false, "Open menu"), (true, "Back")] {
+        state.from_list = from_list;
+        let (_, label, lines) = lead(&crate::link_view::root(&state, 0));
+        assert_eq!(label, button);
+        assert_eq!(lines[1], "Terminal · MacBook Pro");
+        assert!(
+            lines[0].ends_with('…') && lines[0].chars().count() <= 28,
+            "{}",
+            lines[0]
+        );
+    }
+}

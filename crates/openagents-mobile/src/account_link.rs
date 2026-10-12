@@ -779,6 +779,9 @@ pub struct Packet {
     /// Open this page in the browser (sent once).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub open_url: Option<String>,
+    /// Open the drawer: the top bar's menu button was tapped (sent once).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub menu: bool,
     /// The surface changes on its own: ask for packets.
     pub live: bool,
 }
@@ -835,6 +838,8 @@ pub enum Intent {
     /// and files with its first message (#11349).
     NewChat,
     Back,
+    /// Open the host's drawer: the top bar's menu button (#11472).
+    Menu,
     /// Ask the website for the next page of older chats.
     MoreThreads,
     Act {
@@ -923,6 +928,12 @@ pub struct State {
     pub agents: Vec<Agents>,
     pub agents_read: bool,
     pub screen: Screen,
+    /// The screen on view was opened from **Your account**, so its top bar
+    /// leads with a back button there rather than the menu (#11472).
+    pub from_account: bool,
+    /// The open chat was opened from **Your chats**, so its top bar leads
+    /// with a back button to the list rather than the menu.
+    pub from_list: bool,
     /// A screen of the surface shows.
     pub shown: bool,
     pub drawer: bool,
@@ -1018,6 +1029,8 @@ pub struct Link {
     pub(crate) composer: u64,
     /// **Add photo** was tapped: the host opens its picker once.
     picking: bool,
+    /// The top bar's menu button was tapped: the host opens its drawer.
+    menu: bool,
 }
 
 /// What the encrypted store keeps: the choice and what was uploaded.
@@ -1064,6 +1077,7 @@ impl Link {
             view_revision: 0,
             composer: 0,
             picking: false,
+            menu: false,
         }
     }
 
@@ -1128,6 +1142,9 @@ impl Link {
             Action::Show { screen, id } => {
                 let mut state = self.lock();
                 state.shown = true;
+                // The drawer opened it: its top bar leads with the menu.
+                state.from_account = false;
+                state.from_list = false;
                 if let Some(id) = id {
                     open_chat(&mut state, &id);
                     state.screen = Screen::Chat;
@@ -1210,6 +1227,7 @@ impl Link {
             Intent::Choose { all } => self.choose(all),
             Intent::Show { screen } => {
                 let mut state = self.lock();
+                state.from_account = state.screen == Screen::Account;
                 state.screen = screen;
                 state.notice = None;
                 state.changed();
@@ -1219,14 +1237,19 @@ impl Link {
             Intent::Open { id } => {
                 let mut state = self.lock();
                 open_chat(&mut state, &id);
+                state.from_list = state.screen == Screen::Chats;
                 state.screen = Screen::Chat;
                 state.changed();
                 drop(state);
                 self.nudge.notify_one();
             }
+            Intent::Menu => self.menu = true,
             Intent::NewChat => {
                 let mut state = self.lock();
                 if state.signed() {
+                    if state.screen != Screen::Chat {
+                        state.from_list = state.screen == Screen::Chats;
+                    }
                     state.open = Some(Open {
                         id: uuid::Uuid::new_v4().to_string(),
                         loaded: true,
@@ -2361,6 +2384,7 @@ impl Link {
             forget,
             notify,
             open_url: None,
+            menu: std::mem::take(&mut self.menu),
             live,
         }
     }
