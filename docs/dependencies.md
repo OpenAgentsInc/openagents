@@ -11,6 +11,13 @@ Install the reviewed checker with `cargo +1.97.1 install cargo-deny
 --version 0.20.2 --locked` if it is absent. Required checks run locally or
 on non-GitHub infrastructure; this policy adds no GitHub automation.
 
+## Generated inventory
+
+[dependency-inventory.md](dependency-inventory.md) lists every external
+package in `Cargo.lock` with its version, declared license, and source.
+Regenerate it after a dependency change with
+`scripts/dependency-inventory.py`; `--check` fails when it is stale.
+
 ## What the gate checks
 
 [`deny.toml`](../deny.toml) checks the resolved workspace graph with all
