@@ -186,6 +186,8 @@ pub(crate) fn summary_message(output: &Value) -> Option<Message> {
 /// Entries the model never reads: the pause rows.
 pub(crate) fn hidden_from_model(name: &str) -> bool {
     name == LIMIT_TOOL
+        || name == crate::claude_stream::THINKING
+        || name == crate::claude_stream::NOTICE
 }
 
 /// A rough token count for what the model reads: four bytes a token, plus

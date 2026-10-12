@@ -16,6 +16,7 @@ mod checkout_guard;
 pub mod claude;
 pub mod claude_chat;
 pub mod claude_plan;
+pub mod claude_stream;
 pub mod claude_tools;
 pub mod cloud;
 pub mod cloud_settings;

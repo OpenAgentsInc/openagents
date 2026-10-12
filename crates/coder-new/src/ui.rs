@@ -631,6 +631,15 @@ fn context_text(app: &App) -> String {
     if let Some(plan) = crate::claude_plan::status_text(now, &crate::long_session::clock) {
         parts.push(plan);
     }
+    // How full the claude session's context is (#11438).
+    if let Some(context) = app
+        .live
+        .claude_session
+        .as_ref()
+        .and_then(|session| crate::claude_stream::context_line(&session.id))
+    {
+        parts.push(context);
+    }
     // The signed-in account's name is never shown under the input.
     if let Some(update) = &app.update_line {
         parts.push(update.clone());
@@ -979,6 +988,8 @@ fn is_card(name: &str) -> bool {
             | crate::issue_run::DECISION
             | crate::issue_run::SUMMARY
             | crate::plan::TOOL
+            | crate::claude_stream::THINKING
+            | crate::claude_stream::NOTICE
     )
 }
 
@@ -1066,6 +1077,44 @@ fn entry_rows(
                 crate::long_session::entry_lines(name, input, output, *running, width, phase)
             {
                 lines.extend(rows);
+                lines.push(Line::default());
+                fill_copy(&lines, &mut copy);
+                return (lines, copy);
+            }
+            // The model's thinking, dim and slanted under its own heading.
+            if name == crate::claude_stream::THINKING {
+                lines.push(Line::from(Span::styled(
+                    "✻ Thinking",
+                    Style::default().fg(t::GRAY).add_modifier(Modifier::ITALIC),
+                )));
+                let (mut rows, rows_copy) = message_rows(
+                    crate::claude_stream::entry_text(output),
+                    width.saturating_sub(2),
+                );
+                for row in &mut rows {
+                    for part in &mut row.spans {
+                        part.style = part.style.fg(t::GRAY).add_modifier(Modifier::ITALIC);
+                    }
+                    row.spans.insert(0, Span::raw("  "));
+                }
+                exact(
+                    &mut lines,
+                    &mut copy,
+                    (
+                        rows,
+                        rows_copy.into_iter().map(|row| row.shifted(2)).collect(),
+                    ),
+                );
+                lines.push(Line::default());
+                fill_copy(&lines, &mut copy);
+                return (lines, copy);
+            }
+            // A retry or something that failed to load: one quiet line.
+            if name == crate::claude_stream::NOTICE {
+                lines.push(Line::from(span(
+                    truncate(crate::claude_stream::entry_text(output), width),
+                    t::GRAY,
+                )));
                 lines.push(Line::default());
                 fill_copy(&lines, &mut copy);
                 return (lines, copy);

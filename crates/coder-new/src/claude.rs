@@ -29,8 +29,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use claude_agent_sdk::{
-    PermissionMode, PermissionResult, QueryOptions, SdkMessage, SdkResultMessage, SettingSource,
-    SystemPromptConfig, ToolsConfig,
+    PermissionMode, PermissionResult, QueryOptions, SdkMessage, SdkResultMessage, SdkSystemMessage,
+    SettingSource, SystemPromptConfig, ThinkingConfig, ThinkingDisplay, ToolsConfig,
 };
 use futures::StreamExt;
 use openrouter::{Message, Streamed, Usage};
@@ -536,6 +536,8 @@ pub fn content(text: &str) -> Vec<Value> {
 
 /// One running tool call, kept between its `tool_use` and its `tool_result`.
 struct Call {
+    /// The subagent call this one runs under, when a subagent made it.
+    parent: Option<String>,
     coder_name: String,
     coder_input: Value,
     sdk_input: Value,
@@ -661,6 +663,12 @@ fn turn_options(
             options.allow_dangerously_skip_permissions = true;
             options.effort = picked.effort.as_deref().and_then(effort_level);
             options.tools = Some(ToolsConfig::Default);
+            // The reply's words as they arrive, and the model's thinking in
+            // words, so the conversation shows both (#11438).
+            options.include_partial_messages = true;
+            options.thinking = Some(ThinkingConfig::Adaptive {
+                display: Some(ThinkingDisplay::Summarized),
+            });
             options.setting_sources = Some(vec![
                 SettingSource::User,
                 SettingSource::Project,
@@ -771,6 +779,7 @@ pub(crate) async fn read_turn(
     let mut calls: HashMap<String, Call> = HashMap::new();
     let mut first_text_ms = None;
     let mut reported: Option<String> = None;
+    let mut stream = crate::claude_stream::Stream::default();
     loop {
         if cancel.load(Ordering::Relaxed) {
             stop(query, keep).await;
@@ -817,14 +826,37 @@ pub(crate) async fn read_turn(
                 let _ = query.kill().await;
                 return Err(error.to_string());
             }
-            Ok(SdkMessage::Assistant(assistant)) => {
-                if let Some(model) = assistant.message["model"]
-                    .as_str()
-                    .filter(|m| !m.is_empty())
-                {
-                    reply.model = model.to_owned();
-                    emit(RuntimeEvent::Model(model.to_owned()));
+            Ok(SdkMessage::StreamEvent(event)) => {
+                if let Some(text) = stream.partial(&event) {
+                    if first_text_ms.is_none() {
+                        first_text_ms = Some(elapsed_ms(started));
+                    }
+                    emit(RuntimeEvent::Text(text));
                 }
+            }
+            Ok(SdkMessage::System(SdkSystemMessage::ApiRetry(retry))) => {
+                emit(crate::claude_stream::retry(&retry));
+            }
+            Ok(SdkMessage::System(SdkSystemMessage::Init(init))) => {
+                for problem in crate::claude_stream::load_problems(&init) {
+                    emit(problem);
+                }
+            }
+            Ok(SdkMessage::Assistant(assistant)) => {
+                // A subagent's message goes to its own delegation.
+                let parent = assistant.parent_tool_use_id.as_deref();
+                if parent.is_none() {
+                    if let Some(model) = assistant.message["model"]
+                        .as_str()
+                        .filter(|m| !m.is_empty())
+                    {
+                        reply.model = model.to_owned();
+                        emit(RuntimeEvent::Model(model.to_owned()));
+                    }
+                    stream.note_usage(&assistant.message);
+                }
+                // Words that already arrived one by one are not shown again.
+                let streamed = parent.is_none() && stream.already_streamed(&assistant.message);
                 for block in assistant.message["content"]
                     .as_array()
                     .into_iter()
@@ -833,12 +865,24 @@ pub(crate) async fn read_turn(
                     match block["type"].as_str() {
                         Some("text") => {
                             let text = block["text"].as_str().unwrap_or_default();
-                            if !text.is_empty() {
-                                if first_text_ms.is_none() {
-                                    first_text_ms = Some(elapsed_ms(started));
-                                }
-                                reply.text.push_str(text);
+                            if text.is_empty() {
+                                continue;
+                            }
+                            if parent.is_some() {
+                                emit(stream.under(parent, RuntimeEvent::Text(text.to_owned())));
+                                continue;
+                            }
+                            if first_text_ms.is_none() {
+                                first_text_ms = Some(elapsed_ms(started));
+                            }
+                            reply.text.push_str(text);
+                            if !streamed {
                                 emit(RuntimeEvent::Text(text.to_owned()));
+                            }
+                        }
+                        Some("thinking") => {
+                            if let Some(thinking) = crate::claude_stream::thinking(block) {
+                                emit(stream.under(parent, thinking));
                             }
                         }
                         Some("tool_use") => {
@@ -847,19 +891,30 @@ pub(crate) async fn read_turn(
                             if crate::claude_tools::is_tool(name) {
                                 continue;
                             }
+                            // A subagent shows as a delegation of its own.
+                            if crate::claude_stream::is_agent_tool(name)
+                                && let Some(id) = block["id"].as_str()
+                            {
+                                emit(stream.start_agent(id, &block["input"]));
+                                continue;
+                            }
                             let sdk_input = block["input"].clone();
                             let (coder_name, coder_input) =
                                 crate::issue_run::agent::coder_call(name, &sdk_input, cwd, &[]);
-                            emit(RuntimeEvent::Tool {
-                                name: coder_name.clone(),
-                                input: coder_input.clone(),
-                                output: Value::Null,
-                                running: true,
-                            });
+                            emit(stream.under(
+                                parent,
+                                RuntimeEvent::Tool {
+                                    name: coder_name.clone(),
+                                    input: coder_input.clone(),
+                                    output: Value::Null,
+                                    running: true,
+                                },
+                            ));
                             if let Some(id) = block["id"].as_str() {
                                 calls.insert(
                                     id.to_owned(),
                                     Call {
+                                        parent: parent.map(str::to_owned),
                                         coder_name,
                                         coder_input,
                                         sdk_input,
@@ -878,10 +933,17 @@ pub(crate) async fn read_turn(
                     .flatten()
                     .filter(|block| block["type"] == "tool_result")
                 {
-                    let Some(call) = block["tool_use_id"]
-                        .as_str()
-                        .and_then(|id| calls.remove(id))
-                    else {
+                    let Some(id) = block["tool_use_id"].as_str() else {
+                        continue;
+                    };
+                    let failed = block["is_error"].as_bool().unwrap_or(false);
+                    if let Some(end) =
+                        stream.end_agent(id, &crate::issue_run::agent::result_text(block), failed)
+                    {
+                        emit(end);
+                        continue;
+                    }
+                    let Some(call) = calls.remove(id) else {
                         continue;
                     };
                     let structured = user.tool_use_result.as_ref().filter(|v| v.is_object());
@@ -891,14 +953,17 @@ pub(crate) async fn read_turn(
                         &call.coder_input,
                         &crate::issue_run::agent::result_text(block),
                         structured,
-                        block["is_error"].as_bool().unwrap_or(false),
+                        failed,
                     );
-                    emit(RuntimeEvent::Tool {
-                        name: call.coder_name,
-                        input: call.coder_input,
-                        output,
-                        running: false,
-                    });
+                    emit(stream.under(
+                        call.parent.as_deref(),
+                        RuntimeEvent::Tool {
+                            name: call.coder_name,
+                            input: call.coder_input,
+                            output,
+                            running: false,
+                        },
+                    ));
                 }
             }
             Ok(SdkMessage::Result(result)) => {
@@ -909,6 +974,9 @@ pub(crate) async fn read_turn(
                     while let Ok(event) = delegations.receiver.try_recv() {
                         emit(event);
                     }
+                }
+                if let SdkResultMessage::Success(success) = &result {
+                    stream.record_context(query.session_id(), &reply.model, &success.model_usage);
                 }
                 let mut done = finish(result)?;
                 done.milliseconds = elapsed_ms(started);
