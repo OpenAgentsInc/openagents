@@ -6,6 +6,8 @@ This is the public API for a saved agent that runs in a session: a model, a syst
 
 It is a PUBLIC surface on `https://api.openagents.com/v1` (alias `https://openagents.com/api/v1`). It follows [the API design](design.md) and [the owner's decisions](2026-10-02-openagents-api.md): one error object, cursor lists, `oak_` keys, sats, and no house rate limit on your own keys. The JSON bodies, event names, and paths below are the contract. A client library may name the calls `agents.create` or `sessions.events.send`; the wire format is HTTP.
 
+How you steer a session, including outcomes, previews, and the budget pause, is in [Managed agent events](managed-agents-events.md). Webhooks, cron fires, the files you keep, and spend are in [Managed agent operations](managed-agents-operations.md). A single model call with no session is [`POST /v1/responses`](../inference/gateway.md).
+
 The agent loop stays on OpenAgents. On a `cloud` environment, OpenAgents also runs the container, on a cloud computer admitted for the workspace and billed to its balance. On a `self_hosted` environment, bash and file tools run on a computer the workspace granted to the key ([decision D4](2026-10-02-openagents-api.md)). OpenAgents never dials into that computer. `web_search` and `web_fetch` run on OpenAgents in both cases.
 
 ## Conventions
@@ -13,7 +15,7 @@ The agent loop stays on OpenAgents. On a `cloud` environment, OpenAgents also ru
 | Topic | Rule |
 | --- | --- |
 | Auth | `Authorization: Bearer oak_<id>.<secret>`. The key's workspace owns every row. A session that belongs to several workspaces sends `X-Workspace-Id`. Another workspace's id is `404`. |
-| Scopes | `agents` creates and runs agents, sessions, environments, deployments, files, skills, and memory. `agents:read` reads them. `vaults` creates credentials and passes `vault_ids`. `vaults:read` reads vault and credential metadata. Secrets are write-only. Scopes only narrow the key. |
+| Scopes | `agents` creates and runs agents, sessions, environments, deployments, files, skills, memory, and webhook endpoints. `agents:read` reads them. `vaults` creates credentials and passes `vault_ids`. `vaults:read` reads vault and credential metadata. Secrets are write-only. Scopes only narrow the key. |
 | Environment key | A `self_hosted` environment has an `envk_` key, returned once. The worker sends it as `Authorization: Bearer envk_...`. It can claim and finish work for that environment and nothing else. |
 | Idempotency | `Idempotency-Key` on every `POST` that creates or spends. The same key and body within 24 hours returns the first response. The same key and a different body is `409` `idempotency_conflict`. |
 | Lists | `?limit=` (default 20, maximum 100) and `?after=<cursor>`. The body is `{"data": [...], "next": "<cursor>" or null}`. An expired cursor is `410` `cursor_expired`. Where a list accepts `order` (`asc` or `desc`), the cursor binds that order; reusing it with a different `order` is `400`. |
@@ -56,8 +58,11 @@ Four paths already name something else. This API keeps the paths and distinguish
 | Skill | `skill_` |
 | Workflow run | `wrun_` |
 | Work item | `work_` |
+| Webhook endpoint | `whk_` |
+| Webhook event | `whe_` |
+| Outcome | `outc_` |
 
-Account sessions stay `sess_`. Thread, resource, and credential ids are opaque.
+Account sessions stay `sess_`. Thread, resource, and credential ids are opaque. Webhook secrets are opaque and have no prefix.
 
 ### Models
 
@@ -170,17 +175,17 @@ An `effort` inside a `model` override applies. The agent's own effort is not car
 }
 ```
 
-`initial_events` accepts at most 50 events, and only `user.message` and `user.define_outcome`. Validation is all or nothing. With no `initial_events`, create registers the session and does not start the container. The container starts when the session first needs it.
+`initial_events` accepts at most 50 events, and only `user.message` and `user.define_outcome`. A deployment's `initial_events` also accepts `system.message`. Validation is all or nothing. More than 100 file-sourced document blocks across the list is `400`. A body over 32 MB is `413`. With no `initial_events`, create registers the session as `idle` and does not start the container. The container starts when the session first needs it. A non-empty `initial_events` creates the session already `running`.
 
 `budget` is optional and create-only on a session. `amount_sats` is a hard cap on the session's list-priced spend, shared by every thread. You can raise or lower it later. The new value must be greater than the sats already consumed. You can remove it with `null`. Removal is one-way: you cannot add a budget after create. A deployment's budget is copied onto each fired session and, unlike a session's, can be added later and added again after you clear it.
 
 `vault_ids` is create-only. An update that sets it is `400`.
 
-`usage.list_cost.amount_sats` on the session is the figure to trust. Per-thread figures do not sum to it: the session figure also includes session time, and each figure is rounded on its own. `usage` also names the route, the model, and the time for the calls so far.
+`usage.list_cost.amount_sats` on the session is the figure to trust. Per-thread figures do not sum to it: on a cloud environment the session figure also includes container time, and each figure is rounded on its own. `usage` also names the route, the model, and the time for the calls so far. Token fields, cache counts, and what list cost includes are in [events](managed-agents-events.md#usage).
 
-Session `status` is `running`, `idle`, `rescheduling`, or `terminated`. If any thread is `running`, the session is `running`.
+Session `status` is `running`, `idle`, `rescheduling`, or `terminated`. If any thread is `running`, the session is `running`. `GET` returns `outcome_evaluations` when the session has any.
 
-An idle session's `stop_reason.type` is one of:
+`stop_reason` is on `session.status_idle` and `session.thread_status_idle`, not on the session object. Its `type` is one of:
 
 | `stop_reason.type` | Meaning |
 | --- | --- |
@@ -220,8 +225,11 @@ Events you send:
 | `user.tool_confirmation` | `tool_use_id` is the `sevt_` id of the `agent.tool_use` or `agent.mcp_tool_use` event (not a tool-call id). `result` is `allow` or `deny`. Optional `deny_message` is the tool result the agent sees. Several confirmations can go in one request. A confirmation for an event whose `evaluated_permission` is not `ask` is `400`, including a call the server denied under `auto`. |
 | `user.custom_tool_result` | Your application's answer to `agent.custom_tool_use`. `custom_tool_use_id` is that event's `sevt_` id. `content` is an array of content blocks. `is_error` is a boolean. |
 | `user.interrupt` | With no `session_thread_id`, interrupts every non-archived thread, including the primary. With `session_thread_id`, interrupts that thread. |
+| `user.tool_result` | A settle event, processed on receipt. Permission asks use `user.tool_confirmation`. Custom tools use `user.custom_tool_result`. |
 
-Events the session emits include `agent.message`, `agent.thinking`, `agent.tool_use`, `agent.mcp_tool_use`, `agent.tool_result`, `agent.custom_tool_use`, `session.status_idle`, `session.status_running`, `session.status_terminated`, `session.error`, and the thread and workflow events in [Multiagent](#multiagent). Each carries `id` (`sevt_`) and `processed_at`. Tolerate an event `type` you do not recognize.
+`system.message` content is 1 to 1,000 text blocks. `openagents/classify` rejects it with `400`. While `requires_action`, it is accepted only as a later event in the same request as a settle event. Sending rules, the idle gate, live-preview deltas, and the budget pause order are in [events](managed-agents-events.md).
+
+Events the session emits include `agent.message`, `agent.thinking` (a progress signal, with no reasoning text), `agent.tool_use`, `agent.mcp_tool_use`, `agent.tool_result`, `agent.custom_tool_use`, `agent.thread_context_compacted`, `session.status_idle`, `session.status_running`, `session.status_terminated`, `session.usage`, `session.error`, `span.model_request_start`, `span.model_request_end`, the outcome spans, and the thread and workflow events in [Multiagent](#multiagent). Each stored event carries `id` (`sevt_`) and `processed_at`. Tolerate an event `type` you do not recognize.
 
 A tool result larger than 100,000 characters is written to a file in the container. The agent receives a short preview and the path, and can `read` the rest. This covers agent tools and MCP tools.
 
@@ -255,7 +263,7 @@ Previews are thread-scoped. A child thread's `event_delta` events arrive only on
 
 Resources are resolved at create. A bad `file_id` or an unreachable repository fails the create, not a later turn. At most 999 file resources per session. More than one GitHub repository is allowed. At most 8 memory stores.
 
-**File.** Upload with the Files API, then attach `{ "type": "file", "file_id", "mount_path"? }`. `mount_path` is absolute and rooted under the uploads directory: `/data.csv` lands at `/mnt/session/uploads/data.csv`. Without it, the file lands at `/mnt/session/uploads/<file_id>`. Mounts are read-only. The agent writes new files elsewhere. The working directory is `/workspace`.
+**File.** Upload with the Files API, then attach `{ "type": "file", "file_id", "mount_path"? }`. The session stores a copy, and `resources[].file_id` is that copy's id, not the upload's. You can delete the upload. The copy is removed with the session. `mount_path` is absolute and rooted under the uploads directory: `/data.csv` lands at `/mnt/session/uploads/data.csv`. Without it, the file lands at `/mnt/session/uploads/<file_id>`. Mounts are read-only. The agent writes new files elsewhere. The working directory is `/workspace`.
 
 **GitHub repository.**
 
@@ -392,7 +400,7 @@ There is no list or get. Keep the id from create.
 }
 ```
 
-`agent` accepts the same forms as session create. `resources`, `vault_ids`, and `budget` match session create and are copied onto each fired session. The response includes `status`, `paused_reason`, and `schedule.upcoming_runs_at`. The cron expression is interpreted in `timezone`, including that zone's daylight-saving transitions. A fire that cannot create a session still writes a deployment run.
+`agent` accepts the same forms as session create. `resources`, `vault_ids`, and `budget` match session create and are copied onto each fired session. `initial_events` must include at least one `user.message`, `user.define_outcome`, or `system.message`. The response includes `status`, `paused_reason`, and `schedule.upcoming_runs_at` (the exact next times). Execution can lag by up to 15 percent of the interval, at least 5 seconds and at most 9 minutes. A workspace holds at most 1,000 deployments. Cron, daylight-saving skips and double fires, budget changes, and which failures pause the deployment are in [operations](managed-agents-operations.md#schedules). A fire that cannot create a session still writes a deployment run, except when the agent is archived: that archives the deployment and writes no run.
 
 ### Deployment runs
 
@@ -401,7 +409,7 @@ There is no list or get. Keep the id from create.
 | `GET` | `/v1/deployment_runs?deployment_id=` | List runs. `has_error=true` keeps failures. |
 | `GET` | `/v1/deployment_runs/{deployment_run_id}` | Read one run (`drun_`). |
 
-A run carries either `session_id` or `error.type`: `environment_archived`, `agent_archived`, `vault_not_found`, `session_rate_limited`, `service_unavailable`. A webhook for the run uses the signed shape in [the API design](design.md) (`x-openagents-signature`, `x-openagents-event: deployment_run`). `data.id` is the `drun_` id.
+A run carries either `session_id` or `error.type`: `environment_archived`, `agent_archived`, `vault_not_found`, `computer_not_granted`, `session_rate_limited`, `insufficient_balance`, `service_unavailable`. `session_rate_limited` means a cap you set on the key. That fire is not retried. The next occurrence tries again. Webhook registration, the signature, and the `data.type` list are in [operations](managed-agents-operations.md#webhooks). A scheduled run emits `deployment_run.started`, `deployment_run.succeeded`, or `deployment_run.failed`. A manual run emits none of those. `data.id` is the `drun_` id.
 
 ### Vaults
 
@@ -516,7 +524,7 @@ An immutable snapshot per change (`memver_`). `operation` is `created`, `modifie
 | `GET` | `/v1/memory_stores/{memory_store_id}/memory_versions/{version_id}` | The list fields plus `content`. |
 | `POST` | `/v1/memory_stores/{memory_store_id}/memory_versions/{version_id}/redact` | Clear `content`, `content_sha256`, `content_size_bytes`, and `path`. Actor and timestamps stay. |
 
-Versions have no delete and no archive.
+Versions have no delete and no archive. Each version records `created_by`, an actor whose `type` is `session_actor`, `api_actor`, or `user_actor`. After a redact it also has `redacted_at` and `redacted_by`.
 
 ### Files
 
@@ -690,7 +698,7 @@ While the session is `idle`, `POST /v1/sessions/{session_id}` can replace `agent
 }
 ```
 
-`rubric` is required: `{ "type": "text", "content" }` or `{ "type": "file", "file_id" }`. `max_iterations` defaults to 3 and is at most 20. The event is echoed with `outcome_id` and `processed_at`. The grader does not have `web_search` or `web_fetch`. With an outcome defined, no evaluation starts while a workflow run is `running`. The agent's turn on the run's ending notice can start one.
+`rubric` is required: `{ "type": "text", "content" }` or `{ "type": "file", "file_id" }`. `max_iterations` defaults to 3 and is at most 20. The event is echoed with `outcome_id` (`outc_`) and `processed_at`. The grader does not have `web_search` or `web_fetch`. With an outcome defined, no evaluation starts while a workflow run is `running`. The agent's turn on the run's ending notice can start one. Grader events, results, and when to send the next outcome are in [events](managed-agents-events.md#outcomes).
 
 ## Multiagent
 

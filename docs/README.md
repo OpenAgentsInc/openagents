@@ -32,7 +32,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Run everything on your own OpenRouter, Vercel AI Gateway, or TypeSafe key (BYOK) | [BYOK design](byok/README.md) |
 | Put OpenAgents itself behind an API for partner apps, websites, other agents, and self-hosters | [OpenAgents API](api/README.md): plain HTTP, x402 payment |
 | See every endpoint we serve: which are public, which are for our own apps, which stay internal, and how today's routes converge | [API design](api/design.md) |
-| Run a saved agent in a session, with tools, memory, and a schedule | [Managed Agents API](api/managed-agents.md) |
+| Run a saved agent in a session, with tools, memory, and a schedule | [Managed Agents API](api/managed-agents.md), [events](api/managed-agents-events.md), [operations](api/managed-agents-operations.md) |
 | Receive every payment centrally, split it with plugin authors, pay them out, and watch it live | [Payments](payments/README.md): one receiver, a split ledger, payouts, `/live` |
 | Earn revenue from Coder: what businesses want, pricing, referrals, partners, and the sales roadmap | [Sales](sales/README.md), [revenue roadmap](sales/revenue-roadmap.md), [agent sales floor in Everglade](sales/agent-sales-floor.md) |
 | Call or operate decision services | [Decision models](decision-models/README.md), [caller guide](decision-models/guides/caller.md), [gateway](decision-models/service/gateway.md) |

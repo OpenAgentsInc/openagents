@@ -12,6 +12,8 @@ hides it today; payment is x402.
 | [The OpenAgents API (design, 2026-10-02)](2026-10-02-openagents-api.md) | The owner's decisions; plain HTTP at `api.openagents.com` with curl examples for every main call; how our front turns each call into NIP traffic and where keys live; x402 Lightning payment with the 402, pay, retry flow; the endpoint-to-NIP table and the NIP gaps; where it runs; the phased path; and what is still open. |
 | [A router for agentic execution (plan, 2026-10-02)](2026-10-02-agentic-execution-router.md) | Outcome-based routing, explicit execution and disclosure grants, durable task recovery, payment and settlement boundaries, evidence, and phased implementation gates. |
 | [Managed Agents API (proposed, 2026-10-11)](managed-agents.md) | Saved agents, sessions, events, tools, multiagent threads, environments, vaults, memory, skills, files, and scheduled deployments. Same resource paths and JSON as the managed-agents surface, on this API's auth, errors, cursor, and sats. |
+| [Managed agent events (proposed, 2026-10-11)](managed-agents-events.md) | Sending and reading session events, live previews, reconnecting, the budget pause, usage and cache counts, and outcome grading. |
+| [Managed agent operations (proposed, 2026-10-11)](managed-agents-operations.md) | Workspace webhooks, cron fires and deployment failures, the JSON and skill files you keep, and how a session's spend relates to one `/v1/responses` call. |
 
 Related: the existing keyed HTTP [decision gateway](../decision-models/service/gateway.md)
 (System One judgments, not the agent), the [chat worker](../deployment/chat-worker.md)
