@@ -7,6 +7,11 @@ It is the structured sibling of `coder issue-run` (`issue-run.md`), which
 runs one briefed agent, and it is the mode `microclaude` promised: Shift+Tab
 in the Coder terminal steps `live` → `microclaude` → `solver`.
 
+A solver also runs in a **swarm**: the live model hands N issues to N
+solvers at once, and they coordinate over the agent channel so two solvers
+do not edit the same file or hold the same build lease. See
+[Subagents talk to each other](subagent-channel.md).
+
 ## The four hands
 
 | Hand | Model | Tools | Does |
