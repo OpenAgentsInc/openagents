@@ -4,7 +4,7 @@
 
 An organization is a workspace whose `kind` is `organization`. You administer it here: the people in it, the bearer keys they call with, the caps you set on those keys, and the encryption key that wraps the workspace's stored data. A personal workspace holds its owner alone. Invitations, role changes, seat changes, and transfers on a personal workspace return `400` `personal_workspace`.
 
-It is a PUBLIC surface on `https://api.openagents.com/v1` (alias `https://openagents.com/api/v1`). It follows [the API design](design.md): `oak_` keys, sats on spend, and no house rate limit on your own keys. Words for the objects on this page are in the [glossary](../glossary.md#decision-service-identity-and-accounting). Administration stays on `/v1/workspaces/{ws}`.
+It is a PUBLIC surface on `https://api.openagents.com/v1` (alias `https://openagents.com/api/v1`). It follows [the API design](design.md): `oak_` keys, sats on spend, and no house rate limit on your own keys. Headers, the workspace, list cursors, and body size that every call shares are in [Calling the API](calling.md). Words for the objects on this page are in the [glossary](../glossary.md#decision-service-identity-and-accounting). Administration stays on `/v1/workspaces/{ws}`.
 
 ## Conventions
 

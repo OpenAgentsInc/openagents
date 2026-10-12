@@ -135,6 +135,8 @@ thread, run, computer.
 | Streaming | Server-sent events when `Accept: text/event-stream` or `"stream": true`. Open Responses streams follow the spec's event order. |
 | Headers we add | `x-request-id`, `openagents-version`, and on model calls `x-openagents-model`, `x-openagents-upstream`, `x-openagents-cost-usd`; on paid calls `x-openagents-receipt`. |
 
+The public statement of these rules, including the live body ceiling and when a caller sends `X-Workspace-Id`, is [Calling the API](calling.md).
+
 ### 2.6 Authentication
 
 | Credential | Form | Who uses it | Where it is checked |
