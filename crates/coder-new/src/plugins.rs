@@ -474,6 +474,7 @@ impl Plugins {
                 .collect(),
             agents: self.bundled.acp_registered(),
             cwd,
+            boundary: None,
             instructions: None,
             shell: true,
             brainstorm: self.bundled.brainstorm.native(),

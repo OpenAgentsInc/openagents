@@ -27,10 +27,14 @@ macro_rules! command_usage {
             "usage: openagents coder COMMAND [OPTIONS]
   status                              Provider, model, plugins, and working directory.
   chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID]
-       [--instructions TEXT | --instructions-file FILE] [--mode auto|microclaude]",
+       [--instructions TEXT | --instructions-file FILE] [--mode auto|microclaude]
+       [--in-place]",
             $demo,
             "
                                       Run the same chat and tools as the terminal.
+                                      In a Git repository the chat works in its own
+                                      worktree and branch (chat/ID); --in-place uses
+                                      this folder instead.
   delegate AGENT --task TEXT [--session ID]
        [--on boat|gce] [--mode integrated|coder] [--model ID] [--reasoning EFFORT]
        [--job ID] [--size small|default|large|xlarge] [--template NAME]
@@ -124,6 +128,7 @@ pub(crate) fn command_environment(
 }
 
 /// Explicit roots and environment make command execution usable from other hosts.
+#[derive(Clone)]
 pub struct Context {
     pub root: PathBuf,
     pub cwd: PathBuf,
@@ -993,6 +998,8 @@ pub(crate) fn chat(
     args.retain(|arg| arg != "--stdin");
     let demo = args.iter().any(|arg| arg == "--demo");
     args.retain(|arg| arg != "--demo");
+    let in_place = args.iter().any(|arg| arg == "--in-place");
+    args.retain(|arg| arg != "--in-place");
     if !args.is_empty()
         || usize::from(prompt.is_some()) + usize::from(file.is_some()) + usize::from(stdin) != 1
     {
@@ -1015,9 +1022,33 @@ pub(crate) fn chat(
     if prompt.trim().is_empty() {
         return Err(usage("The prompt cannot be empty."));
     }
+    let mut saved_document = None;
     if lease.exists()? {
-        trajectory::restore_app(app, &lease.read()?)?;
+        let document = lease.read()?;
+        trajectory::restore_app(app, &document)?;
+        saved_document = Some(document);
     }
+    // Each session works in its own worktree (#11372); the folder it was
+    // started from stays read-only for it.
+    app.boundary = if demo || in_place {
+        None
+    } else {
+        session_checkout(&context.cwd, &session, saved_document.as_ref())?
+    };
+    let cwd = app
+        .boundary
+        .as_ref()
+        .map_or_else(|| context.cwd.clone(), |boundary| boundary.worktree.clone());
+    let context = &Context {
+        cwd,
+        ..context.clone()
+    };
+    let note_checkout = |document: &mut Value, app: &App| {
+        if let Some(boundary) = &app.boundary {
+            document["extra"]["worktree"] = json!(boundary.worktree);
+            document["extra"]["shared_checkout"] = json!(boundary.shared);
+        }
+    };
     // Standing instructions stay beside the session, never in it, so the
     // transcript, a follower, and an export show only the conversation.
     let standing = instructions_path(lease.path());
@@ -1126,6 +1157,7 @@ pub(crate) fn chat(
                 document["session_id"] = json!(session);
                 document["trajectory_id"] = json!(session);
                 document["extra"]["running"] = json!(true);
+                note_checkout(&mut document, app);
                 let _ = lease.save(&document);
                 saved = std::time::Instant::now();
                 changed = false;
@@ -1181,6 +1213,7 @@ pub(crate) fn chat(
     let mut document = trajectory::main_document(app, &context.cwd);
     document["session_id"] = json!(session);
     document["trajectory_id"] = json!(session);
+    note_checkout(&mut document, app);
     lease.save(&document)?;
     // Saved to the account too when sync is on, so a chat a scheduled
     // prompt posted into shows its answer there (#11177).
@@ -1334,7 +1367,8 @@ fn delegate(
         trajectory::restore_app(app, &lease.read()?)?;
     }
     let agent = args.remove(0);
-    let execution = app.plugins.execution_settings(context.cwd.clone());
+    let mut execution = app.plugins.execution_settings(context.cwd.clone());
+    execution.boundary = app.boundary.clone();
     let provider = app
         .plugins
         .key_for_request()
@@ -1582,6 +1616,64 @@ fn forget_appended_charter(entries: &mut [live::Entry]) {
 }
 
 /// Where a session's standing instructions live: beside its document.
+/// The session's own worktree under `cwd`'s repository: the one its saved
+/// document names when it still exists, else a new `.coder/worktrees/
+/// chat-<session>` on `chat/<session>`. `None` when `cwd` is not in a Git
+/// repository, or is already a worktree Coder made.
+fn session_checkout(
+    cwd: &Path,
+    session: &str,
+    saved: Option<&Value>,
+) -> Result<Option<crate::checkout_guard::Boundary>, Error> {
+    if let Some(saved) = saved
+        && let (Some(worktree), Some(shared)) = (
+            saved.pointer("/extra/worktree").and_then(Value::as_str),
+            saved
+                .pointer("/extra/shared_checkout")
+                .and_then(Value::as_str),
+        )
+    {
+        let worktree = PathBuf::from(worktree);
+        return Ok(worktree.is_dir().then(|| crate::checkout_guard::Boundary {
+            worktree,
+            shared: PathBuf::from(shared),
+        }));
+    }
+    let top = std::process::Command::new("git")
+        .arg("-C")
+        .arg(cwd)
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| PathBuf::from(String::from_utf8_lossy(&output.stdout).trim()));
+    let Some(top) = top else {
+        return Ok(None);
+    };
+    if top
+        .to_string_lossy()
+        .contains(&format!("/{}/", coder::delegate::WORKTREE_DIR))
+    {
+        return Ok(None);
+    }
+    let short = session.chars().take(32).collect::<String>();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| Error::from(format!("Cannot prepare the session's worktree: {error}")))?;
+    let checkout = runtime
+        .block_on(coder::branch_checkout::add(
+            &top,
+            &format!("chat-{short}"),
+            &format!("chat/{short}"),
+        ))
+        .map_err(|error| Error::from(format!("Cannot prepare the session's worktree: {error}")))?;
+    Ok(Some(crate::checkout_guard::Boundary {
+        worktree: checkout.path,
+        shared: checkout.repository,
+    }))
+}
+
 fn instructions_path(session: &Path) -> PathBuf {
     session.with_extension("instructions")
 }
@@ -1734,6 +1826,80 @@ mod tests {
             approvals: None,
         }
     }
+    fn git(dir: &Path, args: &[&str]) {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args([
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid",
+            ])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    fn a_chat_session_gets_its_own_worktree_and_resumes_in_it() {
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q", "-b", "main"]);
+        fs::write(repo.join("README.md"), "hello\n").unwrap();
+        git(&repo, &["add", "README.md"]);
+        git(&repo, &["commit", "-q", "-m", "start"]);
+
+        let boundary = session_checkout(&repo, "abc123", None).unwrap().unwrap();
+        let repo_real = repo.canonicalize().unwrap();
+        assert_eq!(boundary.shared, repo_real);
+        assert_eq!(
+            boundary.worktree,
+            repo_real
+                .join(coder::delegate::WORKTREE_DIR)
+                .join("chat-abc123")
+        );
+        assert!(boundary.worktree.join("README.md").is_file());
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&boundary.worktree)
+            .args(["branch", "--show-current"])
+            .output()
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim(),
+            "chat/abc123"
+        );
+
+        // A saved session names its worktree and keeps using it.
+        let saved =
+            json!({"extra": {"worktree": boundary.worktree, "shared_checkout": boundary.shared}});
+        assert_eq!(
+            session_checkout(&repo, "abc123", Some(&saved))
+                .unwrap()
+                .as_ref(),
+            Some(&boundary)
+        );
+        // A session started inside a Coder worktree stays there.
+        assert!(
+            session_checkout(&boundary.worktree, "inner", None)
+                .unwrap()
+                .is_none()
+        );
+        // Outside a repository there is nothing to protect.
+        assert!(
+            session_checkout(temp.path(), "none", None)
+                .unwrap()
+                .is_none()
+        );
+    }
+
     fn execute_words(words: &[&str], context: &Context) -> Result<Value, Error> {
         execute(
             &words

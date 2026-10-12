@@ -45,6 +45,9 @@ pub struct ExecutionSettings {
     pub jev_endpoint: String,
     pub agents: Vec<AcpAgent>,
     pub cwd: PathBuf,
+    /// The session's own worktree and the shared checkout that is
+    /// read-only for it ([`crate::checkout_guard`]).
+    pub boundary: Option<crate::checkout_guard::Boundary>,
     /// The caller's standing instructions for this chat, such as a
     /// workshop agent's charter. The model reads them as system
     /// instructions every turn; the transcript never shows them.
@@ -281,6 +284,9 @@ impl ExecutionSettings {
         }
         if self.shell {
             guidance.push_str(crate::file_tools::INSTRUCTIONS);
+            if self.boundary.is_some() {
+                guidance.push_str(crate::checkout_guard::INSTRUCTIONS);
+            }
             if let Some(extra) = self.harness.as_ref().and_then(|run| run.config.guidance()) {
                 guidance.push_str(extra);
             }
@@ -422,6 +428,12 @@ impl ExecutionSettings {
                     .await
             }
             name if crate::file_tools::is_tool(name) && self.shell => {
+                if let Some(boundary) = &self.boundary
+                    && let Some(path) = arguments["path"].as_str()
+                    && let Some(refusal) = boundary.file_refusal(name, path, &self.cwd)
+                {
+                    return Err(refusal);
+                }
                 crate::file_tools::execute_with_checks(
                     name,
                     arguments,
@@ -466,6 +478,13 @@ impl ExecutionSettings {
                 let args: RunArguments = serde_json::from_value(arguments)
                     .map_err(|_| "Run requires a command and no other fields.")?;
                 if let Some(refusal) = crate::git_guard::refusal(&args.command) {
+                    return Err(refusal);
+                }
+                if let Some(refusal) = self
+                    .boundary
+                    .as_ref()
+                    .and_then(|boundary| boundary.run_refusal(&args.command, &self.cwd))
+                {
                     return Err(refusal);
                 }
                 if args.background == Some(true) {
@@ -948,6 +967,7 @@ mod tests {
             jev_endpoint: jev_plugin::DEFAULT_ENDPOINT.into(),
             agents: vec![],
             cwd: PathBuf::from("/unavailable"),
+            boundary: None,
             instructions: None,
             shell: false,
             brainstorm: None,

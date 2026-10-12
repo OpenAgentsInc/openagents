@@ -11,6 +11,7 @@ pub mod attachments;
 pub mod brainstorm;
 pub mod bundled_runtime;
 pub mod bundled_settings;
+mod checkout_guard;
 pub mod claude_plan;
 pub mod cloud;
 pub mod cloud_settings;
@@ -169,6 +170,9 @@ pub struct App {
     pub live: live::Chat,
     pub delegations: Vec<live::Delegation>,
     pub cwd: Option<std::path::PathBuf>,
+    /// The session's own worktree and the read-only checkout it was
+    /// started from, when `coder chat` gave it one (#11372).
+    pub boundary: Option<checkout_guard::Boundary>,
     pub branch: Option<String>,
     /// The signed-in openagents.com account's name (#11045).
     pub account: Option<String>,
@@ -1703,6 +1707,7 @@ impl App {
             }));
         execution.instructions = self.live.instructions.clone();
         execution.prompt_inbox = Some(self.prompt_inbox.clone());
+        execution.boundary = self.boundary.clone();
         // Google Drive through the signed-in account's Connections (#11238).
         execution.connections = self
             .account_dir
