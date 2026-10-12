@@ -280,13 +280,14 @@ async fn call(
         NEXT_ID.fetch_add(1, Ordering::Relaxed)
     );
     let task = task(name, &input);
+    let label = delegate_label(execution, name, &input);
     let mut emit = |event: RuntimeEvent| {
         // A tool that draws its own delegation (Solver) keeps it.
         let event = match event {
             event @ RuntimeEvent::Delegation { .. } => event,
             event => RuntimeEvent::Delegation {
                 id: id.clone(),
-                name: name.to_owned(),
+                name: label.clone(),
                 task: task.clone(),
                 event: Box::new(event),
             },
@@ -310,6 +311,35 @@ async fn call(
         running: false,
     });
     result
+}
+
+/// The name a delegation shows: the agent that runs it, never the tool
+/// ("Codex", "Claude Code", "Microcoder"), with the model it was asked to
+/// run in parentheses when the call names one. The rail adds the model the
+/// agent reports once it does.
+fn delegate_label(execution: &ExecutionSettings, name: &str, input: &Value) -> String {
+    let agent = match name {
+        "acp_subagent" => {
+            let id = input["agent"].as_str().unwrap_or_default();
+            execution
+                .agents
+                .iter()
+                .find(|agent| agent.id == id)
+                .map_or_else(|| id.to_owned(), |agent| agent.name.clone())
+        }
+        "microcoder" => "Microcoder".to_owned(),
+        crate::solver_plugin::TOOL => crate::solver_plugin::NAME.to_owned(),
+        _ => display_name(&format!("mcp__{SERVER}__{name}")),
+    };
+    let agent = if agent.is_empty() {
+        display_name(&format!("mcp__{SERVER}__{name}"))
+    } else {
+        agent
+    };
+    match input["model"].as_str().filter(|model| !model.is_empty()) {
+        Some(model) => format!("{agent} ({model})"),
+        None => agent,
+    }
 }
 
 /// The line a delegation shows for a call: its task, issue, or message when
@@ -382,6 +412,32 @@ mod tests {
         assert!(!draws_itself("mcp__coder__agent"));
         assert!(draws_itself("mcp__coder__solver"));
         assert!(draws_itself("mcp__coder__gce_delegate"));
+    }
+
+    #[test]
+    fn a_delegation_is_named_for_its_agent_not_the_tool() {
+        let mut execution = crate::App::default().agent_execution();
+        execution.agents = vec![crate::bundled_runtime::AcpAgent {
+            id: "codex".into(),
+            name: "Codex".into(),
+            ..serde_json::from_value(json!({"id":"x","name":"x","program":"x"})).unwrap()
+        }];
+        assert_eq!(
+            delegate_label(&execution, "acp_subagent", &json!({"agent":"codex"})),
+            "Codex"
+        );
+        assert_eq!(
+            delegate_label(
+                &execution,
+                "acp_subagent",
+                &json!({"agent":"codex","model":"gpt-6.1-sol"})
+            ),
+            "Codex (gpt-6.1-sol)"
+        );
+        assert_eq!(
+            delegate_label(&execution, "microcoder", &json!({})),
+            "Microcoder"
+        );
     }
 
     #[test]

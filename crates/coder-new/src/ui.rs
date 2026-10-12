@@ -269,6 +269,28 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
     }
 }
 
+/// A delegation's name on the rail: the agent and, once it says, its model
+/// in parentheses, as "Claude Code (Haiku 5.5)" or "Codex (gpt-6.1-sol)".
+fn agent_label<'a>(name: &'a str, model: Option<&str>) -> std::borrow::Cow<'a, str> {
+    match model.filter(|model| !model.is_empty() && !name.contains('(')) {
+        Some(model) => std::borrow::Cow::Owned(format!("{name} ({})", model_words(model))),
+        None => std::borrow::Cow::Borrowed(name),
+    }
+}
+
+/// A model's name as a person reads it: a Claude model by its picker name
+/// ("Opus 5.5"), any other by its own short name.
+fn model_words(model: &str) -> String {
+    let bare = model.rsplit('/').next().unwrap_or(model);
+    crate::claude::MODELS
+        .iter()
+        .find(|(id, _, _)| *id == bare)
+        .map_or_else(
+            || crate::models::label(model),
+            |(_, name, _)| (*name).to_owned(),
+        )
+}
+
 fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
     // A finished delegation leaves the rail after a while (owner, #11434).
     let rail = app.rail_agents();
@@ -277,7 +299,7 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
             .iter()
             .map(|agent| {
                 (
-                    agent.name,
+                    std::borrow::Cow::Borrowed(agent.name),
                     std::borrow::Cow::Borrowed(agent.task),
                     agent.tokens.to_owned(),
                     agent.elapsed_seconds.saturating_add(app.elapsed_seconds),
@@ -298,7 +320,7 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
                     }
                     task.push_str(&agent.task);
                     return (
-                        agent.name.as_str(),
+                        std::borrow::Cow::Borrowed(agent.name.as_str()),
                         std::borrow::Cow::Owned(task),
                         if row.tokens == 0 {
                             "—".into()
@@ -309,7 +331,7 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
                     );
                 }
                 (
-                    agent.name.as_str(),
+                    agent_label(&agent.name, agent.chat.partial_model.as_deref()),
                     // A finished delegation's dollars (#11179).
                     if agent.chat.cost_usd > 0.0 {
                         std::borrow::Cow::Owned(format!(
