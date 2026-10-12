@@ -12,19 +12,27 @@
 //!   Q8_0/Q4_K projections instead run through the Hopper GEMM (`wgmma`,
 //!   TMA, the GGUF bytes dequantized in registers, f32 accumulation, #11443),
 //!   which is bitwise chunk-invariant; `PSIONIC_CLEF_HOPPER=0` turns it off.
+//!   `PSIONIC_CLEF_SILU_FUSED=1` makes the up projection write `f16(silu(gate)
+//!   * up)` from its epilogue (#11444; bitwise the same, measured slower, off).
 //! - **Gated DeltaNet.** A sequence causal conv1d carries its last three
 //!   inputs; the delta rule runs one warp per (value head, value row) over
 //!   the chunk's tokens in order, with the 128-wide state row in registers.
 //! - **Full attention.** q/k RMSNorm, rotary and the q scale in one kernel
-//!   that appends k and v to f16 caches; then scores and `P V` as strided
-//!   batched cuBLAS GEMMs per KV group with a causal softmax between.
+//!   that appends k and v to f16 caches; then a fixed-order flash kernel (on
+//!   sm_90 the Hopper `wgmma`/TMA one, #11444, which also takes 27B's six
+//!   query heads per KV head and fuses the sigmoid output gate;
+//!   `PSIONIC_CLEF_HOPPER_ATTENTION=0` turns it off), or scores and `P V` as
+//!   strided batched cuBLAS GEMMs per KV group with a causal softmax between.
 //! - **Head inputs.** After the output RMSNorm the chunk's rows go through
 //!   the head's `hidden_norm` LayerNorm and `W_mem` on the device; the
 //!   1024-wide memory rows stay there, span sums of `LN(H)` accumulate there,
 //!   and only the span sums and the last row come back. The head's memory
 //!   attention reads the device rows ([`ClefCudaTrunk::attend_memory`]).
 //!
-//! `token_embd` and `output` stay on the host (only rows are gathered).
+//! `output` stays on the host. `token_embd` stays there too, except that on
+//! sm_90 a Q4_K table is also uploaded and the chunk's rows are gathered on
+//! the device (#11444; `PSIONIC_CLEF_DEVICE_EMBED=0` keeps the host gather):
+//! a chunk then uploads its token ids instead of its f32 rows.
 
 use std::sync::Mutex;
 
@@ -36,7 +44,7 @@ mod prefix;
 use crate::clef::prefix::{PrefixCache, chunk_len, reusable_boundary};
 
 use psionic_backend_cuda::clef_prefill::{
-    self, ClefEvent, ClefOperand, ClefStream, ClefWeightFormat,
+    self, ClefAttentionOut, ClefEvent, ClefOperand, ClefStream, ClefWeightFormat,
 };
 use psionic_backend_cuda::{CudaBackend, CudaBuffer, CudaCommandWait, CudaSubmission};
 use rayon::prelude::*;
@@ -185,6 +193,10 @@ struct Scratch {
     cos_sin: CudaBuffer,
     final_rows: CudaBuffer,
     norm_rows: CudaBuffer,
+    /// Block coefficients of the blocked delta scan (`PSIONIC_CLEF_SCAN`).
+    delta_coef: Option<CudaBuffer>,
+    /// The chunk's token ids (device embedding gather).
+    ids: CudaBuffer,
     bytes: u64,
 }
 
@@ -231,6 +243,8 @@ struct DeviceState {
     /// Staging for the batched head calls: input, output and bias arenas
     /// with their capacities in floats.
     head_stage: Option<HeadStage>,
+    /// The Q4_K token embedding table on the device and its row count.
+    token_table: Option<(CudaBuffer, usize)>,
     weight_bytes: u64,
     /// Exact prefix snapshots on the device ([`prefix`]), least recently
     /// used out, within `PSIONIC_CLEF_PREFIX_CACHE_BYTES`.
@@ -619,7 +633,25 @@ impl ClefCudaTrunk {
             let buffer = upload_f32(&mut backend, values)?;
             head_matrices.insert(values.as_ptr() as usize, (buffer, *rows, *columns));
         }
+        // a Q4_K token table gathered on the device (sm_90 only: about 0.6-0.7
+        // GB more device memory than the host gather)
+        let token_table = match &model.token_embedding.kind {
+            HostMatrixKind::Quantized(table)
+                if knobs().device_embed
+                    && table.mode == QuantizationMode::GgmlQ4K
+                    && table.columns == dims.hidden
+                    && dims.hidden % 256 == 0 =>
+            {
+                let weight = upload_matrix(&mut backend, &model.token_embedding, "token_embd")?;
+                Some((weight.buffer, table.rows))
+            }
+            _ => None,
+        };
+        let table_bytes = token_table
+            .as_ref()
+            .map_or(0, |(buffer, _)| buffer.byte_len() as u64);
         let state = DeviceState {
+            token_table,
             output_norm: upload_f32(&mut backend, &model.output_norm)?,
             hidden_norm_weight: upload_f32(&mut backend, head.hidden_norm_weight)?,
             hidden_norm_bias: upload_f32(&mut backend, head.hidden_norm_bias)?,
@@ -629,7 +661,9 @@ impl ClefCudaTrunk {
                 .iter()
                 .map(|(w, b)| Ok((upload_f32(&mut backend, w)?, upload_f32(&mut backend, b)?)))
                 .collect::<Result<_, String>>()?,
-            weight_bytes: estimate.resident_weight_bytes + estimate.conversion_workspace_bytes,
+            weight_bytes: estimate.resident_weight_bytes
+                + estimate.conversion_workspace_bytes
+                + table_bytes,
             head_matrices,
             head_io: None,
             projected_attention: None,
@@ -801,11 +835,24 @@ impl ClefCudaTrunk {
         let mut timings = ProfileTimings::default();
         let began = std::time::Instant::now();
         let mut last = Vec::new();
-        // The host builds a chunk's embedding rows and rotary table (token
-        // rows decoded from the host `token_embd`) on a second thread while
-        // the device runs the chunk before it.
+        // The host builds a chunk's embedding rows (token rows decoded from
+        // the host `token_embd`, or only the checked ids, as i32 bit
+        // patterns, when the device gathers them) and rotary table on a
+        // second thread while the device runs the chunk before it.
+        let device_table = state.token_table.as_ref().map(|(_, vocab)| *vocab);
         let build_inputs = |first: usize, n: usize| -> Result<(Vec<f32>, Vec<f32>), String> {
             let piece = &tokens[first..first + n];
+            if let Some(vocab) = device_table {
+                let mut ids = Vec::with_capacity(n);
+                for token in piece {
+                    let index = token.as_u32() as usize;
+                    if index >= vocab.min(model.descriptor.config.vocab_size) {
+                        return Err(format!("token {index} is outside the vocabulary"));
+                    }
+                    ids.push(f32::from_bits(token.as_u32()));
+                }
+                return Ok((ids, rope.table(first, n, dims.rotary)));
+            }
             let mut embedded = vec![0.0f32; n * dims.hidden];
             embedded
                 .par_chunks_mut(dims.hidden)
@@ -830,8 +877,12 @@ impl ClefCudaTrunk {
             let n = chunk_len(first, length, chunk, boundary);
             let (embedded, table) = prepared.take().ok_or("chunk inputs")?;
             let scratch = state.scratch.as_mut().ok_or("scratch")?;
-            scratch
-                .x
+            let destination = if device_table.is_some() {
+                &mut scratch.ids
+            } else {
+                &mut scratch.x
+            };
+            destination
                 .write_bytes_at_offset(0, f32_bytes(&embedded))
                 .map_err(err)?;
             scratch
@@ -848,9 +899,26 @@ impl ClefCudaTrunk {
                     // without observers or the profile, the layer stack and the
                     // final step below share one submission and one wait
                     let mut pending = None;
+                    let embed = |submission: &mut CudaSubmission| -> Result<(), String> {
+                        if let Some((table, vocab)) = state.token_table.as_ref() {
+                            let scratch = state.scratch.as_ref().ok_or("scratch")?;
+                            submission
+                                .clef_embed_q4_k(
+                                    table,
+                                    &scratch.ids,
+                                    &scratch.x,
+                                    n,
+                                    dims.hidden,
+                                    *vocab,
+                                )
+                                .map_err(err)?;
+                        }
+                        Ok(())
+                    };
                     if layer_observer.is_none() && !profile {
                         // one submission for the whole chunk
                         let mut submission = state.backend.begin_submission().map_err(err)?;
+                        embed(&mut submission)?;
                         for layer_index in 0..state.layers.len() {
                             encode_layer(
                                 &mut submission,
@@ -874,6 +942,9 @@ impl ClefCudaTrunk {
                         let layer_began = std::time::Instant::now();
                         {
                             let mut submission = state.backend.begin_submission().map_err(err)?;
+                            if layer_index == 0 {
+                                embed(&mut submission)?;
+                            }
                             encode_layer(
                                 &mut submission,
                                 state.layers.get(layer_index).ok_or("layer")?,
@@ -1944,6 +2015,18 @@ fn alloc_scratch(backend: &mut CudaBackend, dims: Dims, chunk: usize) -> Result<
         .map_err(err)?;
     let out16 = backend.f16_buffer(c * wide.max(mid)).map_err(err)?;
     bytes += act16.byte_len() as u64 + query16.byte_len() as u64 + out16.byte_len() as u64;
+    let ids = backend.i32_buffer(c.max(1)).map_err(err)?;
+    bytes += ids.byte_len() as u64;
+    let delta_coef =
+        if knobs().scan.block_variant().is_some() && dims.state == 128 && dims.value_heads > 0 {
+            let buffer = backend
+                .f32_buffer(clef_prefill::clef_delta_block_coef_len(c, dims.value_heads))
+                .map_err(err)?;
+            bytes += buffer.byte_len() as u64;
+            Some(buffer)
+        } else {
+            None
+        };
     Ok(Scratch {
         capacity: c,
         x,
@@ -1965,6 +2048,8 @@ fn alloc_scratch(backend: &mut CudaBackend, dims: Dims, chunk: usize) -> Result<
         cos_sin,
         final_rows,
         norm_rows,
+        delta_coef,
+        ids,
         bytes,
     })
 }
@@ -1980,8 +2065,15 @@ fn new_request(
     let widest = chunk * length;
     let heads_at_once = (ATTENTION_SCORE_BUDGET_BYTES / (widest * 6).max(1)).clamp(1, group.max(1));
     // the score workspace serves only the cuBLAS attention; the flash kernel
-    // (head dim 256, four query heads per KV head) needs none
-    let flash = knobs().flash && dims.head_dim == 256 && dims.heads == dims.kv_heads * 4;
+    // (head dim 256, four query heads per KV head) needs none, nor does the
+    // Hopper one (head dim 256, an even number of query heads per KV head)
+    let hopper_attention = knobs().hopper_attention
+        && dims.head_dim == 256
+        && dims.kv_heads > 0
+        && dims.heads % dims.kv_heads == 0
+        && (dims.heads / dims.kv_heads) % 2 == 0;
+    let flash = knobs().flash && dims.head_dim == 256 && dims.heads == dims.kv_heads * 4
+        || hopper_attention;
     let score_capacity = if flash { 0 } else { widest * heads_at_once };
     let scores = state
         .backend
@@ -2200,7 +2292,12 @@ fn gemm(
 /// off the Hopper projection GEMM (#11443), which is otherwise selected on
 /// an sm_90 device for every Q8_0/Q4_K projection and every chunk size;
 /// `PSIONIC_CLEF_HOPPER=exact` keeps it on with the dequant kernels' exact
-/// f32 Q4_K arithmetic instead of f16x2.
+/// f32 Q4_K arithmetic instead of f16x2. #11444: `PSIONIC_CLEF_HOPPER_ATTENTION=0`
+/// turns off the Hopper flash attention (on with the Hopper GEMM's support
+/// check); `PSIONIC_CLEF_SILU_FUSED=1` fuses the SiLU product into the up
+/// projection's epilogue (off: measured slower); `PSIONIC_CLEF_SCAN=tc|tc1|tc2|tc4` runs the delta
+/// rule in blocks of 16 tokens on tensor cores (the default on sm_90;
+/// `staged` keeps the per-token scan).
 /// When a projection runs through the fused kernel.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Fused {
@@ -2225,6 +2322,30 @@ impl Fused {
     }
 }
 
+/// Which delta scan runs (`PSIONIC_CLEF_SCAN`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Scan {
+    /// One warp per (value head, row pair), the state row in registers (`0`).
+    PerWarp,
+    /// 32 state rows per CTA with the token inputs staged through shared
+    /// memory (`staged`; the default without the Hopper kernels).
+    #[default]
+    Staged,
+    /// Blocks of 16 tokens on tensor cores (#11444; `tc` = `tc4`, `tc1`,
+    /// `tc2`: warps splitting a CTA's columns), for chunks that start at a
+    /// multiple of 16; the default on sm_90.
+    Block(usize),
+}
+
+impl Scan {
+    fn block_variant(self) -> Option<usize> {
+        match self {
+            Self::Block(variant) => Some(variant),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Default)]
 struct Knobs {
     skip_dequant: bool,
@@ -2233,10 +2354,13 @@ struct Knobs {
     skip_attention: bool,
     fused: Fused,
     segment: usize,
-    staged_scan: bool,
+    scan: Scan,
     flash: bool,
     hopper: bool,
     hopper_exact: bool,
+    hopper_attention: bool,
+    silu_fused: bool,
+    device_embed: bool,
 }
 
 fn knobs() -> Knobs {
@@ -2254,9 +2378,28 @@ fn knobs() -> Knobs {
                 Ok(other) => other.parse().map_or(Fused::UpTo(FUSED_UP_TO), Fused::UpTo),
                 Err(_) => Fused::UpTo(FUSED_UP_TO),
             },
-            staged_scan: std::env::var("PSIONIC_CLEF_SCAN").map_or(true, |v| v != "0"),
+            scan: match std::env::var("PSIONIC_CLEF_SCAN").as_deref() {
+                Ok("0") => Scan::PerWarp,
+                Ok("staged") => Scan::Staged,
+                Ok("tc1") => Scan::Block(101),
+                Ok("tc2") => Scan::Block(102),
+                Ok("tc" | "tc4") => Scan::Block(104),
+                // the blocked tensor-core scan is the default where it was
+                // measured faster (sm_90); Ada keeps the staged scan
+                _ if clef_prefill::clef_hopper_supported() => Scan::Block(104),
+                _ => Scan::Staged,
+            },
             flash: std::env::var("PSIONIC_CLEF_FLASH").map_or(true, |v| v != "0"),
             hopper: std::env::var("PSIONIC_CLEF_HOPPER").map_or(true, |v| v != "0")
+                && clef_prefill::clef_hopper_supported(),
+            hopper_attention: std::env::var("PSIONIC_CLEF_HOPPER_ATTENTION")
+                .map_or(true, |v| v != "0")
+                && std::env::var("PSIONIC_CLEF_FLASH").map_or(true, |v| v != "0")
+                && clef_prefill::clef_hopper_supported(),
+            // measured slower (the epilogue's gate loads stall the persistent
+            // GEMM), so opt-in only
+            silu_fused: std::env::var("PSIONIC_CLEF_SILU_FUSED").is_ok_and(|v| v == "1"),
+            device_embed: std::env::var("PSIONIC_CLEF_DEVICE_EMBED").map_or(true, |v| v != "0")
                 && clef_prefill::clef_hopper_supported(),
             hopper_exact: std::env::var("PSIONIC_CLEF_HOPPER").is_ok_and(|v| v == "exact"),
             segment: std::env::var("PSIONIC_CLEF_SEGMENT")
@@ -2449,7 +2592,30 @@ fn encode_mixer(
                     dims.conv_channels,
                 )
                 .map_err(err)?;
-            if !knobs().skip_delta {
+            let block_scan = match (knobs().scan.block_variant(), &s.delta_coef) {
+                (Some(variant), Some(coef)) if first % 16 == 0 && !knobs().skip_delta => submission
+                    .clef_delta_block(
+                        &s.qn,
+                        &s.kn,
+                        &s.conv_out,
+                        &s.small_c,
+                        &s.small_d,
+                        coef,
+                        delta_state,
+                        &s.mid_b,
+                        n,
+                        dims.key_heads,
+                        dims.value_heads,
+                        dims.state,
+                        dims.v_head_reordered,
+                        dims.conv_channels,
+                        2 * dims.key_heads * dims.state,
+                        variant,
+                    )
+                    .map_err(err)?,
+                _ => false,
+            };
+            if !knobs().skip_delta && !block_scan {
                 submission
                     .clef_delta_seq(
                         &s.qn,
@@ -2467,7 +2633,7 @@ fn encode_mixer(
                         dims.v_head_reordered,
                         dims.conv_channels,
                         2 * dims.key_heads * dims.state,
-                        knobs().staged_scan,
+                        knobs().scan != Scan::PerWarp,
                     )
                     .map_err(err)?;
             }
@@ -2566,26 +2732,47 @@ fn encode_mixer(
                     dims.eps,
                 )
                 .map_err(err)?;
-            if !knobs().skip_attention {
-                attention(
-                    submission,
-                    s,
-                    request,
-                    key_cache,
-                    value_cache,
-                    dims,
-                    first,
-                    n,
-                )?;
+            // the Hopper kernel writes act16 = f16(o * sigmoid(gate)) itself
+            let gated = !knobs().skip_attention
+                && knobs().hopper_attention
+                && submission
+                    .clef_hopper_attention(
+                        &s.query16,
+                        key_cache,
+                        value_cache,
+                        ClefAttentionOut::Gated {
+                            gate: &s.mid_a,
+                            out16: &s.act16,
+                        },
+                        n,
+                        dims.heads,
+                        dims.kv_heads,
+                        dims.head_dim,
+                        first,
+                    )
+                    .map_err(err)?;
+            if !gated {
+                if !knobs().skip_attention {
+                    attention(
+                        submission,
+                        s,
+                        request,
+                        key_cache,
+                        value_cache,
+                        dims,
+                        first,
+                        n,
+                    )?;
+                }
+                submission
+                    .clef_sigmoid_gate_to_f16(
+                        &s.mid_b,
+                        &s.mid_a,
+                        &s.act16,
+                        n * dims.heads * dims.head_dim,
+                    )
+                    .map_err(err)?;
             }
-            submission
-                .clef_sigmoid_gate_to_f16(
-                    &s.mid_b,
-                    &s.mid_a,
-                    &s.act16,
-                    n * dims.heads * dims.head_dim,
-                )
-                .map_err(err)?;
             linear(
                 submission,
                 out,
@@ -2641,26 +2828,51 @@ fn encode_ffn(
         compute_16f,
         fused,
     )?;
-    linear(
-        submission,
-        &layer.up,
-        weight_scratch,
-        rows.act16,
-        rows.up,
-        rows.out16,
-        n,
-        false,
-        compute_16f,
-        fused,
-    )?;
-    submission
-        .clef_silu_mul_to_f16(rows.gate, rows.up, rows.act16, n * dims.ffn)
-        .map_err(err)?;
+    // on sm_90 the up projection's epilogue writes f16(silu(gate) * up)
+    // into out16 (not act16, which it reads) and the down projection reads it
+    let knob = knobs();
+    let fused_up = knob.silu_fused
+        && knob.hopper
+        && !knob.skip_gemm
+        && clef_prefill::hopper_takes(layer.down.format, layer.down.rows, layer.down.columns)
+        && submission
+            .clef_hopper_linear_silu(
+                rows.act16,
+                &layer.up.buffer,
+                layer.up.format,
+                rows.gate,
+                rows.out16,
+                n,
+                layer.up.rows,
+                layer.up.columns,
+                knob.hopper_exact,
+            )
+            .map_err(err)?;
+    let down_input = if fused_up {
+        rows.out16
+    } else {
+        linear(
+            submission,
+            &layer.up,
+            weight_scratch,
+            rows.act16,
+            rows.up,
+            rows.out16,
+            n,
+            false,
+            compute_16f,
+            fused,
+        )?;
+        submission
+            .clef_silu_mul_to_f16(rows.gate, rows.up, rows.act16, n * dims.ffn)
+            .map_err(err)?;
+        rows.act16
+    };
     linear(
         submission,
         &layer.down,
         weight_scratch,
-        rows.act16,
+        down_input,
         rows.x,
         rows.out16,
         n,

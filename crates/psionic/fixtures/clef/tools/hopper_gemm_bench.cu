@@ -199,13 +199,36 @@ int main(int argc, char **argv) {
                     break;
                 }
             }
+            // the up projection fused with the SiLU product (#11444) against
+            // the f32 output followed by silu_mul_to_f16_kernel
+            bool silu_ok = true;
+            {
+                std::vector<float> gate((size_t)n * s.rows);
+                for (auto &v : gate) v = normal(rng) * 3.0f;
+                void *dgate, *d16b;
+                CK(cudaMalloc(&dgate, gate.size() * 4));
+                CK(cudaMalloc(&d16b, gate.size() * 2));
+                CK(cudaMemcpy(dgate, gate.data(), gate.size() * 4, cudaMemcpyHostToDevice));
+                CK(cudaMemcpy(dout2, got.data(), got.size() * 4, cudaMemcpyHostToDevice));
+                CK(psionic_clef_silu_mul_to_f16(dgate, dout2, d16b, (long long)gate.size(), stream));
+                CK(psionic_clef_hopper_linear_silu(dx, dw, dgate, d16, n, s.rows, s.k, hfmt, 0, stream));
+                CK(cudaStreamSynchronize(stream));
+                std::vector<uint16_t> a(gate.size()), b(gate.size());
+                CK(cudaMemcpy(a.data(), d16, a.size() * 2, cudaMemcpyDeviceToHost));
+                CK(cudaMemcpy(b.data(), d16b, b.size() * 2, cudaMemcpyDeviceToHost));
+                silu_ok = memcmp(a.data(), b.data(), a.size() * 2) == 0;
+                acc_ok = acc_ok && silu_ok;
+                cudaFree(dgate);
+                cudaFree(d16b);
+            }
             const int force_tile = getenv("HOPPER_TILE") ? atoi(getenv("HOPPER_TILE")) : 0;
             float hop = time_ms([&] { psionic_clef_hopper_linear(dx, dw, dout, n, s.rows, s.k, hfmt, 0, force_tile, stream); });
             bool ok = chunk_same && acc_ok && rel_rms < (hfmt == 1 ? 6e-4 : 1e-4);
             all_ok = all_ok && ok;
-            printf("%-5s %-32s n=%5d hopper %8.3f ms %6.1f TF %4.1f%%  max_err %.3g rel_rms %.3g  chunks %s tiles %s acc %s%s\n",
+            printf("%-5s %-32s n=%5d hopper %8.3f ms %6.1f TF %4.1f%%  max_err %.3g rel_rms %.3g  chunks %s tiles %s acc %s silu %s%s\n",
                    s.model, s.name, n, hop, flop / hop / 1e9, 100.0 * flop / hop / 1e9 / peak_tf, max_err, rel_rms,
-                   chunk_same ? "bitwise" : "DIFFERS", tiles_same.c_str(), acc_ok ? "ok" : "BAD", ok ? "" : "  <-- FAIL");
+                   chunk_same ? "bitwise" : "DIFFERS", tiles_same.c_str(), acc_ok ? "ok" : "BAD", silu_ok ? "bitwise" : "DIFFERS",
+                   ok ? "" : "  <-- FAIL");
             // today's paths
             float fused = time_ms([&] { psionic_clef_fused_linear(dx, dw, dout, n, s.rows, s.k, s.format, 16, 0, stream); });
             CK(cudaStreamSynchronize(stream));

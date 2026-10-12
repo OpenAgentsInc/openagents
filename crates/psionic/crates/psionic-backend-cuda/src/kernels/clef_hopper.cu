@@ -359,10 +359,11 @@ __host__ __device__ inline Layout layout_for(int nt, int raw_words) {
     return l;
 }
 
-template <int FMT, int NT, bool EXACT>
+template <int FMT, int NT, bool EXACT, bool SILU>
 __global__ void __launch_bounds__(kThreads, 1)
     hopper_linear_kernel(const __grid_constant__ CUtensorMap xmap, const __grid_constant__ CUtensorMap wmap,
-                         float *__restrict__ out, int n, int rows, int k, int token_tiles, int tiles, int accumulate) {
+                         float *__restrict__ out, int n, int rows, int k, int token_tiles, int tiles, int accumulate,
+                         const float *__restrict__ silu_gate, __half *__restrict__ out16) {
     constexpr int kWords = Raw<FMT>::kWords;
     const Layout lay = layout_for(NT, kWords);
     extern __shared__ uint8_t smem_raw[];
@@ -512,9 +513,15 @@ __global__ void __launch_bounds__(kThreads, 1)
                 for (int e = 0; e < 2; ++e) {
                     const int t = t0 + 8 * j + 2 * c + e;
                     if (t < n) {
-                        float *dst = out + static_cast<long long>(t) * rows + m;
+                        const long long index = static_cast<long long>(t) * rows + m;
                         const float v = acc[4 * j + 2 * h + e];
-                        *dst = accumulate ? *dst + v : v;
+                        if constexpr (SILU) {
+                            // the up projection fused with silu_mul_to_f16_kernel
+                            const float gv = silu_gate[index];
+                            out16[index] = __float2half_rn(gv / (1.0f + expf(-gv)) * v);
+                        } else {
+                            out[index] = accumulate ? out[index] + v : v;
+                        }
                     }
                 }
             }
@@ -561,15 +568,15 @@ int sm_count() {
     return count;
 }
 
-template <int FMT, int NT, bool EXACT>
+template <int FMT, int NT, bool EXACT, bool SILU>
 int launch_hopper(const void *x, const void *w, void *out, int n, int rows, int k, long long row_bytes,
-                  int accumulate, cudaStream_t stream) {
+                  int accumulate, cudaStream_t stream, const void *silu_gate, void *out16) {
     using namespace hopper;
     constexpr int kWords = Raw<FMT>::kWords;
     const Layout lay = layout_for(NT, kWords);
     static bool configured = false;
     if (!configured) {
-        const cudaError_t code = cudaFuncSetAttribute(hopper_linear_kernel<FMT, NT, EXACT>,
+        const cudaError_t code = cudaFuncSetAttribute(hopper_linear_kernel<FMT, NT, EXACT, SILU>,
                                                       cudaFuncAttributeMaxDynamicSharedMemorySize, lay.smem_bytes);
         if (code != cudaSuccess) {
             return static_cast<int>(code);
@@ -606,8 +613,9 @@ int launch_hopper(const void *x, const void *w, void *out, int n, int rows, int 
     const int token_tiles = (n + NT - 1) / NT;
     const int tiles = token_tiles * ((rows + kRows - 1) / kRows);
     const int grid = tiles < sm_count() ? tiles : sm_count();
-    hopper_linear_kernel<FMT, NT, EXACT><<<grid, kThreads, lay.smem_bytes, stream>>>(
-        xmap, wmap, static_cast<float *>(out), n, rows, k, token_tiles, tiles, accumulate);
+    hopper_linear_kernel<FMT, NT, EXACT, SILU><<<grid, kThreads, lay.smem_bytes, stream>>>(
+        xmap, wmap, static_cast<float *>(out), n, rows, k, token_tiles, tiles, accumulate,
+        static_cast<const float *>(silu_gate), static_cast<__half *>(out16));
     return static_cast<int>(cudaGetLastError());
 }
 
@@ -658,8 +666,8 @@ extern "C" int psionic_clef_hopper_supported(void) {
 // k must be a multiple of 256. `token_tile` is 0 (by chunk size and weight
 // rows) or 64, 128, 192, 256; every choice gives bitwise the same result
 // per token.
-extern "C" int psionic_clef_hopper_linear(const void *x, const void *w, void *out, int n, int rows, int k, int format,
-                                          int accumulate, int token_tile, void *stream) {
+static int hopper_linear_dispatch(const void *x, const void *w, void *out, int n, int rows, int k, int format,
+                                  int accumulate, int token_tile, void *stream, const void *silu_gate, void *out16) {
     const bool exact = format == 2;
     if (exact) {
         format = hopper::kFormatQ4K;
@@ -677,7 +685,9 @@ extern "C" int psionic_clef_hopper_linear(const void *x, const void *w, void *ou
     }
     const int nt = token_tile == 0 ? auto_token_tile(n, rows) : token_tile;
     cudaStream_t s = static_cast<cudaStream_t>(stream);
-#define HOPPER(F, T, E) launch_hopper<F, T, E>(x, w, out, n, rows, k, row_bytes, accumulate, s)
+#define HOPPER(F, T, E)                                                                                  \
+    (out16 != nullptr ? launch_hopper<F, T, E, true>(x, w, out, n, rows, k, row_bytes, accumulate, s, silu_gate, out16) \
+                      : launch_hopper<F, T, E, false>(x, w, out, n, rows, k, row_bytes, accumulate, s, nullptr, nullptr))
 #define HOPPER_TILES(F, E)                \
     switch (nt) {                         \
         case 64: return HOPPER(F, 64, E);   \
@@ -696,4 +706,473 @@ extern "C" int psionic_clef_hopper_linear(const void *x, const void *w, void *ou
 #undef HOPPER_TILES
 #undef HOPPER
     return static_cast<int>(cudaErrorInvalidValue);
+}
+
+extern "C" int psionic_clef_hopper_linear(const void *x, const void *w, void *out, int n, int rows, int k, int format,
+                                          int accumulate, int token_tile, void *stream) {
+    return hopper_linear_dispatch(x, w, out, n, rows, k, format, accumulate, token_tile, stream, nullptr, nullptr);
+}
+
+// The up projection fused with the SiLU product (#11444): out16[n, rows] =
+// f16(silu(gate[n, rows]) * (x16 . W^T)), bitwise what the f32 GEMM followed
+// by silu_mul_to_f16_kernel gives, without writing and re-reading the f32
+// product.
+extern "C" int psionic_clef_hopper_linear_silu(const void *x, const void *w, const void *gate, void *out16, int n,
+                                               int rows, int k, int format, int token_tile, void *stream) {
+    if (gate == nullptr || out16 == nullptr) {
+        return static_cast<int>(cudaErrorInvalidValue);
+    }
+    return hopper_linear_dispatch(x, w, nullptr, n, rows, k, format, 0, token_tile, stream, gate, out16);
+}
+
+// ---- Hopper causal flash attention for prefill, OpenAgentsInc/openagents #11444 ----
+//
+// out[t, h, :] = softmax_j(q[t, h] . k[j]) v[j] over keys j <= first + t, for
+// head_dim 256, f16 q (already RMS-normed, rotated and scaled) and f16 K/V
+// caches [positions, kv_heads, 256]; the same contract as
+// flash_attention256_kernel in clef_prefill.cu, for any even number of query
+// heads per KV head (Clef-Flash 4, Clef 27B 6).
+//
+// - A CTA owns 64 queries of two query heads that share one KV head: one
+//   consumer warpgroup per head (its 4 warps x 16 queries are the wgmma
+//   M = 64 rows), plus a producer warp that issues every TMA load: both
+//   heads' queries once, then K and V tiles of 64 keys into a two-stage
+//   ring guarded by mbarriers (128-byte swizzle).
+// - S = Q K^T is 16 m64n64k16 wgmma with both operands in shared memory;
+//   the online softmax runs on the f32 accumulators in registers; O += P V
+//   is 4 m64n256k16 wgmma with P (f16) from registers and V transposed
+//   (MN-major) from shared memory, accumulating O in f32 registers.
+// - Key tiles sit at absolute positions 0, 64, 128, ... and each query row
+//   runs them in order, so its result depends only on its position and the
+//   cache, never on the chunk: a tile past its diagonal is fully masked and
+//   leaves the row's state bitwise unchanged (alpha = 1, p = 0, and adding
+//   zero products to the accumulator is exact). Keys at or beyond
+//   `first + n` are zero-filled by TMA, and queries past n are never stored.
+// - With `gate` set, the epilogue writes f16(o * sigmoid(gate)) into `out16`
+//   (the arithmetic of sigmoid_gate_to_f16_kernel) instead of f32 `out`.
+namespace hattn {
+
+constexpr int kDim = 256;
+constexpr int kRows = 64;                // queries per consumer warpgroup
+constexpr int kKeys = 64;                // keys per tile
+constexpr int kStages = 2;
+constexpr int kThreads = 384;            // producer warpgroup + 2 consumer warpgroups
+constexpr int kBlockBytes = 64 * 128;    // one [64 rows][64 f16] swizzled block
+constexpr int kTileBytes = 4 * kBlockBytes;  // [64 rows][256 f16]
+constexpr int kSmemBytes = 1024 + 2 * kTileBytes + 2 * kStages * kTileBytes + 256;
+
+using hopper::mbar_arrive;
+using hopper::mbar_expect_tx;
+using hopper::mbar_init;
+using hopper::mbar_wait;
+using hopper::smem_u32;
+using hopper::wgmma_commit;
+using hopper::wgmma_fence;
+using hopper::wgmma_wait;
+
+__device__ __forceinline__ void tma_load_3d(void *dst, const CUtensorMap *map, uint64_t *bar, int c0, int c1, int c2) {
+    asm volatile(
+        "cp.async.bulk.tensor.3d.shared::cluster.global.mbarrier::complete_tx::bytes [%0], [%1, {%3, %4, %5}], [%2];\n" ::"r"(
+            smem_u32(dst)),
+        "l"(reinterpret_cast<uint64_t>(map)), "r"(smem_u32(bar)), "r"(c0), "r"(c1), "r"(c2)
+        : "memory");
+}
+
+// K-major operand: rows of 128 bytes (64 f16), 128-byte swizzle, 8-row atoms
+// 1024 bytes apart (hopper::smem_desc).
+__device__ __forceinline__ uint64_t desc_k_major(uint32_t address) { return hopper::smem_desc(address); }
+
+// MN-major operand (V as the B of P V: N = head dim contiguous): blocks of
+// [64 keys][64 dims] (128-byte rows, 128-byte swizzle); the next 64 dims are
+// the next block (leading byte offset 8,192), the next 8 keys the next 1,024
+// bytes (stride byte offset).
+__device__ __forceinline__ uint64_t desc_mn_major(uint32_t address) {
+    uint64_t desc = static_cast<uint64_t>((address & 0x3FFFF) >> 4);
+    desc |= static_cast<uint64_t>(kBlockBytes >> 4) << 16;
+    desc |= static_cast<uint64_t>(1024 >> 4) << 32;
+    desc |= static_cast<uint64_t>(1) << 62;
+    return desc;
+}
+
+// S (64 x 64 keys) += Q K^T over one k16 step, both from shared memory.
+__device__ __forceinline__ void wgmma_qk(float (&d)[32], uint64_t desc_a, uint64_t desc_b, int scale_d) {
+    asm volatile(
+        "{\n.reg .pred p;\n"
+        "setp.ne.b32 p, %34, 0;\n"
+        "wgmma.mma_async.sync.aligned.m64n64k16.f32.f16.f16 "
+        "{"
+        "%0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15,"
+        "%16, %17, %18, %19, %20, %21, %22, %23, %24, %25, %26, %27, %28, %29, %30, %31"
+        "}, %32, %33, p, 1, 1, 0, 0;\n}\n"
+        : "+f"(d[0]), "+f"(d[1]), "+f"(d[2]), "+f"(d[3]), "+f"(d[4]), "+f"(d[5]), "+f"(d[6]), "+f"(d[7]),
+          "+f"(d[8]), "+f"(d[9]), "+f"(d[10]), "+f"(d[11]), "+f"(d[12]), "+f"(d[13]), "+f"(d[14]), "+f"(d[15]),
+          "+f"(d[16]), "+f"(d[17]), "+f"(d[18]), "+f"(d[19]), "+f"(d[20]), "+f"(d[21]), "+f"(d[22]), "+f"(d[23]),
+          "+f"(d[24]), "+f"(d[25]), "+f"(d[26]), "+f"(d[27]), "+f"(d[28]), "+f"(d[29]), "+f"(d[30]), "+f"(d[31])
+        : "l"(desc_a), "l"(desc_b), "r"(scale_d));
+}
+
+// O (64 x 256) += P V over one k16 step of keys: P from registers, V
+// transposed (MN-major) from shared memory.
+__device__ __forceinline__ void wgmma_pv(float (&d)[128], const uint32_t (&a)[4], uint64_t desc) {
+    asm volatile(
+        "{\n.reg .pred p;\n"
+        "setp.eq.u32 p, 1, 1;\n"
+        "wgmma.mma_async.sync.aligned.m64n256k16.f32.f16.f16 "
+        "{"
+        "%0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15,"
+        "%16, %17, %18, %19, %20, %21, %22, %23, %24, %25, %26, %27, %28, %29, %30, %31,"
+        "%32, %33, %34, %35, %36, %37, %38, %39, %40, %41, %42, %43, %44, %45, %46, %47,"
+        "%48, %49, %50, %51, %52, %53, %54, %55, %56, %57, %58, %59, %60, %61, %62, %63,"
+        "%64, %65, %66, %67, %68, %69, %70, %71, %72, %73, %74, %75, %76, %77, %78, %79,"
+        "%80, %81, %82, %83, %84, %85, %86, %87, %88, %89, %90, %91, %92, %93, %94, %95,"
+        "%96, %97, %98, %99, %100, %101, %102, %103, %104, %105, %106, %107, %108, %109, %110, %111,"
+        "%112, %113, %114, %115, %116, %117, %118, %119, %120, %121, %122, %123, %124, %125, %126, %127"
+        "}, {%128, %129, %130, %131}, %132, p, 1, 1, 1;\n}\n"
+        : "+f"(d[0]), "+f"(d[1]), "+f"(d[2]), "+f"(d[3]), "+f"(d[4]), "+f"(d[5]), "+f"(d[6]), "+f"(d[7]),
+          "+f"(d[8]), "+f"(d[9]), "+f"(d[10]), "+f"(d[11]), "+f"(d[12]), "+f"(d[13]), "+f"(d[14]), "+f"(d[15]),
+          "+f"(d[16]), "+f"(d[17]), "+f"(d[18]), "+f"(d[19]), "+f"(d[20]), "+f"(d[21]), "+f"(d[22]), "+f"(d[23]),
+          "+f"(d[24]), "+f"(d[25]), "+f"(d[26]), "+f"(d[27]), "+f"(d[28]), "+f"(d[29]), "+f"(d[30]), "+f"(d[31]),
+          "+f"(d[32]), "+f"(d[33]), "+f"(d[34]), "+f"(d[35]), "+f"(d[36]), "+f"(d[37]), "+f"(d[38]), "+f"(d[39]),
+          "+f"(d[40]), "+f"(d[41]), "+f"(d[42]), "+f"(d[43]), "+f"(d[44]), "+f"(d[45]), "+f"(d[46]), "+f"(d[47]),
+          "+f"(d[48]), "+f"(d[49]), "+f"(d[50]), "+f"(d[51]), "+f"(d[52]), "+f"(d[53]), "+f"(d[54]), "+f"(d[55]),
+          "+f"(d[56]), "+f"(d[57]), "+f"(d[58]), "+f"(d[59]), "+f"(d[60]), "+f"(d[61]), "+f"(d[62]), "+f"(d[63]),
+          "+f"(d[64]), "+f"(d[65]), "+f"(d[66]), "+f"(d[67]), "+f"(d[68]), "+f"(d[69]), "+f"(d[70]), "+f"(d[71]),
+          "+f"(d[72]), "+f"(d[73]), "+f"(d[74]), "+f"(d[75]), "+f"(d[76]), "+f"(d[77]), "+f"(d[78]), "+f"(d[79]),
+          "+f"(d[80]), "+f"(d[81]), "+f"(d[82]), "+f"(d[83]), "+f"(d[84]), "+f"(d[85]), "+f"(d[86]), "+f"(d[87]),
+          "+f"(d[88]), "+f"(d[89]), "+f"(d[90]), "+f"(d[91]), "+f"(d[92]), "+f"(d[93]), "+f"(d[94]), "+f"(d[95]),
+          "+f"(d[96]), "+f"(d[97]), "+f"(d[98]), "+f"(d[99]), "+f"(d[100]), "+f"(d[101]), "+f"(d[102]), "+f"(d[103]),
+          "+f"(d[104]), "+f"(d[105]), "+f"(d[106]), "+f"(d[107]), "+f"(d[108]), "+f"(d[109]), "+f"(d[110]), "+f"(d[111]),
+          "+f"(d[112]), "+f"(d[113]), "+f"(d[114]), "+f"(d[115]), "+f"(d[116]), "+f"(d[117]), "+f"(d[118]), "+f"(d[119]),
+          "+f"(d[120]), "+f"(d[121]), "+f"(d[122]), "+f"(d[123]), "+f"(d[124]), "+f"(d[125]), "+f"(d[126]), "+f"(d[127])
+        : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "l"(desc));
+}
+
+__device__ __forceinline__ uint32_t pack_h2(float lo, float hi) { return hopper::h2_bits(__floats2half2_rn(lo, hi)); }
+
+__device__ __forceinline__ float sigmoid_ref(float x) { return 1.0f / (1.0f + expf(-x)); }
+
+// Pins accumulator registers at a point in the instruction stream (the
+// compiler must not move their reads or writes across an asynchronous wgmma
+// or its wait).
+template <int N>
+__device__ __forceinline__ void fence_regs(float (&r)[N]) {
+#pragma unroll
+    for (int i = 0; i < N; ++i) {
+        asm volatile("" : "+f"(r[i])::"memory");
+    }
+}
+
+// S = Q K^T for one key tile: 16 k16 steps, issued and committed (not waited).
+__device__ __forceinline__ void issue_qk(float (&s)[32], uint32_t q_base, uint32_t k_base) {
+    // the first k step overwrites the accumulators (scale-d 0)
+    wgmma_fence();
+#pragma unroll
+    for (int kk = 0; kk < kDim / 16; ++kk) {
+        const uint32_t offset = (kk / 4) * kBlockBytes + (kk % 4) * 32;
+        wgmma_qk(s, desc_k_major(q_base + offset), desc_k_major(k_base + offset), kk > 0 ? 1 : 0);
+    }
+    wgmma_commit();
+}
+
+// The online softmax of one tile's scores (rows row, row + 8 at positions
+// pos): masks keys past each row's position, updates the row max and sum,
+// and returns P as the A fragments of the P V product and the rescale of O.
+__device__ __forceinline__ void tile_softmax(float (&s)[32], int j0, int c, const int (&pos)[2],
+                                             float (&row_max)[2], float (&row_sum)[2], float (&alpha)[2],
+                                             uint32_t (&pa)[kKeys / 16][4]) {
+    float tile_max[2] = {-INFINITY, -INFINITY};
+#pragma unroll
+    for (int jn = 0; jn < kKeys / 8; ++jn) {
+#pragma unroll
+        for (int e = 0; e < 4; ++e) {
+            const int r = e >> 1;
+            const int key = j0 + 8 * jn + 2 * c + (e & 1);
+            if (key > pos[r]) {
+                s[4 * jn + e] = -INFINITY;
+            }
+            tile_max[r] = fmaxf(tile_max[r], s[4 * jn + e]);
+        }
+    }
+    float new_max[2];
+#pragma unroll
+    for (int r = 0; r < 2; ++r) {
+        tile_max[r] = fmaxf(tile_max[r], __shfl_xor_sync(0xffffffffu, tile_max[r], 1));
+        tile_max[r] = fmaxf(tile_max[r], __shfl_xor_sync(0xffffffffu, tile_max[r], 2));
+        new_max[r] = fmaxf(row_max[r], tile_max[r]);
+        alpha[r] = new_max[r] == row_max[r] ? 1.0f : expf(row_max[r] - new_max[r]);
+        row_max[r] = new_max[r];
+    }
+    float tile_sum[2] = {0.0f, 0.0f};
+#pragma unroll
+    for (int jn = 0; jn < kKeys / 8; ++jn) {
+        float e4[4];
+#pragma unroll
+        for (int e = 0; e < 4; ++e) {
+            const int r = e >> 1;
+            const float x = s[4 * jn + e];
+            e4[e] = x == -INFINITY ? 0.0f : expf(x - new_max[r]);
+            tile_sum[r] += e4[e];
+        }
+        // A fragment of k16 step jn / 2: {row k 2c.., row+8 k 2c.., row k 2c+8.., row+8 k 2c+8..}
+        pa[jn / 2][2 * (jn % 2)] = pack_h2(e4[0], e4[1]);
+        pa[jn / 2][2 * (jn % 2) + 1] = pack_h2(e4[2], e4[3]);
+    }
+#pragma unroll
+    for (int r = 0; r < 2; ++r) {
+        tile_sum[r] += __shfl_xor_sync(0xffffffffu, tile_sum[r], 1);
+        tile_sum[r] += __shfl_xor_sync(0xffffffffu, tile_sum[r], 2);
+        row_sum[r] = row_sum[r] * alpha[r] + tile_sum[r];
+    }
+}
+
+__device__ __forceinline__ void rescale_o(float (&o)[128], const float (&alpha)[2]) {
+    if (alpha[0] != 1.0f || alpha[1] != 1.0f) {
+#pragma unroll
+        for (int i = 0; i < 32; ++i) {
+            o[4 * i] *= alpha[0];
+            o[4 * i + 1] *= alpha[0];
+            o[4 * i + 2] *= alpha[1];
+            o[4 * i + 3] *= alpha[1];
+        }
+    }
+}
+
+// O += P V for one key tile, issued and committed (not waited).
+__device__ __forceinline__ void issue_pv(float (&o)[128], const uint32_t (&pa)[kKeys / 16][4], uint32_t v_base) {
+    fence_regs(o);
+    wgmma_fence();
+#pragma unroll
+    for (int kk = 0; kk < kKeys / 16; ++kk) {
+        wgmma_pv(o, pa[kk], desc_mn_major(v_base + kk * 2048));
+    }
+    wgmma_commit();
+}
+
+// The two consumer warpgroups overlap each other's softmax with tensor
+// work. (An intra-warpgroup schedule that issues S_{j+1} before the softmax
+// of tile j, as FlashAttention-3 does, measured 20 % slower here: ptxas
+// serializes the wgmma because the O rescale writes accumulator registers
+// while S_{j+1} is in flight.)
+__global__ void __launch_bounds__(kThreads, 1)
+    hopper_attention_kernel(const __grid_constant__ CUtensorMap qmap, const __grid_constant__ CUtensorMap kmap,
+                            const __grid_constant__ CUtensorMap vmap, float *__restrict__ out,
+                            const float *__restrict__ gate, __half *__restrict__ out16, int n, int heads,
+                            int group, int first, int query_tiles, int pairs) {
+    extern __shared__ uint8_t smem_raw[];
+    uint8_t *base = reinterpret_cast<uint8_t *>((reinterpret_cast<uintptr_t>(smem_raw) + 1023) & ~uintptr_t(1023));
+    uint8_t *q_smem = base;                                     // [2 heads][4 blocks][64 q][64 d]
+    uint8_t *k_smem = base + 2 * kTileBytes;                    // [stage][4 blocks][64 keys][64 d]
+    uint8_t *v_smem = k_smem + kStages * kTileBytes;            // [stage][4 blocks][64 keys][64 d]
+    uint64_t *bars = reinterpret_cast<uint64_t *>(v_smem + kStages * kTileBytes);
+    uint64_t *q_full = bars;
+    uint64_t *k_full = bars + 1;              // [kStages]
+    uint64_t *v_full = k_full + kStages;      // [kStages]
+    uint64_t *k_empty = v_full + kStages;     // [kStages]: the tile's S is done
+    uint64_t *v_empty = k_empty + kStages;    // [kStages]: the tile's P V is done
+
+    // heaviest query tiles first
+    const int pair = blockIdx.x % pairs;
+    const int query_tile = query_tiles - 1 - blockIdx.x / pairs;
+    const int head0 = 2 * pair;
+    const int kvh = head0 / group;
+    const int t0 = query_tile * kRows;
+    const int last_query = first + min(t0 + kRows, n) - 1;
+    const int tiles = last_query / kKeys + 1;
+
+    const int tid = threadIdx.x;
+    const int warp = tid / 32;
+    const int lane = tid % 32;
+    if (tid == 0) {
+        mbar_init(q_full, 1);
+        for (int s = 0; s < kStages; ++s) {
+            mbar_init(&k_full[s], 1);
+            mbar_init(&v_full[s], 1);
+            mbar_init(&k_empty[s], 8);  // lane 0 of each consumer warp
+            mbar_init(&v_empty[s], 8);
+        }
+        asm volatile("fence.mbarrier_init.release.cluster;\n" ::: "memory");
+        asm volatile("prefetch.tensormap [%0];\n" ::"l"(reinterpret_cast<uint64_t>(&qmap)) : "memory");
+        asm volatile("prefetch.tensormap [%0];\n" ::"l"(reinterpret_cast<uint64_t>(&kmap)) : "memory");
+        asm volatile("prefetch.tensormap [%0];\n" ::"l"(reinterpret_cast<uint64_t>(&vmap)) : "memory");
+    }
+    __syncthreads();
+
+    if (warp < 4) {
+        asm volatile("setmaxnreg.dec.sync.aligned.u32 24;\n");
+        if (tid != 0) {
+            return;
+        }
+        mbar_expect_tx(q_full, 2 * kTileBytes);
+#pragma unroll 1
+        for (int h = 0; h < 2; ++h) {
+#pragma unroll 1
+            for (int b = 0; b < 4; ++b) {
+                tma_load_3d(q_smem + h * kTileBytes + b * kBlockBytes, &qmap, q_full, 64 * b, head0 + h, t0);
+            }
+        }
+        int stage = 0, phase = 0;
+#pragma unroll 1
+        for (int tile = 0; tile < tiles; ++tile) {
+            mbar_wait(&k_empty[stage], phase ^ 1);
+            mbar_expect_tx(&k_full[stage], kTileBytes);
+#pragma unroll 1
+            for (int b = 0; b < 4; ++b) {
+                tma_load_3d(k_smem + stage * kTileBytes + b * kBlockBytes, &kmap, &k_full[stage], 64 * b, kvh,
+                            tile * kKeys);
+            }
+            mbar_wait(&v_empty[stage], phase ^ 1);
+            mbar_expect_tx(&v_full[stage], kTileBytes);
+#pragma unroll 1
+            for (int b = 0; b < 4; ++b) {
+                tma_load_3d(v_smem + stage * kTileBytes + b * kBlockBytes, &vmap, &v_full[stage], 64 * b, kvh,
+                            tile * kKeys);
+            }
+            if (++stage == kStages) {
+                stage = 0;
+                phase ^= 1;
+            }
+        }
+        return;
+    }
+
+    asm volatile("setmaxnreg.inc.sync.aligned.u32 240;\n");
+    const int wg = warp / 4 - 1;
+    const int head = head0 + wg;
+    const int g = lane / 4;
+    const int c = lane % 4;
+    const int row = (warp % 4) * 16 + g;  // this thread's rows: row, row + 8
+    const int pos[2] = {first + t0 + row, first + t0 + row + 8};
+    const uint32_t q_base = smem_u32(q_smem + wg * kTileBytes);
+    auto release = [&](uint64_t *bar) {
+        __syncwarp();
+        if (lane == 0) {
+            mbar_arrive(bar);
+        }
+    };
+
+    float o[128];
+#pragma unroll
+    for (int i = 0; i < 128; ++i) {
+        o[i] = 0.0f;
+    }
+    float row_max[2] = {-INFINITY, -INFINITY};
+    float row_sum[2] = {0.0f, 0.0f};
+    uint32_t pa[kKeys / 16][4];
+    float alpha[2];
+    mbar_wait(q_full, 0);
+
+    int stage = 0, phase = 0;
+#pragma unroll 1
+    for (int tile = 0; tile < tiles; ++tile) {
+        float s[32];
+        mbar_wait(&k_full[stage], phase);
+        issue_qk(s, q_base, smem_u32(k_smem + stage * kTileBytes));
+        wgmma_wait<0>();
+        fence_regs(s);
+        release(&k_empty[stage]);
+        tile_softmax(s, tile * kKeys, c, pos, row_max, row_sum, alpha, pa);
+        rescale_o(o, alpha);
+        mbar_wait(&v_full[stage], phase);
+        issue_pv(o, pa, smem_u32(v_smem + stage * kTileBytes));
+        wgmma_wait<0>();
+        fence_regs(o);
+        release(&v_empty[stage]);
+        if (++stage == kStages) {
+            stage = 0;
+            phase ^= 1;
+        }
+    }
+
+    // o[4 jn + 2 r + e] is (row + 8 r, dim 8 jn + 2 c + e)
+#pragma unroll
+    for (int r = 0; r < 2; ++r) {
+        const int t = t0 + row + 8 * r;
+        if (t >= n) {
+            continue;
+        }
+        const float inv = 1.0f / row_sum[r];
+        const long long base_index = (static_cast<long long>(t) * heads + head) * kDim;
+        if (gate != nullptr) {
+#pragma unroll
+            for (int jn = 0; jn < kDim / 8; ++jn) {
+                const int d = 8 * jn + 2 * c;
+                const float2 gv = *reinterpret_cast<const float2 *>(gate + base_index + d);
+                const float a = o[4 * jn + 2 * r] * inv;
+                const float b = o[4 * jn + 2 * r + 1] * inv;
+                *reinterpret_cast<__half2 *>(out16 + base_index + d) =
+                    __halves2half2(__float2half_rn(a * sigmoid_ref(gv.x)), __float2half_rn(b * sigmoid_ref(gv.y)));
+            }
+        } else {
+#pragma unroll
+            for (int jn = 0; jn < kDim / 8; ++jn) {
+                *reinterpret_cast<float2 *>(out + base_index + 8 * jn + 2 * c) =
+                    make_float2(o[4 * jn + 2 * r] * inv, o[4 * jn + 2 * r + 1] * inv);
+            }
+        }
+    }
+}
+
+}  // namespace hattn
+
+namespace {
+
+int encode_cache_map(CUtensorMap *map, const void *base, int positions, int kv_heads) {
+    EncodeTiled encode = tensor_map_encoder();
+    if (encode == nullptr) {
+        return static_cast<int>(cudaErrorNotSupported);
+    }
+    const cuuint64_t dims[3] = {256, static_cast<cuuint64_t>(kv_heads), static_cast<cuuint64_t>(positions)};
+    const cuuint64_t strides[2] = {512, static_cast<cuuint64_t>(kv_heads) * 512};
+    const cuuint32_t box[3] = {64, 1, 64};
+    const cuuint32_t element_strides[3] = {1, 1, 1};
+    if (encode(map, CU_TENSOR_MAP_DATA_TYPE_FLOAT16, 3, const_cast<void *>(base), dims, strides, box, element_strides,
+               CU_TENSOR_MAP_INTERLEAVE_NONE, CU_TENSOR_MAP_SWIZZLE_128B, CU_TENSOR_MAP_L2_PROMOTION_L2_256B,
+               CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE) != CUDA_SUCCESS) {
+        return static_cast<int>(cudaErrorInvalidValue);
+    }
+    return 0;
+}
+
+}  // namespace
+
+// Causal attention of n queries at positions first.. over the f16 caches
+// (head dim 256, an even number of query heads per KV head). With `gate`
+// non-null it writes f16(o * sigmoid(gate)) to out16 ([n, heads * 256]),
+// else f32 o to out. Returns cudaErrorNotSupported for shapes it does not
+// take (the caller keeps clef_prefill.cu's kernel).
+extern "C" int psionic_clef_hopper_attention(const void *q16, const void *kcache, const void *vcache, void *out,
+                                             const void *gate, void *out16, int n, int heads, int kv_heads, int dim,
+                                             int first, void *stream) {
+    if (n <= 0) {
+        return 0;
+    }
+    if (dim != hattn::kDim || kv_heads <= 0 || heads % kv_heads != 0 || (heads / kv_heads) % 2 != 0) {
+        return static_cast<int>(cudaErrorNotSupported);
+    }
+    static bool configured = false;
+    if (!configured) {
+        const cudaError_t code = cudaFuncSetAttribute(hattn::hopper_attention_kernel,
+                                                      cudaFuncAttributeMaxDynamicSharedMemorySize, hattn::kSmemBytes);
+        if (code != cudaSuccess) {
+            return static_cast<int>(code);
+        }
+        configured = true;
+    }
+    CUtensorMap qmap, kmap, vmap;
+    int code = encode_cache_map(&qmap, q16, n, heads);
+    if (code == 0) {
+        code = encode_cache_map(&kmap, kcache, first + n, kv_heads);
+    }
+    if (code == 0) {
+        code = encode_cache_map(&vmap, vcache, first + n, kv_heads);
+    }
+    if (code != 0) {
+        return code;
+    }
+    const int query_tiles = (n + hattn::kRows - 1) / hattn::kRows;
+    const int pairs = heads / 2;
+    hattn::hopper_attention_kernel<<<query_tiles * pairs, hattn::kThreads, hattn::kSmemBytes, static_cast<cudaStream_t>(stream)>>>(
+        qmap, kmap, vmap, static_cast<float *>(out), static_cast<const float *>(gate), static_cast<__half *>(out16), n,
+        heads, heads / kv_heads, first, query_tiles, pairs);
+    return static_cast<int>(cudaGetLastError());
 }

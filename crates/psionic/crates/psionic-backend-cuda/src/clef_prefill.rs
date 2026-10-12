@@ -41,6 +41,10 @@ unsafe extern "C" {
     fn psionic_clef_fused_linear(x: *const c_void, w: *const c_void, out: *mut c_void, n: i32, rows: i32, k: i32, format: i32, segment: i32, accumulate: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_hopper_supported() -> i32;
     fn psionic_clef_hopper_linear(x: *const c_void, w: *const c_void, out: *mut c_void, n: i32, rows: i32, k: i32, format: i32, accumulate: i32, token_tile: i32, stream: *mut c_void) -> i32;
+    fn psionic_clef_hopper_attention(q16: *const c_void, kcache: *const c_void, vcache: *const c_void, out: *mut c_void, gate: *const c_void, out16: *mut c_void, n: i32, heads: i32, kv_heads: i32, dim: i32, first: i32, stream: *mut c_void) -> i32;
+    fn psionic_clef_hopper_linear_silu(x: *const c_void, w: *const c_void, gate: *const c_void, out16: *mut c_void, n: i32, rows: i32, k: i32, format: i32, token_tile: i32, stream: *mut c_void) -> i32;
+    fn psionic_clef_delta_block(qn: *const c_void, kn: *const c_void, conv: *const c_void, decay: *const c_void, beta: *const c_void, coef: *mut c_void, state: *mut c_void, out: *mut c_void, n: i32, key_heads: i32, value_heads: i32, dim: i32, v_head_reordered: i32, conv_width: i32, value_offset: i32, variant: i32, stream: *mut c_void) -> i32;
+    fn psionic_clef_embed_q4_k(table: *const c_void, ids: *const c_void, out: *mut c_void, n: i32, hidden: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_flash_attention(q16: *const c_void, kcache: *const c_void, vcache: *const c_void, out: *mut c_void, n: i32, heads: i32, kv_heads: i32, dim: i32, first: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_linear_f32_ordered(x: *const c_void, w: *const c_void, out: *mut c_void, n: i32, m: i32, k: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_head_side(q: *const c_void, wk: *const c_void, side: *mut c_void, n: i32, heads: i32, width: i32, stream: *mut c_void) -> i32;
@@ -275,6 +279,24 @@ pub fn clef_hopper_supported() -> bool {
     unsafe { psionic_clef_hopper_supported() == 1 }
 }
 
+/// Where [`CudaSubmission::clef_hopper_attention`] writes: f32 `[n, heads,
+/// dim]`, or f16 `o * sigmoid(gate)` (the attention output gate fused).
+#[derive(Clone, Copy)]
+pub enum ClefAttentionOut<'a> {
+    F32(&'a CudaBuffer),
+    Gated {
+        gate: &'a CudaBuffer,
+        out16: &'a CudaBuffer,
+    },
+}
+
+/// Floats of [`CudaSubmission::clef_delta_block`]'s coefficient scratch for
+/// an `n`-token chunk: 544 per 16-token block and value head.
+#[must_use]
+pub const fn clef_delta_block_coef_len(n: usize, value_heads: usize) -> usize {
+    n.div_ceil(16) * value_heads * 544
+}
+
 /// Whether the Hopper projection GEMM takes a weight: Q8_0 or Q4_K rows
 /// with `k` a multiple of 256 (so a raw stage is 16-byte aligned).
 #[must_use]
@@ -426,6 +448,63 @@ impl CudaSubmission {
         Ok(true)
     }
 
+    /// The up projection fused with the SiLU product (#11444): `out16[n,
+    /// rows] = f16(silu(gate[n, rows]) * (x16 · W^T))`, bitwise what
+    /// [`Self::clef_hopper_linear`] followed by [`Self::clef_silu_mul_to_f16`]
+    /// gives. Returns `Ok(false)` when the Hopper kernel does not take the
+    /// weight.
+    #[allow(clippy::too_many_arguments)]
+    pub fn clef_hopper_linear_silu(
+        &mut self,
+        x16: &CudaBuffer,
+        weights: &CudaBuffer,
+        format: ClefWeightFormat,
+        gate: &CudaBuffer,
+        out16: &CudaBuffer,
+        n: usize,
+        rows: usize,
+        k: usize,
+        exact_q4k: bool,
+    ) -> Result<bool, RuntimeError> {
+        if !hopper_takes(format, rows, k) {
+            return Ok(false);
+        }
+        let code = match format {
+            ClefWeightFormat::Q8_0 => 0,
+            _ if exact_q4k => 2,
+            _ => 1,
+        };
+        if n == 0 {
+            return Ok(true);
+        }
+        let bytes = format.byte_len(rows * k).ok_or_else(|| {
+            RuntimeError::Backend(String::from(
+                "clef hopper linear: weights are not whole blocks",
+            ))
+        })?;
+        let w = span(weights, 0, bytes, 1, "hopper weights")?;
+        let x = f16s(x16, n * k, "hopper x")?;
+        let g = f32s(gate, n * rows, "hopper silu gate")?;
+        let o = f16s(out16, n * rows, "hopper silu out")?;
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe {
+            psionic_clef_hopper_linear_silu(
+                x,
+                w,
+                g,
+                o,
+                int(n, "n")?,
+                int(rows, "rows")?,
+                int(k, "k")?,
+                code,
+                0,
+                stream,
+            )
+        };
+        self.clef_launch(code, "psionic_clef_hopper_linear_silu")?;
+        Ok(true)
+    }
+
     /// `out[n, m] = x[n, k] · W[m, k]^T` in f32 with each output summed in
     /// a fixed order, so a row's result does not depend on the other rows
     /// (unlike a cuBLAS GEMM, whose kernel choice follows the shape).
@@ -569,6 +648,171 @@ impl CudaSubmission {
         };
         self.clef_launch(code, "psionic_clef_flash_attention")?;
         Ok(true)
+    }
+
+    /// Hopper causal flash attention (#11444): the contract of
+    /// [`Self::clef_flash_attention`] for head dim 256 and any even number of
+    /// query heads per KV head, with wgmma and TMA. With `gate` it writes
+    /// `f16(o * sigmoid(gate))` (`[n, heads * dim]`, the arithmetic of
+    /// [`Self::clef_sigmoid_gate_to_f16`]) into `out16` instead of f32 `out`.
+    /// Returns `Ok(false)` for a shape it does not take or a build without the
+    /// sm_90a kernels (callers check [`clef_hopper_supported`] first).
+    #[allow(clippy::too_many_arguments)]
+    pub fn clef_hopper_attention(
+        &mut self,
+        query16: &CudaBuffer,
+        key_cache: &CudaBuffer,
+        value_cache: &CudaBuffer,
+        out: ClefAttentionOut<'_>,
+        n: usize,
+        heads: usize,
+        kv_heads: usize,
+        dim: usize,
+        first: usize,
+    ) -> Result<bool, RuntimeError> {
+        if dim != 256 || kv_heads == 0 || heads % kv_heads != 0 || (heads / kv_heads) % 2 != 0 {
+            return Ok(false);
+        }
+        if n == 0 {
+            return Ok(true);
+        }
+        let q = f16s(query16, n * heads * dim, "hopper attention q")?;
+        let k = f16s(key_cache, (first + n) * kv_heads * dim, "hopper attention keys")?;
+        let v = f16s(value_cache, (first + n) * kv_heads * dim, "hopper attention values")?;
+        let (o, g, o16) = match out {
+            ClefAttentionOut::F32(out) => (
+                f32s(out, n * heads * dim, "hopper attention out")?,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            ),
+            ClefAttentionOut::Gated { gate, out16 } => (
+                std::ptr::null_mut(),
+                f32s(gate, n * heads * dim, "hopper attention gate")?,
+                f16s(out16, n * heads * dim, "hopper attention out16")?,
+            ),
+        };
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe {
+            psionic_clef_hopper_attention(
+                q,
+                k,
+                v,
+                o,
+                g,
+                o16,
+                int(n, "n")?,
+                int(heads, "heads")?,
+                int(kv_heads, "kv heads")?,
+                int(dim, "dim")?,
+                int(first, "first")?,
+                stream,
+            )
+        };
+        self.clef_launch(code, "psionic_clef_hopper_attention")?;
+        Ok(true)
+    }
+
+    /// The delta rule in blocks of 16 tokens (#11444): the contract of
+    /// [`Self::clef_delta_seq`] for dim 128, with `coef` scratch of
+    /// [`clef_delta_block_coef_len`] floats. Blocks sit at chunk offsets that
+    /// are multiples of 16, so the result does not depend on the chunking
+    /// when every chunk starts at a multiple of 16 (callers fall back to the
+    /// per-token scan otherwise). `variant` 101, 102 or 104 sets 1, 2 or 4
+    /// warps splitting the columns of a CTA's 16 state rows. Returns
+    /// `Ok(false)` for a shape it does not take.
+    #[allow(clippy::too_many_arguments)]
+    pub fn clef_delta_block(
+        &mut self,
+        qn: &CudaBuffer,
+        kn: &CudaBuffer,
+        conv: &CudaBuffer,
+        decay: &CudaBuffer,
+        beta: &CudaBuffer,
+        coef: &CudaBuffer,
+        state: &CudaBuffer,
+        out: &CudaBuffer,
+        n: usize,
+        key_heads: usize,
+        value_heads: usize,
+        dim: usize,
+        v_head_reordered: bool,
+        conv_width: usize,
+        value_offset: usize,
+        variant: usize,
+    ) -> Result<bool, RuntimeError> {
+        if dim != 128 || value_offset % 4 != 0 || conv_width % 4 != 0 || !matches!(variant, 101 | 102 | 104) {
+            return Ok(false);
+        }
+        if n == 0 {
+            return Ok(true);
+        }
+        let qn = f32s(qn, n * key_heads * dim, "qn")?;
+        let kn = f32s(kn, n * key_heads * dim, "kn")?;
+        let conv = f32s(conv, n * conv_width, "delta conv")?;
+        let decay = f32s(decay, n * value_heads, "decay")?;
+        let beta = f32s(beta, n * value_heads, "beta")?;
+        let coef = f32s(coef, clef_delta_block_coef_len(n, value_heads), "delta coef")?;
+        let state = f32s(state, value_heads * dim * dim, "delta state")?;
+        let out = f32s(out, n * value_heads * dim, "delta out")?;
+        if value_offset + value_heads * dim > conv_width {
+            return Err(RuntimeError::Backend(String::from(
+                "clef delta: value range exceeds the conv width",
+            )));
+        }
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe {
+            psionic_clef_delta_block(
+                qn,
+                kn,
+                conv,
+                decay,
+                beta,
+                coef,
+                state,
+                out,
+                int(n, "n")?,
+                int(key_heads, "key heads")?,
+                int(value_heads, "value heads")?,
+                int(dim, "dim")?,
+                i32::from(v_head_reordered),
+                int(conv_width, "conv width")?,
+                int(value_offset, "value offset")?,
+                int(variant, "variant")?,
+                stream,
+            )
+        };
+        self.clef_launch(code, "psionic_clef_delta_block")?;
+        Ok(true)
+    }
+
+    /// Gathers the `n` token rows `ids` (i32, each below `vocab`, checked by
+    /// the caller) of a Q4_K `[vocab, hidden]` table into f32 `out` `[n,
+    /// hidden]`, bitwise what the host decoder gives (#11444).
+    pub fn clef_embed_q4_k(
+        &mut self,
+        table: &CudaBuffer,
+        ids: &CudaBuffer,
+        out: &CudaBuffer,
+        n: usize,
+        hidden: usize,
+        vocab: usize,
+    ) -> Result<(), RuntimeError> {
+        if n == 0 {
+            return Ok(());
+        }
+        let bytes = ClefWeightFormat::Q4K
+            .byte_len(vocab * hidden)
+            .ok_or_else(|| {
+                RuntimeError::Backend(String::from("clef embed: hidden is not whole Q4_K blocks"))
+            })?;
+        let t = span(table, 0, bytes, 1, "embed table")?;
+        let i = span(ids, 0, n, 4, "embed ids")?;
+        let o = f32s(out, n * hidden, "embed out")?;
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe {
+            psionic_clef_embed_q4_k(t, i, o, int(n, "n")?, int(hidden, "hidden")?, stream)
+        };
+        self.clef_launch(code, "psionic_clef_embed_q4_k")
     }
 
     /// Records `event` on this submission's stream.

@@ -1271,6 +1271,60 @@ treat that as chunk-split drift.
 
 Raw rows: `gs://openagentsgemini-decision-throughput/clef-11442/r1/out/`.
 
+### Round 7 (2026-10-12): Hopper attention, blocked DeltaNet scan, device embedding (#11444, partial)
+
+One spot H100 (`us-central1-a`, driver 580, nvcc 12.9, `PSI_CUDA_ARCH=90`),
+both servers built from `958a116e60` (#11441 landed), `bench_latency.py`
+median of 9 (27B: 5), one round.
+
+- **Hopper flash attention** (`clef_hopper.cu`, `hopper_attention_kernel`):
+  64 queries of two query heads per CTA (one consumer warpgroup each), TMA
+  K/V tiles of 64 keys at absolute positions, `wgmma` QKᵀ (both operands in
+  shared memory) and PV (P from registers, V MN-major), sigmoid output gate
+  fused into the epilogue. Takes any even query-heads-per-KV-head count, so
+  27B (6) leaves the cuBLAS score path. Kernel alone: Flash 4k 0.42 ms per
+  layer vs 1.18 (2.8x), 16k in 2048 chunks 6.0 vs 14.1 ms (2.3x), 27B 16k
+  8.4 ms (330-375 TF). Error vs f64 2-3.4e-4; whole vs chunks 2048/512/64
+  bitwise; fused gate bitwise equal to the separate kernel. Default on
+  (`PSIONIC_CLEF_HOPPER_ATTENTION=0` off). An FA3-style intra-warpgroup
+  schedule was 20 % slower (ptxas serializes the wgmma).
+- **Blocked DeltaNet scan** (`clef_prefill.cu`, `delta_block_coef_kernel` +
+  `delta_block_scan_kernel`): blocks of 16 tokens at absolute positions,
+  T = (I+L)^-1, TᵀW and Tᵀdiag(R) per block in parallel, then four 3xTF32
+  m16n8k8 products per block per 16 state rows, no serial chain. Kernel:
+  Flash 0.21 vs 0.32 µs/token/layer, 27B 0.28 vs 0.41 (incl. the coefficient
+  kernel); max |Δout| 4e-8 vs the per-warp scan; bitwise chunk-invariant when
+  chunks start at multiples of 16 (otherwise the per-token scan runs).
+  Default on sm_90 (`PSIONIC_CLEF_SCAN=staged` for the old scan).
+- **Device embedding** (`embed_q4_k_kernel`): the Q4_K `token_embd` (0.57 /
+  0.72 GB) on the device, rows gathered bitwise like the host decoder; the
+  chunk uploads ids instead of 33 MB of f32 rows. 27B 16k idle time 107 ->
+  26 ms. Default on sm_90 (`PSIONIC_CLEF_DEVICE_EMBED=0` off).
+- **Causal conv** with a register window: 2.1x, bitwise (bench only).
+- **SiLU fused into the up GEMM epilogue**: bitwise, but the gate loads stall
+  the persistent GEMM (27B up GEMM 307 -> 493 ms per 16k): off,
+  `PSIONIC_CLEF_SILU_FUSED=1`.
+
+| | 0.5k | 1k | 1.5k | 4k | 16k | 32k |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Flash, pre-#11443 (doc baseline) | — | 0.080 | — | 0.220 | 0.851 | 1.79 |
+| Flash, main | 0.036 | 0.069 | 0.084 | 0.200 | 0.785 | 1.66 |
+| **Flash, this round** | **0.033** | **0.061** | **0.072** | **0.172** | **0.672** | **1.38** |
+| 27B, pre-#11443 (doc baseline) | — | 0.205 | — | 0.626 | 2.63 | 6.04 |
+| 27B, main | 0.094 | 0.183 | 0.230 | 0.590 | 2.47 | 5.80 |
+| **27B, this round** | **0.091** | **0.168** | **0.208** | **0.546** | **2.14** | **4.44** |
+
+(Measured with the SiLU fusion on; it is now off, which should be faster.)
+vs the doc baseline: Flash 1.28x / 1.27x, 27B 1.15x / 1.23x at 4k / 16k.
+**1.5x is not met**: after this round the projection GEMMs are ~55-65 % of a
+16k prefill (Flash ~0.36 s, 27B ~1.3 s). Attention + scan share of a 16k
+prefill: Flash 0.24 -> 0.13 s, 27B 0.80 -> 0.38 s.
+
+Parity (`e2e.py compare`, 40 requests): Flash vs the CPU lane 100 %, max
+|Δp| 0.0010; 27B vs the f32-accumulate build 99.0 % (the known 0.495/0.505
+near tie), max 0.0098 (#11443's default: 99.0 %, 0.013).
+`cuda_chunks_and_cpu_agree` was not run this round.
+
 ## M3 status (2026-10-10, in progress)
 
 The [October 10 Mac performance audit](../audits/2026-10-10-clef-mac-performance/README.md)

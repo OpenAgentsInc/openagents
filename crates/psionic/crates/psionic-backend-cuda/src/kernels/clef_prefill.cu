@@ -149,6 +149,49 @@ __global__ void dequant_q4_k_kernel(const uint8_t *src, __half *dst, long long g
     *reinterpret_cast<uint4 *>(dst + g * 8) = *reinterpret_cast<const uint4 *>(out);
 }
 
+// Token embedding rows gathered from a Q4_K table on the device (#11444):
+// out[t, :] = row ids[t] of the [vocab, hidden] table, in f32 with the host
+// decoder's arithmetic (d * sc * q - dmin * m, each product and the
+// difference rounded once), so the rows are bitwise the host's. Block t,
+// four consecutive elements per thread and step.
+__global__ void embed_q4_k_kernel(const uint8_t *__restrict__ table, const int *__restrict__ ids,
+                                  float *__restrict__ out, int hidden, long long row_bytes) {
+    const int t = blockIdx.x;
+    const uint8_t *row = table + static_cast<long long>(ids[t]) * row_bytes;
+    float *dst = out + static_cast<long long>(t) * hidden;
+    for (int e = threadIdx.x * 4; e < hidden; e += blockDim.x * 4) {
+        const uint8_t *b = row + (e / 256) * 144;
+        const int within = e % 256;
+        const int j = within / 64;
+        const int r = within % 64;
+        const bool high = r >= 32;
+        const int is = 2 * j + (high ? 1 : 0);
+        const float d = load_half(b);
+        const float dmin = load_half(b + 2);
+        const uint8_t *scales = b + 4;
+        uint8_t sc, m;
+        if (is < 4) {
+            sc = scales[is] & 63;
+            m = scales[is + 4] & 63;
+        } else {
+            sc = (scales[is + 4] & 0xF) | ((scales[is - 4] >> 6) << 4);
+            m = (scales[is + 4] >> 4) | ((scales[is] >> 6) << 4);
+        }
+        const float scale = __fmul_rn(d, static_cast<float>(sc));
+        const float minimum = __fmul_rn(dmin, static_cast<float>(m));
+        uint32_t v = *reinterpret_cast<const uint32_t *>(b + 16 + 32 * j + (r % 32));
+        if (high) {
+            v >>= 4;
+        }
+        float4 o;
+        o.x = __fsub_rn(__fmul_rn(scale, static_cast<float>(v & 0xF)), minimum);
+        o.y = __fsub_rn(__fmul_rn(scale, static_cast<float>((v >> 8) & 0xF)), minimum);
+        o.z = __fsub_rn(__fmul_rn(scale, static_cast<float>((v >> 16) & 0xF)), minimum);
+        o.w = __fsub_rn(__fmul_rn(scale, static_cast<float>((v >> 24) & 0xF)), minimum);
+        *reinterpret_cast<float4 *>(dst + e) = o;
+    }
+}
+
 // Dense f32 rows to f16.
 __global__ void f32_to_f16_kernel(const float *src, __half *dst, long long count) {
     const long long i = blockIdx.x * (long long)blockDim.x + threadIdx.x;
@@ -243,6 +286,50 @@ __global__ void conv1d_seq_silu_kernel(const float *in, const float *state, cons
     }
     acc += in[index] * w[c * k + s];
     out[index] = silu(acc);
+}
+
+// The same conv, one thread per channel over a run of kConvRun tokens with
+// the window in registers (#11444): every input is read once and the
+// arithmetic is conv1d_seq_silu_kernel's, term for term, so the output is
+// bitwise the same.
+constexpr int kConvRun = 16;
+template <int K>
+__global__ void conv1d_seq_silu_run_kernel(const float *__restrict__ in, const float *__restrict__ state,
+                                           const float *__restrict__ w, float *__restrict__ out, int n,
+                                           int channels) {
+    const int c = blockIdx.x * blockDim.x + threadIdx.x;
+    if (c >= channels) {
+        return;
+    }
+    constexpr int s = K - 1;
+    const int t0 = blockIdx.y * kConvRun;
+    float wk[K];
+#pragma unroll
+    for (int j = 0; j < K; ++j) {
+        wk[j] = w[c * K + j];
+    }
+    // window[j] holds input t - s + j for the next output t
+    float window[K];
+#pragma unroll
+    for (int j = 0; j < s; ++j) {
+        const int source = t0 - s + j;
+        window[j] = source >= 0 ? in[static_cast<long long>(source) * channels + c] : state[c * s + (s + source)];
+    }
+    const int end = min(t0 + kConvRun, n);
+    for (int t = t0; t < end; ++t) {
+        window[s] = in[static_cast<long long>(t) * channels + c];
+        float acc = 0.0f;
+#pragma unroll
+        for (int j = 0; j < s; ++j) {
+            acc += window[j] * wk[j];
+        }
+        acc += window[s] * wk[s];
+        out[static_cast<long long>(t) * channels + c] = silu(acc);
+#pragma unroll
+        for (int j = 0; j < s; ++j) {
+            window[j] = window[j + 1];
+        }
+    }
 }
 
 // The carried conv state after n tokens: the last k-1 inputs (from the
@@ -553,6 +640,414 @@ __global__ void __launch_bounds__(scan::kThreads)
         for (int i = 0; i < 4; ++i) {
             *reinterpret_cast<float4 *>(row + 4 * l + 32 * i) =
                 make_float4(s[r][4 * i], s[r][4 * i + 1], s[r][4 * i + 2], s[r][4 * i + 3]);
+        }
+    }
+}
+
+// The delta rule for dim 128 in blocks of 16 tokens at absolute positions,
+// on tensor cores (#11444). Within a block, with S0 the state before it, g
+// the decays, Gamma_j = g_0 ... g_j, R_ij = g_{i+1} ... g_j and the Gram
+// terms KK_ij = k_i . k_j, KQ_ij = k_i . q_j, the per-token recurrence
+// above is exactly
+//   u_j = b_j (v_j - Gamma_j S0 . k_j),
+//   delta = T u  with  T = (I + L)^-1,  L_ji = b_j R_ij KK_ij (i < j),
+//   o_j = Gamma_j S0 . q_j + sum_i W_ij delta_i,  W_ij = R_ij KQ_ij (i <= j),
+//   S16 = Gamma_15 S0 + sum_i R_i15 delta_i k_i.
+// T, T^T W and T^T diag(R_i15) depend only on the value head and the block
+// (delta_block_coef_kernel computes them, in parallel over blocks), so per
+// state row a block is four matrix products and no serial chain:
+//   X | Y = S0 [K | Q]^T,  O = Gamma Y + U (T^T W),  C = U (T^T diag R_15),
+//   S16 = Gamma_15 S0 + C K.
+// They run as m16n8k8 TF32 mma with the f32 operands split into high and
+// low TF32 parts (three products, the low x low term dropped), which keeps
+// about f32 accuracy. A warp holds 16 state rows in registers in the mma
+// accumulator layout for the whole chunk (thread (g, c): rows g and g + 8 at
+// columns 8t + 2c and 8t + 2c + 1); an accumulator is used again as an A
+// fragment by permuting the k index within each 8-wide step (position c is
+// column 2c, position c + 4 is column 2c + 1) and loading B with the same
+// permutation. A CTA owns 16 rows of one value head; its SPLIT warps split
+// the columns and add their partial X | Y in a fixed order. Every sum has a
+// fixed order and blocks sit at chunk offsets that are multiples of 16, so
+// with chunks that start at multiples of 16 (the caller checks) the result
+// does not depend on the chunking; it differs from the per-token kernels by
+// rounding only.
+namespace bscan {
+constexpr int kDim = 128;
+constexpr int kT = 16;
+constexpr int kGamma = 0;
+constexpr int kBeta = kT;
+constexpr int kTW = 2 * kT;               // [i][j] = sum_m T_mi W_mj
+constexpr int kTC = kTW + kT * kT;        // [i][j] = T_ji R_j15
+constexpr int kCoef = kTC + kT * kT;      // 544 floats per (block, value head)
+constexpr int kLd = kDim + 8;             // padded K / Q row in shared memory
+}  // namespace bscan
+
+// One CTA per (block, key head): the Gram terms once, then the
+// coefficients of each value head that reads this key head.
+__global__ void __launch_bounds__(256)
+    delta_block_coef_kernel(const float *__restrict__ qn, const float *__restrict__ kn, const float *__restrict__ decay,
+                            const float *__restrict__ beta, float *__restrict__ coef, int n, int key_heads,
+                            int value_heads, int v_head_reordered) {
+    using namespace bscan;
+    constexpr int kLdg = kDim + 4;  // float4 rows, conflict-free for 8 distinct rows per phase
+    __shared__ __align__(16) float ks[kT][kLdg];
+    __shared__ __align__(16) float qs[kT][kLdg];
+    __shared__ float ms[kT][kT + 1], ws[kT][kT + 1], ts[kT][kT + 1];
+    __shared__ float gs[kT], bs[kT], cl[kT];
+    const int blk = blockIdx.x;
+    const int kh = blockIdx.y;
+    const int repeat = value_heads / key_heads;
+    const int t0 = blk * kT;
+    const int tid = threadIdx.x;
+    for (int idx = tid; idx < kT * (kDim / 4); idx += blockDim.x) {
+        const int i = idx / (kDim / 4);
+        const int d = (idx % (kDim / 4)) * 4;
+        const int t = t0 + i;
+        const long long at = (static_cast<long long>(t) * key_heads + kh) * kDim + d;
+        const float4 zero = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+        *reinterpret_cast<float4 *>(&ks[i][d]) = t < n ? *reinterpret_cast<const float4 *>(kn + at) : zero;
+        *reinterpret_cast<float4 *>(&qs[i][d]) = t < n ? *reinterpret_cast<const float4 *>(qn + at) : zero;
+    }
+    __syncthreads();
+    const int i = tid / kT;
+    const int j = tid % kT;
+    float kk = 0.0f, kq = 0.0f;
+#pragma unroll 8
+    for (int d = 0; d < kDim; d += 4) {
+        const float4 a = *reinterpret_cast<const float4 *>(&ks[i][d]);
+        const float4 b = *reinterpret_cast<const float4 *>(&ks[j][d]);
+        const float4 q = *reinterpret_cast<const float4 *>(&qs[j][d]);
+        kk = fmaf(a.x, b.x, kk);
+        kk = fmaf(a.y, b.y, kk);
+        kk = fmaf(a.z, b.z, kk);
+        kk = fmaf(a.w, b.w, kk);
+        kq = fmaf(a.x, q.x, kq);
+        kq = fmaf(a.y, q.y, kq);
+        kq = fmaf(a.z, q.z, kq);
+        kq = fmaf(a.w, q.w, kq);
+    }
+    for (int rep = 0; rep < repeat; ++rep) {
+        const int vh = v_head_reordered ? kh + rep * key_heads : kh * repeat + rep;
+        if (tid < kT) {
+            // past the chunk: no decay, no write (the token changes nothing)
+            const int t = t0 + tid;
+            gs[tid] = t < n ? decay[static_cast<long long>(t) * value_heads + vh] : 1.0f;
+            bs[tid] = t < n ? beta[static_cast<long long>(t) * value_heads + vh] : 0.0f;
+        }
+        __syncthreads();
+        float r = 1.0f;
+        for (int m = i + 1; m <= j; ++m) {
+            r *= gs[m];
+        }
+        ms[i][j] = i < j ? bs[j] * r * kk : 0.0f;
+        ws[i][j] = i <= j ? r * kq : 0.0f;
+        if (j == kT - 1) {
+            cl[i] = r;
+        }
+        float *cf = coef + (static_cast<long long>(blk) * value_heads + vh) * kCoef;
+        if (i == 0) {
+            float gamma = 1.0f;
+            for (int m = 0; m <= j; ++m) {
+                gamma *= gs[m];
+            }
+            cf[kGamma + j] = gamma;
+            cf[kBeta + j] = bs[j];
+        }
+        __syncthreads();
+        // T = (I + L)^-1 by forward substitution, one column per thread
+        if (tid < kT) {
+            const int col = tid;
+            for (int row = 0; row < kT; ++row) {
+                float v = row == col ? 1.0f : 0.0f;
+                if (row > col) {
+                    float sum = 0.0f;
+                    for (int m = col; m < row; ++m) {
+                        sum = fmaf(ms[m][row], ts[m][col], sum);
+                    }
+                    v = -sum;
+                }
+                ts[row][col] = v;
+            }
+        }
+        __syncthreads();
+        float tw = 0.0f;
+        for (int m = 0; m < kT; ++m) {
+            tw = fmaf(ts[m][i], ws[m][j], tw);
+        }
+        cf[kTW + i * kT + j] = tw;
+        cf[kTC + i * kT + j] = ts[j][i] * cl[j];
+        __syncthreads();
+    }
+}
+
+__device__ __forceinline__ uint32_t tf32_bits(float x) {
+    uint32_t r;
+    asm("cvt.rna.tf32.f32 %0, %1;\n" : "=r"(r) : "f"(x));
+    return r;
+}
+
+__device__ __forceinline__ void tf32_split(float x, uint32_t &hi, uint32_t &lo) {
+    hi = tf32_bits(x);
+    lo = tf32_bits(x - __uint_as_float(hi));
+}
+
+__device__ __forceinline__ void mma_tf32(float (&d)[4], const uint32_t (&a)[4], uint32_t b0, uint32_t b1) {
+    asm volatile(
+        "mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32 {%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3};\n"
+        : "+f"(d[0]), "+f"(d[1]), "+f"(d[2]), "+f"(d[3])
+        : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b0), "r"(b1));
+}
+
+// An A fragment split into high and low TF32 parts.
+struct Tf32Frag {
+    uint32_t hi[4], lo[4];
+};
+
+__device__ __forceinline__ Tf32Frag tf32_frag(float a0, float a1, float a2, float a3) {
+    Tf32Frag f;
+    tf32_split(a0, f.hi[0], f.lo[0]);
+    tf32_split(a1, f.hi[1], f.lo[1]);
+    tf32_split(a2, f.hi[2], f.lo[2]);
+    tf32_split(a3, f.hi[3], f.lo[3]);
+    return f;
+}
+
+// d += a b in about f32 precision: a_lo b_hi + a_hi b_lo + a_hi b_hi.
+__device__ __forceinline__ void mma_3xtf32(float (&d)[4], const Tf32Frag &a, float b0, float b1) {
+    uint32_t bh0, bl0, bh1, bl1;
+    tf32_split(b0, bh0, bl0);
+    tf32_split(b1, bh1, bl1);
+    mma_tf32(d, a.lo, bh0, bh1);
+    mma_tf32(d, a.hi, bl0, bl1);
+    mma_tf32(d, a.hi, bh0, bh1);
+}
+
+// The A fragment of the accumulator-layout values {(g, 2c), (g, 2c + 1),
+// (g + 8, 2c), (g + 8, 2c + 1)} of one 8-wide step, k permuted.
+__device__ __forceinline__ Tf32Frag acc_as_a(const float (&v)[4]) { return tf32_frag(v[0], v[2], v[1], v[3]); }
+
+constexpr int bscan_smem_bytes(int split) {
+    return 4 * (4 * bscan::kT * bscan::kLd + 2 * bscan::kT * 16 + 2 * bscan::kCoef + split * 16 * 32);
+}
+
+template <int SPLIT>
+__global__ void __launch_bounds__(32 * SPLIT)
+    delta_block_scan_kernel(const float *__restrict__ qn, const float *__restrict__ kn, const float *__restrict__ conv,
+                            const float *__restrict__ coef, float *__restrict__ state, float *__restrict__ out, int n,
+                            int key_heads, int value_heads, int v_head_reordered, int conv_width, int value_offset) {
+    using namespace bscan;
+    constexpr int kRows = 16;
+    constexpr int kThreads = 32 * SPLIT;
+    constexpr int kTiles = 16 / SPLIT;  // 8-column tiles per warp
+    // dynamic shared memory (bscan_smem_bytes): K, Q, V and the coefficients
+    // double buffered, then the warps' partial X | Y
+    extern __shared__ __align__(16) float bsmem[];
+    auto ks = reinterpret_cast<float (*)[kT][kLd]>(bsmem);
+    auto qs = reinterpret_cast<float (*)[kT][kLd]>(bsmem + 2 * kT * kLd);
+    auto vs = reinterpret_cast<float (*)[kT][kRows]>(bsmem + 4 * kT * kLd);
+    auto cs = reinterpret_cast<float (*)[kCoef]>(bsmem + 4 * kT * kLd + 2 * kT * kRows);
+    auto xs = reinterpret_cast<float (*)[16][32]>(bsmem + 4 * kT * kLd + 2 * kT * kRows + 2 * kCoef);
+    const int blocks_per_head = kDim / kRows;
+    const int vh = blockIdx.x / blocks_per_head;
+    const int row0 = (blockIdx.x % blocks_per_head) * kRows;
+    const int repeat = value_heads / key_heads;
+    const int kh = v_head_reordered ? vh % key_heads : vh / repeat;
+    const int tid = threadIdx.x;
+    const int lane = tid % kWarp;
+    const int warp = tid / kWarp;
+    const int g = lane / 4;
+    const int c = lane % 4;
+    const int t_first = warp * kTiles;
+    // s[i] = {S[g][8t+2c], S[g][8t+2c+1], S[g+8][8t+2c], S[g+8][8t+2c+1]} for t = t_first + i
+    float s[kTiles][4];
+#pragma unroll
+    for (int r = 0; r < 2; ++r) {
+        const float *row = state + (static_cast<long long>(vh) * kDim + row0 + g + 8 * r) * kDim;
+#pragma unroll
+        for (int i = 0; i < kTiles; ++i) {
+            const float2 v = *reinterpret_cast<const float2 *>(row + 8 * (t_first + i) + 2 * c);
+            s[i][2 * r] = v.x;
+            s[i][2 * r + 1] = v.y;
+        }
+    }
+    const int blocks = (n + kT - 1) / kT;
+    const float *k_base = kn + static_cast<long long>(kh) * kDim;
+    const float *q_base = qn + static_cast<long long>(kh) * kDim;
+    const float *v_base = conv + value_offset + vh * kDim + row0;
+    const long long kq_stride = static_cast<long long>(key_heads) * kDim;
+    auto load_block = [&](int blk, int buf) {
+        const int t0 = blk * kT;
+        // K and Q rows: 32 float4 each
+#pragma unroll
+        for (int i = tid; i < kT * 2 * (kDim / 4); i += kThreads) {
+            const int t = i / (2 * (kDim / 4));
+            const int which = (i / (kDim / 4)) % 2;
+            const int part = i % (kDim / 4);
+            const bool live = t0 + t < n;
+            const long long at = (live ? t0 + t : 0) * kq_stride + part * 4;
+            cp_async16(which ? &qs[buf][t][part * 4] : &ks[buf][t][part * 4], (which ? q_base : k_base) + at,
+                       live ? 16 : 0);
+        }
+        for (int i = tid; i < kT * (kRows / 4); i += kThreads) {
+            const int t = i / (kRows / 4);
+            const int part = i % (kRows / 4);
+            const bool live = t0 + t < n;
+            cp_async16(&vs[buf][t][part * 4], v_base + static_cast<long long>(live ? t0 + t : 0) * conv_width + part * 4,
+                       live ? 16 : 0);
+        }
+        const float *cf = coef + (static_cast<long long>(blk) * value_heads + vh) * kCoef;
+        for (int i = tid; i < kCoef / 4; i += kThreads) {
+            cp_async16(&cs[buf][i * 4], cf + i * 4, 16);
+        }
+        cp_async_commit();
+    };
+    load_block(0, 0);
+    for (int blk = 0; blk < blocks; ++blk) {
+        const int buf = blk & 1;
+        if (blk + 1 < blocks) {
+            load_block(blk + 1, buf ^ 1);
+            cp_async_wait<1>();
+        } else {
+            cp_async_wait<0>();
+        }
+        __syncthreads();
+        const float *cf = cs[buf];
+        // partial X = S0 K^T, Y = S0 Q^T over this warp's columns, in two
+        // chains (column tile parity) added in a fixed order
+        constexpr int kChains = kTiles < 2 ? kTiles : 2;
+        float px[kChains][2][4], py[kChains][2][4];
+#pragma unroll
+        for (int p = 0; p < kChains; ++p) {
+#pragma unroll
+            for (int jt = 0; jt < 2; ++jt) {
+#pragma unroll
+                for (int e = 0; e < 4; ++e) {
+                    px[p][jt][e] = 0.0f;
+                    py[p][jt][e] = 0.0f;
+                }
+            }
+        }
+#pragma unroll
+        for (int i = 0; i < kTiles; ++i) {
+            const int t = t_first + i;
+            const Tf32Frag a = acc_as_a(s[i]);
+#pragma unroll
+            for (int jt = 0; jt < 2; ++jt) {
+                // B (k = column 8t + perm, n = token 8 jt + g)
+                const float2 kb = *reinterpret_cast<const float2 *>(&ks[buf][8 * jt + g][8 * t + 2 * c]);
+                const float2 qb = *reinterpret_cast<const float2 *>(&qs[buf][8 * jt + g][8 * t + 2 * c]);
+                mma_3xtf32(px[i % kChains][jt], a, kb.x, kb.y);
+                mma_3xtf32(py[i % kChains][jt], a, qb.x, qb.y);
+            }
+        }
+        // x[jt] / y[jt]: accumulator layout over tokens 8 jt + 2c (+1), the warps' partials in order
+        float x[2][4], y[2][4];
+#pragma unroll
+        for (int jt = 0; jt < 2; ++jt) {
+#pragma unroll
+            for (int e = 0; e < 4; ++e) {
+                float xv = px[0][jt][e], yv = py[0][jt][e];
+#pragma unroll
+                for (int p = 1; p < kChains; ++p) {
+                    xv += px[p][jt][e];
+                    yv += py[p][jt][e];
+                }
+                x[jt][e] = xv;
+                y[jt][e] = yv;
+            }
+        }
+        if constexpr (SPLIT > 1) {
+#pragma unroll
+            for (int i = 0; i < 8; ++i) {
+                xs[warp][i][lane] = x[i / 4][i % 4];
+                xs[warp][8 + i][lane] = y[i / 4][i % 4];
+            }
+            __syncthreads();
+#pragma unroll
+            for (int i = 0; i < 8; ++i) {
+                float xv = xs[0][i][lane], yv = xs[0][8 + i][lane];
+#pragma unroll
+                for (int w = 1; w < SPLIT; ++w) {
+                    xv += xs[w][i][lane];
+                    yv += xs[w][8 + i][lane];
+                }
+                x[i / 4][i % 4] = xv;
+                y[i / 4][i % 4] = yv;
+            }
+        }
+        // u_j = b_j (v_j - Gamma_j x_j) in the accumulator layout
+        float u[2][4];
+#pragma unroll
+        for (int jt = 0; jt < 2; ++jt) {
+#pragma unroll
+            for (int e = 0; e < 4; ++e) {
+                const int j = 8 * jt + 2 * c + (e & 1);
+                const int r = e >> 1;
+                u[jt][e] = cf[kBeta + j] * (vs[buf][j][g + 8 * r] - cf[kGamma + j] * x[jt][e]);
+            }
+        }
+        const Tf32Frag ua[2] = {acc_as_a(u[0]), acc_as_a(u[1])};
+        // C = U (T^T diag R_15): the state update's coefficients, per token i
+        float cc[2][4];
+#pragma unroll
+        for (int jt = 0; jt < 2; ++jt) {
+#pragma unroll
+            for (int e = 0; e < 4; ++e) {
+                cc[jt][e] = 0.0f;
+            }
+#pragma unroll
+            for (int kt = 0; kt < 2; ++kt) {
+                mma_3xtf32(cc[jt], ua[kt], cf[kTC + (8 * kt + 2 * c) * kT + 8 * jt + g],
+                           cf[kTC + (8 * kt + 2 * c + 1) * kT + 8 * jt + g]);
+            }
+        }
+        // O = Gamma Y + U (T^T W); the warps split the two token tiles
+        const int t0 = blk * kT;
+#pragma unroll
+        for (int jt = 0; jt < 2; ++jt) {
+            if (SPLIT > 1 && (jt != (warp & 1) || warp >= 2)) {
+                continue;
+            }
+            float o[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+#pragma unroll
+            for (int kt = 0; kt < 2; ++kt) {
+                mma_3xtf32(o, ua[kt], cf[kTW + (8 * kt + 2 * c) * kT + 8 * jt + g],
+                           cf[kTW + (8 * kt + 2 * c + 1) * kT + 8 * jt + g]);
+            }
+#pragma unroll
+            for (int e = 0; e < 4; ++e) {
+                const int j = 8 * jt + 2 * c + (e & 1);
+                const int r = e >> 1;
+                if (t0 + j < n) {
+                    out[(static_cast<long long>(t0 + j) * value_heads + vh) * kDim + row0 + g + 8 * r] =
+                        fmaf(cf[kGamma + j], y[jt][e], o[e]);
+                }
+            }
+        }
+        // S16 = Gamma_15 S0 + C K on this warp's columns
+        const float gamma_last = cf[kGamma + kT - 1];
+        const Tf32Frag ca[2] = {acc_as_a(cc[0]), acc_as_a(cc[1])};
+#pragma unroll
+        for (int i = 0; i < kTiles; ++i) {
+            const int t = t_first + i;
+#pragma unroll
+            for (int e = 0; e < 4; ++e) {
+                s[i][e] *= gamma_last;
+            }
+#pragma unroll
+            for (int kt = 0; kt < 2; ++kt) {
+                // B (k = token 8 kt + perm, n = column 8t + g)
+                mma_3xtf32(s[i], ca[kt], ks[buf][8 * kt + 2 * c][8 * t + g], ks[buf][8 * kt + 2 * c + 1][8 * t + g]);
+            }
+        }
+        __syncthreads();
+    }
+#pragma unroll
+    for (int r = 0; r < 2; ++r) {
+        float *row = state + (static_cast<long long>(vh) * kDim + row0 + g + 8 * r) * kDim;
+#pragma unroll
+        for (int i = 0; i < kTiles; ++i) {
+            *reinterpret_cast<float2 *>(row + 8 * (t_first + i) + 2 * c) = make_float2(s[i][2 * r], s[i][2 * r + 1]);
         }
     }
 }
@@ -1408,6 +1903,21 @@ extern "C" int psionic_clef_dequant_q4_k_f16(const void *src, void *dst, long lo
 
 extern "C" int psionic_clef_f16_to_f32(const void *src, void *dst, long long count, int accumulate, void *stream);
 
+// Gathers n token rows of a Q4_K [vocab, hidden] table into f32 out [n, hidden]
+// (hidden a multiple of 256; ids checked by the caller).
+extern "C" int psionic_clef_embed_q4_k(const void *table, const void *ids, void *out, int n, int hidden, void *stream) {
+    if (n <= 0) {
+        return 0;
+    }
+    if (hidden % 256 != 0) {
+        return static_cast<int>(cudaErrorInvalidValue);
+    }
+    embed_q4_k_kernel<<<n, 256, 0, STREAM>>>(static_cast<const uint8_t *>(table), static_cast<const int *>(ids),
+                                             static_cast<float *>(out), hidden,
+                                             static_cast<long long>(hidden) / 256 * 144);
+    DONE;
+}
+
 extern "C" int psionic_clef_f32_to_f16(const void *src, void *dst, long long count, void *stream) {
     f32_to_f16_kernel<<<blocks_for(count, 256), 256, 0, STREAM>>>(
         static_cast<const float *>(src), static_cast<__half *>(dst), count);
@@ -1437,9 +1947,16 @@ extern "C" int psionic_clef_conv1d_seq_silu(const void *in, void *state, const v
     if (k < 1 || k > 4) {
         return static_cast<int>(cudaErrorInvalidValue);
     }
-    conv1d_seq_silu_kernel<<<blocks_for(static_cast<long long>(n) * channels, 256), 256, 0, STREAM>>>(
-        static_cast<const float *>(in), static_cast<const float *>(state), static_cast<const float *>(w),
-        static_cast<float *>(out), n, channels, k);
+    if (k == 4) {
+        const dim3 grid(blocks_for(channels, 128), (n + kConvRun - 1) / kConvRun);
+        conv1d_seq_silu_run_kernel<4><<<grid, 128, 0, STREAM>>>(
+            static_cast<const float *>(in), static_cast<const float *>(state), static_cast<const float *>(w),
+            static_cast<float *>(out), n, channels);
+    } else {
+        conv1d_seq_silu_kernel<<<blocks_for(static_cast<long long>(n) * channels, 256), 256, 0, STREAM>>>(
+            static_cast<const float *>(in), static_cast<const float *>(state), static_cast<const float *>(w),
+            static_cast<float *>(out), n, channels, k);
+    }
     conv1d_state_kernel<<<blocks_for(channels, 256), 256, 0, STREAM>>>(
         static_cast<const float *>(in), static_cast<float *>(state), n, channels, k);
     DONE;
@@ -1491,6 +2008,51 @@ extern "C" int psionic_clef_delta_seq(const void *qn, const void *kn, const void
         default: return static_cast<int>(cudaErrorInvalidValue);
     }
 #undef DELTA
+    DONE;
+}
+
+// The blocked delta rule (delta_block_scan_kernel) for dim 128: coef is
+// scratch of ceil(n / 16) x value_heads x 544 floats; variant 101, 102 or
+// 104 sets 1, 2 or 4 warps splitting the columns of a CTA's 16 state rows.
+// The chunk must start at an absolute position that is a multiple of 16
+// for the result not to depend on the chunking (the caller checks).
+extern "C" int psionic_clef_delta_block(const void *qn, const void *kn, const void *conv, const void *decay,
+                                        const void *beta, void *coef, void *state, void *out, int n, int key_heads,
+                                        int value_heads, int dim, int v_head_reordered, int conv_width,
+                                        int value_offset, int variant, void *stream) {
+    if (n <= 0) {
+        return 0;
+    }
+    if (dim != bscan::kDim || (value_offset % 4) != 0 || (conv_width % 4) != 0 ||
+        (variant != 101 && variant != 102 && variant != 104)) {
+        return static_cast<int>(cudaErrorInvalidValue);
+    }
+    const int blocks = (n + bscan::kT - 1) / bscan::kT;
+    delta_block_coef_kernel<<<dim3(blocks, key_heads), 256, 0, STREAM>>>(
+        static_cast<const float *>(qn), static_cast<const float *>(kn), static_cast<const float *>(decay),
+        static_cast<const float *>(beta), static_cast<float *>(coef), n, key_heads, value_heads, v_head_reordered);
+#define BLOCK_SCAN(W)                                                                                          \
+    do {                                                                                                       \
+        static bool configured = false;                                                                        \
+        if (!configured) {                                                                                     \
+            const cudaError_t code = cudaFuncSetAttribute(                                                     \
+                delta_block_scan_kernel<W>, cudaFuncAttributeMaxDynamicSharedMemorySize, bscan_smem_bytes(W)); \
+            if (code != cudaSuccess) {                                                                         \
+                return static_cast<int>(code);                                                                 \
+            }                                                                                                  \
+            configured = true;                                                                                 \
+        }                                                                                                      \
+        delta_block_scan_kernel<W><<<value_heads * (bscan::kDim / 16), 32 * W, bscan_smem_bytes(W), STREAM>>>( \
+            static_cast<const float *>(qn), static_cast<const float *>(kn), static_cast<const float *>(conv),  \
+            static_cast<const float *>(coef), static_cast<float *>(state), static_cast<float *>(out), n,       \
+            key_heads, value_heads, v_head_reordered, conv_width, value_offset);                               \
+    } while (0)
+    switch (variant) {
+        case 101: BLOCK_SCAN(1); break;
+        case 102: BLOCK_SCAN(2); break;
+        default: BLOCK_SCAN(4); break;
+    }
+#undef BLOCK_SCAN
     DONE;
 }
 

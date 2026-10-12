@@ -299,3 +299,36 @@ int psionic_clef_event_elapsed(void *start, void *end, float *ms) {
     (void)ms;
     return 1;
 }
+
+int psionic_clef_delta_block(const void *qn, const void *kn, const void *conv, const void *decay, const void *beta,
+                             void *coef, void *state, void *out, int n, int key_heads, int value_heads, int dim,
+                             int v_head_reordered, int conv_width, int value_offset, int variant, void *stream) {
+    (void)qn;
+    (void)kn;
+    (void)conv;
+    (void)decay;
+    (void)beta;
+    (void)coef;
+    (void)state;
+    (void)out;
+    (void)n;
+    (void)key_heads;
+    (void)value_heads;
+    (void)dim;
+    (void)v_head_reordered;
+    (void)conv_width;
+    (void)value_offset;
+    (void)variant;
+    (void)stream;
+    return 1;
+}
+
+int psionic_clef_embed_q4_k(const void *table, const void *ids, void *out, int n, int hidden, void *stream) {
+    (void)table;
+    (void)ids;
+    (void)out;
+    (void)n;
+    (void)hidden;
+    (void)stream;
+    return 1;
+}
