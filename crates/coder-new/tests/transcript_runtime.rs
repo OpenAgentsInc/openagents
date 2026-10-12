@@ -1017,15 +1017,15 @@ fn new_chat_heading_shows_the_version_and_disappears_on_send() {
     let title = "OpenAgents Coder";
     let version = concat!("v", env!("CARGO_PKG_VERSION"));
     let buffer = draw(&mut app, 80, 24);
-    // The mark takes rows 0-2 at x=2; the name sits beside row 1 and the
-    // version on row 2, each two cells past the mark at x=7.
-    assert!(row(&buffer, 1).contains(title));
-    assert!(row(&buffer, 2).contains(version));
-    for x in 7..(7 + title.len() as u16) {
-        assert_eq!(buffer[(x, 1)].fg, theme::TEXT_PRIMARY);
+    // The mark takes rows 0-5 at x=2; the name sits beside row 2 and the
+    // version on row 3, each three cells past the mark at x=15.
+    assert!(row(&buffer, 2).contains(title));
+    assert!(row(&buffer, 3).contains(version));
+    for x in 15..(15 + title.len() as u16) {
+        assert_eq!(buffer[(x, 2)].fg, theme::TEXT_PRIMARY);
     }
-    for x in 7..(7 + version.len() as u16) {
-        assert_eq!(buffer[(x, 2)].fg, theme::GRAY_BRIGHT);
+    for x in 15..(15 + version.len() as u16) {
+        assert_eq!(buffer[(x, 3)].fg, theme::GRAY_BRIGHT);
     }
     key(&mut app, KeyCode::Char('H'));
     assert!(canvas(&draw(&mut app, 80, 24)).contains(title));

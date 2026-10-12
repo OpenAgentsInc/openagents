@@ -479,7 +479,14 @@ fn new_chat_heading(app: &App) -> bool {
 
 /// The mark above an empty chat: a power symbol, with the name beside it and
 /// the version on the next line.
-const BANNER: [&str; 3] = [" │", "◜│◝", "◟ ◞"];
+const BANNER: [&str; 6] = [
+    "     │",
+    "  ╱─╯│╰─╲",
+    " │   │   │",
+    " │   ╵   │",
+    " │       │",
+    "  ╲─────╱",
+];
 
 fn header_view(frame: &mut Frame, area: Rect, app: &App) {
     if new_chat_heading(app) {
@@ -489,9 +496,9 @@ fn header_view(frame: &mut Frame, area: Rect, app: &App) {
             .map(|(row, mark)| {
                 let mut line = vec![span(*mark, t::TEXT_PRIMARY)];
                 match row {
-                    1 => line.push(span("  OpenAgents Coder", t::TEXT_PRIMARY)),
-                    2 => line.push(span(
-                        concat!("  v", env!("CARGO_PKG_VERSION")),
+                    2 => line.push(span("   OpenAgents Coder", t::TEXT_PRIMARY)),
+                    3 => line.push(span(
+                        concat!("   v", env!("CARGO_PKG_VERSION")),
                         t::GRAY_BRIGHT,
                     )),
                     _ => {}
