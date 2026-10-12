@@ -115,7 +115,9 @@ export function videoChanges(file, threshold = 0.05) {
 }
 
 /// Cuts a simulator video to the given times (seconds into it), one frame
-/// each, at its own pixel size.
+/// each, at its own pixel size. `simctl recordVideo` writes a frame only
+/// when the screen changes, so a still tail leaves the file short of the
+/// shared clock; the last frame is held to cover it.
 export function encodeVideoAt(file, out, times) {
   // Contiguous runs become trims; a jump starts a new one.
   const runs = [];
@@ -126,7 +128,7 @@ export function encodeVideoAt(file, out, times) {
   }
   const parts = runs.map((r, i) => `[s${i}]trim=${r.start.toFixed(4)}:${r.end.toFixed(4)},setpts=PTS-STARTPTS[p${i}]`);
   const graph =
-    `[0:v]fps=30,split=${runs.length}${runs.map((_, i) => `[s${i}]`).join("")};` +
+    `[0:v]fps=30,tpad=stop_mode=clone:stop_duration=30,split=${runs.length}${runs.map((_, i) => `[s${i}]`).join("")};` +
     parts.join(";") + ";" +
     `${runs.map((_, i) => `[p${i}]`).join("")}concat=n=${runs.length}:v=1,fps=30,format=yuv420p[v]`;
   execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", file, "-filter_complex", graph,

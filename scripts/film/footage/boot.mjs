@@ -27,15 +27,25 @@ const sim = env.FILM_SIM;
 const computer = env.FILM_COMPUTER || "MacBook Pro";
 fs.mkdirSync(out, { recursive: true });
 
-// The account, the repository, and Coder signed in, for every shot.
-const a = setup.account(env.FILM_GATEWAY, base, work);
-const r = setup.demoRepo(work);
-const s = { ...a, ...r, coderState: path.join(work, "coder-state") };
-await setup.coderLogin({ coder: env.FILM_CODER, state: s.coderState, home: s.home, base,
-  sessionFile: s.sessionFile, computer });
-fs.writeFileSync(path.join(work, "setup.json"), JSON.stringify(s), { mode: 0o600 });
+// FILM_BOOT picks clips (e.g. "phone"); all three by default.
+const only = new Set((env.FILM_BOOT || "terminal,web,phone").split(","));
+
+// The account, the repository, and Coder signed in, for every shot; or a
+// kept FILM_SETUP to record a clip again on the same account.
+let s;
+if (env.FILM_SETUP && fs.existsSync(env.FILM_SETUP)) {
+  s = JSON.parse(fs.readFileSync(env.FILM_SETUP, "utf8"));
+} else {
+  const a = setup.account(env.FILM_GATEWAY, base, work);
+  const r = setup.demoRepo(work);
+  s = { ...a, ...r, coderState: path.join(work, "coder-state") };
+  await setup.coderLogin({ coder: env.FILM_CODER, state: s.coderState, home: s.home, base,
+    sessionFile: s.sessionFile, computer });
+  fs.writeFileSync(path.join(work, "setup.json"), JSON.stringify(s), { mode: 0o600 });
+}
 
 // The terminal: `coder` on the PATH, as the installer puts it.
+if (only.has("terminal")) {
 const bin = path.join(s.home, ".local/bin");
 fs.mkdirSync(bin, { recursive: true });
 fs.writeFileSync(path.join(bin, "coder"), `#!/bin/sh\nexec "${env.FILM_CODER}" --state "${s.coderState}" "$@"\n`, {
@@ -76,9 +86,10 @@ fs.writeFileSync(path.join(bin, "coder"), `#!/bin/sh\nexec "${env.FILM_CODER}" -
   await replay(cast, path.join(out, "boot-terminal.mp4"), { from: mark("start") - 0.8, to: mark("end"), hold: 0.3 });
   console.log("boot-terminal");
 }
+}
 
 // The website: a fresh browser opening openagents.com, signed in.
-{
+if (only.has("web")) {
   const web = await signedIn(base, s.sessionFile);
   await c.navigate(web, "data:text/html,<body style='background:rgb(10,10,11)'></body>");
   const rec = new c.Recorder(web, path.join(work, "boot-web-frames"));
@@ -93,9 +104,11 @@ fs.writeFileSync(path.join(bin, "coder"), `#!/bin/sh\nexec "${env.FILM_CODER}" -
   console.log("boot-web");
 }
 
-// The phone: from the home screen, the app opens signed in.
-{
+// The phone: from the home screen, the app opens signed in. The UI tests'
+// runner app would show on the home screen; the shoots reinstall it.
+if (only.has("phone")) {
   spawnSync("xcrun", ["simctl", "terminate", sim, "com.openagents.app"]);
+  spawnSync("xcrun", ["simctl", "uninstall", sim, "com.openagents.app.uitests.xctrunner"]);
   await c.sleep(1500);
   setup.statusBar(sim);
   const raw = path.join(work, "boot-phone-raw.mp4");
