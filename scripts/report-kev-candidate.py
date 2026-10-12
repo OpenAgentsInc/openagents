@@ -33,8 +33,8 @@ def summarize(items, rows):
     return {
         'expected': len(items), 'answered': len(answered),
         'refused': len(present) - len(answered), 'harness_missing': len(items) - len(present),
-        'correct': correct, 'accuracy': correct / len(items),
-        'wilson_95': interval(correct, len(items)),
+        'correct': correct, 'accuracy': correct / len(items) if items else None,
+        'wilson_95': interval(correct, len(items)) if items else None,
         'ece_answered': ece / len(answered) if answered else None,
         'top_probability_brier': sum((r['raw_top'] - int(r['correct'])) ** 2 for r in answered) / len(answered) if answered else None,
         'confident_errors': sum(not r['correct'] and r['raw_top'] >= .9 for r in answered),
@@ -47,6 +47,10 @@ def paired(items, a, b):
     deltas = [int(a.get(i['id'], {}).get('correct') is True) - int(b.get(i['id'], {}).get('correct') is True) for i in items]
     wins = deltas.count(1)
     losses = deltas.count(-1)
+    if not deltas:
+        return {'candidate_only_correct': 0, 'reference_only_correct': 0,
+                'accuracy_difference': None, 'paired_item_bootstrap_95': None,
+                'mcnemar_exact_two_sided': None}
     n = wins + losses
     exact = min(1, 2 * sum(math.comb(n, k) for k in range(min(wins, losses) + 1)) / 2**n)
     rng = random.Random(9458)
