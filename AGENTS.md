@@ -114,7 +114,7 @@ reset it printed (`docs/coder/runtime/capacity.md`). Claude Code sessions here
 enforce this through `.claude/settings.json` (`scripts/dev/agent-gate.sh`):
 no new agent or workflow while the book says claude is out, while a usage
 limit has parked agents (a person resumes with `scripts/dev/agent-gate.sh
-resume`), or past four running agents (`OA_AGENT_MAX`); a usage limit stops
+resume`), or past `OA_AGENT_MAX` running agents when that is set (no cap by default, owner 2026-10-12); a usage limit stops
 the session instead of waiting for the reset.
 
 Every Claude Code session here is a run (`scripts/dev/agent-run.py`, #11433):
