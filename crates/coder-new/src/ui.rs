@@ -469,7 +469,7 @@ pub(crate) fn truncate(text: &str, width: u16) -> String {
 }
 
 fn new_chat_heading(app: &App) -> bool {
-    matches!(app.mode, Mode::Live | Mode::Microclaude | Mode::Solver)
+    matches!(app.mode, Mode::Live | Mode::Claude | Mode::Solver)
         && app.screen == Screen::Conversation
         && app.selected_agent.is_none()
         && app.live.entries.is_empty()
@@ -588,11 +588,12 @@ fn repository_rail(app: &App) -> String {
     text
 }
 
-/// The mode the input's rail names: `flash`, `microclaude` or `solver`
-/// (Shift+Tab), else `coder auto` unless the person picked a model of their own.
+/// The mode the input's rail names: `flash` or `claude` (Shift+Tab),
+/// `solver` while `coder solver` watches a run, else `coder` unless the
+/// person picked a model of their own.
 fn rail_mode(app: &App) -> Option<&'static str> {
-    if app.mode == Mode::Microclaude {
-        return Some(crate::microclaude::LABEL);
+    if app.mode == Mode::Claude {
+        return Some(crate::claude::LABEL);
     }
     if app.mode == Mode::Solver {
         return Some(crate::solver::LABEL);
@@ -755,8 +756,8 @@ fn wrap_display(lines: Vec<Line<'static>>, width: u16) -> Vec<Line<'static>> {
 
 fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     let content = area.width.saturating_sub(GUTTER);
-    // microclaude's conversation is drawn like a live chat's.
-    if matches!(app.mode, Mode::Live | Mode::Microclaude | Mode::Solver) {
+    // claude's conversation is drawn like a live chat's.
+    if matches!(app.mode, Mode::Live | Mode::Claude | Mode::Solver) {
         live_conversation(frame, area, app);
         return;
     }
@@ -1897,7 +1898,7 @@ fn composer_view(
                 Style::default().fg(match contribution.text.as_str() {
                     crate::models::AUTO_LABEL => t::ACCENT_SKILL,
                     crate::models::FLASH_LABEL => t::ACCENT_MODEL,
-                    crate::microclaude::LABEL | crate::solver::LABEL => t::ACCENT_DELEGATE,
+                    crate::claude::LABEL | crate::solver::LABEL => t::ACCENT_DELEGATE,
                     _ => t::GRAY,
                 }),
             )),
@@ -2091,7 +2092,7 @@ mod export_notice_tests {
         let shown = rail(&mut app);
         assert!(shown.contains("flash") && !shown.contains("deepseek"));
         // Without a Claude login here, the next mode is auto again.
-        if !crate::microclaude::available() {
+        if !crate::claude::available() {
             app.handle(press(KeyCode::BackTab));
             assert_eq!(app.plugins.model, crate::models::AUTO);
             assert!(app.mode == Mode::Live);
@@ -2100,9 +2101,9 @@ mod export_notice_tests {
     }
 
     #[test]
-    fn the_rail_names_microclaude_without_asking_a_login() {
+    fn the_rail_names_claude_without_asking_a_login() {
         let mut app = App::default();
-        app.mode = Mode::Microclaude;
+        app.mode = Mode::Claude;
         let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
         terminal.draw(|frame| render(frame, &mut app)).unwrap();
         let buffer = terminal.backend().buffer();
@@ -2110,7 +2111,7 @@ mod export_notice_tests {
             .map(|y| (0..60).map(|x| buffer[(x, y)].symbol()).collect::<String>())
             .collect::<Vec<_>>()
             .join("\n");
-        assert!(shown.contains(crate::microclaude::LABEL));
+        assert!(shown.contains(crate::claude::LABEL));
         // Entering the mode must not read this computer's login: a test
         // environment never starts `claude auth status`.
     }

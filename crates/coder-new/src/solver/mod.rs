@@ -70,7 +70,7 @@ pub const RECENT_DAYS: u64 = 21;
 pub fn intake_task(messages: &[openrouter::Message], github: &str) -> String {
     let prefix = format!(
         "{}\n{}\nThe conversation:\n",
-        crate::identity::prompt(crate::microclaude::MODEL),
+        crate::identity::prompt(crate::claude::MODEL),
         INTAKE_CHAT
             .replace("{repo}", github)
             .replace("{today}", &days_ago(0))

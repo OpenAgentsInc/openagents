@@ -193,7 +193,7 @@ fn switching_modes_leaves_the_transcript_where_the_reader_left_it() {
     let first = row(&draw(&mut app, 110, 24), 0);
     assert!(!first.contains("Earlier line 0"));
     // Shift+Tab's switch must leave the reader where they were.
-    app.set_mode(Mode::Microclaude);
+    app.set_mode(Mode::Claude);
     assert_eq!(app.scroll, scrolled);
     assert_eq!(row(&draw(&mut app, 110, 24), 0), first);
     // Back at the newest output, the switch keeps it followed.

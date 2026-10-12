@@ -11,7 +11,7 @@ pub const DEFAULT_MODEL: &str = "openrouter/free";
 /// picks the model, so no vendor's name is advertised.
 pub const AUTO: &str = "auto";
 /// What the rail and mode list call the auto model: Coder picks the model.
-pub const AUTO_LABEL: &str = "coder auto";
+pub const AUTO_LABEL: &str = "coder";
 /// The OpenAgents inference gateway's own router, the first door of an
 /// `auto` turn when the person is signed in (docs/inference/providers.md).
 pub const GATEWAY_AUTO: &str = "openagents/auto";
@@ -468,8 +468,8 @@ mod pinned_tests {
                 max_tokens: None,
             }
             .slug(default);
-            assert_eq!(label(default), "coder auto");
-            assert_eq!(label(&slug), "coder auto", "{slug}");
+            assert_eq!(label(default), "coder");
+            assert_eq!(label(&slug), "coder", "{slug}");
         }
         assert_eq!(label("openai/gpt-6-luna:none"), "gpt-6-luna");
         assert_eq!(label("openai/gpt-6-luna:low:max-tokens=4096"), "gpt-6-luna");

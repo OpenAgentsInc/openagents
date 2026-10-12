@@ -237,15 +237,14 @@ the call. Demo tools
 and agents remain presentation fixtures; live mode
 runs enabled plugin tools and configured ACP delegations.
 
-Tab switches the input between `auto` (OpenAgents picks the model) and `flash`
-(DeepSeek V4.1 Flash on your own OpenRouter key), offered only once that key is
-saved. Shift+Tab steps from live to `microclaude`, then to `solver`, then
-back; both are offered only where this computer holds a Claude account login.
-`microclaude` runs turns through the Claude Agent SDK on that login, on Haiku
-5.5, with the basic file tools (Read, Write, Edit, Glob, and Grep) and no
-shell. `solver` takes an issue number (or `owner/repo#N`) and solves it to a
-pull request in four constrained hands (`docs/coder-new/solver.md`); `coder solver
-N` does the same from the shell.
+Shift+Tab steps the mode from `coder` to `claude` and back. When your own
+OpenRouter key is saved, a `flash` step between them runs DeepSeek V4.1 Flash
+on that key; `coder` lets OpenAgents pick the model. `claude` is offered only
+where this computer holds a Claude account login; it runs turns through the
+Claude Agent SDK on that login, on Haiku 5.5, with the basic file tools
+(Read, Write, Edit, Glob, and Grep) and no shell. `coder solver N` takes an
+issue number (or `owner/repo#N`) and solves it to a pull request in four
+constrained hands (`docs/coder-new/solver.md`).
 
 The composer is a plain `❯` input with a blinking block cursor between
 edge-to-edge horizontal rules. In demo mode, the four rows below it show `claude-code`,

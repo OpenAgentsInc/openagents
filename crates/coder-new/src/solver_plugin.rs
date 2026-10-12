@@ -380,7 +380,7 @@ fn after(text: &str, label: &str) -> Option<String> {
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
-/// The in-process tool server a microclaude turn gets while the plugin is
+/// The in-process tool server a claude turn gets while the plugin is
 /// on: one `solver` tool whose progress reaches `events` as a delegation,
 /// stopped when `stop` is set.
 #[must_use]
@@ -439,7 +439,7 @@ pub fn mcp_server(
 /// The tool server's name: its tool is `mcp__coder__solver` to the engine.
 pub const MCP_SERVER: &str = "coder";
 
-/// Whether `name` is the solver tool as a microclaude turn's engine names it.
+/// Whether `name` is the solver tool as a claude turn's engine names it.
 #[must_use]
 pub fn is_mcp_tool(name: &str) -> bool {
     name == format!("mcp__{MCP_SERVER}__{TOOL}")

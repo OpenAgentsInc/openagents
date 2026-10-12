@@ -184,7 +184,7 @@ fn run() -> io::Result<()> {
     // The rail must name the right mode on the first frame, so the Claude
     // account login is read once here, before the terminal starts
     // (`--snapshot` renders without one, so it never asks).
-    let _ = coder_new::microclaude::available();
+    let _ = coder_new::claude::available();
     let openagents_root = model_access::store::openagents_dir();
     let update = state
         .clone()

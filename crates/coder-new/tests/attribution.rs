@@ -1,7 +1,6 @@
 use coder_new::{
-    App, Mode,
+    App, Mode, claude,
     live::{Entry, Update},
-    microclaude,
     models::DEFAULT_MODEL,
     theme, ui,
 };
@@ -35,8 +34,8 @@ fn transcript(buffer: &Buffer) -> Vec<String> {
         .collect()
 }
 
-/// The input box's top rule, which names the mode (`auto` or `flash`) or
-/// the model the person chose in /models.
+/// The input box's top rule, which names the mode (`coder`, `flash`, or
+/// `claude`) or the model the person chose in /models.
 fn top_rule(text: &[String]) -> Option<usize> {
     text.iter().position(|line| line.starts_with('┌'))
 }
@@ -140,7 +139,7 @@ fn reply_keeps_its_actual_model_without_showing_it_in_the_transcript() {
     assert!(!text.iter().any(|line| line.contains("openai/gpt-6-luna")));
     assert_eq!(
         label(&rows(&buffer)[top_rule(&rows(&buffer)).unwrap()]),
-        "auto"
+        "coder"
     );
     app.plugins.model = "anthropic/claude-fable-5.1".into();
     let (buffer, _) = render(&mut app, 110, 36);
@@ -163,14 +162,14 @@ fn composer_registration_follows_enablement_and_preserves_input_geometry() {
         let (buffer, cursor) = render(&mut app, width, height);
         let text = rows(&buffer);
         let top = top_rule(&text).unwrap();
-        assert_eq!(label(&text[top]), "auto");
+        assert_eq!(label(&text[top]), "coder");
         assert!(text[top].ends_with('┐'));
         assert!(text[top + 1].starts_with("│❯ ") && text[top + 1].ends_with('│'));
         assert!(text[top + 2].starts_with('└') && text[top + 2].ends_with('┘'));
         assert_eq!(cursor, (3, (top + 1) as u16));
-        let byte = text[top].find("auto").unwrap();
+        let byte = text[top].find("coder").unwrap();
         let x = UnicodeWidthStr::width(&text[top][..byte]) as u16;
-        // `auto` is blue; a chosen model would be gray, `flash` cyan.
+        // `coder` is blue; a chosen model would be gray, `flash` cyan.
         assert_eq!(buffer[(x, top as u16)].fg, theme::ACCENT_SKILL);
     }
     app.plugins.enabled = false;
@@ -185,17 +184,17 @@ fn composer_registration_follows_enablement_and_preserves_input_geometry() {
     let (buffer, cursor) = render(&mut app, 80, 24);
     let text = rows(&buffer);
     let top = top_rule(&text).unwrap();
-    assert_eq!(label(&text[top]), "auto");
+    assert_eq!(label(&text[top]), "coder");
     assert_eq!(cursor, (8, (top + 3) as u16));
     assert!(text[top + 4].starts_with('└'));
 }
 
-/// microclaude names itself on the same rule, and its working shows like a
+/// claude names itself on the same rule, and its working shows like a
 /// live reply's until it answers.
 #[test]
-fn microclaude_names_the_mode_and_shows_its_working() {
+fn claude_names_the_mode_and_shows_its_working() {
     let mut app = app();
-    app.set_mode(Mode::Microclaude);
+    app.set_mode(Mode::Claude);
     app.draft.text = "hello".into();
     app.draft.cursor = 5;
     app.submit_live();
@@ -209,7 +208,7 @@ fn microclaude_names_the_mode_and_shows_its_working() {
     // The mode's name stays on the rail; while the turn runs, the working
     // spinner rides its left end.
     assert!(
-        label(&text[top]).contains(microclaude::LABEL),
+        label(&text[top]).contains(claude::LABEL),
         "{}",
         label(&text[top])
     );

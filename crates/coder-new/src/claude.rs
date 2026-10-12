@@ -1,4 +1,4 @@
-//! Microclaude: the mode that runs turns on the Claude Code login this
+//! The `claude` mode: turns run on the Claude Code login this
 //! computer already holds, through the Claude Agent SDK
 //! (`crates/claude_agent_sdk`), on Haiku 5.5 alone.
 //!
@@ -34,10 +34,10 @@ use serde_json::Value;
 use crate::bundled_runtime::RuntimeEvent;
 
 /// The mode's name, in the rail and in the conversation.
-pub const LABEL: &str = "microclaude";
+pub const LABEL: &str = "claude";
 
 /// What Shift+Tab says on a computer with no Claude account login.
-pub const NEEDS_LOGIN: &str = "microclaude needs Claude Code signed in on this computer.";
+pub const NEEDS_LOGIN: &str = "claude needs Claude Code signed in on this computer.";
 
 /// The one model this mode runs: Haiku 5.5, and nothing else.
 pub const MODEL: &str = "claude-haiku-5-5";
@@ -45,12 +45,12 @@ pub const MODEL: &str = "claude-haiku-5-5";
 /// What the mode calls its model where a person reads it.
 pub const MODEL_LABEL: &str = "Haiku 5.5";
 
-/// The basic file tools a microclaude turn has, the same names Coder's own
+/// The basic file tools a claude turn has, the same names Coder's own
 /// file tools use.
 pub const TOOLS: [&str; 5] = ["Read", "Write", "Edit", "Glob", "Grep"];
 
 /// What a message with a picture says: the mode reads text only.
-pub const TEXT_ONLY: &str = "Microclaude reads text only, so your picture was left out.";
+pub const TEXT_ONLY: &str = "Claude reads text only, so your picture was left out.";
 
 /// What a stopped turn says.
 pub const STOPPED: &str = "The turn was stopped.";
@@ -264,7 +264,7 @@ struct Call {
     sdk_input: Value,
 }
 
-/// Runs one microclaude turn to its end, emitting the reply's text, the model
+/// Runs one claude turn to its end, emitting the reply's text, the model
 /// the engine reported, and each tool call as Coder's own shapes.
 ///
 /// # Errors
@@ -388,7 +388,7 @@ async fn run_inner(
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Streamed, String> {
     if !crate::approval::tools_allowed() {
-        return Err("This host refuses every tool, so microclaude cannot work here.".into());
+        return Err("This host refuses every tool, so claude cannot work here.".into());
     }
     let (options, allowed) = turn_options(cwd, tools, server);
     let root = cwd.to_owned();

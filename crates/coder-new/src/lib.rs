@@ -12,6 +12,8 @@ pub mod brainstorm;
 pub mod bundled_runtime;
 pub mod bundled_settings;
 mod checkout_guard;
+/// The mode that runs turns on this computer's Claude account login.
+pub mod claude;
 pub mod claude_plan;
 pub mod cloud;
 pub mod cloud_settings;
@@ -44,8 +46,6 @@ mod loops;
 pub mod media;
 pub mod memory;
 mod memory_sync;
-/// The mode that runs turns on this computer's Claude account login.
-pub mod microclaude;
 pub mod model_catalog;
 pub mod models;
 pub mod ops_tool;
@@ -110,11 +110,12 @@ pub enum Mode {
     Demo,
     Live,
     /// Turns run on the Claude Code login this computer holds
-    /// ([`microclaude`]). Offered only where this process found that
+    /// ([`claude`]). Offered only where this process found that
     /// login, because finding it starts `claude auth status`.
-    Microclaude,
+    Claude,
     /// Four constrained agents take an issue to a pull request
-    /// ([`solver`]). Offered where [`microclaude`] is.
+    /// ([`solver`]). Not a mode Shift+Tab offers; `coder solver N`
+    /// enters it to watch the run.
     Solver,
 }
 
@@ -721,7 +722,7 @@ impl App {
     pub fn apply_update(&mut self, update: live::Update) {
         // Only a mode that runs turns accepts their updates.
         if update.id() != self.request_id
-            || !matches!(self.mode, Mode::Live | Mode::Microclaude | Mode::Solver)
+            || !matches!(self.mode, Mode::Live | Mode::Claude | Mode::Solver)
         {
             return;
         }
@@ -1015,24 +1016,23 @@ impl App {
         }
     }
 
-    /// Shift+Tab, the one mode switch: `auto` (OpenAgents picks) →
+    /// Shift+Tab, the one mode switch: `coder` (OpenAgents picks) →
     /// `flash` (DeepSeek V4.1 Flash on the person's OpenRouter key) →
-    /// `microclaude` (this computer's Claude login) → `solver` (an issue to
-    /// a pull request) → back to `auto`. A mode this computer can't use is
-    /// skipped; when only `auto` is available, it says what the others need.
+    /// `claude` (this computer's Claude login) → back to `coder`. A mode
+    /// this computer can't use is skipped; when only `coder` is available,
+    /// it says what the others need.
     fn cycle_mode(&mut self) {
         if self.mode == Mode::Demo {
             return;
         }
         let flash = self.plugins.key_configured;
-        let claude = crate::microclaude::available();
+        let claude = crate::claude::available();
         let on_flash = self.mode == Mode::Live && self.plugins.model == models::FLASH;
-        // The modes after the current one, in order, ending at auto.
+        // The modes after the current one, in order, ending at coder.
         let next = match self.mode {
             Mode::Live if !on_flash && flash => "flash",
-            Mode::Live if claude => "microclaude",
-            Mode::Microclaude => "solver",
-            _ => "auto",
+            Mode::Live if claude => "claude",
+            _ => "coder",
         };
         match next {
             "flash" => {
@@ -1040,15 +1040,11 @@ impl App {
                     self.notice = None;
                 }
             }
-            "microclaude" => {
+            "claude" => {
                 if on_flash {
                     self.plugins.switch_model(models::AUTO, false);
                 }
-                self.set_mode(Mode::Microclaude);
-                self.notice = None;
-            }
-            "solver" => {
-                self.set_mode(Mode::Solver);
+                self.set_mode(Mode::Claude);
                 self.notice = None;
             }
             _ => {
@@ -1059,7 +1055,7 @@ impl App {
                     self.plugins.switch_model(models::AUTO, false);
                 }
                 self.notice = (!flash && !claude && self.mode == Mode::Live).then(|| {
-                    "flash needs an OpenRouter API key (F2); microclaude and solver need Claude Code signed in on this computer.".into()
+                    "flash needs an OpenRouter API key (F2); claude needs Claude Code signed in on this computer.".into()
                 });
             }
         }
@@ -1507,11 +1503,11 @@ impl App {
         }
     }
 
-    /// A microclaude turn: the person's message, then one Claude Agent SDK
+    /// A claude turn: the person's message, then one Claude Agent SDK
     /// session on Haiku 5.5 with the basic file tools
-    /// ([`crate::microclaude`]). The mode keeps one conversation with the
+    /// ([`crate::claude`]). The mode keeps one conversation with the
     /// person; only the engine behind each turn differs from live.
-    fn submit_microclaude(&mut self) {
+    fn submit_claude(&mut self) {
         if self.draft.text.trim().is_empty() && self.composer.images.is_empty() {
             return;
         }
@@ -1531,7 +1527,7 @@ impl App {
             if !text.trim().is_empty() {
                 text.push('\n');
             }
-            text.push_str(crate::microclaude::TEXT_ONLY);
+            text.push_str(crate::claude::TEXT_ONLY);
         }
         self.draft.cursor = 0;
         self.composer = Default::default();
@@ -1551,7 +1547,7 @@ impl App {
         self.request = Some(live::Request {
             id: self.request_id,
             key: model_access::ApiKey::new(""),
-            kind: live::Work::Microclaude {
+            kind: live::Work::Claude {
                 messages,
                 cwd,
                 solver: self.plugins.bundled.solver,
@@ -1628,9 +1624,9 @@ impl App {
     }
 
     pub fn submit_live(&mut self) {
-        // microclaude runs turns of its own, on the Claude Agent SDK.
-        if self.mode == Mode::Microclaude {
-            self.submit_microclaude();
+        // claude runs turns of its own, on the Claude Agent SDK.
+        if self.mode == Mode::Claude {
+            self.submit_claude();
             return;
         }
         if self.mode == Mode::Solver {
@@ -1890,7 +1886,7 @@ impl App {
             models::OPENROUTER_PLUGIN,
             &self.plugins.model,
             self.plugins.options.clone(),
-            matches!(self.mode, Mode::Live | Mode::Microclaude | Mode::Solver),
+            matches!(self.mode, Mode::Live | Mode::Claude | Mode::Solver),
         ));
     }
 
@@ -2058,7 +2054,7 @@ impl App {
             }
             return true;
         }
-        if matches!(self.mode, Mode::Live | Mode::Microclaude | Mode::Solver)
+        if matches!(self.mode, Mode::Live | Mode::Claude | Mode::Solver)
             && self.screen == Screen::Conversation
             && self.model_picker.is_none()
             && self.resume_picker.is_none()
@@ -2487,7 +2483,7 @@ impl App {
                 }
                 match key.code {
                     KeyCode::F(2) => self.open_plugins(),
-                    // Shift+Tab steps between Live and microclaude on a
+                    // Shift+Tab steps between coder and claude on a
                     // computer that has a Claude account login.
                     KeyCode::BackTab => self.cycle_mode(),
                     KeyCode::Up | KeyCode::Down => self.composer_arrow(key.code == KeyCode::Up),
@@ -2632,7 +2628,7 @@ impl App {
                             self.draft = Draft::default();
                             self.composer = Default::default();
                             self.composer_history.reset();
-                        } else if matches!(self.mode, Mode::Live | Mode::Microclaude | Mode::Solver)
+                        } else if matches!(self.mode, Mode::Live | Mode::Claude | Mode::Solver)
                             && (!self.draft.text.trim().is_empty()
                                 || !self.composer.images.is_empty())
                         {
@@ -2986,7 +2982,7 @@ mod select_all_tests {
 }
 
 #[cfg(test)]
-mod microclaude_tests {
+mod claude_tests {
     use super::*;
 
     /// Entering a mode swaps the composer's draft with that mode's, so the
@@ -3002,7 +2998,7 @@ mod microclaude_tests {
 
     #[test]
     fn the_mode_starts_a_haiku_5_5_session_on_the_file_tools() {
-        let mut app = typed(Mode::Microclaude, "hello");
+        let mut app = typed(Mode::Claude, "hello");
         app.submit_live();
         assert_eq!(app.live.entries, vec![live::Entry::User("hello".into())]);
         // The turn is running a request on the mode's model, and nothing
@@ -3010,14 +3006,14 @@ mod microclaude_tests {
         assert!(app.live.busy);
         assert!(app.draft.text.is_empty());
         assert!(app.notice.is_none());
-        let request = app.request.take().expect("a microclaude turn was queued");
+        let request = app.request.take().expect("a claude turn was queued");
         assert!(request.key.expose().is_empty());
         match request.kind {
-            live::Work::Microclaude { messages, .. } => {
+            live::Work::Claude { messages, .. } => {
                 assert_eq!(messages.len(), 1);
                 assert_eq!(messages[0].content, "hello");
             }
-            _ => panic!("a microclaude turn"),
+            _ => panic!("a claude turn"),
         }
     }
 
@@ -3027,7 +3023,7 @@ mod microclaude_tests {
     fn enter_starts_a_turn_and_its_reply_lands() {
         let mut app = App::default();
         app.set_mode(Mode::Live);
-        app.set_mode(Mode::Microclaude);
+        app.set_mode(Mode::Claude);
         for ch in "hello".chars() {
             app.handle(Event::Key(crossterm::event::KeyEvent::new(
                 KeyCode::Char(ch),
@@ -3048,7 +3044,7 @@ mod microclaude_tests {
             id: app.request_id,
             result: Ok(openrouter::Streamed {
                 text: "hi".into(),
-                model: microclaude::MODEL.into(),
+                model: claude::MODEL.into(),
                 ..openrouter::Streamed::default()
             }),
         });
@@ -3066,23 +3062,23 @@ mod microclaude_tests {
     /// A picture is left out with one note, and the turn is still asked.
     #[test]
     fn a_picture_is_left_out_and_the_turn_still_runs() {
-        let mut app = typed(Mode::Microclaude, "look");
+        let mut app = typed(Mode::Claude, "look");
         app.attach_image("embedded".into(), Some("image-id".into()));
         app.submit_live();
-        let request = app.request.take().expect("a microclaude turn was queued");
+        let request = app.request.take().expect("a claude turn was queued");
         match request.kind {
-            live::Work::Microclaude { messages, .. } => {
+            live::Work::Claude { messages, .. } => {
                 assert!(messages[0].content.contains("look"));
-                assert!(messages[0].content.contains(microclaude::TEXT_ONLY));
+                assert!(messages[0].content.contains(claude::TEXT_ONLY));
             }
-            _ => panic!("a microclaude turn"),
+            _ => panic!("a claude turn"),
         }
     }
 
     /// A turn in progress queues the next message rather than dropping it.
     #[test]
     fn a_message_while_busy_is_queued() {
-        let mut app = typed(Mode::Microclaude, "first");
+        let mut app = typed(Mode::Claude, "first");
         app.submit_live();
         let first = app.request.take().unwrap().id;
         app.draft.text = "second".into();

@@ -321,9 +321,9 @@ pub enum Work {
         messages: Vec<Message>,
         execution: ExecutionSettings,
     },
-    /// A microclaude turn: one Claude Agent SDK session on Haiku 5.5
-    /// ([`crate::microclaude`]) with the basic file tools, here.
-    Microclaude {
+    /// A claude turn: one Claude Agent SDK session on Haiku 5.5
+    /// ([`crate::claude`]) with the basic file tools, here.
+    Claude {
         messages: Vec<Message>,
         cwd: std::path::PathBuf,
         /// Whether the Solver plugin is on: the turn may then hand an
@@ -621,8 +621,8 @@ fn run_with_provider(
                 Work::Microcoder { messages, execution } => {
                     local_turn(id, messages, execution, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
                 }
-                Work::Microclaude { messages, cwd, solver } => {
-                    microclaude_turn(id, messages, cwd, solver, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
+                Work::Claude { messages, cwd, solver } => {
+                    claude_turn(id, messages, cwd, solver, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
                 }
                 Work::SolverIntake { messages, cwd, github } => {
                     let prompt = crate::solver::intake_task(&messages, &github);
@@ -631,7 +631,7 @@ fn run_with_provider(
                         RuntimeEvent::Model(model) => model_callback(&model),
                         event => event_callback(event),
                     };
-                    let result = crate::microclaude::run_with(
+                    let result = crate::claude::run_with(
                         &prompt, &cwd, &["Read", "Grep", "Glob"],
                         Some(crate::solver::intake_chat_server(&github)),
                         &cancel, &mut events,
@@ -830,10 +830,10 @@ async fn local_turn(
     Update::Finished { id, result }
 }
 
-/// One microclaude turn: the Claude Agent SDK session
-/// ([`crate::microclaude`]) on Haiku 5.5, drawn as it works. Its text, model,
+/// One claude turn: the Claude Agent SDK session
+/// ([`crate::claude`]) on Haiku 5.5, drawn as it works. Its text, model,
 /// and tool calls reach the chat through the same callbacks a live turn uses.
-async fn microclaude_turn(
+async fn claude_turn(
     id: u64,
     messages: Vec<Message>,
     cwd: std::path::PathBuf,
@@ -843,16 +843,16 @@ async fn microclaude_turn(
     model_callback: &mut (dyn FnMut(&str) + Send),
     event_callback: &mut (dyn FnMut(RuntimeEvent) + Send),
 ) -> Update {
-    let prompt = crate::microclaude::task_with(&messages, solver);
+    let prompt = crate::claude::task_with(&messages, solver);
     let mut events = |event: RuntimeEvent| match event {
         RuntimeEvent::Text(text) => text_callback(&text),
         RuntimeEvent::Model(model) => model_callback(&model),
         event => event_callback(event),
     };
     let result = if solver {
-        crate::microclaude::run_with_solver(&prompt, &cwd, cancel, &mut events).await
+        crate::claude::run_with_solver(&prompt, &cwd, cancel, &mut events).await
     } else {
-        crate::microclaude::run(&prompt, &cwd, cancel, &mut events).await
+        crate::claude::run(&prompt, &cwd, cancel, &mut events).await
     };
     Update::Finished { id, result }
 }

@@ -27,7 +27,7 @@ macro_rules! command_usage {
             "usage: openagents coder COMMAND [OPTIONS]
   status                              Provider, model, plugins, and working directory.
   chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID]
-       [--instructions TEXT | --instructions-file FILE] [--mode auto|microclaude]
+       [--instructions TEXT | --instructions-file FILE] [--mode auto|coder|claude]
        [--in-place]",
             $demo,
             "
@@ -539,19 +539,19 @@ fn status(app: &App, context: &Context) -> Value {
         "openrouter_connected":app.plugins.key_configured,"plugins":plugin_list(app),"agents":agent_list(app)})
 }
 
-/// The mode's name: `microclaude` runs turns here rather than through a
+/// The mode's name: `claude` runs turns here rather than through a
 /// model the plugin chose.
 fn mode_name(app: &App) -> &'static str {
-    if app.mode == crate::Mode::Microclaude {
-        crate::microclaude::LABEL
+    if app.mode == crate::Mode::Claude {
+        crate::claude::LABEL
     } else {
         "live"
     }
 }
 
 fn active_model(app: &App) -> String {
-    if app.mode == crate::Mode::Microclaude {
-        crate::microclaude::MODEL.into()
+    if app.mode == crate::Mode::Claude {
+        crate::claude::MODEL.into()
     } else if app.plugins.enabled
         && app.plugins.key_configured
         && models::pinned(&app.plugins.model)
@@ -966,15 +966,15 @@ pub(crate) fn chat(
     let mut args = args.to_vec();
     let session = take_option(&mut args, "--session")?.unwrap_or_else(new_id);
     let delegation = take_option(&mut args, "--delegation")?;
-    // microclaude: turns on this computer's Claude Code login, as Shift+Tab
+    // claude: turns on this computer's Claude Code login, as Shift+Tab
     // picks in the terminal.
     match take_option(&mut args, "--mode")?.as_deref() {
-        None | Some("auto") => {}
-        Some("microclaude") if crate::microclaude::available() => {
-            app.set_mode(Mode::Microclaude);
+        None | Some("auto" | "coder") => {}
+        Some("claude") if crate::claude::available() => {
+            app.set_mode(Mode::Claude);
         }
-        Some("microclaude") => return Err(Error::from(crate::microclaude::NEEDS_LOGIN)),
-        Some(_) => return Err(usage("--mode takes auto or microclaude.")),
+        Some("claude") => return Err(Error::from(crate::claude::NEEDS_LOGIN)),
+        Some(_) => return Err(usage("--mode takes auto, coder, or claude.")),
     }
     let prompt = take_option(&mut args, "-p")?.or(take_option(&mut args, "--prompt")?);
     let file = take_option(&mut args, "--prompt-file")?;

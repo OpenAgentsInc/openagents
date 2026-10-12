@@ -29,10 +29,10 @@ fn working_spinner_rides_the_inputs_top_left_rail() {
             .expect("the input's top rail");
         let spinner = coder_new::tools::spinner(app.animation_frame);
         // The spinner is the top-left rail's own label, still paired with
-        // `Working`, and `auto` keeps the right end of the same rule.
+        // `Working`, and `coder` keeps the right end of the same rule.
         let rail = label(&rows[top]);
         assert!(rail.starts_with(&format!("{spinner} Working")), "{rail:?}");
-        assert!(rail.ends_with("auto"), "{rail:?}");
+        assert!(rail.ends_with("coder"), "{rail:?}");
         // The transcript never repeats it, and no second spinner draws.
         let screen = rows.join("\n");
         assert_eq!(screen.matches(spinner).count(), 1, "{screen}");
@@ -49,6 +49,6 @@ fn an_idle_input_rail_carries_no_working_label() {
         .iter()
         .position(|line| line.starts_with('┌'))
         .expect("the input's top rail");
-    assert_eq!(label(&rows[top]), "auto");
+    assert_eq!(label(&rows[top]), "coder");
     assert!(!rows.join("\n").contains("Working"));
 }

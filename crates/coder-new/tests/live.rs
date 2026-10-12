@@ -863,7 +863,10 @@ fn working_spinner_rides_the_input_rail_and_the_input_reaches_the_bottom_row() {
             )),
             "{top_row:?}"
         );
-        assert!(label.ends_with(coder_new::models::AUTO), "{top_row:?}");
+        assert!(
+            label.ends_with(coder_new::models::AUTO_LABEL),
+            "{top_row:?}"
+        );
         // With nothing to say under the input, its rail (the folder) is
         // the screen's last row.
         let bottom: String = (0..width).map(|x| buffer[(x, 23)].symbol()).collect();

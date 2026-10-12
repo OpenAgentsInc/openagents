@@ -189,7 +189,7 @@ impl App {
 
     /// `/agent ENGINE TASK`.
     pub(crate) fn agent_command(&mut self, argument: &str) {
-        if !matches!(self.mode, Mode::Live | Mode::Microclaude) {
+        if !matches!(self.mode, Mode::Live | Mode::Claude) {
             self.notice = Some("Background agents run in live mode only.".into());
             return;
         }

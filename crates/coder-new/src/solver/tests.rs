@@ -239,7 +239,7 @@ async fn live_intaker_finds_and_names_an_issue() {
         }
     };
     let cancel = std::sync::atomic::AtomicBool::new(false);
-    let reply = crate::microclaude::run_with(
+    let reply = crate::claude::run_with(
         &prompt,
         std::path::Path::new("."),
         &["Read", "Grep", "Glob"],
