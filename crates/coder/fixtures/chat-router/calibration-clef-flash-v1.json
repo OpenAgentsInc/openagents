@@ -1,6 +1,6 @@
 {
   "schema": "openagents.chat-router.calibration.v1",
-  "set": "chat-router-v5@bcab1427d09d",
+  "set": "chat-router-v5@0fc444292c46",
   "bank": "chat-answers-v1@c2e5baa50550",
   "created": "2026-10-10",
   "fitted_on": "calibration",

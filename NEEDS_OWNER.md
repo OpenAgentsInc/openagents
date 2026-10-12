@@ -2185,3 +2185,18 @@ timer. Record its GPU cost per tier against the W11 budgets (#10783) on a
 real GPU: run `cargo run --release -p verse --example everglade_weather_capture`
 and read `pass_ms[4]` from the timing output. This box has only lavapipe,
 whose numbers say nothing about hardware.
+
+## Refit the Clef router maps and deploy the chat worker (#11329)
+
+The rubric now reads "push a README to OWNER/REPO" and "write a README,
+then commit it" as `work.dispatch`. Both Clef calibration maps
+(`crates/coder/fixtures/chat-router/calibration-clef-flash-v1.json` and
+`-staged-v1.json`) were restamped to the new question set, not refitted,
+because the Clef door on `coderos-4080` isn't reachable from this box. With
+a tunnel open (`ssh -f -N -L 18096:127.0.0.1:18096 coderos-4080`), run the
+published eval twice (`CODER_ROUTER_STAGED=off` and `on`) as described in
+the #11350 handoff comment and copy each `calibration-*.json` over its
+fixture. Production's judge is Clef on the VM worker, so a web deploy alone
+doesn't change it: build and release `coder-worker` per
+`docs/deployment/chat-worker.md`, then check that the two messages above
+show `data-oa-route="work.dispatch"` on openagents.com.
