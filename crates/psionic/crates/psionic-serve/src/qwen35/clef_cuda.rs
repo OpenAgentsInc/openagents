@@ -25,6 +25,9 @@
 
 use std::sync::Mutex;
 
+mod load_admission;
+mod memory_admission;
+
 use psionic_backend_cuda::clef_prefill::{ClefEvent, ClefOperand, ClefStream, ClefWeightFormat};
 use psionic_backend_cuda::{CudaBackend, CudaBuffer, CudaCommandWait, CudaSubmission};
 use rayon::prelude::*;
@@ -228,14 +231,28 @@ struct HeadStage {
     bias: CudaBuffer,
 }
 
-fn ensure_stage(state: &mut DeviceState, input: usize, output: usize, bias: usize) -> Result<(), String> {
+fn ensure_stage(
+    state: &mut DeviceState,
+    input: usize,
+    output: usize,
+    bias: usize,
+) -> Result<(), String> {
     let grow = state.head_stage.as_ref().is_none_or(|stage| {
         stage.input_capacity < input || stage.output_capacity < output || stage.bias_capacity < bias
     });
     if grow {
-        let input_capacity = input.next_power_of_two().max(1 << 16);
-        let output_capacity = output.next_power_of_two().max(1 << 16);
-        let bias_capacity = bias.next_power_of_two().max(1 << 12);
+        let input_capacity = memory_admission::capacity(input, 1 << 16)?;
+        let output_capacity = memory_admission::capacity(output, 1 << 16)?;
+        let bias_capacity = memory_admission::capacity(bias, 1 << 12)?;
+        admit_allocation(
+            &state.backend,
+            "head_arenas",
+            &[
+                memory_admission::bytes(&[input_capacity], 4)?,
+                memory_admission::bytes(&[output_capacity], 4)?,
+                memory_admission::bytes(&[bias_capacity], 4)?,
+            ],
+        )?;
         state.head_stage = Some(HeadStage {
             input: state.backend.f32_buffer(input_capacity).map_err(err)?,
             output: state.backend.f32_buffer(output_capacity).map_err(err)?,
@@ -273,6 +290,7 @@ pub struct ClefCudaTrunk {
     dims: Dims,
     compute_16f: bool,
     device_name: String,
+    memory_admission: serde_json::Value,
 }
 
 impl std::fmt::Debug for ClefCudaTrunk {
@@ -288,22 +306,47 @@ fn err(error: impl std::fmt::Display) -> String {
     error.to_string()
 }
 
+fn admit_allocation(
+    backend: &CudaBackend,
+    stage: &str,
+    byte_lengths: &[u64],
+) -> Result<(), String> {
+    let memory = backend
+        .device_memory_info()
+        .map_err(err)?
+        .ok_or("CUDA memory information is unavailable")?;
+    memory_admission::admit_allocation(
+        stage,
+        memory_admission::sum(byte_lengths)?,
+        memory.free_bytes,
+        memory.total_bytes,
+    )
+}
+
 /// The bytes of an f32 slice (native endianness, as the device reads it).
 fn f32_bytes(values: &[f32]) -> &[u8] {
     // SAFETY: f32 has no padding and any byte pattern is a valid u8; the
     // slice covers exactly the values' memory.
-    unsafe { std::slice::from_raw_parts(values.as_ptr().cast::<u8>(), std::mem::size_of_val(values)) }
+    unsafe {
+        std::slice::from_raw_parts(values.as_ptr().cast::<u8>(), std::mem::size_of_val(values))
+    }
 }
 
 fn upload_f32(backend: &mut CudaBackend, values: &[f32]) -> Result<CudaBuffer, String> {
     let mut buffer = backend.f32_buffer(values.len().max(1)).map_err(err)?;
     if !values.is_empty() {
-        buffer.write_bytes_at_offset(0, f32_bytes(values)).map_err(err)?;
+        buffer
+            .write_bytes_at_offset(0, f32_bytes(values))
+            .map_err(err)?;
     }
     Ok(buffer)
 }
 
-fn upload_matrix(backend: &mut CudaBackend, matrix: &HostMatrix, name: &str) -> Result<DeviceWeight, String> {
+fn upload_matrix(
+    backend: &mut CudaBackend,
+    matrix: &HostMatrix,
+    name: &str,
+) -> Result<DeviceWeight, String> {
     match &matrix.kind {
         HostMatrixKind::Dense(dense) => Ok(DeviceWeight {
             buffer: upload_f32(backend, &dense.values)?,
@@ -325,7 +368,9 @@ fn upload_matrix(backend: &mut CudaBackend, matrix: &HostMatrix, name: &str) -> 
             let bytes_len = format
                 .byte_len(elements)
                 .filter(|len| *len == quantized.rows * quantized.row_byte_len)
-                .ok_or_else(|| format!("clef cuda prefill: `{name}` has an unexpected {format:?} size"))?;
+                .ok_or_else(|| {
+                    format!("clef cuda prefill: `{name}` has an unexpected {format:?} size")
+                })?;
             let bytes = quantized.storage.read_range(0, bytes_len).map_err(err)?;
             Ok(DeviceWeight {
                 buffer: backend.byte_buffer(bytes).map_err(err)?,
@@ -337,10 +382,6 @@ fn upload_matrix(backend: &mut CudaBackend, matrix: &HostMatrix, name: &str) -> 
     }
 }
 
-fn weight_bytes(weight: &DeviceWeight) -> u64 {
-    weight.buffer.byte_len() as u64
-}
-
 impl ClefCudaTrunk {
     /// Uploads the trunk of a loaded CPU qwen35 model (the CPU copy keeps
     /// `token_embd` and `output`) and the head's device-side parameters.
@@ -349,11 +390,41 @@ impl ClefCudaTrunk {
         head: &ClefCudaHeadParams<'_>,
         compute_16f: bool,
     ) -> Result<Self, String> {
+        Self::load_with_limits(
+            cpu,
+            head,
+            compute_16f,
+            memory_admission::DEFAULT_TOKENS,
+            memory_admission::DEFAULT_CHUNK,
+        )
+    }
+
+    /// Checks model, workspace, and configured backbone request memory before
+    /// uploading any weights. This check does not reserve memory on the GPU.
+    pub fn load_with_limits(
+        cpu: &CpuGgufQwen35TextGenerationService,
+        head: &ClefCudaHeadParams<'_>,
+        compute_16f: bool,
+        max_tokens: usize,
+        chunk: usize,
+    ) -> Result<Self, String> {
         let mut backend = CudaBackend::new();
         let device_name = backend
             .selected_device()
             .map(|device| device.device_name.clone().unwrap_or_default())
             .ok_or_else(|| String::from("no CUDA device is available"))?;
+        let estimate = load_admission::estimate(cpu, head, max_tokens, chunk)?;
+        let memory = backend
+            .device_memory_info()
+            .map_err(err)?
+            .ok_or("CUDA memory information is unavailable")?;
+        estimate.admit(memory.free_bytes, memory.total_bytes)?;
+        let memory_admission = serde_json::json!({
+            "stage": "before_weight_upload", "estimate": estimate,
+            "required_bytes": estimate.required_bytes,
+            "free_bytes": memory.free_bytes, "total_bytes": memory.total_bytes,
+            "memory_reserved": false,
+        });
         let model = &cpu.model;
         let config = &model.descriptor.config;
         let metadata = &model.family_metadata;
@@ -376,7 +447,6 @@ impl ClefCudaTrunk {
             width: head.width,
             head_eps: head.norm_epsilon,
         };
-        let mut weight_total = 0u64;
         let mut largest = 0usize;
         for (index, layer) in model.layers.iter().enumerate() {
             let name = |part: &str| format!("blk.{index}.{part}");
@@ -398,8 +468,13 @@ impl ClefCudaTrunk {
                     dims.value_heads = hybrid.time_step_rank;
                     dims.state = hybrid.state_size;
                     dims.v_head_reordered = hybrid.v_head_reordered;
-                    if hybrid.ssm_conv1d.rows != qkv.rows || hybrid.ssm_conv1d.columns != hybrid.conv_kernel {
-                        return Err(format!("{}: conv1d shape does not match attn_qkv", name("ssm_conv1d")));
+                    if hybrid.ssm_conv1d.rows != qkv.rows
+                        || hybrid.ssm_conv1d.columns != hybrid.conv_kernel
+                    {
+                        return Err(format!(
+                            "{}: conv1d shape does not match attn_qkv",
+                            name("ssm_conv1d")
+                        ));
                     }
                     if hybrid.conv_kernel > 4 || !matches!(hybrid.state_size, 64 | 128 | 256) {
                         return Err(format!(
@@ -429,7 +504,10 @@ impl ClefCudaTrunk {
                     let out = upload_matrix(&mut backend, &attention.output, &name("attn_output"))?;
                     dims.kv_heads = attention.kv_width / dims.head_dim.max(1);
                     if query_gate.rows != dims.heads * dims.head_dim * 2 {
-                        return Err(format!("{}: expected an interleaved query/gate projection", name("attn_q")));
+                        return Err(format!(
+                            "{}: expected an interleaved query/gate projection",
+                            name("attn_q")
+                        ));
                     }
                     DeviceMixer::Attention {
                         query_norm: upload_f32(&mut backend, &attention.query_norm)?,
@@ -443,15 +521,27 @@ impl ClefCudaTrunk {
             };
             let mut layer_weights: Vec<&DeviceWeight> = vec![&gate, &up, &down];
             match &mixer {
-                DeviceMixer::Hybrid { qkv, z, alpha, beta, out, .. } => {
+                DeviceMixer::Hybrid {
+                    qkv,
+                    z,
+                    alpha,
+                    beta,
+                    out,
+                    ..
+                } => {
                     layer_weights.extend([qkv, z, alpha, beta, out]);
                 }
-                DeviceMixer::Attention { query_gate, key, value, out, .. } => {
+                DeviceMixer::Attention {
+                    query_gate,
+                    key,
+                    value,
+                    out,
+                    ..
+                } => {
                     layer_weights.extend([query_gate, key, value, out]);
                 }
             }
             for weight in &layer_weights {
-                weight_total += weight_bytes(weight);
                 // the f16 slots only serve weights the fused kernel does not take
                 let fused = knobs().fused == Fused::Always
                     && match weight.format {
@@ -474,10 +564,14 @@ impl ClefCudaTrunk {
             });
         }
         if dims.heads * dims.head_dim > 1024 * 64 || dims.head_dim > 1024 {
-            return Err(String::from("clef cuda prefill: attention head dim above 1024"));
+            return Err(String::from(
+                "clef cuda prefill: attention head dim above 1024",
+            ));
         }
         if head.memory_projection.len() != head.width * dims.hidden {
-            return Err(String::from("clef cuda prefill: W_mem does not match the hidden size"));
+            return Err(String::from(
+                "clef cuda prefill: W_mem does not match the hidden size",
+            ));
         }
         let weight_scratch = WeightPipeline {
             stream: ClefStream::new().map_err(err)?,
@@ -485,18 +579,22 @@ impl ClefCudaTrunk {
                 backend.f16_buffer(largest.max(1)).map_err(err)?,
                 backend.f16_buffer(largest.max(1)).map_err(err)?,
             ],
-            dequantized: [ClefEvent::new().map_err(err)?, ClefEvent::new().map_err(err)?],
-            consumed: [ClefEvent::new().map_err(err)?, ClefEvent::new().map_err(err)?],
+            dequantized: [
+                ClefEvent::new().map_err(err)?,
+                ClefEvent::new().map_err(err)?,
+            ],
+            consumed: [
+                ClefEvent::new().map_err(err)?,
+                ClefEvent::new().map_err(err)?,
+            ],
             next: std::cell::Cell::new(0),
         };
         let mut head_matrices = std::collections::HashMap::new();
-        let mut head_bytes = 0u64;
         for (values, rows, columns) in &head.linear_matrices {
             if values.len() != rows * columns {
                 return Err(String::from("clef cuda head: matrix shape mismatch"));
             }
             let buffer = upload_f32(&mut backend, values)?;
-            head_bytes += buffer.byte_len() as u64;
             head_matrices.insert(values.as_ptr() as usize, (buffer, *rows, *columns));
         }
         let state = DeviceState {
@@ -509,7 +607,7 @@ impl ClefCudaTrunk {
                 .iter()
                 .map(|(w, b)| Ok((upload_f32(&mut backend, w)?, upload_f32(&mut backend, b)?)))
                 .collect::<Result<_, String>>()?,
-            weight_bytes: weight_total + (largest as u64) * 4 + head_bytes,
+            weight_bytes: estimate.resident_weight_bytes + estimate.conversion_workspace_bytes,
             head_matrices,
             head_io: None,
             projected_attention: None,
@@ -526,6 +624,7 @@ impl ClefCudaTrunk {
             dims,
             compute_16f,
             device_name,
+            memory_admission,
         })
     }
 
@@ -535,7 +634,19 @@ impl ClefCudaTrunk {
         &self.device_name
     }
 
-    /// Bytes of resident trunk weights (plus the f16 weight scratch).
+    /// The load-time estimate and the device memory reading used to admit it.
+    #[must_use]
+    pub fn memory_admission(&self) -> &serde_json::Value {
+        &self.memory_admission
+    }
+
+    /// Distinguishes a capacity refusal from an unavailable device when auto
+    /// selection considers falling back to the CPU.
+    pub fn is_memory_refusal(error: &str) -> bool {
+        memory_admission::is_memory_refusal(error)
+    }
+
+    /// Bytes of resident trunk and head weights, norms, and f16 weight scratch.
     #[must_use]
     pub fn weight_device_bytes(&self) -> u64 {
         self.device
@@ -580,13 +691,27 @@ impl ClefCudaTrunk {
             .iter()
             .flat_map(|(start, end)| [*start as i32, *end as i32])
             .collect();
-        let mut span_buffer = state.backend.i32_buffer(span_values.len().max(2)).map_err(err)?;
+        admit_allocation(
+            &state.backend,
+            "schema_spans",
+            &[
+                memory_admission::bytes(&[span_values.len().max(2)], 4)?,
+                memory_admission::bytes(&[spans.len().max(1), dims.hidden], 4)?,
+            ],
+        )?;
+        let mut span_buffer = state
+            .backend
+            .i32_buffer(span_values.len().max(2))
+            .map_err(err)?;
         if !span_values.is_empty() {
             let mut padded = span_values.clone();
             padded.resize(span_values.len().max(2), 0);
             span_buffer.write_i32(&padded).map_err(err)?;
         }
-        let span_sums = state.backend.f32_buffer((spans.len() * dims.hidden).max(1)).map_err(err)?;
+        let span_sums = state
+            .backend
+            .f32_buffer((spans.len() * dims.hidden).max(1))
+            .map_err(err)?;
         {
             let mut submission = state.backend.begin_submission().map_err(err)?;
             submission.fill_buffer(&span_sums, 0).map_err(err)?;
@@ -625,14 +750,20 @@ impl ClefCudaTrunk {
             let n = chunk.min(length - first);
             let (embedded, table) = prepared.take().ok_or("chunk inputs")?;
             let scratch = state.scratch.as_mut().ok_or("scratch")?;
-            scratch.x.write_bytes_at_offset(0, f32_bytes(&embedded)).map_err(err)?;
-            scratch.cos_sin.write_bytes_at_offset(0, f32_bytes(&table)).map_err(err)?;
+            scratch
+                .x
+                .write_bytes_at_offset(0, f32_bytes(&embedded))
+                .map_err(err)?;
+            scratch
+                .cos_sin
+                .write_bytes_at_offset(0, f32_bytes(&table))
+                .map_err(err)?;
             timings.embed += chunk_began.elapsed().as_secs_f64();
             let next_first = first + n;
             let next_n = chunk.min(length.saturating_sub(next_first));
             let (device, next) = std::thread::scope(|scope| {
-                let next = (next_first < length)
-                    .then(|| scope.spawn(|| build_inputs(next_first, next_n)));
+                let next =
+                    (next_first < length).then(|| scope.spawn(|| build_inputs(next_first, next_n)));
                 let device = (|| -> Result<(), String> {
                     // without observers or the profile, the layer stack and the
                     // final step below share one submission and one wait
@@ -704,7 +835,14 @@ impl ClefCudaTrunk {
                             None => state.backend.begin_submission().map_err(err)?,
                         };
                         submission
-                            .clef_rms_norm_f32(&scratch.x, &state.output_norm, &scratch.final_rows, n, dims.hidden, dims.eps)
+                            .clef_rms_norm_f32(
+                                &scratch.x,
+                                &state.output_norm,
+                                &scratch.final_rows,
+                                n,
+                                dims.hidden,
+                                dims.eps,
+                            )
                             .map_err(err)?;
                         submission
                             .clef_layer_norm_f32(
@@ -729,11 +867,22 @@ impl ClefCudaTrunk {
                             )
                             .map_err(err)?;
                         submission
-                            .clef_span_sums(&scratch.norm_rows, &span_buffer, &span_sums, spans.len(), dims.hidden, first, n)
+                            .clef_span_sums(
+                                &scratch.norm_rows,
+                                &span_buffer,
+                                &span_sums,
+                                spans.len(),
+                                dims.hidden,
+                                first,
+                                n,
+                            )
                             .map_err(err)?;
                         submission.commit(CudaCommandWait::Completed).map_err(err)?;
                         if let Some(observer) = final_observer.as_mut() {
-                            let rows = scratch.final_rows.read_f32_at_offset(0, n * dims.hidden).map_err(err)?;
+                            let rows = scratch
+                                .final_rows
+                                .read_f32_at_offset(0, n * dims.hidden)
+                                .map_err(err)?;
                             observer(state.layers.len(), first, &rows);
                         }
                         if first + n == length {
@@ -765,7 +914,9 @@ impl ClefCudaTrunk {
         let sums = if spans.is_empty() {
             Vec::new()
         } else {
-            span_sums.read_f32_at_offset(0, spans.len() * dims.hidden).map_err(err)?
+            span_sums
+                .read_f32_at_offset(0, spans.len() * dims.hidden)
+                .map_err(err)?
         };
         let scratch_bytes = state.scratch.as_ref().map_or(0, |scratch| scratch.bytes);
         let request_device_bytes = request.bytes + scratch_bytes;
@@ -798,7 +949,11 @@ impl ClefCudaTrunk {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let state = &mut *guard;
-        let length = state.request.as_ref().ok_or("no prefill on the device")?.tokens;
+        let length = state
+            .request
+            .as_ref()
+            .ok_or("no prefill on the device")?
+            .tokens;
         // the view
         if let Some(layer) = evidence {
             let request = state.request.as_mut().ok_or("no prefill")?;
@@ -806,11 +961,23 @@ impl ClefCudaTrunk {
                 request.normalized_memory.resize_with(layer + 1, || None);
             }
             if request.normalized_memory[layer].is_none() {
-                let buffer = state.backend.f32_buffer(length * w).map_err(err)?;
                 let (nw, nb) = state.evidence_norms.get(layer).ok_or("no evidence layer")?;
+                admit_allocation(
+                    &state.backend,
+                    "normalized_memory",
+                    &[memory_admission::bytes(&[length, w], 4)?],
+                )?;
+                let buffer = state.backend.f32_buffer(length * w).map_err(err)?;
                 let mut submission = state.backend.begin_submission().map_err(err)?;
                 submission
-                    .clef_layer_norm_f32(&request.memory, Some((nw, nb)), &buffer, length, w, dims.head_eps)
+                    .clef_layer_norm_f32(
+                        &request.memory,
+                        Some((nw, nb)),
+                        &buffer,
+                        length,
+                        w,
+                        dims.head_eps,
+                    )
                     .map_err(err)?;
                 submission.commit(CudaCommandWait::Completed).map_err(err)?;
                 request.bytes += buffer.byte_len() as u64;
@@ -824,18 +991,38 @@ impl ClefCudaTrunk {
             .as_ref()
             .is_none_or(|(capacity, _, _)| *capacity < need);
         if grow {
-            let capacity = need.next_power_of_two().max(64);
+            let capacity = memory_admission::capacity(need, 64)?;
+            admit_allocation(
+                &state.backend,
+                "memory_attention_scores",
+                &[
+                    memory_admission::bytes(&[capacity, w], 4)?,
+                    memory_admission::bytes(&[capacity, length], 4)?,
+                ],
+            )?;
             let query_buffer = state.backend.f32_buffer(capacity * w).map_err(err)?;
             let score_buffer = state.backend.f32_buffer(capacity * length).map_err(err)?;
             state.attention_scratch = Some((capacity, query_buffer, score_buffer));
         }
-        let (_, query_buffer, score_buffer) = state.attention_scratch.as_mut().ok_or("attention scratch")?;
-        query_buffer.write_bytes_at_offset(0, f32_bytes(queries)).map_err(err)?;
+        let (_, query_buffer, score_buffer) = state
+            .attention_scratch
+            .as_mut()
+            .ok_or("attention scratch")?;
+        query_buffer
+            .write_bytes_at_offset(0, f32_bytes(queries))
+            .map_err(err)?;
         let request = state.request.as_ref().ok_or("no prefill")?;
         let memory = match evidence {
-            Some(layer) => request.normalized_memory[layer].as_ref().ok_or("normalized memory")?,
+            Some(layer) => request.normalized_memory[layer]
+                .as_ref()
+                .ok_or("normalized memory")?,
             None => &request.memory,
         };
+        admit_allocation(
+            &state.backend,
+            "memory_attention_output",
+            &[memory_admission::bytes(&[rows, w], 4)?],
+        )?;
         let mixed = state.backend.f32_buffer(rows * w).map_err(err)?;
         let mut submission = state.backend.begin_submission().map_err(err)?;
         submission
@@ -915,50 +1102,95 @@ impl ClefCudaTrunk {
         if !state.head_matrices.contains_key(&key) || !state.head_matrices.contains_key(&value) {
             return Ok(None);
         }
-        let length = state.request.as_ref().ok_or("no prefill on the device")?.tokens;
+        let length = state
+            .request
+            .as_ref()
+            .ok_or("no prefill on the device")?
+            .tokens;
         if let Some(layer) = evidence {
             let request = state.request.as_mut().ok_or("no prefill")?;
             if request.normalized_memory.len() <= layer {
                 request.normalized_memory.resize_with(layer + 1, || None);
             }
             if request.normalized_memory[layer].is_none() {
-                let buffer = state.backend.f32_buffer(length * w).map_err(err)?;
                 let (nw, nb) = state.evidence_norms.get(layer).ok_or("no evidence layer")?;
+                admit_allocation(
+                    &state.backend,
+                    "normalized_memory",
+                    &[memory_admission::bytes(&[length, w], 4)?],
+                )?;
+                let buffer = state.backend.f32_buffer(length * w).map_err(err)?;
                 let mut submission = state.backend.begin_submission().map_err(err)?;
                 submission
-                    .clef_layer_norm_f32(&request.memory, Some((nw, nb)), &buffer, length, w, dims.head_eps)
+                    .clef_layer_norm_f32(
+                        &request.memory,
+                        Some((nw, nb)),
+                        &buffer,
+                        length,
+                        w,
+                        dims.head_eps,
+                    )
                     .map_err(err)?;
                 submission.commit(CudaCommandWait::Completed).map_err(err)?;
                 request.bytes += buffer.byte_len() as u64;
                 request.normalized_memory[layer] = Some(buffer);
             }
         }
-        let side_rows = rows * heads;
+        let side_rows = rows
+            .checked_mul(heads)
+            .ok_or("CUDA memory estimate overflow")?;
         let grow = state
             .projected_attention
             .as_ref()
             .is_none_or(|scratch| scratch.rows < side_rows || scratch.length < length);
         if grow {
-            let capacity = side_rows.next_power_of_two().max(64);
-            let query_capacity = rows.next_power_of_two().max(16);
+            let capacity = memory_admission::capacity(side_rows, 64)?;
+            let query_capacity = memory_admission::capacity(rows, 16)?;
+            admit_allocation(
+                &state.backend,
+                "projected_attention_scores",
+                &[memory_admission::projected_attention_bytes(
+                    rows, heads, w, length,
+                )?],
+            )?;
             state.projected_attention = Some(ProjectedAttention {
                 rows: capacity,
                 length,
-                query: state.backend.f32_buffer(query_capacity.max(capacity / heads) * w).map_err(err)?,
+                query: state
+                    .backend
+                    .f32_buffer(query_capacity.max(capacity / heads) * w)
+                    .map_err(err)?,
                 side: state.backend.f32_buffer(capacity * w).map_err(err)?,
                 scores: state.backend.f32_buffer(capacity * length).map_err(err)?,
                 mixed: state.backend.f32_buffer(capacity * w).map_err(err)?,
-                context: state.backend.f32_buffer(query_capacity.max(capacity / heads) * w).map_err(err)?,
+                context: state
+                    .backend
+                    .f32_buffer(query_capacity.max(capacity / heads) * w)
+                    .map_err(err)?,
                 bias: state.backend.f32_buffer(w).map_err(err)?,
             });
         }
-        let scratch = state.projected_attention.as_mut().ok_or("projected attention scratch")?;
-        scratch.query.write_bytes_at_offset(0, f32_bytes(projected)).map_err(err)?;
-        scratch.bias.write_bytes_at_offset(0, f32_bytes(value_bias)).map_err(err)?;
-        let scratch = state.projected_attention.as_ref().ok_or("projected attention scratch")?;
+        let scratch = state
+            .projected_attention
+            .as_mut()
+            .ok_or("projected attention scratch")?;
+        scratch
+            .query
+            .write_bytes_at_offset(0, f32_bytes(projected))
+            .map_err(err)?;
+        scratch
+            .bias
+            .write_bytes_at_offset(0, f32_bytes(value_bias))
+            .map_err(err)?;
+        let scratch = state
+            .projected_attention
+            .as_ref()
+            .ok_or("projected attention scratch")?;
         let request = state.request.as_ref().ok_or("no prefill")?;
         let memory = match evidence {
-            Some(layer) => request.normalized_memory[layer].as_ref().ok_or("normalized memory")?,
+            Some(layer) => request.normalized_memory[layer]
+                .as_ref()
+                .ok_or("normalized memory")?,
             None => &request.memory,
         };
         let (wk, _, _) = state.head_matrices.get(&key).ok_or("W_k")?;
@@ -1006,16 +1238,31 @@ impl ClefCudaTrunk {
             )
             .map_err(err)?;
         submission
-            .clef_head_context(&scratch.mixed, wv, &scratch.bias, &scratch.context, rows, heads, w)
+            .clef_head_context(
+                &scratch.mixed,
+                wv,
+                &scratch.bias,
+                &scratch.context,
+                rows,
+                heads,
+                w,
+            )
             .map_err(err)?;
         submission.commit(CudaCommandWait::Completed).map_err(err)?;
-        scratch.context.read_f32_at_offset(0, rows * w).map(Some).map_err(err)
+        scratch
+            .context
+            .read_f32_at_offset(0, rows * w)
+            .map(Some)
+            .map_err(err)
     }
 
     /// Several independent head products `X W^T (+ b)` in one submission
     /// and one wait: `(matrix values, input, rows of input, bias)`. `None`
     /// when a matrix is not resident.
-    pub fn head_linear_batch(&self, jobs: &[(&[f32], &[f32], usize, Option<&[f32]>)]) -> Result<Option<Vec<Vec<f32>>>, String> {
+    pub fn head_linear_batch(
+        &self,
+        jobs: &[(&[f32], &[f32], usize, Option<&[f32]>)],
+    ) -> Result<Option<Vec<Vec<f32>>>, String> {
         let mut guard = self
             .device
             .lock()
@@ -1024,13 +1271,21 @@ impl ClefCudaTrunk {
         let mut plan = Vec::with_capacity(jobs.len());
         let (mut input_total, mut output_total, mut bias_total) = (0usize, 0usize, 0usize);
         for (values, input, n, bias) in jobs {
-            let Some((_, rows, columns)) = state.head_matrices.get(&(values.as_ptr() as usize)) else {
+            let Some((_, rows, columns)) = state.head_matrices.get(&(values.as_ptr() as usize))
+            else {
                 return Ok(None);
             };
             if input.len() != n * columns {
                 return Err(String::from("clef cuda head: input width mismatch"));
             }
-            plan.push((*rows, *columns, *n, input_total, output_total, bias.map(|_| bias_total)));
+            plan.push((
+                *rows,
+                *columns,
+                *n,
+                input_total,
+                output_total,
+                bias.map(|_| bias_total),
+            ));
             input_total += n * columns;
             output_total += n * rows;
             if bias.is_some() {
@@ -1040,15 +1295,27 @@ impl ClefCudaTrunk {
         ensure_stage(state, input_total, output_total, bias_total)?;
         let stage = state.head_stage.as_mut().ok_or("head stage")?;
         for ((_, input, _, bias), (_, _, _, input_at, _, bias_at)) in jobs.iter().zip(&plan) {
-            stage.input.write_bytes_at_offset(input_at * 4, f32_bytes(input)).map_err(err)?;
+            stage
+                .input
+                .write_bytes_at_offset(input_at * 4, f32_bytes(input))
+                .map_err(err)?;
             if let (Some(bias), Some(at)) = (bias, bias_at) {
-                stage.bias.write_bytes_at_offset(at * 4, f32_bytes(bias)).map_err(err)?;
+                stage
+                    .bias
+                    .write_bytes_at_offset(at * 4, f32_bytes(bias))
+                    .map_err(err)?;
             }
         }
         let stage = state.head_stage.as_ref().ok_or("head stage")?;
         let mut submission = state.backend.begin_submission().map_err(err)?;
-        for ((values, ..), (rows, columns, n, input_at, output_at, bias_at)) in jobs.iter().zip(&plan) {
-            let matrix = &state.head_matrices.get(&(values.as_ptr() as usize)).ok_or("head matrix")?.0;
+        for ((values, ..), (rows, columns, n, input_at, output_at, bias_at)) in
+            jobs.iter().zip(&plan)
+        {
+            let matrix = &state
+                .head_matrices
+                .get(&(values.as_ptr() as usize))
+                .ok_or("head matrix")?
+                .0;
             submission
                 .clef_linear(
                     ClefOperand::f32(&stage.input, *input_at),
@@ -1063,13 +1330,26 @@ impl ClefCudaTrunk {
                 .map_err(err)?;
             if let Some(at) = bias_at {
                 submission
-                    .clef_bias_act(&stage.output, *output_at, &stage.bias, *at, *n, *rows, false)
+                    .clef_bias_act(
+                        &stage.output,
+                        *output_at,
+                        &stage.bias,
+                        *at,
+                        *n,
+                        *rows,
+                        false,
+                    )
                     .map_err(err)?;
             }
         }
         submission.commit(CudaCommandWait::Completed).map_err(err)?;
         plan.iter()
-            .map(|(rows, _, n, _, output_at, _)| stage.output.read_f32_at_offset(*output_at, n * rows).map_err(err))
+            .map(|(rows, _, n, _, output_at, _)| {
+                stage
+                    .output
+                    .read_f32_at_offset(*output_at, n * rows)
+                    .map_err(err)
+            })
             .collect::<Result<Vec<_>, _>>()
             .map(Some)
     }
@@ -1092,22 +1372,50 @@ impl ClefCudaTrunk {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let state = &mut *guard;
         let (Some((_, up_rows, up_cols)), Some((_, down_rows, down_cols))) = (
-            state.head_matrices.get(&(up.as_ptr() as usize)).map(|(_, r, c)| ((), *r, *c)),
-            state.head_matrices.get(&(down.as_ptr() as usize)).map(|(_, r, c)| ((), *r, *c)),
+            state
+                .head_matrices
+                .get(&(up.as_ptr() as usize))
+                .map(|(_, r, c)| ((), *r, *c)),
+            state
+                .head_matrices
+                .get(&(down.as_ptr() as usize))
+                .map(|(_, r, c)| ((), *r, *c)),
         ) else {
             return Ok(None);
         };
         if input.len() != n * up_cols || down_cols != up_rows {
             return Err(String::from("clef cuda head: feed-forward shape mismatch"));
         }
-        ensure_stage(state, n * up_cols, n * (up_rows + down_rows), up_rows + down_rows)?;
+        ensure_stage(
+            state,
+            n * up_cols,
+            n * (up_rows + down_rows),
+            up_rows + down_rows,
+        )?;
         let stage = state.head_stage.as_mut().ok_or("head stage")?;
-        stage.input.write_bytes_at_offset(0, f32_bytes(input)).map_err(err)?;
-        stage.bias.write_bytes_at_offset(0, f32_bytes(up_bias)).map_err(err)?;
-        stage.bias.write_bytes_at_offset(up_rows * 4, f32_bytes(down_bias)).map_err(err)?;
+        stage
+            .input
+            .write_bytes_at_offset(0, f32_bytes(input))
+            .map_err(err)?;
+        stage
+            .bias
+            .write_bytes_at_offset(0, f32_bytes(up_bias))
+            .map_err(err)?;
+        stage
+            .bias
+            .write_bytes_at_offset(up_rows * 4, f32_bytes(down_bias))
+            .map_err(err)?;
         let stage = state.head_stage.as_ref().ok_or("head stage")?;
-        let up_m = &state.head_matrices.get(&(up.as_ptr() as usize)).ok_or("up")?.0;
-        let down_m = &state.head_matrices.get(&(down.as_ptr() as usize)).ok_or("down")?.0;
+        let up_m = &state
+            .head_matrices
+            .get(&(up.as_ptr() as usize))
+            .ok_or("up")?
+            .0;
+        let down_m = &state
+            .head_matrices
+            .get(&(down.as_ptr() as usize))
+            .ok_or("down")?
+            .0;
         let hidden_at = 0;
         let out_at = n * up_rows;
         let mut submission = state.backend.begin_submission().map_err(err)?;
@@ -1139,10 +1447,22 @@ impl ClefCudaTrunk {
             )
             .map_err(err)?;
         submission
-            .clef_bias_act(&stage.output, out_at, &stage.bias, up_rows, n, down_rows, false)
+            .clef_bias_act(
+                &stage.output,
+                out_at,
+                &stage.bias,
+                up_rows,
+                n,
+                down_rows,
+                false,
+            )
             .map_err(err)?;
         submission.commit(CudaCommandWait::Completed).map_err(err)?;
-        stage.output.read_f32_at_offset(out_at, n * down_rows).map(Some).map_err(err)
+        stage
+            .output
+            .read_f32_at_offset(out_at, n * down_rows)
+            .map(Some)
+            .map_err(err)
     }
 
     /// A whole memory-attention block in one submission: the query
@@ -1171,65 +1491,129 @@ impl ClefCudaTrunk {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let state = &mut *guard;
         for values in [q.0, key_matrix, value_matrix, out.0] {
-            if !state.head_matrices.contains_key(&(values.as_ptr() as usize)) {
+            if !state
+                .head_matrices
+                .contains_key(&(values.as_ptr() as usize))
+            {
                 return Ok(None);
             }
         }
-        if queries.len() != rows * w || heads == 0 || w % heads != 0 || q.1.len() != w || out.1.len() != w {
+        if queries.len() != rows * w
+            || heads == 0
+            || w % heads != 0
+            || q.1.len() != w
+            || out.1.len() != w
+        {
             return Err(String::from("memory attention block: shape mismatch"));
         }
-        let length = state.request.as_ref().ok_or("no prefill on the device")?.tokens;
+        let length = state
+            .request
+            .as_ref()
+            .ok_or("no prefill on the device")?
+            .tokens;
         if let Some(layer) = evidence {
             let request = state.request.as_mut().ok_or("no prefill")?;
             if request.normalized_memory.len() <= layer {
                 request.normalized_memory.resize_with(layer + 1, || None);
             }
             if request.normalized_memory[layer].is_none() {
-                let buffer = state.backend.f32_buffer(length * w).map_err(err)?;
                 let (nw, nb) = state.evidence_norms.get(layer).ok_or("no evidence layer")?;
+                admit_allocation(
+                    &state.backend,
+                    "normalized_memory",
+                    &[memory_admission::bytes(&[length, w], 4)?],
+                )?;
+                let buffer = state.backend.f32_buffer(length * w).map_err(err)?;
                 let mut submission = state.backend.begin_submission().map_err(err)?;
                 submission
-                    .clef_layer_norm_f32(&request.memory, Some((nw, nb)), &buffer, length, w, dims.head_eps)
+                    .clef_layer_norm_f32(
+                        &request.memory,
+                        Some((nw, nb)),
+                        &buffer,
+                        length,
+                        w,
+                        dims.head_eps,
+                    )
                     .map_err(err)?;
                 submission.commit(CudaCommandWait::Completed).map_err(err)?;
                 request.bytes += buffer.byte_len() as u64;
                 request.normalized_memory[layer] = Some(buffer);
             }
         }
-        let side_rows = rows * heads;
+        let side_rows = rows
+            .checked_mul(heads)
+            .ok_or("CUDA memory estimate overflow")?;
         let grow = state
             .projected_attention
             .as_ref()
             .is_none_or(|scratch| scratch.rows < side_rows || scratch.length < length);
         if grow {
-            let capacity = side_rows.next_power_of_two().max(64);
-            let query_capacity = rows.next_power_of_two().max(16);
+            let capacity = memory_admission::capacity(side_rows, 64)?;
+            let query_capacity = memory_admission::capacity(rows, 16)?;
+            admit_allocation(
+                &state.backend,
+                "projected_attention_scores",
+                &[memory_admission::projected_attention_bytes(
+                    rows, heads, w, length,
+                )?],
+            )?;
             state.projected_attention = Some(ProjectedAttention {
                 rows: capacity,
                 length,
-                query: state.backend.f32_buffer(query_capacity.max(capacity / heads) * w).map_err(err)?,
+                query: state
+                    .backend
+                    .f32_buffer(query_capacity.max(capacity / heads) * w)
+                    .map_err(err)?,
                 side: state.backend.f32_buffer(capacity * w).map_err(err)?,
                 scores: state.backend.f32_buffer(capacity * length).map_err(err)?,
                 mixed: state.backend.f32_buffer(capacity * w).map_err(err)?,
-                context: state.backend.f32_buffer(query_capacity.max(capacity / heads) * w).map_err(err)?,
+                context: state
+                    .backend
+                    .f32_buffer(query_capacity.max(capacity / heads) * w)
+                    .map_err(err)?,
                 bias: state.backend.f32_buffer(w).map_err(err)?,
             });
         }
         ensure_stage(state, rows * w, rows * w, 2 * w)?;
         let stage = state.head_stage.as_mut().ok_or("head stage")?;
-        stage.input.write_bytes_at_offset(0, f32_bytes(queries)).map_err(err)?;
-        stage.bias.write_bytes_at_offset(0, f32_bytes(q.1)).map_err(err)?;
-        stage.bias.write_bytes_at_offset(w * 4, f32_bytes(out.1)).map_err(err)?;
-        let scratch = state.projected_attention.as_mut().ok_or("projected attention scratch")?;
-        scratch.bias.write_bytes_at_offset(0, f32_bytes(value_bias)).map_err(err)?;
+        stage
+            .input
+            .write_bytes_at_offset(0, f32_bytes(queries))
+            .map_err(err)?;
+        stage
+            .bias
+            .write_bytes_at_offset(0, f32_bytes(q.1))
+            .map_err(err)?;
+        stage
+            .bias
+            .write_bytes_at_offset(w * 4, f32_bytes(out.1))
+            .map_err(err)?;
+        let scratch = state
+            .projected_attention
+            .as_mut()
+            .ok_or("projected attention scratch")?;
+        scratch
+            .bias
+            .write_bytes_at_offset(0, f32_bytes(value_bias))
+            .map_err(err)?;
         let stage = state.head_stage.as_ref().ok_or("head stage")?;
-        let scratch = state.projected_attention.as_ref().ok_or("projected attention scratch")?;
+        let scratch = state
+            .projected_attention
+            .as_ref()
+            .ok_or("projected attention scratch")?;
         let request = state.request.as_ref().ok_or("no prefill")?;
         let memory = match evidence {
-            Some(layer) => request.normalized_memory[layer].as_ref().ok_or("normalized memory")?,
+            Some(layer) => request.normalized_memory[layer]
+                .as_ref()
+                .ok_or("normalized memory")?,
             None => &request.memory,
         };
-        let matrix = |values: &[f32]| state.head_matrices.get(&(values.as_ptr() as usize)).map(|entry| &entry.0);
+        let matrix = |values: &[f32]| {
+            state
+                .head_matrices
+                .get(&(values.as_ptr() as usize))
+                .map(|entry| &entry.0)
+        };
         let (qm, wk, wv, om) = (
             matrix(q.0).ok_or("q")?,
             matrix(key_matrix).ok_or("W_k")?,
@@ -1293,7 +1677,15 @@ impl ClefCudaTrunk {
             )
             .map_err(err)?;
         submission
-            .clef_head_context(&scratch.mixed, wv, &scratch.bias, &scratch.context, rows, heads, w)
+            .clef_head_context(
+                &scratch.mixed,
+                wv,
+                &scratch.bias,
+                &scratch.context,
+                rows,
+                heads,
+                w,
+            )
             .map_err(err)?;
         submission
             .clef_linear(
@@ -1311,19 +1703,28 @@ impl ClefCudaTrunk {
             .clef_bias_act(&stage.output, 0, &stage.bias, w, rows, w, false)
             .map_err(err)?;
         submission.commit(CudaCommandWait::Completed).map_err(err)?;
-        stage.output.read_f32_at_offset(0, rows * w).map(Some).map_err(err)
+        stage
+            .output
+            .read_f32_at_offset(0, rows * w)
+            .map(Some)
+            .map_err(err)
     }
 
     /// `X W^T` for `n` rows of `X` against a head matrix uploaded at load
     /// (named by the address of its host values), in f32. `None` when the
     /// matrix is not resident (the caller multiplies on the CPU).
-    pub fn head_linear(&self, values: &[f32], input: &[f32], n: usize) -> Result<Option<Vec<f32>>, String> {
+    pub fn head_linear(
+        &self,
+        values: &[f32],
+        input: &[f32],
+        n: usize,
+    ) -> Result<Option<Vec<f32>>, String> {
         let mut guard = self
             .device
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let state = &mut *guard;
-        let Some((matrix, rows, columns)) = state.head_matrices.get(&(values.as_ptr() as usize)) else {
+        let Some((_, rows, columns)) = state.head_matrices.get(&(values.as_ptr() as usize)) else {
             return Ok(None);
         };
         let (rows, columns) = (*rows, *columns);
@@ -1335,15 +1736,36 @@ impl ClefCudaTrunk {
             .as_ref()
             .is_none_or(|(cap_in, _, cap_out, _)| *cap_in < n * columns || *cap_out < n * rows);
         if grow {
-            let cap_in = (n * columns).next_power_of_two().max(1 << 16);
-            let cap_out = (n * rows).next_power_of_two().max(1 << 16);
+            let cap_in = memory_admission::capacity(
+                n.checked_mul(columns)
+                    .ok_or("CUDA memory estimate overflow")?,
+                1 << 16,
+            )?;
+            let cap_out = memory_admission::capacity(
+                n.checked_mul(rows).ok_or("CUDA memory estimate overflow")?,
+                1 << 16,
+            )?;
+            admit_allocation(
+                &state.backend,
+                "head_linear",
+                &[
+                    memory_admission::bytes(&[cap_in], 4)?,
+                    memory_admission::bytes(&[cap_out], 4)?,
+                ],
+            )?;
             let input_buffer = state.backend.f32_buffer(cap_in).map_err(err)?;
             let output_buffer = state.backend.f32_buffer(cap_out).map_err(err)?;
             state.head_io = Some((cap_in, input_buffer, cap_out, output_buffer));
         }
         let (_, input_buffer, _, output_buffer) = state.head_io.as_mut().ok_or("head io")?;
-        input_buffer.write_bytes_at_offset(0, f32_bytes(input)).map_err(err)?;
-        let matrix = &state.head_matrices.get(&(values.as_ptr() as usize)).ok_or("head matrix")?.0;
+        input_buffer
+            .write_bytes_at_offset(0, f32_bytes(input))
+            .map_err(err)?;
+        let matrix = &state
+            .head_matrices
+            .get(&(values.as_ptr() as usize))
+            .ok_or("head matrix")?
+            .0;
         let mut submission = state.backend.begin_submission().map_err(err)?;
         submission
             .clef_linear(
@@ -1358,19 +1780,32 @@ impl ClefCudaTrunk {
             )
             .map_err(err)?;
         submission.commit(CudaCommandWait::Completed).map_err(err)?;
-        output_buffer.read_f32_at_offset(0, n * rows).map(Some).map_err(err)
+        output_buffer
+            .read_f32_at_offset(0, n * rows)
+            .map(Some)
+            .map_err(err)
     }
 }
 
 fn ensure_scratch(state: &mut DeviceState, dims: Dims, chunk: usize) -> Result<(), String> {
-    if state.scratch.as_ref().is_some_and(|scratch| scratch.capacity >= chunk) {
+    if state
+        .scratch
+        .as_ref()
+        .is_some_and(|scratch| scratch.capacity >= chunk)
+    {
         return Ok(());
     }
     state.scratch = None;
     let backend = &mut state.backend;
     let c = chunk;
-    let wide = dims.ffn.max(dims.conv_channels).max(dims.heads * dims.head_dim * 2);
-    let mid = dims.hidden.max(dims.value_heads * dims.state).max(dims.heads * dims.head_dim);
+    let wide = dims
+        .ffn
+        .max(dims.conv_channels)
+        .max(dims.heads * dims.head_dim * 2);
+    let mid = dims
+        .hidden
+        .max(dims.value_heads * dims.state)
+        .max(dims.heads * dims.head_dim);
     let small = dims.value_heads.max(dims.kv_heads * dims.head_dim).max(1);
     let mut bytes = 0u64;
     let mut f32b = |backend: &mut CudaBackend, len: usize| -> Result<CudaBuffer, String> {
@@ -1395,7 +1830,9 @@ fn ensure_scratch(state: &mut DeviceState, dims: Dims, chunk: usize) -> Result<(
     let final_rows = f32b(backend, c * dims.hidden)?;
     let norm_rows = f32b(backend, c * dims.hidden)?;
     let act16 = backend.f16_buffer(c * wide.max(mid)).map_err(err)?;
-    let query16 = backend.f16_buffer(c * (dims.heads * dims.head_dim).max(1)).map_err(err)?;
+    let query16 = backend
+        .f16_buffer(c * (dims.heads * dims.head_dim).max(1))
+        .map_err(err)?;
     let out16 = backend.f16_buffer(c * wide.max(mid)).map_err(err)?;
     bytes += act16.byte_len() as u64 + query16.byte_len() as u64 + out16.byte_len() as u64;
     state.scratch = Some(Scratch {
@@ -1438,8 +1875,14 @@ fn new_request(
     // (head dim 256, four query heads per KV head) needs none
     let flash = knobs().flash && dims.head_dim == 256 && dims.heads == dims.kv_heads * 4;
     let score_capacity = if flash { 0 } else { widest * heads_at_once };
-    let scores = state.backend.f32_buffer(score_capacity.max(1)).map_err(err)?;
-    let probs = state.backend.f16_buffer(score_capacity.max(1)).map_err(err)?;
+    let scores = state
+        .backend
+        .f32_buffer(score_capacity.max(1))
+        .map_err(err)?;
+    let probs = state
+        .backend
+        .f16_buffer(score_capacity.max(1))
+        .map_err(err)?;
     let mut request = Request {
         tokens: length,
         conv: (0..layers).map(|_| None).collect(),
@@ -1507,7 +1950,17 @@ fn linear(
         // promoted to f32, or f32 tensor accumulation in strict mode
         let segment = if compute_16f { knob.segment } else { 0 };
         if submission
-            .clef_fused_linear(x16, &weight.buffer, weight.format, out, n, weight.rows, weight.columns, segment, accumulate)
+            .clef_fused_linear(
+                x16,
+                &weight.buffer,
+                weight.format,
+                out,
+                n,
+                weight.rows,
+                weight.columns,
+                segment,
+                accumulate,
+            )
             .map_err(err)?
         {
             return Ok(());
@@ -1519,19 +1972,44 @@ fn linear(
     if !knobs().skip_dequant {
         // dequantize on the side stream once the GEMM that last read this
         // slot is done; the GEMM below waits for the dequantization
-        pipeline.stream.wait(&pipeline.consumed[slot]).map_err(err)?;
         pipeline
             .stream
-            .dequantize_to_f16(weight.format, &weight.buffer, weight_scratch, weight.elements())
+            .wait(&pipeline.consumed[slot])
             .map_err(err)?;
-        pipeline.stream.record(&pipeline.dequantized[slot]).map_err(err)?;
-        submission.clef_wait(&pipeline.dequantized[slot]).map_err(err)?;
+        pipeline
+            .stream
+            .dequantize_to_f16(
+                weight.format,
+                &weight.buffer,
+                weight_scratch,
+                weight.elements(),
+            )
+            .map_err(err)?;
+        pipeline
+            .stream
+            .record(&pipeline.dequantized[slot])
+            .map_err(err)?;
+        submission
+            .clef_wait(&pipeline.dequantized[slot])
+            .map_err(err)?;
     }
     if knobs().skip_gemm {
         return Ok(());
     }
-    let result = gemm(submission, weight, weight_scratch, x16, out, out16, n, accumulate, compute_16f);
-    submission.clef_record(&pipeline.consumed[slot]).map_err(err)?;
+    let result = gemm(
+        submission,
+        weight,
+        weight_scratch,
+        x16,
+        out,
+        out16,
+        n,
+        accumulate,
+        compute_16f,
+    );
+    submission
+        .clef_record(&pipeline.consumed[slot])
+        .map_err(err)?;
     result
 }
 
@@ -1672,18 +2150,83 @@ fn encode_layer(
 ) -> Result<(), String> {
     let s = scratch;
     submission
-        .clef_rms_norm_to_f16(&s.x, &layer.attention_norm, &s.act16, n, dims.hidden, dims.eps)
+        .clef_rms_norm_to_f16(
+            &s.x,
+            &layer.attention_norm,
+            &s.act16,
+            n,
+            dims.hidden,
+            dims.eps,
+        )
         .map_err(err)?;
     match &layer.mixer {
-        DeviceMixer::Hybrid { qkv, z, alpha, beta, out, conv, ssm_a, ssm_dt, ssm_norm } => {
+        DeviceMixer::Hybrid {
+            qkv,
+            z,
+            alpha,
+            beta,
+            out,
+            conv,
+            ssm_a,
+            ssm_dt,
+            ssm_norm,
+        } => {
             let conv_state = request.conv[layer_index].as_ref().ok_or("conv state")?;
             let delta_state = request.delta[layer_index].as_ref().ok_or("delta state")?;
-            linear(submission, qkv, weight_scratch, &s.act16, &s.big_a, &s.out16, n, false, compute_16f)?;
-            linear(submission, z, weight_scratch, &s.act16, &s.mid_a, &s.out16, n, false, compute_16f)?;
-            linear(submission, alpha, weight_scratch, &s.act16, &s.small_a, &s.out16, n, false, compute_16f)?;
-            linear(submission, beta, weight_scratch, &s.act16, &s.small_b, &s.out16, n, false, compute_16f)?;
+            linear(
+                submission,
+                qkv,
+                weight_scratch,
+                &s.act16,
+                &s.big_a,
+                &s.out16,
+                n,
+                false,
+                compute_16f,
+            )?;
+            linear(
+                submission,
+                z,
+                weight_scratch,
+                &s.act16,
+                &s.mid_a,
+                &s.out16,
+                n,
+                false,
+                compute_16f,
+            )?;
+            linear(
+                submission,
+                alpha,
+                weight_scratch,
+                &s.act16,
+                &s.small_a,
+                &s.out16,
+                n,
+                false,
+                compute_16f,
+            )?;
+            linear(
+                submission,
+                beta,
+                weight_scratch,
+                &s.act16,
+                &s.small_b,
+                &s.out16,
+                n,
+                false,
+                compute_16f,
+            )?;
             submission
-                .clef_conv1d_seq_silu(&s.big_a, conv_state, conv, &s.conv_out, n, dims.conv_channels, dims.conv_kernel)
+                .clef_conv1d_seq_silu(
+                    &s.big_a,
+                    conv_state,
+                    conv,
+                    &s.conv_out,
+                    n,
+                    dims.conv_channels,
+                    dims.conv_kernel,
+                )
                 .map_err(err)?;
             submission
                 .clef_delta_prep(
@@ -1705,38 +2248,96 @@ fn encode_layer(
                 )
                 .map_err(err)?;
             if !knobs().skip_delta {
-            submission
-                .clef_delta_seq(
-                    &s.qn,
-                    &s.kn,
-                    &s.conv_out,
-                    &s.small_c,
-                    &s.small_d,
-                    &s.key_dot_query,
-                    delta_state,
-                    &s.mid_b,
-                    n,
-                    dims.key_heads,
-                    dims.value_heads,
-                    dims.state,
-                    dims.v_head_reordered,
-                    dims.conv_channels,
-                    2 * dims.key_heads * dims.state,
-                    knobs().staged_scan,
-                )
-                .map_err(err)?;
+                submission
+                    .clef_delta_seq(
+                        &s.qn,
+                        &s.kn,
+                        &s.conv_out,
+                        &s.small_c,
+                        &s.small_d,
+                        &s.key_dot_query,
+                        delta_state,
+                        &s.mid_b,
+                        n,
+                        dims.key_heads,
+                        dims.value_heads,
+                        dims.state,
+                        dims.v_head_reordered,
+                        dims.conv_channels,
+                        2 * dims.key_heads * dims.state,
+                        knobs().staged_scan,
+                    )
+                    .map_err(err)?;
             }
             submission
-                .clef_gated_norm_to_f16(&s.mid_b, &s.mid_a, ssm_norm, &s.act16, n, dims.value_heads, dims.state, dims.eps)
+                .clef_gated_norm_to_f16(
+                    &s.mid_b,
+                    &s.mid_a,
+                    ssm_norm,
+                    &s.act16,
+                    n,
+                    dims.value_heads,
+                    dims.state,
+                    dims.eps,
+                )
                 .map_err(err)?;
-            linear(submission, out, weight_scratch, &s.act16, &s.x, &s.out16, n, true, compute_16f)?;
+            linear(
+                submission,
+                out,
+                weight_scratch,
+                &s.act16,
+                &s.x,
+                &s.out16,
+                n,
+                true,
+                compute_16f,
+            )?;
         }
-        DeviceMixer::Attention { query_gate, key, value, out, query_norm, key_norm } => {
+        DeviceMixer::Attention {
+            query_gate,
+            key,
+            value,
+            out,
+            query_norm,
+            key_norm,
+        } => {
             let key_cache = request.key_cache[layer_index].as_ref().ok_or("key cache")?;
-            let value_cache = request.value_cache[layer_index].as_ref().ok_or("value cache")?;
-            linear(submission, query_gate, weight_scratch, &s.act16, &s.big_a, &s.out16, n, false, compute_16f)?;
-            linear(submission, key, weight_scratch, &s.act16, &s.small_a, &s.out16, n, false, compute_16f)?;
-            linear(submission, value, weight_scratch, &s.act16, &s.small_b, &s.out16, n, false, compute_16f)?;
+            let value_cache = request.value_cache[layer_index]
+                .as_ref()
+                .ok_or("value cache")?;
+            linear(
+                submission,
+                query_gate,
+                weight_scratch,
+                &s.act16,
+                &s.big_a,
+                &s.out16,
+                n,
+                false,
+                compute_16f,
+            )?;
+            linear(
+                submission,
+                key,
+                weight_scratch,
+                &s.act16,
+                &s.small_a,
+                &s.out16,
+                n,
+                false,
+                compute_16f,
+            )?;
+            linear(
+                submission,
+                value,
+                weight_scratch,
+                &s.act16,
+                &s.small_b,
+                &s.out16,
+                n,
+                false,
+                compute_16f,
+            )?;
             submission
                 .clef_attention_prep(
                     &s.big_a,
@@ -1760,23 +2361,84 @@ fn encode_layer(
                 )
                 .map_err(err)?;
             if !knobs().skip_attention {
-                attention(submission, s, request, key_cache, value_cache, dims, first, n)?;
+                attention(
+                    submission,
+                    s,
+                    request,
+                    key_cache,
+                    value_cache,
+                    dims,
+                    first,
+                    n,
+                )?;
             }
             submission
-                .clef_sigmoid_gate_to_f16(&s.mid_b, &s.mid_a, &s.act16, n * dims.heads * dims.head_dim)
+                .clef_sigmoid_gate_to_f16(
+                    &s.mid_b,
+                    &s.mid_a,
+                    &s.act16,
+                    n * dims.heads * dims.head_dim,
+                )
                 .map_err(err)?;
-            linear(submission, out, weight_scratch, &s.act16, &s.x, &s.out16, n, true, compute_16f)?;
+            linear(
+                submission,
+                out,
+                weight_scratch,
+                &s.act16,
+                &s.x,
+                &s.out16,
+                n,
+                true,
+                compute_16f,
+            )?;
         }
     }
     submission
-        .clef_rms_norm_to_f16(&s.x, &layer.post_attention_norm, &s.act16, n, dims.hidden, dims.eps)
+        .clef_rms_norm_to_f16(
+            &s.x,
+            &layer.post_attention_norm,
+            &s.act16,
+            n,
+            dims.hidden,
+            dims.eps,
+        )
         .map_err(err)?;
-    linear(submission, &layer.gate, weight_scratch, &s.act16, &s.big_a, &s.out16, n, false, compute_16f)?;
-    linear(submission, &layer.up, weight_scratch, &s.act16, &s.big_b, &s.out16, n, false, compute_16f)?;
+    linear(
+        submission,
+        &layer.gate,
+        weight_scratch,
+        &s.act16,
+        &s.big_a,
+        &s.out16,
+        n,
+        false,
+        compute_16f,
+    )?;
+    linear(
+        submission,
+        &layer.up,
+        weight_scratch,
+        &s.act16,
+        &s.big_b,
+        &s.out16,
+        n,
+        false,
+        compute_16f,
+    )?;
     submission
         .clef_silu_mul_to_f16(&s.big_a, &s.big_b, &s.act16, n * dims.ffn)
         .map_err(err)?;
-    linear(submission, &layer.down, weight_scratch, &s.act16, &s.x, &s.out16, n, true, compute_16f)?;
+    linear(
+        submission,
+        &layer.down,
+        weight_scratch,
+        &s.act16,
+        &s.x,
+        &s.out16,
+        n,
+        true,
+        compute_16f,
+    )?;
     Ok(())
 }
 
@@ -1889,7 +2551,9 @@ pub(super) struct RopeTable {
 
 pub(super) fn rope_table_params(model: &super::CpuQwen35Model) -> RopeTable {
     let rotary = model.descriptor.config.block.attention.rotary_dim;
-    let rotary = rotary.min(model.descriptor.config.block.attention.head_dim).max(2);
+    let rotary = rotary
+        .min(model.descriptor.config.block.attention.head_dim)
+        .max(2);
     let (freq_scale, ext_factor, corr_dims, theta_scale) =
         qwen35_rope_runtime_parameters(rotary, &model.family_metadata);
     RopeTable {
@@ -1906,19 +2570,39 @@ impl RopeTable {
     /// `[n, rotary/2, (cos, sin)]` for text positions `first..first + n`
     /// (all three MRoPE positions equal), as the CPU lane computes them.
     pub(super) fn table(&self, first: usize, n: usize, rotary: usize) -> Vec<f32> {
+        self.positions(
+            &(first..first + n)
+                .map(|position| [position; 3])
+                .collect::<Vec<_>>(),
+            rotary,
+        )
+    }
+
+    /// `[n, rotary/2, (cos, sin)]` for explicit temporal, height, and width positions.
+    pub(super) fn positions(&self, positions: &[[usize; 3]], rotary: usize) -> Vec<f32> {
         let pairs = rotary / 2;
-        let mut out = Vec::with_capacity(n * pairs * 2);
-        for position in first..first + n {
-            let p = position as f32;
+        let mut out = Vec::with_capacity(positions.len() * pairs * 2);
+        for position in positions {
+            let p = position.map(|value| value as f32);
             for pair in 0..pairs {
                 let theta_base = if let Some(sections) = self.sections {
-                    qwen35_mrope_theta_base(pair, sections, self.interleaved, [p, p, p, 0.0])
-                        * self.theta_scale.powf(pair as f32)
+                    qwen35_mrope_theta_base(
+                        pair,
+                        sections,
+                        self.interleaved,
+                        [p[0], p[1], p[2], 0.0],
+                    ) * self.theta_scale.powf(pair as f32)
                 } else {
-                    p * self.theta_scale.powf(pair as f32)
+                    p[0] * self.theta_scale.powf(pair as f32)
                 };
-                let (cos, sin) =
-                    rope_yarn(theta_base, self.freq_scale, self.corr_dims, pair * 2, self.ext_factor, 1.0);
+                let (cos, sin) = rope_yarn(
+                    theta_base,
+                    self.freq_scale,
+                    self.corr_dims,
+                    pair * 2,
+                    self.ext_factor,
+                    1.0,
+                );
                 out.push(cos);
                 out.push(sin);
             }

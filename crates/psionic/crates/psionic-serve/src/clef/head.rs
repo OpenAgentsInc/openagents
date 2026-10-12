@@ -197,7 +197,18 @@ impl ClefHeadWeights {
         }
         for layer in &self.layers {
             let (a, c) = (&layer.self_attention, &layer.cross_attention);
-            out.extend([&a.q, &a.k, &a.v, &a.out, &c.q, &c.k, &c.v, &c.out, &layer.up, &layer.down]);
+            out.extend([
+                &a.q,
+                &a.k,
+                &a.v,
+                &a.out,
+                &c.q,
+                &c.k,
+                &c.v,
+                &c.out,
+                &layer.up,
+                &layer.down,
+            ]);
         }
         out
     }
@@ -891,6 +902,17 @@ pub enum MemoryView {
 
 /// Softmax-weighted memory rows for query-side vectors.
 pub trait MemoryAttention {
+    /// Runs the complete field stack on the device when available. The default
+    /// keeps the existing host normalization and attention path.
+    fn field_layers(
+        &mut self,
+        _weights: &ClefHeadWeights,
+        _fields: &[f32],
+        _rows: usize,
+    ) -> Result<Option<Vec<f32>>, String> {
+        Ok(None)
+    }
+
     /// For each of `rows` query vectors `u` (`rows x width`), returns
     /// `sum_t softmax_t(scale * u . m_t) m_t` over the rows `m_t` of `view`.
     fn attend(
@@ -921,7 +943,10 @@ pub trait MemoryAttention {
     /// Several independent products `X W^T (+ b)` at once (`(matrix, X,
     /// rows of X, bias)`), so a device backend can run them in one round
     /// trip. The default runs them one by one through [`Self::linear`].
-    fn linear_batch(&mut self, jobs: &[(&Matrix, &[f32], usize, Option<&[f32]>)]) -> Result<Vec<Vec<f32>>, String> {
+    fn linear_batch(
+        &mut self,
+        jobs: &[(&Matrix, &[f32], usize, Option<&[f32]>)],
+    ) -> Result<Vec<Vec<f32>>, String> {
         jobs.iter()
             .map(|(matrix, input, n, bias)| self.linear(matrix, input, *n, *bias))
             .collect()
@@ -1221,7 +1246,9 @@ impl<'a> ClefHeadStream<'a> {
     #[must_use]
     pub fn pooled(&self) -> (Vec<Vec<f32>>, Vec<f32>) {
         (
-            (0..self.spans.len()).map(|index| self.span_mean(index)).collect(),
+            (0..self.spans.len())
+                .map(|index| self.span_mean(index))
+                .collect(),
             self.last.clone(),
         )
     }
@@ -1272,6 +1299,65 @@ pub fn head_spans(record: &EncodedRecord) -> Vec<(usize, usize)> {
     spans
 }
 
+/// The staged field decoder, also used as the same-input device reference.
+pub(crate) fn field_layers_host(
+    weights: &ClefHeadWeights,
+    mut fields: Vec<f32>,
+    question_count: usize,
+    memory: &mut dyn MemoryAttention,
+) -> Result<Vec<f32>, String> {
+    let config = weights.config;
+    let w = config.width;
+    for layer in &weights.layers {
+        let normalized = layer.self_norm.apply_rows(&fields, w);
+        let a = &layer.self_attention;
+        let mut kvq = memory.linear_batch(&[
+            (&a.k, &normalized, question_count, Some(&a.k_bias)),
+            (&a.v, &normalized, question_count, Some(&a.v_bias)),
+            (&a.q, &normalized, question_count, Some(&a.q_bias)),
+        ])?;
+        let queries = kvq.pop().ok_or("self-attention projections")?;
+        let values = kvq.pop().ok_or("self-attention projections")?;
+        let keys = kvq.pop().ok_or("self-attention projections")?;
+        let attended = attend(
+            memory,
+            &layer.self_attention,
+            config.heads,
+            &queries,
+            question_count,
+            &keys,
+            &values,
+            question_count,
+            w,
+        )?;
+        add_into(&mut fields, &attended);
+        // Memory is not normalized in the field layers.
+        let normalized = layer.cross_norm.apply_rows(&fields, w);
+        let attended = attend_memory(
+            &layer.cross_attention,
+            config.heads,
+            &normalized,
+            question_count,
+            memory,
+            MemoryView::Raw,
+            w,
+        )?;
+        add_into(&mut fields, &attended);
+        let normalized = layer.feedforward_norm.apply_rows(&fields, w);
+        let ff = feedforward(
+            memory,
+            &layer.up,
+            &layer.up_bias,
+            &layer.down,
+            &layer.down_bias,
+            &normalized,
+            question_count,
+        )?;
+        add_into(&mut fields, &ff);
+    }
+    Ok(fields)
+}
+
 /// The head after the backbone: `span_means` are the means of `LN(H)` over
 /// [`head_spans`], `global` is `LN(H)` of the last token, and `memory`
 /// attends over `LN(H) W_mem`.
@@ -1320,12 +1406,30 @@ pub fn run_head(
     let flat = |rows: &[Vec<f32>]| rows.concat();
 
     // R = W_oc c + W_ol l + W_oq q
-    let (questions_flat, context_flat, lexical_flat) =
-        (flat(&question_vectors), flat(&option_context), flat(&lexical));
+    let (questions_flat, context_flat, lexical_flat) = (
+        flat(&question_vectors),
+        flat(&option_context),
+        flat(&lexical),
+    );
     let mut projected = memory.linear_batch(&[
-        (&weights.option_question_projection, &questions_flat, question_count, None),
-        (&weights.option_context_projection, &context_flat, n_options, None),
-        (&weights.option_lexical_projection, &lexical_flat, n_options, None),
+        (
+            &weights.option_question_projection,
+            &questions_flat,
+            question_count,
+            None,
+        ),
+        (
+            &weights.option_context_projection,
+            &context_flat,
+            n_options,
+            None,
+        ),
+        (
+            &weights.option_lexical_projection,
+            &lexical_flat,
+            n_options,
+            None,
+        ),
     ])?;
     let lexical_part = projected.pop().ok_or("option projections")?;
     let context = projected.pop().ok_or("option projections")?;
@@ -1334,9 +1438,8 @@ pub fn run_head(
     for (index, row) in routed.chunks_mut(w).enumerate() {
         let question = &option_question[owner[index] * w..(owner[index] + 1) * w];
         for column in 0..w {
-            row[column] = context[index * w + column]
-                + lexical_part[index * w + column]
-                + question[column];
+            row[column] =
+                context[index * w + column] + lexical_part[index * w + column] + question[column];
         }
     }
 
@@ -1367,7 +1470,12 @@ pub fn run_head(
 
     // Fields.
     let mut projected = memory.linear_batch(&[
-        (&weights.question_projection, &questions_flat, question_count, None),
+        (
+            &weights.question_projection,
+            &questions_flat,
+            question_count,
+            None,
+        ),
         (&weights.global_projection, &global, 1, None),
     ])?;
     let global_projected = projected.pop().ok_or("field projections")?;
@@ -1403,52 +1511,13 @@ pub fn run_head(
         first_option += count;
     }
 
-    for layer in &weights.layers {
-        let normalized = layer.self_norm.apply_rows(&fields, w);
-        let a = &layer.self_attention;
-        let mut kvq = memory.linear_batch(&[
-            (&a.k, &normalized, question_count, Some(&a.k_bias)),
-            (&a.v, &normalized, question_count, Some(&a.v_bias)),
-            (&a.q, &normalized, question_count, Some(&a.q_bias)),
-        ])?;
-        let queries = kvq.pop().ok_or("self-attention projections")?;
-        let values = kvq.pop().ok_or("self-attention projections")?;
-        let keys = kvq.pop().ok_or("self-attention projections")?;
-        let attended = attend(
-            memory,
-            &layer.self_attention,
-            config.heads,
-            &queries,
-            question_count,
-            &keys,
-            &values,
-            question_count,
-            w,
-        )?;
-        add_into(&mut fields, &attended);
-        // Memory is not normalized in the field layers.
-        let normalized = layer.cross_norm.apply_rows(&fields, w);
-        let attended = attend_memory(
-            &layer.cross_attention,
-            config.heads,
-            &normalized,
-            question_count,
-            memory,
-            MemoryView::Raw,
-            w,
-        )?;
-        add_into(&mut fields, &attended);
-        let normalized = layer.feedforward_norm.apply_rows(&fields, w);
-        let ff = feedforward(
-            memory,
-            &layer.up,
-            &layer.up_bias,
-            &layer.down,
-            &layer.down_bias,
-            &normalized,
-            question_count,
-        )?;
-        add_into(&mut fields, &ff);
+    if let Some(device_fields) = memory.field_layers(weights, &fields, question_count)? {
+        if device_fields.len() != fields.len() {
+            return Err(String::from("field decoder returned an invalid shape"));
+        }
+        fields = device_fields;
+    } else {
+        fields = field_layers_host(weights, fields, question_count, memory)?;
     }
     let fields = weights.field_norm.apply_rows(&fields, w);
 
@@ -1464,7 +1533,12 @@ pub fn run_head(
         features.extend(field.iter().zip(options).map(|(f, o)| f * o));
         features.extend(field.iter().zip(options).map(|(f, o)| (f - o).abs()));
     }
-    let hidden = memory.linear(&weights.scorer, &features, n_options, Some(&weights.scorer_bias))?;
+    let hidden = memory.linear(
+        &weights.scorer,
+        &features,
+        n_options,
+        Some(&weights.scorer_bias),
+    )?;
     let mut logits = Vec::with_capacity(question_count);
     for (question_index, range) in option_ranges.into_iter().enumerate() {
         let field = &fields[question_index * w..(question_index + 1) * w];

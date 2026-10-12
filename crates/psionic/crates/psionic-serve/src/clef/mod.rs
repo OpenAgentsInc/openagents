@@ -23,10 +23,17 @@
 //! `truncation: "state_tail"`. Confidence is the reference's: the top
 //! probability. Read probabilities, not `confidence`.
 
+#[cfg(target_os = "macos")]
+mod batch;
 pub mod calibration;
+#[cfg(any(target_os = "macos", test))]
+mod chunk_schedule;
 pub mod encode;
 pub mod head;
 pub mod json;
+pub mod media;
+pub(crate) mod prefix;
+mod worker;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -45,7 +52,10 @@ use psionic_models::{GgufBlobArtifact, GgufContent, TokenId};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::{ClefCudaHeadParams, ClefCudaPrefill, ClefCudaTrunk, ClefLayerObserver, CpuGgufQwen35TextGenerationService};
+use crate::{
+    ClefCudaHeadParams, ClefCudaPrefill, ClefCudaTrunk, ClefLayerObserver,
+    CpuGgufQwen35TextGenerationService,
+};
 use calibration::{ClefCalibration, HeadInputs, RowExport, request_digest};
 use encode::{
     BudgetRefusal, ClefQuestion, ClefRequest, EncodedRecord, QuestionType, RequestLimits,
@@ -60,13 +70,19 @@ use head::{
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ClefDevice {
     /// The GPU when one is present and the trunk loads (Metal on macOS,
-    /// CUDA elsewhere), else the CPU.
+    /// CUDA elsewhere), else the CPU. A CUDA memory refusal stops loading.
     #[default]
     Auto,
     Cpu,
     Cuda,
     /// Apple silicon (#11196).
     Metal,
+}
+
+impl ClefDevice {
+    fn permits_cpu_fallback(self, error: &str) -> bool {
+        self == Self::Auto && !ClefCudaTrunk::is_memory_refusal(error)
+    }
 }
 
 impl std::str::FromStr for ClefDevice {
@@ -78,7 +94,9 @@ impl std::str::FromStr for ClefDevice {
             "cpu" => Ok(Self::Cpu),
             "cuda" => Ok(Self::Cuda),
             "metal" => Ok(Self::Metal),
-            other => Err(format!("unknown decision device `{other}` (auto, cpu, cuda, metal)")),
+            other => Err(format!(
+                "unknown decision device `{other}` (auto, cpu, cuda, metal)"
+            )),
         }
     }
 }
@@ -128,9 +146,52 @@ impl DeviceTrunk {
         final_observer: Option<ClefLayerObserver<'_>>,
     ) -> Result<ClefCudaPrefill, String> {
         match self {
-            Self::Cuda(trunk) => trunk.prefill(cpu, tokens, spans, chunk, layer_observer, final_observer),
+            Self::Cuda(trunk) => {
+                trunk.prefill(cpu, tokens, spans, chunk, layer_observer, final_observer)
+            }
             #[cfg(target_os = "macos")]
-            Self::Metal(trunk) => trunk.prefill(cpu, tokens, spans, chunk, layer_observer, final_observer),
+            Self::Metal(trunk) => {
+                trunk.prefill(cpu, tokens, spans, chunk, layer_observer, final_observer)
+            }
+        }
+    }
+
+    /// Prefills with optional exact text-prefix reuse or image embeddings.
+    #[allow(clippy::too_many_arguments)]
+    fn prefill_record(
+        &self,
+        cpu: &CpuGgufQwen35TextGenerationService,
+        tokens: &[TokenId],
+        spans: &[(usize, usize)],
+        chunk: usize,
+        prefix_tokens: usize,
+        media: Option<&media::ClefMediaProjection>,
+        layer_observer: Option<ClefLayerObserver<'_>>,
+        final_observer: Option<ClefLayerObserver<'_>>,
+    ) -> Result<(ClefCudaPrefill, usize), String> {
+        match self {
+            Self::Cuda(trunk) => {
+                if media.is_some() {
+                    return Err(String::from(
+                        "image inputs are not supported on the CUDA decision backend",
+                    ));
+                }
+                let _ = prefix_tokens;
+                trunk
+                    .prefill(cpu, tokens, spans, chunk, layer_observer, final_observer)
+                    .map(|result| (result, 0))
+            }
+            #[cfg(target_os = "macos")]
+            Self::Metal(trunk) => trunk.prefill_with_prefix(
+                cpu,
+                tokens,
+                spans,
+                chunk,
+                prefix_tokens,
+                media,
+                layer_observer,
+                final_observer,
+            ),
         }
     }
 
@@ -164,18 +225,48 @@ impl DeviceTrunk {
     ) -> Result<Option<Vec<f32>>, String> {
         match self {
             Self::Cuda(trunk) => trunk.attend_memory_projected(
-                evidence, key_matrix, value_matrix, value_bias, projected, rows, heads, scale,
+                evidence,
+                key_matrix,
+                value_matrix,
+                value_bias,
+                projected,
+                rows,
+                heads,
+                scale,
             ),
             #[cfg(target_os = "macos")]
             Self::Metal(trunk) => trunk.attend_memory_projected(
-                evidence, key_matrix, value_matrix, value_bias, projected, rows, heads, scale,
+                evidence,
+                key_matrix,
+                value_matrix,
+                value_bias,
+                projected,
+                rows,
+                heads,
+                scale,
             ),
+        }
+    }
+
+    fn head_field_layers(
+        &self,
+        weights: &ClefHeadWeights,
+        fields: &[f32],
+        rows: usize,
+    ) -> Result<Option<Vec<f32>>, String> {
+        match self {
+            Self::Cuda(_) => Ok(None),
+            #[cfg(target_os = "macos")]
+            Self::Metal(trunk) => trunk.head_field_layers(weights, fields, rows),
         }
     }
 
     /// Independent head products in one round trip; `None` when a matrix
     /// is not resident.
-    pub fn head_linear_batch(&self, jobs: &[(&[f32], &[f32], usize, Option<&[f32]>)]) -> Result<Option<Vec<Vec<f32>>>, String> {
+    pub fn head_linear_batch(
+        &self,
+        jobs: &[(&[f32], &[f32], usize, Option<&[f32]>)],
+    ) -> Result<Option<Vec<Vec<f32>>>, String> {
         match self {
             Self::Cuda(trunk) => trunk.head_linear_batch(jobs),
             #[cfg(target_os = "macos")]
@@ -220,17 +311,40 @@ impl DeviceTrunk {
     ) -> Result<Option<Vec<f32>>, String> {
         match self {
             Self::Cuda(trunk) => trunk.head_attend_block(
-                evidence, q, key_matrix, value_matrix, value_bias, out, queries, rows, heads, scale,
+                evidence,
+                q,
+                key_matrix,
+                value_matrix,
+                value_bias,
+                out,
+                queries,
+                rows,
+                heads,
+                scale,
             ),
             #[cfg(target_os = "macos")]
             Self::Metal(trunk) => trunk.head_attend_block(
-                evidence, q, key_matrix, value_matrix, value_bias, out, queries, rows, heads, scale,
+                evidence,
+                q,
+                key_matrix,
+                value_matrix,
+                value_bias,
+                out,
+                queries,
+                rows,
+                heads,
+                scale,
             ),
         }
     }
 
     /// See [`ClefCudaTrunk::head_linear`].
-    pub fn head_linear(&self, values: &[f32], input: &[f32], n: usize) -> Result<Option<Vec<f32>>, String> {
+    pub fn head_linear(
+        &self,
+        values: &[f32],
+        input: &[f32],
+        n: usize,
+    ) -> Result<Option<Vec<f32>>, String> {
         match self {
             Self::Cuda(trunk) => trunk.head_linear(values, input, n),
             #[cfg(target_os = "macos")]
@@ -354,20 +468,29 @@ pub struct ClefDecisionLane {
     /// The trunk on CUDA; the CPU backbone then only serves embedding and
     /// output rows.
     cuda: Option<DeviceTrunk>,
-    head: ClefHeadWeights,
+    head: Arc<ClefHeadWeights>,
+    image_runtime: Option<Arc<media::ClefImageRuntime>>,
     limits: ClefLimits,
     /// Calibration maps (`--decision-calibration`), one per noul question.
     calibrations: Vec<ClefCalibration>,
     /// Hidden-row export (`--decision-export-rows`).
     export: Option<RowExport>,
     waiting: AtomicUsize,
-    running: std::sync::Mutex<()>,
+    running: Arc<std::sync::Mutex<()>>,
+    serial_waiters: Arc<AtomicUsize>,
+    #[cfg(target_os = "macos")]
+    batching: Option<batch::Dispatcher>,
     /// Logits of recent prompts by [`record_key`]. The trunk and head are
     /// deterministic (a repeat is bitwise identical), so a repeated prompt
     /// (the same router state, say) is answered without the device.
     logit_cache: std::sync::Mutex<std::collections::VecDeque<([u8; 32], Vec<Vec<f32>>)>>,
-    /// The last decision's prefill and head seconds (for its receipt).
-    last_phases: std::sync::Mutex<(f64, f64)>,
+}
+
+struct LogitResult {
+    logits: Vec<Vec<f32>>,
+    cached_input_tokens: usize,
+    prefill_seconds: f64,
+    head_seconds: f64,
 }
 
 /// Prompts whose logits [`ClefDecisionLane`] keeps.
@@ -536,19 +659,33 @@ impl ClefDecisionLane {
                 let loaded: Result<DeviceTrunk, String> = if metal {
                     #[cfg(target_os = "macos")]
                     {
-                        crate::ClefMetalTrunk::load(&backbone, &params).map(DeviceTrunk::Metal)
+                        crate::ClefMetalTrunk::load(&backbone, &params).and_then(|trunk| {
+                            trunk.prepare_field_head(&head)?;
+                            Ok(DeviceTrunk::Metal(trunk))
+                        })
                     }
                     #[cfg(not(target_os = "macos"))]
                     {
                         Err(String::from("Metal is only available on macOS"))
                     }
                 } else {
-                    ClefCudaTrunk::load(&backbone, &params, limits.accumulate_f16).map(DeviceTrunk::Cuda)
+                    ClefCudaTrunk::load_with_limits(
+                        &backbone,
+                        &params,
+                        limits.accumulate_f16,
+                        limits.max_tokens,
+                        if limits.prefill_chunk == 0 {
+                            CUDA_PREFILL_CHUNK
+                        } else {
+                            limits.prefill_chunk
+                        },
+                    )
+                    .map(DeviceTrunk::Cuda)
                 };
                 let name = if metal { "Metal" } else { "CUDA" };
                 match loaded {
                     Ok(trunk) => Some(trunk),
-                    Err(error) if device == ClefDevice::Auto => {
+                    Err(error) if device.permits_cpu_fallback(&error) => {
                         eprintln!(
                             "{}: {name} decision trunk unavailable ({error}); deciding on the CPU",
                             gguf_path.display()
@@ -556,12 +693,32 @@ impl ClefDecisionLane {
                         None
                     }
                     Err(error) => {
-                        return Err(format!("{}: {name} decision trunk: {error}", gguf_path.display()));
+                        return Err(format!(
+                            "{}: {name} decision trunk: {error}",
+                            gguf_path.display()
+                        ));
                     }
                 }
             }
         };
         let artifact_digest = sha256_file(gguf_path)?;
+        let head = Arc::new(head);
+        let running = Arc::new(std::sync::Mutex::new(()));
+        let serial_waiters = Arc::new(AtomicUsize::new(0));
+        #[cfg(target_os = "macos")]
+        let batching = match (batch::Config::from_env()?, &cuda) {
+            (Some(config), Some(DeviceTrunk::Metal(metal))) => Some(batch::Dispatcher::new(
+                backbone.clone(),
+                metal.clone(),
+                Arc::clone(&head),
+                Arc::clone(&running),
+                Arc::clone(&serial_waiters),
+                config,
+                limits.max_queue,
+            )?),
+            (Some(_), _) => return Err(String::from("Clef batching requires the Metal backend")),
+            (None, _) => None,
+        };
         Ok(Self {
             id,
             artifact_path: gguf_path.to_path_buf(),
@@ -569,14 +726,34 @@ impl ClefDecisionLane {
             backbone,
             cuda,
             head,
+            image_runtime: None,
             limits,
             calibrations: Vec::new(),
             export: None,
             waiting: AtomicUsize::new(0),
-            running: std::sync::Mutex::new(()),
+            running,
+            serial_waiters,
+            #[cfg(target_os = "macos")]
+            batching,
             logit_cache: std::sync::Mutex::new(std::collections::VecDeque::new()),
-            last_phases: std::sync::Mutex::new((0.0, 0.0)),
         })
+    }
+
+    /// Loads the image encoder from an explicit Ollama model manifest.
+    pub fn with_vision_manifest(self, manifest: &Path, blobs: &Path) -> Result<Self, String> {
+        let runtime = media::ClefImageRuntime::from_ollama_manifest(
+            manifest,
+            blobs,
+            self.head.config.hidden_size,
+        )?;
+        Ok(self.with_image_runtime(runtime))
+    }
+
+    /// Adds the image encoder used by image-bearing decision requests.
+    #[must_use]
+    pub fn with_image_runtime(mut self, runtime: media::ClefImageRuntime) -> Self {
+        self.image_runtime = Some(Arc::new(runtime));
+        self
     }
 
     /// Applies calibration maps. A map that names another head than this
@@ -591,8 +768,15 @@ impl ClefDecisionLane {
                     ));
                 }
             }
-            if self.calibrations.iter().any(|m| m.instructions == map.instructions) {
-                return Err(format!("two calibration maps name the question `{}`", map.instructions));
+            if self
+                .calibrations
+                .iter()
+                .any(|m| m.instructions == map.instructions)
+            {
+                return Err(format!(
+                    "two calibration maps name the question `{}`",
+                    map.instructions
+                ));
             }
             self.calibrations.push(map.clone());
         }
@@ -725,7 +909,13 @@ impl ClefDecisionLane {
         observe: Option<&mut dyn FnMut(usize, &[f32])>,
         layers: Option<&mut dyn FnMut(usize, usize, &[f32])>,
     ) -> Result<Vec<Vec<f32>>, ClefRefusal> {
+        let _serial = worker::SerialWaiter::new(&self.serial_waiters);
+        let _running = self
+            .running
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         self.logits_capturing(record, chunk, observe, layers, None)
+            .map(|result| result.logits)
     }
 
     /// As [`Self::logits_at_chunk`], also capturing the head's pooled inputs.
@@ -736,7 +926,24 @@ impl ClefDecisionLane {
         mut observe: Option<&mut dyn FnMut(usize, &[f32])>,
         layers: Option<&mut dyn FnMut(usize, usize, &[f32])>,
         capture: Option<&mut HeadInputs>,
-    ) -> Result<Vec<Vec<f32>>, ClefRefusal> {
+    ) -> Result<LogitResult, ClefRefusal> {
+        let inference_began = Instant::now();
+        if record.media.is_some() && matches!(&self.cuda, Some(DeviceTrunk::Cuda(_))) {
+            return Err(ClefRefusal::not_admitted(
+                400,
+                "image inputs are not supported on the CUDA decision backend",
+            ));
+        }
+        let media = record
+            .media
+            .as_ref()
+            .map(|media| {
+                let runtime = self.image_runtime.as_ref().ok_or_else(|| {
+                    ClefRefusal::not_admitted(400, "this server has no image encoder")
+                })?;
+                media.project(runtime).map_err(ClefRefusal::internal)
+            })
+            .transpose()?;
         let tokens: Vec<TokenId> = record.input_ids.iter().map(|id| TokenId(*id)).collect();
         let lexical = |ids: &[u32]| {
             self.backbone
@@ -744,7 +951,7 @@ impl ClefDecisionLane {
                 .map_err(|error| error.to_string())
         };
         if let Some(trunk) = &self.cuda {
-            let prefill_began = Instant::now();
+            let prefill_began = inference_began;
             let spans = head_spans(record);
             let width = self.head.config.hidden_size;
             let mut final_rows = observe.as_mut().map(|observe| {
@@ -787,11 +994,13 @@ impl ClefDecisionLane {
                         })
                         .collect()
                 });
-                let prefill = trunk.prefill(
+                let prefill = trunk.prefill_record(
                     &self.backbone,
                     &tokens,
                     &spans,
                     chunk,
+                    record.prefix_tokens,
+                    media.as_ref(),
                     layers,
                     final_rows
                         .as_mut()
@@ -799,8 +1008,9 @@ impl ClefDecisionLane {
                 );
                 (prefill, means.join())
             });
-            let prefill =
-                prefill.map_err(|error| ClefRefusal::internal(format!("cuda backbone: {error}")))?;
+            let (prefill, cached_input_tokens) = prefill.map_err(|error| {
+                ClefRefusal::internal(format!("{} backbone: {error}", trunk.backend()))
+            })?;
             let lexical_means: std::collections::HashMap<(usize, usize), Vec<f32>> = lexical_means
                 .map_err(|_| ClefRefusal::internal("the lexical thread panicked"))?
                 .map_err(ClefRefusal::internal)?
@@ -842,8 +1052,6 @@ impl ClefDecisionLane {
                 &timed_lexical,
             )
             .map_err(ClefRefusal::internal);
-            *self.last_phases.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
-                (prefill_seconds, head_began.elapsed().as_secs_f64());
             if std::env::var_os("PSIONIC_CLEF_PROFILE").is_some() {
                 eprintln!(
                     "clef head: {:.1} ms (lexical rows {:.1} ms; {} linears {:.1} ms; {} memory attentions {:.1} ms)",
@@ -855,9 +1063,14 @@ impl ClefDecisionLane {
                     memory.attend.1 * 1e3,
                 );
             }
-            return logits;
+            return logits.map(|logits| LogitResult {
+                logits,
+                cached_input_tokens,
+                prefill_seconds,
+                head_seconds: head_began.elapsed().as_secs_f64(),
+            });
         }
-        let cpu_began = Instant::now();
+        let cpu_began = inference_began;
         let mut stream = ClefHeadStream::new(&self.head, record);
         let mut push_error = None;
         let mut sink = |index: usize, row: &[f32]| {
@@ -869,18 +1082,27 @@ impl ClefDecisionLane {
             }
             Ok(())
         };
-        match layers {
-            Some(layers) => self.backbone.stream_layer_rows(
-                &tokens,
-                chunk,
-                &mut sink,
-                layers,
-            ),
-            None => self
-                .backbone
-                .stream_final_hidden_rows(&tokens, chunk, &mut sink),
+        if let Some(media) = &media {
+            if layers.is_some() {
+                return Err(ClefRefusal::not_admitted(
+                    400,
+                    "image layer observations are not supported",
+                ));
+            }
+            self.backbone
+                .stream_media_hidden_rows(&tokens, media, &mut sink)
+                .map_err(|error| ClefRefusal::internal(format!("backbone: {error}")))?;
+        } else {
+            match layers {
+                Some(layers) => self
+                    .backbone
+                    .stream_layer_rows(&tokens, chunk, &mut sink, layers),
+                None => self
+                    .backbone
+                    .stream_final_hidden_rows(&tokens, chunk, &mut sink),
+            }
+            .map_err(|error| ClefRefusal::internal(format!("backbone: {error}")))?;
         }
-        .map_err(|error| ClefRefusal::internal(format!("backbone: {error}")))?;
         if let Some(error) = push_error {
             return Err(ClefRefusal::internal(error));
         }
@@ -894,14 +1116,29 @@ impl ClefDecisionLane {
         let logits = stream
             .finish(record, &lexical)
             .map_err(ClefRefusal::internal);
-        *self.last_phases.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
-            (backbone_seconds, head_began.elapsed().as_secs_f64());
-        logits
+        logits.map(|logits| LogitResult {
+            logits,
+            cached_input_tokens: 0,
+            prefill_seconds: backbone_seconds,
+            head_seconds: head_began.elapsed().as_secs_f64(),
+        })
     }
 
-    /// Answers one request body (blocking; one decision runs at a time).
+    /// Answers one request body, blocking until its decision completes.
     pub fn decide(&self, body: &str) -> Result<Value, ClefRefusal> {
+        let cancel = worker::CancellationGuard::new();
+        self.decide_cancellable(body, Arc::clone(&cancel.0))
+    }
+
+    fn decide_cancellable(
+        &self,
+        body: &str,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<Value, ClefRefusal> {
         let began = Instant::now();
+        // Reserve before parsing: media decoding has bounded but substantial
+        // allocations, and must share the same request limit as inference.
+        let _waiting = WaitingGuard::reserve(&self.waiting, self.limits.max_queue, &cancelled)?;
         let request = self.parse_request(body)?;
         let record = self.encode(&request)?;
         if std::env::var_os("PSIONIC_CLEF_PROFILE").is_some() {
@@ -911,17 +1148,9 @@ impl ClefDecisionLane {
             );
         }
         let encoded_seconds = began.elapsed().as_secs_f64();
-        let queued = self.waiting.fetch_add(1, Ordering::SeqCst);
-        let _waiting = WaitingGuard(&self.waiting);
-        if queued > self.limits.max_queue {
-            return Err(ClefRefusal {
-                status: 503,
-                code: "busy",
-                message: format!("{queued} decisions are already waiting"),
-            });
-        }
         let key = record_key(&record);
-        let cached = if self.export.is_none() {
+        let use_logit_cache = self.export.is_none() && record.media.is_none();
+        let cached = if use_logit_cache {
             self.logit_cache
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -934,19 +1163,60 @@ impl ClefDecisionLane {
         let waited_began = Instant::now();
         let mut waited = 0.0;
         let mut inputs = HeadInputs::default();
+        let mut batch_stats = None::<(usize, usize, usize)>;
         let hit = cached.is_some();
-        let logits = match cached {
-            Some(logits) => logits,
+        let result = match cached {
+            Some(logits) => LogitResult {
+                logits,
+                cached_input_tokens: 0,
+                prefill_seconds: 0.0,
+                head_seconds: 0.0,
+            },
             None => {
-                let _running = self
-                    .running
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                waited = waited_began.elapsed().as_secs_f64();
-                let capture = self.export.as_ref().map(|_| &mut inputs);
-                let logits =
-                    self.logits_capturing(&record, self.prefill_chunk(), None, None, capture)?;
-                if self.export.is_none() {
+                #[cfg(target_os = "macos")]
+                let batched = if record.media.is_none() && self.export.is_none() {
+                    self.batching.as_ref().map(|dispatcher| {
+                        dispatcher.run(record.clone(), self.prefill_chunk(), Arc::clone(&cancelled))
+                    })
+                } else {
+                    None
+                };
+                #[cfg(not(target_os = "macos"))]
+                let batched = None::<Result<(LogitResult, f64, usize, usize, usize), ClefRefusal>>;
+                #[cfg(target_os = "macos")]
+                let batched = batched.map(|result| {
+                    result.map(|batch| {
+                        (
+                            batch.result,
+                            batch.queue_seconds,
+                            batch.chunks,
+                            batch.max_cohort,
+                            batch.prefill_chunk,
+                        )
+                    })
+                });
+                let result = if let Some(batched) = batched {
+                    let (result, queue_seconds, chunks, max_cohort, prefill_chunk) = batched?;
+                    waited = queue_seconds;
+                    batch_stats = Some((chunks, max_cohort, prefill_chunk));
+                    result
+                } else {
+                    if cancelled.load(Ordering::Acquire) {
+                        return Err(ClefRefusal::not_admitted(499, "the request was cancelled"));
+                    }
+                    let _serial = worker::SerialWaiter::new(&self.serial_waiters);
+                    let _running = self
+                        .running
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    if cancelled.load(Ordering::Acquire) {
+                        return Err(ClefRefusal::not_admitted(499, "the request was cancelled"));
+                    }
+                    waited = waited_began.elapsed().as_secs_f64();
+                    let capture = self.export.as_ref().map(|_| &mut inputs);
+                    self.logits_capturing(&record, self.prefill_chunk(), None, None, capture)?
+                };
+                if use_logit_cache {
                     let mut cache = self
                         .logit_cache
                         .lock()
@@ -954,9 +1224,9 @@ impl ClefDecisionLane {
                     if cache.len() >= LOGIT_CACHE_ENTRIES {
                         cache.pop_front();
                     }
-                    cache.push_back((key, logits.clone()));
+                    cache.push_back((key, result.logits.clone()));
                 }
-                logits
+                result
             }
         };
         if std::env::var("PSIONIC_CLEF_LOG").map_or(true, |value| value != "0") {
@@ -970,15 +1240,16 @@ impl ClefDecisionLane {
                 if hit { ", cached" } else { "" }
             );
         }
+        let logits = result.logits;
         let mut answer = self.answer(&request, &record, &logits, began);
+        answer["usage"]["cached_input_tokens"] = json!(result.cached_input_tokens);
+        if let Some((chunks, max_cohort, prefill_chunk)) = batch_stats {
+            set_batch_metadata(&mut answer, chunks, max_cohort, prefill_chunk);
+        }
         {
             // server-side phases, so a client can tell queue and inference
             // from transport; a cached answer ran no prefill or head
-            let (prefill, head) = if hit {
-                (0.0, 0.0)
-            } else {
-                *self.last_phases.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
-            };
+            let (prefill, head) = (result.prefill_seconds, result.head_seconds);
             let ms = |seconds: f64| (seconds * 1e4).round() / 10.0;
             answer["psionic"]["timing"] = json!({
                 "encode_ms": ms(encoded_seconds),
@@ -996,11 +1267,20 @@ impl ClefDecisionLane {
                 .zip(&record.questions)
                 .zip(&logits)
                 .map(|((question, encoded), logits)| {
-                    (question.id.clone(), encoded.option_ids.clone(), logits.clone())
+                    (
+                        question.id.clone(),
+                        encoded.option_ids.clone(),
+                        logits.clone(),
+                    )
                 })
                 .collect();
             export
-                .write(&request_digest(body), &inputs, &questions, &answer["psionic"])
+                .write(
+                    &request_digest(body),
+                    &inputs,
+                    &questions,
+                    &answer["psionic"],
+                )
                 .map_err(ClefRefusal::internal)?;
         }
         Ok(answer)
@@ -1057,7 +1337,7 @@ impl ClefDecisionLane {
             "backend": self.backend(),
             "execution_mode": "native",
             "prefill_chunk": self.prefill_chunk(),
-            "accumulate": if matches!(self.cuda, Some(DeviceTrunk::Cuda(_))) && self.limits.accumulate_f16 { "f16" } else { "f32" },
+            "accumulate": if matches!(&self.cuda, Some(DeviceTrunk::Cuda(_))) && self.limits.accumulate_f16 { "f16" } else { "f32" },
             "prompt_tokens": prompt_tokens,
             "truncated_state_tokens": record.truncated_state_tokens,
             "trained_length": TRAINED_LENGTH,
@@ -1135,6 +1415,22 @@ impl<'a> DeviceMemory<'a> {
 }
 
 impl MemoryAttention for DeviceMemory<'_> {
+    fn field_layers(
+        &mut self,
+        weights: &ClefHeadWeights,
+        fields: &[f32],
+        rows: usize,
+    ) -> Result<Option<Vec<f32>>, String> {
+        let began = Instant::now();
+        let result = self.trunk.head_field_layers(weights, fields, rows)?;
+        if result.is_some() {
+            // The fused block includes normalization, both attentions, and FFN.
+            self.attend.0 += 2 * weights.layers.len();
+            self.attend.1 += began.elapsed().as_secs_f64();
+        }
+        Ok(result)
+    }
+
     fn linear_batch(
         &mut self,
         jobs: &[(&head::Matrix, &[f32], usize, Option<&[f32]>)],
@@ -1164,9 +1460,9 @@ impl MemoryAttention for DeviceMemory<'_> {
         n: usize,
     ) -> Result<Vec<f32>, String> {
         let began = Instant::now();
-        if let Some(out) = self
-            .trunk
-            .head_feedforward(&up.values, up_bias, &down.values, down_bias, input, n)?
+        if let Some(out) =
+            self.trunk
+                .head_feedforward(&up.values, up_bias, &down.values, down_bias, input, n)?
         {
             self.linear.0 += 2;
             self.linear.1 += began.elapsed().as_secs_f64();
@@ -1284,7 +1580,9 @@ impl DeviceMemory<'_> {
             scale,
         )? {
             Some(context) => Ok(context),
-            None => head::attend_projected_host(self, attention, heads, projected, n_query, view, width),
+            None => {
+                head::attend_projected_host(self, attention, heads, projected, n_query, view, width)
+            }
         }
     }
 
@@ -1309,7 +1607,35 @@ impl DeviceMemory<'_> {
     }
 }
 
+fn set_batch_metadata(answer: &mut Value, chunks: usize, max_cohort: usize, prefill_chunk: usize) {
+    answer["psionic"]["prefill_chunk"] = json!(prefill_chunk);
+    answer["psionic"]["batch"] =
+        json!({ "chunks": chunks, "max_requests": max_cohort, "grouped_ffn": max_cohort > 1 });
+}
+
 struct WaitingGuard<'a>(&'a AtomicUsize);
+
+impl<'a> WaitingGuard<'a> {
+    fn reserve(
+        waiting: &'a AtomicUsize,
+        max_queue: usize,
+        cancelled: &std::sync::atomic::AtomicBool,
+    ) -> Result<Self, ClefRefusal> {
+        if cancelled.load(Ordering::Acquire) {
+            return Err(ClefRefusal::not_admitted(499, "the request was cancelled"));
+        }
+        let queued = waiting.fetch_add(1, Ordering::SeqCst);
+        let guard = Self(waiting);
+        if queued > max_queue {
+            return Err(ClefRefusal {
+                status: 503,
+                code: "busy",
+                message: format!("{queued} decisions are already waiting"),
+            });
+        }
+        Ok(guard)
+    }
+}
 
 impl Drop for WaitingGuard<'_> {
     fn drop(&mut self) {
@@ -1443,7 +1769,7 @@ async fn systemone(
         Ok(lane) => lane,
         Err(refusal) => return refusal_response(&refusal),
     };
-    match tokio::task::spawn_blocking(move || lane.decide(&body)).await {
+    match worker::blocking(move |cancel_flag| lane.decide_cancellable(&body, cancel_flag)).await {
         Ok(Ok(answer)) => (StatusCode::OK, Json(answer)).into_response(),
         Ok(Err(refusal)) => refusal_response(&refusal),
         Err(error) => refusal_response(&ClefRefusal::internal(format!(

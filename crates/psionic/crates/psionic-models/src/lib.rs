@@ -2701,6 +2701,18 @@ impl PagedTensorStorage {
             .map_err(ModelLoadError::from)
     }
 
+    /// Copies tensor bytes without accessing the backing blob's mapped pages.
+    #[cfg(unix)]
+    pub fn read_range_into(
+        &self,
+        offset: usize,
+        destination: &mut [u8],
+    ) -> Result<(), ModelLoadError> {
+        self.bytes
+            .read_range_into(offset, destination)
+            .map_err(ModelLoadError::from)
+    }
+
     /// Prefaults a validated byte range in the underlying blob.
     pub fn prefetch_range(&self, offset: usize, len: usize) -> Result<(), ModelLoadError> {
         self.bytes
@@ -12352,6 +12364,15 @@ mod tests {
         assert_eq!(paged.page(1)?, &dense_bytes[8..]);
         assert_eq!(paged.read_range(4, 8)?, &dense_bytes[4..12]);
         assert_eq!(paged.read_range(4, 8)?, &dense_bytes[4..12]);
+        #[cfg(unix)]
+        {
+            let mut copied = [0; 8];
+            paged.read_range_into(4, &mut copied)?;
+            assert_eq!(&copied, &dense_bytes[4..12]);
+            assert!(paged.read_range_into(9, &mut copied).is_err());
+            assert!(paged.read_range_into(usize::MAX, &mut copied).is_err());
+            assert_eq!(&copied, &dense_bytes[4..12]);
+        }
 
         let loaded = paged.load()?;
         assert_eq!(loaded.values()?.as_ref(), &[1.0, 2.0, 3.0, 4.0]);

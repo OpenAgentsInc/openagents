@@ -17,6 +17,14 @@ using namespace mpp::tensor_ops;
 
 constant constexpr uint kSimd = 32;
 
+kernel void clef_copy_f32(
+    device const float *source [[buffer(0)]],
+    device float *destination [[buffer(1)]],
+    constant uint &count [[buffer(2)]],
+    uint index [[thread_position_in_grid]]) {
+    if (index < count) destination[index] = source[index];
+}
+
 // Threadgroup-wide sum for up to 1024 threads (32 simdgroups); every thread
 // gets the result. `scratch` holds 32 floats.
 inline float group_sum(float value, threadgroup float *scratch, uint tid, uint threads) {
@@ -361,10 +369,11 @@ kernel void clef_delta_prep(device const float *conv [[buffer(0)]], device const
     device const float *row = conv + ulong(t) * a.conv_width;
     const float q = i < a.dim ? row[h * a.dim + i] : 0.0f;
     const float k = i < a.dim ? row[a.key_heads * a.dim + h * a.dim + i] : 0.0f;
-    const float qnorm = max(sqrt(group_sum(q * q, scratch, i, threads)), 1e-6f);
-    const float knorm = max(sqrt(group_sum(k * k, scratch, i, threads)), 1e-6f);
-    const float qv = q / qnorm * rsqrt(float(a.dim));
-    const float kv = k / knorm;
+    // Match Qwen3.5/FLA: epsilon belongs inside the squared norm.
+    const float qinv = rsqrt(group_sum(q * q, scratch, i, threads) + 1e-6f);
+    const float kinv = rsqrt(group_sum(k * k, scratch, i, threads) + 1e-6f);
+    const float qv = q * qinv * rsqrt(float(a.dim));
+    const float kv = k * kinv;
     if (i < a.dim) {
         const ulong base = (ulong(t) * a.key_heads + h) * a.dim + i;
         qn[base] = qv;

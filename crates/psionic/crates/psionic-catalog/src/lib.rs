@@ -218,14 +218,20 @@ pub enum BlobError {
 
 #[derive(Debug)]
 enum BlobBacking {
-    MemoryMapped(memmap2::Mmap),
+    MemoryMapped {
+        bytes: memmap2::Mmap,
+        #[cfg(unix)]
+        file: fs::File,
+        #[cfg(unix)]
+        modified: Option<std::time::SystemTime>,
+    },
     Buffered(Vec<u8>),
 }
 
 impl BlobBacking {
     fn bytes(&self) -> &[u8] {
         match self {
-            Self::MemoryMapped(bytes) => bytes,
+            Self::MemoryMapped { bytes, .. } => bytes,
             Self::Buffered(bytes) => bytes.as_slice(),
         }
     }
@@ -359,6 +365,56 @@ impl LocalBlob {
             })
     }
 
+    /// Copies a range without accessing mapped pages. Mapped blobs use the
+    /// original open file; buffered blobs copy their existing snapshot.
+    /// The underlying file must remain unchanged while the blob is in use.
+    #[cfg(unix)]
+    pub fn read_range_into(&self, offset: usize, destination: &mut [u8]) -> Result<(), BlobError> {
+        use std::os::unix::fs::FileExt as _;
+
+        let byte_length = self.metadata.byte_length as usize;
+        let end = offset
+            .checked_add(destination.len())
+            .filter(|&end| end <= byte_length);
+        let Some(end) = end else {
+            return Err(BlobError::RangeOutOfBounds {
+                path: self.metadata.path.display().to_string(),
+                offset,
+                len: destination.len(),
+                byte_length,
+                end: offset.saturating_add(destination.len()),
+            });
+        };
+        let read_error = |error: std::io::Error| BlobError::Read {
+            path: self.metadata.path.display().to_string(),
+            message: error.to_string(),
+        };
+        match self.backing.as_ref() {
+            BlobBacking::MemoryMapped { file, modified, .. } => {
+                let check_file = || {
+                    let current = file.metadata().map_err(read_error)?;
+                    if current.len() != self.metadata.byte_length
+                        || current.modified().ok() != *modified
+                    {
+                        return Err(BlobError::Read {
+                            path: self.metadata.path.display().to_string(),
+                            message: String::from("blob file changed after opening"),
+                        });
+                    }
+                    Ok(())
+                };
+                check_file()?;
+                file.read_exact_at(destination, offset as u64)
+                    .map_err(read_error)?;
+                check_file()
+            }
+            BlobBacking::Buffered(bytes) => {
+                destination.copy_from_slice(&bytes[offset..end]);
+                Ok(())
+            }
+        }
+    }
+
     /// Returns a paged range view inside the blob.
     pub fn paged_range(&self, offset: usize, len: usize) -> Result<PagedBlobRange, BlobError> {
         self.read_range(offset, len)?;
@@ -477,6 +533,35 @@ impl PagedBlobRange {
         self.blob.read_range(self.offset + offset, len)
     }
 
+    /// Copies a range through the backing blob's positional read path.
+    #[cfg(unix)]
+    pub fn read_range_into(&self, offset: usize, destination: &mut [u8]) -> Result<(), BlobError> {
+        if offset
+            .checked_add(destination.len())
+            .is_none_or(|end| end > self.len)
+        {
+            return Err(BlobError::RangeOutOfBounds {
+                path: self.blob.metadata.path.display().to_string(),
+                offset,
+                len: destination.len(),
+                byte_length: self.len,
+                end: offset.saturating_add(destination.len()),
+            });
+        }
+        // The range was validated against the blob when this view was created.
+        let absolute =
+            self.offset
+                .checked_add(offset)
+                .ok_or_else(|| BlobError::RangeOutOfBounds {
+                    path: self.blob.metadata.path.display().to_string(),
+                    offset,
+                    len: destination.len(),
+                    byte_length: self.len,
+                    end: usize::MAX,
+                })?;
+        self.blob.read_range_into(absolute, destination)
+    }
+
     /// Prefaults a validated range so host-side row walkers do not discover the
     /// bytes one page fault at a time.
     pub fn prefetch_range(&self, offset: usize, len: usize) -> Result<(), BlobError> {
@@ -556,7 +641,23 @@ fn open_blob_backing(
 
             match unsafe { memmap2::MmapOptions::new().map(file) } {
                 Ok(bytes) => Ok((
-                    BlobBacking::MemoryMapped(bytes),
+                    BlobBacking::MemoryMapped {
+                        bytes,
+                        #[cfg(unix)]
+                        file: file.try_clone().map_err(|error| BlobError::Read {
+                            path: path.display().to_string(),
+                            message: error.to_string(),
+                        })?,
+                        #[cfg(unix)]
+                        modified: file
+                            .metadata()
+                            .map_err(|error| BlobError::Read {
+                                path: path.display().to_string(),
+                                message: error.to_string(),
+                            })?
+                            .modified()
+                            .ok(),
+                    },
                     BlobReadPath::MemoryMapped,
                     None,
                 )),
@@ -758,5 +859,128 @@ mod tests {
         )
         .expect_err("missing file should fail");
         assert!(matches!(error, BlobError::MissingFile { .. }));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn positional_reads_match_slices_and_check_view_bounds()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("ranges.gguf");
+        let input: Vec<u8> = (0..12345).map(|index| (index % 251) as u8).collect();
+        write_blob(&path, &input)?;
+        for preference in [
+            BlobReadPreference::RequireMemoryMap,
+            BlobReadPreference::PreferBuffered,
+        ] {
+            let blob = LocalBlob::open_path(
+                &path,
+                LocalBlobKind::GgufFile,
+                LocalBlobOpenOptions::default().with_read_preference(preference),
+            )?;
+            let view = blob.paged_range(13, 9001)?;
+            for (offset, len) in [(0, 1), (1, 31), (4090, 35), (8192, 809), (9001, 0)] {
+                let mut actual = vec![0; len];
+                view.read_range_into(offset, &mut actual)?;
+                assert_eq!(actual, view.read_range(offset, len)?);
+            }
+            let mut untouched = [77; 4];
+            for offset in [8998, 9001, usize::MAX] {
+                assert!(matches!(
+                    view.read_range_into(offset, &mut untouched),
+                    Err(BlobError::RangeOutOfBounds { .. })
+                ));
+                assert_eq!(untouched, [77; 4]);
+            }
+            assert!(view.read_range_into(9002, &mut []).is_err());
+            assert!(blob.read_range_into(usize::MAX, &mut untouched).is_err());
+            assert_eq!(untouched, [77; 4]);
+        }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn positional_reads_keep_original_file_after_path_replacement()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("original.gguf");
+        let replacement = temp.path().join("replacement.gguf");
+        write_blob(&path, b"original bytes")?;
+        write_blob(&replacement, b"different data")?;
+        let blob = LocalBlob::open_path(
+            &path,
+            LocalBlobKind::GgufFile,
+            LocalBlobOpenOptions::default()
+                .with_read_preference(BlobReadPreference::RequireMemoryMap),
+        )?;
+        let view = blob.paged_range(2, 8)?;
+        let cloned = view.clone();
+        drop(view);
+        drop(blob);
+        fs::rename(&replacement, &path)?;
+        assert_eq!(fs::read(&path)?, b"different data");
+        let mut actual = [0; 8];
+        cloned.read_range_into(0, &mut actual)?;
+        assert_eq!(&actual, b"iginal b");
+        assert_eq!(cloned.bytes()?, actual);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn positional_reads_reject_truncated_open_file() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("truncated.gguf");
+        write_blob(&path, b"original bytes")?;
+        let blob = LocalBlob::open_path(
+            &path,
+            LocalBlobKind::GgufFile,
+            LocalBlobOpenOptions::default()
+                .with_read_preference(BlobReadPreference::RequireMemoryMap),
+        )?;
+        fs::OpenOptions::new().write(true).open(&path)?.set_len(3)?;
+        // Do not access the mapping after truncation: only the file read is safe.
+        let mut untouched = [77; 8];
+        assert!(matches!(
+            blob.read_range_into(0, &mut untouched),
+            Err(BlobError::Read { .. })
+        ));
+        assert_eq!(untouched, [77; 8]);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn positional_reads_do_not_share_a_seek_cursor() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("concurrent.gguf");
+        let input: Vec<u8> = (0..16384).map(|index| (index % 251) as u8).collect();
+        write_blob(&path, &input)?;
+        let blob = LocalBlob::open_path(
+            &path,
+            LocalBlobKind::GgufFile,
+            LocalBlobOpenOptions::default()
+                .with_read_preference(BlobReadPreference::RequireMemoryMap),
+        )?;
+        std::thread::scope(|scope| {
+            let mut readers = Vec::new();
+            for offset in [3, 1024, 9001] {
+                let blob = &blob;
+                let expected = &input[offset..offset + 1024];
+                readers.push(scope.spawn(move || {
+                    for _ in 0..16 {
+                        let mut actual = [0; 1024];
+                        blob.read_range_into(offset, &mut actual)
+                            .expect("positional read");
+                        assert_eq!(actual, expected);
+                    }
+                }));
+            }
+            for reader in readers {
+                reader.join().expect("reader completed");
+            }
+        });
+        Ok(())
     }
 }

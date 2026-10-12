@@ -198,7 +198,7 @@ fn fused_attention_matches_dense_and_staged_at_tails_and_absolute_positions() {
     let metal = ClefMetal::new_with_attention(ClefMetalAttention::FusedTensorOps)
         .expect("fused Metal device");
     for (heads, kv_heads) in [(1, 1), (6, 2)] {
-        for first in [0, 31, 32, 33, 65] {
+        for first in [0, 31, 32, 33, 65, 127, 128, 129] {
             for n in [1, 15, 16, 17, 33] {
                 let inputs = Inputs::patterned(n, heads, kv_heads, first);
                 let expected = dense_attention(&inputs);
@@ -265,7 +265,7 @@ fn fused_attention_masks_finite_future_values_and_handles_uniform_probabilities(
     // f16. The online path sums unnormalized ones before dividing by three.
     // Both must stay close to the independent oracle; exact equality between
     // implementations would assert a different numerical contract.
-    for visible in [3, 65, 97] {
+    for visible in [3, 65, 97, 127, 128, 129] {
         let mut uniform = Inputs::patterned(1, 6, 2, visible - 1);
         uniform.query.fill(0.0);
         uniform.key.fill(0.0);
@@ -289,65 +289,68 @@ fn fused_attention_masks_finite_future_values_and_handles_uniform_probabilities(
 fn fused_attention_rescales_across_large_tile_maximum_changes() {
     let metal = ClefMetal::new_with_attention(ClefMetalAttention::FusedTensorOps)
         .expect("fused Metal device");
-    for tile_scores in [
-        [96.0, 104.0, 112.0],
-        [112.0, 104.0, 96.0],
-        [-96.0, 0.0, 96.0],
-        [96.0, 0.0, -96.0],
-    ] {
-        // One nonzero query component makes the score exactly the first key
-        // component. Scores and values remain exactly representable in f16.
-        // The first two key tiles are full; queries see 1..17 keys of tile 3.
-        let mut inputs = Inputs::patterned(17, 6, 2, 64);
-        inputs.query.fill(0.0);
-        inputs.key.fill(0.0);
-        for row in 0..inputs.n {
-            for head in 0..inputs.heads {
-                inputs.query[(row * inputs.heads + head) * DIM] = 1.0;
-            }
-        }
-        for key in 0..inputs.first + inputs.n {
-            let tile = key / 32;
-            for head in 0..inputs.kv_heads {
-                let start = (key * inputs.kv_heads + head) * DIM;
-                inputs.key[start] = tile_scores[tile] + (key % 32) as f32 / 8.0 + head as f32 / 4.0;
-                for d in 0..DIM {
-                    // Different tile values make stale output accumulators
-                    // visible when a later score maximum rescales the sum.
-                    inputs.value[start + d] = [-0.75, 0.25, 0.875][tile]
-                        + (key % 5) as f32 / 16.0
-                        + (d % 7) as f32 / 128.0
-                        + head as f32 / 8.0;
+    for tile_width in [32, 128] {
+        for tile_scores in [
+            [96.0, 104.0, 112.0],
+            [112.0, 104.0, 96.0],
+            [-96.0, 0.0, 96.0],
+            [96.0, 0.0, -96.0],
+        ] {
+            // One nonzero query component makes the score exactly the first key
+            // component. Scores and values remain exactly representable in f16.
+            // Two score bands are full; queries see 1..17 keys of the third.
+            let mut inputs = Inputs::patterned(17, 6, 2, 2 * tile_width);
+            inputs.query.fill(0.0);
+            inputs.key.fill(0.0);
+            for row in 0..inputs.n {
+                for head in 0..inputs.heads {
+                    inputs.query[(row * inputs.heads + head) * DIM] = 1.0;
                 }
             }
+            for key in 0..inputs.first + inputs.n {
+                let tile = key / tile_width;
+                for head in 0..inputs.kv_heads {
+                    let start = (key * inputs.kv_heads + head) * DIM;
+                    inputs.key[start] =
+                        tile_scores[tile] + (key % 32) as f32 / 8.0 + head as f32 / 4.0;
+                    for d in 0..DIM {
+                        // Different tile values make stale output accumulators
+                        // visible when a later score maximum rescales the sum.
+                        inputs.value[start + d] = [-0.75, 0.25, 0.875][tile]
+                            + (key % 5) as f32 / 16.0
+                            + (d % 7) as f32 / 128.0
+                            + head as f32 / 8.0;
+                    }
+                }
+            }
+            let expected = dense_attention(&inputs);
+            let fused = run_attention(&metal, &inputs, true);
+            let staged = run_attention(&metal, &inputs, false);
+            let context = format!("tile width {tile_width}, score bases {tile_scores:?}");
+            // Acceptance bounds are unmeasured. They allow half-probability
+            // rounding while rejecting unstable softmax or missing rescaling.
+            assert_close(
+                &fused,
+                &expected,
+                7.5e-4,
+                1.5e-3,
+                &format!("fused vs dense {context}"),
+            );
+            assert_close(
+                &staged,
+                &expected,
+                7.5e-4,
+                1.5e-3,
+                &format!("staged vs dense {context}"),
+            );
+            assert_close(
+                &fused,
+                &staged,
+                7.5e-4,
+                1.5e-3,
+                &format!("fused vs staged {context}"),
+            );
         }
-        let expected = dense_attention(&inputs);
-        let fused = run_attention(&metal, &inputs, true);
-        let staged = run_attention(&metal, &inputs, false);
-        let context = format!("tile score bases {tile_scores:?}");
-        // Acceptance bounds are unmeasured. They allow half-probability
-        // rounding while rejecting unstable softmax or missing rescaling.
-        assert_close(
-            &fused,
-            &expected,
-            7.5e-4,
-            1.5e-3,
-            &format!("fused vs dense {context}"),
-        );
-        assert_close(
-            &staged,
-            &expected,
-            7.5e-4,
-            1.5e-3,
-            &format!("staged vs dense {context}"),
-        );
-        assert_close(
-            &fused,
-            &staged,
-            7.5e-4,
-            1.5e-3,
-            &format!("fused vs staged {context}"),
-        );
     }
 }
 
@@ -356,29 +359,37 @@ fn fused_attention_rescales_across_large_tile_maximum_changes() {
 fn fused_attention_repeats_exactly_and_matches_non_aligned_chunks() {
     let metal = ClefMetal::new_with_attention(ClefMetalAttention::FusedTensorOps)
         .expect("fused Metal device");
-    let inputs = Inputs::patterned(65, 6, 2, 65);
-    let whole = run_attention(&metal, &inputs, true);
-    let repeated = run_attention(&metal, &inputs, true);
-    let bits = |values: &[f32]| {
-        values
-            .iter()
-            .map(|value| value.to_bits())
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(
-        bits(&whole),
-        bits(&repeated),
-        "identical inputs must repeat bit for bit"
-    );
-    for chunk in [15, 17, 31, 33] {
-        let mut combined = Vec::with_capacity(whole.len());
-        for first in (0..inputs.n).step_by(chunk) {
-            let part = inputs.chunk(first, chunk.min(inputs.n - first));
-            combined.extend(run_attention(&metal, &part, true));
+    for absolute_first in [65, 127, 128, 129] {
+        let inputs = Inputs::patterned(65, 6, 2, absolute_first);
+        let whole = run_attention(&metal, &inputs, true);
+        let repeated = run_attention(&metal, &inputs, true);
+        let bits = |values: &[f32]| {
+            values
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            bits(&whole),
+            bits(&repeated),
+            "identical inputs must repeat bit for bit"
+        );
+        for chunk in [15, 17, 31, 33] {
+            let mut combined = Vec::with_capacity(whole.len());
+            for first in (0..inputs.n).step_by(chunk) {
+                let part = inputs.chunk(first, chunk.min(inputs.n - first));
+                combined.extend(run_attention(&metal, &part, true));
+            }
+            // Chunk grouping can change the number of masked columns in the last
+            // TensorOps tile. Require a tight bound without claiming bitwise parity.
+            assert_close(
+                &combined,
+                &whole,
+                2e-5,
+                5e-5,
+                &format!("first {absolute_first}, chunk {chunk}"),
+            );
         }
-        // Chunk grouping can change the number of masked columns in the last
-        // TensorOps tile. Require a tight bound without claiming bitwise parity.
-        assert_close(&combined, &whole, 2e-5, 5e-5, &format!("chunk {chunk}"));
     }
 }
 

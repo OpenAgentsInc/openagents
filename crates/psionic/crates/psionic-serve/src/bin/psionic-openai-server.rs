@@ -54,6 +54,11 @@ async fn run() -> Result<(), String> {
             true
         }
     });
+    if decision.vision_manifest.is_some() && decision_paths.len() != 1 {
+        return Err(String::from(
+            "image weights require exactly one decision model",
+        ));
+    }
     let lanes = decision_paths
         .iter()
         .map(|path| {
@@ -62,6 +67,11 @@ async fn run() -> Result<(), String> {
                 clef::ClefHeadSource::Safetensors,
             );
             let mut lane = clef::ClefDecisionLane::load(path, head, decision.limits)?;
+            if let (Some(manifest), Some(blobs)) =
+                (&decision.vision_manifest, &decision.vision_blobs)
+            {
+                lane = lane.with_vision_manifest(manifest, blobs)?;
+            }
             if !decision.calibrations.is_empty() {
                 let maps = decision
                     .calibrations
@@ -153,6 +163,8 @@ struct DecisionArgs {
     limits: clef::ClefLimits,
     calibrations: Vec<PathBuf>,
     export_rows: Option<PathBuf>,
+    vision_manifest: Option<PathBuf>,
+    vision_blobs: Option<PathBuf>,
 }
 
 fn split_decision_args<I, S>(args: I) -> Result<(DecisionArgs, Vec<String>), String>
@@ -181,6 +193,12 @@ where
                 .push(next_value(&mut args, argument.as_str())?.into()),
             "--decision-export-rows" => {
                 decision.export_rows = Some(next_value(&mut args, argument.as_str())?.into());
+            }
+            "--decision-vision-manifest" => {
+                decision.vision_manifest = Some(next_value(&mut args, argument.as_str())?.into());
+            }
+            "--decision-vision-blobs" => {
+                decision.vision_blobs = Some(next_value(&mut args, argument.as_str())?.into());
             }
             "--decision-max-tokens" => {
                 decision.limits.max_tokens =
@@ -218,6 +236,11 @@ where
             }
             _ => rest.push(argument),
         }
+    }
+    if decision.vision_manifest.is_some() != decision.vision_blobs.is_some() {
+        return Err(String::from(
+            "provide both --decision-vision-manifest and --decision-vision-blobs",
+        ));
     }
     Ok((decision, rest))
 }
@@ -316,7 +339,7 @@ fn next_value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<Str
 
 fn usage() -> String {
     String::from(
-        "usage: psionic-openai-server -m <model-artifact> [-m <model-artifact> ...] [--backend cpu|cuda|metal] [--qwen38-vision-model-dir <official-model-dir>] [--host <ip>] [--port <port>] [--reasoning-budget <n>] [--mesh-coordination enabled|disabled] [--decision-model <clef-or-qwen35-gguf>] [--clef-head <joint_head dir or .safetensors>] [--decision-max-tokens <n>] [--decision-max-questions <n>] [--decision-max-options <n>] [--decision-chunk <n>] [--decision-device auto|cpu|cuda|metal] [--decision-accumulate f16|f32] [--decision-calibration <map.json> ...] [--decision-export-rows <dir>] [--allow-origin <https://origin> ...]\n\nA Clef GGUF (general.architecture = clef) given with -m is served as a decision model at POST /v1/systemone; with only decision models, -m may be omitted. --allow-origin lets pages on that exact origin call this server from a browser (CORS, including Chrome's local network preflight).",
+        "usage: psionic-openai-server -m <model-artifact> [-m <model-artifact> ...] [--backend cpu|cuda|metal] [--qwen38-vision-model-dir <official-model-dir>] [--host <ip>] [--port <port>] [--reasoning-budget <n>] [--mesh-coordination enabled|disabled] [--decision-model <clef-or-qwen35-gguf>] [--clef-head <joint_head dir or .safetensors>] [--decision-max-tokens <n>] [--decision-max-questions <n>] [--decision-max-options <n>] [--decision-chunk <n>] [--decision-device auto|cpu|cuda|metal] [--decision-accumulate f16|f32] [--decision-calibration <map.json> ...] [--decision-export-rows <dir>] [--decision-vision-manifest <manifest> --decision-vision-blobs <dir>] [--allow-origin <https://origin> ...]\n\nA Clef GGUF (general.architecture = clef) given with -m is served as a decision model at POST /v1/systemone; with only decision models, -m may be omitted. --allow-origin lets pages on that exact origin call this server from a browser (CORS, including Chrome's local network preflight).",
     )
 }
 
@@ -362,6 +385,26 @@ mod tests {
         assert_eq!(rest, ["-m", "/tmp/one.gguf"]);
         assert!(psionic_serve::cors::split_args(["--allow-origin", "*"]).is_err());
         assert!(psionic_serve::cors::split_args(["--allow-origin"]).is_err());
+    }
+
+    #[test]
+    fn decision_image_weights_require_both_paths() {
+        for flag in ["--decision-vision-manifest", "--decision-vision-blobs"] {
+            assert!(super::split_decision_args([flag]).is_err());
+            assert!(super::split_decision_args([flag, "/weights"]).is_err());
+        }
+        let (decision, rest) = super::split_decision_args([
+            "--decision-vision-manifest",
+            "/weights/manifest",
+            "--port",
+            "9001",
+            "--decision-vision-blobs",
+            "/weights/blobs",
+        ])
+        .expect("image weight paths");
+        assert_eq!(decision.vision_manifest, Some("/weights/manifest".into()));
+        assert_eq!(decision.vision_blobs, Some("/weights/blobs".into()));
+        assert_eq!(rest, ["--port", "9001"]);
     }
 
     #[test]
