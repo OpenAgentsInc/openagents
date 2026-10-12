@@ -75,7 +75,7 @@ fn say_waiting(line: Option<&str>) {
 }
 
 fn file() -> Option<PathBuf> {
-    model_access::store::openagents_dir().map(|root| root.join("coder-new").join(FILE))
+    crate::home::data_path(FILE)
 }
 
 fn read_limit(path: Option<PathBuf>) -> usize {

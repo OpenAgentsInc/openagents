@@ -289,7 +289,7 @@ fn output_dir() -> PathBuf {
     if !cfg!(test)
         && let Some(dir) = model_access::store::openagents_dir()
     {
-        return dir.join("coder-new/shells");
+        return dir.join(crate::home::DIR).join("shells");
     }
     std::env::temp_dir().join("openagents-coder-shells")
 }

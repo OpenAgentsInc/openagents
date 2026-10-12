@@ -527,7 +527,7 @@ pub fn sha256_file(path: &Path) -> io::Result<String> {
 /// Everything one run of the updater works with.
 #[derive(Clone, Debug)]
 pub struct Context {
-    /// `~/.openagents/coder-new`: the cache, settings, and downloads.
+    /// `~/.openagents/coder`: the cache, settings, and downloads.
     pub dir: PathBuf,
     pub kind: InstallKind,
     pub config: Config,

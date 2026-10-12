@@ -237,7 +237,7 @@ the gateway and `oa_auth::local`), `openagents-web` (`device.rs`,
 - The app's token is an ordinary `sess_` user session labeled with the app
   and computer, lasting 30 days, so every account route takes it.
 - `coder-new login` / `logout` and `/login` / `/logout` keep it in
-  `~/.openagents/coder-new/account.json` (0600, folder 0700); it is never
+  `~/.openagents/coder/account.json` (0600, folder 0700); it is never
   printed or written to session files. `OPENAGENTS_ORIGIN` points the
   client at another site (`https`, or `http://127.0.0.1:PORT`).
 

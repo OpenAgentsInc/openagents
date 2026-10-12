@@ -9,7 +9,7 @@ token counts as the rail. Their magenta diamonds pulse while running commands
 show a rotating spinner. Each agent conversation has its own tool calls,
 arguments, results, and current activity.
 
-The [shared component and web catalog specification](../../docs/coder/rust-native/coder-components.md)
+The [shared component and web catalog specification](../../docs/coder-new/rust-native/coder-components.md)
 uses this crate's public presentation as the complete source inventory for the
 first Coder Cloud deliverable at `/components`. It requires shared Rust Native
 components, interactive fixtures, and exact full-screen web recreation; it does
@@ -26,7 +26,7 @@ Enter `/appearance` to configure **Use System Terminal Background**. Press Space
 or Enter to toggle it, and Esc to return. When on, Coder leaves backgrounds
 unpainted so your terminal's configured background shows. When off, Coder uses
 its existing background colors. The option defaults to off and persists in
-`~/.openagents/coder-new/appearance.json` (or your `--state` directory).
+`~/.openagents/coder/appearance.json` (or your `--state` directory).
 
 Edit examples reuse Coder's port of Grok Build's diff renderer and syntax
 highlighter. Rust tokens keep their syntax colors on red and green change
@@ -138,7 +138,7 @@ turned off or no longer installed are excluded from chat's tools. Claude Code
 requires its installed ACP adapter. Codex uses its native CLI bridge when no
 ACP adapter is installed. The Cursor agent runs as `cursor-agent acp` with its
 own login or `CURSOR_API_KEY`
-([`docs/coder/runtime/cursor.md`](../../docs/coder/runtime/cursor.md)).
+([`docs/coder-new/runtime/cursor.md`](../../docs/coder-new/runtime/cursor.md)).
 Chat delegates through
 `acp_subagent` using a registered ID; it cannot choose an executable.
 Coder starts tools and subagents with full filesystem and network access.
@@ -182,8 +182,8 @@ See the [reply attribution preview](../../docs/coder-new/model-attribution.svg).
 
 Removing a key takes effect when you save. Disabling retains configuration.
 Live OpenRouter preferences and its key survive restarts in
-`~/.openagents/coder-new/plugins.json`; the other plugins use
-`~/.openagents/coder-new/bundled-plugins.json`. The directory uses `0700`
+`~/.openagents/coder/plugins.json`; the other plugins use
+`~/.openagents/coder/bundled-plugins.json`. The directory uses `0700`
 permissions and the files use `0600`. Saves replace files atomically, and failed saves keep
 the previous settings and editable draft. Connection verification runs again
 when you test the restored key; verification status is not saved.
@@ -229,7 +229,7 @@ back; both are offered only where this computer holds a Claude account login.
 `microclaude` runs turns through the Claude Agent SDK on that login, on Haiku
 5.5, with the basic file tools (Read, Write, Edit, Glob, and Grep) and no
 shell. `solver` takes an issue number (or `owner/repo#N`) and solves it to a
-pull request in four constrained hands (`docs/coder/solver.md`); `coder solver
+pull request in four constrained hands (`docs/coder-new/solver.md`); `coder solver
 N` does the same from the shell.
 
 The composer is a plain `❯` input with a blinking block cursor between
@@ -252,7 +252,7 @@ The working directory and branch appear at the top right. Only selected agent
 conversations show a title at the top left, using the agent's name.
 
 Live terminal conversations save automatically as private ATIF files in
-`~/.openagents/coder-new/sessions/`, the same store that `openagents coder`
+`~/.openagents/coder/sessions/`, the same store that `openagents coder`
 uses. Type `/resume` to open the 100 most recent conversations. Use Up/Down,
 Tab, or j/k to choose a chat, Enter to resume, and Esc to return to your draft.
 `/resume <number>` selects from the last displayed list; `/resume <id>` opens
@@ -273,7 +273,7 @@ and offers no reply box. It is off by default. `/sync all`
 adds your earlier chats, `/sync off` stops, and `/sync delete` removes this
 computer's chats from the account. Messages that look like they hold a
 password or key are left out. Deleting a chat in one place deletes it in the
-other. The setting lives in `~/.openagents/coder-new/sync.json`.
+other. The setting lives in `~/.openagents/coder/sync.json`.
 
 Every turn reads the repository's `AGENTS.md` and `CLAUDE.md` files from the
 working directory up to your home folder, nearest first, plus your own

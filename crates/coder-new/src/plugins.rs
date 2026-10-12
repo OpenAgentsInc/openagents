@@ -225,7 +225,7 @@ impl Plugins {
 
     pub fn storage_label(&self) -> &'static str {
         if self.store.is_some() {
-            "Settings file: ~/.openagents/coder-new/plugins.json."
+            "Settings file: ~/.openagents/coder/plugins.json."
         } else {
             "The key stays in memory until you quit."
         }

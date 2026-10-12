@@ -229,10 +229,9 @@ impl Options {
     }
 }
 
-/// `~/.openagents/coder-new/issue-runs`.
+/// `~/.openagents/coder/issue-runs`.
 fn default_state() -> PathBuf {
-    model_access::store::openagents_dir()
-        .map(|root| root.join("coder-new").join("issue-runs"))
+    crate::home::data_path("issue-runs")
         .unwrap_or_else(|| std::env::temp_dir().join("coder-issue-runs"))
 }
 
