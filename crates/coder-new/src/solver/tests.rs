@@ -846,3 +846,33 @@ fn hand_back_classes_group_by_target_and_checks_across_issues() {
     assert_eq!(classes[0].hypotheses, vec!["x", "y"]);
     assert_eq!(classes[1].target, "briefer");
 }
+
+#[test]
+fn queue_position_counts_earlier_unlanded_runs_sharing_a_file() {
+    let state = std::env::temp_dir().join(format!("solver-queue-pos-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&state);
+    for (id, files) in [
+        ("a", r#"["src/lib.rs"]"#),
+        ("b", r#"["docs/x.md"]"#),
+        ("z", r#"["src/lib.rs"]"#),
+    ] {
+        let folder = state.join(id);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(
+            folder.join("summary.json"),
+            format!(r#"{{"run_id":"{id}","issue":999999,"outcome":{{"status":"passed"}},"changed":{files}}}"#),
+        )
+        .unwrap();
+    }
+    let value = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(super::ledger::queue_position(
+            &state,
+            std::path::Path::new("."),
+            "m",
+            &serde_json::json!(["src/lib.rs"]),
+        ));
+    assert_eq!(value["position"], 2);
+    assert_eq!(value["ahead"], serde_json::json!(["a"]));
+    let _ = std::fs::remove_dir_all(&state);
+}

@@ -960,17 +960,47 @@ pub async fn open_pr(
     outcome: &Outcome,
     transcript: &mut Transcript,
 ) -> Option<String> {
+    delivery(options, base, outcome, transcript).await.url
+}
+
+/// How a run's delivery ended. `status` is one of `none` (nothing was
+/// pushed: the run did not pass, the issue is closed, or a step before
+/// the push failed), `open` (the pull request exists at `url`), or
+/// `unknown` (the push ran but the pull request step failed, so the
+/// branch may be on the remote without a pull request; nothing retries
+/// it on its own).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Delivery {
+    pub url: Option<String>,
+    pub status: &'static str,
+}
+
+impl Delivery {
+    fn none() -> Self {
+        Self {
+            url: None,
+            status: "none",
+        }
+    }
+}
+
+pub async fn delivery(
+    options: &Options,
+    base: &Base,
+    outcome: &Outcome,
+    transcript: &mut Transcript,
+) -> Delivery {
     if !outcome.delivers() {
         transcript.notice(format!(
             "No pull request: the run did not pass ({}). {}",
             outcome.status.as_str(),
             outcome.reason.as_deref().unwrap_or_default()
         ));
-        return None;
+        return Delivery::none();
     }
     if base.closed {
         transcript.notice("A closed issue's test run never opens a pull request.");
-        return None;
+        return Delivery::none();
     }
     let branch = format!("coder/issue-{}", base.issue);
     let message = format!(
@@ -1015,6 +1045,7 @@ pub async fn open_pr(
         ],
     ];
     let mut url = None;
+    let mut pushed = false;
     for step in steps {
         let shown = step
             .iter()
@@ -1051,8 +1082,17 @@ pub async fn open_pr(
             },
         );
         if failed {
-            return None;
+            return Delivery {
+                url: None,
+                status: if pushed { "unknown" } else { "none" },
+            };
+        }
+        if step[1] == "push" {
+            pushed = true;
         }
     }
-    url
+    Delivery {
+        url,
+        status: "open",
+    }
 }

@@ -827,17 +827,27 @@ impl End<'_> {
             started: self.started,
             folder,
         });
-        let url = if self.options.inner.open_pr {
+        let queue = ledger::queue_position(
+            self.run.folder.parent().unwrap_or(folder),
+            &self.options.inner.repo,
+            &self.run.id,
+            &summary["changed"],
+        )
+        .await;
+        let delivery = if self.options.inner.open_pr {
             match &self.base {
-                Some(base) => setup::open_pr(&self.options.inner, base, &outcome, transcript).await,
+                Some(base) => {
+                    setup::delivery(&self.options.inner, base, &outcome, transcript).await
+                }
                 None => {
                     transcript.notice("No pull request: the run has no working copy.");
-                    None
+                    setup::Delivery::default()
                 }
             }
         } else {
-            None
+            setup::Delivery::default()
         };
+        let url = delivery.url;
         let total = hands::total_cost(&self.turns);
         summary["solver"] = json!({
             "hands": self.turns.iter().map(Turn::json).collect::<Vec<_>>(),
@@ -845,6 +855,8 @@ impl End<'_> {
             "decisions": self.decisions,
             "cost_usd": total,
             "pull_request": url,
+            "queue": queue,
+            "merge": if delivery.status.is_empty() { "none" } else { delivery.status },
         });
         with_hands_cost(&mut summary, &self.turns);
         if self.base.is_some() && self.briefing.is_some() {
