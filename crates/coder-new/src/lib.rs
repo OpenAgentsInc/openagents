@@ -225,8 +225,8 @@ pub struct App {
     pending_copy: Option<String>,
     /// Counts presses on the transcript for double- and triple-click.
     clicks: coder_terminal::selection::Clicks,
-    /// A transcript selection went to the clipboard: the row under the
-    /// input says so until then.
+    /// A transcript selection went to the clipboard: the input's top-left
+    /// rail says so until then.
     pub(crate) copied_until: Option<std::time::Instant>,
     export_notice_expiry: Option<(std::time::Instant, String)>,
     active_delegation: Option<String>,

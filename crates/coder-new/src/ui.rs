@@ -150,8 +150,11 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
     };
     let context_text = context_text(app);
     let context_height = u16::from(!context_text.is_empty());
-    let reserved = rail_height + 1 + context_height + header_height;
-    let [header, body, queued, composer, context, rail] = Layout::vertical([
+    // One blank row above the input, so the transcript's last message is
+    // never pressed against the input's top rule.
+    let padding_height = 1;
+    let reserved = rail_height + 1 + padding_height + context_height + header_height;
+    let [header, body, queued, _padding, composer, context, rail] = Layout::vertical([
         Constraint::Length(header_height),
         Constraint::Min(1),
         Constraint::Length(
@@ -161,6 +164,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
                 .count()
                 .min(3) as u16,
         ),
+        Constraint::Length(padding_height),
         Constraint::Length(composer_height.min(area.height.saturating_sub(reserved))),
         Constraint::Length(context_height),
         Constraint::Length(rail_height),
@@ -212,6 +216,11 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         app.mode == Mode::Demo,
     );
     let working = working_label(app);
+    // A transcript selection reached the clipboard: the input's top-left
+    // rail says so for a moment, where it never pushes the transcript.
+    let copied = app
+        .copied_until
+        .is_some_and(|until| std::time::Instant::now() < until);
     composer_view(
         frame,
         Rect {
@@ -231,6 +240,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         // the name of whichever vendor answered.
         rail_mode(app),
         working.as_deref(),
+        copied,
     );
     let path = repository_rail(app);
     let composer_area = Rect {
@@ -620,12 +630,6 @@ fn context_text(app: &App) -> String {
     let now = atif::now_ms() / 1000;
     if let Some(plan) = crate::claude_plan::status_text(now, &crate::long_session::clock) {
         parts.push(plan);
-    }
-    if app
-        .copied_until
-        .is_some_and(|until| std::time::Instant::now() < until)
-    {
-        parts.push("Copied".to_owned());
     }
     // The signed-in account's name is never shown under the input.
     if let Some(update) = &app.update_line {
@@ -1833,6 +1837,7 @@ fn composer_view(
     selected: bool,
     fallback_model: Option<&str>,
     working: Option<&str>,
+    copied: bool,
 ) {
     let block = Block::default()
         .borders(Borders::ALL)
@@ -1851,6 +1856,9 @@ fn composer_view(
     // reply is going, nothing else claims that spot.
     if let Some(working) = working {
         left_labels.push(working.to_owned());
+    }
+    if copied {
+        left_labels.push("Copied".to_owned());
     }
     if let Some((position, total)) = history_position {
         left_labels.push(format!("History {position}/{total}"));

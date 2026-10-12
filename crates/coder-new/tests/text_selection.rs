@@ -236,3 +236,33 @@ fn a_click_without_a_drag_copies_nothing() {
     click(&mut app, 1, 8, user);
     assert_eq!(copied(&mut app), None);
 }
+
+/// A copy says so on the input's top-left rail, and adds no row of its own:
+/// the transcript above keeps its height.
+#[test]
+fn a_copy_shows_copied_on_the_inputs_top_left_rail() {
+    let mut app = chat();
+    let before = rows(&render(&mut app, 60, 30));
+    let top = before
+        .iter()
+        .position(|row| row.starts_with('┌'))
+        .expect("the input's top rule") as u16;
+    assert!(!before[usize::from(top)].contains("Copied"));
+    let user = row_of(&render(&mut app, 60, 30), "❯ Why");
+    click(&mut app, 3, 10, user);
+    assert!(copied(&mut app).is_some());
+    let after = rows(&render(&mut app, 60, 30));
+    // The label rides the same top rule, and the mode keeps the right end.
+    let rule = &after[usize::from(top)];
+    assert!(rule.starts_with("┌─ Copied "), "{rule:?}");
+    assert!(rule.trim_end().ends_with("─┐"), "{rule:?}");
+    assert!(rule.contains("coder"), "{rule:?}");
+    // No row appears below the input for it, and the input keeps its height.
+    assert_eq!(after.len(), before.len());
+    assert!(after[usize::from(top) + 2].starts_with('└'));
+    assert!(
+        after[usize::from(top) + 3..]
+            .iter()
+            .all(|row| row.trim().is_empty())
+    );
+}

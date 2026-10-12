@@ -104,3 +104,29 @@ fn items_start_in_column_zero_hang_two_columns_and_sit_one_blank_row_apart() {
         assert!(!text[..=row].iter().any(|line| line.contains("1.8s")));
     }
 }
+
+/// One blank row sits between the transcript's last row and the input's top
+/// rule, so a message never runs straight into the line.
+#[test]
+fn one_blank_row_separates_the_transcript_from_the_input() {
+    for width in [110, 40, 24] {
+        // A transcript long enough to fill the body, as a real one does.
+        let mut app = chat();
+        app.live.entries = (0..80)
+            .map(|index| Entry::Assistant {
+                text: format!("Message {index}."),
+                model: None,
+                elapsed_ms: None,
+            })
+            .collect();
+        let buffer = render(&mut app, width, 24);
+        let text = rows(&buffer);
+        let top = text
+            .iter()
+            .position(|row| row.starts_with('┌'))
+            .expect("the input's top rule");
+        assert!(top > 0, "{width}: the input is not the first row");
+        assert_eq!(text[top - 1], "", "{width}: one blank row above the input");
+        assert_ne!(text[top - 2], "", "{width}: only one blank row");
+    }
+}
