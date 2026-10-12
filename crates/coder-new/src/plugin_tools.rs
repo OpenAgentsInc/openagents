@@ -249,8 +249,8 @@ impl ExecutionSettings {
         if self.registered(ToolBinding::OpenAgentsCli) {
             guidance.push_str(crate::computer_tool::instructions());
             guidance.push_str(crate::ops_tool::instructions());
-            guidance.push_str("The OpenAgents CLI ships beside Coder and is available through openagents_cli for requested OpenAgents work. Answer conversational questions directly; read [\"--help\"] or a group's --help only when you need a command you do not know. Use argument arrays and its --json output. The command covers computers, Coder tasks and issues, settings, knowledge, plugin registries, relay identities, shared worlds, and wallets. It enforces each command's existing rights; do not assume a chat tool grants access.\n");
-            guidance.push_str("For GitHub issues and Project boards (create, comment, close, reopen, list, view; list a board by status, add an issue, move its status) use the github tool rather than gh or raw API calls.\n");
+            guidance.push_str("The OpenAgents CLI ships beside Coder and is available through openagents_cli for requested OpenAgents work. Answer conversational questions directly; read [\"--help\"] or a group's --help only when you need a command you do not know. Use argument arrays and its --json output. The command covers computers, Coder tasks and issues, settings, knowledge, plugin registries, relay identities, shared worlds, and wallets. It enforces each command's existing rights; do not assume a chat tool grants access. The person's projects are their openagents.com projects (the Projects list on the website, such as finances): list them with openagents projects list, and read one with its chats with openagents projects show NAME, before looking anywhere else.\n");
+            guidance.push_str("For GitHub issues and GitHub Project boards (create, comment, close, reopen, list, view; list a board by status, add an issue, move its status) use the github tool rather than gh or raw API calls.\n");
         }
         if self.shell {
             guidance.push_str(crate::file_tools::INSTRUCTIONS);

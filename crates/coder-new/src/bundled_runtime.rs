@@ -268,7 +268,7 @@ impl RuntimeEvent {
 pub fn cli_tool_definition() -> Value {
     json!({"type":"function","function":{
         "name":"openagents_cli",
-        "description":"Run the bundled OpenAgents CLI in the current working directory. Pass an argument array, never a shell command. Use [\"--help\"] to discover command groups, then [\"GROUP\",\"--help\"] for syntax. The CLI supports computers, tasks, issues, settings, knowledge, relays, plugins, worlds, and wallets; commands retain their own access checks. JSON output is added by the host. Call only for work the user requested; do not send messages, publish, pay, or delete data without their authorization.",
+        "description":"Run the bundled OpenAgents CLI in the current working directory. Pass an argument array, never a shell command. Use [\"--help\"] to discover command groups, then [\"GROUP\",\"--help\"] for syntax. The CLI supports computers, tasks, issues, settings, knowledge, relays, plugins, worlds, and wallets; commands retain their own access checks. The person's projects (their projects, or a project they name, such as finances) are their openagents.com projects, the Projects list on the website: read them with [\"projects\",\"list\"] and [\"projects\",\"show\",NAME] for one project and its chats (by name, repository, or id). GitHub Project boards are a different thing, under [\"board\",...]. JSON output is added by the host. Call only for work the user requested; do not send messages, publish, pay, or delete data without their authorization.",
         "parameters":{"type":"object","properties":{"arguments":{"type":"array","items":{"type":"string"},"maxItems":128}},"required":["arguments"],"additionalProperties":false}
     }})
 }
