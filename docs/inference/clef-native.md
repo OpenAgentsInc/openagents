@@ -1342,28 +1342,92 @@ multi-chunk prefill walks the layer x chunk grid.
   weights, where `auto` stays chunk-major and nothing is converted per chunk.
   The change speeds up the bounded 27B on-demand configuration, not the Flash
   medians that the gate measures.
-- **Not yet measured.** On 2026-10-12 the Mac's one-minute load stayed at
-  87–100 from parallel builds. That is far above the harness's quiet
-  threshold (below 5 for 600 s), and no release server binary on the Mac
-  includes this order yet. The Flash numbers to beat are still 0.511 s at
-  about 1k and 10.326 s at about 16k, against 0.35 s and 7.5 s.
+- **Measured (2026-10-12, shared machine).** With on-demand FFN weights,
+  layer-major and chunk-major give identical answers and identical exported
+  pooled rows at 4k and 16k. Over two opposite-order rounds of three samples,
+  the paired chunk-major/layer-major time ratio is 0.959 at 4k (two chunks,
+  so layer-major is slightly slower) and 1.088 at 16k (eight chunks, so
+  layer-major is about 8 % faster). See the next section.
+
+### Current main and a token-fast GEMM grid (2026-10-12)
+
+The binary was built from main `0cf744f46b` plus the candidate below, which
+is off unless selected, so the default path is main's. Runs used the same
+settings as the uncached M4 study: resident f16, positional upload,
+fused-tensorops attention, weight-shape GEMM, fused-field head, sequential
+Delta, chunk 2048, prefix cache 0 and batch 1. The machine was shared
+throughout: the one-minute load was 20–290, and another agent's headless
+Blender render held the GPU at 54–89 % device utilization. These numbers
+show relative effects only. They are not gate numbers. Evidence is in
+`gs://openagents-bench-artifacts/clef/m3-m4-2026-10-11/2026-10-12/`, listed
+in the bundle manifest.
+
+**Flash on main, interleaved with the reset Ollama.** Two opposite-order
+rounds, five measured unique states per length, with zero cached tokens on
+every reply from both engines:
+
+| | ~1k (1,075–1,082) | ~4k (3,913–3,920) | ~16k (15,507–15,513) |
+| --- | --- | --- | --- |
+| Native (main), median | 1.252 s | 3.452 s | 14.777 s |
+| Native prefill phase, median | 1,141 ms | 3,361 ms | 14,608 ms |
+| Reset Ollama 0.40, median | 0.744 s | 3.496 s | 14.269 s |
+| Paired native/Ollama time | 1.571 | 0.986 | 1.028 |
+| Target | ≤ 0.35 s | — | ≤ 7.5 s |
+
+GPU contention hurts native more than Ollama. Earlier the same day, with
+build load around 100–117 and no GPU contention recorded, the M4 study below
+measured native Flash at 0.584 / 1.967 / 8.360 s against Ollama's 0.629 /
+2.221 / 9.045 s. Native was faster at every length. Native streams f16
+weights, four times Ollama's 4-bit bytes, so it is more exposed when another
+GPU job takes bandwidth. That reading fits the data, but no counter was
+captured to confirm it.
+
+**Candidate: a token-fast GEMM grid, rejected.** It added
+`PSIONIC_CLEF_METAL_GEMM=weight-major`, which uses the weight-shape tiles but
+swaps the grid axes. All token tiles of one weight tile then launch back to
+back, so the weight tile can be reused from cache. Each threadgroup still
+runs the same MPP operation on the same slices, so the results are exact:
+
+- **Synthetic GPU test:** bitwise equal to `weight-shapes` for every Flash
+  and 27B trunk shape, at 1, 65 and 1,078 rows, in both overwrite and
+  accumulate modes.
+- **Full model:** answers on the 40 Flash e2e requests and the three long
+  bodies are identical, and so are the exported pooled rows (`rows.f16`).
+  27B is also identical on 37 e2e requests and the three long bodies. The
+  other three e2e requests were refused by both modes alike, because the
+  harness had re-serialized them.
+- **Speed: slower.** Interleaved in the same run as the table above, the
+  paired main/candidate time ratios are 0.818 / 0.829 / 0.770 at
+  1k / 4k / 16k, so the candidate is 18–30 % slower.
+
+Together with the four-token swizzle that was already rejected, this shows
+that the default output-fast order is the better one. Launch order is not
+what holds back sustained GEMM throughput. The patch and every run are kept
+in the evidence (`weight-major-candidate/`). It is not on main.
 
 ### Next
 
-- Compare full-model accuracy, chunk equivalence, and end-to-end latency with
-  both experimental modes at 1k, 4k, and 16k tokens, including short final chunks.
-- Check full-model cold and warm evidence outputs and profile the submission
-  counts after the combined batch.
-- Run a paired Mac comparison against Ollama and MLX with per-phase profiling,
-  reporting desktop contention separately.
+- **Re-measure on an idle GPU.** The 1k gap to 0.35 s is mostly contention.
+  Under build load alone it was 0.58 s, and under the GPU render it was
+  1.25 s. Re-measure with no other GPU job, and record the GPU utilization
+  next to the load.
+- **Read fewer weight bytes.** Every exact reordering of the f16 GEMM has now
+  failed. What is left is reading fewer weight bytes per FLOP: in-kernel Q4
+  dequantization into the matmul tile, the way MLX's 4-bit kernels do it. It
+  cannot be bitwise equal to the f16 path, so it needs the 1e-3 raw-logit
+  bound and the 104-answer CPU agreement instead.
+- **Overlap scans with GEMMs.** In layer-major order, the Delta scan of chunk
+  c+1 depends only on chunk c's scan state. It could run beside chunk c's
+  out-projection and FFN.
 
 ## M4 status (2026-10-11, validation in progress)
 
 The current implementation adds Metal text batching, exact prefix reuse, image
 inputs, 27B weight-format support, and CUDA memory checks for
 [#11197](https://github.com/OpenAgentsInc/openagents/issues/11197). These features
-have separate controls and acceptance checks. No new full-model speed result or
-completed M3/M4 acceptance gate is claimed in this section.
+have separate controls and acceptance checks. The uncached timing study
+(2026-10-12, below) gives the current speed result: it misses the 1.5× gate.
+No M3/M4 acceptance gate is complete.
 
 The [validation bundle](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/README.md)
 (stored in `gs://openagents-bench-artifacts/clef/m3-m4-2026-10-11/`, with a
@@ -1424,6 +1488,78 @@ without a consistent gain over Stage 6. Native cache counts are zero; Ollama
 reports 37–39 reused template tokens on 31 of 36 requests, so the all-engine
 uncached gate fails. The shared harness now checks that top-level field. The
 independent same-Q4 runtime discrepancy remains unresolved.
+
+### Uncached native vs Ollama timing (2026-10-12)
+
+This is the study from the uncached-comparison plan. It ran from 10:38 to
+11:07 UTC on the shared Mac, with build load 98–123 and no task-owned
+overlap. Evidence is in `gs://openagents-bench-artifacts/clef/m3-m4-2026-10-11/`
+under `native-chunk2048-v1/`, `27b-ollama-reset-control-v1/` and
+`uncached-timing-v1/`, listed in the bundle manifest.
+
+**Prerequisites, all passed:**
+
+- **27B Ollama reset control.** Five fresh stock processes and one
+  persistent reset process made 13 scoring calls for 29 comparisons:
+  - all top answers match, with a maximum probability difference of 0.0;
+  - every reset reply reports `prompt_eval_cached_count = 0`, including the
+    exact repeat;
+  - the stock exact repeat reports 557 cached tokens, which shows that the
+    field does detect reuse.
+- **Native 27B at chunk 2048.** On the 1k, 4k and 16k bodies, compared with
+  the same binary's saved chunk-512 proof: the maximum raw-logit difference
+  is 0.0, and the peak is 48.64 GiB under the 52 GiB guard.
+- **Timing wrapper.** It runs the pinned `mac_quiet_bench.py` (sha
+  `7018be06…`) unedited. It rejects:
+  - missing, boolean or positive cache telemetry;
+  - token-count mismatches;
+  - altered paired JSON;
+  - partial coverage;
+  - invalid samples.
+
+  Its negative cases are recorded in `check-analyze-results.json`.
+
+**Method:**
+
+- **Rounds.** Two opposite-order rounds. Each round has one warmup and five
+  measured unique states per length, giving 10 pairs per length.
+- **Pairing.** The request bytes and nonces match within each pair.
+- **Native settings.** Resident f16, positional upload, fused-tensorops
+  attention, weight-shape GEMM, fused-field head, sequential Delta, chunk
+  2048, prefix cache 0 and batch 1.
+- **Native binary.** `0e7eb7cf…`, the positional-upload build from
+  `46ed6cdcf3`. Its resident-f16 path is the same as main's: layer-major
+  order applies only to on-demand weights, and `auto` keeps resident
+  weights chunk-major.
+- **Ollama.** The pinned reset build (`a315f991…`) serving the installed
+  `clef-flash` and `clef` models, which are the 0.40 nvfp4 tensors.
+- **Cache check.** Every native and Ollama reply reports zero cached
+  tokens.
+
+| Model | ~1k native / Ollama | ~4k native / Ollama | ~16k native / Ollama | Paired Ollama/native time |
+| --- | --- | --- | --- | --- |
+| Flash | 0.584 / 0.629 s | 1.967 / 2.221 s | 8.360 / 9.045 s | 1.097 / 1.129 / 1.085 |
+| 27B | 1.990 / 1.977 s | 6.543 / 7.101 s | 28.302 / 28.610 s | **1.003 / 1.087 / 1.014** |
+
+**Result: the M4 speed gate is not met.** Native 27B ties the uncached
+Ollama `clef` at 1k and 16k and is 9 % faster at 4k. The gate is ≥ 1.5×.
+
+- **Rounds agree.** Both rounds give the same picture. Individual 27B pair
+  ratios range from 0.94 to 1.11.
+- **Prefill dominates.** Native prefill is 1,891 / 6,458 / 28,182 ms of the
+  27B medians.
+- **Memory.** The native 27B peak was 52,382,098,616 bytes (48.8 GiB), and
+  reset Ollama's was 29.9 GB.
+- **The issue's reference numbers.** The issue lists Ollama 0.40 `clef` at
+  3.9 / 14.3 / 60.3 s. In this session, the same model under the same
+  uncached rules ran in 1.98 / 7.10 / 28.6 s. The gate is a paired,
+  same-session comparison, so the older numbers do not count toward it.
+- **What 1.5× would take.** Cutting about a third of the 27B prefill time.
+  The M3 work on Flash has not found exact reorderings that do that. The
+  token-fast grid (M3, above) is 18–30 % slower.
+
+The independent same-Q4 runtime check also still stands at 103/104 top
+answers (`text-029`, `日本1`).
 
 ### Metal controls and memory
 
@@ -1641,6 +1777,8 @@ complete before the native comparison starts; do not overlap their model loads.
 | Prefix raw-logit parity and reuse speed | Passed on Flash and 27B: all 21 question comparisons per model have zero logit difference; repeated-state medians improve by 6.83× and 9.42×, respectively. Changed schemas, state changes, eviction, and restored hits pass. Shared-machine runs overlap CPU compilation and export raw logits. |
 | 27B batching | Passed on Stage 5: two and four slots each compare 15 successful responses with identical serial probabilities, actual grouped FFN work, disconnect recovery, and overload recovery. Each burst returns three `busy` refusals. This functional run overlaps CPU diagnostics and does not establish a throughput target. |
 | Flash paired latency | Stage 6 runs two rounds in reversed order, with ten measured requests per size and variant. Staged-head medians are `0.749 / 2.555 / 11.450 s`; fused-field medians are `0.740 / 2.576 / 11.328 s`; Ollama 0.40.2 medians are `0.841 / 2.914 / 11.964 s`. Both native modes beat Ollama in each round but **fail M3’s absolute targets**. No consistent head speedup is established. Native caches are disabled. Retrospective inspection finds 37–39 cached prefix tokens in 32 of 36 Ollama responses; the original analyzer overlooked its top-level cache field. |
+| Uncached Flash and 27B timing against the reset Ollama (2026-10-12) | **27B fails the 1.5× gate:** the paired Ollama/native time ratio is 1.003 / 1.087 / 1.014 at ~1k / 4k / 16k. Native medians are 1.990 / 6.543 / 28.302 s; Ollama's are 1.977 / 7.101 / 28.610 s. Flash is 1.097 / 1.129 / 1.085: native 0.584 / 1.967 / 8.360 s, Ollama 0.629 / 2.221 / 9.045 s. The reset control, the chunk-2048 check and the wrapper's negative cases all pass, and every reply reports zero cached tokens. Shared machine at load 98–123. |
+| Token-fast GEMM grid (`weight-major`) | **Rejected on speed:** it is bitwise equal on every trunk shape, and full-model Flash and 27B answers and pooled rows are identical. Paired, it is 18–30 % slower than `weight-shapes`. Not on main. |
 | 27B paired latency | Stage 6 resident-f16 medians are `2.490 / 9.193 / 43.437 s`, versus Ollama 0.40.2 at `3.112 / 10.520 / 43.243 s`: `1.250× / 1.144× / 0.996×`, all **below M4’s 1.5× target**. One fixed-order round has five measured requests per size. Retrospective inspection finds 37–39 cached prefix tokens in 14 of 18 Ollama responses. Both comparisons pair request bytes and token counts, run on the shared machine without task-owned competing work, and preserve load and memory receipts. They establish neither idle-machine nor fully uncached Ollama acceptance. |
 
 Stage 5 corrects DeltaNet normalization in CPU, Metal prefill, and CUDA
