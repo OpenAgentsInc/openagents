@@ -1452,6 +1452,8 @@ impl TranscriptCache {
                 let cached = &mut self.entries[index];
                 let offset = cached.run_output.as_ref().map(|r| (r.2, r.3));
                 (cached.lines, cached.copy) = entry_rows(entry, width, phase, view);
+                // Rebuilt rows carry no gap the loop below pushed.
+                cached.gap_after = false;
                 cached.bound_run(width, phase, offset);
             }
         }
@@ -1459,15 +1461,22 @@ impl TranscriptCache {
         // an item under it that is a reply takes the one blank row every
         // item has above it. A row that already ends in a blank (a verbose
         // item) takes none, so a reply never shows two blanks above it.
+        // `gap_after` means the entry's last row is a gap this loop pushed:
+        // `ends_blank` looks past it, or the gap reads as the entry's own
+        // blank and is pushed and popped on alternating draws (#11395).
         let streaming = !chat.partial.is_empty();
         for index in 0..self.entries.len() {
             let follows_reply = match self.entries.get(index + 1) {
                 Some(next) => is_reply(&next.entry),
                 None => streaming,
             };
-            let ends_blank = self.entries[index].lines.last().is_some_and(is_blank_row);
-            let needed = follows_reply && !ends_blank;
             let cached = &mut self.entries[index];
+            let ends_blank = cached
+                .lines
+                .iter()
+                .nth_back(usize::from(cached.gap_after))
+                .is_some_and(is_blank_row);
+            let needed = follows_reply && !ends_blank;
             if needed && !cached.gap_after {
                 cached.lines.push(Line::default());
                 cached.copy.push(RowCopy::default());
@@ -2125,6 +2134,53 @@ mod export_notice_tests {
         app.scroll = app.scroll_max.saturating_add(3);
         draw(&mut app);
         assert_eq!(app.scroll, u16::MAX);
+    }
+
+    /// A gap row above each reply used to be pushed and popped on
+    /// alternating draws, which slid the whole transcript a row every tick
+    /// (#11395).
+    #[test]
+    fn a_replies_gap_rows_do_not_oscillate() {
+        let mut app = App::default();
+        app.mode = Mode::Live;
+        app.live.busy = true;
+        for i in 0..25 {
+            app.live.entries.push(crate::live::Entry::Tool {
+                name: "Read".into(),
+                input: serde_json::json!({"path": format!("/tmp/file-{i}.rs")}),
+                output: serde_json::json!({}),
+                running: false,
+            });
+            app.live.entries.push(crate::live::Entry::Assistant {
+                text: format!("reply {i}"),
+                model: None,
+                elapsed_ms: None,
+            });
+        }
+        app.live.entries.push(crate::live::Entry::Tool {
+            name: "Run".into(),
+            input: serde_json::json!({"command": "sleep 60"}),
+            output: serde_json::json!({"stdout": "one\ntwo\nthree\n"}),
+            running: true,
+        });
+        app.scroll = u16::MAX;
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        let mut positions = Vec::new();
+        let mut counts = Vec::new();
+        for phase in 0..16u8 {
+            app.animation_frame = phase % 8;
+            terminal.draw(|frame| render(frame, &mut app)).unwrap();
+            positions.push(app.live.cache.view.unwrap().1);
+            counts.push(app.live.cache.count());
+        }
+        assert!(
+            counts.windows(2).all(|pair| pair[0] == pair[1]),
+            "{counts:?}"
+        );
+        assert!(
+            positions.windows(2).all(|pair| pair[0] == pair[1]),
+            "{positions:?}"
+        );
     }
 
     #[test]
