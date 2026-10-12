@@ -1437,6 +1437,7 @@ mod tests {
             jev_endpoint: endpoint,
             agents: vec![],
             cwd: std::path::PathBuf::from("/unused"),
+            boundary: None,
             instructions: None,
             shell: false,
             brainstorm: None,
