@@ -22,8 +22,17 @@
 //!    structured output (`vertex`), on the prepaid Google credit.
 //!
 //! Our hosted Clef is `clef_url` (and `clef_models` per model), a Psionic
-//! `/v1/systemone` over HTTP: the always-on H100 `clef-decisions-h100` in
-//! production, reached over the VPC (docs/inference/clef-decisions-h100.md).
+//! `/v1/systemone` over HTTP. Each model is a pool of backends, written as
+//! comma-separated URLs (`h100=http://10.128.0.61:18096,a100=http://…`; a
+//! `name=` prefix names a backend, else its host and port do). In
+//! production: the spot H100 `clef-decisions-h100` and the on-demand A100
+//! `clef-decisions-a100`, reached over the VPC
+//! (docs/inference/clef-decisions-h100.md). A decision goes to the backend
+//! with the fewest decisions in flight, ties to the one listed first; a
+//! backend that answers busy sits out [`BUSY_BENCH`], one that is
+//! unreachable, times out or fails sits out [`DOWN_BENCH`], and the
+//! decision goes to the next backend before the next door. The answer names
+//! the backend (`service.backend`, `X-Decision-Backend`, the evidence line).
 //! `X-Decision-Order: pylon`, or the models `clef-flash` and
 //! `openagents/pylon`, ask the Pylons first.
 //!
@@ -48,7 +57,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use axum::body::Bytes;
@@ -70,6 +79,14 @@ const BOOK_STALE: Duration = Duration::from_secs(30);
 
 /// How long a pylon that failed sits out.
 const BENCH: Duration = Duration::from_secs(60);
+
+/// How long a hosted Clef backend that answered busy sits out (its queue is
+/// full; one request at a time per model today).
+const BUSY_BENCH: Duration = Duration::from_secs(2);
+
+/// How long a hosted Clef backend that was unreachable, timed out, or
+/// failed sits out.
+const DOWN_BENCH: Duration = Duration::from_secs(15);
 
 /// The `decisions` section of `gateway.json`.
 #[derive(Clone, Debug, Deserialize)]
@@ -95,13 +112,14 @@ pub struct Decisions {
     /// How long one pylon may take, in milliseconds.
     #[serde(default = "default_pylon_ms")]
     pub pylon_ms: u64,
-    /// Our hosted Clef, a Psionic `/v1/systemone` base URL, answering as
-    /// `clef-flash`.
+    /// Our hosted Clef, Psionic `/v1/systemone` base URLs (comma-separated,
+    /// each optionally `name=url`), answering as `clef-flash`.
     #[serde(default)]
     pub clef_url: Option<String>,
-    /// Our hosted Clef per served model (`clef-flash`, `clef`): a Psionic
-    /// `/v1/systemone` base URL each. `clef-flash` here wins over
-    /// `clef_url`; `clef` (27B) is reached only through this map.
+    /// Our hosted Clef per served model (`clef-flash`, `clef`): a pool of
+    /// Psionic `/v1/systemone` base URLs each, comma-separated, each
+    /// optionally `name=url`. `clef-flash` here wins over `clef_url`;
+    /// `clef` (27B) is reached only through this map.
     #[serde(default)]
     pub clef_models: std::collections::BTreeMap<String, String>,
     /// Gemini on Vertex AI with structured output; on by default when the
@@ -235,12 +253,167 @@ impl Candidate {
     }
 }
 
+/// One machine serving a hosted Clef model.
+#[derive(Debug)]
+struct Backend {
+    /// `h100`, or the host and port when the URL has no `name=`.
+    name: String,
+    url: String,
+    in_flight: AtomicUsize,
+    benched_until: std::sync::Mutex<Option<Instant>>,
+}
+
+/// The backends serving one hosted Clef model, in preference order (the
+/// first listed wins a tie).
+#[derive(Debug, Default)]
+struct Pool {
+    backends: Vec<Backend>,
+    /// Held while a backend is picked and counted, so decisions arriving
+    /// together see each other's picks.
+    picking: std::sync::Mutex<()>,
+}
+
+impl Pool {
+    /// `name=url,url,…`: empty items are skipped; a name is the part before
+    /// the first `=` when it holds no `:` or `/`.
+    fn parse(spec: &str) -> Self {
+        let backends = spec
+            .split(',')
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+            .map(|item| {
+                let (name, url) = match item.split_once('=') {
+                    Some((name, url))
+                        if !name.is_empty() && !name.contains(':') && !name.contains('/') =>
+                    {
+                        (name.to_owned(), url.trim().to_owned())
+                    }
+                    _ => {
+                        let rest = item.split_once("://").map_or(item, |(_, rest)| rest);
+                        (
+                            rest.split('/').next().unwrap_or(rest).to_owned(),
+                            item.to_owned(),
+                        )
+                    }
+                };
+                Backend {
+                    name,
+                    url,
+                    in_flight: AtomicUsize::new(0),
+                    benched_until: std::sync::Mutex::new(None),
+                }
+            })
+            .collect();
+        Self {
+            backends,
+            picking: std::sync::Mutex::new(()),
+        }
+    }
+
+    fn benched(&self, i: usize, now: Instant) -> Option<Instant> {
+        self.backends[i]
+            .benched_until
+            .lock()
+            .ok()
+            .and_then(|until| *until)
+            .filter(|until| *until > now)
+    }
+
+    /// The backends to try, in order: those not sitting out, fewest in
+    /// flight first, ties to the first listed. When every backend sits
+    /// out, the one whose bench ends first is still tried.
+    fn order(&self, now: Instant) -> Vec<usize> {
+        let mut ready: Vec<usize> = (0..self.backends.len())
+            .filter(|&i| self.benched(i, now).is_none())
+            .collect();
+        ready.sort_by_key(|&i| (self.backends[i].in_flight.load(Ordering::Relaxed), i));
+        if ready.is_empty() {
+            ready.extend((0..self.backends.len()).min_by_key(|&i| self.benched(i, now)));
+        }
+        ready
+    }
+
+    /// The next backend to ask, leaving out those `tried`, counted in
+    /// flight until the guard drops.
+    fn pick(&self, now: Instant, tried: &[usize]) -> Option<(usize, InFlight<'_>)> {
+        let _held = self.picking.lock().ok();
+        let next = if tried.is_empty() {
+            self.order(now).first().copied()
+        } else {
+            self.order(now)
+                .into_iter()
+                .find(|i| !tried.contains(i))
+                .filter(|&i| self.benched(i, now).is_none())
+        }?;
+        Some((next, InFlight::start(&self.backends[next].in_flight)))
+    }
+
+    fn bench(&self, i: usize, for_: Duration) {
+        if let Ok(mut until) = self.backends[i].benched_until.lock() {
+            *until = Some(Instant::now() + for_);
+        }
+    }
+
+    fn clear(&self, i: usize) {
+        if let Ok(mut until) = self.backends[i].benched_until.lock() {
+            *until = None;
+        }
+    }
+}
+
+/// A decision in flight on a backend, counted until dropped.
+struct InFlight<'a>(&'a AtomicUsize);
+
+impl<'a> InFlight<'a> {
+    fn start(count: &'a AtomicUsize) -> Self {
+        count.fetch_add(1, Ordering::Relaxed);
+        Self(count)
+    }
+}
+
+impl Drop for InFlight<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
+/// What a hosted Clef backend's failure says about it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Fault {
+    /// Its queue is full: sit out briefly, try the next backend.
+    Busy,
+    /// Unreachable, timed out, failed, or answered in the wrong shape: sit
+    /// out longer, try the next backend.
+    Down,
+    /// The request itself was refused; another backend would refuse it too.
+    Request,
+}
+
+fn fault(outcome: &str, code: &str) -> Fault {
+    match (outcome, code) {
+        (_, "busy" | "rate_limited" | "overloaded") => Fault::Busy,
+        (
+            "refused",
+            "invalid_request"
+            | "too_many_questions"
+            | "too_many_options"
+            | "limit_exceeded"
+            | "unsupported_input"
+            | "context_length_exceeded",
+        ) => Fault::Request,
+        _ => Fault::Down,
+    }
+}
+
 /// One door's try at a decision, for the evidence line.
 #[derive(Debug, Clone, serde::Serialize)]
 struct Attempt {
     door: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pylon: Option<String>,
+    /// The hosted Clef backend asked (`h100`, `a100`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    backend: Option<String>,
     outcome: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     code: Option<String>,
@@ -331,6 +504,8 @@ pub enum Decided {
 /// The dispatcher behind `POST /v1/systemone`.
 pub struct Dispatch {
     config: Decisions,
+    /// Our hosted Clef pools by served name (`clef-flash`, `clef`).
+    clef_pools: std::collections::BTreeMap<&'static str, Pool>,
     dir: PathBuf,
     secret: SecretKey,
     pubkey: String,
@@ -421,8 +596,25 @@ impl Dispatch {
                 .map(|(door, ..)| format!(" → Vertex {}", door.model))
                 .unwrap_or_default(),
         );
+        let mut clef_pools = std::collections::BTreeMap::new();
+        for (served, spec) in [
+            (
+                "clef-flash",
+                config
+                    .clef_models
+                    .get("clef-flash")
+                    .or(config.clef_url.as_ref()),
+            ),
+            ("clef", config.clef_models.get("clef")),
+        ] {
+            let pool = Pool::parse(spec.map_or("", String::as_str));
+            if !pool.backends.is_empty() {
+                clef_pools.insert(served, pool);
+            }
+        }
         Ok(Arc::new(Self {
             config,
+            clef_pools,
             dir,
             secret,
             pubkey,
@@ -562,6 +754,12 @@ impl Dispatch {
                     if let Ok(value) = door.parse() {
                         out.headers_mut().insert("x-decision-door", value);
                     }
+                    if let Some(value) = response["service"]["backend"]
+                        .as_str()
+                        .and_then(|b| b.parse().ok())
+                    {
+                        out.headers_mut().insert("x-decision-backend", value);
+                    }
                     out
                 }
                 Decided::Refused { status, body } => (
@@ -607,8 +805,12 @@ impl Dispatch {
                 let mut response = response.clone();
                 response["latency_ms"] = json!(total_ms);
                 eprintln!(
-                    "decisions: {} answered as {} in {total_ms} ms{}",
+                    "decisions: {}{} answered as {} in {total_ms} ms{}",
                     door,
+                    response["service"]["backend"]
+                        .as_str()
+                        .map(|b| format!(" ({b})"))
+                        .unwrap_or_default(),
                     response["model"].as_str().unwrap_or("?"),
                     if attempts.len() > 1 {
                         format!(
@@ -685,22 +887,16 @@ impl Dispatch {
         }
     }
 
-    /// Our hosted Clef door for a requested model: its base URL and the
-    /// served name to ask for. `clef` (27B) only through `clef_models`;
-    /// every other name is answered by `clef-flash`.
-    fn clef_door(&self, model: &str) -> Option<(&str, &'static str)> {
-        if model == "clef" {
-            return self
-                .config
-                .clef_models
-                .get("clef")
-                .map(|url| (url.as_str(), "clef"));
-        }
-        self.config
-            .clef_models
-            .get("clef-flash")
-            .or(self.config.clef_url.as_ref())
-            .map(|url| (url.as_str(), "clef-flash"))
+    /// Our hosted Clef door for a requested model: its pool of backends
+    /// and the served name to ask for. `clef` (27B) only through
+    /// `clef_models`; every other name is answered by `clef-flash`.
+    fn clef_door(&self, model: &str) -> Option<(&Pool, &'static str)> {
+        let served = if model == "clef" {
+            "clef"
+        } else {
+            "clef-flash"
+        };
+        self.clef_pools.get(served).map(|pool| (pool, served))
     }
 
     /// Ask each door in `order` until one answers. `skip` leaves one door
@@ -770,13 +966,41 @@ impl Dispatch {
         if skip == Some("clef") {
             return None;
         }
-        let (url, served) = self.clef_door(model)?;
-        let t = Instant::now();
-        let left = deadline.saturating_duration_since(Instant::now());
-        let result = self
-            .ask_http(url, None, served, state, questions, left)
-            .await;
-        self.settle("clef", Kind::Clef, result, questions, t, attempts)
+        let (pool, served) = self.clef_door(model)?;
+        let mut tried = Vec::new();
+        while let Some((i, counted)) = pool.pick(Instant::now(), &tried) {
+            tried.push(i);
+            let backend = &pool.backends[i];
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left < Duration::from_millis(300) {
+                break;
+            }
+            let t = Instant::now();
+            let result = self
+                .ask_http(&backend.url, None, served, state, questions, left)
+                .await;
+            drop(counted);
+            let failed = result.as_ref().err().map(|(o, c)| fault(o, c));
+            let found = self.settle_on(
+                "clef",
+                Some(&backend.name),
+                Kind::Clef,
+                result,
+                questions,
+                t,
+                attempts,
+            );
+            match (found, failed) {
+                (Some(found), _) => {
+                    pool.clear(i);
+                    return Some(found);
+                }
+                (None, Some(Fault::Request)) => return None,
+                (None, Some(Fault::Busy)) => pool.bench(i, BUSY_BENCH),
+                (None, _) => pool.bench(i, DOWN_BENCH),
+            }
+        }
+        None
     }
 
     /// The connected pylons, best first, until one answers.
@@ -821,6 +1045,7 @@ impl Dispatch {
                 attempts.push(Attempt {
                     door,
                     pylon: Some(candidate.provider.clone()),
+                    backend: None,
                     outcome: "refused",
                     code: Some(code.clone()),
                     ms,
@@ -835,6 +1060,7 @@ impl Dispatch {
                     attempts.push(Attempt {
                         door: door.clone(),
                         pylon: Some(candidate.provider.clone()),
+                        backend: None,
                         outcome: "answered",
                         code: None,
                         ms,
@@ -853,6 +1079,7 @@ impl Dispatch {
                     attempts.push(Attempt {
                         door,
                         pylon: Some(candidate.provider.clone()),
+                        backend: None,
                         outcome,
                         code: Some(code),
                         ms,
@@ -873,11 +1100,30 @@ impl Dispatch {
         started: Instant,
         attempts: &mut Vec<Attempt>,
     ) -> Option<(Kind, String, Value)> {
+        self.settle_on(door, None, kind, result, questions, started, attempts)
+    }
+
+    /// [`Self::settle`] for a door with several backends, naming the one
+    /// asked.
+    #[allow(clippy::too_many_arguments)]
+    fn settle_on(
+        &self,
+        door: &str,
+        backend: Option<&str>,
+        kind: Kind,
+        result: Result<Value, (&'static str, String)>,
+        questions: &Map<String, Value>,
+        started: Instant,
+        attempts: &mut Vec<Attempt>,
+    ) -> Option<(Kind, String, Value)> {
         let ms = millis(started.elapsed());
         let checked = result.and_then(|mut response| {
             check_answers(questions, &response).map_err(|why| ("invalid", why))?;
             let served = response["model"].as_str().unwrap_or(door).to_owned();
             response["service"] = json!({"door": door, "version": VERSION, "model": served});
+            if let Some(backend) = backend {
+                response["service"]["backend"] = json!(backend);
+            }
             Ok(response)
         });
         match checked {
@@ -885,6 +1131,7 @@ impl Dispatch {
                 attempts.push(Attempt {
                     door: door.into(),
                     pylon: None,
+                    backend: backend.map(str::to_owned),
                     outcome: "answered",
                     code: None,
                     ms,
@@ -892,10 +1139,14 @@ impl Dispatch {
                 Some((kind, door.to_owned(), response))
             }
             Err((outcome, code)) => {
-                eprintln!("decisions: {door} {outcome}: {code}");
+                eprintln!(
+                    "decisions: {door}{} {outcome}: {code}",
+                    backend.map(|b| format!(" ({b})")).unwrap_or_default()
+                );
                 attempts.push(Attempt {
                     door: door.into(),
                     pylon: None,
+                    backend: backend.map(str::to_owned),
                     outcome,
                     code: Some(code),
                     ms,
@@ -1276,6 +1527,7 @@ impl Dispatch {
             "model": answer.map(|(.., response)| response["model"].clone()),
             "identity": answer.map(|(.., response)| response["service"]["identity"].clone()),
             "pylon": answer.and_then(|(.., response)| response["service"]["provider"].as_str().map(str::to_owned)),
+            "backend": answer.and_then(|(.., response)| response["service"]["backend"].as_str().map(str::to_owned)),
             "ms": total_ms,
             "questions": questions.len(),
             "state_bytes": state.to_string().len(),
@@ -1625,6 +1877,95 @@ mod tests {
         .as_object()
         .cloned()
         .unwrap()
+    }
+
+    #[test]
+    fn a_pool_parses_named_unnamed_and_single_urls() {
+        let pool = Pool::parse("h100=http://10.128.0.61:18096, a100=http://10.128.0.75:18096/,");
+        let got: Vec<(&str, &str)> = pool
+            .backends
+            .iter()
+            .map(|b| (b.name.as_str(), b.url.as_str()))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("h100", "http://10.128.0.61:18096"),
+                ("a100", "http://10.128.0.75:18096/")
+            ]
+        );
+        // One URL, as every config before pools: named by host and port.
+        let single = Pool::parse("http://10.128.0.61:18098");
+        assert_eq!(single.backends.len(), 1);
+        assert_eq!(single.backends[0].name, "10.128.0.61:18098");
+        assert_eq!(single.backends[0].url, "http://10.128.0.61:18098");
+        // A query's `=` is not a name.
+        let query = Pool::parse("http://x:1/?a=b");
+        assert_eq!(query.backends[0].name, "x:1");
+        assert!(Pool::parse(" , ").backends.is_empty());
+    }
+
+    #[test]
+    fn the_fewest_in_flight_go_first_and_ties_go_to_the_first_listed() {
+        let pool = Pool::parse("h100=http://a,a100=http://b");
+        let now = Instant::now();
+        assert_eq!(pool.order(now), [0, 1]);
+        let first = InFlight::start(&pool.backends[0].in_flight);
+        assert_eq!(pool.order(now), [1, 0]);
+        let second = InFlight::start(&pool.backends[1].in_flight);
+        assert_eq!(pool.order(now), [0, 1]);
+        drop(first);
+        drop(second);
+        assert_eq!(pool.backends[0].in_flight.load(Ordering::Relaxed), 0);
+        assert_eq!(pool.order(now), [0, 1]);
+    }
+
+    #[test]
+    fn a_benched_backend_sits_out_until_every_backend_does() {
+        let pool = Pool::parse("h100=http://a,a100=http://b");
+        pool.bench(0, DOWN_BENCH);
+        assert_eq!(pool.order(Instant::now()), [1]);
+        // Both out: the one back soonest is still tried.
+        pool.bench(1, BUSY_BENCH);
+        assert_eq!(pool.order(Instant::now()), [1]);
+        pool.clear(0);
+        assert_eq!(pool.order(Instant::now()), [0]);
+        // A bench ends by itself.
+        assert_eq!(
+            pool.order(Instant::now() + DOWN_BENCH + Duration::from_secs(1)),
+            [0, 1]
+        );
+    }
+
+    #[test]
+    fn a_pick_counts_itself_and_skips_what_was_tried() {
+        let pool = Pool::parse("h100=http://a,a100=http://b");
+        let now = Instant::now();
+        let (first, one) = pool.pick(now, &[]).unwrap();
+        assert_eq!(first, 0);
+        // Arriving together, the next decision sees the first one's pick.
+        let (second, two) = pool.pick(now, &[]).unwrap();
+        assert_eq!(second, 1);
+        drop((one, two));
+        pool.bench(0, BUSY_BENCH);
+        assert_eq!(pool.pick(Instant::now(), &[0]).map(|(i, _)| i), Some(1));
+        // Every backend tried or out: the decision goes to the next door.
+        pool.bench(1, DOWN_BENCH);
+        assert!(pool.pick(Instant::now(), &[1]).is_none());
+        assert!(pool.pick(Instant::now(), &[0, 1]).is_none());
+    }
+
+    #[test]
+    fn busy_and_down_move_to_the_next_backend_and_a_bad_request_does_not() {
+        assert_eq!(fault("refused", "busy"), Fault::Busy);
+        assert_eq!(fault("refused", "rate_limited"), Fault::Busy);
+        assert_eq!(fault("failed", "unreachable"), Fault::Down);
+        assert_eq!(fault("failed", "timeout"), Fault::Down);
+        assert_eq!(fault("refused", "internal"), Fault::Down);
+        assert_eq!(fault("refused", "unavailable"), Fault::Down);
+        assert_eq!(fault("invalid", "answers missing"), Fault::Down);
+        assert_eq!(fault("refused", "invalid_request"), Fault::Request);
+        assert_eq!(fault("refused", "too_many_questions"), Fault::Request);
     }
 
     #[test]

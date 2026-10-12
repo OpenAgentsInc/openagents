@@ -26,11 +26,17 @@ type Seen = Arc<Mutex<Vec<Value>>>;
 /// A Psionic-shaped `/v1/systemone`: answers every question (the first
 /// option most likely), echoes the requested model, and keeps each body.
 async fn clef_stub(status: StatusCode) -> (String, Seen) {
+    clef_stub_slow(status, 0).await
+}
+
+/// [`clef_stub`] taking `delay_ms` per answer.
+async fn clef_stub_slow(status: StatusCode, delay_ms: u64) -> (String, Seen) {
     async fn answer(
-        State((seen, status)): State<(Seen, StatusCode)>,
+        State((seen, status, delay_ms)): State<(Seen, StatusCode, u64)>,
         Json(body): Json<Value>,
     ) -> (StatusCode, Json<Value>) {
         seen.lock().unwrap().push(body.clone());
+        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
         if status != StatusCode::OK {
             return (
                 status,
@@ -70,7 +76,7 @@ async fn clef_stub(status: StatusCode) -> (String, Seen) {
     let seen: Seen = Arc::default();
     let app = axum::Router::new()
         .route("/v1/systemone", post(answer))
-        .with_state((seen.clone(), status));
+        .with_state((seen.clone(), status, delay_ms));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     tokio::spawn(axum::serve(listener, app).into_future());
@@ -178,6 +184,16 @@ fn request(model: &str) -> Value {
 }
 
 async fn call(address: &str, body: &Value, headers: &[(&str, &str)]) -> (u16, Value) {
+    let (status, body, _) = call_full(address, body, headers).await;
+    (status, body)
+}
+
+/// [`call`] with the `X-Decision-Backend` header.
+async fn call_full(
+    address: &str,
+    body: &Value,
+    headers: &[(&str, &str)],
+) -> (u16, Value, Option<String>) {
     let mut call = reqwest::Client::new()
         .post(format!("{address}/v1/decisions"))
         .json(body);
@@ -186,7 +202,12 @@ async fn call(address: &str, body: &Value, headers: &[(&str, &str)]) -> (u16, Va
     }
     let response = call.send().await.unwrap();
     let status = response.status().as_u16();
-    (status, response.json().await.unwrap())
+    let backend = response
+        .headers()
+        .get("x-decision-backend")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+    (status, response.json().await.unwrap(), backend)
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -299,4 +320,94 @@ async fn a_bad_request_is_one_error_object() {
     assert_eq!(body["error"]["type"], "invalid_request");
     assert_eq!(body["error"]["param"], "questions[1].choices");
     assert!(body["error"]["request_id"].is_string());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn one_url_is_a_pool_of_one_named_by_its_host() {
+    let (flash, _) = clef_stub(StatusCode::OK).await;
+    let gateway = deploy(hosted(&flash, None)).await;
+    let (status, body, backend) = call_full(&gateway.address, &request("clef-flash"), &[]).await;
+    assert_eq!(status, 200, "{body}");
+    let host = flash.trim_start_matches("http://");
+    assert_eq!(body["openagents"]["backend"], host);
+    assert_eq!(backend.as_deref(), Some(host));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_busy_backend_hands_the_decision_to_the_next_and_sits_out() {
+    let (busy, busy_seen) = clef_stub(StatusCode::SERVICE_UNAVAILABLE).await;
+    let (good, good_seen) = clef_stub(StatusCode::OK).await;
+    let gateway = deploy(hosted(&format!("h100={busy},a100={good}"), None)).await;
+    let (status, body, backend) = call_full(&gateway.address, &request("clef-flash"), &[]).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["openagents"]["door"], "clef");
+    assert_eq!(body["openagents"]["backend"], "a100");
+    assert_eq!(backend.as_deref(), Some("a100"));
+    assert_eq!(busy_seen.lock().unwrap().len(), 1);
+    // The busy one sits out: the next decision goes straight to the other.
+    let (status, body) = call(&gateway.address, &request("openagents/decide"), &[]).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["openagents"]["backend"], "a100");
+    assert_eq!(busy_seen.lock().unwrap().len(), 1);
+    assert_eq!(good_seen.lock().unwrap().len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_unreachable_backend_hands_the_decision_to_the_next() {
+    let (good, _) = clef_stub(StatusCode::OK).await;
+    // Nothing listens on port 9.
+    let gateway = deploy(hosted(
+        &format!("h100=http://127.0.0.1:9,a100={good}"),
+        Some(&format!("a100={good}")),
+    ))
+    .await;
+    let (status, body) = call(&gateway.address, &request("clef-flash"), &[]).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["openagents"]["backend"], "a100");
+    let (status, body) = call(&gateway.address, &request("clef"), &[]).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["model"], "clef");
+    assert_eq!(body["openagents"]["backend"], "a100");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn decisions_at_once_go_to_the_backend_with_fewer_in_flight() {
+    let (h100, h100_seen) = clef_stub_slow(StatusCode::OK, 400).await;
+    let (a100, a100_seen) = clef_stub_slow(StatusCode::OK, 400).await;
+    let gateway = deploy(hosted(&format!("h100={h100},a100={a100}"), None)).await;
+    // One at a time: every decision goes to the first listed.
+    for _ in 0..2 {
+        let (_, body) = call(&gateway.address, &request("clef-flash"), &[]).await;
+        assert_eq!(body["openagents"]["backend"], "h100");
+    }
+    // Four at once: split two and two.
+    let calls: Vec<_> = (0..4)
+        .map(|_| {
+            let address = gateway.address.clone();
+            tokio::spawn(async move { call(&address, &request("clef-flash"), &[]).await })
+        })
+        .collect();
+    let mut by = BTreeMap::new();
+    for done in calls {
+        let (status, body) = done.await.unwrap();
+        assert_eq!(status, 200, "{body}");
+        *by.entry(body["openagents"]["backend"].as_str().unwrap().to_owned())
+            .or_insert(0) += 1;
+    }
+    assert_eq!(by.get("h100"), Some(&2), "{by:?}");
+    assert_eq!(by.get("a100"), Some(&2), "{by:?}");
+    assert_eq!(h100_seen.lock().unwrap().len(), 4);
+    assert_eq!(a100_seen.lock().unwrap().len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_pool_with_every_backend_down_fails_a_named_clef() {
+    let gateway = deploy(hosted(
+        "h100=http://127.0.0.1:9,a100=http://127.0.0.1:9",
+        None,
+    ))
+    .await;
+    let (status, body) = call(&gateway.address, &request("clef-flash"), &[]).await;
+    assert_eq!(status, 503, "{body}");
+    assert_eq!(body["error"]["code"], "unavailable");
 }

@@ -96,6 +96,7 @@ curl https://openagents.com/api/v1/decisions \
   "usage": {"input_tokens": 212},
   "openagents": {
     "door": "clef",
+    "backend": "h100",
     "latency_ms": 184,
     "cost": {"price_sats": 0, "price_usd": "0.000000"}
   }
@@ -188,7 +189,7 @@ problem").
 | `answers` | One answer per question, in request order. |
 | `usage` | `input_tokens`, as the answering model counted them; `cached_input_tokens` when a prefix was reused. There are no output tokens. |
 | `metadata` | Your `metadata`, echoed. |
-| `openagents` | Ours, beyond OpenAI's shape: `door` (which door answered: `pylon:<slug>`, `clef`, `jev`, `vertex`), `latency_ms`, `cost` (`price_sats`, `price_usd`), and `receipt` (the sealed execution receipt's id). SDKs ignore fields they do not know. |
+| `openagents` | Ours, beyond OpenAI's shape: `door` (which door answered: `pylon:<slug>`, `clef`, `jev`, `vertex`), `backend` (for `clef`, the machine that answered: `h100` or `a100`; also the `X-Decision-Backend` header), `latency_ms`, `cost` (`price_sats`, `price_usd`), and `receipt` (the sealed execution receipt's id). SDKs ignore fields they do not know. |
 
 Answers:
 
@@ -224,7 +225,7 @@ Answers:
 
 | Model | What answers | Reads images | Notes |
 | --- | --- | --- | --- |
-| `openagents/decide` | Clef-Flash on our H100 first, then the backups ([How a call is served](#how-a-call-is-served)). The default. | Not yet | `model` in the response names what answered. |
+| `openagents/decide` | Clef-Flash on our GPUs first, then the backups ([How a call is served](#how-a-call-is-served)). The default. | Not yet | `model` in the response names what answered. |
 | `clef-flash` | Cloudflare's open-weight Clef-Flash (9B), Q4_K_M, served natively by Psionic on our H100 | Planned (Psionic serves images on CPU and Metal; CUDA refuses them today) | Fastest. Under-confident on file relevance; calibrate thresholds per use. |
 | `clef` | Clef (27B), the same family's larger model, Q4_K_M, on the same H100 | Planned, as above | The quality tier. Best of our models on file relevance (AUC 0.91 on closed issues); about 2.6× slower than Flash on an H100. |
 | `jev-latest` | TypeSafe's Jev, relayed | No | A backup door. Callers with their own TypeSafe key can still call TypeSafe directly. |
@@ -341,7 +342,7 @@ back in this page's shape. Nothing is lost either way.
 | answer `noul` | `probability` |
 | answer `choice`, `probabilities` (object) | `choice`, `probabilities` (array of `{value, probability}`) |
 | answer `score`, `probabilities` (object keyed `"0"`…), `legend` | `score`, `probabilities` (array of `{value, label, probability}`) |
-| `service.door`, `latency_ms`, the receipt | `openagents.door`, `openagents.latency_ms`, `openagents.receipt` |
+| `service.door`, `service.backend`, `latency_ms`, the receipt | `openagents.door`, `openagents.backend`, `openagents.latency_ms`, `openagents.receipt` |
 
 ## How a call is served
 
@@ -351,13 +352,13 @@ a timeout); a refusal of the question itself never moves on:
 
 | Request | Doors, in order |
 | --- | --- |
-| `openagents/decide` | 1. **Clef-Flash on our H100** (`clef-decisions-h100`, over our private network). 2. **Connected Pylons** (Clef over NIP-DEC). 3. **Jev** on TypeSafe, under our house key, as a backup. 4. **Gemini on Vertex**, with a schema that asks one probability per option. |
-| `clef-flash` | Our H100's Clef-Flash only. It fails (`503 unavailable`) rather than falling through to another model family. |
-| `clef` | Our H100's Clef 27B only, likewise. |
-| `jev-latest` | Named explicitly on this route: Jev, the Pylons, our H100, Vertex. |
-| any, with `X-Decision-Order: jev` | Jev first, then the Pylons, our H100, Vertex. |
-| any, with `X-Decision-Order: pylon` | Connected Pylons that advertise `pylon/decision` (best standing first, over NIP-DEC on our relay), then our H100, then Vertex, then Jev. |
-| any, with `X-Decision-Order: hosted` | Our H100 only. The payload never leaves our machines, and no second opinion is asked elsewhere. |
+| `openagents/decide` | 1. **Clef-Flash on our GPUs** (an H100 and an A100, over our private network; see [Our GPUs](#our-gpus)). 2. **Connected Pylons** (Clef over NIP-DEC). 3. **Jev** on TypeSafe, under our house key, as a backup. 4. **Gemini on Vertex**, with a schema that asks one probability per option. |
+| `clef-flash` | Our GPUs' Clef-Flash only. It fails (`503 unavailable`) rather than falling through to another model family. |
+| `clef` | Our GPUs' Clef 27B only, likewise. |
+| `jev-latest` | Named explicitly on this route: Jev, the Pylons, our GPUs, Vertex. |
+| any, with `X-Decision-Order: jev` | Jev first, then the Pylons, our GPUs, Vertex. |
+| any, with `X-Decision-Order: pylon` | Connected Pylons that advertise `pylon/decision` (best standing first, over NIP-DEC on our relay), then our GPUs, then Vertex, then Jev. |
+| any, with `X-Decision-Order: hosted` | Our GPUs only. The payload never leaves our machines, and no second opinion is asked elsewhere. |
 
 `/v1/systemone` uses the same Clef-first order for every model it answers,
 `jev-…` names included (owner, 2026-10-12: Clef first, Jev as a backup).
@@ -368,15 +369,26 @@ Every call is one line in the decision record with each attempt's door,
 outcome, and time, and one answer in twenty (none for `clef-flash`, `clef`,
 or `hosted`) is asked again at another door to measure agreement.
 
-### Our H100
+### Our GPUs
 
-One NVIDIA H100 80 GB (`a3-highgpu-1g`, spot, us-central1), always on: a
-preemption stops it, and a restarter starts it again within minutes, moving
-zones if one is out of capacity. It runs Psionic natively on CUDA, one
-server per model (`clef-flash` Q4_K_M and `clef` 27B Q4_K_M), reachable only
-from the gateway's private subnets. Its operations page is
-[clef-decisions-h100.md](../inference/clef-decisions-h100.md). It costs
-about $6.40 an hour, about $4,700 a month always on.
+Two machines, always on, in us-central1, each running Psionic natively on
+CUDA with one server per model (`clef-flash` Q4_K_M and `clef` 27B
+Q4_K_M), reachable only from the gateway's private subnets:
+
+- **An NVIDIA H100 80 GB** (`clef-decisions-h100`, `a3-highgpu-1g`, spot):
+  a preemption stops it, and a restarter starts it again within minutes,
+  moving zones if one is out of capacity. About $6.40 an hour.
+- **An NVIDIA A100 40 GB** (`clef-decisions-a100`, `a2-highgpu-1g`,
+  on-demand): never preempted, about half the H100's speed. About $3.67 an
+  hour.
+
+Together about $10.10 an hour, about $7,400 a month. Each model is one pool
+of the two: a call goes to the machine with fewer calls in flight (a tie
+goes to the H100), and a machine that is busy, down, or failing sits out
+briefly while the call goes straight to the other, before any other door.
+The answer names the machine in `openagents.backend` (`h100` or `a100`) and
+the `X-Decision-Backend` header. Operations, the balancing policy, and how
+to add a machine: [clef-decisions-h100.md](../inference/clef-decisions-h100.md).
 
 Speed measured in production from a Mac in the US on 2026-10-12, three
 questions (a predicate, a choice of four, a score of three) about one short

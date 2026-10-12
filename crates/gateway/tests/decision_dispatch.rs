@@ -2,8 +2,10 @@
 //! `POST /v1/systemone` farms a decision to a connected Pylon over Nostr
 //! (#11225): the Pylon's beacon advertises `pylon/decision`, the gateway
 //! sends it a NIP-DEC job on the relay, checks the answer and the served
-//! identity, and names the Pylon in the answer. With the Pylon gone, the
-//! gateway fails over (here to no door, so the call is `unavailable`).
+//! identity, and names the Pylon in the answer. A hosted Clef pool whose
+//! backends are all down hands the decision on: each backend once, then the
+//! Pylon. With the Pylon gone, the gateway fails over (here to no door, so
+//! the call is `unavailable`).
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -37,6 +39,12 @@ async fn a_connected_pylon_answers_and_the_gateway_fails_over_when_it_stops() {
     let registry = tempfile::tempdir().unwrap();
     let decisions = Decisions {
         relay: Some(url.clone()),
+        // Two hosted Clef backends, neither listening (port 9).
+        clef_models: [(
+            "clef-flash".to_owned(),
+            "h100=http://127.0.0.1:9,a100=http://127.0.0.1:9/".to_owned(),
+        )]
+        .into(),
         vertex: None,
         no_jev: true,
         shadow: 0.0,
@@ -146,6 +154,21 @@ async fn a_connected_pylon_answers_and_the_gateway_fails_over_when_it_stops() {
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
     assert_eq!(line["door"], "pylon:test-clef");
+    let tried: Vec<(&str, &str)> = line["attempts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| {
+            (
+                a["door"].as_str().unwrap(),
+                a["backend"].as_str().unwrap_or(""),
+            )
+        })
+        .collect();
+    assert_eq!(
+        tried,
+        [("clef", "h100"), ("clef", "a100"), ("pylon:test-clef", "")]
+    );
     assert_eq!(line["pylon"], pylon_key.pubkey());
     assert_eq!(line["model"], "clef-flash");
 

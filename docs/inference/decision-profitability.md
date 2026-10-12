@@ -74,9 +74,11 @@ room for idle time; each issue reports its measured result.
   with deferrable work: the batch and jobs paths, file-relevance passes
   over a backlog, scheduled benchmarks. A cheaper price for work that can
   wait pushes callers there.
-- Scale with demand: one always-on H100 plus spot H100s that start under
-  load (a VM serves in under a minute from the cached Psionic build and
-  models), rather than idle GPUs.
+- Scale with demand: today's always-on floor is one spot H100 and one
+  on-demand A100 balanced as one pool (about $10.10/h together,
+  [clef-decisions-h100.md](clef-decisions-h100.md)); add spot machines
+  that start under load (a VM serves in under a minute from the cached
+  Psionic build and models), rather than idle GPUs.
 
 ### 3. Charge for work the GPU does not redo
 
@@ -97,7 +99,8 @@ room for idle time; each issue reports its measured result.
 - Price other cloud GPUs per token before committing: measured in
   [gpu-options.md](gpu-options.md). An on-demand A100 40GB ($3.67/h, no
   preemption, quota in every US region) costs about the same per token as
-  the spot H100 ($0.120 against $0.112 per million Flash tokens). A spot
+  the spot H100 ($0.120 against $0.112 per million Flash tokens); since
+  2026-10-12 one serves beside the H100 (`clef-decisions-a100`). A spot
   A100 is 36 % cheaper per token and clears 27B at $0.24 per million from
   about 88 % busy. No cloud GPU reaches Jev's $0.042 for Flash at
   realistic use.

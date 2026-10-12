@@ -596,6 +596,9 @@ pub fn response(
         "latency_ms": nip_dec["latency_ms"].as_u64().unwrap_or(0),
         "cost": {"price_sats": 0, "price_usd": "0.000000"},
     });
+    if let Some(backend) = nip_dec["service"]["backend"].as_str() {
+        openagents["backend"] = json!(backend);
+    }
     if let Some(receipt) = nip_dec["service"]["receipt"].as_str() {
         openagents["receipt"] = json!(receipt);
     }
@@ -644,15 +647,25 @@ fn error(status: u16, code: &str, message: &str, param: Option<&str>) -> Respons
         .into_response()
 }
 
-fn ok(body: &Value, door: Option<&str>) -> Response {
+/// The answer, with `X-Decision-Door` and, for our hosted Clef,
+/// `X-Decision-Backend` (the machine that answered).
+fn ok(body: &Value) -> Response {
     let mut out = (
         StatusCode::OK,
         [("content-type", "application/json")],
         serde_json::to_vec(body).unwrap_or_default(),
     )
         .into_response();
-    if let Some(value) = door.and_then(|d| d.parse().ok()) {
-        out.headers_mut().insert("x-decision-door", value);
+    for (header, field) in [
+        ("x-decision-door", "door"),
+        ("x-decision-backend", "backend"),
+    ] {
+        if let Some(value) = body["openagents"][field]
+            .as_str()
+            .and_then(|v| v.parse().ok())
+        {
+            out.headers_mut().insert(header, value);
+        }
     }
     out
 }
@@ -714,7 +727,7 @@ pub(crate) async fn create(
                     None,
                 );
             }
-            return ok(&answer, answer["openagents"]["door"].as_str());
+            return ok(&answer);
         }
     }
     let Ok(value) = serde_json::from_slice::<Value>(&body) else {
@@ -787,7 +800,7 @@ pub(crate) async fn create(
         }
         map.insert(key, (body_digest, Instant::now(), answer.clone()));
     }
-    ok(&answer, answer["openagents"]["door"].as_str())
+    ok(&answer)
 }
 
 #[cfg(test)]

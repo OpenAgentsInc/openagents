@@ -51,10 +51,12 @@
 #                               beacons POST /v1/systemone sends decisions to (#11225);
 #                               default CoderOS-4080's pylon key
 #   DECISION_CLEF_URL           optional: our hosted Clef (`/v1/systemone`), the first door
-#   DECISION_CLEF_FLASH_URL     our hosted Clef-Flash; default the always-on H100
-#                               clef-decisions-h100 at http://10.128.0.61:18096 over the VPC
-#                               (docs/inference/clef-decisions-h100.md); set empty to turn it off
-#   DECISION_CLEF_27B_URL       our hosted Clef 27B (`clef`); default the same H100, :18098
+#   DECISION_CLEF_FLASH_URL     our hosted Clef-Flash pool, comma-separated `name=url`; default
+#                               the spot H100 clef-decisions-h100 (10.128.0.61:18096) and the
+#                               on-demand A100 clef-decisions-a100 (10.128.0.75:18096) over the
+#                               VPC (docs/inference/clef-decisions-h100.md); one URL is a pool
+#                               of one; set empty to turn it off
+#   DECISION_CLEF_27B_URL       our hosted Clef 27B (`clef`) pool; default the same two, :18098
 #   DECISION_JEV                ignored: since 2026-10-12 the gateway asks our hosted Clef
 #                               first, then the Pylons, then Jev as a backup under
 #                               TYPESAFE_API_KEY, else the Secret Manager key
@@ -251,12 +253,14 @@ clef=""
 if [ -n "${DECISION_CLEF_URL:-}" ]; then
     clef="\"clef_url\": \"$DECISION_CLEF_URL\","
 fi
-# Our hosted Clef per model (#11446): the always-on H100's Psionic servers,
-# reached over Direct VPC egress; the firewall admits only the gateway's
-# subnets (deploy/clef-decisions/provision.sh). POST /v1/decisions asks it
-# first for openagents/decide and only it for clef-flash and clef.
-flash_url=${DECISION_CLEF_FLASH_URL-http://10.128.0.61:18096}
-big_url=${DECISION_CLEF_27B_URL-http://10.128.0.61:18098}
+# Our hosted Clef per model (#11446): a pool of Psionic servers on the
+# decision GPUs, reached over Direct VPC egress; the firewall admits only
+# the gateway's subnets (deploy/clef-decisions/provision.sh). A decision
+# goes to the backend with the fewest in flight, ties to the first listed
+# (#11457). POST /v1/decisions asks it first for openagents/decide and only
+# it for clef-flash and clef.
+flash_url=${DECISION_CLEF_FLASH_URL-h100=http://10.128.0.61:18096,a100=http://10.128.0.75:18096}
+big_url=${DECISION_CLEF_27B_URL-h100=http://10.128.0.61:18098,a100=http://10.128.0.75:18098}
 clef_models=""
 [ -n "$flash_url" ] && clef_models="\"clef-flash\": \"$flash_url\""
 if [ -n "$big_url" ]; then

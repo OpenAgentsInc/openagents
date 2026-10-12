@@ -1,12 +1,13 @@
 #!/bin/bash
-# Boot script of clef-decisions-h100, the always-on H100 behind the
-# decision gateway's hosted Clef door (docs/inference/clef-decisions-h100.md).
-# Runs as root on every boot (first boot and every start after a spot
-# preemption stopped the VM). It:
-#   1. fetches the Psionic CUDA bundle (psionic-openai-server for sm_90 and
-#      its CUDA 13 libraries, scripts/bench/decision-throughput/h100/
+# Boot script of the decision GPUs (clef-decisions-h100, clef-decisions-a100),
+# the backends of the decision gateway's hosted Clef pools
+# (docs/inference/clef-decisions-h100.md). Runs as root on every boot
+# (first boot and every start after the VM was stopped). It:
+#   1. fetches the Psionic CUDA bundle (psionic-openai-server and its CUDA
+#      13 libraries, scripts/bench/decision-throughput/h100/
 #      cloudbuild-bundle.yaml) named by metadata `clef-bundle` (default
-#      bin/latest), when the one on disk is another;
+#      bin/latest, an sm_90 build; the A100 pins an sm_80 one), when the
+#      one on disk is another;
 #   2. fetches Clef-Flash and Clef 27B Q4_K_M from the GCS model cache onto
 #      the boot disk when missing, and checks their SHA-256 once;
 #   3. writes and starts two systemd services, clef-flash (:18096) and
@@ -31,7 +32,7 @@ nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
 # 1. The bundle.
 TAG=$(md attributes/clef-bundle || true)
 [ -n "$TAG" ] || TAG=$(gcloud storage cat "$B/bin/latest")
-HAVE=$(cat "$W/commit.txt" 2>/dev/null || true)
+HAVE=$(cat "$W/tag.txt" 2>/dev/null || cat "$W/commit.txt" 2>/dev/null || true)
 CHANGED=0
 if [ "$HAVE" != "$TAG" ] || [ ! -x "$W/psionic-openai-server" ]; then
     say "bundle $TAG (had ${HAVE:-none})"
@@ -39,7 +40,7 @@ if [ "$HAVE" != "$TAG" ] || [ ! -x "$W/psionic-openai-server" ]; then
     if gcloud storage cp "$B/bin/$TAG/bundle.tar.gz" "$W.new/" &&
         tar -xzf "$W.new/bundle.tar.gz" -C "$W.new" &&
         (cd "$W.new" && sha256sum -c --quiet SHA256SUMS); then
-        rm -f "$W.new/bundle.tar.gz"
+        rm -f "$W.new/bundle.tar.gz"; echo "$TAG" > "$W.new/tag.txt"
         rm -rf "$W.old"; [ -d "$W" ] && mv "$W" "$W.old"; mv "$W.new" "$W"
         CHANGED=1
     else
@@ -47,7 +48,7 @@ if [ "$HAVE" != "$TAG" ] || [ ! -x "$W/psionic-openai-server" ]; then
         rm -rf "$W.new"
     fi
 fi
-say "serving bundle $(cat "$W/commit.txt" 2>/dev/null) ($(cat "$W/image.txt" 2>/dev/null))"
+say "serving bundle $(cat "$W/commit.txt" 2>/dev/null) ($(cat "$W/image.txt" "$W/arch.txt" 2>/dev/null))"
 
 # 2. The models (pinned digests; the cache was filled from Hugging Face at
 # pinned revisions by the decision-throughput run).

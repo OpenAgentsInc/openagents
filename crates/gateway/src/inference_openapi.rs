@@ -619,6 +619,7 @@ fn schemas() -> Value {
                         "metadata": {"type": "object"},
                         "openagents": {"type": "object", "properties": {
                             "door": {"type": ["string", "null"], "description": "`clef`, `pylon:<slug>`, `jev`, or `vertex`."},
+                            "backend": {"type": "string", "description": "For `clef`: the machine that answered (`h100`, `a100`); also the `X-Decision-Backend` header."},
                             "latency_ms": {"type": "integer"},
                             "cost": {"type": "object"},
                             "receipt": {"type": "string"}
