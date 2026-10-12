@@ -141,7 +141,7 @@ impl Mode {
                 utc_offset_minutes: 0,
             }),
             ("wall", Some(v)) => match v.trim().parse::<i32>() {
-                Ok(m) if m.abs() <= 14 * 60 => Ok(Self::WallClock {
+                Ok(m) if m.unsigned_abs() <= 14 * 60 => Ok(Self::WallClock {
                     utc_offset_minutes: m,
                 }),
                 _ => Err(usage()),
@@ -598,6 +598,24 @@ mod tests {
                 last = absolute;
             }
         }
+    }
+
+    #[test]
+    fn a_wall_offset_outside_fourteen_hours_is_refused_without_overflow() {
+        assert!(Mode::parse("wall:-2147483648").is_err());
+        assert!(Mode::parse("wall:2147483647").is_err());
+        assert!(matches!(
+            Mode::parse("wall:-840"),
+            Ok(Mode::WallClock {
+                utc_offset_minutes: -840
+            })
+        ));
+        assert!(matches!(
+            Mode::parse("wall:840"),
+            Ok(Mode::WallClock {
+                utc_offset_minutes: 840
+            })
+        ));
     }
 
     #[test]
