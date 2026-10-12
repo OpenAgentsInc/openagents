@@ -8,21 +8,7 @@
     "path": "background/disk-cleanup.json"
   },
   "enabled": false,
-  "triggers": [
-    {
-      "kind": "interval",
-      "every_secs": 300
-    },
-    {
-      "kind": "threshold"
-    },
-    {
-      "kind": "task_ended"
-    },
-    {
-      "kind": "host_start"
-    }
-  ],
+  "triggers": [],
   "goal": {
     "start": {
       "bytes": 200000000000,
@@ -39,43 +25,7 @@
     "max_freed": 100000000000,
     "pressure_secs": 60
   },
-  "actions": [
-    {
-      "kind": "delete_caches",
-      "classes": [
-        "ended_targets",
-        "stale_targets"
-      ]
-    },
-    {
-      "kind": "prune_worktrees"
-    },
-    {
-      "kind": "delete_caches",
-      "classes": [
-        "claude_worktrees"
-      ]
-    },
-    {
-      "kind": "delete_caches",
-      "classes": [
-        "scratch"
-      ]
-    },
-    {
-      "kind": "delete_caches",
-      "classes": [
-        "gate_pools",
-        "kache"
-      ]
-    },
-    {
-      "kind": "cargo_clean_partial"
-    },
-    {
-      "kind": "empty_trash"
-    }
-  ],
+  "actions": [],
   "classes": {
     "agent_targets": [
       "~/work/openagents-target-agent*"
@@ -116,19 +66,9 @@
   },
   "cooldown_secs": 600,
   "needs": {
-    "delete": [
-      "ended_targets",
-      "stale_targets",
-      "worktrees",
-      "gate_pools",
-      "incremental",
-      "trash",
-      "claude_worktrees",
-      "kache",
-      "scratch"
-    ],
+    "delete": [],
     "tasks": true,
-    "notify": true
+    "notify": false
   },
   "paused_until": 18446744073709551615
 }

@@ -1,6 +1,7 @@
 //! One run: plan, check each item again, delete, measure, record, and say
 //! what happened in one line.
 
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
@@ -11,6 +12,149 @@ use crate::paths::{self, Layout, bytes, show};
 use crate::plan::{self, Env, Evidence, Item, Kept, Plan, View};
 use crate::rule::{Class, Rule};
 use crate::store;
+
+/// The name a person sees for a class in a scan.
+pub fn class_name(class: Class) -> &'static str {
+    match class {
+        Class::EndedTargets => "Ended task build folders",
+        Class::StaleTargets => "Stale build folders",
+        Class::Worktrees => "Clean, pushed worktrees of ended tasks",
+        Class::GatePools => "Gate build pools",
+        Class::Incremental => "Incremental build caches",
+        Class::Trash => "Background trash",
+        Class::Judged => "Folders confirmed as caches",
+        Class::ClaudeWorktrees => "Clean, pushed Claude Code worktrees",
+        Class::Kache => "Compile cache (kache)",
+        Class::Scratch => "Ended agent scratch",
+    }
+}
+
+/// The lines a scan shows: every candidate by class, with its size, when it
+/// was last used, and why it qualifies; then every folder kept and why;
+/// then what the rule reports and does not clean. Nothing is deleted.
+pub fn describe_scan(plan: &Plan, home: &Path, now: u64) -> Vec<String> {
+    let mut lines = Vec::new();
+    for volume in &plan.volumes {
+        lines.push(format!(
+            "{}: {} free of {}{}",
+            show(&volume.root, home),
+            bytes(volume.space.free),
+            bytes(volume.space.total),
+            if volume.emergency {
+                "; below the emergency level"
+            } else {
+                ""
+            }
+        ));
+    }
+    for class in Class::DELETABLE {
+        let items: Vec<&Item> = plan.items().filter(|item| item.class == class).collect();
+        if items.is_empty() {
+            continue;
+        }
+        let total: u64 = items.iter().map(|item| item.bytes).sum();
+        lines.push(format!(
+            "{}  {}  {} folders, {} reclaimable",
+            class.number(),
+            class_name(class),
+            items.len(),
+            bytes(total)
+        ));
+        for item in items {
+            lines.push(format!(
+                "    {:>9}  {:>9} ago  {}  ({})",
+                bytes(item.bytes),
+                age(now.saturating_sub(item.touched)),
+                show(&item.path, home),
+                item.why
+            ));
+        }
+    }
+    let reclaimable: u64 = plan.items().map(|item| item.bytes).sum();
+    lines.push(format!(
+        "Reclaimable in total: {} across {} folders.",
+        bytes(reclaimable),
+        plan.items().count()
+    ));
+    // A kept folder's reason names its own paths and times, so the reasons
+    // are grouped by their shape and each group shows a few examples; the
+    // JSON scan has every folder.
+    let mut groups: BTreeMap<(u8, String), Vec<&Kept>> = BTreeMap::new();
+    for kept in &plan.kept {
+        groups
+            .entry((kept.class.number(), reason_shape(&kept.why)))
+            .or_default()
+            .push(kept);
+    }
+    if !groups.is_empty() {
+        lines.push(format!("Kept: {} folders, by reason", plan.kept.len()));
+    }
+    for ((number, shape), kept) in &groups {
+        lines.push(format!(
+            "  kept {number}  {} folders  ({shape})",
+            kept.len()
+        ));
+        for example in kept.iter().take(KEPT_EXAMPLES) {
+            lines.push(format!("        {}", show(&example.path, home)));
+        }
+    }
+    for (folder, entries) in &plan.breakdown {
+        lines.push(format!("Inside {}:", show(folder, home)));
+        if entries.is_empty() {
+            lines.push(
+                "    (no entries could be read; macOS may need Full Disk Access for this folder)"
+                    .to_owned(),
+            );
+            continue;
+        }
+        for (path, size) in entries {
+            lines.push(format!("    {:>9}  {}", bytes(*size), show(path, home)));
+        }
+        let total = plan
+            .not_cleaned
+            .iter()
+            .find(|(path, _)| path == folder)
+            .map_or(0, |(_, size)| *size);
+        let listed: u64 = entries.iter().map(|(_, size)| size).sum();
+        if total > listed {
+            lines.push(format!(
+                "    {:>9}  in the rest of the folder",
+                bytes(total - listed)
+            ));
+        }
+    }
+    for (path, size) in &plan.not_cleaned {
+        lines.push(format!(
+            "not cleaned  {} {}  (not a known cache)",
+            show(path, home),
+            bytes(*size)
+        ));
+    }
+    lines
+}
+
+/// Kept folders shown by name under each reason in a scan.
+const KEPT_EXAMPLES: usize = 3;
+
+/// A reason with its paths, numbers, and times removed, so reasons that
+/// differ only in those count as one kind.
+fn reason_shape(why: &str) -> String {
+    why.split_whitespace()
+        .filter(|word| {
+            !word.contains(['/', ':', '(', ')', '.']) && !word.chars().any(|c| c.is_ascii_digit())
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// An age in days, or hours under a day.
+fn age(secs: u64) -> String {
+    if secs >= 86_400 {
+        format!("{}d", secs / 86_400)
+    } else {
+        format!("{}h", secs / 3_600)
+    }
+}
 
 /// What started a run.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

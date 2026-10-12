@@ -161,6 +161,10 @@ pub struct Plan {
     /// measured when the plan leaves a volume below its start level.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub not_cleaned: Vec<(PathBuf, u64)>,
+    /// A scan only: the largest entries of each `not_cleaned` folder, so a
+    /// choice can be made inside it. Nothing here is a candidate.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub breakdown: Vec<(PathBuf, Vec<(PathBuf, u64)>)>,
 }
 
 impl Plan {
@@ -810,23 +814,45 @@ fn volume_plan(rule: &Rule, root: PathBuf, space: Space, force: bool) -> VolumeP
 /// for) plans for every volume below its stop level, not only those below
 /// the start level.
 pub fn plan(env: &Env<'_>, rule: &Rule, force: bool) -> Plan {
+    build(env, rule, force, false)
+}
+
+/// Every candidate of every deletable class on every watched volume, with
+/// nothing capped by the rule's goal and nothing deleted. It reads the same
+/// things a run reads and applies the same checks, so each item is one a run
+/// could take now, and each kept folder says why it stays. It writes no
+/// state: the size cache is not saved, and the rule's actions and triggers
+/// are not used.
+pub fn scan(env: &Env<'_>, rule: &Rule) -> Plan {
+    build(env, rule, true, true)
+}
+
+fn build(env: &Env<'_>, rule: &Rule, force: bool, scan: bool) -> Plan {
     let view = View::read(env);
     let snapshot = env.processes.snapshot();
     let mut sizes = Sizes::load(env.layout);
     let mut volumes: Vec<VolumePlan> = observe(env, rule)
         .into_iter()
-        .map(|volume| volume_plan(rule, volume.root, volume.space, force))
+        .map(|volume| volume_plan(rule, volume.root, volume.space, force || scan))
         .collect();
+    if scan {
+        for volume in &mut volumes {
+            volume.needed = u64::MAX;
+        }
+    }
     let emergency = volumes.iter().any(|volume| volume.emergency);
     let mut kept = Vec::new();
     let mut planned: Vec<PathBuf> = Vec::new();
-    let classes: Vec<Class> = rule
-        .actions
-        .iter()
-        .flat_map(|action| action.classes())
-        .collect();
+    let classes: Vec<Class> = if scan {
+        Class::DELETABLE.to_vec()
+    } else {
+        rule.actions
+            .iter()
+            .flat_map(|action| action.classes())
+            .collect()
+    };
     for class in classes {
-        if class == Class::Trash && !emergency {
+        if class == Class::Trash && !emergency && !scan {
             continue;
         }
         if volumes
@@ -968,20 +994,52 @@ pub fn plan(env: &Env<'_>, rule: &Rule, force: bool) -> Plan {
             });
         }
     }
-    sizes.save(env.layout);
+    if !scan {
+        sizes.save(env.layout);
+    }
     let mut plan = Plan {
         volumes,
         kept,
         not_cleaned: Vec::new(),
+        breakdown: Vec::new(),
     };
-    if plan
-        .volumes
-        .iter()
-        .any(|volume| volume.space.free + volume.planned() < volume.start)
+    if scan
+        || plan
+            .volumes
+            .iter()
+            .any(|volume| volume.space.free + volume.planned() < volume.start)
     {
         plan.not_cleaned = not_cleaned(env.layout, rule);
     }
+    if scan {
+        plan.breakdown = breakdown(env.layout, &plan.not_cleaned);
+    }
     plan
+}
+
+/// How many largest entries a scan lists under each folder it does not clean.
+const TOP_ENTRIES: usize = 15;
+
+/// The largest entries of each folder, by size, for a scan.
+fn breakdown(layout: &Layout, folders: &[(PathBuf, u64)]) -> Vec<(PathBuf, Vec<(PathBuf, u64)>)> {
+    folders
+        .iter()
+        .map(|(folder, _)| {
+            let mut entries: Vec<(PathBuf, u64)> = std::fs::read_dir(folder)
+                .into_iter()
+                .flatten()
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .filter_map(|path| {
+                    let bytes = paths::measure_report(&path, &layout.home).ok()?.bytes;
+                    Some((path, bytes))
+                })
+                .collect();
+            entries.sort_by(|a, b| b.1.cmp(&a.1));
+            entries.truncate(TOP_ENTRIES);
+            (folder.clone(), entries)
+        })
+        .collect()
 }
 
 /// The kache store as one planned collection: what kache's own collector

@@ -39,6 +39,11 @@ pub(crate) const USAGE: &str = "usage: openagents background COMMAND [OPTIONS]
   run ID [--dry-run]
                   Run the rule now; --dry-run shows exactly what it would
                   delete and why, and what it keeps, changing nothing.
+  scan [ID] [--json]
+                  A full, read-only scan (ID defaults to `disk`): every
+                  candidate of every class with its size, age, and reason,
+                  every kept folder and why, and what is not a known cache.
+                  Nothing is deleted and no state is written.
   log [ID] [--since TIME] [--stats]
                   The audit log; --stats totals bytes freed by week and class.
   undo RUN        Recreate the worktrees that run removed, and put back
@@ -134,6 +139,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "pause" => need_id().and_then(|id| pause(output, &layout, &id, &args, false)),
         "resume" => need_id().and_then(|id| pause(output, &layout, &id, &args, true)),
         "run" => need_id().and_then(|id| run_now(output, &layout, &id, args.switch("dry-run"))),
+        "scan" => scan(output, &layout, id.as_deref().unwrap_or("disk")),
         "log" => log(output, &layout, id.as_deref(), &args),
         "undo" => need_id().and_then(|id| undo(output, &layout, &id)),
         "proposals" => proposals(output, &layout),
@@ -891,6 +897,31 @@ fn step_lines(report: &background::Report) -> Vec<String> {
         lines.push("Nothing to do now.".into());
     }
     lines
+}
+
+/// A full read-only scan of rule `id`: what every class would take, what it
+/// keeps and why. Nothing is deleted and no state is written.
+fn scan(output: &Output, layout: &Layout, id: &str) -> Result<(), Failure> {
+    let rule = store::load(layout, id).map_err(Failure::Refused)?;
+    let store_dir = layout.store.clone();
+    let facts = move || coder::task::background_facts(&store_dir);
+    let now = background::paths::now();
+    let env = background::Env {
+        layout,
+        facts: Some(&facts),
+        volumes: &background::volume::Statvfs,
+        processes: &background::inuse::System,
+        now,
+        kache: Some(&KACHE),
+    };
+    let plan = background::plan::scan(&env, &rule);
+    let value = serde_json::to_value(&plan).unwrap_or(Value::Null);
+    output.emit(&value, |_| {
+        let mut lines = vec!["Scan: nothing is deleted.".to_owned()];
+        lines.extend(run::describe_scan(&plan, &layout.home, now));
+        lines.join("\n")
+    });
+    Ok(())
 }
 
 fn run_now(output: &Output, layout: &Layout, id: &str, dry_run: bool) -> Result<(), Failure> {

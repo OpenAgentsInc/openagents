@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime};
 
 use crate::inuse::{Processes, Snapshot, System};
 use crate::paths::Layout;
-use crate::plan::{Env, TaskFact, plan};
+use crate::plan::{Env, TaskFact, plan, scan};
 use crate::rule::{GB, Rule, disk};
 use crate::run::{self, Cause, Outcome};
 use crate::volume::{Space, Volumes};
@@ -909,7 +909,7 @@ fn an_edit_on_this_computer_cannot_widen_a_plugin_rule_and_its_files_are_never_c
 }
 
 #[test]
-fn shipped_disk_cleanup_package_is_pinned_opt_in_and_matches_host_policy() {
+fn shipped_disk_cleanup_package_is_pinned_read_only_and_opt_in() {
     let home = Home::new();
     let text = include_str!("../../../plugins/disk-cleanup/background/disk-cleanup.json");
     let package: serde_json::Value =
@@ -922,14 +922,16 @@ fn shipped_disk_cleanup_package_is_pinned_opt_in_and_matches_host_policy() {
     assert!(!rule.enabled);
     assert!(!crate::store::load(&home.layout, "disk").unwrap().enabled);
     assert_eq!(rule.goal, disk().goal);
-    assert_eq!(rule.triggers, disk().triggers);
-    assert_eq!(rule.actions, disk().actions);
-    assert_eq!(rule.needs.delete, crate::rule::Class::DELETABLE);
+    assert!(
+        rule.triggers.is_empty(),
+        "a read-only rule never runs by itself"
+    );
+    assert!(rule.actions.is_empty(), "a read-only rule deletes nothing");
+    assert!(rule.needs.delete.is_empty());
     install(&home, "disk-cleanup", &rule);
     assert!(crate::plugins::rules(&home.layout).is_empty());
     crate::plugins::set_enabled(&home.layout, "disk-cleanup", true).unwrap();
     let admitted = crate::store::load(&home.layout, "disk-cleanup").unwrap();
-    assert!(!admitted.active(crate::paths::now()));
     let ended = home.layout.targets().join("openagents-ended-1111");
     target(&ended, 4096);
     home.task(
@@ -944,21 +946,67 @@ fn shipped_disk_cleanup_package_is_pinned_opt_in_and_matches_host_policy() {
         total: 100 * GB,
     };
     let environment = env(&home, &facts, &volumes, &Idle);
-    let preview = run::run(&environment, &admitted, Cause::Manual, true, true).unwrap();
-    assert!(preview.record.is_none());
-    assert!(ended.exists());
-    assert!(planned(&preview.plan).contains(&ended));
-    let mut resumed = admitted.clone();
-    resumed.paused_until = None;
-    resumed.enabled = true;
-    crate::store::save(&home.layout, &resumed).unwrap();
     assert!(
-        crate::store::load(&home.layout, "disk-cleanup")
-            .unwrap()
-            .active(environment.now)
+        scan(&environment, &admitted)
+            .items()
+            .any(|item| item.path == ended)
+    );
+    let _ = run::run(&environment, &admitted, Cause::Manual, false, true);
+    assert!(
+        ended.exists(),
+        "a manual run of the read-only rule deletes nothing"
     );
     crate::plugins::set_enabled(&home.layout, "disk-cleanup", false).unwrap();
     assert!(crate::plugins::rules(&home.layout).is_empty());
+}
+
+#[test]
+fn a_scan_lists_every_candidate_whatever_the_free_space_and_writes_nothing() {
+    let home = Home::new();
+    let ended = home.layout.targets().join("openagents-ended-2222");
+    target(&ended, 4096);
+    home.task(
+        "ended",
+        &home.layout.worktrees().join("ended"),
+        &ended,
+        true,
+    );
+    let facts = home.facts();
+    let volumes = Fixed {
+        free: 900 * GB,
+        total: 1000 * GB,
+    };
+    let environment = env(&home, &facts, &volumes, &Idle);
+    let found = scan(&environment, &disk());
+    assert!(planned(&found).contains(&ended));
+    assert!(ended.exists());
+    assert!(!home.layout.sizes().exists(), "a scan saves no size cache");
+    assert_eq!(plan(&environment, &disk(), false).items().count(), 0);
+}
+
+#[test]
+fn a_scan_lists_the_largest_entries_of_folders_it_does_not_clean() {
+    let home = Home::new();
+    let caches = home.layout.home.join("Library/Caches");
+    let big = caches.join("big-tool");
+    std::fs::create_dir_all(&big).unwrap();
+    std::fs::write(big.join("blob"), vec![0_u8; 8192]).unwrap();
+    std::fs::create_dir_all(caches.join("small-tool")).unwrap();
+    let facts = home.facts();
+    let volumes = Fixed {
+        free: 900 * GB,
+        total: 1000 * GB,
+    };
+    let environment = env(&home, &facts, &volumes, &Idle);
+    let found = scan(&environment, &disk());
+    let (folder, entries) = found
+        .breakdown
+        .iter()
+        .find(|(folder, _)| *folder == caches)
+        .expect("Library/Caches is listed");
+    assert_eq!(folder, &caches);
+    assert_eq!(entries[0].0, big, "the largest entry comes first");
+    assert!(entries[0].1 >= 8192);
 }
 
 #[test]
@@ -1003,8 +1051,8 @@ fn shipped_plugin_worktree_plan_matches_builtin_including_old_orphans() {
     let facts = home.facts();
     let volumes = low();
     let environment = env(&home, &facts, &volumes, &Idle);
-    let builtin = plan(&environment, &disk(), false);
-    let preview = plan(&environment, &admitted, false);
+    let builtin = scan(&environment, &disk());
+    let preview = scan(&environment, &admitted);
     assert_eq!(
         serde_json::to_value(&builtin).unwrap(),
         serde_json::to_value(&preview).unwrap()

@@ -2,14 +2,14 @@
   "v": 1,
   "slug": "disk-cleanup",
   "name": "Disk cleanup",
-  "summary": "Opt-in background disk cleanup with previews, an audit log, and worktree undo.",
-  "version": "0.3.0",
+  "summary": "Read-only full scan of disk use: every candidate with its size, age, and reason. Deletes nothing.",
+  "version": "0.4.0",
   "publisher": "",
   "provenance": "local file",
   "background": [
     {
       "name": "disk-cleanup",
-      "digest": "f1c963be1cbcadcbe8d50b463868cdd762375a6341ef86f6d066c295fa581912"
+      "digest": "f8eb337c76f2606005bd06f471526f6baa9186555936e529769cbf7559d72a12"
     }
   ]
 }
