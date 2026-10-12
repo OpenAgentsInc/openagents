@@ -1,0 +1,1191 @@
+{
+  "tag": "ba1",
+  "per_arm": {
+    "clef": {
+      "issues": 15,
+      "answered": 15,
+      "failed": {},
+      "judgments": 176,
+      "accuracy": 0.727,
+      "precision": 0.277,
+      "recall_in_candidates": 0.521,
+      "fix_recall": 0.343,
+      "top1_is_fix": 0.467,
+      "kept_mean": 3.13,
+      "usd_total": 0.0,
+      "usd_unpriced_issues": 0,
+      "usd_per_issue": 0.0,
+      "secs_p50": 11.66,
+      "secs_p95": 16.29
+    },
+    "hosted": {
+      "issues": 15,
+      "answered": 15,
+      "failed": {},
+      "judgments": 180,
+      "accuracy": 0.756,
+      "precision": 0.327,
+      "recall_in_candidates": 0.636,
+      "fix_recall": 0.41,
+      "top1_is_fix": 0.533,
+      "kept_mean": 3.27,
+      "usd_total": 0.0,
+      "usd_unpriced_issues": 15,
+      "usd_per_issue": 0.0,
+      "secs_p50": 11.38,
+      "secs_p95": 40.09
+    },
+    "jev": {
+      "issues": 15,
+      "answered": 0,
+      "failed": {
+        "10074": [
+          "kind: HTTP 402: {\"detail\":{\"error_type\":\"billing_error\",\"message\":\"Your organization has no available TypeSafe API credits. Please add more credits and/or set up auto-reload at https://console.typesafe.ai/settings/billing\"}}"
+        ],
+        "10258": [
+          "kind: HTTP 402: {\"detail\":{\"error_type\":\"billing_error\",\"message\":\"Your organization has no available TypeSafe API credits. Please add more credits and/or set up auto-reload at https://console.typesafe.ai/settings/billing\"}}"
+        ],
+        "10273": [
+          "kind: HTTP 402: {\"detail\":{\"error_type\":\"billing_error\",\"message\":\"Your organization has no available TypeSafe API credits. Please add more credits and/or set up auto-reload at https://console.typesafe.ai/settings/billing\"}}"
+        ],
+        "10283": [
+          "kind: HTTP 402: {\"detail\":{\"error_type\":\"billing_error\",\"message\":\"Your organization has no available TypeSafe API credits. Please add more credits and/or set up auto-reload at https://console.typesafe.ai/settings/billing\"}}"
+        ],
+        "10289": [
+          "kind: HTTP 402: {\"detail\":{\"error_type\":\"billing_error\",\"message\":\"Your organization has no available TypeSafe API credits. Please add more credits and/or set up auto-reload at https://console.typesafe.ai/settings/billing\"}}"
+        ],
+        "10295": [
+          "kind: HTTP 402: {\"detail\":{\"error_type\":\"billing_error\",\"message\":\"Your organization has no available TypeSafe API credits. Please add more credits and/or set up auto-reload at https://console.typesafe.ai/settings/billing\"}}"
+        ],
+        "10298": [
+          "kind: HTTP 402: {\"detail\":{\"error_type\":\"billing_error\",\"message\":\"Your organization has no available TypeSafe API credits. Please add more credits and/or set up auto-reload at https://console.typesafe.ai/settings/billing\"}}"
+        ],
+        "10299": [
+          "kind: HTTP 402: {\"detail\":{\"error_type\":\"billing_error\",\"message\":\"Your organization has no available TypeSafe API credits. Please add more credits and/or set up auto-reload at https://console.typesafe.ai/settings/billing\"}}"
+        ],
+        "10301": [
+          "kind: HTTP 402: {\"detail\":{\"error_type\":\"billing_error\",\"message\":\"Your organization has no available TypeSafe API credits. Please add more credits and/or set up auto-reload at https://console.typesafe.ai/settings/billing\"}}"
+        ],
+        "10349": [
+          "kind: HTTP 402: {\"detail\":{\"error_type\":\"billing_error\",\"message\":\"Your organization has no available TypeSafe API credits. Please add more credits and/or set up auto-reload at https://console.typesafe.ai/settings/billing\"}}"
+        ],
+        "10369": [
+          "kind: HTTP 402: {\"detail\":{\"error_type\":\"billing_error\",\"message\":\"Your organization has no available TypeSafe API credits. Please add more credits and/or set up auto-reload at https://console.typesafe.ai/settings/billing\"}}"
+        ],
+        "10370": [
+          "kind: HTTP 402: {\"detail\":{\"error_type\":\"billing_error\",\"message\":\"Your organization has no available TypeSafe API credits. Please add more credits and/or set up auto-reload at https://console.typesafe.ai/settings/billing\"}}"
+        ],
+        "10893": [
+          "kind: HTTP 402: {\"detail\":{\"error_type\":\"billing_error\",\"message\":\"Your organization has no available TypeSafe API credits. Please add more credits and/or set up auto-reload at https://console.typesafe.ai/settings/billing\"}}"
+        ],
+        "10986": [
+          "kind: HTTP 402: {\"detail\":{\"error_type\":\"billing_error\",\"message\":\"Your organization has no available TypeSafe API credits. Please add more credits and/or set up auto-reload at https://console.typesafe.ai/settings/billing\"}}"
+        ],
+        "11118": [
+          "kind: HTTP 402: {\"detail\":{\"error_type\":\"billing_error\",\"message\":\"Your organization has no available TypeSafe API credits. Please add more credits and/or set up auto-reload at https://console.typesafe.ai/settings/billing\"}}"
+        ]
+      },
+      "judgments": 0,
+      "accuracy": null,
+      "precision": null,
+      "recall_in_candidates": null,
+      "fix_recall": null,
+      "top1_is_fix": null,
+      "kept_mean": null,
+      "usd_total": 0,
+      "usd_unpriced_issues": 0,
+      "usd_per_issue": null,
+      "secs_p50": null,
+      "secs_p95": null
+    },
+    "haiku": {
+      "issues": 15,
+      "answered": 15,
+      "failed": {},
+      "judgments": 180,
+      "accuracy": 0.889,
+      "precision": 0.6,
+      "recall_in_candidates": 0.841,
+      "fix_recall": 0.749,
+      "top1_is_fix": 0.933,
+      "kept_mean": 2.33,
+      "usd_total": 0.0927,
+      "usd_unpriced_issues": 0,
+      "usd_per_issue": 0.00618,
+      "secs_p50": 29.74,
+      "secs_p95": 50.53
+    }
+  },
+  "agreement": {
+    "clef~haiku": {
+      "pairs": 176,
+      "agree": 0.727
+    },
+    "clef~hosted": {
+      "pairs": 176,
+      "agree": 0.886
+    },
+    "clef~jev": {
+      "pairs": 0,
+      "agree": null
+    },
+    "haiku~hosted": {
+      "pairs": 180,
+      "agree": 0.733
+    },
+    "haiku~jev": {
+      "pairs": 0,
+      "agree": null
+    },
+    "hosted~jev": {
+      "pairs": 0,
+      "agree": null
+    }
+  },
+  "divergences": [
+    {
+      "issue": 10273,
+      "path": "crates/coder/src/task/issue_run.rs",
+      "clef": "drop",
+      "haiku": "keep",
+      "clef_p": 0.2043,
+      "haiku_p": null,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10273,
+      "path": "crates/microcoder/src/repository/tests.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.5898,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10273,
+      "path": "crates/coder/src/task/owner/tests.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.6901,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10273,
+      "path": "crates/coder/src/task/local.rs",
+      "clef": "drop",
+      "haiku": "keep",
+      "clef_p": 0.1993,
+      "haiku_p": null,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10369,
+      "path": "crates/openagents-cli/src/connect.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.6558,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10369,
+      "path": "crates/coder-host/src/serve/keys.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.2651,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10370,
+      "path": "crates/coder-host/src/cli.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.0953,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10370,
+      "path": "crates/openagents-desktop/src/platform/linux.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.2024,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10370,
+      "path": "crates/openagents-cli/src/main.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.1192,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10986,
+      "path": "crates/coder/src/task/landing_tests.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.1034,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10986,
+      "path": "crates/coder/src/task/landing.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.5438,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10986,
+      "path": "crates/coder/src/task/issue_run_tests.rs",
+      "clef": "drop",
+      "haiku": "keep",
+      "clef_p": 0.044,
+      "haiku_p": null,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10283,
+      "path": "crates/background/src/view.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.3082,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10283,
+      "path": "crates/background/src/runner.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.2902,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10349,
+      "path": "crates/background/src/view.rs",
+      "clef": "drop",
+      "haiku": "keep",
+      "clef_p": 0.0917,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10349,
+      "path": "crates/background/src/lib.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.5044,
+      "haiku_p": null,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10349,
+      "path": "crates/background/src/tests.rs",
+      "clef": "drop",
+      "haiku": "keep",
+      "clef_p": 0.0711,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10349,
+      "path": "crates/background/src/paths.rs",
+      "clef": "drop",
+      "haiku": "keep",
+      "clef_p": 0.0369,
+      "haiku_p": null,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10349,
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.434,
+      "haiku_p": null,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10349,
+      "path": "crates/openagents-cli/src/background.rs",
+      "clef": "drop",
+      "haiku": "keep",
+      "clef_p": 0.0964,
+      "haiku_p": null,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10893,
+      "path": "crates/openagents-cli/src/chat_coder.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.0599,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10893,
+      "path": "crates/openagents-chat-app/src/coder_tab.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.0385,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 11118,
+      "path": "crates/openagents-chat/src/coder_events.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.5718,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 11118,
+      "path": "crates/coder-new/src/bundled_runtime.rs",
+      "clef": "drop",
+      "haiku": "keep",
+      "clef_p": 0.2241,
+      "haiku_p": null,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 11118,
+      "path": "crates/coder-terminal/src/components/run.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.8056,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 11118,
+      "path": "crates/coder/src/task/local.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.7241,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 11118,
+      "path": "crates/coder-new/src/ui.rs",
+      "clef": "drop",
+      "haiku": "keep",
+      "clef_p": 0.2476,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10289,
+      "path": "crates/openagents-mobile/src/eval_cards.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.1242,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10289,
+      "path": "crates/coder/src/router/gym.rs",
+      "clef": "drop",
+      "haiku": "keep",
+      "clef_p": 0.0654,
+      "haiku_p": null,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10289,
+      "path": "crates/openagents-chat-app/src/gym.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.1078,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10258,
+      "path": "crates/openagents-cli/src/chat_boat.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.1375,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10258,
+      "path": "crates/openagents-cli/src/cloud.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.15,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10301,
+      "path": "crates/coder/src/task/targets.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.7225,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10301,
+      "path": "crates/coder/src/task/owner.rs",
+      "clef": "drop",
+      "haiku": "keep",
+      "clef_p": 0.1801,
+      "haiku_p": null,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10301,
+      "path": "crates/coder/src/task/owner/tests.rs",
+      "clef": "drop",
+      "haiku": "keep",
+      "clef_p": 0.151,
+      "haiku_p": null,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10301,
+      "path": "crates/coder/src/task/tests.rs",
+      "clef": "drop",
+      "haiku": "keep",
+      "clef_p": 0.0891,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10295,
+      "path": "crates/coder/src/task/publish_tests.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.3675,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10295,
+      "path": "crates/coder/src/task/landing_tests.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.5302,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10295,
+      "path": "crates/coder/src/task/landing.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.7154,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10295,
+      "path": "crates/coder/src/task/publish.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.4397,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10295,
+      "path": "crates/coder/src/task/issue_run_tests.rs",
+      "clef": "drop",
+      "haiku": "keep",
+      "clef_p": 0.0698,
+      "haiku_p": null,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10299,
+      "path": "crates/coder/tests/program_run.rs",
+      "clef": "drop",
+      "haiku": "keep",
+      "clef_p": 0.0998,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10299,
+      "path": "crates/coder-delegate/src/issue/confined.rs",
+      "clef": "drop",
+      "haiku": "keep",
+      "clef_p": 0.1229,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10299,
+      "path": "crates/coder/src/task/issue_run_tests.rs",
+      "clef": "drop",
+      "haiku": "keep",
+      "clef_p": 0.1052,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10074,
+      "path": "crates/coder/src/task/adapter.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.0842,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10074,
+      "path": "crates/coder/src/task/autostart.rs",
+      "clef": "drop",
+      "haiku": "keep",
+      "clef_p": 0.0228,
+      "haiku_p": null,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10074,
+      "path": "crates/microcoder/src/repository/tests.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.0914,
+      "haiku_p": null,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10074,
+      "path": "crates/coder/src/task/local.rs",
+      "clef": "keep",
+      "haiku": "drop",
+      "clef_p": 0.097,
+      "haiku_p": null,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10273,
+      "path": "crates/coder-delegate/src/issue.rs",
+      "clef": "drop",
+      "hosted": "keep",
+      "clef_p": 0.1152,
+      "hosted_p": 0.88,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10273,
+      "path": "crates/coder/src/task/issue_run.rs",
+      "clef": "drop",
+      "hosted": "keep",
+      "clef_p": 0.2043,
+      "hosted_p": 0.95,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10273,
+      "path": "crates/microcoder/src/repository/tests.rs",
+      "clef": "keep",
+      "hosted": "drop",
+      "clef_p": 0.5898,
+      "hosted_p": 0.05,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10273,
+      "path": "crates/coder/src/task/owner/tests.rs",
+      "clef": "keep",
+      "hosted": "drop",
+      "clef_p": 0.6901,
+      "hosted_p": 0.08,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10273,
+      "path": "crates/coder/src/task/tests.rs",
+      "clef": "drop",
+      "hosted": "keep",
+      "clef_p": 0.1801,
+      "hosted_p": 0.75,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10370,
+      "path": "crates/openagents-cli/Cargo.toml",
+      "clef": "drop",
+      "hosted": "keep",
+      "clef_p": 0.0272,
+      "hosted_p": 0.05,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10370,
+      "path": "crates/openagents-desktop/src/main.rs",
+      "clef": "drop",
+      "hosted": "keep",
+      "clef_p": 0.0596,
+      "hosted_p": 0.03,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10370,
+      "path": "crates/openagents-desktop/src/platform/linux.rs",
+      "clef": "keep",
+      "hosted": "drop",
+      "clef_p": 0.2024,
+      "hosted_p": 0.03,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10370,
+      "path": "crates/openagents-cli/src/main.rs",
+      "clef": "keep",
+      "hosted": "drop",
+      "clef_p": 0.1192,
+      "hosted_p": 0.03,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10893,
+      "path": "crates/coder/src/task/agent.rs",
+      "clef": "drop",
+      "hosted": "keep",
+      "clef_p": 0.0344,
+      "hosted_p": 0.0488,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10893,
+      "path": "crates/openagents-chat-app/src/coder_tab.rs",
+      "clef": "keep",
+      "hosted": "drop",
+      "clef_p": 0.0385,
+      "hosted_p": 0.0361,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10289,
+      "path": "crates/openagents-chat-app/src/cards.rs",
+      "clef": "drop",
+      "hosted": "keep",
+      "clef_p": 0.092,
+      "hosted_p": 0.0806,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10289,
+      "path": "crates/openagents-mobile/src/eval_cards.rs",
+      "clef": "keep",
+      "hosted": "drop",
+      "clef_p": 0.1242,
+      "hosted_p": 0.0653,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10258,
+      "path": "crates/coder/src/task/issue_run.rs",
+      "clef": "drop",
+      "hosted": "keep",
+      "clef_p": 0.0901,
+      "hosted_p": 0.098,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10258,
+      "path": "crates/openagents-cli/src/chat_boat.rs",
+      "clef": "keep",
+      "hosted": "drop",
+      "clef_p": 0.1375,
+      "hosted_p": 0.05,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10295,
+      "path": "crates/coder-delegate/src/issue.rs",
+      "clef": "drop",
+      "hosted": "keep",
+      "clef_p": 0.1348,
+      "hosted_p": 0.78,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10295,
+      "path": "crates/coder/src/task/publish.rs",
+      "clef": "keep",
+      "hosted": "drop",
+      "clef_p": 0.4397,
+      "hosted_p": 0.18,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10295,
+      "path": "crates/coder/src/task/issue_run_tests.rs",
+      "clef": "drop",
+      "hosted": "keep",
+      "clef_p": 0.0698,
+      "hosted_p": 0.85,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10298,
+      "path": "crates/coder/src/task/issue_run.rs",
+      "clef": "drop",
+      "hosted": "keep",
+      "clef_p": 0.1093,
+      "hosted_p": 0.1451,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10298,
+      "path": "crates/coder/src/task/landing_tests.rs",
+      "clef": "keep",
+      "hosted": "drop",
+      "clef_p": 0.1441,
+      "hosted_p": 0.1302,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10273,
+      "path": "crates/coder-delegate/src/issue.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.88,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10273,
+      "path": "crates/coder/src/task/local.rs",
+      "haiku": "keep",
+      "hosted": "drop",
+      "haiku_p": null,
+      "hosted_p": 0.15,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10273,
+      "path": "crates/coder/src/task/tests.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.75,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10369,
+      "path": "crates/openagents-cli/src/connect.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.5541,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10369,
+      "path": "crates/coder-host/src/serve/keys.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.2791,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10370,
+      "path": "crates/openagents-cli/Cargo.toml",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.05,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10370,
+      "path": "crates/coder-host/src/cli.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.15,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10370,
+      "path": "crates/openagents-desktop/src/main.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.03,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10986,
+      "path": "crates/coder/src/task/landing_tests.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.0916,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10986,
+      "path": "crates/coder/src/task/landing.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.5733,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10986,
+      "path": "crates/coder/src/task/issue_run_tests.rs",
+      "haiku": "keep",
+      "hosted": "drop",
+      "haiku_p": null,
+      "hosted_p": 0.0568,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10283,
+      "path": "crates/background/src/view.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.2574,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10283,
+      "path": "crates/background/src/runner.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.2232,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10349,
+      "path": "crates/background/src/view.rs",
+      "haiku": "keep",
+      "hosted": "drop",
+      "haiku_p": null,
+      "hosted_p": 0.0741,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10349,
+      "path": "crates/background/src/lib.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.2583,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10349,
+      "path": "crates/background/src/tests.rs",
+      "haiku": "keep",
+      "hosted": "drop",
+      "haiku_p": null,
+      "hosted_p": 0.0595,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10349,
+      "path": "crates/background/src/paths.rs",
+      "haiku": "keep",
+      "hosted": "drop",
+      "haiku_p": null,
+      "hosted_p": 0.0331,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10349,
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.2139,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10349,
+      "path": "crates/openagents-cli/src/background.rs",
+      "haiku": "keep",
+      "hosted": "drop",
+      "haiku_p": null,
+      "hosted_p": 0.0858,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10893,
+      "path": "crates/openagents-cli/src/chat_coder.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.0554,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10893,
+      "path": "crates/coder/src/task/agent.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.0488,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 11118,
+      "path": "crates/openagents-chat/src/coder_events.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.5759,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 11118,
+      "path": "crates/coder-new/src/bundled_runtime.rs",
+      "haiku": "keep",
+      "hosted": "drop",
+      "haiku_p": null,
+      "hosted_p": 0.194,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 11118,
+      "path": "crates/coder-terminal/src/components/run.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.8136,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 11118,
+      "path": "crates/coder/src/task/local.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.6113,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 11118,
+      "path": "crates/coder-new/src/ui.rs",
+      "haiku": "keep",
+      "hosted": "drop",
+      "haiku_p": null,
+      "hosted_p": 0.2105,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10289,
+      "path": "crates/openagents-chat-app/src/cards.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.0806,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10289,
+      "path": "crates/coder/src/router/gym.rs",
+      "haiku": "keep",
+      "hosted": "drop",
+      "haiku_p": null,
+      "hosted_p": 0.0678,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10289,
+      "path": "crates/openagents-chat-app/src/gym.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.1412,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10258,
+      "path": "crates/coder/src/task/issue_run.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.098,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10258,
+      "path": "crates/openagents-cli/src/cloud.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.1009,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10301,
+      "path": "crates/coder/src/task/targets.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.5845,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10301,
+      "path": "crates/coder/src/task/owner.rs",
+      "haiku": "keep",
+      "hosted": "drop",
+      "haiku_p": null,
+      "hosted_p": 0.1533,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10301,
+      "path": "crates/coder/src/task/owner/tests.rs",
+      "haiku": "keep",
+      "hosted": "drop",
+      "haiku_p": null,
+      "hosted_p": 0.1413,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10301,
+      "path": "crates/coder/src/task/tests.rs",
+      "haiku": "keep",
+      "hosted": "drop",
+      "haiku_p": null,
+      "hosted_p": 0.1061,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10295,
+      "path": "crates/coder-delegate/src/issue.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.78,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10295,
+      "path": "crates/coder/src/task/publish_tests.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.88,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10295,
+      "path": "crates/coder/src/task/landing_tests.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.68,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10295,
+      "path": "crates/coder/src/task/landing.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.35,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10298,
+      "path": "crates/coder/src/task/issue_run.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.1451,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10298,
+      "path": "crates/coder/src/task/landing_tests.rs",
+      "haiku": "keep",
+      "hosted": "drop",
+      "haiku_p": null,
+      "hosted_p": 0.1302,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10299,
+      "path": "crates/coder/tests/program_run.rs",
+      "haiku": "keep",
+      "hosted": "drop",
+      "haiku_p": null,
+      "hosted_p": 0.1097,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10299,
+      "path": "crates/coder-delegate/src/issue/confined.rs",
+      "haiku": "keep",
+      "hosted": "drop",
+      "haiku_p": null,
+      "hosted_p": 0.1332,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10299,
+      "path": "crates/coder/src/task/issue_run_tests.rs",
+      "haiku": "keep",
+      "hosted": "drop",
+      "haiku_p": null,
+      "hosted_p": 0.1103,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10074,
+      "path": "crates/coder/src/task/adapter.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.09,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10074,
+      "path": "crates/coder/src/task/autostart.rs",
+      "haiku": "keep",
+      "hosted": "drop",
+      "haiku_p": null,
+      "hosted_p": 0.0275,
+      "fix_changed_it": true
+    },
+    {
+      "issue": 10074,
+      "path": "crates/microcoder/src/repository/tests.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.102,
+      "fix_changed_it": false
+    },
+    {
+      "issue": 10074,
+      "path": "crates/coder/src/task/local.rs",
+      "haiku": "drop",
+      "hosted": "keep",
+      "haiku_p": null,
+      "hosted_p": 0.0875,
+      "fix_changed_it": true
+    }
+  ]
+}

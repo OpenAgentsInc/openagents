@@ -265,7 +265,10 @@ def cmd_run(a: argparse.Namespace) -> None:
         for arm in arms:
             row_path = out / arm / f"{issue}.json"
             if row_path.exists() and not a.force:
-                continue
+                old = load_json(row_path)
+                if old["ok"] or not old.get("limited"):
+                    continue  # a usage-limited row is asked again
+
             row = run_haiku(task, cands, out) if arm == "haiku" else run_door(arm, task, cands)
             row.update(issue=issue, candidates=[c["path"] for c in cands], fix=sorted(labels(task)))
             dump_json(row_path, row)
@@ -274,7 +277,10 @@ def cmd_run(a: argparse.Namespace) -> None:
                               "errors": row["errors"][:1]}), flush=True)
 
 
-def summarize(plan: dict) -> dict:
+def summarize(plan: dict, common: bool = False) -> dict:
+    """Per-arm metrics, pairwise agreement and divergences. `common`: only
+    the issues every arm that answered at all answered (a like-for-like
+    table when an arm lost issues to a usage limit)."""
     out = WORK / "briefer-arms" / plan["tag"]
     rows: dict[str, dict[int, dict]] = {}
     for arm in ARMS:
@@ -282,6 +288,12 @@ def summarize(plan: dict) -> dict:
             r = load_json(f)
             if r["issue"] in plan["issues"]:
                 rows.setdefault(arm, {})[r["issue"]] = r
+    if common:
+        live = [by for by in rows.values() if any(r["ok"] for r in by.values())]
+        keep = set(plan["issues"])
+        for by in live:
+            keep &= {i for i, r in by.items() if r["ok"]}
+        rows = {arm: {i: r for i, r in by.items() if i in keep} for arm, by in rows.items()}
     per_arm = {}
     for arm, by in rows.items():
         ok = [r for r in by.values() if r["ok"]]
@@ -348,8 +360,8 @@ def summarize(plan: dict) -> dict:
 
 def cmd_report(a: argparse.Namespace) -> None:
     plan = load_json(Path(a.plan))
-    s = summarize(plan)
-    dump_json(WORK / "briefer-arms" / plan["tag"] / "summary.json", s)
+    s = summarize(plan, common=a.common)
+    dump_json(WORK / "briefer-arms" / plan["tag"] / ("summary-common.json" if a.common else "summary.json"), s)
     if not a.md:
         print(json.dumps(s, indent=2))
         return
@@ -379,6 +391,7 @@ def main() -> None:
     p = sub.add_parser("report")
     p.add_argument("--plan", required=True)
     p.add_argument("--md", action="store_true")
+    p.add_argument("--common", action="store_true", help="only issues every answering arm answered")
     a = ap.parse_args()
     {"run": cmd_run, "report": cmd_report}[a.cmd](a)
 
