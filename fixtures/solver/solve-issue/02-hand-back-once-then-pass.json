@@ -1,0 +1,54 @@
+{
+  "case": "hand-back-once-then-pass",
+  "from_run": "11348-1791760489-cc9c38c",
+  "issue": 11348,
+  "required": [
+    "check:openagents-mobile"
+  ],
+  "drives": [
+    {
+      "checks": {
+        "check:openagents-mobile": false
+      },
+      "tester": {
+        "route": "coder",
+        "hypothesis": "The compile error in the shell module is the Coder's to fix."
+      }
+    },
+    {
+      "checks": {
+        "check:openagents-mobile": true,
+        "test:openagents-mobile": true
+      }
+    }
+  ],
+  "done": {
+    "check:openagents-mobile": 0.9
+  },
+  "drive": {
+    "hands": [
+      [
+        "intaker",
+        0
+      ],
+      [
+        "briefer",
+        0
+      ],
+      [
+        "coder",
+        0
+      ],
+      [
+        "tester",
+        0
+      ],
+      [
+        "coder",
+        1
+      ]
+    ],
+    "rounds": 1,
+    "outcome": "passed"
+  }
+}

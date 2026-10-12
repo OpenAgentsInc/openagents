@@ -1,0 +1,33 @@
+{
+  "case": "environment-fault",
+  "issue": 11361,
+  "required": [
+    "check:coder-new"
+  ],
+  "drives": [
+    {
+      "checks": {
+        "check:coder-new": false
+      },
+      "environment_fault": "The disk is full."
+    }
+  ],
+  "drive": {
+    "hands": [
+      [
+        "intaker",
+        0
+      ],
+      [
+        "briefer",
+        0
+      ],
+      [
+        "coder",
+        0
+      ]
+    ],
+    "rounds": 0,
+    "outcome": "failed"
+  }
+}

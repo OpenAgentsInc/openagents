@@ -1,0 +1,17 @@
+{
+  "case": "prepare-failed",
+  "issue": 11329,
+  "intake": {
+    "prepare_failed": true
+  },
+  "drive": {
+    "hands": [
+      [
+        "intaker",
+        0
+      ]
+    ],
+    "rounds": 0,
+    "outcome": "setup_failed"
+  }
+}

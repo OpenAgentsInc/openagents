@@ -98,6 +98,7 @@ pub mod runtime;
 pub mod select;
 pub mod shell;
 pub mod sites;
+pub mod solver_program;
 pub mod source;
 pub mod spend;
 pub mod store;

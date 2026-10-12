@@ -1,0 +1,17 @@
+{
+  "case": "already-done",
+  "issue": 11319,
+  "intake": {
+    "landed_commit": "c1e0ca8ae3"
+  },
+  "drive": {
+    "hands": [
+      [
+        "intaker",
+        0
+      ]
+    ],
+    "rounds": 0,
+    "outcome": "already_done"
+  }
+}

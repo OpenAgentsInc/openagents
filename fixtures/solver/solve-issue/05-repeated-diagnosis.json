@@ -1,0 +1,57 @@
+{
+  "case": "repeated-diagnosis",
+  "issue": 8205,
+  "required": [
+    "check:psionic-train"
+  ],
+  "drives": [
+    {
+      "checks": {
+        "check:psionic-train": false
+      },
+      "tester": {
+        "route": "coder",
+        "hypothesis": "The wasm target is missing its feature gate."
+      }
+    },
+    {
+      "checks": {
+        "check:psionic-train": false
+      },
+      "tester": {
+        "route": "coder",
+        "hypothesis": "the wasm target is missing its feature gate."
+      }
+    }
+  ],
+  "drive": {
+    "hands": [
+      [
+        "intaker",
+        0
+      ],
+      [
+        "briefer",
+        0
+      ],
+      [
+        "coder",
+        0
+      ],
+      [
+        "tester",
+        0
+      ],
+      [
+        "coder",
+        1
+      ],
+      [
+        "tester",
+        1
+      ]
+    ],
+    "rounds": 1,
+    "outcome": "failed"
+  }
+}

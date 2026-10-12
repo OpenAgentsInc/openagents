@@ -1,0 +1,74 @@
+{
+  "case": "hand-back-twice-then-pass",
+  "issue": 11331,
+  "required": [
+    "check:openagents-web",
+    "check:coder-environment-operator"
+  ],
+  "drives": [
+    {
+      "checks": {
+        "check:openagents-web": false,
+        "check:coder-environment-operator": true
+      },
+      "tester": {
+        "route": "coder",
+        "hypothesis": "The paused-state test expects the old label."
+      }
+    },
+    {
+      "checks": {
+        "check:openagents-web": true,
+        "check:coder-environment-operator": false
+      },
+      "tester": {
+        "route": "coder",
+        "hypothesis": "The server handler still returns the stale status."
+      }
+    },
+    {
+      "checks": {
+        "check:openagents-web": true,
+        "check:coder-environment-operator": true
+      }
+    }
+  ],
+  "done": {
+    "check:openagents-web": 0.88,
+    "check:coder-environment-operator": 0.91
+  },
+  "drive": {
+    "hands": [
+      [
+        "intaker",
+        0
+      ],
+      [
+        "briefer",
+        0
+      ],
+      [
+        "coder",
+        0
+      ],
+      [
+        "tester",
+        0
+      ],
+      [
+        "coder",
+        1
+      ],
+      [
+        "tester",
+        1
+      ],
+      [
+        "coder",
+        2
+      ]
+    ],
+    "rounds": 2,
+    "outcome": "passed"
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "case": "back-to-briefer-then-exhausted",
+  "from_run": "11338-1791743219-238cb5f",
+  "issue": 11338,
+  "required": [
+    "check:verse-pbr",
+    "check:verse"
+  ],
+  "drives": [
+    {
+      "checks": {
+        "check:verse-pbr": false,
+        "check:verse": false
+      },
+      "tester": {
+        "route": "coder",
+        "hypothesis": "The new link target does not compile into the docs test."
+      }
+    },
+    {
+      "checks": {
+        "check:verse-pbr": false,
+        "check:verse": false
+      },
+      "tester": {
+        "route": "briefer",
+        "hypothesis": "The briefing named the wrong crate; the link lives in verse-world."
+      }
+    },
+    {
+      "checks": {
+        "check:verse-pbr": false,
+        "check:verse": false
+      },
+      "tester": {
+        "route": "coder",
+        "hypothesis": "Both compile checks fail on main as well."
+      }
+    }
+  ],
+  "drive": {
+    "hands": [
+      [
+        "intaker",
+        0
+      ],
+      [
+        "briefer",
+        0
+      ],
+      [
+        "coder",
+        0
+      ],
+      [
+        "tester",
+        0
+      ],
+      [
+        "coder",
+        1
+      ],
+      [
+        "tester",
+        1
+      ],
+      [
+        "briefer",
+        2
+      ],
+      [
+        "coder",
+        2
+      ],
+      [
+        "tester",
+        2
+      ]
+    ],
+    "rounds": 2,
+    "outcome": "failed"
+  }
+}

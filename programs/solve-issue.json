@@ -119,9 +119,9 @@
       },
       {
         "name": "land",
-        "kind": "delegate",
+        "kind": "invoke",
         "target": {
-          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/land",
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/open-pull-request",
           "artifact": {
             "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
             "size": 17,
@@ -208,6 +208,19 @@
         "bounds": {
           "isolation": "worktree",
           "minutes": 60
+        },
+        "verify": {
+          "question": "openagents.completion.v1",
+          "drives": 3,
+          "refuse_below": 1.0
+        },
+        "hand_back": {
+          "diagnoser": "solver-tester",
+          "routes": {
+            "coder": "code",
+            "briefer": "brief"
+          },
+          "stop_on": "repeated_diagnosis"
         }
       },
       "check": {
@@ -217,13 +230,12 @@
         }
       },
       "land": {
-        "executor": "solver-tester",
+        "operation": "open-pull-request",
         "requires": [
-          "code"
+          "check"
         ],
         "bounds": {
-          "isolation": "worktree",
-          "minutes": 30
+          "minutes": 5
         }
       },
       "done": {

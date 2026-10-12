@@ -529,6 +529,28 @@ collision is recoverable, and the `minutes` bound reaches the executor only
 after the admission check has established that somebody is holding the
 delegation to it.
 
+## The solver as a program
+
+`programs/solve-issue.json` carries the issue solver's workflow as a NIP-PRG
+document (#11392): `intake` (a `query` over the request), `brief` and `code`
+(`delegate` steps to the solver's Briefer and Coder), the final `check`,
+`land` (an `invoke` of the host's `open-pull-request` operation), and `done`
+(a `decide` step through the configured door on `openagents.completion.v1`,
+its raw answers in the `done$answers` sidecar). The Coder and Tester rounds
+are the `code` step's `verify` clause: each drive is judged per required
+check, a rejection goes to the binding's `hand_back` diagnoser (the Tester),
+whose route sends the next drive to the Coder or back through the Briefer,
+and the clause's `drives` bound (3, which is `drive()`'s default two
+hand-backs) is the round limit.
+
+`crates/coder/src/solver_program.rs` is a second host for that document. It
+reads only the document's steps and replays a recorded issue run; the
+corpus under `fixtures/solver/solve-issue/` records, for each case, what the
+hard-coded `drive()` produced (hands with rounds, the last round, the
+outcome), and the test pins that the document produces the same on every
+case, one per end `drive()` has. `drive()` stays the reference
+implementation until live runs go through the program host.
+
 ## The runtime
 
 `coder::runtime` is the interpreter. It takes a program, the work, and the

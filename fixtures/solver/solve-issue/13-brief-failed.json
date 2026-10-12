@@ -1,0 +1,17 @@
+{
+  "case": "brief-failed",
+  "issue": 11329,
+  "brief": {
+    "failed": true
+  },
+  "drive": {
+    "hands": [
+      [
+        "intaker",
+        0
+      ]
+    ],
+    "rounds": 0,
+    "outcome": "decision_failed"
+  }
+}

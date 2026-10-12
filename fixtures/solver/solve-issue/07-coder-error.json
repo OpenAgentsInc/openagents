@@ -1,0 +1,30 @@
+{
+  "case": "coder-error",
+  "issue": 11361,
+  "required": [
+    "check:coder-new"
+  ],
+  "drives": [
+    {
+      "coder_error": "The session ended on an API error."
+    }
+  ],
+  "drive": {
+    "hands": [
+      [
+        "intaker",
+        0
+      ],
+      [
+        "briefer",
+        0
+      ],
+      [
+        "coder",
+        0
+      ]
+    ],
+    "rounds": 0,
+    "outcome": "failed"
+  }
+}

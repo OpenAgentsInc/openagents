@@ -1,0 +1,52 @@
+{
+  "case": "pass-verdict-over-failing-checks",
+  "issue": 11355,
+  "required": [
+    "check:openagents-web"
+  ],
+  "drives": [
+    {
+      "checks": {
+        "check:openagents-web": false
+      },
+      "tester": {
+        "route": "pass",
+        "hypothesis": "Looks good."
+      }
+    },
+    {
+      "checks": {
+        "check:openagents-web": true
+      }
+    }
+  ],
+  "done": {
+    "check:openagents-web": 0.8
+  },
+  "drive": {
+    "hands": [
+      [
+        "intaker",
+        0
+      ],
+      [
+        "briefer",
+        0
+      ],
+      [
+        "coder",
+        0
+      ],
+      [
+        "tester",
+        0
+      ],
+      [
+        "coder",
+        1
+      ]
+    ],
+    "rounds": 1,
+    "outcome": "passed"
+  }
+}

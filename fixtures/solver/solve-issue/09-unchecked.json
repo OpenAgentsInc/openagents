@@ -1,0 +1,28 @@
+{
+  "case": "unchecked",
+  "issue": 11282,
+  "required": [],
+  "drives": [
+    {
+      "checks": {}
+    }
+  ],
+  "drive": {
+    "hands": [
+      [
+        "intaker",
+        0
+      ],
+      [
+        "briefer",
+        0
+      ],
+      [
+        "coder",
+        0
+      ]
+    ],
+    "rounds": 0,
+    "outcome": "unchecked"
+  }
+}

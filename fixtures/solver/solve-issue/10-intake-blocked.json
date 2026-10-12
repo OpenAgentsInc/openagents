@@ -1,0 +1,18 @@
+{
+  "case": "intake-blocked",
+  "from_run": "11279-1791743551-fc5069e",
+  "issue": 11279,
+  "intake": {
+    "blocked": "The issue is closed."
+  },
+  "drive": {
+    "hands": [
+      [
+        "intaker",
+        0
+      ]
+    ],
+    "rounds": 0,
+    "outcome": "setup_failed"
+  }
+}

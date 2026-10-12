@@ -1,0 +1,36 @@
+{
+  "case": "clean-pass",
+  "from_run": "11207-1791748103-d8efd41",
+  "issue": 11207,
+  "required": [
+    "check:bunny-web"
+  ],
+  "drives": [
+    {
+      "checks": {
+        "check:bunny-web": true
+      }
+    }
+  ],
+  "done": {
+    "check:bunny-web": 0.93
+  },
+  "drive": {
+    "hands": [
+      [
+        "intaker",
+        0
+      ],
+      [
+        "briefer",
+        0
+      ],
+      [
+        "coder",
+        0
+      ]
+    ],
+    "rounds": 0,
+    "outcome": "passed"
+  }
+}
