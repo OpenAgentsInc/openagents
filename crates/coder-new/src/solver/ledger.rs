@@ -140,3 +140,25 @@ pub async fn command(args: &[String]) -> Result<String, String> {
     }
     Ok(out)
 }
+
+/// Where a run stands among the unlanded runs that touch one of its
+/// files: `{"position": K, "ahead": [run ids]}`, position 1 when no
+/// earlier unlanded run shares a file. `changed` is the run's own
+/// `summary.json["changed"]`; the run itself is left out by id.
+pub async fn queue_position(state: &Path, repo: &Path, run_id: &str, changed: &Value) -> Value {
+    let files: Vec<&str> = changed
+        .as_array()
+        .map(|items| items.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    let ahead: Vec<String> = read(state, repo)
+        .await
+        .into_iter()
+        .filter(|row| {
+            row.merged.is_none()
+                && row.run_id.as_str() < run_id
+                && row.files.iter().any(|file| files.contains(&file.as_str()))
+        })
+        .map(|row| row.run_id)
+        .collect();
+    json!({"position": ahead.len() + 1, "ahead": ahead})
+}
