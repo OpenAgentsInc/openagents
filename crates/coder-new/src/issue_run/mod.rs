@@ -67,14 +67,18 @@ pub const SUMMARY: &str = "Summary";
 /// Which System One door answers the decision questions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Decider {
-    /// Jev, TypeSafe's API, with this computer's key; without one, our
-    /// decision API (`openagents.com/api/v1/systemone`, Jev under the house
+    /// Our gateway's H100 first ([`Decider::Gateway`]), then Jev with this
+    /// computer's key, then our decision API (`openagents.com/api/v1/systemone`, Jev under the house
     /// key first, then connected Pylons; #11225), keyless.
     Auto,
     /// Jev, TypeSafe's hosted API, for every question.
     Jev,
     /// Clef-Flash on this computer's Ollama for every question.
     Clef,
+    /// Our gateway's hosted Clef alone (`openagents.com/api/v1/systemone`
+    /// with `X-Decision-Order: hosted`): the always-on H100 answers with
+    /// Clef-Flash, keyless, and the payload never leaves our machines.
+    Gateway,
     /// A constrained Claude Haiku arm (`claude -p`, no tools) answering the
     /// identical typed question and returning the same answer shape, so the
     /// arms compare apples to apples (#11387).
@@ -116,10 +120,11 @@ impl Decider {
             "auto" => Ok(Self::Auto),
             "jev" => Ok(Self::Jev),
             "clef" => Ok(Self::Clef),
+            "gateway" => Ok(Self::Gateway),
             "haiku-arm" => Ok(Self::HaikuArm),
             "off" => Ok(Self::Off),
             other => Err(format!(
-                "--decider takes auto, jev, clef, haiku-arm or off, not {other}."
+                "--decider takes auto, gateway, jev, clef, haiku-arm or off, not {other}."
             )),
         }
     }
@@ -129,6 +134,7 @@ impl Decider {
         match self {
             Self::Jev => "jev",
             Self::Clef => "clef",
+            Self::Gateway => "gateway",
             Self::HaikuArm => "haiku-arm",
             Self::Auto => "auto",
             Self::Off => "off",

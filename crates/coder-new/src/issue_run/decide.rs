@@ -387,6 +387,33 @@ fn ours_door() -> Option<Door> {
     })
 }
 
+/// Our gateway's hosted Clef alone: `POST /v1/systemone` on
+/// openagents.com (or `OPENAGENTS_DECISIONS_URL`) with
+/// `X-Decision-Order: hosted`, answered by the always-on H100 with
+/// Clef-Flash. Keyless; the payload never leaves our machines.
+fn gateway_door() -> Option<Door> {
+    let url = std::env::var(jev_hosted::DECISIONS_URL_VAR)
+        .ok()
+        .filter(|url| !url.trim().is_empty())
+        .map_or_else(
+            || jev_hosted::OPENAGENTS.to_string(),
+            |url| url.trim_end_matches('/').to_string(),
+        );
+    let exchange = jev_hosted::OpenAgentsExchange::new(&url)
+        .ok()?
+        .hosted_only();
+    let config = jev::Config::new()
+        .timeout(std::time::Duration::from_secs(30))
+        .exchange(std::sync::Arc::new(exchange))
+        .base_url(&url)
+        .default_model("clef-flash");
+    Some(Door {
+        backend: Backend::SystemOne(jev::Client::new(config).ok()?),
+        label: "Clef-Flash, OpenAgents gateway H100".into(),
+        model: "clef-flash".into(),
+    })
+}
+
 fn clef_door() -> Option<Door> {
     let address = std::net::SocketAddr::from(([127, 0, 0, 1], 11434));
     std::net::TcpStream::connect_timeout(&address, std::time::Duration::from_millis(500)).ok()?;
@@ -448,11 +475,33 @@ fn doors(decider: Decider) -> (Doors, Doors) {
             Decider::Off => Vec::new(),
             Decider::Jev => jev_door().into_iter().collect(),
             Decider::Clef => clef_door().into_iter().collect(),
+            Decider::Gateway => gateway_door().into_iter().collect(),
             Decider::HaikuArm => haiku_arm_door().into_iter().collect(),
-            Decider::Auto => jev_door().into_iter().chain(ours_door()).collect(),
+            Decider::Auto => gateway_door()
+                .into_iter()
+                .chain(jev_door())
+                .chain(ours_door())
+                .collect(),
         }
     };
     (Doors(list()), Doors(list()))
+}
+
+/// One real question to the gateway's H100, by hand:
+/// `cargo test -p coder-new --lib the_gateway_door_answers -- --ignored --nocapture`.
+#[cfg(test)]
+#[tokio::test]
+#[ignore = "asks openagents.com"]
+async fn the_gateway_door_answers() {
+    let door = gateway_door().expect("the gateway door builds");
+    let request = jev::SystemOneRequest::new(
+        "Issue: the README links to a file that was deleted.".to_owned(),
+        jev::Questions::new().with("small", jev::Noul::new("Is this a small change?")),
+    );
+    let response = door.ask(request).await.expect("the H100 answers");
+    let by = answered_by(&door, &response);
+    println!("answered by: {by}\n{response:?}");
+    assert!(by.contains("Clef-Flash"), "{by}");
 }
 
 /// One System One request for a judgment outside the briefing, such as the

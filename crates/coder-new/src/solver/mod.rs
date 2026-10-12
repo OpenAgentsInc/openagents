@@ -238,7 +238,8 @@ Options:
                         this computer's Devin login).
   --rounds R            How many times the Tester may hand work back (default 2).
   --decisions DOOR      Which decision door judges the briefing's file relevance,
-                        size, and change kind: jev (TypeSafe's API), clef (this
+                        size, and change kind: gateway (our H100 on
+                        openagents.com, keyless), jev (TypeSafe's API), clef (this
                         computer's Clef), haiku-arm (a constrained Claude Haiku
                         answering the same typed question, no tools), or off
                         (default; the ranking stands and

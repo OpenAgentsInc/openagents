@@ -679,6 +679,9 @@ pub struct OpenAgentsExchange {
     http: reqwest::Client,
     /// Ask the Pylons before Jev (`X-Decision-Order: pylon`).
     pylon_first: bool,
+    /// Ask our hosted Clef alone (`X-Decision-Order: hosted`): the payload
+    /// never leaves our machines.
+    hosted_only: bool,
     /// A second opinion the gateway does not shadow again
     /// (`X-Decision-Shadow: 1`).
     shadow: bool,
@@ -707,6 +710,7 @@ impl OpenAgentsExchange {
             url: url.trim_end_matches('/').to_string(),
             http,
             pylon_first: false,
+            hosted_only: false,
             shadow: false,
         })
     }
@@ -715,6 +719,14 @@ impl OpenAgentsExchange {
     #[must_use]
     pub fn pylon_first(mut self) -> Self {
         self.pylon_first = true;
+        self
+    }
+
+    /// The same exchange asking the gateway for our hosted Clef alone, the
+    /// always-on H100 (docs/inference/clef-decisions-h100.md).
+    #[must_use]
+    pub fn hosted_only(mut self) -> Self {
+        self.hosted_only = true;
         self
     }
 
@@ -733,7 +745,9 @@ impl OpenAgentsExchange {
         .timeout(call.timeout)
         .header("content-type", "application/json")
         .header("x-attempt", call.attempt.to_string());
-        if self.pylon_first {
+        if self.hosted_only {
+            request = request.header("x-decision-order", "hosted");
+        } else if self.pylon_first {
             request = request.header("x-decision-order", "pylon");
         }
         if self.shadow {
