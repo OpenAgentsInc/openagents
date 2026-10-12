@@ -27,7 +27,7 @@ use crate::{App, Mode, plugin_tools::ExecutionSettings};
 pub use route_contract::harness::{Can, DECLARATIONS, Declaration, Harness, Place, Turn};
 
 /// Who pays for a harness's work.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Payer {
     /// The person's Claude subscription: no per-turn dollars.
@@ -41,7 +41,7 @@ pub enum Payer {
 }
 
 /// Why a harness is not a candidate for this chat.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Exclusion {
     /// Its plugin is off.
@@ -254,6 +254,13 @@ impl App {
         }
         let harness = fixed_rule(&candidates(&Facts::read(self)));
         self.live.runs_on = Some(harness);
+        // A chat with earlier turns lost its harness (its plugin went off)
+        // and is routed again (#11454).
+        self.routing_rule = Some(if self.live.user_count() > 0 {
+            crate::routing_record::Rule::Reroute
+        } else {
+            crate::routing_record::Rule::FirstAdmitted
+        });
         harness
     }
 
@@ -285,6 +292,7 @@ impl App {
             self.set_mode(Mode::Live);
         }
         self.live.runs_on = Some(harness);
+        self.routing_rule = Some(crate::routing_record::Rule::Pin);
         self.submit_live();
         Ok(())
     }

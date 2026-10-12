@@ -1042,6 +1042,7 @@ pub(crate) fn chat(
     // continued chat stays on its harness and a new one is routed.
     if pin.is_some() {
         app.live.runs_on = pin;
+        app.routing_rule = Some(crate::routing_record::Rule::Pin);
     }
     // Each session works in its own worktree (#11372); the folder it was
     // started from stays read-only for it.

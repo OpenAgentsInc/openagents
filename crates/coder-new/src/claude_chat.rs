@@ -416,6 +416,11 @@ async fn start(
     input: &Mutex<Option<QueryInput>>,
 ) -> Result<claude::Opened, String> {
     let opened = claude::open(cwd, tools, resume).await?;
+    // Routing records carry the version each turn ran on (#11454).
+    crate::routing_record::note_version(
+        crate::harness_plugin::Harness::ClaudeCode,
+        opened.query.claude_code_version(),
+    );
     opened
         .query
         .send_user_content(claude::content(first))

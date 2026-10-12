@@ -69,6 +69,7 @@ pub mod resume;
 pub mod risk_policy;
 mod route;
 pub mod routing_preferences;
+pub mod routing_record;
 mod schedule;
 mod schedule_sync;
 pub mod sessions;
@@ -261,6 +262,11 @@ pub struct App {
     issue_run_base: usize,
     /// Whether the watched run's cost is already on the chat's total.
     issue_run_costed: bool,
+    /// The turn whose routing record waits for its outcome (#11454).
+    routing: Option<routing_record::Open>,
+    /// What chose the next turn's harness, set where it is chosen; a turn
+    /// with none set continues on the chat's harness.
+    pub(crate) routing_rule: Option<routing_record::Rule>,
 }
 
 #[derive(Default)]
@@ -1017,6 +1023,10 @@ impl App {
                     }
                     return;
                 }
+                let (model, error) = match &result {
+                    Ok(reply) => (Some(reply.model.clone()), None),
+                    Err(error) => (None, Some(error.clone())),
+                };
                 for entry in &mut self.live.entries {
                     if let live::Entry::Tool {
                         running, output, ..
@@ -1090,6 +1100,7 @@ impl App {
                         }
                     }
                 }
+                self.record_end(None, model, error);
                 self.scroll_main_to_end();
             }
             _ => {}
@@ -1581,6 +1592,7 @@ impl App {
             std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
         });
         let text = std::mem::take(&mut self.draft.text);
+        let (images, chars) = (self.composer.images.len(), text.chars().count());
         self.draft.cursor = 0;
         self.composer = Default::default();
         self.screen = Screen::Conversation;
@@ -1592,6 +1604,7 @@ impl App {
         self.scroll = u16::MAX;
         if !midturn {
             self.begin_claude_turn();
+            self.record_choice(harness_plugin::Harness::ClaudeCode, images, chars);
         }
         self.request = Some(live::Request {
             id: self.request_id,
@@ -1749,6 +1762,7 @@ impl App {
             .filter(|_| self.plugins.enabled);
         self.record_prompt();
         self.cancel_request();
+        let (images, chars) = (self.composer.images.len(), self.draft.text.chars().count());
         self.live
             .entries
             .push(live::Entry::User(std::mem::take(&mut self.draft.text)));
@@ -1765,6 +1779,7 @@ impl App {
         self.live.pinned_missed = false;
         self.live.reply_started_at = Some(std::time::Instant::now());
         self.history.dirty = true;
+        self.record_choice(harness_plugin::Harness::CoderLoop, images, chars);
         self.active_options = if key.is_some() {
             self.plugins.options.clone()
         } else {
