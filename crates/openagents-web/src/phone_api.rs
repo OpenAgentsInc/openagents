@@ -43,7 +43,8 @@ use crate::pages::chat::{AppSent, follow_from_app, line_two};
 
 /// The session prefix of a chat synced from the phone.
 pub(crate) const PHONE_PREFIX: &str = "phone-";
-/// The most chats `GET /v1/threads` lists.
+/// The most chats one `GET /v1/threads` page lists (`?offset=N&limit=M`,
+/// `limit` at most this).
 pub(crate) const SHOWN_THREADS: usize = 200;
 /// The most messages `GET /v1/threads/{id}` returns (the newest).
 pub(crate) const SHOWN_MESSAGES: usize = 200;
@@ -157,8 +158,20 @@ fn computer_rows(computers: &Computers) -> Vec<Value> {
         .collect()
 }
 
-/// The chats `GET /v1/threads` lists, in order.
+/// The first page of chats `GET /v1/threads` lists, in order.
 pub(crate) async fn listed(store: &Store, owner: &str) -> Result<(Vec<Value>, Computers), Error> {
+    let (rows, computers, _) = listed_page(store, owner, 0, SHOWN_THREADS).await?;
+    Ok((rows, computers))
+}
+
+/// One page of the account's chats, newest and pinned first, and how many
+/// chats there are in all.
+pub(crate) async fn listed_page(
+    store: &Store,
+    owner: &str,
+    offset: usize,
+    limit: usize,
+) -> Result<(Vec<Value>, Computers, usize), Error> {
     let computers = store.computers(owner).await?;
     let mut chats: Vec<Conversation> = store
         .list(owner)
@@ -173,23 +186,48 @@ pub(crate) async fn listed(store: &Store, owner: &str) -> Result<(Vec<Value>, Co
             std::cmp::Reverse(chat.updated_unix),
         )
     });
-    chats.truncate(SHOWN_THREADS);
-    Ok((
-        chats.iter().map(|chat| row(chat, &computers)).collect(),
-        computers,
-    ))
+    let total = chats.len();
+    let rows = chats
+        .iter()
+        .skip(offset)
+        .take(limit.clamp(1, SHOWN_THREADS))
+        .map(|chat| row(chat, &computers))
+        .collect();
+    Ok((rows, computers, total))
 }
 
-async fn threads(State(app): State<App>, headers: HeaderMap) -> Response {
+#[derive(Deserialize, Default)]
+pub(crate) struct ThreadsQuery {
+    #[serde(default)]
+    offset: usize,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+async fn threads(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Query(query): Query<ThreadsQuery>,
+) -> Response {
     let owner = match coder_sync::owner(&app, &headers).await {
         Ok(owner) => owner,
         Err(response) => return response,
     };
-    match listed(&app.config.chat_store, &owner).await {
-        Ok((rows, computers)) => answer(
-            StatusCode::OK,
-            json!({"threads": rows, "computers": computer_rows(&computers)}),
-        ),
+    let limit = query.limit.unwrap_or(SHOWN_THREADS);
+    match listed_page(&app.config.chat_store, &owner, query.offset, limit).await {
+        Ok((rows, computers, total)) => {
+            let next = query.offset + rows.len();
+            answer(
+                StatusCode::OK,
+                json!({
+                    "threads": rows,
+                    "computers": computer_rows(&computers),
+                    "total": total,
+                    "more": next < total,
+                    "next_offset": if next < total { Some(next) } else { None },
+                }),
+            )
+        }
         Err(error) => stored(&error),
     }
 }

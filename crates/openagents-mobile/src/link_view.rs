@@ -243,7 +243,6 @@ fn chats(state: &State) -> Node<Intent> {
     }
     // The web's chats first, then computers by their newest chat.
     groups.sort_by_key(|(name, _)| name != "openagents.com");
-    let mut shown = 0;
     for (index, (name, rows)) in groups.into_iter().enumerate() {
         let online = rows
             .first()
@@ -268,10 +267,6 @@ fn chats(state: &State) -> Node<Intent> {
             true,
         ));
         for thread in rows {
-            if shown >= 120 {
-                break;
-            }
-            shown += 1;
             let mut label = if thread.title.trim().is_empty() {
                 "New chat".to_owned()
             } else {
@@ -292,6 +287,14 @@ fn chats(state: &State) -> Node<Intent> {
                 },
             ));
         }
+    }
+    if state.threads_more {
+        children.push(button(
+            "link-more-threads",
+            "Show older chats",
+            Some(Glyph::History),
+            Intent::MoreThreads,
+        ));
     }
     page(children)
 }

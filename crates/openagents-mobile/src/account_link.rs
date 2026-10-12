@@ -334,6 +334,9 @@ impl Session {
     }
 }
 
+/// Chats fetched per page of the list (the website's page size).
+pub const THREADS_PAGE: usize = 200;
+
 /// One chat on the account, as `GET /v1/threads` lists it.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -825,6 +828,8 @@ pub enum Intent {
         id: String,
     },
     Back,
+    /// Ask the website for the next page of older chats.
+    MoreThreads,
     Act {
         computer: String,
         item: String,
@@ -903,6 +908,11 @@ pub struct State {
     pub threads: Vec<Thread>,
     pub computers: Vec<Computer>,
     pub threads_read: bool,
+    /// How many chats the list asks the website for (`THREADS_PAGE` more
+    /// each "Show older chats").
+    pub threads_wanted: usize,
+    /// The website has older chats than the list holds.
+    pub threads_more: bool,
     pub agents: Vec<Agents>,
     pub agents_read: bool,
     pub screen: Screen,
@@ -1027,6 +1037,7 @@ impl Link {
             .and_then(|store| store.read("link").ok().flatten())
             .unwrap_or_default();
         let state = State {
+            threads_wanted: THREADS_PAGE,
             origin: origin.trim_end_matches('/').to_owned(),
             name: "Phone".into(),
             choice: kept.choice,
@@ -1153,6 +1164,13 @@ impl Link {
     pub fn tap(&mut self, intent: Intent) -> Option<String> {
         match intent {
             Intent::SignIn | Intent::Retry if !self.signed_in() => self.begin_sign_in(),
+            Intent::MoreThreads => {
+                let mut state = self.lock();
+                state.threads_wanted += THREADS_PAGE;
+                state.threads_read = false;
+                drop(state);
+                self.nudge.notify_one();
+            }
             Intent::Retry => {
                 let mut state = self.lock();
                 state.failures = 0;
@@ -2569,6 +2587,50 @@ struct Poller {
 }
 
 impl Poller {
+    /// Reads `wanted` chats, page by page (`GET /v1/threads?offset=&limit=`),
+    /// and whether the website has more. An older website answers one
+    /// unpaged list; then `more` is false. `Err` carries the HTTP status
+    /// (0 when the call failed).
+    async fn threads_pages(
+        &self,
+        origin: &str,
+        token: &str,
+        wanted: usize,
+    ) -> Result<(Vec<Thread>, Vec<Computer>, bool), u16> {
+        let mut threads = Vec::new();
+        let mut computers = Vec::new();
+        let mut offset = 0;
+        loop {
+            let limit = (wanted - offset).min(THREADS_PAGE);
+            let reply = self
+                .http
+                .call(
+                    "GET",
+                    format!("{origin}/v1/threads?offset={offset}&limit={limit}"),
+                    Some(token.to_owned()),
+                    None,
+                )
+                .await
+                .map_err(|_| 0u16)?;
+            if reply.status != 200 {
+                return Err(reply.status);
+            }
+            let page: Vec<Thread> =
+                serde_json::from_value(reply.body["threads"].clone()).unwrap_or_default();
+            if offset == 0 {
+                computers =
+                    serde_json::from_value(reply.body["computers"].clone()).unwrap_or_default();
+            }
+            let got = page.len();
+            threads.extend(page);
+            let more = reply.body["more"].as_bool().unwrap_or(false);
+            offset += got;
+            if !more || got == 0 || offset >= wanted {
+                return Ok((threads, computers, more));
+            }
+        }
+    }
+
     async fn run(self) {
         tokio::spawn(self.clone().watch());
         loop {
@@ -2701,23 +2763,16 @@ impl Poller {
                 _ => failed = true,
             }
         }
-        match self
-            .http
-            .call(
-                "GET",
-                format!("{origin}/v1/threads"),
-                Some(token.clone()),
-                None,
-            )
-            .await
-        {
-            Ok(reply) if reply.status == 200 => {
-                let threads: Vec<Thread> =
-                    serde_json::from_value(reply.body["threads"].clone()).unwrap_or_default();
-                let computers: Vec<Computer> =
-                    serde_json::from_value(reply.body["computers"].clone()).unwrap_or_default();
+        let wanted = lock(&self.state).threads_wanted.max(THREADS_PAGE);
+        match self.threads_pages(&origin, &token, wanted).await {
+            Ok((threads, computers, more)) => {
                 let mut state = lock(&self.state);
-                if state.threads != threads || state.computers != computers || !state.threads_read {
+                if state.threads != threads
+                    || state.computers != computers
+                    || state.threads_more != more
+                    || !state.threads_read
+                {
+                    state.threads_more = more;
                     if let Some(open) = &mut state.open
                         && let Some(row) = threads.iter().find(|t| t.id == open.id)
                     {
@@ -2729,8 +2784,8 @@ impl Poller {
                     state.changed();
                 }
             }
-            Ok(reply) if reply.status == 401 => signed_out = true,
-            _ => failed = true,
+            Err(401) => signed_out = true,
+            Err(_) => failed = true,
         }
         if let Some(id) = open {
             match self
@@ -2753,16 +2808,16 @@ impl Poller {
                         let earlier = reply.body["earlier"].as_u64().unwrap_or(0) as usize;
                         let waiting = reply.body["waiting"].as_u64().unwrap_or(0) as usize;
                         // A reply sent from here shows until the chat has it.
-                        let sent: Vec<Message> = open
-                            .sent
-                            .iter()
-                            .filter(|sent| {
-                                !messages.iter().rev().take(8).any(|m| {
-                                    m.role == "user" && m.text.trim() == sent.text.trim()
+                        let sent: Vec<Message> =
+                            open.sent
+                                .iter()
+                                .filter(|sent| {
+                                    !messages.iter().rev().take(8).any(|m| {
+                                        m.role == "user" && m.text.trim() == sent.text.trim()
+                                    })
                                 })
-                            })
-                            .cloned()
-                            .collect();
+                                .cloned()
+                                .collect();
                         let fresh = !open.loaded
                             || open.messages != messages
                             || open.earlier != earlier

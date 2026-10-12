@@ -474,10 +474,6 @@ async fn start_on_coder(
             StatusCode::CONFLICT,
             &format!("Coder on {computer} isn't online now. Pick where it runs again."),
         ),
-        Ok(Started::Full) => refusal(
-            StatusCode::CONFLICT,
-            "Your account has no room for more chats. Delete some first.",
-        ),
         Ok(Started::Busy) => refusal(
             StatusCode::CONFLICT,
             "Coder has too many messages waiting. Try again when it has answered them.",
@@ -2006,10 +2002,6 @@ async fn hand_to_coder(
             format!("Coder on {computer} is doing this. [Open the Coder chat](/chat/{id})")
         }
         Started::Offline => return None,
-        Started::Full => {
-            "Coder couldn't take this: your account has no room for more chats. Delete some first."
-                .into()
-        }
         Started::Busy => {
             "Coder has too many messages waiting. Try again when it has answered them.".into()
         }
