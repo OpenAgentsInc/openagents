@@ -6,7 +6,10 @@ hammered with jobs back to back, and under which configurations. Issue
 
 A **decision** is one answered question of a NIP-DEC `/v1/systemone`
 request. A request with 13 `noul` questions that answers all 13 is 13
-decisions. Every number here comes from
+decisions. Batching more questions into one request raises throughput up to
+the 64-question cap the served limits set ([clef-batching.md](clef-batching.md)
+measures that curve and separates the model's limits from this server's
+guards). Every number here comes from
 `scripts/bench/decision-throughput/harness.py`. The tables between the
 `dt:` markers are regenerated from the results in Cloud Storage by
 `report.py`, by hand or by the scheduled run.
