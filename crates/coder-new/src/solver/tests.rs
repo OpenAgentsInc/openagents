@@ -800,3 +800,23 @@ fn ledger_rows_cross_only_unlanded_runs_sharing_a_file() {
     assert!(rows[3].conflicts_with.is_empty());
     assert_eq!(rows[1].json()["files"][1], "README.md");
 }
+
+#[test]
+fn queue_verdicts_name_why_each_issue_is_skipped() {
+    use super::queue::judge;
+    let none: [String; 0] = [];
+    assert_eq!(
+        judge(1, "a", Some("abc1234 x"), &none, &none, 0).verdict,
+        "already_done"
+    );
+    assert_eq!(
+        judge(1, "a", None, &["bob".into()], &none, 0).why,
+        "held by bob"
+    );
+    assert_eq!(
+        judge(1, "a", None, &none, &["r9".into()], 0).verdict,
+        "in_flight"
+    );
+    assert_eq!(judge(1, "a", None, &none, &none, 40).verdict, "stale");
+    assert_eq!(judge(1, "a", None, &none, &none, 3).verdict, "ready");
+}
