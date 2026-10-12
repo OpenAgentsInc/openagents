@@ -99,7 +99,10 @@ per model and refuses with `503 busy` past 8 queued).
    the next door (Pylons, Jev, Vertex; `clef-flash` and `clef` have no next
    door and answer `503 unavailable`). A request the backend refused as
    invalid is not retried elsewhere. When every backend is sitting out, the
-   one whose bench ends first is still tried.
+   one whose bench ends first is still tried. When the last backend left
+   said busy, the pool is asked again after 150 ms and after 300 ms (as the
+   Pylon door does) before the decision moves on: a burst larger than one
+   machine's queue of 8 then waits rather than failing.
 3. **Visible.** The answer names the machine: `service.backend` in a
    `/v1/systemone` answer, `openagents.backend` in a `/v1/decisions`
    answer, the `X-Decision-Backend` header on both, and `backend` in the

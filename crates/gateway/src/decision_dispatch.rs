@@ -31,7 +31,8 @@
 //! with the fewest decisions in flight, ties to the one listed first; a
 //! backend that answers busy sits out [`BUSY_BENCH`], one that is
 //! unreachable, times out or fails sits out [`DOWN_BENCH`], and the
-//! decision goes to the next backend before the next door. The answer names
+//! decision goes to the next backend before the next door. When the last
+//! backend left said busy, the pool is asked again after 150 ms and 300 ms. The answer names
 //! the backend (`service.backend`, `X-Decision-Backend`, the evidence line).
 //! `X-Decision-Order: pylon`, or the models `clef-flash` and
 //! `openagents/pylon`, ask the Pylons first.
@@ -968,12 +969,31 @@ impl Dispatch {
         }
         let (pool, served) = self.clef_door(model)?;
         let mut tried = Vec::new();
-        while let Some((i, counted)) = pool.pick(Instant::now(), &tried) {
+        let (mut last_busy, mut busy_rounds) = (false, 0u32);
+        loop {
+            let Some((i, counted)) = pool.pick(Instant::now(), &tried) else {
+                // Every backend tried or sitting out. When the last one said
+                // busy, its queue drains in tens of milliseconds: ask the
+                // pool again shortly (twice at most), as the Pylon door
+                // does, before the next door.
+                if last_busy
+                    && busy_rounds < 2
+                    && deadline.saturating_duration_since(Instant::now())
+                        > Duration::from_millis(800)
+                {
+                    busy_rounds += 1;
+                    tokio::time::sleep(Duration::from_millis(150 * u64::from(busy_rounds))).await;
+                    tried.clear();
+                    last_busy = false;
+                    continue;
+                }
+                return None;
+            };
             tried.push(i);
             let backend = &pool.backends[i];
             let left = deadline.saturating_duration_since(Instant::now());
             if left < Duration::from_millis(300) {
-                break;
+                return None;
             }
             let t = Instant::now();
             let result = self
@@ -981,6 +1001,7 @@ impl Dispatch {
                 .await;
             drop(counted);
             let failed = result.as_ref().err().map(|(o, c)| fault(o, c));
+            last_busy = failed == Some(Fault::Busy);
             let found = self.settle_on(
                 "clef",
                 Some(&backend.name),
@@ -1000,7 +1021,6 @@ impl Dispatch {
                 (None, _) => pool.bench(i, DOWN_BENCH),
             }
         }
-        None
     }
 
     /// The connected pylons, best first, until one answers.

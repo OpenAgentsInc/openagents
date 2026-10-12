@@ -411,3 +411,13 @@ async fn a_pool_with_every_backend_down_fails_a_named_clef() {
     assert_eq!(status, 503, "{body}");
     assert_eq!(body["error"]["code"], "unavailable");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_busy_pool_is_asked_again_shortly_before_giving_up() {
+    let (busy, seen) = clef_stub(StatusCode::SERVICE_UNAVAILABLE).await;
+    let gateway = deploy(hosted(&format!("h100={busy}"), None)).await;
+    let (status, body) = call(&gateway.address, &request("clef-flash"), &[]).await;
+    assert_eq!(status, 503, "{body}");
+    // Once, then after 150 ms and 300 ms.
+    assert_eq!(seen.lock().unwrap().len(), 3);
+}
