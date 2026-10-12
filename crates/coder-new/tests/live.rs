@@ -114,7 +114,11 @@ fn submit(app: &mut App, text: &str) -> Request {
     paste(app, text);
     key(app, KeyCode::Enter);
     let request = app.request.take().expect("a chat request was queued");
-    assert!(matches!(request.kind, Work::Chat { .. }));
+    // A connected key on an automatic model takes the route (#11374).
+    assert!(matches!(
+        request.kind,
+        Work::Chat { .. } | Work::Microcoder { .. }
+    ));
     assert_eq!(request.id, app.request_id);
     request
 }
@@ -251,19 +255,17 @@ fn live_chat_uses_the_no_setup_fallback_or_an_enabled_saved_key() {
     assert_eq!(request.key.expose(), KEY_INPUT);
     assert!(!format!("{:?}", request.key).contains(KEY_INPUT));
     match request.kind {
-        Work::Chat {
-            model,
-            messages,
-            options,
-            ..
+        // The saved key joins the auto route; its OpenRouter door carries
+        // the chat and the person's generation options (#11374).
+        Work::Microcoder {
+            messages, options, ..
         } => {
-            assert_eq!(model, "openrouter/free");
             assert_eq!(options, coder_new::models::GenerationOptions::default());
             assert_eq!(messages.len(), 1);
             assert_eq!(messages[0].role, "user");
             assert_eq!(messages[0].content, "live question");
         }
-        _ => panic!("expected a chat request"),
+        _ => panic!("expected a routed request"),
     }
     assert!(app.live.busy);
     assert!(app.draft.text.is_empty());
@@ -497,7 +499,7 @@ fn live_streaming_preserves_stopped_text_and_ignores_stale_updates() {
     });
     assert!(app.live.partial_model.is_none());
     match second.kind {
-        Work::Chat { messages, .. } => {
+        Work::Chat { messages, .. } | Work::Microcoder { messages, .. } => {
             let contents: Vec<_> = messages
                 .iter()
                 .map(|message| (message.role.as_str(), message.content.as_str()))

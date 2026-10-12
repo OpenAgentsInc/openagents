@@ -372,7 +372,8 @@ fn live_terminal_owns_a_desk_and_headless_ungated_chat_cannot_auto_approve() {
             std::path::Path::new("/synthetic"),
         );
         match &app.request.as_ref().unwrap().kind {
-            crate::live::Work::Chat { execution, .. } => {
+            crate::live::Work::Chat { execution, .. }
+            | crate::live::Work::Microcoder { execution, .. } => {
                 assert!(execution.brainstorm.is_some());
                 assert_eq!(execution.disclosure_desk.is_some(), interactive);
             }

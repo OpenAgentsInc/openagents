@@ -468,6 +468,7 @@ fn following_user_and_bounded_observation_reach_local_and_remote_generation_inpu
     let Work::Microcoder {
         messages,
         execution,
+        ..
     } = request.kind
     else {
         panic!("local route missing")
@@ -491,7 +492,9 @@ fn following_user_and_bounded_observation_reach_local_and_remote_generation_inpu
             ..crate::credentials::Imported::default()
         });
     app.submit("Compare their coverage.", std::path::Path::new("/fixture"));
-    let Work::Chat { messages, .. } = app.request.take().unwrap().kind else {
+    let (Work::Chat { messages, .. } | Work::Microcoder { messages, .. }) =
+        app.request.take().unwrap().kind
+    else {
         panic!("remote route missing")
     };
     assert!(

@@ -62,6 +62,7 @@ mod prompt_queue;
 pub mod provider;
 pub mod resume;
 pub mod risk_policy;
+mod route;
 mod schedule;
 mod schedule_sync;
 pub mod sessions;
@@ -1711,6 +1712,13 @@ impl App {
         execution.fleet = Some(self.fleet_host());
         // The chat keeps the harness its first tool turn chose (#11289).
         execution.harness = self.live.harness.clone();
+        // An `auto` turn orders its doors by the person's /preferences
+        // (#11374).
+        execution.favor = crate::route::Favor {
+            cost: self.preferences.cost,
+            speed: self.preferences.speed,
+            intelligence: self.preferences.intelligence,
+        };
         if key.is_some()
             && (execution.brainstorm.is_some() || execution.cli)
             && execution.disclosure_desk.is_none()
@@ -1720,7 +1728,9 @@ impl App {
             execution.disclosure_desk = Some(desk.clone());
             self.disclosure_desk = Some(desk);
         }
-        let kind = if key.is_some() {
+        // A model the person chose keeps its own path (#11132); `auto`
+        // routes across every connected door.
+        let kind = if key.is_some() && models::pinned(&self.plugins.model) {
             live::Work::Chat {
                 model: self.plugins.model.clone(),
                 options: self.plugins.options.clone(),
@@ -1731,6 +1741,7 @@ impl App {
             live::Work::Microcoder {
                 messages: self.live.messages(),
                 execution,
+                options: self.plugins.options.clone(),
             }
         };
         self.request = Some(live::Request {

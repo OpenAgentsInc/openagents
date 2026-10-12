@@ -1215,16 +1215,29 @@ pub async fn microcoder_local(
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Value, String> {
     validate_task(task)?;
-    let session = format!("coder-new-{}", std::process::id());
-    let generator = coder::local_chain::local_generator(&session, None, None)?;
-    let mut result =
-        run_microcoder(task, cwd, &generator, jev, redaction_keys, cancel, emit).await?;
-    result["provider"] = json!(generator.provider());
-    let fell_back_from = generator.fell_back_from();
-    if !fell_back_from.is_empty() {
-        result["fell_back_from"] = json!(fell_back_from);
+    // Tests never resolve this computer's real logins or write to its home.
+    #[cfg(test)]
+    {
+        let _ = (cwd, jev, redaction_keys, cancel, emit);
+        return Err("The local model logins are unavailable in tests.".into());
     }
-    Ok(result)
+    #[cfg(not(test))]
+    {
+        let session = format!("coder-new-{}", std::process::id());
+        let generator = coder::local_chain::local_generator(&session, None, None)?;
+        let mut result =
+            run_microcoder(task, cwd, &generator, jev, redaction_keys, cancel, emit).await?;
+        result["provider"] = json!(generator.provider());
+        let fell_back_from = generator.fell_back_from();
+        if !fell_back_from.is_empty() {
+            result["fell_back_from"] = json!(fell_back_from);
+        }
+        let refusals = generator.refusals();
+        if !refusals.is_empty() {
+            result["refusals"] = json!(refusals);
+        }
+        Ok(result)
+    }
 }
 
 /// Coder's own agent on the OpenAgents AI Gateway only, for a task a
@@ -1248,6 +1261,10 @@ pub async fn microcoder_gateway(
     let mut result =
         run_microcoder(task, cwd, &generator, jev, redaction_keys, cancel, emit).await?;
     result["provider"] = json!(generator.provider());
+    let refusals = generator.refusals();
+    if !refusals.is_empty() {
+        result["refusals"] = json!(refusals);
+    }
     Ok(result)
 }
 
@@ -1443,6 +1460,10 @@ impl<G: Generate> Generate for CancellableGenerator<'_, G> {
             Err(error) => *error = redact_text(error, self.redaction_keys),
         }
         generated
+    }
+
+    fn out_of_capacity(&self) -> Option<microcoder_loop::models::Exhausted> {
+        self.generator.out_of_capacity()
     }
 }
 
@@ -3200,6 +3221,14 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
                 }
             }
         }
+        impl microcoder_loop::failover::Lane for FixtureProvider {
+            fn refusal(&self) -> Option<microcoder_loop::capacity::Refusal> {
+                match self {
+                    Self::Unavailable(_) => None,
+                    Self::Gateway(gateway) => gateway.refusal(),
+                }
+            }
+        }
         let dir = tempfile::tempdir().unwrap();
         if coder_boundary::Boundary::writing(dir.path())
             .build()
@@ -3218,6 +3247,8 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
                 FixtureProvider::Gateway(coder::cloud::CloudLane::new(Arc::clone(&fixture))),
             ],
             current: Cell::new(0),
+            book: None,
+            refused: std::cell::RefCell::new(vec![]),
         };
         let result = run_microcoder(
             "A scratch task",

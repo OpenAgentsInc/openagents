@@ -68,6 +68,9 @@ pub struct ExecutionSettings {
     /// whether Edit and Write are checked, the context policy and stuck
     /// thresholds. `None` until the chat's first tool turn decides it.
     pub harness: Option<crate::harness::Run>,
+    /// The order an `auto` turn tries its doors: what the person favors on
+    /// `/preferences` (#11374). Balanced when nothing was chosen.
+    pub favor: crate::route::Favor,
 }
 
 #[derive(Clone)]
@@ -954,6 +957,7 @@ mod tests {
             disclosure_desk: None,
             harness: None,
             memory: None,
+            favor: crate::route::Favor::default(),
         }
     }
 

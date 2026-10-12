@@ -320,6 +320,9 @@ pub enum Work {
     Microcoder {
         messages: Vec<Message>,
         execution: ExecutionSettings,
+        /// The person's generation options, for the route's OpenRouter
+        /// door when it takes the turn; the house doors ignore them.
+        options: crate::models::GenerationOptions,
     },
     /// A microclaude turn: one Claude Agent SDK session on Haiku 5.5
     /// ([`crate::microclaude`]) with the basic file tools, here.
@@ -524,7 +527,7 @@ fn run_with_provider(
     request: Request,
     sender: mpsc::Sender<Update>,
     canceled: oneshot::Receiver<()>,
-    create: impl FnOnce(openrouter::ApiKey) -> Result<Provider, String>,
+    create: impl Fn(openrouter::ApiKey) -> Result<Provider, String>,
 ) {
     let request = match request {
         Request {
@@ -610,16 +613,8 @@ fn run_with_provider(
                     id,
                     result: crate::jev_plugin::test_key_for_model(request.key.expose(), &endpoint, &model).await,
                 },
-                Work::Microcoder { messages, execution } if gateway_first(&execution) => {
-                    match gateway_turn(&messages, &execution, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await {
-                        Some(result) => Update::Finished { id, result },
-                        None => {
-                            local_turn(id, messages, execution, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
-                        }
-                    }
-                }
-                Work::Microcoder { messages, execution } => {
-                    local_turn(id, messages, execution, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
+                Work::Microcoder { messages, execution, options } => {
+                    auto_route(id, messages, execution, &request.key, options, &create, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
                 }
                 Work::Microclaude { messages, cwd, solver } => {
                     microclaude_turn(id, messages, cwd, solver, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
@@ -638,26 +633,8 @@ fn run_with_provider(
                     ).await;
                     Update::Finished { id, result }
                 }
-                Work::Chat { model, options, messages, execution }
-                    if !crate::models::pinned(&model) && gateway_first(&execution) =>
-                {
-                    match gateway_turn(&messages, &execution, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await {
-                        Some(result) => Update::Finished { id, result },
-                        None => match create(openrouter::ApiKey::new(request.key.expose())) {
-                            Ok(provider) => Update::Finished {
-                                id,
-                                result: provider.chat_with_plugins(
-                                    &model, &options, messages, &execution,
-                                    &mut text_callback, &mut model_callback,
-                                    &mut event_callback, &cancel,
-                                ).await,
-                            },
-                            Err(error) => {
-                                failure(id, checking, &sender, error);
-                                return;
-                            }
-                        },
-                    }
+                Work::Chat { model, options, messages, execution } if !crate::models::pinned(&model) => {
+                    auto_route(id, messages, execution, &request.key, options, &create, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
                 }
                 kind => {
                     let provider = match create(openrouter::ApiKey::new(request.key.expose())) {
@@ -704,20 +681,136 @@ fn run_with_provider(
     });
 }
 
-/// Whether an `auto` turn asks the OpenAgents gateway first: signed in on
-/// this computer, and the gateway has not refused the sign-in this run.
-fn gateway_first(execution: &ExecutionSettings) -> bool {
-    execution
-        .connections
-        .as_ref()
-        .is_some_and(crate::provider::gateway_open)
+/// One `auto` turn over the route's doors in `favor` order (#11374): a
+/// door that produced nothing — no streamed text, no tool call — yields to
+/// the next; a door that answered, or had already streamed or run a tool
+/// when it failed, ends the turn so no effect is repeated. When every
+/// door is out, the turn ends with what each said, in plain words.
+async fn auto_route(
+    id: u64,
+    messages: Vec<Message>,
+    execution: ExecutionSettings,
+    key: &model_access::ApiKey,
+    options: crate::models::GenerationOptions,
+    create: &dyn Fn(openrouter::ApiKey) -> Result<Provider, String>,
+    cancel: &Arc<AtomicBool>,
+    text_callback: &mut (dyn FnMut(&str) + Send),
+    model_callback: &mut (dyn FnMut(&str) + Send),
+    event_callback: &mut (dyn FnMut(RuntimeEvent) + Send),
+) -> Update {
+    let favor = execution.favor;
+    let plan = crate::route::plan(&execution, !key.expose().is_empty(), favor);
+    let mut reasons = plan.notes.clone();
+    for lane in plan.lanes.clone() {
+        if cancel.load(Ordering::Relaxed) {
+            break;
+        }
+        let started = AtomicBool::new(false);
+        let mut text = |delta: &str| {
+            if !delta.is_empty() {
+                started.store(true, Ordering::Relaxed);
+            }
+            text_callback(delta);
+        };
+        let mut events = |event: RuntimeEvent| {
+            if matches!(
+                event,
+                RuntimeEvent::Tool { .. } | RuntimeEvent::Delegation { .. }
+            ) {
+                started.store(true, Ordering::Relaxed);
+            }
+            event_callback(event);
+        };
+        let result: Result<Streamed, String> = match lane {
+            crate::route::Lane::Gateway => {
+                match gateway_turn(
+                    &messages,
+                    &execution,
+                    cancel,
+                    &mut text,
+                    model_callback,
+                    &mut events,
+                )
+                .await
+                {
+                    Ok(result) => result,
+                    Err(why) => {
+                        reasons.push(why);
+                        continue;
+                    }
+                }
+            }
+            crate::route::Lane::Local => {
+                match local_turn(
+                    id,
+                    messages.clone(),
+                    execution.clone(),
+                    cancel,
+                    &mut text,
+                    model_callback,
+                    &mut events,
+                )
+                .await
+                {
+                    Update::Finished { result, .. } => result,
+                    _ => unreachable!(),
+                }
+            }
+            crate::route::Lane::OpenCode => {
+                opencode_turn(
+                    &messages,
+                    &execution,
+                    cancel,
+                    &mut text,
+                    model_callback,
+                    &mut events,
+                )
+                .await
+            }
+            crate::route::Lane::OpenRouter => match create(openrouter::ApiKey::new(key.expose())) {
+                Ok(provider) => {
+                    provider
+                        .chat_with_plugins(
+                            crate::route::openrouter_model(favor),
+                            &options,
+                            messages.clone(),
+                            &execution,
+                            &mut text,
+                            model_callback,
+                            &mut events,
+                            cancel,
+                        )
+                        .await
+                }
+                Err(error) => Err(error),
+            },
+        };
+        match result {
+            Ok(reply) => {
+                return Update::Finished {
+                    id,
+                    result: Ok(reply),
+                };
+            }
+            Err(error) if started.load(Ordering::Relaxed) => {
+                return Update::Finished {
+                    id,
+                    result: Err(error),
+                };
+            }
+            Err(error) => reasons.push(error),
+        }
+    }
+    Update::Finished {
+        id,
+        result: Err(plan.explain(&reasons)),
+    }
 }
 
-/// `auto`'s first door when signed in: the OpenAgents inference gateway's
-/// own router (`openagents/auto`, Vertex first). `None` when it failed
-/// before saying or doing anything, so the turn goes to its next door
-/// (the OpenRouter free router with a key, else the local loop) without
-/// repeating an effect.
+/// `auto`'s gateway door when signed in: the OpenAgents inference
+/// gateway's own router (`openagents/auto`, Vertex first). `Err` is a
+/// failure before anything streamed or ran, so the route's next door takes
+/// the turn without repeating an effect.
 async fn gateway_turn(
     messages: &[Message],
     execution: &ExecutionSettings,
@@ -725,9 +818,11 @@ async fn gateway_turn(
     text_callback: &mut (dyn FnMut(&str) + Send),
     model_callback: &mut (dyn FnMut(&str) + Send),
     event_callback: &mut (dyn FnMut(RuntimeEvent) + Send),
-) -> Option<Result<Streamed, String>> {
-    let account = execution.connections.as_ref()?;
-    let provider = Provider::gateway(account).ok()?;
+) -> Result<Result<Streamed, String>, String> {
+    let Some(account) = execution.connections.as_ref() else {
+        return Err("the OpenAgents account is not signed in".into());
+    };
+    let provider = Provider::gateway(account)?;
     let mut execution = execution.clone();
     execution
         .redaction_keys
@@ -763,9 +858,74 @@ async fn gateway_turn(
             .await
     };
     match result {
-        Err(_) if !started.load(Ordering::Relaxed) && !cancel.load(Ordering::Relaxed) => None,
-        result => Some(result),
+        Err(error) if !started.load(Ordering::Relaxed) && !cancel.load(Ordering::Relaxed) => {
+            Err(error)
+        }
+        result => Ok(result),
     }
+}
+
+/// `auto`'s OpenCode door: one `opencode acp` turn on the free
+/// `opencode/big-pickle` model, in the engine's own database and
+/// permissions, as a delegated OpenCode turn runs (#11359). `model` is not
+/// named to `acp` — OpenCode takes it from the inline configuration the
+/// turn's environment carries.
+async fn opencode_turn(
+    messages: &[Message],
+    execution: &ExecutionSettings,
+    cancel: &Arc<AtomicBool>,
+    text_callback: &mut (dyn FnMut(&str) + Send),
+    model_callback: &mut (dyn FnMut(&str) + Send),
+    event_callback: &mut (dyn FnMut(RuntimeEvent) + Send),
+) -> Result<Streamed, String> {
+    let Some(agent) = execution
+        .agents
+        .iter()
+        .find(|agent| agent.id == "opencode" && agent.enabled)
+        .cloned()
+    else {
+        return Err("OpenCode is not installed or is turned off.".into());
+    };
+    let task = local_task(messages, execution)?;
+    let model = acp_client::opencode::Model::parse(coder::delegate_door::OPENCODE_AUTO_MODEL)
+        .map_err(|why| format!("Coder's OpenCode model is invalid: {why}"))?;
+    let permission = if crate::approval::gated() {
+        acp_client::opencode::Permission::Workspace
+    } else {
+        acp_client::opencode::Permission::Full
+    };
+    let mut events = |event: RuntimeEvent| match event {
+        RuntimeEvent::Text(text) => text_callback(&execution.redact_text(&text)),
+        RuntimeEvent::Model(model) => model_callback(&model),
+        event => event_callback(event),
+    };
+    let prior = crate::bundled_runtime::child_env();
+    let mut vars = prior.clone();
+    vars.extend(
+        acp_client::opencode::environment(
+            &model,
+            permission,
+            std::path::Path::new("openagents-coder-engine.db"),
+        )
+        .into_iter()
+        .map(|(name, value)| (name.into(), value.into())),
+    );
+    crate::bundled_runtime::set_child_env(vars);
+    let result =
+        crate::bundled_runtime::acp(&agent, &task, &execution.cwd, None, cancel, &mut events).await;
+    crate::bundled_runtime::set_child_env(prior);
+    let result = result?;
+    let mut reply = Streamed {
+        text: result["reply"].as_str().unwrap_or_default().into(),
+        model: result["model"].as_str().unwrap_or_default().into(),
+        ..Streamed::default()
+    };
+    // An engine login's usage is covered by its own plan or free model.
+    reply.usage.cost = None;
+    if reply.text.trim().is_empty() {
+        return Err("OpenCode returned no answer.".into());
+    }
+    Ok(reply)
 }
 
 /// The local loop: the person's own model logins, then the OpenAgents cloud.
@@ -819,6 +979,18 @@ async fn local_turn(
         reply.usage.total_tokens = result["tokens"].as_u64().unwrap_or_default();
         // Local subscriptions and house-key usage are not charges to the user.
         reply.usage.cost = None;
+        if result["outcome"]["ending"]["reason"].as_str() == Some("no_capacity") {
+            // Every login the loop knew is out; the route's next door takes
+            // the turn, and the clause names when each login is back.
+            let clauses = crate::route::refusal_clauses(
+                result["refusals"].as_array().map(Vec::as_slice).unwrap_or(&[]),
+            );
+            return Err(if clauses.is_empty() {
+                "No model login on this computer can answer right now.".into()
+            } else {
+                format!("the model logins are out — {}", crate::route::join(&clauses))
+            });
+        }
         if !matches!(result["outcome"]["ending"]["reason"].as_str(), Some("finished" | "tests_held" | "checks_passed" | "asked")) {
             return Err(format!("The coding loop stopped: {}.", result["outcome"]));
         }
@@ -1272,6 +1444,117 @@ mod tests {
         assert!(crate::provider::gateway_open(&signed_in_at(
             &origin,
             "sess_other"
+        )));
+    }
+
+    /// Every connected door out: the gateway's allowance is used up, the
+    /// computer's logins can't answer, and the OpenRouter key has no
+    /// balance. The turn ends in one plain sentence naming what each door
+    /// said — never a provider's own refusal text (#11374).
+    #[test]
+    fn an_auto_turn_with_every_door_out_ends_in_plain_words() {
+        let (gateway, gateway_base) = fixture_listener();
+        let origin = gateway_base.trim_end_matches("/api/v1").to_owned();
+        let (openrouter, openrouter_base) = fixture_listener();
+        let gateway_server = thread::spawn(move || {
+            let mut socket = accept(&gateway);
+            read_request(&mut socket);
+            let body = r#"{"error":{"message":"insufficient_quota"}}"#;
+            write!(
+                socket,
+                "HTTP/1.1 402 Payment Required\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+        });
+        let openrouter_server = thread::spawn(move || {
+            let mut socket = accept(&openrouter);
+            read_request(&mut socket);
+            let body = r#"{"error":{"message":"Insufficient credits"}}"#;
+            write!(
+                socket,
+                "HTTP/1.1 402 Payment Required\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+        });
+        let (sender, receiver) = mpsc::channel();
+        let (_cancel, canceled) = oneshot::channel();
+        run_with_provider(
+            auto_turn("sess_gateway_out", &origin),
+            sender,
+            canceled,
+            |key| Provider::with_base(key, &openrouter_base),
+        );
+        gateway_server.join().unwrap();
+        openrouter_server.join().unwrap();
+        let updates = receiver.try_iter().collect::<Vec<_>>();
+        let error = updates
+            .iter()
+            .find_map(|update| match update {
+                Update::Finished {
+                    result: Err(error), ..
+                } => Some(error.clone()),
+                _ => None,
+            })
+            .expect("the turn ends with an error");
+        assert!(
+            error.contains("couldn't find a model that can answer"),
+            "{error}"
+        );
+        assert!(error.contains("free allowance"), "{error}");
+        assert!(error.contains("OpenRouter"), "{error}");
+        // No vendor's own refusal text reaches the person.
+        assert!(!error.contains("insufficient_quota"), "{error}");
+        assert!(!error.contains("Insufficient credits"), "{error}");
+        // The used-up allowance is skipped while it is held, not asked again.
+        assert!(!crate::provider::gateway_open(&signed_in_at(
+            &origin,
+            "sess_gateway_out"
+        )));
+    }
+
+    /// A gateway failure after the turn already streamed is handed off
+    /// through the interrupted-turn handoff — the next door continues the
+    /// same task rather than the turn ending on the allowance error — and
+    /// the route does not start the task over somewhere else (#11374).
+    #[test]
+    fn a_gateway_failure_mid_turn_hands_off_instead_of_replaying() {
+        let (gateway, gateway_base) = fixture_listener();
+        let origin = gateway_base.trim_end_matches("/api/v1").to_owned();
+        let gateway_server = thread::spawn(move || {
+            let mut socket = accept(&gateway);
+            read_request(&mut socket);
+            let body = "data: {\"choices\":[{\"delta\":{\"content\":\"Checking.\"}}]}\n\ndata: {\"error\":{\"code\":402,\"message\":\"insufficient_quota\"}}\n\n";
+            headers(&mut socket, "text/event-stream", body.len());
+            socket.write_all(body.as_bytes()).unwrap();
+        });
+        let (sender, receiver) = mpsc::channel();
+        let (_cancel, canceled) = oneshot::channel();
+        run_with_provider(
+            auto_turn("sess_gateway_mid_402", &origin),
+            sender,
+            canceled,
+            |_| panic!("a door that already produced is handed off, not started over elsewhere"),
+        );
+        gateway_server.join().unwrap();
+        let updates = receiver.try_iter().collect::<Vec<_>>();
+        let error = updates
+            .iter()
+            .find_map(|update| match update {
+                Update::Finished {
+                    result: Err(error), ..
+                } => Some(error.clone()),
+                _ => None,
+            })
+            .expect("the turn ends with the handoff's outcome");
+        // The handoff ran (its providers are offline here): the failure is
+        // the continuation's, not a fresh turn on another door.
+        assert!(error.contains("could not continue"), "{error}");
+        assert!(error.contains("free allowance"), "{error}");
+        assert!(!crate::provider::gateway_open(&signed_in_at(
+            &origin,
+            "sess_gateway_mid_402"
         )));
     }
 
