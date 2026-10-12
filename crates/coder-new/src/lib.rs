@@ -33,6 +33,7 @@ mod copy_guard_tests;
 pub mod credentials;
 mod delegation_events;
 mod demo;
+pub mod engine_update;
 pub mod file_tools;
 pub mod fleet;
 mod fleet_app;
@@ -2027,6 +2028,7 @@ impl App {
             self.return_screen = self.screen;
         }
         self.screen = Screen::Plugins;
+        self.plugins.bundled.check_engines(false);
     }
 
     pub fn open_models(&mut self) {
@@ -2124,6 +2126,7 @@ impl App {
         self.expire_export_notice(std::time::Instant::now());
         self.poll_login();
         self.poll_sync();
+        self.plugins.bundled.engines.poll();
         self.animation_frame = self.animation_frame.wrapping_add(1) % 8;
     }
 
@@ -2622,7 +2625,13 @@ impl App {
                                     self.plugins.bundled.acp_selected =
                                         self.plugins.bundled.acp_choices().len().saturating_sub(1);
                                 }
-                                KeyCode::Char('r') => self.plugins.bundled.refresh_acp(),
+                                KeyCode::Char('r') => {
+                                    self.plugins.bundled.refresh_acp();
+                                    self.plugins.bundled.check_engines(true);
+                                }
+                                KeyCode::Char('u') => {
+                                    self.plugins.bundled.update_selected_agent();
+                                }
                                 KeyCode::Char(' ') | KeyCode::Enter => {
                                     if self.plugins.bundled.toggle_acp_agent()
                                         && self.on_coder_loop()

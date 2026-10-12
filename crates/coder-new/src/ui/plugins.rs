@@ -204,7 +204,8 @@ fn display_text(text: &str) -> String {
 fn status_color(status: &str) -> ratatui::style::Color {
     match status {
         "Disabled" => t::GRAY,
-        "Setup required" | "Checking" => t::COMMAND,
+        "Setup required" | "Checking" | "Update available" => t::COMMAND,
+        crate::engine_update::UPDATE_REQUIRED => t::DIFF_DELETE_FG,
         "Unavailable" => t::DIFF_DELETE_FG,
         _ => t::ACCENT_SUCCESS,
     }
@@ -339,6 +340,20 @@ fn plugin_details(app: &App, width: u16) -> Vec<Line<'static>> {
                     t::GRAY,
                 )),
             ]);
+            for agent in p.bundled.acp_choices() {
+                if let Some(sentence) = p
+                    .bundled
+                    .engines
+                    .state(&agent.id)
+                    .filter(|state| matches!(state, crate::engine_update::State::Refused { .. }))
+                    .and_then(|state| state.sentence())
+                {
+                    lines.push(Line::from(span(
+                        sentence.replace("Press U", "Press Enter, select it, then press U"),
+                        t::COMMAND,
+                    )));
+                }
+            }
         }
         crate::brainstorm::PLUGIN => {
             lines.push(Line::default());
@@ -786,16 +801,39 @@ fn acp_settings(frame: &mut Frame, area: Rect, app: &App) {
         ),
         t::GRAY,
     ))];
-    let hints: &[&str] = if area.width >= 66 {
-        &["↑/↓ Select · Space/Enter Toggle · R Refresh · Esc Back"]
-    } else {
-        &["↑/↓ Select · Space/Enter Toggle", "R Refresh · Esc Back"]
+    let updatable = p.selected_updatable();
+    let hints: &[&str] = match (updatable.is_some(), area.width >= 76, area.width >= 66) {
+        (true, true, _) => &["↑/↓ Select · Space/Enter Toggle · U Update · R Refresh · Esc Back"],
+        (true, false, _) => &[
+            "↑/↓ Select · Space/Enter Toggle",
+            "U Update · R Refresh · Esc Back",
+        ],
+        (false, _, true) => &["↑/↓ Select · Space/Enter Toggle · R Refresh · Esc Back"],
+        (false, _, false) => &["↑/↓ Select · Space/Enter Toggle", "R Refresh · Esc Back"],
     };
     footer.extend(
         hints
             .iter()
             .map(|hint| Line::from(span(truncate(hint, area.width), t::GRAY_BRIGHT))),
     );
+    if let Some(agent) = updatable {
+        let (text, color) = if p.engines.updating.as_deref() == Some(agent.id.as_str()) {
+            (format!("Updating {}…", agent.name), t::COMMAND)
+        } else if let Some(message) = &p.engines.message {
+            (message.clone(), t::TEXT_SECONDARY)
+        } else if let Some(sentence) = p
+            .engines
+            .state(&agent.id)
+            .and_then(|state| state.sentence())
+        {
+            (sentence, t::COMMAND)
+        } else {
+            (String::new(), t::GRAY)
+        };
+        for range in coder_terminal::wrap_rows(&text, usize::from(area.width).max(1)) {
+            footer.push(Line::from(span(text[range].trim().to_owned(), color)));
+        }
+    }
     if let Some(error) = &p.storage_error {
         footer.push(Line::from(span(
             truncate(error, area.width),
@@ -851,18 +889,25 @@ fn acp_settings(frame: &mut Frame, area: Rect, app: &App) {
                             }),
                     ),
                 ];
+                let label = p.engines.state(&agent.id).and_then(|state| state.label());
                 if area.width >= 56 {
-                    spans.push(span(
-                        truncate(
-                            &agent
-                                .program
-                                .file_name()
-                                .unwrap_or_default()
-                                .to_string_lossy(),
-                            area.width.saturating_sub(30),
-                        ),
-                        t::GRAY,
-                    ));
+                    let program = agent
+                        .program
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned();
+                    let room = usize::from(area.width.saturating_sub(30));
+                    let program = match label {
+                        Some(label) if room > label.len() + 3 => {
+                            truncate(&program, (room - label.len() - 3) as u16)
+                        }
+                        _ => truncate(&program, room as u16),
+                    };
+                    spans.push(span(program, t::GRAY));
+                }
+                if let Some(label) = label {
+                    spans.push(span(format!(" {label}"), status_color(label)));
                 }
                 let row = Line::from(spans);
                 if selected {
@@ -1257,6 +1302,59 @@ mod tests {
             assert!(!canvas.cursor_visible);
             assert!(canvas.rows.iter().any(|row| row.contains("❯ [ ] Agent 23")));
         }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn cursor_shows_when_it_needs_an_update_and_offers_the_update() {
+        use std::os::unix::fs::PermissionsExt;
+        let temporary = tempfile::tempdir().unwrap();
+        let program = temporary.path().join("cursor-agent");
+        std::fs::write(&program, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let mut app = App::default();
+        app.plugins.bundled.set_live(true);
+        app.plugins.bundled.discover_acp(&|name| {
+            (name == acp_client::cursor::BIN_VAR).then(|| program.clone().into_os_string())
+        });
+        let cursor = app
+            .plugins
+            .bundled
+            .acp_choices()
+            .iter()
+            .position(|agent| agent.id == "cursor")
+            .unwrap();
+        app.plugins.bundled.acp_selected = cursor;
+        app.plugins.bundled.engines.set(
+            "cursor",
+            crate::engine_update::State::Refused {
+                installed: "2026.06.24-00-45-58-9f61de7".into(),
+            },
+        );
+        app.screen = Screen::Plugins;
+        select(&mut app, "acp-subagents");
+        let list = draw(&app, 100, 30).rows.join("\n");
+        assert!(list.contains("Update required"), "{list}");
+        assert!(list.contains("cursor-agent update"), "{list}");
+        app.screen = Screen::PluginSettings;
+        let text = draw(&app, 100, 30).rows.join("\n");
+        assert!(text.contains("Cursor"), "{text}");
+        assert!(text.contains("Update required"), "{text}");
+        assert!(text.contains("U Update"), "{text}");
+        let flowing = draw(&app, 100, 30)
+            .rows
+            .iter()
+            .map(|row| row.trim())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            flowing.contains("Press U to update it, or run `cursor-agent update`"),
+            "{text}"
+        );
+        // The hint is there only where U does something.
+        app.plugins.bundled.set_live(false);
+        let demo = draw(&app, 100, 30).rows.join("\n");
+        assert!(!demo.contains("U Update"), "{demo}");
     }
 
     #[test]

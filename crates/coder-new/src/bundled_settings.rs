@@ -198,6 +198,8 @@ pub struct BundledSettings {
     pub saved: bool,
     pub credential_changed: bool,
     pub acp_selected: usize,
+    /// Which installed agents need an update, and an update running (#11463).
+    pub engines: crate::engine_update::Panel,
     acp_available: BTreeSet<String>,
     acp_environment: BTreeMap<String, OsString>,
     jev_key: Option<ApiKey>,
@@ -239,6 +241,7 @@ impl Default for BundledSettings {
             saved: false,
             credential_changed: false,
             acp_selected: 0,
+            engines: crate::engine_update::Panel::default(),
             acp_available: BTreeSet::new(),
             acp_environment: BTreeMap::new(),
             jev_key: None,
@@ -462,6 +465,13 @@ impl BundledSettings {
             },
             "acp-subagents" if self.acp_available.is_empty() => "No agents detected",
             "acp-subagents" if self.acp_registered().is_empty() => "All agents off",
+            "acp-subagents"
+                if self
+                    .engines
+                    .any_refused(self.acp_choices().into_iter().filter(|agent| agent.enabled)) =>
+            {
+                crate::engine_update::UPDATE_REQUIRED
+            }
             _ => "Enabled",
         }
     }
@@ -909,6 +919,38 @@ impl BundledSettings {
 
     pub fn begin_acp(&mut self) {
         self.refresh_acp();
+        self.check_engines(false);
+    }
+
+    /// Checks, in the background, whether an installed agent Coder can
+    /// update needs it. Only a live session runs the agents' programs.
+    pub fn check_engines(&mut self, force: bool) {
+        if !self.live {
+            return;
+        }
+        let agents: Vec<AcpAgent> = self.acp_choices().into_iter().cloned().collect();
+        let agents: Vec<&AcpAgent> = agents.iter().collect();
+        self.engines.check(&agents, force);
+    }
+
+    /// Starts updating the selected agent's program, when Coder can.
+    pub fn update_selected_agent(&mut self) -> bool {
+        let Some(agent) = self.selected_updatable().cloned() else {
+            return false;
+        };
+        self.engines.update(&agent)
+    }
+
+    /// The selected agent, when Coder can update its program here.
+    #[must_use]
+    pub fn selected_updatable(&self) -> Option<&AcpAgent> {
+        if !self.live {
+            return None;
+        }
+        self.acp_choices()
+            .get(self.acp_selected)
+            .copied()
+            .filter(|agent| crate::engine_update::updatable(&agent.id))
     }
 
     /// Rescan executable metadata while preserving each saved enabled choice.

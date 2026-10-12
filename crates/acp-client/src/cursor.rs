@@ -139,6 +139,193 @@ pub async fn signed_in(
     parse_status(&output.stdout)
 }
 
+/// The command that updates Cursor's agent in place.
+pub const UPDATE_COMMAND: &str = "cursor-agent update";
+/// The command that installs Cursor's agent fresh, which also repairs an
+/// install whose `cursor-agent` is something else.
+pub const INSTALL_COMMAND: &str = "curl https://cursor.com/install -fsS | bash";
+/// Cursor's install script. It names the newest build in its download URL.
+pub const INSTALLER_URL: &str = "https://cursor.com/install";
+/// How long [`update`] waits for `cursor-agent update`.
+pub const UPDATE_LIMIT: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// A `cursor-agent` build name such as `2026.10.01-e373342`: a date
+/// (`YYYY.MM.DD`), then letters, digits, `-` and `.` only. Anything else,
+/// such as the Cursor editor's `1.7.44`, is not Cursor's agent.
+#[must_use]
+pub fn valid_version(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    bytes.len() >= 10
+        && bytes.len() <= 64
+        && bytes[..10]
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| match index {
+                4 | 7 => *byte == b'.',
+                _ => byte.is_ascii_digit(),
+            })
+        && bytes[10..]
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || *byte == b'-' || *byte == b'.')
+}
+
+/// The build `cursor-agent --version` printed, or `None` when its first line
+/// is not a [`valid_version`].
+#[must_use]
+pub fn parse_version(stdout: &[u8]) -> Option<String> {
+    let text = std::str::from_utf8(stdout).ok()?;
+    let first = text.lines().map(str::trim).find(|line| !line.is_empty())?;
+    valid_version(first).then(|| first.to_owned())
+}
+
+/// The newest build Cursor's install script downloads
+/// (`downloads.cursor.com/lab/BUILD/...`), or `None` when it names none.
+#[must_use]
+pub fn latest_in_installer(script: &str) -> Option<String> {
+    const MARK: &str = "downloads.cursor.com/lab/";
+    let start = script.find(MARK)? + MARK.len();
+    let build = script[start..].split('/').next()?;
+    valid_version(build).then(|| build.to_owned())
+}
+
+/// Whether build `installed` is from an earlier day than build `latest`.
+/// Only the dates are compared, since the rest of a build name is a hash.
+#[must_use]
+pub fn older(installed: &str, latest: &str) -> bool {
+    valid_version(installed) && valid_version(latest) && installed[..10] < latest[..10]
+}
+
+/// The build `program --version` reports, run in `cwd` with exactly
+/// `environment`. `None` when it fails, times out after [`STATUS_LIMIT`], or
+/// prints something that is not a Cursor agent build.
+pub async fn version(
+    program: &Path,
+    environment: &[(String, String)],
+    cwd: &Path,
+) -> Option<String> {
+    let mut command = tokio::process::Command::new(program);
+    command
+        .arg("--version")
+        .current_dir(cwd)
+        .env_clear()
+        .envs(environment.iter().map(|(name, value)| (name, value)))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+    let output = tokio::time::timeout(STATUS_LIMIT, command.output())
+        .await
+        .ok()?
+        .ok()?;
+    parse_version(&output.stdout)
+}
+
+/// How [`update`] ended.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Updated {
+    /// `cursor-agent` answers with a Cursor agent build: the one it had
+    /// before when nothing newer was out, else the new one.
+    Now {
+        before: Option<String>,
+        after: String,
+    },
+    /// `cursor-agent update` failed or ran past [`UPDATE_LIMIT`]; the text
+    /// is the last line it printed, if any.
+    Failed(String),
+    /// After the update, `cursor-agent` no longer answers as Cursor's
+    /// agent. `cursor-agent update` has been seen to put the Cursor editor's
+    /// launcher in its place (#11463). The text is what it printed for
+    /// `--version`, if anything.
+    Replaced(String),
+}
+
+impl Updated {
+    /// What to tell the person, with the one command to run when something
+    /// is wrong.
+    #[must_use]
+    pub fn message(&self) -> String {
+        match self {
+            Updated::Now { before, after } if before.as_deref() == Some(after.as_str()) => {
+                format!("cursor-agent is already the newest build ({after}).")
+            }
+            Updated::Now { after, .. } => format!("cursor-agent is updated to {after}."),
+            Updated::Failed(said) if said.is_empty() => format!(
+                "cursor-agent could not update itself. Install it fresh: `{INSTALL_COMMAND}`"
+            ),
+            Updated::Failed(said) => format!(
+                "cursor-agent could not update itself ({said}). Install it fresh: `{INSTALL_COMMAND}`"
+            ),
+            Updated::Replaced(said) => {
+                let answered = if said.is_empty() {
+                    String::new()
+                } else {
+                    format!(" (it answers `{said}`)")
+                };
+                format!(
+                    "The update put something other than Cursor's agent at cursor-agent{answered}, so Cursor delegations will fail. Install it fresh: `{INSTALL_COMMAND}`"
+                )
+            }
+        }
+    }
+}
+
+/// Runs `program update`, then checks that `program` still answers
+/// `--version` as Cursor's agent, since an update has been seen to leave
+/// the Cursor editor's launcher in its place.
+pub async fn update(program: &Path, environment: &[(String, String)], cwd: &Path) -> Updated {
+    let before = version(program, environment, cwd).await;
+    let mut command = tokio::process::Command::new(program);
+    command
+        .arg("update")
+        .current_dir(cwd)
+        .env_clear()
+        .envs(environment.iter().map(|(name, value)| (name, value)))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    let output = match tokio::time::timeout(UPDATE_LIMIT, command.output()).await {
+        Err(_) => return Updated::Failed("it ran for five minutes without finishing".into()),
+        Ok(Err(error)) => return Updated::Failed(error.to_string()),
+        Ok(Ok(output)) => output,
+    };
+    if !output.status.success() {
+        return Updated::Failed(
+            last_line(&output.stderr)
+                .or_else(|| last_line(&output.stdout))
+                .unwrap_or_default(),
+        );
+    }
+    let mut check = tokio::process::Command::new(program);
+    check
+        .arg("--version")
+        .current_dir(cwd)
+        .env_clear()
+        .envs(environment.iter().map(|(name, value)| (name, value)))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+    let printed = match tokio::time::timeout(STATUS_LIMIT, check.output()).await {
+        Ok(Ok(output)) => output.stdout,
+        _ => Vec::new(),
+    };
+    match parse_version(&printed) {
+        Some(after) => Updated::Now { before, after },
+        None => Updated::Replaced(last_line(&printed).unwrap_or_default()),
+    }
+}
+
+fn last_line(bytes: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(bytes);
+    let line = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .last()?;
+    Some(line.chars().filter(|c| !c.is_control()).take(200).collect())
+}
+
 /// The Cursor agent binary: `CURSOR_AGENT_BIN`, else `cursor-agent` on
 /// `PATH` or in `~/.local/bin`, else `agent` on `PATH` or in `~/.local/bin`
 /// when it resolves into [`INSTALL_TREE`]. Another tool may also install a
@@ -721,5 +908,89 @@ mod tests {
         let sent = replay::received(dir.path());
         assert_eq!(sent.len(), 2);
         assert_eq!(sent[1]["method"], "authenticate");
+    }
+
+    #[test]
+    fn a_build_name_is_a_date_then_a_hash() {
+        assert!(valid_version("2026.10.01-e373342"));
+        assert!(valid_version("2026.06.24-00-45-58-9f61de7"));
+        assert!(!valid_version("1.7.44"));
+        assert!(!valid_version("2026.10.01 e373342"));
+        assert!(!valid_version("2026-10-01-e373342"));
+        assert_eq!(
+            parse_version(b"\n2026.10.01-e373342\n"),
+            Some("2026.10.01-e373342".into())
+        );
+        assert_eq!(parse_version(b"1.7.44\nabc123\narm64\n"), None);
+        assert!(older("2026.06.24-00-45-58-9f61de7", "2026.10.01-e373342"));
+        assert!(!older("2026.10.01-e373342", "2026.10.01-ffffff"));
+        assert!(!older("1.7.44", "2026.10.01-e373342"));
+    }
+
+    #[test]
+    fn the_installer_names_the_newest_build() {
+        let script = "FINAL_DIR=x\nDOWNLOAD_URL=\"https://downloads.cursor.com/lab/2026.10.01-e373342/${OS}/${ARCH}/agent-cli-package.tar.gz\"\n";
+        assert_eq!(
+            latest_in_installer(script),
+            Some("2026.10.01-e373342".into())
+        );
+        assert_eq!(latest_in_installer("echo hi"), None);
+        assert_eq!(
+            latest_in_installer("downloads.cursor.com/lab/$(rm -rf)/x"),
+            None
+        );
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn an_update_is_checked_by_asking_the_binary_its_version_again() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("cursor-agent");
+        // `update` writes what `--version` prints afterwards.
+        std::fs::write(
+            &program,
+            "#!/bin/sh\ncase \"$1\" in\n--version) cat \"$STATE\" ;;\nupdate) [ \"$AFTER\" = fail ] && { echo 'no network' >&2; exit 1; }; printf '%s\\n' \"$AFTER\" > \"$STATE\" ;;\n*) exit 2 ;;\nesac\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let state = dir.path().join("state");
+        let run = |after: &'static str| {
+            std::fs::write(&state, "2026.06.24-00-45-58-9f61de7\n").unwrap();
+            let env = vec![
+                ("PATH".to_owned(), "/bin:/usr/bin".to_owned()),
+                ("STATE".to_owned(), state.to_string_lossy().into_owned()),
+                ("AFTER".to_owned(), after.to_owned()),
+            ];
+            let program = program.clone();
+            let cwd = dir.path().to_path_buf();
+            async move { update(&program, &env, &cwd).await }
+        };
+        assert_eq!(
+            run("2026.10.01-e373342").await,
+            Updated::Now {
+                before: Some("2026.06.24-00-45-58-9f61de7".into()),
+                after: "2026.10.01-e373342".into()
+            }
+        );
+        let replaced = run("1.7.44").await;
+        assert_eq!(replaced, Updated::Replaced("1.7.44".into()));
+        assert!(
+            replaced.message().contains(INSTALL_COMMAND),
+            "{}",
+            replaced.message()
+        );
+        let failed = run("fail").await;
+        assert_eq!(failed, Updated::Failed("no network".into()));
+        assert!(failed.message().contains(INSTALL_COMMAND));
+        assert_eq!(
+            version(
+                &program,
+                &[("STATE".into(), state.to_string_lossy().into_owned())],
+                dir.path()
+            )
+            .await,
+            Some("2026.06.24-00-45-58-9f61de7".into())
+        );
     }
 }

@@ -768,6 +768,17 @@ pub async fn acp_with(
     {
         arguments.insert(0, "--sandbox".into());
     }
+    // Cursor's build is checked first: a build Cursor already refused stops
+    // here, before the turn, with the command that updates it (#11463).
+    let engine_path = crate::engine_update::path();
+    let checked = crate::engine_update::before_turn(
+        &agent.id,
+        &program,
+        &environment,
+        cwd,
+        engine_path.as_deref(),
+    )
+    .await?;
     if cursor {
         cursor_signed_in(&program, &environment, cwd).await?;
     }
@@ -874,10 +885,11 @@ pub async fn acp_with(
         let group_clear = session.close(Duration::from_secs(2)).await;
         let error = match result {
             Ok(reply) => {
-                return Ok(with(
-                    json!({"session":id,"reply":text,"model":model,"stop_reason":reply.stop_reason.as_str(),"usage":reply.usage,"group_clear":group_clear,"attempts":attempt}),
-                    access,
-                ));
+                let mut result = json!({"session":id,"reply":text,"model":model,"stop_reason":reply.stop_reason.as_str(),"usage":reply.usage,"group_clear":group_clear,"attempts":attempt});
+                if let Some(note) = &checked.note {
+                    result["update"] = json!(note);
+                }
+                return Ok(with(result, access));
             }
             Err(error) => error,
         };
@@ -885,6 +897,19 @@ pub async fn acp_with(
             acp_client::ClientError::Refused { error, .. } => Some(saved_reason(agent, &id, error)),
             _ => None,
         };
+        // Cursor's own Update Required is kept with the build it refused,
+        // so the next turn to that build stops before it starts.
+        if cursor
+            && let Some(refusal) = &refusal
+            && refusal.needs_update()
+            && let Some(installed) = &checked.installed
+        {
+            crate::engine_update::record_refused(
+                engine_path.as_deref(),
+                crate::engine_update::CURSOR,
+                installed,
+            );
+        }
         if let Some(refusal) = &refusal
             && refusal.transient()
             && !worked
