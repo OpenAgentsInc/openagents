@@ -44,6 +44,7 @@ mod ext_defaults;
 mod ext_eval;
 mod ext_eval_init;
 mod ext_run;
+mod film;
 mod github_verbs;
 mod gym;
 mod host_observers;
@@ -176,6 +177,8 @@ Coder:
                quiet, the screen, the GPU), and list holders and waiters.
   sales        Inspect and update the host-private lead/account pipeline.
   customer     Bind gateway customers, credentials, and exact approved purchases.
+  film         Inspect and make a film take: a scene recorded once as uploads
+               and frames that any renderer draws (docs/verse/film.md).
   scratch      Make and print this session's durable scratch directory, under
                ~/.openagents/scratch, for files that must outlive a reboot.
   browser      Run a command beside a Chrome of its own: a fresh profile and
@@ -395,6 +398,7 @@ fn main() -> ExitCode {
         "sales" => sales::run(&output, &rest),
         "customer" => customer::run(&output, &rest),
         "scratch" => scratch::run(&output, &rest),
+        "film" => film::run(&output, &rest),
         "browser" => browser::run(&output, &rest),
         "capacity" => capacity::run(&output, &rest),
         "artifact" | "artifacts" => artifact::run(&output, &rest),

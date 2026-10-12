@@ -4269,7 +4269,7 @@
               "chat"
             ],
             "usage": [
-              "chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID] [--instructions TEXT | --instructions-file FILE] [--demo]"
+              "chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID] [--instructions TEXT | --instructions-file FILE] [--mode auto|coder|claude] [--in-place] [--demo]"
             ],
             "forms": [
               {
@@ -4330,13 +4330,29 @@
                   },
                   {
                     "kind": "option",
+                    "name": "mode",
+                    "value": "auto|coder|claude",
+                    "choices": [
+                      "auto",
+                      "coder",
+                      "claude"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "in-place",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
                     "name": "demo",
                     "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Run the same chat and tools as the terminal.",
+            "summary": "Run the same chat and tools as the terminal. In a Git repository the chat works in its own worktree and branch (chat/ID); --in-place uses this folder instead.",
             "effect": "long_running",
             "runs_on": "connected_computer"
           }
@@ -4478,7 +4494,7 @@
                 ]
               }
             ],
-            "summary": "Run Microcoder or an enabled ACP subagent.",
+            "summary": "Run Microcoder, Solver (--task \"#N [--no-pr]\"), or an enabled ACP subagent.",
             "effect": "long_running",
             "runs_on": "connected_computer"
           }
@@ -5624,6 +5640,24 @@
         },
         {
           "kind": "option",
+          "name": "mode",
+          "value": "auto|coder|claude",
+          "choices": [
+            "auto",
+            "coder",
+            "claude"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "in-place",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "demo",
           "optional": true,
           "repeated": true
@@ -5643,17 +5677,6 @@
           "choices": [
             "boat",
             "gce"
-          ],
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "mode",
-          "value": "integrated|coder",
-          "choices": [
-            "integrated",
-            "coder"
           ],
           "optional": true,
           "repeated": true
@@ -5746,6 +5769,12 @@
         {
           "kind": "option",
           "name": "no-workspace",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "no-pr]\"",
           "optional": true,
           "repeated": true
         },
@@ -13491,6 +13520,102 @@
           "kind": "option",
           "name": "agreement",
           "value": "DIGEST",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
+      "name": "film",
+      "summary": "Inspect and make a film take: a scene recorded once as uploads and frames that any renderer draws (docs/verse/film.md).",
+      "children": [
+        {
+          "name": "inspect",
+          "leaf": {
+            "path": [
+              "film",
+              "inspect"
+            ],
+            "usage": [
+              "inspect FILE"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "inspect"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "FILE"
+                  }
+                ]
+              }
+            ],
+            "summary": "Read a take and print its header, counts, and notes.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "demo",
+          "leaf": {
+            "path": [
+              "film",
+              "demo"
+            ],
+            "usage": [
+              "demo OUT [--pictures N] [--hold N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "demo"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "OUT"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "pictures",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "hold",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Write a short demo take (a square sliding across a 1280×720 frame at 60 fps) to OUT.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "pictures",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "hold",
+          "value": "N",
           "open": true,
           "optional": true,
           "repeated": true
