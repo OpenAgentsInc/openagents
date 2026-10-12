@@ -17,6 +17,9 @@ pub struct Boundary {
     pub worktree: PathBuf,
     /// The checkout the session was started from, read-only for it.
     pub shared: PathBuf,
+    /// The worktree's branch (`chat/<session>`), so a resumed session can
+    /// reattach and `sessions delete` can drop it.
+    pub branch: String,
 }
 
 impl Boundary {
@@ -28,11 +31,11 @@ impl Boundary {
         if path.is_empty() {
             return false;
         }
-        let joined = if path.starts_with('~') {
-            return false;
-        } else {
-            cwd.join(path)
-        };
+        let home = path
+            .strip_prefix("~/")
+            .zip(std::env::var_os("HOME"))
+            .map(|(rest, home)| PathBuf::from(home).join(rest));
+        let joined = cwd.join(home.as_deref().unwrap_or_else(|| Path::new(path)));
         let normal = normalize(&joined);
         let shared = normalize(&self.shared);
         let own = normalize(&self.worktree);
@@ -105,12 +108,51 @@ impl Boundary {
             .map(String::as_str)
             .collect::<Vec<_>>();
         let candidate = match name {
-            "cp" | "mv" | "ln" | "install" => operands.last().map(|path| (*path).to_owned()),
-            "tee" | "truncate" | "touch" | "rm" | "rmdir" | "mkdir" | "patch" | "chmod" => {
+            "cp" | "mv" | "ln" | "install" | "rsync" => {
+                operands.last().map(|path| (*path).to_owned())
+            }
+            "tee" | "truncate" | "touch" | "rm" | "rmdir" | "mkdir" | "patch" | "chmod"
+            | "chown" | "chgrp" | "unlink" | "mkfifo" => {
                 operands.first().map(|path| (*path).to_owned())
             }
             "sed" | "perl" if words.iter().any(|word| word.starts_with("-i")) => {
                 operands.last().map(|path| (*path).to_owned())
+            }
+            "dd" => {
+                return operands
+                    .iter()
+                    .find_map(|word| word.strip_prefix("of="))
+                    .map(|path| path.to_owned())
+                    .filter(|path| self.protects(here, path));
+            }
+            "tar"
+                if words.iter().any(|word| {
+                    word.starts_with('x') || word.starts_with("-x") || word == "--extract"
+                }) =>
+            {
+                // An unpacker writes wherever it runs.
+                return self
+                    .protects(here, ".")
+                    .then(|| format!("{} ({name})", here.display()));
+            }
+            "unzip"
+                if !words
+                    .iter()
+                    .any(|word| matches!(word.as_str(), "-l" | "-t" | "-v")) =>
+            {
+                // `unzip` extracts by default.
+                return self
+                    .protects(here, ".")
+                    .then(|| format!("{} ({name})", here.display()));
+            }
+            "unrar"
+                if words
+                    .iter()
+                    .any(|word| matches!(word.as_str(), "x" | "e" | "extract")) =>
+            {
+                return self
+                    .protects(here, ".")
+                    .then(|| format!("{} ({name})", here.display()));
             }
             "rustfmt" => operands.first().map(|path| (*path).to_owned()),
             "cargo" => {
@@ -125,30 +167,61 @@ impl Boundary {
             _ => {
                 let (subcommand, rest, dir) = git_subcommand(words)?;
                 let under = dir.map_or_else(|| here.to_path_buf(), |dir| here.join(dir));
-                let writes = matches!(
-                    subcommand,
-                    "add"
-                        | "am"
-                        | "apply"
-                        | "checkout"
-                        | "cherry-pick"
-                        | "clean"
-                        | "commit"
-                        | "merge"
-                        | "mv"
-                        | "pull"
-                        | "rebase"
-                        | "reset"
-                        | "restore"
-                        | "revert"
-                        | "rm"
-                        | "stash"
-                        | "switch"
-                        | "worktree"
-                ) && !(subcommand == "stash"
-                    && matches!(rest.first().map(String::as_str), Some("list" | "show")))
-                    && !(subcommand == "worktree"
-                        && matches!(rest.first().map(String::as_str), Some("list")));
+                let writes = match subcommand {
+                    "add" | "am" | "apply" | "checkout" | "cherry-pick" | "clean" | "commit"
+                    | "merge" | "mv" | "pull" | "push" | "rebase" | "reset" | "restore"
+                    | "revert" | "rm" | "switch" | "init" => true,
+                    "stash" => !matches!(rest.first().map(String::as_str), Some("list" | "show")),
+                    "worktree" => !matches!(rest.first().map(String::as_str), Some("list")),
+                    // `tag`/`branch` write when a name or a flag creates,
+                    // moves, or deletes one; listings carry only flags.
+                    "tag" | "branch" => {
+                        rest.iter().any(|word| !word.starts_with('-'))
+                            || rest.iter().any(|word| {
+                                matches!(
+                                    word.as_str(),
+                                    "-d" | "-D"
+                                        | "-m"
+                                        | "-M"
+                                        | "-c"
+                                        | "-C"
+                                        | "-f"
+                                        | "--force"
+                                        | "-u"
+                                        | "--set-upstream-to"
+                                        | "--unset-upstream"
+                                        | "-e"
+                                        | "--edit"
+                                        | "-a"
+                                        | "--annotate"
+                                        | "-s"
+                                        | "--sign"
+                                        | "--create-reflog"
+                                )
+                            })
+                    }
+                    // `config` writes with a mutating flag or a `key value`
+                    // pair; `config key` and `--get`/`-l` forms read.
+                    "config" => {
+                        rest.iter().filter(|word| !word.starts_with('-')).count() > 1
+                            || rest.iter().any(|word| {
+                                matches!(
+                                    word.as_str(),
+                                    "--add"
+                                        | "--unset"
+                                        | "--unset-all"
+                                        | "--replace"
+                                        | "--replace-all"
+                                        | "-e"
+                                        | "--edit"
+                                        | "--remove-section"
+                                        | "--rename-section"
+                                        | "--set"
+                                )
+                            })
+                    }
+                    _ => false,
+                };
                 return (writes && self.protects(&under, "."))
                     .then(|| format!("{} (git {subcommand})", under.display()));
             }
@@ -179,11 +252,11 @@ fn git_subcommand(words: &[String]) -> Option<(&str, &[String], Option<&str>)> {
     let mut dir = None;
     while let Some(word) = words.get(index) {
         match word.as_str() {
-            "-C" => {
+            "-C" | "--work-tree" => {
                 dir = words.get(index + 1).map(String::as_str);
                 index += 2;
             }
-            "-c" | "--git-dir" | "--work-tree" | "--namespace" => index += 2,
+            "-c" | "--git-dir" | "--namespace" => index += 2,
             option if option.starts_with('-') => index += 1,
             subcommand => return Some((subcommand, &words[index + 1..], dir)),
         }
@@ -229,6 +302,7 @@ mod tests {
         Boundary {
             worktree: PathBuf::from("/repo/.coder/worktrees/chat-abc"),
             shared: PathBuf::from("/repo"),
+            branch: "chat/abc".into(),
         }
     }
 
@@ -261,13 +335,23 @@ mod tests {
             "git show origin/main:ui.rs > /repo/crates/coder-new/src/ui.rs",
             "cat x >> /repo/notes.md",
             "cp src/lib.rs /repo/src/lib.rs",
+            "mv src/lib.rs /repo/src/lib.rs",
             "sed -i 's/a/b/' /repo/src/lib.rs",
             "cd /repo && cargo fmt",
             "cargo fmt --manifest-path /repo/Cargo.toml",
             "git -C /repo merge --ff-only origin/main",
+            "git -C /repo push origin HEAD:main",
+            "git -C /repo tag v1",
+            "git -C /repo branch scratch",
+            "git -C /repo config user.email a@b.c",
+            "git --work-tree /repo --git-dir /repo/.git checkout -- x.rs",
             "cd /repo && git checkout main",
             "cd /repo; git stash",
             "tee /repo/out.txt",
+            "dd if=/dev/zero of=/repo/out",
+            "cd /repo && tar xf bundle.tar",
+            "cd /repo && unzip bundle.zip",
+            "cd /repo/crates && rm src/lib.rs",
         ] {
             assert!(b.run_refusal(command, wt).is_some(), "{command}");
         }
@@ -281,11 +365,16 @@ mod tests {
             "cat /repo/README.md",
             "git -C /repo diff",
             "git -C /repo stash list",
+            "git -C /repo tag -l",
+            "git -C /repo branch --show-current",
+            "git -C /repo fetch origin",
+            "git -C /repo config --get user.name",
             "cd /repo && git status",
             "cargo fmt",
             "cargo test -p coder-new > out.txt",
             "git commit -am 'x' && git push origin HEAD:main",
             "git fetch origin && git rebase origin/main",
+            "git tag v1 && git push origin v1",
             "rg pattern /repo/crates",
             "cp /repo/README.md notes.md",
             "git show origin/main:ui.rs > src/ui.rs",

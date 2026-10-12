@@ -1047,6 +1047,7 @@ pub(crate) fn chat(
         if let Some(boundary) = &app.boundary {
             document["extra"]["worktree"] = json!(boundary.worktree);
             document["extra"]["shared_checkout"] = json!(boundary.shared);
+            document["extra"]["worktree_branch"] = json!(boundary.branch);
         }
     };
     // Standing instructions stay beside the session, never in it, so the
@@ -1625,20 +1626,6 @@ fn session_checkout(
     session: &str,
     saved: Option<&Value>,
 ) -> Result<Option<crate::checkout_guard::Boundary>, Error> {
-    if let Some(saved) = saved
-        && let (Some(worktree), Some(shared)) = (
-            saved.pointer("/extra/worktree").and_then(Value::as_str),
-            saved
-                .pointer("/extra/shared_checkout")
-                .and_then(Value::as_str),
-        )
-    {
-        let worktree = PathBuf::from(worktree);
-        return Ok(worktree.is_dir().then(|| crate::checkout_guard::Boundary {
-            worktree,
-            shared: PathBuf::from(shared),
-        }));
-    }
     let top = std::process::Command::new("git")
         .arg("-C")
         .arg(cwd)
@@ -1657,21 +1644,86 @@ fn session_checkout(
         return Ok(None);
     }
     let short = session.chars().take(32).collect::<String>();
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|error| Error::from(format!("Cannot prepare the session's worktree: {error}")))?;
-    let checkout = runtime
-        .block_on(coder::branch_checkout::add(
-            &top,
-            &format!("chat-{short}"),
-            &format!("chat/{short}"),
-        ))
+    let name = format!("chat-{short}");
+    let branch = format!("chat/{short}");
+    let runtime = || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| Error::from(format!("Cannot prepare the session's worktree: {error}")))
+    };
+    if let Some(saved) = saved
+        && let (Some(worktree), Some(shared)) = (
+            saved.pointer("/extra/worktree").and_then(Value::as_str),
+            saved
+                .pointer("/extra/shared_checkout")
+                .and_then(Value::as_str),
+        )
+    {
+        let worktree = PathBuf::from(worktree);
+        let shared = PathBuf::from(shared);
+        if worktree.is_dir() {
+            return Ok(Some(crate::checkout_guard::Boundary {
+                worktree,
+                shared,
+                branch,
+            }));
+        }
+        // The directory went away; the session's branch may still hold its
+        // commits — open the same worktree on it again.
+        if let Ok(made) =
+            runtime()?.block_on(coder::branch_checkout::attach(&shared, &name, &branch))
+        {
+            return Ok(Some(crate::checkout_guard::Boundary {
+                worktree: made.path,
+                shared: made.repository,
+                branch: made.branch,
+            }));
+        }
+        // Both are gone: the session starts its checkout over below.
+    }
+    let checkout = runtime()?
+        .block_on(coder::branch_checkout::add(&top, &name, &branch))
         .map_err(|error| Error::from(format!("Cannot prepare the session's worktree: {error}")))?;
     Ok(Some(crate::checkout_guard::Boundary {
         worktree: checkout.path,
         shared: checkout.repository,
+        branch: checkout.branch,
     }))
+}
+
+/// The worktree and branch `document` records (#11372), for `sessions
+/// delete` to remove. Does nothing when the document names neither.
+///
+/// # Errors
+/// Git refuses to remove the worktree or delete its branch.
+fn remove_session_checkout(document: &Value) -> Result<(), Error> {
+    let (Some(worktree), Some(shared)) = (
+        document.pointer("/extra/worktree").and_then(Value::as_str),
+        document
+            .pointer("/extra/shared_checkout")
+            .and_then(Value::as_str),
+    ) else {
+        return Ok(());
+    };
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| Error::from(format!("Cannot supervise Git: {error}")))?
+        .block_on(coder::branch_checkout::remove(
+            &coder::branch_checkout::BranchCheckout {
+                repository: PathBuf::from(shared),
+                path: PathBuf::from(worktree),
+                branch: document
+                    .pointer("/extra/worktree_branch")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
+                base: String::new(),
+            },
+            true,
+        ))
+        .map_err(Error::from)
 }
 
 fn instructions_path(session: &Path) -> PathBuf {
@@ -1718,8 +1770,13 @@ fn sessions(args: &[String], context: &Context) -> Result<Value, Error> {
         "read" => store.read(&args[1]).map_err(Error::from),
         "delete" => {
             let lease = lock_session(context, &args[1])?;
+            let document = lease.exists()?.then(|| lease.read()).transpose()?;
             let _ = fs::remove_file(instructions_path(lease.path()));
             lease.delete()?;
+            // Its worktree and branch go with it (#11372).
+            if let Some(document) = &document {
+                let _ = remove_session_checkout(document);
+            }
             // Saved to the account too (#11046): delete it there.
             drop(lease);
             crate::account_sync::forget_deleted(&context.root, &args[1]);
@@ -1898,6 +1955,40 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+
+        // The worktree's directory goes away; its branch keeps the
+        // commits and resume reopens the same checkout on it.
+        git(
+            &repo,
+            &[
+                "worktree",
+                "remove",
+                "--force",
+                &boundary.worktree.to_string_lossy(),
+            ],
+        );
+        assert!(!boundary.worktree.exists());
+        let saved = json!({"extra": {
+            "worktree": boundary.worktree,
+            "shared_checkout": boundary.shared,
+            "worktree_branch": boundary.branch,
+        }});
+        let again = session_checkout(&repo, "abc123", Some(&saved))
+            .unwrap()
+            .unwrap();
+        assert_eq!(again.worktree, boundary.worktree);
+        assert!(again.worktree.join(".git").exists());
+
+        // `sessions delete` removes the checkout and the branch.
+        remove_session_checkout(&saved).unwrap();
+        assert!(!again.worktree.exists());
+        let branches = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["branch", "--list", "chat/*"])
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&branches.stdout).trim(), "");
     }
 
     fn execute_words(words: &[&str], context: &Context) -> Result<Value, Error> {

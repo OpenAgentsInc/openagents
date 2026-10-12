@@ -38,57 +38,29 @@ fn runtime() -> Result<tokio::runtime::Runtime, String> {
 /// `repository` is not a Git checkout, `name` or `branch` is unusable, or
 /// Git refuses (for example, the branch already exists).
 pub async fn add(repository: &Path, name: &str, branch: &str) -> Result<BranchCheckout, String> {
-    if name.is_empty()
-        || name.len() > 96
-        || name.starts_with('.')
-        || !name
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
-    {
-        return Err(format!("`{name}` is not a usable checkout name"));
-    }
-    if branch.is_empty() || branch.starts_with('-') || branch.contains("..") || branch.len() > 200 {
-        return Err(format!("`{branch}` is not a usable branch name"));
-    }
-    let top = git(repository)
-        .args(["rev-parse", "--show-toplevel"])
-        .run()
-        .await;
-    if !top.ending.success() {
-        return Err("This folder is not inside a Git repository.".into());
-    }
-    let top = PathBuf::from(top.stdout.text.trim());
-    let head = git(&top).args(["rev-parse", "HEAD"]).run().await;
-    if !head.ending.success() {
-        return Err("The repository has no commit to start from yet.".into());
-    }
-    let base = head.stdout.text.trim().to_owned();
-    let (name, branch) = (name.to_owned(), branch.to_owned());
+    add_at(repository, name, branch, "HEAD").await
+}
+
+/// [`add`], with the branch starting at `start` (`origin/main`, a commit)
+/// instead of `HEAD`.
+///
+/// # Errors
+/// As [`add`], and `start` does not resolve to a commit.
+pub async fn add_at(
+    repository: &Path,
+    name: &str,
+    branch: &str,
+    start: &str,
+) -> Result<BranchCheckout, String> {
+    let (top, base) = resolve(repository, name, branch, start).await?;
+    let name = name.to_owned();
+    let branch = branch.to_owned();
     tokio::task::spawn_blocking(move || {
         let top = top
             .canonicalize()
             .map_err(|error| format!("cannot resolve repository: {error}"))?;
         locked(&top, |repository| {
-            let mut parent = repository.to_path_buf();
-            for component in Path::new(crate::delegate::WORKTREE_DIR) {
-                parent.push(component);
-                match std::fs::create_dir(&parent) {
-                    Ok(()) => {}
-                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-                    Err(error) => return Err(format!("cannot create worktree parent: {error}")),
-                }
-                parent = parent
-                    .canonicalize()
-                    .map_err(|error| format!("cannot resolve worktree parent: {error}"))?;
-                if !parent.starts_with(repository) {
-                    return Err("worktree parent leaves the repository through a symlink".into());
-                }
-            }
-            exclude_coder_dir(repository);
-            let path = parent.join(&name);
-            if path.exists() {
-                return Err(format!("{} already exists", path.display()));
-            }
+            let path = reserve(repository, &name)?;
             let ended = runtime()?.block_on(
                 git(repository)
                     .args(["worktree", "add", "--quiet", "-b"])
@@ -108,13 +80,168 @@ pub async fn add(repository: &Path, name: &str, branch: &str) -> Result<BranchCh
             Ok(BranchCheckout {
                 repository: repository.to_path_buf(),
                 path,
-                branch: branch.clone(),
-                base: base.clone(),
+                branch,
+                base,
             })
         })
     })
     .await
     .map_err(|error| format!("worktree creation stopped: {error}"))?
+}
+
+/// Opens `.coder/worktrees/NAME` on the existing `branch` — a checkout
+/// whose directory was removed while its branch kept the work.
+///
+/// # Errors
+/// `repository` is not a Git checkout, `name` is unusable, `branch` does
+/// not exist, or Git refuses.
+pub async fn attach(repository: &Path, name: &str, branch: &str) -> Result<BranchCheckout, String> {
+    usable_name(name)?;
+    usable_branch(branch)?;
+    let top = toplevel(repository).await?;
+    let base = commit(&top, &format!("refs/heads/{branch}"))
+        .await
+        .map_err(|_| format!("`{branch}` is not a branch here."))?;
+    let name = name.to_owned();
+    let branch = branch.to_owned();
+    tokio::task::spawn_blocking(move || {
+        let top = top
+            .canonicalize()
+            .map_err(|error| format!("cannot resolve repository: {error}"))?;
+        locked(&top, |repository| {
+            let path = reserve(repository, &name)?;
+            let ended = runtime()?.block_on(
+                git(repository)
+                    .args(["worktree", "add", "--quiet"])
+                    .arg(&path)
+                    .arg(&branch)
+                    .run(),
+            );
+            if !ended.ending.success() {
+                prune_parents(repository);
+                return Err(format!(
+                    "cannot create worktree {}: {}",
+                    path.display(),
+                    ended.stderr.marked().trim()
+                ));
+            }
+            Ok(BranchCheckout {
+                repository: repository.to_path_buf(),
+                path,
+                branch,
+                base,
+            })
+        })
+    })
+    .await
+    .map_err(|error| format!("worktree creation stopped: {error}"))?
+}
+
+/// `name` may become a `.coder/worktrees` directory name.
+fn usable_name(name: &str) -> Result<(), String> {
+    if name.is_empty()
+        || name.len() > 96
+        || name.starts_with('.')
+        || !name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    {
+        return Err(format!("`{name}` is not a usable checkout name"));
+    }
+    Ok(())
+}
+
+/// `branch` may become a Git branch name.
+fn usable_branch(branch: &str) -> Result<(), String> {
+    if branch.is_empty()
+        || branch.starts_with('-')
+        || branch.starts_with('/')
+        || branch.ends_with('/')
+        || branch.starts_with("refs/")
+        || branch.contains("..")
+        || branch.contains("//")
+        || branch.len() > 200
+        || !branch
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'/'))
+    {
+        return Err(format!("`{branch}` is not a usable branch name"));
+    }
+    Ok(())
+}
+
+/// The repository `cwd` is inside.
+async fn toplevel(repository: &Path) -> Result<PathBuf, String> {
+    let top = git(repository)
+        .args(["rev-parse", "--show-toplevel"])
+        .run()
+        .await;
+    if !top.ending.success() {
+        return Err("This folder is not inside a Git repository.".into());
+    }
+    Ok(PathBuf::from(top.stdout.text.trim()))
+}
+
+/// `start`'s commit.
+async fn commit(repository: &Path, start: &str) -> Result<String, String> {
+    if start.is_empty() || start.starts_with('-') || start.contains("..") {
+        return Err(format!("`{start}` does not name a commit here."));
+    }
+    let base = git(repository)
+        .args(["rev-parse", "--verify", &format!("{start}^{{commit}}")])
+        .run()
+        .await;
+    if !base.ending.success() {
+        return Err(match start {
+            "HEAD" => "The repository has no commit to start from yet.".into(),
+            start => format!("`{start}` does not name a commit here."),
+        });
+    }
+    Ok(base.stdout.text.trim().to_owned())
+}
+
+/// The repository's top-level directory and `start`'s commit, with
+/// `name`, `branch` and `start` checked before any of them reach a Git
+/// command's arguments.
+async fn resolve(
+    repository: &Path,
+    name: &str,
+    branch: &str,
+    start: &str,
+) -> Result<(PathBuf, String), String> {
+    usable_name(name)?;
+    usable_branch(branch)?;
+    let top = toplevel(repository).await?;
+    let base = commit(&top, start).await?;
+    Ok((top, base))
+}
+
+/// `name` as a `.coder/worktrees` directory under `repository`, created
+/// and reserved for the worktree `git` is about to make. Runs inside the
+/// metadata lock.
+fn reserve(repository: &Path, name: &str) -> Result<PathBuf, String> {
+    usable_name(name)?;
+    let mut parent = repository.to_path_buf();
+    for component in Path::new(crate::delegate::WORKTREE_DIR) {
+        parent.push(component);
+        match std::fs::create_dir(&parent) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(format!("cannot create worktree parent: {error}")),
+        }
+        parent = parent
+            .canonicalize()
+            .map_err(|error| format!("cannot resolve worktree parent: {error}"))?;
+        if !parent.starts_with(repository) {
+            return Err("worktree parent leaves the repository through a symlink".into());
+        }
+    }
+    exclude_coder_dir(repository);
+    let path = parent.join(name);
+    if path.exists() {
+        return Err(format!("{} already exists", path.display()));
+    }
+    Ok(path)
 }
 
 /// Whether the checkout holds work: uncommitted changes, or commits past
@@ -264,5 +391,68 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let error = add(folder.path(), "agent-x", "agent/x").await.unwrap_err();
         assert!(error.contains("not inside a Git repository"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn a_checkout_starts_at_a_named_commit_and_reattaches() {
+        let repository = repository().await;
+        // A second commit; the new checkout starts behind it.
+        let base = git(repository.path())
+            .args(["rev-parse", "HEAD"])
+            .run()
+            .await
+            .stdout
+            .text;
+        git(repository.path())
+            .args([
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid",
+                "commit",
+                "--allow-empty",
+                "--quiet",
+                "-m",
+                "later",
+            ])
+            .run()
+            .await;
+        let one = add_at(repository.path(), "chat-a", "chat/a", base.trim())
+            .await
+            .unwrap();
+        assert_eq!(one.base, base.trim());
+        let head = git(&one.path).args(["rev-parse", "HEAD"]).run().await;
+        assert_eq!(head.stdout.text.trim(), base.trim());
+        // Its directory goes away; its branch — and its commits — remain.
+        git(&one.path).args(["add", "-A"]).run().await;
+        git(&one.path)
+            .args([
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid",
+                "commit",
+                "--allow-empty",
+                "--quiet",
+                "-m",
+                "work",
+            ])
+            .run()
+            .await;
+        let removed = git(repository.path())
+            .args(["worktree", "remove", "--force"])
+            .arg(&one.path)
+            .run()
+            .await;
+        assert!(removed.ending.success());
+        let two = attach(repository.path(), "chat-a", "chat/a").await.unwrap();
+        assert_eq!(two.path, one.path);
+        let head = git(&two.path).args(["rev-parse", "HEAD"]).run().await;
+        assert_ne!(head.stdout.text.trim(), base.trim());
+        // No such branch is named plainly.
+        let error = attach(repository.path(), "chat-b", "chat/missing")
+            .await
+            .unwrap_err();
+        assert!(error.contains("not a branch"), "{error}");
     }
 }

@@ -441,6 +441,9 @@ impl ExecutionSettings {
                     self.harness.as_ref().is_none_or(|run| {
                         run.config.diagnostics == crate::harness::Diagnostics::Fast
                     }),
+                    self.boundary
+                        .as_ref()
+                        .map(|boundary| boundary.shared.as_path()),
                 )
             }
             name if crate::connection_tools::is_tool(name) && self.connections.is_some() => {

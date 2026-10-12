@@ -165,22 +165,26 @@ struct GlobArguments {
 /// missing, binary or too large, an edit does not match exactly once, the
 /// file changed since it was read, or the change was refused.
 pub fn execute(name: &str, arguments: Value, cwd: &Path) -> Result<Value, String> {
-    execute_with_checks(name, arguments, cwd, true)
+    execute_with_checks(name, arguments, cwd, true, None)
 }
 
 /// [`execute`], with the fast read-only check after Edit and Write on or
-/// off (the harness's diagnostics, [`crate::harness::Diagnostics`]).
+/// off (the harness's diagnostics, [`crate::harness::Diagnostics`]) and
+/// `read_only` naming a checkout this session must not change (#11372).
 ///
 /// # Errors
-/// As [`execute`].
+/// As [`execute`], and the path is inside `read_only`.
 pub fn execute_with_checks(
     name: &str,
     arguments: Value,
     cwd: &Path,
     checks: bool,
+    read_only: Option<&Path>,
 ) -> Result<Value, String> {
     let mut workspace = Workspace::new(cwd)?;
     workspace.checks = checks;
+    workspace.read_only =
+        read_only.map(|path| path.canonicalize().unwrap_or_else(|_| path.to_path_buf()));
     match name {
         "Read" => {
             let args: ReadArguments = serde_json::from_value(arguments)
@@ -249,6 +253,10 @@ struct Workspace {
     root: PathBuf,
     cwd: PathBuf,
     checks: bool,
+    /// A checkout this session must not change (#11372). The session's
+    /// own `cwd` may sit inside it (`.coder/worktrees/`); that part is
+    /// still writable.
+    read_only: Option<PathBuf>,
 }
 
 impl Workspace {
@@ -265,7 +273,25 @@ impl Workspace {
             root,
             cwd,
             checks: true,
+            read_only: None,
         })
+    }
+
+    /// `path` was resolved and is about to be changed; it must not land in
+    /// the read-only checkout.
+    fn guard_change(&self, path: &Path) -> Result<(), String> {
+        if let Some(shared) = &self.read_only
+            && path.starts_with(shared)
+            && !path.starts_with(&self.cwd)
+        {
+            return Err(format!(
+                "{} is inside {}, the checkout this session shares with the person and other chats — it is read-only here. Make the change in your own checkout at {}.",
+                path.display(),
+                shared.display(),
+                self.cwd.display()
+            ));
+        }
+        Ok(())
     }
 
     /// `path` resolved on this computer. A path that does not exist yet
@@ -399,6 +425,7 @@ impl Workspace {
 
     fn edit(&self, args: &EditArguments) -> Result<Value, String> {
         let path = self.resolve(&args.path)?;
+        self.guard_change(&path)?;
         if args.old_string.is_empty() {
             return Err("old_string is empty. To create a file, use Write.".into());
         }
@@ -441,6 +468,7 @@ impl Workspace {
 
     fn write(&self, args: &WriteArguments) -> Result<Value, String> {
         let path = self.resolve(&args.path)?;
+        self.guard_change(&path)?;
         let shown = self.shown(&path);
         if path
             .strip_prefix(&self.root)
@@ -864,6 +892,7 @@ mod tests {
             json!({"path":"broken.json","content":"{"}),
             temp.path(),
             false,
+            None,
         )
         .unwrap();
         assert!(written.get("check").is_none());
@@ -872,9 +901,60 @@ mod tests {
             json!({"path":"other.json","content":"{"}),
             temp.path(),
             true,
+            None,
         )
         .unwrap();
         assert!(written.get("check").is_some());
+    }
+
+    #[test]
+    fn a_session_checkout_keeps_the_shared_one_read_only() {
+        let _lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // The session's own directory nests under the shared checkout, as
+        // `.coder/worktrees/chat-id` does (#11372).
+        let dir = tempfile::tempdir().unwrap();
+        let shared = dir.path().canonicalize().unwrap();
+        let own = shared.join(".coder/worktrees/chat-s");
+        std::fs::create_dir_all(&own).unwrap();
+        std::fs::write(shared.join("theirs.rs"), "keep\n").unwrap();
+        // Writes inside its own checkout work; reads of the shared one do.
+        execute_with_checks(
+            "Write",
+            json!({"path":"mine.rs","content":"fn f() {}\n"}),
+            &own,
+            false,
+            Some(&shared),
+        )
+        .unwrap();
+        let read = execute_with_checks(
+            "Read",
+            json!({"path":shared.join("theirs.rs").display().to_string()}),
+            &own,
+            false,
+            Some(&shared),
+        )
+        .unwrap();
+        assert!(read["content"].as_str().unwrap().contains("keep"));
+        // Writes into it are refused, absolutely or by `..` escape.
+        for path in [
+            shared.join("theirs.rs").display().to_string(),
+            "../../../theirs.rs".to_owned(),
+        ] {
+            let refused = execute_with_checks(
+                "Write",
+                json!({"path":path,"content":"changed\n"}),
+                &own,
+                false,
+                Some(&shared),
+            );
+            assert!(refused.unwrap_err().contains("read-only"), "{path}");
+        }
+        assert_eq!(
+            std::fs::read_to_string(shared.join("theirs.rs")).unwrap(),
+            "keep\n"
+        );
     }
 
     #[test]

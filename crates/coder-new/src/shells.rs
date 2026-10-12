@@ -255,6 +255,16 @@ pub fn execute(
     if name == MONITOR_TOOL {
         let args: MonitorArguments = serde_json::from_value(arguments)
             .map_err(|_| "monitor takes a command and an optional timeout_seconds.")?;
+        if let Some(refusal) = crate::git_guard::refusal(&args.command) {
+            return Err(refusal);
+        }
+        if let Some(refusal) = execution
+            .boundary
+            .as_ref()
+            .and_then(|boundary| boundary.run_refusal(&args.command, &execution.cwd))
+        {
+            return Err(refusal);
+        }
         let timeout = args
             .timeout_seconds
             .unwrap_or(DEFAULT_MONITOR_SECS)
