@@ -126,7 +126,7 @@ Poll `GET /v1/responses/batches/{id}` until `status` is `ended` or `canceled`, t
 
 ## Files, images, and documents
 
-Upload with the [Files API](managed-agents.md#files), then reference `file_id` from a response. Upload, list, metadata, download, and delete stay those routes. One workspace file. Chat attachments and session mounts use it too.
+Upload with the [Files API](managed-agents.md#files), then reference `file_id` from a response. Upload, list, metadata, download, and delete stay those routes. One workspace file. Chat attachments and session mounts use it too. When the organization has attached a customer-managed key, the file bytes and a stored response are wrapped with that key. See [Customer-managed keys](organization.md#customer-managed-keys).
 
 A file is at most 500 MB. Over that, upload returns `400` `file_too_large`. A request body the server will not read inline is `413` `request_too_large`: upload the file and send `file_id`. Upload, list, and delete are free. Tokens extracted from the file on a create or a count are input tokens.
 

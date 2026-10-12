@@ -363,10 +363,13 @@ website cookie), `app` (`sess_` from device sign-in), `nostr` (NIP-98),
 | `PATCH`/`DELETE /v1/workspaces/{ws}/members/{acct}`, `POST /v1/workspaces/{ws}/transfer` | same | Roles, removal, ownership | PUBLIC | session (owner, admin) | `workspace.memberships` | built |
 | `GET /v1/workspaces/{ws}/access` | same | Who may do what | PUBLIC | session / key | `workspace.memberships` | built |
 | `GET`/`PUT /v1/workspaces/{ws}/team-policy` | same | Team rules | PUBLIC | session (owner, admin) | `workspace.workspaces` | built, not offered |
+| `POST /v1/workspaces/{ws}/encryption-keys`, `GET` the same, `GET .../{id}`, `POST .../{id}/{validate,attach,disable}` | — | Customer-managed encryption key for an organization workspace | PUBLIC | session / key `workspace` (owner to change) | `workspace.encryption_keys` | planned |
 | `GET /v1/computers`, `DELETE /v1/computers/{id}` | `GET /v1/account/sessions` (by session); web Settings, Computers | Your computers | PUBLIC | session / key | `workspace.computers` | planned |
 | `POST /v1/computers/{id}/check-in` | web `POST /coder/check-in` | A computer says it is online | FIRST-PARTY | app | `workspace.computers` | launch |
 | `GET`/`PUT /v1/computers/{id}/sync` | web `GET`/`PUT /coder/sync`, `POST /settings/terminal/sync` | Whether this computer's chats sync | FIRST-PARTY | app / session | `workspace.sync_choices` | launch #11107 |
 | `POST /v1/computers` (with a connect code) | — (D4: grant a computer to a partner key) | Grant a computer to a key | PUBLIC | key `runs` | `workspace.computers` | planned |
+
+Members, invitations, bearer keys, the caps on those keys, and the proposed customer-managed encryption key are specified in [Organization administration](organization.md). That page is the public contract. This table stays the route map.
 
 ### 4.3 chat
 
@@ -420,6 +423,7 @@ A caller sends the HTTP object. The NIP is the record inside OpenAgents. The two
 | HTTP `402` | [NIP-X402](../../nips/openagents/NIP-X402.md) | The payment response this API returns. NIP-X402 is the Lightning payment behind that response. |
 | Function tools on a response | [NIP-CAP](../../nips/openagents/NIP-CAP.md) | Tools declared on the request, which you run. A capability definition describes a host operation. |
 | A compaction item | [NIP-CTX](../../nips/openagents/NIP-CTX.md) | The summary you send back on `/v1/responses`. NIP-CTX keeps the task frame and its history. |
+| `cmk_` | — | The organization's encryption key, held in its own key service. A bearer key, a provider key, a `vlt_` vault, and NIP-VAULT are other objects. |
 
 ### 4.5 registry
 

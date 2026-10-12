@@ -34,6 +34,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | See every endpoint we serve: which are public, which are for our own apps, which stay internal, and how today's routes converge | [API design](api/design.md) |
 | Run a saved agent in a session, with tools, memory, and a schedule | [Managed Agents API](api/managed-agents.md), [events](api/managed-agents-events.md), [operations](api/managed-agents-operations.md) |
 | Count tokens, batch model calls, send files, and keep reasoning valid across turns | [Model calls](api/model-calls.md) |
+| Administer an organization: members, bearer keys, and a customer-managed encryption key | [Organization administration](api/organization.md) |
 | Receive every payment centrally, split it with plugin authors, pay them out, and watch it live | [Payments](payments/README.md): one receiver, a split ledger, payouts, `/live` |
 | Earn revenue from Coder: what businesses want, pricing, referrals, partners, and the sales roadmap | [Sales](sales/README.md), [revenue roadmap](sales/revenue-roadmap.md), [agent sales floor in Everglade](sales/agent-sales-floor.md) |
 | Call or operate decision services | [Decision models](decision-models/README.md), [caller guide](decision-models/guides/caller.md), [gateway](decision-models/service/gateway.md) |

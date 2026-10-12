@@ -536,7 +536,7 @@ Versions have no delete and no archive. Each version records `created_by`, an ac
 | `GET` | `/v1/files/{file_id}/content` | Bytes. |
 | `DELETE` | `/v1/files/{file_id}` | Delete. |
 
-Outputs can lag one to three seconds after `session.status_idle`. The agent needs `write` or `bash` to create them. Files have no archive.
+Outputs can lag one to three seconds after `session.status_idle`. The agent needs `write` or `bash` to create them. Files have no archive. When the organization has attached a customer-managed key, these bytes are wrapped with that key. See [Customer-managed keys](organization.md#customer-managed-keys).
 
 ### Skills
 
