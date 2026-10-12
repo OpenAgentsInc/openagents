@@ -11,6 +11,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-changed=src/kernels/quantized_matvec_stub.c");
     println!("cargo:rerun-if-changed=src/kernels/clef_prefill.cu");
     println!("cargo:rerun-if-changed=src/kernels/clef_prefill_stub.c");
+    println!("cargo:rerun-if-changed=src/kernels/clef_hopper.cu");
+    println!("cargo:rerun-if-changed=src/kernels/clef_hopper_stub.c");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     if let Some(nvcc) = find_nvcc() {
@@ -19,6 +21,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         cc::Build::new()
             .file("src/kernels/quantized_matvec_stub.c")
             .file("src/kernels/clef_prefill_stub.c")
+            .file("src/kernels/clef_hopper_stub.c")
             .compile("psionic_cuda_quantized_kernels");
     }
     Ok(())
@@ -48,14 +51,34 @@ fn compile_cuda_object(
     object: &Path,
     fast_math: bool,
 ) -> Result<(), Box<dyn Error>> {
+    compile_cuda_object_for(nvcc, source, object, fast_math, find_cuda_arch())
+}
+
+fn compile_cuda_object_for(
+    nvcc: &Path,
+    source: &str,
+    object: &Path,
+    fast_math: bool,
+    arch: Option<String>,
+) -> Result<(), Box<dyn Error>> {
     let mut command = Command::new(nvcc);
     command.args(["-std=c++17", "-O3"]);
     if fast_math {
         command.arg("--use_fast_math");
     }
     command.args(["-Xcompiler", "-fPIC", "-c", source]);
-    if let Some(arch) = find_cuda_arch() {
-        command.arg(format!("-arch={arch}"));
+    if let Some(arch) = arch {
+        match arch.strip_prefix("sm_") {
+            // Architecture-specific features (`sm_90a`: wgmma, setmaxnreg)
+            // need the matching `compute_90a` virtual architecture and run
+            // only on that device.
+            Some(digits) if digits.ends_with('a') => {
+                command.arg(format!("-gencode=arch=compute_{digits},code={arch}"));
+            }
+            _ => {
+                command.arg(format!("-arch={arch}"));
+            }
+        }
     }
     let status = command.arg("-o").arg(object).status()?;
     if !status.success() {
@@ -72,11 +95,26 @@ fn compile_cuda_kernels(nvcc: &Path, out_dir: &Path) -> Result<(), Box<dyn Error
     let clef_object = out_dir.join("clef_prefill.o");
     compile_cuda_object(nvcc, "src/kernels/clef_prefill.cu", &clef_object, false)?;
 
-    cc::Build::new()
-        .cpp(true)
-        .object(&object)
-        .object(&clef_object)
-        .compile("psionic_cuda_quantized_kernels");
+    let mut build = cc::Build::new();
+    build.cpp(true).object(&object).object(&clef_object);
+    // The Hopper projection GEMM (#11443) is wgmma/TMA code for sm_90a;
+    // other targets link its stub and keep the fused and cuBLAS paths.
+    if find_cuda_arch().is_some_and(|arch| arch == "sm_90" || arch == "sm_90a") {
+        let hopper_object = out_dir.join("clef_hopper.o");
+        compile_cuda_object_for(
+            nvcc,
+            "src/kernels/clef_hopper.cu",
+            &hopper_object,
+            false,
+            Some(String::from("sm_90a")),
+        )?;
+        build.object(&hopper_object);
+    } else {
+        cc::Build::new()
+            .file("src/kernels/clef_hopper_stub.c")
+            .compile("psionic_cuda_hopper_stub");
+    }
+    build.compile("psionic_cuda_quantized_kernels");
 
     println!("cargo:rustc-link-lib=cudart");
     println!("cargo:rustc-link-search=native=/opt/cuda/lib64");
@@ -117,5 +155,6 @@ fn normalize_cuda_arch(raw: &str) -> Option<String> {
     if digits.len() < 2 {
         return None;
     }
-    Some(format!("sm_{digits}"))
+    let suffix = if raw.trim().ends_with('a') { "a" } else { "" };
+    Some(format!("sm_{digits}{suffix}"))
 }

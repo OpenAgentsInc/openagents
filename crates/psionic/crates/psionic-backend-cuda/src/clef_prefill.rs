@@ -39,6 +39,8 @@ unsafe extern "C" {
     fn psionic_clef_event_record(event: *mut c_void, stream: *mut c_void) -> i32;
     fn psionic_clef_stream_wait_event(stream: *mut c_void, event: *mut c_void) -> i32;
     fn psionic_clef_fused_linear(x: *const c_void, w: *const c_void, out: *mut c_void, n: i32, rows: i32, k: i32, format: i32, segment: i32, accumulate: i32, stream: *mut c_void) -> i32;
+    fn psionic_clef_hopper_supported() -> i32;
+    fn psionic_clef_hopper_linear(x: *const c_void, w: *const c_void, out: *mut c_void, n: i32, rows: i32, k: i32, format: i32, accumulate: i32, token_tile: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_flash_attention(q16: *const c_void, kcache: *const c_void, vcache: *const c_void, out: *mut c_void, n: i32, heads: i32, kv_heads: i32, dim: i32, first: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_linear_f32_ordered(x: *const c_void, w: *const c_void, out: *mut c_void, n: i32, m: i32, k: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_head_side(q: *const c_void, wk: *const c_void, side: *mut c_void, n: i32, heads: i32, width: i32, stream: *mut c_void) -> i32;
@@ -264,6 +266,22 @@ impl Drop for ClefEvent {
     }
 }
 
+/// Whether this build carries the Hopper projection kernels
+/// (`kernels/clef_hopper.cu`, compiled for sm_90a) and the current device
+/// is compute capability 9.0. Ada and other devices keep the fused and
+/// cuBLAS paths.
+#[must_use]
+pub fn clef_hopper_supported() -> bool {
+    unsafe { psionic_clef_hopper_supported() == 1 }
+}
+
+/// Whether the Hopper projection GEMM takes a weight: Q8_0 or Q4_K rows
+/// with `k` a multiple of 256 (so a raw stage is 16-byte aligned).
+#[must_use]
+pub const fn hopper_takes(format: ClefWeightFormat, rows: usize, k: usize) -> bool {
+    rows > 0 && k % 256 == 0 && matches!(format, ClefWeightFormat::Q8_0 | ClefWeightFormat::Q4K)
+}
+
 fn int(value: usize, what: &str) -> Result<i32, RuntimeError> {
     i32::try_from(value)
         .map_err(|_| RuntimeError::Backend(format!("clef prefill {what} exceeds i32")))
@@ -344,6 +362,67 @@ impl CudaSubmission {
             )
         };
         self.clef_launch(code, "psionic_clef_fused_linear")?;
+        Ok(true)
+    }
+
+    /// The Hopper projection GEMM (`kernels/clef_hopper.cu`, #11443):
+    /// `out (+)= x16 · W^T` with W read in its GGUF layout (Q8_0 or Q4_K),
+    /// dequantized in registers, wgmma with f32 accumulation and a fixed
+    /// k order per output (bitwise chunk-invariant). Returns `false`
+    /// without launching for a layout or shape it does not take (f32
+    /// weights, `k` not a multiple of 256). Q4_K weights dequantize in
+    /// f16x2 arithmetic (a weight within an f16 rounding step of the dequant
+    /// kernels' value) unless `exact_q4k`, which keeps their f32 arithmetic
+    /// at about 10 % less speed; Q8_0 is always exact. Callers check
+    /// [`clef_hopper_supported`] first.
+    #[allow(clippy::too_many_arguments)]
+    pub fn clef_hopper_linear(
+        &mut self,
+        x16: &CudaBuffer,
+        weights: &CudaBuffer,
+        format: ClefWeightFormat,
+        out: &CudaBuffer,
+        n: usize,
+        rows: usize,
+        k: usize,
+        accumulate: bool,
+        exact_q4k: bool,
+    ) -> Result<bool, RuntimeError> {
+        if !hopper_takes(format, rows, k) {
+            return Ok(false);
+        }
+        let code = match format {
+            ClefWeightFormat::Q8_0 => 0,
+            _ if exact_q4k => 2,
+            _ => 1,
+        };
+        if n == 0 {
+            return Ok(true);
+        }
+        let bytes = format.byte_len(rows * k).ok_or_else(|| {
+            RuntimeError::Backend(String::from(
+                "clef hopper linear: weights are not whole blocks",
+            ))
+        })?;
+        let w = span(weights, 0, bytes, 1, "hopper weights")?;
+        let x = f16s(x16, n * k, "hopper x")?;
+        let o = f32s(out, n * rows, "hopper out")?;
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe {
+            psionic_clef_hopper_linear(
+                x,
+                w,
+                o,
+                int(n, "n")?,
+                int(rows, "rows")?,
+                int(k, "k")?,
+                code,
+                i32::from(accumulate),
+                0,
+                stream,
+            )
+        };
+        self.clef_launch(code, "psionic_clef_hopper_linear")?;
         Ok(true)
     }
 

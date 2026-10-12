@@ -8,7 +8,10 @@
 //!   (Q8_0 / Q4_K / f32) and is dequantized to f16 into one scratch matrix
 //!   right before a cuBLAS GEMM against the chunk's f16 activations (f32
 //!   accumulate). The residual stream is f32 and the output projections
-//!   accumulate into it in the GEMM (`beta = 1`).
+//!   accumulate into it in the GEMM (`beta = 1`). On an sm_90 device the
+//!   Q8_0/Q4_K projections instead run through the Hopper GEMM (`wgmma`,
+//!   TMA, the GGUF bytes dequantized in registers, f32 accumulation, #11443),
+//!   which is bitwise chunk-invariant; `PSIONIC_CLEF_HOPPER=0` turns it off.
 //! - **Gated DeltaNet.** A sequence causal conv1d carries its last three
 //!   inputs; the delta rule runs one warp per (value head, value row) over
 //!   the chunk's tokens in order, with the 128-wide state row in registers.
@@ -28,7 +31,9 @@ use std::sync::Mutex;
 mod load_admission;
 mod memory_admission;
 
-use psionic_backend_cuda::clef_prefill::{ClefEvent, ClefOperand, ClefStream, ClefWeightFormat};
+use psionic_backend_cuda::clef_prefill::{
+    self, ClefEvent, ClefOperand, ClefStream, ClefWeightFormat,
+};
 use psionic_backend_cuda::{CudaBackend, CudaBuffer, CudaCommandWait, CudaSubmission};
 use rayon::prelude::*;
 
@@ -542,7 +547,8 @@ impl ClefCudaTrunk {
                 }
             }
             for weight in &layer_weights {
-                // the f16 slots only serve weights the fused kernel does not take
+                // the f16 slots only serve weights neither the Hopper GEMM
+                // nor the fused kernel takes
                 let fused = knobs().fused == Fused::Always
                     && match weight.format {
                         ClefWeightFormat::Q8_0 => weight.columns % 64 == 0,
@@ -550,7 +556,9 @@ impl ClefCudaTrunk {
                         ClefWeightFormat::F32 => false,
                     }
                     && weight.rows % 2 == 0;
-                if !fused {
+                let hopper = knobs().hopper
+                    && clef_prefill::hopper_takes(weight.format, weight.rows, weight.columns);
+                if !fused && !hopper {
                     largest = largest.max(weight.elements());
                 }
             }
@@ -1945,6 +1953,26 @@ fn linear(
     compute_16f: bool,
 ) -> Result<(), String> {
     let knob = knobs();
+    if knob.hopper && !knob.skip_gemm {
+        // sm_90: wgmma straight from the GGUF layout, f32 accumulation,
+        // the same kernel for every chunk size
+        if submission
+            .clef_hopper_linear(
+                x16,
+                &weight.buffer,
+                weight.format,
+                out,
+                n,
+                weight.rows,
+                weight.columns,
+                accumulate,
+                knob.hopper_exact,
+            )
+            .map_err(err)?
+        {
+            return Ok(());
+        }
+    }
     if knob.fused.takes(n) && !knob.skip_gemm {
         // straight from the GGUF layout; f16 accumulation in short spans
         // promoted to f32, or f32 tensor accumulation in strict mode
@@ -2065,7 +2093,11 @@ fn gemm(
 /// accumulation span in 16-wide k steps (default 16); `PSIONIC_CLEF_SCAN=0`
 /// runs the per-warp delta scan instead of the shared-memory-staged one;
 /// `PSIONIC_CLEF_FLASH=0` runs attention as cuBLAS score and `P V` GEMMs
-/// instead of the fixed-order flash kernel.
+/// instead of the fixed-order flash kernel. `PSIONIC_CLEF_HOPPER=0` turns
+/// off the Hopper projection GEMM (#11443), which is otherwise selected on
+/// an sm_90 device for every Q8_0/Q4_K projection and every chunk size;
+/// `PSIONIC_CLEF_HOPPER=exact` keeps it on with the dequant kernels' exact
+/// f32 Q4_K arithmetic instead of f16x2.
 /// When a projection runs through the fused kernel.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Fused {
@@ -2100,6 +2132,8 @@ struct Knobs {
     segment: usize,
     staged_scan: bool,
     flash: bool,
+    hopper: bool,
+    hopper_exact: bool,
 }
 
 fn knobs() -> Knobs {
@@ -2119,6 +2153,9 @@ fn knobs() -> Knobs {
             },
             staged_scan: std::env::var("PSIONIC_CLEF_SCAN").map_or(true, |v| v != "0"),
             flash: std::env::var("PSIONIC_CLEF_FLASH").map_or(true, |v| v != "0"),
+            hopper: std::env::var("PSIONIC_CLEF_HOPPER").map_or(true, |v| v != "0")
+                && clef_prefill::clef_hopper_supported(),
+            hopper_exact: std::env::var("PSIONIC_CLEF_HOPPER").is_ok_and(|v| v == "exact"),
             segment: std::env::var("PSIONIC_CLEF_SEGMENT")
                 .ok()
                 .and_then(|v| v.parse().ok())

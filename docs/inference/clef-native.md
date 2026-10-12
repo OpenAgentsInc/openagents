@@ -981,6 +981,140 @@ same hour, with and without the Clef calibration map.
   - 4k: 0.589 s, against 0.590;
   - 16k: 2.45 s, against 2.46.
 
+### Round 6 (2026-10-12): Hopper projection GEMM (#11443)
+
+The trunk projections on an H100 now run through a Hopper kernel
+(`psionic-backend-cuda/src/kernels/clef_hopper.cu`) instead of the 4080's
+fused `mma.sync` kernel (chunks up to 1,024 tokens) and dequantize +
+cuBLAS (longer chunks).
+
+- **Kernel.** Warp-specialized and persistent: one producer warp issues TMA
+  loads of the raw GGUF bytes (128 weight rows x 256 k: one Q4_K
+  super-block or 8 Q8_0 blocks per row) and of the f16 token tile (NT x
+  64 k, 128-byte swizzle) into mbarrier-guarded shared-memory rings; two
+  consumer warpgroups dequantize their 64 rows each straight into the
+  `wgmma` A-fragment registers and issue `m64nNTk16` `wgmma` with f32
+  accumulation. The dequantization of one 64-k stage overlaps the tensor
+  work of the previous one. The epilogue adds into the f32 residual (or
+  overwrites).
+- **Chunk invariance.** Each output sums its k stages in order inside one
+  CTA (no split k, no atomics), so a token's result does not depend on the
+  other tokens in its chunk. The token tile (64, 128, 192 or 256) is picked
+  per launch from the chunk size and the weight's row count to waste the
+  least of the last wave; every tile gives bitwise the same per-token
+  result (checked on all 14 shapes at 1, 17, 100, 1,082, 2,048 and 3,917
+  rows, plus 64-row chunks against the whole).
+- **Precision.** Q8_0 dequantizes in f16x2 to exactly the dequant kernel's
+  f16 weights, and the result is bitwise equal to cuBLAS with f32 compute on
+  those weights. Q4_K dequantizes in f16x2 by default (f16 scale and
+  minimum, so a weight can differ from the dequant kernel's by one f16
+  rounding step): 3.6e-4 relative RMS against the f32 reference, under the
+  fused kernel's 4–8e-4. `PSIONIC_CLEF_HOPPER=exact` keeps the f32 Q4_K
+  arithmetic (error 0) at about 10 % less kernel speed.
+- **Selection.** On at load when the device is compute capability 9.0 and
+  the build carries the kernel (`build.rs` compiles it for `sm_90a` when the
+  target architecture is `sm_90`; other targets link a stub). Ada keeps
+  today's kernels. `PSIONIC_CLEF_HOPPER=0` turns it off. Weights it takes no
+  longer get f16 scratch slots.
+
+**Kernel alone** (`fixtures/clef/tools/hopper_gemm_bench.cu`, H100 SXM,
+2,048-row chunk, % of the 989 TF dense f16 peak; baseline is today's long-
+chunk path, dequantize + cuBLAS f16 + the f32 conversion):
+
+| Shape (W rows x k) | Hopper | Dequant + cuBLAS f16 | cuBLAS on resident f16 weights | Fused `mma.sync` |
+| --- | ---: | ---: | ---: | ---: |
+| Flash ffn gate/up, Q4_K 12,288 x 4,096 | 0.302 ms, **69 %** | 0.403 ms | 0.275 ms | 0.959 ms |
+| Flash ffn down, Q4_K 4,096 x 12,288 | 0.283 ms, **74 %** | 0.330 ms | 0.259 ms | 0.944 ms |
+| Flash qkv / q, Q8_0 8,192 x 4,096 | 0.209 ms, 66 % | 0.289 ms | 0.195 ms | 0.813 ms |
+| Flash z / out, Q8_0 4,096 x 4,096 | 0.106 ms, 65 % | 0.138 ms | 0.093 ms | 0.411 ms |
+| 27B ffn gate/up, Q4_K 17,408 x 5,120 | 0.551 ms, **67 %** | 0.681 ms | 0.489 ms | 1.681 ms |
+| 27B ffn down, Q4_K 5,120 x 17,408 | 0.569 ms, **65 %** | 0.625 ms | 0.507 ms | 1.661 ms |
+| 27B qkv, Q8_0 10,240 x 5,120 | 0.318 ms, 68 % | 0.428 ms | 0.301 ms | 1.172 ms |
+| 27B out, Q8_0 5,120 x 6,144 | 0.223 ms, 58 % | 0.262 ms | 0.186 ms | 0.772 ms |
+| Per 2,048-token chunk, all projections: Flash / 27B | **43.1 / 156 ms** | 54.8 / 188 ms | 38.3 / 138 ms | — |
+
+- The large FFN shapes clear the 60 % bar on both models. The kernel is
+  about 12 % behind cuBLAS on f16 weights that would have to stay resident
+  (2x the weight memory and not chunk-invariant), and 15–30 % ahead of
+  today's path on every large shape.
+- Short chunks: at 1–100 rows the kernel takes 25–105 µs per projection,
+  faster than the fused kernel (85–240 µs) on every shape. Alpha/beta (32
+  or 48 rows) take about 30 µs against cuBLAS's 15 µs; that is under 2 ms
+  per chunk.
+- What did not help: 2-CTA clusters multicasting the token tile (within
+  2 %, so the L2 -> SM traffic is not the bound), and four A-fragment
+  buffers (`ptxas` serializes the `wgmma`). What did: the f16x2
+  dequantization (+11 % on Q4_K, +5–10 % on Q8_0 over f32 arithmetic), and
+  a `fence.proxy.async` before releasing a raw stage (without it the TMA
+  overwrite races the generic-proxy reads).
+
+**End to end** (one spot H100 80GB, `us-central1-a`, driver 580, both
+servers built on the same day from `661e02d3ed` with nvcc 12.9 and
+`PSI_CUDA_ARCH=90`, the candidate with this change; `bench_latency.py`,
+median of 9 with a fresh nonce, two interleaved rounds, chunk 2048, f16
+mode; the 32k prompt is the 16k state twice, 30,660 tokens):
+
+| | 1k | 4k | 16k | 32k |
+| --- | ---: | ---: | ---: | ---: |
+| Flash, today | 0.080 / 0.079 s | 0.220 / 0.220 s | 0.850 / 0.852 s | 1.79 / 1.79 s |
+| **Flash, Hopper GEMM** | **0.068 / 0.067 s** | **0.197 / 0.198 s** | **0.782 / 0.783 s** | **1.66 / 1.67 s** |
+| Flash speedup | 1.17x | 1.11x | 1.09x | 1.08x |
+| Flash, `PSIONIC_CLEF_HOPPER=exact` | — | 0.216 s | 0.827 s | — |
+| 27B, today | 0.207 / 0.203 s | 0.635 / 0.617 s | 2.67 / 2.59 s | 6.02 / 6.07 s |
+| **27B, Hopper GEMM** | **0.180 / 0.196 s** | **0.602 / 0.622 s** | **2.54 / 2.50 s** | **5.84 / 5.85 s** |
+| 27B speedup | 1.08x | 1.02x | 1.04x | 1.03x |
+
+- **The 1.5x target at 4k and 16k is not met.** The projections are about
+  half of a 16k prefill: with `PSIONIC_CLEF_SKIP=gemm,dequant` today's
+  Flash build takes 0.42 s of its 0.85 s, and the Hopper build 0.41 s of
+  0.78 s. So even free projections would give 2x at most, and 1.5x would
+  need them at about 0.14 s (over 2,000 TF). The rest (Flash at 16k:
+  attention about 0.12 s, the DeltaNet scan about 0.13 s, norms, conv and
+  element-wise kernels the remainder) is #11444.
+- 27B gains less than Flash: its dequantization already ran on a side
+  stream under longer GEMMs, and its large shapes are where cuBLAS f16 was
+  closest to this kernel.
+- Process memory is about 0.2 GB lower (Flash 8.0 GB after 32k, against
+  8.2 GB; 27B 21.5 GB against 21.8 GB): no f16 weight scratch.
+
+**Parity** (`e2e.py compare`, the 40 e2e requests, 104 questions):
+
+| Against | Flash, Hopper | Flash, today | 27B, Hopper | 27B, today |
+| --- | --- | --- | --- | --- |
+| Psionic CPU lane | **100 %, max \|Δp\| 0.0014** (exact Q4_K: 100 %, 0.0010) | 100 %, 0.0025 | — | — |
+| today's CUDA build | 100 %, 0.0030 | — | 98.1 %, 0.018 (two near ties at 0.49/0.51) | — |
+| today's build with `--decision-accumulate f32` | — | — | 99.0 %, 0.013 (one near tie, 0.492 vs 0.495) | 99.0 %, 0.011 |
+
+The f32 accumulation brings the Flash CUDA lane closer to the CPU lane
+than today's f16 default. There is no 27B CPU-lane fixture; against the
+f32-accumulate reference the Hopper build agrees as closely as today's
+default does.
+
+**Chunk invariance** (`clef::tests::cuda_chunks_and_cpu_agree` on the
+H100, which passes): with the Hopper GEMM the default f16 mode is now
+bitwise chunk-invariant on Flash. Before, only `PSIONIC_CLEF_FUSED=1` was,
+at a speed cost; the default moved 1.6–2.1e-2 in logit on long records.
+
+| Mode | 155 tokens, chunks 2048 / 512 / 64 | 7,274 tokens, chunks 2048 / 512 / 64 | CUDA vs CPU lane, 155 tokens |
+| --- | --- | --- | --- |
+| f16 (default), Hopper | 0 / 0 / 0 (bitwise) | 0 / 0 / 0 (bitwise) | max \|Δlogit\| 2.2e-3, max \|Δp\| 2.5e-5 |
+| f32, Hopper | 0 / 0 / 0 | 0 / 0 / 0 | — |
+| f16 and f32, `PSIONIC_CLEF_HOPPER=exact` | 0 / 0 / 0 | 0 / 0 / 0 | max \|Δlogit\| 3.1e-4, max \|Δp\| 1.9e-5 |
+
+**Default.** On: it is faster at every measured size on both models, it
+passes parity, and it makes the default bitwise chunk-invariant. The Q4_K
+dequantization defaults to f16x2; `PSIONIC_CLEF_HOPPER=exact` is the strict
+mode (on 27B it matches the f32-accumulate reference to 100 % of top
+answers, max |Δp| 0.0027, against 0.013 for the default).
+
+**Next.** The projections are no longer the larger share: #11444
+(attention, the DeltaNet scan, CUDA graphs) is where the 1.5x has to come
+from. In the kernel, a ping-pong schedule that overlaps one warpgroup's
+epilogue with the other's main loop, and a split-k for the 32/48-row
+alpha/beta weights (fixed per weight, so still chunk-invariant), are the
+remaining known gaps to cuBLAS. Cost of this round: about 1.7 h of one spot
+H100 (about $11) plus a CPU build VM.
+
 ## M3 status (2026-10-10, in progress)
 
 The [October 10 Mac performance audit](../audits/2026-10-10-clef-mac-performance/README.md)

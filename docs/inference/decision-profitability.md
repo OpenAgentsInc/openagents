@@ -34,12 +34,16 @@ Best measured tokens per second, and what that earns at full use
 
 | Machine | Model | Tokens/s | At $0.042/M, 100 % busy | At the model's market price, 100 % busy | Cost per hour |
 | --- | --- | ---: | ---: | ---: | ---: |
-| H100 (spot) | Clef-Flash | 15–18k | $2.30–2.70/h | same ($0.038–0.042) | $6.40 |
-| H100 (spot) | Clef 27B | 5–6k | $0.80–0.90/h | $4.30–5.20/h (at $0.24) | $6.40 |
+| H100 (spot) | Clef-Flash | 16–20k | $2.40–3.00/h | same ($0.038–0.042) | $6.40 |
+| H100 (spot) | Clef 27B | 5.5–6.2k | $0.80–0.95/h | $4.75–5.35/h (at $0.24) | $6.40 |
 | RTX 4080 (owned) | Clef-Flash | ~6k | ~$0.90/h | same | ~$0.12 (assumed: hardware over 3 years plus power) |
 
-- **H100 Flash at Jev's price is 2.4–2.8× short at full use**, and about 5×
-  short at a realistic 50 % utilization.
+- **H100 Flash at Jev's price is 2.1–2.6× short at full use**, and about
+  4–5× short at a realistic 50 % utilization. The H100 rows include the
+  Hopper projection GEMM (#11443, 2026-10-12): single-request prefill went
+  from 13.6k to 15.9k tokens/s at 1k tokens and from 18.2k to 19.8k at 16k
+  on Flash, and from 5.3k to 5.7k and 5.9k to 6.2k on 27B
+  ([clef-native.md](clef-native.md), "Round 6").
 - **H100 27B at Jev's price is about 7× short**, but near break-even at its
   own market price ($0.24).
 - **An owned consumer GPU is already profitable**: the RTX 4080 earns about
@@ -57,7 +61,7 @@ tokens than Clef's tokenizer for the same router request (28,905 against
 | Step | What it changes | Expected effect |
 | --- | --- | --- |
 | [#11441](https://github.com/OpenAgentsInc/openagents/issues/11441) concurrent requests batched on CUDA | Fills the GPU when traffic arrives as many small requests (65–74 % busy at 1.5k-token requests today) | Raises utilization, not the peak |
-| [#11443](https://github.com/OpenAgentsInc/openagents/issues/11443), [#11444](https://github.com/OpenAgentsInc/openagents/issues/11444) Hopper kernels | Today's kernels reach about a third of the H100's f16 peak | At ~60 % of peak, Flash ≈ 33k tokens/s ≈ $5/h at Jev's price |
+| [#11443](https://github.com/OpenAgentsInc/openagents/issues/11443), [#11444](https://github.com/OpenAgentsInc/openagents/issues/11444) Hopper kernels | Today's kernels reach about a third of the H100's f16 peak | At ~60 % of peak, Flash ≈ 33k tokens/s ≈ $5/h at Jev's price. Measured for #11443: the projections now run at 65–74 % of peak, but they are only half of a prefill, so Flash gained 8–17 % and 27B 2–8 %; the other half (attention, DeltaNet scan, norms) is #11444 |
 | [#11445](https://github.com/OpenAgentsInc/openagents/issues/11445) FP8, gated | Twice the tensor throughput of f16 | At ~60 % of FP8 peak, Flash ≈ 60k tokens/s ≈ $9–10/h at Jev's price |
 
 The two bottom rows are estimates from the H100's specification, not
