@@ -21,6 +21,7 @@ The owner's ask: "our CLI needs to interact with that via api first class".
 - [Threads and messages](#threads-and-messages)
 - [Files, generated files, and artifacts](#files-generated-files-and-artifacts)
 - [Project attachments and documents](#project-attachments-and-documents)
+- [Sensitive files: encrypted before they leave your machine](#sensitive-files-encrypted-before-they-leave-your-machine)
 - [Deleting](#deleting)
 - [Scopes and privacy](#scopes-and-privacy)
 - [The `openagents projects` command](#the-openagents-projects-command)
@@ -79,6 +80,7 @@ member role ([workspace rules](calling.md#workspace)).
 | Artifact | `art_`, version `artv_` | A versioned document a reply produced or revised. |
 | Project document | `pdoc_` | Plain text kept on a project: a pasted note, or a document converted to text when added. |
 | Project source | `psrc_` | A connected source on a project, such as a Drive folder or file. |
+| Vault object | 64 hex | A file encrypted on your device under [NIP-VAULT](../../nips/openagents/NIP-VAULT.md). The service holds its ciphertext only; its name and type live in your encrypted key index. |
 
 Times are RFC 3339 UTC. A deleted thread lists with `deleted_at` set, an
 empty `title`, and messages without content until it is purged.
@@ -88,9 +90,9 @@ empty `title`, and messages without content until it is purged.
 | Route | Does |
 | --- | --- |
 | `GET /v1/projects` | List your projects, oldest first. `?limit`, `?after`. |
-| `POST /v1/projects` | Create one: `{"name", "instructions"?, "repository"?}` (the repository form replaces today's add-a-repository). |
+| `POST /v1/projects` | Create one: `{"name", "instructions"?, "repository"?, "protection"?}` (the repository form replaces today's add-a-repository). |
 | `GET /v1/projects/{id}` | One project, with counts of its threads, files, documents, and sources. |
-| `PATCH /v1/projects/{id}` | Rename, set instructions, or bind or unbind a repository. |
+| `PATCH /v1/projects/{id}` | Rename, set instructions, bind or unbind a repository, or change `protection` for new files. |
 | `DELETE /v1/projects/{id}` | Delete it. `409 project_has_threads` while threads are attached, unless `?detach_threads=true` (threads stay and lose their project). |
 
 ```bash
@@ -115,6 +117,10 @@ curl -sS https://api.openagents.com/v1/projects \
   "next": null
 }
 ```
+
+`protection` is the project's default for new files and documents
+([below](#sensitive-files-encrypted-before-they-leave-your-machine)):
+`standard` (the default), `only_me`, or `sealed`. The answer includes it.
 
 A project may also be named in the path by its exact name when it is unique
 for the caller (`/v1/projects/name:finances`), so the CLI and Coder can use
@@ -210,6 +216,106 @@ rest, readable only by the account's own credentials. They are never used to
 train a model, and they are sent to a model only when a turn in that project
 reads them.
 
+## Sensitive files: encrypted before they leave your machine
+
+For financial statements, tax records, and anything else you don't want us
+to be able to read, a project keeps files in your **vault**. The vault is
+[NIP-VAULT](../../nips/openagents/NIP-VAULT.md); the design, the threat model,
+and its honest limits are in the [sensitive data vault](../security/sensitive-data-vault.md).
+
+The command encrypts each file on your computer before anything is sent. The
+service stores ciphertext only. No one at OpenAgents, the owner included, can
+open it. What is already built: the `only_me` tier, `crates/oa-vault`, the
+browser vault at `/settings/vault` and `/projects/{id}/vault`, and
+`openagents vault`.
+
+### How a file is protected
+
+| Step | What happens | Primitive |
+| --- | --- | --- |
+| 1. Setup, once | `openagents vault setup` makes a 32-byte vault master key (`VMK`) on your computer, and a 24-word recovery code. | Random 256-bit key |
+| 2. Who can open it | Each way in is a **key slot** that wraps the `VMK`: this computer's device key (in the OS keychain), your **Nostr key**, a passkey in the browser, and the recovery code. | Nostr slot: NIP-44 v2 to yourself, as NIP-51 private lists are. Recovery slot: scrypt, as NIP-49 does |
+| 3. Each file | A fresh 32-byte data key (`DEK`) encrypts the file in 64 KiB chunks, each bound to the object's header, so truncation, reordering, and extension are refused. | AES-256-GCM, chunked (`aes-256-gcm-chunked-v1`) |
+| 4. Its key and name | The `DEK`, the file's name, and its type go into your **key index**, which is sealed under a key derived from the `VMK` and stored as one blob. The stored object carries no key and no name. | HKDF-SHA256 key derivation, AES-256-GCM |
+| 5. Upload | The ciphertext object goes to `PUT /vault/api/objects/{id}`, addressed by its id. The new index goes up with compare-and-swap. | Content-addressed blobs (any blob store, Blossom included) |
+| 6. A new device | `openagents vault add-device` makes a 10-minute link. The new device gets in with it, with your Nostr key, or with the recovery code. Slots travel between your devices as self-addressed private artifacts (kind `3188`). | NIP-44 to self |
+| 7. Delete | Removing the file drops its `DEK` from the index, and the service deletes the ciphertext. The bucket keeps no versions and no soft-deleted copies, so the file is gone for good. | Crypto-shredding |
+
+At rest the ciphertext sits in `openagentsgemini-web-vault-prod`, a bucket
+that is also encrypted by Google. That outer layer protects the disks. The
+inner layer is the one that keeps us out.
+
+### The three protection settings
+
+| `protection` | Who can open a stored file | Who reads it when you ask a question | State |
+| --- | --- | --- | --- |
+| `standard` | The service (per-file keys under our Cloud KMS key; every use logged). Our team can read it. | The chat's model provider | Proposed for project files; the honest default for ordinary files |
+| `only_me` | Only your devices: device key, Nostr key, passkey, recovery code | The route you pick each time: a model on your own computer (`openagents vault serve-local`, the default when one runs), or **Fast**, where Google's Gemini sees that turn's files and we store nothing | **Built** (`openagents vault`, the web vault) |
+| `sealed` | Only an exact, publicly logged OpenAgents program in a hardware enclave (Intel TDX in Confidential Space, [NIP-ATT](../../nips/openagents/NIP-ATT.md)), and only while your client sends its share for that request | The same enclave (**Private**), or Gemini if you pick **Fast**. Agents and scheduled jobs can work while you're away, under a lease you grant | Designed; the attested endpoint runs today at [/att](https://openagents.com/att) |
+
+Everything is configurable, per project and per file:
+
+- the project default (`protection`), and `--protection` on each upload;
+- which keys can open the vault: devices, Nostr key, passkey, recovery code
+  (`openagents vault devices`, `add-device`, `add-nostr`, `remove-device`);
+- where answers come from: on this computer or Fast, per question (`--route`),
+  with Sealed Private once `sealed` ships;
+- for `sealed`: whether a new enclave program needs your approval before it
+  can open anything ("Ask me before any update"), whether your own devices
+  keep a copy of each key ("device copy", on by default), and standing leases
+  for agents: which files, for what purpose, until when;
+- limits the service enforces today: 11 MiB a file and 250 files a vault.
+  These rise with chunked uploads; they are not a protection setting.
+
+### In the API and the CLI
+
+An `only_me` or `sealed` file is a project attachment of `type` `vault`:
+
+```json
+{
+  "id": "9f2c…e41a",
+  "object": "attachment",
+  "type": "vault",
+  "protection": "only_me",
+  "size_bytes": 482176,
+  "created_at": "2026-10-12T21:30:00Z"
+}
+```
+
+It has no `filename` or `mime_type`. The service never learns them. Your
+client reads them from your key index after it opens the vault. The vault
+routes themselves are NIP-VAULT's [service API](../../nips/openagents/NIP-VAULT.md#service-api-tier-user)
+(`/vault/api/...`), with the same sign-in as the rest of this page.
+
+```text
+openagents vault setup                                  # once; write the recovery code down
+openagents vault add-nostr                              # optional: your Nostr key opens it too
+openagents projects add finances --protection only_me   # or: projects edit finances --protection only_me
+openagents projects files add finances statements-2026-09.pdf
+                                                        # encrypted here, then uploaded
+openagents projects files list finances                 # names come from your index, not the server
+openagents vault ask statements-2026-09.pdf --project finances \
+  --question "What did I spend on travel?" --route device
+openagents projects files remove finances statements-2026-09.pdf
+                                                        # gone for good
+```
+
+`projects files add` follows the project's `protection`. An `only_me`
+project runs `openagents vault add --project` underneath: same files, same
+index. A `standard` file can't move into an `only_me` project, and an
+`only_me` file can't move out. A copy is a new upload from your machine.
+
+Coder uses the same path. When a person asks about a file in an `only_me`
+project, the engine runs `openagents vault ask` on that computer. It reads
+the file with the local model, or with Fast only when the person said so.
+It never uploads plaintext anywhere else.
+
+What the service can still see, said plainly: that you have a vault, how many
+files are in it and how big they are, when they were added, and, for a Fast
+answer, that answer's files and question while it runs. The browser vault
+runs code we serve. A compromised page could read what you open there. The
+command and Coder keep keys in your OS keychain.
+
 ## Deleting
 
 Every delete is immediate and permanent. There is no recovery window.
@@ -290,7 +396,7 @@ lands ([#11451](https://github.com/OpenAgentsInc/openagents/issues/11451), phase
 1. **Read routes and credentials** (#11471): `GET /v1/projects`, `GET /v1/projects/{id}`, `GET /v1/threads?project=…`, reachable with an `oak_` key and the CLI sign-in; the gateway's OpenAPI regenerated (`OPENAGENTS_WRITE_OPENAPI=1 cargo test -p gateway audience`).
 2. **CLI** `openagents projects list | show | threads` and the `board` rename.
 3. **Coder** tool descriptions.
-4. **Files and documents**: `/v1/files`, attachments, documents, private per-account storage.
+4. **Files and documents**: `/v1/files`, attachments, documents, private per-account storage, and `type: vault` attachments backed by NIP-VAULT, with the project `protection` setting and `projects files add` following it.
 5. **Changes and deletes**, then scopes on the Settings key picker.
 
 Deploying the website and gateway follows `scripts/deploy/web.sh`:
