@@ -480,6 +480,9 @@ pub struct Background {
     /// The newest process turn that was stopped; what it still reports is
     /// dropped.
     claude_stopped: u64,
+    /// The newest process turn that ended; what it still reports opens no
+    /// new turn.
+    claude_ended: u64,
     /// Processes of chats that were closed, finishing their work.
     claude_closing: Vec<crate::claude_chat::Chat>,
 }
@@ -649,6 +652,7 @@ impl Background {
         }
         self.claude_turn = None;
         self.claude_stopped = 0;
+        self.claude_ended = 0;
     }
 
     /// What the claude process reported, onto the chat: the turn on screen
@@ -663,82 +667,7 @@ impl Background {
             return;
         };
         for event in chat.poll() {
-            match event {
-                crate::claude_chat::Event::Session(session) => {
-                    app.live.claude_session = Some(ClaudeSession {
-                        id: session,
-                        users: app.live.user_count(),
-                    });
-                    app.history.dirty = true;
-                }
-                crate::claude_chat::Event::Runtime { turn, event } => {
-                    if turn <= self.claude_stopped {
-                        continue;
-                    }
-                    let id = match &mut self.claude_turn {
-                        Some((id, on_screen)) => {
-                            *on_screen = (*on_screen).max(turn);
-                            *id
-                        }
-                        None if app.begin_claude_turn() => {
-                            self.claude_turn = Some((app.request_id, turn));
-                            app.request_id
-                        }
-                        None => continue,
-                    };
-                    let update = match event {
-                        RuntimeEvent::Text(text) => Update::Delta { id, text },
-                        RuntimeEvent::Model(model) => Update::Model { id, model },
-                        RuntimeEvent::Tool {
-                            name,
-                            input,
-                            output,
-                            running,
-                        } => Update::Tool {
-                            id,
-                            name,
-                            input,
-                            output,
-                            running,
-                        },
-                        RuntimeEvent::Delegation {
-                            id: delegation,
-                            name,
-                            task,
-                            event,
-                        } => Update::Delegation {
-                            id,
-                            delegation,
-                            name,
-                            task,
-                            event: *event,
-                        },
-                        RuntimeEvent::Usage(usage) => Update::Usage { id, usage: *usage },
-                        RuntimeEvent::Harness(run) => Update::Harness { id, run: *run },
-                        _ => continue,
-                    };
-                    app.apply_update(update);
-                }
-                crate::claude_chat::Event::TurnEnd { turn, result } => {
-                    if turn <= self.claude_stopped {
-                        continue;
-                    }
-                    if let Some((id, on_screen)) = self.claude_turn
-                        && turn >= on_screen
-                    {
-                        self.claude_turn = None;
-                        app.apply_update(Update::Finished { id, result });
-                    }
-                }
-                crate::claude_chat::Event::Exited => {
-                    if let Some((id, _)) = self.claude_turn.take() {
-                        app.apply_update(Update::Finished {
-                            id,
-                            result: Err("Claude Code stopped before the turn ended.".into()),
-                        });
-                    }
-                }
-            }
+            self.claude_event(app, event);
         }
         if self
             .claude
@@ -747,6 +676,95 @@ impl Background {
         {
             self.claude = None;
             self.claude_stopped = 0;
+            self.claude_ended = 0;
+        }
+    }
+
+    /// One event of the claude process onto the chat.
+    fn claude_event(&mut self, app: &mut crate::App, event: crate::claude_chat::Event) {
+        match event {
+            crate::claude_chat::Event::Session(session) => {
+                app.live.claude_session = Some(ClaudeSession {
+                    id: session,
+                    users: app.live.user_count(),
+                });
+                app.history.dirty = true;
+            }
+            crate::claude_chat::Event::Runtime { turn, event } => {
+                if turn <= self.claude_stopped {
+                    return;
+                }
+                let id = match &mut self.claude_turn {
+                    Some((id, on_screen)) => {
+                        *on_screen = (*on_screen).max(turn);
+                        *id
+                    }
+                    // What a turn that already ended still reports (the
+                    // plan usage read after it) opens no new turn: no
+                    // end would follow it and the chat would stay
+                    // working (#11462).
+                    None if turn <= self.claude_ended || matches!(event, RuntimeEvent::Plan(_)) => {
+                        return;
+                    }
+                    None if app.begin_claude_turn() => {
+                        self.claude_turn = Some((app.request_id, turn));
+                        app.request_id
+                    }
+                    None => return,
+                };
+                let update = match event {
+                    RuntimeEvent::Text(text) => Update::Delta { id, text },
+                    RuntimeEvent::Model(model) => Update::Model { id, model },
+                    RuntimeEvent::Tool {
+                        name,
+                        input,
+                        output,
+                        running,
+                    } => Update::Tool {
+                        id,
+                        name,
+                        input,
+                        output,
+                        running,
+                    },
+                    RuntimeEvent::Delegation {
+                        id: delegation,
+                        name,
+                        task,
+                        event,
+                    } => Update::Delegation {
+                        id,
+                        delegation,
+                        name,
+                        task,
+                        event: *event,
+                    },
+                    RuntimeEvent::Usage(usage) => Update::Usage { id, usage: *usage },
+                    RuntimeEvent::Harness(run) => Update::Harness { id, run: *run },
+                    _ => return,
+                };
+                app.apply_update(update);
+            }
+            crate::claude_chat::Event::TurnEnd { turn, result } => {
+                self.claude_ended = self.claude_ended.max(turn);
+                if turn <= self.claude_stopped {
+                    return;
+                }
+                if let Some((id, on_screen)) = self.claude_turn
+                    && turn >= on_screen
+                {
+                    self.claude_turn = None;
+                    app.apply_update(Update::Finished { id, result });
+                }
+            }
+            crate::claude_chat::Event::Exited => {
+                if let Some((id, _)) = self.claude_turn.take() {
+                    app.apply_update(Update::Finished {
+                        id,
+                        result: Err("Claude Code stopped before the turn ended.".into()),
+                    });
+                }
+            }
         }
     }
 }
@@ -1903,5 +1921,58 @@ mod tests {
             }),
         });
         assert!(matches!(app.plugins.connection, Connection::Unchecked));
+    }
+
+    /// After a claude turn ends, the plan usage the process reads under
+    /// that turn's number opens no new turn, so the chat and the program
+    /// status go back to idle (#11462). A later turn the process starts on
+    /// its own still shows as working.
+    #[test]
+    fn a_claude_turn_ends_idle_after_its_plan_usage_arrives() {
+        use crate::claude_chat::Event as Claude;
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        let mut background = Background::default();
+        let text = |text: &str| RuntimeEvent::Text(text.into());
+        background.claude_event(
+            &mut app,
+            Claude::Runtime {
+                turn: 1,
+                event: text("Hi"),
+            },
+        );
+        assert_eq!(app.program_status().0, "working");
+        background.claude_event(
+            &mut app,
+            Claude::TurnEnd {
+                turn: 1,
+                result: Ok(Streamed::default()),
+            },
+        );
+        assert_eq!(app.program_status().0, "idle");
+        background.claude_event(
+            &mut app,
+            Claude::Runtime {
+                turn: 1,
+                event: RuntimeEvent::Plan(Default::default()),
+            },
+        );
+        background.claude_event(
+            &mut app,
+            Claude::Runtime {
+                turn: 1,
+                event: text("late"),
+            },
+        );
+        assert_eq!(app.program_status().0, "idle");
+        assert!(!app.live.busy);
+        background.claude_event(
+            &mut app,
+            Claude::Runtime {
+                turn: 2,
+                event: text("Back"),
+            },
+        );
+        assert_eq!(app.program_status().0, "working");
     }
 }

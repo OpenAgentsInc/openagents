@@ -1035,6 +1035,33 @@ impl App {
                     }
                     return;
                 }
+                // Coder's own loop waits for its agents within the turn: one
+                // still shown running when the turn ends never reported back,
+                // and would keep its chat working (#11462).
+                if !self.on_claude() {
+                    for child in &mut self.delegations {
+                        if child.running && !child.background {
+                            child.running = false;
+                            child.chat.busy = false;
+                            child.elapsed_seconds =
+                                self.elapsed_seconds.saturating_sub(child.started_at);
+                            child.chat.finish_partial();
+                            child
+                                .chat
+                                .stop_tools("The turn ended before this agent reported back.");
+                        }
+                    }
+                    for entry in &mut self.live.entries {
+                        if let live::Entry::Delegation {
+                            running, output, ..
+                        } = entry
+                            && *running
+                        {
+                            *running = false;
+                            *output = serde_json::json!({"error":"The turn ended before this agent reported back."});
+                        }
+                    }
+                }
                 let (model, error) = match &result {
                     Ok(reply) => (Some(reply.model.clone()), None),
                     Err(error) => (None, Some(error.clone())),
@@ -3412,5 +3439,35 @@ mod claude_tests {
         assert_eq!(app.queued_prompts[0].text, "third");
         assert!(app.request.is_none());
         assert_eq!(app.request_id, first);
+    }
+
+    /// An agent that never reported back stops working with the turn: the
+    /// rail and the program status return to idle (#11462).
+    #[test]
+    fn an_agent_that_never_reported_back_ends_with_the_turn() {
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.live.busy = true;
+        app.apply_update(live::Update::Delegation {
+            id: app.request_id,
+            delegation: "d1".into(),
+            name: "cursor".into(),
+            task: "check".into(),
+            event: bundled_runtime::RuntimeEvent::Text("Starting".into()),
+        });
+        assert!(app.delegations[0].chat.busy);
+        app.apply_update(live::Update::Finished {
+            id: app.request_id,
+            result: Err("The agent failed.".into()),
+        });
+        assert_eq!(app.program_status().0, "idle");
+        assert!(!app.delegations[0].running);
+        assert!(!app.delegations[0].chat.busy);
+        assert!(
+            !app.live
+                .entries
+                .iter()
+                .any(|entry| matches!(entry, live::Entry::Delegation { running: true, .. }))
+        );
     }
 }
