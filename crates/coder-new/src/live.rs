@@ -587,6 +587,7 @@ impl Background {
         app.poll_fleet();
         app.poll_shells();
         app.poll_long_session();
+        app.poll_route();
         app.process_prompt_queue();
     }
 

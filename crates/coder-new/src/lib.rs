@@ -68,6 +68,7 @@ pub mod provider;
 pub mod resume;
 pub mod risk_policy;
 mod route;
+pub mod router;
 pub mod routing_preferences;
 pub mod routing_record;
 mod schedule;
@@ -267,6 +268,14 @@ pub struct App {
     /// What chose the next turn's harness, set where it is chosen; a turn
     /// with none set continues on the chat's harness.
     pub(crate) routing_rule: Option<routing_record::Rule>,
+    /// What router v0 read for the next turn's choice: System One's
+    /// probabilities and its trace, for the routing record (#11460).
+    pub(crate) routing_router: Option<(Vec<routing_record::Probability>, router::Trace)>,
+    /// A message held while System One judges where it runs (#11460).
+    pub(crate) pending_route: Option<router::Pending>,
+    /// The router's call for the held message, read by
+    /// [`App::route_turn`] when the message is sent.
+    pub(crate) routed: Option<router::Routed>,
 }
 
 #[derive(Default)]
@@ -1717,10 +1726,20 @@ impl App {
         if self.mode == Mode::Live
             && self.selected_agent.is_none()
             && (!self.draft.text.trim().is_empty() || !self.composer.images.is_empty())
-            && self.route_turn() == harness_plugin::Harness::ClaudeCode
         {
-            self.submit_claude();
-            return;
+            // A message sent while another waits for its route queues
+            // behind it; a routing point waits for System One (#11460).
+            if self.pending_route.is_some() {
+                self.queue_prompt();
+                return;
+            }
+            if self.ask_router() {
+                return;
+            }
+            if self.route_turn() == harness_plugin::Harness::ClaudeCode {
+                self.submit_claude();
+                return;
+            }
         }
         if self.live.busy
             || self.checking_key

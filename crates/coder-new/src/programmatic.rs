@@ -1116,6 +1116,9 @@ pub(crate) fn chat(
         let _gate = GateGuard::install(context);
         let restored_entries = app.live.entries.len();
         app.submit(&prompt, &context.cwd);
+        // A routing point waits for System One's judgment, within its
+        // budget (#11460).
+        app.settle_route();
         if !app.live.busy {
             return Err(app
                 .live

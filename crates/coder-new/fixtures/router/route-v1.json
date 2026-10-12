@@ -1,0 +1,1332 @@
+{
+  "$comment": [
+    "Router v0's labelled set (#11460): requests to Coder, each with the judgment a correct System One gives (`label`, the `route-v1` questions read by argmax) and the harness and policy step a correct router picks (`expect`).",
+    "`situation` changes the default situation: Claude Code and the Coder loop both admitted, neither preferred, no plan window reported, cost and speed balanced. `claude: false` leaves Claude Code out (signed out), `five_hour` is the plan window's used percent, `prefer` puts a harness first by the person's routing preferences, `cost` and `speed` are the sliders (1 to 5).",
+    "`judged` holds the probabilities the gateway door (Clef-Flash on the H100) gave for the row, recorded by the ignored live test with ROUTER_RECORD set; the unit test replays them through the policy with no network.",
+    "No row is picked by matching its words: every expectation follows from the judgment and the situation through route-policy-v1."
+  ],
+  "schema": "openagents.coder.route.labeled.v1",
+  "set": "route-v1",
+  "policy": "route-policy-v1",
+  "created": "2026-10-12",
+  "rows": [
+    {
+      "id": "first/answer-01",
+      "earlier": [],
+      "latest": "What is a Rust trait object?",
+      "chat_on": null,
+      "label": {
+        "kind": "answer",
+        "size": "small",
+        "needs_repo": false,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "coder-loop",
+        "step": "cheap-answer"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.8747602973097718,
+          "issue_to_pr": 0.004523826511382193,
+          "repo_change": 0.008534751542236357,
+          "research": 0.11218112463660973
+        },
+        "size": {
+          "large": 0.04468123384262913,
+          "medium": 0.045359580207842566,
+          "small": 0.9099591859495283
+        },
+        "needs_repo": 0.05935500612671473,
+        "own_tools": 0.013693527972368703,
+        "risk": {
+          "high": 0.015134006938554139,
+          "low": 0.9656702248286434,
+          "medium": 0.019195768232802585
+        }
+      }
+    },
+    {
+      "id": "first/answer-02",
+      "earlier": [],
+      "latest": "what's the difference between TCP and UDP",
+      "chat_on": null,
+      "label": {
+        "kind": "answer",
+        "size": "small",
+        "needs_repo": false,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "coder-loop",
+        "step": "cheap-answer"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.9046767464243817,
+          "issue_to_pr": 0.003603187788102102,
+          "repo_change": 0.008765003468114702,
+          "research": 0.08295506231940157
+        },
+        "size": {
+          "large": 0.03523745454254451,
+          "medium": 0.04462201763786414,
+          "small": 0.9201405278195913
+        },
+        "needs_repo": 0.07472539029895496,
+        "own_tools": 0.013750013347572917,
+        "risk": {
+          "high": 0.010464978921875511,
+          "low": 0.9781056520458843,
+          "medium": 0.011429369032240202
+        }
+      }
+    },
+    {
+      "id": "first/answer-03",
+      "earlier": [],
+      "latest": "Explain what a mutex is in one sentence.",
+      "chat_on": null,
+      "label": {
+        "kind": "answer",
+        "size": "small",
+        "needs_repo": false,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "coder-loop",
+        "step": "cheap-answer"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.9499028054724041,
+          "issue_to_pr": 0.0036636667338935734,
+          "repo_change": 0.006518895927451167,
+          "research": 0.03991463186625129
+        },
+        "size": {
+          "large": 0.003461812869960881,
+          "medium": 0.0039035158308451693,
+          "small": 0.9926346712991939
+        },
+        "needs_repo": 0.056330361222790386,
+        "own_tools": 0.023129136192441224,
+        "risk": {
+          "high": 0.007608315268649016,
+          "low": 0.9836216048717001,
+          "medium": 0.008770079859650705
+        }
+      }
+    },
+    {
+      "id": "first/answer-04",
+      "earlier": [],
+      "latest": "How do I undo my last git commit but keep the changes?",
+      "chat_on": null,
+      "label": {
+        "kind": "answer",
+        "size": "small",
+        "needs_repo": false,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "coder-loop",
+        "step": "cheap-answer"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.6682166430542724,
+          "issue_to_pr": 0.010401027832099813,
+          "repo_change": 0.06885929308487808,
+          "research": 0.2525230360287496
+        },
+        "size": {
+          "large": 0.05122553629931909,
+          "medium": 0.20146026646486004,
+          "small": 0.7473141972358209
+        },
+        "needs_repo": 0.7538467079434067,
+        "own_tools": 0.013451236808127487,
+        "risk": {
+          "high": 0.07864451913729015,
+          "low": 0.4123747738563935,
+          "medium": 0.5089807070063165
+        }
+      }
+    },
+    {
+      "id": "first/answer-05",
+      "earlier": [],
+      "latest": "thanks, that's all for now!",
+      "chat_on": null,
+      "label": {
+        "kind": "answer",
+        "size": "small",
+        "needs_repo": false,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "coder-loop",
+        "step": "cheap-answer"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.6457912501458354,
+          "issue_to_pr": 0.07933798280457287,
+          "repo_change": 0.07603248659937019,
+          "research": 0.19883828045022162
+        },
+        "size": {
+          "large": 0.06396117450923226,
+          "medium": 0.12048037902542477,
+          "small": 0.815558446465343
+        },
+        "needs_repo": 0.0419964877930751,
+        "own_tools": 0.01478647741315526,
+        "risk": {
+          "high": 0.07021562434458856,
+          "low": 0.8645771673365429,
+          "medium": 0.06520720831886855
+        }
+      }
+    },
+    {
+      "id": "first/answer-06",
+      "earlier": [],
+      "latest": "Compare Postgres and SQLite for a desktop app's local storage, with the tradeoffs for sync, migrations and backups.",
+      "chat_on": null,
+      "label": {
+        "kind": "answer",
+        "size": "medium",
+        "needs_repo": false,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "standing-order"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.8976541330133389,
+          "issue_to_pr": 0.004414562618566913,
+          "repo_change": 0.008468772899298918,
+          "research": 0.08946253146879525
+        },
+        "size": {
+          "large": 0.22210879404181785,
+          "medium": 0.24045926486577007,
+          "small": 0.537431941092412
+        },
+        "needs_repo": 0.1433855924088638,
+        "own_tools": 0.015853728787922475,
+        "risk": {
+          "high": 0.023952885030438062,
+          "low": 0.9455525016918048,
+          "medium": 0.030494613277757203
+        }
+      }
+    },
+    {
+      "id": "first/issue-01",
+      "earlier": [],
+      "latest": "Fix issue #11460",
+      "chat_on": null,
+      "label": {
+        "kind": "issue_to_pr",
+        "size": "medium",
+        "needs_repo": true,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "plan-work"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.006925315522651778,
+          "issue_to_pr": 0.9085541149962869,
+          "repo_change": 0.07110126797577503,
+          "research": 0.013419301505286455
+        },
+        "size": {
+          "large": 0.24897763906275894,
+          "medium": 0.46351623373843276,
+          "small": 0.2875061271988083
+        },
+        "needs_repo": 0.823779445746308,
+        "own_tools": 0.03421010464907604,
+        "risk": {
+          "high": 0.21105772385093002,
+          "low": 0.44905928184322086,
+          "medium": 0.33988299430584923
+        }
+      }
+    },
+    {
+      "id": "first/issue-02",
+      "earlier": [],
+      "latest": "Work on OpenAgentsInc/openagents#11233 and open a PR when the tests pass.",
+      "chat_on": null,
+      "label": {
+        "kind": "issue_to_pr",
+        "size": "medium",
+        "needs_repo": true,
+        "own_tools": false,
+        "risk": "medium",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "plan-work"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.005864600085030112,
+          "issue_to_pr": 0.9623274410770115,
+          "repo_change": 0.02314640111450215,
+          "research": 0.008661557723456347
+        },
+        "size": {
+          "large": 0.3276301561326193,
+          "medium": 0.5191848540012615,
+          "small": 0.1531849898661193
+        },
+        "needs_repo": 0.49770148227505384,
+        "own_tools": 0.07484177251520992,
+        "risk": {
+          "high": 0.4329725920767407,
+          "low": 0.31924651008069976,
+          "medium": 0.2477808978425595
+        }
+      }
+    },
+    {
+      "id": "first/repo-01",
+      "earlier": [],
+      "latest": "Rename the function parse_args to parse_cli across this repo and update the tests.",
+      "chat_on": null,
+      "label": {
+        "kind": "repo_change",
+        "size": "medium",
+        "needs_repo": true,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "plan-work"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.007674858681886022,
+          "issue_to_pr": 0.010856919947930543,
+          "repo_change": 0.9674997532129054,
+          "research": 0.013968468157277892
+        },
+        "size": {
+          "large": 0.3475305434913867,
+          "medium": 0.5474350350214138,
+          "small": 0.10503442148719948
+        },
+        "needs_repo": 0.8728524633278162,
+        "own_tools": 0.03200125171000249,
+        "risk": {
+          "high": 0.07436190079409526,
+          "low": 0.40650005777037923,
+          "medium": 0.5191380414355254
+        }
+      }
+    },
+    {
+      "id": "first/repo-02",
+      "earlier": [],
+      "latest": "Add a --verbose flag to the CLI in src/main.rs",
+      "chat_on": null,
+      "label": {
+        "kind": "repo_change",
+        "size": "small",
+        "needs_repo": true,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "plan-work"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.013970925725201925,
+          "issue_to_pr": 0.017277591000304227,
+          "repo_change": 0.9447920336740913,
+          "research": 0.02395944960040262
+        },
+        "size": {
+          "large": 0.05621590001501396,
+          "medium": 0.20767314595467654,
+          "small": 0.7361109540303095
+        },
+        "needs_repo": 0.7446815221923115,
+        "own_tools": 0.021867610964771883,
+        "risk": {
+          "high": 0.02861424934929015,
+          "low": 0.88894625395272,
+          "medium": 0.08243949669798985
+        }
+      }
+    },
+    {
+      "id": "first/repo-03",
+      "earlier": [],
+      "latest": "The build fails with error E0502 in crates/ledger, borrowed as mutable while also borrowed as immutable. Fix it.",
+      "chat_on": null,
+      "label": {
+        "kind": "repo_change",
+        "size": "small",
+        "needs_repo": true,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "plan-work"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.016450329887776255,
+          "issue_to_pr": 0.017645636259142207,
+          "repo_change": 0.9312248427431767,
+          "research": 0.034679191109904736
+        },
+        "size": {
+          "large": 0.14473685351211482,
+          "medium": 0.47759599911157014,
+          "small": 0.3776671473763151
+        },
+        "needs_repo": 0.9002275891122653,
+        "own_tools": 0.03776673343964244,
+        "risk": {
+          "high": 0.07767350828596574,
+          "low": 0.6298641568618927,
+          "medium": 0.2924623348521416
+        }
+      }
+    },
+    {
+      "id": "first/repo-04",
+      "earlier": [],
+      "latest": "Split the payment module into three files and keep every test passing.",
+      "chat_on": null,
+      "label": {
+        "kind": "repo_change",
+        "size": "large",
+        "needs_repo": true,
+        "own_tools": false,
+        "risk": "medium",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "plan-work"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.012346368156515896,
+          "issue_to_pr": 0.02490662713335952,
+          "repo_change": 0.9378497878498152,
+          "research": 0.02489721686030938
+        },
+        "size": {
+          "large": 0.1664082350208876,
+          "medium": 0.7553779692631427,
+          "small": 0.07821379571596965
+        },
+        "needs_repo": 0.9125269235009541,
+        "own_tools": 0.04111548112352839,
+        "risk": {
+          "high": 0.09983848842268031,
+          "low": 0.2778407223002871,
+          "medium": 0.6223207892770326
+        }
+      }
+    },
+    {
+      "id": "first/research-01",
+      "earlier": [],
+      "latest": "Run the test suite and tell me what fails.",
+      "chat_on": null,
+      "label": {
+        "kind": "research",
+        "size": "medium",
+        "needs_repo": true,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "plan-work"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.016993210061861882,
+          "issue_to_pr": 0.012505391604905495,
+          "repo_change": 0.02130545063486843,
+          "research": 0.9491959476983641
+        },
+        "size": {
+          "large": 0.33340750367023947,
+          "medium": 0.4829206967694755,
+          "small": 0.18367179956028507
+        },
+        "needs_repo": 0.8375464357117519,
+        "own_tools": 0.02705763204810397,
+        "risk": {
+          "high": 0.10341605971115443,
+          "low": 0.7851892139353159,
+          "medium": 0.11139472635352965
+        }
+      }
+    },
+    {
+      "id": "first/research-02",
+      "earlier": [],
+      "latest": "Find where we handle websocket reconnects in this codebase and explain how it works.",
+      "chat_on": null,
+      "label": {
+        "kind": "research",
+        "size": "medium",
+        "needs_repo": true,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "plan-work"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.18123129972594387,
+          "issue_to_pr": 0.009705043320149659,
+          "repo_change": 0.013121484236694632,
+          "research": 0.7959421727172118
+        },
+        "size": {
+          "large": 0.3491854491436249,
+          "medium": 0.48427590382964547,
+          "small": 0.16653864702672955
+        },
+        "needs_repo": 0.8497353986188086,
+        "own_tools": 0.038429824312499763,
+        "risk": {
+          "high": 0.06089988918492359,
+          "low": 0.8660330322039788,
+          "medium": 0.07306707861109756
+        }
+      }
+    },
+    {
+      "id": "first/own-tools-01",
+      "earlier": [],
+      "latest": "Run my /review skill on the current diff.",
+      "chat_on": null,
+      "label": {
+        "kind": "repo_change",
+        "size": "small",
+        "needs_repo": true,
+        "own_tools": true,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "own-tools"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.06795627283468632,
+          "issue_to_pr": 0.054560426762911264,
+          "repo_change": 0.08674620908412443,
+          "research": 0.790737091318278
+        },
+        "size": {
+          "large": 0.2025947992705524,
+          "medium": 0.42953630359709677,
+          "small": 0.3678688971323509
+        },
+        "needs_repo": 0.835584282602462,
+        "own_tools": 0.8634490081191109,
+        "risk": {
+          "high": 0.0529083055390038,
+          "low": 0.8474559591010251,
+          "medium": 0.09963573535997092
+        }
+      }
+    },
+    {
+      "id": "first/own-tools-02",
+      "earlier": [],
+      "latest": "Use my Linear MCP server to list the tickets assigned to me.",
+      "chat_on": null,
+      "label": {
+        "kind": "research",
+        "size": "small",
+        "needs_repo": false,
+        "own_tools": true,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "own-tools"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.13040063335447416,
+          "issue_to_pr": 0.1524270907142577,
+          "repo_change": 0.1339762090868203,
+          "research": 0.5831960668444478
+        },
+        "size": {
+          "large": 0.12939487037697966,
+          "medium": 0.20035047602817696,
+          "small": 0.6702546535948434
+        },
+        "needs_repo": 0.1786020332500281,
+        "own_tools": 0.8912579510070534,
+        "risk": {
+          "high": 0.046431221188395266,
+          "low": 0.9406971169584473,
+          "medium": 0.012871661853157365
+        }
+      }
+    },
+    {
+      "id": "first/risk-01",
+      "earlier": [],
+      "latest": "Deploy the worker to production.",
+      "chat_on": null,
+      "label": {
+        "kind": "repo_change",
+        "size": "small",
+        "needs_repo": true,
+        "own_tools": false,
+        "risk": "high",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "plan-work"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.044373883170266776,
+          "issue_to_pr": 0.053522389297932994,
+          "repo_change": 0.836048173923484,
+          "research": 0.06605555360831626
+        },
+        "size": {
+          "large": 0.22854107944701904,
+          "medium": 0.4202852370806779,
+          "small": 0.35117368347230304
+        },
+        "needs_repo": 0.8440130830656102,
+        "own_tools": 0.0336238621621088,
+        "risk": {
+          "high": 0.9541510101762108,
+          "low": 0.02146649314142678,
+          "medium": 0.02438249668236236
+        }
+      }
+    },
+    {
+      "id": "first/signed-out-01",
+      "earlier": [],
+      "latest": "What is a closure?",
+      "chat_on": null,
+      "situation": {
+        "claude": false
+      },
+      "label": {
+        "kind": "answer",
+        "size": "small",
+        "needs_repo": false,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "coder-loop",
+        "step": "only-one"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.9039131962430097,
+          "issue_to_pr": 0.004124894940823329,
+          "repo_change": 0.006139880217024157,
+          "research": 0.08582202859914265
+        },
+        "size": {
+          "large": 0.025133282735375365,
+          "medium": 0.02794129378405129,
+          "small": 0.9469254234805734
+        },
+        "needs_repo": 0.06300950498399498,
+        "own_tools": 0.015471445982135389,
+        "risk": {
+          "high": 0.010002162499768848,
+          "low": 0.977417714470428,
+          "medium": 0.012580123029803278
+        }
+      }
+    },
+    {
+      "id": "first/signed-out-02",
+      "earlier": [],
+      "latest": "Fix issue #42",
+      "chat_on": null,
+      "situation": {
+        "claude": false
+      },
+      "label": {
+        "kind": "issue_to_pr",
+        "size": "medium",
+        "needs_repo": true,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "coder-loop",
+        "step": "only-one"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.0069679576657678205,
+          "issue_to_pr": 0.9188823563738334,
+          "repo_change": 0.062454176188582754,
+          "research": 0.011695509771815896
+        },
+        "size": {
+          "large": 0.23943833240382228,
+          "medium": 0.497056574800343,
+          "small": 0.2635050927958347
+        },
+        "needs_repo": 0.8437944751952468,
+        "own_tools": 0.03446070384304405,
+        "risk": {
+          "high": 0.1979746032129758,
+          "low": 0.4373831054888401,
+          "medium": 0.36464229129818415
+        }
+      }
+    },
+    {
+      "id": "first/near-limit-01",
+      "earlier": [],
+      "latest": "Fix the flaky test in tests/api.rs",
+      "chat_on": null,
+      "situation": {
+        "five_hour": 95
+      },
+      "label": {
+        "kind": "repo_change",
+        "size": "small",
+        "needs_repo": true,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "coder-loop",
+        "step": "near-limit"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.01376481941787461,
+          "issue_to_pr": 0.023450244733307504,
+          "repo_change": 0.9162008964767581,
+          "research": 0.04658403937205981
+        },
+        "size": {
+          "large": 0.11864757665789355,
+          "medium": 0.4222862175417499,
+          "small": 0.45906620580035645
+        },
+        "needs_repo": 0.8920292021073113,
+        "own_tools": 0.027268728614458417,
+        "risk": {
+          "high": 0.06582080277894571,
+          "low": 0.6119768414781886,
+          "medium": 0.32220235574286554
+        }
+      }
+    },
+    {
+      "id": "first/near-limit-02",
+      "earlier": [],
+      "latest": "Run my /review skill on the current diff.",
+      "chat_on": null,
+      "situation": {
+        "five_hour": 95
+      },
+      "label": {
+        "kind": "repo_change",
+        "size": "small",
+        "needs_repo": true,
+        "own_tools": true,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "own-tools"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.06795627283468632,
+          "issue_to_pr": 0.054560426762911264,
+          "repo_change": 0.08674620908412443,
+          "research": 0.790737091318278
+        },
+        "size": {
+          "large": 0.2025947992705524,
+          "medium": 0.42953630359709677,
+          "small": 0.3678688971323509
+        },
+        "needs_repo": 0.835584282602462,
+        "own_tools": 0.8634490081191109,
+        "risk": {
+          "high": 0.0529083055390038,
+          "low": 0.8474559591010251,
+          "medium": 0.09963573535997092
+        }
+      }
+    },
+    {
+      "id": "first/leaning-01",
+      "earlier": [],
+      "latest": "Add input validation to the signup form.",
+      "chat_on": null,
+      "situation": {
+        "prefer": "coder-loop"
+      },
+      "label": {
+        "kind": "repo_change",
+        "size": "medium",
+        "needs_repo": true,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "coder-loop",
+        "step": "leaning"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.01451779226664764,
+          "issue_to_pr": 0.035448362239596826,
+          "repo_change": 0.9212190655935557,
+          "research": 0.02881477990019981
+        },
+        "size": {
+          "large": 0.17578750478651947,
+          "medium": 0.6074060276475961,
+          "small": 0.21680646756588431
+        },
+        "needs_repo": 0.8948908268276653,
+        "own_tools": 0.020819897024644214,
+        "risk": {
+          "high": 0.0806054292943236,
+          "low": 0.6570421749172052,
+          "medium": 0.2623523957884712
+        }
+      }
+    },
+    {
+      "id": "first/speed-01",
+      "earlier": [],
+      "latest": "Fix the typo 'recieve' in README.md",
+      "chat_on": null,
+      "situation": {
+        "cost": 1,
+        "speed": 5
+      },
+      "label": {
+        "kind": "repo_change",
+        "size": "small",
+        "needs_repo": true,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "coder-loop",
+        "step": "quick-turn"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.007405936772803649,
+          "issue_to_pr": 0.010699031567336712,
+          "repo_change": 0.9718613358100644,
+          "research": 0.010033695849795224
+        },
+        "size": {
+          "large": 0.027637680872025193,
+          "medium": 0.04053607771570056,
+          "small": 0.9318262414122743
+        },
+        "needs_repo": 0.7965145616192432,
+        "own_tools": 0.04342954047709742,
+        "risk": {
+          "high": 0.04794425975754344,
+          "low": 0.8679663560566031,
+          "medium": 0.08408938418585339
+        }
+      }
+    },
+    {
+      "id": "first/speed-02",
+      "earlier": [],
+      "latest": "Fix the typo 'recieve' in README.md",
+      "chat_on": null,
+      "label": {
+        "kind": "repo_change",
+        "size": "small",
+        "needs_repo": true,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": null
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "plan-work"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.007405936772803649,
+          "issue_to_pr": 0.010699031567336712,
+          "repo_change": 0.9718613358100644,
+          "research": 0.010033695849795224
+        },
+        "size": {
+          "large": 0.027637680872025193,
+          "medium": 0.04053607771570056,
+          "small": 0.9318262414122743
+        },
+        "needs_repo": 0.7965145616192432,
+        "own_tools": 0.04342954047709742,
+        "risk": {
+          "high": 0.04794425975754344,
+          "low": 0.8679663560566031,
+          "medium": 0.08408938418585339
+        }
+      }
+    },
+    {
+      "id": "follow/continue-01",
+      "earlier": [
+        {
+          "role": "user",
+          "text": "Add a --verbose flag to the CLI in src/main.rs"
+        },
+        {
+          "role": "assistant",
+          "text": "Added --verbose in src/main.rs; it turns on debug logging. Tests pass."
+        }
+      ],
+      "latest": "Also make it print the config path it loaded.",
+      "chat_on": "claude-code",
+      "label": {
+        "kind": "repo_change",
+        "size": "small",
+        "needs_repo": true,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": false
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "continue"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.011314607137907001,
+          "issue_to_pr": 0.017789196326106545,
+          "repo_change": 0.9508357317698444,
+          "research": 0.020060464766141956
+        },
+        "size": {
+          "large": 0.043722699910663354,
+          "medium": 0.23813523795765565,
+          "small": 0.7181420621316811
+        },
+        "needs_repo": 0.8265183191775672,
+        "own_tools": 0.0197277528305817,
+        "risk": {
+          "high": 0.021500459236257728,
+          "low": 0.9222608224873632,
+          "medium": 0.05623871827637911
+        },
+        "new_work": 0.21841882009904123
+      }
+    },
+    {
+      "id": "follow/continue-02",
+      "earlier": [
+        {
+          "role": "user",
+          "text": "Fix the flaky test in tests/api.rs"
+        },
+        {
+          "role": "assistant",
+          "text": "The test raced the server start; it now waits for the port. It passed 50 runs in a row."
+        }
+      ],
+      "latest": "looks good, thanks",
+      "chat_on": "claude-code",
+      "label": {
+        "kind": "answer",
+        "size": "small",
+        "needs_repo": false,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": false
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "continue"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.18802239699491075,
+          "issue_to_pr": 0.20575321605685615,
+          "repo_change": 0.41249008802129994,
+          "research": 0.19373429892693317
+        },
+        "size": {
+          "large": 0.0685620583755224,
+          "medium": 0.23251567552520955,
+          "small": 0.6989222660992681
+        },
+        "needs_repo": 0.16743335925009514,
+        "own_tools": 0.011831609567579336,
+        "risk": {
+          "high": 0.07016731302253394,
+          "low": 0.7950130307454052,
+          "medium": 0.1348196562320608
+        },
+        "new_work": 0.0426578703510882
+      }
+    },
+    {
+      "id": "follow/continue-03",
+      "earlier": [
+        {
+          "role": "user",
+          "text": "Fix the flaky test in tests/api.rs"
+        },
+        {
+          "role": "assistant",
+          "text": "The test raced the server start; it now waits for the port."
+        }
+      ],
+      "latest": "That didn't work, it still fails on CI with the same timeout.",
+      "chat_on": "claude-code",
+      "label": {
+        "kind": "repo_change",
+        "size": "small",
+        "needs_repo": true,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": false
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "continue"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.05507951611871692,
+          "issue_to_pr": 0.05110850557480937,
+          "repo_change": 0.6727196862513989,
+          "research": 0.22109229205507475
+        },
+        "size": {
+          "large": 0.2501896783771283,
+          "medium": 0.5575822972306168,
+          "small": 0.19222802439225486
+        },
+        "needs_repo": 0.7597924256392676,
+        "own_tools": 0.02040941154688398,
+        "risk": {
+          "high": 0.065927102401546,
+          "low": 0.7039527946482991,
+          "medium": 0.23012010295015498
+        },
+        "new_work": 0.12052317342877436
+      }
+    },
+    {
+      "id": "follow/continue-04",
+      "earlier": [
+        {
+          "role": "user",
+          "text": "What is a mutex?"
+        },
+        {
+          "role": "assistant",
+          "text": "A mutex lets one thread at a time hold a lock on shared data."
+        }
+      ],
+      "latest": "and how is that different from a semaphore?",
+      "chat_on": "coder-loop",
+      "label": {
+        "kind": "answer",
+        "size": "small",
+        "needs_repo": false,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": false
+      },
+      "expect": {
+        "harness": "coder-loop",
+        "step": "continue"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.8821103253040204,
+          "issue_to_pr": 0.005976739274822362,
+          "repo_change": 0.009615159062014348,
+          "research": 0.10229777635914292
+        },
+        "size": {
+          "large": 0.03519602905425432,
+          "medium": 0.04484721237831106,
+          "small": 0.9199567585674346
+        },
+        "needs_repo": 0.0442971572000885,
+        "own_tools": 0.013887384475718155,
+        "risk": {
+          "high": 0.01161416929669477,
+          "low": 0.9731526992916985,
+          "medium": 0.015233131411606586
+        },
+        "new_work": 0.11271600351997943
+      }
+    },
+    {
+      "id": "follow/continue-05",
+      "earlier": [
+        {
+          "role": "user",
+          "text": "Split the payment module into three files and keep every test passing."
+        },
+        {
+          "role": "assistant",
+          "text": "Moved the invoice types into invoice.rs. Next is the ledger code."
+        }
+      ],
+      "latest": "keep going",
+      "chat_on": "claude-code",
+      "situation": {
+        "five_hour": 95
+      },
+      "label": {
+        "kind": "repo_change",
+        "size": "medium",
+        "needs_repo": true,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": false
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "continue"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.017405027116603137,
+          "issue_to_pr": 0.02362284582152216,
+          "repo_change": 0.9309386060639211,
+          "research": 0.028033520997953615
+        },
+        "size": {
+          "large": 0.2248783186245078,
+          "medium": 0.6625991466000214,
+          "small": 0.11252253477547071
+        },
+        "needs_repo": 0.9296030606257742,
+        "own_tools": 0.017648670830601718,
+        "risk": {
+          "high": 0.07832104866704294,
+          "low": 0.30015431815095645,
+          "medium": 0.6215246331820007
+        },
+        "new_work": 0.03005598900188087
+      }
+    },
+    {
+      "id": "follow/new-01",
+      "earlier": [
+        {
+          "role": "user",
+          "text": "What is a Rust trait object?"
+        },
+        {
+          "role": "assistant",
+          "text": "A trait object is a value whose concrete type is known only at run time, behind a pointer such as Box<dyn Trait>."
+        }
+      ],
+      "latest": "Now fix issue #11460",
+      "chat_on": "coder-loop",
+      "label": {
+        "kind": "issue_to_pr",
+        "size": "medium",
+        "needs_repo": true,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": true
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "plan-work"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.007855438971389093,
+          "issue_to_pr": 0.8164696360715531,
+          "repo_change": 0.15548957659173052,
+          "research": 0.0201853483653272
+        },
+        "size": {
+          "large": 0.30085579001575186,
+          "medium": 0.4664062636679631,
+          "small": 0.23273794631628505
+        },
+        "needs_repo": 0.797499521177374,
+        "own_tools": 0.022232760245521125,
+        "risk": {
+          "high": 0.22018762925511778,
+          "low": 0.4152415188554939,
+          "medium": 0.36457085188938837
+        },
+        "new_work": 0.7161692396681674
+      }
+    },
+    {
+      "id": "follow/new-02",
+      "earlier": [
+        {
+          "role": "user",
+          "text": "Add a --verbose flag to the CLI in src/main.rs"
+        },
+        {
+          "role": "assistant",
+          "text": "Added --verbose in src/main.rs. Tests pass."
+        }
+      ],
+      "latest": "Unrelated question: what does HTTP status 418 mean?",
+      "chat_on": "claude-code",
+      "label": {
+        "kind": "answer",
+        "size": "small",
+        "needs_repo": false,
+        "own_tools": false,
+        "risk": "low",
+        "new_work": true
+      },
+      "expect": {
+        "harness": "coder-loop",
+        "step": "cheap-answer"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.8311859820103181,
+          "issue_to_pr": 0.00372099632203249,
+          "repo_change": 0.008600424083076862,
+          "research": 0.15649259758457246
+        },
+        "size": {
+          "large": 0.01342209809760612,
+          "medium": 0.012615190826510274,
+          "small": 0.9739627110758836
+        },
+        "needs_repo": 0.017763725885785408,
+        "own_tools": 0.012542203659981087,
+        "risk": {
+          "high": 0.011298319927331208,
+          "low": 0.9784042591011223,
+          "medium": 0.010297420971546489
+        },
+        "new_work": 0.8881155529986392
+      }
+    },
+    {
+      "id": "follow/new-03",
+      "earlier": [
+        {
+          "role": "user",
+          "text": "What does the payment module do?"
+        },
+        {
+          "role": "assistant",
+          "text": "It builds invoices, records ledger entries and calls the payment provider."
+        }
+      ],
+      "latest": "OK, now split the payment module into three files and keep every test passing.",
+      "chat_on": "coder-loop",
+      "label": {
+        "kind": "repo_change",
+        "size": "large",
+        "needs_repo": true,
+        "own_tools": false,
+        "risk": "medium",
+        "new_work": true
+      },
+      "expect": {
+        "harness": "claude-code",
+        "step": "plan-work"
+      },
+      "judged": {
+        "kind": {
+          "answer": 0.009311181381658852,
+          "issue_to_pr": 0.018025790289528422,
+          "repo_change": 0.9572642710747011,
+          "research": 0.015398757254111418
+        },
+        "size": {
+          "large": 0.10556058808933425,
+          "medium": 0.8218983854802229,
+          "small": 0.07254102643044275
+        },
+        "needs_repo": 0.9109458000448071,
+        "own_tools": 0.03263301652678511,
+        "risk": {
+          "high": 0.1160283564689967,
+          "low": 0.28110466610850604,
+          "medium": 0.6028669774224972
+        },
+        "new_work": 0.3127523972413737
+      }
+    }
+  ]
+}

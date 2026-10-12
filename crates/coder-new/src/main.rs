@@ -369,7 +369,15 @@ fn run() -> io::Result<()> {
             execute!(io::stdout(), BeginSynchronizedUpdate)?;
             terminal.draw(|frame| ui::render(frame, &mut app))?;
             execute!(io::stdout(), EndSynchronizedUpdate)?;
-            if event::poll(next_tick.saturating_duration_since(Instant::now()))? {
+            // A message waiting for System One's route is sent as soon as
+            // the answer lands, not at the next tick (#11460).
+            let wait = next_tick.saturating_duration_since(Instant::now());
+            let wait = if app.routing_pending() {
+                wait.min(Duration::from_millis(10))
+            } else {
+                wait
+            };
+            if event::poll(wait)? {
                 let mut keep_running = app.handle(event::read()?);
                 // Trackpads emit bursts; update the viewport once per drained batch.
                 for _ in 0..255 {

@@ -168,6 +168,8 @@ impl App {
             || self.checking_key
             || self.checking_jev
             || self.brainstorm_job.is_some()
+            // A message waiting for its route goes first (#11460).
+            || self.pending_route.is_some()
             // A usage limit holds the queue until it resets (#11179).
             || self.long_session.paused()
             || self.screen != Screen::Conversation

@@ -11,8 +11,8 @@
 //! (`docs/api/2026-10-02-agentic-execution-router.md`, section 4):
 //! [`candidates`] keeps the harnesses that are on, healthy and runnable
 //! here, and gives every other one a typed [`Exclusion`]. Choosing among the
-//! candidates is the router's job (phase 2); until it lands, [`fixed_rule`]
-//! takes the first one. [`App::submit_on`] starts a turn on whichever is
+//! candidates is router v0's job ([`crate::router`], #11460); [`fixed_rule`]
+//! takes the first one when the router is off or System One doesn't answer. [`App::submit_on`] starts a turn on whichever is
 //! chosen.
 //!
 //! There is no mode switch (#11453): a chat runs on the harness chosen for
@@ -166,6 +166,15 @@ fn claude_at_limit(now: u64) -> bool {
         .is_some_and(|usage| usage.windows().any(|window| window.used_percent >= 100))
 }
 
+/// The share of the Claude plan's five-hour window used, as Claude Code
+/// last reported it.
+fn claude_five_hour(now: u64) -> Option<u8> {
+    crate::claude_plan::plan_usage()
+        .and_then(|usage| usage.current(now))
+        .and_then(|usage| usage.five_hour)
+        .map(|window| window.used_percent)
+}
+
 /// Who pays when `harness` runs under `facts`.
 #[must_use]
 pub fn payer(harness: Harness, facts: &Facts) -> Payer {
@@ -230,7 +239,7 @@ pub fn candidates(facts: &Facts) -> Candidates {
     Candidates { admitted, excluded }
 }
 
-/// The selector until the router lands (phase 2): the first admitted
+/// The selector when router v0 is off or has no answer: the first admitted
 /// candidate, which is Claude Code when its plugin is on and healthy, and
 /// otherwise the Coder loop, which is always there.
 #[must_use]
@@ -243,12 +252,20 @@ pub fn fixed_rule(candidates: &Candidates) -> Harness {
 }
 
 impl App {
-    /// The harness this chat's next turn runs on: the one it already runs
-    /// on, or, for a chat's first turn, the one the selector picks. Each new
-    /// chat is a new piece of work and is routed afresh; follow-ups stay on
-    /// its harness (#11451, owner decision 1). Routing at other work
-    /// boundaries inside a chat comes later.
+    /// The harness this chat's next turn runs on: router v0's call when it
+    /// judged this message ([`App::ask_router`]), otherwise the one the
+    /// chat already runs on, or, for a chat's first turn with no router,
+    /// the fixed rule's pick. Each new piece of work is routed; follow-ups
+    /// System One judges a continuation stay on the chat's harness (#11451,
+    /// owner decision 1). A chat that moves to Claude Code starts its
+    /// session from the transcript ([`crate::live::Chat::claude_resume`]).
     pub fn route_turn(&mut self) -> Harness {
+        if let Some(routed) = self.routed.take() {
+            self.live.runs_on = Some(routed.harness);
+            self.routing_rule = Some(routed.rule);
+            self.routing_router = Some((routed.probabilities, routed.trace));
+            return routed.harness;
+        }
         if let Some(harness) = self.live.runs_on {
             return harness;
         }
@@ -262,6 +279,128 @@ impl App {
             crate::routing_record::Rule::FirstAdmitted
         });
         harness
+    }
+
+    /// What router v0's policy reads besides System One's judgment.
+    fn situation(&self, facts: &Facts, candidates: &Candidates) -> crate::router::Situation {
+        let admitted = candidates.admitted.clone();
+        let rank = |harness: Harness| facts.leaning.stances.get(harness).rank();
+        let preferred = admitted.first().copied().filter(|first| {
+            admitted
+                .iter()
+                .skip(1)
+                .all(|other| rank(*other) > rank(*first))
+        });
+        let claude_five_hour = admitted
+            .contains(&Harness::ClaudeCode)
+            .then(|| claude_five_hour(atif::now_ms() / 1000))
+            .flatten();
+        crate::router::Situation {
+            payers: admitted
+                .iter()
+                .map(|harness| (*harness, payer(*harness, facts)))
+                .collect(),
+            admitted,
+            preferred,
+            current: self.live.runs_on,
+            claude_five_hour,
+            time_weight: self.preferences.time_weight(),
+        }
+    }
+
+    /// At a routing point, holds the message in the input and asks System
+    /// One about it on a thread of its own (#11460); [`App::poll_route`]
+    /// sends it once the answer or the budget is in. A routing point is a
+    /// chat's first message, or a follow-up while no turn runs, whenever
+    /// more than one harness is admitted. Pins, commands, and messages sent
+    /// while a turn runs are not routing points. Returns whether it took
+    /// the message.
+    pub(crate) fn ask_router(&mut self) -> bool {
+        if self.routed.is_some()
+            || self.pending_route.is_some()
+            || self.live.busy
+            || self.request.is_some()
+            || self.routing_rule == Some(crate::routing_record::Rule::Pin)
+            || self.draft.text.trim_start().starts_with('/')
+            || !crate::router::enabled()
+        {
+            return false;
+        }
+        let facts = Facts::read(self);
+        let candidates = candidates(&facts);
+        if candidates.admitted.len() <= 1 {
+            return false;
+        }
+        let situation = self.situation(&facts, &candidates);
+        let receiver = crate::router::ask(
+            &crate::router::earlier(&self.live.entries),
+            &self.draft.text,
+            situation.follow_up(),
+        );
+        self.pending_route = Some(crate::router::Pending {
+            receiver,
+            started: std::time::Instant::now(),
+            situation,
+            draft: std::mem::take(&mut self.draft),
+            composer: std::mem::take(&mut self.composer),
+        });
+        true
+    }
+
+    /// Whether a message waits for System One's judgment.
+    #[must_use]
+    pub fn routing_pending(&self) -> bool {
+        self.pending_route.is_some()
+    }
+
+    /// Sends the held message once System One answered or the budget ran
+    /// out. Called on every pass of the terminal's loop.
+    pub fn poll_route(&mut self) {
+        if let Some(answer) = self
+            .pending_route
+            .as_ref()
+            .and_then(crate::router::Pending::poll)
+        {
+            self.finish_route(answer);
+        }
+    }
+
+    /// Waits for the held message's judgment and sends it, for callers
+    /// with no screen to keep drawing (`coder chat`).
+    pub fn settle_route(&mut self) {
+        if let Some(answer) = self
+            .pending_route
+            .as_ref()
+            .map(crate::router::Pending::wait)
+        {
+            self.finish_route(answer);
+        }
+    }
+
+    fn finish_route(&mut self, answer: Result<crate::router::Answered, String>) {
+        let Some(pending) = self.pending_route.take() else {
+            return;
+        };
+        self.routed = Some(crate::router::decide(
+            answer,
+            &pending.situation,
+            pending.started.elapsed(),
+        ));
+        // Put the held message back in the input and send it; what the
+        // person typed meanwhile comes back after.
+        let typed = std::mem::replace(&mut self.draft, pending.draft);
+        let typed_composer = std::mem::replace(&mut self.composer, pending.composer);
+        self.submit_live();
+        // A path that did not route the message leaves no call behind.
+        self.routed = None;
+        if self.draft.text.is_empty() && self.composer.images.is_empty() {
+            self.draft = typed;
+            self.composer = typed_composer;
+        } else if !typed.text.is_empty() {
+            self.draft.text.push('\n');
+            self.draft.text.push_str(&typed.text);
+            self.draft.cursor = self.draft.text.len();
+        }
     }
 
     /// Whether this chat runs on Claude Code.

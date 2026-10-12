@@ -107,6 +107,12 @@ pub struct Inputs {
     pub features: Features,
     #[serde(default)]
     pub probabilities: Vec<Probability>,
+    /// What router v0 did at this routing point (#11460): its question set
+    /// and policy versions, the step that picked, and how long System One
+    /// took. `None` when no router ran (a pin, the fixed rule, a turn
+    /// mid-way).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub router: Option<crate::router::Trace>,
 }
 
 /// What made the choice.
@@ -122,9 +128,14 @@ pub enum Rule {
     /// The chat's harness went away mid-chat (its plugin was turned off)
     /// and the fixed rule picked again.
     Reroute,
-    /// A router read the inputs and picked it.
+    /// Router v0 read System One's judgments and picked it
+    /// ([`crate::router`]); for a follow-up judged a continuation, it chose
+    /// to stay.
     Router,
-    /// The chosen harness failed and this one took the turn instead.
+    /// The router asked System One and had no answer in time, so the fixed
+    /// rule picked: a follow-up stays on its harness, a new chat takes the
+    /// first admitted candidate. Also: the chosen harness failed and this
+    /// one took the turn instead.
     Fallback,
 }
 
@@ -263,6 +274,13 @@ thread_local! {
     /// thread only.
     static TEST: std::cell::RefCell<Option<(PathBuf, crate::harness_plugin::Facts)>> =
         const { std::cell::RefCell::new(None) };
+}
+
+/// Sends this test thread's records to a folder, with the facts its App's
+/// records read, or stops them with `None`.
+#[cfg(test)]
+pub(crate) fn record_to(to: Option<(PathBuf, crate::harness_plugin::Facts)>) {
+    TEST.with(|test| *test.borrow_mut() = to);
 }
 
 /// The facts the candidate check reads for `app`.
@@ -629,6 +647,12 @@ impl crate::App {
     /// records are off.
     pub(crate) fn record_choice(&mut self, harness: Harness, images: usize, prompt_chars: usize) {
         let rule = self.routing_rule.take().unwrap_or(Rule::Continues);
+        let (probabilities, router) = self
+            .routing_router
+            .take()
+            .map_or((Vec::new(), None), |(probabilities, trace)| {
+                (probabilities, Some(trace))
+            });
         self.record_end(Some(Ended::Stopped), None, None);
         let Some(recorder) = recorder() else {
             return;
@@ -647,7 +671,8 @@ impl crate::App {
                     prompt_chars: u32::try_from(prompt_chars).unwrap_or(u32::MAX),
                     pinned_model: crate::models::pinned(&self.plugins.model),
                 },
-                probabilities: Vec::new(),
+                probabilities,
+                router,
             },
             harness,
             rule,
@@ -724,6 +749,7 @@ mod tests {
                     model: "jev-1.13".into(),
                     door: "typesafe".into(),
                 }],
+                router: None,
             },
             harness,
             rule: Rule::FirstAdmitted,
