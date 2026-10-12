@@ -557,6 +557,8 @@ ARMS: dict[str, dict] = {
     "Bchecks": {"tools": "checks"},            # round 0's run_check server
     "C": {"finder": "oracle"},                 # oracle briefing, B0's tools
     "BH": {"tools": "verify", "finder": "haiku"},  # Haiku briefer (docs/inference/haiku-briefer.md)
+    "BC": {"tools": "verify", "finder": "clef-arm"},  # Clef door's file judgments (#11389, briefer_arms.py)
+    "BJ": {"tools": "verify", "finder": "jev-arm"},   # Jev door's file judgments (#11389)
     "Brelated": {"tools": "verify+related"},
     "Boutline": {"tools": "verify+outline"},
     "Bfinish": {"tools": "verify+finish"},

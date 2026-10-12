@@ -415,6 +415,30 @@ def haiku_files(task: dict, levers: dict, root: Path | None) -> tuple[list[dict]
     return cands[: int(levers["briefing_files"])], f"{used}; Haiku fell back", meta
 
 
+def door_files(task: dict, levers: dict) -> tuple[list[dict], str, dict]:
+    """The Briefer's file judgments asked of a decision door (#11389):
+    filefind's candidates without its card decision, then decide.rs's Noul
+    per file at the door the lever names (`clef-arm`, `hosted-arm`,
+    `jev-arm`). Kept files (p >= 0.35, at least 3) in probability order.
+    Falls back to filefind's own list when the door does not answer."""
+    import briefer_arms as arms
+
+    arm = levers["finder"].removesuffix("-arm")
+    cands, used = finder_files(
+        task, dict(levers, briefing_files=int(levers.get("briefer_candidates", 12))), no_cards=True)
+    row = arms.run_door(arm, task, cands)
+    meta = {k: row[k] for k in ("arm", "secs", "cost_usd", "unpriced", "errors", "kind")}
+    meta["candidates"] = [c["path"] for c in cands]
+    if row["ok"] and row["keep"]:
+        p = {j["path"]: j["p"] for j in row["judgments"]}
+        by = {c["path"]: c for c in cands}
+        files = [dict(by[path], score=p[path], why=[f"{arm} door: p={p[path]:.2f} the fix needs it"] + by[path]["why"][:2])
+                 for path in sorted(row["keep"], key=lambda x: -p[x])]
+        return files[: int(levers["briefing_files"])], f"{used}; {arm} door judgments", meta
+    meta["fallback"] = "; ".join(row["errors"][:2]) or "the door kept no file"
+    return cands[: int(levers["briefing_files"])], f"{used}; {arm} door fell back", meta
+
+
 def build(task: dict, levers: dict, seeds: list[dict] | None = None, wrong: str | None = None,
           root: Path | None = None) -> dict:
     """The briefing. `seeds` and `wrong` make a re-briefing (#11311): the
@@ -428,6 +452,8 @@ def build(task: dict, levers: dict, seeds: list[dict] | None = None, wrong: str 
         files, finder_used = oracle_files(task), "oracle"
     elif finder in ("haiku", "haiku-solo"):
         files, finder_used, briefer = haiku_files(task, levers, root)
+    elif finder in ("clef-arm", "hosted-arm", "jev-arm"):
+        files, finder_used, briefer = door_files(task, levers)
     elif finder == "finder":
         files, finder_used = finder_files(task, levers)
     else:

@@ -1,0 +1,25 @@
+{
+  "tag": "ba1",
+  "frozen": "2026-10-11",
+  "issue": 11389,
+  "question": "On the Briefer's judgments alone (which candidate files the fix needs; the issue's kind), how do a decision door (Clef-Flash local, the OpenAgents decision API, Jev on TypeSafe) and the constrained Haiku agent compare on accuracy against the fix's own files, agreement with each other, cost and seconds, given the same candidates?",
+  "issues": [10074, 10167, 10179, 10181, 10201, 10228, 10248, 10258, 10273, 10283, 10289, 10295, 10298, 10299, 10301, 10349, 10369, 10370, 10893, 10986, 11118],
+  "issue_selection": "The 21 S2 issues of the Haiku briefer's recall table (docs/inference/haiku-briefer.md), chosen before any arm ran here. Labels are each fix commit's own files (task.json source_files + test_files).",
+  "arms": ["clef", "hosted", "jev", "haiku"],
+  "candidates": 12,
+  "reps": 1,
+  "levers": {
+    "candidates_from": "filefind query --no-cards --k 12 at the fix's parent (Vertex embeddings, FILEFIND_EMBEDDINGS=vertex); cached per issue so every arm reads the same list",
+    "door_questions": "decide.rs's exact questions: Noul 'Does the fix for this issue need to change this file?' over the issue (4000 chars) + the file's first 80 lines; Choice issue kind over five options",
+    "keep_rule": "p >= 0.35, at least 3 kept (decide.rs KEEP_AT, MIN_FILES)",
+    "haiku": "haiku_briefer.ask with the same candidates and its default levers (14 turns, 120 s, $0.40); a candidate it names in role change or test is keep"
+  },
+  "pins": {
+    "clef": "clef-flash on this Mac's Ollama (MLX), 127.0.0.1:11434",
+    "hosted": "https://openagents.com/api/v1/systemone (model jev-latest requested; the answering door is recorded per judgment)",
+    "jev": "https://api.typesafe.ai/v1/systemone, jev-latest",
+    "haiku": "claude-haiku-5-5 through the claude CLI on the owner's subscription login"
+  },
+  "outcome": "Per arm: judgment accuracy, keep precision, recall of the fix's files inside the candidates, top-1, $ per issue, seconds. Pairwise agreement per (issue, file); every disagreement recorded in summary.json divergences. Downstream pass rate is not measured by this plan: it needs agent trials (finder lever clef-arm vs haiku in an ab.py plan).",
+  "noise": "One rep. Doors are deterministic per state; the Haiku agent is not (its own S2 rerun spread is unmeasured here). With 21 issues and about 250 judgments, an accuracy gap under about 0.06 is inside the noise."
+}
