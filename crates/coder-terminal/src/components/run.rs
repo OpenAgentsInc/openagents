@@ -260,7 +260,12 @@ pub fn lines(row: &RunRow, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
         RunRow::Failed { text } => block.text(&mut out, 0, "", text, full),
         RunRow::Stopped { text } => block.text(&mut out, 0, "", text, three),
         RunRow::Tools(rows) => {
-            for row in rows {
+            for (index, row) in rows.iter().enumerate() {
+                // A thought is a block of its own, so it keeps one blank
+                // row above it when a call or another thought comes before.
+                if index > 0 && matches!(row, ToolRow::Thought(_)) {
+                    out.push(Line::default());
+                }
                 block.tool(&mut out, row);
             }
         }
@@ -837,6 +842,11 @@ mod tests {
             "**Planning the fix**\n\nThen `cargo test`.".into(),
         )]);
         assert_eq!(text(&tool, 80), [" ◆ Planning the fix"]);
+        let spaced = RunRow::Tools(vec![
+            ToolRow::Thought("First".into()),
+            ToolRow::Thought("Second".into()),
+        ]);
+        assert_eq!(text(&spaced, 80), [" ◆ First", "", " ◆ Second"]);
         let long = RunRow::Tools(vec![ToolRow::Thought(format!(
             "**{}**",
             "word ".repeat(30).trim()
