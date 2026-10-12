@@ -2,8 +2,8 @@
 
 Live since 2026-10-12. One always-on NVIDIA H100 80 GB that serves our
 open-weight Clef models to the decision gateway: `POST /v1/decisions`
-(`openagents/decide`, `clef-flash`, `clef`) and, after Jev and the Pylons,
-`POST /v1/systemone` ([docs/api/decisions.md](../api/decisions.md),
+(`openagents/decide`, `clef-flash`, `clef`) and `POST /v1/systemone`, as
+the first door on both (Clef first, Jev as a backup, since 2026-10-12) ([docs/api/decisions.md](../api/decisions.md),
 [#11446](https://github.com/OpenAgentsInc/openagents/issues/11446)).
 
 ## Where it is
@@ -91,8 +91,8 @@ from stop to serving.
 Its log: Cloud Logging, `resource.type="cloud_run_job"
 resource.labels.job_name="clef-decisions-restarter"`.
 
-While the VM is down, `openagents/decide` falls through to Jev, then
-Vertex; `clef-flash` and `clef` answer `503 unavailable` until it is back.
+While the VM is down, `openagents/decide` and `/v1/systemone` fall
+through to the Pylons, then Jev, then Vertex; `clef-flash` and `clef` answer `503 unavailable` until it is back.
 
 ## Checking it
 
@@ -133,7 +133,7 @@ gcloud compute ssh clef-decisions-h100 --zone us-central1-a --project openagents
 
 The boot script swaps the bundle in (the old one stays at `/opt/clef.old`)
 and restarts both services: about a minute with no hosted Clef, during
-which `openagents/decide` answers from Jev. Pinning `clef-bundle` keeps a
+which decisions are answered by the Pylons or Jev. Pinning `clef-bundle` keeps a
 later `bin/latest` from changing the VM on its next restart; remove the key
 to follow `bin/latest`. Roll back by setting the previous tag.
 

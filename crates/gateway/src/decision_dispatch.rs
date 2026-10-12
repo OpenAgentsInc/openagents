@@ -4,32 +4,34 @@
 //! The chain, each door asked only when every door before it could not
 //! answer:
 //!
-//! 0. **Jev** (TypeSafe's API, first-class since the owner's 2026-10-10
-//!    decision), under the gateway's own house key: `TYPESAFE_API_KEY`, else
-//!    the Secret Manager secret `jev_secret`. `no_jev` turns it off. A
-//!    request with `X-Decision-Order: pylon`, or for `clef-flash` or
-//!    `openagents/pylon`, asks the Pylons first and Jev last.
-//! 1. **Connected Pylons.** The gateway reads NIP-PYLON beacons (`30200`)
+//! Clef first, Jev as a backup (owner, 2026-10-12: "make sure it's a
+//! backup, I want clef clef clef"). The default order ([`Order::ClefFirst`]):
+//!
+//! 1. **Our hosted Clef** (below).
+//! 2. **Connected Pylons.** The gateway reads NIP-PYLON beacons (`30200`)
 //!    on its relay and keeps the pylons that advertise a decision service
 //!    (`<pylon key>:pylon/decision` on the `cj-decision` lane) and have a
 //!    free slot. It sends the decision as a NIP-DEC job (`25910`, NIP-44
 //!    encrypted, `jev_hosted::RelayExchange`), waits with a deadline,
 //!    checks the answer's shape and the served model identity against the
 //!    beacon, and fails over to the next pylon.
-//! 2. **Our hosted Clef** (`clef_url`, and `clef_models` per model), a
-//!    Psionic `/v1/systemone` over HTTP: the always-on H100
-//!    `clef-decisions-h100` in production, reached over the VPC
-//!    (docs/inference/clef-decisions-h100.md).
-//! 3. **Gemini on Vertex AI** answering the same typed questions with
+//! 3. **Jev** (TypeSafe's API) under the gateway's own house key:
+//!    `TYPESAFE_API_KEY`, else the Secret Manager secret `jev_secret`.
+//!    `no_jev` turns it off. `X-Decision-Order: jev` asks it first.
+//! 4. **Gemini on Vertex AI** answering the same typed questions with
 //!    structured output (`vertex`), on the prepaid Google credit.
 //!
-//! `POST /v1/decisions` ([`crate::decisions`]) asks in its own order
-//! ([`Order`]): `openagents/decide` our hosted Clef first, then Jev, then
-//! Vertex; `clef-flash` or `clef` our hosted Clef only.
+//! Our hosted Clef is `clef_url` (and `clef_models` per model), a Psionic
+//! `/v1/systemone` over HTTP: the always-on H100 `clef-decisions-h100` in
+//! production, reached over the VPC (docs/inference/clef-decisions-h100.md).
+//! `X-Decision-Order: pylon`, or the models `clef-flash` and
+//! `openagents/pylon`, ask the Pylons first.
 //!
-//! Pylons stay fallback and shadow until they pass the router gate: one
-//! answer in twenty is asked again at the next door (a Jev answer at the
-//! Pylons), so their agreement with Jev is measured.
+//! `POST /v1/decisions` ([`crate::decisions`]) uses the same default for
+//! `openagents/decide`; `clef-flash` or `clef` ask our hosted Clef only.
+//!
+//! One answer in twenty is asked again at the next door (a Clef answer at
+//! Jev), so the agreement between Clef and Jev keeps being measured.
 //!
 //! Evidence: every answer names the door (`service.door`: `pylon:<slug>`,
 //! `clef`, `vertex`, or `jev`), the pylon key, the served model and its
@@ -268,12 +270,12 @@ impl Kind {
 /// The order a decision asks its doors in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Order {
-    /// `/v1/systemone`'s default: Jev, the Pylons, our hosted Clef, Vertex.
+    /// The default: our hosted Clef, the Pylons, Jev, Vertex.
+    ClefFirst,
+    /// `X-Decision-Order: jev`: Jev, the Pylons, our hosted Clef, Vertex.
     JevFirst,
     /// `X-Decision-Order: pylon`: the Pylons, our hosted Clef, Vertex, Jev.
     PylonFirst,
-    /// `/v1/decisions` for `openagents/decide`: our hosted Clef, Jev, Vertex.
-    HostedFirst,
     /// Our hosted Clef only (`/v1/decisions` naming `clef-flash` or
     /// `clef`, or `X-Decision-Order: hosted`): the payload never leaves our
     /// machines, and no shadow second opinion is asked elsewhere.
@@ -292,9 +294,9 @@ enum Step {
 impl Order {
     fn steps(self) -> &'static [Step] {
         match self {
+            Self::ClefFirst => &[Step::Clef, Step::Pylons, Step::Jev, Step::Vertex],
             Self::JevFirst => &[Step::Jev, Step::Pylons, Step::Clef, Step::Vertex],
             Self::PylonFirst => &[Step::Pylons, Step::Clef, Step::Vertex, Step::Jev],
-            Self::HostedFirst => &[Step::Clef, Step::Jev, Step::Vertex],
             Self::HostedOnly => &[Step::Clef],
         }
     }
@@ -307,6 +309,10 @@ impl Order {
             Some(Self::PylonFirst)
         } else if value.eq_ignore_ascii_case("hosted") {
             Some(Self::HostedOnly)
+        } else if value.eq_ignore_ascii_case("jev") {
+            Some(Self::JevFirst)
+        } else if value.eq_ignore_ascii_case("clef") {
+            Some(Self::ClefFirst)
         } else {
             None
         }
@@ -381,34 +387,39 @@ impl Dispatch {
             .map(|key| key.trim().to_owned())
             .filter(|key| !key.is_empty());
         let jev_line = if config.no_jev {
-            "Jev off (no_jev); ".to_owned()
+            " → Jev off (no_jev)".to_owned()
         } else if jev_env.is_some() {
-            "Jev first under $TYPESAFE_API_KEY → ".to_owned()
+            " → Jev under $TYPESAFE_API_KEY".to_owned()
         } else if let Some(secret) = &config.jev_secret {
-            format!("Jev first under the Secret Manager key {secret} → ")
+            format!(" → Jev under the Secret Manager key {secret}")
         } else {
-            "Jev off: no house key; ".to_owned()
+            " → Jev off: no house key".to_owned()
         };
+        let clef_line: String = config
+            .clef_url
+            .as_ref()
+            .map(|url| format!("hosted Clef at {url}"))
+            .into_iter()
+            .chain(
+                config
+                    .clef_models
+                    .iter()
+                    .map(|(model, url)| format!("hosted {model} at {url}")),
+            )
+            .collect::<Vec<_>>()
+            .join(", ");
         eprintln!(
-            "decisions: POST /v1/systemone for {} → {jev_line}connected pylons on {relay} (dispatch key {pubkey}){}{}{}",
+            "decisions: POST /v1/systemone for {} → {} → connected pylons on {relay} (dispatch key {pubkey}){jev_line}{}",
             config.models.join(", "),
-            config
-                .clef_url
-                .as_ref()
-                .map(|url| format!(" → hosted Clef at {url}"))
-                .into_iter()
-                .chain(
-                    config
-                        .clef_models
-                        .iter()
-                        .map(|(model, url)| format!(" → hosted {model} at {url}")),
-                )
-                .collect::<String>(),
+            if clef_line.is_empty() {
+                "no hosted Clef"
+            } else {
+                clef_line.as_str()
+            },
             vertex
                 .as_ref()
                 .map(|(door, ..)| format!(" → Vertex {}", door.model))
                 .unwrap_or_default(),
-            "",
         );
         Ok(Arc::new(Self {
             config,
@@ -536,7 +547,7 @@ impl Dispatch {
             if matches!(model.as_str(), "clef-flash" | "openagents/pylon") {
                 Order::PylonFirst
             } else {
-                Order::JevFirst
+                Order::ClefFirst
             },
         );
         Some(

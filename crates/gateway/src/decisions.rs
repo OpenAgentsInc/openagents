@@ -617,7 +617,7 @@ pub fn response(
 #[must_use]
 pub fn order(model: &str, headers: &HeaderMap) -> Order {
     Order::from_header(headers).unwrap_or(match model {
-        "openagents/decide" => Order::HostedFirst,
+        "openagents/decide" => Order::ClefFirst,
         "clef-flash" | "clef" => Order::HostedOnly,
         _ => Order::JevFirst,
     })
@@ -986,7 +986,7 @@ mod tests {
     #[test]
     fn the_order_follows_the_model_and_the_header() {
         let none = HeaderMap::new();
-        assert_eq!(order("openagents/decide", &none), Order::HostedFirst);
+        assert_eq!(order("openagents/decide", &none), Order::ClefFirst);
         assert_eq!(order("clef-flash", &none), Order::HostedOnly);
         assert_eq!(order("clef", &none), Order::HostedOnly);
         assert_eq!(order("jev-latest", &none), Order::JevFirst);

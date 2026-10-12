@@ -314,9 +314,11 @@ let decision = client.create(&request).await?;
 let refund = decision.probability("refund");
 ```
 
-Our chat router and solver still call `jev_hosted::resolve` (Jev first, its
-calibration maps) and stay there until the router gate passes. A caller of
-ours opts in by building its request with `DecisionsRequest` and calling
+Our chat router and solver call `jev_hosted::resolve`, which since
+2026-10-12 sends them to our API, Clef first, with Jev as a backup
+(`OPENAGENTS_DECISIONS=jev` restores Jev first); the router reads each
+answer on the calibration map of the model that gave it. A caller of
+ours that wants this page's shapes opts in by building its request with `DecisionsRequest` and calling
 `jev_hosted::decisions()?.create(...)`; to keep the payload on our
 machines it names `clef-flash` or `clef` (or sends `X-Decision-Order:
 hosted` with `create_with`).
@@ -349,18 +351,18 @@ a timeout); a refusal of the question itself never moves on:
 
 | Request | Doors, in order |
 | --- | --- |
-| `openagents/decide` | 1. **Clef-Flash on our H100** (`clef-decisions-h100`, over our private network). 2. **Jev** on TypeSafe, under our house key. 3. **Gemini on Vertex**, with a schema that asks one probability per option. |
+| `openagents/decide` | 1. **Clef-Flash on our H100** (`clef-decisions-h100`, over our private network). 2. **Connected Pylons** (Clef over NIP-DEC). 3. **Jev** on TypeSafe, under our house key, as a backup. 4. **Gemini on Vertex**, with a schema that asks one probability per option. |
 | `clef-flash` | Our H100's Clef-Flash only. It fails (`503 unavailable`) rather than falling through to another model family. |
 | `clef` | Our H100's Clef 27B only, likewise. |
-| `jev-latest` | As `/v1/systemone`: Jev, the Pylons, our H100, Vertex. |
+| `jev-latest` | Named explicitly on this route: Jev, the Pylons, our H100, Vertex. |
+| any, with `X-Decision-Order: jev` | Jev first, then the Pylons, our H100, Vertex. |
 | any, with `X-Decision-Order: pylon` | Connected Pylons that advertise `pylon/decision` (best standing first, over NIP-DEC on our relay), then our H100, then Vertex, then Jev. |
 | any, with `X-Decision-Order: hosted` | Our H100 only. The payload never leaves our machines, and no second opinion is asked elsewhere. |
 
-`/v1/systemone` keeps its order: Jev first, then the Pylons, then our H100
-(added there as the hosted Clef door, ahead of Vertex), then Vertex. The
-chat router and its calibration maps depend on Jev answering first; they
-move only when the router gate passes. `X-Decision-Order: pylon` asks the
-Pylons first on either route.
+`/v1/systemone` uses the same Clef-first order for every model it answers,
+`jev-…` names included (owner, 2026-10-12: Clef first, Jev as a backup).
+`X-Decision-Order: pylon` asks the Pylons first and `jev` asks Jev first on
+either route.
 
 Every call is one line in the decision record with each attempt's door,
 outcome, and time, and one answer in twenty (none for `clef-flash`, `clef`,

@@ -174,18 +174,19 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   they are what a router eval report pins as the subject's configuration
   ([#9959](https://github.com/OpenAgentsInc/openagents/issues/9959),
   [`docs/coder/measurements/2026-09-29-chat-router-claims.md`](../coder/measurements/2026-09-29-chat-router-claims.md)).
-- **The judge's doors since #11225 (owner decision, 2026-10-10).** Jev is
-  first-class: with `TYPESAFE_API_KEY` in the environment the judge asks
-  TypeSafe's API directly (`jev_hosted::jev_first`), and only a decision
-  Jev cannot answer for its own reasons goes to our `POST /v1/systemone`
-  (`https://openagents.com/api`, or `OPENAGENTS_DECISIONS_URL`) with
-  `X-Decision-Order: pylon`: the connected Pylon (Clef on CoderOS-4080),
-  then Gemini on Vertex. One Jev answer in twenty is asked again at the
-  Pylons after it is served, and the journal logs `decisions shadow:
-  pylon:coderos-4080-clef (clef-flash) agrees with Jev on a/b questions,
-  max |Δp| …`. The startup line reads `judge doors https://api.typesafe.ai
-  → https://openagents.com/api (jev-latest)`. Without a key the judge asks
-  our API, whose gateway asks Jev first under its own house key;
+- **The judge's doors since 2026-10-12: Clef first, Jev as a backup**
+  (owner: "make sure it's a backup, I want clef clef clef"). The judge asks
+  our `POST /v1/systemone` (`https://openagents.com/api`, or
+  `OPENAGENTS_DECISIONS_URL`) whether or not `TYPESAFE_API_KEY` is set,
+  and the gateway asks Clef-Flash on the always-on H100
+  (`clef-decisions-h100`) first, then the connected Pylons, then Jev under
+  its own house key, then Gemini on Vertex. Turns are staged by default on
+  this judge ([`staged_by_default`](../../crates/coder/src/router/judge.rs)),
+  and each answer is read on the calibration map of the model that gave it
+  (`calibration-clef-flash-staged-v1` for Clef, `calibration-v2` for Jev).
+  One answer in twenty is asked again at Jev after it is served.
+  `OPENAGENTS_DECISIONS=jev` restores the 2026-10-10 judge (#11225: Jev
+  direct first with the key, our API behind it, flat turns),
   `OPENAGENTS_DECISIONS=pylon` asks the Pylons first, and
   `OPENAGENTS_DECISIONS=legacy` brings back the doors below.
 - **Jev's doors.** The judge asks the Vercel AI Gateway's

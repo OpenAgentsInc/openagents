@@ -50,14 +50,15 @@
 #   DECISION_PYLONS             optional: comma-separated hex keys of the Pylons whose
 #                               beacons POST /v1/systemone sends decisions to (#11225);
 #                               default CoderOS-4080's pylon key
-#   DECISION_CLEF_URL           optional: our hosted Clef (`/v1/systemone`) after the Pylons
+#   DECISION_CLEF_URL           optional: our hosted Clef (`/v1/systemone`), the first door
 #   DECISION_CLEF_FLASH_URL     our hosted Clef-Flash; default the always-on H100
 #                               clef-decisions-h100 at http://10.128.0.61:18096 over the VPC
 #                               (docs/inference/clef-decisions-h100.md); set empty to turn it off
 #   DECISION_CLEF_27B_URL       our hosted Clef 27B (`clef`); default the same H100, :18098
-#   DECISION_JEV                ignored since the owner put Jev first again (#11225): the
-#                               gateway asks Jev first under TYPESAFE_API_KEY, else the
-#                               Secret Manager key openagents-gateway-production-typesafe-key
+#   DECISION_JEV                ignored: since 2026-10-12 the gateway asks our hosted Clef
+#                               first, then the Pylons, then Jev as a backup under
+#                               TYPESAFE_API_KEY, else the Secret Manager key
+#                               openagents-gateway-production-typesafe-key, then Vertex
 set -eu
 umask 077
 state=${STACK_STATE:-/stack}

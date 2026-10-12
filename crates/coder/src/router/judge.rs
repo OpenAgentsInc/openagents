@@ -483,8 +483,9 @@ pub const ROUTE_HINT: &str = "route_hint";
 
 /// The variable that sets staged routing ([`Split::staged`]): `on` or
 /// `off`. Unset (or anything else), turns are staged when the judge asks a
-/// Clef door first (`OPENAGENTS_DECISIONS=pylon`, [`staged_by_default`])
-/// and flat otherwise (#11297). On Jev, the Jev-first worker's judge, a
+/// Clef door first, which is the default since 2026-10-12 (Clef first, Jev
+/// as a backup), and flat when `OPENAGENTS_DECISIONS` is `jev` or `legacy`
+/// ([`staged_by_default`], #11297). On Jev, the Jev-first worker's judge, a
 /// staged turn sends about 15 % fewer tokens but takes a second round trip
 /// (#11247). On Clef it is better on every count: on routes-v5's held-out
 /// rows route accuracy 77 % against 69 %, Gym recall 81 % against 43 %,
@@ -503,14 +504,14 @@ pub fn staged_on() -> bool {
 
 /// Whether turns are staged for a [`STAGED_VAR`] value `staged` and an
 /// `OPENAGENTS_DECISIONS` value `decisions`: `on` or `off` decides, and
-/// otherwise a judge that asks the Pylons first (`pylon`, a Clef door) is
-/// staged and every other judge is flat.
+/// otherwise a judge that asks Clef first (unset, or `pylon`) is staged and
+/// a Jev-first judge (`jev`, `legacy`) is flat.
 #[must_use]
 pub fn staged_by_default(staged: Option<&str>, decisions: Option<&str>) -> bool {
     match staged.map(str::trim) {
         Some("on") => true,
         Some("off") => false,
-        _ => decisions.is_some_and(|value| value.trim() == "pylon"),
+        _ => !decisions.is_some_and(|value| matches!(value.trim(), "jev" | "legacy")),
     }
 }
 
@@ -2038,9 +2039,11 @@ mod tests {
         assert!(!staged_by_default(Some("off"), Some("pylon")));
         assert!(staged_by_default(None, Some("pylon")));
         assert!(staged_by_default(Some(""), Some("pylon")));
-        assert!(!staged_by_default(None, None));
+        assert!(staged_by_default(None, None));
         assert!(!staged_by_default(None, Some("legacy")));
-        assert!(!staged_by_default(Some("yes"), None));
+        assert!(!staged_by_default(None, Some("jev")));
+        assert!(staged_by_default(Some("yes"), None));
+        assert!(!staged_by_default(Some("yes"), Some("jev")));
     }
 
     /// A staged turn asks the dispatch and Gym questions in its second

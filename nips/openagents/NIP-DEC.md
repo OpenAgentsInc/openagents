@@ -223,10 +223,9 @@ with no key (`crates/gateway`, `decision_dispatch`). It answers any `jev-…`
 or `typesafe/…` model name, `openagents/decide`, and `clef-flash`, and asks
 these doors in order, each only when every door before it could not answer:
 
-1. **Jev**, TypeSafe's API directly, under the gateway's own house key
-   (`TYPESAFE_API_KEY`, else the Secret Manager secret `jev_secret`). The
-   owner made Jev first-class again on 2026-10-10 after the Pylon judge
-   proved too slow and unsure for production routing.
+1. **Our hosted Clef** (`clef_url`, `clef_models`), a Psionic `/v1/systemone`
+   over HTTP: the always-on H100 `clef-decisions-h100`. Clef first, Jev as a
+   backup, is the owner's order since 2026-10-12.
 2. **Connected Pylons.** The gateway reads [NIP-PYLON](NIP-PYLON.md)
    beacons on its relay and keeps the fresh, online ones from its trusted
    pylon keys that advertise a decision service (`<pylon key>:pylon/decision`
@@ -237,29 +236,33 @@ these doors in order, each only when every door before it could not answer:
    exactly the options asked) and that the served model and identity are
    the beacon's, and otherwise benches that pylon for a minute and tries
    the next. A busy pylon is asked again shortly.
-3. **Our hosted Clef** (`clef_url`), a Psionic `/v1/systemone` over HTTP.
+3. **Jev**, TypeSafe's API directly, under the gateway's own house key
+   (`TYPESAFE_API_KEY`, else the Secret Manager secret `jev_secret`).
 4. **Gemini on Vertex AI** (`gemini-3.8-flash`, the prepaid Google credit):
    the same state and questions with a response schema that asks one
    probability per option (`p_yes` for a noul), clamped and normalized
    into the answer shape above.
 
 A request with `X-Decision-Order: pylon`, or for `clef-flash` or
-`openagents/pylon`, asks the Pylons first and Jev last. Each answer names
+`openagents/pylon`, asks the Pylons first and Jev last;
+`X-Decision-Order: jev` asks Jev first (the order before 2026-10-12), and
+`hosted` our hosted Clef alone. Each answer names
 its door in `service.door` (`jev`, `pylon:<slug>`, `clef`, `vertex`), the
 pylon's address, key, and identity, the served `model`, and `latency_ms`,
 and the response carries `X-Decision-Door`. Every decision is one line in
 `<registry>/decisions/YYYY-MM-DD.jsonl` with each attempt's door, outcome,
 code, and milliseconds. One answer in twenty is asked again at the next
-door after it is sent (a Jev answer at the Pylons), and the agreement goes
-to `decisions/shadow-YYYY-MM-DD.jsonl`; a request marked
-`X-Decision-Shadow: 1` is not shadowed again. The Pylons stay fallback and
-shadow until they pass the router gate.
+door after it is sent (a Clef answer at Jev), and the agreement goes to
+`decisions/shadow-YYYY-MM-DD.jsonl`; a request marked
+`X-Decision-Shadow: 1` is not shadowed again.
 
-Clients find it through `jev_hosted::resolve` (below): a caller holding a
-Jev key asks TypeSafe directly first and our API (Pylons first) after it,
-shadowing one answer in twenty there; a caller without one asks our API.
-`OPENAGENTS_DECISIONS=pylon` asks our API Pylons-first, `legacy` takes the
-older paths, and `OPENAGENTS_DECISIONS_URL` names another base URL.
+Clients find it through `jev_hosted::resolve` (below): every caller asks
+our API, with or without a Jev key of its own (a person who runs model
+calls on their own keys keeps them). `OPENAGENTS_DECISIONS=jev` gives a
+caller holding a Jev key TypeSafe directly first and our API after it,
+shadowing one answer in twenty there; `pylon` asks our API Pylons-first,
+`legacy` takes the older paths, and `OPENAGENTS_DECISIONS_URL` names
+another base URL.
 
 ### Doors and the backup door
 

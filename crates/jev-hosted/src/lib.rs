@@ -22,18 +22,18 @@
 //! that reason back out of a [`jev::Error`], so a caller can stop asking
 //! and say so once.
 //!
-//! **Jev first-class, Pylons behind it (#11225, owner decision
-//! 2026-10-10).** For TypeSafe's door, [`resolve`] and
-//! [`resolve_with_fallbacks`] give a caller that holds a Jev key TypeSafe's
-//! API directly, first, with our decision API ([`ours`]: `POST
-//! /v1/systemone` on `https://openagents.com/api`, asked Pylons-first) as
-//! its fallback, and one answer in twenty asked again at the Pylons so
-//! their agreement with Jev is measured ([`SHADOW_EVERY`]). A caller with
-//! no key asks our API, whose gateway asks Jev first under its own house
-//! key, then the Pylons, then Gemini on Vertex. `OPENAGENTS_DECISIONS`
-//! ([`DECISIONS_VAR`]) chooses otherwise: `pylon` asks our API Pylons-first
-//! with no key, and `legacy` takes the older paths below (a local key's
-//! backup doors and the hosted decision worker).
+//! **Clef first, Jev as a backup (owner, 2026-10-12).** For TypeSafe's
+//! door, [`resolve`] and [`resolve_with_fallbacks`] send every caller to
+//! our decision API ([`ours`]: `POST /v1/systemone` on
+//! `https://openagents.com/api`, or `OPENAGENTS_DECISIONS_URL`), whose
+//! gateway asks our hosted Clef first, then the Pylons, then Jev under its
+//! own house key, then Gemini on Vertex. A local Jev key is not asked first
+//! any more. `OPENAGENTS_DECISIONS` ([`DECISIONS_VAR`]) chooses otherwise:
+//! `jev` gives a caller that holds a Jev key TypeSafe's API directly, first,
+//! with our API behind it and one answer in twenty asked again at the
+//! Pylons ([`SHADOW_EVERY`]); `pylon` asks our API Pylons-first; and
+//! `legacy` takes the older paths below (a local key's backup doors and the
+//! hosted decision worker).
 //!
 //! The hosted client is an ordinary [`jev::Client`] whose attempts go
 //! through [`RelayExchange`]; its [`jev::Client::base_url`] names the door
@@ -175,7 +175,21 @@ pub fn resolve(
     tune: &dyn Fn(jev::Config) -> jev::Config,
 ) -> Result<Resolved, String> {
     match route(env, door) {
-        Route::Ours => return ours(env, door, tune),
+        Route::Ours => {
+            // A person who runs model calls on their own keys keeps them.
+            if let Some(resolved) = theirs(&model_access::current(), door, tune)? {
+                return Ok(resolved);
+            }
+            if env(HOSTED_VAR).is_some_and(|value| value.trim() == "off") {
+                return match local_key(env, dir) {
+                    Some((key, source)) => jev_first(env, key, source, door, tune, None),
+                    None => Err(format!(
+                        "no TypeSafe key here, and {HOSTED_VAR}=off turns the keyless decision service off"
+                    )),
+                };
+            }
+            return ours(env, door, tune);
+        }
         Route::JevFirst => {
             if let Some(resolved) = theirs(&model_access::current(), door, tune)? {
                 return Ok(resolved);
@@ -429,9 +443,11 @@ pub fn resolve_with_fallbacks(
 /// Where a decision for a door goes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Route {
-    /// Jev direct with a local key, our API behind it; our API without one.
+    /// Jev direct with a local key, our API behind it; our API without one
+    /// (`OPENAGENTS_DECISIONS=jev`).
     JevFirst,
-    /// Our API, Pylons first (`OPENAGENTS_DECISIONS=pylon`).
+    /// Our API, Clef first (the default), or Pylons first under
+    /// `OPENAGENTS_DECISIONS=pylon`.
     Ours,
     /// The door itself, through the older paths: another door than
     /// TypeSafe's or ours, or `OPENAGENTS_DECISIONS=legacy`.
@@ -450,13 +466,13 @@ pub fn route(env: &dyn Fn(&str) -> Option<String>, door: &Door<'_>) -> Route {
     }
     match env(DECISIONS_VAR).as_deref().map(str::trim) {
         Some("legacy") => Route::Legacy,
-        Some("pylon") => Route::Ours,
-        _ => Route::JevFirst,
+        Some("jev") => Route::JevFirst,
+        _ => Route::Ours,
     }
 }
 
-/// Whether a decision for `door` goes only to our decision API (Pylons
-/// first): `OPENAGENTS_DECISIONS=pylon`.
+/// Whether a decision for `door` goes only to our decision API: the
+/// default, Clef first (Pylons first under `OPENAGENTS_DECISIONS=pylon`).
 #[must_use]
 pub fn is_ours(env: &dyn Fn(&str) -> Option<String>, door: &Door<'_>) -> bool {
     route(env, door) == Route::Ours
@@ -638,8 +654,9 @@ pub fn agreement(a: &Value, b: &Value) -> (usize, usize, f64) {
 
 /// Our decision API (#11225): a client whose every call is
 /// `POST /v1/systemone` on [`OPENAGENTS`] (or [`DECISIONS_URL_VAR`]), with
-/// no key. The gateway sends the decision to a connected Pylon, then to
-/// Gemini on Vertex AI; the answer's `service.door` names which answered.
+/// no key. The gateway asks our hosted Clef, then the connected Pylons,
+/// then Jev, then Gemini on Vertex AI; the answer's `service.door` names
+/// which answered.
 /// The model the caller pins (`jev-1.13.0`, `jev-latest`) is what the call
 /// asks for; the answer names the model that served it.
 ///
@@ -1558,11 +1575,24 @@ mod tests {
     }
 
     #[test]
-    fn jev_is_first_with_a_key_and_our_api_answers_without_one() {
+    fn our_api_is_first_with_or_without_a_key_and_jev_first_is_a_choice() {
         let dir = tempfile::tempdir().unwrap();
-        // A Jev key: TypeSafe directly, our API (Pylons first) behind it.
+        // A Jev key no longer goes first: our API (Clef first) answers.
         let keyed = |name: &str| (name == TYPESAFE_KEY_VAR).then(|| "ts-local".to_string());
         let resolved = resolve(&keyed, dir.path(), &DOOR_PIN, &|config| config).unwrap();
+        assert_eq!(
+            resolved.via,
+            Via::OpenAgents {
+                url: OPENAGENTS.into()
+            }
+        );
+        // `jev`: TypeSafe directly with the key, our API behind it.
+        let jev_first = |name: &str| match name {
+            TYPESAFE_KEY_VAR => Some("ts-local".to_string()),
+            DECISIONS_VAR => Some("jev".to_string()),
+            _ => None,
+        };
+        let resolved = resolve(&jev_first, dir.path(), &DOOR_PIN, &|config| config).unwrap();
         assert_eq!(
             resolved.via,
             Via::Direct {
@@ -1576,7 +1606,8 @@ mod tests {
         );
         assert_eq!(via(&resolved.client), "direct");
         let (resolved, found) =
-            resolve_with_fallbacks(&keyed, dir.path(), &DOOR_PIN, &|config| config, None).unwrap();
+            resolve_with_fallbacks(&jev_first, dir.path(), &DOOR_PIN, &|config| config, None)
+                .unwrap();
         assert_eq!(resolved.client.base_url(), DOOR);
         assert!(found.is_empty());
         // No key: our API, keyless.
@@ -1758,7 +1789,7 @@ mod tests {
         let off = jev(|name: &str| (name == HOSTED_VAR).then(|| "off".to_string()));
         let error = resolve(&off, dir.path(), &DOOR_PIN, &|config| config).unwrap_err();
         assert!(error.contains(HOSTED_VAR), "{error}");
-        // The default route (Jev first) honours it too: no key, no Jev.
+        // The default route (our API first) honours it too: no key, no Jev.
         let off = |name: &str| (name == HOSTED_VAR).then(|| "off".to_string());
         let error = resolve(&off, dir.path(), &DOOR_PIN, &|config| config).unwrap_err();
         assert!(error.contains(HOSTED_VAR), "{error}");
