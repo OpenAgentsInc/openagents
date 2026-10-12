@@ -88,13 +88,13 @@ def ease_out(x):
 
 
 def backdrop(w, h, seed):
-    """A near-black studio backdrop: a soft warm pool of light and a vignette."""
+    """A near-black, neutral backdrop with a soft pool of light."""
     y, x = np.mgrid[0:h, 0:w].astype(np.float32)
     cx, cy = w * 0.5, h * 0.46
     r = np.sqrt(((x - cx) / w) ** 2 + ((y - cy) / h * 0.8) ** 2)
     glow = np.exp(-(r / 0.42) ** 2)
-    base = np.stack([7 + 16 * glow, 8 + 16 * glow, 10 + 18 * glow], -1)
-    return base
+    v = 6 + 14 * glow
+    return np.stack([v, v, v], -1)
 
 
 def title_layout(spec, w, h):
@@ -145,16 +145,31 @@ def draw_title(spec, w, h, t, dur, grain_rng, base):
 
 
 def render_title(shot, w, h, fps, out):
+    """Draws a title card. With `"under": {"src", "in", "dim"}` the text sits
+    over that clip (dimmed by `dim`, 0-1) instead of the plain backdrop."""
     n = int(round((shot["dur"] + shot["tail"]) * fps))
     rng = np.random.default_rng(len(shot["name"]))
+    under = shot["title"].get("under")
+    dec = None
+    if under:
+        dec = subprocess.Popen(["ffmpeg", "-v", "error", "-ss", str(under.get("in", 0.0)), "-i", str(expand(under["src"])),
+                                "-vf", f"scale={w}:{h}:flags=lanczos,fps={fps}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                               stdout=subprocess.PIPE)
     base = backdrop(w, h, 0)
+    spec = {**shot["title"], "grain": shot["title"].get("grain", not under)}
     enc = subprocess.Popen(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{w}x{h}",
                             "-r", str(fps), "-i", "-", "-c:v", "libx264", "-crf", "8", "-preset", "fast",
                             "-pix_fmt", "yuv420p", str(out)], stdin=subprocess.PIPE)
     for k in range(n):
-        enc.stdin.write(draw_title(shot["title"], w, h, k / fps, shot["dur"], rng, base).tobytes())
+        if dec:
+            raw = dec.stdout.read(w * h * 3)
+            if len(raw) == w * h * 3:
+                base = np.frombuffer(raw, np.uint8).reshape(h, w, 3).astype(np.float32) * (1 - under.get("dim", 0.0))
+        enc.stdin.write(draw_title(spec, w, h, k / fps, shot["dur"], rng, base).tobytes())
     enc.stdin.close()
     enc.wait()
+    if dec:
+        dec.kill()
 
 
 def placeholder(shot, w, h, fps, out):
@@ -191,6 +206,10 @@ def inspect(cut, cut_path, work, w, h, allow_missing):
         if abs(shot["start"] / beat - round(shot["start"] / beat)) > 1e-6:
             problems.append(f"{name}: starts at {shot['start']:.2f}s, off the {cut.get('bpm', 120)} BPM beat grid")
         if "title" in shot:
+            under = shot["title"].get("under")
+            if under and not expand(under["src"]).exists():
+                (notes if allow_missing else problems).append(f"{name}: missing {under['src']}")
+                shot["title"].pop("under")
             safe = (w * 0.1, h * 0.1, w * 0.9, h * 0.9)
             lines = title_layout(shot["title"], w, h)
             for l in lines:

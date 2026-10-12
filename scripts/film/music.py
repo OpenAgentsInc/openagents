@@ -3,13 +3,13 @@
 
 The score sits on a 120 BPM grid, so every cut in docs/verse/film/cut.json can
 land on a beat. Sections:
-  0-6 s   drone and wind swelling to a reverse riser
-  6 s     impact on the title
-  9-36 s  an arpeggio pulse over Dm-Bb-F-C, with a kick from 17 s and a riser into 36 s
-  36-48 s the montage: the full arrangement
-  48-56 s a resolving chord under the end card
+  0-2 s       a drone swelling into a reverse riser; impact on the title at 2 s
+  4 s on      pads and an arpeggio pulse over Dm-Bb-F-C, with a kick from 12 s
+  last 16 s   the full arrangement, and a riser into the end card
+  last 8 s    an impact and a resolving chord under the end card
+Whooshes sit on the product cuts given by --cuts.
 
-Usage: scripts/film/music.py OUT.wav [--seconds 56]
+Usage: scripts/film/music.py OUT.wav [--seconds 42] [--cuts 12,20,27]
 Writes a 48 kHz stereo WAV. scripts/film/cut.py normalizes loudness when it
 mixes the film.
 """
@@ -30,7 +30,9 @@ def note(name):
     return 440.0 * 2 ** ((names[pitch] + 12 * (octave + 1) - 69) / 12)
 
 
-CHORDS = [  # each chord lasts 4 s (two bars), starting at 8 s
+CUTS = []  # the product cuts that get a whoosh; set from --cuts
+
+CHORDS = [  # each chord lasts 4 s (two bars)
     ["D3", "A3", "D4", "F4", "A4"],
     ["Bb2", "F3", "Bb3", "D4", "F4"],
     ["F2", "C3", "F3", "A3", "C4"],
@@ -143,61 +145,51 @@ def reverb(stereo, seconds=2.6, wet=0.28):
 
 def score(seconds):
     tr = Track(seconds)
+    end = seconds - 8.0  # the end card's impact; the chord resolves under it
 
-    # 0-9 s: drone on D with wind, swelling to a reverse riser before the title.
-    drone = 9.0
+    # 0-2 s: a low drone swelling into a reverse riser; the title lands at 2 s.
     for f, pan in [(note("D2"), -0.3), (note("A2"), 0.3), (note("D3"), 0.0)]:
         for d in (-0.004, 0.004):
-            tr.add(0, saw(f, drone, 260, d) * env(drone, 4.0, 2.5), 0.06, pan + d * 60)
-    wind = fft_filter(RNG.standard_normal(int(drone * SR)), low=200, high=900)
-    tr.add(0, wind / np.max(np.abs(wind)) * env(drone, 3.5, 3.0), 0.05)
-    tr.add(3.0, swept_noise(3.0, 300, 7000) * np.linspace(0, 1, int(3.0 * SR)) ** 3, 0.22)
+            tr.add(0, saw(f, 6.0, 260, d) * env(6.0, 1.5, 3.0), 0.06, pan + d * 60)
+    tr.add(0.0, swept_noise(2.0, 300, 7000) * np.linspace(0, 1, int(2.0 * SR)) ** 3, 0.22)
+    tr.add(2.0, impact(), 0.9)
 
-    # 6 s: the impact under the title.
-    tr.add(6.0, impact(), 0.9)
-
-    # 8-48 s: pads following the progression; they open up in the montage.
-    for i, at in enumerate(np.arange(8.0, 48.0, 4.0)):
+    # From 4 s: pads following the progression, opening up for the last stretch.
+    for i, at in enumerate(np.arange(4.0, end, 4.0)):
         chord = CHORDS[i % 4]
-        bright = 700 if at < 36 else 2200
-        gain = 0.035 if at < 36 else 0.05
+        late = at >= end - 8.0
         for j, name in enumerate(chord):
             for d in (-0.005, 0.005):
-                pad = saw(note(name), 4.6, bright, d) * env(4.6, 0.6 if at > 8 else 2.0, 1.0)
-                tr.add(at, pad, gain, (j - 2) * 0.25 + d * 50)
+                pad = saw(note(name), 4.6, 1800 if late else 700, d) * env(4.6, 0.6, 1.0)
+                tr.add(at, pad, 0.045 if late else 0.035, (j - 2) * 0.25 + d * 50)
 
-    # 9-48 s: eighth-note arpeggio pulse.
-    for k, at in enumerate(np.arange(9.0, 48.0, BEAT / 2)):
-        chord = CHORDS[int((at - 8.0) // 4) % 4]
+    # From 4 s: an eighth-note arpeggio pulse that grows toward the end card.
+    for k, at in enumerate(np.arange(4.0, end, BEAT / 2)):
+        chord = CHORDS[int((at - 4.0) // 4) % 4]
         pattern = [2, 3, 4, 3, 2, 4, 3, 4]
-        f = note(chord[pattern[k % 8]]) * (2 if at >= 36 else 1)
+        f = note(chord[pattern[k % 8]]) * (2 if at >= end - 8.0 else 1)
         accent = 1.0 if k % 2 == 0 else 0.7
-        ramp = min(1.0, 0.45 + (at - 9.0) / 27.0)
+        ramp = min(1.0, 0.45 + (at - 4.0) / (end - 4.0))
         tr.add(at, pluck(f), 0.11 * accent * ramp, 0.35 if k % 2 else -0.35)
 
-    # 17-48 s: kick on the beat; four-on-the-floor plus off-beat ghosts in the montage.
-    for at in np.arange(17.0, 48.0, BEAT):
-        tr.add(at, kick(), 0.42 if at < 36 else 0.6)
-        if at >= 36:
+    # From 12 s: a kick on the beat, with off-beat ghosts in the last stretch.
+    for at in np.arange(12.0, end, BEAT):
+        late = at >= end - 8.0
+        tr.add(at, kick(), 0.6 if late else 0.42)
+        if late:
             tr.add(at + BEAT / 2, kick(0.25, 90, 50), 0.12)
-    for at in np.arange(36.0, 48.0, 2.0):  # a tom every bar in the montage
-        tr.add(at + 1.5, kick(0.6, 180, 90), 0.25, 0.2)
 
-    # Risers into the montage and into the end card.
-    tr.add(32.0, swept_noise(4.0, 250, 9000) * np.linspace(0, 1, 4 * SR) ** 2.5, 0.25)
-    tr.add(44.0, swept_noise(4.0, 250, 9000) * np.linspace(0, 1, 4 * SR) ** 2.5, 0.25)
-    tr.add(36.0, impact(), 0.8)
-
-    # Whooshes on the product cuts.
-    for at in (17.0, 24.0, 30.0):
+    # A riser into the end card, and soft whooshes on the product cuts.
+    tr.add(end - 4.0, swept_noise(4.0, 250, 9000) * np.linspace(0, 1, 4 * SR) ** 2.5, 0.25)
+    for at in CUTS:
         tr.add(at - 0.35, swept_noise(0.7, 600, 5000) * np.hanning(int(0.7 * SR)), 0.12)
 
-    # 48-56 s: a resolving D major chord with a final impact, fading out.
-    tr.add(48.0, impact(6.0), 0.85)
-    tail = seconds - 48.0
+    # The end card: an impact and a resolving D major chord, fading out.
+    tr.add(end, impact(6.0), 0.85)
+    tail = seconds - end
     for j, name in enumerate(["D2", "A2", "D3", "F#3", "A3", "D4", "E4"]):
         for d in (-0.004, 0.004):
-            tr.add(48.0, saw(note(name), tail, 1400, d) * env(tail, 0.08, 4.5, 1.3), 0.05, (j - 3) * 0.2 + d * 50)
+            tr.add(end, saw(note(name), tail, 1400, d) * env(tail, 0.08, 4.5, 1.3), 0.05, (j - 3) * 0.2 + d * 50)
 
     mix = reverb(tr.out())
     mix = np.tanh(mix * 1.2) / np.tanh(1.2)  # gentle glue
@@ -216,8 +208,10 @@ def write_wav(path, stereo):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("out")
-    ap.add_argument("--seconds", type=float, default=56.0)
+    ap.add_argument("--seconds", type=float, default=42.0)
+    ap.add_argument("--cuts", default="12,20,27", help="seconds of the product cuts, comma-separated")
     args = ap.parse_args()
+    CUTS.extend(float(c) for c in args.cuts.split(",") if c)
     write_wav(args.out, score(args.seconds))
     print(args.out)
 
