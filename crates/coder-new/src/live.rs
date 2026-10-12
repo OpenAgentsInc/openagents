@@ -58,6 +58,40 @@ pub struct Chat {
     pub peak_context_tokens: u64,
     /// The harness this chat's tool turns run under (#11289), once decided.
     pub harness: Option<crate::harness::Run>,
+    /// The Claude Code session this chat's claude turns continue (#11435).
+    pub claude_session: Option<ClaudeSession>,
+}
+
+/// A Claude Code session a chat holds, and how far into the chat it reaches.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClaudeSession {
+    pub id: String,
+    /// How many of the person's messages the session has read. A message
+    /// another engine answered since then is missing from it, so the next
+    /// claude turn starts a new session from the whole conversation instead.
+    pub users: usize,
+}
+
+impl Chat {
+    /// How many of the person's messages the chat holds.
+    #[must_use]
+    pub fn user_count(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|entry| matches!(entry, Entry::User(_)))
+            .count()
+    }
+
+    /// The Claude Code session the next claude turn continues: the one the
+    /// chat holds, when it has read every message the person sent before
+    /// the newest.
+    #[must_use]
+    pub fn claude_resume(&self) -> Option<String> {
+        self.claude_session
+            .as_ref()
+            .filter(|session| session.users + 1 == self.user_count())
+            .map(|session| session.id.clone())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -332,6 +366,9 @@ pub enum Work {
         /// Whether the Solver plugin is on: the turn may then hand an
         /// issue to it ([`crate::solver_plugin`]).
         solver: bool,
+        /// The Claude Code session the chat holds, which this turn
+        /// continues; `None` starts one (#11435).
+        session: Option<String>,
     },
     /// A turn of solver's conversational Intaker: Haiku with a read-only
     /// `gh`, helping the person find or pick the issue to solve.
@@ -402,6 +439,11 @@ pub enum Update {
         id: u64,
         model: String,
     },
+    /// The Claude Code session a claude turn runs in (#11435).
+    ClaudeSession {
+        id: u64,
+        session: String,
+    },
     Finished {
         id: u64,
         result: Result<Streamed, String>,
@@ -420,6 +462,7 @@ impl Update {
             | Self::Usage { id, .. }
             | Self::Harness { id, .. }
             | Self::Model { id, .. }
+            | Self::ClaudeSession { id, .. }
             | Self::Finished { id, .. } => *id,
         }
     }
@@ -616,8 +659,11 @@ fn run_with_provider(
                 Work::Microcoder { messages, execution, options } => {
                     auto_route(id, messages, execution, &request.key, options, &create, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
                 }
-                Work::Claude { messages, cwd, solver } => {
-                    claude_turn(id, messages, cwd, solver, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
+                Work::Claude { messages, cwd, solver, session } => {
+                    let mut session_callback = |session: &str| {
+                        let _ = sender.send(Update::ClaudeSession { id, session: session.into() });
+                    };
+                    claude_turn(id, messages, cwd, solver, session, &cancel, &mut session_callback, &mut text_callback, &mut model_callback, &mut event_callback).await
                 }
                 Work::SolverIntake { messages, cwd, github } => {
                     let prompt = crate::solver::intake_task(&messages, &github);
@@ -1005,27 +1051,36 @@ async fn local_turn(
 /// One claude turn: the Claude Agent SDK session
 /// ([`crate::claude`]) on Haiku 5.5, drawn as it works. Its text, model,
 /// and tool calls reach the chat through the same callbacks a live turn uses.
+/// It continues the chat's Claude Code `session` when there is one
+/// ([`crate::claude::chat`]).
+#[allow(clippy::too_many_arguments)]
 async fn claude_turn(
     id: u64,
     messages: Vec<Message>,
     cwd: std::path::PathBuf,
     solver: bool,
+    session: Option<String>,
     cancel: &Arc<AtomicBool>,
+    session_callback: &mut (dyn FnMut(&str) + Send),
     text_callback: &mut (dyn FnMut(&str) + Send),
     model_callback: &mut (dyn FnMut(&str) + Send),
     event_callback: &mut (dyn FnMut(RuntimeEvent) + Send),
 ) -> Update {
-    let prompt = crate::claude::task_with(&messages, solver);
     let mut events = |event: RuntimeEvent| match event {
         RuntimeEvent::Text(text) => text_callback(&text),
         RuntimeEvent::Model(model) => model_callback(&model),
         event => event_callback(event),
     };
-    let result = if solver {
-        crate::claude::run_with_solver(&prompt, &cwd, cancel, &mut events).await
-    } else {
-        crate::claude::run(&prompt, &cwd, cancel, &mut events).await
-    };
+    let result = crate::claude::chat(
+        &messages,
+        session.as_deref(),
+        &cwd,
+        solver,
+        cancel,
+        session_callback,
+        &mut events,
+    )
+    .await;
     Update::Finished { id, result }
 }
 

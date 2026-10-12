@@ -177,6 +177,11 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
     if let Some(run) = &chat.harness {
         result["extra"]["harness"] = serde_json::to_value(run).unwrap_or_default();
     }
+    // The Claude Code session the chat's claude turns continue (#11435), so
+    // a reopened chat continues it too.
+    if let Some(session) = &chat.claude_session {
+        result["extra"]["claude_session"] = json!({"id": session.id, "users": session.users});
+    }
     // Context management (#11286): the peak the model read, whether old
     // outputs were stubbed, and how many summaries were written.
     if chat.peak_context_tokens > 0 {
@@ -637,6 +642,17 @@ pub fn from_document(value: &Value) -> Result<Chat, String> {
                         .unwrap_or(0),
                 )
         });
+    chat.claude_session = value
+        .pointer("/extra/claude_session/id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .map(|id| crate::live::ClaudeSession {
+            id: id.to_owned(),
+            users: value
+                .pointer("/extra/claude_session/users")
+                .and_then(Value::as_u64)
+                .map_or(0, |users| users as usize),
+        });
     Ok(chat)
 }
 
@@ -708,6 +724,40 @@ fn text(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A saved chat keeps its Claude Code session (#11435), so reopening it
+    /// continues the same session, and only while that session has read
+    /// every message the person sent before the newest.
+    #[test]
+    fn a_saved_chat_keeps_its_claude_session() {
+        let mut chat = Chat::default();
+        chat.entries.push(Entry::User("fix the test".into()));
+        chat.entries.push(Entry::Assistant {
+            elapsed_ms: None,
+            text: "fixed".into(),
+            model: Some(crate::claude::MODEL.into()),
+        });
+        chat.claude_session = Some(crate::live::ClaudeSession {
+            id: "5b0c1d2e".into(),
+            users: 1,
+        });
+        let document = document(&chat, "test", crate::claude::MODEL, Path::new("/workspace"));
+        assert!(atif::validate(&document).is_empty());
+        let mut restored = from_document(&document).unwrap();
+        assert_eq!(restored.claude_session, chat.claude_session);
+
+        // The next message continues the session.
+        restored.entries.push(Entry::User("now the docs".into()));
+        assert_eq!(restored.claude_resume().as_deref(), Some("5b0c1d2e"));
+        // A message another engine answered is missing from the session, so
+        // the turn after it starts a new one from the whole conversation.
+        restored
+            .entries
+            .push(Entry::User("and the changelog".into()));
+        assert_eq!(restored.claude_resume(), None);
+        // A chat with no session starts one.
+        assert_eq!(Chat::default().claude_resume(), None);
+    }
     #[test]
     fn export_import_preserves_calls_models_and_full_results_without_execution() {
         let mut chat = Chat::default();

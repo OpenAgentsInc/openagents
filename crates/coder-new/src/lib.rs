@@ -966,6 +966,13 @@ impl App {
             live::Update::Harness { run, .. } if self.live.busy => {
                 self.live.harness = Some(run);
             }
+            live::Update::ClaudeSession { session, .. } => {
+                self.live.claude_session = Some(live::ClaudeSession {
+                    id: session,
+                    users: self.live.user_count(),
+                });
+                self.history.dirty = true;
+            }
             live::Update::Delta { text, .. } if self.live.busy => {
                 self.live.text_streamed = true;
                 self.live.partial.push_str(&text);
@@ -1615,6 +1622,7 @@ impl App {
         self.live.finish_partial();
         self.live.entries.push(live::Entry::User(text));
         let messages = self.live.messages();
+        let session = self.live.claude_resume();
         self.live.notice = None;
         self.live.partial.clear();
         self.live.partial_model = None;
@@ -1631,6 +1639,7 @@ impl App {
                 messages,
                 cwd,
                 solver: self.plugins.bundled.solver,
+                session,
             },
         });
     }
