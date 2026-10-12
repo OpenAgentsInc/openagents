@@ -157,6 +157,25 @@ def request_body(model: str, issue_doc: dict, entries: list[dict], nonce: str) -
     return {"model": model, "state": state, "questions": questions}
 
 
+def shared_request(model: str, issue_doc: dict, entries: list[dict], nonce: str) -> dict:
+    """The issue alone is the state and each candidate rides in its own
+    question, so every pass over one issue shares the whole state and a
+    server with prefix reuse (#11442) prefills it once. The nonce leads the
+    state: fresh per issue run, shared by that run's passes."""
+    body = (issue_doc.get("body") or "")[:4000]
+    state = {"_run": nonce,
+             "issue": {"number": issue_doc["number"], "title": issue_doc["title"], "body": body}}
+    questions = {
+        e["id"]: {
+            "type": "noul",
+            "instructions": {"question": f"{QUESTION} The file is {e['id']}: {e['path']}",
+                             "file": {k: v for k, v in e.items() if k != "id"}},
+        }
+        for e in entries
+    }
+    return {"model": model, "state": state, "questions": questions}
+
+
 def ask(base_url: str, body: dict, timeout: int) -> tuple[dict, float]:
     data = json.dumps(body, ensure_ascii=False).encode()
     req = urllib.request.Request(base_url.rstrip("/") + "/v1/systemone", data=data,

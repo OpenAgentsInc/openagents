@@ -1,10 +1,14 @@
 //! Bounded exact prefix reuse. Each cache belongs to one loaded model instance.
 
-/// A single prefix snapshot. Matching compares every token and the chunk size;
-/// schema suffixes are deliberately absent from the key.
+/// Prefix snapshots, least recently used first out. Matching compares every
+/// token and the chunk size; schema suffixes are deliberately absent from the
+/// key. Metal keeps one entry ([`PrefixCache::new`]); CUDA keeps many under
+/// one byte budget ([`PrefixCache::with_entries`]).
 pub(crate) struct PrefixCache<T> {
     capacity: usize,
-    entry: Option<Entry<T>>,
+    max_entries: usize,
+    /// Least recently used first.
+    entries: Vec<Entry<T>>,
 }
 
 struct Entry<T> {
@@ -15,29 +19,65 @@ struct Entry<T> {
 }
 
 impl<T> PrefixCache<T> {
+    /// One snapshot: a new entry replaces the old one.
     pub(crate) fn new(capacity: usize) -> Self {
+        Self::with_entries(capacity, 1)
+    }
+
+    /// Up to `max_entries` snapshots within `capacity` bytes.
+    pub(crate) fn with_entries(capacity: usize, max_entries: usize) -> Self {
         Self {
             capacity,
-            entry: None,
+            max_entries: max_entries.max(1),
+            entries: Vec::new(),
         }
     }
 
-    pub(crate) fn admits(&self, tokens: usize, state_bytes: usize) -> bool {
+    /// The bytes an entry for `tokens` prefix tokens and `state_bytes` of
+    /// state retains, if any entry of that size fits the budget.
+    fn entry_bytes(&self, tokens: usize, state_bytes: usize) -> Option<usize> {
         tokens
             .checked_mul(size_of::<u32>())
             .and_then(|bytes| bytes.checked_add(state_bytes))
-            .is_some_and(|bytes| self.capacity != 0 && bytes <= self.capacity)
+            .filter(|&bytes| self.capacity != 0 && bytes <= self.capacity)
     }
 
-    pub(crate) fn get(&self, tokens: &[u32], chunk: usize) -> Option<&T> {
-        self.entry
-            .as_ref()
-            .filter(|entry| entry.chunk == chunk && entry.tokens == tokens)
-            .map(|entry| &entry.value)
+    pub(crate) fn admits(&self, tokens: usize, state_bytes: usize) -> bool {
+        self.entry_bytes(tokens, state_bytes).is_some()
     }
 
-    /// Publishes only a complete snapshot. An oversized candidate leaves the
-    /// previous entry intact and never allocates a copy of its token key.
+    /// The matching snapshot, now the most recently used.
+    pub(crate) fn get(&mut self, tokens: &[u32], chunk: usize) -> Option<&T> {
+        let index = self
+            .entries
+            .iter()
+            .position(|entry| entry.chunk == chunk && entry.tokens == tokens)?;
+        let entry = self.entries.remove(index);
+        self.entries.push(entry);
+        self.entries.last().map(|entry| &entry.value)
+    }
+
+    /// Evicts least recently used entries until `reserve` more bytes (an
+    /// entry about to be captured, or pending captures) fit the budget and
+    /// one more entry fits the entry limit. `false` when `reserve` alone
+    /// exceeds the budget; nothing is evicted then.
+    pub(crate) fn make_room(&mut self, reserve: usize) -> bool {
+        if self.capacity == 0 || reserve > self.capacity {
+            return false;
+        }
+        while !self.entries.is_empty()
+            && (self.retained_bytes() + reserve > self.capacity
+                || self.entries.len() >= self.max_entries)
+        {
+            self.entries.remove(0);
+        }
+        true
+    }
+
+    /// Publishes only a complete snapshot, replacing an entry with the same
+    /// key and evicting the least recently used ones it needs room from. An
+    /// oversized candidate leaves every entry intact and never allocates a
+    /// copy of its token key.
     pub(crate) fn insert(
         &mut self,
         tokens: &[u32],
@@ -45,24 +85,38 @@ impl<T> PrefixCache<T> {
         state_bytes: usize,
         value: T,
     ) -> bool {
-        if tokens.is_empty() || chunk == 0 || !self.admits(tokens.len(), state_bytes) {
+        if tokens.is_empty() || chunk == 0 {
             return false;
         }
-        self.entry = Some(Entry {
+        let Some(bytes) = self.entry_bytes(tokens.len(), state_bytes) else {
+            return false;
+        };
+        self.entries
+            .retain(|entry| entry.chunk != chunk || entry.tokens != tokens);
+        self.make_room(bytes);
+        self.entries.push(Entry {
             tokens: tokens.to_vec(),
             chunk,
-            bytes: state_bytes + size_of_val(tokens),
+            bytes,
             value,
         });
         true
     }
 
     pub(crate) fn clear(&mut self) {
-        self.entry = None;
+        self.entries.clear();
     }
 
     pub(crate) fn retained_bytes(&self) -> usize {
-        self.entry.as_ref().map_or(0, |entry| entry.bytes)
+        self.entries.iter().map(|entry| entry.bytes).sum()
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub(crate) fn capacity(&self) -> usize {
+        self.capacity
     }
 }
 
@@ -184,5 +238,56 @@ mod tests {
         assert_eq!(reusable_boundary(8, 10, &[(9, 8)]), None);
         assert_eq!(reusable_boundary(8, 10, &[(8, 8)]), None);
         assert_eq!(reusable_boundary(8, 10, &[(8, 10)]), Some(8));
+    }
+
+    #[test]
+    fn lru_keeps_several_snapshots_and_evicts_the_least_recently_used() {
+        let mut cache = PrefixCache::with_entries(3 * (8 + 4), 8);
+        assert!(cache.insert(&[1], 8, 8, "a"));
+        assert!(cache.insert(&[2], 8, 8, "b"));
+        assert!(cache.insert(&[3], 8, 8, "c"));
+        assert_eq!(cache.len(), 3);
+        // a hit makes "a" the most recently used, so "b" goes first
+        assert_eq!(cache.get(&[1], 8), Some(&"a"));
+        assert!(cache.insert(&[4], 8, 8, "d"));
+        assert!(cache.get(&[2], 8).is_none());
+        assert_eq!(cache.get(&[1], 8), Some(&"a"));
+        assert_eq!(cache.get(&[3], 8), Some(&"c"));
+        assert_eq!(cache.get(&[4], 8), Some(&"d"));
+        assert_eq!(cache.retained_bytes(), 36);
+        // the same key replaces its entry instead of adding one
+        assert!(cache.insert(&[4], 8, 8, "e"));
+        assert_eq!(cache.len(), 3);
+        assert_eq!(cache.get(&[4], 8), Some(&"e"));
+        // a bigger entry evicts as many as it needs, oldest first
+        assert!(cache.insert(&[5], 8, 20, "f"));
+        assert_eq!(cache.len(), 2);
+        assert!(cache.get(&[1], 8).is_none());
+        assert_eq!(cache.get(&[4], 8), Some(&"e"));
+        // an oversized candidate evicts nothing
+        assert!(!cache.insert(&[6], 8, 64, "g"));
+        assert_eq!(cache.len(), 2);
+    }
+
+    #[test]
+    fn entry_limit_and_reservations_evict_before_capture() {
+        let mut cache = PrefixCache::with_entries(1000, 2);
+        cache.insert(&[1], 8, 8, 1);
+        cache.insert(&[2], 8, 8, 2);
+        cache.insert(&[3], 8, 8, 3);
+        assert_eq!(cache.len(), 2);
+        assert!(cache.get(&[1], 8).is_none());
+        // room for one more entry under the limit means evicting one
+        assert!(cache.make_room(12));
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.get(&[3], 8), Some(&3));
+        assert!(!cache.make_room(1001));
+        assert_eq!(cache.len(), 1);
+        let mut tight = PrefixCache::with_entries(30, 8);
+        tight.insert(&[1], 8, 8, 1);
+        tight.insert(&[2], 8, 8, 2);
+        assert!(tight.make_room(10));
+        assert_eq!(tight.len(), 1);
+        assert!(!PrefixCache::<()>::with_entries(0, 8).make_room(0));
     }
 }

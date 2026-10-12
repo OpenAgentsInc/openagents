@@ -6,6 +6,13 @@
 //! sums; only the three FFN projections of every layer run once over the
 //! cohort's packed rows (the fused kernel up to its row limit, dequantize +
 //! cuBLAS above it), and the rows are copied back before the next layer.
+//!
+//! A session may start from a restored prefix snapshot (#11442); one that
+//! misses keeps a chunk end at its prefix and captures a pending snapshot
+//! there, published when the request finishes and released if it is
+//! cancelled ([`super::prefix`]).
+
+use std::sync::Arc;
 
 use super::memory_admission::{BackboneShape, Estimate, HEAD_RESERVE_BYTES, Inventory};
 use super::*;
@@ -20,6 +27,12 @@ pub(crate) struct CudaSession {
     span_sums: CudaBuffer,
     first: usize,
     chunk: usize,
+    /// The reusable prefix end, kept as a chunk end.
+    boundary: Option<usize>,
+    prefix_ids: Vec<u32>,
+    cached_tokens: usize,
+    /// Owns this session's pending snapshot; dropping it releases one.
+    prefix_owner: Arc<()>,
     last: Vec<f32>,
     /// The whole prompt's embedding rows and rotary table, built by the
     /// request's own thread ([`ClefCudaTrunk::prepare_inputs`]) so the batch
@@ -45,6 +58,15 @@ impl CudaSession {
 
     pub(crate) fn chunk_tokens(&self) -> usize {
         self.chunk
+    }
+
+    /// Chunk ends the scheduler must keep, relative to the next token.
+    pub(crate) fn boundaries(&self) -> Vec<usize> {
+        self.boundary
+            .filter(|&end| end > self.first)
+            .map(|end| end - self.first)
+            .into_iter()
+            .collect()
     }
 
     pub(crate) fn device_bytes(&self) -> u64 {
@@ -243,6 +265,7 @@ impl ClefCudaTrunk {
         tokens: Vec<TokenId>,
         spans: Vec<(usize, usize)>,
         chunk: usize,
+        prefix_tokens: usize,
         prepared: Option<PreparedInputs>,
     ) -> Result<CudaSession, String> {
         let length = tokens.len();
@@ -306,6 +329,24 @@ impl ClefCudaTrunk {
             submission.commit(CudaCommandWait::Completed).map_err(err)?;
         }
         request.bytes += span_sums.byte_len() as u64 + span_buffer.byte_len() as u64;
+        prefix::reap_pending(state);
+        let boundary = reusable_boundary(prefix_tokens, length, &spans).filter(|&prefix| {
+            prefix::Snapshot::byte_len(&request, dims, prefix)
+                .is_ok_and(|bytes| state.prefix.admits(prefix, bytes))
+        });
+        let prefix_ids: Vec<u32> = boundary.map_or_else(Vec::new, |prefix| {
+            tokens[..prefix]
+                .iter()
+                .map(|token| token.as_u32())
+                .collect()
+        });
+        let cached_tokens = match state.prefix.get(&prefix_ids, chunk) {
+            Some(saved) => {
+                saved.restore(&mut state.backend, &request, dims)?;
+                prefix_ids.len()
+            }
+            None => 0,
+        };
         Ok(CudaSession {
             request,
             scratch,
@@ -313,8 +354,12 @@ impl ClefCudaTrunk {
             spans: spans.len(),
             span_buffer,
             span_sums,
-            first: 0,
+            first: cached_tokens,
             chunk,
+            boundary,
+            prefix_ids,
+            cached_tokens,
+            prefix_owner: Arc::new(()),
             last: Vec::new(),
             prepared,
         })
@@ -334,7 +379,13 @@ impl ClefCudaTrunk {
         let dims = self.dims;
         let mut total = 0usize;
         for (session, count) in sessions.iter() {
-            if *count == 0 || *count > session.chunk || *count > session.remaining_tokens() {
+            let allowed = chunk_len(
+                session.first,
+                session.tokens.len(),
+                session.chunk,
+                session.boundary,
+            );
+            if *count == 0 || *count > allowed {
                 return Err(String::from("scheduled chunk crosses a request boundary"));
             }
             total = total
@@ -522,8 +573,31 @@ impl ClefCudaTrunk {
                     .read_f32_at_offset((*count - 1) * dims.hidden, dims.hidden)
                     .map_err(err)?;
             }
+            if session.cached_tokens == 0 && session.boundary == Some(session.first) {
+                // Several sessions may hold pending captures; together with
+                // the published snapshots they stay within the budget.
+                if let Some((bytes, snapshot)) =
+                    prefix::capture_within_budget(state, &session.request, dims, session.first)?
+                {
+                    state.pending_prefix.push(prefix::PendingPrefix {
+                        owner: Arc::downgrade(&session.prefix_owner),
+                        bytes,
+                        snapshot,
+                    });
+                }
+            }
         }
         Ok(())
+    }
+
+    /// Releases the pending snapshots of cancelled or failed sessions.
+    pub(crate) fn reap_pending_prefix(&self) {
+        prefix::reap_pending(
+            &mut self
+                .device
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
     }
 
     /// Activates exactly this completed session while the executor runs its head.
@@ -557,9 +631,15 @@ impl ClefCudaTrunk {
         if state.session_scratch.len() >= POOLED_SCRATCH {
             state.session_scratch.remove(0);
         }
+        prefix::publish_pending(
+            &mut state,
+            &session.prefix_owner,
+            &session.prefix_ids,
+            session.chunk,
+        );
         state.session_scratch.push(session.scratch);
         state.request = Some(session.request);
-        Ok((prefill, 0, ActiveHead { trunk: self }))
+        Ok((prefill, session.cached_tokens, ActiveHead { trunk: self }))
     }
 }
 

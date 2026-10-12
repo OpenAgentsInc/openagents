@@ -35,11 +35,10 @@ impl BatchSession {
         }
     }
 
-    /// Chunk ends the scheduler must keep (a reusable prefix's end on Metal;
-    /// CUDA has no prefix reuse yet).
+    /// Chunk ends the scheduler must keep (a reusable prefix's end).
     fn boundaries(&self) -> Vec<usize> {
         match self {
-            Self::Cuda(_) => Vec::new(),
+            Self::Cuda(session) => session.boundaries(),
             #[cfg(target_os = "macos")]
             Self::Metal(session) => session.boundaries(),
         }
@@ -98,7 +97,7 @@ impl DeviceTrunk {
 
     fn reap_pending_prefix(&self) {
         match self {
-            Self::Cuda(_) => {}
+            Self::Cuda(trunk) => trunk.reap_pending_prefix(),
             #[cfg(target_os = "macos")]
             Self::Metal(trunk) => trunk.reap_pending_prefix(),
         }
@@ -127,12 +126,9 @@ impl DeviceTrunk {
         prepared: Option<PreparedInputs>,
     ) -> Result<BatchSession, String> {
         match self {
-            Self::Cuda(trunk) => {
-                let _ = prefix_tokens;
-                trunk
-                    .begin_session(tokens, spans, chunk, prepared)
-                    .map(BatchSession::Cuda)
-            }
+            Self::Cuda(trunk) => trunk
+                .begin_session(tokens, spans, chunk, prefix_tokens, prepared)
+                .map(BatchSession::Cuda),
             #[cfg(target_os = "macos")]
             Self::Metal(trunk) => trunk
                 .begin_session(tokens, spans, chunk, prefix_tokens)
@@ -141,7 +137,8 @@ impl DeviceTrunk {
     }
 
     /// Advances one chunk of every session; returns the session that
-    /// captured a reusable prefix, if any (Metal only).
+    /// captured a reusable prefix, if any (Metal, which keeps one pending
+    /// capture; CUDA tracks any number of its own under its byte budget).
     fn advance_sessions(
         &self,
         cpu: &CpuGgufQwen35TextGenerationService,

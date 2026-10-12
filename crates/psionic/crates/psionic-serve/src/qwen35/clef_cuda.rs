@@ -31,6 +31,9 @@ use std::sync::Mutex;
 pub(crate) mod batching;
 mod load_admission;
 mod memory_admission;
+mod prefix;
+
+use crate::clef::prefix::{PrefixCache, chunk_len, reusable_boundary};
 
 use psionic_backend_cuda::clef_prefill::{
     self, ClefEvent, ClefOperand, ClefStream, ClefWeightFormat,
@@ -229,6 +232,12 @@ struct DeviceState {
     /// with their capacities in floats.
     head_stage: Option<HeadStage>,
     weight_bytes: u64,
+    /// Exact prefix snapshots on the device ([`prefix`]), least recently
+    /// used out, within `PSIONIC_CLEF_PREFIX_CACHE_BYTES`.
+    prefix: PrefixCache<prefix::Snapshot>,
+    /// Captures of batched requests still running; they count against the
+    /// same budget and are released if their request is cancelled.
+    pending_prefix: Vec<prefix::PendingPrefix>,
 }
 
 /// Input, output and bias arenas for the batched head calls.
@@ -632,6 +641,11 @@ impl ClefCudaTrunk {
             session_scratch: Vec::new(),
             request: None,
             attention_scratch: None,
+            prefix: PrefixCache::with_entries(
+                prefix::capacity(memory.total_bytes)?,
+                prefix::MAX_ENTRIES,
+            ),
+            pending_prefix: Vec::new(),
             backend,
         };
         Ok(Self {
@@ -681,9 +695,30 @@ impl ClefCudaTrunk {
         tokens: &[TokenId],
         spans: &[(usize, usize)],
         chunk: usize,
+        layer_observer: Option<ClefLayerObserver<'_>>,
+        final_observer: Option<ClefLayerObserver<'_>>,
+    ) -> Result<ClefCudaPrefill, String> {
+        self.prefill_with_prefix(cpu, tokens, spans, chunk, 0, layer_observer, final_observer)
+            .map(|(prefill, _)| prefill)
+    }
+
+    /// [`Self::prefill`] with exact reuse of the first `prefix_tokens`
+    /// tokens (the system prompt and state) when the prefix cache is on:
+    /// a matching snapshot is restored into this request's fresh buffers
+    /// and only the suffix runs; a miss splits its chunks at the prefix end
+    /// and publishes a snapshot there once the request succeeds. Returns
+    /// the restored token count. Observers and profiling disable reuse.
+    #[allow(clippy::too_many_arguments)]
+    pub fn prefill_with_prefix(
+        &self,
+        cpu: &CpuGgufQwen35TextGenerationService,
+        tokens: &[TokenId],
+        spans: &[(usize, usize)],
+        chunk: usize,
+        prefix_tokens: usize,
         mut layer_observer: Option<ClefLayerObserver<'_>>,
         mut final_observer: Option<ClefLayerObserver<'_>>,
-    ) -> Result<ClefCudaPrefill, String> {
+    ) -> Result<(ClefCudaPrefill, usize), String> {
         let dims = self.dims;
         let length = tokens.len();
         if length == 0 {
@@ -736,6 +771,33 @@ impl ClefCudaTrunk {
 
         let rope = rope_table_params(model);
         let profile = std::env::var_os("PSIONIC_CLEF_PROFILE").is_some();
+        prefix::reap_pending(state);
+        let boundary = if layer_observer.is_none()
+            && final_observer.is_none()
+            && !profile
+            && std::env::var_os("PSIONIC_CLEF_SKIP").is_none()
+        {
+            reusable_boundary(prefix_tokens, length, spans).filter(|&prefix| {
+                prefix::Snapshot::byte_len(&request, dims, prefix)
+                    .is_ok_and(|bytes| state.prefix.admits(prefix, bytes))
+            })
+        } else {
+            None
+        };
+        let prefix_ids: Vec<u32> = boundary.map_or_else(Vec::new, |prefix| {
+            tokens[..prefix]
+                .iter()
+                .map(|token| token.as_u32())
+                .collect()
+        });
+        let cached_tokens = match state.prefix.get(&prefix_ids, chunk) {
+            Some(saved) => {
+                saved.restore(&mut state.backend, &request, dims)?;
+                prefix_ids.len()
+            }
+            None => 0,
+        };
+        let mut pending_prefix = None;
         let mut timings = ProfileTimings::default();
         let began = std::time::Instant::now();
         let mut last = Vec::new();
@@ -758,11 +820,14 @@ impl ClefCudaTrunk {
                 })?;
             Ok((embedded, rope.table(first, n, dims.rotary)))
         };
-        let mut prepared = Some(build_inputs(0, chunk.min(length))?);
-        let mut first = 0usize;
+        let mut prepared = Some(build_inputs(
+            cached_tokens,
+            chunk_len(cached_tokens, length, chunk, boundary),
+        )?);
+        let mut first = cached_tokens;
         while first < length {
             let chunk_began = std::time::Instant::now();
-            let n = chunk.min(length - first);
+            let n = chunk_len(first, length, chunk, boundary);
             let (embedded, table) = prepared.take().ok_or("chunk inputs")?;
             let scratch = state.scratch.as_mut().ok_or("scratch")?;
             scratch
@@ -775,7 +840,7 @@ impl ClefCudaTrunk {
                 .map_err(err)?;
             timings.embed += chunk_began.elapsed().as_secs_f64();
             let next_first = first + n;
-            let next_n = chunk.min(length.saturating_sub(next_first));
+            let next_n = chunk_len(next_first, length, chunk, boundary);
             let (device, next) = std::thread::scope(|scope| {
                 let next =
                     (next_first < length).then(|| scope.spawn(|| build_inputs(next_first, next_n)));
@@ -916,6 +981,10 @@ impl ClefCudaTrunk {
                 prepared = Some(next.map_err(|_| String::from("the embedding thread panicked"))??);
             }
             first += n;
+            if cached_tokens == 0 && boundary == Some(first) {
+                // the chunk ending at the prefix has completed
+                pending_prefix = prefix::capture_within_budget(state, &request, dims, first)?;
+            }
         }
         if profile {
             eprintln!(
@@ -935,12 +1004,32 @@ impl ClefCudaTrunk {
         };
         let scratch_bytes = state.scratch.as_ref().map_or(0, |scratch| scratch.bytes);
         let request_device_bytes = request.bytes + scratch_bytes;
+        if let Some((bytes, snapshot)) = pending_prefix {
+            state.prefix.insert(&prefix_ids, chunk, bytes, snapshot);
+        }
         state.request = Some(request);
-        Ok(ClefCudaPrefill {
-            span_sums: sums,
-            last,
-            request_device_bytes,
-        })
+        Ok((
+            ClefCudaPrefill {
+                span_sums: sums,
+                last,
+                request_device_bytes,
+            },
+            cached_tokens,
+        ))
+    }
+
+    /// Prefix snapshots: `(entries, retained bytes, budget)`.
+    #[must_use]
+    pub fn prefix_cache_stats(&self) -> (usize, usize, usize) {
+        let state = self
+            .device
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        (
+            state.prefix.len(),
+            state.prefix.retained_bytes(),
+            state.prefix.capacity(),
+        )
     }
 
     /// Memory attention against the last prefill's memory rows: for each of

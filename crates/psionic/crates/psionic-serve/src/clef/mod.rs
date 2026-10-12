@@ -123,6 +123,16 @@ impl DeviceTrunk {
         }
     }
 
+    /// CUDA prefix snapshots `(entries, retained bytes, budget)`; `None`
+    /// on Metal or with the cache off.
+    fn prefix_cache_stats(&self) -> Option<(usize, usize, usize)> {
+        match self {
+            Self::Cuda(trunk) => Some(trunk.prefix_cache_stats()).filter(|stats| stats.2 > 0),
+            #[cfg(target_os = "macos")]
+            Self::Metal(_) => None,
+        }
+    }
+
     /// The device name.
     #[must_use]
     pub fn device_name(&self) -> &str {
@@ -174,10 +184,15 @@ impl DeviceTrunk {
                         "image inputs are not supported on the CUDA decision backend",
                     ));
                 }
-                let _ = prefix_tokens;
-                trunk
-                    .prefill(cpu, tokens, spans, chunk, layer_observer, final_observer)
-                    .map(|result| (result, 0))
+                trunk.prefill_with_prefix(
+                    cpu,
+                    tokens,
+                    spans,
+                    chunk,
+                    prefix_tokens,
+                    layer_observer,
+                    final_observer,
+                )
             }
             #[cfg(target_os = "macos")]
             Self::Metal(trunk) => trunk.prefill_with_prefix(
@@ -1274,7 +1289,17 @@ impl ClefDecisionLane {
                 "head_ms": ms(head),
                 "total_ms": ms(began.elapsed().as_secs_f64()),
                 "cached": hit,
+                // prompt tokens restored from a prefix snapshot, not prefilled
+                "restored_tokens": result.cached_input_tokens,
             });
+            if let Some((entries, bytes, budget)) = self
+                .cuda
+                .as_deref()
+                .and_then(DeviceTrunk::prefix_cache_stats)
+            {
+                answer["psionic"]["prefix_cache"] =
+                    json!({ "entries": entries, "bytes": bytes, "budget_bytes": budget });
+            }
         }
         if let Some(export) = &self.export {
             let questions: Vec<(String, Vec<String>, Vec<f32>)> = request

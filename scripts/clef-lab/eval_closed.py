@@ -36,6 +36,10 @@ import issue_files as lab  # noqa: E402
 # them elsewhere, an H100 for instance, with these two variables.
 OLLAMA = os.environ.get("CLEF_LAB_27B_URL", "http://127.0.0.1:11434")
 PSIONIC = os.environ.get("CLEF_LAB_FLASH_URL", "http://127.0.0.1:18098")
+# Two-stage passes against a second server without prefix reuse (#11442).
+OLLAMA_COLD = os.environ.get("CLEF_LAB_27B_COLD_URL", OLLAMA)
+PSIONIC_COLD = os.environ.get("CLEF_LAB_FLASH_COLD_URL", PSIONIC)
+SURVIVORS = 8
 
 # name -> (base_url, model, shape, tier); shape: batch | single | solver
 CONFIGS = {
@@ -45,6 +49,12 @@ CONFIGS = {
     "27b-single-t3": (OLLAMA, "clef", "single", 3),
     "27b-batch-t2": (OLLAMA, "clef", "batch", 2),
     "27b-batch-t3": (OLLAMA, "clef", "batch", 3),
+    # tier 2 over every candidate, then tier 3 over the top SURVIVORS, the
+    # issue as the shared state (issue_files.shared_request); run with --k 24
+    "flash-two-stage": (PSIONIC, "clef-flash", "two-stage", 2),
+    "flash-two-stage-cold": (PSIONIC_COLD, "clef-flash", "two-stage", 2),
+    "27b-two-stage": (OLLAMA, "clef", "two-stage", 2),
+    "27b-two-stage-cold": (OLLAMA_COLD, "clef", "two-stage", 2),
 }
 
 
@@ -62,6 +72,22 @@ def solver_request(model: str, issue_doc: dict, repo: Path, rev: str, path: str)
 def answer(config: str, issue_doc: dict, files: list[dict], repo: Path, rev: str, timeout: int) -> dict:
     url, model, shape, tier = CONFIGS[config]
     p, secs, tokens = {}, 0.0, 0
+    if shape == "two-stage":
+        nonce = secrets.token_hex(8)
+        first, _ = lab.fit(repo, rev, files, 2, model, issue_doc, lab.OLLAMA_BODY_CAP)
+        got, s1 = lab.ask(url, lab.shared_request(model, issue_doc, first, nonce), timeout)
+        p1 = {e["path"]: got["answers"][e["id"]]["noul"] for e in first}
+        survivors = sorted(files, key=lambda f: -p1[f["path"]])[:SURVIVORS]
+        second, _ = lab.fit(repo, rev, survivors, 3, model, issue_doc, lab.OLLAMA_BODY_CAP)
+        got2, s2 = lab.ask(url, lab.shared_request(model, issue_doc, second, nonce), timeout)
+        p2 = {e["path"]: got2["answers"][e["id"]]["noul"] for e in second}
+        # survivors rank by the tier-3 answer, above every other candidate
+        floor = min(p2.values())
+        p = {path: p2.get(path, min(p1[path], max(floor - 1e-6, 0.0))) for path in p1}
+        usage = [g.get("usage", {}) for g in (got, got2)]
+        return {"p": p, "seconds": round(s1 + s2, 3), "stages": [round(s1, 3), round(s2, 3)],
+                "tokens": sum(u.get("input_tokens") or 0 for u in usage),
+                "restored_tokens": [u.get("cached_input_tokens") or 0 for u in usage]}
     if shape == "solver":
         for f in files:
             got, s = lab.ask(url, solver_request(model, issue_doc, repo, rev, f["path"]), timeout)
