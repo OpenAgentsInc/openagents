@@ -256,6 +256,8 @@ def inspect(cut, cut_path, work, w, h, allow_missing):
                               "blackdetect=d=0.4:pix_th=0.06,freezedetect=n=0.0008:d=1.5", "-f", "null", "-"],
                              capture_output=True, text=True).stderr
         for m in re.finditer(r"black_start:([\d.]+) black_end:([\d.]+)", log):
+            if shot.get("dark_ok"):  # a dark UI on a black stage, checked by eye
+                continue
             problems.append(f"{shot['name']}: black from {float(m[1]):.1f}s to {float(m[2]):.1f}s of its slot")
         for m in re.finditer(r"freeze_duration: ([\d.]+)", log):
             if float(m[1]) >= shot.get("hold_ok", 1.5):
