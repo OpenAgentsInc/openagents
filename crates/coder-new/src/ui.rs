@@ -1988,7 +1988,7 @@ mod export_notice_tests {
         }
         let text = rail(&mut app, 60);
         assert!(text.starts_with("┌─ History 100/100 "));
-        assert!(text.contains("auto"));
+        assert!(text.contains(crate::models::AUTO_LABEL));
         app.composer_arrow(false);
         assert!(!rail(&mut app, 60).contains("History"));
         app.composer_arrow(true);

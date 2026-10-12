@@ -426,6 +426,20 @@ fn doors(decider: Decider) -> (Doors, Doors) {
     (Doors(list()), Doors(list()))
 }
 
+/// One System One request for a judgment outside the briefing, such as the
+/// queue pass's per-issue questions (#11388): asked at the doors `decider`
+/// names, failing over door by door. The answer and the name of the door
+/// that gave it; an error when no door is set up or every door failed.
+pub async fn ask(
+    decider: Decider,
+    request: jev::SystemOneRequest,
+) -> Result<(jev::SystemOneResponse, String), String> {
+    let (mut doors, _) = doors(decider);
+    let (response, door) = doors.system_one(request).await?;
+    let name = answered_by(door, &response);
+    Ok((response, name))
+}
+
 fn issue_state(base: &Base) -> String {
     let body: String = base.body.chars().take(4000).collect();
     format!("Issue #{}: {}\n\n{}", base.issue, base.title, body)
