@@ -347,6 +347,23 @@ impl Thread {
                     .await
                 };
                 let ended = opened.query.is_completed();
+                // Where the plan's 5-hour and weekly windows stand, for the
+                // line under the input.
+                if !ended
+                    && let Ok(Ok(usage)) = tokio::time::timeout(
+                        std::time::Duration::from_secs(5),
+                        opened.query.get_usage(),
+                    )
+                    .await
+                {
+                    crate::claude_plan::observe_usage(&usage, coder_delegate::limit::now());
+                    if let Some(plan) = crate::claude_plan::plan_usage() {
+                        let _ = events.send(Event::Runtime {
+                            turn,
+                            event: RuntimeEvent::Plan(plan),
+                        });
+                    }
+                }
                 if unconfirmed {
                     unconfirmed = false;
                     if !named && ended && result.is_err() && !cancel.load(Ordering::Relaxed) {

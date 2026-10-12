@@ -148,13 +148,13 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
     } else {
         u16::from(app.selected_agent.is_some())
     };
-    let context_text = context_text(app);
-    let context_height = u16::from(!context_text.is_empty());
     // One blank row above the input, so the transcript's last message is
     // never pressed against the input's top rule.
     let padding_height = 1;
-    let reserved = rail_height + 1 + padding_height + context_height + header_height;
-    let [header, body, queued, _padding, composer, context, rail] = Layout::vertical([
+    // Under the input sits the agent rail alone; everything else rides the
+    // input's own rules (owner, 2026-10-12).
+    let reserved = rail_height + 1 + padding_height + header_height;
+    let [header, body, queued, _padding, composer, rail] = Layout::vertical([
         Constraint::Length(header_height),
         Constraint::Min(1),
         Constraint::Length(
@@ -166,7 +166,6 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         ),
         Constraint::Length(padding_height),
         Constraint::Length(composer_height.min(area.height.saturating_sub(reserved))),
-        Constraint::Length(context_height),
         Constraint::Length(rail_height),
     ])
     .areas(area);
@@ -239,6 +238,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         // OpenAgents picks the model here, so the rail says `auto` and never
         // the name of whichever vendor answered.
         rail_mode(app),
+        top_rail(app).as_deref(),
         working.as_deref(),
         copied,
     );
@@ -255,10 +255,6 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         composer.height.saturating_sub(1),
         None,
         Some((&path, Style::default().fg(t::GRAY))),
-    );
-    frame.render_widget(
-        Paragraph::new(span(truncate(&context_text, context.width), t::GRAY)),
-        context,
     );
     agent_rail(frame, rail, app);
     if app.model_picker.is_some() {
@@ -577,11 +573,28 @@ fn repository_rail(app: &App) -> String {
     if let Some(branch) = &app.branch {
         text.push_str(&format!(" ({branch})"));
     }
-    let cost = crate::long_session::session_cost(app);
-    if cost > 0.0 {
-        text.push_str(&format!(" · {}", agent_fleet::dollars(cost)));
+    let extra = context_text(app);
+    if !extra.is_empty() {
+        text.push_str(" · ");
+        text.push_str(&extra);
     }
     text
+}
+
+/// What the input's top-right rule carries before the mode's name: the
+/// Claude plan's windows in claude mode, then what the chat has cost.
+fn top_rail(app: &App) -> Option<String> {
+    let mut parts = Vec::new();
+    if app.mode == Mode::Claude
+        && let Some(plan) = crate::claude_plan::rail_text(atif::now_ms() / 1000)
+    {
+        parts.push(plan);
+    }
+    let cost = crate::long_session::session_cost(app);
+    if cost > 0.0 {
+        parts.push(agent_fleet::dollars(cost));
+    }
+    (!parts.is_empty()).then(|| parts.join(" · "))
 }
 
 /// The mode the input's rail names: `openrouter` or `claude` (Shift+Tab),
@@ -631,8 +644,11 @@ fn context_text(app: &App) -> String {
             crate::long_session::clock(until)
         ));
     }
+    // In claude mode the plan rides the top rail ([`top_rail`]).
     let now = atif::now_ms() / 1000;
-    if let Some(plan) = crate::claude_plan::status_text(now, &crate::long_session::clock) {
+    if app.mode != Mode::Claude
+        && let Some(plan) = crate::claude_plan::status_text(now, &crate::long_session::clock)
+    {
         parts.push(plan);
     }
     // How full the claude session's context is (#11438).
@@ -1877,6 +1893,30 @@ fn composer_rail_text(text: &str, width: u16) -> String {
     truncate(text, width)
 }
 
+/// Paints the last `label.width()` cells of the right rail `text` drawn at
+/// `offset` in `style`, when the rail drew: the mode's name keeps its own
+/// color after the gray plan and cost.
+fn accent_tail(
+    buf: &mut ratatui::buffer::Buffer,
+    area: Rect,
+    offset: u16,
+    text: &str,
+    label: &str,
+    style: Style,
+) {
+    let y = area.top() + offset;
+    let end = area.right().saturating_sub(3);
+    let start = end.saturating_sub(label.width() as u16);
+    let first = end.saturating_sub(text.width() as u16);
+    // The rail draws nothing when it does not fit: leave the rule alone.
+    if y >= buf.area.bottom() || first <= area.left() || buf[(first, y)].symbol() == "─" {
+        return;
+    }
+    for x in start..end {
+        buf[(x, y)].set_style(style);
+    }
+}
+
 fn composer_view(
     frame: &mut Frame,
     area: Rect,
@@ -1889,6 +1929,7 @@ fn composer_view(
     history_position: Option<(usize, usize)>,
     selected: bool,
     fallback_model: Option<&str>,
+    top_extra: Option<&str>,
     working: Option<&str>,
     copied: bool,
 ) {
@@ -1934,12 +1975,25 @@ fn composer_view(
     } else {
         plugins.composer_rails()
     };
+    let mut top_drawn = false;
     for contribution in contributions {
         let offset = match contribution.slot {
             RailSlot::ComposerTopRight => 0,
             RailSlot::ComposerBottomRight => area.height.saturating_sub(1),
         };
-        let text = composer_rail_text(&contribution.text, area.width.saturating_sub(6));
+        let label = composer_rail_text(&contribution.text, area.width.saturating_sub(6));
+        let accent = Style::default().fg(match contribution.text.as_str() {
+            crate::models::AUTO_LABEL => t::ACCENT_SKILL,
+            crate::models::OPENROUTER_LABEL => t::ACCENT_MODEL,
+            crate::claude::LABEL | crate::solver::LABEL => t::ACCENT_DELEGATE,
+            _ => t::GRAY,
+        });
+        // The plan and the cost sit before the mode's name, in gray.
+        let extra = top_extra.filter(|_| offset == 0);
+        let text = match extra {
+            Some(extra) => format!("{extra} · {label}"),
+            None => label.clone(),
+        };
         coder_terminal::rail(
             area,
             frame.buffer_mut(),
@@ -1947,13 +2001,25 @@ fn composer_view(
             if offset == 0 { left } else { None },
             Some((
                 &text,
-                Style::default().fg(match contribution.text.as_str() {
-                    crate::models::AUTO_LABEL => t::ACCENT_SKILL,
-                    crate::models::OPENROUTER_LABEL => t::ACCENT_MODEL,
-                    crate::claude::LABEL | crate::solver::LABEL => t::ACCENT_DELEGATE,
-                    _ => t::GRAY,
-                }),
+                if extra.is_some() {
+                    Style::default().fg(t::GRAY)
+                } else {
+                    accent
+                },
             )),
+        );
+        if extra.is_some() {
+            accent_tail(frame.buffer_mut(), area, offset, &text, &label, accent);
+        }
+        top_drawn |= offset == 0;
+    }
+    if !top_drawn && let Some(extra) = top_extra {
+        coder_terminal::rail(
+            area,
+            frame.buffer_mut(),
+            0,
+            left,
+            Some((extra, Style::default().fg(t::GRAY))),
         );
     }
     if inner.width < 4 || inner.height == 0 {
@@ -2290,7 +2356,7 @@ mod export_notice_tests {
     }
 
     #[test]
-    fn populated_footer_keeps_its_row_below_the_composer() {
+    fn nothing_but_the_agent_rail_sits_under_the_input() {
         let mut app = App::default();
         app.mode = Mode::Live;
         app.account = Some("Christopher David".into());
@@ -2298,10 +2364,12 @@ mod export_notice_tests {
         let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
         terminal.draw(|frame| render(frame, &mut app)).unwrap();
         let buffer = terminal.backend().buffer();
-        assert_eq!(buffer[(0, 18)].symbol(), "└");
+        // The input's bottom rule is the last row, and it carries the note.
+        assert_eq!(buffer[(0, 19)].symbol(), "└");
         let text: String = (0..60).map(|x| buffer[(x, 19)].symbol()).collect();
-        // The account's name never shows under the input.
-        assert_eq!(text.trim(), "Update ready");
+        assert!(text.contains("Update ready"), "{text}");
+        // The account's name never shows.
+        assert!(!text.contains("Christopher"), "{text}");
     }
 
     #[test]
@@ -2690,7 +2758,7 @@ mod repository_tests {
         );
     }
     #[test]
-    fn repository_and_user_cost_are_on_bottom_right_rail() {
+    fn repository_is_bottom_right_and_cost_top_right() {
         let mut app = App::default();
         app.mode = Mode::Live;
         app.cwd = Some("/work/repo".into());
@@ -2704,7 +2772,10 @@ mod repository_tests {
             .find(|&y| (0..4).any(|x| buffer[(x, y)].symbol() == "❯"))
             .unwrap();
         let text: String = (0..80).map(|x| buffer[(x, row + 1)].symbol()).collect();
-        assert!(text.contains("/work/repo (feature) · $0.25"), "{text}");
+        assert!(text.contains("/work/repo (feature)"), "{text}");
+        assert!(!text.contains("$0.25"), "{text}");
         assert!(text.trim_end_matches(['─', '┘']).ends_with(' '), "{text}");
+        let top: String = (0..80).map(|x| buffer[(x, row - 1)].symbol()).collect();
+        assert!(top.contains("$0.25 · "), "{top}");
     }
 }

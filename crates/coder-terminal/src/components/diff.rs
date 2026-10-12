@@ -346,9 +346,9 @@ fn assemble_rows(
     rows
 }
 
-/// The line number, then the change's marker: on the row's band when the
-/// line has one, in the change's color when it does not. The `+` or `-`
-/// keeps the change's color on the band too, never plain white.
+/// The line number, then the change's marker, both in the change's light
+/// green or red, on the row's band when the line has one, as Claude Code
+/// draws them; never plain white.
 fn render_gutter(
     spans: &mut Vec<Span<'static>>,
     line: &DiffLine,
@@ -363,14 +363,11 @@ fn render_gutter(
         ChangeTag::Insert => (line.ln, '+', theme.insert_fg),
     };
     let style = match bg {
-        Some(bg) => Style::default().fg(theme.text_primary).bg(bg),
+        Some(bg) => Style::default().fg(fg).bg(bg),
         None => Style::default().fg(fg),
     };
     spans.push(Span::styled(format!("{number:>w$}"), style));
-    spans.push(Span::styled(
-        format!("{MARK_GAP}{marker}{MARK_GAP}"),
-        style.fg(fg),
-    ));
+    spans.push(Span::styled(format!("{MARK_GAP}{marker}{MARK_GAP}"), style));
 }
 
 /// The changed words of each line of a hunk, as byte ranges of its text:

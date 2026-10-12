@@ -154,6 +154,75 @@ pub fn observe_credential(kind: &str) {
     }
 }
 
+/// Reads the plan's 5-hour and weekly windows from Claude Code's own usage
+/// answer (`get_usage`), which a claude chat asks for after each turn: a
+/// `rate_limit_event` arrives only when a window's status changes, so the
+/// line under the input would otherwise miss the 5-hour window.
+pub fn observe_usage(usage: &serde_json::Value, now: u64) {
+    let limits = &usage["rate_limits"];
+    let mut seen = WINDOWS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut found = false;
+    for key in ["five_hour", "seven_day"] {
+        let Some(percent) = limits[key]["utilization"].as_f64() else {
+            continue;
+        };
+        let mut info = serde_json::json!({"rateLimitType": key, "utilization": percent / 100.0});
+        if let Some(at) = limits[key]["resets_at"].as_str().and_then(unix_seconds) {
+            info["resetsAt"] = at.into();
+        }
+        if let Some(window) = microcoder_loop::usage::rate_limit_window(&info, now) {
+            seen.0.retain(|kept| kept.window != window.window);
+            seen.0.push(window);
+            found = true;
+        }
+    }
+    if found {
+        seen.0.sort_by_key(|kept| kept.window);
+        seen.1 = limits["limits"]
+            .as_array()
+            .is_some_and(|all| all.iter().any(|limit| limit["severity"] == "warning"));
+    }
+}
+
+/// Unix seconds for an RFC 3339 time such as `2026-10-12T19:10:00.32+00:00`.
+fn unix_seconds(text: &str) -> Option<u64> {
+    let (date, rest) = text.split_once('T')?;
+    let mut parts = date.splitn(3, '-').map(str::parse::<i64>);
+    let (year, month, day) = (
+        parts.next()?.ok()?,
+        parts.next()?.ok()?,
+        parts.next()?.ok()?,
+    );
+    let clock: String = rest.chars().take(8).collect();
+    let mut hms = clock.splitn(3, ':').map(str::parse::<i64>);
+    let (hour, minute, second) = (hms.next()?.ok()?, hms.next()?.ok()?, hms.next()?.ok()?);
+    // The zone after the seconds and any fraction: `Z`, or `+HH:MM`/`-HH:MM`.
+    let zone = rest[8..].trim_start_matches(|c: char| c == '.' || c.is_ascii_digit());
+    let offset = match zone.as_bytes().first() {
+        None | Some(b'Z' | b'z') => 0,
+        Some(sign @ (b'+' | b'-')) => {
+            let mut hm = zone[1..].splitn(2, ':').map(str::parse::<i64>);
+            let minutes = hm.next()?.ok()? * 60 + hm.next().and_then(Result::ok).unwrap_or(0);
+            if *sign == b'+' {
+                minutes * 60
+            } else {
+                -minutes * 60
+            }
+        }
+        Some(_) => return None,
+    };
+    // Days from 1970-01-01 (Howard Hinnant's days_from_civil).
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    u64::try_from(days * 86_400 + hour * 3600 + minute * 60 + second - offset).ok()
+}
+
 /// Reads a `rate_limit_event`'s `rate_limit_info`: `allowed_warning` holds
 /// new automated starts until its reset; `allowed` lets them go again.
 pub fn observe_rate_limit(info: &serde_json::Value, now: u64) {
@@ -295,6 +364,19 @@ pub fn status_text(now: u64, clock: &dyn Fn(u64) -> String) -> Option<String> {
     plan_usage()?.text(now, clock)
 }
 
+/// The plan's windows for the input's top rail in claude mode: "5h 33% ·
+/// week 83%", or `None` before Claude Code has said or once each window
+/// reset.
+#[must_use]
+pub fn rail_text(now: u64) -> Option<String> {
+    let current = plan_usage()?.current(now)?;
+    let parts: Vec<String> = current
+        .windows()
+        .map(|window| format!("{} {}%", window.kind.word(), window.used_percent))
+        .collect();
+    (!parts.is_empty()).then(|| parts.join(" · "))
+}
+
 /// The `/agents` panel's line about the plan.
 #[must_use]
 pub fn panel_line() -> String {
@@ -415,6 +497,41 @@ mod tests {
         assert!(try_take(now()).is_none());
         drop((held, second));
         assert_eq!(read_limit(None), DEFAULT_SLOTS);
+    }
+
+    #[test]
+    fn claude_codes_usage_answer_fills_both_windows() {
+        let _serial = SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        reset_for_test(DEFAULT_SLOTS);
+        assert_eq!(unix_seconds("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(
+            unix_seconds("2026-10-12T19:10:00.324049+00:00"),
+            Some(1_791_832_200)
+        );
+        assert_eq!(
+            unix_seconds("2026-10-12T21:10:00+02:00"),
+            Some(1_791_832_200)
+        );
+        let now = 1_791_820_000;
+        observe_usage(
+            &serde_json::json!({"rate_limits": {
+                "five_hour": {"utilization": 33, "resets_at": "2026-10-12T19:10:00.324049+00:00"},
+                "seven_day": {"utilization": 83, "resets_at": "2026-10-17T08:00:00+00:00"},
+                "limits": [{"kind": "weekly_all", "severity": "warning"}]
+            }}),
+            now,
+        );
+        let usage = plan_usage().unwrap();
+        assert_eq!(usage.five_hour.unwrap().used_percent, 33);
+        assert_eq!(usage.seven_day.unwrap().used_percent, 83);
+        assert!(usage.warning);
+        assert!(
+            status_text(now, &|ms| format!("t{}", ms / 1000))
+                .unwrap()
+                .starts_with("Claude plan: 5h 33% · week 83%")
+        );
     }
 
     #[test]
