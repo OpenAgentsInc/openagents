@@ -479,33 +479,28 @@ fn new_chat_heading(app: &App) -> bool {
 
 /// The mark above an empty chat: the power symbol from the favicon, with the
 /// name beside it and the version on the next line.
-const BANNER: [&str; 14] = [
-    "                  @@",
-    "                  @@",
-    "           #@@    @@    @@#",
-    "         :@@%     @@     %@@:",
-    "        *@@       @@       @@#",
-    "       :@@        @@        @@:",
-    "       @@*        @@        *@@",
-    "       @@-        ##        -@@",
-    "       @@%                  %@@",
-    "        @@*                +@@",
-    "         @@%              %@@",
-    "          @@@%          %@@@",
-    "            #@@@@@@@@@@@@#",
-    "                -+**+-",
+const BANNER: [&str; 8] = [
+    "         +*",
+    "         %#",
+    "     @@  #%  @@",
+    "    @#   #%   *@",
+    "    @    #%    @.",
+    "    @-        -@",
+    "    -@-      :@=",
+    "      #@@@@@@%",
 ];
 
 fn header_view(frame: &mut Frame, area: Rect, app: &App) {
     if new_chat_heading(app) {
+        let mark_width = BANNER.iter().map(|mark| mark.len()).max().unwrap_or(0);
         let lines = BANNER
             .iter()
             .enumerate()
             .map(|(row, mark)| {
-                let mut line = vec![span(*mark, t::TEXT_PRIMARY)];
+                let mut line = vec![span(format!("{mark:<mark_width$}"), t::TEXT_PRIMARY)];
                 match row {
-                    6 => line.push(span("   OpenAgents Coder", t::TEXT_PRIMARY)),
-                    7 => line.push(span(
+                    4 => line.push(span("   OpenAgents Coder", t::TEXT_PRIMARY)),
+                    5 => line.push(span(
                         concat!("   v", env!("CARGO_PKG_VERSION")),
                         t::GRAY_BRIGHT,
                     )),
