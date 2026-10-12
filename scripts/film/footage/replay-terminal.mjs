@@ -114,6 +114,14 @@ function timeline(events, { maxGap, speed, idle }) {
   });
 }
 
+/// Where `s` starts a redraw it doesn't finish: the last cursor hide or
+/// synchronized-update start with no show or end after it; -1 when settled.
+function unsettled(s) {
+  const open = Math.max(s.lastIndexOf("\x1b[?25l"), s.lastIndexOf("\x1b[?2026h"));
+  const close = Math.max(s.lastIndexOf("\x1b[?25h"), s.lastIndexOf("\x1b[?2026l"));
+  return open > close ? open : -1;
+}
+
 export async function replay(castFile, out, opts = {}) {
   const { maxGap = 0.6, speed = [], hold = 1.5, from, to, idle = 0.8 } = opts;
   const lines = fs.readFileSync(castFile, "utf8").trim().split("\n");
@@ -141,11 +149,26 @@ export async function replay(castFile, out, opts = {}) {
   }
   if (pending) await c.evaluate(cdp, `window.feed(${JSON.stringify(pending)})`);
   let n = 0;
+  // A frame never shows half a redraw: output after the last point where
+  // Coder hides the cursor (or opens a synchronized update) without showing
+  // it again waits for the next frame, so the cursor doesn't flicker. It
+  // waits at most a few frames.
+  let carry = "";
+  let held = 0;
   for (let t = start; t < endAt; t += 1 / 30) {
-    let chunk = "";
+    let chunk = carry;
     while (k < last && tl[k].t <= t) {
       if (tl[k].kind === "o") chunk += tl[k].data;
       k++;
+    }
+    const cut = unsettled(chunk);
+    if (cut >= 0 && held < 4 && k < last) {
+      carry = chunk.slice(cut);
+      chunk = chunk.slice(0, cut);
+      held++;
+    } else {
+      carry = "";
+      held = 0;
     }
     if (chunk) await c.evaluate(cdp, `window.feed(${JSON.stringify(chunk)})`);
     await c.shoot(cdp, frames, n++);

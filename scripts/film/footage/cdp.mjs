@@ -73,6 +73,15 @@ export async function launch({ width, height, dpr, mobile = false, userAgent } =
   }
   // Pages draw as the focused window (solid cursors, focus rings).
   await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+  // No text caret: its blink lands unevenly on frames, worst where waits
+  // are shortened, and reads as flicker in the film.
+  await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
+    source: `addEventListener("DOMContentLoaded", () => {
+      const s = document.createElement("style");
+      s.textContent = "*, *::before, *::after { caret-color: transparent !important; }";
+      document.head.append(s);
+    });`,
+  });
   if (userAgent) await cdp.send("Emulation.setUserAgentOverride", { userAgent });
   await cdp.send("Emulation.setEmulatedMedia", {
     features: [{ name: "prefers-color-scheme", value: "dark" }],
