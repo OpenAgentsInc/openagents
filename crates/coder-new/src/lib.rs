@@ -68,6 +68,7 @@ pub mod provider;
 pub mod resume;
 pub mod risk_policy;
 mod route;
+pub mod routing_preferences;
 mod schedule;
 mod schedule_sync;
 pub mod sessions;
@@ -1948,6 +1949,7 @@ impl App {
         if self.screen != Screen::Preferences {
             self.preferences_return_screen = self.screen;
         }
+        self.preferences.refresh_routing();
         self.screen = Screen::Preferences;
     }
 

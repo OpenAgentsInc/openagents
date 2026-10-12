@@ -61,6 +61,31 @@ pub(super) fn render(frame: &mut Frame, area: Rect, app: &App) {
         "OpenAgents uses these when it picks a model for you.",
         t::TEXT_SECONDARY,
     )));
+    lines.push(Line::default());
+    lines.push(Line::from(Span::styled(
+        "Engines",
+        Style::default()
+            .fg(t::TEXT_PRIMARY)
+            .add_modifier(Modifier::BOLD),
+    )));
+    match &app.preferences.routing {
+        Ok(summary) if summary.is_empty() => lines.push(Line::from(span(
+            "No preference yet. Ask Coder to use an engine more, less, or never.",
+            t::TEXT_SECONDARY,
+        ))),
+        Ok(summary) => {
+            for line in summary {
+                lines.push(Line::from(span(format!("  {line}"), t::TEXT_PRIMARY)));
+            }
+        }
+        Err(error) => lines.push(Line::from(span(error, t::DIFF_DELETE_FG))),
+    }
+    if let Some(path) = &app.preferences.routing_path {
+        lines.push(Line::from(span(
+            format!("Every change, with your notes: {}", path.display()),
+            t::TEXT_SECONDARY,
+        )));
+    }
     if let Some(error) = &app.preferences_error {
         lines.push(Line::default());
         lines.push(Line::from(span(error, t::DIFF_DELETE_FG)));

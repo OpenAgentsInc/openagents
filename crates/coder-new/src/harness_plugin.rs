@@ -163,6 +163,10 @@ pub enum Exclusion {
     NotHere,
     /// It takes no chat turns yet.
     NoChatTurn,
+    /// The person said never to use it ([`crate::routing_preferences`]).
+    PersonSaidNever,
+    /// The person said never to run the model it would run on it.
+    PersonSaidNeverWithModel,
 }
 
 /// What a harness's health check found.
@@ -187,6 +191,9 @@ pub struct Facts {
     /// The person's OpenRouter key is on and set; the Coder loop then pays
     /// with it rather than gateway credits.
     pub openrouter_key: bool,
+    /// What the person's routing preferences say about each harness
+    /// (#11455).
+    pub leaning: crate::routing_preferences::Leaning,
 }
 
 impl Facts {
@@ -225,6 +232,14 @@ impl Facts {
                 at_limit: false,
             },
             openrouter_key: app.plugins.enabled && app.plugins.key_configured,
+            leaning: crate::routing_preferences::Leaning::read(
+                execution.routing.as_deref(),
+                |harness| match harness {
+                    Harness::ClaudeCode => Some(crate::claude::choice().model),
+                    Harness::CoderLoop => Some(app.plugins.model.clone()),
+                    Harness::Codex => None,
+                },
+            ),
         }
     }
 }
@@ -276,6 +291,14 @@ pub fn payer(harness: Harness, facts: &Facts) -> Payer {
 #[must_use]
 pub fn exclusion(harness: Harness, facts: &Facts) -> Option<Exclusion> {
     let declaration = harness.declaration();
+    // The person's word comes first: a harness they said never to use is
+    // never started, whatever else holds (#11455).
+    if facts.leaning.stances.get(harness) == crate::routing_preferences::Stance::Never {
+        return Some(Exclusion::PersonSaidNever);
+    }
+    if facts.leaning.never_with_model.get(harness) {
+        return Some(Exclusion::PersonSaidNeverWithModel);
+    }
     if declaration.place == Place::ThisComputer && !facts.local {
         return Some(Exclusion::NotHere);
     }
@@ -292,8 +315,9 @@ pub fn exclusion(harness: Harness, facts: &Facts) -> Option<Exclusion> {
     }
 }
 
-/// The harnesses that can take this chat's next turn, in declaration order,
-/// and why each other one was left out.
+/// The harnesses that can take this chat's next turn, the ones the person
+/// prefers first and the ones they avoid last (declaration order within
+/// each), and why each other one was left out.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Candidates {
     pub admitted: Vec<Harness>,
@@ -311,6 +335,7 @@ pub fn candidates(facts: &Facts) -> Candidates {
             Some(why) => excluded.push((declaration.harness, why)),
         }
     }
+    admitted.sort_by_key(|harness| facts.leaning.stances.get(*harness).rank());
     Candidates { admitted, excluded }
 }
 
@@ -392,6 +417,7 @@ mod tests {
                 at_limit: false,
             },
             openrouter_key: false,
+            leaning: crate::routing_preferences::Leaning::default(),
         }
     }
 

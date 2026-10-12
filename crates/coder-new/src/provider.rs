@@ -1499,6 +1499,7 @@ mod tests {
             )),
             memory: None,
             favor: crate::route::Favor::default(),
+            routing: None,
         }
     }
 

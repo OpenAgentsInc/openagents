@@ -1,5 +1,9 @@
 //! What Coder should favor when OpenAgents picks a model: cost, speed, or
 //! intelligence, each from 1 to 5, with caller-provided persistence.
+//!
+//! The screen also shows the person's routing preferences
+//! ([`crate::routing_preferences`]): which engines to use first, less, or
+//! never, and where that file is to read or edit.
 
 use serde::{Deserialize, Serialize};
 
@@ -46,6 +50,10 @@ pub struct Preferences {
     pub intelligence: u8,
     pub selected: usize,
     store: Option<Store>,
+    /// The routing preferences file, once settings have loaded.
+    pub routing_path: Option<std::path::PathBuf>,
+    /// Its summary lines, or why it could not be read.
+    pub routing: Result<Vec<String>, String>,
 }
 
 impl Default for Preferences {
@@ -56,6 +64,8 @@ impl Default for Preferences {
             intelligence: DEFAULT,
             selected: 0,
             store: None,
+            routing_path: None,
+            routing: Ok(Vec::new()),
         }
     }
 }
@@ -103,9 +113,27 @@ impl Preferences {
     /// The file cannot be read or has an invalid or unsupported schema.
     pub fn load(&mut self, store: Store) -> Result<(), String> {
         self.store = Some(store.clone());
+        self.routing_path = Some(crate::routing_preferences::path(store.root()));
+        self.refresh_routing();
         let document = read(&store)?;
         self.apply(&document);
         Ok(())
+    }
+
+    /// Rereads the routing preferences for the screen.
+    pub fn refresh_routing(&mut self) {
+        self.routing = self.routing_path.as_deref().map_or(Ok(Vec::new()), |path| {
+            crate::routing_preferences::RoutingPreferences::load(path)
+                .map(|preferences| preferences.summary())
+        });
+    }
+
+    /// λ, the weight on time in the router's effective cost (dollars plus
+    /// λ times minutes, plus the chance of failing times the cost of
+    /// finishing another way), from the cost and speed settings.
+    #[must_use]
+    pub fn time_weight(&self) -> f64 {
+        time_weight(self.cost, self.speed)
     }
 
     /// The value on the selected row.
@@ -177,6 +205,21 @@ impl Preferences {
         self.speed = document.speed;
         self.intelligence = document.intelligence;
     }
+}
+
+/// Dollars a minute of waiting is worth at the balanced settings.
+pub const BALANCED_TIME_WEIGHT: f64 = 0.10;
+
+/// λ in dollars per minute for `cost` and `speed` (each 1 to 5): the
+/// balanced amount, doubled for each step speed sits above cost and halved
+/// for each step below, so caring more about speed makes time dearer and
+/// caring more about cost makes it cheaper. Intelligence moves the chance
+/// of failing, not λ.
+#[must_use]
+pub fn time_weight(cost: u8, speed: u8) -> f64 {
+    let cost = i32::from(cost.clamp(MIN, MAX));
+    let speed = i32::from(speed.clamp(MIN, MAX));
+    BALANCED_TIME_WEIGHT * 2f64.powi(speed - cost)
 }
 
 fn read(store: &Store) -> Result<Document, String> {
@@ -256,6 +299,44 @@ mod tests {
         assert_eq!(preferences.selected, 0);
         preferences.up();
         assert_eq!(preferences.selected, 0);
+    }
+
+    #[test]
+    fn time_weighs_more_as_speed_rises_and_less_as_cost_rises() {
+        assert!((time_weight(DEFAULT, DEFAULT) - BALANCED_TIME_WEIGHT).abs() < 1e-12);
+        assert!((time_weight(MIN, MAX) - BALANCED_TIME_WEIGHT * 16.0).abs() < 1e-12);
+        assert!((time_weight(MAX, MIN) - BALANCED_TIME_WEIGHT / 16.0).abs() < 1e-12);
+        for cost in MIN..=MAX {
+            for speed in MIN..MAX {
+                assert!(time_weight(cost, speed + 1) > time_weight(cost, speed));
+                assert!(time_weight(speed + 1, cost) < time_weight(speed, cost));
+            }
+        }
+        let preferences = Preferences {
+            speed: 4,
+            ..Preferences::default()
+        };
+        assert!((preferences.time_weight() - BALANCED_TIME_WEIGHT * 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn the_screen_reads_the_routing_preferences_beside_the_settings() {
+        let temporary = temporary();
+        let root = temporary.path().join("coder");
+        let mut preferences = Preferences::default();
+        preferences.load(Store::under(&root)).unwrap();
+        assert_eq!(preferences.routing, Ok(Vec::new()));
+        let path = preferences.routing_path.clone().unwrap();
+        crate::routing_preferences::execute(
+            &path,
+            serde_json::json!({"harness":"claude-code","stance":"avoid","said":"stop using Claude so much"}),
+        )
+        .unwrap();
+        preferences.refresh_routing();
+        assert_eq!(
+            preferences.routing,
+            Ok(vec!["Claude Code: use less".to_owned()])
+        );
     }
 
     #[test]

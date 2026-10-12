@@ -481,6 +481,12 @@ impl Plugins {
             harness: None,
             memory,
             favor: crate::route::Favor::default(),
+            // The person's routing preferences (#11455), beside the other
+            // settings.
+            routing: self
+                .store
+                .as_ref()
+                .map(|store| crate::routing_preferences::path(store.root())),
         }
     }
 
