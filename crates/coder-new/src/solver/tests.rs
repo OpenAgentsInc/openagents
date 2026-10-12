@@ -889,3 +889,67 @@ fn merge_plan_and_handoff_follow_github_state() {
     assert!(text.contains("Rebase `coder/issue-2`"));
     assert!(handoff(&[], "b").contains("main moved"));
 }
+
+#[test]
+fn rebase_pushes_a_clean_branch_and_reports_a_conflict() {
+    let root = std::env::temp_dir().join(format!("solver-rebase-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let remote = root.join("remote.git");
+    let work = root.join("work");
+    let git = |dir: &std::path::Path, args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@t")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@t")
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    std::fs::create_dir_all(&work).unwrap();
+    git(&root, &["init", "-q", "--bare", "-b", "main", "remote.git"]);
+    git(&work, &["init", "-q", "-b", "main"]);
+    git(
+        &work,
+        &["remote", "add", "origin", remote.to_str().unwrap()],
+    );
+    std::fs::write(work.join("a"), "1\n").unwrap();
+    git(&work, &["add", "a"]);
+    git(&work, &["commit", "-q", "-m", "base"]);
+    git(&work, &["push", "-q", "-u", "origin", "main"]);
+    git(&work, &["switch", "-q", "-c", "clean"]);
+    std::fs::write(work.join("b"), "2\n").unwrap();
+    git(&work, &["add", "b"]);
+    git(&work, &["commit", "-q", "-m", "clean"]);
+    git(&work, &["push", "-q", "origin", "clean"]);
+    git(&work, &["switch", "-q", "-c", "dirty", "main"]);
+    std::fs::write(work.join("a"), "dirty\n").unwrap();
+    git(&work, &["commit", "-q", "-am", "dirty"]);
+    git(&work, &["push", "-q", "origin", "dirty"]);
+    git(&work, &["switch", "-q", "main"]);
+    std::fs::write(work.join("a"), "main\n").unwrap();
+    git(&work, &["commit", "-q", "-am", "main moves"]);
+    git(&work, &["push", "-q", "origin", "main"]);
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    assert_eq!(rt.block_on(super::merge::rebase(&work, "clean")), Ok(true));
+    assert_eq!(rt.block_on(super::merge::rebase(&work, "dirty")), Ok(false));
+    let out = std::process::Command::new("git")
+        .args([
+            "-C",
+            remote.to_str().unwrap(),
+            "merge-base",
+            "--is-ancestor",
+            "main",
+            "clean",
+        ])
+        .status()
+        .unwrap();
+    assert!(out.success(), "clean was not rebased onto main");
+    let _ = std::fs::remove_dir_all(&root);
+}
