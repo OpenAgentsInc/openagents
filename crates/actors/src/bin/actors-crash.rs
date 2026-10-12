@@ -8,6 +8,9 @@
 //!       heartbeat it every 200 ms until killed.
 //!   actors-crash finish WORKSPACE ACCOUNT EXECUTOR QUEUE TARGET UID ITEM EPOCH
 //!       Try to complete a claim; print `ok` or the refusal's code.
+//!   actors-crash effect-hold KIND
+//!       Claim one pending effect of the named kind, print it as one JSON
+//!       line, then hold it until killed.
 //!   actors-crash runtime MILLISECONDS
 //!       Run the background runtime (inboxes, alarms, expiry) that long.
 use actors::{example, http::Authenticator, postgres::PgStore, *};
@@ -95,6 +98,30 @@ async fn main() {
                 Ok(()) => println!("ok"),
                 Err(error) => println!("{}", error.code),
             }
+        }
+        Some("effect-hold") if args.len() == 2 => {
+            // Claim one pending effect of the named kind, print the claim,
+            // then hold it until killed — the mid-dispatch half of an
+            // effect-settlement test.
+            let kinds = [args[1].clone()];
+            for _ in 0..100 {
+                let claims = store
+                    .claim_effects_for_kinds(1, &kinds)
+                    .await
+                    .expect("claims");
+                if let Some(claim) = claims.into_iter().next() {
+                    println!(
+                        "{}",
+                        json!({"claimed": true, "uid": claim.uid, "id": claim.id, "token": claim.token, "attempts": claim.attempts})
+                    );
+                    std::io::Write::flush(&mut std::io::stdout()).expect("flush");
+                    loop {
+                        tokio::time::sleep(Duration::from_secs(60)).await;
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            println!("{}", json!({"claimed": false}));
         }
         Some("runtime") if args.len() == 2 => {
             let millis: u64 = args[1].parse().expect("milliseconds");

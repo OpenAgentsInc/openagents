@@ -243,7 +243,11 @@ async fn execute_effect(
             "The operation did not finish before its deadline.",
         )),
     };
-    match result {
+    let settlement = match &result {
+        Ok(outcome) => EffectSettlement::Done(outcome.clone()),
+        Err(error) => EffectSettlement::Failed(error.message.clone()),
+    };
+    let reported = match result {
         Ok(outcome) => {
             store
                 .finish_effect(&effect.uid, &effect.id, &effect.token, outcome)
@@ -260,6 +264,18 @@ async fn execute_effect(
                 )
                 .await
         }
+    };
+    match reported {
+        // The claim expired while the executor ran: the answer it produced
+        // is late, not lost. File it as settlement evidence — never committed
+        // — and surface the refusal that made it evidence.
+        Err(first) => {
+            let _ = store
+                .settle_effect(&effect.uid, &effect.id, &effect.token, settlement)
+                .await;
+            Err(first)
+        }
+        ok => ok,
     }
 }
 

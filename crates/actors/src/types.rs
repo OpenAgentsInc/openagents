@@ -288,6 +288,15 @@ pub struct ClaimedEffect {
     pub timeout_ms: i64,
     pub attempts: u32,
 }
+/// What a lost claim's holder eventually learned, filed as evidence by
+/// `PgStore::settle_effect`. The record is never committed as an outcome.
+#[derive(Clone, Debug)]
+pub enum EffectSettlement {
+    /// The effect finished; this is what it returned.
+    Done(Value),
+    /// The effect failed; this is the reason its holder saw.
+    Failed(String),
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EventPage {
     pub events: Vec<EventRecord>,

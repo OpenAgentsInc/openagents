@@ -689,7 +689,26 @@ impl PgStore {
                 "pending"
             };
             let old_token: Option<String> = row.get("token");
-            tx.execute("UPDATE actor.effects SET state=$3,token=NULL,claimed_until=NULL,next_attempt_at=$4,updated_at=$4 WHERE uid=$1 AND effect_id=$2", &[&uid, &id, &state, &at]).await?;
+            // An uncertain effect keeps the lost claim as custody proof: the
+            // holder that knew this token can still file what it learned
+            // through `settle_effect`. The record is evidence, never an
+            // outcome; `resolve_effect` stays the only path that ends it.
+            let result: Value = if uncertain {
+                json!({
+                    "error": if cancelled { "cancelled" } else { "lease_expired" },
+                    "uncertain": true,
+                    "lost_claim": {
+                        "token": old_token,
+                        "claimed_until": row.get::<_, Option<i64>>("claimed_until"),
+                        "attempt": row.get::<_, i32>("attempts"),
+                    },
+                })
+            } else if state == "failed" {
+                json!({"error": "lease_expired", "uncertain": false})
+            } else {
+                row.get::<_, Option<Value>>("result").unwrap_or(Value::Null)
+            };
+            tx.execute("UPDATE actor.effects SET state=$3,token=NULL,claimed_until=NULL,result=$5,next_attempt_at=$4,updated_at=$4 WHERE uid=$1 AND effect_id=$2", &[&uid, &id, &state, &at, &result]).await?;
             count += 1;
             if !destroyed && state != "pending" {
                 internal(&tx, &uid, "EffectFailed", json!({"effect_id":id,"error":"lease_expired","uncertain":uncertain,"cancelled":cancelled}), &format!("effect.expired:{id}:{}", old_token.unwrap_or_default()), at).await?;
@@ -947,6 +966,85 @@ impl PgStore {
         Ok(())
     }
 
+    /// File what a lost claim's holder eventually learned, as evidence.
+    ///
+    /// An admitted effect whose claim expired went `uncertain` and is never
+    /// re-dispatched on its own. When the process that held the lost claim
+    /// finally answers, `settle_effect` keeps that answer under
+    /// `result.settled` and tells the actor (`EffectSettled`), but nothing
+    /// else changes: the record is never committed as an outcome, never
+    /// requeued, and `resolve_effect` stays the only path that ends an
+    /// uncertain effect.
+    ///
+    /// The token is the proof of custody: a settle that does not match the
+    /// token the lost claim recorded is refused `stale_claim`, a settle on
+    /// an effect that is not uncertain is refused `conflict`, and a second
+    /// settle that disagrees with the first is refused `settle_conflict`.
+    /// Repeating the same settle is a harmless no-op.
+    ///
+    /// Internal runner API. External clients must not have direct access to
+    /// this method.
+    pub async fn settle_effect(
+        &self,
+        uid: &str,
+        id: &str,
+        token: &str,
+        settlement: EffectSettlement,
+    ) -> Result<()> {
+        let mut connection = self.pool.acquire().await?;
+        let tx = connection.transaction().await?;
+        let a = actor(&tx, uid).await?;
+        if a.get::<_, String>("status") != "live" {
+            return Err(refused("not_live"));
+        }
+        let row = effect(&tx, uid, id).await?;
+        if row.get::<_, String>("state") != "uncertain" {
+            return Err(refused("conflict"));
+        }
+        let result: Value = row.get::<_, Option<Value>>("result").unwrap_or(Value::Null);
+        if result.pointer("/lost_claim/token").and_then(Value::as_str) != Some(token) {
+            return Err(refused("stale_claim"));
+        }
+        let learned = match &settlement {
+            EffectSettlement::Done(outcome) => {
+                bounded(outcome)?;
+                json!({"kind": "done", "outcome": outcome})
+            }
+            EffectSettlement::Failed(error) => {
+                if error.len() > 1024 {
+                    return Err(refused("too_large"));
+                }
+                json!({"kind": "failed", "error": error})
+            }
+        };
+        if let Some(existing) = result.get("settled") {
+            if *existing != learned {
+                return Err(refused("settle_conflict"));
+            }
+            tx.commit().await?;
+            return Ok(());
+        }
+        let at = now(&tx).await?;
+        let mut result = result;
+        result["settled"] = learned.clone();
+        tx.execute(
+            "UPDATE actor.effects SET result=$3,updated_at=$4 WHERE uid=$1 AND effect_id=$2",
+            &[&uid, &id, &result, &at],
+        )
+        .await?;
+        internal(
+            &tx,
+            uid,
+            "EffectSettled",
+            json!({"effect_id": id, "settled": learned}),
+            &format!("effect.settled:{id}:{token}"),
+            at,
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Deliver each due occurrence once; coalesce missed recurring occurrences.
     pub async fn fire_alarms(&self, limit: u32) -> Result<usize> {
         let mut connection = self.pool.acquire().await?;
@@ -1035,6 +1133,7 @@ mod tests {
         store: PgStore,
         pool: Pool,
         uid: String,
+        kind: String,
         caller: Caller,
     }
     impl Fixture {
@@ -1075,18 +1174,23 @@ mod tests {
                     max_claims: 2,
                 }),
             };
+            let kind = format!("effect-{uid}");
             Some(Self {
                 store,
                 pool,
                 uid,
+                kind,
                 caller,
             })
         }
         async fn work(&self, item: &str, policy: &str) {
             self.pool.acquire().await.unwrap().execute("INSERT INTO actor.work(uid,item_id,workspace_id,queue,target,payload,lease_ms,max_attempts,retry_policy,created_at,updated_at) VALUES($1,$2,$3,'jobs','computer','{}',60000,3,$4,0,0)", &[&self.uid,&item,&self.caller.workspace_id,&policy]).await.unwrap();
         }
+        // The kind is unique to this fixture: claims stay scoped to it, so
+        // concurrent tests on one database can never claim each other's
+        // effects.
         async fn effect(&self, id: &str, policy: &str) {
-            self.pool.acquire().await.unwrap().execute("INSERT INTO actor.effects(uid,effect_id,workspace_id,kind,payload,timeout_ms,max_attempts,retry_policy,created_at,updated_at) VALUES($1,$2,$3,'test','{}',600000,3,$4,0,0)", &[&self.uid,&id,&self.caller.workspace_id,&policy]).await.unwrap();
+            self.pool.acquire().await.unwrap().execute("INSERT INTO actor.effects(uid,effect_id,workspace_id,kind,payload,timeout_ms,max_attempts,retry_policy,created_at,updated_at) VALUES($1,$2,$3,$5,'{}',600000,3,$4,0,0)", &[&self.uid,&id,&self.caller.workspace_id,&policy,&self.kind]).await.unwrap();
         }
         async fn inbox(&self, name: &str) -> i64 {
             self.pool
@@ -1509,11 +1613,11 @@ mod tests {
         f.effect("one", "reconcile").await;
         let claim = f
             .store
-            .claim_effects(64)
+            .claim_effects_for_kinds(64, &[f.kind.clone()])
             .await
             .unwrap()
             .into_iter()
-            .find(|c| c.uid == f.uid)
+            .next()
             .unwrap();
         assert!(
             f.store
@@ -1546,12 +1650,11 @@ mod tests {
         );
         f.store.expire_effects(64).await.unwrap();
         assert!(
-            !f.store
-                .claim_effects(64)
+            f.store
+                .claim_effects_for_kinds(64, &[f.kind.clone()])
                 .await
                 .unwrap()
-                .iter()
-                .any(|c| c.uid == f.uid)
+                .is_empty()
         );
         assert_eq!(
             f.store
@@ -1567,11 +1670,11 @@ mod tests {
             .unwrap();
         let next = f
             .store
-            .claim_effects(64)
+            .claim_effects_for_kinds(64, &[f.kind.clone()])
             .await
             .unwrap()
             .into_iter()
-            .find(|c| c.uid == f.uid)
+            .next()
             .unwrap();
         assert_ne!(next.token, claim.token);
         assert!(
@@ -1690,11 +1793,11 @@ mod tests {
         for attempt in 1..=3 {
             let claim = f
                 .store
-                .claim_effects(64)
+                .claim_effects_for_kinds(64, &[f.kind.clone()])
                 .await
                 .unwrap()
                 .into_iter()
-                .find(|c| c.uid == f.uid)
+                .next()
                 .unwrap();
             assert_eq!(claim.attempts, attempt);
             f.store
@@ -1713,12 +1816,11 @@ mod tests {
                 .unwrap();
         }
         assert!(
-            !f.store
-                .claim_effects(64)
+            f.store
+                .claim_effects_for_kinds(64, &[f.kind.clone()])
                 .await
                 .unwrap()
-                .iter()
-                .any(|c| c.uid == f.uid)
+                .is_empty()
         );
         assert_eq!(f.inbox("EffectFailed").await, 1);
         let row = f
@@ -1744,8 +1846,8 @@ mod tests {
             .await
             .unwrap()
             .execute(
-                "UPDATE actor.effects SET kind='newer' WHERE uid=$1 AND effect_id='new'",
-                &[&f.uid],
+                "UPDATE actor.effects SET kind=$2 WHERE uid=$1 AND effect_id='new'",
+                &[&f.uid, &format!("{}-newer", f.kind)],
             )
             .await
             .unwrap();
@@ -1758,12 +1860,11 @@ mod tests {
         );
         let claims = f
             .store
-            .claim_effects_for_kinds(64, &["test".into()])
+            .claim_effects_for_kinds(64, &[f.kind.clone()])
             .await
             .unwrap();
-        let ours: Vec<_> = claims.iter().filter(|c| c.uid == f.uid).collect();
-        assert_eq!(ours.len(), 1);
-        assert_eq!(ours[0].id, "old");
+        assert_eq!(claims.len(), 1);
+        assert_eq!(claims[0].id, "old");
         let state: String = f
             .pool
             .acquire()
@@ -1796,7 +1897,10 @@ mod tests {
                 .unwrap();
             f.effect("effect", "reconcile").await;
         }
-        full.store.claim_effects(64).await.unwrap();
+        full.store
+            .claim_effects_for_kinds(64, &[full.kind.clone(), ready.kind.clone()])
+            .await
+            .unwrap();
         let connection = full.pool.acquire().await.unwrap();
         let message = serde_json::to_value(Envelope {
             name: "pending".into(),

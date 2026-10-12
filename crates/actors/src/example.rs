@@ -139,6 +139,28 @@ impl Handles<Offer> for Counter {
     }
 }
 #[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Charge {
+    /// The registered effect kind to stage.
+    pub kind: String,
+}
+impl Message for Charge {
+    const NAME: &'static str = "charge@1";
+    type Reply = String;
+}
+impl Handles<Charge> for Counter {
+    fn handle(&mut self, _state: &mut CounterState, msg: Charge, ctx: &mut Ctx) -> Result<String> {
+        ctx.effect(EffectSpec {
+            id: String::new(),
+            kind: msg.kind,
+            payload: json!({"task":"example"}),
+            timeout_ms: 5_000,
+            max_attempts: 1,
+            retry: RetryPolicy::Reconcile,
+        })
+    }
+}
+#[derive(Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct WorkDone(pub Value);
 impl Message for WorkDone {
@@ -178,6 +200,7 @@ pub fn registry() -> Result<Registry> {
             .message::<Read>()
             .message::<Later>()
             .message::<Offer>()
+            .message::<Charge>()
             .message::<WorkDone>()
             .message::<WorkExpired>(),
     )?;

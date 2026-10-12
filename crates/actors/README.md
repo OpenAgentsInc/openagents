@@ -25,7 +25,7 @@ types, so a domain crate can define actors without a database driver.
 | Commands | Events, same-workspace sends, one-shot or fixed-interval alarms, work offers, work cancellation, effects, and destruction. |
 | Work | Exact queue/target executor grants, bounded concurrent claims, long-poll claims (`claim_work_wait`, `wait_ms` up to 30 s), generations, heartbeat leases, sequenced progress, duplicate completion checks, cancellation (an executor releasing a cancelled claim ends it as `cancelled`, freeing its slot), expiry, and explicit resolution of uncertain results. |
 | Fenced actions | An action may name a work claim (`fence: {item_id, epoch}`). The store checks it is the caller's live claim at that epoch in the same transaction, renews its lease, and hands it to the handler (`Ctx::fence`), so an executor's reports can't outlive its claim. |
-| Effects | Bounded concurrency, registered-kind selection, renewable claims, deadlines, attempt limits, and completion messages. Non-repeatable failures stay uncertain until resolved. |
+| Effects | Bounded concurrency, registered-kind selection, renewable claims, deadlines, attempt limits, and completion messages. Non-repeatable failures stay uncertain until resolved; a lost claim's late answer files as `result.settled` evidence (`settle_effect`), never as an outcome. |
 | Observation | Caller-filtered views, bounded SSE connections, multiplexed feeds, version cursors, contract JSON, and `list_own` (one account's private actors of a type, newest first, with views). Raw stored events require an administrator. |
 | Storage | A namespaced, digest-checked migration, bounded connection pool, database clock for leases, transaction timeouts, `SKIP LOCKED`, notifications, and polling recovery. |
 | Operations | Inspection, history, blocking, destruction, bounded export, retention primitives, failed-message retry, work/effect resolution, runtime counters, and a local load probe. |
@@ -88,10 +88,15 @@ Use `RetryPolicy::Idempotent` only when the receiver implements a stable
 operation key. Use `(uid, item_id)` or `(uid, effect_id)` as that key. Otherwise,
 use `RetryPolicy::Reconcile`: expiration or ambiguous failure produces an
 uncertain record that requires an observed result or an explicit retry decision.
-Operator resolution checks the epoch or attempt being resolved and records the
-decision in history. Destruction and cancellation do not prove that a remote
-operation stopped. A late observed result can be recorded after destruction
-without reviving the actor or delivering another message.
+The effect's lost claim stays in `result.lost_claim` as custody proof: the
+holder that knew the claim's token files its eventual answer with
+`settle_effect`, which records it under `result.settled`, tells the actor
+(`EffectSettled`), and decides nothing — the state stays `uncertain` and the
+record is never requeued. Operator resolution checks the epoch or attempt
+being resolved and records the decision in history. Destruction and
+cancellation do not prove that a remote operation stopped. A late observed
+result can be recorded after destruction without reviving the actor or
+delivering another message.
 
 A saturated inbox delays that actor's expiry notification; its expired claim
 remains unusable. Other eligible actors continue. Fixed-interval alarms coalesce

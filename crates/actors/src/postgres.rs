@@ -861,7 +861,10 @@ async fn destroy_tx(tx: &Transaction<'_>, uid: &str, now: i64) -> Result<()> {
     tx.execute("DELETE FROM actor.alarms WHERE uid=$1", &[&uid])
         .await?;
     tx.execute("UPDATE actor.work SET cancel=true,epoch=epoch+1,state=CASE WHEN state IN ('claimed','uncertain') THEN 'uncertain' ELSE 'cancelled' END,heartbeat_until=NULL,updated_at=$2 WHERE uid=$1 AND state IN ('pending','claimed','uncertain')", &[&uid,&now]).await?;
-    tx.execute("UPDATE actor.effects SET cancel=true,state=CASE WHEN state IN ('claimed','uncertain') THEN 'uncertain' ELSE 'cancelled' END,token=NULL,claimed_until=NULL,updated_at=$2 WHERE uid=$1 AND state IN ('pending','claimed','uncertain')", &[&uid,&now]).await?;
+    // A claim cancelled while held goes uncertain with the claim preserved
+    // as `lost_claim`, the custody proof `settle_effect` checks. An already
+    // uncertain effect keeps the evidence its expiry wrote.
+    tx.execute("UPDATE actor.effects SET cancel=true,state=CASE WHEN state IN ('claimed','uncertain') THEN 'uncertain' ELSE 'cancelled' END,result=CASE WHEN state='claimed' THEN coalesce(result,'{}'::jsonb)||jsonb_build_object('error','cancelled','uncertain',true,'lost_claim',jsonb_build_object('token',token,'claimed_until',claimed_until,'attempt',attempts)) ELSE result END,token=NULL,claimed_until=NULL,updated_at=$2 WHERE uid=$1 AND state IN ('pending','claimed','uncertain')", &[&uid,&now]).await?;
     Ok(())
 }
 async fn write_history(
