@@ -337,8 +337,19 @@ fn run() -> io::Result<()> {
             .ok()
             .map(coder_new::plugin_catalog::Loader::new);
         let mut status_report = String::new();
+        let mut tty_checked = Instant::now();
         loop {
             app.elapsed_seconds = started.elapsed().as_secs();
+            // A terminal that went away leaves `read` returning at once, so
+            // the poll below would spin a core forever (#11429): end instead.
+            if tty_checked.elapsed() >= Duration::from_secs(2) {
+                tty_checked = Instant::now();
+                if terminal_detached() {
+                    app.cancel_request();
+                    app.persist_session(true);
+                    break;
+                }
+            }
             if let Some(Ok(coder_new::update::Event::Notice(line))) = update_events
                 .as_ref()
                 .map(std::sync::mpsc::Receiver::try_recv)
@@ -975,6 +986,29 @@ Scripts and agents: openagents coder --help"
     )
 }
 
+/// Whether this terminal session has lost its terminal: the process was
+/// left to launchd (its parent exited) or it has no controlling terminal
+/// any more. Either way no keystroke can arrive again (#11429).
+fn terminal_detached() -> bool {
+    #[cfg(unix)]
+    {
+        detached(
+            std::os::unix::process::parent_id(),
+            std::fs::File::open("/dev/tty").is_ok(),
+        )
+    }
+    #[cfg(not(unix))]
+    {
+        false
+    }
+}
+
+/// [`terminal_detached`]'s rule, for a parent process id and whether
+/// `/dev/tty` still opens.
+fn detached(parent: u32, tty_opens: bool) -> bool {
+    parent == 1 || !tty_opens
+}
+
 /// Writes an OSC 7501 program-status report when the composer's state
 /// changed since the last report. A terminal that supports the protocol
 /// (such as Rex) shows the state and picks the pane's icon from `app`;
@@ -1024,4 +1058,16 @@ fn restore_extras() -> io::Result<()> {
     )?;
     write!(io::stdout(), "\x1b]112\x07")?;
     io::stdout().flush()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::detached;
+
+    #[test]
+    fn a_session_left_to_launchd_or_without_a_tty_is_detached() {
+        assert!(!detached(4242, true));
+        assert!(detached(1, true), "reparented to launchd");
+        assert!(detached(4242, false), "no controlling terminal");
+    }
 }
