@@ -339,6 +339,27 @@ impl Program {
             if seen.contains(&step.name) {
                 return Err(format!("step name {:?} is used twice", step.name));
             }
+            // A step's name is the state key its output is addressed by,
+            // and `$`-prefixed keys are the host's sidecars (`<name>$verify`,
+            // `<name>$answers`): a step under one could be read as the
+            // host's record of another.
+            if step.name.starts_with('$') || step.name.contains('$') {
+                return Err(format!(
+                    "step name {:?} carries '$', which marks a host-owned state key",
+                    step.name
+                ));
+            }
+            // `meta` is inert: kept and digested with the definition, never
+            // read by the interpreter. Anything but an object is a field
+            // the author meant something by, which inert data cannot be.
+            if let Some(meta) = step.rest.get("meta") {
+                if !meta.is_object() {
+                    return Err(format!(
+                        "step {:?} carries a meta that is not an object",
+                        step.name
+                    ));
+                }
+            }
             seen.push(step.name.clone());
             if step.kind == Kind::Decide {
                 if step.question.is_none() {
@@ -1011,6 +1032,22 @@ mod tests {
             ]
         }))
         .expect("program parses")
+    }
+
+    #[test]
+    fn reserved_names_and_inert_meta() {
+        let mut program = delegate_with(json!({"question": "test.acceptance.v1"}));
+        program.steps[0]
+            .rest
+            .insert("meta".into(), json!({"owner": "ops"}));
+        program.validate().expect("object meta is inert");
+        program.steps[0].rest.insert("meta".into(), json!("note"));
+        assert!(program.validate().unwrap_err().contains("meta"));
+        program.steps[0].rest.remove("meta");
+        program.steps[0].name = "$host".into();
+        assert!(program.validate().unwrap_err().contains("host-owned"));
+        program.steps[0].name = "work$answers".into();
+        assert!(program.validate().unwrap_err().contains("host-owned"));
     }
 
     #[test]
