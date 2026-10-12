@@ -228,6 +228,28 @@ which the pool sends its decisions to the other machine. Pinning `clef-bundle` k
 later `bin/latest` from changing the VM on its next restart; remove the key
 to follow `bin/latest`. Roll back by setting the previous tag.
 
+**Batching (#11441).** `startup.sh` in this repo reads two optional
+metadata keys: `clef-batch-requests` (2–4) puts
+`PSIONIC_CLEF_BATCH_REQUESTS` in both units, and `clef-max-queue` sets
+`--decision-max-queue` (default 8); a unit that changed restarts. That
+version is **not uploaded yet** (the copy in GCS is the one before it), so
+today both machines serve one request at a time. To turn it on: `sh
+deploy/clef-decisions/provision.sh upload`, then per machine
+`add-metadata ... --metadata clef-batch-requests=2` and rerun the startup
+script as above.
+
+**Status 2026-10-12 (upgrade staged, not applied).** Bundles built from
+`9f2a916688` (Hopper GEMM #11443 and CUDA batching #11441) with
+`cloudbuild-psionic.yaml` (`_ARCH=80` for the A100):
+`bin/9f2a916688-sm80/` and `bin/9f2a916688/` (sm_90; `bin/latest` was not
+moved). The A100 still pins `661e02d3ed-sm80`; the H100 still follows
+`bin/latest` (`42334c876b`). Before-numbers taken the same day: the
+current engines match the CPU-lane goldens on all 40 e2e requests (top
+answers 100 %, p99 |Δp| 0.0017 H100, 0.0021 A100); one call, server time:
+Flash 50 ms H100 / 89 ms A100, 27B 136 / 196 ms; 16 at once through
+production: Flash median 193–231 ms H100, 286–329 ms A100, 27B 572–732 /
+838–916 ms, 0 errors.
+
 Changing `startup.sh` or `restarter.sh`: edit them here, then
 `sh deploy/clef-decisions/provision.sh upload`. A change to the VM's shape
 (machine type, disk) is `restarter.sh create`'s; recreate by deleting the

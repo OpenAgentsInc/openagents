@@ -12,7 +12,10 @@
 #      the boot disk when missing, and checks their SHA-256 once;
 #   3. writes and starts two systemd services, clef-flash (:18096) and
 #      clef-27b (:18098), restart=always, and a health timer that restarts
-#      a service whose /health fails three times in a row.
+#      a service whose /health fails three times in a row. Metadata
+#      `clef-batch-requests` (2..4) turns on CUDA batching
+#      (PSIONIC_CLEF_BATCH_REQUESTS, #11441) and `clef-max-queue` sets
+#      --decision-max-queue (default 8); a changed unit restarts it.
 # The ports are reachable only from the gateway's subnets
 # (deploy/clef-decisions/provision.sh firewall). Nothing secret is here.
 set -u
@@ -69,8 +72,15 @@ wait $F1 || say "Clef-Flash is missing"
 wait $F2 || say "Clef 27B is missing"
 
 # 3. The services.
+BATCH=$(md attributes/clef-batch-requests || true)
+QUEUE=$(md attributes/clef-max-queue || true)
+case "$BATCH" in 2|3|4) BATCH_ENV="Environment=PSIONIC_CLEF_BATCH_REQUESTS=$BATCH" ;; *) BATCH=; BATCH_ENV= ;; esac
+case "$QUEUE" in ''|*[!0-9]*) QUEUE_ARG= ;; *) QUEUE_ARG=" --decision-max-queue $QUEUE" ;; esac
+say "batching ${BATCH:-off}, queue ${QUEUE:-default}"
 unit() { # name model port
-    cat > "/etc/systemd/system/$1.service" <<UNIT
+    f=/etc/systemd/system/$1.service
+    old=$(cat "$f" 2>/dev/null || true)
+    cat > "$f" <<UNIT
 [Unit]
 Description=Psionic $2 decisions on :$3 (docs/inference/clef-decisions-h100.md)
 After=network-online.target
@@ -78,7 +88,8 @@ Wants=network-online.target
 
 [Service]
 Environment=LD_LIBRARY_PATH=$W/lib
-ExecStart=$W/psionic-openai-server -m $M/$2 --host 0.0.0.0 --port $3 --decision-device cuda --decision-chunk 2048 --decision-max-tokens 65536
+$BATCH_ENV
+ExecStart=$W/psionic-openai-server -m $M/$2 --host 0.0.0.0 --port $3 --decision-device cuda --decision-chunk 2048 --decision-max-tokens 65536$QUEUE_ARG
 Restart=always
 RestartSec=5
 LimitNOFILE=65536
@@ -88,6 +99,7 @@ StandardError=append:/var/log/$1.log
 [Install]
 WantedBy=multi-user.target
 UNIT
+    [ "$old" = "$(cat "$f")" ] || CHANGED=1
 }
 unit clef-flash Clef-Flash-Q4_K_M.gguf 18096
 unit clef-27b Clef-Q4_K_M.gguf 18098

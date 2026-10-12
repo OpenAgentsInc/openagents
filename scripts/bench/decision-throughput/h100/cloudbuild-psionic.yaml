@@ -13,6 +13,11 @@
 #     --config .psionic.yaml --ignore-file deploy/att/att.gcloudignore \
 #     --substitutions _TAG=<sha10>,_DEST=gs://openagentsgemini-decision-throughput/clef-11441/bin .)
 #   -> $_DEST/<_TAG>/bundle.tar.gz
+#
+# _ARCH picks the CUDA target (default 90, the H100; the Hopper GEMM is
+# compiled only for it). The A100 takes _ARCH=80 and a tag ending -sm80;
+# the decision GPUs' bundles go to _DEST=gs://openagentsgemini-decision-throughput/bin
+# (docs/inference/clef-decisions-h100.md).
 steps:
   - name: rust:1.97.1-slim-trixie@sha256:8e8cf8f7fd54a2d23d5a743b3a03f56e26b6c774276c33fa0595111704ebb15c
     entrypoint: bash
@@ -23,7 +28,7 @@ steps:
       - RUSTUP_HOME=/workspace/.toolchain/rustup
       - CARGO_HOME=/workspace/.toolchain/cargo
       - NVCC=/usr/local/cuda/bin/nvcc
-      - PSI_CUDA_ARCH=90
+      - PSI_CUDA_ARCH=${_ARCH}
       - CARGO_INCREMENTAL=0
       - CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16
       - CARGO_PROFILE_RELEASE_DEBUG=0
@@ -36,7 +41,7 @@ steps:
         cd crates/psionic
         cargo build --locked --release -p psionic-serve --bin psionic-openai-server
         ldd target/release/psionic-openai-server | grep -q 'libcudart\.so\.13'
-        cuobjdump --list-elf target/release/psionic-openai-server | grep -q 'sm_90'
+        cuobjdump --list-elf target/release/psionic-openai-server | grep -q 'sm_${_ARCH}'
         strip --strip-all target/release/psionic-openai-server
         mkdir -p /workspace/bundle/lib
         cp target/release/psionic-openai-server /workspace/bundle/
@@ -49,6 +54,7 @@ steps:
         set -eu
         cd /workspace/bundle
         printf '%s\n' "${_TAG}" > commit.txt
+        printf 'sm_%s\n' "${_ARCH}" > arch.txt
         sha256sum psionic-openai-server lib/* > SHA256SUMS
         tar -czf /workspace/bundle.tar.gz .
         gcloud storage cp /workspace/bundle.tar.gz ${_DEST}/${_TAG}/bundle.tar.gz
@@ -58,4 +64,5 @@ options:
 timeout: 3600s
 substitutions:
   _TAG: dev
+  _ARCH: '90'
   _DEST: gs://openagentsgemini-decision-throughput/clef-11441/bin
