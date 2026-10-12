@@ -31,12 +31,24 @@ pub const TOOL: &str = "solver_swarm";
 pub const NAME: &str = "Solver swarm";
 
 /// How many solvers run at once when the person sets none: a quarter of
-/// the cores, at least one and at most four.
+/// the cores, at least one and at most four, and one when free disk is
+/// under 30 GB (a solver's worktree and build folder need room).
 #[must_use]
 pub fn default_concurrency() -> usize {
     let cores = std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
-    (cores / 4).clamp(1, 4)
+    let fitted = (cores / 4).clamp(1, 4);
+    if free_disk_low() { 1 } else { fitted }
 }
+
+/// Whether the working directory's volume has under [`LOW_DISK_BYTES`]
+/// free.
+fn free_disk_low() -> bool {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    coder_lease::free_disk(&cwd).is_ok_and(|free| free < LOW_DISK_BYTES)
+}
+
+/// The free space below which a swarm keeps to one solver at a time.
+const LOW_DISK_BYTES: u64 = 30 * 1_000_000_000;
 
 /// What the model is told about the tool.
 #[must_use]

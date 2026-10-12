@@ -1027,7 +1027,7 @@ the others posted before you edit a shared file.\n\
 - Post a message: `{binary} comms post --channel {dir} --as {member} --to all --text \"...\"`\n\
 - Read what is new: `{binary} comms read --channel {dir} --as {member} --since N`\n\
 - Say what you intend to change: `{binary} comms intent --channel {dir} --as {member} --file PATH [--file PATH] [--resource KIND:VALUE]`\n\
-- Take a lease on a scarce thing: `{binary} comms lease --channel {dir} --as {member} acquire KIND VALUE`\n\
+- Take a lease on a scarce thing: `{binary} comms lease acquire --channel {dir} --as {member} --kind KIND --value VALUE` (renew and release take the same flags)\n\
 - Agree how to settle an overlap: `{binary} comms agree --channel {dir} --as {member} --with NAME --outcome first|split|merge --why \"...\"`\n\
 \n\
 If the command is not on your PATH, append one JSON line to {log}: \
