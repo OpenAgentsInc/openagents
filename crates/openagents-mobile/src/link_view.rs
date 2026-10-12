@@ -215,6 +215,14 @@ fn chats(state: &State) -> Node<Intent> {
     if state.choice.is_none() && state.choice_read {
         children.push(choice_card(state));
     }
+    // A chat started here on openagents.com takes photos and files with
+    // its first message (#11349).
+    children.push(button(
+        "link-new-chat",
+        "New chat",
+        Some(Glyph::Compose),
+        Intent::NewChat,
+    ));
     if !state.threads_read {
         children.push(working("link-chats-loading", "Loading your chats…"));
         return page(children);
@@ -305,7 +313,13 @@ fn chat(state: &State, open: &Open, composer: u64, limit: usize, cut_at: usize) 
     let title = thread
         .map(|t| t.title.clone())
         .filter(|t| !t.trim().is_empty())
-        .unwrap_or_else(|| "Chat".into());
+        .unwrap_or_else(|| {
+            if open.new {
+                "New chat".into()
+            } else {
+                "Chat".into()
+            }
+        });
     let mut children = vec![header("link-chat-header", &title, Intent::Back)];
     if let Some(thread) = thread {
         children.push(status("link-chat-place", &place(thread), quiet()));
@@ -411,6 +425,7 @@ fn chat(state: &State, open: &Open, composer: u64, limit: usize, cut_at: usize) 
         },
     });
     let (enabled, placeholder) = match thread {
+        None if open.new => (true, "Message OpenAgents".to_owned()),
         Some(t) if t.can_reply => (true, "Reply".to_owned()),
         Some(t) if t.surface == "terminal" => (
             false,

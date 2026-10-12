@@ -39,7 +39,7 @@ use sha2::{Digest, Sha256};
 use crate::App;
 use crate::chat_store::{Computers, Conversation, Error, Store, SyncChoice, now_unix};
 use crate::coder_sync::{self, Queued, answer, line, online, refused, stored};
-use crate::pages::chat::{AppSent, follow_from_app, line_two};
+use crate::pages::chat::{AppSent, follow_from_app, line_two, start_from_app};
 
 /// The session prefix of a chat synced from the phone.
 pub(crate) const PHONE_PREFIX: &str = "phone-";
@@ -71,7 +71,7 @@ const LEFT_OUT: &str = "(Left out: this looked like it held a password or key.)"
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
-        .route("/v1/threads", get(threads))
+        .route("/v1/threads", get(threads).post(start))
         .route("/v1/threads/{id}", get(thread))
         .route("/v1/threads/{id}/messages", post(reply))
         .route(
@@ -377,6 +377,73 @@ async fn reply(
     };
     match follow_from_app(&app, &owner, &id, &sent.request_id, text, files).await {
         AppSent::Answering => answer(StatusCode::ACCEPTED, json!({"answering": true})),
+        AppSent::Busy(message) => refused(StatusCode::CONFLICT, "busy", message),
+        AppSent::Invalid => refused(
+            StatusCode::BAD_REQUEST,
+            "invalid",
+            "Enter a message of at most 4,000 characters.",
+        ),
+        AppSent::Missing => not_found(),
+        AppSent::Unavailable => refused(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "unavailable",
+            "Try again later.",
+        ),
+    }
+}
+
+/// `POST /v1/threads {request_id, text, files}` (#11349): start a chat
+/// answered by OpenAgents, as the website's composer does, so an app's
+/// first message can carry photos and files. The request id names the
+/// chat; files go under it first (`POST /v1/threads/{request_id}/files`).
+/// Answers `201 {id, answering: true}`, or `200` when the same send
+/// already made the chat.
+async fn start(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Response {
+    let owner = match coder_sync::owner(&app, &headers).await {
+        Ok(owner) => owner,
+        Err(response) => return response,
+    };
+    let Some(sent) = serde_json::from_slice::<Reply>(&body)
+        .ok()
+        .filter(|sent| valid_request(&sent.request_id))
+    else {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid",
+            "Send {request_id (a UUID), text}.",
+        );
+    };
+    let text = sent.text.trim();
+    if text.is_empty() || text.chars().count() > MAX_REPLY_CHARS {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid",
+            "Enter a message of at most 4,000 characters.",
+        );
+    }
+    if secret_screen::credential_in(text).is_some() {
+        return refused(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "secret",
+            "This looks like it holds a password or key, so it wasn't sent.",
+        );
+    }
+    let store = &app.config.chat_store;
+    let id = sent.request_id.clone();
+    let existed = matches!(store.load(&owner, &id).await, Ok(Some(_)));
+    let files = match crate::chat_files::take(store, &owner, &id, &sent.files.join(",")).await {
+        Ok(files) => files,
+        Err(message) => return refused(StatusCode::BAD_REQUEST, "files", message),
+    };
+    match start_from_app(&app, &owner, &id, text.to_owned(), files).await {
+        AppSent::Answering => answer(
+            if existed {
+                StatusCode::OK
+            } else {
+                StatusCode::CREATED
+            },
+            json!({"id": id, "answering": true}),
+        ),
         AppSent::Busy(message) => refused(StatusCode::CONFLICT, "busy", message),
         AppSent::Invalid => refused(
             StatusCode::BAD_REQUEST,

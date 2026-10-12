@@ -34,9 +34,37 @@ fn command(id: &str, item: &str) -> Command {
     }
 }
 
+/// #11349: an app's first message makes the same chat the website's
+/// composer would: the request id names it, its files ride the first
+/// request, and the answer is pending.
+#[test]
+fn a_started_chat_is_named_by_its_request_and_keeps_its_files() {
+    let file = crate::chat_files::FileRef {
+        id: "f1".into(),
+        name: "photo.png".into(),
+        kind: crate::chat_files::Kind::Png,
+        size: 12,
+    };
+    let record = crate::pages::chat::first_record(
+        &owner(),
+        "req-1",
+        "Look at this".into(),
+        "d1".into(),
+        vec![file.clone()],
+    );
+    assert_eq!(record.id, "req-1");
+    assert_eq!(record.title, "Look at this");
+    assert_eq!(record.messages.len(), 2);
+    assert_eq!(record.requests[0].id, "req-1");
+    assert_eq!(record.requests[0].files, vec![file]);
+    assert!(record.pending.is_some());
+    assert!(record.terminal.is_none() && record.project.is_none());
+}
+
 #[test]
 fn owns_only_its_paths() {
     assert!(owns("/v1/threads") && owns("/v1/threads/x/messages"));
+    assert!(owns("/v1/threads/x/files"));
     assert!(owns("/v1/computers/Studio/sync") && owns("/v1/agents/actions"));
     assert!(!owns("/v1/threadsx") && !owns("/v1/models"));
     assert!(crate::upstream::owned("/v1/agents"));

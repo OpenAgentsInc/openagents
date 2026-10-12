@@ -248,7 +248,11 @@ fn sign_in_shows_a_code_and_keeps_the_session_once() {
     assert!(!format!("{stored:?}").contains("sess_phone"));
     assert!(f.link.packet().store.is_none(), "handed over once");
     // Signed in, it reads the account with the new session.
-    until(|| !f.site.calls("GET /v1/threads?offset=0&limit=200").is_empty());
+    until(|| {
+        !f.site
+            .calls("GET /v1/threads?offset=0&limit=200")
+            .is_empty()
+    });
     assert_eq!(
         f.site.calls("GET /v1/threads?offset=0&limit=200")[0]
             .token
@@ -1514,4 +1518,68 @@ fn chats_list_pages_older_chats_in_on_request() {
     texts(f.link.packet().view.as_ref().unwrap(), &mut words);
     assert!(words.iter().any(|w| w == "Chat 249"), "{words:?}");
     assert!(!words.iter().any(|w| w == "Show older chats"), "{words:?}");
+}
+
+/// #11349: New chat on the account surface starts a chat on openagents.com
+/// whose first message carries photos: the upload goes under the chat's
+/// id, the send is `POST /v1/threads` with that id as its request, and
+/// the chat then reads as a web chat that takes replies.
+#[test]
+fn a_new_chat_starts_on_the_website_with_its_photos() {
+    let mut f = fixture();
+    signed(&mut f);
+    f.link.act(Action::Show {
+        screen: Screen::Chats,
+        id: None,
+    });
+    let view = f.link.packet().view.expect("the chats draw");
+    let mut found = vec![];
+    find_keys(&view, &mut found);
+    assert!(found.iter().any(|(key, _)| key == "link-new-chat"));
+    f.link.tap(Intent::NewChat);
+    let id = f.link.lock().open.as_ref().expect("a new chat").id.clone();
+    assert!(f.link.takes_attachments());
+    f.site.answer(
+        &format!("POST /v1/threads/{id}/files?name=Photo.png"),
+        201,
+        json!({"id": "b".repeat(32), "name": "Photo.png", "kind": "png", "size": "1 KB"}),
+    );
+    f.site.answer(
+        "POST /v1/threads",
+        201,
+        json!({"id": id, "answering": true}),
+    );
+    f.site.answer(
+        &format!("GET /v1/threads/{id}"),
+        200,
+        json!({
+            "thread": {"id": id, "title": "what is in this?", "surface": "web",
+                       "online": true, "can_reply": true},
+            "messages": [{"role": "user", "text": "what is in this?"}, {"role": "assistant", "text": "A photo."}],
+            "earlier": 0, "waiting": 0,
+        }),
+    );
+    let png = openagents_chat_app::attachments::Image::pixels(3, 2, vec![200; 24]).unwrap();
+    f.link.attach("Photo.png", png.bytes.as_ref().clone());
+    let token = format!("link-reply-{id}-{}", f.link.composer);
+    f.link.input(&token, "what is in this?");
+    until(|| !f.site.calls("POST /v1/threads").is_empty());
+    let sent = &f.site.calls("POST /v1/threads")[0];
+    let body = sent.body.as_ref().unwrap();
+    assert_eq!(body["request_id"], json!(id));
+    assert_eq!(body["files"], json!(["b".repeat(32)]));
+    assert_eq!(
+        f.site
+            .calls(&format!("POST /v1/threads/{id}/files?name=Photo.png"))
+            .len(),
+        1
+    );
+    until(|| {
+        f.link
+            .lock()
+            .open
+            .as_ref()
+            .is_some_and(|o| !o.new && o.loaded && o.thread.as_ref().is_some_and(|t| t.can_reply))
+    });
+    assert_eq!(f.link.lock().open.as_ref().unwrap().messages.len(), 2);
 }
