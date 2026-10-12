@@ -17,6 +17,11 @@ use crate::{bundled_runtime::RuntimeEvent, plugin_tools::ExecutionSettings};
 pub struct Chat {
     pub entries: Vec<Entry>,
     pub partial: String,
+    /// Whether this turn's reply already streamed into `partial`. A
+    /// finished reply repeats every streamed word, so only the uncommitted
+    /// tail is still owed; a mid-turn user entry (a background command's
+    /// result, a queued notice) must not look like a new turn here.
+    pub text_streamed: bool,
     pub partial_model: Option<String>,
     pub reply_started_at: Option<std::time::Instant>,
     pub busy: bool,
@@ -145,16 +150,6 @@ impl Chat {
         }
         self.tool_ms.retain(|index, _| *index < self.entries.len());
         self.open_tools.retain(|index| *index < self.entries.len());
-    }
-
-    /// Whether this turn (everything after the newest prompt) already
-    /// shows text of the model's, committed above a tool call.
-    pub fn text_shown_this_turn(&self) -> bool {
-        self.entries
-            .iter()
-            .rev()
-            .take_while(|entry| !matches!(entry, Entry::User(_)))
-            .any(|entry| matches!(entry, Entry::Assistant { .. }))
     }
 
     pub fn stop_tools(&mut self, reason: &str) {

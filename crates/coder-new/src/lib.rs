@@ -629,6 +629,7 @@ impl App {
                 });
             }
             self.live.partial_model = None;
+            self.live.text_streamed = false;
             self.live.busy = false;
             self.live.notice = Some(
                 if brainstorm.is_some() {
@@ -873,6 +874,7 @@ impl App {
                 self.live.harness = Some(run);
             }
             live::Update::Delta { text, .. } if self.live.busy => {
+                self.live.text_streamed = true;
                 self.live.partial.push_str(&text);
                 self.scroll_main_to_end();
             }
@@ -890,6 +892,7 @@ impl App {
             }
             live::Update::Finished { result, .. } if self.live.busy => {
                 self.live.busy = false;
+                let text_streamed = std::mem::take(&mut self.live.text_streamed);
                 if let Some(id) = self.active_delegation.take() {
                     if let Some(child) = self.delegations.iter_mut().find(|child| child.id == id) {
                         child.running = false;
@@ -930,7 +933,7 @@ impl App {
                         }
                         let model = live::model_slug(&reply.model)
                             .map(|model| self.active_options.slug(&model));
-                        if self.live.text_shown_this_turn() {
+                        if text_streamed {
                             // The turn's earlier text is already above its
                             // tool calls; only what came after the last one
                             // is left.
@@ -1525,6 +1528,7 @@ impl App {
         self.live.notice = None;
         self.live.partial.clear();
         self.live.partial_model = None;
+        self.live.text_streamed = false;
         self.live.busy = true;
         self.live.pinned_missed = false;
         self.live.reply_started_at = Some(std::time::Instant::now());
@@ -1576,6 +1580,7 @@ impl App {
         self.live.notice = None;
         self.live.partial.clear();
         self.live.partial_model = None;
+        self.live.text_streamed = false;
         self.live.busy = true;
         self.live.reply_started_at = Some(std::time::Instant::now());
         self.history.dirty = true;
@@ -1669,6 +1674,7 @@ impl App {
         }
         self.live.partial.clear();
         self.live.partial_model = None;
+        self.live.text_streamed = false;
         self.live.busy = true;
         self.live.pinned_missed = false;
         self.live.reply_started_at = Some(std::time::Instant::now());

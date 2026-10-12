@@ -1260,6 +1260,71 @@ mod tests {
     }
 
     #[test]
+    fn a_mid_turn_user_notice_does_not_repeat_the_reply() {
+        let mut app = live_app();
+        app.submit("work", std::path::Path::new("."));
+        let id = app.request.take().unwrap().id;
+        let tool = |running| live::Update::Tool {
+            id,
+            name: "Run".into(),
+            input: serde_json::json!({"command":"ls"}),
+            output: serde_json::Value::Null,
+            running,
+        };
+        app.apply_update(live::Update::Delta {
+            id,
+            text: "First part.".into(),
+        });
+        app.apply_update(tool(true));
+        app.apply_update(tool(false));
+        app.apply_update(live::Update::Delta {
+            id,
+            text: "\n\nSecond part.".into(),
+        });
+        app.apply_update(tool(true));
+        app.apply_update(tool(false));
+        // A background command's result lands mid-turn as a user message,
+        // after the turn's text and tool calls.
+        app.live.entries.push(live::Entry::User(
+            "Background command b1 finished (exit 0)".into(),
+        ));
+        app.apply_update(live::Update::Delta {
+            id,
+            text: "\n\nLast part.".into(),
+        });
+        app.apply_update(live::Update::Finished {
+            id,
+            result: Ok(openrouter::Streamed {
+                text: "First part.\n\nSecond part.\n\nLast part.".into(),
+                ..Default::default()
+            }),
+        });
+        let shown: Vec<String> = app
+            .live
+            .entries
+            .iter()
+            .map(|entry| match entry {
+                live::Entry::User(text) => format!("user {text}"),
+                live::Entry::Assistant { text, .. } => format!("text {text}"),
+                live::Entry::Tool { name, .. } => format!("tool {name}"),
+                _ => "other".into(),
+            })
+            .collect();
+        assert_eq!(
+            shown,
+            [
+                "user work",
+                "text First part.",
+                "tool Run",
+                "text Second part.",
+                "tool Run",
+                "user Background command b1 finished (exit 0)",
+                "text Last part.",
+            ]
+        );
+    }
+
+    #[test]
     fn each_model_call_is_counted_live_and_exported_with_its_cost_and_time() {
         let mut app = live_app();
         app.submit("work", std::path::Path::new("."));

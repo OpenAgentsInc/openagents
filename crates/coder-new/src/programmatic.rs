@@ -1436,6 +1436,7 @@ fn delegate(
         let _ = result_sender.send(result);
     });
     app.live.entries.push(live::Entry::User(display_task));
+    app.live.text_streamed = false;
     app.live.busy = true;
     let started = std::time::Instant::now();
     app.live.reply_started_at = Some(started);
@@ -1454,7 +1455,10 @@ fn delegate(
                     RuntimeEvent::Tokens(tokens) => app.live.tokens = tokens,
                     RuntimeEvent::Usage(usage) => app.live.round(*usage),
                     RuntimeEvent::Harness(run) => app.live.harness = Some(*run),
-                    RuntimeEvent::Text(text) => app.live.partial.push_str(&text),
+                    RuntimeEvent::Text(text) => {
+                        app.live.text_streamed = true;
+                        app.live.partial.push_str(&text);
+                    }
                     RuntimeEvent::Model(model) => app.live.partial_model = Some(model),
                     RuntimeEvent::Tool {
                         name,
@@ -1504,14 +1508,24 @@ fn delegate(
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_owned();
-    app.live.entries.push(live::Entry::Assistant {
-        elapsed_ms: app.live.reply_elapsed_ms(),
-        text: text.clone(),
-        model: output
+    if std::mem::take(&mut app.live.text_streamed) {
+        // The reply already streamed in above its tool calls; the result's
+        // `reply` repeats it, so only the uncommitted tail is still owed.
+        app.live.partial_model = output
             .get("model")
             .and_then(Value::as_str)
-            .map(str::to_owned),
-    });
+            .map(str::to_owned);
+        app.live.finish_partial();
+    } else {
+        app.live.entries.push(live::Entry::Assistant {
+            elapsed_ms: app.live.reply_elapsed_ms(),
+            text: text.clone(),
+            model: output
+                .get("model")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+        });
+    }
     app.live.partial.clear();
     let mut document = trajectory::main_document(app, &context.cwd);
     document["session_id"] = json!(session);
