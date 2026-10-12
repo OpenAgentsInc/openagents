@@ -151,6 +151,16 @@ it within 3 minutes. To stop everything, also `gcloud scheduler jobs pause
 clef-decisions-restarter --location us-central1 --project openagentsgemini`.
 A stopped VM still bills its 200 GB disk (about $34 a month).
 
+## Measured
+
+In production on 2026-10-12, three questions about one short input
+(about 390 tokens) through `https://openagents.com/api/v1/decisions`: the
+gateway's round trip to the H100 took 63 ms (median) for `clef-flash` and
+215 ms for `clef`; from a Mac in the US, 276–304 ms and 433 ms with the
+internet included. The OpenAI Python SDK conformance run
+(`scripts/dev/decisions-conformance.py`) passed 18 of 18 checks for each of
+`openagents/decide`, `clef-flash`, and `clef`.
+
 ## Cost
 
 | Item | Rate | A month (730 h) |

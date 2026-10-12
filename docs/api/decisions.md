@@ -380,7 +380,16 @@ Speed measured in production from a Mac in the US on 2026-10-12, three
 questions (a predicate, a choice of four, a score of three) about one short
 input, through `https://openagents.com/api/v1/decisions`:
 
-PRODUCTION_LATENCY_TABLE
+| Model | Door | Time at the gateway (median) | Time seen from the Mac (median, includes the internet) |
+| --- | --- | ---: | ---: |
+| `openagents/decide` | `clef` (answered as `clef-flash`) | 63 ms | 276 ms |
+| `clef-flash` | `clef` | 62 ms | 304 ms |
+| `clef` | `clef` | 215 ms | 433 ms |
+
+Eight calls each, every input made unique (about 390 input tokens). "At the
+gateway" is `openagents.latency_ms`: the gateway's round trip to the H100
+and back. A request repeated byte for byte is answered from the Clef
+server's cache in about 2 ms with the same answer.
 
 On the H100 itself, per request at about 1.5k input tokens: 0.11 s for
 `clef-flash` and 0.26 s for `clef`
