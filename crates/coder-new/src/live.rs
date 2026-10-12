@@ -585,6 +585,7 @@ impl Background {
             self.active = None;
         }
         self.poll_claude(app);
+        self.show_question(app);
         app.claude_turn = self.claude_turn.is_some();
         app.poll_disclosure();
         app.poll_fleet();
@@ -592,6 +593,24 @@ impl Background {
         app.poll_long_session();
         app.poll_route();
         app.process_prompt_queue();
+    }
+
+    /// Claude Code's question waiting on the person opens the choice
+    /// screen; one no longer waiting (its turn stopped) closes it (#11449).
+    fn show_question(&self, app: &mut crate::App) {
+        if app
+            .question
+            .as_ref()
+            .is_some_and(|screen| !screen.current())
+        {
+            app.question = None;
+        }
+        if app.question.is_none()
+            && let Some(chat) = &self.claude
+            && let Some(questions) = chat.asks.waiting()
+        {
+            app.question = Some(crate::claude_ask::Screen::new(chat.asks.clone(), questions));
+        }
     }
 
     fn cancel(&mut self) {

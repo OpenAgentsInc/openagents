@@ -14,6 +14,7 @@ pub mod bundled_settings;
 mod checkout_guard;
 /// The mode that runs turns on this computer's Claude account login.
 pub mod claude;
+pub mod claude_ask;
 pub mod claude_chat;
 pub mod claude_plan;
 pub mod claude_stream;
@@ -218,6 +219,8 @@ pub struct App {
     pub(crate) model_owned_input: bool,
     disclosure_desk: Option<std::sync::Arc<approval::Desk>>,
     pub(crate) disclosure_event: Option<serde_json::Value>,
+    /// Claude Code's question waiting on the person (#11449).
+    pub(crate) question: Option<claude_ask::Screen>,
     pub(crate) disclosure_scroll: u16,
     pub(crate) disclosure_seen: bool,
     pub slash_selected: usize,
@@ -2137,6 +2140,9 @@ impl App {
                 .to_owned();
             return ("blocked", Some(msg));
         }
+        if let Some(screen) = &self.question {
+            return ("blocked", Some(screen.question().question.clone()));
+        }
         (if self.live.busy { "working" } else { "idle" }, None)
     }
 
@@ -2211,6 +2217,52 @@ impl App {
 
     /// Returns false when the preview should close.
     pub fn handle(&mut self, event: Event) -> bool {
+        if let Some(screen) = &mut self.question {
+            if let Event::Key(key) = event {
+                if key.kind == crossterm::event::KeyEventKind::Release {
+                    return true;
+                }
+                if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                    screen.decline();
+                    self.question = None;
+                    self.cancel_request();
+                    return false;
+                }
+                let outcome = match key.code {
+                    KeyCode::Up => {
+                        screen.up();
+                        claude_ask::Outcome::Asking
+                    }
+                    KeyCode::Down | KeyCode::Tab => {
+                        screen.down();
+                        claude_ask::Outcome::Asking
+                    }
+                    KeyCode::Char(' ') => {
+                        screen.toggle();
+                        claude_ask::Outcome::Asking
+                    }
+                    KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        screen.type_char(c);
+                        claude_ask::Outcome::Asking
+                    }
+                    KeyCode::Backspace => {
+                        screen.backspace();
+                        claude_ask::Outcome::Asking
+                    }
+                    KeyCode::Enter => screen.enter(),
+                    KeyCode::Esc => screen.decline(),
+                    _ => claude_ask::Outcome::Asking,
+                };
+                if outcome == claude_ask::Outcome::Done {
+                    self.question = None;
+                }
+            } else if let Event::Paste(text) = event {
+                for c in text.chars().filter(|c| !c.is_control()) {
+                    screen.type_char(c);
+                }
+            }
+            return true;
+        }
         if self.disclosure_event.is_some() {
             if let Event::Key(key) = event {
                 if key.kind == crossterm::event::KeyEventKind::Release {
@@ -3469,5 +3521,50 @@ mod claude_tests {
                 .iter()
                 .any(|entry| matches!(entry, live::Entry::Delegation { running: true, .. }))
         );
+    }
+
+    /// Claude Code's question opens a choice screen: the program status
+    /// says the chat waits on the person, and the pick goes back as the
+    /// tool's answer (#11449).
+    #[test]
+    fn a_claude_question_is_answered_on_the_choice_screen() {
+        let asks = claude_ask::Asks::default();
+        let waiting = {
+            let asks = asks.clone();
+            std::thread::spawn(move || {
+                tokio::runtime::Builder::new_current_thread()
+                    .build()
+                    .unwrap()
+                    .block_on(async move {
+                        asks.ask(&serde_json::json!({"questions":[{"question":"Which one?","header":"Pick","multiSelect":false,"options":[{"label":"A","description":""},{"label":"B","description":""}]}]}))
+                            .await
+                    })
+            })
+        };
+        while asks.waiting().is_none() {
+            std::thread::yield_now();
+        }
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.question = Some(claude_ask::Screen::new(
+            asks.clone(),
+            asks.waiting().unwrap(),
+        ));
+        assert_eq!(
+            app.program_status(),
+            ("blocked", Some("Which one?".to_owned()))
+        );
+        let press = |app: &mut App, code| {
+            app.handle(Event::Key(crossterm::event::KeyEvent::new(
+                code,
+                KeyModifiers::NONE,
+            )))
+        };
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Enter);
+        assert!(app.question.is_none());
+        let answered = waiting.join().unwrap().unwrap();
+        assert_eq!(answered["answers"]["Which one?"], "B");
+        assert_eq!(app.program_status().0, "idle");
     }
 }

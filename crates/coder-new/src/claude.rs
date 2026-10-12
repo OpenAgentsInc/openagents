@@ -483,6 +483,7 @@ pub(crate) async fn open(
     cwd: &Path,
     tools: &crate::claude_tools::Tools,
     resume: Option<Resume>,
+    asks: crate::claude_ask::Asks,
 ) -> Result<Opened, String> {
     if !crate::approval::tools_allowed() {
         return Err("This host refuses every tool, so claude cannot work here.".into());
@@ -495,7 +496,7 @@ pub(crate) async fn open(
     };
     let (options, _) = turn_options(cwd, Access::Full, server);
     let options = with_session(options, resume);
-    let query = claude_agent_sdk::Query::streaming(options, Some(full_handler()))
+    let query = claude_agent_sdk::Query::streaming(options, Some(full_handler(asks)))
         .await
         .map_err(|error| {
             recheck();
@@ -504,16 +505,27 @@ pub(crate) async fn open(
     Ok(Opened { query, delegations })
 }
 
-/// What a full turn's permission handler decides: every call approved but
-/// the one that would ask the person mid-turn.
-fn full_handler() -> std::sync::Arc<dyn claude_agent_sdk::PermissionHandler> {
-    claude_agent_sdk::permission_handler(|request| {
-        let decision = if request.tool_name == ASKS_PERSON {
-            PermissionResult::deny("Ask the person in your reply instead; they answer there.")
-        } else {
-            PermissionResult::allow(request.input.clone())
-        };
-        async move { Ok::<_, claude_agent_sdk::Error>(decision) }
+/// What a chat's permission handler decides: every call approved, and a
+/// question for the person waits for their answer on the choice screen
+/// ([`crate::claude_ask`], #11449), which goes back as the tool's updated
+/// input.
+fn full_handler(
+    asks: crate::claude_ask::Asks,
+) -> std::sync::Arc<dyn claude_agent_sdk::PermissionHandler> {
+    claude_agent_sdk::permission_handler(move |request| {
+        let asks = asks.clone();
+        async move {
+            Ok::<_, claude_agent_sdk::Error>(if request.tool_name == ASKS_PERSON {
+                match asks.ask(&request.input).await {
+                    Some(answered) => PermissionResult::allow(answered),
+                    None => PermissionResult::deny(
+                        "The person chose to answer in the chat. Ask in your reply instead.",
+                    ),
+                }
+            } else {
+                PermissionResult::allow(request.input.clone())
+            })
+        }
     })
 }
 
@@ -644,8 +656,9 @@ enum Access<'a> {
     Files(&'a [&'a str]),
 }
 
-/// The tool a full turn still refuses: nobody answers its questions inside
-/// a turn, so the model asks in its reply instead.
+/// The tool that asks the person: a chat answers it on the choice screen
+/// ([`crate::claude_ask`]); a one-off turn, with nobody to answer, refuses
+/// it so the model asks in its reply instead.
 const ASKS_PERSON: &str = "AskUserQuestion";
 
 /// The options and the tool names one turn may use.

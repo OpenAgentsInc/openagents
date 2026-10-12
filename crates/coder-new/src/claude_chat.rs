@@ -86,6 +86,8 @@ pub struct Chat {
     /// The session the process runs in, once Claude Code names it, or the
     /// one it was started to continue.
     pub session: Option<String>,
+    /// Claude Code's question waiting on the person (#11449).
+    pub asks: crate::claude_ask::Asks,
     exited: bool,
 }
 
@@ -106,7 +108,9 @@ impl Chat {
         let (sender, events) = mpsc::channel();
         let (kill, killed) = tokio::sync::oneshot::channel();
         let reading = Arc::new(Mutex::new(Reading::default()));
+        let asks = crate::claude_ask::Asks::default();
         let thread = Thread {
+            asks: asks.clone(),
             cwd: cwd.clone(),
             tools: tools.clone(),
             resume: resume.clone(),
@@ -125,6 +129,7 @@ impl Chat {
             cwd,
             tools,
             session: resume,
+            asks,
             exited: false,
         }
     }
@@ -229,6 +234,7 @@ struct Thread {
     commands: tokio::sync::mpsc::UnboundedReceiver<Command>,
     events: mpsc::Sender<Event>,
     reading: Arc<Mutex<Reading>>,
+    asks: crate::claude_ask::Asks,
 }
 
 impl Thread {
@@ -260,6 +266,7 @@ impl Thread {
             mut commands,
             events,
             reading,
+            asks,
         } = self;
         let input: Arc<Mutex<Option<QueryInput>>> = Arc::new(Mutex::new(None));
         let commander = {
@@ -313,15 +320,15 @@ impl Thread {
                         id,
                         note: claude::note(&tools),
                     };
-                    match start(&cwd, &tools, Some(resume), &newest, &input).await {
+                    match start(&cwd, &tools, Some(resume), &newest, &input, &asks).await {
                         Ok(opened) => Ok(opened),
                         Err(_) => {
                             unconfirmed = false;
-                            start(&cwd, &tools, None, &seed, &input).await
+                            start(&cwd, &tools, None, &seed, &input, &asks).await
                         }
                     }
                 }
-                None => start(&cwd, &tools, None, &seed, &input).await,
+                None => start(&cwd, &tools, None, &seed, &input, &asks).await,
             };
             let mut opened = match opened {
                 Ok(opened) => opened,
@@ -358,7 +365,7 @@ impl Thread {
                 if unconfirmed {
                     unconfirmed = false;
                     if !named && ended && result.is_err() && !cancel.load(Ordering::Relaxed) {
-                        match start(&cwd, &tools, None, &seed, &input).await {
+                        match start(&cwd, &tools, None, &seed, &input, &asks).await {
                             Ok(fresh) => {
                                 opened = fresh;
                                 continue;
@@ -414,8 +421,9 @@ async fn start(
     resume: Option<claude::Resume>,
     first: &str,
     input: &Mutex<Option<QueryInput>>,
+    asks: &crate::claude_ask::Asks,
 ) -> Result<claude::Opened, String> {
-    let opened = claude::open(cwd, tools, resume).await?;
+    let opened = claude::open(cwd, tools, resume, asks.clone()).await?;
     // Routing records carry the version each turn ran on (#11454).
     crate::routing_record::note_version(
         crate::harness_plugin::Harness::ClaudeCode,

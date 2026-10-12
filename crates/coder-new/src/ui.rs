@@ -92,6 +92,13 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         width: area.width.saturating_sub(4),
         height: area.height.saturating_sub(top_padding),
     };
+    if let Some(screen) = &app.question {
+        frame.render_widget(
+            Paragraph::new(screen.text()).wrap(Wrap { trim: false }),
+            area,
+        );
+        return;
+    }
     if let Some(event) = &app.disclosure_event {
         let text = if event["kind"] == "action" {
             crate::ops_tool::question_screen(event)
