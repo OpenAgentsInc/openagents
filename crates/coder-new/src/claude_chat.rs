@@ -75,8 +75,8 @@ pub struct Chat {
     kill: Option<tokio::sync::oneshot::Sender<()>>,
     /// The checkout the process works in.
     pub cwd: PathBuf,
-    /// Whether the Solver tool is beside the rest.
-    pub solver: bool,
+    /// Coder's own tools beside Claude Code's ([`crate::claude_tools`]).
+    pub tools: crate::claude_tools::Tools,
     /// The session the process runs in, once Claude Code names it, or the
     /// one it was started to continue.
     pub session: Option<String>,
@@ -91,7 +91,7 @@ impl Chat {
     #[must_use]
     pub fn start(
         cwd: PathBuf,
-        solver: bool,
+        tools: crate::claude_tools::Tools,
         resume: Option<String>,
         newest: String,
         seed: String,
@@ -102,7 +102,7 @@ impl Chat {
         let reading = Arc::new(Mutex::new(Reading::default()));
         let thread = Thread {
             cwd: cwd.clone(),
-            solver,
+            tools: tools.clone(),
             resume: resume.clone(),
             newest,
             seed,
@@ -117,7 +117,7 @@ impl Chat {
             reading,
             kill: Some(kill),
             cwd,
-            solver,
+            tools,
             session: resume,
             exited: false,
         }
@@ -216,7 +216,7 @@ fn lock(reading: &Mutex<Reading>) -> std::sync::MutexGuard<'_, Reading> {
 /// The process thread's side.
 struct Thread {
     cwd: PathBuf,
-    solver: bool,
+    tools: crate::claude_tools::Tools,
     resume: Option<String>,
     newest: String,
     seed: String,
@@ -247,7 +247,7 @@ impl Thread {
     async fn serve(self) {
         let Thread {
             cwd,
-            solver,
+            tools,
             resume,
             newest,
             seed,
@@ -303,17 +303,17 @@ impl Thread {
                 Some(id) => {
                     let resume = claude::Resume {
                         id,
-                        note: claude::note(solver),
+                        note: claude::note(&tools),
                     };
-                    match start(&cwd, solver, Some(resume), &newest, &input).await {
+                    match start(&cwd, &tools, Some(resume), &newest, &input).await {
                         Ok(opened) => Ok(opened),
                         Err(_) => {
                             unconfirmed = false;
-                            start(&cwd, solver, None, &seed, &input).await
+                            start(&cwd, &tools, None, &seed, &input).await
                         }
                     }
                 }
-                None => start(&cwd, solver, None, &seed, &input).await,
+                None => start(&cwd, &tools, None, &seed, &input).await,
             };
             let mut opened = match opened {
                 Ok(opened) => opened,
@@ -350,7 +350,7 @@ impl Thread {
                 if unconfirmed {
                     unconfirmed = false;
                     if !named && ended && result.is_err() && !cancel.load(Ordering::Relaxed) {
-                        match start(&cwd, solver, None, &seed, &input).await {
+                        match start(&cwd, &tools, None, &seed, &input).await {
                             Ok(fresh) => {
                                 opened = fresh;
                                 continue;
@@ -380,12 +380,12 @@ impl Thread {
 /// messages go to.
 async fn start(
     cwd: &std::path::Path,
-    solver: bool,
+    tools: &crate::claude_tools::Tools,
     resume: Option<claude::Resume>,
     first: &str,
     input: &Mutex<Option<QueryInput>>,
 ) -> Result<claude::Opened, String> {
-    let opened = claude::open(cwd, solver, resume).await?;
+    let opened = claude::open(cwd, tools, resume).await?;
     opened
         .query
         .send_user_content(claude::content(first))
@@ -431,7 +431,7 @@ mod tests {
         let first = "Remember the word PELICAN. Reply with just OK.";
         let mut chat = Chat::start(
             dir.path().to_owned(),
-            false,
+            crate::claude_tools::Tools::default(),
             None,
             first.into(),
             first.into(),
@@ -472,7 +472,7 @@ mod tests {
         drop(chat);
         let mut chat = Chat::start(
             dir.path().to_owned(),
-            false,
+            crate::claude_tools::Tools::default(),
             session,
             "What word did I ask you to remember? One word.".into(),
             "Reply with just LOST.".into(),
@@ -489,7 +489,7 @@ mod tests {
         drop(chat);
         let mut chat = Chat::start(
             dir.path().to_owned(),
-            false,
+            crate::claude_tools::Tools::default(),
             Some("00000000-0000-4000-8000-000000000000".into()),
             "Reply with just RESUMED.".into(),
             "Reply with just FRESH.".into(),

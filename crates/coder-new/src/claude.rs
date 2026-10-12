@@ -7,9 +7,10 @@
 //! `--dangerously-skip-permissions` equivalent, owner 2026-10-12), and the
 //! person's and the repository's settings, CLAUDE.md, skills, hooks, agents
 //! and MCP servers loaded without a trust prompt. The model is the one the
-//! person picked in /models ([`choice`]), Haiku 5.5 until they pick. While
-//! the Solver plugin is on, one in-process tool beside them hands an issue
-//! to Solver ([`run_with_solver`]). A tool call is drawn with Coder's own
+//! person picked in /models ([`choice`]), Haiku 5.5 until they pick. Beside
+//! Claude Code's tools, one in-process server offers Coder's own: background
+//! agents, Solver, cloud jobs and the rest a live chat can hand work to
+//! ([`crate::claude_tools`]). A tool call is drawn with Coder's own
 //! widgets, the same shapes the briefed agent makes
 //! (`crate::issue_run::agent`), so a Read shows a line count, an Edit shows
 //! a diff, and Grep and Glob show their matches.
@@ -242,17 +243,14 @@ pub fn allows(tool: &str) -> bool {
 /// conversation, within [`TASK_LIMIT`].
 #[must_use]
 pub fn task(messages: &[Message]) -> String {
-    task_with(messages, false)
+    task_with(messages, &crate::claude_tools::Tools::default())
 }
 
-/// [`task`], telling the model about the solver tool when `solver` is on.
+/// [`task`], telling the model about Coder's own `tools`
+/// ([`crate::claude_tools`]).
 #[must_use]
-pub fn task_with(messages: &[Message], solver: bool) -> String {
-    let tools = if solver {
-        crate::solver_plugin::instructions()
-    } else {
-        ""
-    };
+pub fn task_with(messages: &[Message], tools: &crate::claude_tools::Tools) -> String {
+    let tools = crate::claude_tools::instructions(tools);
     let prefix = format!(
         "{}\n{tools}The conversation:\n",
         crate::identity::prompt(&choice().model)
@@ -451,14 +449,10 @@ pub fn kept(id: &str) -> bool {
         .any(|project| project.path().join(&file).is_file())
 }
 
-/// Coder's identity note for a claude chat, with the Solver tool's
-/// instructions when `solver` is on.
-pub(crate) fn note(solver: bool) -> String {
-    let tools = if solver {
-        crate::solver_plugin::instructions()
-    } else {
-        ""
-    };
+/// Coder's identity note for a claude chat, with what it is told about
+/// Coder's own `tools`.
+pub(crate) fn note(tools: &crate::claude_tools::Tools) -> String {
+    let tools = crate::claude_tools::instructions(tools);
     format!("{}\n{tools}", crate::identity::prompt(&choice().model))
 }
 
@@ -471,26 +465,24 @@ pub(crate) struct Opened {
 
 /// Starts the long-lived Claude Code process of one claude chat
 /// ([`crate::claude_chat`]): Claude Code's whole toolset, the session saved,
-/// continuing `resume` when the chat holds one, and the Solver tool beside
-/// the rest when `solver` is on.
+/// continuing `resume` when the chat holds one, and Coder's own `tools`
+/// beside the rest ([`crate::claude_tools`]).
 ///
 /// # Errors
 /// Claude Code did not start, or this host refuses every tool.
 pub(crate) async fn open(
     cwd: &Path,
-    solver: bool,
+    tools: &crate::claude_tools::Tools,
     resume: Option<Resume>,
 ) -> Result<Opened, String> {
     if !crate::approval::tools_allowed() {
         return Err("This host refuses every tool, so claude cannot work here.".into());
     }
-    let (server, delegations) = if solver {
-        let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
-        let stop = std::sync::Arc::new(AtomicBool::new(false));
-        let server = crate::solver_plugin::mcp_server(cwd.to_owned(), sender, stop.clone());
-        (Some(server), Some(Delegations { receiver, stop }))
-    } else {
-        (None, None)
+    let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+    let stop = std::sync::Arc::new(AtomicBool::new(false));
+    let (server, delegations) = match crate::claude_tools::server(tools, sender, stop.clone()) {
+        Some(server) => (Some(server), Some(Delegations { receiver, stop })),
+        None => (None, None),
     };
     let (options, _) = turn_options(cwd, Access::Full, server);
     let options = with_session(options, resume);
@@ -852,7 +844,7 @@ pub(crate) async fn read_turn(
                         Some("tool_use") => {
                             let name = block["name"].as_str().unwrap_or_default();
                             // The delegation's own entry stands for this call.
-                            if crate::solver_plugin::is_mcp_tool(name) {
+                            if crate::claude_tools::is_tool(name) {
                                 continue;
                             }
                             let sdk_input = block["input"].clone();

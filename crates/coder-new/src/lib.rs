@@ -16,6 +16,7 @@ mod checkout_guard;
 pub mod claude;
 pub mod claude_chat;
 pub mod claude_plan;
+pub mod claude_tools;
 pub mod cloud;
 pub mod cloud_settings;
 pub mod cloud_tools;
@@ -1637,7 +1638,7 @@ impl App {
             kind: live::Work::Claude {
                 messages,
                 cwd,
-                solver: self.plugins.bundled.solver,
+                tools: Box::new(crate::claude_tools::Tools::new(self.agent_execution())),
                 session,
             },
         });

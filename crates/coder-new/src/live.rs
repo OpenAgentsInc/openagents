@@ -364,9 +364,10 @@ pub enum Work {
     Claude {
         messages: Vec<Message>,
         cwd: std::path::PathBuf,
-        /// Whether the Solver plugin is on: the turn may then hand an
-        /// issue to it ([`crate::solver_plugin`]).
-        solver: bool,
+        /// Coder's own tools the chat may hand work to: background agents,
+        /// Solver, cloud jobs and the rest a live chat offers
+        /// ([`crate::claude_tools`]).
+        tools: Box<crate::claude_tools::Tools>,
         /// The Claude Code session the chat holds, which this turn
         /// continues; `None` starts one (#11435).
         session: Option<String>,
@@ -598,7 +599,7 @@ impl Background {
         let Work::Claude {
             messages,
             cwd,
-            solver,
+            tools,
             session,
         } = request.kind
         else {
@@ -609,13 +610,13 @@ impl Background {
             .map(|message| message.content.clone())
             .unwrap_or_default();
         let running = self.claude.as_ref().is_some_and(|chat| {
-            !chat.exited() && chat.cwd == cwd && chat.solver == solver && chat.session == session
+            !chat.exited() && chat.cwd == cwd && chat.tools == *tools && chat.session == session
         });
         if !running {
             self.close_claude();
-            let seed = crate::claude::task_with(&messages, solver);
+            let seed = crate::claude::task_with(&messages, &tools);
             self.claude = Some(crate::claude_chat::Chat::start(
-                cwd, solver, session, newest, seed,
+                cwd, *tools, session, newest, seed,
             ));
         } else if let Some(chat) = &self.claude {
             chat.say(&newest, self.claude_turn.is_some());
