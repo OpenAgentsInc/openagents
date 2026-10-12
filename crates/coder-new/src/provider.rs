@@ -340,17 +340,21 @@ impl Provider {
         {
             history.push(json!({"role":"system","content":standing}));
         }
-        // AGENTS.md/CLAUDE.md and saved memory, read fresh each turn (#11176).
+        // The chat's briefing for this piece of work (#11473), or, when
+        // none was chosen, AGENTS.md/CLAUDE.md and saved memory, read fresh
+        // each turn (#11176).
+        let memory_tools = definitions
+            .iter()
+            .any(|tool| tool["function"]["name"] == "remember");
         if let Some(context) = execution
-            .memory
+            .briefing
             .as_ref()
-            .map(|memory| {
-                memory.context(
-                    definitions
-                        .iter()
-                        .any(|tool| tool["function"]["name"] == "remember"),
-                    crate::memory::PROVIDER_BUDGET,
-                )
+            .map(|briefing| briefing.render(memory_tools))
+            .or_else(|| {
+                execution
+                    .memory
+                    .as_ref()
+                    .map(|memory| memory.context(memory_tools, crate::memory::PROVIDER_BUDGET))
             })
             .filter(|text| !text.trim().is_empty())
         {
@@ -1502,6 +1506,7 @@ mod tests {
             memory: None,
             favor: crate::route::Favor::default(),
             routing: None,
+            briefing: None,
         }
     }
 

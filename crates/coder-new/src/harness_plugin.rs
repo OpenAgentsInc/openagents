@@ -311,34 +311,50 @@ impl App {
     /// At a routing point, holds the message in the input and asks System
     /// One about it on a thread of its own (#11460); [`App::poll_route`]
     /// sends it once the answer or the budget is in. A routing point is a
-    /// chat's first message, or a follow-up while no turn runs, whenever
-    /// more than one harness is admitted. Pins, commands, and messages sent
-    /// while a turn runs are not routing points. Returns whether it took
-    /// the message.
+    /// chat's first message, or a follow-up while no turn runs. The route
+    /// question is asked when more than one harness is admitted, and for a
+    /// follow-up also when the briefing would be chosen again for new work
+    /// (#11473). A chat's first message also asks for its briefing
+    /// ([`crate::context`]) at the same time; a follow-up asks for one only
+    /// once the router judged it new work. Pins, commands, and messages
+    /// sent while a turn runs are not routing points. Returns whether it
+    /// took the message.
     pub(crate) fn ask_router(&mut self) -> bool {
         if self.routed.is_some()
+            || self.route_settled
             || self.pending_route.is_some()
             || self.live.busy
             || self.request.is_some()
             || self.routing_rule == Some(crate::routing_record::Rule::Pin)
             || self.draft.text.trim_start().starts_with('/')
-            || !crate::router::enabled()
         {
             return false;
         }
         let facts = Facts::read(self);
         let candidates = candidates(&facts);
-        if candidates.admitted.len() <= 1 {
+        let first = self.live.user_count() == 0;
+        // Only a person's chat chooses a briefing: the terminal and `coder
+        // chat`, never an App a helper or an integration test builds.
+        let context_on = crate::context::enabled() && (cfg!(test) || self.routing_records);
+        let route =
+            crate::router::enabled() && (candidates.admitted.len() > 1 || (context_on && !first));
+        let library = (context_on && first)
+            .then(|| crate::context::library(&self.context_cwd()))
+            .flatten();
+        if !route && library.is_none() {
             return false;
         }
         let situation = self.situation(&facts, &candidates);
-        let receiver = crate::router::ask(
-            &crate::router::earlier(&self.live.entries),
-            &self.draft.text,
-            situation.follow_up(),
-        );
+        let earlier = crate::router::earlier(&self.live.entries);
+        let receiver =
+            route.then(|| crate::router::ask(&earlier, &self.draft.text, situation.follow_up()));
+        let context =
+            library.map(|library| crate::context::ask(library, &earlier, &self.draft.text));
         self.pending_route = Some(crate::router::Pending {
             receiver,
+            answer: None,
+            context,
+            context_considered: first,
             started: std::time::Instant::now(),
             situation,
             session: self.session_id().map(str::to_owned),
@@ -346,6 +362,36 @@ impl App {
             composer: std::mem::take(&mut self.composer),
         });
         true
+    }
+
+    /// The folder a chat's briefing is chosen for.
+    fn context_cwd(&self) -> std::path::PathBuf {
+        self.cwd.clone().unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+        })
+    }
+
+    /// Once the route's answer judged a follow-up new work, asks for its
+    /// briefing (#11473); at most once per held message.
+    fn consider_context(&mut self) {
+        let Some(pending) = self.pending_route.as_ref() else {
+            return;
+        };
+        if pending.context_considered {
+            return;
+        }
+        let new_work = pending.new_work();
+        let latest = pending.draft.text.clone();
+        let library =
+            (new_work && crate::context::enabled() && (cfg!(test) || self.routing_records))
+                .then(|| crate::context::library(&self.context_cwd()))
+                .flatten();
+        let earlier = crate::router::earlier(&self.live.entries);
+        let Some(pending) = self.pending_route.as_mut() else {
+            return;
+        };
+        pending.context_considered = true;
+        pending.context = library.map(|library| crate::context::ask(library, &earlier, &latest));
     }
 
     /// Whether a message waits for System One's judgment.
@@ -357,25 +403,41 @@ impl App {
     /// Sends the held message once System One answered or the budget ran
     /// out. Called on every pass of the terminal's loop.
     pub fn poll_route(&mut self) {
-        if let Some(answer) = self
+        if !self
             .pending_route
-            .as_ref()
-            .and_then(crate::router::Pending::poll)
+            .as_mut()
+            .is_some_and(crate::router::Pending::poll_route)
         {
-            self.finish_route(answer);
+            return;
         }
+        self.consider_context();
+        if self
+            .pending_route
+            .as_mut()
+            .and_then(|pending| pending.context.as_mut())
+            .is_some_and(|asking| !asking.settled())
+        {
+            return;
+        }
+        self.finish_route();
     }
 
     /// Waits for the held message's judgment and sends it, for callers
     /// with no screen to keep drawing (`coder chat`).
     pub fn settle_route(&mut self) {
-        if let Some(answer) = self
+        let Some(pending) = self.pending_route.as_mut() else {
+            return;
+        };
+        pending.wait_route();
+        self.consider_context();
+        if let Some(asking) = self
             .pending_route
-            .as_ref()
-            .map(crate::router::Pending::wait)
+            .as_mut()
+            .and_then(|pending| pending.context.as_mut())
         {
-            self.finish_route(answer);
+            asking.settle();
         }
+        self.finish_route();
     }
 
     /// The message waiting for its route, as the transcript shows it
@@ -414,7 +476,7 @@ impl App {
         }
     }
 
-    fn finish_route(&mut self, answer: Result<crate::router::Answered, String>) {
+    fn finish_route(&mut self) {
         // The answer belongs to the chat the message was sent in. Another
         // chat on screen gets nothing: the message goes back to the input.
         if self.pending_route.as_ref().is_some_and(|pending| {
@@ -431,16 +493,29 @@ impl App {
         let Some(pending) = self.pending_route.take() else {
             return;
         };
-        self.routed = Some(crate::router::decide(
-            answer,
-            &pending.situation,
-            pending.started.elapsed(),
-        ));
+        if pending.receiver.is_some() {
+            self.routed = Some(crate::router::decide(
+                pending
+                    .answer
+                    .unwrap_or_else(|| Err("System One did not answer in time.".into())),
+                &pending.situation,
+                pending.started.elapsed(),
+            ));
+        }
+        // A new briefing for a new piece of work; when System One chose
+        // nothing in time, each harness loads what it loaded before.
+        if let Some(asking) = pending.context {
+            let (briefing, trace) = asking.decide();
+            self.live.briefing = briefing;
+            self.routing_context = Some(trace);
+        }
         // Put the held message back in the input and send it; what the
         // person typed meanwhile comes back after.
         let typed = std::mem::replace(&mut self.draft, pending.draft);
         let typed_composer = std::mem::replace(&mut self.composer, pending.composer);
+        self.route_settled = true;
         self.submit_live();
+        self.route_settled = false;
         // A path that did not route the message leaves no call behind.
         self.routed = None;
         if self.draft.text.is_empty() && self.composer.images.is_empty() {

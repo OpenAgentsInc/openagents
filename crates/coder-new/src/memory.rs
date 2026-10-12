@@ -52,6 +52,10 @@ pub const PROVIDER_BUDGET: usize = 160 * 1024;
 /// Of that, the most spent on memory notes (index lines always fit first).
 const MEMORY_BUDGET: usize = 24 * 1024;
 const TOMBSTONES: &str = ".forgotten.json";
+/// What the model reads about its notes when the memory tools are offered.
+pub const TOOLS_GUIDE: &str = "You keep notes that last across sessions. Save with the remember tool: who the user is and how they work (user), corrections and preferences about how you work, with the reason (feedback), project facts the code and history don't show (project), and where things live outside the code (reference). Don't save what the code, git history or these instructions already say, or anything secret. Update a note by remembering it again under the same name; forget notes that turn out wrong. When the user asks you to remember or forget something, do it right away. Use recall to read a note listed here by name only.\n";
+/// What the model reads about its notes without the memory tools.
+pub const NOTES_GUIDE: &str = "Notes saved in earlier sessions. Treat them as the user's standing context; they may be out of date.\n";
 /// The project's name (its folder's name), beside its notes, so the
 /// account can show which project a note belongs to.
 const PROJECT_NAME: &str = ".project";
@@ -280,6 +284,16 @@ impl Memory {
     /// worktree).
     pub fn project_root(&self) -> &Path {
         &self.project_root
+    }
+
+    /// This checkout or worktree: the nearest directory with `.git`.
+    pub fn checkout(&self) -> &Path {
+        &self.checkout
+    }
+
+    /// The home directory the upward walk stops at.
+    pub fn home(&self) -> Option<&Path> {
+        self.home.as_deref()
     }
 
     /// The directory holding one scope's notes.
@@ -737,9 +751,9 @@ impl Memory {
         }
         let mut text = String::from("# Memory\n\n");
         if tools {
-            text.push_str("You keep notes that last across sessions. Save with the remember tool: who the user is and how they work (user), corrections and preferences about how you work, with the reason (feedback), project facts the code and history don't show (project), and where things live outside the code (reference). Don't save what the code, git history or these instructions already say, or anything secret. Update a note by remembering it again under the same name; forget notes that turn out wrong. When the user asks you to remember or forget something, do it right away. Use recall to read a note listed here by name only.\n");
+            text.push_str(TOOLS_GUIDE);
         } else {
-            text.push_str("Notes saved in earlier sessions. Treat them as the user's standing context; they may be out of date.\n");
+            text.push_str(NOTES_GUIDE);
         }
         let mut spent = 0usize;
         for (scope, entries) in [(Scope::User, user), (Scope::Project, project)] {

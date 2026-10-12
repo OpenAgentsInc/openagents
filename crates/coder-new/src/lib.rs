@@ -28,6 +28,7 @@ mod composer_history;
 pub mod composer_state;
 pub mod computer_tool;
 pub mod connection_tools;
+pub mod context;
 #[cfg(test)]
 mod copy_guard_tests;
 pub mod credentials;
@@ -290,6 +291,11 @@ pub struct App {
     /// The router's call for the held message, read by
     /// [`App::route_turn`] when the message is sent.
     pub(crate) routed: Option<router::Routed>,
+    /// The held message is being sent now: its routing point is over.
+    pub(crate) route_settled: bool,
+    /// How the next turn's briefing was chosen, for the routing record
+    /// (#11473).
+    pub(crate) routing_context: Option<context::Trace>,
 }
 
 #[derive(Default)]
@@ -1664,6 +1670,7 @@ impl App {
                 cwd,
                 tools: Box::new(crate::claude_tools::Tools::new(self.agent_execution())),
                 session,
+                briefing: self.live.briefing.clone().map(Box::new),
             },
         });
     }
@@ -1853,6 +1860,8 @@ impl App {
                 std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
             }));
         execution.instructions = self.live.instructions.clone();
+        // One briefing for every harness (#11473).
+        execution.briefing = self.live.briefing.clone();
         execution.prompt_inbox = Some(self.prompt_inbox.clone());
         execution.boundary = self.boundary.clone();
         // Google Drive through the signed-in account's Connections (#11238).

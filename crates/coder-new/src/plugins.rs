@@ -487,6 +487,7 @@ impl Plugins {
                 .store
                 .as_ref()
                 .map(|store| crate::routing_preferences::path(store.root())),
+            briefing: None,
         }
     }
 

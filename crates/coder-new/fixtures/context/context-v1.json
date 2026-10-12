@@ -1,0 +1,3155 @@
+{
+  "schema": "openagents.coder.context-fixture.v1",
+  "question_set": "context-v1",
+  "model": "clef-flash",
+  "door": "Clef-Flash, OpenAgents gateway H100 via clef",
+  "library": [
+    {
+      "id": "AGENTS.md#openagents-agent-contract",
+      "size": 2463
+    },
+    {
+      "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+      "size": 1080
+    },
+    {
+      "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+      "size": 4094
+    },
+    {
+      "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+      "size": 3673
+    },
+    {
+      "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+      "size": 944
+    },
+    {
+      "id": "AGENTS.md#skills",
+      "size": 1300
+    },
+    {
+      "id": "AGENTS.md#crates-crates-atif",
+      "size": 2032
+    },
+    {
+      "id": "AGENTS.md#crates-crates-tenancy",
+      "size": 3315
+    },
+    {
+      "id": "AGENTS.md#crates-crates-gateway",
+      "size": 3731
+    },
+    {
+      "id": "AGENTS.md#crates-crates-rust-native",
+      "size": 3885
+    },
+    {
+      "id": "AGENTS.md#crates-crates-coder-service",
+      "size": 4061
+    },
+    {
+      "id": "AGENTS.md#crates-crates-coder-host",
+      "size": 2824
+    },
+    {
+      "id": "AGENTS.md#crates-crates-coder",
+      "size": 4052
+    },
+    {
+      "id": "AGENTS.md#crates-8",
+      "size": 3488
+    },
+    {
+      "id": "AGENTS.md#crates-crates-coder-one",
+      "size": 3727
+    },
+    {
+      "id": "AGENTS.md#crates-crates-supervise",
+      "size": 4007
+    },
+    {
+      "id": "AGENTS.md#crates-crates-verse-pbr",
+      "size": 3439
+    },
+    {
+      "id": "AGENTS.md#crates-crates-townsfolk",
+      "size": 4050
+    },
+    {
+      "id": "AGENTS.md#protocol-references",
+      "size": 1612
+    },
+    {
+      "id": "AGENTS.md#cursor-cloud-specific-instructions",
+      "size": 883
+    },
+    {
+      "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+      "size": 435
+    },
+    {
+      "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+      "size": 686
+    },
+    {
+      "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+      "size": 1285
+    },
+    {
+      "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+      "size": 778
+    },
+    {
+      "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+      "size": 1482
+    },
+    {
+      "id": "docs/research/unreal/AGENTS.md#candidate-template",
+      "size": 806
+    }
+  ],
+  "requests": [
+    {
+      "message": "fix the gym router",
+      "relevant": [
+        "AGENTS.md#crates-crates-atif",
+        "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p"
+      ],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 0,
+          "position": 0.5546163782043696
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.34753322926833263
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 0,
+          "position": 0.4511650723861145
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.41363117394153204
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.3177107584710905
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 0,
+          "position": 0.6614749758132977
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 2,
+          "position": 1.7035866341289345
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.4082284023494434
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.5782863245376284
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.45514794546434356
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 0.5238413266728172
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.5975050135561691
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 0.8007701420736055
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.6370676547627232
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.5926142521721065
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.4809167210247225
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 0,
+          "position": 0.7389324234126021
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.3765490657436079
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.379426882059303
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 0,
+          "position": 0.6135268492398891
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.23710192013401377
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.13831751107603701
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.3498039259400578
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.31115673743805783
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.4304519466277626
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.5197783002568169
+        }
+      ]
+    },
+    {
+      "message": "what is a trait object",
+      "relevant": [],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 0,
+          "position": 1.1008578015580222
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.3976293950459514
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 0,
+          "position": 0.2407650986268756
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.14859620327759962
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.15074161857770949
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 0,
+          "position": 0.7327309308601975
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.2561590261382847
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.22281721271103377
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.3476100915118882
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.39762283758379136
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 0.2589034197493932
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.3022320337318803
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 0.6499306620353639
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.40189817538603045
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.378418712888744
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.2983781697315806
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 0,
+          "position": 0.2058969012540934
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.2578680395607229
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.26927837552821837
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 0,
+          "position": 0.5249346965959041
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.37727613236904567
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.1308689972196671
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.21616380302926777
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.22328023714426457
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.642340941390187
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.45813716548251826
+        }
+      ]
+    },
+    {
+      "message": "add a new NIP kind to the relay and update the pinned NIPs",
+      "relevant": [
+        "AGENTS.md#protocol-references",
+        "AGENTS.md#skills",
+        "AGENTS.md#crates-crates-townsfolk"
+      ],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 0,
+          "position": 1.0091491333790155
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.38117630874017355
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 1,
+          "position": 0.7655749979891262
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.557204336736408
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.42997361795815836
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 3,
+          "position": 2.4014014531036736
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.2406103747602682
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.3011312172338269
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.36946659539960747
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.9394703705122591
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 0.5580041898405368
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.7520655827369984
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 0.5921856847612017
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.5461588113339806
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.7235665879190418
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.48200424472873443
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 0,
+          "position": 0.4117612101917341
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.9780383652391835
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 3,
+          "position": 2.186691407986462
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 0,
+          "position": 0.5589857500619961
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.20080150251310275
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.11955714156415742
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.294090607871988
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.23318762595428322
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.3077052730948183
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.35670825530271494
+        }
+      ]
+    },
+    {
+      "message": "port Unreal's shadow cascade technique into our renderer",
+      "relevant": [
+        "docs/research/unreal/AGENTS.md#what-it-forbids",
+        "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+        "AGENTS.md#crates-crates-verse-pbr"
+      ],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 0,
+          "position": 0.7653670386929889
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.32608859876492
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 0,
+          "position": 0.62948119187475
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.5351476212120727
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.41121967929092007
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 0,
+          "position": 0.8594157761521894
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.34071448252148784
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.3712789048010977
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.4317237294764813
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.48244717746451626
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 0.40669658145376225
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.4495058052872851
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 0.710965910083531
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.49021283173400515
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.46997506023839963
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.5865766942347489
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 2,
+          "position": 1.2965562770061492
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.5440499842048209
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.2861428489886484
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 0,
+          "position": 0.6387985203224628
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 2,
+          "position": 1.8431562150267082
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 1,
+          "position": 0.9619817598864433
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 2,
+          "position": 1.9748069155482821
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 1,
+          "position": 1.2190131132300914
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 2,
+          "position": 1.8064439649943933
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 2,
+          "position": 1.8107978512968341
+        }
+      ]
+    },
+    {
+      "message": "write the error message the phone app shows when a payment fails",
+      "relevant": [
+        "AGENTS.md#user-facing-copy-owner-2026-10-08",
+        "AGENTS.md#velocity-owner-2026-10-01-3"
+      ],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 0,
+          "position": 0.9546126560722394
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.8811161162446874
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 0,
+          "position": 0.35204137606148367
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.25259663043680436
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.26488882366292055
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 0,
+          "position": 0.49150973337909476
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.2096277143172356
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.28463559760887625
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.4347410195149226
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.5603630515204288
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 0.6843613328127158
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.6878038739560746
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 0.6525720682938994
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.4596748787394469
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.5992075395791873
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.43455979830825286
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 0,
+          "position": 0.269668920592866
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.2930983209072282
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.39674691529591993
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 0,
+          "position": 0.4754531466295943
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.25949711326794217
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.13942527022614948
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.2690990261620597
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.21736229743715416
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.5296360362659673
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.4858445651834662
+        }
+      ]
+    },
+    {
+      "message": "ship the iOS app to TestFlight",
+      "relevant": [
+        "AGENTS.md#openagents-agent-contract"
+      ],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 2,
+          "position": 1.600234673351232
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.40925613710762276
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 0,
+          "position": 0.6460153287930813
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.8657015421380767
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.5841464444469399
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 0,
+          "position": 0.666447153895381
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.24070491777999947
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.32591677393413165
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.3885934336747685
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.4918783510308914
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 0.5476327291255143
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.9139642378891774
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 0.8088995143118884
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.5266224638317831
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.7054153587435739
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.6771198294037168
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 0,
+          "position": 0.3371067825303044
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.322232768757662
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.3173243484298092
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 0,
+          "position": 0.8445438230593538
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.25545755983703783
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.18006760232276395
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.348729461477557
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.29778767565759073
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.3728546554644611
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.3544884153422907
+        }
+      ]
+    },
+    {
+      "message": "add a Jev question set for the support classifier",
+      "relevant": [
+        "AGENTS.md#skills",
+        "AGENTS.md#crates-crates-gateway"
+      ],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 0,
+          "position": 0.8906745493905652
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.42564409312054463
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 0,
+          "position": 0.5822750395354878
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.45598284823188334
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.39212162621252294
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 2,
+          "position": 1.7378033190748916
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.5895342659701529
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.4826724761736674
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 2,
+          "position": 1.4740887913444567
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.5960763326958168
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 0.5929947174957911
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.4484059716157361
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 2,
+          "position": 1.6602962980370983
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.8621733567021331
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.5772214359461791
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.40095190020336885
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 0,
+          "position": 0.3125438663919272
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.33530692193063705
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 1.0098531612533044
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 1,
+          "position": 0.7022872489976763
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.27408090330216706
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.17452717951620192
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.391985115677597
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.32023930997662564
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.42738355414224244
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.46069028071813145
+        }
+      ]
+    },
+    {
+      "message": "close issue 11400 and move it to Done on the board",
+      "relevant": [
+        "AGENTS.md#velocity-owner-2026-10-01-main"
+      ],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 0,
+          "position": 0.5683341147365123
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.29706300834634086
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 0,
+          "position": 0.2672384097913404
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 2,
+          "position": 1.5560949080677846
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.2744766656959819
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 0,
+          "position": 0.38435771545483344
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.12526030294806553
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.2257556143127252
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.30037962223618236
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.4986656441439318
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 0.5059602537212037
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.41832134198809406
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 0.826693194825486
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.4825333892819911
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.5155224684737097
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.38998514258680933
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 0,
+          "position": 0.3593568790175167
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.24848741391036197
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.26113988006206235
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 0,
+          "position": 0.4345685353136014
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.23508702819335653
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.1728475884784165
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.29831243595157303
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.32488766927697404
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.41024628935303287
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.6632101820361953
+        }
+      ]
+    },
+    {
+      "message": "the coder host on my mac runs an old build, deploy the latest one",
+      "relevant": [
+        "AGENTS.md#velocity-owner-2026-10-01-main",
+        "AGENTS.md#crates-crates-coder-host"
+      ],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 0,
+          "position": 1.393828682063278
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.3828520787481755
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 0,
+          "position": 0.9794010890892282
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 3,
+          "position": 2.27251607128934
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.5091370793057783
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 0,
+          "position": 0.5332553669332799
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.2689044695294279
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.557358738558571
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.7269514822864547
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.9545239264618803
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 2,
+          "position": 1.8135183484543762
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 2,
+          "position": 1.9539197110929
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 0.9480309884601119
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.7005071321605997
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.687795769582804
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.49659260903245184
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 0,
+          "position": 0.22991915789895978
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.2457206544700612
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.2905517967598495
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 0,
+          "position": 1.1618995176281879
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.21328099014644158
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.11390327909534421
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.2448239522833879
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.3544787486891866
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.3395478263449933
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.3561838578337115
+        }
+      ]
+    },
+    {
+      "message": "run the tests for the openagents-mobile crate",
+      "relevant": [
+        "AGENTS.md#velocity-owner-2026-10-01-3"
+      ],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 1,
+          "position": 1.0492552656798486
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.23099954597740444
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 2,
+          "position": 1.8072318292727547
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.7180759865084345
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 1,
+          "position": 1.1596333771947438
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 0,
+          "position": 0.49722370010176914
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.3507000359714895
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.36662533698892147
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.39929280494062114
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.4986950785455986
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 0.6708907672303717
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.5630089997511555
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 0.6587524761368619
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.5097934259908896
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.6112939503064151
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.5037374211025639
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 0,
+          "position": 0.2879041086947177
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.37296479004248007
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.2892934714762389
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 2,
+          "position": 1.7265840157710086
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.20985936000859381
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.1417889274315635
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.3057290797295178
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.3024770648255523
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.5928455073887797
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.5049573688199871
+        }
+      ]
+    },
+    {
+      "message": "rewrite the README's opening paragraph in plain words",
+      "relevant": [
+        "AGENTS.md#skills",
+        "AGENTS.md#user-facing-copy-owner-2026-10-08"
+      ],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 0,
+          "position": 0.7607080581270423
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 2,
+          "position": 1.3622005642403199
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 0,
+          "position": 0.31488205277754244
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.2609429694665264
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.32786268235082255
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 2,
+          "position": 1.6875702772774885
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.17929467001553026
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.22875534211884538
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.34907132343052666
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.42425399065774355
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 0.3439263300677423
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.3584690353461604
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 0.6817075422319612
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.3768685480433084
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.46751460447620535
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.38082240827994995
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 0,
+          "position": 0.29070808202576964
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.34142466538663113
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.3163027607872831
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 0,
+          "position": 0.4584242841044946
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.6107988451008352
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.3453228429412549
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.3906102252909142
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.34279159576669554
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.6233676143221993
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.5712578211276467
+        }
+      ]
+    },
+    {
+      "message": "cargo build runs out of memory on the Cursor cloud agent, fix the setup",
+      "relevant": [
+        "AGENTS.md#cursor-cloud-specific-instructions",
+        "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p"
+      ],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 0,
+          "position": 1.1795052825792567
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.3530132614894267
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 2,
+          "position": 1.4842485849509375
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.49089997688692427
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.5329919851892787
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 0,
+          "position": 0.5391324520772655
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.5125887448571127
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.6449134187107033
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.6616434985709854
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.8229615956083799
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 1.1373176519517936
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.9498007482317705
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 1.00355249862585
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.8305241248745903
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 1.0428408202541632
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.6545863629836413
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 0,
+          "position": 0.46783161787967553
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.529703019727007
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.31094007602722096
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 2,
+          "position": 1.9744388874821148
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.24954829232675138
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.09135670230211156
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.22214075893761645
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.37806325044029543
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.3521472456041719
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.3497123552718162
+        }
+      ]
+    },
+    {
+      "message": "add a team plan to the tenancy billing book",
+      "relevant": [
+        "AGENTS.md#crates-crates-tenancy"
+      ],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 0,
+          "position": 0.7961270238445216
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.4831877822267473
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 0,
+          "position": 0.6171090094668797
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.45088158783306514
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.366636318232332
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 0,
+          "position": 0.8235167656253306
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.29993730222982534
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 1.0485060279407918
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.49201942888558897
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.4961909755832824
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 0.5205501900553755
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.4053761291092464
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 0.746224217459917
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.5824512443487346
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.5529755603594557
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.4187537380653548
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 0,
+          "position": 0.305644645343908
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.2858770057420227
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.4001002296294186
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 1,
+          "position": 0.7407676426999684
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.35722682738364797
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.24896951915088067
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.5540676550299934
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.38900815783990594
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.5248480524381567
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.5063937834188272
+        }
+      ]
+    },
+    {
+      "message": "make the microcoder loop repair tool calls whose arguments fail the schema",
+      "relevant": [
+        "AGENTS.md#crates-8",
+        "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p"
+      ],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 0,
+          "position": 0.9162765387487075
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.2978751472305414
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 0,
+          "position": 0.3572916423740671
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.29452403173368774
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.2768564835759535
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 0,
+          "position": 0.7472780720115213
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.4375949165540033
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.390917199047164
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.49470613218338316
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.4958541596596405
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 0.506760171236676
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.4770277331019965
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 0.8850159724739184
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 2,
+          "position": 2.040799391903124
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.5966020125665724
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.3886849508584737
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 0,
+          "position": 0.1906347009121472
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.21894115553265378
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.3250611173501754
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 0,
+          "position": 0.6142856689021177
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.21967272009926753
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.12225877874414923
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.3042460336098664
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.25948709881682197
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.5091031110751942
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.5144208566027858
+        }
+      ]
+    },
+    {
+      "message": "add a small TypeScript helper to the web app for date formatting",
+      "relevant": [
+        "AGENTS.md#openagents-agent-contract"
+      ],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 0,
+          "position": 1.168336619284902
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.5279675485539331
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 0,
+          "position": 0.4803305966540412
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.5133559399166578
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.36527392587875035
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 0,
+          "position": 1.2010177883007822
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.2718819078611339
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.3361742928246868
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.462678359396624
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.5359737094900666
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 0.43892658863061224
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.42500199431640706
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 0.7978953754246719
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.4399259136633953
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.498129071622019
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.39424183135376156
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 0,
+          "position": 0.28768299248242407
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.384576583761095
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.31249480899132975
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 0,
+          "position": 0.6957989738541762
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.3949053383625247
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.2951673493445053
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 1.2986390779605639
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.42608383961670987
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.5317763800495342
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.47228825018361464
+        }
+      ]
+    },
+    {
+      "message": "add a villager definition for the baker in Everglade",
+      "relevant": [
+        "AGENTS.md#crates-crates-townsfolk"
+      ],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 0,
+          "position": 0.7540545167450168
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.38009666422190214
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 0,
+          "position": 0.46759299391529047
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.4004004260361776
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.30376434628679916
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 0,
+          "position": 0.9101259330212074
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.3112637900194403
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.32715488705084866
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.4250054850166492
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.47547064057885957
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 0.40407871304530063
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.41099147786230383
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 0.7321674968011176
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.5027676340316258
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.5491848209611759
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.6558243876661165
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 2,
+          "position": 1.6374283543757504
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 3,
+          "position": 2.186433461528841
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.2716220154429394
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 0,
+          "position": 0.638502635093723
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.3028317269982892
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.18856292675657138
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.3643924287805277
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.33127731979922775
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.4983234224482578
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.5619612212765304
+        }
+      ]
+    },
+    {
+      "message": "add a lightmap bake step for Verse's lighting",
+      "relevant": [
+        "AGENTS.md#crates-crates-verse-pbr"
+      ],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 0,
+          "position": 0.5539910161132799
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.3036284335270014
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 0,
+          "position": 0.4614204372358947
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.36181959626592125
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.2603225528176027
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 0,
+          "position": 0.5515100779127867
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.4340442336758542
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.31292256154991527
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.3454838379230528
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.38539283461787904
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 0.3502410933015842
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.3880043184947758
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 0.590344153323621
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.4823051526037362
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.4207401795941509
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 1.0053119822885421
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 2,
+          "position": 1.5436368086887904
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.5036449673582265
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.22739520759302934
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 0,
+          "position": 0.5644219349602108
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.45647341176968337
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.22122342640609605
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.4056917648008437
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.4248140316871048
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.7769031048813849
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.7029743245030583
+        }
+      ]
+    },
+    {
+      "message": "what time is it in Tokyo right now",
+      "relevant": [],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 0,
+          "position": 0.3350639391666967
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.17238205331003995
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 0,
+          "position": 0.13402466583163256
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.11538211849038536
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.08681013092819304
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 0,
+          "position": 0.264251915971639
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.1535751238314947
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.2065043270366826
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.2608636288203319
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.3210628503703161
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 0.31705047628597377
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.3586055960815074
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 0.6098212622696632
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.315359731202593
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.30551270235705974
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.24126522259004907
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 0,
+          "position": 0.15715858184153006
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.19861511069737287
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.21117192581864108
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 0,
+          "position": 0.23157612491263477
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.19563786910724848
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.08021562942059889
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.1083554410237044
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.13968822164607753
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.21093702358332841
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.17047337870506274
+        }
+      ]
+    },
+    {
+      "message": "explain the difference between Arc and Rc",
+      "relevant": [],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 1,
+          "position": 1.2852737416092426
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.45574002423563575
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 0,
+          "position": 0.25244683799433065
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.1678022009900395
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.20275683629474417
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 0,
+          "position": 0.6685568798756931
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.24547009990598118
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.2683939990209628
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.3315376912189143
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.4543222916813552
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 0.2918713709833707
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.33272977277094407
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 0.5609724320395939
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.37757240649631907
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.37262832625893727
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.31964538654248964
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 0,
+          "position": 0.22793540513504207
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.3074277220540752
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.26418216457231175
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 0,
+          "position": 0.5477048914065729
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.40659121557152905
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.14404051334921117
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.2193705477653009
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.22235032848084305
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.5962726738468878
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.40613986475048525
+        }
+      ]
+    },
+    {
+      "message": "put the Breez API key in the spark wallet config",
+      "relevant": [
+        "AGENTS.md#velocity-owner-2026-10-01-3"
+      ],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 3,
+          "position": 1.679048887497013
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.4460781106228033
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 0,
+          "position": 0.33582937808444907
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.22991694524083486
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 1.0807550165810709
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 0,
+          "position": 0.5937660487105105
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.3525816851761274
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.3676152862552919
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.9377567353544454
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.6070335258982078
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 3,
+          "position": 1.9236972748892402
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.698426652211232
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 0.7110172853049939
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.607074781796819
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.7560505397138121
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.5871201454780237
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 0,
+          "position": 0.3732816603071528
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.7653045579083259
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.53860670450558
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 0,
+          "position": 0.6524799745937586
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.24792105529676794
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.1684900435481847
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.30079528049043464
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.3077419743244196
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.31810242911326175
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.32868168799116726
+        }
+      ]
+    },
+    {
+      "message": "check the new settings page in a browser",
+      "relevant": [
+        "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p"
+      ],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 0,
+          "position": 0.734678351479122
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.6406771229246315
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 2,
+          "position": 1.372529974583371
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.5046183763073245
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.2400066263489905
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 0,
+          "position": 0.5512831767350659
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.2531110115851776
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.295569745272487
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.5740126741208307
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.7288029675624295
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 0.6433969201276613
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.6234393324801144
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 0.9332751661212215
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.5599510941057323
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.6962358326118546
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.5061877074386775
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 0,
+          "position": 0.3800596906655249
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.894496831068986
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.3914066958657611
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 0,
+          "position": 0.7566243885064443
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.31611024670001503
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.16667933305969407
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.3484787708770091
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.35759193353379537
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.5290458574366808
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.4139640571784829
+        }
+      ]
+    },
+    {
+      "message": "launch a few subagents to review the open pull requests",
+      "relevant": [
+        "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p"
+      ],
+      "judgments": [
+        {
+          "id": "AGENTS.md#openagents-agent-contract",
+          "level": 0,
+          "position": 0.7317832861346709
+        },
+        {
+          "id": "AGENTS.md#user-facing-copy-owner-2026-10-08",
+          "level": 0,
+          "position": 0.325574462227987
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-cargo-test-p",
+          "level": 0,
+          "position": 0.5280073851865841
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-main",
+          "level": 0,
+          "position": 0.6246851849609398
+        },
+        {
+          "id": "AGENTS.md#velocity-owner-2026-10-01-3",
+          "level": 0,
+          "position": 0.44966359336482054
+        },
+        {
+          "id": "AGENTS.md#skills",
+          "level": 0,
+          "position": 0.9068352230369792
+        },
+        {
+          "id": "AGENTS.md#crates-crates-atif",
+          "level": 0,
+          "position": 0.4568788445192472
+        },
+        {
+          "id": "AGENTS.md#crates-crates-tenancy",
+          "level": 0,
+          "position": 0.4508911243575953
+        },
+        {
+          "id": "AGENTS.md#crates-crates-gateway",
+          "level": 0,
+          "position": 0.5184702201340049
+        },
+        {
+          "id": "AGENTS.md#crates-crates-rust-native",
+          "level": 0,
+          "position": 0.6676360782416272
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-service",
+          "level": 0,
+          "position": 0.760919390769227
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-host",
+          "level": 0,
+          "position": 0.4984396726440477
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder",
+          "level": 0,
+          "position": 1.0041943841810879
+        },
+        {
+          "id": "AGENTS.md#crates-8",
+          "level": 0,
+          "position": 0.7947131992770005
+        },
+        {
+          "id": "AGENTS.md#crates-crates-coder-one",
+          "level": 0,
+          "position": 0.7153184719309298
+        },
+        {
+          "id": "AGENTS.md#crates-crates-supervise",
+          "level": 0,
+          "position": 0.5254709729821069
+        },
+        {
+          "id": "AGENTS.md#crates-crates-verse-pbr",
+          "level": 0,
+          "position": 0.30056765247510725
+        },
+        {
+          "id": "AGENTS.md#crates-crates-townsfolk",
+          "level": 0,
+          "position": 0.3217172447852699
+        },
+        {
+          "id": "AGENTS.md#protocol-references",
+          "level": 0,
+          "position": 0.3589441980979396
+        },
+        {
+          "id": "AGENTS.md#cursor-cloud-specific-instructions",
+          "level": 0,
+          "position": 0.6645812873722776
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#studying-unreal-engine-source",
+          "level": 0,
+          "position": 0.47334593923201385
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-the-license-allows",
+          "level": 0,
+          "position": 0.2764791462310946
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#what-it-forbids",
+          "level": 0,
+          "position": 0.446308563123609
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#where-the-source-lives",
+          "level": 0,
+          "position": 0.4559414903500847
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#how-to-study-and-port",
+          "level": 0,
+          "position": 0.5437663223564189
+        },
+        {
+          "id": "docs/research/unreal/AGENTS.md#candidate-template",
+          "level": 0,
+          "position": 0.4365620956994515
+        }
+      ]
+    }
+  ]
+}

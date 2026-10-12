@@ -720,9 +720,18 @@ pub(crate) fn set_test_judge(judge: Option<Option<Recorded>>) {
     TEST_JUDGE.with(|cell| *cell.borrow_mut() = judge);
 }
 
-/// A message held while System One judges it.
+/// A message held while System One judges it: where it runs, what its
+/// briefing carries ([`crate::context`]), or both.
 pub struct Pending {
-    pub receiver: mpsc::Receiver<Result<Answered, String>>,
+    /// The route question, when one was asked.
+    pub receiver: Option<mpsc::Receiver<Result<Answered, String>>>,
+    /// Its answer, or why there is none, once that is known.
+    pub answer: Option<Result<Answered, String>>,
+    /// The briefing's selection, when one is under way.
+    pub context: Option<crate::context::Asking>,
+    /// Whether a selection was considered after the route's answer, so a
+    /// follow-up starts at most one.
+    pub context_considered: bool,
     pub started: Instant,
     pub situation: Situation,
     /// The chat the message was sent in: the answer lands there or
@@ -734,10 +743,16 @@ pub struct Pending {
 }
 
 impl Pending {
-    /// The answer, or the fallback's reason, once there is one; `None`
-    /// while it is still worth waiting.
-    pub fn poll(&self) -> Option<Result<Answered, String>> {
-        match self.receiver.try_recv() {
+    /// Moves the route's answer in once there is one, or the budget ran
+    /// out. Returns whether the route side is settled (or was never asked).
+    pub fn poll_route(&mut self) -> bool {
+        if self.answer.is_some() {
+            return true;
+        }
+        let Some(receiver) = &self.receiver else {
+            return true;
+        };
+        self.answer = match receiver.try_recv() {
             Ok(answer) => Some(answer),
             Err(mpsc::TryRecvError::Disconnected) => {
                 Some(Err("System One could not be asked.".into()))
@@ -746,14 +761,21 @@ impl Pending {
                 Some(Err("System One did not answer in time.".into()))
             }
             Err(mpsc::TryRecvError::Empty) => None,
-        }
+        };
+        self.answer.is_some()
     }
 
-    /// Waits for the answer up to what is left of the budget, for callers
-    /// with no screen to keep drawing.
-    pub fn wait(&self) -> Result<Answered, String> {
+    /// Waits for the route's answer up to what is left of the budget, for
+    /// callers with no screen to keep drawing.
+    pub fn wait_route(&mut self) {
+        if self.answer.is_some() {
+            return;
+        }
+        let Some(receiver) = &self.receiver else {
+            return;
+        };
         let left = BUDGET.saturating_sub(self.started.elapsed());
-        match self.receiver.recv_timeout(left) {
+        self.answer = Some(match receiver.recv_timeout(left) {
             Ok(answer) => answer,
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 Err("System One did not answer in time.".into())
@@ -761,7 +783,21 @@ impl Pending {
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 Err("System One could not be asked.".into())
             }
-        }
+        });
+    }
+
+    /// Whether the route's answer judged this follow-up a new piece of
+    /// work.
+    #[must_use]
+    pub fn new_work(&self) -> bool {
+        matches!(
+            &self.answer,
+            Some(Ok(answered)) if answered
+                .recorded
+                .judgment()
+                .and_then(|judgment| judgment.new_work)
+                == Some(true)
+        )
     }
 }
 

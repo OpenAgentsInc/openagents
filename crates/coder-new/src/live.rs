@@ -64,6 +64,10 @@ pub struct Chat {
     /// was routed ([`App::route_turn`](crate::App::route_turn)); follow-ups
     /// stay on it (#11453).
     pub runs_on: Option<crate::harness_plugin::Harness>,
+    /// The briefing every harness reads for this chat's current piece of
+    /// work, chosen at its routing point (#11473); `None` loads what each
+    /// harness loaded before.
+    pub briefing: Option<crate::context::Briefing>,
 }
 
 /// A Claude Code session a chat holds, and how far into the chat it reaches.
@@ -375,6 +379,8 @@ pub enum Work {
         /// The Claude Code session the chat holds, which this turn
         /// continues; `None` starts one (#11435).
         session: Option<String>,
+        /// The chat's briefing for this piece of work (#11473).
+        briefing: Option<Box<crate::context::Briefing>>,
     },
     /// A turn of solver's conversational Intaker: Haiku with a read-only
     /// `gh`, helping the person find or pick the issue to solve.
@@ -628,6 +634,7 @@ impl Background {
             cwd,
             tools,
             session,
+            briefing,
         } = request.kind
         else {
             return;
@@ -643,9 +650,25 @@ impl Background {
             self.close_claude();
             let seed = crate::claude::task_with(&messages, &tools);
             self.claude = Some(crate::claude_chat::Chat::start(
-                cwd, *tools, session, newest, seed,
+                cwd,
+                *tools,
+                session,
+                newest,
+                seed,
+                briefing.map(|briefing| *briefing),
             ));
-        } else if let Some(chat) = &self.claude {
+        } else if let Some(chat) = &mut self.claude {
+            // A new piece of work in a running process: its briefing goes
+            // with the message rather than restarting the process, so the
+            // session's prompt cache stays (#11473).
+            let key = briefing.as_ref().map(|briefing| briefing.key());
+            let newest = match briefing.filter(|_| key != chat.briefing) {
+                Some(briefing) => {
+                    chat.briefing = key;
+                    crate::claude::with_briefing(&briefing, &newest)
+                }
+                None => newest,
+            };
             chat.say(&newest, self.claude_turn.is_some());
             // The session has read this message too.
             let users = app.live.user_count();
@@ -1357,9 +1380,15 @@ pub(crate) fn local_task(
     // Project instructions and saved memory (#11176), within a share of the
     // local route's allowance; files over it are named, not read.
     if let Some(context) = execution
-        .memory
+        .briefing
         .as_ref()
-        .map(|memory| memory.context(false, LIMIT / 3))
+        .map(|briefing| briefing.render(false))
+        .or_else(|| {
+            execution
+                .memory
+                .as_ref()
+                .map(|memory| memory.context(false, LIMIT / 3))
+        })
         .filter(|text| !text.trim().is_empty())
     {
         prefix.push_str(&context);

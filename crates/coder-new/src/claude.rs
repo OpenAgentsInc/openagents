@@ -484,6 +484,7 @@ pub(crate) async fn open(
     tools: &crate::claude_tools::Tools,
     resume: Option<Resume>,
     asks: crate::claude_ask::Asks,
+    briefing: Option<&crate::context::Briefing>,
 ) -> Result<Opened, String> {
     if !crate::approval::tools_allowed() {
         return Err("This host refuses every tool, so claude cannot work here.".into());
@@ -495,7 +496,7 @@ pub(crate) async fn open(
         None => (None, None),
     };
     let (options, _) = turn_options(cwd, Access::Full, server);
-    let options = with_session(options, resume);
+    let options = briefed(with_session(options, resume), briefing);
     let query = claude_agent_sdk::Query::streaming(options, Some(full_handler(asks)))
         .await
         .map_err(|error| {
@@ -1064,6 +1065,64 @@ fn with_session(mut options: QueryOptions, resume: Option<Resume>) -> QueryOptio
         options.system_prompt = Some(SystemPromptConfig::Preset { append: Some(note) });
     }
     options
+}
+
+/// `options` carrying the chat's briefing (#11473): appended to Claude
+/// Code's system prompt, after Coder's note on a resumed session, with
+/// Claude Code's own loading of the instruction files the briefing was
+/// chosen from switched off (`claudeMdExcludes`), so nothing is read twice.
+/// Its settings, skills, hooks and other `CLAUDE.md` files still load.
+pub(crate) fn briefed(
+    mut options: QueryOptions,
+    briefing: Option<&crate::context::Briefing>,
+) -> QueryOptions {
+    let Some(briefing) = briefing else {
+        return options;
+    };
+    let text = briefing.render(false);
+    let append = match options.system_prompt.take() {
+        Some(SystemPromptConfig::Preset { append: Some(note) }) => format!("{note}\n\n{text}"),
+        _ => text,
+    };
+    options.system_prompt = Some(SystemPromptConfig::Preset {
+        append: Some(append),
+    });
+    options.settings = Some(serde_json::json!({ "claudeMdExcludes": excluded(briefing) }));
+    options
+}
+
+/// The instruction files Claude Code leaves to the briefing: each file the
+/// briefing was chosen from, and the `CLAUDE.md` beside it, which Coder read
+/// too (or found to be the same file).
+#[must_use]
+pub fn excluded(briefing: &crate::context::Briefing) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for file in &briefing.files {
+        let mut add = |path: &Path| {
+            let text = path.display().to_string();
+            if !out.contains(&text) {
+                out.push(text);
+            }
+        };
+        add(file);
+        if let Ok(real) = file.canonicalize() {
+            add(&real);
+        }
+        if let Some(dir) = file.parent() {
+            add(&dir.join("CLAUDE.md"));
+        }
+    }
+    out
+}
+
+/// A message to a running chat that starts a new piece of work: its
+/// briefing first, then the message.
+#[must_use]
+pub fn with_briefing(briefing: &crate::context::Briefing, message: &str) -> String {
+    format!(
+        "<briefing>\nFor this next piece of work, follow this briefing in place of the one you started with.\n\n{}\n</briefing>\n\n{message}",
+        briefing.render(false).trim_end()
+    )
 }
 
 /// Stop a running turn. A chat's long-lived process (`keep`) is

@@ -77,6 +77,10 @@ pub struct ExecutionSettings {
     /// `routing_preference` tool is offered, so the model can record what
     /// the person says about which engines to use.
     pub routing: Option<PathBuf>,
+    /// The chat's briefing for its current piece of work (#11473): the
+    /// Coder loop reads it instead of every instruction file and note, and
+    /// a Codex delegation reads it in its task.
+    pub briefing: Option<crate::context::Briefing>,
 }
 
 #[derive(Clone)]
@@ -608,12 +612,21 @@ impl ExecutionSettings {
                         None => args.task.clone(),
                     };
                 let mut child = |event| emit(event);
-                bundled_runtime::acp_with(
+                // Codex reads the chat's briefing ahead of the task (#11473).
+                let briefing = (agent.transport == bundled_runtime::AgentTransport::CodexCli)
+                    .then(|| {
+                        self.briefing
+                            .as_ref()
+                            .map(|briefing| briefing.render(false))
+                    })
+                    .flatten();
+                bundled_runtime::acp_briefed(
                     agent,
                     &task,
                     &self.cwd,
                     args.model.as_deref(),
                     args.read_only,
+                    briefing.as_deref(),
                     cancel,
                     &mut child,
                 )
@@ -907,6 +920,7 @@ mod tests {
             memory: None,
             favor: crate::route::Favor::default(),
             routing: None,
+            briefing: None,
         }
     }
 

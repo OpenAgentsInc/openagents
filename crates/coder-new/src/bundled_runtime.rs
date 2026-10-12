@@ -622,13 +622,31 @@ fn permissions(read_only: bool, enforced: bool, how: &str) -> Value {
 /// [`acp`] on a task that may be read-only: each engine is held to it the
 /// way it can be, and the result says which way under `permissions`, with
 /// the folder it ran in under `cwd` (#11469, #11470).
-#[allow(clippy::too_many_lines)]
 pub async fn acp_with(
     agent: &AcpAgent,
     task: &str,
     cwd: &Path,
     model: Option<&str>,
     read_only: bool,
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Value, String> {
+    acp_briefed(agent, task, cwd, model, read_only, None, cancel, emit).await
+}
+
+/// [`acp_with`] carrying the chat's briefing (#11473): Codex reads it ahead
+/// of the task, with its own `AGENTS.md` reading off
+/// (`project_doc_max_bytes=0`), so it gets what every harness gets and
+/// nothing twice. A briefing that would push the task past its limit is
+/// left out, and Codex reads its own files as before.
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+pub async fn acp_briefed(
+    agent: &AcpAgent,
+    task: &str,
+    cwd: &Path,
+    model: Option<&str>,
+    read_only: bool,
+    briefing: Option<&str>,
     cancel: &Arc<AtomicBool>,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Value, String> {
@@ -687,9 +705,22 @@ pub async fn acp_with(
                 "Codex runs with no sandbox"
             },
         );
-        return codex_cli(&program, task, cwd, sandbox, cancel, emit)
-            .await
-            .map(|result| with(result, access));
+        let briefed = briefing
+            .filter(|briefing| !briefing.trim().is_empty())
+            .map(|briefing| briefed_task(briefing, task))
+            .filter(|briefed| briefed.len() <= TEXT_MAX);
+        let task = briefed.as_deref().unwrap_or(task);
+        return codex_cli(
+            &program,
+            task,
+            cwd,
+            sandbox,
+            briefed.is_some(),
+            cancel,
+            emit,
+        )
+        .await
+        .map(|result| with(result, access));
     }
     if agent.transport == AgentTransport::ClaudeCli {
         // An automated run on a Claude plan login takes a plan slot first
@@ -1104,12 +1135,21 @@ fn codex_out_of_capacity(
     )
 }
 
-/// Drive Codex's native protocol without treating its executable as an ACP server.
+/// A delegated task with the chat's briefing ahead of it.
+#[must_use]
+pub fn briefed_task(briefing: &str, task: &str) -> String {
+    format!("{}\n\n# The task\n\n{task}", briefing.trim_end())
+}
+
+/// Drive Codex's native protocol without treating its executable as an ACP
+/// server. `briefed` says the task carries the chat's briefing, so Codex's
+/// own `AGENTS.md` reading is off.
 async fn codex_cli(
     program: &Path,
     task: &str,
     cwd: &Path,
     sandbox: CodexSandbox,
+    briefed: bool,
     cancel: &Arc<AtomicBool>,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Value, String> {
@@ -1145,6 +1185,9 @@ async fn codex_cli(
         command.arg("--dangerously-bypass-approvals-and-sandbox");
     } else {
         command.args(["--sandbox", sandbox.word()]);
+    }
+    if briefed {
+        command.args(["-c", "project_doc_max_bytes=0"]);
     }
     command
         .args(["-c", "approval_policy=\"never\"", "-"])
@@ -2468,6 +2511,7 @@ mod tests {
                     "Draft supplied facts only.",
                     dir.path(),
                     sandbox,
+                    false,
                     &cancel,
                     &mut |event| events.push(event),
                 )
@@ -2509,6 +2553,70 @@ mod tests {
         native.arguments.clear();
         native.mode = Some("bypass".into());
         assert!(native.validate().is_err());
+    }
+
+    /// Codex reads the chat's briefing ahead of its task, with its own
+    /// `AGENTS.md` reading off (#11473); without one it reads its own.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn codex_reads_the_briefing_ahead_of_the_task() {
+        use std::os::unix::fs::PermissionsExt;
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("codex");
+        std::fs::write(
+            &program,
+            r#"#!/bin/sh
+printf '%s\n' "$@" > args
+cat > task
+printf '%s\n' '{"type":"thread.started","thread_id":"scratch-codex","model":"gpt-test"}'
+printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}'
+printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}'
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut native = agent(program);
+        native.id = "codex".into();
+        native.name = "Codex".into();
+        native.transport = AgentTransport::CodexCli;
+        let briefing = "# Project instructions\n\n### Testing\n\nRun the tests.";
+        acp_briefed(
+            &native,
+            "Fix the test.",
+            dir.path(),
+            None,
+            false,
+            Some(briefing),
+            &Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("task")).unwrap(),
+            briefed_task(briefing, "Fix the test.")
+        );
+        let args = std::fs::read_to_string(dir.path().join("args")).unwrap();
+        assert!(args.contains("project_doc_max_bytes=0\n"), "{args}");
+        acp(
+            &native,
+            "Fix the test.",
+            dir.path(),
+            None,
+            &Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("task")).unwrap(),
+            "Fix the test."
+        );
+        let args = std::fs::read_to_string(dir.path().join("args")).unwrap();
+        assert!(!args.contains("project_doc_max_bytes"));
     }
 
     #[tokio::test]
@@ -2618,6 +2726,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             "Fix it.",
             dir.path(),
             CodexSandbox::WorkspaceWrite,
+            false,
             &cancel,
             &mut |_| {},
         )
@@ -2638,6 +2747,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             "Fix it.",
             dir.path(),
             CodexSandbox::WorkspaceWrite,
+            false,
             &cancel,
             &mut |_| {},
         )

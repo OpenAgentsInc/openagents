@@ -32,6 +32,8 @@ impl App {
     pub(crate) fn agent_execution(&self) -> crate::plugin_tools::ExecutionSettings {
         let mut execution = self.plugins.execution_settings(self.agent_cwd());
         execution.fleet = Some(self.fleet_host());
+        // A delegation from this chat reads its briefing (#11473).
+        execution.briefing = self.live.briefing.clone();
         execution
     }
 

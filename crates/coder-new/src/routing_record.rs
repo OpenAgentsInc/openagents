@@ -113,6 +113,11 @@ pub struct Inputs {
     /// mid-way).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub router: Option<crate::router::Trace>,
+    /// How the turn's briefing was chosen (#11473): the selected ids,
+    /// their judgments, the model and the door, or that the turn kept the
+    /// briefing of its piece of work. `None` when no briefing was chosen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<crate::context::Trace>,
 }
 
 /// What made the choice.
@@ -786,6 +791,15 @@ impl crate::App {
             .map_or((Vec::new(), None), |(probabilities, trace)| {
                 (probabilities, Some(trace))
             });
+        let context = self.routing_context.take().or_else(|| {
+            self.live
+                .briefing
+                .as_ref()
+                .map(|briefing| crate::context::Trace {
+                    kept: true,
+                    ..briefing.trace.clone()
+                })
+        });
         self.record_end(Some(Ended::Stopped), None, None);
         let Some(recorder) = self.recorder() else {
             return;
@@ -825,6 +839,7 @@ impl crate::App {
                 },
                 probabilities,
                 router,
+                context,
             },
             harness,
             rule,
@@ -921,6 +936,7 @@ mod tests {
                     door: "typesafe".into(),
                 }],
                 router: None,
+                context: None,
             },
             harness,
             rule: Rule::FirstAdmitted,
