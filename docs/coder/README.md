@@ -43,6 +43,8 @@ knowledge still has to prove.
 | Task | Start here |
 | --- | --- |
 | Install or run a turn | [Install](guides/install.md), [headless mode](guides/headless.md), [shared turn contract](runtime/shell-loop.md) |
+| Take an issue to a pull request | [Solver](solver.md), four constrained agents ending in a pull request |
+| Let delegated agents coordinate | [Agent channel and solver swarm](subagent-channel.md), several solvers at once |
 | Submit and inspect durable work | [Task commands](guides/tasks.md), [execution owner](runtime/task-owner.md), [frozen context](runtime/frozen-task-context.md) |
 | Browse local tasks on the web | [OpenAgents web](../../crates/openagents-web/README.md), the website and a read-only task browser |
 | Link your computers and phone | [Link your devices](guides/link-devices.md), [host serve](runtime/host-serve.md), [host auto-start](runtime/host-autostart.md) |
