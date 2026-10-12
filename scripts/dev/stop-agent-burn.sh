@@ -15,15 +15,54 @@
 #
 # GCP consumers matched: RUNNING instances named oa-dev-env-*, clef-*-h100,
 # or oa-att-* (bench/run shapes agents create).
+#
+# One run (#11433, scripts/dev/agent-run.py; ids under ~/.openagents/runs):
+#   scripts/dev/stop-agent-burn.sh --run ID            reap it: its process
+#       groups and recorded pids, its root, child runs, and its VMs (from the
+#       manifest and the run-id label)
+#   scripts/dev/stop-agent-burn.sh --run ID --dry-run  say what that would stop
+#   scripts/dev/stop-agent-burn.sh --runs              list runs
+#   scripts/dev/stop-agent-burn.sh --sweep [--hours N] [--kill]
+#       the nightly sweep: launchd-parented claude, coder-new and bench
+#       processes and orphaned Claude Code tool shells, with no terminal,
+#       older than N hours (default 12), leftovers of runs whose
+#       root is gone, and this host's run-labelled VMs whose run is gone
 set -uo pipefail
 
 kill_mode=0
 gcp_mode=0
+here=$(cd "$(dirname "$0")" && pwd)
+usage() { sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+case "${1:-}" in
+  --run)
+    [ -n "${2:-}" ] || usage
+    id=$2; shift 2
+    extra=()
+    for arg in "$@"; do
+      case "$arg" in --dry-run) extra+=(--dry-run) ;; --kill) ;; *) usage ;; esac
+    done
+    exec python3 "$here/agent-run.py" reap "$id" --with-root ${extra[@]+"${extra[@]}"}
+    ;;
+  --runs) exec python3 "$here/agent-run.py" list ;;
+  --sweep)
+    shift
+    extra=()
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --hours) [ -n "${2:-}" ] || usage; extra+=(--hours "$2"); shift ;;
+        --kill) extra+=(--kill) ;;
+        *) usage ;;
+      esac
+      shift
+    done
+    exec python3 "$here/agent-run.py" sweep ${extra[@]+"${extra[@]}"}
+    ;;
+esac
 for arg in "$@"; do
   case "$arg" in
     --kill) kill_mode=1 ;;
     --gcp) gcp_mode=1 ;;
-    *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+    *) usage ;;
   esac
 done
 

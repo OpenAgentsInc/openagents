@@ -210,3 +210,19 @@ Ordered by leverage:
 9. **Alert on the second limit hit.** One session-limit event is normal; a
    second within a window means something is looping. A cheap poller on the
    capacity book can page the owner before a third window drains.
+
+## Follow-up status
+
+- Items 1-3: the agent gate, `scripts/dev/agent-gate.sh` (#11430).
+- Items 4, 6 and the run-id half of 7: run ids and the reaper (#11433).
+  Every Claude Code session in this repository is a run under
+  `~/.openagents/runs/<id>/` (`scripts/dev/agent-run.py`). Each Bash tool
+  shell records its process group there, and ending the session reaps those
+  groups. `scripts/dev/stop-agent-burn.sh --run ID` cancels a run by hand.
+  It covers the run's processes, its child runs, and the VMs labelled
+  `run-id=ID` (`h100-run.sh` and `run-env.sh` add the label). The nightly
+  sweep (`scripts/dev/install-agent-sweep.sh`) stops orphaned `claude`,
+  `coder-new`, bench processes and Claude Code tool shells. It also stops
+  what is left of gone runs, including their VMs. `ab.py batch` aborts when no
+  result row lands for `--stall-min` minutes (default 120).
+- Item 5: `coder-new` exits when its terminal goes away (#11429).

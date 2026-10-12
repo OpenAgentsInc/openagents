@@ -117,6 +117,15 @@ limit has parked agents (a person resumes with `scripts/dev/agent-gate.sh
 resume`), or past four running agents (`OA_AGENT_MAX`); a usage limit stops
 the session instead of waiting for the reset.
 
+Every Claude Code session here is a run (`scripts/dev/agent-run.py`, #11433):
+its Bash tool shells, and everything they start, are recorded under
+`~/.openagents/runs/<id>/` (`$OA_RUN_ID` in your shell), and ending the session
+reaps them. A machine you create or start for the run carries its label
+(`--labels "$(python3 scripts/dev/agent-run.py labels)"`, or `agent-run.py
+label-vm NAME ZONE` for an existing one) so the reaper stops it too. Cancel a
+run by hand with `scripts/dev/stop-agent-burn.sh --run ID` (`--runs` lists
+them). Something that must outlive the session needs the owner's say-so.
+
 Close an issue as soon as its work is code-complete: merged to `main`, with its
 own checks passing and any host deploy it needs done. Never hold an issue open
 waiting on the owner — a real-money payment, a device run, a key only the owner

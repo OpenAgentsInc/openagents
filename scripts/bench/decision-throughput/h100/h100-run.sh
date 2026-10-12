@@ -27,10 +27,12 @@ say() { printf '%s\n' "$*" >&2; }
 
 # The instance body (Compute API instances.insert), shared by `start` and
 # the scheduler job so both create exactly the same VM.
-body() { # zone sealed keep run
-    python3 - "$PROJECT" "$1" "$VM" "$SA" "$2" "$3" "$4" "$B" <<'EOF'
+body() { # zone sealed keep run [labels]
+    python3 - "$PROJECT" "$1" "$VM" "$SA" "$2" "$3" "$4" "$B" "${5:-}" <<'EOF'
 import json, sys
-project, zone, vm, sa, sealed, keep, run, bucket = sys.argv[1:]
+project, zone, vm, sa, sealed, keep, run, bucket, extra = sys.argv[1:]
+labels = {"app": "decision-throughput"}
+labels.update(kv.split("=", 1) for kv in extra.split(",") if "=" in kv)
 region = zone.rsplit("-", 1)[0]
 meta = [{"key": "startup-script-url", "value": f"{bucket}/h100/startup.sh"},
         {"key": "dt-sealed", "value": sealed}, {"key": "dt-keep", "value": keep}]
@@ -39,7 +41,7 @@ if run:
 print(json.dumps({
     "name": vm,
     "machineType": f"zones/{zone}/machineTypes/a3-highgpu-1g",
-    "labels": {"app": "decision-throughput"},
+    "labels": labels,
     "scheduling": {"provisioningModel": "SPOT", "instanceTerminationAction": "DELETE",
                    "onHostMaintenance": "TERMINATE", "automaticRestart": False,
                    "maxRunDuration": {"seconds": 4500}},
@@ -101,9 +103,17 @@ case ${1:-} in
         shift; sealed=0; keep=0
         for a in "$@"; do case $a in --sealed) sealed=1 ;; --keep) keep=1 ;; esac; done
         run=$(date -u +%Y%m%dT%H%M%SZ)
+        # Under an agent run (#11433) the VM carries its run-id label and
+        # lands in the run's manifest, so the run's reaper stops it.
+        labels=""
+        [ -n "${OA_RUN_ID:-}" ] && labels=$(python3 "$ROOT/scripts/dev/agent-run.py" labels 2>/dev/null || true)
         for z in $ZONES; do
-            say "creating $VM in $z (run $run)"
-            if insert "$z" "$(body "$z" $sealed $keep "$run")"; then say "created in $z"; echo "$run"; exit 0; fi
+            say "creating $VM in $z (run $run${labels:+, $labels})"
+            if insert "$z" "$(body "$z" $sealed $keep "$run" "$labels")"; then
+                say "created in $z"
+                [ -n "$labels" ] && python3 "$ROOT/scripts/dev/agent-run.py" add-vm "$OA_RUN_ID" "$VM" "$z" "$PROJECT" || true
+                echo "$run"; exit 0
+            fi
         done
         say "no zone had capacity"; exit 1 ;;
     status) gcloud compute instances list --project $PROJECT --filter="name=$VM" --format='table(name,zone.basename(),status,creationTimestamp)'

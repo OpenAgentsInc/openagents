@@ -10,6 +10,13 @@
 # before any of that plan's trials. When the list is done, or the script
 # exits for any reason, the VM powers off (it bills only its disk while
 # stopped); AB_NO_POWEROFF=1 keeps it on.
+#
+# Run id (#11433): label the VM with the launching run before starting it,
+# from the launching machine, so `scripts/dev/stop-agent-burn.sh --run ID`
+# and the nightly sweep there stop it:
+#   python3 scripts/dev/agent-run.py label-vm oa-dev-env-N ZONE   # uses $OA_RUN_ID
+# Or pass the run here (OA_RUN_ID=ID OA_RUN_HOST=HOST, from `agent-run.py
+# labels`) and the VM labels itself.
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 cd "$here"
@@ -19,6 +26,14 @@ set -a; . "$HOME/.openagents/dev-env.env"; set +a
 mkdir -p "$HOME/ab/bin" .work
 cp remote/* "$HOME/ab/bin/"
 touch "$HOME/.openagents/keep-awake"
+if [ -n "${OA_RUN_ID:-}" ]; then
+  md=http://metadata.google.internal/computeMetadata/v1/instance
+  vm=$(curl -fsS -H 'Metadata-Flavor: Google' "$md/name" 2>/dev/null || true)
+  zone=$(curl -fsS -H 'Metadata-Flavor: Google' "$md/zone" 2>/dev/null || true)
+  [ -n "$vm" ] && gcloud compute instances add-labels "$vm" --zone "${zone##*/}" -q \
+    --labels "run-id=$OA_RUN_ID${OA_RUN_HOST:+,run-host=$OA_RUN_HOST}" >/dev/null 2>&1 ||
+    echo "run-id label not set on this VM"
+fi
 finish() {
   rm -f "$HOME/.openagents/keep-awake"
   [ -n "${AB_NO_POWEROFF:-}" ] || sudo -n poweroff
