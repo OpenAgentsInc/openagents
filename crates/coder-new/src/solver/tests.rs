@@ -996,3 +996,10 @@ fn decisions_can_name_a_door_per_point() {
     );
     assert!(parse_deciders("size=jev").is_err());
 }
+
+#[test]
+fn queue_verdict_rides_in_the_summary_shape() {
+    let entry = super::queue::judge(7, "x", None, &[], &["run-1".into()], 2);
+    assert_eq!(entry.verdict, "in_flight");
+    assert_eq!(entry.json()["why"], "unlanded run run-1");
+}
