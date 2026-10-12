@@ -99,6 +99,12 @@ pub struct Step {
     /// read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub module: Option<Value>,
+    /// Earlier steps whose output this step reads. The validator refuses a
+    /// name that is not an earlier step's, and the host refuses to run the
+    /// step while any named output is empty: static analysis cannot
+    /// predict what a model answered.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requires: Vec<String>,
     /// What bounds the step. Every step carries bounds, and a host refuses
     /// a step whose bounds it cannot enforce rather than running it
     /// unbounded.
@@ -360,6 +366,14 @@ impl Program {
                     ));
                 }
             }
+            for required in &step.requires {
+                if !seen.contains(required) {
+                    return Err(format!(
+                        "step {:?} requires {required:?}, which is not an earlier step",
+                        step.name
+                    ));
+                }
+            }
             seen.push(step.name.clone());
             if step.kind == Kind::Decide {
                 if step.question.is_none() {
@@ -530,6 +544,7 @@ fn project(
             source,
             program,
             module,
+            requires: Vec::new(),
             bounds,
             rest,
         });
@@ -1088,5 +1103,21 @@ mod tests {
         program.steps[0].kind = Kind::Check;
         let error = program.validate().unwrap_err();
         assert!(error.contains("only a delegate step"), "{error}");
+    }
+
+    #[test]
+    fn requires_names_only_an_earlier_step() {
+        let mut program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"needs","steps":[
+                {"name":"first","kind":"query","bounds":{}},
+                {"name":"second","kind":"query","requires":["first"],"bounds":{}}]}"#,
+        )
+        .unwrap();
+        program.validate().expect("an earlier step may be required");
+        program.steps[0].requires = vec!["second".into()];
+        let reason = program
+            .validate()
+            .expect_err("a later step cannot be required");
+        assert!(reason.contains("not an earlier step"), "{reason}");
     }
 }
