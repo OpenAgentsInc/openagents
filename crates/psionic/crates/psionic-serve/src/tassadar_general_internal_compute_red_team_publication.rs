@@ -30,8 +30,8 @@ pub enum TassadarGeneralInternalComputeRedTeamPublicationDecisionError {
     NotPublicationSafe { detail: String },
 }
 
-pub fn tassadar_general_internal_compute_red_team_publication_decision(
-) -> TassadarGeneralInternalComputeRedTeamPublicationDecision {
+pub fn tassadar_general_internal_compute_red_team_publication_decision()
+-> TassadarGeneralInternalComputeRedTeamPublicationDecision {
     let report = build_tassadar_general_internal_compute_red_team_audit_report()
         .expect("general internal-compute red-team audit should build");
     let status = if report.publication_safe {
@@ -71,9 +71,9 @@ pub fn require_tassadar_general_internal_compute_red_team_publication() -> Resul
 #[cfg(test)]
 mod tests {
     use super::{
+        TassadarGeneralInternalComputeRedTeamPublicationStatus,
         require_tassadar_general_internal_compute_red_team_publication,
         tassadar_general_internal_compute_red_team_publication_decision,
-        TassadarGeneralInternalComputeRedTeamPublicationStatus,
     };
 
     #[test]

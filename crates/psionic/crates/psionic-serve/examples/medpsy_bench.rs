@@ -1,8 +1,8 @@
 use std::{env, fs, path::PathBuf, process::ExitCode, time::Instant};
 
 use psionic_models::{
-    MedPsyModelSize, MedPsyQwen3CandleConfig, MedPsyQwen3CandleGenerator,
-    MedPsyQwen3GgufGenerator, MedPsyQwen3RuntimeBackend, TokenId,
+    MedPsyModelSize, MedPsyQwen3CandleConfig, MedPsyQwen3CandleGenerator, MedPsyQwen3GgufGenerator,
+    MedPsyQwen3RuntimeBackend, TokenId,
 };
 use serde::Serialize;
 
@@ -22,13 +22,20 @@ fn run() -> Result<(), String> {
     if let Some(path) = config.json_out.as_ref() {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|error| {
-                format!("failed to create benchmark output directory {}: {error}", parent.display())
+                format!(
+                    "failed to create benchmark output directory {}: {error}",
+                    parent.display()
+                )
             })?;
         }
         let body = serde_json::to_vec_pretty(&report)
             .map_err(|error| format!("failed to serialize benchmark report: {error}"))?;
-        fs::write(path, body)
-            .map_err(|error| format!("failed to write benchmark report {}: {error}", path.display()))?;
+        fs::write(path, body).map_err(|error| {
+            format!(
+                "failed to write benchmark report {}: {error}",
+                path.display()
+            )
+        })?;
     }
     if config.json_stdout {
         println!(
@@ -100,9 +107,10 @@ impl BenchConfig {
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--model-path" => {
-                    model_path = Some(PathBuf::from(
-                        args.next().ok_or_else(|| String::from("missing value for --model-path"))?,
-                    ));
+                    model_path =
+                        Some(PathBuf::from(args.next().ok_or_else(|| {
+                            String::from("missing value for --model-path")
+                        })?));
                 }
                 "--artifact-kind" => {
                     artifact_kind = ArtifactKind::parse(
@@ -150,9 +158,10 @@ impl BenchConfig {
                 }
                 "--json" => json_stdout = true,
                 "--json-out" => {
-                    json_out = Some(PathBuf::from(
-                        args.next().ok_or_else(|| String::from("missing value for --json-out"))?,
-                    ));
+                    json_out =
+                        Some(PathBuf::from(args.next().ok_or_else(|| {
+                            String::from("missing value for --json-out")
+                        })?));
                 }
                 "--help" | "-h" => return Err(usage().to_string()),
                 other => return Err(format!("unexpected argument `{other}`\n\n{}", usage())),
@@ -161,7 +170,9 @@ impl BenchConfig {
 
         let model_path = model_path.ok_or_else(|| String::from("missing required --model-path"))?;
         if prompt_tokens.is_empty() {
-            return Err(String::from("--prompt-token-ids must contain at least one token id"));
+            return Err(String::from(
+                "--prompt-token-ids must contain at least one token id",
+            ));
         }
         if max_new_tokens == 0 {
             return Err(String::from("--max-new-tokens must be greater than zero"));
@@ -195,7 +206,9 @@ impl BenchBackend {
         match value {
             "cpu" => Ok(Self::Cpu),
             "cuda" => Ok(Self::Cuda),
-            other => Err(format!("unsupported --backend `{other}`; expected cpu or cuda")),
+            other => Err(format!(
+                "unsupported --backend `{other}`; expected cpu or cuda"
+            )),
         }
     }
 
@@ -279,7 +292,11 @@ fn run_benchmark(config: &BenchConfig) -> Result<MedPsyBenchReport, String> {
                 )
                 .map_err(|error| error.to_string())?;
                 generator
-                    .generate_greedy_token_ids(&config.prompt_tokens, config.max_new_tokens, &[TokenId(151645)])
+                    .generate_greedy_token_ids(
+                        &config.prompt_tokens,
+                        config.max_new_tokens,
+                        &[TokenId(151645)],
+                    )
                     .map_err(|error| error.to_string())?
             }
             ArtifactKind::Gguf => {
@@ -290,7 +307,11 @@ fn run_benchmark(config: &BenchConfig) -> Result<MedPsyBenchReport, String> {
                 )
                 .map_err(|error| error.to_string())?;
                 generator
-                    .generate_greedy_token_ids(&config.prompt_tokens, config.max_new_tokens, &[TokenId(151645)])
+                    .generate_greedy_token_ids(
+                        &config.prompt_tokens,
+                        config.max_new_tokens,
+                        &[TokenId(151645)],
+                    )
                     .map_err(|error| error.to_string())?
             }
         };
@@ -299,7 +320,11 @@ fn run_benchmark(config: &BenchConfig) -> Result<MedPsyBenchReport, String> {
         let output_tokens = report.generated_tokens.len();
         runs.push(MedPsyBenchRun {
             run_index,
-            generated_tokens: report.generated_tokens.iter().map(|token| token.as_u32()).collect(),
+            generated_tokens: report
+                .generated_tokens
+                .iter()
+                .map(|token| token.as_u32())
+                .collect(),
             output_tokens,
             stopped_on_eos: report.stopped_on_eos,
             total_ms: elapsed,
@@ -324,7 +349,11 @@ fn run_benchmark(config: &BenchConfig) -> Result<MedPsyBenchReport, String> {
         artifact_kind: config.artifact_kind.label(),
         backend: config.backend.label(),
         execution_engine,
-        prompt_tokens: config.prompt_tokens.iter().map(|token| token.as_u32()).collect(),
+        prompt_tokens: config
+            .prompt_tokens
+            .iter()
+            .map(|token| token.as_u32())
+            .collect(),
         max_new_tokens: config.max_new_tokens,
         repeats: config.repeats,
         runs,
@@ -345,7 +374,9 @@ fn parse_model_size(value: &str) -> Result<MedPsyModelSize, String> {
     match value {
         "1.7b" | "1_7b" | "one_point_seven_b" => Ok(MedPsyModelSize::OnePointSevenB),
         "4b" | "four_b" => Ok(MedPsyModelSize::FourB),
-        other => Err(format!("unsupported --model-size `{other}`; expected 1.7b or 4b")),
+        other => Err(format!(
+            "unsupported --model-size `{other}`; expected 1.7b or 4b"
+        )),
     }
 }
 

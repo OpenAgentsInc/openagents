@@ -7,8 +7,8 @@ use psionic_models::{
     TassadarBroadInternalComputeWorldMountBindingStatus,
 };
 use psionic_router::{
-    build_tassadar_broad_internal_compute_route_policy_report,
     TassadarBroadInternalComputeRouteDecisionStatus,
+    build_tassadar_broad_internal_compute_route_policy_report,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -176,15 +176,19 @@ mod tests {
         assert!(publication.suppressed_profile_ids.contains(&String::from(
             "tassadar.internal_compute.public_broad_family.v1"
         )));
-        assert!(publication
-            .public_profile_specific_route_ids
-            .contains(&String::from(
-                "tassadar.internal_compute.deterministic_import_subset.v1"
-            )));
-        assert!(publication
-            .public_profile_specific_route_ids
-            .contains(&String::from(
-                "tassadar.internal_compute.runtime_support_subset.v1"
-            )));
+        assert!(
+            publication
+                .public_profile_specific_route_ids
+                .contains(&String::from(
+                    "tassadar.internal_compute.deterministic_import_subset.v1"
+                ))
+        );
+        assert!(
+            publication
+                .public_profile_specific_route_ids
+                .contains(&String::from(
+                    "tassadar.internal_compute.runtime_support_subset.v1"
+                ))
+        );
     }
 }

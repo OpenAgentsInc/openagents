@@ -96,8 +96,8 @@ impl ClefCalibration {
 
     /// Parses a map document.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, String> {
-        let file: CalibrationFile =
-            serde_json::from_slice(bytes).map_err(|error| format!("not a calibration map: {error}"))?;
+        let file: CalibrationFile = serde_json::from_slice(bytes)
+            .map_err(|error| format!("not a calibration map: {error}"))?;
         if file.schema != CALIBRATION_SCHEMA {
             return Err(format!(
                 "schema is `{}`; expected `{CALIBRATION_SCHEMA}`",
@@ -152,7 +152,9 @@ pub struct RowExport {
 
 impl std::fmt::Debug for RowExport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RowExport").field("dir", &self.dir).finish_non_exhaustive()
+        f.debug_struct("RowExport")
+            .field("dir", &self.dir)
+            .finish_non_exhaustive()
     }
 }
 
@@ -174,7 +176,11 @@ impl RowExport {
             .len();
         Ok(Self {
             dir: dir.to_path_buf(),
-            files: Mutex::new(ExportFiles { index: open("rows.jsonl")?, rows, offset }),
+            files: Mutex::new(ExportFiles {
+                index: open("rows.jsonl")?,
+                rows,
+                offset,
+            }),
         })
     }
 
@@ -227,8 +233,14 @@ impl RowExport {
             files.offset += bytes.len() as u64;
             writeln!(files.index, "{line}").map_err(|error| format!("row export: {error}"))?;
         }
-        files.rows.flush().map_err(|error| format!("row export: {error}"))?;
-        files.index.flush().map_err(|error| format!("row export: {error}"))
+        files
+            .rows
+            .flush()
+            .map_err(|error| format!("row export: {error}"))?;
+        files
+            .index
+            .flush()
+            .map_err(|error| format!("row export: {error}"))
     }
 }
 
@@ -252,24 +264,40 @@ mod tests {
 
     #[test]
     fn platt_and_temperature_maps_apply_and_digest() {
-        let platt = ClefCalibration::from_bytes(map_doc(r#"{"kind":"platt","a":1.0,"b":0.0}"#).as_bytes())
-            .expect("platt");
-        assert!((platt.map.apply(0.3) - 0.3).abs() < 1e-9, "identity Platt keeps p");
+        let platt =
+            ClefCalibration::from_bytes(map_doc(r#"{"kind":"platt","a":1.0,"b":0.0}"#).as_bytes())
+                .expect("platt");
+        assert!(
+            (platt.map.apply(0.3) - 0.3).abs() < 1e-9,
+            "identity Platt keeps p"
+        );
         assert_eq!(platt.id, "file-relevance@1");
         assert!(platt.digest.starts_with("sha256:"));
-        let shifted = ClefCalibration::from_bytes(map_doc(r#"{"kind":"platt","a":1.0,"b":1.0}"#).as_bytes())
-            .expect("shifted");
+        let shifted =
+            ClefCalibration::from_bytes(map_doc(r#"{"kind":"platt","a":1.0,"b":1.0}"#).as_bytes())
+                .expect("shifted");
         assert!(shifted.map.apply(0.3) > 0.3, "a positive bias raises p");
-        let temp = ClefCalibration::from_bytes(map_doc(r#"{"kind":"temperature","t":2.0}"#).as_bytes())
-            .expect("temperature");
-        assert!(temp.map.apply(0.9) < 0.9 && temp.map.apply(0.1) > 0.1, "t > 1 softens");
+        let temp =
+            ClefCalibration::from_bytes(map_doc(r#"{"kind":"temperature","t":2.0}"#).as_bytes())
+                .expect("temperature");
+        assert!(
+            temp.map.apply(0.9) < 0.9 && temp.map.apply(0.1) > 0.1,
+            "t > 1 softens"
+        );
     }
 
     #[test]
     fn bad_maps_are_refused() {
-        assert!(ClefCalibration::from_bytes(map_doc(r#"{"kind":"platt","a":-1.0,"b":0.0}"#).as_bytes()).is_err());
-        assert!(ClefCalibration::from_bytes(map_doc(r#"{"kind":"temperature","t":0.0}"#).as_bytes()).is_err());
-        let wrong = map_doc(r#"{"kind":"platt","a":1.0,"b":0.0}"#).replace("\"noul\"", "\"choice\"");
+        assert!(
+            ClefCalibration::from_bytes(map_doc(r#"{"kind":"platt","a":-1.0,"b":0.0}"#).as_bytes())
+                .is_err()
+        );
+        assert!(
+            ClefCalibration::from_bytes(map_doc(r#"{"kind":"temperature","t":0.0}"#).as_bytes())
+                .is_err()
+        );
+        let wrong =
+            map_doc(r#"{"kind":"platt","a":1.0,"b":0.0}"#).replace("\"noul\"", "\"choice\"");
         assert!(ClefCalibration::from_bytes(wrong.as_bytes()).is_err());
     }
 
@@ -286,12 +314,20 @@ mod tests {
             .write(
                 "sha256:x",
                 &inputs,
-                &[(String::from("q"), vec![String::from("true"), String::from("false")], vec![0.1, -0.1])],
+                &[(
+                    String::from("q"),
+                    vec![String::from("true"), String::from("false")],
+                    vec![0.1, -0.1],
+                )],
                 &json!({}),
             )
             .expect("write");
         let rows = std::fs::read(dir.join("rows.f16")).expect("rows");
-        assert_eq!(rows.len(), 4 * 2 * 2, "last, question, two options, width 2, f16");
+        assert_eq!(
+            rows.len(),
+            4 * 2 * 2,
+            "last, question, two options, width 2, f16"
+        );
         let first = half::f16::from_le_bytes([rows[0], rows[1]]).to_f32();
         assert!((first - 0.5).abs() < 1e-3);
         let index = std::fs::read_to_string(dir.join("rows.jsonl")).expect("index");

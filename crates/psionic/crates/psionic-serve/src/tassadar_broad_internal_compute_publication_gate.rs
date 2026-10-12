@@ -2,11 +2,11 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use psionic_eval::{
-    build_tassadar_broad_internal_compute_acceptance_gate_report,
-    build_tassadar_subset_profile_promotion_gate_report,
-    TassadarBroadInternalComputeAcceptanceStatus,
     TASSADAR_BROAD_INTERNAL_COMPUTE_ACCEPTANCE_GATE_REPORT_REF,
     TASSADAR_SUBSET_PROFILE_PROMOTION_GATE_REPORT_REF,
+    TassadarBroadInternalComputeAcceptanceStatus,
+    build_tassadar_broad_internal_compute_acceptance_gate_report,
+    build_tassadar_subset_profile_promotion_gate_report,
 };
 use psionic_runtime::TASSADAR_BROAD_INTERNAL_COMPUTE_PORTABILITY_REPORT_REF;
 
@@ -139,10 +139,10 @@ pub fn require_tassadar_broad_internal_compute_profile_publication(
 #[cfg(test)]
 mod tests {
     use super::{
-        require_tassadar_broad_internal_compute_profile_publication,
-        tassadar_broad_internal_compute_publication_decision,
         TassadarBroadInternalComputePublicationDecisionError,
         TassadarBroadInternalComputePublicationDecisionStatus,
+        require_tassadar_broad_internal_compute_profile_publication,
+        tassadar_broad_internal_compute_publication_decision,
     };
 
     #[test]

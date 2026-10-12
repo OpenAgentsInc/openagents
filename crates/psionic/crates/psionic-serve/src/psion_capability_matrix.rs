@@ -568,7 +568,9 @@ pub enum PsionCapabilityMatrixError {
         actual: String,
     },
     /// The matrix used an unexpected product identifier.
-    #[error("Psion capability matrix expected product id `{PSION_LEARNED_LANE_PRODUCT_ID}`, found `{actual}`")]
+    #[error(
+        "Psion capability matrix expected product id `{PSION_LEARNED_LANE_PRODUCT_ID}`, found `{actual}`"
+    )]
     InvalidProductId {
         /// Actual product identifier.
         actual: String,
@@ -676,14 +678,18 @@ mod tests {
         matrix
             .validate_publication(&acceptance, &decision)
             .expect("capability matrix should validate");
-        assert!(matrix
-            .regions
-            .iter()
-            .any(|region| region.posture == PsionCapabilityPosture::RouteRequired));
-        assert!(matrix
-            .regions
-            .iter()
-            .any(|region| region.posture == PsionCapabilityPosture::RefusalRequired));
+        assert!(
+            matrix
+                .regions
+                .iter()
+                .any(|region| region.posture == PsionCapabilityPosture::RouteRequired)
+        );
+        assert!(
+            matrix
+                .regions
+                .iter()
+                .any(|region| region.posture == PsionCapabilityPosture::RefusalRequired)
+        );
     }
 
     #[test]

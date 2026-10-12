@@ -9,10 +9,9 @@ use crate::{
     PsionCapabilityMatrix, PsionCapabilityRegionId, PsionNoImplicitExecutionStatus,
     PsionServedAssumptionKind, PsionServedAssumptionNotice, PsionServedBehaviorVisibility,
     PsionServedContextEnvelopeSurface, PsionServedEvidenceError, PsionServedEvidenceLabel,
-    PsionServedLatencyEnvelopeSurface, PsionServedOutputClaimPostureError,
-    PsionServedRouteReceipt, PsionServedVisibleClaims, PsionicLocalRuntime,
-    ReferenceTextGenerationError, ShowObservation, SmokeEmbeddingsError, SmokeEmbeddingsService,
-    record_psion_served_evidence_bundle,
+    PsionServedLatencyEnvelopeSurface, PsionServedOutputClaimPostureError, PsionServedRouteReceipt,
+    PsionServedVisibleClaims, PsionicLocalRuntime, ReferenceTextGenerationError, ShowObservation,
+    SmokeEmbeddingsError, SmokeEmbeddingsService, record_psion_served_evidence_bundle,
     record_psion_served_output_claim_posture,
 };
 use psionic_models::ModelLoadError;
@@ -248,7 +247,9 @@ fn attach_generic_psion_provenance(
         },
         PsionServedContextEnvelopeSurface {
             supported_prompt_tokens: capability_matrix.context_envelope.supported_prompt_tokens,
-            supported_completion_tokens: capability_matrix.context_envelope.supported_completion_tokens,
+            supported_completion_tokens: capability_matrix
+                .context_envelope
+                .supported_completion_tokens,
             route_required_above_prompt_tokens: capability_matrix
                 .context_envelope
                 .route_required_above_prompt_tokens,
@@ -265,9 +266,7 @@ fn attach_generic_psion_provenance(
             p95_first_token_latency_ms: capability_matrix
                 .latency_envelope
                 .p95_first_token_latency_ms,
-            p95_end_to_end_latency_ms: capability_matrix
-                .latency_envelope
-                .p95_end_to_end_latency_ms,
+            p95_end_to_end_latency_ms: capability_matrix.latency_envelope.p95_end_to_end_latency_ms,
             detail: capability_matrix.latency_envelope.detail.clone(),
         },
         "Generic learned-lane claim posture for the first Psion load-and-generate packet.",
@@ -286,7 +285,10 @@ fn attach_generic_psion_provenance(
 fn stable_digest<T: Serialize>(prefix: &[u8], value: &T) -> String {
     let mut canonical = serde_json::to_value(value).expect("generic packet should serialize");
     if let Some(object) = canonical.as_object_mut() {
-        object.insert(String::from("packet_digest"), serde_json::Value::String(String::new()));
+        object.insert(
+            String::from("packet_digest"),
+            serde_json::Value::String(String::new()),
+        );
     }
     let mut hasher = Sha256::new();
     hasher.update(prefix);
@@ -299,7 +301,8 @@ fn stable_digest<T: Serialize>(prefix: &[u8], value: &T) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        PSION_GENERIC_LOAD_AND_GENERATE_FIXTURE_PATH, builtin_psion_generic_load_and_generate_packet,
+        PSION_GENERIC_LOAD_AND_GENERATE_FIXTURE_PATH,
+        builtin_psion_generic_load_and_generate_packet,
     };
     use crate::{GenerationLoadState, PsionGenericLoadAndGeneratePacket};
 

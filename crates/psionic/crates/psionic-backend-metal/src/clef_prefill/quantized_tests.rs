@@ -148,3 +148,126 @@ fn clef_packed_projection_formats_match_cpu_decode_and_products() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires a Metal device; synthetic buffers under 1 MiB"]
+fn clef_q4k_direct_gemm_matches_decode_then_gemm() {
+    let metal = ClefMetal::new().expect("Metal");
+    // Partial token and weight-row tiles on both edges, two super-blocks of k.
+    for (n, m, k) in [(130usize, 70usize, 512usize), (64, 64, 256), (1, 3, 768)] {
+        let packed = weights(ClefMetalWeightFormat::Q4K, m * k);
+        let source = metal.buffer_with_bytes(&packed);
+        let decoded = metal.buffer(m * k * 2);
+        let input: Vec<f32> = (0..n * k)
+            .map(|i| ((i * 7 + i / k * 3) % 19) as f32 / 64.0 - 0.125)
+            .collect();
+        let input_f32 = metal.buffer_f32(&input);
+        let input_f16 = metal.buffer(n * k * 2);
+        let residual: Vec<f32> = (0..n * m).map(|i| (i % 5) as f32 / 4.0 - 0.5).collect();
+        let reference = metal.buffer_f32(&residual);
+        let direct = metal.buffer_f32(&residual);
+        let fresh = metal.buffer_f32(&vec![9.0; n * m]);
+        let batch = metal.batch();
+        batch
+            .dequantize_to_f16(ClefMetalWeightFormat::F32, &input_f32, &input_f16, n * k)
+            .expect("input conversion");
+        batch
+            .dequantize_to_f16(ClefMetalWeightFormat::Q4K, &source, &decoded, m * k)
+            .expect("decode");
+        batch
+            .gemm(&input_f16, 0, &decoded, &reference, 0, n, m, k, true)
+            .expect("decode-then-gemm");
+        batch
+            .gemm_q4k(&input_f16, 0, &source, &direct, 0, n, m, k, true)
+            .expect("direct q4k gemm, accumulate");
+        batch
+            .gemm_q4k(&input_f16, 0, &source, &fresh, 0, n, m, k, false)
+            .expect("direct q4k gemm");
+        batch.commit_wait().expect("completion");
+        let reference = reference.read_f32(0, n * m).unwrap();
+        let direct = direct.read_f32(0, n * m).unwrap();
+        let fresh = fresh.read_f32(0, n * m).unwrap();
+        for i in 0..n * m {
+            let tolerance = 1e-4 * reference[i].abs().max(1.0);
+            assert!(
+                (direct[i] - reference[i]).abs() <= tolerance,
+                "n={n} m={m} k={k} element {i}: direct {} reference {}",
+                direct[i],
+                reference[i]
+            );
+            let product = reference[i] - residual[i];
+            assert!(
+                (fresh[i] - product).abs() <= 1e-4 * product.abs().max(1.0),
+                "n={n} m={m} k={k} element {i}: fresh {} product {product}",
+                fresh[i]
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "timing on a Metal device; about 1 GiB of synthetic buffers"]
+fn clef_q4k_direct_gemm_timing_against_f16() {
+    let metal = ClefMetal::new().expect("Metal");
+    // CLEF_Q4_REPS sets the timed repeats (8 by default; ~100 sustains the GPU
+    // for over a second, where f16 throughput has been seen to fall).
+    let reps: usize = std::env::var("CLEF_Q4_REPS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(8);
+    for (m, k) in [
+        (12288usize, 4096usize),
+        (4096, 12288),
+        (17408, 5120),
+        (5120, 17408),
+    ] {
+        let packed = weights(ClefMetalWeightFormat::Q4K, m * k);
+        let source = metal.buffer_with_bytes(&packed);
+        let decoded = metal.buffer(m * k * 2);
+        let batch = metal.batch();
+        batch
+            .dequantize_to_f16(ClefMetalWeightFormat::Q4K, &source, &decoded, m * k)
+            .unwrap();
+        batch.commit_wait().unwrap();
+        for n in [1024usize, 4096] {
+            let input = metal.buffer(n * k * 2);
+            let out = metal.buffer(n * m * 4);
+            let time = |direct: bool| {
+                // one warm-up, then `reps` timed in one command buffer
+                let warm = metal.batch();
+                if direct {
+                    warm.gemm_q4k(&input, 0, &source, &out, 0, n, m, k, false)
+                        .unwrap();
+                } else {
+                    warm.gemm(&input, 0, &decoded, &out, 0, n, m, k, false)
+                        .unwrap();
+                }
+                warm.commit_wait().unwrap();
+                let started = std::time::Instant::now();
+                let batch = metal.batch();
+                for _ in 0..reps {
+                    if direct {
+                        batch
+                            .gemm_q4k(&input, 0, &source, &out, 0, n, m, k, false)
+                            .unwrap();
+                    } else {
+                        batch
+                            .gemm(&input, 0, &decoded, &out, 0, n, m, k, false)
+                            .unwrap();
+                    }
+                }
+                batch.commit_wait().unwrap();
+                started.elapsed().as_secs_f64() * 1000.0 / reps as f64
+            };
+            let f16 = time(false);
+            let q4 = time(true);
+            let tflops = |ms: f64| 2.0 * (n * m * k) as f64 / (ms / 1000.0) / 1e12;
+            eprintln!(
+                "m={m} k={k} n={n}: f16 {f16:.2} ms ({:.1} TF), q4k direct {q4:.2} ms ({:.1} TF), ratio {:.2}",
+                tflops(f16),
+                tflops(q4),
+                f16 / q4
+            );
+        }
+    }
+}

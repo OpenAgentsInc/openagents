@@ -1,6 +1,6 @@
 use std::{env, error::Error, fs, io, path::PathBuf};
 
-use psionic_models::{run_qwen36_forward_admission_with_command_line, QWEN36_27B_REAL_MODEL_DIR};
+use psionic_models::{QWEN36_27B_REAL_MODEL_DIR, run_qwen36_forward_admission_with_command_line};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = env::args().collect::<Vec<_>>();

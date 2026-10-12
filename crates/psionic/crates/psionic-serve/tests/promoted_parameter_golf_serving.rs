@@ -7,10 +7,10 @@ use psionic_serve::{
     StreamingTextGenerationExecutor, TerminationReason, TextGenerationExecutor,
 };
 use psionic_train::{
-    run_parameter_golf_promoted_reference_run, write_parameter_golf_promoted_reference_run,
     ParameterGolfLocalReferenceFixture, ParameterGolfReferenceTrainingConfig,
+    run_parameter_golf_promoted_reference_run, write_parameter_golf_promoted_reference_run,
 };
-use tempfile::{tempdir, TempDir};
+use tempfile::{TempDir, tempdir};
 
 fn write_repo_owned_promoted_bundle() -> Result<TempDir, Box<dyn std::error::Error>> {
     let fixture = ParameterGolfLocalReferenceFixture::reference()?;
@@ -22,8 +22,8 @@ fn write_repo_owned_promoted_bundle() -> Result<TempDir, Box<dyn std::error::Err
 }
 
 #[test]
-fn promoted_parameter_golf_service_serves_repo_owned_bundle_via_generate_and_stream(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn promoted_parameter_golf_service_serves_repo_owned_bundle_via_generate_and_stream()
+-> Result<(), Box<dyn std::error::Error>> {
     let bundle_dir = write_repo_owned_promoted_bundle()?;
     let bundle = ParameterGolfPromotedRuntimeBundle::load_dir(bundle_dir.path())?;
     let greedy_options = ParameterGolfPromotedGenerationOptions::greedy(4);

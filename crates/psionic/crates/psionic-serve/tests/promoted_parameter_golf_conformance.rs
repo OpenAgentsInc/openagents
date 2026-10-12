@@ -14,12 +14,12 @@ use psionic_serve::{
     StreamingTextGenerationExecutor, TextGenerationExecutor,
 };
 use psionic_train::{
+    ParameterGolfLocalReferenceFixture, ParameterGolfReferenceTrainingConfig,
     restore_parameter_golf_local_reference_checkpoint, run_parameter_golf_promoted_reference_run,
-    write_parameter_golf_promoted_reference_run, ParameterGolfLocalReferenceFixture,
-    ParameterGolfReferenceTrainingConfig,
+    write_parameter_golf_promoted_reference_run,
 };
 use serde::Deserialize;
-use tempfile::{tempdir, TempDir};
+use tempfile::{TempDir, tempdir};
 
 #[derive(Clone, Debug, Deserialize)]
 struct GoldenPromptCase {
@@ -147,8 +147,8 @@ fn generate_from_restored_training_model(
 }
 
 #[test]
-fn promoted_parameter_golf_train_runtime_and_serve_stay_in_conformance(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn promoted_parameter_golf_train_runtime_and_serve_stay_in_conformance()
+-> Result<(), Box<dyn std::error::Error>> {
     let (fixture, run, bundle_dir) = write_repo_owned_promoted_bundle()?;
     let restored = restore_parameter_golf_local_reference_checkpoint(
         &fixture,

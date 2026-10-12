@@ -2396,3 +2396,36 @@ It passes the chunk-equivalence gate and the RTX 4080 gate.
 
 The integration issues I1–I3 can start once M1 has landed. I1 goes live on
 coderos after M2.
+
+### Direct Q4_K projections (2026-10-12, #11196)
+
+An opt-in GEMM reads Q4_K weight bytes directly: `clef_gemm_q4k` in
+`kernels/clef_prefill.metal`, `ClefMetalBatch::gemm_q4k`, used for packed
+feed-forward weights with `PSIONIC_CLEF_METAL_FFN_WEIGHTS=q4k-on-demand
+PSIONIC_CLEF_METAL_Q4_GEMM=direct`. Each 128-token × 64-row tile decodes one
+128-wide k slab of its weight rows into threadgroup f16, one Q4_K sub-block per
+thread with its scale and min decoded once, and accumulates the tensor-op
+product in a register cooperative tensor. No f16 copy of the weight exists.
+
+- **Correctness.** Against decode-then-GEMM on synthetic shapes with partial
+  tiles: within 1e-4 relative (`clef_q4k_direct_gemm_matches_decode_then_gemm`).
+  On Clef-Flash (`cuda_chunks_and_cpu_agree` with `PSIONIC_CLEF_TEST_DEVICE=metal`):
+  every chunk size equals the whole prompt bitwise, and against the CPU lane
+  max |Δlogit| is 2.74e-4 and max |Δp| 1.1e-5, inside the 1e-3 bound.
+- **Kernel speed** (`clef_q4k_direct_gemm_timing_against_f16`, Flash and 27B
+  FFN shapes, shared machine). Sustained, 100 repeats: 0.92–0.97 of f16
+  throughput at 4k tokens and 0.60–0.94 at 1k. The first version, decoding
+  value by value in 64-wide steps, ran at 0.16–0.28. Decoding a whole
+  sub-block per thread, 128-wide slabs, a register accumulator and 128-token
+  tiles brought it near f16, but not past it.
+- **Model speed** (Flash, `bench_latency.py`, 5 fresh-prefix runs, two
+  interleaved rounds per mode, machine load 35–47): f16 resident 1.20 / 3.48 /
+  14.9 s at ~1k / 4k / 16k, direct Q4_K 1.32 / 4.23 / 16.4 s. Direct is
+  10–20 % slower on this machine. Its gain is memory: feed-forward weights
+  stay 4-bit, about 3.5× smaller than resident f16, which matters for 27B
+  (48 GiB resident).
+- **Not the M3 lever on this hardware.** The f16 projections are not limited
+  by weight bandwidth often enough for 4-bit reads to win, and the decode
+  repeats per token tile. Remaining ideas: decode once per weight tile into a
+  persistent f16 tile shared across token tiles (a split-k or weight-stationary
+  grid), and overlapping decode with the tensor op across simdgroups.

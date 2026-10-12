@@ -8,11 +8,11 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use psionic_eval::{
-    build_tassadar_post_article_rebased_universality_verdict_split_report,
+    TASSADAR_POST_ARTICLE_REBASED_UNIVERSALITY_VERDICT_SPLIT_REPORT_REF,
     TassadarPostArticleRebasedUniversalityVerdictSplitReport,
     TassadarPostArticleRebasedUniversalityVerdictSplitReportError,
     TassadarUniversalityVerdictLevel,
-    TASSADAR_POST_ARTICLE_REBASED_UNIVERSALITY_VERDICT_SPLIT_REPORT_REF,
+    build_tassadar_post_article_rebased_universality_verdict_split_report,
 };
 
 pub const TASSADAR_POST_ARTICLE_REBASED_UNIVERSALITY_VERDICT_PUBLICATION_REF: &str =
@@ -95,12 +95,17 @@ fn build_publication_from_report(
         })?;
 
     let mut publication = TassadarPostArticleRebasedUniversalityVerdictPublication {
-        publication_id: String::from("tassadar.post_article_rebased_universality_verdict.publication.v1"),
-        report_ref: String::from(TASSADAR_POST_ARTICLE_REBASED_UNIVERSALITY_VERDICT_SPLIT_REPORT_REF),
+        publication_id: String::from(
+            "tassadar.post_article_rebased_universality_verdict.publication.v1",
+        ),
+        report_ref: String::from(
+            TASSADAR_POST_ARTICLE_REBASED_UNIVERSALITY_VERDICT_SPLIT_REPORT_REF,
+        ),
         machine_identity_id: report.machine_identity_id,
         canonical_model_id: report.canonical_model_id,
         canonical_route_id: report.canonical_route_id,
-        current_served_internal_compute_profile_id: report.current_served_internal_compute_profile_id,
+        current_served_internal_compute_profile_id: report
+            .current_served_internal_compute_profile_id,
         theory_green: report.theory_green,
         operator_green: report.operator_green,
         served_green: report.served_green,
@@ -192,16 +197,16 @@ fn read_repo_json<T: for<'de> Deserialize<'de>>(
 #[cfg(test)]
 mod tests {
     use super::{
+        TASSADAR_POST_ARTICLE_REBASED_UNIVERSALITY_VERDICT_PUBLICATION_REF,
+        TassadarPostArticleRebasedUniversalityVerdictPublication,
         build_tassadar_post_article_rebased_universality_verdict_publication, read_repo_json,
         tassadar_post_article_rebased_universality_verdict_publication_path,
         write_tassadar_post_article_rebased_universality_verdict_publication,
-        TassadarPostArticleRebasedUniversalityVerdictPublication,
-        TASSADAR_POST_ARTICLE_REBASED_UNIVERSALITY_VERDICT_PUBLICATION_REF,
     };
 
     #[test]
-    fn post_article_rebased_universality_verdict_publication_keeps_served_suppressed(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn post_article_rebased_universality_verdict_publication_keeps_served_suppressed()
+    -> Result<(), Box<dyn std::error::Error>> {
         let publication = build_tassadar_post_article_rebased_universality_verdict_publication()?;
 
         assert!(publication.theory_green);
@@ -219,8 +224,8 @@ mod tests {
     }
 
     #[test]
-    fn post_article_rebased_universality_verdict_publication_matches_committed_truth(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn post_article_rebased_universality_verdict_publication_matches_committed_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
         let generated = build_tassadar_post_article_rebased_universality_verdict_publication()?;
         let committed: TassadarPostArticleRebasedUniversalityVerdictPublication = read_repo_json(
             TASSADAR_POST_ARTICLE_REBASED_UNIVERSALITY_VERDICT_PUBLICATION_REF,
@@ -231,8 +236,8 @@ mod tests {
     }
 
     #[test]
-    fn write_post_article_rebased_universality_verdict_publication_persists_current_truth(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn write_post_article_rebased_universality_verdict_publication_persists_current_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
         let directory = tempfile::tempdir()?;
         let output_path = directory
             .path()

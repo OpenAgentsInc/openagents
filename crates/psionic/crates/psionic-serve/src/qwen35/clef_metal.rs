@@ -1843,6 +1843,20 @@ fn linear_with_workspace(
     if skips().0 {
         return Ok(());
     }
+    if weight.format == Some(ClefMetalWeightFormat::Q4K) && q4_direct() {
+        // Read the Q4_K bytes in the GEMM itself: no f16 copy (#11196).
+        return batch.gemm_q4k(
+            x16,
+            0,
+            &weight.buffer,
+            out,
+            0,
+            n,
+            weight.rows,
+            weight.columns,
+            accumulate,
+        );
+    }
     let buffer = if let Some(format) = weight.format {
         let workspace = workspace.ok_or("clef FFN weight conversion buffer is missing")?;
         let elements = weight
@@ -1867,6 +1881,18 @@ fn linear_with_workspace(
         weight.columns,
         accumulate,
     )
+}
+
+/// Whether Q4_K feed-forward weights kept packed (`q4k-on-demand`) feed the
+/// direct Q4_K GEMM instead of an f16 conversion
+/// (`PSIONIC_CLEF_METAL_Q4_GEMM=direct`; opt-in, #11196). The product's
+/// rounding differs from the f16 path, so it is checked against a logit
+/// bound, not bit for bit.
+fn q4_direct() -> bool {
+    static DIRECT: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *DIRECT.get_or_init(|| {
+        std::env::var("PSIONIC_CLEF_METAL_Q4_GEMM").is_ok_and(|value| value == "direct")
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2150,6 +2176,14 @@ fn convert_ffn_weights<'a>(
 ) -> Result<Option<[&'a ClefMetalBuffer; 3]>, String> {
     let weights = [&layer.gate, &layer.up, &layer.down];
     if weights.iter().all(|weight| weight.format.is_none()) {
+        return Ok(None);
+    }
+    if q4_direct()
+        && weights
+            .iter()
+            .all(|weight| matches!(weight.format, None | Some(ClefMetalWeightFormat::Q4K)))
+    {
+        // The direct Q4_K GEMM reads the packed bytes; nothing to convert.
         return Ok(None);
     }
     let slots = slots.ok_or("clef FFN layer-major conversion slots are missing")?;

@@ -336,11 +336,17 @@ impl PsionServedOutputClaimPosture {
         if self.context_envelope.supported_prompt_tokens
             != capability_matrix.context_envelope.supported_prompt_tokens
             || self.context_envelope.supported_completion_tokens
-                != capability_matrix.context_envelope.supported_completion_tokens
+                != capability_matrix
+                    .context_envelope
+                    .supported_completion_tokens
             || self.context_envelope.route_required_above_prompt_tokens
-                != capability_matrix.context_envelope.route_required_above_prompt_tokens
+                != capability_matrix
+                    .context_envelope
+                    .route_required_above_prompt_tokens
             || self.context_envelope.hard_refusal_above_prompt_tokens
-                != capability_matrix.context_envelope.hard_refusal_above_prompt_tokens
+                != capability_matrix
+                    .context_envelope
+                    .hard_refusal_above_prompt_tokens
         {
             return Err(PsionServedOutputClaimPostureError::EnvelopeMismatch {
                 field: String::from("context_envelope"),
@@ -348,9 +354,13 @@ impl PsionServedOutputClaimPosture {
         }
         self.latency_envelope.validate()?;
         if self.latency_envelope.p50_first_token_latency_ms
-            != capability_matrix.latency_envelope.p50_first_token_latency_ms
+            != capability_matrix
+                .latency_envelope
+                .p50_first_token_latency_ms
             || self.latency_envelope.p95_first_token_latency_ms
-                != capability_matrix.latency_envelope.p95_first_token_latency_ms
+                != capability_matrix
+                    .latency_envelope
+                    .p95_first_token_latency_ms
             || self.latency_envelope.p95_end_to_end_latency_ms
                 != capability_matrix.latency_envelope.p95_end_to_end_latency_ms
         {
@@ -442,21 +452,26 @@ pub enum PsionServedOutputClaimPostureError {
     #[error(
         "Psion served-output claim posture behavior does not match the attached evidence bundle: expected `{expected}`, got `{actual}`"
     )]
-    BehaviorDoesNotMatchEvidenceBundle {
-        expected: String,
-        actual: String,
-    },
-    #[error("Psion served-output claim posture envelope `{field}` does not match the capability matrix")]
+    BehaviorDoesNotMatchEvidenceBundle { expected: String, actual: String },
+    #[error(
+        "Psion served-output claim posture envelope `{field}` does not match the capability matrix"
+    )]
     EnvelopeMismatch { field: String },
-    #[error("Psion served-output claim posture may not imply verification on the current learned lane")]
+    #[error(
+        "Psion served-output claim posture may not imply verification on the current learned lane"
+    )]
     VerificationClaimsUnsupported,
     #[error(
         "Psion served-output claim posture surfaced `{claim_kind}` without attached supporting evidence"
     )]
     MissingAttachedEvidence { claim_kind: String },
-    #[error("Psion served-output claim posture digest mismatch: expected `{expected}`, got `{actual}`")]
+    #[error(
+        "Psion served-output claim posture digest mismatch: expected `{expected}`, got `{actual}`"
+    )]
     DigestMismatch { expected: String, actual: String },
-    #[error("Psion served-output claim posture mismatch for `{field}`: expected `{expected}`, got `{actual}`")]
+    #[error(
+        "Psion served-output claim posture mismatch for `{field}`: expected `{expected}`, got `{actual}`"
+    )]
     Mismatch {
         field: String,
         expected: String,
@@ -477,9 +492,11 @@ fn require_visible_claim_backing(
             .iter()
             .any(|label| label.kind() == required_kind)
     {
-        return Err(PsionServedOutputClaimPostureError::MissingAttachedEvidence {
-            claim_kind: required_kind.as_str().to_string(),
-        });
+        return Err(
+            PsionServedOutputClaimPostureError::MissingAttachedEvidence {
+                claim_kind: required_kind.as_str().to_string(),
+            },
+        );
     }
     Ok(())
 }
@@ -582,7 +599,13 @@ fn stable_psion_served_output_claim_posture_digest(
         }
     }
 
-    hasher.update(posture.context_envelope.supported_prompt_tokens.to_string().as_bytes());
+    hasher.update(
+        posture
+            .context_envelope
+            .supported_prompt_tokens
+            .to_string()
+            .as_bytes(),
+    );
     hasher.update(
         posture
             .context_envelope
@@ -661,12 +684,8 @@ fn refusal_reason_label(reason: PsionCapabilityRefusalReason) -> &'static str {
         PsionCapabilityRefusalReason::UnsupportedExactnessRequest => {
             "unsupported_exactness_request"
         }
-        PsionCapabilityRefusalReason::MissingRequiredConstraints => {
-            "missing_required_constraints"
-        }
-        PsionCapabilityRefusalReason::UnsupportedContextLength => {
-            "unsupported_context_length"
-        }
+        PsionCapabilityRefusalReason::MissingRequiredConstraints => "missing_required_constraints",
+        PsionCapabilityRefusalReason::UnsupportedContextLength => "unsupported_context_length",
         PsionCapabilityRefusalReason::CurrentnessOrRunArtifactDependency => {
             "currentness_or_run_artifact_dependency"
         }
@@ -714,9 +733,7 @@ mod tests {
                 include_str!(
                     "../../../fixtures/psion/serve/psion_served_output_claim_refusal_v1.json"
                 ),
-                include_str!(
-                    "../../../fixtures/psion/serve/psion_served_evidence_refusal_v1.json"
-                ),
+                include_str!("../../../fixtures/psion/serve/psion_served_evidence_refusal_v1.json"),
             ),
         ] {
             let posture: PsionServedOutputClaimPosture =
@@ -751,9 +768,11 @@ mod tests {
                 &evidence_bundle,
                 &capability_matrix,
             ),
-            Err(PsionServedOutputClaimPostureError::MissingAttachedEvidence {
-                claim_kind: String::from("executor_backed_result"),
-            })
+            Err(
+                PsionServedOutputClaimPostureError::MissingAttachedEvidence {
+                    claim_kind: String::from("executor_backed_result"),
+                }
+            )
         );
     }
 

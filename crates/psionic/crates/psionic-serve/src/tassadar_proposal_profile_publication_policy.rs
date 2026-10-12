@@ -3,8 +3,8 @@ use thiserror::Error;
 
 use psionic_eval::build_tassadar_proposal_profile_ladder_claim_checker_report;
 use psionic_router::{
-    build_tassadar_proposal_profile_route_policy_report,
     TassadarBroadInternalComputeRouteDecisionStatus,
+    build_tassadar_proposal_profile_route_policy_report,
 };
 
 pub const PROPOSAL_PROFILE_PUBLICATION_POLICY_ID: &str = "psionic.proposal_profile_publication";
@@ -32,9 +32,8 @@ pub enum TassadarProposalProfilePublicationPolicyError {
     RoutePolicyDrift,
 }
 
-pub fn build_tassadar_proposal_profile_publication_policy(
-) -> Result<TassadarProposalProfilePublicationPolicy, TassadarProposalProfilePublicationPolicyError>
-{
+pub fn build_tassadar_proposal_profile_publication_policy()
+-> Result<TassadarProposalProfilePublicationPolicy, TassadarProposalProfilePublicationPolicyError> {
     let report = build_tassadar_proposal_profile_ladder_claim_checker_report()
         .map_err(|_| TassadarProposalProfilePublicationPolicyError::InvalidClaimChecker)?;
     let route_policy = build_tassadar_proposal_profile_route_policy_report()
@@ -83,7 +82,7 @@ pub fn build_tassadar_proposal_profile_publication_policy(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_tassadar_proposal_profile_publication_policy, PROPOSAL_PROFILE_PUBLICATION_POLICY_ID,
+        PROPOSAL_PROFILE_PUBLICATION_POLICY_ID, build_tassadar_proposal_profile_publication_policy,
     };
 
     #[test]

@@ -60,7 +60,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(4);
 
     let bundle = ParameterGolfPromotedRuntimeBundle::load_dir(bundle_dir.as_path())?;
-    let prompt_tokens = bundle.tokenizer().encode_with_defaults(prompt_text.as_str());
+    let prompt_tokens = bundle
+        .tokenizer()
+        .encode_with_defaults(prompt_text.as_str());
     let direct_history_ref =
         benchmark_direct_runtime(&bundle, &prompt_tokens, max_new_tokens, repetitions)?;
     let served_runtime = benchmark_served_runtime(
@@ -189,7 +191,9 @@ fn decode_direct_runtime(
                 bounded_history.len(),
             )?
         } else {
-            bundle.model().forward_logits(std::slice::from_ref(&history))?
+            bundle
+                .model()
+                .forward_logits(std::slice::from_ref(&history))?
         };
         let width = logits.width();
         let sequence_length = logits.sequence_length();
@@ -215,11 +219,7 @@ fn decode_direct_runtime(
 }
 
 fn decode_text(bundle: &ParameterGolfPromotedRuntimeBundle, token_ids: &[u32]) -> String {
-    let tokens = token_ids
-        .iter()
-        .copied()
-        .map(TokenId)
-        .collect::<Vec<_>>();
+    let tokens = token_ids.iter().copied().map(TokenId).collect::<Vec<_>>();
     bundle.tokenizer().decode(tokens.as_slice())
 }
 

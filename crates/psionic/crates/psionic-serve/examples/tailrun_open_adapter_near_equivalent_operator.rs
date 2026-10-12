@@ -12,14 +12,14 @@ use psionic_core::{QuantizationMode, TensorData};
 use psionic_models::{GgufMetadataValue, GgufTensorType, TokenId, TokenSequence};
 use psionic_runtime::BackendSelection;
 use psionic_serve::{
-    served_artifact_identity_for_decoder_model, CpuGgufTextGenerationService, GenerationOptions,
-    GenerationRequest, TextGenerationExecutor,
+    CpuGgufTextGenerationService, GenerationOptions, GenerationRequest, TextGenerationExecutor,
+    served_artifact_identity_for_decoder_model,
 };
 use psionic_train::{
-    open_adapter_pgolfish_config, open_adapter_pgolfish_samples, OpenAdapterPgolfishSampleSplit,
-    PortableModelBundle, TrainingParameterGroupState, OPEN_ADAPTER_MLX_METAL_BACKEND_LABEL,
+    OPEN_ADAPTER_MLX_METAL_BACKEND_LABEL, OpenAdapterPgolfishSampleSplit, PortableModelBundle,
+    TrainingParameterGroupState, open_adapter_pgolfish_config, open_adapter_pgolfish_samples,
 };
-use safetensors::{serialize_to_file, tensor::TensorView, Dtype as SafeTensorsDType};
+use safetensors::{Dtype as SafeTensorsDType, serialize_to_file, tensor::TensorView};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -27,8 +27,7 @@ const REPORT_SCHEMA_VERSION: &str = "psionic.tailrun_open_adapter_near_equivalen
 const MANIFEST_SCHEMA_VERSION: &str = "psionic.tailrun_open_adapter_near_equivalent_manifest.v1";
 const DEFAULT_SOURCE_REPORT: &str =
     "fixtures/apple_adapter/runs/tailrun_admitted_device_matrix_20260327b/m5_mlx/report.json";
-const DEFAULT_SOURCE_BUNDLE: &str =
-    "fixtures/apple_adapter/runs/tailrun_admitted_device_matrix_20260327b/m5_mlx/portable_bundle.safetensors";
+const DEFAULT_SOURCE_BUNDLE: &str = "fixtures/apple_adapter/runs/tailrun_admitted_device_matrix_20260327b/m5_mlx/portable_bundle.safetensors";
 const DEFAULT_OUTPUT_ROOT: &str =
     "fixtures/apple_adapter/promoted/tailrun_m5_near_equivalent_20260327";
 const DEFAULT_PROMPT_TOKEN_ID: u32 = 7;

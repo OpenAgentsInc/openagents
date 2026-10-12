@@ -1,8 +1,8 @@
 use std::{fs, path::Path};
 
 use psionic_runtime::{
-    TassadarExecutorDecodeMode, TassadarExecutorSelectionState,
-    TASSADAR_ARTICLE_CLASS_BENCHMARK_REPORT_REF,
+    TASSADAR_ARTICLE_CLASS_BENCHMARK_REPORT_REF, TassadarExecutorDecodeMode,
+    TassadarExecutorSelectionState,
 };
 use psionic_serve::{
     LocalTassadarArticleHybridWorkflowService, TassadarArticleHybridWorkflowOutcome,
@@ -11,8 +11,7 @@ use psionic_serve::{
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-const TASSADAR_ARTICLE_HARD_SUDOKU_FAST_ROUTE_HYBRID_WORKFLOW_ARTIFACT_REF: &str =
-    "fixtures/tassadar/reports/tassadar_article_hard_sudoku_fast_route_hybrid_workflow_artifact.json";
+const TASSADAR_ARTICLE_HARD_SUDOKU_FAST_ROUTE_HYBRID_WORKFLOW_ARTIFACT_REF: &str = "fixtures/tassadar/reports/tassadar_article_hard_sudoku_fast_route_hybrid_workflow_artifact.json";
 
 #[derive(Serialize)]
 struct TassadarArticleHardSudokuFastRouteHybridWorkflowArtifactCase {

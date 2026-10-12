@@ -1,10 +1,10 @@
 use std::{error::Error, fs, path::PathBuf};
 
 use psionic_serve::{
-    record_psion_served_evidence_bundle, PsionCapabilityMatrix, PsionCapabilityRefusalReason,
-    PsionCapabilityRegionId, PsionNoImplicitExecutionStatus, PsionServedArtifactReference,
-    PsionServedEvidenceBundle, PsionServedEvidenceLabel, PsionServedRefusalReceipt,
-    PsionServedRouteReceipt, PsionServedSourceReference,
+    PsionCapabilityMatrix, PsionCapabilityRefusalReason, PsionCapabilityRegionId,
+    PsionNoImplicitExecutionStatus, PsionServedArtifactReference, PsionServedEvidenceBundle,
+    PsionServedEvidenceLabel, PsionServedRefusalReceipt, PsionServedRouteReceipt,
+    PsionServedSourceReference, record_psion_served_evidence_bundle,
 };
 use psionic_train::{
     PsionPromotionDecisionReceipt, PsionRefusalCalibrationReceipt, PsionRouteClass,
@@ -20,16 +20,18 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let capability_matrix: PsionCapabilityMatrix =
         load_json(repo_root.join("fixtures/psion/capability/psion_capability_matrix_v1.json"))?;
-    let route_receipt: PsionRouteClassEvaluationReceipt =
-        load_json(repo_root.join("fixtures/psion/route/psion_route_class_evaluation_receipt_v1.json"))?;
+    let route_receipt: PsionRouteClassEvaluationReceipt = load_json(
+        repo_root.join("fixtures/psion/route/psion_route_class_evaluation_receipt_v1.json"),
+    )?;
     let refusal_receipt: PsionRefusalCalibrationReceipt = load_json(
         repo_root.join("fixtures/psion/refusal/psion_refusal_calibration_receipt_v1.json"),
     )?;
     let promotion_decision: PsionPromotionDecisionReceipt = load_json(
         repo_root.join("fixtures/psion/acceptance/psion_promotion_decision_receipt_v1.json"),
     )?;
-    let source_manifest: Value =
-        load_json(repo_root.join("fixtures/psion/corpus_admission/psion_source_admission_manifest_v1.json"))?;
+    let source_manifest: Value = load_json(
+        repo_root.join("fixtures/psion/corpus_admission/psion_source_admission_manifest_v1.json"),
+    )?;
     let tassadar_article_executor_artifact: Value = load_json(
         repo_root.join("fixtures/tassadar/reports/tassadar_article_executor_session_artifact.json"),
     )?;
@@ -129,7 +131,8 @@ fn direct_grounded_bundle(
                 ),
             },
             PsionServedEvidenceLabel::BenchmarkBackedCapabilityClaim {
-                capability_region_id: PsionCapabilityRegionId::BoundedTechnicalReasoningShortContext,
+                capability_region_id:
+                    PsionCapabilityRegionId::BoundedTechnicalReasoningShortContext,
                 claim_boundary_ref: String::from(
                     "capability_matrix.supported.bounded_technical_reasoning_short_context",
                 ),
@@ -155,10 +158,10 @@ fn executor_backed_bundle(
     route_receipt: &PsionRouteClassEvaluationReceipt,
     tassadar_article_executor_artifact: &Value,
 ) -> Result<PsionServedEvidenceBundle, Box<dyn Error>> {
-    let proof_identity = tassadar_article_executor_artifact["cases"][0]["outcome"]["response"]
-        ["proof_identity"]
-        .as_object()
-        .ok_or("missing Tassadar proof identity")?;
+    let proof_identity =
+        tassadar_article_executor_artifact["cases"][0]["outcome"]["response"]["proof_identity"]
+            .as_object()
+            .ok_or("missing Tassadar proof identity")?;
     let executor_artifact = PsionServedArtifactReference {
         artifact_id: string_field(proof_identity, "trace_artifact_id")?,
         artifact_digest: string_field(proof_identity, "trace_artifact_digest")?,
@@ -271,7 +274,10 @@ fn write_bundle(path: PathBuf, bundle: &PsionServedEvidenceBundle) -> Result<(),
     Ok(())
 }
 
-fn string_field(object: &serde_json::Map<String, Value>, key: &str) -> Result<String, Box<dyn Error>> {
+fn string_field(
+    object: &serde_json::Map<String, Value>,
+    key: &str,
+) -> Result<String, Box<dyn Error>> {
     Ok(object
         .get(key)
         .and_then(Value::as_str)

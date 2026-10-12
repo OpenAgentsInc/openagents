@@ -234,6 +234,8 @@ const KERNELS: &[&str] = &[
     "clef_f32_to_f16",
     "clef_gemm",
     "clef_gemm_accumulate",
+    "clef_gemm_q4k",
+    "clef_gemm_q4k_accumulate",
     "clef_gemm_f32",
     "clef_gemm_f32_nn",
     "clef_rms_norm_to_f16",
@@ -688,6 +690,67 @@ impl ClefMetalBatch<'_> {
             size(plan.groups[0], plan.groups[1], 1),
             size(CLEF_GEMM_THREADS, 1, 1),
         );
+        Ok(())
+    }
+
+    /// `out[n, m] (+)= x16[n, k] · dequant(Wq4[m, k])^T`, reading the Q4_K
+    /// weight bytes directly (#11196): no f16 copy of the weight is made.
+    /// `k` must be a whole number of Q4_K super-blocks (256). Rounding
+    /// differs from [`Self::gemm`] (64-wide reduction steps).
+    #[allow(clippy::too_many_arguments)]
+    pub fn gemm_q4k(
+        &self,
+        x16: &ClefMetalBuffer,
+        x_offset: usize,
+        wq: &ClefMetalBuffer,
+        out: &ClefMetalBuffer,
+        out_offset: usize,
+        n: usize,
+        m: usize,
+        k: usize,
+        accumulate: bool,
+    ) -> Result<(), String> {
+        if n == 0 || m == 0 {
+            return Ok(());
+        }
+        if k == 0 || k % 256 != 0 {
+            return Err(format!(
+                "q4k gemm needs k in whole 256-value blocks, got {k}"
+            ));
+        }
+        let too_big = |v: usize| u32::try_from(v).is_err();
+        if too_big(n) || too_big(m) || too_big(k) {
+            return Err(String::from("q4k gemm dimensions exceed u32"));
+        }
+        let weight_bytes = ClefMetalWeightFormat::Q4K
+            .byte_len(m.checked_mul(k).ok_or("q4k gemm size overflow")?)
+            .ok_or("q4k gemm weight size")?;
+        let input_offset = x_offset.checked_mul(2).ok_or("q4k gemm offset overflow")?;
+        let input_bytes = n
+            .checked_mul(k)
+            .and_then(|v| v.checked_mul(2))
+            .ok_or("q4k gemm input overflow")?;
+        let output_offset = out_offset
+            .checked_mul(4)
+            .ok_or("q4k gemm offset overflow")?;
+        let output_bytes = n
+            .checked_mul(m)
+            .and_then(|v| v.checked_mul(4))
+            .ok_or("q4k gemm output overflow")?;
+        x16.check(input_offset, input_bytes, "q4k gemm x")?;
+        wq.check(0, weight_bytes, "q4k gemm w")?;
+        out.check(output_offset, output_bytes, "q4k gemm out")?;
+        self.pipeline(if accumulate {
+            "clef_gemm_q4k_accumulate"
+        } else {
+            "clef_gemm_q4k"
+        })?;
+        self.bind(0, x16, input_offset);
+        self.bind(1, wq, 0);
+        self.bind(2, out, output_offset);
+        let nmk = [n as u32, m as u32, k as u32, 0];
+        self.bytes(3, &nmk);
+        self.groups(size(m.div_ceil(64), n.div_ceil(64), 1), size(128, 1, 1));
         Ok(())
     }
 

@@ -1,8 +1,8 @@
 use std::{fs, path::Path};
 
 use psionic_serve::{
-    write_tassadar_article_transformer_minimal_frontier_report,
     TASSADAR_ARTICLE_TRANSFORMER_MINIMAL_FRONTIER_REPORT_REF,
+    write_tassadar_article_transformer_minimal_frontier_report,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

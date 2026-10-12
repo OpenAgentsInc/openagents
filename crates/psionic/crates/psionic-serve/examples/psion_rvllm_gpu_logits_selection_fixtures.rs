@@ -1,8 +1,7 @@
 use std::{fs, path::Path};
 
 use psionic_serve::{
-    PSION_RVLLM_GPU_LOGITS_SELECTION_FIXTURE_PATH,
-    builtin_psion_rvllm_gpu_logits_selection_packet,
+    PSION_RVLLM_GPU_LOGITS_SELECTION_FIXTURE_PATH, builtin_psion_rvllm_gpu_logits_selection_packet,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

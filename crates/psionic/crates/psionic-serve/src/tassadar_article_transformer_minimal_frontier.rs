@@ -1,7 +1,6 @@
 use std::{
     collections::BTreeSet,
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
 };
 
@@ -11,50 +10,49 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use psionic_eval::{
-    build_tassadar_article_fixture_transformer_behavior_case_rows_for_model,
-    build_tassadar_article_transformer_weight_lineage_contract_for_bundle,
-    write_tassadar_article_transformer_weight_production_evidence_bundle,
-    TassadarArticleEquivalenceAcceptanceGateReport,
-    TassadarArticleEquivalenceAcceptanceGateReportError,
-    TassadarArticleFastRouteArchitectureSelectionReport,
-    TassadarArticleFastRouteArchitectureSelectionError,
-    TassadarArticleFastRouteCandidateKind, TassadarArticleFastRouteThroughputFloorReportError,
-    TassadarArticleFastRouteThroughputFloorReport,
-    TassadarArticleFixtureTransformerParityCaseRow, TassadarArticleFixtureTransformerParityError,
-    TassadarArticleTransformerGeneralizationGateReport,
-    TassadarArticleTransformerWeightLineageContract,
-    TassadarArticleTransformerWeightLineageError,
-    TassadarArticleTransformerWeightProductionError as WeightProductionEvidenceError,
     TASSADAR_ARTICLE_EQUIVALENCE_ACCEPTANCE_GATE_REPORT_REF,
     TASSADAR_ARTICLE_FAST_ROUTE_ARCHITECTURE_SELECTION_REPORT_REF,
     TASSADAR_ARTICLE_FAST_ROUTE_THROUGHPUT_FLOOR_REPORT_REF,
     TASSADAR_ARTICLE_TRANSFORMER_GENERALIZATION_GATE_REPORT_REF,
+    TassadarArticleEquivalenceAcceptanceGateReport,
+    TassadarArticleEquivalenceAcceptanceGateReportError,
+    TassadarArticleFastRouteArchitectureSelectionError,
+    TassadarArticleFastRouteArchitectureSelectionReport, TassadarArticleFastRouteCandidateKind,
+    TassadarArticleFastRouteThroughputFloorReport,
+    TassadarArticleFastRouteThroughputFloorReportError,
+    TassadarArticleFixtureTransformerParityCaseRow, TassadarArticleFixtureTransformerParityError,
+    TassadarArticleTransformerGeneralizationGateReport,
+    TassadarArticleTransformerWeightLineageContract, TassadarArticleTransformerWeightLineageError,
+    TassadarArticleTransformerWeightProductionError as WeightProductionEvidenceError,
+    build_tassadar_article_fixture_transformer_behavior_case_rows_for_model,
+    build_tassadar_article_transformer_weight_lineage_contract_for_bundle,
+    write_tassadar_article_transformer_weight_production_evidence_bundle,
 };
 use psionic_models::{
-    tassadar_article_transformer_executor_descriptor, TassadarArticleTransformer,
-    TassadarArticleTransformerEmbeddingStrategy, TassadarTraceTokenizer,
+    TassadarArticleTransformer, TassadarArticleTransformerEmbeddingStrategy,
+    TassadarTraceTokenizer, tassadar_article_transformer_executor_descriptor,
 };
 use psionic_runtime::{
+    TASSADAR_ARTICLE_CLASS_BENCHMARK_ENVIRONMENT_REF,
     TassadarDirectModelWeightExecutionProofReceipt, TassadarExactnessPosture,
     TassadarExecutorDecodeMode, TassadarExecutorSelectionState,
-    TASSADAR_ARTICLE_CLASS_BENCHMARK_ENVIRONMENT_REF,
 };
 use psionic_train::{
-    build_tassadar_article_transformer_weight_production_evidence_bundle,
-    run_tassadar_article_transformer_weight_production,
     TassadarArticleTransformerWeightProductionConfig,
     TassadarArticleTransformerWeightProductionError,
     TassadarArticleTransformerWeightProductionSuite,
+    build_tassadar_article_transformer_weight_production_evidence_bundle,
+    run_tassadar_article_transformer_weight_production,
 };
 use psionic_transformer::EncoderDecoderTransformerConfig;
 
 use crate::{
-    build_tassadar_direct_model_weight_execution_proof_receipt_for_article_session_with_lineage,
     LocalTassadarArticleExecutorSessionService, LocalTassadarArticleHybridWorkflowService,
     LocalTassadarExecutorService, LocalTassadarPlannerRouter,
     TassadarArticleExecutorSessionOutcome, TassadarArticleExecutorSessionRequest,
     TassadarArticleHybridWorkflowOutcome, TassadarArticleHybridWorkflowRequest,
     TassadarDirectModelWeightExecutionProofReportError, TassadarPlannerRouteDescriptorError,
+    build_tassadar_direct_model_weight_execution_proof_receipt_for_article_session_with_lineage,
 };
 
 pub const TASSADAR_ARTICLE_TRANSFORMER_MINIMAL_FRONTIER_REPORT_REF: &str =
@@ -67,8 +65,11 @@ pub const TASSADAR_ARTICLE_TRANSFORMER_MINIMAL_FRONTIER_RUN_ROOT_REF: &str =
 const REPORT_SCHEMA_VERSION: u16 = 1;
 const ISSUE_ID: &str = "TAS-R1";
 const ISSUE_TITLE: &str = "Minimal Transformer size for article-equivalent behavior";
-const DIRECT_PROOF_CASE_IDS: [&str; 3] =
-    ["hungarian_matching", "memory_heavy_kernel", "sudoku_v0_test_a"];
+const DIRECT_PROOF_CASE_IDS: [&str; 3] = [
+    "hungarian_matching",
+    "memory_heavy_kernel",
+    "sudoku_v0_test_a",
+];
 const TRAINING_CASE_COUNT: usize = 1;
 const HELD_OUT_CASE_COUNT: usize = 3;
 
@@ -300,7 +301,9 @@ pub enum TassadarArticleTransformerMinimalFrontierError {
         path: String,
         error: serde_json::Error,
     },
-    #[error("failed to execute canonical article case `{case_id}` on the fixture baseline: {detail}")]
+    #[error(
+        "failed to execute canonical article case `{case_id}` on the fixture baseline: {detail}"
+    )]
     FixtureExecution { case_id: String, detail: String },
     #[error("candidate `{candidate_id}` is missing parity evidence for case `{case_id}`")]
     MissingParityCase {
@@ -308,7 +311,10 @@ pub enum TassadarArticleTransformerMinimalFrontierError {
         case_id: String,
     },
     #[error("candidate `{candidate_id}` invariant failed: {detail}")]
-    CandidateInvariant { candidate_id: String, detail: String },
+    CandidateInvariant {
+        candidate_id: String,
+        detail: String,
+    },
     #[error(transparent)]
     Json(#[from] serde_json::Error),
 }
@@ -323,9 +329,10 @@ struct MinimalFrontierCandidateConfig {
     head_count: usize,
 }
 
-pub fn build_tassadar_article_transformer_minimal_frontier_report(
-) -> Result<TassadarArticleTransformerMinimalFrontierReport, TassadarArticleTransformerMinimalFrontierError>
-{
+pub fn build_tassadar_article_transformer_minimal_frontier_report() -> Result<
+    TassadarArticleTransformerMinimalFrontierReport,
+    TassadarArticleTransformerMinimalFrontierError,
+> {
     let acceptance_gate: TassadarArticleEquivalenceAcceptanceGateReport =
         read_repo_json(TASSADAR_ARTICLE_EQUIVALENCE_ACCEPTANCE_GATE_REPORT_REF)?;
     let fast_route_selection: TassadarArticleFastRouteArchitectureSelectionReport =
@@ -362,9 +369,7 @@ pub fn build_tassadar_article_transformer_minimal_frontier_report(
     let mut report = TassadarArticleTransformerMinimalFrontierReport {
         schema_version: REPORT_SCHEMA_VERSION,
         report_id: String::from("tassadar.article_transformer_minimal_frontier.report.v1"),
-        checker_script_ref: String::from(
-            TASSADAR_ARTICLE_TRANSFORMER_MINIMAL_FRONTIER_CHECKER_REF,
-        ),
+        checker_script_ref: String::from(TASSADAR_ARTICLE_TRANSFORMER_MINIMAL_FRONTIER_CHECKER_REF),
         issue_id: String::from(ISSUE_ID),
         issue_title: String::from(ISSUE_TITLE),
         acceptance_gate_report_ref: String::from(
@@ -496,8 +501,8 @@ fn candidate_frontier() -> [MinimalFrontierCandidateConfig; 6] {
     ]
 }
 
-fn selected_candidate_frontier(
-) -> Result<Vec<MinimalFrontierCandidateConfig>, TassadarArticleTransformerMinimalFrontierError> {
+fn selected_candidate_frontier()
+-> Result<Vec<MinimalFrontierCandidateConfig>, TassadarArticleTransformerMinimalFrontierError> {
     let candidates = candidate_frontier().into_iter().collect::<Vec<_>>();
     let Some(filter) = env::var_os("PSIONIC_TASSADAR_MINIMAL_FRONTIER_CANDIDATE_FILTER") else {
         return Ok(candidates);
@@ -513,10 +518,12 @@ fn selected_candidate_frontier(
         .filter(|candidate| requested.contains(candidate.candidate_id))
         .collect::<Vec<_>>();
     if filtered.is_empty() {
-        return Err(TassadarArticleTransformerMinimalFrontierError::CandidateInvariant {
-            candidate_id: String::from("candidate_filter"),
-            detail: format!("no frontier candidates matched filter `{filter}`"),
-        });
+        return Err(
+            TassadarArticleTransformerMinimalFrontierError::CandidateInvariant {
+                candidate_id: String::from("candidate_filter"),
+                detail: format!("no frontier candidates matched filter `{filter}`"),
+            },
+        );
     }
     Ok(filtered)
 }
@@ -582,7 +589,10 @@ fn build_candidate_report(
         ISSUE_ID,
         "this research-only lineage contract freezes one TAS-R1 candidate artifact pair without rebinding the canonical TAS-169A lineage contract. It binds the candidate-specific workload set, training-config snapshot, source inventory, descriptor digests, checkpoint lineage, and committed candidate artifact digests into one challengeable manifest while keeping the canonical public article-equivalence claim unchanged.",
     )?;
-    write_repo_json(artifact_refs.lineage_contract_ref.as_str(), &lineage_contract)?;
+    write_repo_json(
+        artifact_refs.lineage_contract_ref.as_str(),
+        &lineage_contract,
+    )?;
 
     let stage_a_review = build_stage_a_review(
         &suite,
@@ -595,7 +605,11 @@ fn build_candidate_report(
         candidate.candidate_id, stage_a_review.passed
     ));
     let stage_b_review = if stage_a_review.passed {
-        build_stage_b_review(candidate.candidate_id, &outcome.produced_model, expected_environment_refs)?
+        build_stage_b_review(
+            candidate.candidate_id,
+            &outcome.produced_model,
+            expected_environment_refs,
+        )?
     } else {
         skipped_stage_b_review("skipped because Stage A did not pass")
     };
@@ -603,10 +617,9 @@ fn build_candidate_report(
         "candidate {}: stage_b passed={}",
         candidate.candidate_id, stage_b_review.passed
     ));
-    let executor_service = LocalTassadarExecutorService::new()
-        .with_model_descriptor(tassadar_article_transformer_executor_descriptor(
-            &outcome.produced_model,
-        ));
+    let executor_service = LocalTassadarExecutorService::new().with_model_descriptor(
+        tassadar_article_transformer_executor_descriptor(&outcome.produced_model),
+    );
     let stage_c_review = if stage_b_review.passed {
         build_stage_c_review(
             candidate.candidate_id,
@@ -670,7 +683,9 @@ fn trace_progress(message: &str) {
     }
 }
 
-fn candidate_model_config(candidate: MinimalFrontierCandidateConfig) -> EncoderDecoderTransformerConfig {
+fn candidate_model_config(
+    candidate: MinimalFrontierCandidateConfig,
+) -> EncoderDecoderTransformerConfig {
     let tokenizer = TassadarTraceTokenizer::new();
     let mut config = TassadarArticleTransformer::trace_domain_reference_config(&tokenizer);
     config.hidden_size = candidate.hidden_size;
@@ -686,8 +701,7 @@ fn candidate_artifact_refs(
 ) -> TassadarArticleTransformerMinimalFrontierArtifactRefs {
     let run_root_ref = format!(
         "{}/{}",
-        TASSADAR_ARTICLE_TRANSFORMER_MINIMAL_FRONTIER_RUN_ROOT_REF,
-        candidate.candidate_id
+        TASSADAR_ARTICLE_TRANSFORMER_MINIMAL_FRONTIER_RUN_ROOT_REF, candidate.candidate_id
     );
     TassadarArticleTransformerMinimalFrontierArtifactRefs {
         base_descriptor_ref: format!("{run_root_ref}/base_descriptor.json"),
@@ -706,8 +720,10 @@ fn candidate_weight_production_config(
     artifact_refs: TassadarArticleTransformerMinimalFrontierArtifactRefs,
     base_model_id: String,
     produced_model_id: String,
-) -> Result<TassadarArticleTransformerWeightProductionConfig, TassadarArticleTransformerMinimalFrontierError>
-{
+) -> Result<
+    TassadarArticleTransformerWeightProductionConfig,
+    TassadarArticleTransformerMinimalFrontierError,
+> {
     let mut config = TassadarArticleTransformerWeightProductionConfig::reference()?;
     config.run_id = format!(
         "tassadar-article-transformer-minimal-frontier-{}-weight-production-v1",
@@ -752,8 +768,9 @@ fn build_stage_a_review(
         evidence_bundle.final_training_mean_loss <= evidence_bundle.initial_training_mean_loss;
     let training_exactness_improved = evidence_bundle.final_training_token_exactness_bps
         >= evidence_bundle.initial_training_token_exactness_bps;
-    let weight_production_smoke_passed =
-        training_loss_improved && training_exactness_improved && evidence_bundle.step_evidence.len() == 1;
+    let weight_production_smoke_passed = training_loss_improved
+        && training_exactness_improved
+        && evidence_bundle.step_evidence.len() == 1;
     let passed = suite.training_examples.len() == TRAINING_CASE_COUNT
         && suite.held_out_examples.len() == HELD_OUT_CASE_COUNT
         && all_required_refs_exist
@@ -773,7 +790,8 @@ fn build_stage_a_review(
         checkpoint_restore_matches_trained_state: evidence_bundle
             .checkpoint
             .restore_matches_trained_state,
-        artifact_reload_matches_trained_state: evidence_bundle.artifact_reload_matches_trained_state,
+        artifact_reload_matches_trained_state: evidence_bundle
+            .artifact_reload_matches_trained_state,
         passed,
         detail: format!(
             "candidate_id={} suite_counts={}/{} refs_exist={} smoke_passed={} produced_artifact_differs_from_base={} checkpoint_restore_matches={} artifact_reload_matches={}",
@@ -907,7 +925,8 @@ fn build_stage_c_review(
     TassadarArticleTransformerMinimalFrontierStageCReview,
     TassadarArticleTransformerMinimalFrontierError,
 > {
-    let planner_router = LocalTassadarPlannerRouter::new().with_executor_service(executor_service.clone());
+    let planner_router =
+        LocalTassadarPlannerRouter::new().with_executor_service(executor_service.clone());
     let route_descriptor = planner_router.route_capability_descriptor(Some(candidate_model_id))?;
     let direct_proof_review = build_direct_proof_review(
         candidate_id,
@@ -917,40 +936,37 @@ fn build_stage_c_review(
         executor_service,
         &route_descriptor,
     )?;
-    let fast_route_selection_review = build_fast_route_selection_review(
-        &route_descriptor,
-        fast_route_selection,
-    );
+    let fast_route_selection_review =
+        build_fast_route_selection_review(&route_descriptor, fast_route_selection);
     let throughput_floor_review = build_throughput_floor_review(throughput_floor);
-    let (article_session_reviews, hybrid_workflow_reviews) = if direct_proof_review.passed
-        && fast_route_selection_review.passed
-    {
-        (
-            build_fast_route_session_reviews(
-                candidate_model_id,
-                parity_case_rows,
-                executor_service,
-            )?,
-            build_fast_route_hybrid_reviews(
-                candidate_model_id,
-                parity_case_rows,
-                executor_service,
-            )?,
-        )
-    } else {
-        (
-            skipped_fast_route_session_reviews(
-                candidate_id,
-                parity_case_rows,
-                "skipped because direct proof or fast-route selection did not pass",
-            )?,
-            skipped_fast_route_hybrid_reviews(
-                candidate_id,
-                parity_case_rows,
-                "skipped because direct proof or fast-route selection did not pass",
-            )?,
-        )
-    };
+    let (article_session_reviews, hybrid_workflow_reviews) =
+        if direct_proof_review.passed && fast_route_selection_review.passed {
+            (
+                build_fast_route_session_reviews(
+                    candidate_model_id,
+                    parity_case_rows,
+                    executor_service,
+                )?,
+                build_fast_route_hybrid_reviews(
+                    candidate_model_id,
+                    parity_case_rows,
+                    executor_service,
+                )?,
+            )
+        } else {
+            (
+                skipped_fast_route_session_reviews(
+                    candidate_id,
+                    parity_case_rows,
+                    "skipped because direct proof or fast-route selection did not pass",
+                )?,
+                skipped_fast_route_hybrid_reviews(
+                    candidate_id,
+                    parity_case_rows,
+                    "skipped because direct proof or fast-route selection did not pass",
+                )?,
+            )
+        };
     let passed = direct_proof_review.passed
         && fast_route_selection_review.passed
         && article_session_reviews
@@ -1083,22 +1099,20 @@ fn build_direct_proof_review(
                         ),
                         lineage_contract.contract_digest.clone(),
                     )?;
-                let direct_selection =
-                    receipt.selection_state == TassadarExecutorSelectionState::Direct
-                        && receipt.effective_decode_mode
-                            == TassadarExecutorDecodeMode::ReferenceLinear;
+                let direct_selection = receipt.selection_state
+                    == TassadarExecutorSelectionState::Direct
+                    && receipt.effective_decode_mode == TassadarExecutorDecodeMode::ReferenceLinear;
                 let fallback_free = !receipt.fallback_observed;
                 let zero_external_call =
                     receipt.external_call_count == 0 && !receipt.cpu_result_substitution_observed;
-                let route_digest_matches =
-                    receipt.route_binding.route_descriptor_digest == route_descriptor.descriptor_digest;
+                let route_digest_matches = receipt.route_binding.route_descriptor_digest
+                    == route_descriptor.descriptor_digest;
                 let lineage_matches = receipt.model_lineage_contract_digest
                     == lineage_contract.contract_digest
                     && receipt.model_lineage_contract_ref
-                        == lineage_contract.evidence_bundle_ref.replace(
-                            "weight_production_bundle.json",
-                            "lineage_contract.json",
-                        );
+                        == lineage_contract
+                            .evidence_bundle_ref
+                            .replace("weight_production_bundle.json", "lineage_contract.json");
                 let trace_digest_matches_fixture =
                     receipt.trace_digest == parity_row.fixture_trace_digest;
                 let passed = receipt.model_id == candidate_model_id
@@ -1162,9 +1176,14 @@ fn build_direct_proof_review(
             }
         }
     }
-    let direct_case_count = case_reviews.iter().filter(|review| review.direct_selection).count();
-    let fallback_free_case_count =
-        case_reviews.iter().filter(|review| review.fallback_free).count();
+    let direct_case_count = case_reviews
+        .iter()
+        .filter(|review| review.direct_selection)
+        .count();
+    let fallback_free_case_count = case_reviews
+        .iter()
+        .filter(|review| review.fallback_free)
+        .count();
     let zero_external_call_case_count = case_reviews
         .iter()
         .filter(|review| review.zero_external_call)
@@ -1199,8 +1218,10 @@ fn build_fast_route_selection_review(
                 == psionic_router::TassadarPlannerExecutorRoutePosture::DirectGuaranteed
         })
         .unwrap_or(false);
-    let canonical_selected_candidate_kind =
-        fast_route_selection.selected_candidate_kind.label().to_string();
+    let canonical_selected_candidate_kind = fast_route_selection
+        .selected_candidate_kind
+        .label()
+        .to_string();
     let passed = fast_route_selection.fast_route_selection_green
         && fast_route_selection.selected_candidate_kind
             == TassadarArticleFastRouteCandidateKind::HullCacheRuntime
@@ -1317,9 +1338,10 @@ fn build_fast_route_hybrid_reviews(
     Vec<TassadarArticleTransformerMinimalFrontierFastRouteHybridCaseReview>,
     TassadarArticleTransformerMinimalFrontierError,
 > {
-    let planner_router = LocalTassadarPlannerRouter::new().with_executor_service(executor_service.clone());
-    let hybrid_workflow_service = LocalTassadarArticleHybridWorkflowService::new()
-        .with_planner_router(planner_router);
+    let planner_router =
+        LocalTassadarPlannerRouter::new().with_executor_service(executor_service.clone());
+    let hybrid_workflow_service =
+        LocalTassadarArticleHybridWorkflowService::new().with_planner_router(planner_router);
     let mut reviews = Vec::new();
     let mut keep_evaluating = true;
     for case_id in ordered_stage_c_case_ids(candidate_model_id, parity_case_rows)? {
@@ -1355,8 +1377,11 @@ fn build_fast_route_hybrid_reviews(
         let review = match outcome {
             TassadarArticleHybridWorkflowOutcome::Completed { response } => {
                 let routing = response.planner_response.routing_decision;
-                let selection =
-                    response.planner_response.executor_response.execution_report.selection;
+                let selection = response
+                    .planner_response
+                    .executor_response
+                    .execution_report
+                    .selection;
                 let exact_direct_hull_cache = routing.effective_decode_mode
                     == Some(TassadarExecutorDecodeMode::HullCache)
                     && selection.selection_state == TassadarExecutorSelectionState::Direct
@@ -1386,7 +1411,10 @@ fn build_fast_route_hybrid_reviews(
                     fixture_trace_digest: parity_row.fixture_trace_digest.clone(),
                     observed_trace_digest: None,
                     planner_effective_decode_mode: Some(
-                        fallback.planner_fallback.routing_decision.effective_decode_mode,
+                        fallback
+                            .planner_fallback
+                            .routing_decision
+                            .effective_decode_mode,
                     )
                     .flatten(),
                     executor_effective_decode_mode: None,
@@ -1400,12 +1428,9 @@ fn build_fast_route_hybrid_reviews(
                     case_id: String::from(case_id),
                     fixture_trace_digest: parity_row.fixture_trace_digest.clone(),
                     observed_trace_digest: None,
-                    planner_effective_decode_mode: refusal
-                        .planner_refusal
-                        .as_ref()
-                        .and_then(|planner_refusal| {
-                            planner_refusal.routing_decision.effective_decode_mode
-                        }),
+                    planner_effective_decode_mode: refusal.planner_refusal.as_ref().and_then(
+                        |planner_refusal| planner_refusal.routing_decision.effective_decode_mode,
+                    ),
                     executor_effective_decode_mode: None,
                     selection_state: None,
                     exact_direct_hull_cache: false,
@@ -1440,7 +1465,9 @@ fn build_throughput_floor_review(
         detail: format!(
             "throughput_floor_green={} selected_candidate_kind={}",
             throughput_floor.throughput_floor_green,
-            throughput_floor.selection_prerequisite.selected_candidate_kind
+            throughput_floor
+                .selection_prerequisite
+                .selected_candidate_kind
         ),
     }
 }
@@ -1456,10 +1483,12 @@ fn parity_row_for_case<'a>(
     parity_case_rows
         .iter()
         .find(|row| row.case_id == case_id)
-        .ok_or_else(|| TassadarArticleTransformerMinimalFrontierError::MissingParityCase {
-            candidate_id: String::from(candidate_id),
-            case_id: String::from(case_id),
-        })
+        .ok_or_else(
+            || TassadarArticleTransformerMinimalFrontierError::MissingParityCase {
+                candidate_id: String::from(candidate_id),
+                case_id: String::from(case_id),
+            },
+        )
 }
 
 fn ordered_stage_c_case_ids<'a>(
@@ -1547,15 +1576,17 @@ fn skipped_fast_route_session_reviews(
         .into_iter()
         .map(|case_id| {
             let parity_row = parity_row_for_case(candidate_id, parity_case_rows, case_id)?;
-            Ok(TassadarArticleTransformerMinimalFrontierFastRouteSessionCaseReview {
-                case_id: String::from(case_id),
-                fixture_trace_digest: parity_row.fixture_trace_digest.clone(),
-                observed_trace_digest: None,
-                selection_state: None,
-                effective_decode_mode: None,
-                exact_direct_hull_cache: false,
-                detail: String::from(detail),
-            })
+            Ok(
+                TassadarArticleTransformerMinimalFrontierFastRouteSessionCaseReview {
+                    case_id: String::from(case_id),
+                    fixture_trace_digest: parity_row.fixture_trace_digest.clone(),
+                    observed_trace_digest: None,
+                    selection_state: None,
+                    effective_decode_mode: None,
+                    exact_direct_hull_cache: false,
+                    detail: String::from(detail),
+                },
+            )
         })
         .collect()
 }
@@ -1572,16 +1603,18 @@ fn skipped_fast_route_hybrid_reviews(
         .into_iter()
         .map(|case_id| {
             let parity_row = parity_row_for_case(candidate_id, parity_case_rows, case_id)?;
-            Ok(TassadarArticleTransformerMinimalFrontierFastRouteHybridCaseReview {
-                case_id: String::from(case_id),
-                fixture_trace_digest: parity_row.fixture_trace_digest.clone(),
-                observed_trace_digest: None,
-                planner_effective_decode_mode: None,
-                executor_effective_decode_mode: None,
-                selection_state: None,
-                exact_direct_hull_cache: false,
-                detail: String::from(detail),
-            })
+            Ok(
+                TassadarArticleTransformerMinimalFrontierFastRouteHybridCaseReview {
+                    case_id: String::from(case_id),
+                    fixture_trace_digest: parity_row.fixture_trace_digest.clone(),
+                    observed_trace_digest: None,
+                    planner_effective_decode_mode: None,
+                    executor_effective_decode_mode: None,
+                    selection_state: None,
+                    exact_direct_hull_cache: false,
+                    detail: String::from(detail),
+                },
+            )
         })
         .collect()
 }
@@ -1676,10 +1709,12 @@ fn read_repo_json<T: DeserializeOwned>(
 ) -> Result<T, TassadarArticleTransformerMinimalFrontierError> {
     let path = repo_ref_path(relative_ref);
     let bytes =
-        fs::read(&path).map_err(|error| TassadarArticleTransformerMinimalFrontierError::Read {
-            path: path.display().to_string(),
-            error,
-        })?;
+        fs::read(&path).map_err(
+            |error| TassadarArticleTransformerMinimalFrontierError::Read {
+                path: path.display().to_string(),
+                error,
+            },
+        )?;
     serde_json::from_slice(&bytes).map_err(|error| {
         TassadarArticleTransformerMinimalFrontierError::Deserialize {
             path: path.display().to_string(),
@@ -1691,11 +1726,11 @@ fn read_repo_json<T: DeserializeOwned>(
 #[cfg(test)]
 mod tests {
     use super::{
+        TASSADAR_ARTICLE_TRANSFORMER_MINIMAL_FRONTIER_REPORT_REF,
+        TassadarArticleTransformerMinimalFrontierReport,
         build_tassadar_article_transformer_minimal_frontier_report, read_repo_json,
         tassadar_article_transformer_minimal_frontier_report_path,
         write_tassadar_article_transformer_minimal_frontier_report,
-        TassadarArticleTransformerMinimalFrontierReport,
-        TASSADAR_ARTICLE_TRANSFORMER_MINIMAL_FRONTIER_REPORT_REF,
     };
 
     #[test]
@@ -1712,7 +1747,9 @@ mod tests {
     #[test]
     fn write_minimal_frontier_report_persists_current_truth() {
         let directory = tempfile::tempdir().expect("tempdir");
-        let output_path = directory.path().join("tassadar_article_transformer_minimal_frontier_report.json");
+        let output_path = directory
+            .path()
+            .join("tassadar_article_transformer_minimal_frontier_report.json");
         let written = write_tassadar_article_transformer_minimal_frontier_report(&output_path)
             .expect("write frontier report");
         let persisted: TassadarArticleTransformerMinimalFrontierReport =

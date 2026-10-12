@@ -30,9 +30,10 @@ pub enum TassadarInternalComputePackageManagerPublicationError {
     DefaultServedPackagesMustStayEmpty,
 }
 
-pub fn build_tassadar_internal_compute_package_manager_publication(
-) -> Result<TassadarInternalComputePackageManagerPublication, TassadarInternalComputePackageManagerPublicationError>
-{
+pub fn build_tassadar_internal_compute_package_manager_publication() -> Result<
+    TassadarInternalComputePackageManagerPublication,
+    TassadarInternalComputePackageManagerPublicationError,
+> {
     let report = build_tassadar_internal_compute_package_manager_eval_report()
         .map_err(|_| TassadarInternalComputePackageManagerPublicationError::EvalReportNotGreen)?;
     if !report.overall_green || !report.served_publication_allowed {

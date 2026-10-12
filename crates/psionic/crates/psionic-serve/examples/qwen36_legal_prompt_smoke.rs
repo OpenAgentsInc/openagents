@@ -7,11 +7,11 @@ use std::{
 };
 
 use psionic_models::{
-    normalize_qwen36_target_model_id, run_qwen36_legal_prompt_smoke,
-    write_qwen36_27b_smoke_safetensors, write_qwen36_35b_a3b_moe_smoke_safetensors,
     QWEN36_27B_MODEL_ID, QWEN36_27B_SMOKE_CONFIG_PATH, QWEN36_27B_SMOKE_SHARD_PATH,
     QWEN36_27B_SMOKE_TOKENIZER_PATH, QWEN36_35B_A3B_MODEL_ID, QWEN36_35B_A3B_SMOKE_CONFIG_PATH,
     QWEN36_35B_A3B_SMOKE_SHARD_PATH, QWEN36_35B_A3B_SMOKE_TOKENIZER_PATH,
+    normalize_qwen36_target_model_id, run_qwen36_legal_prompt_smoke,
+    write_qwen36_27b_smoke_safetensors, write_qwen36_35b_a3b_moe_smoke_safetensors,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {

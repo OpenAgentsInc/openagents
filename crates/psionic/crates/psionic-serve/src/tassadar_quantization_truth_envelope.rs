@@ -2,8 +2,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use psionic_models::{
-    tassadar_quantization_truth_envelope_publication,
-    TassadarQuantizationTruthEnvelopePublication,
+    TassadarQuantizationTruthEnvelopePublication, tassadar_quantization_truth_envelope_publication,
 };
 use psionic_runtime::{
     TassadarQuantizationBackendFamily, TassadarQuantizationTruthEnvelopeReceipt,
@@ -48,8 +47,7 @@ pub enum TassadarServedQuantizationTruthEnvelopeError {
 /// Returns the served quantization deployment envelope for one runtime backend.
 pub fn build_tassadar_served_quantization_truth_envelope(
     runtime_backend: &str,
-) -> Result<TassadarServedQuantizationTruthEnvelope, TassadarServedQuantizationTruthEnvelopeError>
-{
+) -> Result<TassadarServedQuantizationTruthEnvelope, TassadarServedQuantizationTruthEnvelopeError> {
     let active_backend_family = match runtime_backend {
         "cpu" => TassadarQuantizationBackendFamily::CpuReference,
         "metal" => TassadarQuantizationBackendFamily::MetalServed,
@@ -91,8 +89,8 @@ pub fn build_tassadar_served_quantization_truth_envelope(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_tassadar_served_quantization_truth_envelope,
         TassadarServedQuantizationTruthEnvelopeError,
+        build_tassadar_served_quantization_truth_envelope,
     };
     use psionic_runtime::{TassadarQuantizationBackendFamily, TassadarQuantizationEnvelopePosture};
 

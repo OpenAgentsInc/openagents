@@ -1,12 +1,10 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const PSION_RVLLM_KV_EVICTION_REUSE_SCHEMA_VERSION: &str =
-    "psion.rvllm_kv_eviction_reuse.v1";
+pub const PSION_RVLLM_KV_EVICTION_REUSE_SCHEMA_VERSION: &str = "psion.rvllm_kv_eviction_reuse.v1";
 pub const PSION_RVLLM_KV_EVICTION_REUSE_FIXTURE_PATH: &str =
     "fixtures/psion/serve/psion_rvllm_kv_eviction_reuse_v1.json";
-pub const PSION_RVLLM_KV_EVICTION_REUSE_DOC_PATH: &str =
-    "docs/PSION_RVLLM_KV_EVICTION_REUSE.md";
+pub const PSION_RVLLM_KV_EVICTION_REUSE_DOC_PATH: &str = "docs/PSION_RVLLM_KV_EVICTION_REUSE.md";
 
 const PACKET_ID: &str = "psion_rvllm_kv_eviction_reuse_v1";
 

@@ -16,8 +16,7 @@ use psionic_eval::{
     TassadarRustSourceCanonReport,
 };
 use psionic_models::{
-    TASSADAR_ARTICLE_ABI_CLOSURE_REPORT_REF,
-    TASSADAR_RUST_ARTICLE_PROFILE_COMPLETENESS_REPORT_REF,
+    TASSADAR_ARTICLE_ABI_CLOSURE_REPORT_REF, TASSADAR_RUST_ARTICLE_PROFILE_COMPLETENESS_REPORT_REF,
     TassadarRustArticleProfileCompletenessPublication, TassadarRustArticleProfileRowStatus,
 };
 use psionic_research::{
@@ -25,8 +24,8 @@ use psionic_research::{
     TASSADAR_ARTICLE_RUNTIME_CLOSEOUT_SUMMARY_REPORT_REF,
     TASSADAR_HUNGARIAN_10X10_ARTICLE_REPRODUCER_REPORT_REF,
     TASSADAR_SUDOKU_9X9_ARTICLE_REPRODUCER_REPORT_REF,
-    TassadarArticleCpuReproducibilitySummaryReport,
-    TassadarHungarian10x10ArticleReproducerReport, TassadarSudoku9x9ArticleReproducerReport,
+    TassadarArticleCpuReproducibilitySummaryReport, TassadarHungarian10x10ArticleReproducerReport,
+    TassadarSudoku9x9ArticleReproducerReport,
 };
 
 use crate::TASSADAR_DIRECT_MODEL_WEIGHT_EXECUTION_PROOF_REPORT_REF;
@@ -68,8 +67,7 @@ const REQUIRED_ABI_REFUSAL_CASE_IDS: [&str; 3] = [
 ];
 const REQUIRED_DIRECT_PROOF_CASE_IDS: [&str; 3] =
     ["long_loop_kernel", "sudoku_v0_test_a", "hungarian_matching"];
-const REQUIRED_SUPPORTED_MACHINE_CLASS_IDS: [&str; 2] =
-    ["host_cpu_aarch64", "host_cpu_x86_64"];
+const REQUIRED_SUPPORTED_MACHINE_CLASS_IDS: [&str; 2] = ["host_cpu_aarch64", "host_cpu_x86_64"];
 const REQUIRED_UNSUPPORTED_MACHINE_CLASS_ID: &str = "other_host_cpu";
 
 #[derive(Debug, Error)]
@@ -87,16 +85,19 @@ pub enum TassadarRustOnlyArticleAcceptanceGateV2Error {
     },
 }
 
-pub fn build_tassadar_rust_only_article_acceptance_gate_v2_report()
--> Result<TassadarRustOnlyArticleAcceptanceGateV2Report, TassadarRustOnlyArticleAcceptanceGateV2Error>
-{
+pub fn build_tassadar_rust_only_article_acceptance_gate_v2_report() -> Result<
+    TassadarRustOnlyArticleAcceptanceGateV2Report,
+    TassadarRustOnlyArticleAcceptanceGateV2Error,
+> {
     build_tassadar_rust_only_article_acceptance_gate_v2_report_with_repo_root(&repo_root())
 }
 
 pub fn build_tassadar_rust_only_article_acceptance_gate_v2_report_with_repo_root(
     repo_root: &Path,
-) -> Result<TassadarRustOnlyArticleAcceptanceGateV2Report, TassadarRustOnlyArticleAcceptanceGateV2Error>
-{
+) -> Result<
+    TassadarRustOnlyArticleAcceptanceGateV2Report,
+    TassadarRustOnlyArticleAcceptanceGateV2Error,
+> {
     let prerequisites = vec![
         build_source_canon_prerequisite(repo_root)?,
         build_profile_completeness_prerequisite(repo_root)?,
@@ -107,9 +108,7 @@ pub fn build_tassadar_rust_only_article_acceptance_gate_v2_report_with_repo_root
         build_direct_proof_prerequisite(repo_root)?,
         build_cpu_reproducibility_prerequisite(repo_root)?,
     ];
-    Ok(TassadarRustOnlyArticleAcceptanceGateV2Report::from_prerequisites(
-        prerequisites,
-    ))
+    Ok(TassadarRustOnlyArticleAcceptanceGateV2Report::from_prerequisites(prerequisites))
 }
 
 pub fn tassadar_rust_only_article_acceptance_gate_v2_report_path() -> PathBuf {
@@ -118,8 +117,10 @@ pub fn tassadar_rust_only_article_acceptance_gate_v2_report_path() -> PathBuf {
 
 pub fn write_tassadar_rust_only_article_acceptance_gate_v2_report(
     output_path: impl AsRef<Path>,
-) -> Result<TassadarRustOnlyArticleAcceptanceGateV2Report, TassadarRustOnlyArticleAcceptanceGateV2Error>
-{
+) -> Result<
+    TassadarRustOnlyArticleAcceptanceGateV2Report,
+    TassadarRustOnlyArticleAcceptanceGateV2Error,
+> {
     let output_path = output_path.as_ref();
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent).map_err(|error| {
@@ -130,8 +131,8 @@ pub fn write_tassadar_rust_only_article_acceptance_gate_v2_report(
         })?;
     }
     let report = build_tassadar_rust_only_article_acceptance_gate_v2_report()?;
-    let json =
-        serde_json::to_string_pretty(&report).expect("Rust-only article acceptance gate serializes");
+    let json = serde_json::to_string_pretty(&report)
+        .expect("Rust-only article acceptance gate serializes");
     fs::write(output_path, format!("{json}\n")).map_err(|error| {
         TassadarRustOnlyArticleAcceptanceGateV2Error::Write {
             path: output_path.display().to_string(),
@@ -143,8 +144,10 @@ pub fn write_tassadar_rust_only_article_acceptance_gate_v2_report(
 
 fn build_source_canon_prerequisite(
     repo_root: &Path,
-) -> Result<TassadarRustOnlyArticleAcceptancePrerequisite, TassadarRustOnlyArticleAcceptanceGateV2Error>
-{
+) -> Result<
+    TassadarRustOnlyArticleAcceptancePrerequisite,
+    TassadarRustOnlyArticleAcceptanceGateV2Error,
+> {
     let artifact_refs = vec![String::from(TASSADAR_RUST_SOURCE_CANON_REPORT_REF)];
     let validation_commands = vec![String::from(
         "cargo run -p psionic-eval --example tassadar_rust_source_canon_report",
@@ -159,8 +162,11 @@ fn build_source_canon_prerequisite(
             missing,
         ));
     }
-    let report: TassadarRustSourceCanonReport =
-        read_repo_json(repo_root, TASSADAR_RUST_SOURCE_CANON_REPORT_REF, "rust_source_canon")?;
+    let report: TassadarRustSourceCanonReport = read_repo_json(
+        repo_root,
+        TASSADAR_RUST_SOURCE_CANON_REPORT_REF,
+        "rust_source_canon",
+    )?;
     let compiled_count = REQUIRED_SOURCE_CASE_IDS
         .iter()
         .filter(|case_id| {
@@ -186,8 +192,10 @@ fn build_source_canon_prerequisite(
 
 fn build_profile_completeness_prerequisite(
     repo_root: &Path,
-) -> Result<TassadarRustOnlyArticleAcceptancePrerequisite, TassadarRustOnlyArticleAcceptanceGateV2Error>
-{
+) -> Result<
+    TassadarRustOnlyArticleAcceptancePrerequisite,
+    TassadarRustOnlyArticleAcceptanceGateV2Error,
+> {
     let artifact_refs = vec![String::from(
         TASSADAR_RUST_ARTICLE_PROFILE_COMPLETENESS_REPORT_REF,
     )];
@@ -222,8 +230,7 @@ fn build_profile_completeness_prerequisite(
         .iter()
         .filter(|row_id| {
             report.rows.iter().any(|row| {
-                row.row_id == **row_id
-                    && row.status == TassadarRustArticleProfileRowStatus::Refused
+                row.row_id == **row_id && row.status == TassadarRustArticleProfileRowStatus::Refused
             })
         })
         .count();
@@ -252,8 +259,10 @@ fn build_profile_completeness_prerequisite(
 
 fn build_article_abi_prerequisite(
     repo_root: &Path,
-) -> Result<TassadarRustOnlyArticleAcceptancePrerequisite, TassadarRustOnlyArticleAcceptanceGateV2Error>
-{
+) -> Result<
+    TassadarRustOnlyArticleAcceptancePrerequisite,
+    TassadarRustOnlyArticleAcceptanceGateV2Error,
+> {
     let artifact_refs = vec![String::from(TASSADAR_ARTICLE_ABI_CLOSURE_REPORT_REF)];
     let validation_commands = vec![String::from(
         "cargo run -p psionic-eval --example tassadar_article_abi_closure_report",
@@ -268,8 +277,11 @@ fn build_article_abi_prerequisite(
             missing,
         ));
     }
-    let report: TassadarArticleAbiClosureReport =
-        read_repo_json(repo_root, TASSADAR_ARTICLE_ABI_CLOSURE_REPORT_REF, "article_abi")?;
+    let report: TassadarArticleAbiClosureReport = read_repo_json(
+        repo_root,
+        TASSADAR_ARTICLE_ABI_CLOSURE_REPORT_REF,
+        "article_abi",
+    )?;
     let exact_cases = REQUIRED_ABI_EXACT_CASE_IDS
         .iter()
         .filter(|case_id| {
@@ -304,8 +316,10 @@ fn build_article_abi_prerequisite(
 
 fn build_hungarian_prerequisite(
     repo_root: &Path,
-) -> Result<TassadarRustOnlyArticleAcceptancePrerequisite, TassadarRustOnlyArticleAcceptanceGateV2Error>
-{
+) -> Result<
+    TassadarRustOnlyArticleAcceptancePrerequisite,
+    TassadarRustOnlyArticleAcceptanceGateV2Error,
+> {
     let artifact_refs = vec![String::from(
         TASSADAR_HUNGARIAN_10X10_ARTICLE_REPRODUCER_REPORT_REF,
     )];
@@ -352,8 +366,10 @@ fn build_hungarian_prerequisite(
 
 fn build_sudoku_prerequisite(
     repo_root: &Path,
-) -> Result<TassadarRustOnlyArticleAcceptancePrerequisite, TassadarRustOnlyArticleAcceptanceGateV2Error>
-{
+) -> Result<
+    TassadarRustOnlyArticleAcceptancePrerequisite,
+    TassadarRustOnlyArticleAcceptanceGateV2Error,
+> {
     let artifact_refs = vec![String::from(
         TASSADAR_SUDOKU_9X9_ARTICLE_REPRODUCER_REPORT_REF,
     )];
@@ -404,14 +420,18 @@ fn build_sudoku_prerequisite(
 
 fn build_runtime_closeout_prerequisite(
     repo_root: &Path,
-) -> Result<TassadarRustOnlyArticleAcceptancePrerequisite, TassadarRustOnlyArticleAcceptanceGateV2Error>
-{
+) -> Result<
+    TassadarRustOnlyArticleAcceptancePrerequisite,
+    TassadarRustOnlyArticleAcceptanceGateV2Error,
+> {
     let artifact_refs = vec![
         String::from(TASSADAR_ARTICLE_RUNTIME_CLOSEOUT_REPORT_REF),
         String::from(TASSADAR_ARTICLE_RUNTIME_CLOSEOUT_SUMMARY_REPORT_REF),
     ];
     let validation_commands = vec![
-        String::from("cargo run -p psionic-eval --example tassadar_article_runtime_closeout_report"),
+        String::from(
+            "cargo run -p psionic-eval --example tassadar_article_runtime_closeout_report",
+        ),
         String::from(
             "cargo run -p psionic-research --example tassadar_article_runtime_closeout_summary",
         ),
@@ -450,8 +470,10 @@ fn build_runtime_closeout_prerequisite(
 
 fn build_direct_proof_prerequisite(
     repo_root: &Path,
-) -> Result<TassadarRustOnlyArticleAcceptancePrerequisite, TassadarRustOnlyArticleAcceptanceGateV2Error>
-{
+) -> Result<
+    TassadarRustOnlyArticleAcceptancePrerequisite,
+    TassadarRustOnlyArticleAcceptanceGateV2Error,
+> {
     let artifact_refs = vec![String::from(
         TASSADAR_DIRECT_MODEL_WEIGHT_EXECUTION_PROOF_REPORT_REF,
     )];
@@ -501,8 +523,10 @@ fn build_direct_proof_prerequisite(
 
 fn build_cpu_reproducibility_prerequisite(
     repo_root: &Path,
-) -> Result<TassadarRustOnlyArticleAcceptancePrerequisite, TassadarRustOnlyArticleAcceptanceGateV2Error>
-{
+) -> Result<
+    TassadarRustOnlyArticleAcceptancePrerequisite,
+    TassadarRustOnlyArticleAcceptanceGateV2Error,
+> {
     let artifact_refs = vec![
         String::from(TASSADAR_ARTICLE_CPU_REPRODUCIBILITY_REPORT_REF),
         String::from(TASSADAR_ARTICLE_CPU_REPRODUCIBILITY_SUMMARY_REPORT_REF),
@@ -535,9 +559,11 @@ fn build_cpu_reproducibility_prerequisite(
         TASSADAR_ARTICLE_CPU_REPRODUCIBILITY_SUMMARY_REPORT_REF,
         "article_cpu_reproducibility_summary",
     )?;
-    let supported_classes_green = REQUIRED_SUPPORTED_MACHINE_CLASS_IDS
-        .iter()
-        .all(|class_id| report.supported_machine_class_ids.contains(&String::from(*class_id)));
+    let supported_classes_green = REQUIRED_SUPPORTED_MACHINE_CLASS_IDS.iter().all(|class_id| {
+        report
+            .supported_machine_class_ids
+            .contains(&String::from(*class_id))
+    });
     Ok(prerequisite_from_bool(
         "article_cpu_reproducibility",
         artifact_refs,
@@ -608,12 +634,11 @@ fn read_repo_json<T: DeserializeOwned>(
     artifact_kind: &str,
 ) -> Result<T, TassadarRustOnlyArticleAcceptanceGateV2Error> {
     let path = repo_root.join(relative_path);
-    let bytes = fs::read(&path).map_err(|error| {
-        TassadarRustOnlyArticleAcceptanceGateV2Error::Read {
+    let bytes =
+        fs::read(&path).map_err(|error| TassadarRustOnlyArticleAcceptanceGateV2Error::Read {
             path: path.display().to_string(),
             error,
-        }
-    })?;
+        })?;
     serde_json::from_slice(&bytes).map_err(|error| {
         TassadarRustOnlyArticleAcceptanceGateV2Error::Decode {
             path: format!("{} ({artifact_kind})", path.display()),
@@ -628,8 +653,8 @@ mod tests {
         TASSADAR_RUST_ONLY_ARTICLE_ACCEPTANCE_GATE_V2_REPORT_REF,
         TassadarRustOnlyArticleAcceptanceGateV2Error,
         build_tassadar_rust_only_article_acceptance_gate_v2_report,
-        build_tassadar_rust_only_article_acceptance_gate_v2_report_with_repo_root,
-        read_repo_json, repo_root, tassadar_rust_only_article_acceptance_gate_v2_report_path,
+        build_tassadar_rust_only_article_acceptance_gate_v2_report_with_repo_root, read_repo_json,
+        repo_root, tassadar_rust_only_article_acceptance_gate_v2_report_path,
         write_tassadar_rust_only_article_acceptance_gate_v2_report,
     };
     use psionic_eval::TassadarRustOnlyArticleAcceptanceGateV2Report;
@@ -690,7 +715,11 @@ mod tests {
             )
             .expect("gate report with missing prerequisite");
 
-            assert!(!report.green, "{} should force a red gate", prerequisite.prerequisite_id);
+            assert!(
+                !report.green,
+                "{} should force a red gate",
+                prerequisite.prerequisite_id
+            );
             assert!(
                 report
                     .failed_prerequisite_ids

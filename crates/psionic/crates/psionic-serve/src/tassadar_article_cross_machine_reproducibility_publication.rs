@@ -8,8 +8,8 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use psionic_eval::{
-    TassadarArticleCrossMachineReproducibilityReport,
     TASSADAR_ARTICLE_CROSS_MACHINE_REPRODUCIBILITY_MATRIX_REPORT_REF,
+    TassadarArticleCrossMachineReproducibilityReport,
 };
 use psionic_models::TassadarExecutorFixture;
 use psionic_research::TASSADAR_ARTICLE_CROSS_MACHINE_REPRODUCIBILITY_MATRIX_SUMMARY_REF;
@@ -66,15 +66,21 @@ pub fn build_tassadar_article_cross_machine_reproducibility_publication() -> Res
         "article_cross_machine_reproducibility_matrix_report",
     )?;
     if !report.reproducibility_matrix_green {
-        return Err(TassadarArticleCrossMachineReproducibilityPublicationError::Invalid {
-            detail: String::from(
-                "cross-machine reproducibility matrix must be green before publication is allowed",
-            ),
-        });
+        return Err(
+            TassadarArticleCrossMachineReproducibilityPublicationError::Invalid {
+                detail: String::from(
+                    "cross-machine reproducibility matrix must be green before publication is allowed",
+                ),
+            },
+        );
     }
     let mut publication = TassadarArticleCrossMachineReproducibilityPublication {
         product_id: String::from(EXECUTOR_TRACE_PRODUCT_ID),
-        model_id: if report.route_stability_review.transformer_model_id.is_empty() {
+        model_id: if report
+            .route_stability_review
+            .transformer_model_id
+            .is_empty()
+        {
             String::from(TassadarExecutorFixture::ARTICLE_I32_COMPUTE_MODEL_ID)
         } else {
             report.route_stability_review.transformer_model_id.clone()
@@ -176,15 +182,15 @@ fn read_repo_json<T: for<'de> Deserialize<'de>>(
 #[cfg(test)]
 mod tests {
     use super::{
+        TASSADAR_ARTICLE_CROSS_MACHINE_REPRODUCIBILITY_PUBLICATION_REF,
+        TassadarArticleCrossMachineReproducibilityPublication,
         build_tassadar_article_cross_machine_reproducibility_publication,
         tassadar_article_cross_machine_reproducibility_publication_path,
         write_tassadar_article_cross_machine_reproducibility_publication,
-        TassadarArticleCrossMachineReproducibilityPublication,
-        TASSADAR_ARTICLE_CROSS_MACHINE_REPRODUCIBILITY_PUBLICATION_REF,
     };
 
-    fn read_committed_publication(
-    ) -> Result<TassadarArticleCrossMachineReproducibilityPublication, Box<dyn std::error::Error>>
+    fn read_committed_publication()
+    -> Result<TassadarArticleCrossMachineReproducibilityPublication, Box<dyn std::error::Error>>
     {
         let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
@@ -196,8 +202,8 @@ mod tests {
     }
 
     #[test]
-    fn article_cross_machine_reproducibility_publication_is_green_and_bounded(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn article_cross_machine_reproducibility_publication_is_green_and_bounded()
+    -> Result<(), Box<dyn std::error::Error>> {
         let publication = build_tassadar_article_cross_machine_reproducibility_publication()?;
 
         assert_eq!(publication.product_id, crate::EXECUTOR_TRACE_PRODUCT_ID);
@@ -215,8 +221,8 @@ mod tests {
     }
 
     #[test]
-    fn article_cross_machine_reproducibility_publication_matches_committed_truth(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn article_cross_machine_reproducibility_publication_matches_committed_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
         let generated = build_tassadar_article_cross_machine_reproducibility_publication()?;
         let committed = read_committed_publication()?;
         assert_eq!(generated, committed);
@@ -224,8 +230,8 @@ mod tests {
     }
 
     #[test]
-    fn write_article_cross_machine_reproducibility_publication_persists_current_truth(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn write_article_cross_machine_reproducibility_publication_persists_current_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
         let directory = tempfile::tempdir()?;
         let output_path = directory
             .path()

@@ -20,10 +20,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let service = CpuGgufQwen35TextGenerationService::from_gguf_path(&gguf_path)?;
     let (_, logits) = service.final_hidden_and_logits_for_tokens(token_ids.as_slice())?;
 
-    let mut ranked = logits
-        .iter()
-        .enumerate()
-        .collect::<Vec<(usize, &f32)>>();
+    let mut ranked = logits.iter().enumerate().collect::<Vec<(usize, &f32)>>();
     ranked.sort_by(|left, right| right.1.total_cmp(left.1));
     for (index, value) in ranked.iter().take(5) {
         println!("rank token_id={} logit={:.6}", index, value);

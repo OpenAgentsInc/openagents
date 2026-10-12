@@ -8,8 +8,8 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use psionic_eval::{
-    TassadarArticleRouteMinimalityAuditReport, TassadarArticleRouteMinimalityPublicPosture,
-    TASSADAR_ARTICLE_ROUTE_MINIMALITY_AUDIT_REPORT_REF,
+    TASSADAR_ARTICLE_ROUTE_MINIMALITY_AUDIT_REPORT_REF, TassadarArticleRouteMinimalityAuditReport,
+    TassadarArticleRouteMinimalityPublicPosture,
 };
 use psionic_models::TassadarExecutorFixture;
 use psionic_research::TASSADAR_ARTICLE_ROUTE_MINIMALITY_AUDIT_SUMMARY_REF;
@@ -76,7 +76,11 @@ pub fn build_tassadar_article_route_minimality_publication_verdict() -> Result<
     }
     let mut publication = TassadarArticleRouteMinimalityPublicationVerdict {
         product_id: String::from(EXECUTOR_TRACE_PRODUCT_ID),
-        model_id: if report.canonical_claim_route_review.transformer_model_id.is_empty() {
+        model_id: if report
+            .canonical_claim_route_review
+            .transformer_model_id
+            .is_empty()
+        {
             String::from(TassadarExecutorFixture::ARTICLE_I32_COMPUTE_MODEL_ID)
         } else {
             report
@@ -184,16 +188,16 @@ fn read_repo_json<T: for<'de> Deserialize<'de>>(
 #[cfg(test)]
 mod tests {
     use super::{
+        TASSADAR_ARTICLE_ROUTE_MINIMALITY_PUBLICATION_VERDICT_REF,
+        TassadarArticleRouteMinimalityPublicationVerdict,
         build_tassadar_article_route_minimality_publication_verdict,
         tassadar_article_route_minimality_publication_verdict_path,
         write_tassadar_article_route_minimality_publication_verdict,
-        TassadarArticleRouteMinimalityPublicationVerdict,
-        TASSADAR_ARTICLE_ROUTE_MINIMALITY_PUBLICATION_VERDICT_REF,
     };
     use psionic_eval::TassadarArticleRouteMinimalityPublicPosture;
 
-    fn read_committed_publication(
-    ) -> Result<TassadarArticleRouteMinimalityPublicationVerdict, Box<dyn std::error::Error>> {
+    fn read_committed_publication()
+    -> Result<TassadarArticleRouteMinimalityPublicationVerdict, Box<dyn std::error::Error>> {
         let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
             .nth(2)
@@ -204,8 +208,8 @@ mod tests {
     }
 
     #[test]
-    fn article_route_minimality_publication_verdict_is_green_bounded(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn article_route_minimality_publication_verdict_is_green_bounded()
+    -> Result<(), Box<dyn std::error::Error>> {
         let publication = build_tassadar_article_route_minimality_publication_verdict()?;
 
         assert_eq!(publication.product_id, crate::EXECUTOR_TRACE_PRODUCT_ID);
@@ -230,8 +234,8 @@ mod tests {
     }
 
     #[test]
-    fn article_route_minimality_publication_verdict_matches_committed_truth(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn article_route_minimality_publication_verdict_matches_committed_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
         let generated = build_tassadar_article_route_minimality_publication_verdict()?;
         let committed = read_committed_publication()?;
         assert_eq!(generated, committed);
@@ -239,8 +243,8 @@ mod tests {
     }
 
     #[test]
-    fn write_article_route_minimality_publication_verdict_persists_current_truth(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn write_article_route_minimality_publication_verdict_persists_current_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
         let directory = tempfile::tempdir()?;
         let output_path = directory
             .path()

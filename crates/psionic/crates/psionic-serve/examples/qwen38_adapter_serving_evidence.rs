@@ -1,8 +1,8 @@
 use std::{env, error::Error, fs, path::PathBuf, time::Instant};
 
 use psionic_serve::{
-    AdapterResidencyMode, CpuGgufQwen35TextGenerationService, GenerationOptions,
-    GenerationRequest, TextGenerationExecutor,
+    AdapterResidencyMode, CpuGgufQwen35TextGenerationService, GenerationOptions, GenerationRequest,
+    TextGenerationExecutor,
 };
 use psionic_train::{
     Qwen38LmHeadAdamWConfig, Qwen38LmHeadLoraBackwardFixture, Qwen38TrainingAdapterRequest,
@@ -15,9 +15,10 @@ use sha2::{Digest, Sha256};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args = env::args().skip(1);
-    let gguf_path = PathBuf::from(args.next().ok_or(
-        "usage: qwen38_adapter_serving_evidence <decoder.gguf> <adapter.safetensors>",
-    )?);
+    let gguf_path = PathBuf::from(
+        args.next()
+            .ok_or("usage: qwen38_adapter_serving_evidence <decoder.gguf> <adapter.safetensors>")?,
+    );
     let adapter_path = PathBuf::from(args.next().ok_or("missing adapter artifact path")?);
     if args.next().is_some() {
         return Err("unexpected trailing arguments".into());
@@ -93,7 +94,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     training_request.lora_alpha = fixture.lora_alpha;
     let plan = admit_qwen38_training_adapter(&training_request);
     if !plan.is_admitted() {
-        return Err(format!("Qwen3.8 training adapter admission refused: {:?}", plan.refusal).into());
+        return Err(format!(
+            "Qwen3.8 training adapter admission refused: {:?}",
+            plan.refusal
+        )
+        .into());
     }
     let artifact_bytes = export_qwen38_lm_head_adapter_safetensors(&plan, &fixture, &state)?;
     let artifact_sha256 = hex::encode(Sha256::digest(artifact_bytes.as_slice()));
@@ -124,7 +129,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let adapted = TextGenerationExecutor::generate(&mut service, &adapted_request)?;
     let adapted_duration_ns = duration_ns(adapted_started.elapsed());
     let adapted_token_ids = token_ids(&adapted);
-    let adapted_first_is_target = adapted_token_ids.first().copied() == Some(target_token_id as u32);
+    let adapted_first_is_target =
+        adapted_token_ids.first().copied() == Some(target_token_id as u32);
     let provenance_binding = adapted
         .provenance
         .as_ref()
@@ -160,8 +166,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     )
     .err()
     .map(|error| error.to_string());
-    let detached =
-        service.detach_qwen38_adapter_binding(binding.served_adapter_digest.as_str())?;
+    let detached = service.detach_qwen38_adapter_binding(binding.served_adapter_digest.as_str())?;
     let detached_refusal = TextGenerationExecutor::generate(&mut service, &adapted_request)
         .err()
         .map(|error| error.to_string());

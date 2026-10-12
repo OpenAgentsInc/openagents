@@ -1,11 +1,10 @@
 use std::{error::Error, fs, path::PathBuf};
 
 use psionic_serve::{
-    record_psion_served_output_claim_posture, PsionCapabilityMatrix,
-    PsionServedAssumptionKind, PsionServedAssumptionNotice, PsionServedBehaviorVisibility,
-    PsionServedContextEnvelopeSurface, PsionServedEvidenceBundle,
-    PsionServedLatencyEnvelopeSurface, PsionServedOutputClaimPosture,
-    PsionServedVisibleClaims,
+    PsionCapabilityMatrix, PsionServedAssumptionKind, PsionServedAssumptionNotice,
+    PsionServedBehaviorVisibility, PsionServedContextEnvelopeSurface, PsionServedEvidenceBundle,
+    PsionServedLatencyEnvelopeSurface, PsionServedOutputClaimPosture, PsionServedVisibleClaims,
+    record_psion_served_output_claim_posture,
 };
 use serde::de::DeserializeOwned;
 
@@ -22,9 +21,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let executor_evidence: PsionServedEvidenceBundle = load_json(
         repo_root.join("fixtures/psion/serve/psion_served_evidence_executor_backed_v1.json"),
     )?;
-    let refusal_evidence: PsionServedEvidenceBundle = load_json(
-        repo_root.join("fixtures/psion/serve/psion_served_evidence_refusal_v1.json"),
-    )?;
+    let refusal_evidence: PsionServedEvidenceBundle =
+        load_json(repo_root.join("fixtures/psion/serve/psion_served_evidence_refusal_v1.json"))?;
 
     let direct = direct_claim_posture(&capability_matrix, &direct_evidence)?;
     let executor = executor_claim_posture(&capability_matrix, &executor_evidence)?;
@@ -169,7 +167,9 @@ fn context_surface(
 ) -> PsionServedContextEnvelopeSurface {
     PsionServedContextEnvelopeSurface {
         supported_prompt_tokens: capability_matrix.context_envelope.supported_prompt_tokens,
-        supported_completion_tokens: capability_matrix.context_envelope.supported_completion_tokens,
+        supported_completion_tokens: capability_matrix
+            .context_envelope
+            .supported_completion_tokens,
         route_required_above_prompt_tokens: capability_matrix
             .context_envelope
             .route_required_above_prompt_tokens,
@@ -189,9 +189,7 @@ fn latency_surface(capability_matrix: &PsionCapabilityMatrix) -> PsionServedLate
         p95_first_token_latency_ms: capability_matrix
             .latency_envelope
             .p95_first_token_latency_ms,
-        p95_end_to_end_latency_ms: capability_matrix
-            .latency_envelope
-            .p95_end_to_end_latency_ms,
+        p95_end_to_end_latency_ms: capability_matrix.latency_envelope.p95_end_to_end_latency_ms,
         detail: capability_matrix.latency_envelope.detail.clone(),
     }
 }

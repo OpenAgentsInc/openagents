@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use psionic_eval::{
-    build_tassadar_full_core_wasm_public_acceptance_gate_report,
-    TassadarFullCoreWasmPublicAcceptanceStatus,
     TASSADAR_FULL_CORE_WASM_PUBLIC_ACCEPTANCE_GATE_REPORT_REF,
+    TassadarFullCoreWasmPublicAcceptanceStatus,
+    build_tassadar_full_core_wasm_public_acceptance_gate_report,
 };
 use psionic_research::TASSADAR_FULL_CORE_WASM_OPERATOR_RUNBOOK_V2_SUMMARY_REF;
 
@@ -68,8 +68,8 @@ pub fn tassadar_full_core_wasm_publication_decision() -> TassadarFullCoreWasmPub
     }
 }
 
-pub fn require_tassadar_full_core_wasm_publication(
-) -> Result<TassadarFullCoreWasmPublicationDecision, TassadarFullCoreWasmPublicationDecisionError> {
+pub fn require_tassadar_full_core_wasm_publication()
+-> Result<TassadarFullCoreWasmPublicationDecision, TassadarFullCoreWasmPublicationDecisionError> {
     let decision = tassadar_full_core_wasm_publication_decision();
     match decision.status {
         TassadarFullCoreWasmPublicationDecisionStatus::Published => Ok(decision),
@@ -89,9 +89,9 @@ pub fn require_tassadar_full_core_wasm_publication(
 #[cfg(test)]
 mod tests {
     use super::{
-        require_tassadar_full_core_wasm_publication, tassadar_full_core_wasm_publication_decision,
         TassadarFullCoreWasmPublicationDecisionError,
-        TassadarFullCoreWasmPublicationDecisionStatus,
+        TassadarFullCoreWasmPublicationDecisionStatus, require_tassadar_full_core_wasm_publication,
+        tassadar_full_core_wasm_publication_decision,
     };
 
     #[test]
@@ -102,12 +102,16 @@ mod tests {
             decision.status,
             TassadarFullCoreWasmPublicationDecisionStatus::Suppressed
         );
-        assert!(decision
-            .blocked_requirement_ids
-            .contains(&String::from("target_feature_family_coverage")));
-        assert!(decision
-            .blocked_requirement_ids
-            .contains(&String::from("cross_machine_harness_replay")));
+        assert!(
+            decision
+                .blocked_requirement_ids
+                .contains(&String::from("target_feature_family_coverage"))
+        );
+        assert!(
+            decision
+                .blocked_requirement_ids
+                .contains(&String::from("cross_machine_harness_replay"))
+        );
     }
 
     #[test]

@@ -8,23 +8,23 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use psionic_eval::{
-    build_tassadar_post_article_universality_portability_minimality_matrix_report,
     TassadarPostArticleUniversalityPortabilityMinimalityMatrixReport,
     TassadarPostArticleUniversalityPortabilityMinimalityMatrixReportError,
+    build_tassadar_post_article_universality_portability_minimality_matrix_report,
 };
 
 use crate::{
-    build_tassadar_article_cross_machine_reproducibility_publication,
-    build_tassadar_article_route_minimality_publication_verdict,
-    build_tassadar_broad_internal_compute_profile_publication,
+    TASSADAR_ARTICLE_CROSS_MACHINE_REPRODUCIBILITY_PUBLICATION_REF,
+    TASSADAR_ARTICLE_ROUTE_MINIMALITY_PUBLICATION_VERDICT_REF,
     TassadarArticleCrossMachineReproducibilityPublication,
     TassadarArticleCrossMachineReproducibilityPublicationError,
     TassadarArticleRouteMinimalityPublicationVerdict,
     TassadarArticleRouteMinimalityPublicationVerdictError,
     TassadarBroadInternalComputeProfilePublication,
     TassadarBroadInternalComputeProfilePublicationError,
-    TASSADAR_ARTICLE_CROSS_MACHINE_REPRODUCIBILITY_PUBLICATION_REF,
-    TASSADAR_ARTICLE_ROUTE_MINIMALITY_PUBLICATION_VERDICT_REF,
+    build_tassadar_article_cross_machine_reproducibility_publication,
+    build_tassadar_article_route_minimality_publication_verdict,
+    build_tassadar_broad_internal_compute_profile_publication,
 };
 
 pub const TASSADAR_POST_ARTICLE_UNIVERSALITY_SERVED_CONFORMANCE_ENVELOPE_REF: &str =
@@ -234,11 +234,11 @@ fn read_repo_json<T: for<'de> Deserialize<'de>>(
 #[cfg(test)]
 mod tests {
     use super::{
+        TASSADAR_POST_ARTICLE_UNIVERSALITY_SERVED_CONFORMANCE_ENVELOPE_REF,
+        TassadarPostArticleUniversalityServedConformanceEnvelope,
         build_tassadar_post_article_universality_served_conformance_envelope, read_repo_json,
         tassadar_post_article_universality_served_conformance_envelope_path,
         write_tassadar_post_article_universality_served_conformance_envelope,
-        TassadarPostArticleUniversalityServedConformanceEnvelope,
-        TASSADAR_POST_ARTICLE_UNIVERSALITY_SERVED_CONFORMANCE_ENVELOPE_REF,
     };
 
     #[test]
@@ -266,8 +266,8 @@ mod tests {
     }
 
     #[test]
-    fn post_article_universality_served_conformance_envelope_matches_committed_truth(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn post_article_universality_served_conformance_envelope_matches_committed_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
         let generated = build_tassadar_post_article_universality_served_conformance_envelope()?;
         let committed: TassadarPostArticleUniversalityServedConformanceEnvelope = read_repo_json(
             TASSADAR_POST_ARTICLE_UNIVERSALITY_SERVED_CONFORMANCE_ENVELOPE_REF,
@@ -278,8 +278,8 @@ mod tests {
     }
 
     #[test]
-    fn write_post_article_universality_served_conformance_envelope_persists_current_truth(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn write_post_article_universality_served_conformance_envelope_persists_current_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
         let directory = tempfile::tempdir()?;
         let output_path = directory
             .path()

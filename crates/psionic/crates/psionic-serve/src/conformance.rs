@@ -3131,13 +3131,15 @@ mod tests {
         case_id: &str,
         model: &str,
     ) -> Result<GenerateConformanceCase, Box<dyn std::error::Error>> {
-        Ok(GenerateConformanceCase::from_generate_compatible_prompt_fixture(
-            case_id,
-            model,
-            "gemma4_e4b",
-            "gemma4_e4b.default",
-            "gemma4_e4b.default_developer",
-        )?)
+        Ok(
+            GenerateConformanceCase::from_generate_compatible_prompt_fixture(
+                case_id,
+                model,
+                "gemma4_e4b",
+                "gemma4_e4b.default",
+                "gemma4_e4b.default_developer",
+            )?,
+        )
     }
 
     #[test]

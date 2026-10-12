@@ -77,7 +77,10 @@ pub struct PsionServedSourceReference {
 
 impl PsionServedSourceReference {
     fn validate(&self, field: &str) -> Result<(), PsionServedEvidenceError> {
-        ensure_nonempty(self.source_id.as_str(), format!("{field}.source_id").as_str())?;
+        ensure_nonempty(
+            self.source_id.as_str(),
+            format!("{field}.source_id").as_str(),
+        )?;
         ensure_nonempty(
             self.source_digest.as_str(),
             format!("{field}.source_digest").as_str(),
@@ -115,9 +118,11 @@ pub struct PsionServedRouteReceipt {
 impl PsionServedRouteReceipt {
     fn validate(&self) -> Result<(), PsionServedEvidenceError> {
         if self.route_kind == PsionRouteKind::Refusal {
-            return Err(PsionServedEvidenceError::UnsupportedRouteKindForRouteReceipt {
-                route_kind: route_kind_label(self.route_kind).to_string(),
-            });
+            return Err(
+                PsionServedEvidenceError::UnsupportedRouteKindForRouteReceipt {
+                    route_kind: route_kind_label(self.route_kind).to_string(),
+                },
+            );
         }
         let valid_mapping = match (self.route_kind, self.route_class) {
             (
@@ -126,10 +131,9 @@ impl PsionServedRouteReceipt {
                 | PsionRouteClass::AnswerWithUncertainty
                 | PsionRouteClass::RequestStructuredInputs,
             ) => true,
-            (
-                PsionRouteKind::ExactExecutorHandoff,
-                PsionRouteClass::DelegateToExactExecutor,
-            ) => true,
+            (PsionRouteKind::ExactExecutorHandoff, PsionRouteClass::DelegateToExactExecutor) => {
+                true
+            }
             _ => false,
         };
         if !valid_mapping {
@@ -225,10 +229,13 @@ impl PsionNoImplicitExecutionStatus {
             "psion_served_evidence_bundle.no_implicit_execution.detail",
         )?;
         if self.executor_surface_invoked {
-            let artifact = self.explicit_executor_artifact.as_ref().ok_or(
-                PsionServedEvidenceError::MissingExecutorArtifact,
+            let artifact = self
+                .explicit_executor_artifact
+                .as_ref()
+                .ok_or(PsionServedEvidenceError::MissingExecutorArtifact)?;
+            artifact.validate(
+                "psion_served_evidence_bundle.no_implicit_execution.explicit_executor_artifact",
             )?;
-            artifact.validate("psion_served_evidence_bundle.no_implicit_execution.explicit_executor_artifact")?;
         } else if self.explicit_executor_artifact.is_some() {
             return Err(PsionServedEvidenceError::UnexpectedExecutorArtifact);
         }
@@ -499,7 +506,10 @@ impl PsionServedEvidenceBundle {
             if !self.no_implicit_execution.executor_surface_invoked {
                 return Err(PsionServedEvidenceError::MissingExecutorArtifact);
             }
-            if self.no_implicit_execution.explicit_executor_artifact.as_ref()
+            if self
+                .no_implicit_execution
+                .explicit_executor_artifact
+                .as_ref()
                 != Some(executor_artifact)
             {
                 return Err(PsionServedEvidenceError::ExecutorArtifactMismatch);
@@ -513,7 +523,11 @@ impl PsionServedEvidenceBundle {
             if self.no_implicit_execution.executor_surface_invoked {
                 return Err(PsionServedEvidenceError::MissingExecutorArtifact);
             }
-            if self.no_implicit_execution.explicit_executor_artifact.is_some() {
+            if self
+                .no_implicit_execution
+                .explicit_executor_artifact
+                .is_some()
+            {
                 return Err(PsionServedEvidenceError::UnexpectedExecutorArtifact);
             }
         }
@@ -579,7 +593,8 @@ impl PsionServedEvidenceBundle {
                     .as_str(),
                 "psion_served_evidence_bundle.refusal_receipt.refusal_calibration_receipt_id",
             )?;
-            let region = capability_region(capability_matrix, refusal_receipt.capability_region_id)?;
+            let region =
+                capability_region(capability_matrix, refusal_receipt.capability_region_id)?;
             if !matches!(
                 region.posture,
                 PsionCapabilityPosture::RefusalRequired | PsionCapabilityPosture::Unsupported
@@ -590,7 +605,10 @@ impl PsionServedEvidenceBundle {
                     actual: capability_posture_label(region.posture).to_string(),
                 });
             }
-            if !region.refusal_reasons.contains(&refusal_receipt.refusal_reason) {
+            if !region
+                .refusal_reasons
+                .contains(&refusal_receipt.refusal_reason)
+            {
                 return Err(PsionServedEvidenceError::RefusalReasonNotPublished {
                     region_id: refusal_receipt.capability_region_id.as_str().to_string(),
                     reason: refusal_reason_label(refusal_receipt.refusal_reason).to_string(),
@@ -652,34 +670,54 @@ pub enum PsionServedEvidenceError {
     SchemaVersionMismatch { expected: String, actual: String },
     #[error("Psion served-evidence bundle must carry either a route receipt or a refusal receipt")]
     MissingRouteOrRefusal,
-    #[error("Psion served-evidence bundle may not carry both a route receipt and a refusal receipt")]
+    #[error(
+        "Psion served-evidence bundle may not carry both a route receipt and a refusal receipt"
+    )]
     RouteAndRefusalBothPresent,
-    #[error("Psion served-evidence bundle requires at least one evidence label when no refusal receipt is present")]
+    #[error(
+        "Psion served-evidence bundle requires at least one evidence label when no refusal receipt is present"
+    )]
     MissingEvidenceLabels,
     #[error("Psion served-evidence bundle repeats evidence kind `{kind}`")]
     DuplicateEvidenceKind { kind: String },
     #[error("Psion served-evidence bundle route receipt may not use route kind `{route_kind}`")]
     UnsupportedRouteKindForRouteReceipt { route_kind: String },
-    #[error("Psion served-evidence bundle route kind `{route_kind}` does not match route class `{route_class}`")]
+    #[error(
+        "Psion served-evidence bundle route kind `{route_kind}` does not match route class `{route_class}`"
+    )]
     InvalidRouteClassMapping {
         route_kind: String,
         route_class: String,
     },
     #[error("Psion served-evidence bundle executor-backed results require exact-executor handoff")]
     ExecutorEvidenceRequiresExactExecutorHandoff,
-    #[error("Psion served-evidence bundle exact-executor handoff requires executor-backed evidence")]
+    #[error(
+        "Psion served-evidence bundle exact-executor handoff requires executor-backed evidence"
+    )]
     ExactExecutorHandoffRequiresExecutorEvidence,
-    #[error("Psion served-evidence bundle refusal receipts may not also imply executor-backed results")]
+    #[error(
+        "Psion served-evidence bundle refusal receipts may not also imply executor-backed results"
+    )]
     RefusalCannotCarryExecutorEvidence,
-    #[error("Psion served-evidence bundle no-implicit-execution posture must require an explicit surface")]
+    #[error(
+        "Psion served-evidence bundle no-implicit-execution posture must require an explicit surface"
+    )]
     NoImplicitExecutionMustRequireExplicitSurface,
-    #[error("Psion served-evidence bundle executor surface invocation is missing its artifact reference")]
+    #[error(
+        "Psion served-evidence bundle executor surface invocation is missing its artifact reference"
+    )]
     MissingExecutorArtifact,
-    #[error("Psion served-evidence bundle unexpectedly carries executor artifact reference without executor-backed evidence")]
+    #[error(
+        "Psion served-evidence bundle unexpectedly carries executor artifact reference without executor-backed evidence"
+    )]
     UnexpectedExecutorArtifact,
-    #[error("Psion served-evidence bundle executor artifact reference does not match executor-backed evidence")]
+    #[error(
+        "Psion served-evidence bundle executor artifact reference does not match executor-backed evidence"
+    )]
     ExecutorArtifactMismatch,
-    #[error("Psion served-evidence bundle capability matrix mismatch for `{field}`: expected `{expected}`, got `{actual}`")]
+    #[error(
+        "Psion served-evidence bundle capability matrix mismatch for `{field}`: expected `{expected}`, got `{actual}`"
+    )]
     CapabilityMatrixMismatch {
         field: String,
         expected: String,
@@ -687,17 +725,18 @@ pub enum PsionServedEvidenceError {
     },
     #[error("Psion served-evidence bundle references unknown capability region `{region_id}`")]
     UnknownCapabilityRegion { region_id: String },
-    #[error("Psion served-evidence bundle expected capability posture `{expected}` for region `{region_id}` but found `{actual}`")]
+    #[error(
+        "Psion served-evidence bundle expected capability posture `{expected}` for region `{region_id}` but found `{actual}`"
+    )]
     CapabilityPostureMismatch {
         region_id: String,
         expected: String,
         actual: String,
     },
-    #[error("Psion served-evidence bundle refusal reason `{reason}` is not published for region `{region_id}`")]
-    RefusalReasonNotPublished {
-        region_id: String,
-        reason: String,
-    },
+    #[error(
+        "Psion served-evidence bundle refusal reason `{reason}` is not published for region `{region_id}`"
+    )]
+    RefusalReasonNotPublished { region_id: String, reason: String },
     #[error("Psion served-evidence bundle digest mismatch: expected `{expected}`, got `{actual}`")]
     DigestMismatch { expected: String, actual: String },
 }
@@ -757,7 +796,11 @@ fn stable_psion_served_evidence_bundle_digest(bundle: &PsionServedEvidenceBundle
         hasher.update(route_receipt.route_boundary_ref.as_bytes());
         hasher.update(route_receipt.route_calibration_receipt_id.as_bytes());
         hasher.update(route_receipt.route_class_evaluation_receipt_id.as_bytes());
-        hasher.update(route_receipt.route_class_evaluation_receipt_digest.as_bytes());
+        hasher.update(
+            route_receipt
+                .route_class_evaluation_receipt_digest
+                .as_bytes(),
+        );
         hasher.update(route_receipt.detail.as_bytes());
     } else {
         hasher.update(b"no_route|");
@@ -769,7 +812,11 @@ fn stable_psion_served_evidence_bundle_digest(bundle: &PsionServedEvidenceBundle
         hasher.update(refusal_reason_label(refusal_receipt.refusal_reason).as_bytes());
         hasher.update(refusal_receipt.refusal_boundary_ref.as_bytes());
         hasher.update(refusal_receipt.refusal_calibration_receipt_id.as_bytes());
-        hasher.update(refusal_receipt.refusal_calibration_receipt_digest.as_bytes());
+        hasher.update(
+            refusal_receipt
+                .refusal_calibration_receipt_digest
+                .as_bytes(),
+        );
         hasher.update(refusal_receipt.detail.as_bytes());
     } else {
         hasher.update(b"no_refusal|");
@@ -794,7 +841,11 @@ fn stable_psion_served_evidence_bundle_digest(bundle: &PsionServedEvidenceBundle
         }
         .as_bytes(),
     );
-    if let Some(artifact) = bundle.no_implicit_execution.explicit_executor_artifact.as_ref() {
+    if let Some(artifact) = bundle
+        .no_implicit_execution
+        .explicit_executor_artifact
+        .as_ref()
+    {
         hasher.update(artifact.artifact_id.as_bytes());
         hasher.update(artifact.artifact_digest.as_bytes());
     } else {
@@ -883,12 +934,8 @@ fn refusal_reason_label(reason: PsionCapabilityRefusalReason) -> &'static str {
         PsionCapabilityRefusalReason::UnsupportedExactnessRequest => {
             "unsupported_exactness_request"
         }
-        PsionCapabilityRefusalReason::MissingRequiredConstraints => {
-            "missing_required_constraints"
-        }
-        PsionCapabilityRefusalReason::UnsupportedContextLength => {
-            "unsupported_context_length"
-        }
+        PsionCapabilityRefusalReason::MissingRequiredConstraints => "missing_required_constraints",
+        PsionCapabilityRefusalReason::UnsupportedContextLength => "unsupported_context_length",
         PsionCapabilityRefusalReason::CurrentnessOrRunArtifactDependency => {
             "currentness_or_run_artifact_dependency"
         }

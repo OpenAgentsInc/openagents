@@ -10,14 +10,14 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use psionic_eval::{
-    build_tassadar_article_fixture_transformer_parity_report,
+    TASSADAR_ARTICLE_FIXTURE_TRANSFORMER_PARITY_REPORT_REF,
     TassadarArticleFixtureTransformerParityCaseRow, TassadarArticleFixtureTransformerParityError,
     TassadarArticleFixtureTransformerParityReport,
-    TASSADAR_ARTICLE_FIXTURE_TRANSFORMER_PARITY_REPORT_REF,
+    build_tassadar_article_fixture_transformer_parity_report,
 };
 use psionic_models::TassadarArticleTransformer;
 use psionic_router::{
-    bind_tassadar_direct_model_weight_route, TassadarDirectModelWeightRouteBindingError,
+    TassadarDirectModelWeightRouteBindingError, bind_tassadar_direct_model_weight_route,
 };
 use psionic_runtime::{
     TassadarDirectModelWeightExecutionProofError, TassadarDirectModelWeightExecutionProofInput,
@@ -170,7 +170,9 @@ pub enum TassadarDirectModelWeightExecutionProofReportError {
         "fixture-to-Transformer parity report did not certify canonical proof case `{case_id}`: {detail}"
     )]
     ParityCaseNotCertified { case_id: String, detail: String },
-    #[error("trained trace-bound lineage contract mismatched the committed descriptor or artifact refs: {detail}")]
+    #[error(
+        "trained trace-bound lineage contract mismatched the committed descriptor or artifact refs: {detail}"
+    )]
     LineageContractMismatch { detail: String },
     #[error("article session `{case_id}` did not complete: {detail}")]
     CaseDidNotComplete { case_id: String, detail: String },
@@ -367,7 +369,11 @@ pub fn build_tassadar_direct_model_weight_execution_proof_report() -> Result<
             }
         })?;
     let model_descriptor_digest = capability_publication.model_descriptor.stable_digest();
-    let model_weight_bundle_digest = capability_publication.model_descriptor.weights.digest.clone();
+    let model_weight_bundle_digest = capability_publication
+        .model_descriptor
+        .weights
+        .digest
+        .clone();
     let model_primary_artifact_digest = capability_publication
         .model_descriptor
         .weights
@@ -469,7 +475,11 @@ pub fn build_tassadar_direct_model_weight_execution_proof_report() -> Result<
         receipts.push(receipt);
     }
     Ok(TassadarDirectModelWeightExecutionProofReport::new(
-        capability_publication.model_descriptor.model.model_id.clone(),
+        capability_publication
+            .model_descriptor
+            .model
+            .model_id
+            .clone(),
         model_descriptor_digest,
         parity_report.fixture_model_id,
         String::from(TASSADAR_ARTICLE_FIXTURE_TRANSFORMER_PARITY_REPORT_REF),
@@ -596,8 +606,8 @@ fn ensure_case_is_certified_for_transformer_direct_proof(
     Ok(())
 }
 
-fn read_trained_trace_bound_lineage_contract_digest(
-) -> Result<(String, String), TassadarDirectModelWeightExecutionProofReportError> {
+fn read_trained_trace_bound_lineage_contract_digest()
+-> Result<(String, String), TassadarDirectModelWeightExecutionProofReportError> {
     let path = TassadarArticleTransformer::trained_trace_bound_lineage_contract_path();
     let bytes = fs::read(&path).map_err(|error| {
         TassadarDirectModelWeightExecutionProofReportError::Read {
@@ -682,13 +692,13 @@ fn read_repo_json<T: DeserializeOwned>(
 #[cfg(test)]
 mod tests {
     use super::{
+        TASSADAR_DIRECT_MODEL_WEIGHT_EXECUTION_PROOF_REPORT_REF,
+        TassadarDirectModelWeightExecutionProofReport,
+        TassadarDirectModelWeightExecutionProofReportError,
         build_tassadar_direct_model_weight_execution_proof_report,
         ensure_case_is_certified_for_transformer_direct_proof, read_repo_json,
         tassadar_direct_model_weight_execution_proof_report_path,
         write_tassadar_direct_model_weight_execution_proof_report,
-        TassadarDirectModelWeightExecutionProofReport,
-        TassadarDirectModelWeightExecutionProofReportError,
-        TASSADAR_DIRECT_MODEL_WEIGHT_EXECUTION_PROOF_REPORT_REF,
     };
     use psionic_eval::build_tassadar_article_fixture_transformer_parity_report;
     use psionic_models::TassadarArticleTransformer;
@@ -720,23 +730,31 @@ mod tests {
         );
         assert!(report.case_ids.contains(&String::from("long_loop_kernel")));
         assert!(report.case_ids.contains(&String::from("sudoku_v0_test_a")));
-        assert!(report
-            .case_ids
-            .contains(&String::from("hungarian_matching")));
-        assert!(report
-            .receipts
-            .iter()
-            .all(|receipt| receipt.route_binding.route_descriptor_digest
-                == report.route_descriptor_digest));
-        assert!(report
-            .receipts
-            .iter()
-            .all(|receipt| receipt.model_id == report.model_id));
-        assert!(report
-            .receipts
-            .iter()
-            .all(|receipt| receipt.model_weight_bundle_digest
-                == report.receipts[0].model_weight_bundle_digest));
+        assert!(
+            report
+                .case_ids
+                .contains(&String::from("hungarian_matching"))
+        );
+        assert!(
+            report
+                .receipts
+                .iter()
+                .all(|receipt| receipt.route_binding.route_descriptor_digest
+                    == report.route_descriptor_digest)
+        );
+        assert!(
+            report
+                .receipts
+                .iter()
+                .all(|receipt| receipt.model_id == report.model_id)
+        );
+        assert!(
+            report
+                .receipts
+                .iter()
+                .all(|receipt| receipt.model_weight_bundle_digest
+                    == report.receipts[0].model_weight_bundle_digest)
+        );
         assert!(report.receipts.iter().all(|receipt| {
             receipt.model_lineage_contract_ref == report.lineage_contract_ref
                 && receipt.model_id == report.model_id

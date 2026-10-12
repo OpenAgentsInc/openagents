@@ -3,8 +3,7 @@ use std::{fs, path::Path};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const PSION_FAMILY_SERVE_VOCABULARY_SCHEMA_VERSION: &str =
-    "psion.family_serve_vocabulary.v1";
+pub const PSION_FAMILY_SERVE_VOCABULARY_SCHEMA_VERSION: &str = "psion.family_serve_vocabulary.v1";
 pub const PSION_FAMILY_SERVE_VOCABULARY_FIXTURE_PATH: &str =
     "fixtures/psion/serve/psion_family_serve_vocabulary_v1.json";
 
@@ -46,7 +45,10 @@ impl PsionFamilyServeVocabularyPacket {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::write(path, serde_json::to_vec_pretty(self).expect("serialize packet"))?;
+        fs::write(
+            path,
+            serde_json::to_vec_pretty(self).expect("serialize packet"),
+        )?;
         Ok(())
     }
 }
@@ -166,7 +168,8 @@ mod tests {
     #[test]
     fn family_serve_vocabulary_fixture_matches_builtin_truth() {
         let expected = builtin_psion_family_serve_vocabulary_packet();
-        let fixture = include_str!("../../../fixtures/psion/serve/psion_family_serve_vocabulary_v1.json");
+        let fixture =
+            include_str!("../../../fixtures/psion/serve/psion_family_serve_vocabulary_v1.json");
         let actual: PsionFamilyServeVocabularyPacket =
             serde_json::from_str(fixture).expect("parse family serve vocabulary fixture");
         assert_eq!(actual, expected);

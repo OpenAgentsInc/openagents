@@ -8,14 +8,13 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use psionic_research::{
-    build_tassadar_post_article_plugin_runtime_api_and_engine_abstraction_summary,
+    TASSADAR_POST_ARTICLE_PLUGIN_RUNTIME_API_AND_ENGINE_ABSTRACTION_SUMMARY_REF,
     TassadarPostArticlePluginRuntimeApiAndEngineAbstractionSummary,
     TassadarPostArticlePluginRuntimeApiAndEngineAbstractionSummaryError,
-    TASSADAR_POST_ARTICLE_PLUGIN_RUNTIME_API_AND_ENGINE_ABSTRACTION_SUMMARY_REF,
+    build_tassadar_post_article_plugin_runtime_api_and_engine_abstraction_summary,
 };
 
-pub const TASSADAR_POST_ARTICLE_PLUGIN_RUNTIME_API_AND_ENGINE_ABSTRACTION_PUBLICATION_REF: &str =
-    "fixtures/tassadar/reports/tassadar_post_article_plugin_runtime_api_and_engine_abstraction_publication.json";
+pub const TASSADAR_POST_ARTICLE_PLUGIN_RUNTIME_API_AND_ENGINE_ABSTRACTION_PUBLICATION_REF: &str = "fixtures/tassadar/reports/tassadar_post_article_plugin_runtime_api_and_engine_abstraction_publication.json";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TassadarPostArticlePluginRuntimeApiAndEngineAbstractionPublication {
@@ -160,16 +159,16 @@ fn stable_digest<T: Serialize>(prefix: &[u8], value: &T) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
+        TASSADAR_POST_ARTICLE_PLUGIN_RUNTIME_API_AND_ENGINE_ABSTRACTION_PUBLICATION_REF,
+        TassadarPostArticlePluginRuntimeApiAndEngineAbstractionPublication,
         build_tassadar_post_article_plugin_runtime_api_and_engine_abstraction_publication,
         tassadar_post_article_plugin_runtime_api_and_engine_abstraction_publication_path,
         write_tassadar_post_article_plugin_runtime_api_and_engine_abstraction_publication,
-        TassadarPostArticlePluginRuntimeApiAndEngineAbstractionPublication,
-        TASSADAR_POST_ARTICLE_PLUGIN_RUNTIME_API_AND_ENGINE_ABSTRACTION_PUBLICATION_REF,
     };
 
     #[test]
-    fn post_article_plugin_runtime_api_publication_keeps_served_surface_blocked(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn post_article_plugin_runtime_api_publication_keeps_served_surface_blocked()
+    -> Result<(), Box<dyn std::error::Error>> {
         let publication =
             build_tassadar_post_article_plugin_runtime_api_and_engine_abstraction_publication()?;
 
@@ -198,8 +197,8 @@ mod tests {
     }
 
     #[test]
-    fn post_article_plugin_runtime_api_publication_matches_committed_truth(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn post_article_plugin_runtime_api_publication_matches_committed_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
         let generated =
             build_tassadar_post_article_plugin_runtime_api_and_engine_abstraction_publication()?;
         let committed: TassadarPostArticlePluginRuntimeApiAndEngineAbstractionPublication =
@@ -217,8 +216,8 @@ mod tests {
     }
 
     #[test]
-    fn write_post_article_plugin_runtime_api_publication_persists_current_truth(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn write_post_article_plugin_runtime_api_publication_persists_current_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
         let directory = tempfile::tempdir()?;
         let output_path = directory.path().join(
             "tassadar_post_article_plugin_runtime_api_and_engine_abstraction_publication.json",

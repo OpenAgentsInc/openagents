@@ -65,13 +65,20 @@ fn run() -> Result<(), String> {
                 metadata.shape.dims()
             ));
         };
-        let row_byte_len =
-            quantized_row_byte_len(&metadata.shape, metadata.quantized_layout.ok_or_else(|| {
-                format!("tensor `{tensor_name}` is not quantized")
-            })?)
-            .map_err(|error| format!("failed to resolve row byte length for `{tensor_name}`: {error}"))?;
+        let row_byte_len = quantized_row_byte_len(
+            &metadata.shape,
+            metadata
+                .quantized_layout
+                .ok_or_else(|| format!("tensor `{tensor_name}` is not quantized"))?,
+        )
+        .map_err(|error| {
+            format!("failed to resolve row byte length for `{tensor_name}`: {error}")
+        })?;
         let mode = metadata.quantization;
-        if columns.replace(*cols).is_some_and(|expected_cols| expected_cols != *cols) {
+        if columns
+            .replace(*cols)
+            .is_some_and(|expected_cols| expected_cols != *cols)
+        {
             return Err(format!(
                 "tensor `{tensor_name}` width mismatch: expected {}, actual {}",
                 columns.unwrap_or(*cols),
@@ -106,8 +113,9 @@ fn run() -> Result<(), String> {
             .map_err(|error| format!("failed to read tensor `{tensor_name}` bytes: {error}"))?;
         for (local_row_index, row_bytes) in bytes.chunks_exact(row_byte_len).enumerate() {
             let mut decoded = Vec::new();
-            decode_quantized_row_into(mode, row_bytes, &mut decoded)
-                .map_err(|error| format!("failed to decode `{tensor_name}` row {local_row_index}: {error}"))?;
+            decode_quantized_row_into(mode, row_bytes, &mut decoded).map_err(|error| {
+                format!("failed to decode `{tensor_name}` row {local_row_index}: {error}")
+            })?;
             if decoded.len() != *cols {
                 return Err(format!(
                     "decoded `{tensor_name}` row {local_row_index} width mismatch: expected {cols}, actual {}",
@@ -119,9 +127,7 @@ fn run() -> Result<(), String> {
             for (column_index, value) in decoded.iter().copied().enumerate() {
                 let offset = column_index
                     .saturating_mul(
-                        transposed.len()
-                            / columns.unwrap_or(*cols)
-                            / std::mem::size_of::<u16>(),
+                        transposed.len() / columns.unwrap_or(*cols) / std::mem::size_of::<u16>(),
                     )
                     .saturating_add(packed_row_index)
                     .saturating_mul(std::mem::size_of::<u16>());
@@ -186,7 +192,10 @@ fn f16_roundtrip(value: f32) -> f32 {
 }
 
 fn dot(left: &[f32], right: &[f32]) -> f32 {
-    left.iter().zip(right.iter()).map(|(left, right)| left * right).sum()
+    left.iter()
+        .zip(right.iter())
+        .map(|(left, right)| left * right)
+        .sum()
 }
 
 fn f32_to_f16_bits(value: f32) -> u16 {

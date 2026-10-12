@@ -190,8 +190,8 @@ pub fn seeded_tassadar_module_install_receipts() -> Vec<TassadarStagedModuleInst
 #[cfg(test)]
 mod tests {
     use super::{
-        seeded_tassadar_module_install_receipts, tassadar_module_installation_publication,
         EXECUTOR_MODULE_INSTALL_PRODUCT_ID, TassadarModuleInstallStage,
+        seeded_tassadar_module_install_receipts, tassadar_module_installation_publication,
     };
 
     #[test]
@@ -199,9 +199,11 @@ mod tests {
         let publication = tassadar_module_installation_publication();
 
         assert_eq!(publication.product_id, EXECUTOR_MODULE_INSTALL_PRODUCT_ID);
-        assert!(publication
-            .trusted_module_classes
-            .contains(&String::from("candidate_select_core")));
+        assert!(
+            publication
+                .trusted_module_classes
+                .contains(&String::from("candidate_select_core"))
+        );
         assert_eq!(publication.supported_scopes.len(), 2);
         assert!(!publication.benchmark_refs.is_empty());
     }
