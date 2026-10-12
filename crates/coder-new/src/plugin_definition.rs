@@ -155,7 +155,7 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
     PluginDefinition {
         id: crate::claude::PLUGIN,
         name: "Claude Code",
-        description: "Claude Code inside Coder on this computer's Claude sign-in: its whole toolset, your settings and skills, and Coder's delegation tools. Shift+Tab switches to it.",
+        description: "Claude Code inside Coder on this computer's Claude sign-in: its whole toolset, your settings and skills, and Coder's delegation tools. When it is on, new chats run on it.",
         default_enabled: true,
         tools: &[],
         model_provider: None,

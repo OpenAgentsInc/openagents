@@ -42,14 +42,15 @@ use crate::bundled_runtime::RuntimeEvent;
 pub const LABEL: &str = "claude";
 
 /// The plugin that offers the mode, in /plugins and `bundled-plugins.json`.
-/// It turns on only on a computer signed in to Claude Code, and Shift+Tab
-/// offers the mode only while it is on.
+/// It turns on only on a computer signed in to Claude Code, and new chats
+/// run on the Claude Code harness only while it is on.
 pub const PLUGIN: &str = "claude-code";
 
 /// What /plugins says when the plugin cannot turn on here.
 pub const SIGN_IN_FIRST: &str = "Sign in to Claude Code first";
 
-/// What Shift+Tab says on a computer with no Claude account login.
+/// What `coder chat --mode claude` says on a computer with no Claude
+/// account login.
 pub const NEEDS_LOGIN: &str = "claude needs Claude Code signed in on this computer.";
 
 /// The model a claude turn runs before the person picks one, and the one

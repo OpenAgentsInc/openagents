@@ -27,7 +27,7 @@ macro_rules! command_usage {
             "usage: openagents coder COMMAND [OPTIONS]
   status                              Provider, model, plugins, and working directory.
   chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID]
-       [--instructions TEXT | --instructions-file FILE] [--mode auto|coder|claude]
+       [--instructions TEXT | --instructions-file FILE] [--mode auto|coder]
        [--in-place]",
             $demo,
             "
@@ -539,10 +539,10 @@ fn status(app: &App, context: &Context) -> Value {
         "openrouter_connected":app.plugins.key_configured,"plugins":plugin_list(app),"agents":agent_list(app)})
 }
 
-/// The mode's name: `claude` runs turns here rather than through a
-/// model the plugin chose.
+/// The chat's kind for `status`: `claude` when its turns run on Claude
+/// Code rather than through a model the plugin chose.
 fn mode_name(app: &App) -> &'static str {
-    if app.mode == crate::Mode::Claude {
+    if app.on_claude() {
         crate::claude::LABEL
     } else {
         "live"
@@ -550,7 +550,7 @@ fn mode_name(app: &App) -> &'static str {
 }
 
 fn active_model(app: &App) -> String {
-    if app.mode == crate::Mode::Claude {
+    if app.on_claude() {
         crate::claude::choice().model
     } else if app.plugins.enabled
         && app.plugins.key_configured
@@ -966,23 +966,26 @@ pub(crate) fn chat(
     let mut args = args.to_vec();
     let session = take_option(&mut args, "--session")?.unwrap_or_else(new_id);
     let delegation = take_option(&mut args, "--delegation")?;
-    // claude: turns on this computer's Claude Code login, as Shift+Tab
-    // picks in the terminal.
-    match take_option(&mut args, "--mode")?.as_deref() {
-        None | Some("auto" | "coder") => {}
+    // A turn runs on the harness the selector picks for the chat (#11453):
+    // `auto` (the default) leaves it to the selector, and `coder` pins
+    // Coder's own loop. `claude` is a hidden alias, kept for one release,
+    // that pins Claude Code on this computer's login.
+    let pin = match take_option(&mut args, "--mode")?.as_deref() {
+        None | Some("auto") => None,
+        Some("coder") => Some(crate::harness_plugin::Harness::CoderLoop),
         Some("claude") if app.plugins.bundled.enabled(crate::claude::PLUGIN) => {
-            app.set_mode(Mode::Claude);
+            Some(crate::harness_plugin::Harness::ClaudeCode)
         }
         Some("claude") if !crate::claude::available() => {
             return Err(Error::from(crate::claude::NEEDS_LOGIN));
         }
         Some("claude") => {
             return Err(Error::from(
-                "Turn on the Claude Code plugin in /plugins to use claude mode.",
+                "Turn on the Claude Code plugin in /plugins to run on Claude Code.",
             ));
         }
-        Some(_) => return Err(usage("--mode takes auto, coder, or claude.")),
-    }
+        Some(_) => return Err(usage("--mode takes auto or coder.")),
+    };
     let prompt = take_option(&mut args, "-p")?.or(take_option(&mut args, "--prompt")?);
     let file = take_option(&mut args, "--prompt-file")?;
     let instructions = match (
@@ -1034,6 +1037,11 @@ pub(crate) fn chat(
         let document = lease.read()?;
         trajectory::restore_app(app, &document)?;
         saved_document = Some(document);
+    }
+    // A pin holds for this turn and the chat's follow-ups; without one, a
+    // continued chat stays on its harness and a new one is routed.
+    if pin.is_some() {
+        app.live.runs_on = pin;
     }
     // Each session works in its own worktree (#11372); the folder it was
     // started from stays read-only for it.

@@ -15,8 +15,8 @@ pub const AUTO_LABEL: &str = "coder";
 /// The OpenAgents inference gateway's own router, the first door of an
 /// `auto` turn when the person is signed in (docs/inference/providers.md).
 pub const GATEWAY_AUTO: &str = "openagents/auto";
-/// The `openrouter` mode Shift+Tab switches to: DeepSeek V4.1 Flash on the
-/// person's own OpenRouter key. The input shows only `openrouter`.
+/// DeepSeek V4.1 Flash on the person's own OpenRouter key, a model /models
+/// offers.
 pub const OPENROUTER: &str = "deepseek/deepseek-v4.1-flash";
 pub const OPENROUTER_LABEL: &str = "openrouter";
 pub const SHORTLIST: [&str; 7] = [

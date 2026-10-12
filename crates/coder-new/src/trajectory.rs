@@ -182,6 +182,11 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
     if let Some(session) = &chat.claude_session {
         result["extra"]["claude_session"] = json!({"id": session.id, "users": session.users});
     }
+    // The harness plugin the chat runs on (#11453), so a reopened chat's
+    // follow-ups stay on it.
+    if let Some(harness) = chat.runs_on {
+        result["extra"]["runs_on"] = serde_json::to_value(harness).unwrap_or_default();
+    }
     // Context management (#11286): the peak the model read, whether old
     // outputs were stubbed, and how many summaries were written.
     if chat.peak_context_tokens > 0 {
@@ -653,6 +658,16 @@ pub fn from_document(value: &Value) -> Result<Chat, String> {
                 .and_then(Value::as_u64)
                 .map_or(0, |users| users as usize),
         });
+    // A chat saved before harness plugins ran on Claude Code when it holds
+    // a Claude Code session.
+    chat.runs_on = value
+        .pointer("/extra/runs_on")
+        .and_then(|harness| serde_json::from_value(harness.clone()).ok())
+        .or_else(|| {
+            chat.claude_session
+                .is_some()
+                .then_some(crate::harness_plugin::Harness::ClaudeCode)
+        });
     Ok(chat)
 }
 
@@ -745,6 +760,17 @@ mod tests {
         assert!(atif::validate(&document).is_empty());
         let mut restored = from_document(&document).unwrap();
         assert_eq!(restored.claude_session, chat.claude_session);
+        // A chat saved before harness plugins stays on Claude Code.
+        assert_eq!(
+            restored.runs_on,
+            Some(crate::harness_plugin::Harness::ClaudeCode)
+        );
+        // A chat that names its harness keeps it.
+        let mut on_loop = Chat::default();
+        on_loop.runs_on = Some(crate::harness_plugin::Harness::CoderLoop);
+        let saved = super::document(&on_loop, "test", "auto", Path::new("/workspace"));
+        assert_eq!(saved["extra"]["runs_on"], "coder-loop");
+        assert_eq!(from_document(&saved).unwrap().runs_on, on_loop.runs_on);
 
         // The next message continues the session.
         restored.entries.push(Entry::User("now the docs".into()));

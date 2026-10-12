@@ -271,7 +271,7 @@ impl Plugins {
     }
 
     /// Switch to `id` with the current options, turning the OpenRouter
-    /// plugin on when `on` (Shift+Tab's coder/openrouter switch).
+    /// plugin on when `on` (a model picked in /models).
     pub fn switch_model(&mut self, id: &str, on: bool) -> bool {
         let enabled = self.enabled || on;
         let options = self.options.clone();
@@ -455,7 +455,6 @@ impl Plugins {
                 ..self.bundled.gce.clone()
             },
             cloud_root: self.bundled.cloud_root(),
-            remote_targets: Default::default(),
             microcoder: self.bundled.microcoder,
             cli: self.bundled.cli,
             acp: self.bundled.acp,

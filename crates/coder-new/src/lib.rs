@@ -117,14 +117,12 @@ pub enum Screen {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
     Demo,
+    /// The chat. Each turn runs on the harness plugin its chat was routed
+    /// to ([`harness_plugin`]): Claude Code or Coder's own loop. There is
+    /// no mode for either (#11453).
     Live,
-    /// Turns run on the Claude Code login this computer holds
-    /// ([`claude`]). Offered only where this process found that
-    /// login, because finding it starts `claude auth status`.
-    Claude,
     /// Four constrained agents take an issue to a pull request
-    /// ([`solver`]). Not a mode Shift+Tab offers; `coder solver N`
-    /// enters it to watch the run.
+    /// ([`solver`]). `coder solver N` enters it to watch the run.
     Solver,
 }
 
@@ -581,7 +579,7 @@ impl App {
         self.plugins.set_live(mode == Mode::Live);
         self.mode = mode;
         self.screen = Screen::Conversation;
-        // Switching mode (Shift+Tab) leaves the transcript where the reader
+        // Switching mode (/demo) leaves the transcript where the reader
         // left it: a chat scrolled back stays scrolled back, and one
         // following the newest output keeps following it.
         self.notice = None;
@@ -601,14 +599,12 @@ impl App {
         slash::matches(&self.draft.text)
             .into_iter()
             .filter(|command| {
-                *command != slash::Command::Models
-                    || self.plugins.enabled
-                    || self.mode == Mode::Claude
+                *command != slash::Command::Models || self.plugins.enabled || self.on_claude()
             })
             // Saving chats to the account needs a sign-in (#11046).
             .filter(|command| *command != slash::Command::Sync || self.account.is_some())
             // Background agents run in live mode only (#11163).
-            .filter(|command| *command != slash::Command::Agents || self.mode == Mode::Live)
+            .filter(|command| *command != slash::Command::Agents || self.on_coder_loop())
             // Long sessions and background work are live only (#11179, #11177).
             .filter(|command| {
                 !matches!(
@@ -617,7 +613,7 @@ impl App {
                         | slash::Command::Loop
                         | slash::Command::Schedule
                         | slash::Command::Shells
-                ) || self.mode == Mode::Live
+                ) || self.on_coder_loop()
             })
             // Offer only the sign-in step that applies (#11045).
             .filter(|command| *command != slash::Command::Login || self.account.is_none())
@@ -629,14 +625,24 @@ impl App {
             .collect()
     }
 
-    /// In claude mode, a slash command Coder does not run there goes to
+    /// In a Claude Code chat, a slash command Coder does not run there goes to
     /// Claude Code as the message, and Claude Code expands it (#11439): a
     /// skill such as `/review`, `/compact`, `/config KEY=VALUE`, `/loop`,
     /// and the rest. `/model NAME` picks the mode's model as /models does.
     /// Coder's own commands keep their meaning. Returns whether it took the
     /// draft.
     fn claude_slash(&mut self) -> bool {
-        if self.mode != Mode::Claude {
+        // A new chat's first message can be a Claude Code command too, when
+        // the selector would route the chat there.
+        let claude = self.on_claude()
+            || (self.mode == Mode::Live
+                && self.live.runs_on.is_none()
+                && self.selected_agent.is_none()
+                && self.draft.text.trim_start().starts_with('/')
+                && harness_plugin::fixed_rule(&harness_plugin::candidates(
+                    &harness_plugin::Facts::read(self),
+                )) == harness_plugin::Harness::ClaudeCode);
+        if !claude {
             return false;
         }
         let text = self.draft.text.trim().to_owned();
@@ -786,7 +792,7 @@ impl App {
     }
 
     pub fn check_key(&mut self) {
-        if self.mode != Mode::Live {
+        if !self.on_coder_loop() {
             return;
         }
         if self.live.busy {
@@ -810,9 +816,7 @@ impl App {
 
     pub fn apply_update(&mut self, update: live::Update) {
         // Only a mode that runs turns accepts their updates.
-        if update.id() != self.request_id
-            || !matches!(self.mode, Mode::Live | Mode::Claude | Mode::Solver)
-        {
+        if update.id() != self.request_id || !matches!(self.mode, Mode::Live | Mode::Solver) {
             return;
         }
         self.live.stamp();
@@ -1102,57 +1106,6 @@ impl App {
         self.live.cache = Default::default();
         for delegation in &mut self.delegations {
             delegation.chat.cache = Default::default();
-        }
-    }
-
-    /// Shift+Tab, the one mode switch: `coder` (OpenAgents picks) →
-    /// `openrouter` (DeepSeek V4.1 Flash on the person's OpenRouter key) →
-    /// `claude` (this computer's Claude login) → back to `coder`. A mode
-    /// this computer can't use is skipped; when only `coder` is available,
-    /// it says what the others need.
-    fn cycle_mode(&mut self) {
-        if self.mode == Mode::Demo {
-            return;
-        }
-        // Offered only where the OpenRouter plugin is on and holds a key.
-        let openrouter = self.plugins.enabled && self.plugins.key_configured;
-        // Offered only while the Claude Code plugin is on, which needs a
-        // Claude Code sign-in.
-        let claude = self.plugins.bundled.enabled(crate::claude::PLUGIN);
-        let on_openrouter = self.mode == Mode::Live && self.plugins.model == models::OPENROUTER;
-        // The modes after the current one, in order, ending at coder.
-        let next = match self.mode {
-            Mode::Live if !on_openrouter && openrouter => "openrouter",
-            Mode::Live if claude => "claude",
-            _ => "coder",
-        };
-        match next {
-            "openrouter" => {
-                if self.plugins.switch_model(models::OPENROUTER, true) {
-                    self.notice = None;
-                }
-            }
-            "claude" => {
-                if on_openrouter {
-                    self.plugins.switch_model(models::AUTO, false);
-                }
-                self.set_mode(Mode::Claude);
-                self.notice = None;
-            }
-            _ => {
-                if self.mode != Mode::Live {
-                    self.set_mode(Mode::Live);
-                }
-                if self.plugins.model == models::OPENROUTER {
-                    self.plugins.switch_model(models::AUTO, false);
-                }
-                self.notice = (!openrouter && !claude && self.mode == Mode::Live).then(|| {
-                    "openrouter needs the OpenRouter plugin on with an API key (F2); claude needs Claude Code signed in on this computer.".into()
-                });
-            }
-        }
-        if let Some(error) = self.plugins.storage_error.clone() {
-            self.notice = Some(error);
         }
     }
 
@@ -1590,18 +1543,18 @@ impl App {
 
     pub fn check_brainstorm_connection(&mut self) {
         self.start_brainstorm(brainstorm::Command::Test);
-        if self.brainstorm_job.is_none() && self.mode == Mode::Live {
+        if self.brainstorm_job.is_none() && self.on_coder_loop() {
             self.plugins.bundled.brainstorm.error = self.live.notice.clone();
         }
     }
 
-    /// A claude turn: the person's message to the chat's own Claude Code
+    /// A Claude Code turn: the person's message to the chat's own Claude Code
     /// process ([`crate::claude_chat`]), with Claude Code's whole toolset and
     /// every call approved, on the model picked in /models
     /// ([`crate::claude`]). A message sent while a turn runs goes to Claude
-    /// Code at once rather than waiting. Pictures go as pictures. The mode
-    /// keeps one conversation with the person; only the engine behind each
-    /// turn differs from live.
+    /// Code at once rather than waiting. Pictures go as pictures. It is the
+    /// same one conversation with the person; only the harness behind its
+    /// turns differs from Coder's own loop.
     fn submit_claude(&mut self) {
         if self.draft.text.trim().is_empty() && self.composer.images.is_empty() {
             return;
@@ -1740,13 +1693,19 @@ impl App {
     }
 
     pub fn submit_live(&mut self) {
-        // claude runs turns of its own, on the Claude Agent SDK.
-        if self.mode == Mode::Claude {
-            self.submit_claude();
-            return;
-        }
         if self.mode == Mode::Solver {
             self.submit_solver();
+            return;
+        }
+        // The turn runs on the harness the chat was routed to; its first
+        // turn routes it ([`harness_plugin`]). Claude Code runs turns of its
+        // own, on the Claude Agent SDK.
+        if self.mode == Mode::Live
+            && self.selected_agent.is_none()
+            && (!self.draft.text.trim().is_empty() || !self.composer.images.is_empty())
+            && self.route_turn() == harness_plugin::Harness::ClaudeCode
+        {
+            self.submit_claude();
             return;
         }
         if self.live.busy
@@ -2003,9 +1962,9 @@ impl App {
 
     pub fn open_models(&mut self) {
         self.resume_picker = None;
-        // claude picks among Claude models on this computer's login, with
-        // no OpenRouter key.
-        if self.mode == Mode::Claude {
+        // A Claude Code chat picks among Claude models on this computer's
+        // login, with no OpenRouter key.
+        if self.on_claude() {
             let picked = claude::choice();
             self.model_picker = Some(models::Picker::new(
                 claude::catalog(),
@@ -2028,7 +1987,7 @@ impl App {
             models::OPENROUTER_PLUGIN,
             &self.plugins.model,
             self.plugins.options.clone(),
-            matches!(self.mode, Mode::Live | Mode::Claude | Mode::Solver),
+            matches!(self.mode, Mode::Live | Mode::Solver),
         ));
     }
 
@@ -2053,7 +2012,7 @@ impl App {
     }
 
     pub fn check_jev_key(&mut self) {
-        if self.mode != Mode::Live {
+        if !self.on_coder_loop() {
             return;
         }
         if self.live.busy {
@@ -2217,7 +2176,7 @@ impl App {
             }
             return true;
         }
-        if matches!(self.mode, Mode::Live | Mode::Claude | Mode::Solver)
+        if matches!(self.mode, Mode::Live | Mode::Solver)
             && self.screen == Screen::Conversation
             && self.model_picker.is_none()
             && self.resume_picker.is_none()
@@ -2321,8 +2280,7 @@ impl App {
                         "openrouter-byok" => {}
                         _ => return true,
                     }
-                    if self.mode == Mode::Live
-                        && self.plugins.focus == plugins::SettingsFocus::ApiKey
+                    if self.on_coder_loop() && self.plugins.focus == plugins::SettingsFocus::ApiKey
                     {
                         if self.checking_key {
                             self.cancel_request();
@@ -2485,7 +2443,7 @@ impl App {
                             return true;
                         }
                         "jev" => {
-                            if self.mode == Mode::Live
+                            if self.on_coder_loop()
                                 && ((matches!(
                                     self.plugins.bundled.focus,
                                     plugins::SettingsFocus::ApiKey
@@ -2515,7 +2473,7 @@ impl App {
                             }
                             if closed {
                                 self.screen = Screen::Plugins;
-                                if self.mode == Mode::Live {
+                                if self.on_coder_loop() {
                                     if self.plugins.bundled.credential_changed || self.checking_key
                                     {
                                         let connection = self.plugins.bundled.connection.clone();
@@ -2549,7 +2507,7 @@ impl App {
                                 KeyCode::Char('r') => self.plugins.bundled.refresh_acp(),
                                 KeyCode::Char(' ') | KeyCode::Enter => {
                                     if self.plugins.bundled.toggle_acp_agent()
-                                        && self.mode == Mode::Live
+                                        && self.on_coder_loop()
                                     {
                                         self.cancel_request();
                                     }
@@ -2566,7 +2524,7 @@ impl App {
                             return true;
                         }
                     }
-                    if self.mode == Mode::Live
+                    if self.on_coder_loop()
                         && self.plugins.focus == plugins::SettingsFocus::ApiKey
                         && matches!(
                             key.code,
@@ -2584,7 +2542,7 @@ impl App {
                     }
                     if closed {
                         self.screen = Screen::Plugins;
-                        if self.mode == Mode::Live {
+                        if self.on_coder_loop() {
                             if self.plugins.credential_changed || self.checking_key {
                                 let connection = self.plugins.connection.clone();
                                 self.cancel_request();
@@ -2606,14 +2564,16 @@ impl App {
                         KeyCode::Up => self.plugins.select(true),
                         KeyCode::Down => self.plugins.select(false),
                         KeyCode::Char(' ') => {
-                            if self.plugins.toggle_selected() && self.mode == Mode::Live {
+                            if self.plugins.toggle_selected() && self.on_coder_loop() {
                                 self.cancel_request();
                             }
-                            // Turning the Claude Code plugin off leaves its mode.
-                            if self.mode == Mode::Claude
+                            // Turning the Claude Code plugin off routes the
+                            // chat's next turn again.
+                            if self.on_claude()
                                 && !self.plugins.bundled.enabled(crate::claude::PLUGIN)
                             {
-                                self.set_mode(Mode::Live);
+                                self.cancel_request();
+                                self.live.runs_on = None;
                             }
                         }
                         KeyCode::Enter => self.open_plugin_settings(),
@@ -2662,9 +2622,6 @@ impl App {
                 }
                 match key.code {
                     KeyCode::F(2) => self.open_plugins(),
-                    // Shift+Tab steps between coder and claude on a
-                    // computer that has a Claude account login.
-                    KeyCode::BackTab => self.cycle_mode(),
                     KeyCode::Up | KeyCode::Down => self.composer_arrow(key.code == KeyCode::Up),
                     KeyCode::Esc => {
                         if self.footer_focused {
@@ -2712,7 +2669,7 @@ impl App {
                         self.draft.insert("\n");
                     }
                     KeyCode::Enter if !ctrl => {
-                        if self.mode == Mode::Live
+                        if self.on_coder_loop()
                             && self.draft.text.trim().is_empty()
                             && self.composer.images.is_empty()
                             && self.send_next_queued_prompt()
@@ -2724,14 +2681,14 @@ impl App {
                             return true;
                         }
                         if let Some(index) = self.selected_agent.filter(|index| {
-                            self.mode == Mode::Live
+                            self.on_coder_loop()
                                 && self.delegations.get(*index).is_some_and(|c| c.background)
                                 && !self.draft.text.trim().starts_with('/')
                         }) {
                             self.message_agent(index);
                             return true;
                         }
-                        if self.mode == Mode::Live
+                        if self.on_coder_loop()
                             && self.live.busy
                             && (!self.draft.text.trim().is_empty()
                                 || !self.composer.images.is_empty())
@@ -2814,7 +2771,7 @@ impl App {
                             self.draft = Draft::default();
                             self.composer = Default::default();
                             self.composer_history.reset();
-                        } else if matches!(self.mode, Mode::Live | Mode::Claude | Mode::Solver)
+                        } else if matches!(self.mode, Mode::Live | Mode::Solver)
                             && (!self.draft.text.trim().is_empty()
                                 || !self.composer.images.is_empty())
                         {
@@ -3170,13 +3127,13 @@ mod select_all_tests {
 #[cfg(test)]
 mod claude_tests {
     use super::*;
+    use harness_plugin::Harness;
 
-    /// Entering a mode swaps the composer's draft with that mode's, so the
-    /// message is typed after the switch, as a person would.
-    fn typed(mode: Mode, text: &str) -> App {
+    /// A chat on `harness` with `text` typed in its input.
+    fn typed(harness: Harness, text: &str) -> App {
         let mut app = App::default();
         app.set_mode(Mode::Live);
-        app.set_mode(mode);
+        app.live.runs_on = Some(harness);
         app.draft.text = text.into();
         app.draft.cursor = text.len();
         app
@@ -3184,7 +3141,7 @@ mod claude_tests {
 
     #[test]
     fn shift_enter_is_a_new_line_in_the_input() {
-        let mut app = typed(Mode::Live, "first");
+        let mut app = typed(Harness::CoderLoop, "first");
         app.handle(Event::Key(crossterm::event::KeyEvent::new(
             KeyCode::Enter,
             KeyModifiers::SHIFT,
@@ -3194,8 +3151,8 @@ mod claude_tests {
     }
 
     #[test]
-    fn the_mode_starts_a_haiku_5_5_session_on_the_file_tools() {
-        let mut app = typed(Mode::Claude, "hello");
+    fn a_claude_code_chat_starts_a_haiku_5_5_session_on_the_file_tools() {
+        let mut app = typed(Harness::ClaudeCode, "hello");
         app.submit_live();
         assert_eq!(app.live.entries, vec![live::Entry::User("hello".into())]);
         // The turn is running a request on the mode's model, and nothing
@@ -3214,7 +3171,7 @@ mod claude_tests {
         }
     }
 
-    /// A skill, `/compact`, or any command Coder does not run in this mode
+    /// A skill, `/compact`, or any command Coder does not run in this chat
     /// goes to Claude Code as the message (#11439).
     #[test]
     fn claude_codes_own_commands_go_to_claude_code() {
@@ -3224,7 +3181,7 @@ mod claude_tests {
             "/config thinking=false",
             "/my-skill do it",
         ] {
-            let mut app = typed(Mode::Claude, text);
+            let mut app = typed(Harness::ClaudeCode, text);
             assert!(app.claude_slash(), "{text}");
             match app.request.take().map(|request| request.kind) {
                 Some(live::Work::Claude { messages, .. }) => {
@@ -3233,6 +3190,25 @@ mod claude_tests {
                 _ => panic!("{text} should start a claude turn"),
             }
         }
+    }
+
+    /// A new chat the selector routes to Claude Code takes Claude Code's
+    /// commands from its first message.
+    #[test]
+    fn a_new_chats_first_command_goes_to_claude_code_when_routed_there() {
+        harness_plugin::sign_in_claude(true);
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.plugins.bundled.claude = true;
+        app.draft.text = "/review".into();
+        app.draft.cursor = 7;
+        assert!(app.claude_slash());
+        assert_eq!(app.live.runs_on, Some(Harness::ClaudeCode));
+        assert!(matches!(
+            app.request.take().map(|request| request.kind),
+            Some(live::Work::Claude { .. })
+        ));
+        harness_plugin::sign_in_claude(false);
     }
 
     /// Coder's own commands keep their meaning, and a path is a message.
@@ -3245,29 +3221,31 @@ mod claude_tests {
             "/usr/bin/env is missing",
             "hello",
         ] {
-            let mut app = typed(Mode::Claude, text);
+            let mut app = typed(Harness::ClaudeCode, text);
             assert!(!app.claude_slash(), "{text}");
             assert!(app.request.is_none(), "{text}");
         }
-        let mut app = typed(Mode::Live, "/review");
+        let mut app = typed(Harness::CoderLoop, "/review");
         assert!(!app.claude_slash());
     }
 
     #[test]
     fn model_with_an_unknown_name_lists_the_choices() {
-        let mut app = typed(Mode::Claude, "/model gpt-6");
+        let mut app = typed(Harness::ClaudeCode, "/model gpt-6");
         assert!(app.claude_slash());
         assert!(app.request.is_none());
         assert!(app.notice.as_deref().unwrap().contains("Haiku 5.5"));
     }
 
-    /// The path a person takes: type, press Enter. The turn leaves the mode
-    /// busy on its own engine, and its reply lands as the stream reports it.
+    /// The path a person takes: type, press Enter. With Claude Code on and
+    /// signed in, the selector routes the new chat to it, the chat is busy
+    /// on Claude Code, and its reply lands as the stream reports it.
     #[test]
-    fn enter_starts_a_turn_and_its_reply_lands() {
+    fn enter_routes_a_new_chat_to_claude_code_and_its_reply_lands() {
+        harness_plugin::sign_in_claude(true);
         let mut app = App::default();
         app.set_mode(Mode::Live);
-        app.set_mode(Mode::Claude);
+        app.plugins.bundled.claude = true;
         for ch in "hello".chars() {
             app.handle(Event::Key(crossterm::event::KeyEvent::new(
                 KeyCode::Char(ch),
@@ -3284,6 +3262,11 @@ mod claude_tests {
         ));
         assert!(app.messages.is_empty(), "no demo message is appended");
         assert!(app.live.busy);
+        assert_eq!(app.live.runs_on, Some(Harness::ClaudeCode));
+        assert!(matches!(
+            app.request.as_ref().map(|request| &request.kind),
+            Some(live::Work::Claude { .. })
+        ));
         app.apply_update(live::Update::Finished {
             id: app.request_id,
             result: Ok(openrouter::Streamed {
@@ -3297,10 +3280,41 @@ mod claude_tests {
             app.live.entries.as_slice(),
             [live::Entry::User(_), live::Entry::Assistant { text, .. }] if text == "hi"
         ));
-        // Leaving the mode after the turn leaves no stopped-reply notice.
-        app.set_mode(Mode::Live);
-        assert_eq!(app.mode, Mode::Live);
         assert!(app.live.notice.is_none(), "{:?}", app.live.notice);
+        harness_plugin::sign_in_claude(false);
+    }
+
+    /// Without a Claude Code login, the selector routes a new chat to
+    /// Coder's own loop, and Shift+Tab never moves it.
+    #[test]
+    fn a_new_chat_without_claude_code_runs_on_the_coder_loop() {
+        harness_plugin::sign_in_claude(false);
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.handle(Event::Key(crossterm::event::KeyEvent::new(
+            KeyCode::BackTab,
+            KeyModifiers::NONE,
+        )));
+        app.submit("hello", std::path::Path::new("."));
+        assert_eq!(app.live.runs_on, Some(Harness::CoderLoop));
+        assert!(!matches!(
+            app.request.as_ref().map(|request| &request.kind),
+            Some(live::Work::Claude { .. })
+        ));
+    }
+
+    /// Follow-ups stay on the chat's harness even after Claude Code is
+    /// signed out (owner decision 1).
+    #[test]
+    fn follow_ups_stay_on_the_chats_harness() {
+        harness_plugin::sign_in_claude(false);
+        let mut app = typed(Harness::ClaudeCode, "next");
+        app.submit_live();
+        assert!(matches!(
+            app.request.take().map(|request| request.kind),
+            Some(live::Work::Claude { .. })
+        ));
+        assert_eq!(app.live.runs_on, Some(Harness::ClaudeCode));
     }
 
     /// A picture reaches Claude Code as a picture (#11447): the message
@@ -3310,7 +3324,7 @@ mod claude_tests {
         let dir = tempfile::tempdir().unwrap();
         let shot = dir.path().join("shot.png");
         std::fs::write(&shot, b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR").unwrap();
-        let mut app = typed(Mode::Claude, "look");
+        let mut app = typed(Harness::ClaudeCode, "look");
         app.attachment_dir = Some(dir.path().join("attachments"));
         app.attach_image(shot.display().to_string(), None);
         app.submit_live();
@@ -3333,7 +3347,7 @@ mod claude_tests {
     /// busy it waits in the queue.
     #[test]
     fn a_message_during_a_claude_turn_is_sent_at_once() {
-        let mut app = typed(Mode::Claude, "first");
+        let mut app = typed(Harness::ClaudeCode, "first");
         app.submit_live();
         let first = app.request.take().unwrap().id;
         app.claude_turn = true;

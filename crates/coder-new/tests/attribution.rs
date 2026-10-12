@@ -1,5 +1,5 @@
 use coder_new::{
-    App, Mode, claude,
+    App, Mode,
     live::{Entry, Update},
     models::DEFAULT_MODEL,
     theme, ui,
@@ -48,6 +48,7 @@ fn label(line: &str) -> &str {
 fn app() -> App {
     let mut app = App::default();
     app.set_mode(Mode::Live);
+    app.plugins.bundled.claude = false;
     app.plugins.enabled = true;
     app.plugins.key_configured = true;
     app
@@ -189,12 +190,12 @@ fn composer_registration_follows_enablement_and_preserves_input_geometry() {
     assert!(text[top + 4].starts_with('└'));
 }
 
-/// claude names itself on the same rule, and its working shows like a
-/// live reply's until it answers.
+/// A Claude Code chat names its harness on the same rule, and its working
+/// shows like a live reply's until it answers.
 #[test]
-fn claude_names_the_mode_and_shows_its_working() {
+fn claude_code_names_its_harness_and_shows_its_working() {
     let mut app = app();
-    app.set_mode(Mode::Claude);
+    app.live.runs_on = Some(coder_new::harness_plugin::Harness::ClaudeCode);
     app.draft.text = "hello".into();
     app.draft.cursor = 5;
     app.submit_live();
@@ -208,7 +209,7 @@ fn claude_names_the_mode_and_shows_its_working() {
     // The mode's name stays on the rail; while the turn runs, the working
     // spinner rides its left end.
     assert!(
-        label(&text[top]).contains(claude::LABEL),
+        label(&text[top]).contains("Claude · "),
         "{}",
         label(&text[top])
     );

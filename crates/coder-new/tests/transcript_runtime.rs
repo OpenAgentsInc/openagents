@@ -39,6 +39,9 @@ fn scroll(app: &mut App, kind: MouseEventKind, row: u16) {
 fn live_app() -> App {
     let mut app = App::default();
     app.set_mode(Mode::Live);
+    // These chats run on Coder's own loop, never this computer's Claude
+    // Code login.
+    app.plugins.bundled.claude = false;
     // Most of these tests read a tool call's own rows, so they start in the
     // verbose view; the compact default has its own tests.
     app.view = ViewMode::Verbose;
@@ -192,8 +195,11 @@ fn switching_modes_leaves_the_transcript_where_the_reader_left_it() {
     assert!(scrolled > 0);
     let first = row(&draw(&mut app, 110, 24), 0);
     assert!(!first.contains("Earlier line 0"));
-    // Shift+Tab's switch must leave the reader where they were.
-    app.set_mode(Mode::Claude);
+    // Shift+Tab switches nothing and must leave the reader where they were.
+    app.handle(Event::Key(KeyEvent::new(
+        KeyCode::BackTab,
+        KeyModifiers::NONE,
+    )));
     assert_eq!(app.scroll, scrolled);
     assert_eq!(row(&draw(&mut app, 110, 24), 0), first);
     // Back at the newest output, the switch keeps it followed.

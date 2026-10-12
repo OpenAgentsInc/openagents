@@ -19,7 +19,7 @@
 //! (`crate::schedule_sync`), where the website and the apps list, make,
 //! pause, and delete them; this computer keeps running them.
 
-use crate::{App, Mode};
+use crate::App;
 
 /// How to make one.
 pub const USAGE: &str = "Use /schedule WHEN PROMPT, where WHEN is daily TIME, weekdays TIME, weekends TIME, or every INTERVAL (at least 1m). For example /schedule weekdays 9am triage the new issues. /schedule here WHEN PROMPT posts into this chat instead of starting a new run. /schedule lists them; /schedule remove ID removes one.";
@@ -319,7 +319,7 @@ impl App {
     /// `/schedule`, `/schedule WHEN PROMPT`, `/schedule remove ID`.
     #[cfg(unix)]
     pub(crate) fn schedule_command(&mut self, argument: &str) {
-        if self.mode != Mode::Live {
+        if !self.on_coder_loop() {
             self.notice = Some("Scheduled prompts are made in live mode.".into());
             return;
         }
@@ -419,6 +419,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Mode;
 
     #[test]
     fn schedules_read_their_words() {

@@ -36,7 +36,7 @@ use serde_json::{Value, json};
 
 use crate::bundled_runtime::RuntimeEvent;
 use crate::live::{self, Entry};
-use crate::{App, Mode, theme as t};
+use crate::{App, theme as t};
 
 /// The transcript entry that holds a summary of the earlier chat.
 pub const COMPACT_TOOL: &str = "compact";
@@ -473,7 +473,7 @@ pub(crate) fn session_cost(app: &App) -> f64 {
 /// The status line's long-session words: a pause and the dollars spent.
 #[cfg(test)]
 pub(crate) fn status(app: &App) -> Option<String> {
-    if app.mode != Mode::Live {
+    if !app.on_coder_loop() {
         return None;
     }
     let mut parts = Vec::new();
@@ -581,7 +581,7 @@ pub(crate) fn entry_lines(
 impl App {
     /// `/compact`: fold the older part of the chat into a summary now.
     pub(crate) fn compact_command(&mut self) {
-        if self.mode != Mode::Live {
+        if !self.on_coder_loop() {
             self.notice = Some("Compacting works in live mode only.".into());
             return;
         }
@@ -727,13 +727,13 @@ impl App {
             && atif::now_ms() >= until
         {
             self.long_session.paused_until_ms = None;
-            if self.mode == Mode::Live {
+            if self.on_coder_loop() {
                 self.live.notice = None;
                 self.queue_notice(RESUME_TEXT.into());
             }
         }
         self.poll_loops();
-        if self.mode != Mode::Live
+        if !self.on_coder_loop()
             || self.live.busy
             || self.request.is_some()
             || self.long_session.paused()
@@ -779,6 +779,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Mode;
 
     fn turn(index: usize, size: usize) -> [Entry; 2] {
         [

@@ -284,13 +284,9 @@ impl Provider {
         if !options.valid() {
             return Err("The model settings are invalid.".into());
         }
-        let scoped = execution.for_request(
-            messages
-                .iter()
-                .rev()
-                .find(|message| message.role == "user")
-                .map_or("", |message| message.content.as_str()),
-        );
+        // The tool list is the chat's, the same every turn, so the prompt
+        // cache holds; a tool that is off refuses its call (#11453).
+        let scoped = execution.clone();
         let model = if model.trim().is_empty() {
             crate::models::DEFAULT_MODEL
         } else {
@@ -1289,7 +1285,7 @@ fn check_error(error: reqwest::Error) -> String {
 /// than OpenRouter's, which it is not.
 fn gateway_error(error: openrouter::Error) -> String {
     if let openrouter::Error::Api { status: 402, .. } = error {
-        return "Today's free allowance on OpenAgents is used up (HTTP 402). Add credit at openagents.com, or switch to openrouter with Shift+Tab.".into();
+        return "Today's free allowance on OpenAgents is used up (HTTP 402). Add credit at openagents.com, or choose a model on your own OpenRouter key in /models.".into();
     }
     stream_error(error).replace("OpenRouter", "OpenAgents")
 }
@@ -1341,7 +1337,7 @@ fn status_error(status: u16) -> String {
     match StatusCode::from_u16(status).ok() {
         Some(StatusCode::UNAUTHORIZED) => "OpenRouter rejected the API key (HTTP 401).".into(),
         Some(StatusCode::PAYMENT_REQUIRED) => {
-            "Your OpenRouter balance doesn't cover this request (HTTP 402). Add credit at openrouter.ai/settings/credits, or switch to openrouter with Shift+Tab.".into()
+            "Your OpenRouter balance doesn't cover this request (HTTP 402). Add credit at openrouter.ai/settings/credits.".into()
         }
         Some(StatusCode::TOO_MANY_REQUESTS) => crate::long_session::rate_limited(None),
         Some(StatusCode::FORBIDDEN) => "OpenRouter denied this request (HTTP 403).".into(),
@@ -1476,7 +1472,6 @@ mod tests {
             boat: Default::default(),
             gce: crate::cloud_settings::Configuration::gce(),
             cloud_root: "fixture-state".into(),
-            remote_targets: Default::default(),
             microcoder: false,
             cli: false,
             acp: false,
@@ -2700,15 +2695,19 @@ mod tests {
         crate::jev_plugin::DEFAULT_ENDPOINT.into()
     }
 
+    /// Naming an agent in the request changes nothing about the tools the
+    /// model is offered (#11453): the list is the chat's, so the prompt
+    /// cache holds, and a call to an agent that is not on is refused with a
+    /// reason before any child starts.
     #[test]
-    fn an_explicit_codex_request_rejects_opencode_before_starting_a_child() {
+    fn naming_an_agent_keeps_the_chats_tools_and_an_agent_that_is_off_is_refused() {
         // Another test's tool-free gate would remove every tool.
         let _gate_lock = crate::approval::test_lock()
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let wrong = format!(
             "data: {}\n\ndata: [DONE]\n\n",
-            json!({"choices":[{"delta":{"tool_calls":[{"index":0,"id":"wrong-agent","function":{"name":"acp_subagent","arguments":"{\"agent\":\"opencode\",\"task\":\"Provide a delegation example.\"}"}}]},"finish_reason":"tool_calls"}]})
+            json!({"choices":[{"delta":{"tool_calls":[{"index":0,"id":"wrong-agent","function":{"name":"acp_subagent","arguments":"{\"agent\":\"cursor\",\"task\":\"Provide a delegation example.\"}"}}]},"finish_reason":"tool_calls"}]})
         );
         let (base, server) = sequence(vec![wrong, final_reply("Use the requested Codex agent.")]);
         let provider = Provider::with_base(ApiKey::new(FIXTURE_TOKEN), &base).unwrap();
@@ -2754,11 +2753,13 @@ mod tests {
         let requests = server.join().unwrap();
         assert_eq!(requests.len(), 2);
         let defs = requests[0]["tools"].as_array().unwrap();
-        assert_eq!(defs.len(), 1);
-        assert_eq!(
-            defs[0]["function"]["parameters"]["properties"]["agent"]["enum"],
-            json!(["codex"])
-        );
+        let agents = defs
+            .iter()
+            .find(|definition| definition["function"]["name"] == "acp_subagent")
+            .map(|definition| {
+                definition["function"]["parameters"]["properties"]["agent"]["enum"].clone()
+            });
+        assert_eq!(agents, Some(json!(["codex", "opencode"])));
         assert!(
             requests[1]["messages"].as_array().unwrap().last().unwrap()["content"]
                 .as_str()

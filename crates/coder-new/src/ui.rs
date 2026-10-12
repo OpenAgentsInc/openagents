@@ -222,7 +222,8 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         .is_some_and(|until| std::time::Instant::now() < until);
     // What failed to load when the Claude session started flashes on the
     // input's top-right rail for a few seconds, never as a transcript row.
-    let load_warning = (app.mode == Mode::Claude)
+    let load_warning = app
+        .on_claude()
         .then(|| crate::claude_stream::load_warning(std::time::Instant::now()))
         .flatten();
     composer_view(
@@ -242,7 +243,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         app.composer_selected && !app.draft.text.is_empty(),
         // OpenAgents picks the model here, so the rail says `auto` and never
         // the name of whichever vendor answered.
-        rail_mode(app),
+        rail_harness(app).as_deref(),
         top_rail(app).as_deref(),
         load_warning.as_deref(),
         working.as_deref(),
@@ -485,7 +486,7 @@ pub(crate) fn truncate(text: &str, width: u16) -> String {
 }
 
 fn new_chat_heading(app: &App) -> bool {
-    matches!(app.mode, Mode::Live | Mode::Claude | Mode::Solver)
+    matches!(app.mode, Mode::Live | Mode::Solver)
         && app.screen == Screen::Conversation
         && app.selected_agent.is_none()
         && app.live.entries.is_empty()
@@ -587,13 +588,13 @@ fn repository_rail(app: &App) -> String {
     text
 }
 
-/// What the input's top-right rule carries before the mode's name: the
-/// Claude plan's windows and how full the context is in claude mode, then
-/// what the chat has cost, except on the Claude plan, which the person
-/// pays for by the month rather than by the turn.
+/// What the input's top-right rule carries before the harness's name: the
+/// Claude plan's windows and how full the context is when Claude Code ran
+/// the chat, else what the chat has cost, which is metered spend; the
+/// Claude plan is paid by the month rather than by the turn.
 fn top_rail(app: &App) -> Option<String> {
     let mut parts = Vec::new();
-    if app.mode == Mode::Claude {
+    if app.on_claude() {
         if let Some(plan) = crate::claude_plan::rail_text(atif::now_ms() / 1000) {
             parts.push(plan);
         }
@@ -607,33 +608,63 @@ fn top_rail(app: &App) -> Option<String> {
         }
     }
     let cost = crate::long_session::session_cost(app);
-    if cost > 0.0 && app.mode != Mode::Claude {
+    if cost > 0.0 && !app.on_claude() {
         parts.push(agent_fleet::dollars(cost));
     }
     (!parts.is_empty()).then(|| parts.join(" · "))
 }
 
-/// The mode the input's rail names: `openrouter` or `claude` (Shift+Tab),
-/// `solver` while `coder solver` watches a run, else `coder` unless the
-/// person picked a model of their own.
-fn rail_mode(app: &App) -> Option<&'static str> {
-    if app.mode == Mode::Claude {
-        return Some(crate::claude::LABEL);
-    }
+/// Which harness ran the chat, on the input's top-right rail: "Claude ·
+/// Haiku 5.5" or "Coder · auto" (the model's own name when the person
+/// chose one in /models), `solver` while `coder solver` watches a run.
+/// Before a chat's first turn is routed it says only `coder`, the product,
+/// or the model the person chose. There is no mode to name (#11453).
+fn rail_harness(app: &App) -> Option<String> {
+    use crate::harness_plugin::Harness;
     if app.mode == Mode::Solver {
-        return Some(crate::solver::LABEL);
+        return Some(crate::solver::LABEL.into());
     }
     if app.mode != Mode::Live {
         return None;
     }
     let keyed = app.plugins.enabled && app.plugins.key_configured;
-    if keyed && app.plugins.model == crate::models::OPENROUTER {
-        Some(crate::models::OPENROUTER_LABEL)
-    } else if !keyed || !crate::models::pinned(&app.plugins.model) {
-        Some(crate::models::AUTO_LABEL)
-    } else {
-        None
+    let Some(harness) = app.live.runs_on else {
+        return (!keyed || !crate::models::pinned(&app.plugins.model))
+            .then(|| crate::models::AUTO_LABEL.into());
+    };
+    match harness {
+        Harness::ClaudeCode => Some(claude_rail_label()),
+        Harness::CoderLoop => {
+            let model = if keyed {
+                crate::models::label(&app.plugins.model)
+            } else {
+                "auto".into()
+            };
+            let model = if model == crate::models::AUTO_LABEL {
+                "auto".into()
+            } else {
+                model
+            };
+            Some(format!("{CODER_RAIL} · {model}"))
+        }
+        Harness::Codex => Some(Harness::Codex.declaration().name.into()),
     }
+}
+
+/// The rail's word for Coder's own loop, which the rail colors as its own.
+const CODER_RAIL: &str = "Coder";
+
+/// The rail's word for Claude Code, which the rail colors as its own.
+const CLAUDE_RAIL: &str = "Claude";
+
+/// "Claude · " and the model Claude Code runs, as /models names it.
+fn claude_rail_label() -> String {
+    let model = crate::claude::choice().model;
+    let name = crate::claude::MODELS
+        .iter()
+        .find(|(id, _, _)| *id == model)
+        .map_or(model.as_str(), |(_, name, _)| *name);
+    format!("{CLAUDE_RAIL} · {name}")
 }
 
 /// The spinner and `Working` the input's rail shows while the chat above it
@@ -705,9 +736,9 @@ fn context_text(app: &App) -> String {
             crate::long_session::clock(until)
         ));
     }
-    // In claude mode the plan rides the top rail ([`top_rail`]).
+    // In a Claude Code chat the plan rides the top rail ([`top_rail`]).
     let now = atif::now_ms() / 1000;
-    if app.mode != Mode::Claude
+    if !app.on_claude()
         // Only the 5-hour and weekly percentages: no reset time, which
         // read as today's clock for a window that resets days later
         // (owner, 2026-10-12).
@@ -828,7 +859,7 @@ fn wrap_display(lines: Vec<Line<'static>>, width: u16) -> Vec<Line<'static>> {
 fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     let content = area.width.saturating_sub(GUTTER);
     // claude's conversation is drawn like a live chat's.
-    if matches!(app.mode, Mode::Live | Mode::Claude | Mode::Solver) {
+    if matches!(app.mode, Mode::Live | Mode::Solver) {
         live_conversation(frame, area, app);
         return;
     }
@@ -2047,12 +2078,18 @@ fn composer_view(
             RailSlot::ComposerBottomRight => area.height.saturating_sub(1),
         };
         let label = composer_rail_text(&contribution.text, area.width.saturating_sub(6));
-        let accent = Style::default().fg(match contribution.text.as_str() {
-            crate::models::AUTO_LABEL => t::ACCENT_SKILL,
-            crate::models::OPENROUTER_LABEL => t::ACCENT_MODEL,
-            crate::claude::LABEL | crate::solver::LABEL => t::ACCENT_DELEGATE,
-            _ => t::GRAY,
-        });
+        let text = contribution.text.as_str();
+        let accent = Style::default().fg(
+            if text == crate::models::AUTO_LABEL || text == format!("{CODER_RAIL} · auto") {
+                t::ACCENT_SKILL
+            } else if text.starts_with(CODER_RAIL) {
+                t::ACCENT_MODEL
+            } else if text.starts_with(CLAUDE_RAIL) || text == crate::solver::LABEL {
+                t::ACCENT_DELEGATE
+            } else {
+                t::GRAY
+            },
+        );
         // The plan and the cost sit before the mode's name, in gray, and a
         // load warning flashes just before the name in yellow.
         let extra = top_extra.filter(|_| offset == 0);
@@ -2184,6 +2221,7 @@ mod export_notice_tests {
     fn history_position_appears_on_the_top_left_rail() {
         let mut app = App::default();
         app.mode = Mode::Live;
+        app.live.runs_on = Some(crate::harness_plugin::Harness::CoderLoop);
         for i in 0..100 {
             app.draft.text = format!("prompt {i}");
             app.record_prompt();
@@ -2213,7 +2251,7 @@ mod export_notice_tests {
         }
         let text = rail(&mut app, 60);
         assert!(text.starts_with("┌─ History 100/100 "));
-        assert!(text.contains(crate::models::AUTO_LABEL));
+        assert!(text.contains("Coder · auto"));
         app.composer_arrow(false);
         assert!(!rail(&mut app, 60).contains("History"));
         app.composer_arrow(true);
@@ -2228,11 +2266,12 @@ mod export_notice_tests {
     fn auto_label_uses_blue() {
         let mut app = App::default();
         app.mode = Mode::Live;
+        app.live.runs_on = Some(crate::harness_plugin::Harness::CoderLoop);
         let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
         terminal.draw(|frame| render(frame, &mut app)).unwrap();
         let buffer = terminal.backend().buffer();
         let mut found = false;
-        let label = crate::models::AUTO_LABEL;
+        let label = "Coder · auto";
         let n = label.chars().count() as u16;
         for y in 0..20 {
             for x in 0..60 - n {
@@ -2291,8 +2330,11 @@ mod export_notice_tests {
         }
     }
 
+    /// There is no mode switch: Shift+Tab and Tab change nothing, and the
+    /// rail names the harness the chat ran on (#11453).
     #[test]
-    fn shift_tab_cycles_coder_and_openrouter_and_tab_changes_nothing() {
+    fn shift_tab_switches_nothing_and_the_rail_names_the_harness() {
+        use crate::harness_plugin::Harness;
         use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
         let press = |code| Event::Key(KeyEvent::new(code, KeyModifiers::NONE));
         let rail = |app: &mut App| {
@@ -2309,46 +2351,26 @@ mod export_notice_tests {
         app.plugins.model = crate::models::AUTO.into();
         app.plugins.enabled = true;
         app.plugins.key_configured = true;
-        // Tab no longer switches modes.
-        app.handle(press(KeyCode::Tab));
-        assert_eq!(app.plugins.model, crate::models::AUTO);
-        app.handle(press(KeyCode::BackTab));
-        assert_eq!(app.plugins.model, crate::models::OPENROUTER);
-        let shown = rail(&mut app);
-        assert!(shown.contains("openrouter") && !shown.contains("deepseek"));
-        // Without a Claude login here, the next mode is coder again.
-        if !crate::claude::available() {
-            app.handle(press(KeyCode::BackTab));
+        app.live.runs_on = Some(Harness::CoderLoop);
+        for code in [KeyCode::Tab, KeyCode::BackTab, KeyCode::BackTab] {
+            app.handle(press(code));
             assert_eq!(app.plugins.model, crate::models::AUTO);
-            assert!(app.mode == Mode::Live);
-            assert!(rail(&mut app).contains("auto"));
+            assert_eq!(app.mode, Mode::Live);
+            assert_eq!(app.live.runs_on, Some(Harness::CoderLoop));
         }
+        let shown = rail(&mut app);
+        assert!(shown.contains("Coder · auto"), "{shown}");
+        assert!(!shown.contains("openrouter") && !shown.contains("claude"));
+        // A model chosen in /models is named after the loop.
+        app.plugins.model = crate::models::OPENROUTER.into();
+        assert!(rail(&mut app).contains("Coder · deepseek-v4.1-flash"));
     }
 
-    /// The openrouter mode is offered only where the plugin is on and holds
-    /// a key: with the plugin off, Shift+Tab skips it even when a key is
-    /// saved.
     #[test]
-    fn the_openrouter_mode_needs_the_plugin_on() {
-        use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+    fn the_rail_names_claude_and_its_model_without_asking_a_login() {
         let mut app = App::default();
         app.mode = Mode::Live;
-        app.plugins.model = crate::models::AUTO.into();
-        app.plugins.enabled = false;
-        app.plugins.key_configured = true;
-        app.handle(Event::Key(KeyEvent::new(
-            KeyCode::BackTab,
-            KeyModifiers::NONE,
-        )));
-        // It moves on to claude where this computer holds that login, but
-        // never to the openrouter model while the plugin is off.
-        assert_ne!(app.plugins.model, crate::models::OPENROUTER);
-    }
-
-    #[test]
-    fn the_rail_names_claude_without_asking_a_login() {
-        let mut app = App::default();
-        app.mode = Mode::Claude;
+        app.live.runs_on = Some(crate::harness_plugin::Harness::ClaudeCode);
         let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
         terminal.draw(|frame| render(frame, &mut app)).unwrap();
         let buffer = terminal.backend().buffer();
@@ -2356,8 +2378,11 @@ mod export_notice_tests {
             .map(|y| (0..60).map(|x| buffer[(x, y)].symbol()).collect::<String>())
             .collect::<Vec<_>>()
             .join("\n");
-        assert!(shown.contains(crate::claude::LABEL));
-        // Entering the mode must not read this computer's login: a test
+        assert!(
+            shown.contains(&format!("Claude · {}", crate::claude::MODEL_LABEL)),
+            "{shown}"
+        );
+        // Drawing the rail must not read this computer's login: a test
         // environment never starts `claude auth status`.
     }
 
@@ -2378,7 +2403,7 @@ mod export_notice_tests {
                     &crate::composer_state::ComposerState::default(),
                     None,
                     false,
-                    Some(crate::claude::LABEL),
+                    Some("Claude · Haiku 5.5"),
                     Some("ctx 40%"),
                     Some("stripe needs sign-in"),
                     None,
@@ -2389,7 +2414,7 @@ mod export_notice_tests {
         let buffer = terminal.backend().buffer();
         let rail: String = (0..width).map(|x| buffer[(x, 0)].symbol()).collect();
         assert!(
-            rail.contains("ctx 40% · stripe needs sign-in · claude"),
+            rail.contains("ctx 40% · stripe needs sign-in · Claude · Haiku 5.5"),
             "{rail}"
         );
         let at = |word: &str| {
@@ -2400,7 +2425,7 @@ mod export_notice_tests {
         assert_eq!(buffer[(at("stripe"), 0)].fg, t::WARNING);
         assert_eq!(buffer[(at("sign-in"), 0)].fg, t::WARNING);
         assert_eq!(buffer[(at("ctx"), 0)].fg, t::GRAY);
-        assert_eq!(buffer[(at("claude"), 0)].fg, t::ACCENT_DELEGATE);
+        assert_eq!(buffer[(at("Claude"), 0)].fg, t::ACCENT_DELEGATE);
     }
 
     #[test]
@@ -2948,6 +2973,7 @@ mod repository_tests {
         app.cwd = Some("/work/repo".into());
         app.branch = Some("feature".into());
         app.live.cost_usd = 0.25;
+        app.live.runs_on = Some(crate::harness_plugin::Harness::CoderLoop);
         let mut terminal =
             ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 20)).unwrap();
         terminal.draw(|frame| render(frame, &mut app)).unwrap();

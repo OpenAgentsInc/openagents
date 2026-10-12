@@ -97,8 +97,26 @@ fn verified(app: &mut App, id: u64) {
     });
 }
 
-fn live_app() -> App {
+/// A chat that runs on Coder's own loop, never on this computer's Claude
+/// Code login, which the harness selector would otherwise pick (#11453).
+fn coder_loop_app() -> App {
     let mut app = App::default();
+    // Demo and live keep their own plugin settings: off in both, and the
+    // app starts in the mode it always does.
+    let start = app.mode;
+    app.plugins.bundled.claude = false;
+    app.set_mode(if start == Mode::Live {
+        Mode::Demo
+    } else {
+        Mode::Live
+    });
+    app.plugins.bundled.claude = false;
+    app.set_mode(start);
+    app
+}
+
+fn live_app() -> App {
+    let mut app = coder_loop_app();
     app.set_mode(Mode::Live);
     app.open_plugins();
     key(&mut app, KeyCode::Char(' '));
@@ -146,7 +164,7 @@ fn reply(text: &str, tokens: u64) -> Streamed {
 
 #[test]
 fn slash_picker_completes_and_executes_commands_without_submitting_messages() {
-    let mut app = App::default();
+    let mut app = coder_loop_app();
     paste(&mut app, "/");
     assert_eq!(
         app.slash_hints(),
@@ -222,7 +240,7 @@ fn slash_picker_completes_and_executes_commands_without_submitting_messages() {
 
 #[test]
 fn live_chat_uses_the_no_setup_fallback_or_an_enabled_saved_key() {
-    let mut fallback = App::default();
+    let mut fallback = coder_loop_app();
     fallback.set_mode(Mode::Live);
     fallback.plugins.bundled.microcoder = false;
     paste(&mut fallback, "live question");
@@ -235,7 +253,7 @@ fn live_chat_uses_the_no_setup_fallback_or_an_enabled_saved_key() {
     assert_eq!(transcript(&fallback), [("user", "live question")]);
     fallback.cancel_request();
 
-    let mut app = App::default();
+    let mut app = coder_loop_app();
     app.set_mode(Mode::Live);
     save_key(&mut app, KEY_INPUT, "");
     assert!(app.plugins.key_configured);
@@ -282,7 +300,7 @@ fn live_chat_uses_the_no_setup_fallback_or_an_enabled_saved_key() {
 
 #[test]
 fn testing_a_key_uses_the_draft_and_ignores_results_after_edit_or_cancel() {
-    let mut app = App::default();
+    let mut app = coder_loop_app();
     app.open_plugin_settings();
     paste(&mut app, KEY_INPUT);
     focus(&mut app, SettingsFocus::TestKey);
@@ -339,7 +357,7 @@ fn testing_a_key_uses_the_draft_and_ignores_results_after_edit_or_cancel() {
 
 #[test]
 fn demo_and_live_keep_separate_preferences_drafts_and_transcripts() {
-    let mut app = App::default();
+    let mut app = coder_loop_app();
     app.open_plugins();
     key(&mut app, KeyCode::Char(' '));
     save_key(&mut app, "demo_probe", "demo-model");
@@ -663,7 +681,7 @@ fn invalid_model_metadata_clears_observed_attribution_and_is_not_stored() {
 
 #[test]
 fn main_transcript_starts_at_the_terminal_top_edge() {
-    let mut app = App::default();
+    let mut app = coder_loop_app();
     app.set_mode(Mode::Live);
     app.live
         .entries
@@ -676,7 +694,7 @@ fn main_transcript_starts_at_the_terminal_top_edge() {
 
 #[test]
 fn run_component_has_one_command_one_status_row_and_multiline_preview() {
-    let mut app = App::default();
+    let mut app = coder_loop_app();
     app.set_mode(Mode::Live);
     app.view = ViewMode::Verbose;
     app.live.entries.push(Entry::Tool {
@@ -711,7 +729,7 @@ fn run_component_has_one_command_one_status_row_and_multiline_preview() {
 #[test]
 fn run_output_scrolls_inside_five_rows_without_moving_the_conversation() {
     use crossterm::event::{MouseEvent, MouseEventKind};
-    let mut app = App::default();
+    let mut app = coder_loop_app();
     app.set_mode(Mode::Live);
     app.view = ViewMode::Verbose;
     let output: Vec<String> = (1..=60).map(|line| format!("line {line:02}")).collect();
@@ -761,7 +779,7 @@ fn run_output_scrolls_inside_five_rows_without_moving_the_conversation() {
 
 #[test]
 fn running_and_failed_run_keep_the_command_visible() {
-    let mut app = App::default();
+    let mut app = coder_loop_app();
     app.set_mode(Mode::Live);
     app.view = ViewMode::Verbose;
     app.live.entries.push(Entry::Tool {
@@ -787,7 +805,7 @@ fn running_and_failed_run_keep_the_command_visible() {
 /// OpenAgents picks the model when none is chosen, so the rail says `auto`
 /// and never the name of whichever model answered.
 fn local_login_turns_show_auto_above_the_input_rail() {
-    let mut app = App::default();
+    let mut app = coder_loop_app();
     app.set_mode(Mode::Live);
     app.plugins.enabled = false;
     app.live.partial_model = Some("codex:gpt-6.1-sol".into());
@@ -817,7 +835,7 @@ fn local_login_turns_show_auto_above_the_input_rail() {
 #[test]
 fn transcript_uses_the_full_terminal_width_without_side_margins() {
     for width in [24, 40, 80] {
-        let mut app = App::default();
+        let mut app = coder_loop_app();
         app.set_mode(Mode::Live);
         // A reply starts with its ● in column 0 and keeps the two-column
         // gutter at the right edge, as Claude Code's transcript does.
@@ -844,7 +862,7 @@ fn transcript_uses_the_full_terminal_width_without_side_margins() {
 
 #[test]
 fn working_spinner_rides_the_input_rail_and_the_input_reaches_the_bottom_row() {
-    let mut app = App::default();
+    let mut app = coder_loop_app();
     app.set_mode(Mode::Live);
     app.live.busy = true;
     for width in [24, 80] {

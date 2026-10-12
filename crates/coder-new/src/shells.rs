@@ -31,7 +31,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::plugin_tools::ExecutionSettings;
-use crate::{App, Mode, live};
+use crate::{App, live};
 
 /// The tool that lists, reads and stops background commands.
 pub const SHELL_TOOL: &str = "background_shell";
@@ -671,7 +671,7 @@ impl App {
     /// model reads them as its next input, like a background agent's.
     pub(crate) fn poll_shells(&mut self) {
         for text in drain(self.fleet.key()) {
-            if self.mode == Mode::Live && self.plugins.enabled && self.plugins.key_configured {
+            if self.on_coder_loop() && self.plugins.enabled && self.plugins.key_configured {
                 self.queue_notice(text);
             } else {
                 self.live.entries.push(live::Entry::User(text));
@@ -729,6 +729,7 @@ impl App {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use crate::Mode;
 
     /// A fresh owner number for each test, so parallel tests never read
     /// each other's notices.

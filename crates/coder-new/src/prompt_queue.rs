@@ -163,7 +163,7 @@ impl App {
         {
             self.notice = None;
         }
-        if !matches!(self.mode, Mode::Live | Mode::Claude)
+        if self.mode != Mode::Live
             || (self.live.busy && !immediate)
             || self.checking_key
             || self.checking_jev

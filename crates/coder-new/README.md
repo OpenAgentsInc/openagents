@@ -237,13 +237,12 @@ the call. Demo tools
 and agents remain presentation fixtures; live mode
 runs enabled plugin tools and configured ACP delegations.
 
-Shift+Tab steps the mode from `coder` to `claude` and back. When the
-OpenRouter plugin is on and holds a key, an `openrouter` step between them
-runs DeepSeek V4.1 Flash on that key; `coder` lets OpenAgents pick the model.
-`claude` is offered only where this computer holds a Claude account login; it
-runs turns through the
-Claude Agent SDK on that login, on Haiku 5.5, with the basic file tools
-(Read, Write, Edit, Glob, and Grep) and no shell. `coder solver N` takes an
+There are no modes. Each new chat is routed to a harness: Claude Code, through
+the Claude Agent SDK on this computer's Claude account login (Haiku 5.5 while
+testing), when its plugin is on and signed in; otherwise Coder's own loop, where
+OpenAgents picks the model, or the model chosen in /models on the person's
+OpenRouter key. Follow-ups stay on the chat's harness, and the input's top-right
+rail names it (`Claude · Haiku 5.5`, `Coder · auto`). `coder solver N` takes an
 issue number (or `owner/repo#N`) and solves it to a pull request in four
 constrained hands (`docs/coder-new/solver.md`).
 

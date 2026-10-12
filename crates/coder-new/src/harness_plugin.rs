@@ -11,8 +11,13 @@
 //! (`docs/api/2026-10-02-agentic-execution-router.md`, section 4):
 //! [`candidates`] keeps the harnesses that are on, healthy and runnable
 //! here, and gives every other one a typed [`Exclusion`]. Choosing among the
-//! candidates is the router's job (phase 2); [`App::submit_on`] starts a
-//! turn on whichever it picks.
+//! candidates is the router's job (phase 2); until it lands, [`fixed_rule`]
+//! takes the first one. [`App::submit_on`] starts a turn on whichever is
+//! chosen.
+//!
+//! There is no mode switch (#11453): a chat runs on the harness chosen for
+//! its first turn ([`crate::live::Chat::runs_on`]) and stays on it for
+//! follow-ups, so its session and prompt cache carry on.
 
 use crate::{App, Mode, plugin_tools::ExecutionSettings};
 
@@ -200,13 +205,16 @@ impl Facts {
 
     fn from_parts(app: &App, execution: &ExecutionSettings) -> Self {
         let now = atif::now_ms() / 1000;
-        let claude_signed_in = crate::claude::available();
+        let claude_plugin_on = app.plugins.bundled.claude;
+        // The sign-in and the plan windows are read only for a plugin
+        // that is on.
+        let claude_signed_in = claude_plugin_on && claude_signed_in();
         Self {
             local: true,
-            claude_plugin_on: app.plugins.bundled.claude,
+            claude_plugin_on,
             claude: Health {
                 signed_in: claude_signed_in,
-                at_limit: claude_at_limit(now),
+                at_limit: claude_signed_in && claude_at_limit(now),
             },
             codex_on: crate::fleet::engines(execution)
                 .iter()
@@ -219,6 +227,30 @@ impl Facts {
             openrouter_key: app.plugins.enabled && app.plugins.key_configured,
         }
     }
+}
+
+/// Whether this computer holds a Claude Code login. A unit test never asks
+/// the computer: its chats run on the Coder loop unless the test signs one
+/// in.
+#[cfg(not(test))]
+fn claude_signed_in() -> bool {
+    crate::claude::available()
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_CLAUDE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+fn claude_signed_in() -> bool {
+    TEST_CLAUDE.with(std::cell::Cell::get)
+}
+
+/// Makes this test thread's computer hold a Claude Code login, or not.
+#[cfg(test)]
+pub(crate) fn sign_in_claude(signed_in: bool) {
+    TEST_CLAUDE.with(|cell| cell.set(signed_in));
 }
 
 /// Whether a Claude plan window Claude Code reported is at its limit now.
@@ -282,30 +314,63 @@ pub fn candidates(facts: &Facts) -> Candidates {
     Candidates { admitted, excluded }
 }
 
+/// The selector until the router lands (phase 2): the first admitted
+/// candidate, which is Claude Code when its plugin is on and healthy, and
+/// otherwise the Coder loop, which is always there.
+#[must_use]
+pub fn fixed_rule(candidates: &Candidates) -> Harness {
+    candidates
+        .admitted
+        .first()
+        .copied()
+        .unwrap_or(Harness::CoderLoop)
+}
+
 impl App {
-    /// Starts the draft's turn on `harness`, through the path that harness
-    /// already has: Claude Code's chat process, or Coder's live loop.
+    /// The harness this chat's next turn runs on: the one it already runs
+    /// on, or, for a chat's first turn, the one the selector picks. Each new
+    /// chat is a new piece of work and is routed afresh; follow-ups stay on
+    /// its harness (#11451, owner decision 1). Routing at other work
+    /// boundaries inside a chat comes later.
+    pub fn route_turn(&mut self) -> Harness {
+        if let Some(harness) = self.live.runs_on {
+            return harness;
+        }
+        let harness = fixed_rule(&candidates(&Facts::read(self)));
+        self.live.runs_on = Some(harness);
+        harness
+    }
+
+    /// Whether this chat runs on Claude Code.
+    #[must_use]
+    pub fn on_claude(&self) -> bool {
+        self.mode == Mode::Live && self.live.runs_on == Some(Harness::ClaudeCode)
+    }
+
+    /// Whether this chat runs Coder's own loop: a live chat not on Claude
+    /// Code, including one whose first turn has not been routed yet.
+    #[must_use]
+    pub fn on_coder_loop(&self) -> bool {
+        self.mode == Mode::Live && self.live.runs_on != Some(Harness::ClaudeCode)
+    }
+
+    /// Starts the draft's turn on `harness` and keeps the chat on it: a
+    /// pin (`coder chat --mode claude`) or the router's pick. Switching a
+    /// chat that ran elsewhere onto Claude Code starts its session from the
+    /// transcript ([`crate::live::Chat::claude_resume`]).
     ///
     /// # Errors
     /// The harness takes no chat turns yet.
     pub fn submit_on(&mut self, harness: Harness) -> Result<(), &'static str> {
-        match harness {
-            Harness::ClaudeCode => {
-                if self.mode != Mode::Claude {
-                    self.set_mode(Mode::Claude);
-                }
-                self.submit_live();
-                Ok(())
-            }
-            Harness::CoderLoop => {
-                if self.mode != Mode::Live {
-                    self.set_mode(Mode::Live);
-                }
-                self.submit_live();
-                Ok(())
-            }
-            Harness::Codex => Err("Codex runs as a background agent; it takes no chat turns yet."),
+        if harness.declaration().turn == Turn::NotYet {
+            return Err("Codex runs as a background agent; it takes no chat turns yet.");
         }
+        if self.mode != Mode::Live {
+            self.set_mode(Mode::Live);
+        }
+        self.live.runs_on = Some(harness);
+        self.submit_live();
+        Ok(())
     }
 }
 
@@ -404,6 +469,32 @@ mod tests {
         app.draft.cursor = 5;
         app.submit_on(Harness::CoderLoop).unwrap();
         assert_eq!(app.mode, Mode::Live);
+        assert_eq!(app.live.runs_on, Some(Harness::CoderLoop));
         assert!(app.submit_on(Harness::Codex).is_err());
+    }
+
+    #[test]
+    fn the_fixed_rule_takes_claude_code_first_and_the_coder_loop_otherwise() {
+        assert_eq!(fixed_rule(&candidates(&facts())), Harness::ClaudeCode);
+        let mut off = facts();
+        off.claude_plugin_on = false;
+        assert_eq!(fixed_rule(&candidates(&off)), Harness::CoderLoop);
+    }
+
+    /// A chat's first turn is routed; its follow-ups stay where it went,
+    /// and a new chat is routed again.
+    #[test]
+    fn a_chat_stays_on_the_harness_its_first_turn_took() {
+        crate::harness_plugin::sign_in_claude(true);
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.plugins.bundled.claude = true;
+        assert_eq!(app.route_turn(), Harness::ClaudeCode);
+        assert!(app.on_claude());
+        crate::harness_plugin::sign_in_claude(false);
+        assert_eq!(app.route_turn(), Harness::ClaudeCode);
+        app.live = Default::default();
+        assert_eq!(app.route_turn(), Harness::CoderLoop);
+        assert!(app.on_coder_loop());
     }
 }

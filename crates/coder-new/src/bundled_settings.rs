@@ -184,7 +184,7 @@ pub struct BundledSettings {
     pub solver: bool,
     /// The agent channel (#11346).
     pub comms: bool,
-    /// The Claude Code plugin, which offers the claude mode.
+    /// The Claude Code plugin, which turns on the Claude Code harness.
     pub claude: bool,
     /// The solver swarm (#11346).
     pub swarm: bool,

@@ -246,6 +246,7 @@ fn selected_remote_chat_retains_model_and_continues_the_same_job() {
     };
     let mut app = App::default();
     app.set_mode(Mode::Live);
+    app.plugins.bundled.claude = false;
     app.plugins.bundled.boat.enabled = true;
     let workspace = tempfile::tempdir().unwrap();
     app.submit("Parent request", workspace.path());

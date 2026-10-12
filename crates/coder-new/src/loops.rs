@@ -11,7 +11,7 @@
 //! This module also routes the commands that take arguments: `/loop`,
 //! `/schedule` ([`crate::schedule`]) and `/shells` ([`crate::shells`]).
 
-use crate::{App, Draft, Mode};
+use crate::{App, Draft};
 
 /// The shortest interval.
 const MIN_SECS: u64 = 10;
@@ -97,7 +97,7 @@ impl App {
 
     /// `/loop`, `/loop INTERVAL PROMPT`, `/loop stop N|all`.
     pub(crate) fn loop_command(&mut self, argument: &str) {
-        if self.mode != Mode::Live {
+        if !self.on_coder_loop() {
             self.notice = Some("Loops run in live mode only.".into());
             return;
         }
@@ -178,7 +178,7 @@ impl App {
 
     /// Queues each loop that is due, unless its last run has not started.
     pub(crate) fn poll_loops(&mut self) {
-        if self.mode != Mode::Live || self.loops.items.is_empty() {
+        if !self.on_coder_loop() || self.loops.items.is_empty() {
             return;
         }
         let now = atif::now_ms();
@@ -206,6 +206,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Mode;
 
     fn live_app() -> App {
         let mut app = App::default();

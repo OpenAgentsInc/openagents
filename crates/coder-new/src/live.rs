@@ -60,6 +60,10 @@ pub struct Chat {
     pub harness: Option<crate::harness::Run>,
     /// The Claude Code session this chat's claude turns continue (#11435).
     pub claude_session: Option<ClaudeSession>,
+    /// The harness plugin this chat's turns run on, once its first turn
+    /// was routed ([`App::route_turn`](crate::App::route_turn)); follow-ups
+    /// stay on it (#11453).
+    pub runs_on: Option<crate::harness_plugin::Harness>,
 }
 
 /// A Claude Code session a chat holds, and how far into the chat it reaches.

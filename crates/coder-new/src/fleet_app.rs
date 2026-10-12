@@ -135,10 +135,10 @@ impl App {
                 *o = output;
             }
             let text = notice.text();
-            if self.mode == Mode::Live && self.plugins.enabled && self.plugins.key_configured {
+            if self.on_coder_loop() && self.plugins.enabled && self.plugins.key_configured {
                 // The model reads it as its next input, even mid-turn.
                 self.queue_notice(text);
-            } else if self.mode == Mode::Claude {
+            } else if self.on_claude() {
                 // Claude reads the report as its next message, mid-turn
                 // too, and what the person was typing stays in the input.
                 let typed = std::mem::replace(
@@ -203,7 +203,7 @@ impl App {
 
     /// `/agent ENGINE TASK`.
     pub(crate) fn agent_command(&mut self, argument: &str) {
-        if !matches!(self.mode, Mode::Live | Mode::Claude) {
+        if self.mode != Mode::Live {
             self.notice = Some("Background agents run in live mode only.".into());
             return;
         }
