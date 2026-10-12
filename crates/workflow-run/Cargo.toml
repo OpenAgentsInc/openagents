@@ -1,0 +1,17 @@
+[package]
+name = "workflow-run"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Runs a managed-agent workflow script: threads, pipelines, and a shared session budget."
+
+[dependencies]
+boa_engine = "0.22"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
+
+[lints]
+workspace = true

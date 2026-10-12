@@ -17,7 +17,7 @@ Scout first when you do not yet know the list: find the files, the diff, or the 
 
 ## The script
 
-Pass the script inline. Do not write it to a file first, and do not pass a saved name beside it. The script is plain JavaScript, not TypeScript. Type annotations, interfaces, and generics fail to parse. The body is async, so use `await` directly. It has JavaScript built-ins and no filesystem or host APIs of its own.
+Pass the script inline. Do not write it to a file first, and do not pass a saved name beside it. Call the `workflow` tool with the script, and pass `args` when the script reads them. The script is plain JavaScript, not TypeScript. Type annotations, interfaces, and generics fail to parse. The body is async, so use `await` directly. It has JavaScript built-ins and no filesystem or host APIs of its own.
 
 Every script begins with `export const meta = { ... }`. That object is a literal: no variables, calls, spreads, or interpolation.
 

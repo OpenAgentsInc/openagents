@@ -61,6 +61,7 @@ claude_agent_sdk = { path = "../claude_agent_sdk" }
 futures = "0.3"
 unicode-segmentation = "1"
 unicode-width = "0.2"
+workflow-run = { path = "../workflow-run" }
 
 [target.'cfg(unix)'.dependencies]
 background = { path = "../background" }

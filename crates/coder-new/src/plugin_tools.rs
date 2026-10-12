@@ -264,6 +264,7 @@ impl ExecutionSettings {
         }
         if self.shell {
             definitions.push(crate::plan::definition());
+            definitions.push(crate::workflow::definition());
         }
         if let Some(run) = &self.harness {
             definitions.retain(|tool| {
@@ -418,6 +419,9 @@ impl ExecutionSettings {
         };
         let result = match name {
             crate::plan::TOOL if self.shell => crate::plan::execute(arguments),
+            crate::workflow::TOOL if self.shell => {
+                crate::workflow::execute(arguments, &self.cwd, provider, cancel).await
+            }
             name if crate::memory::Memory::is_tool(name) && self.memory.is_some() => self
                 .memory
                 .as_ref()
@@ -908,6 +912,50 @@ mod tests {
         let text = settings().instructions();
         assert!(text.contains("name: openagents-workflow"));
         assert!(text.contains("export const meta"));
+        assert!(!text.contains("Run tool"));
+    }
+
+    #[tokio::test]
+    async fn workflow_tool_runs_the_script() {
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut settings = settings();
+        assert!(
+            !settings
+                .defs()
+                .iter()
+                .any(|tool| tool["function"]["name"] == "workflow")
+        );
+        settings.shell = true;
+        assert!(
+            settings
+                .defs()
+                .iter()
+                .any(|tool| tool["function"]["name"] == "workflow")
+        );
+        let value = settings
+            .execute(
+                "workflow",
+                json!({
+                    "script": "export const meta = { name: \"Echo\", description: \"Return the args.\" };\nreturn args;",
+                    "args": {"ok": true}
+                }),
+                None,
+                &Arc::new(AtomicBool::new(false)),
+                &mut |_| {},
+            )
+            .await
+            .unwrap();
+        assert_eq!(value["status"], "ended");
+        assert_eq!(value["value"], json!({"ok": true}));
+        assert!(value["notice"].as_str().unwrap().contains("finished"));
+        assert!(
+            value["workflow_run_id"]
+                .as_str()
+                .unwrap()
+                .starts_with("wrun_")
+        );
     }
 
     #[tokio::test]

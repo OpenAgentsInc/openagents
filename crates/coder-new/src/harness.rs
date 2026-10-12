@@ -219,6 +219,9 @@ impl Config {
         if name == crate::plan::TOOL {
             return self.plan == Switch::On;
         }
+        if name == crate::workflow::TOOL {
+            return true;
+        }
         !(self.tools == Tools::Shell && crate::file_tools::is_tool(name))
     }
 
@@ -520,6 +523,8 @@ mod tests {
         assert!(skill.contains("export const meta"));
         assert!(skill.contains("pipeline("));
         assert!(skill.contains("amount_sats"));
+        assert!(skill.contains("`workflow` tool"));
+        assert!(Config::default().offers(crate::workflow::TOOL));
         for word in [
             "anthropic",
             "claude",
