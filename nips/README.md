@@ -6,6 +6,10 @@ in this repository.
 
 ## The three lanes
 
+`./scripts/check-nips-pin.sh` checks that `nips/official/` and `nips/block/`
+are byte-for-byte the upstream commits `manifest.json` names; a changed
+byte, a missing file, or a stray file fails it.
+
 | Lane | Upstream | Content |
 | --- | --- | --- |
 | `nips/official/` | [nostr-protocol/nips](https://github.com/nostr-protocol/nips) | The standard NIPs |
