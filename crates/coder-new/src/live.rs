@@ -1104,7 +1104,8 @@ async fn gateway_turn(
 }
 
 /// `auto`'s OpenCode door: one `opencode acp` turn on the free
-/// `opencode/big-pickle` model, in the engine's own database and
+/// `opencode/big-pickle` model, or the `provider/model` that
+/// `CODER_OPENCODE_MODEL` names, in the engine's own database and
 /// permissions, as a delegated OpenCode turn runs (#11359). `model` is not
 /// named to `acp` — OpenCode takes it from the inline configuration the
 /// turn's environment carries.
@@ -1125,8 +1126,15 @@ async fn opencode_turn(
         return Err("OpenCode is not installed or is turned off.".into());
     };
     let task = local_task(messages, execution)?;
-    let model = acp_client::opencode::Model::parse(coder::delegate_door::OPENCODE_AUTO_MODEL)
-        .map_err(|why| format!("Coder's OpenCode model is invalid: {why}"))?;
+    let named = std::env::var(coder_delegate::delegate::OPENCODE_MODEL_VAR)
+        .ok()
+        .filter(|model| !model.trim().is_empty());
+    let model = acp_client::opencode::Model::parse(
+        named
+            .as_deref()
+            .map_or(coder::delegate_door::OPENCODE_AUTO_MODEL, str::trim),
+    )
+    .map_err(|why| format!("Coder's OpenCode model is invalid: {why}"))?;
     let permission = if crate::approval::gated() {
         acp_client::opencode::Permission::Workspace
     } else {
