@@ -95,6 +95,26 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
+/// Which issue to take next from a queue when no door answers: the
+/// longest-waiting `ready` issue (the lowest number), with the rest of the
+/// ready set so a caller can see what was passed over. `None` when nothing
+/// is ready.
+#[must_use]
+pub fn next(entries: &[Entry]) -> Option<Value> {
+    let mut ready: Vec<&Entry> = entries
+        .iter()
+        .filter(|entry| entry.verdict == "ready")
+        .collect();
+    ready.sort_by_key(|entry| entry.issue);
+    let first = ready.first()?;
+    Some(json!({
+        "next": first.issue,
+        "title": first.title,
+        "why": "longest-waiting ready issue",
+        "ready": ready.iter().map(|entry| entry.issue).collect::<Vec<_>>(),
+    }))
+}
+
 pub async fn read(github: &str, repo: &Path, state: &Path) -> Result<Vec<Entry>, String> {
     let args = [
         "issue",
@@ -195,15 +215,17 @@ pub async fn command(args: &[String]) -> Result<String, String> {
     let mut state = super::default_state();
     let mut repo = std::env::current_dir().map_err(|error| error.to_string())?;
     let mut github = None;
+    let mut pick = false;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            "--next" => pick = true,
             "--state" => state = args.next().ok_or("--state needs a directory")?.into(),
             "--repo" => repo = args.next().ok_or("--repo needs a path")?.into(),
             "--github" => github = Some(args.next().ok_or("--github needs owner/repo")?.clone()),
             other => {
                 return Err(format!(
-                    "unknown option {other}; coder solver queue takes --github OWNER/REPO, --state DIR, and --repo PATH"
+                    "unknown option {other}; coder solver queue takes --github OWNER/REPO, --state DIR, --repo PATH, and --next"
                 ));
             }
         }
@@ -226,10 +248,35 @@ pub async fn command(args: &[String]) -> Result<String, String> {
         .trim()
         .to_owned(),
     };
+    let entries = read(&github, &repo, &state).await?;
+    if pick {
+        return Ok(next(&entries)
+            .map(|choice| format!("{choice}\n"))
+            .unwrap_or_else(|| "{\"next\":null,\"why\":\"nothing is ready\"}\n".to_owned()));
+    }
     let mut out = String::new();
-    for entry in read(&github, &repo, &state).await? {
+    for entry in entries {
         out.push_str(&entry.json().to_string());
         out.push('\n');
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn next_takes_the_lowest_ready_issue_and_lists_the_rest() {
+        let entries = [
+            judge(30, "c", None, &[], &[], 1),
+            judge(10, "a", None, &["someone".into()], &[], 1),
+            judge(20, "b", None, &[], &[], 1),
+            judge(5, "stale", None, &[], &[], 40),
+        ];
+        let choice = next(&entries).expect("a ready issue");
+        assert_eq!(choice["next"], json!(20));
+        assert_eq!(choice["ready"], json!([20, 30]));
+        assert!(next(&entries[1..2]).is_none());
+    }
 }
