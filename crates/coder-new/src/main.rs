@@ -312,6 +312,7 @@ fn run() -> io::Result<()> {
         let mut plugins = background::Layout::from_env()
             .ok()
             .map(coder_new::plugin_catalog::Loader::new);
+        let mut status_report = String::new();
         loop {
             app.elapsed_seconds = started.elapsed().as_secs();
             if let Some(Ok(coder_new::update::Event::Notice(line))) = update_events
@@ -329,6 +330,7 @@ fn run() -> io::Result<()> {
             if let Some(loader) = &mut plugins {
                 loader.sync(&mut app);
             }
+            report_program_status(&app, &mut status_report)?;
             execute!(io::stdout(), BeginSynchronizedUpdate)?;
             terminal.draw(|frame| ui::render(frame, &mut app))?;
             execute!(io::stdout(), EndSynchronizedUpdate)?;
@@ -354,6 +356,7 @@ fn run() -> io::Result<()> {
                 next_tick = Instant::now() + interval;
             }
         }
+        report_program_status_clear(&mut status_report)?;
         Ok(())
     })();
     app.cancel_request();
@@ -946,6 +949,42 @@ run coder update --mode notify; to stop checking, coder update --mode off.
 
 Scripts and agents: openagents coder --help"
     )
+}
+
+/// Writes an OSC 7501 program-status report when the composer's state
+/// changed since the last report. A terminal that supports the protocol
+/// (such as Rex) shows the state and picks the pane's icon from `app`;
+/// one that does not ignores the sequence.
+fn report_program_status(app: &App, previous: &mut String) -> io::Result<()> {
+    use base64::Engine as _;
+    let (state, msg) = app.program_status();
+    let mut pairs = format!("state={state}:app=openagents");
+    if state == "blocked" {
+        pairs.push_str(":kind=permission");
+        if let Some(msg) = msg {
+            let msg = base64::engine::general_purpose::STANDARD
+                .encode(msg.chars().take(200).collect::<String>());
+            pairs.push_str(":msg=");
+            pairs.push_str(&msg);
+        }
+    }
+    if pairs != *previous {
+        write!(io::stdout(), "\x1b]7501;{pairs}\x07")?;
+        io::stdout().flush()?;
+        *previous = pairs;
+    }
+    Ok(())
+}
+
+/// Drops every record this run reported; the process is leaving, so the
+/// pane should keep nothing it attributed to us.
+fn report_program_status_clear(previous: &mut String) -> io::Result<()> {
+    if !previous.is_empty() {
+        io::stdout().write_all(b"\x1b]7501;state=clear\x07")?;
+        io::stdout().flush()?;
+        previous.clear();
+    }
+    Ok(())
 }
 
 fn restore_extras() -> io::Result<()> {

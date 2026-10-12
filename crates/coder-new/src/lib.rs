@@ -1961,6 +1961,22 @@ impl App {
         self.animation_frame = self.animation_frame.wrapping_add(1) % 8;
     }
 
+    /// The state this run reports to a program-status (OSC 7501) terminal:
+    /// `blocked` while a question waits on the person, with the question's
+    /// first line as the message; `working` while a turn runs; `idle`
+    /// otherwise.
+    pub fn program_status(&self) -> (&'static str, Option<String>) {
+        if let Some(event) = &self.disclosure_event {
+            let msg = supervise::question_text(event)
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .to_owned();
+            return ("blocked", Some(msg));
+        }
+        (if self.live.busy { "working" } else { "idle" }, None)
+    }
+
     fn select_agent(&mut self, selected: Option<usize>) {
         if self.selected_agent != selected {
             self.composer_history.reset();
