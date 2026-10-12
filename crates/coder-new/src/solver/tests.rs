@@ -766,9 +766,11 @@ fn decisions_names_one_door_and_only_that_door() {
     assert_eq!(clef.inner.decider, crate::issue_run::Decider::Clef);
     let arm = Options::parse(&["7".into(), "--decisions".into(), "haiku-arm".into()]).unwrap();
     assert_eq!(arm.inner.decider, crate::issue_run::Decider::HaikuArm);
+    let subq = Options::parse(&["7".into(), "--decisions".into(), "subq".into()]).unwrap();
+    assert_eq!(subq.inner.decider, crate::issue_run::Decider::Subq);
     let refused = Options::parse(&["7".into(), "--decisions".into(), "auto".into()]).unwrap_err();
     assert!(
-        refused.contains("--decisions takes jev, clef, haiku-arm or off"),
+        refused.contains("--decisions takes jev, clef, haiku-arm, subq or off"),
         "{refused}"
     );
 }

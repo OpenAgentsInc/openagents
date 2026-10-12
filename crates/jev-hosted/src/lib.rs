@@ -87,6 +87,15 @@ pub const SHADOW_EVERY: u64 = 20;
 /// nothing tighter: the gateway tries Pylons, then Vertex, within 25 s.
 pub const OURS_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// SubQ's API: `POST /v1/systemone` takes the same body as TypeSafe's, so
+/// the Jev client speaks it (`docs/inference/subq-snap.md`). An opt-in
+/// door; nothing asks it unless named.
+pub const SUBQ: &str = "https://api.subq.ai";
+/// SubQ's System One model (public preview).
+pub const SUBQ_MODEL: &str = "subq-snap-preview";
+/// The variable holding a SubQ API key.
+pub const SUBQ_KEY_VAR: &str = "SUBQ_API_KEY";
+
 /// The file under `~/.openagents` holding this computer's decision key.
 pub const KEY_FILE: &str = "decision.key";
 

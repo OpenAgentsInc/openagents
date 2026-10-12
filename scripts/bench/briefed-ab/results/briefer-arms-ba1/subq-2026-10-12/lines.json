@@ -1,0 +1,439 @@
+[
+ {
+  "ok": true,
+  "windows": 177,
+  "window_lines": 40,
+  "chosen": [
+   "crates/coder/src/task/autostart.rs:1961-2000",
+   "crates/coder/src/task/autostart.rs:2001-2040",
+   "crates/coder/src/task/local.rs:481-520",
+   "crates/coder/src/task/local.rs:81-120",
+   "crates/openagents-cli/src/chat.rs:41-80"
+  ],
+  "packet_bytes": 9249,
+  "kept_bytes": 267102,
+  "fix_hunks": 4,
+  "fix_hunks_in_kept": 3,
+  "covered": 2,
+  "ms": 3050,
+  "tokens": 163194,
+  "cost_usd": 0.00816,
+  "issue": 10074
+ },
+ {
+  "ok": true,
+  "windows": 45,
+  "window_lines": 40,
+  "chosen": [
+   "crates/background/src/rule.rs:41-80",
+   "crates/background/src/runner.rs:81-120",
+   "crates/background/src/tests.rs:521-556",
+   "crates/openagents-cli/src/background.rs:1-40",
+   "crates/openagents-cli/src/background.rs:361-400"
+  ],
+  "packet_bytes": 8334,
+  "kept_bytes": 58732,
+  "fix_hunks": 9,
+  "fix_hunks_in_kept": 8,
+  "covered": 3,
+  "ms": 1288,
+  "tokens": 32359,
+  "cost_usd": 0.001618,
+  "issue": 10167
+ },
+ {
+  "ok": true,
+  "windows": 138,
+  "window_lines": 40,
+  "chosen": [
+   "crates/openagents-terminal/src/app.rs:1161-1200",
+   "crates/openagents-terminal/src/app_tests.rs:1801-1840",
+   "crates/openagents-terminal/src/app_tests.rs:1841-1880",
+   "docs/background/2026-10-02-disk-cleanup-plugin.md:161-164"
+  ],
+  "packet_bytes": 5653,
+  "kept_bytes": 201246,
+  "fix_hunks": 6,
+  "fix_hunks_in_kept": 3,
+  "covered": 0,
+  "ms": 2043,
+  "tokens": 105198,
+  "cost_usd": 0.00526,
+  "issue": 10179
+ },
+ {
+  "ok": true,
+  "windows": 36,
+  "window_lines": 40,
+  "chosen": [
+   "crates/openagents-cli/src/ext_eval.rs:1361-1400",
+   "crates/openagents-cli/src/ext_eval.rs:1401-1423",
+   "crates/openagents-cli/src/ext_eval.rs:41-80",
+   "crates/openagents-cli/src/ext_eval.rs:841-880",
+   "crates/openagents-cli/src/ext_eval.rs:921-960",
+   "crates/openagents-cli/src/ext_eval.rs:961-1000"
+  ],
+  "packet_bytes": 10003,
+  "kept_bytes": 53367,
+  "fix_hunks": 8,
+  "fix_hunks_in_kept": 0,
+  "covered": 0,
+  "ms": 978,
+  "tokens": 27836,
+  "cost_usd": 0.001392,
+  "issue": 10181
+ },
+ {
+  "ok": true,
+  "windows": 158,
+  "window_lines": 40,
+  "chosen": [
+   "crates/coder-host/src/serve/mod.rs:361-400",
+   "crates/coder-host/src/serve/mod.rs:401-440",
+   "crates/coder-host/src/serve/mod.rs:81-120",
+   "crates/openagents-chat/src/client.rs:81-120",
+   "crates/openagents-chat/src/client_tests.rs:761-800",
+   "crates/openagents-terminal/src/app.rs:1001-1040",
+   "crates/openagents-terminal/src/app.rs:1401-1440"
+  ],
+  "packet_bytes": 11903,
+  "kept_bytes": 226909,
+  "fix_hunks": 11,
+  "fix_hunks_in_kept": 8,
+  "covered": 4,
+  "ms": 1976,
+  "tokens": 116853,
+  "cost_usd": 0.005843,
+  "issue": 10201
+ },
+ {
+  "ok": true,
+  "windows": 202,
+  "window_lines": 40,
+  "chosen": [
+   "crates/coder/src/task/autostart.rs:2321-2360",
+   "crates/coder/src/task/autostart.rs:2361-2400",
+   "crates/coder/src/task/autostart.rs:4441-4469",
+   "crates/coder/src/task/local.rs:81-120"
+  ],
+  "packet_bytes": 6482,
+  "kept_bytes": 316738,
+  "fix_hunks": 3,
+  "fix_hunks_in_kept": 3,
+  "covered": 2,
+  "ms": 2125,
+  "tokens": 161698,
+  "cost_usd": 0.008085,
+  "issue": 10228
+ },
+ {
+  "ok": true,
+  "windows": 235,
+  "window_lines": 40,
+  "chosen": [
+   "crates/coder/src/task/local.rs:1841-1880",
+   "crates/coder/src/task/local.rs:1961-2000"
+  ],
+  "packet_bytes": 3630,
+  "kept_bytes": 348600,
+  "fix_hunks": 8,
+  "fix_hunks_in_kept": 4,
+  "covered": 1,
+  "ms": 2760,
+  "tokens": 179139,
+  "cost_usd": 0.008957,
+  "issue": 10248
+ },
+ {
+  "ok": true,
+  "windows": 86,
+  "window_lines": 40,
+  "chosen": [
+   "crates/coder/src/task/issue_run.rs:1841-1880",
+   "crates/coder/src/task/issue_run.rs:2081-2120",
+   "crates/coder/src/task/issue_run_tests.rs:681-720",
+   "crates/coder/src/task/issue_run_tests.rs:761-800",
+   "docs/cloud/gce-pool.md:121-160"
+  ],
+  "packet_bytes": 8709,
+  "kept_bytes": 120597,
+  "fix_hunks": 9,
+  "fix_hunks_in_kept": 2,
+  "covered": 1,
+  "ms": 1351,
+  "tokens": 62946,
+  "cost_usd": 0.003147,
+  "issue": 10258
+ },
+ {
+  "ok": true,
+  "windows": 216,
+  "window_lines": 40,
+  "chosen": [
+   "crates/coder/src/task.rs:1441-1480",
+   "crates/coder/src/task/issue_run.rs:1601-1640",
+   "crates/coder/src/task/local.rs:1241-1280"
+  ],
+  "packet_bytes": 6044,
+  "kept_bytes": 317434,
+  "fix_hunks": 4,
+  "fix_hunks_in_kept": 3,
+  "covered": 2,
+  "ms": 2099,
+  "tokens": 158557,
+  "cost_usd": 0.007928,
+  "issue": 10273
+ },
+ {
+  "ok": true,
+  "windows": 69,
+  "window_lines": 40,
+  "chosen": [
+   "crates/background/src/view.rs:1-40",
+   "crates/background/src/view.rs:241-280",
+   "crates/background/src/view.rs:281-291",
+   "crates/openagents-cli/src/background.rs:1081-1112",
+   "crates/openagents-cli/src/background.rs:961-1000",
+   "crates/openagents-cli/src/screen.rs:601-640",
+   "crates/openagents-cli/src/screen.rs:641-680"
+  ],
+  "packet_bytes": 9776,
+  "kept_bytes": 99851,
+  "fix_hunks": 11,
+  "fix_hunks_in_kept": 0,
+  "covered": 0,
+  "ms": 1144,
+  "tokens": 49127,
+  "cost_usd": 0.002456,
+  "issue": 10283
+ },
+ {
+  "ok": true,
+  "windows": 30,
+  "window_lines": 40,
+  "chosen": [
+   "crates/openagents-chat-app/src/eval_cards.rs:1-40",
+   "crates/openagents-chat-app/src/eval_cards.rs:1041-1080",
+   "crates/openagents-chat-app/src/eval_cards.rs:41-80",
+   "crates/openagents-chat-app/src/eval_cards.rs:81-120"
+  ],
+  "packet_bytes": 5793,
+  "kept_bytes": 36747,
+  "fix_hunks": 6,
+  "fix_hunks_in_kept": 2,
+  "covered": 2,
+  "ms": 1489,
+  "tokens": 21412,
+  "cost_usd": 0.001071,
+  "issue": 10289
+ },
+ {
+  "ok": true,
+  "windows": 80,
+  "window_lines": 40,
+  "chosen": [
+   "crates/coder/src/task/issue_run.rs:1-40",
+   "crates/coder/src/task/issue_run.rs:1761-1800",
+   "crates/coder/src/task/issue_run.rs:2081-2120",
+   "crates/coder/src/task/issue_run_tests.rs:441-480"
+  ],
+  "packet_bytes": 7896,
+  "kept_bytes": 111969,
+  "fix_hunks": 11,
+  "fix_hunks_in_kept": 11,
+  "covered": 5,
+  "ms": 1230,
+  "tokens": 60560,
+  "cost_usd": 0.003028,
+  "issue": 10295
+ },
+ {
+  "ok": true,
+  "windows": 190,
+  "window_lines": 40,
+  "chosen": [
+   "crates/coder/src/task/issue_run.rs:1-40",
+   "crates/coder/src/task/issue_run.rs:1121-1160",
+   "crates/coder/src/task/local.rs:921-960"
+  ],
+  "packet_bytes": 6370,
+  "kept_bytes": 278754,
+  "fix_hunks": 3,
+  "fix_hunks_in_kept": 1,
+  "covered": 0,
+  "ms": 1982,
+  "tokens": 144998,
+  "cost_usd": 0.00725,
+  "issue": 10298
+ },
+ {
+  "ok": true,
+  "windows": 175,
+  "window_lines": 40,
+  "chosen": [
+   "crates/coder-delegate/src/issue.rs:1-40",
+   "crates/coder-delegate/src/issue.rs:281-320",
+   "crates/coder-delegate/src/issue.rs:41-80",
+   "crates/coder-delegate/src/issue.rs:561-600",
+   "crates/coder/src/task/local.rs:1-40",
+   "crates/coder/src/task/local.rs:281-320"
+  ],
+  "packet_bytes": 11065,
+  "kept_bytes": 259907,
+  "fix_hunks": 7,
+  "fix_hunks_in_kept": 5,
+  "covered": 3,
+  "ms": 2182,
+  "tokens": 135298,
+  "cost_usd": 0.006765,
+  "issue": 10299
+ },
+ {
+  "ok": true,
+  "windows": 74,
+  "window_lines": 40,
+  "chosen": [
+   "crates/coder/src/task.rs:481-520",
+   "crates/coder/src/task.rs:681-720",
+   "crates/coder/src/task.rs:721-760",
+   "crates/coder/src/task.rs:81-120",
+   "crates/coder/src/task.rs:961-1000",
+   "crates/coder/src/task/tests.rs:401-440",
+   "crates/coder/src/task/tests.rs:721-760",
+   "crates/coder/src/task/tests.rs:761-800"
+  ],
+  "packet_bytes": 15624,
+  "kept_bytes": 106722,
+  "fix_hunks": 6,
+  "fix_hunks_in_kept": 0,
+  "covered": 0,
+  "ms": 1139,
+  "tokens": 52524,
+  "cost_usd": 0.002626,
+  "issue": 10301
+ },
+ {
+  "ok": true,
+  "windows": 46,
+  "window_lines": 40,
+  "chosen": [
+   "crates/background/src/runner.rs:1-40",
+   "crates/background/src/runner.rs:161-200",
+   "crates/background/src/runner.rs:201-240",
+   "crates/openagents-cli/src/background.rs:1081-1120",
+   "crates/openagents-cli/src/background.rs:601-640"
+  ],
+  "packet_bytes": 8735,
+  "kept_bytes": 65731,
+  "fix_hunks": 10,
+  "fix_hunks_in_kept": 7,
+  "covered": 4,
+  "ms": 1009,
+  "tokens": 33608,
+  "cost_usd": 0.00168,
+  "issue": 10349
+ },
+ {
+  "ok": true,
+  "windows": 40,
+  "window_lines": 40,
+  "chosen": [
+   "crates/coder-host/src/cli.rs:1361-1400",
+   "crates/coder-host/src/cli.rs:1561-1595",
+   "crates/coder-host/src/cli.rs:201-240",
+   "crates/coder-host/src/cli.rs:401-440",
+   "crates/coder-host/src/cli.rs:481-520",
+   "crates/coder-host/src/cli.rs:81-120"
+  ],
+  "packet_bytes": 9538,
+  "kept_bytes": 58063,
+  "fix_hunks": 8,
+  "fix_hunks_in_kept": 8,
+  "covered": 5,
+  "ms": 942,
+  "tokens": 30903,
+  "cost_usd": 0.001545,
+  "issue": 10369
+ },
+ {
+  "ok": true,
+  "windows": 9,
+  "window_lines": 40,
+  "chosen": [
+   "crates/openagents-cli/src/tree.rs:121-160",
+   "crates/openagents-cli/src/tree.rs:241-280",
+   "crates/openagents-cli/src/tree.rs:281-320"
+  ],
+  "packet_bytes": 4811,
+  "kept_bytes": 12349,
+  "fix_hunks": 6,
+  "fix_hunks_in_kept": 0,
+  "covered": 0,
+  "ms": 984,
+  "tokens": 6995,
+  "cost_usd": 0.00035,
+  "issue": 10370
+ },
+ {
+  "ok": true,
+  "windows": 59,
+  "window_lines": 40,
+  "chosen": [
+   "crates/openagents-cli/src/agent.rs:1961-2000",
+   "crates/openagents-cli/src/agent.rs:2321-2355",
+   "crates/openagents-cli/src/agent.rs:801-840",
+   "crates/openagents-cli/src/agent.rs:841-880",
+   "crates/openagents-cli/src/agent.rs:961-1000"
+  ],
+  "packet_bytes": 7534,
+  "kept_bytes": 91673,
+  "fix_hunks": 4,
+  "fix_hunks_in_kept": 4,
+  "covered": 3,
+  "ms": 1254,
+  "tokens": 52818,
+  "cost_usd": 0.002641,
+  "issue": 10893
+ },
+ {
+  "ok": true,
+  "windows": 98,
+  "window_lines": 40,
+  "chosen": [
+   "crates/coder/src/task/issue_run.rs:2441-2480",
+   "crates/coder/src/task/issue_run.rs:841-880",
+   "crates/coder/src/task/issue_run.rs:961-1000",
+   "crates/coder/src/task/issue_run_tests.rs:1081-1120"
+  ],
+  "packet_bytes": 7047,
+  "kept_bytes": 137777,
+  "fix_hunks": 4,
+  "fix_hunks_in_kept": 4,
+  "covered": 2,
+  "ms": 1437,
+  "tokens": 77208,
+  "cost_usd": 0.00386,
+  "issue": 10986
+ },
+ {
+  "ok": true,
+  "windows": 69,
+  "window_lines": 40,
+  "chosen": [
+   "crates/coder-new/src/live.rs:1-40",
+   "crates/coder-new/src/live.rs:41-80",
+   "crates/coder-new/src/ui.rs:601-640",
+   "crates/coder-new/src/ui.rs:681-720",
+   "crates/coder-new/tests/live.rs:681-716"
+  ],
+  "packet_bytes": 6786,
+  "kept_bytes": 94188,
+  "fix_hunks": 4,
+  "fix_hunks_in_kept": 0,
+  "covered": 0,
+  "ms": 1059,
+  "tokens": 45980,
+  "cost_usd": 0.002299,
+  "issue": 11118
+ }
+]

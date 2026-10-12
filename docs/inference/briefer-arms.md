@@ -138,6 +138,16 @@ that it makes up for with files outside the list). The decision stands.
   changes (more of the file than its head, or a threshold set from
   calibration rather than 0.35).
 
+## SubQ Snap arms (2026-10-12)
+
+The same frozen candidates asked of SubQ Snap: per file (`subq`, decide.rs's
+question; `subq-perfile-full`, whole files) and in one request per issue
+(`subq-full`: every candidate's full body, narrow questions, union at
+p >= 0.3; `lines` adds the line-range step). Best door so far: `subq` top-1
+0.762 and AUC 0.84 (hosted Clef 0.571 / 0.78); `subq-full` accuracy 0.825,
+keep precision 0.434. Haiku still leads (0.888). Numbers, cost and the
+recommendation: [subq-snap.md](subq-snap.md).
+
 ## What is not measured
 
 - **Downstream pass rate.** The acceptance's "briefing quality" needs agent

@@ -1,0 +1,5363 @@
+{
+ "tag": "ba1",
+ "per_arm": {
+  "clef": {
+   "issues": 21,
+   "answered": 21,
+   "failed": {},
+   "judgments": 245,
+   "accuracy": 0.735,
+   "precision": 0.288,
+   "recall_in_candidates": 0.543,
+   "fix_recall": 0.334,
+   "top1_is_fix": 0.381,
+   "kept_mean": 3.14,
+   "usd_total": 0.0,
+   "usd_unpriced_issues": 0,
+   "usd_per_issue": 0.0,
+   "secs_p50": 11.75,
+   "secs_p95": 13.23
+  },
+  "hosted": {
+   "issues": 21,
+   "answered": 21,
+   "failed": {},
+   "judgments": 252,
+   "accuracy": 0.766,
+   "precision": 0.338,
+   "recall_in_candidates": 0.681,
+   "fix_recall": 0.429,
+   "top1_is_fix": 0.571,
+   "kept_mean": 3.24,
+   "usd_total": 0.0,
+   "usd_unpriced_issues": 21,
+   "usd_per_issue": 0.0,
+   "secs_p50": 11.73,
+   "secs_p95": 37.77
+  },
+  "subq": {
+   "issues": 21,
+   "answered": 21,
+   "failed": {},
+   "judgments": 252,
+   "accuracy": 0.75,
+   "precision": 0.324,
+   "recall_in_candidates": 0.726,
+   "fix_recall": 0.456,
+   "top1_is_fix": 0.762,
+   "kept_mean": 3.52,
+   "usd_total": 0.0223,
+   "usd_unpriced_issues": 0,
+   "usd_per_issue": 0.00106,
+   "secs_p50": 6.19,
+   "secs_p95": 6.78
+  },
+  "subq-perfile-full": {
+   "issues": 21,
+   "answered": 21,
+   "failed": {},
+   "judgments": 252,
+   "accuracy": 0.714,
+   "precision": 0.308,
+   "recall_in_candidates": 0.837,
+   "fix_recall": 0.56,
+   "top1_is_fix": 0.524,
+   "kept_mean": 4.33,
+   "usd_total": 0.2185,
+   "usd_unpriced_issues": 0,
+   "usd_per_issue": 0.0104,
+   "secs_p50": 9.77,
+   "secs_p95": 11.14
+  },
+  "subq-full": {
+   "issues": 21,
+   "answered": 21,
+   "failed": {},
+   "judgments": 252,
+   "accuracy": 0.825,
+   "precision": 0.434,
+   "recall_in_candidates": 0.707,
+   "fix_recall": 0.456,
+   "top1_is_fix": 0.571,
+   "kept_mean": 2.52,
+   "usd_total": 0.2019,
+   "usd_unpriced_issues": 0,
+   "usd_per_issue": 0.00962,
+   "secs_p50": 3.75,
+   "secs_p95": 4.29
+  }
+ },
+ "agreement": {
+  "clef~hosted": {
+   "pairs": 245,
+   "agree": 0.894
+  },
+  "clef~subq": {
+   "pairs": 245,
+   "agree": 0.767
+  },
+  "clef~subq-full": {
+   "pairs": 245,
+   "agree": 0.718
+  },
+  "clef~subq-perfile-full": {
+   "pairs": 245,
+   "agree": 0.669
+  },
+  "hosted~subq": {
+   "pairs": 252,
+   "agree": 0.778
+  },
+  "hosted~subq-full": {
+   "pairs": 252,
+   "agree": 0.75
+  },
+  "hosted~subq-perfile-full": {
+   "pairs": 252,
+   "agree": 0.694
+  },
+  "subq~subq-full": {
+   "pairs": 252,
+   "agree": 0.758
+  },
+  "subq~subq-perfile-full": {
+   "pairs": 252,
+   "agree": 0.774
+  },
+  "subq-full~subq-perfile-full": {
+   "pairs": 252,
+   "agree": 0.762
+  }
+ },
+ "divergences": [
+  {
+   "issue": 10369,
+   "path": "crates/openagents-cli/src/connect.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.6558,
+   "subq_p": 0.0893,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/coder/src/cli_route/tree.json",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.0891,
+   "subq_p": 0.1386,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/openagents-cli/Cargo.toml",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.0309,
+   "subq_p": 0.1112,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/coder-host/src/serve/keys.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.2651,
+   "subq_p": 0.072,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/openagents-cli/src/main.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.1192,
+   "subq_p": 0.031,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/coder/src/task/chat_client.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.3268,
+   "subq_p": 0.3989,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/openagents-chat-app/src/coder_tab.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.0385,
+   "subq_p": 0.0106,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/openagents-cli/src/main.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.0186,
+   "subq_p": 0.0156,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10258,
+   "path": "crates/coder/src/task/issue_run.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.0901,
+   "subq_p": 0.8059,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10258,
+   "path": "crates/openagents-cli/src/cloud.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.15,
+   "subq_p": 0.029,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10258,
+   "path": "crates/openagents-cli/src/chat_boat.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.1375,
+   "subq_p": 0.0489,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/microcoder/src/repository/tests.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.5898,
+   "subq_p": 0.1552,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.6935,
+   "subq_p": 0.0605,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/tests.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.1801,
+   "subq_p": 0.4038,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/issue_run.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.2043,
+   "subq_p": 0.8043,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10289,
+   "path": "crates/coder/src/router/gym.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.0654,
+   "subq_p": 0.0717,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10289,
+   "path": "crates/openagents-chat-app/src/gym.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.1078,
+   "subq_p": 0.0529,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10289,
+   "path": "crates/openagents-mobile/src/eval_cards.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.1242,
+   "subq_p": 0.0481,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10167,
+   "path": "crates/background/src/run.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.1041,
+   "subq_p": 0.0715,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10167,
+   "path": "crates/background/src/tests.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.0737,
+   "subq_p": 0.5237,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/publish_tests.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.3675,
+   "subq_p": 0.3332,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/publish.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.4397,
+   "subq_p": 0.3191,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder-delegate/src/issue.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.1348,
+   "subq_p": 0.9126,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/chat_client.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.1063,
+   "subq_p": 0.1058,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/issue_run.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.1093,
+   "subq_p": 0.5921,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/landing.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.3675,
+   "subq_p": 0.0403,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/landing_tests.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.1441,
+   "subq_p": 0.0352,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/tests/program_run.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.0998,
+   "subq_p": 0.3703,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/src/task/local.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.4321,
+   "subq_p": 0.1714,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/tests/task_inbox.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.1298,
+   "subq_p": 0.5788,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/tests.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.0891,
+   "subq_p": 0.8117,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/targets.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.7225,
+   "subq_p": 0.0666,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/local.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.5117,
+   "subq_p": 0.1093,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-terminal/src/lib.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.0196,
+   "subq_p": 0.4303,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-terminal/src/app_tests.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.538,
+   "subq_p": 0.0709,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-terminal/src/app.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.2987,
+   "subq_p": 0.5765,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-cli/tests/plugin_background.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.397,
+   "subq_p": 0.0259,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10181,
+   "path": "crates/openagents-web/src/upstream.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.15,
+   "subq_p": 0.0301,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10181,
+   "path": "crates/openagents-cli/src/main.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.0821,
+   "subq_p": 0.0693,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-cli/src/chat.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.2082,
+   "subq_p": 0.6559,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-terminal/src/app_tests.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.0943,
+   "subq_p": 0.6362,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-terminal/src/app.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.1901,
+   "subq_p": 0.6993,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-chat/src/client_tests.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.1112,
+   "subq_p": 0.8632,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/microcoder/src/repository/tests.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.0914,
+   "subq_p": 0.0559,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/coder/src/task/autostart.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.0228,
+   "subq_p": 0.5749,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10074,
+   "path": "crates/microcoder/src/repository/opencode.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.037,
+   "subq_p": 0.0923,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/coder/src/task/adapter.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.0842,
+   "subq_p": 0.0454,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.044,
+   "subq_p": 0.2688,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder/src/task/landing.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.5438,
+   "subq_p": 0.0226,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10349,
+   "path": "docs/background/2026-10-02-background-processes.md",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.434,
+   "subq_p": 0.1402,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/view.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.0917,
+   "subq_p": 0.4326,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10349,
+   "path": "crates/openagents-cli/src/background.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.0964,
+   "subq_p": 0.739,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/lib.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.5044,
+   "subq_p": 0.081,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.1403,
+   "subq_p": 0.5173,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/tests/live.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.1456,
+   "subq_p": 0.4604,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10228,
+   "path": "crates/coder/src/task/autostart.rs",
+   "clef": "drop",
+   "subq": "keep",
+   "clef_p": 0.0357,
+   "subq_p": 0.946,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10228,
+   "path": "crates/coder/src/task/local.rs",
+   "clef": "keep",
+   "subq": "drop",
+   "clef_p": 0.1268,
+   "subq_p": 0.0487,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/openagents-cli/src/connect.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.6558,
+   "subq-full_p": 0.0373,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/coder-host/src/serve/keys.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.2651,
+   "subq-full_p": 0.0197,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/coder-host/src/cli.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.0953,
+   "subq-full_p": 0.0361,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/openagents-desktop/src/platform/linux.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.2024,
+   "subq-full_p": 0.1478,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/openagents-cli/src/main.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.1192,
+   "subq-full_p": 0.1262,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/openagents-cli/src/tree.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.0481,
+   "subq-full_p": 0.4223,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/openagents-cli/src/chat.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.4863,
+   "subq-full_p": 0.2977,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/openagents-chat/src/client_tests.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.0716,
+   "subq-full_p": 0.3165,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/openagents-chat-app/src/coder_tab.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.0385,
+   "subq-full_p": 0.004,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/openagents-cli/src/chat_coder.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.0599,
+   "subq-full_p": 0.0038,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10258,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.0457,
+   "subq-full_p": 0.5843,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10258,
+   "path": "crates/coder/src/task/issue_run.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.0901,
+   "subq-full_p": 0.5789,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10258,
+   "path": "crates/openagents-cli/src/cloud.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.15,
+   "subq-full_p": 0.0199,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10258,
+   "path": "crates/openagents-cli/src/chat_boat.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.1375,
+   "subq-full_p": 0.1257,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/microcoder/src/repository/tests.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.5898,
+   "subq-full_p": 0.0144,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/owner/tests.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.6901,
+   "subq-full_p": 0.0132,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.1217,
+   "subq-full_p": 0.3102,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/issue_run.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.2043,
+   "subq-full_p": 0.7482,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/local.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.1993,
+   "subq-full_p": 0.6032,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10283,
+   "path": "crates/openagents-cli/src/background.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.2302,
+   "subq-full_p": 0.3897,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10283,
+   "path": "crates/background/src/runner.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.2902,
+   "subq-full_p": 0.2304,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10289,
+   "path": "crates/openagents-chat-app/src/gym.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.1078,
+   "subq-full_p": 0.0378,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10289,
+   "path": "crates/openagents-mobile/src/eval_cards.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.1242,
+   "subq-full_p": 0.1218,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10167,
+   "path": "crates/background/src/run.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.1041,
+   "subq-full_p": 0.0395,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10167,
+   "path": "docs/background/2026-10-02-background-processes.md",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.3739,
+   "subq-full_p": 0.0552,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10167,
+   "path": "crates/background/src/tests.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.0737,
+   "subq-full_p": 0.7933,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10167,
+   "path": "crates/openagents-cli/src/background.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.0833,
+   "subq-full_p": 0.7909,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10167,
+   "path": "crates/background/src/rule.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.0772,
+   "subq-full_p": 0.6808,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/publish_tests.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.3675,
+   "subq-full_p": 0.0066,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.0698,
+   "subq-full_p": 0.8718,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/publish.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.4397,
+   "subq-full_p": 0.0219,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/landing.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.7154,
+   "subq-full_p": 0.0595,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/landing_tests.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.5302,
+   "subq-full_p": 0.0275,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.0368,
+   "subq-full_p": 0.4772,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/issue_run.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.1093,
+   "subq-full_p": 0.6048,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/landing.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.3675,
+   "subq-full_p": 0.2595,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.1052,
+   "subq-full_p": 0.5238,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/src/task/issue_run.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.1871,
+   "subq-full_p": 0.2675,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/tests.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.0891,
+   "subq-full_p": 0.5845,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/targets.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.7225,
+   "subq-full_p": 0.0119,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/local.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.5117,
+   "subq-full_p": 0.2147,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "docs/background/2026-10-02-disk-cleanup-plugin.md",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.0489,
+   "subq-full_p": 0.6616,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-terminal/src/app.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.2987,
+   "subq-full_p": 0.3425,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-cli/tests/plugin_background.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.397,
+   "subq-full_p": 0.0167,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-terminal/src/screen.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.3686,
+   "subq-full_p": 0.1961,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10181,
+   "path": "crates/openagents-web/src/upstream.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.15,
+   "subq-full_p": 0.0265,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10181,
+   "path": "crates/openagents-cli/src/catalog.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.3303,
+   "subq-full_p": 0.0343,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-terminal/src/app.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.1901,
+   "subq-full_p": 0.6827,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/coder-host/src/control/mod.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.2874,
+   "subq-full_p": 0.076,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-chat/src/client_tests.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.1112,
+   "subq-full_p": 0.6348,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/openagents-cli/src/chat.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.0742,
+   "subq-full_p": 0.8843,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/microcoder/src/repository/tests.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.0914,
+   "subq-full_p": 0.0623,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/coder/src/task/autostart.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.0228,
+   "subq-full_p": 0.8532,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10074,
+   "path": "crates/coder/src/task/adapter.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.0842,
+   "subq-full_p": 0.2327,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.044,
+   "subq-full_p": 0.9405,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder/src/task/landing.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.5438,
+   "subq-full_p": 0.0113,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder/src/task/landing_tests.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.1034,
+   "subq-full_p": 0.0189,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10349,
+   "path": "docs/background/2026-10-02-background-processes.md",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.434,
+   "subq-full_p": 0.0313,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10349,
+   "path": "crates/openagents-cli/src/background.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.0964,
+   "subq-full_p": 0.8553,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/lib.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.5044,
+   "subq-full_p": 0.0129,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/src/live.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.2651,
+   "subq-full_p": 0.4048,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/openagents-chat/src/coder_events.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.5718,
+   "subq-full_p": 0.0234,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/src/ui.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.2476,
+   "subq-full_p": 0.8188,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/tests/live.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.1456,
+   "subq-full_p": 0.7592,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-terminal/src/components/run.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.8056,
+   "subq-full_p": 0.0619,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder/src/task/local.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.7241,
+   "subq-full_p": 0.0099,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10228,
+   "path": "crates/coder/src/task/autostart.rs",
+   "clef": "drop",
+   "subq-full": "keep",
+   "clef_p": 0.0357,
+   "subq-full_p": 0.9486,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10228,
+   "path": "crates/microcoder/src/repository/launch.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.7372,
+   "subq-full_p": 0.03,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10228,
+   "path": "crates/openagents-desktop/src/platform/linux.rs",
+   "clef": "keep",
+   "subq-full": "drop",
+   "clef_p": 0.1656,
+   "subq-full_p": 0.0127,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/openagents-cli/src/connect.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.6558,
+   "subq-perfile-full_p": 0.1332,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/coder/src/cli_route/tree.json",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0891,
+   "subq-perfile-full_p": 0.2377,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/coder-host/src/serve/keys.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.2651,
+   "subq-perfile-full_p": 0.0579,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/coder-host/src/cli.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.0953,
+   "subq-perfile-full_p": 0.0749,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/coder/src/cli_route/tree.json",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0637,
+   "subq-perfile-full_p": 0.1502,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/openagents-cli/src/main.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.1192,
+   "subq-perfile-full_p": 0.0315,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/coder/src/delegate_door.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.3464,
+   "subq-perfile-full_p": 0.5396,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/coder/src/task/chat_client.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.3268,
+   "subq-perfile-full_p": 0.5692,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/coder/src/task.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.1116,
+   "subq-perfile-full_p": 0.5843,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/coder/src/task/issue_run.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.1705,
+   "subq-perfile-full_p": 0.7545,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10248,
+   "path": "crates/openagents-chat/src/client_tests.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0716,
+   "subq-perfile-full_p": 0.8693,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/openagents-cli/src/chat.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.028,
+   "subq-perfile-full_p": 0.0197,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/coder/src/task/agent.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0344,
+   "subq-perfile-full_p": 0.0269,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/openagents-chat-app/src/coder_tab.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.0385,
+   "subq-perfile-full_p": 0.017,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/openagents-cli/src/chat_coder.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.0599,
+   "subq-perfile-full_p": 0.0136,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10258,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0457,
+   "subq-perfile-full_p": 0.2443,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10258,
+   "path": "crates/coder/src/task/issue_run.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0901,
+   "subq-perfile-full_p": 0.3285,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10258,
+   "path": "crates/openagents-cli/src/cloud.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.15,
+   "subq-perfile-full_p": 0.0575,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10258,
+   "path": "crates/openagents-cli/src/chat_boat.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.1375,
+   "subq-perfile-full_p": 0.2243,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/tests.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.1801,
+   "subq-perfile-full_p": 0.8035,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.1217,
+   "subq-perfile-full_p": 0.6154,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/issue_run.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.2043,
+   "subq-perfile-full_p": 0.82,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/local.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.1993,
+   "subq-perfile-full_p": 0.6721,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10283,
+   "path": "crates/openagents-cli/src/screen.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.5215,
+   "subq-perfile-full_p": 0.2238,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10283,
+   "path": "crates/openagents-cli/src/background.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.2302,
+   "subq-perfile-full_p": 0.6148,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10289,
+   "path": "crates/coder/src/router/gym.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0654,
+   "subq-perfile-full_p": 0.1261,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10289,
+   "path": "crates/openagents-chat-app/src/gym.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.1078,
+   "subq-perfile-full_p": 0.0943,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10289,
+   "path": "crates/openagents-mobile/src/eval_cards.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.1242,
+   "subq-perfile-full_p": 0.0392,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10167,
+   "path": "crates/background/src/run.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.1041,
+   "subq-perfile-full_p": 0.0924,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10167,
+   "path": "crates/background/src/tests.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0737,
+   "subq-perfile-full_p": 0.7927,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0698,
+   "subq-perfile-full_p": 0.8492,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder-delegate/src/issue.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.1348,
+   "subq-perfile-full_p": 0.9553,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0368,
+   "subq-perfile-full_p": 0.3554,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder-delegate/src/issue.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0596,
+   "subq-perfile-full_p": 0.9337,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/issue_run.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.1093,
+   "subq-perfile-full_p": 0.7249,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/landing.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.3675,
+   "subq-perfile-full_p": 0.1379,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/landing_tests.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.1441,
+   "subq-perfile-full_p": 0.0593,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder-delegate/src/issue/confined.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0402,
+   "subq-perfile-full_p": 0.383,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/tests/program_run.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0998,
+   "subq-perfile-full_p": 0.4483,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/src/task/issue_run.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.1871,
+   "subq-perfile-full_p": 0.2151,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder-delegate/src/issue/confined.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.1229,
+   "subq-perfile-full_p": 0.847,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/src/task/local.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.4321,
+   "subq-perfile-full_p": 0.2089,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0437,
+   "subq-perfile-full_p": 0.3767,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/tests/task_inbox.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.1298,
+   "subq-perfile-full_p": 0.522,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/owner/tests.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.151,
+   "subq-perfile-full_p": 0.6589,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/tests.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0891,
+   "subq-perfile-full_p": 0.5092,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/owner.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.1801,
+   "subq-perfile-full_p": 0.6095,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/targets.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.7225,
+   "subq-perfile-full_p": 0.1785,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "docs/background/2026-10-02-disk-cleanup-plugin.md",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0489,
+   "subq-perfile-full_p": 0.481,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-terminal/src/app.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.2987,
+   "subq-perfile-full_p": 0.6808,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-cli/tests/plugin_background.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.397,
+   "subq-perfile-full_p": 0.0319,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-terminal/src/screen.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.3686,
+   "subq-perfile-full_p": 0.2815,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10181,
+   "path": "crates/openagents-web/src/upstream.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.15,
+   "subq-perfile-full_p": 0.0193,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10181,
+   "path": "crates/openagents-web/Cargo.toml",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0534,
+   "subq-perfile-full_p": 0.0507,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10181,
+   "path": "crates/openagents-cli/src/catalog.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.3303,
+   "subq-perfile-full_p": 0.0393,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10181,
+   "path": "crates/openagents-cli/src/main.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0821,
+   "subq-perfile-full_p": 0.0426,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-terminal/src/app.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.1901,
+   "subq-perfile-full_p": 0.8017,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/coder-host/src/control/mod.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.2874,
+   "subq-perfile-full_p": 0.2839,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-chat/src/client_tests.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.1112,
+   "subq-perfile-full_p": 0.5562,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/coder-host/src/serve/mod.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.3625,
+   "subq-perfile-full_p": 0.2106,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10074,
+   "path": "crates/microcoder/src/repository/tests.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.0914,
+   "subq-perfile-full_p": 0.0609,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/coder/src/task/autostart.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0228,
+   "subq-perfile-full_p": 0.8186,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10074,
+   "path": "crates/coder/src/task/adapter.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.0842,
+   "subq-perfile-full_p": 0.0443,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/openagents-cli/src/main.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.061,
+   "subq-perfile-full_p": 0.0642,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.044,
+   "subq-perfile-full_p": 0.5817,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder-delegate/src/issue.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0242,
+   "subq-perfile-full_p": 0.1296,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder/src/task/landing.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.5438,
+   "subq-perfile-full_p": 0.0388,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder/src/task/landing_tests.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.1034,
+   "subq-perfile-full_p": 0.1152,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/tests.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0711,
+   "subq-perfile-full_p": 0.5118,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/view.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0917,
+   "subq-perfile-full_p": 0.6581,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10349,
+   "path": "crates/openagents-cli/src/background.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0964,
+   "subq-perfile-full_p": 0.82,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/runner.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.5884,
+   "subq-perfile-full_p": 0.2704,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/lib.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.5044,
+   "subq-perfile-full_p": 0.0938,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/src/live.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.2651,
+   "subq-perfile-full_p": 0.802,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/src/ui.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.2476,
+   "subq-perfile-full_p": 0.919,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/tests/live.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.1456,
+   "subq-perfile-full_p": 0.8914,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/src/bundled_runtime.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.2241,
+   "subq-perfile-full_p": 0.9023,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10228,
+   "path": "crates/coder/src/task/autostart.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0357,
+   "subq-perfile-full_p": 0.9631,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10228,
+   "path": "crates/coder/src/task/local.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.1268,
+   "subq-perfile-full_p": 0.2175,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10228,
+   "path": "crates/coder/src/task/adapter.rs",
+   "clef": "drop",
+   "subq-perfile-full": "keep",
+   "clef_p": 0.0158,
+   "subq-perfile-full_p": 0.3586,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10228,
+   "path": "crates/openagents-desktop/src/platform/linux.rs",
+   "clef": "keep",
+   "subq-perfile-full": "drop",
+   "clef_p": 0.1656,
+   "subq-perfile-full_p": 0.202,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/openagents-cli/src/connect.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.5541,
+   "subq_p": 0.0893,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/coder/src/cli_route/tree.json",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.0641,
+   "subq_p": 0.1386,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/openagents-cli/Cargo.toml",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.0285,
+   "subq_p": 0.1112,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/coder-host/src/serve/keys.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.2791,
+   "subq_p": 0.072,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/openagents-desktop/src/main.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.03,
+   "subq_p": 0.0347,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "INVARIANTS.md",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.01,
+   "subq_p": 0.0765,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/openagents-desktop/src/platform/linux.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.03,
+   "subq_p": 0.0929,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/openagents-cli/Cargo.toml",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.05,
+   "subq_p": 0.0375,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "INVARIANTS.md",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.02,
+   "subq_p": 0.3562,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/coder/src/task/chat_client.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.2123,
+   "subq_p": 0.3989,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/openagents-chat/src/client_tests.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.82,
+   "subq_p": 0.339,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/coder/src/task/agent.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.0488,
+   "subq_p": 0.0133,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/openagents-cli/src/main.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.022,
+   "subq_p": 0.0156,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10258,
+   "path": "INVARIANTS.md",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.01,
+   "subq_p": 0.0899,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10258,
+   "path": "crates/openagents-cli/src/cloud.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.1009,
+   "subq_p": 0.029,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.82,
+   "subq_p": 0.0605,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/owner/tests.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.08,
+   "subq_p": 0.1791,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder-delegate/src/issue.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.88,
+   "subq_p": 0.1574,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10289,
+   "path": "crates/coder/src/router/gym.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.0678,
+   "subq_p": 0.0717,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10289,
+   "path": "crates/openagents-chat-app/src/gym.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.1412,
+   "subq_p": 0.0529,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10289,
+   "path": "INVARIANTS.md",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.001,
+   "subq_p": 0.0596,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10289,
+   "path": "crates/openagents-chat-app/src/cards.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.0806,
+   "subq_p": 0.0274,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10167,
+   "path": "crates/background/src/run.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.1015,
+   "subq_p": 0.0715,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10167,
+   "path": "crates/background/src/tests.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.0838,
+   "subq_p": 0.5237,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/publish_tests.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.88,
+   "subq_p": 0.3332,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.85,
+   "subq_p": 0.1704,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/chat_client.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.0985,
+   "subq_p": 0.1058,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/landing.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.2618,
+   "subq_p": 0.0403,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/tests/program_run.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.1097,
+   "subq_p": 0.3703,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/src/task/local.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.3258,
+   "subq_p": 0.1714,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/tests/task_inbox.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.1208,
+   "subq_p": 0.5788,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/tests.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.1061,
+   "subq_p": 0.8117,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/targets.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.5845,
+   "subq_p": 0.0666,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/local.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.3058,
+   "subq_p": 0.1093,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-terminal/src/lib.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.0228,
+   "subq_p": 0.4303,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-terminal/src/app_tests.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.5117,
+   "subq_p": 0.0709,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-terminal/src/app.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.2259,
+   "subq_p": 0.5765,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-cli/tests/plugin_background.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.3123,
+   "subq_p": 0.0259,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-terminal/src/screen.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.2788,
+   "subq_p": 0.6876,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-cli/src/chat.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.2396,
+   "subq_p": 0.6559,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-terminal/src/app_tests.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.0768,
+   "subq_p": 0.6362,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-terminal/src/app.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.123,
+   "subq_p": 0.6993,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "INVARIANTS.md",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.02,
+   "subq_p": 0.5491,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-chat/src/client_tests.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.128,
+   "subq_p": 0.8632,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/microcoder/src/repository/tests.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.102,
+   "subq_p": 0.0559,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/coder/src/task/autostart.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.0275,
+   "subq_p": 0.5749,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10074,
+   "path": "crates/microcoder/src/repository/opencode.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.0385,
+   "subq_p": 0.0923,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/coder/src/task/adapter.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.09,
+   "subq_p": 0.0454,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.0568,
+   "subq_p": 0.2688,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder/src/task/landing.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.5733,
+   "subq_p": 0.0226,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10349,
+   "path": "docs/background/2026-10-02-background-processes.md",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.2139,
+   "subq_p": 0.1402,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/view.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.0741,
+   "subq_p": 0.4326,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10349,
+   "path": "crates/openagents-cli/src/background.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.0858,
+   "subq_p": 0.739,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/lib.rs",
+   "hosted": "keep",
+   "subq": "drop",
+   "hosted_p": 0.2583,
+   "subq_p": 0.081,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.1358,
+   "subq_p": 0.5173,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/tests/live.rs",
+   "hosted": "drop",
+   "subq": "keep",
+   "hosted_p": 0.1364,
+   "subq_p": 0.4604,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/openagents-cli/src/connect.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.5541,
+   "subq-full_p": 0.0373,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/coder-host/src/serve/keys.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.2791,
+   "subq-full_p": 0.0197,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/openagents-desktop/src/main.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.03,
+   "subq-full_p": 0.0331,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/coder-host/src/cli.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.15,
+   "subq-full_p": 0.0361,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/openagents-cli/src/tree.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.03,
+   "subq-full_p": 0.4223,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/openagents-cli/Cargo.toml",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.05,
+   "subq-full_p": 0.0109,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/openagents-cli/src/chat.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.68,
+   "subq-full_p": 0.2977,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/coder/src/task/agent.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.0488,
+   "subq-full_p": 0.0583,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/openagents-cli/src/chat_coder.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.0554,
+   "subq-full_p": 0.0038,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10258,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.0513,
+   "subq-full_p": 0.5843,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10258,
+   "path": "crates/openagents-cli/src/cloud.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.1009,
+   "subq-full_p": 0.0199,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/tests.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.75,
+   "subq-full_p": 0.0265,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.08,
+   "subq-full_p": 0.3102,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder-delegate/src/issue.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.88,
+   "subq-full_p": 0.0071,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/local.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.15,
+   "subq-full_p": 0.6032,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10283,
+   "path": "crates/openagents-cli/src/background.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.2034,
+   "subq-full_p": 0.3897,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10283,
+   "path": "crates/background/src/runner.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.2232,
+   "subq-full_p": 0.2304,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10289,
+   "path": "crates/openagents-chat-app/src/gym.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.1412,
+   "subq-full_p": 0.0378,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10289,
+   "path": "crates/openagents-chat-app/src/cards.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.0806,
+   "subq-full_p": 0.0418,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10167,
+   "path": "crates/background/src/run.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.1015,
+   "subq-full_p": 0.0395,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10167,
+   "path": "docs/background/2026-10-02-background-processes.md",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.2101,
+   "subq-full_p": 0.0552,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10167,
+   "path": "crates/background/src/tests.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.0838,
+   "subq-full_p": 0.7933,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10167,
+   "path": "crates/openagents-cli/src/background.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.0779,
+   "subq-full_p": 0.7909,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10167,
+   "path": "crates/background/src/rule.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.0766,
+   "subq-full_p": 0.6808,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/publish_tests.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.88,
+   "subq-full_p": 0.0066,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder-delegate/src/issue.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.78,
+   "subq-full_p": 0.0649,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/landing.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.35,
+   "subq-full_p": 0.0595,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/landing_tests.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.68,
+   "subq-full_p": 0.0275,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.0359,
+   "subq-full_p": 0.4772,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/landing.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.2618,
+   "subq-full_p": 0.2595,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/landing_tests.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.1302,
+   "subq-full_p": 0.3643,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.1103,
+   "subq-full_p": 0.5238,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/src/task/issue_run.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.2166,
+   "subq-full_p": 0.2675,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/tests.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.1061,
+   "subq-full_p": 0.5845,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/targets.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.5845,
+   "subq-full_p": 0.0119,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/local.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.3058,
+   "subq-full_p": 0.2147,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "docs/background/2026-10-02-disk-cleanup-plugin.md",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.0371,
+   "subq-full_p": 0.6616,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-terminal/src/app.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.2259,
+   "subq-full_p": 0.3425,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-cli/tests/plugin_background.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.3123,
+   "subq-full_p": 0.0167,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10181,
+   "path": "crates/openagents-cli/src/catalog.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.15,
+   "subq-full_p": 0.0343,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10181,
+   "path": "crates/openagents-cli/src/main.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.1215,
+   "subq-full_p": 0.0213,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-terminal/src/app.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.123,
+   "subq-full_p": 0.6827,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/coder-host/src/control/mod.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.263,
+   "subq-full_p": 0.076,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-chat/src/client_tests.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.128,
+   "subq-full_p": 0.6348,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/openagents-cli/src/chat.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.0744,
+   "subq-full_p": 0.8843,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/microcoder/src/repository/tests.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.102,
+   "subq-full_p": 0.0623,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/coder/src/task/autostart.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.0275,
+   "subq-full_p": 0.8532,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10074,
+   "path": "crates/coder/src/task/adapter.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.09,
+   "subq-full_p": 0.2327,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.0568,
+   "subq-full_p": 0.9405,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder/src/task/landing.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.5733,
+   "subq-full_p": 0.0113,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder/src/task/landing_tests.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.0916,
+   "subq-full_p": 0.0189,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10349,
+   "path": "docs/background/2026-10-02-background-processes.md",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.2139,
+   "subq-full_p": 0.0313,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10349,
+   "path": "crates/openagents-cli/src/background.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.0858,
+   "subq-full_p": 0.8553,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/lib.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.2583,
+   "subq-full_p": 0.0129,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/src/live.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.2579,
+   "subq-full_p": 0.4048,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/openagents-chat/src/coder_events.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.5759,
+   "subq-full_p": 0.0234,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/src/ui.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.2105,
+   "subq-full_p": 0.8188,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/tests/live.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.1364,
+   "subq-full_p": 0.7592,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-terminal/src/components/run.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.8136,
+   "subq-full_p": 0.0619,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder/src/task/local.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.6113,
+   "subq-full_p": 0.0099,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10228,
+   "path": "crates/coder/src/task/local.rs",
+   "hosted": "drop",
+   "subq-full": "keep",
+   "hosted_p": 0.03,
+   "subq-full_p": 0.5593,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10228,
+   "path": "crates/microcoder/src/repository/launch.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.6478,
+   "subq-full_p": 0.03,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10228,
+   "path": "crates/openagents-desktop/src/platform/linux.rs",
+   "hosted": "keep",
+   "subq-full": "drop",
+   "hosted_p": 0.12,
+   "subq-full_p": 0.0127,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/openagents-cli/src/connect.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.5541,
+   "subq-perfile-full_p": 0.1332,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "INVARIANTS.md",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.01,
+   "subq-perfile-full_p": 0.1678,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/coder/src/cli_route/tree.json",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.0641,
+   "subq-perfile-full_p": 0.2377,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/coder-host/src/serve/keys.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.2791,
+   "subq-perfile-full_p": 0.0579,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/openagents-desktop/src/main.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.03,
+   "subq-perfile-full_p": 0.0506,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/coder-host/src/cli.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.15,
+   "subq-perfile-full_p": 0.0749,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "INVARIANTS.md",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.01,
+   "subq-perfile-full_p": 0.278,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/coder/src/cli_route/tree.json",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.03,
+   "subq-perfile-full_p": 0.1502,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/openagents-desktop/src/platform/linux.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.03,
+   "subq-perfile-full_p": 0.1326,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/openagents-cli/Cargo.toml",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.05,
+   "subq-perfile-full_p": 0.0317,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/coder/src/delegate_door.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.005,
+   "subq-perfile-full_p": 0.5396,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "INVARIANTS.md",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.02,
+   "subq-perfile-full_p": 0.7846,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/coder/src/task/chat_client.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.2123,
+   "subq-perfile-full_p": 0.5692,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/coder/src/task.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.15,
+   "subq-perfile-full_p": 0.5843,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/coder/src/task/issue_run.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.1812,
+   "subq-perfile-full_p": 0.7545,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10893,
+   "path": "crates/openagents-cli/src/chat.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.0235,
+   "subq-perfile-full_p": 0.0197,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/openagents-cli/src/chat_coder.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.0554,
+   "subq-perfile-full_p": 0.0136,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10258,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.0513,
+   "subq-perfile-full_p": 0.2443,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10258,
+   "path": "crates/openagents-cli/src/cloud.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.1009,
+   "subq-perfile-full_p": 0.0575,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/microcoder/src/repository/tests.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.05,
+   "subq-perfile-full_p": 0.8464,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/owner/tests.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.08,
+   "subq-perfile-full_p": 0.7042,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.08,
+   "subq-perfile-full_p": 0.6154,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder-delegate/src/issue.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.88,
+   "subq-perfile-full_p": 0.2584,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/local.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.15,
+   "subq-perfile-full_p": 0.6721,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10283,
+   "path": "crates/openagents-cli/src/screen.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.3323,
+   "subq-perfile-full_p": 0.2238,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10283,
+   "path": "crates/openagents-cli/src/background.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.2034,
+   "subq-perfile-full_p": 0.6148,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10289,
+   "path": "crates/coder/src/router/gym.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.0678,
+   "subq-perfile-full_p": 0.1261,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10289,
+   "path": "crates/openagents-chat-app/src/gym.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.1412,
+   "subq-perfile-full_p": 0.0943,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10289,
+   "path": "INVARIANTS.md",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.001,
+   "subq-perfile-full_p": 0.3991,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10289,
+   "path": "crates/openagents-chat-app/src/cards.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.0806,
+   "subq-perfile-full_p": 0.063,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10167,
+   "path": "crates/background/src/run.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.1015,
+   "subq-perfile-full_p": 0.0924,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10167,
+   "path": "crates/background/src/tests.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.0838,
+   "subq-perfile-full_p": 0.7927,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/publish.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.18,
+   "subq-perfile-full_p": 0.8296,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.0359,
+   "subq-perfile-full_p": 0.3554,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder-delegate/src/issue.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.0482,
+   "subq-perfile-full_p": 0.9337,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/landing.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.2618,
+   "subq-perfile-full_p": 0.1379,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder-delegate/src/issue/confined.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.0417,
+   "subq-perfile-full_p": 0.383,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/tests/program_run.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.1097,
+   "subq-perfile-full_p": 0.4483,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/src/task/issue_run.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.2166,
+   "subq-perfile-full_p": 0.2151,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder-delegate/src/issue/confined.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.1332,
+   "subq-perfile-full_p": 0.847,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/src/task/local.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.3258,
+   "subq-perfile-full_p": 0.2089,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.0651,
+   "subq-perfile-full_p": 0.3767,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/tests/task_inbox.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.1208,
+   "subq-perfile-full_p": 0.522,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/owner/tests.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.1413,
+   "subq-perfile-full_p": 0.6589,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/tests.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.1061,
+   "subq-perfile-full_p": 0.5092,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/owner.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.1533,
+   "subq-perfile-full_p": 0.6095,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/targets.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.5845,
+   "subq-perfile-full_p": 0.1785,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "docs/background/2026-10-02-disk-cleanup-plugin.md",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.0371,
+   "subq-perfile-full_p": 0.481,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-terminal/src/app.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.2259,
+   "subq-perfile-full_p": 0.6808,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-cli/tests/plugin_background.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.3123,
+   "subq-perfile-full_p": 0.0319,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "INVARIANTS.md",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.001,
+   "subq-perfile-full_p": 0.6106,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10181,
+   "path": "crates/openagents-web/Cargo.toml",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.01,
+   "subq-perfile-full_p": 0.0507,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10181,
+   "path": "crates/openagents-cli/src/catalog.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.15,
+   "subq-perfile-full_p": 0.0393,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-terminal/src/app.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.123,
+   "subq-perfile-full_p": 0.8017,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/coder-host/src/control/mod.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.263,
+   "subq-perfile-full_p": 0.2839,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10201,
+   "path": "INVARIANTS.md",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.02,
+   "subq-perfile-full_p": 0.8752,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-chat/src/client_tests.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.128,
+   "subq-perfile-full_p": 0.5562,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/coder-host/src/serve/mod.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.2444,
+   "subq-perfile-full_p": 0.2106,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10074,
+   "path": "crates/microcoder/src/repository/tests.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.102,
+   "subq-perfile-full_p": 0.0609,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/coder/src/task/autostart.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.0275,
+   "subq-perfile-full_p": 0.8186,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10074,
+   "path": "crates/coder/src/task/adapter.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.09,
+   "subq-perfile-full_p": 0.0443,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/openagents-cli/src/main.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.0483,
+   "subq-perfile-full_p": 0.0642,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.0568,
+   "subq-perfile-full_p": 0.5817,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder-delegate/src/issue.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.0331,
+   "subq-perfile-full_p": 0.1296,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder/src/task/landing.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.5733,
+   "subq-perfile-full_p": 0.0388,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder/src/task/landing_tests.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.0916,
+   "subq-perfile-full_p": 0.1152,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/tests.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.0595,
+   "subq-perfile-full_p": 0.5118,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/view.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.0741,
+   "subq-perfile-full_p": 0.6581,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10349,
+   "path": "crates/openagents-cli/src/background.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.0858,
+   "subq-perfile-full_p": 0.82,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/runner.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.347,
+   "subq-perfile-full_p": 0.2704,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/lib.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.2583,
+   "subq-perfile-full_p": 0.0938,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/src/live.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.2579,
+   "subq-perfile-full_p": 0.802,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/src/ui.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.2105,
+   "subq-perfile-full_p": 0.919,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/tests/live.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.1364,
+   "subq-perfile-full_p": 0.8914,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/src/bundled_runtime.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.194,
+   "subq-perfile-full_p": 0.9023,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10228,
+   "path": "crates/coder/src/task/adapter.rs",
+   "hosted": "drop",
+   "subq-perfile-full": "keep",
+   "hosted_p": 0.005,
+   "subq-perfile-full_p": 0.3586,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10228,
+   "path": "crates/openagents-desktop/src/platform/linux.rs",
+   "hosted": "keep",
+   "subq-perfile-full": "drop",
+   "hosted_p": 0.12,
+   "subq-perfile-full_p": 0.202,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/coder/src/cli_route/tree.json",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.1386,
+   "subq-full_p": 0.0213,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/openagents-cli/Cargo.toml",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.1112,
+   "subq-full_p": 0.0055,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/coder-host/src/cli.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.0987,
+   "subq-full_p": 0.0361,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "INVARIANTS.md",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.0765,
+   "subq-full_p": 0.2253,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/openagents-desktop/src/platform/linux.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.0929,
+   "subq-full_p": 0.1478,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/openagents-cli/src/tree.rs",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.0351,
+   "subq-full_p": 0.4223,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/openagents-cli/src/chat.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.4592,
+   "subq-full_p": 0.2977,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "INVARIANTS.md",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.3562,
+   "subq-full_p": 0.0458,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/coder/src/task/chat_client.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.3989,
+   "subq-full_p": 0.1385,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/openagents-chat/src/client_tests.rs",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.339,
+   "subq-full_p": 0.3165,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/openagents-cli/src/main.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.0156,
+   "subq-full_p": 0.0223,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/openagents-cli/src/chat_coder.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.0152,
+   "subq-full_p": 0.0038,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10258,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.0785,
+   "subq-full_p": 0.5843,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10258,
+   "path": "INVARIANTS.md",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.0899,
+   "subq-full_p": 0.0469,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.0605,
+   "subq-full_p": 0.812,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/owner/tests.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.1791,
+   "subq-full_p": 0.0132,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/tests.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.4038,
+   "subq-full_p": 0.0265,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task.rs",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.1613,
+   "subq-full_p": 0.3102,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/local.rs",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.1089,
+   "subq-full_p": 0.6032,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10283,
+   "path": "crates/openagents-cli/src/background.rs",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.052,
+   "subq-full_p": 0.3897,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10283,
+   "path": "crates/background/src/runner.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.1091,
+   "subq-full_p": 0.2304,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10289,
+   "path": "crates/coder/src/router/gym.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.0717,
+   "subq-full_p": 0.0971,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10289,
+   "path": "INVARIANTS.md",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.0596,
+   "subq-full_p": 0.0386,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10167,
+   "path": "docs/background/2026-10-02-background-processes.md",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.1056,
+   "subq-full_p": 0.0552,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10167,
+   "path": "crates/openagents-cli/src/background.rs",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.0458,
+   "subq-full_p": 0.7909,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10167,
+   "path": "crates/background/src/rule.rs",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.0696,
+   "subq-full_p": 0.6808,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.1704,
+   "subq-full_p": 0.8718,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder-delegate/src/issue.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.9126,
+   "subq-full_p": 0.0649,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/landing.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.5315,
+   "subq-full_p": 0.0595,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/landing_tests.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.719,
+   "subq-full_p": 0.0275,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.0386,
+   "subq-full_p": 0.4772,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/chat_client.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.1058,
+   "subq-full_p": 0.0769,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/landing_tests.rs",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.0352,
+   "subq-full_p": 0.3643,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/tests/program_run.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.3703,
+   "subq-full_p": 0.0201,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.057,
+   "subq-full_p": 0.5238,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/src/task/issue_run.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.1805,
+   "subq-full_p": 0.2675,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/src/task/local.rs",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.1714,
+   "subq-full_p": 0.3104,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/tests/task_inbox.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.5788,
+   "subq-full_p": 0.0623,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-terminal/src/lib.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.4303,
+   "subq-full_p": 0.2591,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "docs/background/2026-10-02-disk-cleanup-plugin.md",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.064,
+   "subq-full_p": 0.6616,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-terminal/src/app_tests.rs",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.0709,
+   "subq-full_p": 0.6018,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-terminal/src/screen.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.6876,
+   "subq-full_p": 0.1961,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10181,
+   "path": "crates/openagents-cli/src/catalog.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.1446,
+   "subq-full_p": 0.0343,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10181,
+   "path": "crates/openagents-cli/src/main.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.0693,
+   "subq-full_p": 0.0213,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-cli/src/chat.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.6559,
+   "subq-full_p": 0.1914,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-terminal/src/app_tests.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.6362,
+   "subq-full_p": 0.1452,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/coder-host/src/control/mod.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.3822,
+   "subq-full_p": 0.076,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10201,
+   "path": "INVARIANTS.md",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.5491,
+   "subq-full_p": 0.0941,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/openagents-cli/src/chat.rs",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.0566,
+   "subq-full_p": 0.8843,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/microcoder/src/repository/opencode.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.0923,
+   "subq-full_p": 0.006,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder/src/task/landing_tests.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.2038,
+   "subq-full_p": 0.0189,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/view.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.4326,
+   "subq-full_p": 0.1491,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/src/live.rs",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.2175,
+   "subq-full_p": 0.4048,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/openagents-chat/src/coder_events.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.7066,
+   "subq-full_p": 0.0234,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.5173,
+   "subq-full_p": 0.003,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/src/ui.rs",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.3128,
+   "subq-full_p": 0.8188,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-terminal/src/components/run.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.9023,
+   "subq-full_p": 0.0619,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder/src/task/local.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.5379,
+   "subq-full_p": 0.0099,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10228,
+   "path": "crates/coder/src/task/local.rs",
+   "subq": "drop",
+   "subq-full": "keep",
+   "subq_p": 0.0487,
+   "subq-full_p": 0.5593,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10228,
+   "path": "crates/microcoder/src/repository/launch.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.2444,
+   "subq-full_p": 0.03,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10228,
+   "path": "crates/openagents-desktop/src/platform/linux.rs",
+   "subq": "keep",
+   "subq-full": "drop",
+   "subq_p": 0.2878,
+   "subq-full_p": 0.0127,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "INVARIANTS.md",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0848,
+   "subq-perfile-full_p": 0.1678,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/openagents-cli/Cargo.toml",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.1112,
+   "subq-perfile-full_p": 0.065,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/coder-host/src/cli.rs",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.0987,
+   "subq-perfile-full_p": 0.0749,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/coder/src/cli_route/tree.json",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0412,
+   "subq-perfile-full_p": 0.1502,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/coder/src/delegate_door.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0873,
+   "subq-perfile-full_p": 0.5396,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/coder/src/task.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.1282,
+   "subq-perfile-full_p": 0.5843,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/coder/src/task/issue_run.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0953,
+   "subq-perfile-full_p": 0.7545,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10248,
+   "path": "crates/openagents-chat/src/client_tests.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.339,
+   "subq-perfile-full_p": 0.8693,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/openagents-cli/src/chat.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0142,
+   "subq-perfile-full_p": 0.0197,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/coder/src/task/agent.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0133,
+   "subq-perfile-full_p": 0.0269,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/openagents-cli/src/main.rs",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.0156,
+   "subq-perfile-full_p": 0.0139,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/openagents-cli/src/chat_coder.rs",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.0152,
+   "subq-perfile-full_p": 0.0136,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10258,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0785,
+   "subq-perfile-full_p": 0.2443,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10258,
+   "path": "INVARIANTS.md",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.0899,
+   "subq-perfile-full_p": 0.1676,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/microcoder/src/repository/tests.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.1552,
+   "subq-perfile-full_p": 0.8464,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0605,
+   "subq-perfile-full_p": 0.8337,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.1613,
+   "subq-perfile-full_p": 0.6154,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/local.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.1089,
+   "subq-perfile-full_p": 0.6721,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10283,
+   "path": "crates/openagents-cli/src/screen.rs",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.1053,
+   "subq-perfile-full_p": 0.2238,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10283,
+   "path": "crates/openagents-cli/src/background.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.052,
+   "subq-perfile-full_p": 0.6148,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/publish_tests.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.3332,
+   "subq-perfile-full_p": 0.851,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.1704,
+   "subq-perfile-full_p": 0.8492,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/publish.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.3191,
+   "subq-perfile-full_p": 0.8296,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0386,
+   "subq-perfile-full_p": 0.3554,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/chat_client.rs",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.1058,
+   "subq-perfile-full_p": 0.1067,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder-delegate/src/issue.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0605,
+   "subq-perfile-full_p": 0.9337,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder-delegate/src/issue/confined.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0251,
+   "subq-perfile-full_p": 0.383,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/src/task/issue_run.rs",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.1805,
+   "subq-perfile-full_p": 0.2151,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder-delegate/src/issue/confined.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0474,
+   "subq-perfile-full_p": 0.847,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0519,
+   "subq-perfile-full_p": 0.3767,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/owner/tests.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.1744,
+   "subq-perfile-full_p": 0.6589,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/owner.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0979,
+   "subq-perfile-full_p": 0.6095,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/local.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.1093,
+   "subq-perfile-full_p": 0.4669,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-terminal/src/lib.rs",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.4303,
+   "subq-perfile-full_p": 0.2705,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "docs/background/2026-10-02-disk-cleanup-plugin.md",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.064,
+   "subq-perfile-full_p": 0.481,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-terminal/src/app_tests.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0709,
+   "subq-perfile-full_p": 0.6345,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "INVARIANTS.md",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.1098,
+   "subq-perfile-full_p": 0.6106,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "crates/openagents-terminal/src/screen.rs",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.6876,
+   "subq-perfile-full_p": 0.2815,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10181,
+   "path": "crates/openagents-web/Cargo.toml",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0499,
+   "subq-perfile-full_p": 0.0507,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10181,
+   "path": "crates/openagents-cli/src/catalog.rs",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.1446,
+   "subq-perfile-full_p": 0.0393,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-cli/src/chat.rs",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.6559,
+   "subq-perfile-full_p": 0.3288,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/openagents-terminal/src/app_tests.rs",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.6362,
+   "subq-perfile-full_p": 0.2619,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/coder-host/src/control/mod.rs",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.3822,
+   "subq-perfile-full_p": 0.2839,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10201,
+   "path": "crates/coder-host/src/serve/mod.rs",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.9339,
+   "subq-perfile-full_p": 0.2106,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10074,
+   "path": "crates/microcoder/src/repository/opencode.rs",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.0923,
+   "subq-perfile-full_p": 0.0386,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/openagents-cli/src/main.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0319,
+   "subq-perfile-full_p": 0.0642,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder-delegate/src/issue.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0287,
+   "subq-perfile-full_p": 0.1296,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder/src/task/landing_tests.rs",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.2038,
+   "subq-perfile-full_p": 0.1152,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10349,
+   "path": "docs/background/2026-10-02-background-processes.md",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.1402,
+   "subq-perfile-full_p": 0.4593,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/tests.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.1975,
+   "subq-perfile-full_p": 0.5118,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/runner.rs",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.9215,
+   "subq-perfile-full_p": 0.2704,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/src/live.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.2175,
+   "subq-perfile-full_p": 0.802,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.5173,
+   "subq-perfile-full_p": 0.3323,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/src/ui.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.3128,
+   "subq-perfile-full_p": 0.919,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/src/bundled_runtime.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0849,
+   "subq-perfile-full_p": 0.9023,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10228,
+   "path": "crates/coder/src/task/adapter.rs",
+   "subq": "drop",
+   "subq-perfile-full": "keep",
+   "subq_p": 0.0221,
+   "subq-perfile-full_p": 0.3586,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10228,
+   "path": "crates/openagents-desktop/src/platform/linux.rs",
+   "subq": "keep",
+   "subq-perfile-full": "drop",
+   "subq_p": 0.2878,
+   "subq-perfile-full_p": 0.202,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "INVARIANTS.md",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0456,
+   "subq-perfile-full_p": 0.1678,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10369,
+   "path": "crates/coder/src/cli_route/tree.json",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0213,
+   "subq-perfile-full_p": 0.2377,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "INVARIANTS.md",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.2253,
+   "subq-perfile-full_p": 0.278,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/coder/src/cli_route/tree.json",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0472,
+   "subq-perfile-full_p": 0.1502,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/openagents-desktop/src/platform/linux.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.1478,
+   "subq-perfile-full_p": 0.1326,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10370,
+   "path": "crates/openagents-cli/src/tree.rs",
+   "subq-full": "keep",
+   "subq-perfile-full": "drop",
+   "subq-full_p": 0.4223,
+   "subq-perfile-full_p": 0.0377,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/openagents-cli/src/chat.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.2977,
+   "subq-perfile-full_p": 0.4275,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/coder/src/delegate_door.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0095,
+   "subq-perfile-full_p": 0.5396,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "INVARIANTS.md",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0458,
+   "subq-perfile-full_p": 0.7846,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/coder/src/task/chat_client.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.1385,
+   "subq-perfile-full_p": 0.5692,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/coder/src/task.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0231,
+   "subq-perfile-full_p": 0.5843,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10248,
+   "path": "crates/coder/src/task/issue_run.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0642,
+   "subq-perfile-full_p": 0.7545,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10893,
+   "path": "crates/openagents-cli/src/chat.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0125,
+   "subq-perfile-full_p": 0.0197,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10893,
+   "path": "crates/coder/src/task/agent.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0583,
+   "subq-perfile-full_p": 0.0269,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/microcoder/src/repository/tests.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0144,
+   "subq-perfile-full_p": 0.8464,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/owner/tests.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0132,
+   "subq-perfile-full_p": 0.7042,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10273,
+   "path": "crates/coder/src/task/tests.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0265,
+   "subq-perfile-full_p": 0.8035,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10283,
+   "path": "crates/openagents-cli/src/screen.rs",
+   "subq-full": "keep",
+   "subq-perfile-full": "drop",
+   "subq-full_p": 0.7302,
+   "subq-perfile-full_p": 0.2238,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10283,
+   "path": "crates/background/src/runner.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.2304,
+   "subq-perfile-full_p": 0.5496,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10289,
+   "path": "crates/coder/src/router/gym.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0971,
+   "subq-perfile-full_p": 0.1261,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10289,
+   "path": "INVARIANTS.md",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0386,
+   "subq-perfile-full_p": 0.3991,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10167,
+   "path": "docs/background/2026-10-02-background-processes.md",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0552,
+   "subq-perfile-full_p": 0.2428,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10167,
+   "path": "crates/openagents-cli/src/background.rs",
+   "subq-full": "keep",
+   "subq-perfile-full": "drop",
+   "subq-full_p": 0.7909,
+   "subq-perfile-full_p": 0.0413,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10167,
+   "path": "crates/background/src/rule.rs",
+   "subq-full": "keep",
+   "subq-perfile-full": "drop",
+   "subq-full_p": 0.6808,
+   "subq-perfile-full_p": 0.099,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/publish_tests.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0066,
+   "subq-perfile-full_p": 0.851,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/publish.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0219,
+   "subq-perfile-full_p": 0.8296,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder-delegate/src/issue.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0649,
+   "subq-perfile-full_p": 0.9553,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/landing.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0595,
+   "subq-perfile-full_p": 0.5633,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10295,
+   "path": "crates/coder/src/task/landing_tests.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0275,
+   "subq-perfile-full_p": 0.8361,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder-delegate/src/issue.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0205,
+   "subq-perfile-full_p": 0.9337,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder/src/task/landing_tests.rs",
+   "subq-full": "keep",
+   "subq-perfile-full": "drop",
+   "subq-full_p": 0.3643,
+   "subq-perfile-full_p": 0.0593,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10298,
+   "path": "crates/coder-delegate/src/issue/confined.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0038,
+   "subq-perfile-full_p": 0.383,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/tests/program_run.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0201,
+   "subq-perfile-full_p": 0.4483,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "subq-full": "keep",
+   "subq-perfile-full": "drop",
+   "subq-full_p": 0.5238,
+   "subq-perfile-full_p": 0.2503,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder-delegate/src/issue/confined.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.1759,
+   "subq-perfile-full_p": 0.847,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10299,
+   "path": "crates/coder/src/task/local.rs",
+   "subq-full": "keep",
+   "subq-perfile-full": "drop",
+   "subq-full_p": 0.3104,
+   "subq-perfile-full_p": 0.2089,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/issue_run_tests.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0093,
+   "subq-perfile-full_p": 0.3767,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/tests/task_inbox.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0623,
+   "subq-perfile-full_p": 0.522,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/owner/tests.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.1808,
+   "subq-perfile-full_p": 0.6589,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/owner.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.1954,
+   "subq-perfile-full_p": 0.6095,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10301,
+   "path": "crates/coder/src/task/local.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.2147,
+   "subq-perfile-full_p": 0.4669,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10179,
+   "path": "INVARIANTS.md",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0503,
+   "subq-perfile-full_p": 0.6106,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10181,
+   "path": "crates/openagents-web/Cargo.toml",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.007,
+   "subq-perfile-full_p": 0.0507,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10181,
+   "path": "crates/openagents-cli/src/main.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0213,
+   "subq-perfile-full_p": 0.0426,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "INVARIANTS.md",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0941,
+   "subq-perfile-full_p": 0.8752,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10201,
+   "path": "crates/coder-host/src/serve/mod.rs",
+   "subq-full": "keep",
+   "subq-perfile-full": "drop",
+   "subq-full_p": 0.7958,
+   "subq-perfile-full_p": 0.2106,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10074,
+   "path": "crates/openagents-cli/src/chat.rs",
+   "subq-full": "keep",
+   "subq-perfile-full": "drop",
+   "subq-full_p": 0.8843,
+   "subq-perfile-full_p": 0.0602,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10074,
+   "path": "crates/openagents-cli/src/main.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0141,
+   "subq-perfile-full_p": 0.0642,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10986,
+   "path": "crates/coder-delegate/src/issue.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0203,
+   "subq-perfile-full_p": 0.1296,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10349,
+   "path": "docs/background/2026-10-02-background-processes.md",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0313,
+   "subq-perfile-full_p": 0.4593,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/tests.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.2687,
+   "subq-perfile-full_p": 0.5118,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/view.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.1491,
+   "subq-perfile-full_p": 0.6581,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10349,
+   "path": "crates/background/src/runner.rs",
+   "subq-full": "keep",
+   "subq-perfile-full": "drop",
+   "subq-full_p": 0.7784,
+   "subq-perfile-full_p": 0.2704,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 11118,
+   "path": "crates/openagents-chat/src/coder_events.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0234,
+   "subq-perfile-full_p": 0.9118,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-new/src/bundled_runtime.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0366,
+   "subq-perfile-full_p": 0.9023,
+   "fix_changed_it": true
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder-terminal/src/components/run.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0619,
+   "subq-perfile-full_p": 0.9324,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 11118,
+   "path": "crates/coder/src/task/local.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0099,
+   "subq-perfile-full_p": 0.7607,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10228,
+   "path": "crates/coder/src/task/local.rs",
+   "subq-full": "keep",
+   "subq-perfile-full": "drop",
+   "subq-full_p": 0.5593,
+   "subq-perfile-full_p": 0.2175,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10228,
+   "path": "crates/microcoder/src/repository/launch.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.03,
+   "subq-perfile-full_p": 0.2905,
+   "fix_changed_it": false
+  },
+  {
+   "issue": 10228,
+   "path": "crates/coder/src/task/adapter.rs",
+   "subq-full": "drop",
+   "subq-perfile-full": "keep",
+   "subq-full_p": 0.0116,
+   "subq-perfile-full_p": 0.3586,
+   "fix_changed_it": false
+  }
+ ]
+}

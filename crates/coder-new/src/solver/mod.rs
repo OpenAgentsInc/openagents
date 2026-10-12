@@ -241,7 +241,8 @@ Options:
                         size, and change kind: gateway (our H100 on
                         openagents.com, keyless), jev (TypeSafe's API), clef (this
                         computer's Clef), haiku-arm (a constrained Claude Haiku
-                        answering the same typed question, no tools), or off
+                        answering the same typed question, no tools), subq (SubQ
+                        Snap, SUBQ_API_KEY; a public preview), or off
                         (default; the ranking stands and
                         the Haiku Briefer judges it). No other door is asked. Or
                         one door per point: kind=jev,relevance=clef.
@@ -367,7 +368,7 @@ impl Options {
                         .map_err(|why| why.replace("--decider", "--decisions"))?;
                     if [all, kind, relevance].contains(&Some(issue_run::Decider::Auto)) {
                         return Err(
-                            "--decisions takes jev, clef, haiku-arm or off, not auto.".into()
+                            "--decisions takes jev, clef, haiku-arm, subq or off, not auto.".into(),
                         );
                     }
                 }

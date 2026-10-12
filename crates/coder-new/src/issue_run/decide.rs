@@ -367,6 +367,31 @@ fn jev_door() -> Option<Door> {
     })
 }
 
+/// SubQ Snap: the Jev client pointed at SubQ's `/v1/systemone`, which takes
+/// the same body (`docs/inference/subq-snap.md`).
+fn subq_door() -> Option<Door> {
+    let key = super::secret(jev_hosted::SUBQ_KEY_VAR, "subq.env")?;
+    Some(Door {
+        backend: Backend::SystemOne(jev::Client::new(subq_config(key)).ok()?),
+        label: "SubQ Snap, SubQ API".into(),
+        model: jev_hosted::SUBQ_MODEL.into(),
+    })
+}
+
+/// The SubQ client's settings: its base URL and model, and a retry for the
+/// 429 and 503 a public preview answers under load.
+fn subq_config(key: String) -> jev::Config {
+    jev::Config::new()
+        .api_key(key)
+        .base_url(jev_hosted::SUBQ)
+        .default_model(jev_hosted::SUBQ_MODEL)
+        .timeout(std::time::Duration::from_secs(30))
+        .retry(jev::RetryPolicy {
+            max_retries: 2,
+            ..Default::default()
+        })
+}
+
 /// Our decision API (#11225): connected Pylons first, then Gemini on
 /// Vertex, keyless.
 fn ours_door() -> Option<Door> {
@@ -477,6 +502,7 @@ fn doors(decider: Decider) -> (Doors, Doors) {
             Decider::Clef => clef_door().into_iter().collect(),
             Decider::Gateway => gateway_door().into_iter().collect(),
             Decider::HaikuArm => haiku_arm_door().into_iter().collect(),
+            Decider::Subq => subq_door().into_iter().collect(),
             Decider::Auto => gateway_door()
                 .into_iter()
                 .chain(jev_door())
@@ -559,7 +585,7 @@ async fn issue_kind(
     });
     let Some(door) = doors.first() else {
         card["skipped"] = json!(
-            "No System One door is set up (TYPESAFE_API_KEY, Ollama with clef-flash, or claude for the Haiku arm)"
+            "No System One door is set up (TYPESAFE_API_KEY, Ollama with clef-flash, SUBQ_API_KEY, or claude for the Haiku arm)"
         );
         let index = transcript.card(card.clone());
         transcript.finish(index, card, json!({"ok": true}));
@@ -959,6 +985,28 @@ async fn run_with_input(script: &Path, input: &Value, cwd: &Path) -> Result<Valu
 #[cfg(test)]
 mod door_tests {
     use super::{Door, Doors};
+
+    #[test]
+    fn the_subq_door_is_the_jev_client_at_subqs_url_and_model() {
+        let client = jev::Client::new(super::subq_config("sk-test".into())).unwrap();
+        assert_eq!(client.base_url(), "https://api.subq.ai");
+        assert_eq!(client.default_model(), "subq-snap-preview");
+    }
+
+    /// One real question to SubQ Snap, by hand (needs `SUBQ_API_KEY` or
+    /// `~/work/.secrets/subq.env`):
+    /// `cargo test -p coder-new --lib the_subq_door_answers -- --ignored --nocapture`.
+    #[tokio::test]
+    #[ignore = "asks api.subq.ai"]
+    async fn the_subq_door_answers() {
+        let door = super::subq_door().expect("SUBQ_API_KEY");
+        let request = jev::SystemOneRequest::new(
+            "Issue #1: the README has a typo in the install command.",
+            jev::Questions::new().with("small", jev::Noul::new("Is this a small change?")),
+        );
+        let answer = door.ask(request).await.unwrap();
+        println!("{answer:?}");
+    }
 
     fn dead(label: &str) -> Door {
         let config = jev::Config::local("http://127.0.0.1:9", "clef-flash")

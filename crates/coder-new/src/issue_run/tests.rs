@@ -22,6 +22,9 @@ fn options_read_the_issue_and_flags() {
     let arm = Options::parse(&args("7 --decider kind=haiku-arm,relevance=jev")).unwrap();
     assert_eq!(arm.kind_decider(), Decider::HaikuArm);
     assert_eq!(arm.relevance_decider(), Decider::Jev);
+    let subq = Options::parse(&args("7 --decider relevance=subq")).unwrap();
+    assert_eq!(subq.relevance_decider(), Decider::Subq);
+    assert_eq!(Decider::parse(Decider::Subq.name()), Ok(Decider::Subq));
 }
 
 #[test]

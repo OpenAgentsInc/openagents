@@ -83,6 +83,10 @@ pub enum Decider {
     /// identical typed question and returning the same answer shape, so the
     /// arms compare apples to apples (#11387).
     HaikuArm,
+    /// SubQ Snap (`subq-snap-preview`), SubQ's hosted System One model, at
+    /// `api.subq.ai` with `SUBQ_API_KEY` (`docs/inference/subq-snap.md`).
+    /// Opt-in: it is a public preview, and the payload leaves our machines.
+    Subq,
     /// No model questions; the scorer's ranking stands.
     Off,
 }
@@ -122,9 +126,10 @@ impl Decider {
             "clef" => Ok(Self::Clef),
             "gateway" => Ok(Self::Gateway),
             "haiku-arm" => Ok(Self::HaikuArm),
+            "subq" => Ok(Self::Subq),
             "off" => Ok(Self::Off),
             other => Err(format!(
-                "--decider takes auto, gateway, jev, clef, haiku-arm or off, not {other}."
+                "--decider takes auto, gateway, jev, clef, haiku-arm, subq or off, not {other}."
             )),
         }
     }
@@ -136,6 +141,7 @@ impl Decider {
             Self::Clef => "clef",
             Self::Gateway => "gateway",
             Self::HaikuArm => "haiku-arm",
+            Self::Subq => "subq",
             Self::Auto => "auto",
             Self::Off => "off",
         }
@@ -189,7 +195,7 @@ Options:
   --repo PATH        The repository checkout to read (default: this directory).
   --github OWNER/R   The GitHub repository of the issue (default: OpenAgentsInc/openagents).
   --fix SHA          A closed issue's fix commit (default: the newest commit naming #N).
-  --decider WHO      auto, jev, clef, haiku-arm, or off (default: auto: Jev with your TypeSafe key,
+  --decider WHO      auto, jev, clef, haiku-arm, subq (SubQ Snap, SUBQ_API_KEY), or off (default: auto: Jev with your TypeSafe key,
                      else our decision API, keyless); or per point, as in
                      kind=jev,relevance=clef.
   --files K          Files in the briefing (default 6).

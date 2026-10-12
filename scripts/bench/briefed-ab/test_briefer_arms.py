@@ -59,5 +59,31 @@ class SummaryTests(unittest.TestCase):
         self.assertFalse(s["divergences"][0]["fix_changed_it"])
 
 
+class SubqFullTests(unittest.TestCase):
+    def test_fill_caps_keeps_small_files_whole_and_cuts_the_largest(self):
+        self.assertEqual(arms.fill_caps([10, 20], 100), 20)
+        cap = arms.fill_caps([10, 100, 1000], 500)
+        self.assertEqual(cap, 390)
+        self.assertLessEqual(sum(min(x, cap) for x in [10, 100, 1000]), 500)
+
+    def test_issue_parts_are_its_paragraphs_and_items_without_code(self):
+        task = {"body": "## Heading\n\nThe first paragraph is long enough to be a part.\n\n"
+                        "- an item that is also long enough to count\n- short\n\n```\ncode that is long enough to count\n```\n"}
+        parts = arms.issue_parts(task)
+        self.assertEqual(parts, ["The first paragraph is long enough to be a part.",
+                                 "an item that is also long enough to count"])
+
+    def test_curate_questions_ask_a_choice_over_every_file_and_none(self):
+        qs = arms.curate_questions({"body": ""}, ["a.rs", "b.rs"])
+        self.assertEqual(set(qs), set(arms.ROLE_QUESTIONS))
+        for q in qs.values():
+            self.assertEqual(q["type"], "choice")
+            self.assertEqual(set(q["criteria"]), {"a.rs", "b.rs", arms.NONE_OPTION})
+
+    def test_subq_arms_ask_the_subq_door(self):
+        self.assertEqual(arms.DOORS[arms.ARM_DOOR["subq-full"]]["model"], "subq-snap-preview")
+        self.assertEqual(arms.KEY_FILES["SUBQ_API_KEY"], "subq.env")
+
+
 if __name__ == "__main__":
     unittest.main()
