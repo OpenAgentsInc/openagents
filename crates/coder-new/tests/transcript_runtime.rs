@@ -275,6 +275,32 @@ fn the_compact_view_leads_each_call_with_the_path_it_works_on() {
 }
 
 #[test]
+fn a_compact_tool_call_leaves_one_blank_row_above_the_reply_that_follows() {
+    let mut app = live_app();
+    app.view = ViewMode::Compact;
+    app.live.entries.extend([
+        Entry::Tool {
+            name: "Read".into(),
+            input: json!({"path":"src/read.rs"}),
+            output: json!({"total_lines":120,"content":"fn read() {}"}),
+            running: false,
+        },
+        Entry::Assistant {
+            text: "The file reads one path.".into(),
+            model: None,
+            elapsed_ms: None,
+        },
+    ]);
+    let buffer = draw(&mut app, 100, 24);
+    // The call is one row, then one blank row, then the reply — the same
+    // single blank row the reply has below it.
+    assert!(row(&buffer, 0).contains("Read"), "{}", row(&buffer, 0));
+    assert_eq!(row(&buffer, 1).trim(), "", "{}", row(&buffer, 1));
+    assert_eq!(row(&buffer, 2).trim(), "● The file reads one path.");
+    assert_eq!(row(&buffer, 3).trim(), "", "{}", row(&buffer, 3));
+}
+
+#[test]
 fn ctrl_o_switches_between_the_compact_and_verbose_views() {
     let mut app = live_app();
     app.view = ViewMode::Compact;

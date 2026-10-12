@@ -967,6 +967,16 @@ fn fill_copy(lines: &[Line<'static>], copy: &mut Vec<RowCopy>) {
     copy.extend(lines.iter().skip(known).map(crate::tools::plain_copy));
 }
 
+/// Whether an entry is a reply, drawn with `●` in column 0.
+fn is_reply(entry: &crate::live::Entry) -> bool {
+    matches!(entry, crate::live::Entry::Assistant { .. })
+}
+
+/// Whether a row draws nothing.
+fn is_blank_row(line: &Line<'static>) -> bool {
+    line.spans.iter().all(|span| span.content.trim().is_empty())
+}
+
 /// An entry's rows and, row for row, what a copy takes from each.
 ///
 /// In [`ViewMode::Compact`] a tool call is one row — its name and its
@@ -1211,6 +1221,9 @@ struct CachedEntry {
     lines: Vec<Line<'static>>,
     /// What a copy takes from each of `lines`.
     copy: Vec<RowCopy>,
+    /// Whether a blank row was appended so a reply under this entry starts
+    /// with the one blank row every reply has above it.
+    gap_after: bool,
     run_output: Option<(usize, Vec<Line<'static>>, usize, bool)>,
     /// What a copy takes from each of a Run's output rows.
     run_copy: Vec<RowCopy>,
@@ -1403,6 +1416,7 @@ impl TranscriptCache {
                     entry: entry.clone(),
                     lines,
                     copy,
+                    gap_after: false,
                     run_output: None,
                     run_copy: Vec::new(),
                 };
@@ -1422,6 +1436,29 @@ impl TranscriptCache {
                 let offset = cached.run_output.as_ref().map(|r| (r.2, r.3));
                 (cached.lines, cached.copy) = entry_rows(entry, width, phase, view);
                 cached.bound_run(width, phase, offset);
+            }
+        }
+        // A compact tool row carries no trailing blank so calls run together;
+        // an item under it that is a reply takes the one blank row every
+        // item has above it. A row that already ends in a blank (a verbose
+        // item) takes none, so a reply never shows two blanks above it.
+        let streaming = !chat.partial.is_empty();
+        for index in 0..self.entries.len() {
+            let follows_reply = match self.entries.get(index + 1) {
+                Some(next) => is_reply(&next.entry),
+                None => streaming,
+            };
+            let ends_blank = self.entries[index].lines.last().is_some_and(is_blank_row);
+            let needed = follows_reply && !ends_blank;
+            let cached = &mut self.entries[index];
+            if needed && !cached.gap_after {
+                cached.lines.push(Line::default());
+                cached.copy.push(RowCopy::default());
+                cached.gap_after = true;
+            } else if !needed && cached.gap_after {
+                cached.lines.pop();
+                cached.copy.pop();
+                cached.gap_after = false;
             }
         }
         if chat.partial.is_empty() {
@@ -1446,6 +1483,7 @@ impl TranscriptCache {
                     lines,
                     copy,
                     entry,
+                    gap_after: false,
                     run_output: None,
                     run_copy: Vec::new(),
                 });
