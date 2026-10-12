@@ -808,9 +808,10 @@ fn running_and_failed_run_keep_the_command_visible() {
 }
 
 #[test]
-/// OpenAgents picks the model when none is chosen, so the rail says `coder`
-/// before the chat is routed and `Coder · auto` once Coder's own loop runs
-/// it, and never the name of whichever model answered.
+/// OpenAgents picks the model when none is chosen, so the rail names no
+/// engine before the chat is routed (nothing that reads as a mode) and says
+/// `Coder · auto` once Coder's own loop runs it, never the name of whichever
+/// model answered.
 fn local_login_turns_show_auto_above_the_input_rail() {
     let rail = |screen: &str, label: &str| {
         screen
@@ -822,7 +823,7 @@ fn local_login_turns_show_auto_above_the_input_rail() {
     app.plugins.enabled = false;
     app.live.partial_model = Some("codex:gpt-6.1-sol".into());
     let screen = render(&mut app, 80, 24);
-    assert!(rail(&screen, coder_new::models::AUTO_LABEL), "{screen}");
+    assert!(!rail(&screen, coder_new::models::AUTO_LABEL), "{screen}");
     assert!(!screen.contains("gpt-6.1-sol"));
 
     app.live.partial_model = None;
@@ -874,8 +875,9 @@ fn working_spinner_rides_the_input_rail_and_the_input_reaches_the_bottom_row() {
         let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();
         terminal.draw(|frame| ui::render(frame, &mut app)).unwrap();
         let buffer = terminal.backend().buffer();
-        // The input's top rule carries the spinner on its left and the
-        // mode on its right, so the transcript above stays untouched.
+        // The input's top rule carries the spinner on its left and, before
+        // the chat is routed, nothing on its right, so the transcript above
+        // stays untouched.
         let top = (0..23)
             .find(|&y| buffer[(0, y)].symbol() == "┌")
             .expect("the input's top rule");
@@ -889,7 +891,7 @@ fn working_spinner_rides_the_input_rail_and_the_input_reaches_the_bottom_row() {
             "{top_row:?}"
         );
         assert!(
-            label.ends_with(coder_new::models::AUTO_LABEL),
+            !label.ends_with(coder_new::models::AUTO_LABEL),
             "{top_row:?}"
         );
         // With nothing to say under the input, its rail (the folder) is
