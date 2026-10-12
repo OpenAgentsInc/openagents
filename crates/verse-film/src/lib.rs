@@ -9,6 +9,9 @@
 
 #[cfg(feature = "gpu")]
 pub mod render;
+
+#[cfg(feature = "layers")]
+pub mod layers;
 pub mod take;
 
 pub use take::{Error, Film, Frame, Kind, Record, Take, Upload, VERSION, View, read};

@@ -16899,9 +16899,13 @@ name = "verse-film"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "image",
+ "oa-tokens",
+ "paper-mono",
  "png",
  "pollster",
  "serde_json",
+ "swash",
  "wgpu",
 ]
 

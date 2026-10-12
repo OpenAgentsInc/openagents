@@ -120,7 +120,7 @@ verse-lagrange = { path = "../verse-lagrange" }
 # `openagents verse town`: Everglade's townsfolk definitions and roster.
 townsfolk = { path = "../townsfolk" }
 town-clock = { path = "../town-clock" }
-verse-film = { path = "../verse-film", features = ["gpu"] }
+verse-film = { path = "../verse-film", features = ["gpu", "layers"] }
 world-tree = { path = "../world-tree" }
 
 # `openagents ssh` runs the system ssh through Unix process groups, and

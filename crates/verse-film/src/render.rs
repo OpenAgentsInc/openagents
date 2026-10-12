@@ -611,8 +611,9 @@ impl Renderer {
             let mapped = slice.get_mapped_range();
             let stride = self.row as usize;
             let line = (self.width * 4) as usize;
-            // Scene y goes up; pixel rows go down.
-            for y in (0..self.height as usize).rev() {
+            // Clip y goes up and texture row 0 is the top, so the rows are
+            // already in picture order.
+            for y in 0..self.height as usize {
                 pixels.extend_from_slice(&mapped[y * stride..y * stride + line]);
             }
         }
