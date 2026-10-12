@@ -362,8 +362,7 @@ fn main() -> ExitCode {
     };
     let rest = rest.to_vec();
     // The commands that run Coder or its delegates put the lease shims on
-    // the delegates' `PATH`, so their heavy `cargo` commands take build
-    // leases (#10756).
+    // the delegates' `PATH` (#10756).
     if matches!(
         command.as_str(),
         "coder" | "host" | "task" | "chat" | "terminal" | "studio"

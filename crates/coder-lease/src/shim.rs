@@ -1,7 +1,15 @@
-//! Lease shims: a `cargo` that takes a build lease for heavy subcommands,
-//! and a `screencapture` that refuses without a `screen` lease
+//! Lease shims: a `screencapture` that refuses without a `screen` lease
 //! ([`crate::SCREENCAPTURE_SHIM`]), put first on the `PATH` of every agent
-//! Coder delegates to.
+//! Coder delegates to, and an opt-in `cargo` that takes a build lease for
+//! heavy subcommands.
+//!
+//! The `cargo` shim is off unless [`CARGO_VAR`] is set: delegates' `cargo`
+//! runs directly, because queued builds cost more than the contention the
+//! queue saved. Set `OPENAGENTS_LEASE_CARGO=1` before a program calls
+//! [`enable`] to put it back while the machine is under extreme
+//! contention; `openagents lease build` and `openagents n --class build`
+//! remain the manual forms either way. [`install`] removes a `cargo` shim
+//! an earlier version wrote when the shim is off.
 //!
 //! The shim is a POSIX `sh` script written from here into
 //! `~/.openagents/bin/lease-shims/` ([`SHIMS_VAR`] moves it). It runs
@@ -31,6 +39,11 @@ pub const SHIMS_VAR: &str = "OPENAGENTS_LEASE_SHIMS";
 pub const BIN_VAR: &str = "OPENAGENTS_LEASE_BIN";
 /// Set to `1` by the shim for the `openagents lease build` it runs.
 pub const SHIM_VAR: &str = "OPENAGENTS_LEASE_SHIM";
+/// Set to `1` to write the `cargo` lease shim when the shims are enabled:
+/// a machine under extreme contention can queue delegates' heavy builds
+/// again. Unset or `0`, [`install`] writes no `cargo` shim and removes one
+/// an earlier version left.
+pub const CARGO_VAR: &str = "OPENAGENTS_LEASE_CARGO";
 
 /// The `cargo` subcommands the shim runs under a build lease.
 pub const LEASED: [&str; 11] = [
@@ -114,17 +127,26 @@ pub fn dir_from(env: &dyn Fn(&str) -> Option<OsString>) -> Result<PathBuf, Strin
     Ok(PathBuf::from(home).join(".openagents/bin/lease-shims"))
 }
 
+/// Whether the `cargo` shim is wanted: [`CARGO_VAR`] set to other than
+/// `0` or empty.
+#[must_use]
+pub fn cargo_wanted(env: &dyn Fn(&str) -> Option<OsString>) -> bool {
+    env(CARGO_VAR).is_some_and(|value| !value.is_empty() && value != "0")
+}
+
 /// Writes the shims into `dir`, replacing a stale copy; an up-to-date one
-/// is left alone.
+/// is left alone. `cargo` writes the `cargo` shim too; without it, a
+/// `cargo` shim an earlier version left in `dir` is removed.
 ///
 /// # Errors
-/// The directory or the shim can't be written.
-pub fn install(dir: &Path) -> std::io::Result<()> {
+/// The directory or the shim can't be written, or the stale `cargo` shim
+/// can't be removed.
+pub fn install(dir: &Path, cargo: bool) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;
-    for (name, text) in [
-        ("cargo", CARGO_SHIM),
-        ("screencapture", crate::SCREENCAPTURE_SHIM),
-    ] {
+    for (name, text) in [("screencapture", crate::SCREENCAPTURE_SHIM)]
+        .into_iter()
+        .chain(cargo.then_some(("cargo", CARGO_SHIM)))
+    {
         let path = dir.join(name);
         if std::fs::read(&path).is_ok_and(|bytes| bytes == text.as_bytes()) {
             continue;
@@ -138,17 +160,26 @@ pub fn install(dir: &Path) -> std::io::Result<()> {
         }
         std::fs::rename(&staging, &path)?;
     }
+    if !cargo {
+        // A `cargo` shim an earlier version wrote must not keep leasing
+        // this machine's builds.
+        let stale = dir.join("cargo");
+        if stale.exists() {
+            std::fs::remove_file(stale)?;
+        }
+    }
     Ok(())
 }
 
 /// Writes the shims into `dir` and puts them on every delegate's `PATH`
 /// this process builds from now on. `bin` is the `openagents` binary the
-/// shim runs, when this process knows it.
+/// shim runs, when this process knows it. The `cargo` shim is written
+/// only under [`CARGO_VAR`].
 ///
 /// # Errors
 /// The shims can't be written; delegates then get no shim.
 pub fn enable(dir: &Path, bin: Option<PathBuf>) -> std::io::Result<()> {
-    install(dir)?;
+    install(dir, cargo_wanted(&|name| std::env::var_os(name)))?;
     if let Ok(mut enabled) = ENABLED.write() {
         *enabled = Some(Enabled {
             dir: dir.to_path_buf(),
@@ -206,11 +237,12 @@ pub fn path_with(dir: &Path, path: Option<&OsStr>) -> OsString {
         .unwrap_or_else(|_| path.map(OsStr::to_owned).unwrap_or_default())
 }
 
-/// The variables a delegate's environment sets so its `cargo` takes build
-/// leases: `PATH` as `path` with the shims first, `OPENAGENTS_LEASE_BIN`
-/// when this process knows the binary, and this process's
-/// `OPENAGENTS_LEASE_PRIORITY` when set, so the delegate's builds wait at
-/// the delegation's priority, until [`enable`] none of these; and
+/// The variables a delegate's environment sets so the shims reach it:
+/// `PATH` as `path` with the shims first (the `screencapture` shim always;
+/// `cargo` only under [`CARGO_VAR`]), `OPENAGENTS_LEASE_BIN` when this
+/// process knows the binary, and this process's `OPENAGENTS_LEASE_PRIORITY`
+/// when set, so builds a shim or a manual `openagents lease` starts wait
+/// at the delegation's priority, until [`enable`] none of these; and
 /// `OPENAGENTS_SCRATCH`, the delegates' durable scratch directory, once
 /// [`crate::scratch::enable`] chose one.
 #[must_use]
@@ -307,9 +339,26 @@ mod tests {
         expected.push(":/bin");
         assert_eq!(vars, vec![(OsString::from("PATH"), expected)]);
         assert_eq!(
+            std::fs::read_to_string(dir.join("screencapture")).unwrap(),
+            crate::SCREENCAPTURE_SHIM
+        );
+        disable();
+    }
+
+    #[test]
+    fn install_writes_the_cargo_shim_only_when_wanted_and_clears_a_stale_one() {
+        let scratch = tempfile::tempdir().unwrap();
+        let dir = scratch.path().join("shims");
+        install(&dir, true).unwrap();
+        assert_eq!(
             std::fs::read_to_string(dir.join("cargo")).unwrap(),
             CARGO_SHIM
         );
-        disable();
+        install(&dir, false).unwrap();
+        assert!(!dir.join("cargo").exists());
+        assert!(dir.join("screencapture").is_file());
+        let env = |name: &str| (name == CARGO_VAR).then(|| OsString::from("1"));
+        assert!(cargo_wanted(&env));
+        assert!(!cargo_wanted(&|_| None));
     }
 }

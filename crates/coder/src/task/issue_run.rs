@@ -983,20 +983,7 @@ impl Gate {
         let started = std::time::Instant::now();
         loop {
             match super::targets::Lease::acquire(store, &common) {
-                Ok(mut lease) => {
-                    // The checks build, so they also hold a counted
-                    // `build` lease from the host broker (#10756) while
-                    // they run. They stand before a push, so they wait at
-                    // `push` or the flow's own priority when more urgent
-                    // (#10757).
-                    let inherited = coder_lease::Priority::from_env().ok().flatten();
-                    lease.hold_build(
-                        "coder",
-                        SLOT_WAIT,
-                        super::targets::check_priority(inherited),
-                    );
-                    return Ok(Some(lease));
-                }
+                Ok(lease) => return Ok(Some(lease)),
                 Err(super::Error::Busy | super::Error::BuildDiskLow { .. })
                     if started.elapsed() < SLOT_WAIT =>
                 {

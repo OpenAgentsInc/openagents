@@ -336,7 +336,7 @@ fn main() -> ExitCode {
 }
 
 async fn start() -> ExitCode {
-    // Delegates' heavy `cargo` commands take build leases (#10756).
+    // Delegates get the lease shims on `PATH` (#10756).
     coder::task::targets::enable_lease_shims();
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     if arguments

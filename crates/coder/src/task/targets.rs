@@ -257,8 +257,8 @@ pub fn check_priority(inherited: Option<coder_lease::Priority>) -> coder_lease::
     })
 }
 
-/// Where a task run's leased builds reach: the `cargo` shim directory, the
-/// `openagents` binary the shim runs, and the lease root. A run under a
+/// Where a task run's lease shims reach: the shim directory, the
+/// `openagents` binary a shim runs, and the lease root. A run under a
 /// boundary must be able to read the first two and write the third.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RunLeases {
@@ -283,11 +283,12 @@ impl RunLeases {
         })
     }
 
-    /// The variables a task run's processes get so their heavy `cargo`
-    /// commands each take a counted `build` lease while they compile, and
-    /// only then: `PATH` as `path` with the shims first, the binary the
-    /// shim runs, the lease root, the build count this process uses, and
-    /// `priority`.
+    /// The variables a task run's processes get so the shims reach them:
+    /// `PATH` as `path` with the shims first (the `screencapture` shim
+    /// always, `cargo` only when the machine opted back in through
+    /// `OPENAGENTS_LEASE_CARGO`), the binary a shim runs, the lease root,
+    /// the build count this process uses, and `priority` for a shim or a
+    /// manual `openagents lease` the run starts.
     #[must_use]
     pub fn environment(
         &self,
@@ -326,9 +327,12 @@ pub fn apply_run_leases(
 
 /// Writes the lease shims (`coder_lease::shim`) and puts them first on the
 /// `PATH` of every agent this process delegates to from now on: Claude
-/// Code, Codex, OpenCode, the ACP agents, and Microcoder's commands. The
-/// shim runs the `openagents` beside this program, or this program when it
-/// is `openagents`, else the one on the delegate's `PATH`. A process that
+/// Code, Codex, OpenCode, the ACP agents, and Microcoder's commands. That
+/// is the `screencapture` shim, and the `cargo` shim only when
+/// `OPENAGENTS_LEASE_CARGO` opts this machine's builds back into the
+/// lease; without it the delegates' `cargo` runs directly. A shim runs the
+/// `openagents` beside this program, or this program when it is
+/// `openagents`, else the one on the delegate's `PATH`. A process that
 /// can't write the shims delegates without them. It also gives those
 /// delegates a durable scratch directory in `OPENAGENTS_SCRATCH`
 /// (`coder_lease::scratch`). Call it once, from a program's `main`, never

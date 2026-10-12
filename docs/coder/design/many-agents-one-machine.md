@@ -472,13 +472,15 @@ under `quiet`.
 
 ### How delegates take leases
 
-Coder writes shims for `cargo` and `screencapture` into
-`~/.openagents/bin/lease-shims/` and puts that directory first on a
-delegate's `PATH`. The `cargo` shim leases `build`, `test`, `check`,
-`clippy`, and `run`, and passes other subcommands through. A command already
-under a lease passes through, so nesting can't deadlock. Agents outside
-Coder, such as the conversation agents that write this repository, follow
-`AGENTS.md` and call `openagents lease build` themselves.
+Coder writes shims into `~/.openagents/bin/lease-shims/` and puts that
+directory first on a delegate's `PATH`: `screencapture` always, `cargo`
+only when `OPENAGENTS_LEASE_CARGO` opts the machine back in, because queued
+builds cost more than the contention the queue saved. When it is
+installed, the `cargo` shim leases `build`, `test`, `check`, `clippy`, and
+`run`, and passes other subcommands through. A command already under a
+lease passes through, so nesting can't deadlock. Agents outside Coder run
+`cargo` directly and can call `openagents lease build` themselves when a
+job should wait its turn.
 
 ### Disk
 

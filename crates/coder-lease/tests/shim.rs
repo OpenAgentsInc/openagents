@@ -23,7 +23,7 @@ struct Scratch {
 fn scratch() -> Scratch {
     let dir = tempfile::tempdir().unwrap();
     let shims = dir.path().join("lease-shims");
-    coder_lease::shim::install(&shims).unwrap();
+    coder_lease::shim::install(&shims, true).unwrap();
     let tools = dir.path().join("tools");
     std::fs::create_dir(&tools).unwrap();
     script(

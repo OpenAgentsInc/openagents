@@ -307,7 +307,7 @@ async fn main() -> ExitCode {
         );
         return ExitCode::SUCCESS;
     }
-    // Delegates' heavy `cargo` commands take build leases (#10756).
+    // Delegates get the lease shims on `PATH` (#10756).
     coder::task::targets::enable_lease_shims();
     if args
         .first()

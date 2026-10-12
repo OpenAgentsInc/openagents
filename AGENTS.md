@@ -70,21 +70,10 @@ Reuse one long-lived Cargo target directory per agent slot
 (`~/work/openagents-target-agentN`); never create a fresh one per task or
 delete it at the end, because a cold build of this workspace costs minutes.
 
-Run every heavy Cargo command (`build`, `test`, `check`, `clippy`, `run`)
-through the machine's build lease, so builds take turns instead of
-oversubscribing the cores: `openagents lease build --keep-target-dir --
-cargo test -p CRATE`. `--keep-target-dir` keeps your long-lived
-`CARGO_TARGET_DIR`; without it the lease picks a shared target slot. Run a
-soak, benchmark, or other latency-sensitive job under the quiet lease, which
-waits for running builds and holds new ones: `openagents lease quiet
---receipt FILE -- CMD`. `openagents lease list` shows who holds what. If the
-installed `openagents` has no `lease` command, build it once with `cargo build
--p openagents-cli --bin openagents` and run it from your target directory.
-Read `docs/coder/runtime/leases.md`. Run release gates and Terminal-Bench
-with a class so placement can send them to another computer: `openagents
-lease run --class release-gate -- CMD` or `--class bench`; soaks use
-`openagents lease quiet --class soak -- CMD` and stay here
-(`docs/coder/runtime/placement.md`).
+Run Cargo commands directly; do not wrap them in the machine's build
+lease. `openagents lease` (`docs/coder/runtime/leases.md`) stays on the
+machine only for a job that must wait its turn under extreme resource
+contention.
 
 Prefer offscreen captures (`verse --capture FILE.png` and other offscreen
 paths). When the owner asks for a visible window or desktop test, run it
@@ -872,9 +861,8 @@ machine has 4 cores and about 16 GB of memory. Set `CARGO_BUILD_JOBS=2`
 when you compile `openagents` or `verse`, so a cold build stays within
 that memory.
 
-Build `openagents` with `cargo build -p openagents-cli --bin openagents`
-before you use `openagents lease`. The day-to-day check is still
-`cargo test -p` for the crates you edit, plus `cargo fmt`.
+The day-to-day check is `cargo test -p` for the crates you edit, plus
+`cargo fmt`.
 
 `cargo fetch --locked --manifest-path crates/openagents-mobile/Cargo.toml`
 stops because Cargo wants to update that lock file. Leave the phone

@@ -54,7 +54,8 @@ A waiting request has one of four priorities, most urgent first:
 - **Choosing one.** `--priority P` sets it for one command.
   `OPENAGENTS_LEASE_PRIORITY` sets the default for a session, and the
   flag wins over it. Commands that `openagents lease` wraps inherit the
-  variable, and so do the `cargo` shim and the agents Coder delegates to.
+  variable, and so do the agents Coder delegates to and the `cargo` shim
+  when it is installed.
 - **Aging.** A waiter rises one level for each 20 minutes it waits, so a
   `background` request is `owner` after an hour and nothing starves behind
   a stream of urgent builds. `OPENAGENTS_LEASE_AGING_MINUTES` sets the step;
@@ -156,49 +157,51 @@ hold. `--json` prints each session with the folders behind its total.
 ### Coder's own builds
 
 A Coder task run that builds (full access or this computer's toolchains)
-holds a target slot for the whole run, as before, but no `build` lease of
-its own. Instead, its commands get the `cargo` shim first on `PATH`, so
-each heavy `cargo` command takes a counted `build` lease while it compiles
-and gives it back when it ends. A run spends most of its time waiting on a
-model, reading, and editing; a lease held for the whole run kept other
-agents' builds waiting through all of that, so the lease now covers only
-the compiling.
+holds a target slot for the whole run and no `build` lease. Its `cargo`
+commands run directly: queued builds cost more time than the contention
+the queue saved, so the `cargo` shim is off unless the machine opts back
+in ([The cargo shim](#the-cargo-shim)). What the run's commands and the
+coding agent it runs always get is the `screencapture` shim
+([The screen](#the-screen)) first on `PATH`, plus the variables a shim or
+a manual `openagents lease` reads: `OPENAGENTS_LEASE_BIN`,
+`OPENAGENTS_LEASE_ROOT`, `OPENAGENTS_BUILD_LEASES`, and
+`OPENAGENTS_LEASE_PRIORITY`.
 
-- The run's commands, and the coding agent it runs, get the shim's
-  variables: `PATH` with the shims first, `OPENAGENTS_LEASE_BIN`,
-  `OPENAGENTS_LEASE_ROOT`, `OPENAGENTS_BUILD_LEASES`, and
-  `OPENAGENTS_LEASE_PRIORITY`. `CARGO_TARGET_DIR` stays the run's slot,
-  because the shim keeps it (`--keep-target-dir`). A run that found every
-  slot taken builds where the shim's `lease build` puts it: in a free slot
-  when it can take one, else in its own target directory.
 - Under this computer's toolchains, the run's boundary also lets it read the
   shim directory and the `openagents` binary and write the lease root, and
   nothing more. When the lease root lies inside the workspace, the task
-  store, or the Git directory, the run gets no shim and builds unleased.
+  store, or the Git directory, the run gets no shims.
 - Every task in the inbox answers a request from the owner or a device the
-  owner enrolled, so its builds wait at `owner`, unless the process that
-  runs the task sets `OPENAGENTS_LEASE_PRIORITY`.
-- The GitHub issue flow's checks run before it pushes, so they hold one
-  counted `build` lease at `push` (or `owner` when the flow runs at
-  `owner`) while they build, beside their target slot. They wait up to 10
-  minutes; checks not admitted in time run without the lease and say so.
+  owner enrolled, so a lease the run takes waits at `owner`, unless the
+  process that runs the task sets `OPENAGENTS_LEASE_PRIORITY`.
+- The GitHub issue flow's checks run before it pushes and hold a target
+  slot while they build, waiting up to 10 minutes for a free slot; checks
+  that get none build outside the slots.
 - The shims are on only in a process that turned them on: `coder`,
   `microcoder`, the desktop app, and the `openagents` commands that run
-  Coder. Elsewhere, such as in a library's tests, a run's builds are
-  unleased.
+  Coder. Elsewhere, such as in a library's tests, a run's builds get no
+  shims.
 
 The table is `leases` beside the task store, which for the default store is
 `~/.openagents/leases`; `OPENAGENTS_LEASE_ROOT` overrides it.
 
 ### The cargo shim
 
-Coder puts a `cargo` shim, and the `screencapture` shim that
-[The screen](#the-screen) describes, first on the `PATH` of every agent it delegates
+The `cargo` shim is off by default: delegates' `cargo` commands run
+directly, and `openagents lease build` and `openagents n --class build`
+stay the manual forms. Set `OPENAGENTS_LEASE_CARGO=1` in the environment of
+`coder`, `microcoder`, the desktop app, or the `openagents` commands that
+run Coder before they start, and their delegates get the shim again while
+the machine is under extreme contention. Enabling the shims without it
+removes a `cargo` shim an earlier version wrote, so an old install cannot
+keep leasing builds.
+
+When it is installed, Coder puts the `cargo` shim first on the `PATH` of
+every agent it delegates
 to: Claude Code, Codex, and OpenCode delegations, the ACP agents (Devin,
 OpenCode, and Grok Build), and Microcoder's local commands. Studio seats and
 the workshop agent run as Coder tasks, so their commands get the shim the
-same way. The delegate takes leases without knowing about them, and its
-briefing says that heavy `cargo` commands may wait their turn. The
+same way. The delegate takes leases without knowing about them. The
 delegate's builds wait at the delegation's priority: Coder passes its own
 `OPENAGENTS_LEASE_PRIORITY` on, and the shim's `openagents lease build`
 reads it.
@@ -207,7 +210,8 @@ reads it.
   `~/.openagents/bin/lease-shims/cargo` (`OPENAGENTS_LEASE_SHIMS` moves the
   directory). `coder`, `microcoder`, the desktop app, and the `openagents`
   commands that run Coder (`coder`, `host`, `task`, `chat`, `terminal`, and
-  `studio`) write it when they start. The directory is never put on your
+  `studio`) write it when they start with `OPENAGENTS_LEASE_CARGO` set. The
+  directory is never put on your
   own interactive `PATH`.
 - It runs `openagents lease build --keep-target-dir -- <real cargo> ARGS`
   for `build`, `test`, `check`, `clippy`, `run`, `bench`, and `nextest`, and

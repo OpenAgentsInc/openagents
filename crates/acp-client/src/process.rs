@@ -84,9 +84,8 @@ impl Agent {
             .current_dir(&spec.cwd)
             .env_clear()
             .envs(spec.environment.iter().map(|(key, value)| (key, value)))
-            // The agent's heavy `cargo` commands take a build lease through
-            // the shim first on its `PATH`, once this process turned the
-            // shims on (`coder_lease::shim`).
+            // The agent gets the lease shims first on its `PATH`, once
+            // this process turned them on (`coder_lease::shim`).
             .envs(
                 spec.environment
                     .iter()

@@ -1,7 +1,7 @@
-//! A delegation's environment puts the `cargo` lease shim first on `PATH`
-//! once the process turned the shims on, and its briefing says heavy
-//! builds are leased. Its own test binary, because turning the shims on is
-//! process-wide.
+//! A delegation's environment puts the shim directory first on `PATH`
+//! once the process turned the shims on; the `screencapture` shim is
+//! there, and the `cargo` shim is not, unless the machine opted back in.
+//! Its own test binary, because turning the shims on is process-wide.
 #![cfg(unix)]
 
 use std::path::{Path, PathBuf};
@@ -42,7 +42,7 @@ fn first_on_path(command: &std::process::Command) -> Option<PathBuf> {
 }
 
 #[test]
-fn a_delegation_gets_the_cargo_shim_first_on_path() {
+fn a_delegation_gets_the_shim_directory_first_on_path() {
     let dir = tempfile::tempdir().unwrap();
     let shims = dir.path().join("lease-shims");
     let launch = Launch {
@@ -57,7 +57,7 @@ fn a_delegation_gets_the_cargo_shim_first_on_path() {
     );
 
     coder_lease::shim::enable(&shims, None).unwrap();
-    assert!(shims.join("cargo").is_file());
+    assert!(shims.join("screencapture").is_file());
     for agent in [Agent::ClaudeCode, Agent::Codex, Agent::OpenCode] {
         let cli = cli(agent, dir.path());
         let live = cli.live_command(&binary, &launch);

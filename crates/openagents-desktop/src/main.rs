@@ -198,7 +198,7 @@ fn main() -> ExitCode {
     // models.payer with the person's stored keys.
     #[cfg(feature = "app")]
     model_access::install(coder::task::settings::access());
-    // Delegates' heavy `cargo` commands take build leases (#10756).
+    // Delegates get the lease shims on `PATH` (#10756).
     #[cfg(feature = "app")]
     coder::task::targets::enable_lease_shims();
     reduce_motion();

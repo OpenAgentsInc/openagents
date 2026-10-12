@@ -759,7 +759,6 @@ impl Briefing {
     ) -> Self {
         let mut directions = format!("\n## What to do\n\n{}\n", inputs.directions);
         if coder_lease::shim::enabled().is_some() {
-            directions.push_str(LEASED_BUILDS);
             directions.push_str(OFFSCREEN_CAPTURES);
         }
         if coder_lease::scratch::delegate_dir().is_some() {
@@ -1799,11 +1798,6 @@ pub fn codex_auth_file(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> 
     }
 }
 
-/// What a briefing tells the delegate when its `cargo` takes build leases.
-pub const LEASED_BUILDS: &str = "\nHeavy `cargo` commands (build, test, check, clippy, run) take a build \
-lease on this machine and may wait their turn; let them wait, and don't change \
-`CARGO_TARGET_DIR`.\n";
-
 /// What a briefing tells the delegate about the real screen, beside the
 /// `screencapture` shim (`coder_lease::SCREENCAPTURE_SHIM`).
 pub const OFFSCREEN_CAPTURES: &str = "\nCapture offscreen, such as with `verse --capture \
@@ -2196,9 +2190,9 @@ impl Cli {
                 .env_remove("ANTHROPIC_API_KEY")
                 .env_remove("ANTHROPIC_AUTH_TOKEN");
         }
-        // Heavy `cargo` commands take a build lease through the shim
-        // first on `PATH` (`coder_lease::shim`), once this process turned
-        // the shims on.
+        // The shims first on `PATH` (`coder_lease::shim`): `screencapture`,
+        // and `cargo` only when this machine opted its builds back into
+        // the lease, once this process turned the shims on.
         command.envs(coder_lease::shim::delegate_vars_here());
         for (name, value) in &self.env {
             command.env(name, value);

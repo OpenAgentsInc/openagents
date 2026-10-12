@@ -343,7 +343,7 @@ fn the_cargo_shim_leases_cargo_test_and_passes_cargo_fmt_through() {
     use std::os::unix::fs::PermissionsExt as _;
     let dir = tempfile::tempdir().unwrap();
     let shims = dir.path().join("lease-shims");
-    coder_lease::shim::install(&shims).unwrap();
+    coder_lease::shim::install(&shims, true).unwrap();
     let tools = dir.path().join("tools");
     std::fs::create_dir(&tools).unwrap();
     let cargo = tools.join("cargo");

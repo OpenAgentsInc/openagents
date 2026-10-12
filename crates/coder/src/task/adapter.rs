@@ -570,9 +570,9 @@ struct CommandPolicy {
     /// The run's leased build slot, which a run under this computer's
     /// toolchains may write (#10293).
     target: Option<PathBuf>,
-    /// Where the run's leased builds reach (#10757): a run under this
-    /// computer's toolchains may read the `cargo` shim and the binary it
-    /// runs, and write the lease table. `None` for a run that doesn't
+    /// Where the run's lease shims reach (#10757): a run under this
+    /// computer's toolchains may read the shim directory and the binary a
+    /// shim runs, and write the lease table. `None` for a run that doesn't
     /// build or while the shims are off.
     leases: Option<super::targets::RunLeases>,
     /// The priority the run's builds wait at.
@@ -645,9 +645,8 @@ impl CommandPolicy {
         apart.then_some(leases)
     }
 
-    /// The variables that send the run's heavy `cargo` commands through
-    /// the lease shim, over `path`; empty when the run's builds aren't
-    /// leased.
+    /// The variables that put the run's lease shims first on `path`;
+    /// empty while the run gets no shims.
     fn lease_environment(
         &self,
         path: Option<&std::ffi::OsStr>,
@@ -890,11 +889,11 @@ impl Host {
             }
             _ => None,
         };
-        // The run's heavy `cargo` commands each take a counted `build`
-        // lease from the host broker through the shim first on its `PATH`,
-        // so Coder's builds and every other agent's share one build count
-        // (#10756). The run itself holds none: a long run that isn't
-        // compiling keeps no other agent's build waiting (#10757).
+        // The run's processes get the lease shims first on their `PATH`
+        // (#10756): `screencapture` always, `cargo` only when the machine
+        // opted back in through `OPENAGENTS_LEASE_CARGO`. The run itself
+        // holds no lease: a long run that isn't compiling keeps no other
+        // agent's build waiting (#10757).
         let leases = if builds(configuration.access) {
             super::targets::RunLeases::for_store(&owner.dir)
                 .filter(|leases| std::fs::create_dir_all(&leases.root).is_ok())
@@ -2114,10 +2113,10 @@ mod slot_tests {
         assert!(!builds(Access::Boundary));
     }
 
-    /// A run under this computer's toolchains runs `cargo` through the
-    /// lease shim, which may run `openagents` and write the lease table,
-    /// at the run's priority (#10757). A stand-in `openagents` records the
-    /// lease it was asked for.
+    /// A run under this computer's toolchains may read the shim directory
+    /// and run `openagents`, and may write the lease table, at the run's
+    /// priority (#10757). With the `cargo` shim installed, a stand-in
+    /// `openagents` records the lease it was asked for.
     #[cfg(unix)]
     #[test]
     fn a_toolchains_run_leases_each_cargo_build_through_the_shim() {
@@ -2133,7 +2132,7 @@ mod slot_tests {
         for path in [&workspace, &store, &git, &tools, &root] {
             std::fs::create_dir_all(path).unwrap();
         }
-        coder_lease::shim::install(&shims).unwrap();
+        coder_lease::shim::install(&shims, true).unwrap();
         let script = |path: &Path, body: &str| {
             std::fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
             std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
