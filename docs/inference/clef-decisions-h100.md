@@ -251,6 +251,28 @@ A stopped VM still bills its 200 GB disk (about $34 a month).
 
 ## Measured
 
+### The pool, H100 and A100 (2026-10-12)
+
+In production through `https://openagents.com/api/v1/decisions`, two
+questions (a predicate and a choice of three) about a short unique input,
+16 calls at once per row. Times are `openagents.latency_ms` (the gateway's
+round trip to the machine, queueing included), split by
+`openagents.backend`:
+
+| Model | H100: calls, median, max | A100: calls, median, max | Errors |
+| --- | --- | --- | ---: |
+| `clef-flash` | 8, 217 ms, 383 ms | 8, 385 ms, 638 ms | 0 |
+| `clef` | 8, 579 ms, 1,011 ms | 8, 895 ms, 1,531 ms | 0 |
+| `openagents/decide` | 8, 211 ms, 381 ms | 8, 375 ms, 631 ms | 0 |
+| `clef-flash`, the A100's Flash service stopped | 16, 415 ms, 776 ms | — | 0 |
+| `clef-flash`, the H100's Flash service stopped (8 at once) | — | 8, 328 ms, 535 ms | 0 |
+
+One call at a time, every call goes to the H100: 47 ms for `clef-flash`; with
+the H100's Flash stopped, the A100 answers the same call in 85 ms. Before the
+busy retry, 16 calls at once on the H100 alone overflowed its queue of 8 and
+3 answered `503`; with it, none did. The A100's answers match the H100's to
+about 2e-5 (the same probability, 0.96558 against 0.96560, on one test).
+
 ### The H100 alone
 
 In production on 2026-10-12, three questions about one short input
