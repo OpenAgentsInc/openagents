@@ -344,6 +344,40 @@ grows. The head amortizes (its per-decision cost fell from 46 ms at one
 question to 4 ms at 64), so the cost of a bigger batch is prefill tokens —
 which is exactly what the outline tier spends fewer of.
 
+### Several passes over one issue: only the issue in `state`
+
+A Psionic lane with prefix reuse on (`PSIONIC_CLEF_PREFIX_CACHE_BYTES`, Metal
+and CUDA; see clef-native.md Round 8) prefills a state once and answers later
+requests with the same state from a snapshot. The reused prefix is the system
+prompt plus the **whole** rendered `state`, matched token for token; the
+schema (the questions and options) is computed fresh every time. So:
+
+- **The shared text is the entire `state`.** For a tier-2 pass and a tier-3
+  re-ask on one issue, send the issue alone as the state and put each
+  candidate's detail in its own question. `instructions` may be a JSON
+  object, so the per-file representation moves there unchanged:
+
+  ```json
+  "questions": {"f1": {"type": "noul", "instructions": {
+      "question": "Does the fix for this issue need to change this file? The file is f1: crates/coder/src/router/judge.rs",
+      "file": {"path": "crates/coder/src/router/judge.rs", "finder": {"rank": 1, "confidence": 0.71},
+               "reasons": ["issue names `route`"]}}}}
+  ```
+
+  `scripts/clef-lab/issue_files.py` `shared_request()` builds this shape.
+- **Anything that varies, anywhere in the state, defeats reuse.** A state of
+  `{issue, candidates}` matches nothing when the candidates change, even
+  though they come last. `render()` sorts object keys, so key order in the
+  caller's JSON does not matter, and naming keys so the shared part sorts
+  first (`_issue` before `candidates`) does not help either: the snapshot is
+  taken only at the end of the state.
+- **A nonce belongs to the run, not the request.** To keep the whole-answer
+  logit cache out of a measurement, put one nonce per issue run in the state
+  (the lab uses `_run`); every pass of that run then shares it.
+- **The response says what was reused.** `usage.cached_input_tokens` and
+  `psionic.timing.restored_tokens` count the restored prefix tokens; on CUDA,
+  `psionic.prefix_cache` reports the snapshots held and their bytes.
+
 ### Briefer / Tester: other bounded judgments
 
 - **Change kind.** `issue_kind` asks a `Choice` ("what kind of change does

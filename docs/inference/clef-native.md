@@ -1224,6 +1224,53 @@ Findings:
 - **Cost.** Five spot runs, about 2 hours of H100 (about $12.5), and three
   11-minute Cloud Builds.
 
+### Round 8 (2026-10-12): prefix reuse on CUDA, off by default (#11442)
+
+**What runs.** `PSIONIC_CLEF_PREFIX_CACHE_BYTES` now works on CUDA too, with
+the Metal contract (`clef/prefix.rs`, `qwen35/clef_cuda/prefix.rs`):
+
+- A snapshot is one device buffer holding every layer's conv and DeltaNet
+  state, the prefix rows of each attention layer's f16 K/V, and the prefix
+  memory rows. It is keyed on every prefix token (system prompt + state) and
+  the effective chunk size. A hit restores into the request's fresh buffers
+  and prefills only the suffix. A miss splits its chunks at the prefix end and
+  captures there.
+- Several snapshots, least recently used out, within the byte budget (at most
+  32 GiB and a quarter of the device; at most 64 entries). Unset or 0 is off,
+  the default.
+- The serial lane and the batch worker both restore and capture. A batched
+  capture is pending until its request finishes and is released if the
+  request is cancelled.
+- `usage.cached_input_tokens` and `psionic.timing.restored_tokens` report the
+  restored tokens; `psionic.prefix_cache` reports entries, bytes and budget.
+
+**Status: not verified, so it stays off.** The parity and speed check
+(`fixtures/clef/tools/cuda_prefix_check.py`) did not run on the H100: the
+first attempt stopped on a bug in the script (fixed since, and dry-run
+against a fake server). The acceptance numbers (zero logit difference, ≥ 5×
+on a 4k state with a 1k schema) are still open.
+
+**Two-stage lab** (H100, bundle `c562886094`, `eval_closed.py --k 24`, four
+closed issues, tier 2 over 24 candidates then tier 3 over the top 8, the issue
+as the whole state via `issue_files.shared_request`). The second pass did
+restore its prefix (238–299 tokens), but the issue texts are short and the
+candidate questions are 12–15k tokens, so reuse saves nothing measurable:
+
+| Seconds per issue (run A / B) | reuse | cache off |
+| --- | --- | --- |
+| Flash | 0.694 / 0.696 | 0.726 / 0.729 |
+| 27B | 2.083 / 2.121 | 2.023 / 2.021 |
+
+The 27B two-stage pass reaches AUC 0.90–0.91 and recall@6 0.79–0.86, against
+0.88 and 0.71 for single-pass batched tier 3 over the top 12 (the same
+four issues on the H100 earlier the same day). Some answers
+differ slightly between the two servers (27B up to 0.03, Flash up to 0.09 on
+one file). The reuse server splits a cold request's chunks at the prefix,
+and the cache-off server does not. Until the parity check shows otherwise,
+treat that as chunk-split drift.
+
+Raw rows: `gs://openagentsgemini-decision-throughput/clef-11442/r1/out/`.
+
 ## M3 status (2026-10-10, in progress)
 
 The [October 10 Mac performance audit](../audits/2026-10-10-clef-mac-performance/README.md)

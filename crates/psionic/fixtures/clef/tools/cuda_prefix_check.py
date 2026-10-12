@@ -100,7 +100,8 @@ def case(model, lines, questions):
     tag = uuid.uuid4().hex
     first = {"model": model, "state": state_text(tag, lines), "questions": schema(questions)}
     second = copy.deepcopy(first)
-    second["questions"]["q1"]["instructions"] += " Consider the complete state."
+    last = sorted(second["questions"])[-1]
+    second["questions"][last]["instructions"] += " Consider the complete state."
     return first, second
 
 
