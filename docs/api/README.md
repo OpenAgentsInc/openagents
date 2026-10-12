@@ -14,7 +14,7 @@ hides it today; payment is x402.
 | [Managed Agents API (proposed, 2026-10-11)](managed-agents.md) | Saved agents, sessions, events, tools, multiagent threads, environments, vaults, memory, skills, files, and scheduled deployments. Same resource paths and JSON as the managed-agents surface, on this API's auth, errors, cursor, and sats. |
 | [Managed agent events (proposed, 2026-10-11)](managed-agents-events.md) | Sending and reading session events, live previews, reconnecting, the budget pause, usage and cache counts, and outcome grading. |
 | [Managed agent operations (proposed, 2026-10-11)](managed-agents-operations.md) | Workspace webhooks, cron fires and deployment failures, the JSON and skill files you keep, and how a session's spend relates to one `/v1/responses` call. |
-| [Model calls (proposed, 2026-10-12)](model-calls.md) | Token counts, response batches, files and citations on a response, cache breakpoints, strict tools, refusals, and context edits. Extends `/v1/responses`. |
+| [Model calls (proposed, 2026-10-12)](model-calls.md) | Token counts, response batches, files and citations on a response, cache breakpoints, strict tools, the tool loop, reasoning replay, refusals, and context edits. Extends `/v1/responses`. |
 
 Related: the existing keyed HTTP [decision gateway](../decision-models/service/gateway.md)
 (System One judgments, not the agent), the [chat worker](../deployment/chat-worker.md)

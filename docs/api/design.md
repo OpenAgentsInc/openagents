@@ -403,7 +403,23 @@ website cookie), `app` (`sess_` from device sign-in), `nostr` (NIP-98),
 | `GET`/`DELETE /v1/traces/{id}`, `POST /v1/traces/{id}/share` | web `/api/traces/{id}`, `/api/traces/{id}/share` | Read, delete, share a trace | PUBLIC | key `traces` / app / session | `work.traces` + bucket | launch (first-party) |
 | `GET /v1/traces/{id}/public` | page `GET /trace/{id}` | A shared trace, no key | PUBLIC | none | `work.traces` (public) | launch (page) |
 
-Managed agents are proposed in [Managed Agents](managed-agents.md) and are not built. That API adds `/v1/agents` and reuses `/v1/sessions`, `/v1/environments`, `/v1/files`, and `/v1/skills` for a different object than account sign-in and the website's repository-environment routes. The managed-agents doc says how the shared paths stay distinct. Steering, outcomes, and usage are in [Managed agent events](managed-agents-events.md). Webhook endpoints, cron deployments, and on-disk files are in [Managed agent operations](managed-agents-operations.md). Webhook signatures match the decision-job shape (`x-openagents-event`, `x-openagents-signature`). Counts, batches, file references, cache breakpoints, citations, refusal details, and context edits on a model call are proposed in [Model calls](model-calls.md).
+Managed agents are proposed in [Managed Agents](managed-agents.md) and are not built. That API adds `/v1/agents` and reuses `/v1/sessions`, `/v1/environments`, `/v1/files`, and `/v1/skills` for a different object than account sign-in and the website's repository-environment routes. The managed-agents doc says how the shared paths stay distinct. Steering, outcomes, and usage are in [Managed agent events](managed-agents-events.md). Webhook endpoints, cron deployments, and on-disk files are in [Managed agent operations](managed-agents-operations.md). Webhook signatures match the decision-job shape (`x-openagents-event`, `x-openagents-signature`). Counts, batches, file references, cache breakpoints, citations, refusal details, context edits, the tool loop, and reasoning continuity on a model call are proposed in [Model calls](model-calls.md).
+
+#### Names shared with a protocol
+
+A caller sends the HTTP object. The NIP is the record inside OpenAgents. The two can share a word and stay separate objects.
+
+| On this API | Protocol | What each one holds |
+| --- | --- | --- |
+| `POST /v1/responses`, `/v1/responses/count`, `/v1/responses/batches` | [NIP-CJ](../../nips/openagents/NIP-CJ.md) | The model call a partner sends. Our apps reach the chat worker with NIP-CJ jobs (kinds `25900`, `27000`, `26900`). The worker calls `/v1/responses` with the house key. `POST /v1/messages` is the chat thread in front of kind `25900`. |
+| `file_` | [NIP-WS](../../nips/openagents/NIP-WS.md), [NIP-VAULT](../../nips/openagents/NIP-VAULT.md) | Bytes uploaded for a model call or a session. NIP-WS binds a workspace's documents and views. NIP-VAULT seals a person's own files. |
+| `vlt_` on `/v1/vaults` | [NIP-VAULT](../../nips/openagents/NIP-VAULT.md) | Credentials a session applies. A person's sealed files stay on `openagents vault`. |
+| `sesn_` | [NIP-SESS](../../nips/openagents/NIP-SESS.md) | An agent session on this API. NIP-SESS records an engine session and publishes no route here. |
+| `env_` | [NIP-ENV](../../nips/openagents/NIP-ENV.md) | The environment object on this API. NIP-ENV records how an environment is allocated. |
+| `depl_` | [NIP-AUTO](../../nips/openagents/NIP-AUTO.md) | A deployment schedule on this API. NIP-AUTO is the relay's plan for scheduled work. |
+| HTTP `402` | [NIP-X402](../../nips/openagents/NIP-X402.md) | The payment response this API returns. NIP-X402 is the Lightning payment behind that response. |
+| Function tools on a response | [NIP-CAP](../../nips/openagents/NIP-CAP.md) | Tools declared on the request, which you run. A capability definition describes a host operation. |
+| A compaction item | [NIP-CTX](../../nips/openagents/NIP-CTX.md) | The summary you send back on `/v1/responses`. NIP-CTX keeps the task frame and its history. |
 
 ### 4.5 registry
 

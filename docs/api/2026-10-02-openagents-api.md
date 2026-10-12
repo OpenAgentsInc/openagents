@@ -815,6 +815,8 @@ sees the right-hand columns.
 | `/v1/accounts`, `/v1/keys`, `/v1/balance`, `/v1/topups` | No NIP: account state belongs to whoever runs the front; top-ups are invoices from its wallet; automatic top-ups use [NIP-47](https://github.com/nostr-protocol/nips/blob/master/47.md) Wallet Connect toward the caller's wallet | |
 | x402 or `Payment` scheme on any endpoint | Upstream x402 `http:1` (NIP-X402 HTTP role) and the HTTP `Payment` scheme's Lightning `charge` and `session` intents, at the edge only | NIP-X402 could later name the `Payment` scheme as a second HTTP binding of the same receiver and replay store. |
 
+Where this API and a NIP share a word for different objects, [Names shared with a protocol](design.md#names-shared-with-a-protocol) lists the boundary: `/v1/responses`, `file_`, `vlt_`, `sesn_`, `env_`, `depl_`, HTTP `402`, function tools, and compaction items.
+
 Upstream NIPs underneath: [NIP-01](https://github.com/nostr-protocol/nips/blob/master/01.md)
 events and signatures, [NIP-44](https://github.com/nostr-protocol/nips/blob/master/44.md)
 encryption, [NIP-42](https://github.com/nostr-protocol/nips/blob/master/42.md)

@@ -221,9 +221,9 @@ Use `POST /v1/responses` when you want one answer, a function tool, or a short l
 
 | You want | On `/v1/responses` |
 | --- | --- |
-| A function the model calls, and you run | A function tool, `tool_choice` (`auto`, `required`, `none`, a named function, or `allowed_tools`), and `parallel_tool_calls`. Return every output before the next call. |
+| A function the model calls, and you run | A function tool, `tool_choice` (`auto`, `required`, `none`, a named function, or `allowed_tools`), and `parallel_tool_calls`. Return every output before the next call. The caller steps are in [The tool loop](model-calls.md#the-tool-loop). |
 | Web search without a session | The hosted `openagents:web_search` tool. |
-| Reasoning you can send back | A reasoning item. Pass `encrypted_content` through unchanged when the response includes it. |
+| Reasoning you can send back | A reasoning item. Pass `encrypted_content` through unchanged when the response includes it. A session keeps that prefix. On `/v1/responses`, follow [Keeping reasoning valid](model-calls.md#keeping-reasoning-valid). |
 | A shorter stored conversation | `POST /v1/responses/compact`. |
 | JSON that matches a schema | The response text format. |
 | How many input tokens a body will use | `POST /v1/responses/count`. The count is not billed. |
