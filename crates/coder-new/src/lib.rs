@@ -590,7 +590,11 @@ impl App {
         }
         slash::matches(&self.draft.text)
             .into_iter()
-            .filter(|command| *command != slash::Command::Models || self.plugins.enabled)
+            .filter(|command| {
+                *command != slash::Command::Models
+                    || self.plugins.enabled
+                    || self.mode == Mode::Claude
+            })
             // Saving chats to the account needs a sign-in (#11046).
             .filter(|command| *command != slash::Command::Sync || self.account.is_some())
             // Background agents run in live mode only (#11163).
@@ -613,6 +617,78 @@ impl App {
                     || self.plugins.bundled.brainstorm.preferences.enabled
             })
             .collect()
+    }
+
+    /// In claude mode, a slash command Coder does not run there goes to
+    /// Claude Code as the message, and Claude Code expands it (#11439): a
+    /// skill such as `/review`, `/compact`, `/config KEY=VALUE`, `/loop`,
+    /// and the rest. `/model NAME` picks the mode's model as /models does.
+    /// Coder's own commands keep their meaning. Returns whether it took the
+    /// draft.
+    fn claude_slash(&mut self) -> bool {
+        if self.mode != Mode::Claude {
+            return false;
+        }
+        let text = self.draft.text.trim().to_owned();
+        let Some(rest) = text.strip_prefix('/') else {
+            return false;
+        };
+        let (word, argument) = rest
+            .split_once(char::is_whitespace)
+            .map_or((rest, ""), |(word, argument)| (word, argument.trim()));
+        // A path such as `/usr/bin/env` is a message, not a command.
+        if word.is_empty()
+            || !word
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b':'))
+        {
+            return false;
+        }
+        if word == "model" && !argument.is_empty() {
+            self.record_prompt();
+            self.draft = Draft::default();
+            self.composer = Default::default();
+            self.composer_history.reset();
+            let wanted = argument.to_lowercase();
+            let picked = claude::MODELS.iter().find(|(id, name, _)| {
+                *id == wanted
+                    || name.to_lowercase() == wanted
+                    || name
+                        .split(' ')
+                        .next()
+                        .is_some_and(|short| short.to_lowercase() == wanted)
+            });
+            self.notice = Some(match picked {
+                Some((id, name, _)) => match claude::choose(id, claude::choice().effort) {
+                    Ok(()) => format!("claude now runs {name}."),
+                    Err(error) => error,
+                },
+                None => {
+                    let names: Vec<&str> =
+                        claude::MODELS.iter().map(|(_, name, _)| *name).collect();
+                    format!(
+                        "claude offers {}. Type /models to pick one.",
+                        names.join(", ")
+                    )
+                }
+            });
+            return true;
+        }
+        let coders_own = slash::parse(&format!("/{word}")).is_some_and(|command| {
+            !matches!(
+                command,
+                slash::Command::Compact
+                    | slash::Command::Loop
+                    | slash::Command::Schedule
+                    | slash::Command::Shells
+                    | slash::Command::Agents
+            )
+        });
+        if coders_own {
+            return false;
+        }
+        self.submit_live();
+        true
     }
 
     pub fn cancel_request(&mut self) {
@@ -2657,6 +2733,8 @@ impl App {
                             .map(std::path::PathBuf::from)
                         {
                             self.export(Some(&path));
+                        } else if self.claude_slash() {
+                            // Claude Code's own commands and skills (#11439).
                         } else if self.long_work_command() {
                             // `/loop`, `/schedule` and `/shells` with
                             // their arguments (#11177).
@@ -3055,6 +3133,53 @@ mod claude_tests {
             }
             _ => panic!("a claude turn"),
         }
+    }
+
+    /// A skill, `/compact`, or any command Coder does not run in this mode
+    /// goes to Claude Code as the message (#11439).
+    #[test]
+    fn claude_codes_own_commands_go_to_claude_code() {
+        for text in [
+            "/review",
+            "/compact",
+            "/config thinking=false",
+            "/my-skill do it",
+        ] {
+            let mut app = typed(Mode::Claude, text);
+            assert!(app.claude_slash(), "{text}");
+            match app.request.take().map(|request| request.kind) {
+                Some(live::Work::Claude { messages, .. }) => {
+                    assert_eq!(messages.last().unwrap().content, text);
+                }
+                _ => panic!("{text} should start a claude turn"),
+            }
+        }
+    }
+
+    /// Coder's own commands keep their meaning, and a path is a message.
+    #[test]
+    fn coders_commands_and_paths_stay_coders() {
+        for text in [
+            "/plugins",
+            "/models",
+            "/help",
+            "/usr/bin/env is missing",
+            "hello",
+        ] {
+            let mut app = typed(Mode::Claude, text);
+            assert!(!app.claude_slash(), "{text}");
+            assert!(app.request.is_none(), "{text}");
+        }
+        let mut app = typed(Mode::Live, "/review");
+        assert!(!app.claude_slash());
+    }
+
+    #[test]
+    fn model_with_an_unknown_name_lists_the_choices() {
+        let mut app = typed(Mode::Claude, "/model gpt-6");
+        assert!(app.claude_slash());
+        assert!(app.request.is_none());
+        assert!(app.notice.as_deref().unwrap().contains("Haiku 5.5"));
     }
 
     /// The path a person takes: type, press Enter. The turn leaves the mode
