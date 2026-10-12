@@ -6,36 +6,46 @@
   "device": {
     "type": "macbook",
     "size": "14",
-    "finish": "space-black",
+    "finish": "silver",
     "open": 112
   },
   "screen": {
     "video": "~/work/film-out/footage/web-chat.mp4",
     "in": 1.0,
-    "brightness": 1.15
+    "brightness": 1.35
   },
   "background": {
-    "kind": "gradient",
-    "color": [0.016, 0.011, 0.0075],
-    "color_top": [0.01, 0.007, 0.005],
-    "gradient_height": 1.4,
-    "floor_rough": 0.8,
-    "world": [0.002, 0.0016, 0.0013],
-    "floor_spec": 0.03
+    "kind": "grid",
+    "floor_rough": 0.18,
+    "floor_spec": 0.5,
+    "width_px": 2.0,
+    "fade": 90.0,
+    "scale": 0.08
   },
   "lights": {
     "rotation": 0,
     "brightness": 1.0,
-    "target": [0, 0.02, 0.08],
+    "target": [
+      0,
+      0.03,
+      0.08
+    ],
     "lights": [
       {
         "name": "key",
         "azimuth": -55,
-        "elevation": 38,
+        "elevation": 40,
         "distance": 1.8,
-        "size": [2.4, 1.6],
-        "power": 19,
-        "kelvin": 4300,
+        "size": [
+          2.4,
+          1.6
+        ],
+        "power": 3.5,
+        "color": [
+          1,
+          1,
+          1
+        ],
         "spread": 70
       },
       {
@@ -43,51 +53,63 @@
         "azimuth": 10,
         "elevation": 78,
         "distance": 1.5,
-        "size": [2.4, 0.9],
-        "power": 4,
-        "kelvin": 5000,
+        "size": [
+          2.4,
+          0.9
+        ],
+        "power": 1.5,
+        "color": [
+          1,
+          1,
+          1
+        ],
         "spread": 60
       },
       {
         "name": "rim",
-        "azimuth": 115,
-        "elevation": 50,
+        "azimuth": 120,
+        "elevation": 62,
         "distance": 1.4,
-        "size": [0.6, 1.6],
-        "power": 14,
-        "kelvin": 5600,
+        "size": [
+          0.6,
+          1.6
+        ],
+        "power": 3,
+        "color": [
+          1,
+          1,
+          1
+        ],
         "spread": 45
       },
       {
         "name": "fill",
-        "azimuth": 50,
-        "elevation": 12,
+        "azimuth": 55,
+        "elevation": 15,
         "distance": 2.0,
         "size": 2.0,
-        "power": 5,
-        "kelvin": 3800
-      },
-      {
-        "name": "glow",
-        "azimuth": -160,
-        "elevation": 70,
-        "distance": 1.6,
-        "size": 1.2,
-        "power": 40,
-        "kelvin": 3200,
-        "aim": [0.3, 1.6, 0.3],
-        "spread": 40,
-        "visible": false
+        "power": 1.2,
+        "color": [
+          1,
+          1,
+          1
+        ]
       },
       {
         "name": "strip",
         "azimuth": -25,
         "elevation": 8,
         "distance": 1.6,
-        "size": [1.8, 0.06],
-        "power": 5,
-        "kelvin": 5200,
-        "visible": true
+        "size": [
+          1.8,
+          0.06
+        ],
+        "power": 0.4,
+        "color": [
+          1,
+          1,
+          1
+        ]
       }
     ]
   },
@@ -95,17 +117,48 @@
     "ease": "inout",
     "keys": [
       {
-        "t": 0.0,
-        "orbit": [-38, 22, 1.3],
-        "target": [0.01, 0.05, 0.085],
-        "lens": 62,
-        "fstop": 6.3
+        "t": 0,
+        "orbit": [
+          -38,
+          20,
+          0.98
+        ],
+        "target": [
+          0,
+          0.08,
+          0.1
+        ],
+        "lens": 50,
+        "fstop": 5.6
+      },
+      {
+        "t": 2.6,
+        "orbit": [
+          -26,
+          20,
+          0.66
+        ],
+        "target": [
+          0,
+          0.12,
+          0.115
+        ],
+        "lens": 50,
+        "fstop": 5.6
       },
       {
         "t": 8.5,
-        "orbit": [-13, 18, 1.22],
-        "target": [0.01, 0.05, 0.085],
-        "lens": 62,
+        "orbit": [
+          -14,
+          21,
+          0.6
+        ],
+        "target": [
+          0,
+          0.14,
+          0.118
+        ],
+        "lens": 50,
         "fstop": 6.3
       }
     ]

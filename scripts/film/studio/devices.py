@@ -291,7 +291,7 @@ def screen_mat(name, video, screen_aspect, in_frame=0, brightness=1.0, frames=No
     img.colorspace_settings.name = "sRGB"
     tex = nodes.new("ShaderNodeTexImage")
     tex.image = img
-    tex.interpolation = "Cubic"
+    tex.interpolation = "Linear"  # Cubic is a B-spline in Cycles: it blurs text
     tex.extension = "CLIP"
     if not still:
         iu = tex.image_user
@@ -370,8 +370,7 @@ def macbook(video=None, finish="space-black", size="14", open_deg=112, in_frame=
     alu = metal_mat("mb_aluminum", finish)
     well = plain("mb_well", (0.004, 0.004, 0.005), 0.6)
     keycap = plain("mb_keycap", (0.005, 0.005, 0.006), 0.68, spec=0.15)
-    pad = metal_mat("mb_trackpad", finish, rough_add=-0.12)
-    pad.node_tree.nodes["Principled BSDF"].inputs["Metallic"].default_value = 0.3
+    pad = metal_mat("mb_trackpad", finish, rough_add=-0.08)
     grille = grille_mat("mb_grille", finish)
     glass = plain("mb_bezel", (0.002, 0.002, 0.0025), 0.03, spec=0.6)
     hinge_m = plain("mb_hinge", (0.008, 0.008, 0.009), 0.4, metal=0.3)
@@ -468,7 +467,7 @@ def macbook(video=None, finish="space-black", size="14", open_deg=112, in_frame=
 
 def iphone(video=None, finish="cosmic-orange", in_frame=0, brightness=1.0):
     """An iPhone 17 Pro-like phone lying screen-up (+Z), centered on its root."""
-    px_w, px_h = 1179, 2556  # 393×852 pt at 3x, the footage contract
+    px_w, px_h = 1206, 2622  # iPhone 17 Pro: 402×874 pt at 3x
     ppm = 460 / 0.0254
     sw, sh = px_w / ppm, px_h / ppm  # 65.1 × 141.1 mm
     W, H = sw + 0.0064, sh + 0.0064
@@ -495,7 +494,7 @@ def iphone(video=None, finish="cosmic-orange", in_frame=0, brightness=1.0):
     smat = screen_mat("ip_screen", video, sw / sh, in_frame, brightness)
     screen = flat("ip_screen", rrect(sw, sh, 0.0092), z1 + 0.00003, smat, uv=(-sw / 2, -sh / 2, sw, sh))
     parts.append(screen)
-    pt = sw / 393
+    pt = sw / 402
     di_w, di_h = 126 * pt, 37 * pt
     parts.append(flat("ip_island", rrect(di_w, di_h, di_h / 2), z1 + 0.00006, glass,
                       offset=(0, sh / 2 - 11 * pt - di_h / 2)))

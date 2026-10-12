@@ -49,6 +49,8 @@ def parse():
     ap.add_argument("--still", type=float, help="render one PNG at this time (s)")
     ap.add_argument("--frames", help="render only frames A:B (1-based, inclusive)")
     ap.add_argument("--samples", type=int)
+    ap.add_argument("--resolution", type=lambda s: [int(v) for v in s.lower().split("x")],
+                    help="WxH, overriding the spec (default 3840x2160)")
     ap.add_argument("--keep-frames", action="store_true")
     ap.add_argument("--blend", help="also save the built scene to this .blend")
     return ap.parse_args(argv)
@@ -111,9 +113,10 @@ def setup_render(spec, args):
     sc.render.fps = fps
     sc.frame_start = 1
     sc.frame_end = int(round(spec["duration"] * fps))
-    res = r.get("resolution", [1920, 1080])
+    res = args.resolution or r.get("resolution", [3840, 2160])
     sc.render.resolution_x, sc.render.resolution_y = res
-    sc.render.resolution_percentage = 50 if args.preview else 100
+    sc.render.resolution_percentage = 25 if args.preview else 100
+    sc.render.filter_size = 1.0  # a tight pixel filter keeps UI text crisp
     sc.render.engine = "CYCLES"
     cy = sc.cycles
     prefs = bpy.context.preferences.addons["cycles"].preferences
@@ -125,7 +128,7 @@ def setup_render(spec, args):
         cy.device = "GPU"
     except Exception as e:  # CPU fallback keeps the script portable
         print("studio: GPU unavailable, using CPU:", e)
-    cy.samples = args.samples or (24 if args.preview else r.get("samples", 96))
+    cy.samples = args.samples or (24 if args.preview else r.get("samples", 40))
     cy.use_adaptive_sampling = True
     cy.adaptive_threshold = 0.015
     cy.use_denoising = True
@@ -141,6 +144,7 @@ def setup_render(spec, args):
     cy.blur_glossy = 0.5
     cy.film_exposure = 1.0
     sc.render.use_persistent_data = True
+    bpy.context.preferences.filepaths.use_scripts_auto_execute = True  # grid line driver
     sc.render.use_motion_blur = r.get("motion_blur", True)
     sc.render.motion_blur_shutter = r.get("shutter", 0.5)
     sc.render.film_transparent = False
@@ -172,6 +176,9 @@ def setup_background(bg):
     bgn.inputs["Color"].default_value = color(bg.get("world", [0.0, 0.0, 0.0]))
     bgn.inputs["Strength"].default_value = 1.0
     if bg.get("kind") == "none":
+        return
+    if bg.get("kind") == "grid":
+        setup_grid(bg)
         return
     import bmesh
 
@@ -218,6 +225,124 @@ def setup_background(bg):
     else:
         b.inputs["Base Color"].default_value = color(bg.get("color", [0.02, 0.02, 0.02]))
     me.materials.append(m)
+
+
+# The Verse's Grid, from crates/verse-core/src/world.rs and the grid pack
+# (crates/verse/src/grid_pack.rs, world::ground): a line every GRID meters
+# out to ±HALF, every LOT-th "street" line (offset LOT/2) one ladder step
+# brighter, drawn unlit in the neutral palette over the near-black field.
+GRID, LOT, HALF = 4.0, 24.0, 264.0
+QUARTER = 0x656565  # Intensity::Quarter = coder_noir::CONTENT_TERTIARY
+HALF_STEP = 0x818181  # Intensity::Half = coder_noir::CONTENT_SECONDARY
+FIELD = 0x0A0A0A  # coder_noir::CANVAS, the clear color
+
+
+def srgb_hex(rgb):
+    def ch(c):
+        c = c / 255.0
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    return (ch((rgb >> 16) & 255), ch((rgb >> 8) & 255), ch(rgb & 255), 1.0)
+
+
+def setup_grid(bg):
+    """The Grid as the stage: the black field with the ground lattice's
+    lines, about one pixel wide at any distance like the engine's line pass.
+
+    The floor under the lines is black glass (`floor_rough`), so the device
+    stands on a faint reflection of itself instead of floating. Line width is
+    set from the camera per frame (`pixel_angle`, filled in by `build`).
+    """
+    import bmesh
+
+    sc = bpy.context.scene
+    # `scale` shrinks the whole lattice about the device, so a laptop sits on
+    # the Grid the way an avatar does (one cell is GRID * scale meters).
+    s = bg.get("scale", 1.0)
+    G, L_, H = GRID * s, LOT * s, HALF * s
+    w = sc.world
+    w.node_tree.nodes["Background"].inputs["Color"].default_value = srgb_hex(FIELD)
+    bm = bmesh.new()
+    ext = H + G
+    bm.faces.new([bm.verts.new((x, y, 0.0)) for x, y in ((-ext, -ext), (ext, -ext), (ext, ext), (-ext, ext))])
+    me = bpy.data.meshes.new("grid")
+    bm.to_mesh(me)
+    bm.free()
+    floor = bpy.data.objects.new("grid", me)
+    sc.collection.objects.link(floor)
+    off = bg.get("offset", [0.0, 0.0])
+    floor.location = (off[0], off[1], 0.0)
+    m = bpy.data.materials.new("grid")
+    m.use_nodes = True
+    nt = m.node_tree
+    nodes, links = nt.nodes, nt.links
+    b = nodes["Principled BSDF"]
+    b.inputs["Base Color"].default_value = srgb_hex(FIELD)
+    b.inputs["Roughness"].default_value = bg.get("floor_rough", 0.22)
+    b.inputs["Specular IOR Level"].default_value = bg.get("floor_spec", 0.5)
+
+    def math(op, a, b_=None):
+        n = nodes.new("ShaderNodeMath")
+        n.operation = op
+        for i, v in enumerate((a, b_)):
+            if v is None:
+                continue
+            if isinstance(v, (int, float)):
+                n.inputs[i].default_value = v
+            else:
+                links.new(v, n.inputs[i])
+        return n.outputs[0]
+
+    tc = nodes.new("ShaderNodeTexCoord")
+    sep = nodes.new("ShaderNodeSeparateXYZ")
+    links.new(tc.outputs["Object"], sep.inputs["Vector"])
+    vl = nodes.new("ShaderNodeVectorMath")
+    vl.operation = "LENGTH"
+    links.new(tc.outputs["Camera"], vl.inputs[0])
+    dist = vl.outputs["Value"]
+    # Half a line's width in meters at this distance: `width_px` pixels.
+    half_w = math("MULTIPLY", dist, 0.5)
+    half_w.node.name = "halfwidth"
+    inside = math("LESS_THAN", math("ABSOLUTE", sep.outputs["X"]), H + 1e-4)
+    inside = math("MULTIPLY", inside, math("LESS_THAN", math("ABSOLUTE", sep.outputs["Y"]), H + 1e-4))
+
+    # The engine draws lines a pixel wide on screen whatever their angle. A
+    # pixel's footprint on the floor stretches along the view direction, by
+    # 1/sqrt(1 - (I·axis)²) for I the unit ray toward the camera.
+    geo = nodes.new("ShaderNodeNewGeometry")
+    isep = nodes.new("ShaderNodeSeparateXYZ")
+    links.new(geo.outputs["Incoming"], isep.inputs["Vector"])
+
+    def stretch(component):
+        s2 = math("SUBTRACT", 1.0, math("MULTIPLY", component, component))
+        return math("DIVIDE", half_w, math("SQRT", math("MAXIMUM", s2, 0.0004)))
+
+    hw_x, hw_y = stretch(isep.outputs["X"]), stretch(isep.outputs["Y"])
+
+    def lines(coord, period, phase, hw):
+        # distance to the nearest line of this family
+        u = math("SUBTRACT", coord, phase)
+        d = math("ABSOLUTE", math("SUBTRACT", u, math("MULTIPLY", math("ROUND", math("DIVIDE", u, period)), period)))
+        return math("LESS_THAN", d, hw)
+
+    X, Y = sep.outputs["X"], sep.outputs["Y"]
+    minor = math("MAXIMUM", lines(X, G, 0.0, hw_x), lines(Y, G, 0.0, hw_y))
+    street = math("MAXIMUM", lines(X, L_, L_ / 2, hw_x), lines(Y, L_, L_ / 2, hw_y))
+    q, h = srgb_hex(QUARTER)[0], srgb_hex(HALF_STEP)[0]
+    level = math("ADD", math("MULTIPLY", minor, q), math("MULTIPLY", street, h - q))
+    # Lines dim toward the horizon, as the engine's fog does.
+    fade = math("POWER", math("ADD", math("DIVIDE", dist, bg.get("fade", 90.0) * s), 1.0), -1.5)
+    level = math("MULTIPLY", math("MULTIPLY", level, fade), inside)
+    level = math("MULTIPLY", level, bg.get("line_gain", 1.0))
+    em = nodes.new("ShaderNodeEmission")
+    em.inputs["Color"].default_value = (1, 1, 1, 1)
+    links.new(level, em.inputs["Strength"])
+    add = nodes.new("ShaderNodeAddShader")
+    links.new(b.outputs[0], add.inputs[0])
+    links.new(em.outputs[0], add.inputs[1])
+    out = nodes["Material Output"]
+    links.new(add.outputs[0], out.inputs["Surface"])
+    me.materials.append(m)
+    sc["grid_width_px"] = bg.get("width_px", 1.2)
 
 
 def kelvin(k):
@@ -288,6 +413,7 @@ def unlink_screen(root):
     """
     lit = bpy.data.collections.new("lit")
     glass = set(root.get("front_glass", [root.get("screen")]))
+    glass.add("grid")  # the Grid's black glass floor mirrors the device, never a softbox
     for o in bpy.context.scene.objects:
         if o.type == "MESH" and o.name not in glass:
             lit.objects.link(o)
@@ -402,7 +528,10 @@ def build(spec, args):
               in_frame=int(round(scr.get("in", 0.0) * fps)), brightness=scr.get("brightness", 1.0))
     if dev["type"] == "macbook":
         kw.update(size=str(dev.get("size", "14")), open_deg=dev.get("open", 112))
-    root = devices.build(dev["type"], **kw)
+    if dev["type"] == "none":  # an empty stage, e.g. the title plate
+        root = devices.empty("stage")
+    else:
+        root = devices.build(dev["type"], **kw)
     animate_device(spec, root, nframes)
     setup_background(spec.get("background", {}))
     setup_lights(spec["lights"], spec["lights"].get("target", spec["camera"]["keys"][0].get("target", [0, 0, 0])))
@@ -413,7 +542,28 @@ def build(spec, args):
     sc.collection.objects.link(cam)
     sc.camera = cam
     animate_camera(spec, cam, fps, nframes)
+    grid_width(cam)
     return nframes
+
+
+def grid_width(cam):
+    """Keep grid lines `grid_width_px` wide: a driver turns the camera's
+    lens and the output width into meters per unit of distance."""
+    m = bpy.data.materials.get("grid")
+    if not m:
+        return
+    sc = bpy.context.scene
+    px = 1920.0  # width_px is in 1080p pixels, so lines keep their weight at 4K
+    node = m.node_tree.nodes["halfwidth"]
+    fc = node.inputs[1].driver_add("default_value")
+    drv = fc.driver
+    drv.type = "SCRIPTED"
+    var = drv.variables.new()
+    var.name = "lens"
+    var.targets[0].id_type = "CAMERA"
+    var.targets[0].id = cam.data
+    var.targets[0].data_path = "lens"
+    drv.expression = f"0.5 * {sc['grid_width_px']} * 2 * atan(18 / lens) / {px}"
 
 
 def encode(frames_dir, out, fps):

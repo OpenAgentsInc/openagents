@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Renders the launch film's studio shots (cut rows 3-6, #11432) with headless
 # Blender: each shot's screen footage from ~/work/film-out/footage/ onto a
-# device, to ~/work/film-out/studio/<shot>.mp4.
+# device, to ~/work/film-out/studio/<shot>.mp4 at 3840x2160, plus the empty
+# Grid plate under the title cards. Takes in ~/work/film-out/footage-v2/ win.
 #
 # Usage: scripts/film/studio/render-all.sh [--preview] [--standin] [SHOT...]
 #   --preview   quarter-pixel, low-sample renders for checking moves
@@ -12,6 +13,7 @@ set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 blender=${BLENDER:-/Applications/Blender.app/Contents/MacOS/Blender}
 footage=${FOOTAGE:-$HOME/work/film-out/footage}
+footage2=${FOOTAGE2:-$HOME/work/film-out/footage-v2}  # newer takes win when present
 out=${OUT:-$HOME/work/film-out/studio}
 standin_dir=$out/standin
 preview=() standin=0 shots=()
@@ -22,14 +24,15 @@ for a in "$@"; do
     *) shots+=("$a") ;;
   esac
 done
-[ ${#shots[@]} -eq 0 ] && shots=(macbook-chat macbook-terminal macbook-sync iphone-approve)
+[ ${#shots[@]} -eq 0 ] && shots=(grid-plate macbook-chat macbook-terminal macbook-sync iphone-approve)
 
 clip_for() {
   case $1 in
     macbook-chat) echo web-chat ;;
     macbook-terminal) echo terminal-coder ;;
     macbook-sync) echo web-sync ;;
-    iphone-approve) echo phone-approve ;;
+    iphone-approve) echo phone-app ;;
+    grid-plate) echo none ;;
     *) echo "" ;;
   esac
 }
@@ -42,7 +45,16 @@ for shot in "${shots[@]}"; do
   if [ ! -f "$spec" ] || [ -z "$clip" ]; then
     echo "render-all: unknown shot $shot" >&2; status=1; continue
   fi
-  video=$footage/$clip.mp4
+  if [ "$clip" = none ]; then  # no screen: the empty Grid plate
+    suffix=""; [ ${#preview[@]} -gt 0 ] && suffix=.preview
+    "$blender" -b --factory-startup -P "$here/studio.py" -- --shot "$spec" --out "$out/$shot$suffix.mp4" \
+      "${preview[@]}" 2>&1 | grep -E "^studio:|Error|Traceback" || status=1
+    continue
+  fi
+  video=$footage2/$clip.mp4
+  [ -f "$video" ] || video=$footage/$clip.mp4
+  # The phone shot was first recorded on the web as phone-approve.
+  [ -f "$video" ] || { [ "$clip" = phone-app ] && video=$footage/phone-approve.mp4; }
   if [ ! -f "$video" ]; then
     if [ $standin -eq 1 ] && [ -f "$standin_dir/$clip.mp4" ]; then
       echo "render-all: $shot: no $video yet, using stand-in $standin_dir/$clip.mp4"

@@ -1,14 +1,22 @@
 {
   "name": "iphone-approve",
   "cut": "Row 6, 30-36 s: iPhone approves the six-letter code, shallow depth of field.",
-  "duration": 6.5,
+  "duration": 7.5,
   "fps": 30,
   "device": {
     "type": "iphone",
-    "finish": "cosmic-orange",
+    "finish": "silver",
     "pose": {
-      "location": [0, 0, 0.115],
-      "rotation": [71, -3, -30]
+      "location": [
+        0,
+        0,
+        0.115
+      ],
+      "rotation": [
+        71,
+        -3,
+        -30
+      ]
     }
   },
   "device_motion": {
@@ -16,116 +24,172 @@
     "keys": [
       {
         "t": 0,
-        "rot": [71, -3, -30],
-        "loc": [0, 0, 0.115]
+        "rot": [
+          71,
+          -3,
+          -30
+        ],
+        "loc": [
+          0,
+          0,
+          0.115
+        ]
       },
       {
-        "t": 6.5,
-        "rot": [73, 0, -14],
-        "loc": [0, 0, 0.118]
+        "t": 7.5,
+        "rot": [
+          73,
+          0,
+          -14
+        ],
+        "loc": [
+          0,
+          0,
+          0.118
+        ]
       }
     ]
   },
   "screen": {
-    "video": "~/work/film-out/footage/phone-approve.mp4",
+    "video": "~/work/film-out/footage-v2/phone-app.mp4",
     "in": 1.5,
-    "brightness": 1.1
+    "brightness": 1.3
   },
   "background": {
-    "kind": "gradient",
-    "color": [0.016, 0.011, 0.0075],
-    "color_top": [0.01, 0.007, 0.005],
-    "gradient_height": 1.2,
-    "floor_rough": 0.8,
-    "floor_spec": 0.03,
-    "world": [0.002, 0.0016, 0.0013]
+    "kind": "grid",
+    "floor_rough": 0.18,
+    "floor_spec": 0.5,
+    "width_px": 1.2,
+    "fade": 90.0,
+    "scale": 0.08
   },
   "lights": {
     "rotation": 0,
     "brightness": 1.0,
-    "target": [0, 0, 0.115],
+    "target": [
+      0,
+      0,
+      0.115
+    ],
     "lights": [
       {
         "name": "key",
         "azimuth": -100,
         "elevation": 35,
         "distance": 1.4,
-        "size": [1.6, 1.2],
-        "power": 12,
-        "kelvin": 4300,
-        "spread": 70
+        "size": [
+          1.6,
+          1.2
+        ],
+        "power": 5.4,
+        "spread": 70,
+        "color": [
+          1,
+          1,
+          1
+        ]
       },
       {
         "name": "fill",
         "azimuth": 65,
         "elevation": 12,
         "distance": 1.2,
-        "size": [0.5, 0.8],
-        "power": 2.5,
-        "kelvin": 4500,
-        "spread": 60
+        "size": [
+          0.5,
+          0.8
+        ],
+        "power": 1.12,
+        "spread": 60,
+        "color": [
+          1,
+          1,
+          1
+        ]
       },
       {
         "name": "top",
         "azimuth": 0,
         "elevation": 75,
         "distance": 1.3,
-        "size": [1.6, 0.6],
-        "power": 3,
-        "kelvin": 5000,
-        "spread": 60
+        "size": [
+          1.6,
+          0.6
+        ],
+        "power": 1.35,
+        "spread": 60,
+        "color": [
+          1,
+          1,
+          1
+        ]
       },
       {
         "name": "rim_r",
         "azimuth": 125,
         "elevation": 30,
         "distance": 1.0,
-        "size": [0.25, 1.2],
-        "power": 18,
-        "kelvin": 5600,
-        "spread": 50
+        "size": [
+          0.25,
+          1.2
+        ],
+        "power": 8.1,
+        "spread": 50,
+        "color": [
+          1,
+          1,
+          1
+        ]
       },
       {
         "name": "rim_l",
         "azimuth": -130,
         "elevation": 25,
         "distance": 1.0,
-        "size": [0.25, 1.2],
-        "power": 12,
-        "kelvin": 4000,
-        "spread": 50
-      },
-      {
-        "name": "glow",
-        "azimuth": -160,
-        "elevation": 70,
-        "distance": 1.6,
-        "size": 1.2,
-        "power": 40,
-        "kelvin": 3200,
-        "aim": [0.2, 1.6, 0.3],
-        "spread": 40,
-        "visible": false
+        "size": [
+          0.25,
+          1.2
+        ],
+        "power": 5.4,
+        "spread": 50,
+        "color": [
+          1,
+          1,
+          1
+        ]
       },
       {
         "name": "strip_l",
         "azimuth": -72,
         "elevation": 5,
         "distance": 0.8,
-        "size": [0.12, 1.0],
-        "power": 3.5,
-        "kelvin": 5200,
-        "spread": 60
+        "size": [
+          0.12,
+          1.0
+        ],
+        "power": 1.57,
+        "spread": 60,
+        "color": [
+          1,
+          1,
+          1
+        ]
       },
       {
         "name": "strip_r",
         "azimuth": 78,
         "elevation": 5,
         "distance": 0.8,
-        "size": [0.12, 1.0],
-        "power": 5,
-        "kelvin": 4800,
-        "spread": 60
+        "size": [
+          0.12,
+          1.0
+        ],
+        "power": 2.25,
+        "spread": 60,
+        "color": [
+          1,
+          1,
+          1
+        ]
       }
     ]
   },
@@ -134,19 +198,43 @@
     "keys": [
       {
         "t": 0,
-        "orbit": [6, 6, 0.74],
-        "target": [0, 0, 0.118],
+        "orbit": [
+          6,
+          6,
+          0.74
+        ],
+        "target": [
+          0,
+          0,
+          0.118
+        ],
         "lens": 85,
         "fstop": 3.2,
-        "focus_target": [-0.004, 0.011, 0.16]
+        "focus_target": [
+          -0.004,
+          0.011,
+          0.16
+        ]
       },
       {
-        "t": 6.5,
-        "orbit": [-4, 4, 0.68],
-        "target": [0, 0, 0.12],
+        "t": 7.5,
+        "orbit": [
+          -4,
+          4,
+          0.68
+        ],
+        "target": [
+          0,
+          0,
+          0.12
+        ],
         "lens": 85,
         "fstop": 3.2,
-        "focus_target": [-0.002, 0.011, 0.162]
+        "focus_target": [
+          -0.002,
+          0.011,
+          0.162
+        ]
       }
     ]
   }
