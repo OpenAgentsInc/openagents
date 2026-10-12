@@ -881,13 +881,20 @@ The body of {id}.\n"
     .unwrap()
 }
 
-/// A base of three entries, searched by words alone.
+/// A base of three entries, searched by words alone. The task is "Make the
+/// thing work well.", and a search keeps only entries that share a word with
+/// it (#10319), so the method and the slip name the thing and the tool entry
+/// shares nothing.
 fn base() -> Retriever {
     Retriever::lexical(
         Base {
             entries: vec![
                 entry("stats.thing", "method", "How to make the thing correctly."),
-                entry("slip.trap", "slip", "A common mistake when making things."),
+                entry(
+                    "slip.trap",
+                    "slip",
+                    "A common mistake when you make the thing.",
+                ),
                 entry("shell.other", "tool", "Unrelated shell advice."),
             ],
         },
@@ -915,7 +922,10 @@ async fn kept_entries_appear_in_the_prompt_and_the_system_text() {
 How to make the thing correctly."
     ));
     assert!(prompts[0].contains("- slip.trap (slip, relevance 0.60"));
-    assert!(!prompts[0].contains("shell.other"), "0.1 is below the bar");
+    assert!(
+        !prompts[0].contains("shell.other"),
+        "it shares no word with the task, so it is not even a candidate"
+    );
     // Nothing at 0.8 or more, so no body is shown without being asked for.
     assert!(!prompts[0].contains("The body of"));
     assert_eq!(state.knowledge.len(), 2);
@@ -929,7 +939,8 @@ How to make the thing correctly."
     else {
         panic!("no retrieval event");
     };
-    assert_eq!(retrieval.candidates.len(), 3);
+    // shell.other shares no word with the task, so the search drops it.
+    assert_eq!(retrieval.candidates.len(), 2);
     assert_eq!(retrieval.lexical_only.as_deref(), Some("no key in tests"));
     assert_eq!(retrieval.kept[0].id, "stats.thing");
 }
