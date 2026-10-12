@@ -110,6 +110,103 @@ pub struct Step {
     pub rest: Map<String, Value>,
 }
 
+/// The `verify` clause a `delegate` step may carry: a host-owned question
+/// set judges what the delegation produced, a rejection goes back to the
+/// same executor for repair, and the drives are bounded.
+///
+/// The step names the set and the bound only. Wording, criteria, and
+/// acceptance fixtures stay with the host, so a candidate cannot reach the
+/// rubric it is judged against.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Verify {
+    /// The question set identifier.
+    pub question: String,
+    /// How many submissions the step judges before it fails typed.
+    pub drives: u64,
+    /// The gate probability a submission must reach.
+    pub refuse_below: f64,
+}
+
+/// The key a `verify` clause lives under.
+pub const VERIFY: &str = "verify";
+/// Drives a `verify` clause gets when it names none.
+pub const VERIFY_DRIVES: u64 = 2;
+/// The gate floor a `verify` clause gets when it names none.
+pub const VERIFY_FLOOR: f64 = 0.5;
+
+impl Step {
+    /// The step's `verify` clause, when it carries one.
+    ///
+    /// # Errors
+    ///
+    /// Returns why the clause is not one a host runs.
+    pub fn verify(&self) -> Result<Option<Verify>, String> {
+        let Some(value) = self.rest.get(VERIFY) else {
+            return Ok(None);
+        };
+        if self.kind != Kind::Delegate {
+            return Err(format!(
+                "step {:?} is a {} step and carries verify, which only a delegate step's output is judged by",
+                self.name,
+                self.kind.word()
+            ));
+        }
+        let Some(clause) = value.as_object() else {
+            return Err(format!(
+                "delegate step {:?} carries a verify that is not an object",
+                self.name
+            ));
+        };
+        let question = match clause.get("question").and_then(Value::as_str) {
+            Some(question) if !question.trim().is_empty() => question.to_string(),
+            _ => {
+                return Err(format!(
+                    "delegate step {:?} verify names no question set",
+                    self.name
+                ));
+            }
+        };
+        if let Some(field) = QUESTION_TEXT
+            .iter()
+            .find(|field| clause.contains_key(**field))
+        {
+            return Err(format!(
+                "delegate step {:?} verify carries {field}, which is a question's wording and belongs to a question set",
+                self.name
+            ));
+        }
+        let drives = match clause.get("drives") {
+            None => VERIFY_DRIVES,
+            Some(value) => match value.as_u64() {
+                Some(drives) if drives >= 1 => drives,
+                _ => {
+                    return Err(format!(
+                        "delegate step {:?} verify drives {value} is not an integer of 1 or more",
+                        self.name
+                    ));
+                }
+            },
+        };
+        let refuse_below = match clause.get("refuse_below") {
+            None => VERIFY_FLOOR,
+            Some(value) => match value.as_f64() {
+                Some(floor) if (0.0..=1.0).contains(&floor) => floor,
+                _ => {
+                    return Err(format!(
+                        "delegate step {:?} verify refuse_below {value} is not a probability",
+                        self.name
+                    ));
+                }
+            },
+        };
+        Ok(Some(Verify {
+            question,
+            drives,
+            refuse_below,
+        }))
+    }
+}
+
 /// What a step does.
 ///
 /// Deserializing an unrecognized kind fails, which refuses the program that
@@ -305,6 +402,7 @@ impl Program {
                 }
                 (None, _) => {}
             }
+            step.verify()?;
             if step.kind == Kind::Program && step.program.is_none() {
                 return Err(format!("program step {:?} names no program", step.name));
             }
@@ -902,5 +1000,56 @@ mod tests {
             program.step_kinds(),
             ["query", "decide", "check", "delegate"]
         );
+    }
+
+    fn delegate_with(verify: Value) -> Program {
+        serde_json::from_value(json!({
+            "v": PROGRAM_VERSION,
+            "slug": "verified-burn-down",
+            "steps": [
+                {"name": "work", "kind": "delegate", "bounds": {}, "verify": verify}
+            ]
+        }))
+        .expect("program parses")
+    }
+
+    #[test]
+    fn verify_defaults_and_bounds() {
+        let program = delegate_with(json!({"question": "test.acceptance.v1"}));
+        program.validate().expect("defaults are valid");
+        let verify = program.steps[0].verify().unwrap().unwrap();
+        assert_eq!(verify.drives, VERIFY_DRIVES);
+        assert!((verify.refuse_below - VERIFY_FLOOR).abs() < f64::EPSILON);
+        let program = delegate_with(
+            json!({"question": "test.acceptance.v1", "drives": 3, "refuse_below": 0.8}),
+        );
+        let verify = program.steps[0].verify().unwrap().unwrap();
+        assert_eq!((verify.drives, verify.refuse_below), (3, 0.8));
+    }
+
+    #[test]
+    fn verify_refuses_bad_shapes() {
+        for (bad, why) in [
+            (json!({"drives": 2}), "names no question set"),
+            (
+                json!({"question": "test.acceptance.v1", "drives": 0}),
+                "1 or more",
+            ),
+            (
+                json!({"question": "test.acceptance.v1", "criteria": "be good"}),
+                "question's wording",
+            ),
+            (
+                json!({"question": "test.acceptance.v1", "refuse_below": 1.5}),
+                "not a probability",
+            ),
+        ] {
+            let error = delegate_with(bad).validate().unwrap_err();
+            assert!(error.contains(why), "{error}");
+        }
+        let mut program = delegate_with(json!({"question": "test.acceptance.v1"}));
+        program.steps[0].kind = Kind::Check;
+        let error = program.validate().unwrap_err();
+        assert!(error.contains("only a delegate step"), "{error}");
     }
 }

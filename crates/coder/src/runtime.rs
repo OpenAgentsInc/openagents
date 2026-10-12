@@ -1223,9 +1223,50 @@ impl Runtime {
                 "boundary_unavailable",
                 "this host has no available filesystem boundary for delegation",
             )),
+            Kind::Delegate => self.admit_verify(step),
             Kind::Module => self.admit_module(step),
             _ => Ok(()),
         }
+    }
+
+    /// A `delegate` step's `verify` clause needs a gated question set this
+    /// host holds wording for, and a door to put it to.
+    fn admit_verify(&self, step: &Step) -> Result<(), Refused> {
+        let Some(verify) = step
+            .verify()
+            .map_err(|reason| Refused::at(&step.name, "verify_invalid", reason))?
+        else {
+            return Ok(());
+        };
+        let refuse = |code: &str, reason: String| Err(Refused::at(&step.name, code, reason));
+        let Some(set) = self.questions.get(&verify.question) else {
+            return refuse(
+                "question_unresolved",
+                format!(
+                    "this host has no wording for {}, and a verify clause carries none",
+                    verify.question
+                ),
+            );
+        };
+        if set.gate.is_empty() {
+            return refuse(
+                "bound_unenforceable",
+                format!(
+                    "{} names no question to gate on, so a verify clause reads nothing",
+                    verify.question
+                ),
+            );
+        }
+        if let Some(error) = &self.door_error {
+            return refuse("door_configuration", error.clone());
+        }
+        if self.door.is_none() {
+            return refuse(
+                "door_unavailable",
+                "a verify clause asks a door, and this host has none".to_string(),
+            );
+        }
+        Ok(())
     }
 
     /// A module step needs guest bytes and a profile this host can run.
@@ -2632,7 +2673,7 @@ impl Runtime {
                 }
                 Kind::Check => self.check(step, program, ctx.inputs, ctx.trace.as_deref_mut()),
                 Kind::Delegate => {
-                    self.delegate(
+                    self.delegate_verified(
                         step,
                         ctx.inputs,
                         ctx.selection,
@@ -2640,6 +2681,7 @@ impl Runtime {
                         ctx.grant,
                         ctx.until,
                         ctx.record,
+                        ctx.tokens,
                         ctx.trace.as_deref_mut(),
                     )
                     .await
@@ -4107,6 +4149,126 @@ impl Runtime {
 
     /// A `delegate` step: the work, handed over under the step's bounds.
     #[allow(clippy::too_many_arguments)]
+    /// A `delegate` step under its `verify` clause: each submission is
+    /// judged by the host-owned question set, a rejection goes back to the
+    /// same executor as repair feedback, and an exhausted bound is a typed
+    /// refusal carrying the last candidate and the judgments — never a
+    /// silent accept. The record lands beside the step at `<name>$verify`.
+    #[allow(clippy::too_many_arguments)]
+    async fn delegate_verified(
+        &self,
+        step: &Step,
+        inputs: &Inputs,
+        selection: &Selection,
+        run: &mut Run,
+        grant: &Grant,
+        until: Option<Instant>,
+        record: &mut Option<(Store, String)>,
+        tokens: &mut TokenLedger,
+        mut trace: Option<&mut Recorder>,
+    ) -> Result<String, Refused> {
+        let Some(verify) = step
+            .verify()
+            .map_err(|reason| Refused::at(&step.name, "verify_invalid", reason))?
+        else {
+            return self
+                .delegate(step, inputs, selection, run, grant, until, record, trace)
+                .await;
+        };
+        let set = self
+            .questions
+            .get(&verify.question)
+            .expect("admission resolved the verify set");
+        let mut driven = step.clone();
+        let mut drives = Vec::new();
+        let mut last = None;
+        for drive in 1..=verify.drives {
+            let before = run.delegations.len();
+            let output = self
+                .delegate(
+                    &driven,
+                    inputs,
+                    selection,
+                    run,
+                    grant,
+                    until,
+                    record,
+                    trace.as_deref_mut(),
+                )
+                .await?;
+            let candidate = candidate_state(&step.name, drive, &output, &run.delegations[before..]);
+            let gate = set.gate.clone();
+            let response = self
+                .ask(
+                    set,
+                    &format!("{}$verify", step.name),
+                    &candidate,
+                    &Fill::None,
+                    tokens,
+                    trace.as_deref_mut(),
+                    move |answer| format!("{answer}, drive {drive}"),
+                )
+                .await?;
+            let read = response.answers.get(&gate).and_then(probability);
+            drives.push(json!({
+                "drive": drive,
+                "output": output,
+                "gate": gate,
+                "read": read,
+                "answers": answers_value(&response.answers),
+            }));
+            run.answers
+                .insert(format!("{}$verify", step.name), json!({"drives": drives}));
+            let Some(read) = read else {
+                return Err(Refused::at(
+                    &step.name,
+                    "gate_unanswered",
+                    format!(
+                        "{gate} went unanswered on drive {drive}, and a verify floor reads nothing"
+                    ),
+                ));
+            };
+            if read >= verify.refuse_below {
+                return Ok(format!(
+                    "{output}; {gate} {read:.2} clears {} on drive {drive}",
+                    verify.refuse_below
+                ));
+            }
+            last = Some((output, read));
+            // The rejection is the next drive's briefing, so the same
+            // executor repairs what was judged rather than starting over
+            // blind. The wording it sees is the gate's name and the
+            // probability, never the question set.
+            let rejection = format!(
+                "Your previous submission (drive {drive}) was judged {gate} at {read:.2}, below {}. Repair it; the judged output was:\n{}",
+                verify.refuse_below,
+                run.delegations[before..]
+                    .iter()
+                    .map(|delegation| delegation.output.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n---\n")
+            );
+            let briefing = match step.rest.get(BRIEFING).and_then(Value::as_str) {
+                Some(briefing) if !briefing.trim().is_empty() => {
+                    format!("{briefing}\n\n{rejection}")
+                }
+                _ => rejection,
+            };
+            driven
+                .rest
+                .insert(BRIEFING.to_string(), Value::String(briefing));
+        }
+        let (output, read) = last.expect("drives is 1 or more");
+        Err(Refused::at(
+            &step.name,
+            "verify_exhausted",
+            format!(
+                "{} drives spent without {} reaching {}; the last candidate read {read:.2}: {output}",
+                verify.drives, set.gate, verify.refuse_below
+            ),
+        ))
+    }
+
     async fn delegate(
         &self,
         step: &Step,
@@ -5303,6 +5465,25 @@ fn item(line: &str) -> Option<&str> {
 /// lookup could see a collision at all, which keeps the answers #9414
 /// measured comparable, and a plan whose tasks share a file says so in the
 /// state rather than leaving the door to work it out.
+/// What a verify question set judges: the step, the drive, the step's
+/// one-line output, and each delegation's status and output.
+fn candidate_state(step: &str, drive: u64, output: &str, delegations: &[Delegation]) -> Value {
+    json!({
+        "step": step,
+        "drive": drive,
+        "output": output,
+        "delegations": delegations
+            .iter()
+            .map(|delegation| json!({
+                "prompt": delegation.task.prompt,
+                "status": delegation.status.to_string(),
+                "output": delegation.output,
+                "detail": delegation.detail,
+            }))
+            .collect::<Vec<_>>(),
+    })
+}
+
 fn plan_state(program: &Program, inputs: &Inputs, selection: &Selection) -> Value {
     let mut state = Map::new();
     state.insert(
