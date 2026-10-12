@@ -1,3 +1,4 @@
+use super::hands;
 use super::hands::{CODE_TOOLS, READ_TOOLS, Verdict, blocked, total_cost, with_analysis};
 use super::{Hand, Options, Turn, issue_reference};
 use crate::issue_run::agent::Work;
@@ -741,4 +742,18 @@ async fn a_devin_hand_refuses_a_model_mismatch() {
         !sent.iter().any(|line| line["method"] == "session/prompt"),
         "the prompt never went out"
     );
+}
+
+#[test]
+fn hand_back_record_detects_a_repeat() {
+    let verdict = hands::Verdict::Coder("Fix the import in lib.rs".into());
+    let first = hands::HandBack::new(&verdict, vec!["test:coder".into()], "error[E0432]\n")
+        .expect("a coder verdict hands back");
+    assert_eq!(first.evidence_lines, vec!["error[E0432]".to_string()]);
+    assert_eq!(first.json(1)["target"], "coder");
+    let same = hands::HandBack::new(&verdict, vec!["test:coder".into()], "").unwrap();
+    assert!(same.repeats(&first));
+    let other = hands::HandBack::new(&verdict, vec!["check:coder".into()], "").unwrap();
+    assert!(!other.repeats(&first));
+    assert!(hands::HandBack::new(&hands::Verdict::Pass, vec![], "").is_none());
 }
