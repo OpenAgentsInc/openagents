@@ -159,11 +159,47 @@ pub fn observe_credential(kind: &str) {
 /// `rate_limit_event` arrives only when a window's status changes, so the
 /// line under the input would otherwise miss the 5-hour window.
 pub fn observe_usage(usage: &serde_json::Value, now: u64) {
-    let limits = &usage["rate_limits"];
+    let (found, warning) = usage_windows(usage, now);
+    if found.is_empty() {
+        return;
+    }
     let mut seen = WINDOWS
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let mut found = false;
+    for window in found {
+        seen.0.retain(|kept| kept.window != window.window);
+        seen.0.push(window);
+    }
+    seen.0.sort_by_key(|kept| kept.window);
+    seen.1 = warning;
+}
+
+/// Writes the windows a usage answer names into the usage book, so the
+/// line under the input shows them from the first frame of a later launch,
+/// before Claude Code has said anything this session.
+pub fn remember_usage(usage: &serde_json::Value, now: u64) {
+    let (found, _) = usage_windows(usage, now);
+    let store = coder::task::local::default_store();
+    for window in found {
+        let _ = microcoder_loop::usage::record_reported(
+            &store,
+            microcoder_loop::capacity::Provider::Claude,
+            window,
+            now,
+        );
+    }
+}
+
+/// The windows a usage answer names, and whether its limits warn. Reads
+/// the `rate_limits` shape a claude chat's `get_usage` answers with; an
+/// answer in the usage endpoint's own shape (`five_hour` / `seven_day`
+/// at the top, under `usage`, or under `response`) is read as that.
+fn usage_windows(
+    usage: &serde_json::Value,
+    now: u64,
+) -> (Vec<microcoder_loop::usage::Window>, bool) {
+    let limits = &usage["rate_limits"];
+    let mut found = Vec::new();
     for key in ["five_hour", "seven_day"] {
         let Some(percent) = limits[key]["utilization"].as_f64() else {
             continue;
@@ -173,17 +209,23 @@ pub fn observe_usage(usage: &serde_json::Value, now: u64) {
             info["resetsAt"] = at.into();
         }
         if let Some(window) = microcoder_loop::usage::rate_limit_window(&info, now) {
-            seen.0.retain(|kept| kept.window != window.window);
-            seen.0.push(window);
-            found = true;
+            found.push(window);
         }
     }
-    if found {
-        seen.0.sort_by_key(|kept| kept.window);
-        seen.1 = limits["limits"]
-            .as_array()
-            .is_some_and(|all| all.iter().any(|limit| limit["severity"] == "warning"));
+    if found.is_empty() {
+        found = [usage, &usage["usage"], &usage["response"]]
+            .into_iter()
+            .filter(|value| value.is_object())
+            .find_map(|value| {
+                microcoder_loop::usage::parse_claude(value.to_string().as_bytes(), now).ok()
+            })
+            .map(|reading| reading.windows)
+            .unwrap_or_default();
     }
+    let warning = limits["limits"]
+        .as_array()
+        .is_some_and(|all| all.iter().any(|limit| limit["severity"] == "warning"));
+    (found, warning)
 }
 
 /// Unix seconds for an RFC 3339 time such as `2026-10-12T19:10:00.32+00:00`.
@@ -330,15 +372,29 @@ pub async fn admit(
 /// report.
 #[must_use]
 pub fn plan_usage() -> Option<coder_engine_status::PlanUsage> {
+    with_book(book_usage(now()))
+}
+
+/// The plan's windows in the usage book under the person's home, less the
+/// ones that have reset by `now`. Claude Code's `get_usage` answer lands
+/// here at session start, so the 5h window shows before any event names it.
+fn book_usage(now: u64) -> Option<coder_engine_status::PlanUsage> {
+    let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("."), PathBuf::from);
+    coder_engine_status::PlanUsage::read(&home, now)
+}
+
+/// The in-process reports layered over the book's windows: a report of a
+/// window replaces the book's reading of it. `None` when neither holds one.
+fn with_book(
+    book: Option<coder_engine_status::PlanUsage>,
+) -> Option<coder_engine_status::PlanUsage> {
     use coder_engine_status::{PlanUsage, PlanWindow, WindowKind};
     use microcoder_loop::usage::WindowName;
     let seen = WINDOWS
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let mut usage = PlanUsage {
-        warning: seen.1,
-        ..PlanUsage::default()
-    };
+    let mut usage = book.unwrap_or_default();
+    usage.warning = seen.1;
     for window in &seen.0 {
         let kind = match window.window {
             WindowName::FiveHour => WindowKind::FiveHour,
@@ -361,7 +417,15 @@ pub fn plan_usage() -> Option<coder_engine_status::PlanUsage> {
 /// reported has reset. `clock` writes a Unix-milliseconds time.
 #[must_use]
 pub fn status_text(now: u64, clock: &dyn Fn(u64) -> String) -> Option<String> {
-    plan_usage()?.text(now, clock)
+    status_with(book_usage(now), now, clock)
+}
+
+fn status_with(
+    book: Option<coder_engine_status::PlanUsage>,
+    now: u64,
+    clock: &dyn Fn(u64) -> String,
+) -> Option<String> {
+    with_book(book)?.text(now, clock)
 }
 
 /// The plan's windows for the input's top rail in claude mode: "5h 33% ·
@@ -369,7 +433,7 @@ pub fn status_text(now: u64, clock: &dyn Fn(u64) -> String) -> Option<String> {
 /// reset.
 #[must_use]
 pub fn rail_text(now: u64) -> Option<String> {
-    let current = plan_usage()?.current(now)?;
+    let current = with_book(book_usage(now))?.current(now)?;
     let parts: Vec<String> = current
         .windows()
         .map(|window| format!("{} {}%", window.kind.word(), window.used_percent))
@@ -523,12 +587,12 @@ mod tests {
             }}),
             now,
         );
-        let usage = plan_usage().unwrap();
+        let usage = with_book(None).unwrap();
         assert_eq!(usage.five_hour.unwrap().used_percent, 33);
         assert_eq!(usage.seven_day.unwrap().used_percent, 83);
         assert!(usage.warning);
         assert!(
-            status_text(now, &|ms| format!("t{}", ms / 1000))
+            status_with(None, now, &|ms| format!("t{}", ms / 1000))
                 .unwrap()
                 .starts_with("Claude plan: 5h 33% · week 83%")
         );
@@ -542,7 +606,7 @@ mod tests {
         reset_for_test(DEFAULT_SLOTS);
         let clock = |ms: u64| format!("t{}", ms / 1000);
         let now = 1_000;
-        assert_eq!(status_text(now, &clock), None);
+        assert_eq!(status_with(None, now, &clock), None);
         observe_rate_limit(
             &serde_json::json!({"status": "allowed", "rateLimitType": "five_hour", "utilization": 0.62, "resetsAt": now + 60}),
             now,
@@ -552,16 +616,16 @@ mod tests {
             now,
         );
         assert_eq!(
-            status_text(now, &clock).as_deref(),
+            status_with(None, now, &clock).as_deref(),
             Some("Claude plan: 5h 62% · week 31% · resets t1060 · near the limit")
         );
         assert_eq!(
-            status_text(now + 61, &clock).as_deref(),
+            status_with(None, now + 61, &clock).as_deref(),
             Some("Claude plan: week 31% · resets t1600 · near the limit")
         );
         // The same windows ride in the run's event for the cards (#11292),
         // and a delegation's copy decodes back to them.
-        let usage = plan_usage().unwrap();
+        let usage = with_book(None).unwrap();
         assert_eq!(usage.five_hour.unwrap().used_percent, 62);
         assert_eq!(usage.seven_day.unwrap().resets_at, Some(now + 600));
         assert!(usage.warning);
@@ -576,7 +640,7 @@ mod tests {
             Some(usage)
         );
         reset_for_test(DEFAULT_SLOTS);
-        assert_eq!(plan_usage(), None);
+        assert_eq!(with_book(None), None);
     }
 
     #[test]

@@ -357,6 +357,7 @@ impl Thread {
                     .await
                 {
                     crate::claude_plan::observe_usage(&usage, coder_delegate::limit::now());
+                    crate::claude_plan::remember_usage(&usage, coder_delegate::limit::now());
                     if let Some(plan) = crate::claude_plan::plan_usage() {
                         let _ = events.send(Event::Runtime {
                             turn,

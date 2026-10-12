@@ -383,7 +383,7 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// "Context 42% full", for the chat holding `session`, once a turn of it
+/// "Context 42%", for the chat holding `session`, once a turn of it
 /// reported its size.
 #[must_use]
 pub fn context_line(session: &str) -> Option<String> {
@@ -391,7 +391,7 @@ pub fn context_line(session: &str) -> Option<String> {
     let (id, used, window) = guard.as_ref()?;
     (id == session).then(|| {
         let percent = (*used as f64 / *window as f64 * 100.0).clamp(0.0, 100.0);
-        format!("Context {percent:.0}% full")
+        format!("Context {percent:.0}%")
     })
 }
 
@@ -551,10 +551,7 @@ mod tests {
         }}))
         .unwrap();
         stream.record_context(Some("context-test"), "m", &usage);
-        assert_eq!(
-            context_line("context-test").as_deref(),
-            Some("Context 42% full")
-        );
+        assert_eq!(context_line("context-test").as_deref(), Some("Context 42%"));
         assert_eq!(context_line("someone-else"), None);
     }
 
