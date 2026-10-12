@@ -13601,6 +13601,53 @@
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
+        },
+        {
+          "name": "render",
+          "leaf": {
+            "path": [
+              "film",
+              "render"
+            ],
+            "usage": [
+              "render FILE DIR [--picture N] [--background R,G,B]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "render"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "FILE"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "DIR"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "picture",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "background",
+                    "value": "R,G,B",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Draw a take's pictures with wgpu into DIR as frame-NNNN.png (every picture, or only picture N).",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
         }
       ],
       "options": [
@@ -13616,6 +13663,22 @@
           "kind": "option",
           "name": "hold",
           "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "picture",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "background",
+          "value": "R,G,B",
           "open": true,
           "optional": true,
           "repeated": true
