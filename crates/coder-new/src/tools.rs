@@ -108,7 +108,13 @@ pub fn compact_params(value: &serde_json::Value, width: u16) -> String {
     let rest = values
         .iter()
         .filter(|(key, _)| !is_path_key(key))
-        .map(|(key, value)| format!("{key}: {value}"))
+        .map(|(key, value)| {
+            if key == "command" {
+                value.clone()
+            } else {
+                format!("{key}: {value}")
+            }
+        })
         .collect::<Vec<_>>()
         .join(" · ");
     let text = match (path, rest.is_empty()) {
@@ -134,10 +140,16 @@ pub fn parameter_lines(value: &serde_json::Value, width: u16) -> Vec<Line<'stati
     for (key, value) in values.iter().take(if omitted > 0 { 4 } else { 5 }) {
         let key = truncate(key, width.saturating_sub(8));
         let available = width.saturating_sub(7 + key.width() as u16);
+        // A command shows as the command alone, without its `command: ` label.
+        let label = if key == "command" {
+            String::new()
+        } else {
+            format!("{key}: ")
+        };
         rows.push(
             Line::from(vec![
                 styled("  │  ", t::GRAY_DIM),
-                styled(format!("{key}: "), t::TEXT_SECONDARY),
+                styled(label, t::TEXT_SECONDARY),
                 styled(truncate(value, available), t::GRAY_BRIGHT),
             ])
             .style(Style::default().bg(t::BG_DARK)),
@@ -538,4 +550,29 @@ pub fn delegation_lines(agent: &DemoAgent, phase: u8, width: u16) -> Vec<Line<'s
 
 fn styled(text: impl Into<String>, color: Color) -> Span<'static> {
     Span::styled(text.into(), Style::default().fg(color))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::{compact_params, parameter_lines};
+
+    #[test]
+    fn a_command_shows_bare_and_other_parameters_keep_their_label() {
+        let input = json!({"command": "cargo test", "timeout": 5});
+        assert_eq!(compact_params(&input, 80), "cargo test · timeout: 5");
+        let rows: Vec<String> = parameter_lines(&input, 80)
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect()
+            })
+            .collect();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].trim_end(), "  │  cargo test");
+        assert_eq!(rows[1].trim_end(), "  │  timeout: 5");
+    }
 }
