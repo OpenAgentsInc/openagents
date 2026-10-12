@@ -231,6 +231,10 @@ Options:
                         Code sessions) or devin (four `devin acp` sessions on
                         this computer's Devin login).
   --rounds R            How many times the Tester may hand work back (default 2).
+  --decisions DOOR      Which decision door judges the briefing's file relevance,
+                        size, and change kind: jev (TypeSafe's API), clef (this
+                        computer's Clef), or off (default; the ranking stands and
+                        the Haiku Briefer judges it). No other door is asked.
   --no-pr               Stop after the checks; open no pull request.
   --coder-model NAME    The Coder's model on every round. Without it, a change the
                         Briefer judges small starts on sonnet and a large one, or
@@ -321,14 +325,11 @@ impl Options {
         let mut briefer_model: Option<String> = None;
         let mut tester_model: Option<String> = None;
         let mut small_coder = Some("sonnet".to_owned());
-        // Claude only: the briefing's ranking is deterministic and the Haiku
-        // Briefer judges it; no decision-model door is asked.
-        let mut inner_args: Vec<String> = vec![
-            "--state".into(),
-            default_state().display().to_string(),
-            "--decider".into(),
-            "off".into(),
-        ];
+        // By default the briefing's ranking is deterministic and the Haiku
+        // Briefer judges it; --decisions names one door and only that door.
+        let mut decisions = "off".to_owned();
+        let mut inner_args: Vec<String> =
+            vec!["--state".into(), default_state().display().to_string()];
         let mut args = args.iter();
         while let Some(arg) = args.next() {
             let mut value = |name: &str| {
@@ -345,6 +346,16 @@ impl Options {
                 }
                 "--no-pr" => open_pr = false,
                 "--json" => json = true,
+                "--decisions" => {
+                    decisions = match value("--decisions")?.as_str() {
+                        door @ ("jev" | "clef" | "off") => door.to_owned(),
+                        other => {
+                            return Err(format!(
+                                "--decisions takes jev, clef or off, not {other}."
+                            ));
+                        }
+                    };
+                }
                 "--engine" => {
                     engine = match value("--engine")?.as_str() {
                         "claude" => Engine::Claude,
@@ -367,6 +378,8 @@ impl Options {
                 other => inner_args.push(other.to_owned()),
             }
         }
+        inner_args.push("--decider".into());
+        inner_args.push(decisions);
         let mut inner = issue_run::Options::parse(&inner_args)
             .map_err(|why| why.replace("coder issue-run", "coder solver"))?;
         inner.open_pr = open_pr;
@@ -518,6 +531,7 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
         turns: Vec::new(),
         checks: Vec::new(),
         rounds: 0,
+        decisions: decisions_name(options.inner.decider),
         started,
     };
 
@@ -778,6 +792,8 @@ struct End<'a> {
     turns: Vec<Turn>,
     checks: Vec<(String, bool)>,
     rounds: usize,
+    /// The decision door that judged the briefing, as `--decisions` named it.
+    decisions: &'static str,
     started: Instant,
 }
 
@@ -818,6 +834,7 @@ impl End<'_> {
         summary["solver"] = json!({
             "hands": self.turns.iter().map(Turn::json).collect::<Vec<_>>(),
             "rounds": self.rounds,
+            "decisions": self.decisions,
             "cost_usd": total,
             "pull_request": url,
         });
@@ -886,3 +903,13 @@ fn merge_change_checks(checks: &mut Vec<Check>, required: &mut Vec<String>, chan
 
 #[cfg(test)]
 mod tests;
+
+/// `--decisions`'s name for the door the run judged with.
+const fn decisions_name(decider: issue_run::Decider) -> &'static str {
+    match decider {
+        issue_run::Decider::Jev => "jev",
+        issue_run::Decider::Clef => "clef",
+        issue_run::Decider::Auto => "auto",
+        issue_run::Decider::Off => "off",
+    }
+}
