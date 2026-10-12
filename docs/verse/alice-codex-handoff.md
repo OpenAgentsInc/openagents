@@ -43,7 +43,7 @@ Merge station when asked. Commit `d3f3ad546c` landed on `main` and closed
   change was merged and pushed to `main`.
 - **Transcripts.** Run `openagents agent log alice` for her journal. The Coder
   session, with the Codex child chats, is
-  `~/.openagents/coder-new/sessions/task-b2fa59bd6e0b5db9117eff1d45500391e30dd42629e4fbb0e295895b2fb1a91e.atif.json`.
+  `~/.openagents/coder/sessions/task-b2fa59bd6e0b5db9117eff1d45500391e30dd42629e4fbb0e295895b2fb1a91e.atif.json`.
 
 Earlier runs failed for reasons the commits above fixed:
 

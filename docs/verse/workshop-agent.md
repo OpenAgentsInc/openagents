@@ -418,7 +418,7 @@ mode and every Agent Studio seat as turns of a per-task session
 | `approval` | Her proposal at the lectern; `proposed`, then `confirmed` or `rejected` in her journal. |
 | The result line | Coder's reply, which she judges; her report comes from her own call. |
 
-Her sessions live in the Coder store, `~/.openagents/coder-new/sessions/`,
+Her sessions live in the Coder store, `~/.openagents/coder/sessions/`,
 so your own Coder lists them under `/resume`, and `coder --follow
 alice-coder` watches her from any terminal on the host. `openagents coder
 sessions read alice-coder` and `openagents coder export alice-coder` read

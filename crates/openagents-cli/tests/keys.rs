@@ -310,8 +310,14 @@ fn login_key_reads_stdin_and_the_saved_key_signs_keys_in() {
     );
     assert!(text.contains("Signed in to OpenAgents as Octo with a sign-in key."));
     assert!(!text.contains("oa_sk_"));
-    let saved = home.path().join(".openagents/coder-new/account.json");
+    let saved = home.path().join(".openagents/coder/account.json");
     assert!(std::fs::read_to_string(&saved).unwrap().contains(&token(1)));
+
+    // A sign-in kept under the folder Coder used before #11361 still reads.
+    let older = home.path().join(".openagents/coder-new");
+    std::fs::create_dir(&older).unwrap();
+    std::fs::rename(&saved, older.join("account.json")).unwrap();
+    std::fs::remove_dir(saved.parent().unwrap()).unwrap();
 
     // With nothing in the environment, the saved key is used.
     let listed = json_out(&openagents(

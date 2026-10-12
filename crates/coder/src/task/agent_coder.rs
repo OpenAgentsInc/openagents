@@ -867,7 +867,7 @@ impl Agents {
             .coder_state
             .clone()
             .or_else(coder_v1::default_state)
-            .unwrap_or_else(|| self.root.join("coder-new"));
+            .unwrap_or_else(|| self.root.join("coder"));
         self.set_doing(&name, Doing::Thinking);
         let coding = self.coding_for(record, store, &name);
         let mut hands = HostHands {

@@ -68,12 +68,12 @@ pub fn coder_session_for(agent: &str) -> String {
     format!("{}-coder", session_name(agent))
 }
 
-/// The Coder store the host's turns use: `~/.openagents/coder-new`, the
+/// The Coder store the host's turns use: `~/.openagents/coder`, the
 /// same store the owner's own Coder reads, so `/resume` lists the agents'
 /// sessions too.
 #[must_use]
 pub fn default_state() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents/coder-new"))
+    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents/coder"))
 }
 
 fn executable(path: &Path) -> bool {

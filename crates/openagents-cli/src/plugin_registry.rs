@@ -1558,14 +1558,14 @@ mod tests {
         assert!(
             !work
                 .path()
-                .join(".openagents/coder-new/bundled-plugins.json")
+                .join(".openagents/coder/bundled-plugins.json")
                 .exists()
         );
         assert!(crate::plugin_local::enable_exact_in(&layout, &packed.package, true, None).is_ok());
         assert!(
             !work
                 .path()
-                .join(".openagents/coder-new/bundled-plugins.json")
+                .join(".openagents/coder/bundled-plugins.json")
                 .exists()
         );
         assert!(

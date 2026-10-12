@@ -599,7 +599,7 @@ encrypted to yours: one per call that reported usage, including Coder turns
 - **Transcripts.** `openagents coder sessions read alice-coder` reads her
   terminal-mode session as ATIF, and `openagents coder export alice-coder
   --output FILE` exports it. A task's session, Codex's child chats included,
-  is `~/.openagents/coder-new/sessions/task-ID.atif.json`.
+  is `~/.openagents/coder/sessions/task-ID.atif.json`.
 - **Signed commits.** `openagents agent signing alice on` signs the tip of
   her merged worktree changes with her key (NIP-GS), with your attestation
   embedded. It's off by default.

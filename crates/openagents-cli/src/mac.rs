@@ -10,7 +10,7 @@
 //!   them ([`crate::mac_serve`]). `mac capabilities` shows what it reports.
 //!
 //! Every call goes to the website under the account's own sign-in: Coder's
-//! (`coder login`, kept in `~/.openagents/coder-new`), another folder's
+//! (`coder login`, kept in `~/.openagents/coder`), another folder's
 //! (`--account-dir`), or `OPENAGENTS_TOKEN` (a sign-in key from Settings;
 //! `OPENAGENTS_APP_TOKEN` also works) with `OPENAGENTS_ORIGIN` in an
 //! environment. The token is never printed.
@@ -184,11 +184,21 @@ pub(crate) fn saved(dir: Option<&str>) -> Result<Saved, String> {
     }
     let dir = dir.map_or_else(
         || {
-            std::env::var_os("HOME")
+            let root = std::env::var_os("HOME")
                 .map(PathBuf::from)
                 .unwrap_or_default()
-                .join(".openagents")
-                .join("coder-new")
+                .join(".openagents");
+            let dir = root.join("coder");
+            // Coder's data moved from `coder-new` to `coder` (#11361); read
+            // a sign-in the older folder alone still holds.
+            let older = root.join("coder-new");
+            if dir.join(openagents_login::FILE).is_file()
+                || !older.join(openagents_login::FILE).is_file()
+            {
+                dir
+            } else {
+                older
+            }
         },
         PathBuf::from,
     );

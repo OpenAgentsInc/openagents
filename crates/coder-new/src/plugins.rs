@@ -495,7 +495,9 @@ impl Plugins {
             .store
             .as_ref()
             .map(|store| store.root().to_path_buf())
-            .or_else(|| model_access::store::openagents_dir().map(|root| root.join("coder-new")))?;
+            .or_else(|| {
+                model_access::store::openagents_dir().map(|root| root.join(crate::home::DIR))
+            })?;
         let session = crate::comms::session_id(std::env::var("CODER_SESSION").ok().as_deref());
         crate::comms::Channel::open(&root, &session).ok()
     }

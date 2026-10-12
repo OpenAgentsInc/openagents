@@ -250,10 +250,26 @@ fn account_dir(dir: Option<&str>) -> PathBuf {
                 .map(PathBuf::from)
                 .unwrap_or_default()
                 .join(".openagents")
-                .join("coder-new")
+                .join("coder")
         },
         PathBuf::from,
     )
+}
+
+/// The folder a sign-in is read from: `account_dir(dir)`, else the
+/// `coder-new` folder when Coder's data hasn't moved to `coder` here
+/// (#11361) and it alone still holds one.
+fn sign_in_dir(dir: Option<&str>) -> PathBuf {
+    if dir.is_some() {
+        return account_dir(dir);
+    }
+    let dir = account_dir(None);
+    let older = dir.with_file_name("coder-new");
+    if dir.join(openagents_login::FILE).is_file() || !older.join(openagents_login::FILE).is_file() {
+        dir
+    } else {
+        older
+    }
 }
 
 /// `never`, `30d`, `90d` (or a bare number of days, 1 to 365).
@@ -286,7 +302,7 @@ impl Site {
         let (saved, dir) = match from_env {
             Some(saved) => (saved, None),
             None => {
-                let dir = account_dir(dir);
+                let dir = sign_in_dir(dir);
                 let saved = Saved::load_file(&dir).ok_or_else(|| {
                     format!(
                         "Not signed in here ({}). Sign in with: coder login, or set OPENAGENTS_TOKEN to a sign-in key.",

@@ -67,10 +67,10 @@ fn shipped_guidance_install_and_enable_do_not_enable_native_reads_or_publish() {
     assert_eq!(value["plugin"]["enabled"], false);
     assert!(value["plugin"]["background"].as_array().unwrap().is_empty());
     assert_eq!(value["plugin"]["slug"], "brainstorm-guidance");
-    assert!(!root.join(".openagents/coder-new").exists());
+    assert!(!root.join(".openagents/coder").exists());
     let on = ok(root, &["plugin", "enable", "brainstorm-guidance"]);
     assert_eq!(on["plugin"]["enabled"], true);
-    assert!(!root.join(".openagents/coder-new").exists());
+    assert!(!root.join(".openagents/coder").exists());
     assert!(!root.join(".openagents/keys").exists());
     let state = root.join("coder-state");
     let out = run(

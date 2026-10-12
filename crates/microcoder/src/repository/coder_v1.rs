@@ -93,8 +93,8 @@ pub(crate) async fn turn(
         .map(|(_, value)| PathBuf::from(value))
         .or_else(|| std::env::var_os("HOME").map(PathBuf::from));
     let state = home.map_or_else(
-        || host.store().join("coder-new"),
-        |home| home.join(".openagents/coder-new"),
+        || host.store().join("coder"),
+        |home| home.join(".openagents/coder"),
     );
     let sequence = match host.effect(
         KIND,
