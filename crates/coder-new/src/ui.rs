@@ -628,10 +628,9 @@ fn rail_harness(app: &App) -> Option<String> {
         return None;
     }
     let keyed = app.plugins.enabled && app.plugins.key_configured;
-    let Some(harness) = app.live.runs_on else {
-        return (!keyed || !crate::models::pinned(&app.plugins.model))
-            .then(|| crate::models::AUTO_LABEL.into());
-    };
+    // Before the chat's first turn nothing is routed and nothing is
+    // named: the rail never reads as a mode to pick (owner, 2026-10-12).
+    let harness = app.live.runs_on?;
     match harness {
         Harness::ClaudeCode => Some(claude_rail_label()),
         Harness::CoderLoop => {
@@ -2079,17 +2078,10 @@ fn composer_view(
         };
         let label = composer_rail_text(&contribution.text, area.width.saturating_sub(6));
         let text = contribution.text.as_str();
-        let accent = Style::default().fg(
-            if text == crate::models::AUTO_LABEL || text == format!("{CODER_RAIL} · auto") {
-                t::ACCENT_SKILL
-            } else if text.starts_with(CODER_RAIL) {
-                t::ACCENT_MODEL
-            } else if text.starts_with(CLAUDE_RAIL) || text == crate::solver::LABEL {
-                t::ACCENT_DELEGATE
-            } else {
-                t::GRAY
-            },
-        );
+        // Which engine ran is a quiet fact in gray, never a colored
+        // control that reads as a mode (owner, 2026-10-12).
+        let _ = text;
+        let accent = Style::default().fg(t::GRAY);
         // The plan and the cost sit before the mode's name, in gray, and a
         // load warning flashes just before the name in yellow.
         let extra = top_extra.filter(|_| offset == 0);
@@ -2263,11 +2255,27 @@ mod export_notice_tests {
     use ratatui::{Terminal, backend::TestBackend};
 
     #[test]
-    fn auto_label_uses_blue() {
+    fn the_engine_label_is_quiet_and_absent_before_routing() {
         let mut app = App::default();
         app.mode = Mode::Live;
-        app.live.runs_on = Some(crate::harness_plugin::Harness::CoderLoop);
         let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        let rows: Vec<String> = (0..20)
+            .map(|y| {
+                (0..60)
+                    .map(|x| terminal.backend().buffer()[(x, y)].symbol().to_owned())
+                    .collect()
+            })
+            .collect();
+        let top = rows
+            .iter()
+            .rev()
+            .find(|row| row.starts_with('┌'))
+            .expect("the input's top rule")
+            .clone();
+        // Before the first turn the input's rule names no engine and no mode.
+        assert!(!top.contains("coder") && !top.contains("Coder"), "{top}");
+        app.live.runs_on = Some(crate::harness_plugin::Harness::CoderLoop);
         terminal.draw(|frame| render(frame, &mut app)).unwrap();
         let buffer = terminal.backend().buffer();
         let mut found = false;
@@ -2279,7 +2287,7 @@ mod export_notice_tests {
                 if text == label {
                     found = true;
                     for x in x..x + n {
-                        assert_eq!(buffer[(x, y)].fg, t::ACCENT_SKILL);
+                        assert_eq!(buffer[(x, y)].fg, t::GRAY);
                     }
                 }
             }
@@ -2425,7 +2433,7 @@ mod export_notice_tests {
         assert_eq!(buffer[(at("stripe"), 0)].fg, t::WARNING);
         assert_eq!(buffer[(at("sign-in"), 0)].fg, t::WARNING);
         assert_eq!(buffer[(at("ctx"), 0)].fg, t::GRAY);
-        assert_eq!(buffer[(at("Claude"), 0)].fg, t::ACCENT_DELEGATE);
+        assert_eq!(buffer[(at("Claude"), 0)].fg, t::GRAY);
     }
 
     #[test]
