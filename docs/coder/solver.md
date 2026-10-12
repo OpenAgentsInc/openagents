@@ -64,6 +64,15 @@ the worktree the Coder changed. `summary.json` carries `issue-run`'s summary
 plus a `solver` object that names each hand's time, tokens, cost and
 verdict, the rounds, and the pull request URL when one was opened.
 
+`coder solver conform --run DIR [--run DIR ...]` judges recorded runs
+against `programs/solve-issue.json`: it maps each hand onto the program's
+step (`intaker` to `intake`, `briefer` to `brief`, `coder` to `code`, a
+Tester turn to `check`, the last Tester turn of a landed run to `land`, and
+a landed run ends in `done`), unrolls the program's code and check pair per
+coding round, and prints one JSON line per run with `recorded`, `program`,
+and `conforms`. It exits with an error when any run does not conform. The
+program replaces the hand-coded loop only when every recorded run conforms.
+
 In the terminal, the `solver` mode's conversation takes an issue number or
 `owner/repo#N`; anything else gets the Intaker's question back.
 
