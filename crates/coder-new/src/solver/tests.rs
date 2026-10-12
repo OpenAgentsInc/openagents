@@ -953,3 +953,23 @@ fn rebase_pushes_a_clean_branch_and_reports_a_conflict() {
     assert!(out.success(), "clean was not rebased onto main");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn judgment_rows_join_the_run_outcome() {
+    use crate::issue_run::decide::judgment;
+    let rows = vec![judgment(
+        "file_relevance",
+        Some("src/lib.rs"),
+        "jev",
+        "jev-1",
+        0.8,
+        Some(0.35),
+        "keep",
+    )];
+    let joined = super::joined(&rows, &serde_json::json!("passed"));
+    assert_eq!(joined[0]["question_set"], "file_relevance");
+    assert_eq!(joined[0]["subject"], "src/lib.rs");
+    assert_eq!(joined[0]["threshold"], 0.35);
+    assert_eq!(joined[0]["decision"], "keep");
+    assert_eq!(joined[0]["outcome"], "passed");
+}

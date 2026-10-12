@@ -850,6 +850,13 @@ impl End<'_> {
         };
         let url = delivery.url;
         let total = hands::total_cost(&self.turns);
+        let judgments = joined(
+            self.briefing
+                .as_ref()
+                .map(|briefing| briefing.judgments.as_slice())
+                .unwrap_or_default(),
+            &summary["outcome"]["status"],
+        );
         summary["solver"] = json!({
             "hands": self.turns.iter().map(Turn::json).collect::<Vec<_>>(),
             "rounds": self.rounds,
@@ -857,6 +864,7 @@ impl End<'_> {
             "cost_usd": total,
             "pull_request": url,
             "queue": queue,
+            "judgments": judgments,
             "merge": if delivery.status.is_empty() { "none" } else { delivery.status },
         });
         with_hands_cost(&mut summary, &self.turns);
@@ -924,6 +932,20 @@ fn merge_change_checks(checks: &mut Vec<Check>, required: &mut Vec<String>, chan
 
 #[cfg(test)]
 mod tests;
+
+/// The briefing's judgment rows with the run's outcome filled in, so each
+/// decision can be read beside what the run came to (#11387).
+#[must_use]
+pub fn joined(judgments: &[Value], outcome: &Value) -> Vec<Value> {
+    judgments
+        .iter()
+        .cloned()
+        .map(|mut row| {
+            row["outcome"] = outcome.clone();
+            row
+        })
+        .collect()
+}
 
 /// `--decisions`'s name for the door the run judged with.
 const fn decisions_name(decider: issue_run::Decider) -> &'static str {
