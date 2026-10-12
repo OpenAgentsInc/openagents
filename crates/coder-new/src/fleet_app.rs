@@ -138,6 +138,20 @@ impl App {
             if self.mode == Mode::Live && self.plugins.enabled && self.plugins.key_configured {
                 // The model reads it as its next input, even mid-turn.
                 self.queue_notice(text);
+            } else if self.mode == Mode::Claude {
+                // Claude reads the report as its next message, mid-turn
+                // too, and what the person was typing stays in the input.
+                let typed = std::mem::replace(
+                    &mut self.draft,
+                    crate::Draft {
+                        cursor: text.len(),
+                        text,
+                    },
+                );
+                let composer = std::mem::take(&mut self.composer);
+                self.submit_claude();
+                self.draft = typed;
+                self.composer = composer;
             } else {
                 self.live.entries.push(live::Entry::User(text));
                 self.scroll_main_to_end();

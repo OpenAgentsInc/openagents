@@ -97,6 +97,9 @@ use unicode_width::UnicodeWidthStr;
 /// refused a turn (#11132): Enter opens the model picker.
 pub const TRY_ANOTHER_MODEL: &str = "/models";
 
+/// How long a finished delegation stays on the rail under the input.
+pub const RAIL_KEEP_SECONDS: u64 = 30;
+
 /// Demo fixtures are available only in local development builds.
 pub const DEMO_AVAILABLE: bool = cfg!(debug_assertions);
 
@@ -2107,6 +2110,27 @@ impl App {
             return ("blocked", Some(msg));
         }
         (if self.live.busy { "working" } else { "idle" }, None)
+    }
+
+    /// The delegations the rail under the input lists, by index: every one
+    /// still running, the one selected, and one that finished in the last
+    /// [`RAIL_KEEP_SECONDS`]. The agents panel still lists them all.
+    #[must_use]
+    pub fn rail_agents(&self) -> Vec<usize> {
+        self.delegations
+            .iter()
+            .enumerate()
+            .filter(|(index, agent)| {
+                agent.running
+                    || self.selected_agent == Some(*index)
+                    || self.elapsed_seconds
+                        < agent
+                            .started_at
+                            .saturating_add(agent.elapsed_seconds)
+                            .saturating_add(RAIL_KEEP_SECONDS)
+            })
+            .map(|(index, _)| index)
+            .collect()
     }
 
     fn select_agent(&mut self, selected: Option<usize>) {

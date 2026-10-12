@@ -387,22 +387,25 @@ impl App {
         // owns Up/Down there: Down opens the next agent and Up the previous
         // one, back to the main conversation.
         if self.footer_focused || self.selected_agent.is_some() {
-            let count = if self.mode == crate::Mode::Demo {
-                crate::agents::DEMOS.len()
+            // The rows the rail shows, in order (#11434).
+            let rows: Vec<usize> = if self.mode == crate::Mode::Demo {
+                (0..crate::agents::DEMOS.len()).collect()
             } else {
-                self.delegations.len()
+                self.rail_agents()
             };
+            let at = self
+                .selected_agent
+                .and_then(|selected| rows.iter().position(|row| *row == selected));
             if up {
-                if let Some(next) = self.selected_agent.and_then(|i| i.checked_sub(1)) {
-                    self.select_agent(Some(next));
+                if let Some(next) = at.and_then(|i| i.checked_sub(1)) {
+                    self.select_agent(Some(rows[next]));
                 } else {
                     self.footer_focused = false;
                     self.select_agent(None);
                 }
-            } else if count > 0 {
-                self.select_agent(Some(
-                    self.selected_agent.map_or(0, |i| (i + 1).min(count - 1)),
-                ));
+            } else if !rows.is_empty() {
+                let next = at.map_or(0, |i| (i + 1).min(rows.len() - 1));
+                self.select_agent(Some(rows[next]));
             }
             return;
         }

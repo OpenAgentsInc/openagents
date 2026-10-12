@@ -142,15 +142,21 @@ impl Stream {
         id: &str,
         reply: &str,
         failed: bool,
+        result: Option<&Value>,
     ) -> Option<RuntimeEvent> {
         let spoke = self.agents.get(id)?.spoke;
-        let output = if failed {
+        let mut output = if failed {
             json!({"error": reply})
         } else if spoke || reply.trim().is_empty() {
             json!({})
         } else {
             json!({"reply": reply})
         };
+        // What the subagent used, as Claude Code reports it in the call's
+        // result, for the agent list's token count.
+        if let Some(tokens) = result.and_then(subagent_tokens) {
+            output["tokens"] = json!(tokens);
+        }
         Some(self.under(
             Some(id),
             RuntimeEvent::Tool {
@@ -280,6 +286,25 @@ pub fn load_problems(init: &claude_agent_sdk::protocol::SystemInit) -> Vec<Runti
         .collect()
 }
 
+/// A Claude Code subagent's tokens from its call's result: `totalTokens`,
+/// or the sum of its `usage`.
+fn subagent_tokens(result: &Value) -> Option<u64> {
+    if let Some(total) = result["totalTokens"].as_u64() {
+        return Some(total);
+    }
+    let usage = &result["usage"];
+    let sum: u64 = [
+        "input_tokens",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+        "output_tokens",
+    ]
+    .iter()
+    .filter_map(|field| usage[*field].as_u64())
+    .sum();
+    (sum > 0).then_some(sum)
+}
+
 fn notice_entry(name: &str, text: &str) -> RuntimeEvent {
     RuntimeEvent::Tool {
         name: name.into(),
@@ -365,11 +390,15 @@ mod tests {
         let said = stream.under(Some("t1"), RuntimeEvent::Text("found it".into()));
         assert!(matches!(&said, RuntimeEvent::Delegation { event, .. }
             if matches!(event.as_ref(), RuntimeEvent::Text(text) if text == "found it")));
-        let end = stream.end_agent("t1", "found it", false).unwrap();
+        let end = stream
+            .end_agent("t1", "found it", false, Some(&json!({"totalTokens": 740})))
+            .unwrap();
+        assert!(matches!(&end, RuntimeEvent::Delegation { event, .. }
+                if matches!(event.as_ref(), RuntimeEvent::Tool { output, .. } if output["tokens"] == 740)));
         assert!(matches!(&end, RuntimeEvent::Delegation { event, .. }
             if matches!(event.as_ref(), RuntimeEvent::Tool { running: false, output, .. }
                 if output.get("reply").is_none())));
-        assert!(stream.end_agent("other", "", false).is_none());
+        assert!(stream.end_agent("other", "", false, None).is_none());
         assert!(matches!(
             stream.under(None, RuntimeEvent::Text("x".into())),
             RuntimeEvent::Text(_)

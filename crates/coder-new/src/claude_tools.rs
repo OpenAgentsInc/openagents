@@ -105,6 +105,28 @@ pub fn is_tool(name: &str) -> bool {
     name.starts_with(&format!("mcp__{SERVER}__"))
 }
 
+/// The name a delegation's closing step carries, for a tool that runs work
+/// of its own and shows as a delegation until it ends; `None` for a quick
+/// tool, which shows as an ordinary tool call. A background agent is a
+/// quick call: `agent` only starts it, and the agent list shows it.
+fn delegates(name: &str) -> Option<&'static str> {
+    match name {
+        "microcoder" => Some("microcoder"),
+        "acp_subagent" => Some("acp_subagent"),
+        "boat_delegate" | "gce_delegate" => Some("remote_delegate"),
+        crate::solver_plugin::TOOL => Some(crate::solver_plugin::TOOL),
+        _ => None,
+    }
+}
+
+/// Whether the engine's call `name` is drawn by its own delegation, so the
+/// turn leaves it out of the transcript.
+#[must_use]
+pub fn draws_itself(name: &str) -> bool {
+    name.strip_prefix(&format!("mcp__{SERVER}__"))
+        .is_some_and(|tool| delegates(tool).is_some())
+}
+
 /// The in-process tool server for `execution`, or `None` when no tool is
 /// on. Each call's progress reaches `events` as a delegation, and setting
 /// `stop` stops the calls still running.
@@ -185,6 +207,13 @@ async fn call(
     events: &tokio::sync::mpsc::UnboundedSender<RuntimeEvent>,
     stop: &Arc<AtomicBool>,
 ) -> Result<Value, String> {
+    let Some(closing) = delegates(name) else {
+        // A quick call shows as the engine's own tool call; its progress,
+        // if any, is not drawn twice.
+        return execution
+            .execute(name, input, None, stop, &mut |_| {})
+            .await;
+    };
     let id = format!(
         "coder-{}-{}",
         std::process::id(),
@@ -205,14 +234,14 @@ async fn call(
         let _ = events.send(event);
     };
     emit(RuntimeEvent::Tool {
-        name: name.to_owned(),
+        name: closing.to_owned(),
         input: input.clone(),
         output: Value::Null,
         running: true,
     });
     let result = execution.execute(name, input, None, stop, &mut emit).await;
     emit(RuntimeEvent::Tool {
-        name: name.to_owned(),
+        name: closing.to_owned(),
         input: Value::Null,
         output: match &result {
             Ok(value) => value.clone(),
@@ -282,6 +311,10 @@ mod tests {
         assert!(is_tool("mcp__coder__agent"));
         assert!(is_tool("mcp__coder__solver"));
         assert!(!is_tool("Bash"));
+        // `agent` only starts a background agent: an ordinary tool call.
+        assert!(!draws_itself("mcp__coder__agent"));
+        assert!(draws_itself("mcp__coder__solver"));
+        assert!(draws_itself("mcp__coder__gce_delegate"));
     }
 
     #[test]

@@ -826,6 +826,16 @@ pub(crate) async fn read_turn(
                 let _ = query.kill().await;
                 return Err(error.to_string());
             }
+            // Where the Claude plan's 5-hour and weekly windows stand, for
+            // the line under the input ([`crate::claude_plan::status_text`]).
+            Ok(SdkMessage::RateLimitEvent(event)) => {
+                if let Ok(info) = serde_json::to_value(&event.rate_limit_info) {
+                    crate::claude_plan::observe_rate_limit(&info, coder_delegate::limit::now());
+                }
+                if let Some(usage) = crate::claude_plan::plan_usage() {
+                    emit(RuntimeEvent::Plan(usage));
+                }
+            }
             Ok(SdkMessage::StreamEvent(event)) => {
                 if let Some(text) = stream.partial(&event) {
                     if first_text_ms.is_none() {
@@ -888,7 +898,7 @@ pub(crate) async fn read_turn(
                         Some("tool_use") => {
                             let name = block["name"].as_str().unwrap_or_default();
                             // The delegation's own entry stands for this call.
-                            if crate::claude_tools::is_tool(name) {
+                            if crate::claude_tools::draws_itself(name) {
                                 continue;
                             }
                             // A subagent shows as a delegation of its own.
@@ -937,9 +947,12 @@ pub(crate) async fn read_turn(
                         continue;
                     };
                     let failed = block["is_error"].as_bool().unwrap_or(false);
-                    if let Some(end) =
-                        stream.end_agent(id, &crate::issue_run::agent::result_text(block), failed)
-                    {
+                    if let Some(end) = stream.end_agent(
+                        id,
+                        &crate::issue_run::agent::result_text(block),
+                        failed,
+                        user.tool_use_result.as_ref(),
+                    ) {
                         emit(end);
                         continue;
                     }

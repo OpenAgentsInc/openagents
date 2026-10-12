@@ -139,7 +139,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
     let rail_height = (if app.mode == Mode::Demo {
         DEMOS.len()
     } else {
-        app.delegations.len()
+        app.rail_agents().len()
     })
     .min(usize::from(area.height.saturating_sub(6))) as u16;
     let composer_height = (draft.len() as u16).clamp(1, 6) + 2;
@@ -267,6 +267,8 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
 }
 
 fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
+    // A finished delegation leaves the rail after a while (owner, #11434).
+    let rail = app.rail_agents();
     let agents: Vec<_> = if app.mode == Mode::Demo {
         DEMOS
             .iter()
@@ -280,8 +282,8 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
             })
             .collect()
     } else {
-        app.delegations
-            .iter()
+        rail.iter()
+            .map(|index| &app.delegations[*index])
             .map(|agent| {
                 if agent.background
                     && let Some(row) = app.fleet.get(&agent.id)
@@ -368,6 +370,7 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
                 .unwrap_or(0);
     let first = app
         .selected_agent
+        .and_then(|selected| rail.iter().position(|index| *index == selected))
         .unwrap_or(agents.len().saturating_sub(1))
         .saturating_sub(usize::from(area.height).saturating_sub(1));
     for (index, agent) in agents
@@ -381,7 +384,8 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
             height: 1,
             ..area
         };
-        let active = app.selected_agent == Some(index);
+        let active = app.selected_agent == rail.get(index).copied() && app.mode != Mode::Demo
+            || app.mode == Mode::Demo && app.selected_agent == Some(index);
         if active {
             frame.render_widget(
                 Block::default().style(Style::default().bg(t::BG_DARK)),
@@ -1012,7 +1016,8 @@ fn is_blank_row(line: &Line<'static>) -> bool {
 /// An entry's rows and, row for row, what a copy takes from each.
 ///
 /// In [`ViewMode::Compact`] a tool call is one row — its name and its
-/// parameters — and no blank row follows it, so calls run together.
+/// parameters — and no blank row follows it, so calls run together. A
+/// finished Edit or Write keeps its diff.
 fn entry_rows(
     entry: &crate::live::Entry,
     width: u16,
@@ -1036,6 +1041,8 @@ fn entry_rows(
     } = entry
         && view == ViewMode::Compact
         && !is_card(name)
+        // A finished edit always shows its diff, in either view.
+        && !(matches!(name.as_str(), "Edit" | "Write") && !*running)
     {
         let (glyph, color) =
             crate::tools::outcome_header(*running, crate::tools::output_failed(output), phase);
@@ -1081,12 +1088,8 @@ fn entry_rows(
                 fill_copy(&lines, &mut copy);
                 return (lines, copy);
             }
-            // The model's thinking, dim and slanted under its own heading.
+            // The model's thinking, dim and slanted, with no heading.
             if name == crate::claude_stream::THINKING {
-                lines.push(Line::from(Span::styled(
-                    "✻ Thinking",
-                    Style::default().fg(t::GRAY).add_modifier(Modifier::ITALIC),
-                )));
                 let (mut rows, rows_copy) = message_rows(
                     crate::claude_stream::entry_text(output),
                     width.saturating_sub(2),
@@ -1231,7 +1234,8 @@ fn entry_rows(
                 {
                     "Paused by the Claude plan limit".into()
                 }
-                _ if output.get("error").is_some() => "Failed".into(),
+                // A finished agent's output carries `"error": null`.
+                _ if output.get("error").is_some_and(|error| !error.is_null()) => "Failed".into(),
                 _ => "Done".into(),
             };
             let detail =
