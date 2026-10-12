@@ -63,7 +63,8 @@
   white-space: pre-wrap;
 }
 
-.oa-thread-notice {
+.oa-thread-notice,
+.oa-agents-notice {
   margin: 0 0 calc(var(--spacing) * 4);
   color: var(--color-text-secondary);
   font-size: var(--font-text-sm-size);
@@ -213,9 +214,4 @@ a.oa-task-row:focus-visible {
   flex: 1;
   min-width: 12rem;
   gap: calc(var(--spacing) * 2);
-}
-.oa-agents-notice {
-  margin: 0 0 calc(var(--spacing) * 4);
-  color: var(--color-text-secondary);
-  font-size: var(--font-text-sm-size);
 }
