@@ -820,3 +820,29 @@ fn queue_verdicts_name_why_each_issue_is_skipped() {
     assert_eq!(judge(1, "a", None, &none, &none, 40).verdict, "stale");
     assert_eq!(judge(1, "a", None, &none, &none, 3).verdict, "ready");
 }
+
+#[test]
+fn hand_back_classes_group_by_target_and_checks_across_issues() {
+    use serde_json::json;
+    let records = vec![
+        (
+            1,
+            json!({"target": "coder", "failing_checks": ["b", "a"], "hypothesis": "x\nmore"}),
+        ),
+        (
+            2,
+            json!({"target": "coder", "failing_checks": ["a", "b"], "hypothesis": "y"}),
+        ),
+        (
+            2,
+            json!({"target": "briefer", "failing_checks": ["a"], "hypothesis": "x"}),
+        ),
+    ];
+    let classes = super::rollup::classes(&records);
+    assert_eq!(classes.len(), 2);
+    assert_eq!(classes[0].count, 2);
+    assert_eq!(classes[0].failing_checks, vec!["a", "b"]);
+    assert_eq!(classes[0].issues, vec![1, 2]);
+    assert_eq!(classes[0].hypotheses, vec!["x", "y"]);
+    assert_eq!(classes[1].target, "briefer");
+}
