@@ -341,6 +341,7 @@ impl App {
             receiver,
             started: std::time::Instant::now(),
             situation,
+            session: self.session_id().map(str::to_owned),
             draft: std::mem::take(&mut self.draft),
             composer: std::mem::take(&mut self.composer),
         });
@@ -377,7 +378,56 @@ impl App {
         }
     }
 
+    /// The message waiting for its route, as the transcript shows it
+    /// until the turn starts.
+    #[must_use]
+    pub fn held_message(&self) -> Option<&str> {
+        self.pending_route
+            .as_ref()
+            .map(|pending| pending.draft.text.as_str())
+    }
+
+    /// Takes back the message waiting for its route: Esc, or the chat on
+    /// screen changing. It goes back in the input, ahead of anything typed
+    /// meanwhile, and nothing is sent. Returns whether there was one.
+    pub(crate) fn cancel_route(&mut self) -> bool {
+        let Some(pending) = self.pending_route.take() else {
+            return false;
+        };
+        let typed = std::mem::replace(&mut self.draft, pending.draft);
+        let typed_composer = std::mem::replace(&mut self.composer, pending.composer);
+        if !typed.text.is_empty() {
+            self.draft.text.push('\n');
+            self.draft.text.push_str(&typed.text);
+        }
+        self.draft.cursor = self.draft.text.len();
+        self.composer.images.extend(typed_composer.images);
+        true
+    }
+
+    /// Before another chat replaces this one (`/resume`, a new chat, a
+    /// followed chat): the waiting message is not sent anywhere, and Up in
+    /// the input brings it back.
+    pub(crate) fn drop_route(&mut self) {
+        if self.cancel_route() {
+            self.record_prompt();
+        }
+    }
+
     fn finish_route(&mut self, answer: Result<crate::router::Answered, String>) {
+        // The answer belongs to the chat the message was sent in. Another
+        // chat on screen gets nothing: the message goes back to the input.
+        if self.pending_route.as_ref().is_some_and(|pending| {
+            self.selected_agent.is_some()
+                || self.mode != Mode::Live
+                || pending
+                    .session
+                    .as_deref()
+                    .is_some_and(|session| Some(session) != self.session_id())
+        }) {
+            self.cancel_route();
+            return;
+        }
         let Some(pending) = self.pending_route.take() else {
             return;
         };

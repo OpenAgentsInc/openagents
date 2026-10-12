@@ -810,7 +810,7 @@ fn running_and_failed_run_keep_the_command_visible() {
 #[test]
 /// OpenAgents picks the model when none is chosen, so the rail names no
 /// engine before the chat is routed (nothing that reads as a mode) and says
-/// `Coder · auto` once Coder's own loop runs it, never the name of whichever
+/// `Coder (auto)` once Coder's own loop runs it, never the name of whichever
 /// model answered.
 fn local_login_turns_show_auto_above_the_input_rail() {
     let rail = |screen: &str, label: &str| {
@@ -834,7 +834,7 @@ fn local_login_turns_show_auto_above_the_input_rail() {
         elapsed_ms: None,
     });
     let screen = render(&mut app, 80, 24);
-    assert!(rail(&screen, "Coder · auto"), "{screen}");
+    assert!(rail(&screen, "Coder (auto)"), "{screen}");
     assert!(!screen.contains("gpt-6.1-sol"));
 }
 

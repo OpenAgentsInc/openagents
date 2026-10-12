@@ -725,6 +725,9 @@ pub struct Pending {
     pub receiver: mpsc::Receiver<Result<Answered, String>>,
     pub started: Instant,
     pub situation: Situation,
+    /// The chat the message was sent in: the answer lands there or
+    /// nowhere, never in a chat opened while it waited.
+    pub session: Option<String>,
     /// The message and its attachments, put back when the answer comes.
     pub draft: crate::Draft,
     pub composer: crate::composer_state::ComposerState,

@@ -530,6 +530,7 @@ fn execute_with_demo_policy(
 
 fn bootstrap(context: &Context) -> Result<App, Error> {
     let mut app = App::default();
+    app.routing_records = true;
     app.set_mode(Mode::Live);
     app.load_plugin_settings(crate::plugin_store::Store::under(&context.root))?;
     let imported = crate::credentials::load(&context.cwd, context.root.parent(), |name| {

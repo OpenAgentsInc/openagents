@@ -278,6 +278,13 @@ pub struct App {
     /// What router v0 read for the next turn's choice: System One's
     /// probabilities and its trace, for the routing record (#11460).
     pub(crate) routing_router: Option<(Vec<routing_record::Probability>, router::Trace)>,
+    /// The chat's last recorded turn, to tell whether the next message
+    /// re-asks it (#11461).
+    pub(crate) last_routed: Option<routing_record::LastTurn>,
+    /// Whether this chat's routing choices and outcomes are recorded:
+    /// set by the terminal and `coder chat`, never by an App a test or a
+    /// helper builds, so the records hold real turns only (#11461).
+    pub routing_records: bool,
     /// A message held while System One judges where it runs (#11460).
     pub(crate) pending_route: Option<router::Pending>,
     /// The router's call for the held message, read by
@@ -2181,6 +2188,9 @@ impl App {
             if selected.is_some_and(|index| index >= self.delegations.len()) {
                 return;
             }
+            // A message waiting for its route stays with the chat it was
+            // written in, back in that chat's input (#11460).
+            self.cancel_route();
             if let Some(previous) = self.selected_agent {
                 self.delegations[previous].draft = std::mem::take(&mut self.draft);
                 self.delegations[previous].composer = std::mem::take(&mut self.composer);
@@ -2751,7 +2761,11 @@ impl App {
                     KeyCode::F(2) => self.open_plugins(),
                     KeyCode::Up | KeyCode::Down => self.composer_arrow(key.code == KeyCode::Up),
                     KeyCode::Esc => {
-                        if self.footer_focused {
+                        if self.cancel_route() {
+                            // The message waiting for its route comes back
+                            // to the input, unsent.
+                            self.escape_at = None;
+                        } else if self.footer_focused {
                             self.footer_focused = false;
                             self.select_agent(None);
                         } else if self.notice.as_deref() == Some(slash::help().as_str()) {

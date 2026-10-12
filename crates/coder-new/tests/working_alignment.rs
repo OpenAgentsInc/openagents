@@ -21,6 +21,7 @@ fn working_spinner_rides_the_inputs_top_left_rail() {
     for width in [24, 80] {
         let mut app = App::default();
         app.set_mode(Mode::Live);
+        app.live.runs_on = Some(coder_new::harness_plugin::Harness::CoderLoop);
         app.live.busy = true;
         let rows = rows(&mut app, width, 24);
         let top = rows
@@ -29,10 +30,13 @@ fn working_spinner_rides_the_inputs_top_left_rail() {
             .expect("the input's top rail");
         let spinner = coder_new::tools::spinner(app.animation_frame);
         // The spinner is the top-left rail's own label, still paired with
-        // `Working`, and `coder` keeps the right end of the same rule.
+        // `Working`, and the agent keeps the right end of the same rule
+        // where there is room for both.
         let rail = label(&rows[top]);
         assert!(rail.starts_with(&format!("{spinner} Working")), "{rail:?}");
-        assert!(rail.ends_with("coder"), "{rail:?}");
+        if width >= 80 {
+            assert!(rail.ends_with("Coder (auto)"), "{rail:?}");
+        }
         // The transcript never repeats it, and no second spinner draws.
         let screen = rows.join("\n");
         assert_eq!(screen.matches(spinner).count(), 1, "{screen}");
@@ -44,11 +48,12 @@ fn working_spinner_rides_the_inputs_top_left_rail() {
 fn an_idle_input_rail_carries_no_working_label() {
     let mut app = App::default();
     app.set_mode(Mode::Live);
+    app.live.runs_on = Some(coder_new::harness_plugin::Harness::CoderLoop);
     let rows = rows(&mut app, 80, 24);
     let top = rows
         .iter()
         .position(|line| line.starts_with('┌'))
         .expect("the input's top rail");
-    assert_eq!(label(&rows[top]), "coder");
+    assert_eq!(label(&rows[top]), "Coder (auto)");
     assert!(!rows.join("\n").contains("Working"));
 }

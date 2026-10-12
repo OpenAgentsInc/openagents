@@ -650,8 +650,8 @@ fn top_rail(app: &App) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join(" · "))
 }
 
-/// Which harness ran the chat, on the input's top-right rail: "Claude ·
-/// Haiku 5.5" or "Coder · auto" (the model's own name when the person
+/// Which harness ran the chat, on the input's top-right rail: "Claude
+/// (Haiku 5.5)" or "Coder (auto)" (the model's own name when the person
 /// chose one in /models), `solver` while `coder solver` watches a run.
 /// Before a chat's first turn is routed it says only `coder`, the product,
 /// or the model the person chose. There is no mode to name (#11453).
@@ -680,7 +680,7 @@ fn rail_harness(app: &App) -> Option<String> {
             } else {
                 model
             };
-            Some(format!("{CODER_RAIL} · {model}"))
+            Some(format!("{CODER_RAIL} ({model})"))
         }
         Harness::Codex => Some(Harness::Codex.declaration().name.into()),
     }
@@ -692,14 +692,15 @@ const CODER_RAIL: &str = "Coder";
 /// The rail's word for Claude Code, which the rail colors as its own.
 const CLAUDE_RAIL: &str = "Claude";
 
-/// "Claude · " and the model Claude Code runs, as /models names it.
+/// "Claude" and, in parentheses, the model Claude Code runs, as /models
+/// names it.
 fn claude_rail_label() -> String {
     let model = crate::claude::choice().model;
     let name = crate::claude::MODELS
         .iter()
         .find(|(id, _, _)| *id == model)
         .map_or(model.as_str(), |(_, name, _)| *name);
-    format!("{CLAUDE_RAIL} · {name}")
+    format!("{CLAUDE_RAIL} ({name})")
 }
 
 /// The spinner and `Working` the input's rail shows while the chat above it
@@ -714,7 +715,9 @@ fn working_label(app: &App) -> Option<String> {
         .selected_agent
         .and_then(|index| app.delegations.get(index))
         .map_or(&app.live, |agent| &agent.chat);
-    if !chat.busy {
+    // A message waiting for its route is already being worked on.
+    let routing = app.selected_agent.is_none() && app.routing_pending();
+    if !chat.busy && !routing {
         return None;
     }
     let mut label = format!("{} Working", crate::tools::spinner(app.animation_frame));
@@ -1937,6 +1940,13 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     let notice = app.notice.clone();
     // Read before `chat` borrows `app`'s delegations.
     let view = app.view;
+    // A message waiting for its route shows at once where it will land,
+    // as the person's message, instead of leaving the input blank (#11460).
+    let held = app
+        .selected_agent
+        .is_none()
+        .then(|| app.held_message().map(str::to_owned))
+        .flatten();
     let chat = app
         .selected_agent
         .and_then(|index| app.delegations.get_mut(index))
@@ -1944,6 +1954,10 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     let mut cache = std::mem::take(&mut chat.cache);
     cache.refresh(chat, content, phase, view);
     let mut tail = Vec::new();
+    if let Some(held) = held {
+        tail.extend(prompt(&held, content));
+        tail.push(Line::default());
+    }
     for (message, color) in [
         (chat.notice.as_ref(), t::DIFF_DELETE_FG),
         (notice.as_ref(), t::GRAY),
@@ -2307,7 +2321,7 @@ mod export_notice_tests {
         }
         let text = rail(&mut app, 60);
         assert!(text.starts_with("┌─ History 100/100 "));
-        assert!(text.contains("Coder · auto"));
+        assert!(text.contains("Coder (auto)"));
         app.composer_arrow(false);
         assert!(!rail(&mut app, 60).contains("History"));
         app.composer_arrow(true);
@@ -2343,7 +2357,7 @@ mod export_notice_tests {
         terminal.draw(|frame| render(frame, &mut app)).unwrap();
         let buffer = terminal.backend().buffer();
         let mut found = false;
-        let label = "Coder · auto";
+        let label = "Coder (auto)";
         let n = label.chars().count() as u16;
         for y in 0..20 {
             for x in 0..60 - n {
@@ -2431,11 +2445,11 @@ mod export_notice_tests {
             assert_eq!(app.live.runs_on, Some(Harness::CoderLoop));
         }
         let shown = rail(&mut app);
-        assert!(shown.contains("Coder · auto"), "{shown}");
+        assert!(shown.contains("Coder (auto)"), "{shown}");
         assert!(!shown.contains("openrouter") && !shown.contains("claude"));
         // A model chosen in /models is named after the loop.
         app.plugins.model = crate::models::OPENROUTER.into();
-        assert!(rail(&mut app).contains("Coder · deepseek-v4.1-flash"));
+        assert!(rail(&mut app).contains("Coder (deepseek-v4.1-flash)"));
     }
 
     #[test]
@@ -2451,7 +2465,7 @@ mod export_notice_tests {
             .collect::<Vec<_>>()
             .join("\n");
         assert!(
-            shown.contains(&format!("Claude · {}", crate::claude::MODEL_LABEL)),
+            shown.contains(&format!("Claude ({})", crate::claude::MODEL_LABEL)),
             "{shown}"
         );
         // Drawing the rail must not read this computer's login: a test
@@ -2475,7 +2489,7 @@ mod export_notice_tests {
                     &crate::composer_state::ComposerState::default(),
                     None,
                     false,
-                    Some("Claude · Haiku 5.5"),
+                    Some("Claude (Haiku 5.5)"),
                     Some("ctx 40%"),
                     Some("stripe needs sign-in"),
                     None,
@@ -2486,7 +2500,7 @@ mod export_notice_tests {
         let buffer = terminal.backend().buffer();
         let rail: String = (0..width).map(|x| buffer[(x, 0)].symbol()).collect();
         assert!(
-            rail.contains("ctx 40% · stripe needs sign-in · Claude · Haiku 5.5"),
+            rail.contains("ctx 40% · stripe needs sign-in · Claude (Haiku 5.5)"),
             "{rail}"
         );
         let at = |word: &str| {
@@ -2519,7 +2533,7 @@ mod export_notice_tests {
                     &crate::composer_state::ComposerState::default(),
                     None,
                     false,
-                    Some("Claude · Haiku 5.5"),
+                    Some("Claude (Haiku 5.5)"),
                     Some("5h 33% · week 83% · ctx 40%"),
                     Some("stripe and linear need sign-in"),
                     None,
@@ -2529,7 +2543,7 @@ mod export_notice_tests {
             .unwrap();
         let buffer = terminal.backend().buffer();
         let rail: String = (0..width).map(|x| buffer[(x, 0)].symbol()).collect();
-        assert!(rail.contains("Claude · Haiku 5.5"), "{rail}");
+        assert!(rail.contains("Claude (Haiku 5.5)"), "{rail}");
     }
 
     #[test]

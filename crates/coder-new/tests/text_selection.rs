@@ -20,6 +20,8 @@ fn chat() -> App {
     app.set_mode(Mode::Live);
     // These tests select the detailed layout: diffs, results, blank rows.
     app.view = ViewMode::Verbose;
+    // The chat already ran on Coder's own loop, so the rail names it.
+    app.live.runs_on = Some(coder_new::harness_plugin::Harness::CoderLoop);
     app.live.entries.extend([
         Entry::User("Why does the rail name a vendor's model?".into()),
         Entry::Tool {
@@ -252,11 +254,11 @@ fn a_copy_shows_copied_on_the_inputs_top_left_rail() {
     click(&mut app, 3, 10, user);
     assert!(copied(&mut app).is_some());
     let after = rows(&render(&mut app, 60, 30));
-    // The label rides the same top rule, and the mode keeps the right end.
+    // The label rides the same top rule, and the agent keeps the right end.
     let rule = &after[usize::from(top)];
     assert!(rule.starts_with("┌─ Copied "), "{rule:?}");
     assert!(rule.trim_end().ends_with("─┐"), "{rule:?}");
-    assert!(rule.contains("coder"), "{rule:?}");
+    assert!(rule.contains("Coder ("), "{rule:?}");
     // No row appears below the input for it, and the input keeps its height.
     assert_eq!(after.len(), before.len());
     assert!(after[usize::from(top) + 2].starts_with('└'));

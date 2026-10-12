@@ -140,6 +140,7 @@ fn run() -> io::Result<()> {
         args
     };
     let mut app = App::default();
+    app.routing_records = true;
     let mut capture = false;
     let mut models = false;
     let mut follow: Option<String> = None;

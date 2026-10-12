@@ -462,7 +462,7 @@ fn a_held_message_runs_where_the_router_sends_it_and_is_recorded() {
         .into_iter()
         .filter_map(|line| match line {
             crate::routing_record::Line::Chose(chose) => Some(chose),
-            crate::routing_record::Line::Ended(_) => None,
+            crate::routing_record::Line::Ended(_) | crate::routing_record::Line::Redone(_) => None,
         })
         .collect();
     let _ = std::fs::remove_dir_all(&dir);
@@ -651,4 +651,167 @@ fn the_gateway_routes_the_labelled_set() {
             "{id}"
         );
     }
+}
+
+fn press(app: &mut crate::App, code: crossterm::event::KeyCode) {
+    use crossterm::event::{Event, KeyEvent, KeyModifiers};
+    app.handle(Event::Key(KeyEvent::new(code, KeyModifiers::NONE)));
+}
+
+/// An app with two harnesses admitted, so a message is a routing point.
+fn routed_app() -> crate::App {
+    crate::harness_plugin::sign_in_claude(true);
+    set_test_judge(Some(Some(small_answer())));
+    let mut app = crate::App::default();
+    app.set_mode(crate::Mode::Live);
+    app.plugins.bundled.claude = true;
+    app
+}
+
+fn screen(app: &mut crate::App) -> String {
+    use ratatui::{Terminal, backend::TestBackend};
+    let mut terminal = Terminal::new(TestBackend::new(70, 20)).unwrap();
+    terminal
+        .draw(|frame| crate::ui::render(frame, app))
+        .unwrap();
+    let buffer = terminal.backend().buffer();
+    (0..20)
+        .map(|y| (0..70).map(|x| buffer[(x, y)].symbol()).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// While a message waits for its route it shows at once as the person's
+/// message, with the input's spinner, not up to a second later (#11460).
+#[test]
+fn a_held_message_shows_at_once() {
+    let mut app = routed_app();
+    app.draft.text = "What is a trait object?".into();
+    app.submit_live();
+    assert!(app.routing_pending());
+    let shown = screen(&mut app);
+    assert!(shown.contains("What is a trait object?"), "{shown}");
+    assert!(shown.contains("Working"), "{shown}");
+    app.poll_route();
+    set_test_judge(None);
+    crate::harness_plugin::sign_in_claude(false);
+    let shown = screen(&mut app);
+    assert_eq!(
+        shown.matches("What is a trait object?").count(),
+        1,
+        "once the turn starts the message is shown once: {shown}"
+    );
+}
+
+/// Esc while a message waits takes it back: it returns to the input
+/// ahead of what was typed meanwhile, and nothing is sent or recorded.
+#[test]
+fn esc_takes_back_a_message_waiting_for_its_route() {
+    let dir = temp("esc");
+    crate::routing_record::record_to(Some((dir.clone(), healthy_facts())));
+    let mut app = routed_app();
+    app.draft.text = "What is a trait object?".into();
+    app.submit_live();
+    assert!(app.routing_pending());
+    app.draft.text = "and a vtable".into();
+    press(&mut app, crossterm::event::KeyCode::Esc);
+    assert!(!app.routing_pending());
+    app.poll_route();
+    set_test_judge(None);
+    crate::routing_record::record_to(None);
+    crate::harness_plugin::sign_in_claude(false);
+    let lines = crate::routing_record::read(&dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(app.live.entries.is_empty(), "nothing was sent");
+    assert!(app.request.is_none());
+    assert!(!app.live.busy);
+    assert_eq!(app.draft.text, "What is a trait object?\nand a vtable");
+    assert_eq!(app.draft.cursor, app.draft.text.len());
+    assert!(lines.is_empty(), "no route was chosen");
+}
+
+/// Opening an agent's chat while a message waits leaves the message in
+/// the main chat's input; it is never sent into the agent's chat.
+#[test]
+fn switching_chats_keeps_the_waiting_message_with_its_own_chat() {
+    let mut app = routed_app();
+    app.delegations.push(crate::live::Delegation {
+        id: "child".into(),
+        name: "helper".into(),
+        task: "Look around.".into(),
+        chat: crate::live::Chat::default(),
+        started_at: 0,
+        elapsed_seconds: 0,
+        running: true,
+        draft: Default::default(),
+        composer: Default::default(),
+        scroll: 0,
+        background: false,
+    });
+    app.draft.text = "Fix the parser".into();
+    app.submit_live();
+    assert!(app.routing_pending());
+    app.select_agent(Some(0));
+    app.poll_route();
+    assert!(!app.routing_pending());
+    assert!(app.delegations[0].chat.entries.is_empty());
+    assert!(app.live.entries.is_empty());
+    assert!(app.draft.text.is_empty(), "the agent's input stays its own");
+    app.select_agent(None);
+    set_test_judge(None);
+    crate::harness_plugin::sign_in_claude(false);
+    assert_eq!(app.draft.text, "Fix the parser");
+}
+
+/// An answer that lands after another chat was opened is not sent there:
+/// the message goes back to the input.
+#[test]
+fn an_answer_for_another_chat_is_not_sent_into_this_one() {
+    let mut app = routed_app();
+    app.draft.text = "Fix the parser".into();
+    app.submit_live();
+    if let Some(pending) = app.pending_route.as_mut() {
+        pending.session = Some("an-earlier-chat".into());
+    }
+    app.poll_route();
+    set_test_judge(None);
+    crate::harness_plugin::sign_in_claude(false);
+    assert!(!app.routing_pending());
+    assert!(app.live.entries.is_empty());
+    assert!(app.request.is_none());
+    assert_eq!(app.draft.text, "Fix the parser");
+}
+
+/// Sending the same message again marks the earlier turn redone in the
+/// records, after its outcome.
+#[test]
+fn the_same_message_again_marks_the_earlier_turn_redone() {
+    let dir = temp("redo");
+    crate::harness_plugin::sign_in_claude(false);
+    crate::routing_record::record_to(Some((dir.clone(), healthy_facts())));
+    let mut app = crate::App::default();
+    app.set_mode(crate::Mode::Live);
+    for _ in 0..2 {
+        app.draft.text = "Fix the parser".into();
+        app.submit_live();
+        finish(&mut app);
+    }
+    app.record_end(Some(crate::routing_record::Ended::Done), None, None);
+    crate::routing_record::record_to(None);
+    let lines = crate::routing_record::read(&dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let first = match &lines[0] {
+        crate::routing_record::Line::Chose(chose) => chose.id.clone(),
+        other => panic!("a choice first, got {other:?}"),
+    };
+    let redone: Vec<_> = lines
+        .iter()
+        .filter_map(|line| match line {
+            crate::routing_record::Line::Redone(redone) => Some(redone),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(redone.len(), 1, "{lines:?}");
+    assert_eq!(redone[0].id, first);
+    assert_eq!(redone[0].why, crate::routing_record::Redo::SameMessage);
 }

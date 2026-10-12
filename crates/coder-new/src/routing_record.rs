@@ -190,6 +190,107 @@ pub struct Outcome {
 pub enum Line {
     Chose(ChoseLine),
     Ended(EndedLine),
+    /// A later message in the same chat re-asked an earlier turn's work
+    /// (#11461). Written when that message is sent, after the earlier
+    /// turn's outcome, so it is its own line.
+    Redone(RedoneLine),
+}
+
+/// Why a turn counts as redone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Redo {
+    /// The person sent the same message again.
+    SameMessage,
+    /// The turn did not finish (it failed, hit a limit, or was stopped)
+    /// and System One judged the next message a continuation of it.
+    ContinuedUnfinished,
+}
+
+/// A redo as written: the earlier turn's id, and why.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RedoneLine {
+    pub id: String,
+    pub at_ms: u64,
+    pub why: Redo,
+}
+
+/// The last turn a chat recorded, kept to tell whether the next message
+/// re-asks it.
+#[derive(Clone, Debug)]
+pub struct LastTurn {
+    pub id: String,
+    pub chat: Option<String>,
+    pub prompt: String,
+    pub ended: Ended,
+}
+
+/// Whether the message after `last` re-asks it: the same message again,
+/// or, after a turn that did not finish, one System One judged a
+/// continuation (`new_work` below one half). No words in the message are
+/// read for this; only the exact repeat and the recorded judgment.
+#[must_use]
+pub fn redo(last: &LastTurn, prompt: &str, probabilities: &[Probability]) -> Option<Redo> {
+    if !last.prompt.trim().is_empty() && last.prompt.trim() == prompt.trim() {
+        return Some(Redo::SameMessage);
+    }
+    let continued = probabilities
+        .iter()
+        .find(|p| p.question == format!("{}.new_work", crate::router::QUESTION_SET))
+        .is_some_and(|p| p.p < 0.5);
+    (last.ended != Ended::Done && continued).then_some(Redo::ContinuedUnfinished)
+}
+
+/// Whether a turn's checks passed, from the tool calls it made: `None`
+/// when it ran none. A check is a command that runs a test runner or a
+/// build check ([`atif::activity::is_check_command`]), passing when it
+/// exits cleanly, and the advisory check Coder runs on each file it writes
+/// (JSON, Rust), failing while the file's latest write reports a finding.
+/// The turn passes when its last check command passed and no written file
+/// is left with a finding.
+#[must_use]
+pub fn turn_checks(entries: &[crate::live::Entry]) -> Option<bool> {
+    let mut last_command: Option<bool> = None;
+    let mut files: BTreeMap<String, bool> = BTreeMap::new();
+    for entry in entries {
+        let crate::live::Entry::Tool {
+            name,
+            input,
+            output,
+            running: false,
+        } = entry
+        else {
+            continue;
+        };
+        let command = input
+            .get("command")
+            .or_else(|| input.get("cmd"))
+            .and_then(serde_json::Value::as_str);
+        if let Some(command) = command.filter(|c| atif::activity::is_check_command(c)) {
+            last_command = Some(!crate::tools::output_failed(output));
+            continue;
+        }
+        if matches!(name.as_str(), "Edit" | "Write") {
+            let Some(path) = output
+                .get("path")
+                .or_else(|| input.get("path"))
+                .or_else(|| input.get("file_path"))
+                .and_then(serde_json::Value::as_str)
+            else {
+                continue;
+            };
+            if output.get("check").is_some() {
+                files.insert(path.to_owned(), false);
+            } else if files.contains_key(path) {
+                // A later write without a finding fixed it.
+                files.insert(path.to_owned(), true);
+            }
+        }
+    }
+    if last_command.is_none() && files.is_empty() {
+        return None;
+    }
+    Some(last_command.unwrap_or(true) && files.values().all(|passed| *passed))
 }
 
 /// A choice as written.
@@ -238,6 +339,12 @@ pub struct Open {
     /// can be taken at the end.
     pub tokens_before: u64,
     pub cost_before: f64,
+    /// Where the turn's transcript starts, to read its checks at the end.
+    pub entries_before: usize,
+    /// The message that started the turn.
+    pub prompt: String,
+    /// The chat it ran in.
+    pub chat: Option<String>,
 }
 
 /// Where records go.
@@ -367,7 +474,21 @@ impl Recorder {
             started: std::time::Instant::now(),
             tokens_before,
             cost_before,
+            entries_before: 0,
+            prompt: String::new(),
+            chat: choice.chat.clone(),
         }
+    }
+
+    /// Writes that the turn `id` was re-asked.
+    pub fn redone(&self, id: &str, why: Redo) {
+        let at_ms = atif::now_ms();
+        let line = Line::Redone(RedoneLine {
+            id: id.to_owned(),
+            at_ms,
+            why,
+        });
+        let _ = self.append(at_ms, &line);
     }
 
     /// Writes the outcome of `open`.
@@ -641,10 +762,21 @@ fn of(by: &mut BTreeMap<String, HarnessSummary>, harness: Harness) -> &mut Harne
 }
 
 impl crate::App {
+    /// The recorder for this chat: a test thread's folder, or, for a real
+    /// chat ([`crate::App::routing_records`]), this computer's.
+    fn recorder(&self) -> Option<Recorder> {
+        if cfg!(test) || self.routing_records {
+            recorder()
+        } else {
+            None
+        }
+    }
+
     /// Records that this chat's next turn went to `harness`, under the rule
     /// its selector set ([`crate::App::route_turn`], a pin),
-    /// ending any turn still open first (it was stopped). Does nothing when
-    /// records are off.
+    /// ending any turn still open first (it was stopped), and noting when
+    /// this message re-asks the chat's last turn. Does nothing when records
+    /// are off.
     pub(crate) fn record_choice(&mut self, harness: Harness, images: usize, prompt_chars: usize) {
         let rule = self.routing_rule.take().unwrap_or(Rule::Continues);
         let (probabilities, router) = self
@@ -654,13 +786,30 @@ impl crate::App {
                 (probabilities, Some(trace))
             });
         self.record_end(Some(Ended::Stopped), None, None);
-        let Some(recorder) = recorder() else {
+        let Some(recorder) = self.recorder() else {
             return;
         };
+        let chat = self.session_id().map(str::to_owned);
+        let prompt = self
+            .live
+            .entries
+            .iter()
+            .rev()
+            .find_map(|entry| match entry {
+                crate::live::Entry::User(text) => Some(text.clone()),
+                _ => None,
+            })
+            .unwrap_or_default();
+        if let Some(last) = self.last_routed.take()
+            && last.chat == chat
+            && let Some(why) = redo(&last, &prompt, &probabilities)
+        {
+            recorder.redone(&last.id, why);
+        }
         let facts = facts(self);
         let candidates = crate::harness_plugin::candidates(&facts);
         let choice = Choice {
-            chat: self.session_id().map(str::to_owned),
+            chat,
             turn: u32::try_from(self.live.user_count()).unwrap_or(u32::MAX),
             kind: Kind::Primary,
             candidates: &candidates,
@@ -678,7 +827,10 @@ impl crate::App {
             rule,
             payer: crate::harness_plugin::payer(harness, &facts),
         };
-        self.routing = Some(recorder.chose(&choice, self.live.tokens, self.live.cost_usd));
+        let mut open = recorder.chose(&choice, self.live.tokens, self.live.cost_usd);
+        open.entries_before = self.live.entries.len();
+        open.prompt = prompt;
+        self.routing = Some(open);
     }
 
     /// Records how the open turn ended, with the chat's tokens and cost
@@ -692,7 +844,7 @@ impl crate::App {
         let Some(open) = self.routing.take() else {
             return;
         };
-        let Some(recorder) = recorder() else {
+        let Some(recorder) = self.recorder() else {
             return;
         };
         let ended = ended.or_else(|| {
@@ -704,12 +856,28 @@ impl crate::App {
                 }
             })
         });
+        let checks_passed = self
+            .live
+            .entries
+            .get(open.entries_before..)
+            .and_then(turn_checks);
+        self.last_routed = Some(LastTurn {
+            id: open.id.clone(),
+            chat: open.chat.clone(),
+            prompt: open.prompt.clone(),
+            ended: ended.unwrap_or(if error.is_some() {
+                Ended::Error
+            } else {
+                Ended::Done
+            }),
+        });
         recorder.ended(
             &open,
             Outcome {
                 ended,
                 cost_usd: Some((self.live.cost_usd - open.cost_before).max(0.0)),
                 tokens: Some(self.live.tokens.saturating_sub(open.tokens_before)),
+                checks_passed,
                 model,
                 error,
                 ..Outcome::default()
@@ -1006,14 +1174,14 @@ mod tests {
             .iter()
             .filter_map(|line| match line {
                 Line::Chose(chose) => Some(chose),
-                Line::Ended(_) => None,
+                Line::Ended(_) | Line::Redone(_) => None,
             })
             .collect();
         let ended: Vec<&EndedLine> = lines
             .iter()
             .filter_map(|line| match line {
                 Line::Ended(ended) => Some(ended),
-                Line::Chose(_) => None,
+                Line::Chose(_) | Line::Redone(_) => None,
             })
             .collect();
         assert_eq!(lines.len(), 6, "{lines:?}");
@@ -1044,5 +1212,99 @@ mod tests {
         if std::env::var_os(DIR_ENV).is_none() {
             assert!(dir().is_none());
         }
+    }
+
+    fn tool(name: &str, input: serde_json::Value, output: serde_json::Value) -> crate::live::Entry {
+        crate::live::Entry::Tool {
+            name: name.into(),
+            input,
+            output,
+            running: false,
+        }
+    }
+
+    /// A turn's checks: none ran, a test run passed or failed, a written
+    /// file left with a finding, and one fixed by a later write.
+    #[test]
+    fn a_turns_checks_come_from_its_test_runs_and_file_checks() {
+        use serde_json::json;
+        let answer = [crate::live::Entry::Assistant {
+            text: "A trait object is dyn Trait.".into(),
+            model: None,
+            elapsed_ms: None,
+        }];
+        assert_eq!(turn_checks(&answer), None);
+        let listing = [tool("Run", json!({"command": "ls"}), json!({"exit": 0}))];
+        assert_eq!(turn_checks(&listing), None, "not a check");
+        let failed_then_passed = [
+            tool(
+                "Run",
+                json!({"command": "cargo test -p x"}),
+                json!({"exit": 101}),
+            ),
+            tool(
+                "Edit",
+                json!({"path": "src/a.rs"}),
+                json!({"path": "src/a.rs"}),
+            ),
+            tool(
+                "Run",
+                json!({"command": "cargo test -p x"}),
+                json!({"exit": 0}),
+            ),
+        ];
+        assert_eq!(turn_checks(&failed_then_passed), Some(true));
+        let failing = [tool(
+            "Bash",
+            json!({"command": "cd app && npm test"}),
+            json!({"error": "1 failing"}),
+        )];
+        assert_eq!(turn_checks(&failing), Some(false));
+        let broken_file = [tool(
+            "Write",
+            json!({"path": "a.json"}),
+            json!({"path": "a.json", "check": "JSON check: EOF"}),
+        )];
+        assert_eq!(turn_checks(&broken_file), Some(false));
+        let fixed_file = [
+            broken_file[0].clone(),
+            tool("Edit", json!({"path": "a.json"}), json!({"path": "a.json"})),
+        ];
+        assert_eq!(turn_checks(&fixed_file), Some(true));
+    }
+
+    /// A redo is the same message again, or a continuation of a turn that
+    /// did not finish; a continuation of a finished turn is not.
+    #[test]
+    fn a_redo_is_a_repeat_or_a_continuation_of_unfinished_work() {
+        let last = |ended| LastTurn {
+            id: "t1".into(),
+            chat: Some("c".into()),
+            prompt: "Fix the parser".into(),
+            ended,
+        };
+        let new_work = |p: f64| {
+            vec![Probability {
+                question: "route-v1.new_work".into(),
+                answer: "yes".into(),
+                p,
+                model: "m".into(),
+                door: "d".into(),
+            }]
+        };
+        assert_eq!(
+            redo(&last(Ended::Done), " Fix the parser ", &[]),
+            Some(Redo::SameMessage)
+        );
+        assert_eq!(
+            redo(&last(Ended::Error), "keep going", &new_work(0.1)),
+            Some(Redo::ContinuedUnfinished)
+        );
+        assert_eq!(redo(&last(Ended::Done), "keep going", &new_work(0.1)), None);
+        assert_eq!(
+            redo(&last(Ended::Stopped), "now the docs", &new_work(0.9)),
+            None
+        );
+        assert_eq!(redo(&last(Ended::Error), "keep going", &[]), None);
     }
 }

@@ -244,6 +244,7 @@ impl App {
             return self.resume_error(error);
         }
         // Decode every child before replacing the current conversation or its lease.
+        self.drop_route();
         self.set_mode(Mode::Live);
         self.cancel_request();
         self.select_agent(None);
@@ -327,6 +328,7 @@ impl App {
             return false;
         }
         let fresh = App::default();
+        self.drop_route();
         self.set_mode(Mode::Live);
         self.cancel_request();
         self.select_agent(None);

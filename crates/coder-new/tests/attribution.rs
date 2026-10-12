@@ -184,8 +184,9 @@ fn composer_registration_follows_enablement_and_preserves_input_geometry() {
         assert_eq!(cursor, (3, (top + 1) as u16));
         let byte = text[top].find("coder").unwrap();
         let x = UnicodeWidthStr::width(&text[top][..byte]) as u16;
-        // `coder` is blue; a chosen model would be gray, `openrouter` cyan.
-        assert_eq!(buffer[(x, top as u16)].fg, theme::ACCENT_SKILL);
+        // Which engine runs is a quiet fact in gray, never a colored
+        // control that reads as a mode (owner, 2026-10-12).
+        assert_eq!(buffer[(x, top as u16)].fg, theme::GRAY);
     }
     app.plugins.enabled = false;
     assert!(
@@ -223,7 +224,7 @@ fn claude_code_names_its_harness_and_shows_its_working() {
     // The mode's name stays on the rail; while the turn runs, the working
     // spinner rides its left end.
     assert!(
-        label(&text[top]).contains("Claude · "),
+        label(&text[top]).contains("Claude ("),
         "{}",
         label(&text[top])
     );
