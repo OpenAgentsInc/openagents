@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "about": "With only an unsupported session record, no session ever opens and the read fails outright.",
+  "log": [
+    "{\"record\":\"session\",\"schema_version\":\"ATIF-v9.9\",\"at\":1790553600000,\"session\":{\"id\":\"conf-future\",\"model\":\"example/model-1\",\"door\":\"example\",\"repository\":\"\",\"directive\":\"\",\"state\":\"\",\"seconds\":0,\"version\":\"0.1.0\"}}",
+    "{\"record\":\"step\",\"step\":{\"at\":1790553600100,\"source\":\"User\",\"message\":\"Hi.\"}}"
+  ],
+  "expect": {
+    "read_error": true
+  }
+}

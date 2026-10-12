@@ -1,0 +1,76 @@
+{
+  "v": 1,
+  "about": "A log recorded at ATIF-v1.7 reads whole and renders at the current document version; the recording keeps what it declared.",
+  "log": [
+    "{\"record\":\"session\",\"schema_version\":\"ATIF-v1.7\",\"at\":1759000000000,\"session\":{\"id\":\"conf-v17\",\"model\":\"example/model-1\",\"door\":\"example\",\"repository\":\"\",\"directive\":\"\",\"state\":\"\",\"seconds\":0,\"version\":\"0.0.9\"}}",
+    "{\"record\":\"step\",\"step\":{\"at\":1759000000100,\"source\":\"User\",\"message\":\"Hi.\"}}",
+    "{\"record\":\"end\",\"at\":1759000000900,\"state\":\"ended\"}"
+  ],
+  "expect": {
+    "read_error": false,
+    "whole": true,
+    "whole_ok": true,
+    "state": "ended",
+    "seconds": 0,
+    "schema_version": "ATIF-v1.7",
+    "trajectory_id": "conf-v17",
+    "unreadable_lines": 0,
+    "faults": [],
+    "step_count": 1,
+    "steps_digest": "eaed0c63533c5830f57e68570e02418685f159b24ca238e1167ed0825fbc36ba",
+    "document": {
+      "schema_version": "ATIF-v1.8",
+      "session_id": "conf-v17",
+      "trajectory_id": "conf-v17",
+      "agent": {
+        "name": "openagents-coder",
+        "version": "0.0.9",
+        "model_name": "example/model-1",
+        "extra": {
+          "door": "example"
+        }
+      },
+      "steps": [
+        {
+          "step_id": 1,
+          "timestamp": "2025-09-27T19:06:40.100Z",
+          "source": "user",
+          "message": "Hi."
+        }
+      ],
+      "final_metrics": {
+        "total_prompt_tokens": 0,
+        "total_completion_tokens": 0,
+        "total_steps": 1,
+        "extra": {
+          "door": "example",
+          "calls_total": 0,
+          "tool_calls_total": 0,
+          "tool_calls_failed": 0,
+          "decision_calls": {
+            "total": 0,
+            "by_name": []
+          },
+          "reads_total": 0,
+          "search_calls_total": 0,
+          "largest_tool_result_chars": 0,
+          "median_inter_round_text_chars": 0,
+          "wall_seconds": 0,
+          "waste": {
+            "repeated_calls": 0,
+            "wasted_ms": 0,
+            "repeated": []
+          }
+        }
+      },
+      "extra": {
+        "exporter": "openagents.atif.v1",
+        "faults": [],
+        "repository": "",
+        "directive": "Hi.",
+        "state": "ended",
+        "unreadable_lines": 0
+      }
+    }
+  }
+}

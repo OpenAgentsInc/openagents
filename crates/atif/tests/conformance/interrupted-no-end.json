@@ -1,0 +1,83 @@
+{
+  "v": 1,
+  "about": "No end record: the session reads back interrupted, and its wall time runs to the last step.",
+  "log": [
+    "{\"record\":\"session\",\"schema_version\":\"ATIF-v1.8\",\"at\":1790553600000,\"session\":{\"id\":\"conf-interrupted\",\"model\":\"example/model-1\",\"door\":\"example\",\"repository\":\"\",\"directive\":\"Write the doc.\",\"state\":\"\",\"seconds\":0,\"version\":\"0.1.0\"}}",
+    "{\"record\":\"step\",\"step\":{\"at\":1790553600100,\"source\":\"User\",\"message\":\"Write the doc.\"}}",
+    "{\"record\":\"step\",\"step\":{\"at\":1790553661200,\"source\":\"Agent\",\"message\":\"Working.\"}}"
+  ],
+  "expect": {
+    "read_error": false,
+    "whole": false,
+    "whole_ok": false,
+    "state": "interrupted",
+    "seconds": 61,
+    "schema_version": "ATIF-v1.8",
+    "trajectory_id": "conf-interrupted",
+    "unreadable_lines": 0,
+    "faults": [],
+    "step_count": 2,
+    "steps_digest": "73960f388911305add28e9b360e30bc60070ee4110daa3e2377c7715bc1dcb08",
+    "document": {
+      "schema_version": "ATIF-v1.8",
+      "session_id": "conf-interrupted",
+      "trajectory_id": "conf-interrupted",
+      "agent": {
+        "name": "openagents-coder",
+        "version": "0.1.0",
+        "model_name": "example/model-1",
+        "extra": {
+          "door": "example"
+        }
+      },
+      "steps": [
+        {
+          "step_id": 1,
+          "timestamp": "2026-09-28T00:00:00.100Z",
+          "source": "user",
+          "message": "Write the doc."
+        },
+        {
+          "step_id": 2,
+          "timestamp": "2026-09-28T00:01:01.200Z",
+          "source": "agent",
+          "message": "Working.",
+          "model_name": "example/model-1"
+        }
+      ],
+      "final_metrics": {
+        "total_prompt_tokens": 0,
+        "total_completion_tokens": 0,
+        "total_steps": 2,
+        "extra": {
+          "door": "example",
+          "calls_total": 0,
+          "tool_calls_total": 0,
+          "tool_calls_failed": 0,
+          "decision_calls": {
+            "total": 0,
+            "by_name": []
+          },
+          "reads_total": 0,
+          "search_calls_total": 0,
+          "largest_tool_result_chars": 0,
+          "median_inter_round_text_chars": 0,
+          "wall_seconds": 61,
+          "waste": {
+            "repeated_calls": 0,
+            "wasted_ms": 0,
+            "repeated": []
+          }
+        }
+      },
+      "extra": {
+        "exporter": "openagents.atif.v1",
+        "faults": [],
+        "repository": "",
+        "directive": "Write the doc.",
+        "state": "interrupted",
+        "unreadable_lines": 0
+      }
+    }
+  }
+}

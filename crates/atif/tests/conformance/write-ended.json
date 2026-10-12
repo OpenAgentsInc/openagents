@@ -1,0 +1,144 @@
+{
+  "v": 1,
+  "about": "Writing then reading: a finished log comes back whole, and its steps digest what the document exports.",
+  "write": {
+    "session": {
+      "id": "conf-write",
+      "model": "example/model-1",
+      "door": "example",
+      "repository": "/repo",
+      "directive": "",
+      "state": "",
+      "seconds": 0,
+      "version": "0.1.0"
+    },
+    "steps": [
+      {
+        "at": 1790553600100,
+        "source": "User",
+        "message": "Fix the typo."
+      },
+      {
+        "at": 1790553601200,
+        "source": "Agent",
+        "message": "Done.",
+        "call": {
+          "id": "c1",
+          "name": "shell",
+          "arguments": {
+            "command": "sed -i s/teh/the/ README.md"
+          },
+          "output": "",
+          "outcome": "Completed",
+          "milliseconds": 340
+        },
+        "tokens": [
+          812,
+          64
+        ],
+        "milliseconds": 900
+      }
+    ],
+    "end": "ended"
+  },
+  "expect": {
+    "read_error": false,
+    "whole": true,
+    "whole_ok": true,
+    "state": "ended",
+    "schema_version": "ATIF-v1.8",
+    "trajectory_id": "conf-write",
+    "unreadable_lines": 0,
+    "faults": [],
+    "step_count": 2,
+    "steps_digest": "41533840c31034b90fb385c1e268e5bc467b46c20ed1662a103e2bd91187435a",
+    "document": {
+      "schema_version": "ATIF-v1.8",
+      "session_id": "conf-write",
+      "trajectory_id": "conf-write",
+      "agent": {
+        "name": "openagents-coder",
+        "version": "0.1.0",
+        "model_name": "example/model-1",
+        "extra": {
+          "door": "example"
+        }
+      },
+      "steps": [
+        {
+          "step_id": 1,
+          "timestamp": "2026-09-28T00:00:00.100Z",
+          "source": "user",
+          "message": "Fix the typo."
+        },
+        {
+          "step_id": 2,
+          "timestamp": "2026-09-28T00:00:01.200Z",
+          "source": "agent",
+          "message": "Done.",
+          "model_name": "example/model-1",
+          "tool_calls": [
+            {
+              "tool_call_id": "c1",
+              "function_name": "shell",
+              "arguments": {
+                "command": "sed -i s/teh/the/ README.md"
+              }
+            }
+          ],
+          "observation": {
+            "results": [
+              {
+                "source_call_id": "c1",
+                "content": "",
+                "extra": {
+                  "status": "completed",
+                  "duration_ms": 340
+                }
+              }
+            ]
+          },
+          "metrics": {
+            "prompt_tokens": 812,
+            "completion_tokens": 64
+          },
+          "extra": {
+            "duration_ms": 900
+          }
+        }
+      ],
+      "final_metrics": {
+        "total_prompt_tokens": 812,
+        "total_completion_tokens": 64,
+        "total_steps": 2,
+        "extra": {
+          "door": "example",
+          "calls_total": 1,
+          "tool_calls_total": 1,
+          "tool_calls_failed": 0,
+          "decision_calls": {
+            "total": 0,
+            "by_name": []
+          },
+          "reads_total": 1,
+          "search_calls_total": 0,
+          "largest_tool_result_chars": 0,
+          "median_inter_round_text_chars": 0,
+          "waste": {
+            "repeated_calls": 0,
+            "wasted_ms": 0,
+            "repeated": []
+          }
+        }
+      },
+      "extra": {
+        "exporter": "openagents.atif.v1",
+        "faults": [],
+        "repository": "/repo",
+        "directive": "Fix the typo.",
+        "state": "ended",
+        "unreadable_lines": 0
+      }
+    }
+  }
+}

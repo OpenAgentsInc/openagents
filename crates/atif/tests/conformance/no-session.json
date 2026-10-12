@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "about": "A file with no session record is not a session log: read fails even though the lines fault as before_session.",
+  "log": [
+    "{\"record\":\"step\",\"step\":{\"at\":1790553600100,\"source\":\"User\",\"message\":\"Hi.\"}}",
+    "{\"record\":\"end\",\"at\":1790553600900,\"state\":\"ended\"}"
+  ],
+  "expect": {
+    "read_error": true
+  }
+}

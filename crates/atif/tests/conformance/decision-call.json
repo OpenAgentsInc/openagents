@@ -1,0 +1,130 @@
+{
+  "v": 1,
+  "about": "A decision call is a first-class call: the document counts it and exports the extra evidence beside the wire fields.",
+  "log": [
+    "{\"record\":\"session\",\"schema_version\":\"ATIF-v1.8\",\"at\":1790553600000,\"session\":{\"id\":\"conf-decision\",\"model\":\"example/model-1\",\"door\":\"example\",\"repository\":\"\",\"directive\":\"\",\"state\":\"\",\"seconds\":0,\"version\":\"0.1.0\"}}",
+    "{\"record\":\"step\",\"step\":{\"at\":1790553600100,\"source\":\"User\",\"message\":\"Where does this go?\"}}",
+    "{\"record\":\"step\",\"step\":{\"at\":1790553600200,\"source\":\"Agent\",\"message\":\"Routing.\",\"call\":{\"id\":\"d1\",\"name\":\"classify\",\"arguments\":{\"state\":{\"text\":\"Where does this go?\"}},\"output\":\"\",\"outcome\":\"Completed\",\"milliseconds\":210,\"extra\":{\"schema\":\"openagents.decision-call.v1\",\"door\":\"local\",\"model\":\"jev-latest\",\"state_digest\":\"sha256:0000000000000000000000000000000000000000000000000000000000000001\",\"questions_digest\":\"sha256:0000000000000000000000000000000000000000000000000000000000000002\",\"question_ids\":[\"route\"],\"answers\":{\"route\":{\"choice\":\"docs\",\"confidence\":0.91}}}}}}",
+    "{\"record\":\"end\",\"at\":1790553600900,\"state\":\"ended\"}"
+  ],
+  "expect": {
+    "read_error": false,
+    "whole": true,
+    "whole_ok": true,
+    "state": "ended",
+    "seconds": 0,
+    "schema_version": "ATIF-v1.8",
+    "trajectory_id": "conf-decision",
+    "unreadable_lines": 0,
+    "faults": [],
+    "step_count": 2,
+    "steps_digest": "440b310dbd752727eb7a8034fbb7bf012f09c6ce6f32760c801f63042a300bb5",
+    "document": {
+      "schema_version": "ATIF-v1.8",
+      "session_id": "conf-decision",
+      "trajectory_id": "conf-decision",
+      "agent": {
+        "name": "openagents-coder",
+        "version": "0.1.0",
+        "model_name": "example/model-1",
+        "extra": {
+          "door": "example"
+        }
+      },
+      "steps": [
+        {
+          "step_id": 1,
+          "timestamp": "2026-09-28T00:00:00.100Z",
+          "source": "user",
+          "message": "Where does this go?"
+        },
+        {
+          "step_id": 2,
+          "timestamp": "2026-09-28T00:00:00.200Z",
+          "source": "agent",
+          "message": "Routing.",
+          "model_name": "example/model-1",
+          "tool_calls": [
+            {
+              "tool_call_id": "d1",
+              "function_name": "classify",
+              "arguments": {
+                "state": {
+                  "text": "Where does this go?"
+                }
+              },
+              "extra": {
+                "schema": "openagents.decision-call.v1",
+                "door": "local",
+                "model": "jev-latest",
+                "state_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+                "questions_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+                "question_ids": [
+                  "route"
+                ],
+                "answers": {
+                  "route": {
+                    "choice": "docs",
+                    "confidence": 0.91
+                  }
+                }
+              }
+            }
+          ],
+          "observation": {
+            "results": [
+              {
+                "source_call_id": "d1",
+                "content": "",
+                "extra": {
+                  "status": "completed",
+                  "duration_ms": 210
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "final_metrics": {
+        "total_prompt_tokens": 0,
+        "total_completion_tokens": 0,
+        "total_steps": 2,
+        "extra": {
+          "door": "example",
+          "calls_total": 1,
+          "tool_calls_total": 0,
+          "tool_calls_failed": 0,
+          "decision_calls": {
+            "total": 1,
+            "by_name": [
+              {
+                "name": "classify",
+                "asked": 1,
+                "failed": 0,
+                "duration_ms": 210
+              }
+            ]
+          },
+          "reads_total": 0,
+          "search_calls_total": 0,
+          "largest_tool_result_chars": 0,
+          "median_inter_round_text_chars": 0,
+          "wall_seconds": 0,
+          "waste": {
+            "repeated_calls": 0,
+            "wasted_ms": 0,
+            "repeated": []
+          }
+        }
+      },
+      "extra": {
+        "exporter": "openagents.atif.v1",
+        "faults": [],
+        "repository": "",
+        "directive": "Where does this go?",
+        "state": "ended",
+        "unreadable_lines": 0
+      }
+    }
+  }
+}

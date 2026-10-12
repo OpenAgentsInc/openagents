@@ -1,0 +1,87 @@
+{
+  "v": 1,
+  "about": "A step record whose payload does not read as a step is a bad_step fault; the other steps still land.",
+  "log": [
+    "{\"record\":\"session\",\"schema_version\":\"ATIF-v1.8\",\"at\":1790553600000,\"session\":{\"id\":\"conf-badstep\",\"model\":\"example/model-1\",\"door\":\"example\",\"repository\":\"\",\"directive\":\"\",\"state\":\"\",\"seconds\":0,\"version\":\"0.1.0\"}}",
+    "{\"record\":\"step\",\"step\":{\"at\":1790553600050}}",
+    "{\"record\":\"step\",\"step\":{\"at\":1790553600100,\"source\":\"User\",\"message\":\"Hi.\"}}",
+    "{\"record\":\"end\",\"at\":1790553600900,\"state\":\"ended\"}"
+  ],
+  "expect": {
+    "read_error": false,
+    "whole": false,
+    "whole_ok": false,
+    "state": "ended",
+    "seconds": 0,
+    "schema_version": "ATIF-v1.8",
+    "trajectory_id": "conf-badstep",
+    "unreadable_lines": 1,
+    "faults": [
+      {
+        "line": 2,
+        "kind": "bad_step"
+      }
+    ],
+    "step_count": 1,
+    "steps_digest": "1db6f3a1292c5cc4ac34df4fd4466d5c0dfb494fc16c3ccb7543e2ab7c8f4508",
+    "document": {
+      "schema_version": "ATIF-v1.8",
+      "session_id": "conf-badstep",
+      "trajectory_id": "conf-badstep",
+      "agent": {
+        "name": "openagents-coder",
+        "version": "0.1.0",
+        "model_name": "example/model-1",
+        "extra": {
+          "door": "example"
+        }
+      },
+      "steps": [
+        {
+          "step_id": 1,
+          "timestamp": "2026-09-28T00:00:00.100Z",
+          "source": "user",
+          "message": "Hi."
+        }
+      ],
+      "final_metrics": {
+        "total_prompt_tokens": 0,
+        "total_completion_tokens": 0,
+        "total_steps": 1,
+        "extra": {
+          "door": "example",
+          "calls_total": 0,
+          "tool_calls_total": 0,
+          "tool_calls_failed": 0,
+          "decision_calls": {
+            "total": 0,
+            "by_name": []
+          },
+          "reads_total": 0,
+          "search_calls_total": 0,
+          "largest_tool_result_chars": 0,
+          "median_inter_round_text_chars": 0,
+          "wall_seconds": 0,
+          "waste": {
+            "repeated_calls": 0,
+            "wasted_ms": 0,
+            "repeated": []
+          }
+        }
+      },
+      "extra": {
+        "exporter": "openagents.atif.v1",
+        "faults": [
+          {
+            "line": 2,
+            "fault": "bad_step"
+          }
+        ],
+        "repository": "",
+        "directive": "Hi.",
+        "state": "ended",
+        "unreadable_lines": 1
+      }
+    }
+  }
+}
