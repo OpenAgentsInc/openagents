@@ -284,6 +284,7 @@ pub(crate) fn choose(
                 Some(crate::bundled_runtime::claude_print::Turn {
                     resume: Some(session),
                     key: Some(own),
+                    read_only: false,
                 }),
             )
         }

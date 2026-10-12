@@ -108,6 +108,9 @@ struct RunArguments {
 #[serde(deny_unknown_fields)]
 struct TaskArguments {
     task: String,
+    /// Run without changing any file (#11470).
+    #[serde(default)]
+    read_only: bool,
 }
 
 #[derive(Deserialize)]
@@ -118,6 +121,10 @@ struct AcpArguments {
     /// The model the agent runs; only `devin-cli` takes one.
     #[serde(default)]
     model: Option<String>,
+    /// Run without changing any file, held to it where the agent allows
+    /// (#11470).
+    #[serde(default)]
+    read_only: bool,
 }
 
 impl ExecutionSettings {
@@ -567,7 +574,7 @@ impl ExecutionSettings {
             }
             "acp_subagent" if self.registered(ToolBinding::AcpSubagent) => {
                 let args: AcpArguments = serde_json::from_value(arguments).map_err(
-                    |_| "acp_subagent requires an agent ID and task, with no other fields.",
+                    |_| "acp_subagent takes an agent ID and a task, and optionally a model and read_only.",
                 )?;
                 // A Cloud computer's background task names the engine
                 // `claude`: the unmodified binary in print mode on the login
@@ -586,24 +593,26 @@ impl ExecutionSettings {
                 // An external engine reaches the channel through the
                 // `coder comms` command; the preamble names the folder and
                 // the member. Without a channel, the task is unchanged.
-                let member = crate::comms::Channel::member_name(&args.agent, &args.task);
-                let task = match &self.channel {
-                    Some(channel) => {
-                        let _ = channel.join(&member);
-                        format!(
+                // The member is the agent id and a number, never the task
+                // text (#11467).
+                let task =
+                    match self.channel.as_ref().and_then(|channel| {
+                        Some((channel, channel.join_numbered(&args.agent).ok()?))
+                    }) {
+                        Some((channel, member)) => format!(
                             "{}\n\n{}",
                             crate::comms::preamble(channel, &member, "coder"),
                             args.task
-                        )
-                    }
-                    None => args.task.clone(),
-                };
+                        ),
+                        None => args.task.clone(),
+                    };
                 let mut child = |event| emit(event);
-                bundled_runtime::acp(
+                bundled_runtime::acp_with(
                     agent,
                     &task,
                     &self.cwd,
                     args.model.as_deref(),
+                    args.read_only,
                     cancel,
                     &mut child,
                 )
@@ -628,7 +637,7 @@ impl ExecutionSettings {
             }
             "microcoder" if self.registered(ToolBinding::Microcoder) => {
                 let args: TaskArguments = serde_json::from_value(arguments)
-                    .map_err(|_| "microcoder requires a task and no other fields.")?;
+                    .map_err(|_| "microcoder takes a task and, optionally, read_only.")?;
                 let judge = self.jev_client()?;
                 let keys: Vec<ApiKey> = self
                     .redaction_keys
@@ -653,6 +662,7 @@ impl ExecutionSettings {
                         let mut output = bundled_runtime::microcoder_openrouter(
                             &args.task,
                             &self.cwd,
+                            args.read_only,
                             provider.client,
                             provider.model,
                             provider.effort,
@@ -670,7 +680,13 @@ impl ExecutionSettings {
                     None => {
                         let mut child = |event| emit(event);
                         bundled_runtime::microcoder_local(
-                            &args.task, &self.cwd, judge, &keys, cancel, &mut child,
+                            &args.task,
+                            &self.cwd,
+                            args.read_only,
+                            judge,
+                            &keys,
+                            cancel,
+                            &mut child,
                         )
                         .await
                     }

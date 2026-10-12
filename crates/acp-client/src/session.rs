@@ -190,6 +190,27 @@ impl Session {
         self.agent.stderr_tail()
     }
 
+    /// Switch the open session to the agent's mode `mode`.
+    ///
+    /// # Errors
+    /// See [`ClientError`].
+    pub async fn set_mode(
+        &mut self,
+        mode: &str,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<(), ClientError> {
+        let session = self.opened.session_id.clone();
+        let wait = Wait {
+            silence: HANDSHAKE,
+            cancel,
+            on_cancel: OnCancel::Abandon,
+        };
+        self.agent
+            .client
+            .set_mode(&session, mode, wait, &mut Ignore)
+            .await
+    }
+
     /// Run one prompt turn. While it runs, `cancel` returning `true` sends
     /// `session/cancel` and waits up to `grace` for the agent to end the
     /// turn as `cancelled`. `silence` bounds how long the agent may write

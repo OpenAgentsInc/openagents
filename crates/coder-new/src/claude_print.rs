@@ -122,6 +122,9 @@ pub(crate) struct Turn {
     /// The person's own API key for this turn only; never a subscription
     /// token.
     pub key: Option<ApiKey>,
+    /// A read-only task: only reading, searching and listing files
+    /// (#11470).
+    pub read_only: bool,
 }
 
 thread_local! {
@@ -241,7 +244,7 @@ pub(super) async fn run(
             None => ["--session-id", session.as_str()],
         })
         .current_dir(cwd);
-    if crate::approval::gated() {
+    if crate::approval::gated() || turn.read_only {
         command.args([
             "--safe-mode",
             "--restricted",
@@ -629,6 +632,25 @@ mod tests {
         assert!(args.contains("--tools Read,Glob,Grep"));
         assert!(args.contains("--permission-mode dontAsk"));
         assert!(!args.contains("bypassPermissions"));
+        // A read-only task is held to reading, ungated too (#11470), and
+        // names the folder it ran in (#11469).
+        let held = super::acp_with(
+            &agent,
+            "check the fixture",
+            dir.path(),
+            None,
+            true,
+            &Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+        )
+        .await
+        .unwrap();
+        let args = std::fs::read_to_string(dir.path().join("args")).unwrap();
+        assert!(args.contains("--tools Read,Glob,Grep"), "{args}");
+        assert!(!args.contains("bypassPermissions"), "{args}");
+        assert_eq!(held["permissions"]["mode"], "read-only");
+        assert_eq!(held["permissions"]["enforced"], true);
+        assert_eq!(held["cwd"], dir.path().display().to_string());
     }
 
     /// #11295: Continue on your key resumes the kept conversation on the
@@ -654,6 +676,7 @@ mod tests {
         let turn = Turn {
             resume: Some(SESSION.into()),
             key: Some(ApiKey::new("sk-ant-api03-fixture")),
+            read_only: false,
         };
         let answer = run(
             &program,
@@ -678,6 +701,7 @@ mod tests {
         let token = Turn {
             resume: Some(SESSION.into()),
             key: Some(ApiKey::new("sk-ant-oat01-fixture")),
+            read_only: false,
         };
         let refused = run(
             &program,

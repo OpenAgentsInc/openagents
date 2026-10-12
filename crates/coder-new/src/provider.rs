@@ -933,6 +933,7 @@ impl Provider {
             crate::bundled_runtime::microcoder_local(
                 &context.task,
                 &execution.cwd,
+                false,
                 execution.jev_client().ok().flatten(),
                 &keys,
                 cancel,

@@ -297,7 +297,7 @@ pub async fn run_command(
     let directory = cwd
         .canonicalize()
         .map_err(|_| "The working directory is unavailable.".to_string())?;
-    let boundary = command_boundary(&directory)?;
+    let boundary = command_boundary(&directory, false)?;
     let sink = RefCell::new(emit);
     let checkout = Checkout {
         directory,
@@ -335,16 +335,16 @@ pub fn acp_tool_definition(agents: &[AcpAgent]) -> Option<Value> {
     }
     Some(json!({"type":"function","function":{
         "name":"acp_subagent",
-        "description":"Delegate a task to a registered local agent through ACP or the built-in native Codex bridge. Use exactly the agent the user names; never substitute another agent. If that agent is unavailable, report the reason and let the user choose. The host supplies the executable. Include the task, relevant context, and the result you need. This starts one child session, streams its work, and closes it when the task ends. Agents start with full permissions by default: native Codex has no sandbox or approval prompts, and ACP permission requests are approved. Explicit host approval policies still apply.",
-        "parameters":{"type":"object","properties":{"agent":{"type":"string","enum":ids},"task":{"type":"string","minLength":1,"maxLength":65536},"model":{"type":"string","description":"The model the agent runs; only devin-cli takes one."}},"required":["agent","task"],"additionalProperties":false}
+        "description":"Delegate a task to a registered local agent through ACP or the built-in native Codex bridge. Use exactly the agent the user names; never substitute another agent. If that agent is unavailable, report the reason and let the user choose. The host supplies the executable. Include the task, relevant context, and the result you need. This starts one child session in the current working directory, streams its work, and closes it when the task ends; the result names the folder under cwd. Agents start with full permissions by default: native Codex has no sandbox or approval prompts, and ACP permission requests are approved. Explicit host approval policies still apply.",
+        "parameters":{"type":"object","properties":{"agent":{"type":"string","enum":ids},"task":{"type":"string","minLength":1,"maxLength":65536},"model":{"type":"string","description":"The model the agent runs; only devin-cli takes one."},"read_only":{"type":"boolean","description":"Set for an audit, review or check that must not change files. Codex, Claude Code and Cursor are held to it; another agent is switched to its own read-only mode when it has one. The result's permissions field says the mode it ran in and whether it was enforced."}},"required":["agent","task"],"additionalProperties":false}
     }}))
 }
 
 pub fn microcoder_tool_definition() -> Value {
     json!({"type":"function","function":{
         "name":"microcoder",
-        "description":"Hand a concrete coding task to the bundled Microcoder loop. The loop uses structured next actions, Jev judgments when configured, and commands bounded to writes in the current checkout. State the desired result and relevant constraints. It runs on the OpenRouter plugin's saved model when an OpenRouter key is saved in /plugins, otherwise on this computer's Codex login, then its Claude Code login, then the OpenAgents gateway, falling over to the next one mid-task. The delegation runs until completion or cancellation and returns the reply, the provider that ran it, the actual model, token usage, the cost basis (billed or list_price), and the ending.",
-        "parameters":{"type":"object","properties":{"task":{"type":"string","minLength":1,"maxLength":65536}},"required":["task"],"additionalProperties":false}
+        "description":"Hand a concrete coding task to the bundled Microcoder loop. The loop uses structured next actions, Jev judgments when configured, and commands bounded to writes in the current checkout. State the desired result and relevant constraints. It runs on the OpenRouter plugin's saved model when an OpenRouter key is saved in /plugins, otherwise on this computer's Codex login, then its Claude Code login, then the OpenAgents gateway, falling over to the next one mid-task. The delegation runs until completion or cancellation and returns the reply, the provider that ran it, the actual model, token usage, the cost basis (billed or list_price), the ending, the folder its commands ran in (cwd), and its permissions.",
+        "parameters":{"type":"object","properties":{"task":{"type":"string","minLength":1,"maxLength":65536},"read_only":{"type":"boolean","description":"Set for an audit, review or check that must not change files: commands then run where they cannot write."}},"required":["task"],"additionalProperties":false}
     }})
 }
 
@@ -602,6 +602,36 @@ pub async fn acp(
     cancel: &Arc<AtomicBool>,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Value, String> {
+    acp_with(agent, task, cwd, model, false, cancel, emit).await
+}
+
+/// The ids of agent modes that make no changes, in the order they are
+/// tried for a read-only task (#11470).
+const READ_ONLY_MODES: [&str; 4] = ["read-only", "readonly", "ask", "plan"];
+
+/// What a delegation reports about its access (#11470): the mode it ran
+/// in, whether that mode was enforced or only asked for in words, and how.
+fn permissions(read_only: bool, enforced: bool, how: &str) -> Value {
+    json!({
+        "mode": if read_only { "read-only" } else { "full" },
+        "enforced": enforced,
+        "how": how,
+    })
+}
+
+/// [`acp`] on a task that may be read-only: each engine is held to it the
+/// way it can be, and the result says which way under `permissions`, with
+/// the folder it ran in under `cwd` (#11469, #11470).
+#[allow(clippy::too_many_lines)]
+pub async fn acp_with(
+    agent: &AcpAgent,
+    task: &str,
+    cwd: &Path,
+    model: Option<&str>,
+    read_only: bool,
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Value, String> {
     if !crate::approval::tools_allowed() {
         return Err(
             "The crew charter refuses ACP and Codex delegation, including read-only work.".into(),
@@ -636,9 +666,30 @@ pub async fn acp(
         ))
     }
     .ok_or_else(|| format!("The executable for {} is unavailable.", agent.name))?;
+    let cwd_text = cwd.display().to_string();
+    let with = |mut result: Value, access: Value| {
+        result["cwd"] = json!(cwd_text);
+        result["permissions"] = access;
+        result
+    };
     if agent.transport == AgentTransport::CodexCli {
-        let sandbox = codex_sandbox()?;
-        return codex_cli(&program, task, cwd, sandbox, cancel, emit).await;
+        let sandbox = if read_only {
+            codex_sandbox().map(|_| CodexSandbox::ReadOnly)?
+        } else {
+            codex_sandbox()?
+        };
+        let access = permissions(
+            sandbox == CodexSandbox::ReadOnly,
+            true,
+            if sandbox == CodexSandbox::ReadOnly {
+                "Codex's read-only sandbox"
+            } else {
+                "Codex runs with no sandbox"
+            },
+        );
+        return codex_cli(&program, task, cwd, sandbox, cancel, emit)
+            .await
+            .map(|result| with(result, access));
     }
     if agent.transport == AgentTransport::ClaudeCli {
         // An automated run on a Claude plan login takes a plan slot first
@@ -651,7 +702,21 @@ pub async fn acp(
                 Some(crate::claude_plan::admit(cancel, &|name| std::env::var(name).ok()).await?)
             }
         };
-        return claude_print::run(&program, task, cwd, cancel, emit, turn).await;
+        let mut turn = turn;
+        turn.read_only = read_only;
+        let restricted = read_only || crate::approval::gated();
+        let access = permissions(
+            restricted,
+            true,
+            if restricted {
+                "Claude Code may only read, search and list files"
+            } else {
+                "Claude Code runs with its permission asks skipped"
+            },
+        );
+        return claude_print::run(&program, task, cwd, cancel, emit, turn)
+            .await
+            .map(|result| with(result, access));
     }
     let cursor = agent.id == "cursor";
     let admitted = std::env::var("OA_CODER_CLOUD_CREDENTIAL_NAMES").unwrap_or_default();
@@ -681,7 +746,9 @@ pub async fn acp(
         ("devin-cli", Some(model)) => acp_client::devin::arguments(model),
         _ => agent.arguments.clone(),
     };
-    let mode = agent.mode.clone().or_else(|| {
+    // Cursor's ask mode makes no edits and runs no commands.
+    let ask = (read_only && cursor).then(|| acp_client::cursor::Mode::Ask.id().to_owned());
+    let mode = ask.or_else(|| agent.mode.clone()).or_else(|| {
         if cursor {
             return Some(acp_client::cursor::Mode::Agent.id().to_owned());
         }
@@ -729,6 +796,51 @@ pub async fn acp(
                 }
                 _ => failure.to_string(),
             })?;
+    // A read-only task switches the agent to a mode of its own that makes
+    // no changes, when it offers one; its asks to change anything are
+    // refused either way.
+    let held = if !read_only {
+        None
+    } else if cursor {
+        Some(acp_client::cursor::Mode::Ask.id().to_owned())
+    } else {
+        let offered = session
+            .opened
+            .modes
+            .as_ref()
+            .map(|modes| modes.available_modes.clone())
+            .unwrap_or_default();
+        match READ_ONLY_MODES
+            .iter()
+            .find(|wanted| offered.iter().any(|mode| mode.id == **wanted))
+        {
+            Some(wanted) => match session.set_mode(wanted, &canceled).await {
+                Ok(()) => Some((*wanted).to_owned()),
+                Err(error) => {
+                    session.close(Duration::from_secs(2)).await;
+                    return Err(format!(
+                        "{} could not switch to its read-only mode: {error}",
+                        agent.name
+                    ));
+                }
+            },
+            None => None,
+        }
+    };
+    let access = match (&held, read_only) {
+        (Some(mode), _) => permissions(true, true, &format!("the agent's {mode} mode")),
+        (None, true) => permissions(
+            true,
+            false,
+            "This agent has no read-only mode. Its asks to change files are refused, but it can still change them without asking.",
+        ),
+        (None, false) if crate::approval::gated() => permissions(
+            false,
+            false,
+            "The agent's asks to change files are refused.",
+        ),
+        (None, false) => permissions(false, false, "The agent's asks are approved."),
+    };
     let id = session.id().to_owned();
     let model = session.opened.model().map(str::to_owned);
     if let Some(model) = &model {
@@ -738,6 +850,7 @@ pub async fn acp(
         emit,
         text: String::new(),
         tools: BTreeMap::new(),
+        read_only,
     };
     let result = session
         .prompt(
@@ -750,7 +863,7 @@ pub async fn acp(
         .await;
     let text = handler.text;
     let group_clear = session.close(Duration::from_secs(2)).await;
-    result.map(|reply| json!({"session":id,"reply":text,"model":model,"stop_reason":reply.stop_reason.as_str(),"usage":reply.usage,"group_clear":group_clear})).map_err(|error| format!("The agent could not finish the task: {error}.{}", still_running(group_clear)))
+    result.map(|reply| with(json!({"session":id,"reply":text,"model":model,"stop_reason":reply.stop_reason.as_str(),"usage":reply.usage,"group_clear":group_clear}), access)).map_err(|error| format!("The agent could not finish the task: {error}.{}", still_running(group_clear)))
 }
 
 /// Refuse a Cursor delegation that has neither a credential variable nor a
@@ -1054,6 +1167,14 @@ struct AcpEvents<'a> {
     emit: &'a mut dyn FnMut(RuntimeEvent),
     text: String,
     tools: BTreeMap<String, (String, Value)>,
+    /// A read-only task: only asks to read, search, think or fetch are
+    /// approved (#11470).
+    read_only: bool,
+}
+
+/// Whether an ACP tool kind only looks, never changes anything.
+fn looks_only(kind: Option<&str>) -> bool {
+    matches!(kind, Some("read" | "search" | "think" | "fetch"))
 }
 
 impl Handler for AcpEvents<'_> {
@@ -1061,7 +1182,9 @@ impl Handler for AcpEvents<'_> {
         &mut self,
         request: &acp_client::wire::PermissionRequest,
     ) -> acp_client::wire::PermissionAnswer {
-        let option = if !crate::approval::gated() {
+        let option = if !crate::approval::gated()
+            && (!self.read_only || looks_only(request.tool_call.kind.as_deref()))
+        {
             request.allow()
         } else {
             request.reject()
@@ -1209,6 +1332,7 @@ fn validate_task(task: &str) -> Result<(), String> {
 pub async fn microcoder_local(
     task: &str,
     cwd: &Path,
+    read_only: bool,
     jev: Option<jev::Client>,
     redaction_keys: &[ApiKey],
     cancel: &Arc<AtomicBool>,
@@ -1218,15 +1342,24 @@ pub async fn microcoder_local(
     // Tests never resolve this computer's real logins or write to its home.
     #[cfg(test)]
     {
-        let _ = (cwd, jev, redaction_keys, cancel, emit);
+        let _ = (cwd, read_only, jev, redaction_keys, cancel, emit);
         return Err("The local model logins are unavailable in tests.".into());
     }
     #[cfg(not(test))]
     {
         let session = format!("coder-new-{}", std::process::id());
         let generator = coder::local_chain::local_generator(&session, None, None)?;
-        let mut result =
-            run_microcoder(task, cwd, &generator, jev, redaction_keys, cancel, emit).await?;
+        let mut result = run_microcoder_with(
+            task,
+            cwd,
+            read_only,
+            &generator,
+            jev,
+            redaction_keys,
+            cancel,
+            emit,
+        )
+        .await?;
         result["provider"] = json!(generator.provider());
         let fell_back_from = generator.fell_back_from();
         if !fell_back_from.is_empty() {
@@ -1258,8 +1391,17 @@ pub async fn microcoder_gateway(
     vars.retain(|(name, _)| name != "CLAUDE_BIN");
     vars.push(("CLAUDE_BIN".into(), "/dev/null".into()));
     set_child_env(vars);
-    let mut result =
-        run_microcoder(task, cwd, &generator, jev, redaction_keys, cancel, emit).await?;
+    let mut result = run_microcoder_with(
+        task,
+        cwd,
+        false,
+        &generator,
+        jev,
+        redaction_keys,
+        cancel,
+        emit,
+    )
+    .await?;
     result["provider"] = json!(generator.provider());
     let refusals = generator.refusals();
     if !refusals.is_empty() {
@@ -1271,6 +1413,7 @@ pub async fn microcoder_gateway(
 pub async fn microcoder_openrouter(
     task: &str,
     cwd: &Path,
+    read_only: bool,
     client: openrouter::Client,
     model: String,
     effort: Option<String>,
@@ -1285,16 +1428,53 @@ pub async fn microcoder_openrouter(
         model,
         effort,
     };
-    let mut result =
-        run_microcoder(task, cwd, &generator, jev, redaction_keys, cancel, emit).await?;
+    let mut result = run_microcoder_with(
+        task,
+        cwd,
+        read_only,
+        &generator,
+        jev,
+        redaction_keys,
+        cancel,
+        emit,
+    )
+    .await?;
     result["usage"] = json!({"cost": result["outcome"]["model_usd"]});
     result["provider"] = json!("openrouter");
     Ok(result)
 }
 
+#[cfg(test)]
 async fn run_microcoder<G: Generate>(
     task: &str,
     cwd: &Path,
+    generator: &G,
+    jev: Option<jev::Client>,
+    redaction_keys: &[ApiKey],
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Value, String> {
+    run_microcoder_with(
+        task,
+        cwd,
+        false,
+        generator,
+        jev,
+        redaction_keys,
+        cancel,
+        emit,
+    )
+    .await
+}
+
+/// The Microcoder loop in `cwd`: every command runs in that folder, the
+/// result names it under `cwd` (#11469), and a read-only task's commands
+/// run where they cannot write, reported under `permissions` (#11470).
+#[allow(clippy::too_many_arguments)]
+async fn run_microcoder_with<G: Generate>(
+    task: &str,
+    cwd: &Path,
+    read_only: bool,
     generator: &G,
     jev: Option<jev::Client>,
     redaction_keys: &[ApiKey],
@@ -1306,8 +1486,15 @@ async fn run_microcoder<G: Generate>(
     }
     let directory = cwd
         .canonicalize()
-        .map_err(|_| "The working directory is unavailable.".to_string())?;
-    let boundary = command_boundary(&directory)?;
+        .map_err(|_| format!("The folder {} is unavailable.", cwd.display()))?;
+    let boundary = command_boundary(&directory, read_only)?;
+    let access = if read_only {
+        permissions(true, true, "commands run where they cannot change files")
+    } else if boundary.is_some() {
+        permissions(false, true, "commands may change files in this folder only")
+    } else {
+        permissions(false, false, "commands have full access")
+    };
     let sink = RefCell::new(emit);
     let environment = Checkout {
         directory: directory.clone(),
@@ -1319,8 +1506,13 @@ async fn run_microcoder<G: Generate>(
     let state = State {
         task: redact_text(task, redaction_keys),
         environment: format!(
-            "Working directory: {}. Commands have full filesystem and network access unless the host explicitly installs an approval policy.",
-            directory.display()
+            "Working directory: every command runs in {}. {}",
+            directory.display(),
+            if read_only {
+                "This task is read-only: commands cannot change files."
+            } else {
+                "Commands have full filesystem and network access unless the host explicitly installs an approval policy."
+            }
         ),
         ..State::default()
     };
@@ -1382,7 +1574,7 @@ async fn run_microcoder<G: Generate>(
         [basis] => json!(basis),
         _ => json!("mixed"),
     };
-    let mut result = json!({"reply":observer.reply,"model":observer.model,"tokens":observer.tokens,"cost_basis":cost_basis,"outcome":outcome});
+    let mut result = json!({"reply":observer.reply,"model":observer.model,"tokens":observer.tokens,"cost_basis":cost_basis,"outcome":outcome,"cwd":directory.display().to_string(),"permissions":access});
     for key in redaction_keys {
         crate::plugin_tools::redact_value(&mut result, key.expose());
     }
@@ -1479,7 +1671,22 @@ impl Judge for PluginJudge {
     }
 }
 
-fn command_boundary(directory: &Path) -> Result<Option<coder_boundary::Boundary>, String> {
+fn command_boundary(
+    directory: &Path,
+    read_only: bool,
+) -> Result<Option<coder_boundary::Boundary>, String> {
+    if read_only {
+        // A read-only task never runs unbounded: where the boundary cannot
+        // hold, the task is refused rather than run with write access.
+        return coder_boundary::Boundary::readonly()
+            .protecting(directory)
+            .owned_scratch_under(std::env::temp_dir())
+            .build()
+            .map(Some)
+            .map_err(|error| {
+                format!("Coder could not keep this task from changing files here: {error}")
+            });
+    }
     if !crate::approval::gated() {
         return Ok(None);
     }
@@ -1901,7 +2108,7 @@ mod tests {
         );
         let environment = Checkout {
             directory: cwd.clone(),
-            boundary: command_boundary(&cwd).unwrap(),
+            boundary: command_boundary(&cwd, false).unwrap(),
             cancel,
             redaction_keys: &[],
             events: None,
@@ -1941,6 +2148,7 @@ mod tests {
         .unwrap();
         let mut emit = |_| {};
         let mut handler = AcpEvents {
+            read_only: false,
             emit: &mut emit,
             text: String::new(),
             tools: BTreeMap::new(),
@@ -2392,6 +2600,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         let mut events = vec![];
         let input = json!({"path":"fixture.rs"});
         let mut handler = AcpEvents {
+            read_only: false,
             emit: &mut |event| events.push(event),
             text: String::new(),
             tools: BTreeMap::new(),
@@ -2840,6 +3049,96 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
                 |event| matches!(event,RuntimeEvent::Model(model) if model == "fixture/model")
             )
         );
+    }
+
+    /// A read-only Microcoder task runs its commands in the caller's folder
+    /// where they cannot write, and its result names that folder and the
+    /// enforced mode (#11469, #11470).
+    #[tokio::test]
+    async fn a_read_only_microcoder_task_runs_in_the_folder_and_cannot_write() {
+        use microcoder_loop::models::{Ask, Basis, Generated, NextAction};
+        struct Touching(std::cell::Cell<usize>);
+        impl Generate for Touching {
+            async fn generate(&self, _system: &str, _prompt: &str) -> Generated {
+                let first = self.0.get() == 0;
+                self.0.set(self.0.get() + 1);
+                Generated {
+                    action: Ok(NextAction {
+                        rationale: "Look.".into(),
+                        commands: if first {
+                            vec!["pwd > made; pwd".into()]
+                        } else {
+                            vec![]
+                        },
+                        view: vec![],
+                        freeze_tests: false,
+                        expand: vec![],
+                        finished: !first,
+                        reply: "Done.".into(),
+                        ask: Ask::None,
+                    }),
+                    model: "fixture/model".into(),
+                    prompt_tokens: 1,
+                    completion_tokens: 1,
+                    usd: Some(0.0),
+                    known_usd: 0.0,
+                    cost_unknown: None,
+                    usd_upper: Some(0.0),
+                    cost_basis: Basis::Billed,
+                    milliseconds: 1,
+                }
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        if coder_boundary::Boundary::readonly()
+            .protecting(dir.path())
+            .build()
+            .is_err()
+        {
+            return;
+        }
+        let folder = dir.path().canonicalize().unwrap();
+        let result = run_microcoder_with(
+            "Check the folder",
+            dir.path(),
+            true,
+            &Touching(std::cell::Cell::new(0)),
+            None,
+            &[],
+            &Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+        )
+        .await
+        .unwrap();
+        assert!(!dir.path().join("made").exists());
+        assert_eq!(result["cwd"], folder.display().to_string());
+        assert_eq!(result["permissions"]["mode"], "read-only");
+        assert_eq!(result["permissions"]["enforced"], true);
+    }
+
+    /// A read-only ACP task approves only the agent's asks to look (#11470).
+    #[test]
+    fn a_read_only_acp_task_refuses_asks_to_change_files() {
+        let _lock = crate::approval::test_lock().lock().unwrap();
+        let ask = |kind: &str| -> acp_client::wire::PermissionRequest {
+            serde_json::from_value(json!({"toolCall":{"kind":kind},"options":[{"optionId":"y","kind":"allow_once"},{"optionId":"n","kind":"reject_once"}]})).unwrap()
+        };
+        let mut emit = |_| {};
+        let mut handler = AcpEvents {
+            emit: &mut emit,
+            text: String::new(),
+            tools: BTreeMap::new(),
+            read_only: true,
+        };
+        let chosen = |answer| match answer {
+            acp_client::wire::PermissionAnswer::Selected(option) => option,
+            acp_client::wire::PermissionAnswer::Cancelled => String::new(),
+        };
+        assert_eq!(chosen(handler.permission(&ask("read"))), "y");
+        assert_eq!(chosen(handler.permission(&ask("edit"))), "n");
+        assert_eq!(chosen(handler.permission(&ask("execute"))), "n");
+        handler.read_only = false;
+        assert_eq!(chosen(handler.permission(&ask("edit"))), "y");
     }
 
     #[tokio::test]

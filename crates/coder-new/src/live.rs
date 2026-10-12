@@ -1232,7 +1232,7 @@ async fn local_turn(
         let task = local_task(&messages, &execution)?;
         let client = execution.jev_client()?;
         let result = crate::bundled_runtime::microcoder_local(
-            &task, &execution.cwd, client, &execution.redaction_keys,
+            &task, &execution.cwd, false, client, &execution.redaction_keys,
             &cancel, &mut events,
         ).await?;
         let mut reply = Streamed {
