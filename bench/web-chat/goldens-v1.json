@@ -544,6 +544,17 @@
           "speed": "model",
           "required": [["Coder"], ["install.sh", "https://openagents.com/download"]],
           "forbidden": ["I've fixed", "we've fixed", "I fixed the test"]
+        },
+        {
+          "id": "general.push_readme",
+          "$comment": "Writing, committing, or pushing a file to their repository is work on their code, not a question about what we can do (#11329).",
+          "phrasings": ["push a README to AtlantisPleb/finances", "Write a README.md file in my project folder. Then commit it.", "add a readme to example-org/finances and push it"],
+          "route": ["work.dispatch"],
+          "answers": [],
+          "tier": ["model", "opener", "grounded"],
+          "speed": "model",
+          "required": [["Coder"], ["install.sh", "https://openagents.com/download"]],
+          "forbidden": ["I've pushed", "I pushed", "I've committed", "I committed"]
         }
       ]
     },
