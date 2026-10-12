@@ -239,19 +239,47 @@ pub fn retry(retry: &SdkApiRetryMessage) -> RuntimeEvent {
     )
 }
 
-/// The notices for what failed to load when `session` started: an MCP
-/// server that did not connect or a plugin that did not load. Each shows
-/// once a session, though Claude Code reports them again each turn.
+/// How long the input's rail shows what failed to load.
+pub const LOAD_WARNING_FOR: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// One thing that failed to load when a session started.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum LoadProblem {
+    SignIn(String),
+    Failed(String),
+    Plugin(Option<String>),
+}
+
+/// Notes what failed to load when a session started, so the input's rail
+/// flashes it for a few seconds beside `claude` rather than the transcript
+/// keeping a row for it.
+pub fn note_load_problems(init: &claude_agent_sdk::protocol::SystemInit) {
+    if let Some(summary) = load_problems(init) {
+        *lock(&WARNING) = Some((summary, std::time::Instant::now()));
+    }
+}
+
+/// What the rail flashes at `now`: the newest load problems, for
+/// [`LOAD_WARNING_FOR`] after they arrived.
 #[must_use]
-pub fn load_problems(init: &claude_agent_sdk::protocol::SystemInit) -> Vec<RuntimeEvent> {
-    let mut lines = Vec::new();
+pub fn load_warning(now: std::time::Instant) -> Option<String> {
+    lock(&WARNING)
+        .as_ref()
+        .filter(|(_, at)| now.saturating_duration_since(*at) < LOAD_WARNING_FOR)
+        .map(|(summary, _)| summary.clone())
+}
+
+/// A short summary of what failed to load when `session` started: an MCP
+/// server that needs sign-in or did not connect, or a plugin that did not
+/// load. Each counts once a session, though Claude Code reports them again
+/// each turn, so a turn with nothing new has no summary.
+#[must_use]
+pub fn load_problems(init: &claude_agent_sdk::protocol::SystemInit) -> Option<String> {
+    let mut problems = Vec::new();
     for server in &init.mcp_servers {
         match server.status.as_str() {
-            "failed" => lines.push(format!("The MCP server {} did not connect.", server.name)),
-            "needs-auth" => lines.push(format!(
-                "The MCP server {} needs you to sign in.",
-                server.name
-            )),
+            "failed" => problems.push(LoadProblem::Failed(server.name.clone())),
+            "needs-auth" => problems.push(LoadProblem::SignIn(server.name.clone())),
             _ => {}
         }
     }
@@ -259,31 +287,57 @@ pub fn load_problems(init: &claude_agent_sdk::protocol::SystemInit) -> Vec<Runti
         let name = ["plugin", "name", "source"]
             .iter()
             .find_map(|field| error[*field].as_str());
-        let why = ["error", "message", "reason"]
-            .iter()
-            .find_map(|field| error[*field].as_str());
-        lines.push(match (name, why, error.as_str()) {
-            (Some(name), Some(why), _) => format!("The plugin {name} did not load: {why}"),
-            (Some(name), None, _) => format!("The plugin {name} did not load."),
-            (None, Some(why), _) | (None, None, Some(why)) => {
-                format!("A plugin did not load: {why}")
-            }
-            (None, None, None) => "A plugin did not load.".to_owned(),
-        });
+        problems.push(LoadProblem::Plugin(name.map(str::to_owned)));
     }
     let mut shown = lock(&SHOWN);
-    lines
+    let fresh: Vec<LoadProblem> = problems
         .into_iter()
-        .filter(|line| {
-            let seen = (init.session_id.clone(), line.clone());
+        .filter(|problem| {
+            let seen = (init.session_id.clone(), format!("{problem:?}"));
             let new = !shown.contains(&seen);
             if new {
                 shown.push(seen);
             }
             new
         })
-        .map(|line| notice_entry(NOTICE, &line))
-        .collect()
+        .collect();
+    summarize(&fresh)
+}
+
+/// A few words for `problems`: the one problem by name, or how many of
+/// each kind when there are several.
+fn summarize(problems: &[LoadProblem]) -> Option<String> {
+    match problems {
+        [] => None,
+        [LoadProblem::SignIn(name)] => Some(format!("{name} needs sign-in")),
+        [LoadProblem::Failed(name)] => Some(format!("{name} didn't connect")),
+        [LoadProblem::Plugin(Some(name))] => Some(format!("plugin {name} didn't load")),
+        [LoadProblem::Plugin(None)] => Some("a plugin didn't load".to_owned()),
+        _ => {
+            let count =
+                |kind: fn(&LoadProblem) -> bool| problems.iter().filter(|p| kind(p)).count();
+            let sign_in = count(|p| matches!(p, LoadProblem::SignIn(_)));
+            let failed = count(|p| matches!(p, LoadProblem::Failed(_)));
+            let plugins = count(|p| matches!(p, LoadProblem::Plugin(_)));
+            let mut parts = Vec::new();
+            match sign_in {
+                0 => {}
+                1 => parts.push("1 MCP server needs sign-in".to_owned()),
+                n => parts.push(format!("{n} MCP servers need sign-in")),
+            }
+            match failed {
+                0 => {}
+                1 => parts.push("1 MCP server didn't connect".to_owned()),
+                n => parts.push(format!("{n} MCP servers didn't connect")),
+            }
+            match plugins {
+                0 => {}
+                1 => parts.push("1 plugin didn't load".to_owned()),
+                n => parts.push(format!("{n} plugins didn't load")),
+            }
+            Some(parts.join(", "))
+        }
+    }
 }
 
 /// A Claude Code subagent's tokens from its call's result: `totalTokens`,
@@ -316,6 +370,9 @@ fn notice_entry(name: &str, text: &str) -> RuntimeEvent {
 
 /// Load problems already shown, by session.
 static SHOWN: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+
+/// The newest load problems' summary and when they arrived.
+static WARNING: Mutex<Option<(String, std::time::Instant)>> = Mutex::new(None);
 
 /// The newest session's context: its id, the tokens it holds, its window.
 static CONTEXT: Mutex<Option<(String, u64, u64)>> = Mutex::new(None);
@@ -423,30 +480,62 @@ mod tests {
     }
 
     #[test]
-    fn load_problems_show_once_a_session() {
+    fn load_problems_summarize_once_a_session() {
         let init: claude_agent_sdk::protocol::SystemInit = serde_json::from_value(json!({
             "apiKeySource": "none", "claude_code_version": "2", "cwd": "/", "tools": [],
-            "mcp_servers": [{"name": "github", "status": "failed"}, {"name": "ok", "status": "connected"}],
+            "mcp_servers": [
+                {"name": "github", "status": "failed"},
+                {"name": "stripe", "status": "needs-auth"},
+                {"name": "figma", "status": "needs-auth"},
+                {"name": "ok", "status": "connected"},
+            ],
             "model": "m", "permissionMode": "default", "slash_commands": [], "output_style": "default",
             "skills": [], "plugins": [], "plugin_errors": [{"plugin": "lint", "error": "bad manifest"}],
             "uuid": "u", "session_id": "load-problems-test",
         }))
         .unwrap();
-        let texts: Vec<String> = load_problems(&init)
-            .into_iter()
-            .map(|event| match event {
-                RuntimeEvent::Tool { output, .. } => entry_text(&output).to_owned(),
-                _ => String::new(),
-            })
-            .collect();
         assert_eq!(
-            texts,
-            [
-                "The MCP server github did not connect.",
-                "The plugin lint did not load: bad manifest"
-            ]
+            load_problems(&init).as_deref(),
+            Some("2 MCP servers need sign-in, 1 MCP server didn't connect, 1 plugin didn't load")
         );
-        assert!(load_problems(&init).is_empty());
+        assert_eq!(load_problems(&init), None);
+    }
+
+    #[test]
+    fn one_load_problem_is_named() {
+        assert_eq!(
+            summarize(&[LoadProblem::SignIn("stripe".into())]).as_deref(),
+            Some("stripe needs sign-in")
+        );
+        assert_eq!(
+            summarize(&[LoadProblem::Failed("openagents".into())]).as_deref(),
+            Some("openagents didn't connect")
+        );
+        assert_eq!(
+            summarize(&[
+                LoadProblem::SignIn("a".into()),
+                LoadProblem::SignIn("b".into()),
+                LoadProblem::SignIn("c".into()),
+            ])
+            .as_deref(),
+            Some("3 MCP servers need sign-in")
+        );
+        assert_eq!(summarize(&[]), None);
+    }
+
+    #[test]
+    fn the_load_warning_flashes_for_a_few_seconds() {
+        let init: claude_agent_sdk::protocol::SystemInit = serde_json::from_value(json!({
+            "apiKeySource": "none", "claude_code_version": "2", "cwd": "/", "tools": [],
+            "mcp_servers": [{"name": "stripe", "status": "needs-auth"}],
+            "model": "m", "permissionMode": "default", "slash_commands": [], "output_style": "default",
+            "skills": [], "plugins": [], "plugin_errors": [], "uuid": "u", "session_id": "load-warning-test",
+        }))
+        .unwrap();
+        note_load_problems(&init);
+        let now = std::time::Instant::now();
+        assert_eq!(load_warning(now).as_deref(), Some("stripe needs sign-in"));
+        assert_eq!(load_warning(now + LOAD_WARNING_FOR), None);
     }
 
     #[test]

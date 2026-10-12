@@ -25,6 +25,8 @@ pub const PROMPT_BORDER_ACTIVE: Color = rgb(coder_ui::coder_noir::CONTENT_SECOND
 pub const ACCENT_MODEL: Color = rgb(coder_ui::coder_noir::ANSI[6]);
 pub const ACCENT_DELEGATE: Color = rgb(coder_ui::coder_noir::ANSI[5]);
 pub const COMMAND: Color = rgb(coder_ui::coder_noir::WARNING);
+/// A brief warning, such as an MCP server that needs sign-in.
+pub const WARNING: Color = rgb(coder_ui::coder_noir::WARNING);
 pub const ACCENT_SKILL: Color = rgb(coder_ui::coder_noir::INFO);
 pub const ACCENT_SUCCESS: Color = rgb(coder_ui::coder_noir::SUCCESS);
 pub const PATH: Color = rgb(coder_ui::coder_noir::WARNING);

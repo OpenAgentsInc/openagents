@@ -220,6 +220,11 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
     let copied = app
         .copied_until
         .is_some_and(|until| std::time::Instant::now() < until);
+    // What failed to load when the Claude session started flashes on the
+    // input's top-right rail for a few seconds, never as a transcript row.
+    let load_warning = (app.mode == Mode::Claude)
+        .then(|| crate::claude_stream::load_warning(std::time::Instant::now()))
+        .flatten();
     composer_view(
         frame,
         Rect {
@@ -239,6 +244,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         // the name of whichever vendor answered.
         rail_mode(app),
         top_rail(app).as_deref(),
+        load_warning.as_deref(),
         working.as_deref(),
         copied,
     );
@@ -1940,26 +1946,28 @@ fn composer_rail_text(text: &str, width: u16) -> String {
     truncate(text, width)
 }
 
-/// Paints the last `label.width()` cells of the right rail `text` drawn at
-/// `offset` in `style`, when the rail drew: the mode's name keeps its own
-/// color after the gray plan and cost.
+/// Paints `width` cells of the right rail `text` drawn at `offset` in
+/// `style`, ending `skip` cells before its end, when the rail drew: the
+/// mode's name keeps its own color after the gray plan and cost, and a
+/// load warning its own before it.
 fn accent_tail(
     buf: &mut ratatui::buffer::Buffer,
     area: Rect,
     offset: u16,
     text: &str,
-    label: &str,
+    skip: u16,
+    width: u16,
     style: Style,
 ) {
     let y = area.top() + offset;
     let end = area.right().saturating_sub(3);
-    let start = end.saturating_sub(label.width() as u16);
     let first = end.saturating_sub(text.width() as u16);
     // The rail draws nothing when it does not fit: leave the rule alone.
     if y >= buf.area.bottom() || first <= area.left() || buf[(first, y)].symbol() == "─" {
         return;
     }
-    for x in start..end {
+    let end = end.saturating_sub(skip);
+    for x in end.saturating_sub(width).max(first)..end {
         buf[(x, y)].set_style(style);
     }
 }
@@ -1977,6 +1985,7 @@ fn composer_view(
     selected: bool,
     fallback_model: Option<&str>,
     top_extra: Option<&str>,
+    warning: Option<&str>,
     working: Option<&str>,
     copied: bool,
 ) {
@@ -2035,12 +2044,17 @@ fn composer_view(
             crate::claude::LABEL | crate::solver::LABEL => t::ACCENT_DELEGATE,
             _ => t::GRAY,
         });
-        // The plan and the cost sit before the mode's name, in gray.
+        // The plan and the cost sit before the mode's name, in gray, and a
+        // load warning flashes just before the name in yellow.
         let extra = top_extra.filter(|_| offset == 0);
-        let text = match extra {
-            Some(extra) => format!("{extra} · {label}"),
-            None => label.clone(),
-        };
+        let warning = warning.filter(|_| offset == 0);
+        let text = extra
+            .into_iter()
+            .chain(warning)
+            .chain([label.as_str()])
+            .collect::<Vec<_>>()
+            .join(" · ");
+        let plain = extra.is_none() && warning.is_none();
         coder_terminal::rail(
             area,
             frame.buffer_mut(),
@@ -2048,26 +2062,62 @@ fn composer_view(
             if offset == 0 { left } else { None },
             Some((
                 &text,
-                if extra.is_some() {
-                    Style::default().fg(t::GRAY)
-                } else {
+                if plain {
                     accent
+                } else {
+                    Style::default().fg(t::GRAY)
                 },
             )),
         );
-        if extra.is_some() {
-            accent_tail(frame.buffer_mut(), area, offset, &text, &label, accent);
+        if !plain {
+            let label_width = label.width() as u16;
+            accent_tail(
+                frame.buffer_mut(),
+                area,
+                offset,
+                &text,
+                0,
+                label_width,
+                accent,
+            );
+            if let Some(warning) = warning {
+                accent_tail(
+                    frame.buffer_mut(),
+                    area,
+                    offset,
+                    &text,
+                    label_width + 3,
+                    warning.width() as u16,
+                    Style::default().fg(t::WARNING),
+                );
+            }
         }
         top_drawn |= offset == 0;
     }
-    if !top_drawn && let Some(extra) = top_extra {
+    let unlabeled = top_extra
+        .into_iter()
+        .chain(warning)
+        .collect::<Vec<_>>()
+        .join(" · ");
+    if !top_drawn && !unlabeled.is_empty() {
         coder_terminal::rail(
             area,
             frame.buffer_mut(),
             0,
             left,
-            Some((extra, Style::default().fg(t::GRAY))),
+            Some((&unlabeled, Style::default().fg(t::GRAY))),
         );
+        if let Some(warning) = warning {
+            accent_tail(
+                frame.buffer_mut(),
+                area,
+                0,
+                &unlabeled,
+                0,
+                warning.width() as u16,
+                Style::default().fg(t::WARNING),
+            );
+        }
     }
     if inner.width < 4 || inner.height == 0 {
         return;
@@ -2300,6 +2350,48 @@ mod export_notice_tests {
         assert!(shown.contains(crate::claude::LABEL));
         // Entering the mode must not read this computer's login: a test
         // environment never starts `claude auth status`.
+    }
+
+    #[test]
+    fn a_load_warning_flashes_in_yellow_before_the_mode() {
+        let width = 80;
+        let mut terminal = Terminal::new(TestBackend::new(width, 6)).unwrap();
+        terminal
+            .draw(|frame| {
+                composer_view(
+                    frame,
+                    frame.area(),
+                    &[String::new()],
+                    (0, 0),
+                    true,
+                    false,
+                    &crate::plugins::Plugins::default(),
+                    &crate::composer_state::ComposerState::default(),
+                    None,
+                    false,
+                    Some(crate::claude::LABEL),
+                    Some("ctx 40%"),
+                    Some("stripe needs sign-in"),
+                    None,
+                    false,
+                );
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        let rail: String = (0..width).map(|x| buffer[(x, 0)].symbol()).collect();
+        assert!(
+            rail.contains("ctx 40% · stripe needs sign-in · claude"),
+            "{rail}"
+        );
+        let at = |word: &str| {
+            let cell = rail.find(word).unwrap();
+            // Every cell before is one column wide on this rail but the rule.
+            rail[..cell].chars().count() as u16
+        };
+        assert_eq!(buffer[(at("stripe"), 0)].fg, t::WARNING);
+        assert_eq!(buffer[(at("sign-in"), 0)].fg, t::WARNING);
+        assert_eq!(buffer[(at("ctx"), 0)].fg, t::GRAY);
+        assert_eq!(buffer[(at("claude"), 0)].fg, t::ACCENT_DELEGATE);
     }
 
     #[test]

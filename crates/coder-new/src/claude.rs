@@ -856,9 +856,9 @@ pub(crate) async fn read_turn(
                 emit(crate::claude_stream::retry(&retry));
             }
             Ok(SdkMessage::System(SdkSystemMessage::Init(init))) => {
-                for problem in crate::claude_stream::load_problems(&init) {
-                    emit(problem);
-                }
+                // What failed to load flashes on the input's rail, never as
+                // a transcript row.
+                crate::claude_stream::note_load_problems(&init);
             }
             Ok(SdkMessage::Assistant(assistant)) => {
                 // A subagent's message goes to its own delegation.
