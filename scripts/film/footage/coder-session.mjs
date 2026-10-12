@@ -61,8 +61,8 @@ await c.sleep(1400);
 await coder.type("/sync on", { base: 70, jitter: 40 });
 await c.sleep(300);
 coder.input("\r");
-await coder.waitFor(/save to your account|Saving your chats/, 15000);
-await c.sleep(1500);
+// `/sync on` answers with nothing; give the sync a moment to start.
+await c.sleep(2000);
 await coder.type(task, { base: 30, jitter: 25 });
 await c.sleep(400);
 coder.input("\r");
