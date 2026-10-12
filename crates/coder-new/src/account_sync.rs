@@ -30,6 +30,10 @@ use crate::{App, sessions};
 pub const OFF: &str = "Saving chats to your account is off. /sync on saves all your chats to your account, earlier ones too.";
 /// What `/sync` says when it is on.
 pub const ON: &str = "Chats and memory save to your account, and you can reply to them on openagents.com while Coder is open here. /sync off stops; /sync delete removes the chats already there.";
+/// What `/sync on` says while the first chat goes up.
+pub const SAVING: &str = "Saving your chats to your account…";
+/// What replaces [`SAVING`] once a chat is saved.
+pub const SAVED: &str = "Your chats save to your account. New ones save as you go.";
 /// What Coder asks, once, when signed in and nobody chose yet (#11089).
 pub const QUESTION: &str = "Where should this computer's chats live? /sync all syncs all your chats to your account; /sync off keeps them on this computer.";
 /// What Coder says when it answers a reply typed on the website.
@@ -834,6 +838,9 @@ impl App {
         match event {
             Event::Saved { session, digest } => {
                 sync.settings.sent.insert(session, digest);
+                if self.notice.as_deref() == Some(SAVING) {
+                    self.notice = Some(SAVED.into());
+                }
             }
             Event::Removed { session } => {
                 sync.settings.to_delete.remove(&session);
@@ -955,7 +962,7 @@ impl App {
                 }
                 sync.settings.on = true;
                 sync.settings.chosen = true;
-                self.notice = Some("Saving your chats to your account…".into());
+                self.notice = Some(SAVING.into());
             }
             "off" => {
                 if let Some(dir) = &self.account_dir
@@ -1055,6 +1062,30 @@ mod tests {
             app.notice.as_deref(),
             Some("Use /sync on, /sync all, /sync off, or /sync delete.")
         );
+    }
+
+    #[test]
+    fn saving_notice_gives_way_once_a_chat_is_saved() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = App {
+            account_dir: Some(dir.path().to_path_buf()),
+            account: Some("Octo".into()),
+            ..App::default()
+        };
+        app.start_sync();
+        app.notice = Some(SAVING.into());
+        app.apply_sync(Event::Saved {
+            session: "one".into(),
+            digest: "d".into(),
+        });
+        assert_eq!(app.notice.as_deref(), Some(SAVED));
+        // Any other notice is left alone.
+        app.notice = Some(ON.into());
+        app.apply_sync(Event::Saved {
+            session: "two".into(),
+            digest: "d".into(),
+        });
+        assert_eq!(app.notice.as_deref(), Some(ON));
     }
 
     #[test]
