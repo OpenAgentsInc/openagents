@@ -457,7 +457,7 @@ async fn issue_kind(
         ("config", "Build, release, settings or dependency change"),
     ];
     let question = "What kind of change does this issue ask for?";
-    let (mut doors, _) = doors(options.decider);
+    let (mut doors, _) = doors(options.kind_decider());
     let mut card = json!({
         "kind": "model",
         "title": "Issue kind",
@@ -548,7 +548,7 @@ async fn file_questions(
     if asked.is_empty() {
         return Vec::new();
     }
-    let (_, mut doors) = doors(options.decider);
+    let (_, mut doors) = doors(options.relevance_decider());
     let mut card = json!({
         "kind": "model",
         "title": "Does the fix need each file?",

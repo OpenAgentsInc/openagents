@@ -238,7 +238,8 @@ Options:
   --decisions DOOR      Which decision door judges the briefing's file relevance,
                         size, and change kind: jev (TypeSafe's API), clef (this
                         computer's Clef), or off (default; the ranking stands and
-                        the Haiku Briefer judges it). No other door is asked.
+                        the Haiku Briefer judges it). No other door is asked. Or
+                        one door per point: kind=jev,relevance=clef.
   --no-pr               Stop after the checks; open no pull request.
   --coder-model NAME    The Coder's model on every round. Without it, a change the
                         Briefer judges small starts on sonnet and a large one, or
@@ -356,14 +357,12 @@ impl Options {
                 "--no-pr" => open_pr = false,
                 "--json" => json = true,
                 "--decisions" => {
-                    decisions = match value("--decisions")?.as_str() {
-                        door @ ("jev" | "clef" | "off") => door.to_owned(),
-                        other => {
-                            return Err(format!(
-                                "--decisions takes jev, clef or off, not {other}."
-                            ));
-                        }
-                    };
+                    decisions = value("--decisions")?;
+                    let (all, kind, relevance) = issue_run::parse_deciders(&decisions)
+                        .map_err(|why| why.replace("--decider", "--decisions"))?;
+                    if [all, kind, relevance].contains(&Some(issue_run::Decider::Auto)) {
+                        return Err("--decisions takes jev, clef or off, not auto.".into());
+                    }
                 }
                 "--engine" => {
                     engine = match value("--engine")?.as_str() {
@@ -540,7 +539,10 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
         turns: Vec::new(),
         checks: Vec::new(),
         rounds: 0,
-        decisions: decisions_name(options.inner.decider),
+        decisions: decisions_value(
+            options.inner.kind_decider(),
+            options.inner.relevance_decider(),
+        ),
         started,
     };
 
@@ -801,8 +803,9 @@ struct End<'a> {
     turns: Vec<Turn>,
     checks: Vec<(String, bool)>,
     rounds: usize,
-    /// The decision door that judged the briefing, as `--decisions` named it.
-    decisions: &'static str,
+    /// The decision door that judged the briefing, as `--decisions` named
+    /// it: one name, or `{"kind": door, "relevance": door}` when mixed.
+    decisions: Value,
     started: Instant,
 }
 
@@ -947,12 +950,13 @@ pub fn joined(judgments: &[Value], outcome: &Value) -> Vec<Value> {
         .collect()
 }
 
-/// `--decisions`'s name for the door the run judged with.
-const fn decisions_name(decider: issue_run::Decider) -> &'static str {
-    match decider {
-        issue_run::Decider::Jev => "jev",
-        issue_run::Decider::Clef => "clef",
-        issue_run::Decider::Auto => "auto",
-        issue_run::Decider::Off => "off",
+/// `--decisions` as the summary states it: one door name when every point
+/// uses the same door, else the door per point.
+#[must_use]
+pub fn decisions_value(kind: issue_run::Decider, relevance: issue_run::Decider) -> Value {
+    if kind == relevance {
+        json!(kind.name())
+    } else {
+        json!({"kind": kind.name(), "relevance": relevance.name()})
     }
 }

@@ -973,3 +973,26 @@ fn judgment_rows_join_the_run_outcome() {
     assert_eq!(joined[0]["decision"], "keep");
     assert_eq!(joined[0]["outcome"], "passed");
 }
+
+#[test]
+fn decisions_can_name_a_door_per_point() {
+    use crate::issue_run::{Decider, parse_deciders};
+    let (all, kind, relevance) = parse_deciders("kind=jev,relevance=clef").unwrap();
+    assert_eq!(
+        (all, kind, relevance),
+        (None, Some(Decider::Jev), Some(Decider::Clef))
+    );
+    assert_eq!(
+        super::decisions_value(Decider::Jev, Decider::Clef),
+        serde_json::json!({"kind": "jev", "relevance": "clef"})
+    );
+    assert_eq!(
+        parse_deciders("off").unwrap(),
+        (Some(Decider::Off), None, None)
+    );
+    assert_eq!(
+        super::decisions_value(Decider::Off, Decider::Off),
+        serde_json::json!("off")
+    );
+    assert!(parse_deciders("size=jev").is_err());
+}

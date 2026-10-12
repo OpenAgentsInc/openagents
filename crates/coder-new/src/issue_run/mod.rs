@@ -78,6 +78,57 @@ pub enum Decider {
     Off,
 }
 
+/// `--decider`'s text: `(every point, kind, relevance)`; a bare door name
+/// sets every point and clears the per-point doors.
+pub fn parse_deciders(
+    text: &str,
+) -> Result<(Option<Decider>, Option<Decider>, Option<Decider>), String> {
+    if !text.contains('=') {
+        return Ok((Some(Decider::parse(text)?), None, None));
+    }
+    let (mut kind, mut relevance) = (None, None);
+    for pair in text.split(',') {
+        let (point, door) = pair
+            .split_once('=')
+            .ok_or_else(|| format!("--decider pairs look like kind=jev, not {pair}."))?;
+        let door = Decider::parse(door.trim())?;
+        match point.trim() {
+            "kind" => kind = Some(door),
+            "relevance" => relevance = Some(door),
+            other => {
+                return Err(format!(
+                    "--decider points are kind and relevance, not {other}."
+                ));
+            }
+        }
+    }
+    Ok((None, kind, relevance))
+}
+
+impl Decider {
+    pub fn parse(text: &str) -> Result<Self, String> {
+        match text {
+            "auto" => Ok(Self::Auto),
+            "jev" => Ok(Self::Jev),
+            "clef" => Ok(Self::Clef),
+            "off" => Ok(Self::Off),
+            other => Err(format!(
+                "--decider takes auto, jev, clef or off, not {other}."
+            )),
+        }
+    }
+
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Jev => "jev",
+            Self::Clef => "clef",
+            Self::Auto => "auto",
+            Self::Off => "off",
+        }
+    }
+}
+
 /// What `coder issue-run` was asked to do.
 #[derive(Clone, Debug)]
 pub struct Options {
@@ -97,6 +148,10 @@ pub struct Options {
     /// How much faster than recorded a replay plays.
     pub speed: f64,
     pub decider: Decider,
+    /// Per-point doors that override `decider` (#11387): the issue-kind
+    /// Choice and the per-file relevance Nouls.
+    pub decider_kind: Option<Decider>,
+    pub decider_relevance: Option<Decider>,
     /// The fix commit of a closed issue, when the history search would pick
     /// the wrong one.
     pub fix: Option<String>,
@@ -122,7 +177,8 @@ Options:
   --github OWNER/R   The GitHub repository of the issue (default: OpenAgentsInc/openagents).
   --fix SHA          A closed issue's fix commit (default: the newest commit naming #N).
   --decider WHO      auto, jev, clef, or off (default: auto: Jev with your TypeSafe key,
-                     else our decision API, keyless).
+                     else our decision API, keyless); or per point, as in
+                     kind=jev,relevance=clef.
   --files K          Files in the briefing (default 6).
   --model NAME       The agent's model (default claude-opus-5-5).
   --timeout SECS     How long the agent may work (default 1800).
@@ -133,6 +189,30 @@ Options:
   --speed X          Play a recording X times faster (default 1).";
 
 impl Options {
+    /// Reads `--decider`: one door name for every point, or `point=door`
+    /// pairs (`kind`, `relevance`) separated by commas.
+    pub fn set_deciders(&mut self, text: &str) -> Result<(), String> {
+        let (all, kind, relevance) = parse_deciders(text)?;
+        if let Some(all) = all {
+            self.decider = all;
+        }
+        self.decider_kind = kind;
+        self.decider_relevance = relevance;
+        Ok(())
+    }
+
+    /// The door for the issue-kind question.
+    #[must_use]
+    pub fn kind_decider(&self) -> Decider {
+        self.decider_kind.unwrap_or(self.decider)
+    }
+
+    /// The door for the per-file relevance questions.
+    #[must_use]
+    pub fn relevance_decider(&self) -> Decider {
+        self.decider_relevance.unwrap_or(self.decider)
+    }
+
     /// Reads `coder issue-run`'s arguments.
     ///
     /// # Errors
@@ -149,6 +229,8 @@ impl Options {
             replay: None,
             speed: 1.0,
             decider: Decider::Auto,
+            decider_kind: None,
+            decider_relevance: None,
             fix: None,
             model: "claude-opus-5-5".into(),
             timeout: Duration::from_secs(1800),
@@ -166,19 +248,7 @@ impl Options {
                 "--repo" => options.repo = PathBuf::from(value("--repo")?),
                 "--github" => options.github = value("--github")?,
                 "--fix" => options.fix = Some(value("--fix")?),
-                "--decider" => {
-                    options.decider = match value("--decider")?.as_str() {
-                        "auto" => Decider::Auto,
-                        "jev" => Decider::Jev,
-                        "clef" => Decider::Clef,
-                        "off" => Decider::Off,
-                        other => {
-                            return Err(format!(
-                                "--decider takes auto, jev, clef or off, not {other}."
-                            ));
-                        }
-                    }
-                }
+                "--decider" => options.set_deciders(&value("--decider")?)?,
                 "--files" => {
                     options.files = value("--files")?
                         .parse::<usize>()
