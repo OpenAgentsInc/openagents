@@ -35,7 +35,8 @@ Break-even rule and market prices: [decision-profitability.md](decision-profitab
   any cloud row.**
 - **TPU v5e looks cheapest on paper** (roughly $0.01–0.03 per million on
   spot), but it is unmeasured and needs a full JAX port. See the TPU
-  section.
+  section and the full spec, [clef-tpu.md](clef-tpu.md), which finds v6e
+  the stronger candidate.
 - **The H100 kernels (#11443) could change the ranking.** At about 60 % of
   the H100's f16 peak (about 33k tokens/s), a spot H100 costs about $0.05
   per million and beats the spot A100 again. Today's Psionic kernels get
