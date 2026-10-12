@@ -32,6 +32,14 @@ SSH = ["bash", "-c"] if HOST == "local" else [
 
 # Every lever a run can turn (#11211's lever table). A run records the
 # full settings, so any two runs can be compared lever by lever.
+#
+# These are also the production defaults (scripts/work/work_issue.py reads
+# them). #11309 tested each against B0 under the frozen keep rule and none
+# moved: results/ab-tools.md (Bbash, Brelated, Boutline, Bfinish: no cost
+# reduction CI above 0, so tools stay "verify"), results/ab-levers.md
+# (Bsmall, Blarge, Bterse, Blow, Bsonnet: none passes, so briefing_files 8,
+# excerpt_lines 140, history 2, template v3, effort default and Opus 5.5
+# stay), results/ab-cold.md (Bcold: no cost change, so build_cache "warm").
 LEVERS: dict[str, object] = {
     # 1 Briefing
     "finder": "finder",          # finder (#11210 filefind) | lite | oracle | haiku | haiku-solo | clef-arm | hosted-arm | jev-arm (#11389)

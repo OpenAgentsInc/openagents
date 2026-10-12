@@ -434,6 +434,36 @@ Each ablation reports every arm against B0 run in the same plan: the
 success difference with its issue-level CI first, then the change in cost
 per accepted change.
 
+### Ablation results (#11309)
+
+Each table is in `scripts/bench/briefed-ab/results/`, written by
+`write_report.sh PLAN B0` (per-arm table, the frozen `--s2` analysis of every
+arm against B0, and the same with judge 2, Gemini 3.1 Pro on Vertex via
+`judge2.py`, in place of the frozen Claude judge). Keep rule, frozen in each
+plan: success CI lower bound above -0.05 and cost per accepted below B0's with
+the reduction CI's lower bound above 0. **No arm passed, so the production
+levers in `common.LEVERS` stay at B0**, and the comment there cites these
+arms.
+
+| Plan | Arm | Accepted vs B0 | Cost per accepted vs B0 | Kept |
+|---|---|---|---|---|
+| ablate-tools | Bbash | +0.000 [-0.063, +0.063] | -9.1% [-31.4%, +14.0%] | no |
+| ablate-tools | Brelated | -0.032 [-0.095, +0.000] | +10.8% | no |
+| ablate-tools | Boutline | +0.000 [-0.063, +0.063] | -7.4% [-29.6%, +18.7%] | no |
+| ablate-tools | Bfinish | -0.032 [-0.111, +0.032] | +10.8% | no |
+| ablate-levers | Bsmall | +0.048 [+0.000, +0.127] | -15.4% [-44.8%, +4.1%] | no (cost CI crosses 0) |
+| ablate-levers | Blarge | +0.032 [-0.032, +0.095] | -3.9% [-27.6%, +24.7%] | no |
+| ablate-levers | Bterse | +0.000 [-0.079, +0.095] | -9.0% | no (success bound) |
+| ablate-levers | Blow | -0.079 [-0.175, +0.000] | -21.0% | no (judge -30 points) |
+| ablate-levers | Bsonnet | -0.095 [-0.238, +0.032] | -44.1% | no (judge -38 points) |
+| ablate-cold | Bcold | -0.048 [-0.190, +0.095] | +1.1% | no |
+
+ablate-levers ran in 7 shards on dev envs (`AB_SHARD=i/n`,
+`remote/run-shard2.sh`) after the briefing trim loop fix (0d50f9e25c);
+`merge_shards.py` unioned the archives (378 trials, one duplicate run kept
+first). Under judge 2 no arm saves money either; Bsmall and Blarge tie B0 on
+accepted at +0.000 [-0.048, +0.048].
+
 ## Acceptance on real issues (#11313)
 
 The epic is done when a production run of the briefed flow on an open issue,
