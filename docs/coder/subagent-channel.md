@@ -16,7 +16,7 @@ Solver:
 
 ## Where the channel lives
 
-One folder per session, `~/.openagents/coder-new/comms/<session>/` (under
+One folder per session, `~/.openagents/coder/comms/<session>/` (under
 `--state` when given):
 
 - `log.jsonl`: the channel itself, append-only. Every record is one line:

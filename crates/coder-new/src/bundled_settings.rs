@@ -30,6 +30,12 @@ struct Preferences {
     /// existed have no field).
     #[serde(default = "on")]
     solver: bool,
+    /// The agent channel (#11346); on unless turned off.
+    #[serde(default = "on")]
+    comms: bool,
+    /// The solver swarm (#11346); on unless turned off.
+    #[serde(default = "on")]
+    swarm: bool,
     jev_enabled: bool,
     jev_model: String,
     jev_endpoint: String,
@@ -52,6 +58,8 @@ impl Default for Preferences {
             cli: true,
             acp: true,
             solver: true,
+            comms: true,
+            swarm: true,
             jev_enabled: true,
             jev_model: jev::defaults::MODEL.into(),
             jev_endpoint: crate::jev_plugin::DEFAULT_ENDPOINT.into(),
@@ -170,6 +178,10 @@ pub struct BundledSettings {
     pub cli: bool,
     pub acp: bool,
     pub solver: bool,
+    /// The agent channel (#11346).
+    pub comms: bool,
+    /// The solver swarm (#11346).
+    pub swarm: bool,
     pub jev_enabled: bool,
     pub acp_agents: Vec<AcpAgent>,
     pub focus: SettingsFocus,
@@ -208,6 +220,8 @@ impl Default for BundledSettings {
             cli: true,
             acp: true,
             solver: true,
+            comms: true,
+            swarm: true,
             jev_enabled: true,
             acp_agents: Vec::new(),
             focus: SettingsFocus::ApiKey,
@@ -244,6 +258,8 @@ impl BundledSettings {
             cli: self.cli,
             acp: self.acp,
             solver: self.solver,
+            comms: self.comms,
+            swarm: self.swarm,
             jev_enabled: self.jev_enabled,
             jev_model: self.jev_model.clone(),
             jev_endpoint: self.jev_endpoint.clone(),
@@ -263,6 +279,8 @@ impl BundledSettings {
         self.cli = value.cli;
         self.acp = value.acp;
         self.solver = value.solver;
+        self.comms = value.comms;
+        self.swarm = value.swarm;
         self.jev_enabled = value.jev_enabled;
         self.jev_model = value.jev_model;
         self.jev_endpoint = value.jev_endpoint;
@@ -378,6 +396,8 @@ impl BundledSettings {
             "openagents-cli" => self.cli,
             "acp-subagents" => self.acp,
             crate::solver_plugin::PLUGIN => self.solver,
+            crate::comms::PLUGIN => self.comms,
+            crate::swarm::PLUGIN => self.swarm,
             "jev" => self.jev_enabled,
             crate::brainstorm::PLUGIN => self.brainstorm.preferences.enabled,
             _ => false,
@@ -393,6 +413,8 @@ impl BundledSettings {
             "openagents-cli" => &mut value.cli,
             "acp-subagents" => &mut value.acp,
             crate::solver_plugin::PLUGIN => &mut value.solver,
+            crate::comms::PLUGIN => &mut value.comms,
+            crate::swarm::PLUGIN => &mut value.swarm,
             "jev" => &mut value.jev_enabled,
             crate::brainstorm::PLUGIN => &mut value.brainstorm.enabled,
             _ => return false,

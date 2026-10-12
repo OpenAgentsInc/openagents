@@ -54,9 +54,16 @@ See the [Markdown transcript preview](../../docs/coder-new/markdown.svg).
 
 Press F2 or enter `/plugins` to manage the bundled plugins. Up/Down selects a
 plugin, Space turns it on or off, and Enter opens its settings. **Coder loop**,
-**Jev**, **OpenAgents CLI**, and **ACP Subagents** default to on. **OpenRouter
-BYOK** defaults to off; a key imported at startup enables it when no saved
-preference exists. Saving the first key also enables it. A saved off preference stays off.
+**Jev**, **OpenAgents CLI**, **ACP Subagents**, **Solver**, **Agent channel**,
+and **Solver swarm** default to on. **OpenRouter BYOK** defaults to off; a key
+imported at startup enables it when no saved preference exists. Saving the
+first key also enables it. A saved off preference stays off.
+
+**Agent channel** and **Solver swarm** are #11346: the subagents a chat
+delegates to can talk to each other over one shared channel, with overlap
+notices, negotiation records, and leases on scarce shared things; the swarm
+hands several issues to several Solvers at once. `docs/coder/subagent-channel.md`
+is the spec and `coder comms --help` is the command an external engine uses.
 
 On macOS and Linux, this picker also lists locally installed extensions from
 `openagents plugin install`. It refreshes on opening and once a second while

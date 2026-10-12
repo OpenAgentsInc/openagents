@@ -29,6 +29,11 @@ pub enum ToolBinding {
     Github,
     AcpSubagent,
     Solver,
+    /// The agent channel (#11346): the shared channel, intents and overlap
+    /// notices, negotiation records and system leases.
+    Comms,
+    /// The solver swarm (#11346): N issues handed to N solvers at once.
+    SolverSwarm,
     BrainstormSearch,
     BrainstormRank,
     BoatDelegate,
@@ -144,6 +149,24 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
         description: "Hand an issue to Solver, which plans, codes, checks, and opens the pull request.",
         default_enabled: true,
         tools: &[ToolBinding::Solver],
+        model_provider: None,
+        composer_rails: &[],
+    },
+    PluginDefinition {
+        id: crate::comms::PLUGIN,
+        name: "Agent channel",
+        description: "Let the subagents a chat delegates to talk to each other: what each means to change, overlaps, agreements and shared leases.",
+        default_enabled: true,
+        tools: &[ToolBinding::Comms],
+        model_provider: None,
+        composer_rails: &[],
+    },
+    PluginDefinition {
+        id: crate::swarm::PLUGIN,
+        name: "Solver swarm",
+        description: "Hand several issues to several Solvers at once; they coordinate over the agent channel.",
+        default_enabled: true,
+        tools: &[ToolBinding::SolverSwarm],
         model_provider: None,
         composer_rails: &[],
     },

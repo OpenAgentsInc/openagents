@@ -460,6 +460,9 @@ impl Plugins {
             cli: self.bundled.cli,
             acp: self.bundled.acp,
             solver: self.bundled.solver,
+            comms: self.bundled.comms,
+            swarm: self.bundled.swarm,
+            channel: self.channel(),
             jev_enabled: self.bundled.jev_enabled,
             jev_key: self.bundled.jev_key(),
             jev_model: self.bundled.jev_model().into(),
@@ -478,6 +481,22 @@ impl Plugins {
             harness: None,
             memory,
         }
+    }
+
+    /// The session's agent channel (#11346): one folder per session under
+    /// Coder's state root. Off when the channel plugin is off or this chat
+    /// has no session; tests never open one.
+    pub fn channel(&self) -> Option<crate::comms::Channel> {
+        if !self.bundled.comms || cfg!(test) {
+            return None;
+        }
+        let root = self
+            .store
+            .as_ref()
+            .map(|store| store.root().to_path_buf())
+            .or_else(|| model_access::store::openagents_dir().map(|root| root.join("coder-new")))?;
+        let session = crate::comms::session_id(std::env::var("CODER_SESSION").ok().as_deref());
+        crate::comms::Channel::open(&root, &session).ok()
     }
 
     pub fn key_for_request(&self) -> Option<model_access::ApiKey> {

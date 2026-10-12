@@ -29,6 +29,15 @@ pub struct ExecutionSettings {
     /// The Solver plugin: an issue handed to a four-hand run that ends in
     /// a pull request ([`crate::solver_plugin`]).
     pub solver: bool,
+    /// The agent channel (#11346): the shared channel, intents, overlap
+    /// notices, agreements and system leases ([`crate::comms`]).
+    pub comms: bool,
+    /// The solver swarm (#11346): several issues handed to several solvers
+    /// at once ([`crate::swarm`]).
+    pub swarm: bool,
+    /// The session's agent channel, when one is open; `None` when the
+    /// agent channel is off or the chat has no session.
+    pub channel: Option<crate::comms::Channel>,
     pub jev_enabled: bool,
     pub jev_key: Option<ApiKey>,
     pub redaction_keys: Vec<ApiKey>,
@@ -157,6 +166,8 @@ impl ExecutionSettings {
             ToolBinding::OpenAgentsCli | ToolBinding::Github => self.cli,
             ToolBinding::AcpSubagent => self.acp,
             ToolBinding::Solver => self.solver,
+            ToolBinding::Comms => self.comms && self.channel.is_some(),
+            ToolBinding::SolverSwarm => self.swarm,
             ToolBinding::Jev => self.jev_enabled,
             ToolBinding::BrainstormSearch | ToolBinding::BrainstormRank => self
                 .brainstorm
@@ -223,6 +234,8 @@ impl ExecutionSettings {
                     ToolBinding::AcpSubagent => bundled_runtime::acp_tool_definition(&self.agents),
                     ToolBinding::Jev => Some(jev_plugin::tool_definition()),
                     ToolBinding::Solver => Some(crate::solver_plugin::tool_definition()),
+                    ToolBinding::Comms => Some(crate::comms::tool_definition()),
+                    ToolBinding::SolverSwarm => Some(crate::swarm::tool_definition()),
                     ToolBinding::BrainstormSearch => {
                         Some(crate::brainstorm::tool_definition(false))
                     }
@@ -299,6 +312,12 @@ impl ExecutionSettings {
         }
         if self.registered(ToolBinding::Solver) {
             guidance.push_str(crate::solver_plugin::instructions());
+        }
+        if self.registered(ToolBinding::Comms) {
+            guidance.push_str(crate::comms::instructions());
+        }
+        if self.registered(ToolBinding::SolverSwarm) {
+            guidance.push_str(crate::swarm::instructions());
         }
         if self.fleet.is_some() && !crate::fleet::engines(self).is_empty() {
             guidance.push_str(crate::fleet::INSTRUCTIONS);
@@ -562,10 +581,25 @@ impl ExecutionSettings {
                     .find(|agent| agent.id == args.agent && agent.enabled)
                     .or(builtin.as_ref())
                     .ok_or("The requested ACP agent is not configured or is turned off.")?;
+                // An external engine reaches the channel through the
+                // `coder comms` command; the preamble names the folder and
+                // the member. Without a channel, the task is unchanged.
+                let member = crate::comms::Channel::member_name(&args.agent, &args.task);
+                let task = match &self.channel {
+                    Some(channel) => {
+                        let _ = channel.join(&member);
+                        format!(
+                            "{}\n\n{}",
+                            crate::comms::preamble(channel, &member, "coder"),
+                            args.task
+                        )
+                    }
+                    None => args.task.clone(),
+                };
                 let mut child = |event| emit(event);
                 bundled_runtime::acp(
                     agent,
-                    &args.task,
+                    &task,
                     &self.cwd,
                     args.model.as_deref(),
                     cancel,
@@ -575,6 +609,20 @@ impl ExecutionSettings {
             }
             crate::solver_plugin::TOOL if self.registered(ToolBinding::Solver) => {
                 crate::solver_plugin::execute(&arguments, &self.cwd, cancel, &mut emit).await
+            }
+            crate::comms::TOOL if self.registered(ToolBinding::Comms) => {
+                let channel = self.channel.as_ref().ok_or(crate::comms::NO_SESSION)?;
+                crate::comms::execute(&arguments, channel, &mut emit)
+            }
+            crate::swarm::TOOL if self.registered(ToolBinding::SolverSwarm) => {
+                crate::swarm::execute(
+                    &arguments,
+                    &self.cwd,
+                    self.channel.clone(),
+                    cancel,
+                    &mut emit,
+                )
+                .await
             }
             "microcoder" if self.registered(ToolBinding::Microcoder) => {
                 let args: TaskArguments = serde_json::from_value(arguments)
@@ -890,6 +938,9 @@ mod tests {
             cli: false,
             acp: false,
             solver: false,
+            comms: false,
+            swarm: false,
+            channel: None,
             jev_enabled: false,
             jev_key: None,
             redaction_keys: vec![],
