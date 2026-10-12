@@ -6,6 +6,7 @@
 #
 # Usage: scripts/film/studio/render-all.sh [--preview] [--standin] [SHOT...]
 #   --preview   quarter-pixel, low-sample renders for checking moves
+#   --resolution=WxH   render at WxH (e.g. 1920x1080 for review cuts; pair with OUT=dir)
 #   --standin   use ~/work/film-out/studio/standin/ clips (standin.py) when a
 #               shot's real footage is missing, instead of skipping the shot
 # BLENDER overrides Blender's path; FOOTAGE and OUT override the directories.
@@ -21,6 +22,7 @@ preview=() standin=0 shots=()
 for a in "$@"; do
   case $a in
     --preview) preview=(--preview) ;;
+    --resolution=*) preview+=(--resolution "${a#--resolution=}") ;;
     --standin) standin=1 ;;
     *) shots+=("$a") ;;
   esac
