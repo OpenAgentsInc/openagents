@@ -23,6 +23,7 @@
 //! pull-request step, so the terminal draws it with the same widgets and
 //! `coder solver --replay` plays a recording again.
 
+pub mod conform;
 pub mod hands;
 pub mod ledger;
 pub mod merge;
