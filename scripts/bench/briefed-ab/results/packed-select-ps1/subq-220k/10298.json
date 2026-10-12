@@ -1,0 +1,43 @@
+{
+ "ok": true,
+ "ms": 3039,
+ "tokens": 229188,
+ "ranked": [
+  "crates/coder/src/task/issue_run.rs",
+  "crates/coder/src/task/local.rs",
+  "crates/coder/src/task/landing.rs",
+  "crates/coder/src/task/issue_run_tests.rs",
+  "crates/coder/src/worktree.rs",
+  "crates/coder-delegate/src/issue.rs",
+  "crates/coder/src/task/landing_tests.rs",
+  "crates/coder/src/task/adapter.rs",
+  "crates/coder/src/task.rs",
+  "docs/worktrees/2026-10-03-paseo-worktree-gap-analysis.md",
+  "crates/coder/src/task/chat_client.rs",
+  "crates/microcoder/src/repository.rs",
+  "crates/coder/src/task/publish.rs",
+  "crates/coder/src/task/autostart.rs",
+  "crates/openagents-cli/src/main.rs",
+  "crates/coder-delegate/src/issue/confined.rs",
+  "crates/coder/src/cli_route/tree.json",
+  "crates/openagents-cli/src/chat_work.rs",
+  "crates/openagents-cli/src/chat.rs",
+  "crates/openagents-cli/src/tree.rs"
+ ],
+ "top_p": [
+  0.718,
+  0.15,
+  0.034,
+  0.016,
+  0.012
+ ],
+ "files_packed": 200,
+ "chars": 791966,
+ "labels_in_pack": [
+  "crates/coder/src/task.rs",
+  "crates/coder/src/task/landing.rs",
+  "crates/coder/src/task/local.rs"
+ ],
+ "r5": 0.4,
+ "r10": 0.6
+}

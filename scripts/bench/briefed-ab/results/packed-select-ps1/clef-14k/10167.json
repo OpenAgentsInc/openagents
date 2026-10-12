@@ -1,0 +1,12 @@
+{
+ "ok": false,
+ "error": "HTTP 400: {\"error\":\"question \\\"file\\\": criteria must contain 2\u201326 candidates\"}",
+ "ms": 15,
+ "files_packed": 32,
+ "chars": 49563,
+ "labels_in_pack": [
+  "crates/background/src/runner.rs",
+  "crates/background/src/tests.rs",
+  "docs/background/2026-10-02-background-processes.md"
+ ]
+}

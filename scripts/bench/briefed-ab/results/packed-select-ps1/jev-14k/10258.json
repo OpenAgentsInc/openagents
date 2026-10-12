@@ -1,0 +1,45 @@
+{
+ "ok": true,
+ "ms": 449,
+ "tokens": 16366,
+ "ranked": [
+  "crates/coder/src/claim.rs",
+  "docs/cloud/boat-chat-work.md",
+  "crates/coder/src/task/issue_run.rs",
+  "NEEDS_OWNER.md",
+  "docs/cloud/gce-pool.md",
+  "crates/openagents-cli/src/chat_work.rs",
+  "crates/openagents-cli/src/chat_boat.rs",
+  "scripts/project-sync.sh",
+  "crates/openagents-cli/src/chat.rs",
+  "crates/coder/src/cli_route/tree.json",
+  "crates/openagents-cli/src/chat_gce.rs",
+  "crates/openagents-cli/src/cloud.rs",
+  "crates/openagents-cli/Cargo.toml",
+  "crates/coder/src/task/chat_client.rs",
+  "crates/openagents-chat/src/client.rs",
+  "crates/coder/src/task/issue_run_tests.rs",
+  "crates/openagents-chat/src/client_tests.rs",
+  "crates/openagents-cli/src/main.rs",
+  "crates/coder/src/task.rs",
+  "INVARIANTS.md"
+ ],
+ "top_p": [
+  0.52,
+  0.31,
+  0.06,
+  0.04,
+  0.03
+ ],
+ "files_packed": 25,
+ "chars": 49307,
+ "labels_in_pack": [
+  "crates/coder/src/claim.rs",
+  "crates/coder/src/claim_tests.rs",
+  "crates/coder/src/task/issue_run.rs",
+  "docs/cloud/boat-chat-work.md",
+  "docs/cloud/gce-pool.md"
+ ],
+ "r5": 0.6666666666666666,
+ "r10": 0.6666666666666666
+}

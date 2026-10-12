@@ -1,0 +1,13 @@
+{
+ "ok": false,
+ "error": "HTTP 400: {\"error\":\"Clef input has 17381 tokens; context limit is 16384\"}",
+ "ms": 27,
+ "files_packed": 22,
+ "chars": 50102,
+ "labels_in_pack": [
+  "crates/openagents-terminal/src/app.rs",
+  "crates/openagents-terminal/src/app_tests.rs",
+  "crates/openagents-terminal/src/draw.rs",
+  "crates/openagents-terminal/src/screen.rs"
+ ]
+}

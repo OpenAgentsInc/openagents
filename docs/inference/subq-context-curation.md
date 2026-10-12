@@ -123,3 +123,55 @@ Caveats: SubQ Snap is a public preview with variable latency, and their
 numbers are from their own demo. Sending repository source to a hosted API
 needs its data-retention settings checked first; [subq-snap.md](subq-snap.md)
 covers that. The demo repository is small (56 files) and single-language.
+
+## First test on our codebase (ps1, 2026-10-12)
+
+The idea adapted to our monorepo, which is far bigger than 226k tokens.
+filefind ranks 200 files for the issue at the fix's parent commit. They are
+packed into a token budget: first a symbol outline of every ranked file
+(Rust items, Markdown headings and `//!` lines, with line numbers), as many
+as fit, then the top-ranked files are upgraded to full text while the budget
+allows. One Choice question with the packed files as options asks "Which one
+of these repository files must change to fix the issue?". The score is
+recall@5 and recall@10 against the fix commit's own files, on 12 of the ba1
+bench issues. Script: `scripts/bench/briefed-ab/packed_select.py`; rows in
+`scripts/bench/briefed-ab/results/packed-select-ps1/`.
+
+| Arm | Pack | Recall@5 | Recall@10 | Top pick is a fix file | Median time |
+|---|---|---|---|---|---|
+| filefind order alone | — | 0.44 | 0.63 | — | — |
+| **SubQ Snap**, about 231k tokens | 200 files | 0.61 | **0.83** | 0.75 | 2.9 s |
+| SubQ Snap, about 16k tokens | about 22 files | 0.67 | 0.81 | **0.83** | 0.75 s |
+| Jev, about 16k tokens | about 22 files | 0.67 | 0.74 | 0.75 | 0.45 s |
+| SubQ Snap, Clef-sized (about 14k, 26 files at most) | about 18 files | **0.70** | 0.79 | **0.83** | 0.79 s |
+| Clef-Flash (local), Clef-sized | about 18 files | 0.56 | 0.73 | 0.75 | 20 s |
+| Jev, Clef-sized | about 18 files | 0.62 | 0.75 | 0.75 | 0.47 s |
+
+Clef's server takes at most 16,384 tokens and 26 options, so it failed 5 of
+12 issues at the 16k pack. The Clef-sized rows give all three the same pack.
+
+What it says:
+
+- **Any of these models on a packed repository beats filefind's order by
+  itself:** recall@5 rises from 0.44 to 0.56–0.70, and recall@10 from 0.63
+  to 0.73–0.83.
+- **SubQ Snap is the best of the three at the same small pack:** recall@5
+  0.70 against Jev's 0.62 and Clef's 0.56, and its top pick is a fix file in
+  10 of 12 issues against 9 for the others. It is also 25 times faster than
+  local Clef.
+- **The 226k pack helps recall@10 (0.83, the best), not recall@5.** Packing
+  200 files lets the model find fix files that filefind ranked low (#10283:
+  filefind recall@10 0.25, Snap 1.0), but the extra files also compete for
+  the top five.
+- **One Choice is the wrong question for multi-file fixes.** A Choice spreads
+  one unit of probability over the files, so a fix touching 4–6 files can't
+  have them all near the top. This is why the demo asks about 18 narrower
+  questions and keeps a file if any question puts it at p ≥ 0.3. That is the
+  next test.
+- **Cost:** SubQ used 3.1M input tokens over all its arms here, which is
+  **$0.16**. A full 226k pack is about $0.012 per issue.
+
+Next: about 4–8 narrower questions per issue (one per part of the change,
+written from the issue text by a model), kept by union at p ≥ 0.3, at the
+226k pack. Then a second request for line ranges in the kept files, and
+measuring a briefing built from that packet end to end.

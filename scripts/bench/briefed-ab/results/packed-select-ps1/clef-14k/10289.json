@@ -1,0 +1,43 @@
+{
+ "ok": true,
+ "ms": 24274,
+ "tokens": 16338,
+ "ranked": [
+  "crates/openagents-chat-app/src/eval_cards.rs",
+  "crates/coder/src/efficiency.rs",
+  "crates/openagents-mobile/src/eval_cards.rs",
+  "crates/coder/src/router/gym.rs",
+  "crates/openagents-chat-app/src/gym.rs",
+  "crates/coder/src/router/seams.rs",
+  "crates/coder/src/gym_kb.rs",
+  "crates/openagents-mobile/src/gym.rs",
+  "crates/openagents-chat-app/src/gym/tests.rs",
+  "crates/coder/src/router/bank.rs",
+  "crates/openagents-chat-app/src/first_run.rs",
+  "crates/openagents-chat-app/src/cards.rs",
+  "crates/openagents-chat-app/src/lib.rs",
+  "crates/openagents-mobile/src/lib.rs",
+  "crates/openagents-chat-app/src/coder_tab.rs",
+  "crates/openagents-mobile/src/trainer.rs",
+  "crates/coder/src/router/judge.rs",
+  "crates/openagents-mobile/src/coder_tab_tests.rs",
+  "crates/coder/src/bin/coder-worker.rs",
+  "INVARIANTS.md"
+ ],
+ "top_p": [
+  0.833,
+  0.059,
+  0.017,
+  0.009,
+  0.009
+ ],
+ "files_packed": 20,
+ "chars": 48574,
+ "labels_in_pack": [
+  "crates/coder/src/efficiency.rs",
+  "crates/coder/src/router/gym.rs",
+  "crates/openagents-chat-app/src/eval_cards.rs"
+ ],
+ "r5": 0.75,
+ "r10": 0.75
+}

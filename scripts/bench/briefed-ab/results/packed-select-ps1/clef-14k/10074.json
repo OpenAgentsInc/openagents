@@ -1,0 +1,42 @@
+{
+ "ok": true,
+ "ms": 22411,
+ "tokens": 16092,
+ "ranked": [
+  "crates/coder/src/task/local.rs",
+  "crates/openagents-cli/src/chat.rs",
+  "crates/coder/src/task/owner.rs",
+  "crates/openagents-cli/src/main.rs",
+  "crates/openagents-cli/Cargo.toml",
+  "crates/coder/src/task/autostart.rs",
+  "crates/microcoder/src/repository/launch.rs",
+  "crates/coder/src/task/issue_run.rs",
+  "crates/coder/src/task/adapter.rs",
+  "crates/microcoder/src/repository.rs",
+  "crates/coder/src/task/settings.rs",
+  "crates/microcoder/src/main.rs",
+  "crates/openagents-cli/src/chat_work.rs",
+  "crates/microcoder/src/repository/grok.rs",
+  "crates/microcoder/src/repository/tests.rs",
+  "crates/microcoder/src/repository/opencode.rs",
+  "crates/coder/src/task/remote.rs",
+  "crates/coder/src/runtime.rs",
+  "crates/microcoder/src/repository/windows_tests.rs",
+  "crates/coder/src/task/view.rs"
+ ],
+ "top_p": [
+  0.293,
+  0.145,
+  0.087,
+  0.06,
+  0.06
+ ],
+ "files_packed": 20,
+ "chars": 50399,
+ "labels_in_pack": [
+  "crates/coder/src/task/autostart.rs",
+  "crates/coder/src/task/local.rs"
+ ],
+ "r5": 0.3333333333333333,
+ "r10": 0.6666666666666666
+}

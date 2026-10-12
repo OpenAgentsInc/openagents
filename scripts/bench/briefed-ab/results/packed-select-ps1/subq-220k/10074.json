@@ -1,0 +1,43 @@
+{
+ "ok": true,
+ "ms": 2589,
+ "tokens": 225188,
+ "ranked": [
+  "crates/coder/src/task/local.rs",
+  "crates/coder/src/task/autostart.rs",
+  "scripts/desktop/package-macos.sh",
+  "crates/coder/src/task/adapter.rs",
+  "crates/openagents-cli/tests/chat.rs",
+  "crates/coder/src/task/owner.rs",
+  "crates/openagents-cli/src/main.rs",
+  "crates/openagents-cli/src/chat.rs",
+  "crates/coder-host/src/control/mod.rs",
+  "crates/microcoder/src/repository/launch.rs",
+  "crates/microcoder/src/repository/tests.rs",
+  "crates/openagents-cli/src/chat_coder.rs",
+  "crates/openagents-cli/src/tree.rs",
+  "crates/coder/src/task/remote.rs",
+  "crates/openagents-cli/Cargo.toml",
+  "crates/microcoder/src/repository.rs",
+  "bins/openagents-desktop-macos/bundle.sh",
+  "crates/coder/src/task/settings.rs",
+  "crates/microcoder/src/repository/grok.rs",
+  "crates/coder/src/task/cli.rs"
+ ],
+ "top_p": [
+  0.57,
+  0.26,
+  0.018,
+  0.017,
+  0.014
+ ],
+ "files_packed": 200,
+ "chars": 791988,
+ "labels_in_pack": [
+  "crates/coder/src/task/autostart.rs",
+  "crates/coder/src/task/local.rs",
+  "docs/cli/chat.md"
+ ],
+ "r5": 0.6666666666666666,
+ "r10": 0.6666666666666666
+}

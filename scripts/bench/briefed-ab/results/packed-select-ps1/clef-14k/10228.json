@@ -1,0 +1,10 @@
+{
+ "ok": false,
+ "error": "HTTP 400: {\"error\":\"Clef input has 16579 tokens; context limit is 16384\"}",
+ "ms": 38,
+ "files_packed": 21,
+ "chars": 49263,
+ "labels_in_pack": [
+  "crates/coder/src/task/autostart.rs"
+ ]
+}

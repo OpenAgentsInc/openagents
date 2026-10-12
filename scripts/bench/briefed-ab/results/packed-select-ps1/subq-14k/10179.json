@@ -1,0 +1,42 @@
+{
+ "ok": true,
+ "ms": 765,
+ "tokens": 16674,
+ "ranked": [
+  "crates/openagents-cli/src/ext_eval_init.rs",
+  "crates/openagents-cli/src/ext_eval.rs",
+  "crates/openagents-cli/src/screen.rs",
+  "crates/openagents-terminal/src/app.rs",
+  "crates/openagents-terminal/src/lib.rs",
+  "crates/openagents-terminal/src/screen.rs",
+  "INVARIANTS.md",
+  "crates/openagents-terminal/src/app_tests.rs",
+  "docs/background/2026-10-02-disk-cleanup-plugin.md",
+  "crates/openagents-cli/src/main.rs",
+  "crates/openagents-cli/src/plugin_local.rs",
+  "crates/openagents-cli/src/chat.rs",
+  "crates/openagents-cli/Cargo.toml",
+  "crates/coder/src/cli_route/tree.json",
+  "crates/openagents-cli/tests/plugin_background.rs",
+  "crates/openagents-terminal/src/draw.rs",
+  "plugins/disk-cleanup/package.json",
+  "crates/openagents-cli/src/background.rs",
+  "crates/ext-eval/src/author/prompt.rs",
+  "crates/background/src/run.rs"
+ ],
+ "top_p": [
+  0.867,
+  0.034,
+  0.028,
+  0.013,
+  0.009
+ ],
+ "files_packed": 26,
+ "chars": 48970,
+ "labels_in_pack": [
+  "crates/openagents-cli/src/ext_eval.rs",
+  "crates/openagents-cli/src/ext_eval_init.rs"
+ ],
+ "r5": 1.0,
+ "r10": 1.0
+}

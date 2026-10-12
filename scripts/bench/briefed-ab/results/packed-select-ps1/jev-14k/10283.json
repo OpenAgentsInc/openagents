@@ -1,0 +1,44 @@
+{
+ "ok": true,
+ "ms": 400,
+ "tokens": 17027,
+ "ranked": [
+  "crates/openagents-terminal/src/app.rs",
+  "crates/background/src/runner.rs",
+  "crates/openagents-terminal/src/screen.rs",
+  "crates/openagents-cli/src/screen.rs",
+  "crates/background/src/run.rs",
+  "crates/openagents-terminal/src/app_tests.rs",
+  "crates/openagents-terminal/src/lib.rs",
+  "crates/background/src/judged.rs",
+  "crates/background/src/view.rs",
+  "crates/openagents-cli/src/background.rs",
+  "crates/background/src/lib.rs",
+  "crates/background/src/paths.rs",
+  "crates/background/src/tests.rs",
+  "crates/background/src/plugins.rs",
+  "crates/background/src/rule.rs",
+  "crates/background/src/builtins.rs",
+  "crates/background/src/plan.rs",
+  "crates/background/src/escalate.rs",
+  "crates/background/src/phase3_tests.rs",
+  "docs/background/2026-10-02-background-processes.md"
+ ],
+ "top_p": [
+  0.47,
+  0.35,
+  0.11,
+  0.03,
+  0.02
+ ],
+ "files_packed": 22,
+ "chars": 50102,
+ "labels_in_pack": [
+  "crates/openagents-terminal/src/app.rs",
+  "crates/openagents-terminal/src/app_tests.rs",
+  "crates/openagents-terminal/src/draw.rs",
+  "crates/openagents-terminal/src/screen.rs"
+ ],
+ "r5": 0.5,
+ "r10": 0.75
+}

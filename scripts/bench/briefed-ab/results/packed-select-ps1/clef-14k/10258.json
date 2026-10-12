@@ -1,0 +1,14 @@
+{
+ "ok": false,
+ "error": "HTTP 400: {\"error\":\"Clef input has 16594 tokens; context limit is 16384\"}",
+ "ms": 32,
+ "files_packed": 25,
+ "chars": 49307,
+ "labels_in_pack": [
+  "crates/coder/src/claim.rs",
+  "crates/coder/src/claim_tests.rs",
+  "crates/coder/src/task/issue_run.rs",
+  "docs/cloud/boat-chat-work.md",
+  "docs/cloud/gce-pool.md"
+ ]
+}

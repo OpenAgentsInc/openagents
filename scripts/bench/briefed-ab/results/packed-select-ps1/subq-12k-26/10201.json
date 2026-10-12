@@ -1,0 +1,40 @@
+{
+ "ok": true,
+ "ms": 677,
+ "tokens": 13367,
+ "ranked": [
+  "crates/openagents-chat/src/client.rs",
+  "crates/coder-host/src/serve/mod.rs",
+  "crates/openagents-terminal/src/app.rs",
+  "crates/coder-host/src/control/mod.rs",
+  "crates/coder-host/tests/idle.rs",
+  "crates/openagents-cli/src/chat.rs",
+  "crates/openagents-chat/src/client_tests.rs",
+  "INVARIANTS.md",
+  "crates/openagents-terminal/src/app_tests.rs",
+  "crates/coder/src/task/chat_client.rs",
+  "crates/openagents-terminal/src/screen.rs",
+  "crates/coder-host/tests/control.rs",
+  "docs/cli/chat.md",
+  "crates/openagents-cli/src/connect.rs",
+  "crates/openagents-chat/src/coder_events.rs",
+  "crates/openagents-chat-app/src/coder_tab.rs",
+  "crates/openagents-cli/src/chat_work.rs"
+ ],
+ "top_p": [
+  0.564,
+  0.271,
+  0.026,
+  0.025,
+  0.02
+ ],
+ "files_packed": 17,
+ "chars": 41084,
+ "labels_in_pack": [
+  "crates/coder-host/src/control/mod.rs",
+  "crates/coder-host/src/serve/mod.rs",
+  "crates/coder-host/tests/idle.rs"
+ ],
+ "r5": 0.75,
+ "r10": 0.75
+}

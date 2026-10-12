@@ -1,0 +1,40 @@
+{
+ "ok": true,
+ "ms": 725,
+ "tokens": 13988,
+ "ranked": [
+  "crates/coder/src/task/local.rs",
+  "crates/coder/src/task/chat_client.rs",
+  "crates/openagents-chat/src/client.rs",
+  "crates/coder/src/task/owner.rs",
+  "crates/openagents-chat/src/client_tests.rs",
+  "crates/coder/src/task/issue_run.rs",
+  "crates/openagents-cli/src/chat.rs",
+  "crates/coder/src/task.rs",
+  "crates/coder/src/task/issue_run_tests.rs",
+  "crates/coder/src/task/autostart.rs",
+  "docs/cli/chat.md",
+  "crates/openagents-desktop/src/chat.rs",
+  "bench/efficiency/README.md",
+  "bench/efficiency/demo.py",
+  "docs/cost/2026-10-02-shadow-baseline-measurement.md",
+  "crates/openagents-mobile/src/coder_tab_tests.rs",
+  "crates/microcoder/src/repository.rs"
+ ],
+ "top_p": [
+  0.388,
+  0.369,
+  0.169,
+  0.019,
+  0.017
+ ],
+ "files_packed": 17,
+ "chars": 42247,
+ "labels_in_pack": [
+  "crates/coder/src/task/issue_run.rs",
+  "crates/coder/src/task/local.rs",
+  "crates/coder/src/task/owner.rs"
+ ],
+ "r5": 0.4,
+ "r10": 0.6
+}

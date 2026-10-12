@@ -1,0 +1,42 @@
+{
+ "ok": true,
+ "ms": 22373,
+ "tokens": 15804,
+ "ranked": [
+  "crates/coder/src/task.rs",
+  "crates/coder/src/task/owner.rs",
+  "crates/coder/src/task/tests.rs",
+  "crates/coder/src/task/autostart.rs",
+  "crates/coder/src/task/targets.rs",
+  "crates/coder/src/task/local.rs",
+  "crates/coder/src/task/remote.rs",
+  "crates/coder/src/task/issue_run.rs",
+  "crates/coder/src/task/archive.rs",
+  "crates/coder/src/task/owner/tests.rs",
+  "crates/coder/src/task/publish.rs",
+  "crates/coder/src/task/landing.rs",
+  "crates/coder/src/task/adapter.rs",
+  "crates/coder/tests/task_inbox.rs",
+  "docs/coder/runtime/task-owner.md",
+  "crates/microcoder/src/repository/tests.rs",
+  "crates/coder/src/task/issue_run_tests.rs",
+  "crates/openagents-web/src/tasks.rs",
+  "crates/coder-delegate/src/issue/confined.rs"
+ ],
+ "top_p": [
+  0.205,
+  0.185,
+  0.07,
+  0.063,
+  0.06
+ ],
+ "files_packed": 19,
+ "chars": 48243,
+ "labels_in_pack": [
+  "crates/coder/src/task/adapter.rs",
+  "crates/coder/src/task/owner.rs",
+  "crates/coder/src/task/owner/tests.rs"
+ ],
+ "r5": 0.3333333333333333,
+ "r10": 0.6666666666666666
+}

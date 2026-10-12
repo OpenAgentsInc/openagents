@@ -1,0 +1,11 @@
+{
+ "ok": false,
+ "error": "HTTP 400: {\"error\":\"Clef input has 16942 tokens; context limit is 16384\"}",
+ "ms": 25,
+ "files_packed": 26,
+ "chars": 48970,
+ "labels_in_pack": [
+  "crates/openagents-cli/src/ext_eval.rs",
+  "crates/openagents-cli/src/ext_eval_init.rs"
+ ]
+}

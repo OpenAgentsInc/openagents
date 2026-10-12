@@ -1,0 +1,44 @@
+{
+ "ok": true,
+ "ms": 2778,
+ "tokens": 238363,
+ "ranked": [
+  "crates/coder/src/task/local.rs",
+  "crates/openagents-chat/src/client.rs",
+  "crates/coder/src/task/chat_client.rs",
+  "crates/coder/src/task/owner.rs",
+  "crates/openagents-chat/src/client_tests.rs",
+  "crates/openagents-cli/src/chat.rs",
+  "crates/coder/src/task/issue_run.rs",
+  "crates/openagents-desktop/src/acceptance_dead_task.rs",
+  "crates/coder/src/task/autostart.rs",
+  "crates/coder/src/task.rs",
+  "crates/coder/src/task/issue_run_tests.rs",
+  "bench/efficiency/demo.py",
+  "INVARIANTS.md",
+  "crates/openagents-cli/src/chat_work.rs",
+  "crates/coder/src/task/local_checks.rs",
+  "crates/coder/src/task/lifecycle.rs",
+  "crates/microcoder/src/repository.rs",
+  "docs/cli/chat.md",
+  "bench/efficiency/README.md",
+  "crates/openagents-mobile/src/coder_tab_tests.rs"
+ ],
+ "top_p": [
+  0.467,
+  0.164,
+  0.136,
+  0.079,
+  0.024
+ ],
+ "files_packed": 200,
+ "chars": 791989,
+ "labels_in_pack": [
+  "crates/coder/src/task/issue_run.rs",
+  "crates/coder/src/task/local.rs",
+  "crates/coder/src/task/owner.rs",
+  "crates/openagents-chat/src/coder_events.rs"
+ ],
+ "r5": 0.4,
+ "r10": 0.6
+}

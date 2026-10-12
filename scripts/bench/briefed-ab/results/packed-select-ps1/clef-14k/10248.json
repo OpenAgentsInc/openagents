@@ -1,0 +1,43 @@
+{
+ "ok": true,
+ "ms": 23059,
+ "tokens": 16078,
+ "ranked": [
+  "crates/openagents-chat/src/client.rs",
+  "crates/coder/src/task/chat_client.rs",
+  "crates/coder/src/task/issue_run.rs",
+  "crates/coder/src/task/owner.rs",
+  "crates/openagents-chat/src/client_tests.rs",
+  "crates/openagents-chat/src/coder_events.rs",
+  "crates/openagents-chat-app/src/coder_tab.rs",
+  "crates/coder/src/task/issue_run_tests.rs",
+  "crates/coder/src/task/local.rs",
+  "crates/coder/src/task.rs",
+  "crates/openagents-cli/src/chat.rs",
+  "crates/openagents-desktop/src/chat.rs",
+  "crates/coder/src/task/autostart.rs",
+  "crates/microcoder/src/repository.rs",
+  "crates/openagents-mobile/src/coder_tab_tests.rs",
+  "docs/cli/chat.md",
+  "docs/cost/2026-10-02-shadow-baseline-measurement.md",
+  "bench/efficiency/README.md",
+  "bench/efficiency/demo.py"
+ ],
+ "top_p": [
+  0.711,
+  0.091,
+  0.031,
+  0.027,
+  0.021
+ ],
+ "files_packed": 19,
+ "chars": 48402,
+ "labels_in_pack": [
+  "crates/coder/src/task/issue_run.rs",
+  "crates/coder/src/task/local.rs",
+  "crates/coder/src/task/owner.rs",
+  "crates/openagents-chat/src/coder_events.rs"
+ ],
+ "r5": 0.4,
+ "r10": 0.8
+}
