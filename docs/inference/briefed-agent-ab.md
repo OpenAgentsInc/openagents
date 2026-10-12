@@ -117,7 +117,7 @@ with each trial.
 | 9 | Post-processing | `post_fmt`; verify applies fmt | verify's fmt |
 | 10 | Decomposition | `decomposition` | single |
 | 11 | Triage | `triage` | none |
-| 12 | Learning loop | misses logged per trial for #11210 | logged |
+| 12 | Learning loop | misses logged per trial; `scripts/work/learn.py` retrains filefind through the gate weekly (#11312) | see "Learning loop" |
 | - | Task text | `interface` | off in the pilot, on after |
 
 ## Pilot
@@ -305,6 +305,67 @@ Stopped at 101 of 189 trials; 12 issues. Fix tests passing: A 10/34, B0
 Briefed with Bash cost no more than briefed with `verify` here, so the
 tools doc's guess that verify is the largest single gain is not supported
 yet; it needs the frozen B0-vs-Bbash run.
+
+## Learning loop
+
+Lever 12 is now a loop (#11312). `scripts/work/learn.py` reads back what
+the briefed runs logged and feeds the finder and the levers:
+
+- `collect`: production runs (`scripts/work/work_issue.py` run folders on a
+  work host, which is also where the website's `POST /v1/work` runs execute,
+  uploaded daily by the timer from `scripts/work/host-setup.sh` through
+  `scripts/work/learn-job/upload-ledger.sh`), A/B trials and uploaded ledgers
+  go into one `openagents.work.learn.run.v1` ledger.
+- `examples`: accepted runs become filefind training rows. The files the
+  accepted change touched are positives, and the briefing's misses are
+  half-weight extra positives. Issues in the held-out window are never
+  trained on.
+- `levers`: briefing size against misses and cost, by engine, as advice only.
+  The production levers are set by #11309.
+- `cycle`: `scripts/filefind/retrain.sh` under the embedding spend cap
+  (Vertex embeddings only), then the gate's comparison on the held-out
+  window, then the goldens guard. `--promote` runs `ranker_gate.py promote`
+  only when both pass, and `record` adds a line to
+  [filefind-promotions.md](filefind-promotions.md).
+
+The weekly run uses `oa-learn-1` (e2-highmem-8, us-central1-b). That VM is
+stopped between runs. Cloud Scheduler job `oa-learn-weekly` starts it every
+Monday at 06:00 UTC. At boot the VM runs `scripts/work/learn-job/run.sh`,
+which writes the report to `gs://openagentsgemini-filefind-learn/reports/DAY/`,
+posts it as a comment on #11313, pushes a promotion if one passed, and powers
+the VM off. Set up and operate it with `scripts/work/learn-job/setup.sh vm|install|schedule|run|pause|resume`.
+Instance metadata `oa-learn-hold=1` keeps the VM up and skips the cycle.
+
+### First cycle (2026-10-12 00:52 UTC, oa-learn-1)
+
+The first cycle ran end to end on the VM. Its report is in
+`gs://openagentsgemini-filefind-learn/reports/2026-10-11/` and on #11313.
+
+- Runs read: 323 (8 production, 315 bench). Embedding spend: $0.03 of the
+  $5 cap.
+- Training rows: 26 labels on 4 issues already in the dataset, and 0 new
+  production cases. All 4 accepted production issues (#11257, #11260-#11262)
+  fall in the held-out window (#10819..#11359). They will train once they
+  age out of it.
+- Gate, 100 held-out cases: **kept the active model** (`sha256:b11f9b6b1b74`).
+  The candidate (`sha256:1c952f2ccdde`) gained recall@50 +0.0034 (SE
+  0.0120), short of the 2 SE needed. Its other numbers were recall@20
+  −0.0057 (SE 0.0098), recall@100 −0.0125 (SE 0.0104) and Brier on the top
+  100 −0.0116 (SE 0.0012, better). The active model was trained on 63 of
+  the 100 evaluation cases, so its numbers are optimistic and the gate is
+  harder to pass than it reads.
+- Levers, production (8 runs): briefed 4/4 accepted at $0.26 per accepted,
+  bare 3/4 at $0.62. Briefing recall of the accepted changes was 1.0 with 0
+  misses. Bench (315 runs): briefing recall 0.498, 3.17 misses per briefed
+  run. The most missed files are in `crates/coder/src/task/` (`local.rs` 61,
+  `issue_run.rs` 54, `owner.rs` 39).
+
+The gate decides on recall only. A ranker cannot be scored on cost per
+accepted change offline, so cost per accepted is reported by the levers
+section of each week's report and checked by #11309's bench, not by the
+ranker gate. A promotion will come when production runs on issues past the
+held-out window add signal, or when the window moves past the active model's
+training range. Until then the loop correctly keeps the active model.
 
 ## Next
 
