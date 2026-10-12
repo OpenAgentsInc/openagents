@@ -67,6 +67,12 @@ impl Default for Reading {
     }
 }
 
+/// How often a chat asks Claude Code where the plan's windows stand.
+const USAGE_EVERY: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// How long a chat waits for that answer, which takes about six seconds.
+const USAGE_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// The handle to one chat's Claude Code process.
 pub struct Chat {
     commands: tokio::sync::mpsc::UnboundedSender<Command>,
@@ -299,6 +305,8 @@ impl Thread {
             // from the pasted conversation.
             let resume = resume.filter(|id| claude::kept(id));
             let mut unconfirmed = resume.is_some();
+            // When the chat last asked Claude Code for its usage.
+            let mut usage_read: Option<std::time::Instant> = None;
             let opened = match resume {
                 Some(id) => {
                     let resume = claude::Resume {
@@ -347,24 +355,6 @@ impl Thread {
                     .await
                 };
                 let ended = opened.query.is_completed();
-                // Where the plan's 5-hour and weekly windows stand, for the
-                // line under the input.
-                if !ended
-                    && let Ok(Ok(usage)) = tokio::time::timeout(
-                        std::time::Duration::from_secs(5),
-                        opened.query.get_usage(),
-                    )
-                    .await
-                {
-                    crate::claude_plan::observe_usage(&usage, coder_delegate::limit::now());
-                    crate::claude_plan::remember_usage(&usage, coder_delegate::limit::now());
-                    if let Some(plan) = crate::claude_plan::plan_usage() {
-                        let _ = events.send(Event::Runtime {
-                            turn,
-                            event: RuntimeEvent::Plan(plan),
-                        });
-                    }
-                }
                 if unconfirmed {
                     unconfirmed = false;
                     if !named && ended && result.is_err() && !cancel.load(Ordering::Relaxed) {
@@ -378,6 +368,28 @@ impl Thread {
                     }
                 }
                 let _ = events.send(Event::TurnEnd { turn, result });
+                // Where the plan's 5-hour and weekly windows stand, for the
+                // rail. Claude Code reports a window itself only when its
+                // status changes, so the chat asks after a turn ends, at
+                // most every two minutes: the answer takes about six
+                // seconds, and the turn has already been handed back.
+                if !ended
+                    && usage_read.is_none_or(|at: std::time::Instant| at.elapsed() >= USAGE_EVERY)
+                {
+                    usage_read = Some(std::time::Instant::now());
+                    if let Ok(Ok(usage)) =
+                        tokio::time::timeout(USAGE_WAIT, opened.query.get_usage()).await
+                    {
+                        crate::claude_plan::observe_usage(&usage, coder_delegate::limit::now());
+                        crate::claude_plan::remember_usage(&usage, coder_delegate::limit::now());
+                        if let Some(plan) = crate::claude_plan::plan_usage() {
+                            let _ = events.send(Event::Runtime {
+                                turn,
+                                event: RuntimeEvent::Plan(plan),
+                            });
+                        }
+                    }
+                }
                 if ended {
                     return;
                 }
@@ -442,6 +454,30 @@ mod tests {
     /// process, the second remembering the first, then a stop that leaves
     /// the process up for a third. Run by hand:
     /// `cargo test -p coder-new --lib a_live_chat -- --ignored --nocapture`.
+    /// After a turn, the chat asks Claude Code for its usage, so both plan
+    /// windows reach the rail. Run by hand:
+    /// `cargo test -p coder-new --lib a_live_chat_reads_both_plan_windows -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "needs a Claude Code login"]
+    fn a_live_chat_reads_both_plan_windows() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut chat = Chat::start(
+            dir.path().to_owned(),
+            crate::claude_tools::Tools::default(),
+            None,
+            "Reply with just OK.".into(),
+            "Reply with just OK.".into(),
+        );
+        finish_turn(&mut chat, 1).unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(15));
+        let usage = crate::claude_plan::plan_usage();
+        println!("plan: {usage:?}");
+        assert!(
+            usage.and_then(|usage| usage.five_hour).is_some(),
+            "the 5-hour window"
+        );
+    }
+
     #[test]
     #[ignore = "needs a Claude Code login"]
     fn a_live_chat_keeps_one_process_across_turns() {

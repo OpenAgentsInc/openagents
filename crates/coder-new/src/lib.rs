@@ -2702,7 +2702,12 @@ impl App {
                     KeyCode::PageUp => self.scroll_back(5),
                     KeyCode::PageDown => self.scroll = self.scroll.saturating_add(5),
                     KeyCode::End if ctrl => self.scroll = u16::MAX,
-                    KeyCode::Enter if key.modifiers.contains(KeyModifiers::ALT) => {
+                    // Shift+Enter or Alt+Enter: a new line in the input.
+                    KeyCode::Enter
+                        if key
+                            .modifiers
+                            .intersects(KeyModifiers::ALT | KeyModifiers::SHIFT) =>
+                    {
                         self.composer_history.reset();
                         self.draft.insert("\n");
                     }
@@ -3175,6 +3180,17 @@ mod claude_tests {
         app.draft.text = text.into();
         app.draft.cursor = text.len();
         app
+    }
+
+    #[test]
+    fn shift_enter_is_a_new_line_in_the_input() {
+        let mut app = typed(Mode::Live, "first");
+        app.handle(Event::Key(crossterm::event::KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::SHIFT,
+        )));
+        assert_eq!(app.draft.text, "first\n");
+        assert!(app.live.entries.is_empty(), "nothing was sent");
     }
 
     #[test]

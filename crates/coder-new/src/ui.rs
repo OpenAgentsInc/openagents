@@ -1073,8 +1073,14 @@ fn fill_copy(lines: &[Line<'static>], copy: &mut Vec<RowCopy>) {
 }
 
 /// Whether an entry is a reply, drawn with `●` in column 0.
+/// Whether `entry` keeps one blank row above it even under a compact tool
+/// row: a reply, the person's own message, and the model's thinking.
 fn is_reply(entry: &crate::live::Entry) -> bool {
-    matches!(entry, crate::live::Entry::Assistant { .. })
+    match entry {
+        crate::live::Entry::Assistant { .. } | crate::live::Entry::User(_) => true,
+        crate::live::Entry::Tool { name, .. } => name == crate::claude_stream::THINKING,
+        _ => false,
+    }
 }
 
 /// Whether a row draws nothing.
@@ -2468,6 +2474,42 @@ mod export_notice_tests {
             positions.windows(2).all(|pair| pair[0] == pair[1]),
             "{positions:?}"
         );
+    }
+
+    /// A message the person sends, or the model's thinking, under a compact
+    /// tool row keeps one blank row above it (owner, 2026-10-12).
+    #[test]
+    fn a_message_or_a_thought_under_a_tool_row_has_a_blank_above() {
+        let tool = || crate::live::Entry::Tool {
+            name: "Bash".into(),
+            input: serde_json::json!({"command": "ls"}),
+            output: serde_json::json!({}),
+            running: false,
+        };
+        let mut app = App::default();
+        app.mode = Mode::Live;
+        app.live.entries = vec![
+            tool(),
+            crate::live::Entry::User("in coder-new".into()),
+            tool(),
+            crate::live::Entry::Tool {
+                name: crate::claude_stream::THINKING.into(),
+                input: serde_json::Value::Null,
+                output: serde_json::json!({"text": "checking the plan file"}),
+                running: false,
+            },
+        ];
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let rows: Vec<String> = (0..24)
+            .map(|y| (0..80).map(|x| buffer[(x, y)].symbol()).collect::<String>())
+            .collect();
+        for needle in ["in coder-new", "checking the plan file"] {
+            let at = rows.iter().position(|row| row.contains(needle)).unwrap();
+            assert!(rows[at - 1].trim().is_empty(), "{needle}: {rows:#?}");
+            assert!(rows[at - 2].contains("ls"), "{needle}: {rows:#?}");
+        }
     }
 
     #[test]

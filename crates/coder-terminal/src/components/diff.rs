@@ -750,9 +750,11 @@ mod tests {
         assert_eq!(removed.spans[2].content.as_ref(), " 2");
         assert_eq!(removed.spans[2].style.bg, Some(delete_bg));
         assert_eq!(removed.spans[3].content.as_ref(), " - ");
-        // The markers keep the change's color on the band, not white.
-        let danger = crate::ladder::rgb(coder_ui::coder_noir::DANGER);
-        let success = crate::ladder::rgb(coder_ui::coder_noir::SUCCESS);
+        // The number and the marker keep the change's color on the band,
+        // not white.
+        let danger = crate::ladder::rgb(coder_ui::coder_noir::DIFF_DELETE_MARK);
+        let success = crate::ladder::rgb(coder_ui::coder_noir::DIFF_INSERT_MARK);
+        assert_eq!(removed.spans[2].style.fg, Some(danger));
         assert_eq!(removed.spans[3].style.fg, Some(danger));
         assert_eq!(lines[2].spans[3].content.as_ref(), " + ");
         assert_eq!(lines[2].spans[3].style.fg, Some(success));

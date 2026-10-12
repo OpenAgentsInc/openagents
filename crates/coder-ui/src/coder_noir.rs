@@ -12,15 +12,21 @@ pub use oa_tokens::noir::*;
 /// Coder Noir's GUI role palette (the dark side of the token table).
 pub const PALETTE: oa_tokens::Palette = oa_tokens::Palette::NOIR;
 
+// The diff colors, the owner's palette (2026-10-12).
+
 /// A removed line's row in a diff: a dark red that reads as a band on the
 /// terminal background with syntax colors on top.
-pub const DIFF_DELETE_ROW: u32 = 0x4b1c1f;
+pub const DIFF_DELETE_ROW: u32 = 0x3d0100;
 /// An added line's row in a diff: a dark green, the removed row's match.
-pub const DIFF_INSERT_ROW: u32 = 0x1d4024;
-/// The changed words inside a removed row, brighter than the row.
-pub const DIFF_DELETE_WORD: u32 = 0x8a3138;
-/// The changed words inside an added row, brighter than the row.
-pub const DIFF_INSERT_WORD: u32 = 0x2f7a3e;
+pub const DIFF_INSERT_ROW: u32 = 0x022800;
+/// The changed words inside a removed row, stronger than the row.
+pub const DIFF_DELETE_WORD: u32 = 0x5c0200;
+/// The changed words inside an added row, stronger than the row.
+pub const DIFF_INSERT_WORD: u32 = 0x044700;
+/// A removed line's `-` and line number.
+pub const DIFF_DELETE_MARK: u32 = 0xdc5a5a;
+/// An added line's `+` and line number.
+pub const DIFF_INSERT_MARK: u32 = 0x50c850;
 
 pub const fn rgb(value: u32) -> Color {
     Color::rgb((value >> 16) as u8, (value >> 8) as u8, value as u8)
