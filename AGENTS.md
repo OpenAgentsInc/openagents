@@ -110,7 +110,12 @@ another claim holds (`openagents issue status N`) alone.
 Before you launch subagents, run `openagents capacity check claude` (exit 1
 means the login is out of its limit; don't launch), and when an agent stops on
 a usage limit, run `openagents capacity record PROVIDER --reset TIME` with the
-reset it printed (`docs/coder/runtime/capacity.md`).
+reset it printed (`docs/coder/runtime/capacity.md`). Claude Code sessions here
+enforce this through `.claude/settings.json` (`scripts/dev/agent-gate.sh`):
+no new agent or workflow while the book says claude is out, while a usage
+limit has parked agents (a person resumes with `scripts/dev/agent-gate.sh
+resume`), or past three running agents (`OA_AGENT_MAX`); a usage limit stops
+the session instead of waiting for the reset.
 
 Close an issue as soon as its work is code-complete: merged to `main`, with its
 own checks passing and any host deploy it needs done. Never hold an issue open

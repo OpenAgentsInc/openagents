@@ -41,8 +41,10 @@ private-assets.json
 # The licensed medieval kit pack, fetched into the web build context only.
 /crates/openagents-web/kit/
 
-# Agent worktrees and local Claude Code state.
-/.claude/
+# Agent worktrees and local Claude Code state; the shared project settings
+# (the agent gate hooks, #11430) are tracked.
+/.claude/*
+!/.claude/settings.json
 # Finder metadata.
 .DS_Store
 
