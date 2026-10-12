@@ -83,6 +83,11 @@ runs every 3 minutes from the Cloud Scheduler job of the same name:
   internal IP. The new disk fills itself from GCS at boot.
 - A VM labelled `clef-decisions=paused` is left alone.
 
+Tested 2026-10-12: the VM was stopped at 16:57:27 UTC; the restarter found
+it `TERMINATED` at 16:58:37 and started it by 16:59:00; the boot script
+finished, both models serving, at 17:00:48: about three and a half minutes
+from stop to serving.
+
 Its log: Cloud Logging, `resource.type="cloud_run_job"
 resource.labels.job_name="clef-decisions-restarter"`.
 
