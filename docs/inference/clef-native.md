@@ -78,8 +78,9 @@ The Clef lane is `implemented_early` on the CPU in
   A malformed question still does not fail over.
 
 **Measured** on coderos-4080 (CPU), against `Clef-Flash-Q4_K_M.gguf`
-(sha256 `fd3e9060…638c`). The fixtures and tools are in
-`crates/psionic/fixtures/clef/`.
+(revision `4a192915`, sha256 `fd3e9060…638c`; on 2026-10-11 upstream
+re-uploaded the file, so `main` is now `3626116623ca…6868a2`). The fixtures
+and tools are in `crates/psionic/fixtures/clef/`.
 
 | Gate | Result |
 | --- | --- |
@@ -1041,8 +1042,9 @@ What was tried and dropped:
 
 ### Round 2 (2026-10-10): the model on Metal
 
-The Clef-Flash Q4_K_M GGUF (digest `fd3e9060…`) ran on the M5 Max through
-`psionic-openai-server --decision-device metal`, built from `50f2f1bcc0`.
+The Clef-Flash Q4_K_M GGUF (revision `4a192915`, digest `fd3e9060…`) ran
+on the M5 Max through `psionic-openai-server --decision-device metal`,
+built from `50f2f1bcc0`.
 
 - **Parity.** On the 40 e2e requests (104 questions):
   - against the CPU lane: top answer 100 %, max |Δp| 0.0008, median
@@ -1240,8 +1242,8 @@ kernels at model load. The default is `fixed-64`; invalid setting values fail
 loading. This setting is independent of the attention setting. Its shader
 library and four pipelines are created only when selected.
 
-A header-only inventory of Clef-Flash Q4_K_M (recorded SHA-256
-`fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c`)
+A header-only inventory of Clef-Flash Q4_K_M (revision `4a192915`, recorded
+SHA-256 `fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c`)
 found six weight shapes across 248 trunk projections. Dimensions below are
 `W[output, input]`; tiles are token rows by output columns.
 

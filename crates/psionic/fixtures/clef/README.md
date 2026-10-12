@@ -20,7 +20,10 @@ No private or production data is here, and no weights.
 | `reports/cuda-latency-2026-10-10.json` | RTX 4080 decision latency, Psionic CUDA vs llama.cpp, with the command lines | `tools/bench_latency.py` |
 
 The quantized artifact is `ggml-org/Clef-Flash-GGUF` `Clef-Flash-Q4_K_M.gguf`,
-sha256 `fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c`.
+revision `4a192915`, sha256
+`fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c`. On
+2026-10-11 upstream re-uploaded the file, so `main` now hashes to
+`3626116623ca8d89641952471fac9ce12af84fb3517520029a2ac6f5146868a2`.
 The tests that need it read `PSIONIC_CLEF_GGUF`:
 
 ```sh
