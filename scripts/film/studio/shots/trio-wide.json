@@ -1,0 +1,110 @@
+{
+  "extends": "sync-base.json",
+  "name": "trio-wide",
+  "cut": "All three live at once, a slow orbit.",
+  "duration": 5.5,
+  "devices": [
+    {
+      "type": "macbook",
+      "size": "14",
+      "finish": "silver",
+      "open": 112,
+      "pose": {
+        "location": [
+          -0.28,
+          0.02,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          16
+        ]
+      },
+      "screen": {
+        "video": "$SYNC/terminal.mp4",
+        "in": 16.5,
+        "brightness": 1.35,
+        "fit": "cover"
+      }
+    },
+    {
+      "type": "display",
+      "finish": "silver",
+      "pose": {
+        "location": [
+          0.04,
+          0.42,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          -3
+        ]
+      },
+      "screen": {
+        "video": "$SYNC/web.mp4",
+        "in": 16.5,
+        "brightness": 1.35,
+        "fit": "contain"
+      }
+    },
+    {
+      "type": "iphone",
+      "finish": "silver",
+      "pose": {
+        "location": [
+          0.3,
+          -0.14,
+          0.074
+        ],
+        "rotation": [
+          72,
+          0,
+          -16
+        ]
+      },
+      "screen": {
+        "video": "$SYNC/phone.mp4",
+        "in": 16.5,
+        "brightness": 1.3
+      }
+    }
+  ],
+  "camera": {
+    "ease": "inout",
+    "keys": [
+      {
+        "t": 0,
+        "orbit": [
+          -14,
+          15,
+          1.55
+        ],
+        "target": [
+          0.02,
+          0.12,
+          0.16
+        ],
+        "lens": 40,
+        "fstop": 8
+      },
+      {
+        "t": 5.5,
+        "orbit": [
+          6,
+          14,
+          1.5
+        ],
+        "target": [
+          0.02,
+          0.12,
+          0.16
+        ],
+        "lens": 40,
+        "fstop": 8
+      }
+    ]
+  }
+}

@@ -1,0 +1,129 @@
+{
+  "extends": "sync-base.json",
+  "name": "sync-web-back",
+  "cut": "A reply typed on the web lands in the terminal on the MacBook behind; focus racks to it.",
+  "duration": 6.5,
+  "devices": [
+    {
+      "type": "display",
+      "finish": "silver",
+      "pose": {
+        "location": [
+          -0.15,
+          0.1,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          14
+        ]
+      },
+      "screen": {
+        "video": "$SYNC/web.mp4",
+        "in": 28.8,
+        "brightness": 1.35,
+        "fit": "contain"
+      }
+    },
+    {
+      "type": "macbook",
+      "size": "14",
+      "finish": "silver",
+      "open": 112,
+      "pose": {
+        "location": [
+          0.42,
+          0.32,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          -22
+        ]
+      },
+      "screen": {
+        "video": "$SYNC/terminal.mp4",
+        "in": 28.8,
+        "brightness": 1.35,
+        "fit": "cover"
+      }
+    },
+    {
+      "type": "iphone",
+      "finish": "silver",
+      "pose": {
+        "location": [
+          0.24,
+          -0.28,
+          0.074
+        ],
+        "rotation": [
+          72,
+          0,
+          -20
+        ]
+      },
+      "screen": {
+        "video": "$SYNC/phone.mp4",
+        "in": 28.8,
+        "brightness": 1.3
+      }
+    }
+  ],
+  "camera": {
+    "ease": "inout",
+    "keys": [
+      {
+        "t": 0,
+        "pos": [
+          -0.1,
+          -0.92,
+          0.36
+        ],
+        "target": [
+          0.05,
+          0.1,
+          0.19
+        ],
+        "lens": 35,
+        "fstop": 3.2
+      },
+      {
+        "t": 6.5,
+        "pos": [
+          -0.05,
+          -0.88,
+          0.37
+        ],
+        "target": [
+          0.07,
+          0.1,
+          0.19
+        ],
+        "lens": 35,
+        "fstop": 3.2
+      }
+    ],
+    "focus_track": [
+      {
+        "t": 0,
+        "at": [
+          -0.17,
+          0.085,
+          0.29
+        ]
+      },
+      {
+        "t": 5.0,
+        "pull": 0.7,
+        "at": [
+          0.474,
+          0.454,
+          0.17
+        ]
+      }
+    ]
+  }
+}

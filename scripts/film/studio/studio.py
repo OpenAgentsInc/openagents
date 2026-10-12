@@ -403,7 +403,7 @@ def setup_lights(rig, target):
         ob.visible_camera = False
 
 
-def unlink_screen(root):
+def unlink_screen(roots):
     """Keep the studio lights off the display with light linking.
 
     A softbox mirrored in the display glass washes the UI out, and no single
@@ -412,7 +412,9 @@ def unlink_screen(root):
     so it reads as glass; the metal keeps every highlight.
     """
     lit = bpy.data.collections.new("lit")
-    glass = set(root.get("front_glass", [root.get("screen")]))
+    glass = set()
+    for root in roots:
+        glass |= set(root.get("front_glass", [root.get("screen")]))
     glass.add("grid")  # the Grid's black glass floor mirrors the device, never a softbox
     for o in bpy.context.scene.objects:
         if o.type == "MESH" and o.name not in glass:
@@ -430,6 +432,7 @@ def animate_camera(spec, cam, fps, nframes):
     orbit = "orbit" in keys[0]
     dur = spec["duration"]
     kind = c.get("ease", "inout")
+    focus_track = c.get("focus_track")
     cam.rotation_mode = "QUATERNION"
     cd = cam.data
     cd.sensor_width = 36.0
@@ -455,7 +458,9 @@ def animate_camera(spec, cam, fps, nframes):
         cam.rotation_quaternion = q
         cd.lens = spline(keys, t, "lens")
         cd.dof.aperture_fstop = spline(keys, t, "fstop")
-        if "focus_target" in keys[0]:  # focus on a point other than the aim
+        if focus_track:  # rack focus on the shot's real clock
+            focus = (focus_at(focus_track, (fr - 1) / fps) - pos).length
+        elif "focus_target" in keys[0]:  # focus on a point other than the aim
             focus = (spline(keys, t, "focus_target") - pos).length
         elif "focus" in keys[0]:
             focus = spline(keys, t, "focus")
@@ -474,6 +479,23 @@ def animate_camera(spec, cam, fps, nframes):
                     kp.interpolation = "LINEAR"
 
 
+def focus_at(track, t):
+    """Where a rack-focus track points at real time t: it holds each key's
+    point and pulls to the next over that key's "pull" seconds (smootherstep),
+    ending at the next key's time, so a pull lands on a sync beat."""
+    pts = [Vector(k["at"]) for k in track]
+    if t <= track[0]["t"]:
+        return pts[0]
+    for i in range(1, len(track)):
+        k = track[i]
+        if t < k["t"]:
+            p0 = k["t"] - k.get("pull", 0.6)
+            if t <= p0:
+                return pts[i - 1]
+            return pts[i - 1].lerp(pts[i], ease("inout", (t - p0) / (k["t"] - p0)))
+    return pts[-1]
+
+
 def _fcurves(ad):
     act = ad.action
     if hasattr(act, "fcurves"):
@@ -487,9 +509,10 @@ def _fcurves(ad):
     return out
 
 
-def animate_device(spec, root, nframes):
-    d = spec.get("device_motion")
-    pose = spec["device"].get("pose", {})
+def animate_device(dev, root, nframes, duration):
+    """Pose a device root and play its own motion keys, if any."""
+    d = dev.get("motion")
+    pose = dev.get("pose", {})
     root.location = pose.get("location", (0, 0, 0))
     root.rotation_euler = [math.radians(a) for a in pose.get("rotation", (0, 0, 0))]
     if not d:
@@ -499,7 +522,7 @@ def animate_device(spec, root, nframes):
     fill(keys, "loc", pose.get("location", [0, 0, 0]))
     kind = d.get("ease", "inout")
     for fr in range(1, nframes + 1):
-        t = ease(kind, (fr - 1) / max(1, nframes - 1)) * spec["duration"]
+        t = ease(kind, (fr - 1) / max(1, nframes - 1)) * duration
         root.location = spline(keys, t, "loc")
         root.rotation_euler = [math.radians(a) for a in spline(keys, t, "rot")]
         root.keyframe_insert("location", frame=fr)
@@ -509,34 +532,62 @@ def animate_device(spec, root, nframes):
             kp.interpolation = "LINEAR"
 
 
+SYNC_DIR = os.path.expanduser(os.environ.get("SYNC", "~/work/film-out/sync-v1"))
+
+
+def resolve_video(path):
+    """Expand ~ and $SYNC (the shared-clock footage dir, default
+    ~/work/film-out/sync-v1) in a screen clip's path."""
+    if not path:
+        return None
+    path = path.replace("$SYNC", SYNC_DIR).replace("${SYNC}", SYNC_DIR)
+    path = os.path.expanduser(path)
+    if not os.path.isabs(path):
+        path = os.path.join(REPO, path)
+    if not os.path.exists(path):
+        sys.exit(f"studio: screen footage not found: {path}")
+    return path
+
+
+def device_list(spec, args):
+    """The shot's devices. A multi-device shot lists them under "devices",
+    each with its own "screen" (clip, in-point) on the shot's one clock; the
+    older single-device form ("device", "screen", "device_motion") still works,
+    and only it takes --video."""
+    if "devices" in spec:
+        return [dict(d) for d in spec["devices"]]
+    dev = dict(spec["device"])
+    dev["screen"] = dict(spec.get("screen", {}))
+    if args.video:
+        dev["screen"]["video"] = args.video
+    if spec.get("device_motion"):
+        dev["motion"] = spec["device_motion"]
+    return [dev]
+
+
 def build(spec, args):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     setup_render(spec, args)
     sc = bpy.context.scene
     fps = sc.render.fps
     nframes = sc.frame_end
-    dev = spec["device"]
-    scr = spec.get("screen", {})
-    video = args.video or scr.get("video")
-    if video:
-        video = os.path.expanduser(video)
-        if not os.path.isabs(video):
-            video = os.path.join(REPO, video)
-        if not os.path.exists(video):
-            sys.exit(f"studio: screen footage not found: {video}")
-    kw = dict(video=video, finish=dev.get("finish", "space-black"),
-              in_frame=int(round(scr.get("in", 0.0) * fps)), brightness=scr.get("brightness", 1.0))
-    if dev["type"] == "macbook":
-        kw.update(size=str(dev.get("size", "14")), open_deg=dev.get("open", 112))
-    if dev["type"] == "none":  # an empty stage, e.g. the title plate
-        root = devices.empty("stage")
-    else:
-        root = devices.build(dev["type"], **kw)
-    animate_device(spec, root, nframes)
+    roots = []
+    for dev in device_list(spec, args):
+        scr = dev.get("screen", {})
+        kw = dict(video=resolve_video(scr.get("video")), finish=dev.get("finish", "silver"),
+                  in_frame=int(round(scr.get("in", 0.0) * fps)), brightness=scr.get("brightness", 1.0),
+                  fit=scr.get("fit", "cover"))
+        if dev["type"] == "macbook":
+            kw.update(size=str(dev.get("size", "14")), open_deg=dev.get("open", 112))
+        if dev["type"] == "none":  # an empty stage, e.g. the title plate
+            root = devices.empty("stage")
+        else:
+            root = devices.build(dev["type"], **kw)
+        animate_device(dev, root, nframes, spec["duration"])
+        roots.append((root, scr))
     setup_background(spec.get("background", {}))
     setup_lights(spec["lights"], spec["lights"].get("target", spec["camera"]["keys"][0].get("target", [0, 0, 0])))
-    if not spec.get("screen", {}).get("glare", False):
-        unlink_screen(root)
+    unlink_screen([r for r, scr in roots if not scr.get("glare", False)])
     cd = bpy.data.cameras.new("cam")
     cam = bpy.data.objects.new("cam", cd)
     sc.collection.objects.link(cam)
@@ -612,7 +663,12 @@ def main():
         a, b = (int(x) for x in args.frames.split(":"))
         sc.frame_start, sc.frame_end = a, b
     sc.render.filepath = os.path.join(frames_dir, "")
-    bpy.ops.render.render(animation=True)
+    try:
+        bpy.ops.render.render(animation=True)
+    except Exception:
+        if not args.keep_frames:  # a failed render must not leave gigabytes of frames behind
+            shutil.rmtree(frames_dir, ignore_errors=True)
+        raise
     if args.frames:  # renumber so ffmpeg starts at 0001
         for i, fr in enumerate(range(sc.frame_start, sc.frame_end + 1)):
             os.rename(os.path.join(frames_dir, f"{fr:04d}.png"), os.path.join(frames_dir, f"n{i + 1:04d}.png"))

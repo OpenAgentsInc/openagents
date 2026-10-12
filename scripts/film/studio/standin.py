@@ -9,6 +9,7 @@ Until then this writes clips with the same names, sizes and frame rate into
 Chrome is available), so `studio.py` can be framed and lit against real UI.
 
 Usage: python3 scripts/film/studio/standin.py [OUT_DIR]
+       python3 scripts/film/studio/standin.py --sync [DIR]   # shared-clock sync clips + beats.json
 Needs Pillow and ffmpeg.
 """
 
@@ -125,7 +126,122 @@ def terminal(name, seconds=10):
     out.close()
 
 
+# ---------------------------------------------------------------- shared-clock sync stand-ins
+
+SYNC_LEN = 16.0
+# (sender, text, typing starts, sent): every other screen shows it LAND s later.
+SYNC_MESSAGES = [
+    ("terminal", "Fix the flaky login test and open a PR", 1.2, 3.0),
+    ("phone", "Looks good. Ship it.", 6.4, 8.0),
+    ("web", "Merged. Thanks, Coder!", 10.4, 12.0),
+]
+LAND = 0.4
+SYNC_SIZES = {"terminal": DESK, "desktop": DESK, "web": (3840, 2160), "phone": (1206, 2622)}
+SANS = "/System/Library/Fonts/HelveticaNeue.ttc"
+
+
+def sync_frame(screen, t, size):
+    """One stand-in frame of `screen` at shared time t: the chat so far,
+    with the screen's own message typing in before it is sent."""
+    W, H = size
+    im = Image.new("RGB", size, BG)
+    d = ImageDraw.Draw(im)
+    scale = W / 1512 if screen != "phone" else W / 402
+    mono = screen == "terminal"
+    font = ImageFont.truetype("/System/Library/Fonts/Menlo.ttc" if mono else SANS, int(15 * scale))
+    head = ImageFont.truetype(SANS, int(17 * scale), index=1) if not mono else font
+    label = {"terminal": "coder - ~/code/slugkit", "desktop": "OpenAgents", "web": "openagents.com",
+             "phone": "OpenAgents"}[screen]
+    d.text((int(24 * scale), int(18 * scale)), label, font=head, fill=(235, 235, 235))
+    if screen in ("web", "desktop"):
+        d.line((int(240 * scale), 0, int(240 * scale), H), fill=(40, 40, 40), width=max(1, int(scale)))
+    x0 = int((260 if screen in ("web", "desktop") else 24) * scale)
+    y = int(70 * scale)
+    pad = int(12 * scale)
+    for sender, text, typing, sent in SYNC_MESSAGES:
+        shown = None
+        if sender == screen and t >= typing:
+            shown = text if t >= sent else text[: int(len(text) * (t - typing) / (sent - typing))]
+        elif sender != screen and t >= sent + LAND:
+            shown = text
+        if shown is None:
+            continue
+        mine = sender == screen
+        who = {"terminal": "Terminal", "phone": "iPhone", "web": "Web"}[sender]
+        if mono:
+            d.text((x0, y), ("> " if mine else f"[{who}] ") + shown, font=font,
+                   fill=(225, 228, 232) if mine else (110, 220, 140))
+            y += int(28 * scale)
+            continue
+        tw = d.textlength(shown or " ", font=font)
+        bx1 = W - int(24 * scale) if mine else x0 + tw + 2 * pad
+        bx0 = bx1 - tw - 2 * pad if mine else x0
+        d.rounded_rectangle((bx0, y, bx1, y + int(36 * scale)), radius=int(12 * scale),
+                            fill=(48, 48, 52) if mine else (26, 26, 28))
+        d.text((bx0 + pad, y + int(9 * scale)), shown, font=font, fill=(240, 240, 240))
+        d.text((bx0, y + int(40 * scale)), who, font=ImageFont.truetype(SANS, int(11 * scale)),
+               fill=(120, 120, 120))
+        y += int(70 * scale)
+    # composer at the bottom, with the caret blinking while this screen types
+    cy = H - int(80 * scale)
+    d.rounded_rectangle((x0, cy, W - int(24 * scale), cy + int(48 * scale)), radius=int(14 * scale),
+                        outline=(60, 60, 60), width=max(1, int(scale)))
+    if int(t * 2) % 2 == 0:
+        d.rectangle((x0 + pad, cy + int(12 * scale), x0 + pad + max(2, int(2 * scale)), cy + int(36 * scale)),
+                    fill=(230, 230, 230))
+    return im
+
+
+def boot_frame(screen, t, size):
+    """Dark, then the app's name fades in, then the home screen."""
+    W, H = size
+    if t < 1.0:
+        return Image.new("RGB", size, (0, 0, 0))
+    if t < 2.6:
+        im = Image.new("RGB", size, BG)
+        a = min(1.0, (t - 1.0) / 0.6)
+        d = ImageDraw.Draw(im)
+        f = ImageFont.truetype(SANS, int(W / (8 if screen == "phone" else 14)), index=1)
+        v = int(235 * a)
+        d.text((W // 2, H // 2), "OpenAgents", font=f, fill=(v, v, v), anchor="mm")
+        return im
+    return sync_frame(screen, -1.0, size)
+
+
+def sync_standins(out):
+    """Stand-ins for ~/work/film-out/sync-v1 on one clock, plus beats.json."""
+    import json
+
+    os.makedirs(out, exist_ok=True)
+    for screen, size in SYNC_SIZES.items():
+        for name, fn, dur in ((screen, sync_frame, SYNC_LEN), (f"boot-{screen}", boot_frame, 5.0)):
+            w = Writer.__new__(Writer)
+            w.path = os.path.join(out, name + ".mp4")
+            w.p = subprocess.Popen(
+                ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24",
+                 "-s", f"{size[0]}x{size[1]}", "-r", str(FPS), "-i", "-", "-c:v", "libx264", "-crf", "16",
+                 "-preset", "fast", "-pix_fmt", "yuv420p", w.path], stdin=subprocess.PIPE)
+            last, cached = None, None
+            for f in range(int(dur * FPS)):
+                t = f / FPS
+                key = (int(t * 2), int(t * 15))  # redraw at most 15 times a second
+                if key != last:
+                    cached, last = fn(screen, t, size), key
+                w.put(cached)
+            w.close()
+    beats = {"stand_in": True, "clock": "seconds from the start of every clip",
+             "beats": [{"from": s, "text": text, "typing": ty, "sent": se, "lands": se + LAND}
+                       for s, text, ty, se in SYNC_MESSAGES],
+             "boot": {"dark_until": 1.0, "home_at": 2.6}}
+    with open(os.path.join(out, "beats.json"), "w") as f:
+        json.dump(beats, f, indent=2)
+    print(os.path.join(out, "beats.json"))
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--sync":
+        sync_standins(os.path.expanduser(sys.argv[2] if len(sys.argv) > 2 else "~/work/film-out/studio/standin/sync"))
+        return
     os.makedirs(OUT, exist_ok=True)
     s = lambda n: os.path.join(SHOTS, n)
     live = live_desktop()

@@ -268,7 +268,7 @@ def grille_mat(name, finish, pitch=0.0011, hole=0.00034):
     return m
 
 
-def screen_mat(name, video, screen_aspect, in_frame=0, brightness=1.0, frames=None):
+def screen_mat(name, video, screen_aspect, in_frame=0, brightness=1.0, frames=None, fit="cover"):
     """An emissive display under glass, playing `video` cover-fitted.
 
     The emission is the footage's sRGB color times `brightness`, so at 1.0 a
@@ -296,19 +296,20 @@ def screen_mat(name, video, screen_aspect, in_frame=0, brightness=1.0, frames=No
     if not still:
         iu = tex.image_user
         iu.frame_duration = frames or img.frame_duration
-        iu.frame_start = 1
-        iu.frame_offset = int(in_frame)
+        # A negative in-point starts the clip that many frames into the
+        # shot, holding its first frame until then (a boot clip's dark screen).
+        iu.frame_start = 1 + max(0, -int(in_frame))
+        iu.frame_offset = max(0, int(in_frame))
         iu.use_auto_refresh = True
         iu.use_cyclic = False
-    # Cover-fit: scale UVs so the footage fills the display, cropping the
-    # sides (wide footage) or the bottom (tall footage), never stretching.
+    # Never stretch. "cover" fills the display, cropping the sides (wide
+    # footage) or the bottom (tall footage); "contain" shows all of it,
+    # leaving black bars below or beside it.
     iw, ih = img.size
     img_aspect = iw / ih if ih else screen_aspect
-    sx = sy = 1.0
-    if img_aspect > screen_aspect:
-        sx = screen_aspect / img_aspect
-    else:
-        sy = img_aspect / screen_aspect
+    pick = min if fit == "cover" else max
+    sx = pick(1.0, screen_aspect / img_aspect)
+    sy = pick(1.0, img_aspect / screen_aspect)
     uvn = nodes.new("ShaderNodeUVMap")
     mp = nodes.new("ShaderNodeMapping")
     mp.inputs["Scale"].default_value = (sx, sy, 1)
@@ -360,7 +361,7 @@ def _keyboard_layout(u):
     return [(kx * u, ky * u, kw * u, kh * u) for kx, ky, kw, kh in keys], width * u, depth * u
 
 
-def macbook(video=None, finish="space-black", size="14", open_deg=112, in_frame=0, brightness=1.0):
+def macbook(video=None, finish="space-black", size="14", open_deg=112, in_frame=0, brightness=1.0, fit="cover"):
     p = MACBOOKS[size]
     W, D, Hb, T, r = p["W"], p["D"], p["Hb"], p["T"], p["r"]
     sw, sh = p["px"][0] / PPM, p["px"][1] / PPM
@@ -443,7 +444,7 @@ def macbook(video=None, finish="space-black", size="14", open_deg=112, in_frame=
                     bevel=0.00035, segs=3, rims="top", offset=(0, y0 + Hl / 2)))
     s_top = y0 + Hl - 0.0042
     s_cy = s_top - sh / 2
-    smat = screen_mat("mb_screen", video, sw / sh, in_frame, brightness)
+    smat = screen_mat("mb_screen", video, sw / sh, in_frame, brightness, fit=fit)
     screen = flat("mb_screen", rrect(sw, sh, (0.0012, 0.0098, 0.0098, 0.0012)), T / 2 + 0.00003, smat,
                   uv=(-sw / 2, s_cy - sh / 2, sw, sh), offset=(0, s_cy))
     lp.append(screen)
@@ -465,7 +466,7 @@ def macbook(video=None, finish="space-black", size="14", open_deg=112, in_frame=
 # ---------------------------------------------------------------- iPhone
 
 
-def iphone(video=None, finish="cosmic-orange", in_frame=0, brightness=1.0):
+def iphone(video=None, finish="cosmic-orange", in_frame=0, brightness=1.0, fit="cover"):
     """An iPhone 17 Pro-like phone lying screen-up (+Z), centered on its root."""
     px_w, px_h = 1206, 2622  # iPhone 17 Pro: 402×874 pt at 3x
     ppm = 460 / 0.0254
@@ -491,7 +492,7 @@ def iphone(video=None, finish="cosmic-orange", in_frame=0, brightness=1.0):
     # Front cover glass, slightly proud, with a soft edge.
     parts.append(prism("ip_front", rrect(W, H, R, inset=0.0011), z1 - 0.0016, z1, glass, bevel=0.0005,
                        segs=4, rims="top"))
-    smat = screen_mat("ip_screen", video, sw / sh, in_frame, brightness)
+    smat = screen_mat("ip_screen", video, sw / sh, in_frame, brightness, fit=fit)
     screen = flat("ip_screen", rrect(sw, sh, 0.0092), z1 + 0.00003, smat, uv=(-sw / 2, -sh / 2, sw, sh))
     parts.append(screen)
     pt = sw / 402
@@ -535,5 +536,59 @@ def iphone(video=None, finish="cosmic-orange", in_frame=0, brightness=1.0):
     return root
 
 
+# ---------------------------------------------------------------- Studio Display
+
+
+def display(video=None, finish="silver", in_frame=0, brightness=1.0, fit="cover"):
+    """A Studio Display-style 27-inch 5K monitor on its tilting stand, the
+    screen facing -Y, standing on the floor at its root."""
+    ppm = 218 / 0.0254  # 5K at 218 pixels per inch
+    sw, sh = 5120 / ppm, 2880 / ppm  # 596.5 × 335.5 mm
+    W, H, T = sw + 0.0264, sh + 0.0264, 0.0300
+    r = 0.0105
+    cz = 0.288  # panel center height
+    alu = metal_mat("sd_aluminum", finish)
+    glass = plain("sd_glass", (0.002, 0.002, 0.0025), 0.03, spec=0.6)
+    vent = grille_mat("sd_vent", finish, pitch=0.0016, hole=0.0005)
+    stand = metal_mat("sd_stand", finish, rough_add=0.18)  # satin, so it never flares
+
+    root = empty("display")
+    # The panel is built facing +z with y up, then stood up (Rx(+90): z → -y).
+    pp = []
+    pp.append(prism("sd_shell", rrect(W, H, r), -T / 2, T / 2 - 0.0008, alu, bevel=0.0022, segs=5))
+    pp.append(prism("sd_bezel", rrect(W, H, r, inset=0.0007), T / 2 - 0.0013, T / 2, glass, bevel=0.0004,
+                    segs=3, rims="top"))
+    smat = screen_mat("sd_screen", video, sw / sh, in_frame, brightness, fit=fit)
+    screen = flat("sd_screen", rrect(sw, sh, 0.002), T / 2 + 0.00003, smat, uv=(-sw / 2, -sh / 2, sw, sh))
+    pp.append(screen)
+    # the perforated band across the top of the back
+    pp.append(flat("sd_vent", rrect(W - 0.06, 0.05, 0.004)[::-1], -T / 2 - 0.00004, vent,
+                   offset=(0, H / 2 - 0.045)))
+    rx = Matrix.Rotation(math.radians(90), 4, "X")
+    for o in pp:
+        transform(o, rx)
+        o.location = (0, 0, cz)
+        o.parent = root
+    # Stand: a foot on the floor and one bent blade rising to the panel's back.
+    sw_ = 0.175
+    foot = prism("sd_foot", rrect(sw_, 0.19, 0.012), 0.0, 0.006, stand, bevel=0.0015, segs=3,
+                 offset=(0, 0.035))
+    a, b = Vector((0.12, 0.006)), Vector((T / 2 + 0.004, cz - 0.02))
+    d = b - a
+    blade = prism("sd_blade", rrect(sw_, d.length, 0.004), -0.004, 0.004, stand, bevel=0.0012, segs=3,
+                  offset=(0, d.length / 2))
+    transform(blade, Matrix.Rotation(math.atan2(d.y, d.x), 4, "X"))
+    blade.location = (0, a.x, a.y)
+    hinge = prism("sd_hinge", circle(0.009, 32), -sw_ / 2, sw_ / 2, alu, bevel=0.001, segs=2)
+    transform(hinge, Matrix.Rotation(math.radians(90), 4, "Y"))
+    hinge.location = (0, b.x, b.y)
+    for o in (foot, blade, hinge):
+        o.parent = root
+    root["screen"] = screen.name
+    root["screen_size"] = (sw, sh)
+    root["front_glass"] = [o.name for o in pp if o.name.startswith(("sd_bezel", "sd_screen"))]
+    return root
+
+
 def build(kind, **kw):
-    return {"macbook": macbook, "iphone": iphone}[kind](**kw)
+    return {"macbook": macbook, "iphone": iphone, "display": display}[kind](**kw)

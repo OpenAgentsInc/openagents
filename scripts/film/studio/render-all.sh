@@ -9,7 +9,10 @@
 #   --resolution=WxH   render at WxH (e.g. 1920x1080 for review cuts; pair with OUT=dir)
 #   --standin   use ~/work/film-out/studio/standin/ clips (standin.py) when a
 #               shot's real footage is missing, instead of skipping the shot
-# BLENDER overrides Blender's path; FOOTAGE and OUT override the directories.
+# Multi-device sync shots (suite-boot, sync-*, trio-wide) read their clips
+# from $SYNC (default ~/work/film-out/sync-v1, recorded on one clock).
+# Render them by name: render-all.sh --resolution=1920x1080 suite-boot ...
+# BLENDER overrides Blender's path; FOOTAGE, SYNC and OUT override the directories.
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 blender=${BLENDER:-/Applications/Blender.app/Contents/MacOS/Blender}
@@ -36,6 +39,7 @@ clip_for() {
     macbook-sync) echo web-sync ;;
     iphone-approve) echo phone-app ;;
     grid-plate) echo none ;;
+    suite-boot|sync-terminal-web|sync-phone|sync-web-back|trio-wide) echo devices ;;
     *) echo "" ;;
   esac
 }
@@ -47,6 +51,29 @@ for shot in "${shots[@]}"; do
   clip=$(clip_for "$shot")
   if [ ! -f "$spec" ] || [ -z "$clip" ]; then
     echo "render-all: unknown shot $shot" >&2; status=1; continue
+  fi
+  if [ "$clip" = devices ]; then  # several devices, each naming its clip under $SYNC
+    sync_dir=${SYNC:-$HOME/work/film-out/sync-v1}
+    if [ ! -d "$sync_dir" ]; then
+      if [ $standin -eq 1 ]; then
+        sync_dir=$standin_dir/sync
+        [ -d "$sync_dir" ] || python3 "$here/standin.py" --sync "$sync_dir" >/dev/null
+        echo "render-all: $shot: no shared-clock footage yet, using stand-ins in $sync_dir"
+      else
+        echo "render-all: $shot: SKIPPED, $sync_dir is missing (record it, or pass --standin)"
+        continue
+      fi
+    fi
+    suffix=""; [[ " ${preview[*]-} " == *" --preview "* ]] && suffix=.preview
+    start=$(date +%s)
+    SYNC=$sync_dir "$blender" -b --factory-startup -P "$here/studio.py" -- --shot "$spec" \
+      --out "$out/$shot$suffix.mp4" "${preview[@]}" 2>&1 | grep -E "^studio:|Error|Traceback|not found" || true
+    if [ -f "$out/$shot$suffix.mp4" ] && [ "$(stat -f %m "$out/$shot$suffix.mp4")" -ge "$start" ]; then
+      echo "render-all: $shot done in $(( $(date +%s) - start ))s -> $out/$shot$suffix.mp4"
+    else
+      echo "render-all: $shot FAILED" >&2; status=1
+    fi
+    continue
   fi
   if [ "$clip" = none ]; then  # no screen: the empty Grid plate
     suffix=""; [[ " ${preview[*]-} " == *" --preview "* ]] && suffix=.preview

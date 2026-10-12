@@ -1,0 +1,109 @@
+{
+  "name": "sync-base",
+  "fps": 30,
+  "background": {
+    "kind": "grid",
+    "floor_rough": 0.18,
+    "floor_spec": 0.5,
+    "width_px": 1.5,
+    "fade": 90.0,
+    "scale": 0.08
+  },
+  "lights": {
+    "rotation": 0,
+    "brightness": 2.4,
+    "target": [
+      0.0,
+      0.15,
+      0.15
+    ],
+    "lights": [
+      {
+        "name": "key",
+        "azimuth": -55,
+        "elevation": 40,
+        "distance": 1.8,
+        "size": [
+          2.4,
+          1.6
+        ],
+        "power": 3.5,
+        "color": [
+          1,
+          1,
+          1
+        ],
+        "spread": 70
+      },
+      {
+        "name": "top",
+        "azimuth": 10,
+        "elevation": 78,
+        "distance": 1.5,
+        "size": [
+          2.4,
+          0.9
+        ],
+        "power": 1.5,
+        "color": [
+          1,
+          1,
+          1
+        ],
+        "spread": 60
+      },
+      {
+        "name": "rim",
+        "azimuth": 120,
+        "elevation": 62,
+        "distance": 1.4,
+        "size": [
+          0.6,
+          1.6
+        ],
+        "power": 3,
+        "color": [
+          1,
+          1,
+          1
+        ],
+        "spread": 45
+      },
+      {
+        "name": "fill",
+        "azimuth": 55,
+        "elevation": 15,
+        "distance": 2.0,
+        "size": 2.0,
+        "power": 1.2,
+        "color": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "strip",
+        "azimuth": -25,
+        "elevation": 8,
+        "distance": 1.6,
+        "size": [
+          1.8,
+          0.06
+        ],
+        "power": 0.4,
+        "color": [
+          1,
+          1,
+          1
+        ]
+      }
+    ]
+  },
+  "render": {
+    "resolution": [
+      1920,
+      1080
+    ]
+  }
+}
