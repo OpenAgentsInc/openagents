@@ -15,6 +15,7 @@
 //! | `GET /v1/projects` | `{data: [Project], next}`, oldest first (`?limit`, `?after`) |
 //! | `POST /v1/projects` `{repository}` | Add a project from a connected repository (`owner/name`): `201 Project` |
 //! | `GET /v1/projects/{id}` | One `Project`; `{id}` may be `name:NAME` |
+//! | `PATCH /v1/projects/{id}` `{protection}` | The default for new files: `standard` or `only_me` ([`super::files`]) |
 //! | `DELETE /v1/projects/{id}` | `{id, object: "project.deleted"}`; `409 project_has_threads` while threads are in it, unless `?detach_threads=true` (the threads stay, outside any project) |
 //! | `GET /v1/threads?project=ID\|name:NAME\|none` | `{data: [Thread], next}`, by last activity, oldest first (`?limit`, `?after`) |
 //! | `GET /v1/threads/{id}/messages` | `{data: [Message], next}`, oldest first (`?limit`, `?after`) |
@@ -35,6 +36,7 @@ use oa_auth::repos::{Project, RepoError, Status};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use super::files::Summary;
 use crate::App;
 use crate::chat_store::{Conversation, Error, Role, account_owner};
 use crate::cloud::session::github::RepoCallError;
@@ -51,7 +53,7 @@ const DEFAULT_LIMIT: usize = 100;
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(API, get(list).post(add))
-        .route("/v1/projects/{id}", get(show).delete(remove))
+        .route("/v1/projects/{id}", get(show).delete(remove).patch(edit))
 }
 
 /// Whether `path` is one of these routes, so the site answers it itself.
@@ -187,8 +189,14 @@ fn in_project<'a>(
 }
 
 /// One project as the API shows it. `chats` are the account's chats;
-/// `sources` how many Drive sources it has.
-pub(crate) fn object(project: &Project, chats: &[Conversation], sources: usize) -> Value {
+/// `sources` how many Drive sources it has; `kept` its files and
+/// documents ([`super::files`]).
+pub(crate) fn object(
+    project: &Project,
+    chats: &[Conversation],
+    sources: usize,
+    kept: &Summary,
+) -> Value {
     let threads = in_project(chats, &project.id).count();
     let updated = in_project(chats, &project.id)
         .map(|chat| chat.updated_unix)
@@ -205,7 +213,8 @@ pub(crate) fn object(project: &Project, chats: &[Conversation], sources: usize) 
         "private": project.private,
         "created_at": rfc3339(project.created_unix),
         "updated_at": rfc3339(updated),
-        "counts": {"threads": threads, "files": 0, "documents": 0, "sources": sources},
+        "protection": kept.protection.word(),
+        "counts": {"threads": threads, "files": kept.files, "documents": kept.documents, "sources": sources},
     })
 }
 
@@ -216,6 +225,13 @@ fn source_count(app: &App, account: &str, project: &str) -> usize {
         .as_deref()
         .and_then(|store| store.load(&account_owner(account)).ok())
         .map_or(0, |kept| kept.sources_of(project).len())
+}
+
+/// A project's files and documents kept here; none when they can't be read.
+async fn kept(app: &App, account: &str, project: &str) -> Result<Summary, Response> {
+    super::files::summary(app, account, project)
+        .await
+        .map_err(|error| stored(&error))
 }
 
 async fn account_chats(app: &App, account: &str) -> Result<Vec<Conversation>, Response> {
@@ -242,7 +258,7 @@ impl Page {
 
 /// One page of `rows` (already in order, each with an `id`) after the
 /// cursor, and the cursor for the next page.
-fn paged(rows: Vec<Value>, page: &Page) -> Result<Value, Response> {
+pub(crate) fn paged(rows: Vec<Value>, page: &Page) -> Result<Value, Response> {
     let start = match page.after.as_deref().filter(|after| !after.is_empty()) {
         None => 0,
         Some(after) => match rows.iter().position(|row| row["id"] == after) {
@@ -251,7 +267,7 @@ fn paged(rows: Vec<Value>, page: &Page) -> Result<Value, Response> {
                 return Err(refused(
                     StatusCode::BAD_REQUEST,
                     "invalid_cursor",
-                    "That `after` cursor isn't in this list. Start again without it.",
+                    "That `after` value isn't in this list. Start again without it.",
                 ));
             }
         },
@@ -280,10 +296,19 @@ async fn list(State(app): State<App>, headers: HeaderMap, Query(page): Query<Pag
     };
     let mut projects = status.projects;
     projects.sort_by(|a, b| a.created_unix.cmp(&b.created_unix).then(a.id.cmp(&b.id)));
-    let rows = projects
-        .iter()
-        .map(|p| object(p, &chats, source_count(&app, &account, &p.id)))
-        .collect();
+    let mut rows = Vec::with_capacity(projects.len());
+    for p in &projects {
+        let summary = match kept(&app, &account, &p.id).await {
+            Ok(summary) => summary,
+            Err(response) => return response,
+        };
+        rows.push(object(
+            p,
+            &chats,
+            source_count(&app, &account, &p.id),
+            &summary,
+        ));
+    }
     match paged(rows, &page) {
         Ok(body) => answer(StatusCode::OK, body),
         Err(response) => response,
@@ -317,7 +342,10 @@ async fn add(
         );
     };
     match service.add_project_as(&token, repository.trim()).await {
-        Ok(project) => answer(StatusCode::CREATED, object(&project, &[], 0)),
+        Ok(project) => answer(
+            StatusCode::CREATED,
+            object(&project, &[], 0, &Summary::default()),
+        ),
         Err(error) => failed(error),
     }
 }
@@ -341,7 +369,52 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
         Err(response) => return response,
     };
     let sources = source_count(&app, &account, &project.id);
-    answer(StatusCode::OK, object(project, &chats, sources))
+    let summary = match kept(&app, &account, &project.id).await {
+        Ok(summary) => summary,
+        Err(response) => return response,
+    };
+    answer(StatusCode::OK, object(project, &chats, sources, &summary))
+}
+
+/// `PATCH /v1/projects/{id}` `{"protection": "standard"|"only_me"}`.
+async fn edit(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    body: Result<axum::Json<super::files::EditBody>, JsonRejection>,
+) -> Response {
+    let (service, token, account) = match caller(&app, &headers).await {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let status = match status(service, &token).await {
+        Ok(status) => status,
+        Err(response) => return response,
+    };
+    let project = match named(&status.projects, &id) {
+        Ok(project) => project,
+        Err(response) => return response,
+    };
+    let Ok(axum::Json(body)) = body else {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Send {\"protection\": \"standard\"} or {\"protection\": \"only_me\"} as JSON.",
+        );
+    };
+    if let Err(response) = super::files::edit(&app, &account, &project.id, body).await {
+        return response;
+    }
+    let chats = match account_chats(&app, &account).await {
+        Ok(chats) => chats,
+        Err(response) => return response,
+    };
+    let sources = source_count(&app, &account, &project.id);
+    let summary = match kept(&app, &account, &project.id).await {
+        Ok(summary) => summary,
+        Err(response) => return response,
+    };
+    answer(StatusCode::OK, object(project, &chats, sources, &summary))
 }
 
 #[derive(Deserialize, Default)]
@@ -387,6 +460,9 @@ async fn remove(
     }
     if let Err(error) = service.remove_project_as(&token, &project).await {
         return failed(error);
+    }
+    if let Err(error) = super::files::forget_project(&app, &account, &project).await {
+        return stored(&error);
     }
     let owner = account_owner(&account);
     for chat in attached {

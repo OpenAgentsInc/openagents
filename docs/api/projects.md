@@ -56,7 +56,7 @@ What is missing:
 
 ## Built so far (2026-10-12)
 
-Steps 1 to 3 below are built. Where the proposal above and below differs
+Steps 1 to 4 below are built (step 4, files, on 2026-10-12 as well). Where the proposal above and below differs
 from the code, this is how it works today:
 
 | Route (served by the website, `https://openagents.com/v1/...`) | Answer |
@@ -67,6 +67,13 @@ from the code, this is how it works today:
 | `DELETE /v1/projects/{id}` | `{id, object: "project.deleted"}`; `409 project_has_threads` while chats are in it, unless `?detach_threads=true` |
 | `GET /v1/threads?project=ID\|name:NAME\|none` | `{data: [Thread], next}`, by last activity, oldest first, `?limit`, `?after` |
 | `GET /v1/threads/{id}/messages` | `{data: [Message], next}`, oldest first; each message's `content` is one `text` block |
+| `PATCH /v1/projects/{id}` `{"protection": "standard"\|"only_me"}` | The Project, with `protection`. `sealed` answers `400 not_available`; name, instructions, and repository can't change yet |
+| `POST /v1/files?purpose=project&filename=NAME`, the file's bytes as the body | `201` File: `{id: "file_…", object: "file", filename, mime_type, size_bytes, sha256, created_at, stored_as: "original", project}`. 10 MB at most. Not multipart |
+| `GET /v1/files/{id}`, `GET /v1/files/{id}/content`, `DELETE /v1/files/{id}` | The File; its bytes (`Content-Disposition`, `Digest: sha-256=…`); `{id, object: "file.deleted"}` |
+| `GET /v1/projects/{id}/attachments` | `{data: [Attachment], next, protection}`, oldest first: `file`, `document`, `source` (the project's Drive sources), and `vault` |
+| `POST /v1/projects/{id}/attachments` | `{"file": "file_…"}`, `{"document": {"title", "text"}}` (1 MB of text), or `{"vault": "<object id>"}` (an object already in the caller's vault): `201` Attachment. Drive sources still connect on the Sources page |
+| `GET /v1/projects/{id}/documents/{doc}` | `{id: "pdoc_…", object: "document", title, text, size_bytes, created_at, project}` |
+| `DELETE /v1/projects/{id}/attachments/{att}` | `{id, object: "attachment.deleted"}`; a file is deleted with it |
 
 - **Credential.** The sign-in `openagents login` or `coder login` saves
   (`sess_`), or a sign-in key from Settings (`oa_sk_`). `oak_` API keys and
@@ -79,10 +86,25 @@ from the code, this is how it works today:
   repository, default_branch, private, created_at, updated_at, counts:
   {threads, files, documents, sources}}`. `updated_at` is the latest
   activity in its chats.
-- **Not yet:** `PATCH /v1/projects/{id}` (renaming and instructions need the
-  account service to keep them), `GET /v1/threads` filters other than
-  `project` (without `project` it still answers the apps' older shape), and
-  step 4 (files, documents, attachments, protection).
+- **Files.** A project holds up to 200 files, documents, and vault files.
+  A `standard` file or document is kept in the account's own folder of the
+  chat store (the private chat bucket, encrypted at rest by Google);
+  one whose text looks like it holds a password or key is refused
+  (`400 looks_like_a_secret`). A file belongs to one project.
+- **Only me.** In an `only_me` project the website takes no `standard` file
+  or document (`409 only_me_project`). `openagents projects files add`
+  locks each file on the computer with the person's vault (`openagents
+  vault add --project`, NIP-VAULT: AES-256-GCM per file, its key in the
+  sealed index) and then records `{"vault": object}` on the project. The
+  website keeps only the object id, its size, and when it was added; the
+  name and type stay in the index. A vault file removed from the vault
+  itself leaves the listing. Removing a project forgets its files and its
+  record of vault files; the vault files themselves stay in the vault.
+- **Not yet:** renaming and instructions in `PATCH` (the account service
+  has to keep them), `sealed`, multipart uploads, connecting Drive sources
+  through the API, `oak_` keys with `projects:*` scopes, and `GET
+  /v1/threads` filters other than `project` (without `project` it still
+  answers the apps' older shape).
 
 ## Setup: credentials and base URL
 
@@ -392,10 +414,24 @@ openagents projects files remove NAME|ID FILE
 openagents projects notes add NAME|ID --title T (--text TEXT | --file PATH)
 ```
 
-Built today: `list`, `show NAME|ID` (the project and its chats), `threads
-NAME|ID`, `add OWNER/REPO` (a project is one repository), and `remove
-NAME|ID [--detach-threads]`, each with `--json`; a project is found by its
-name, its repository, or its id. `files` and `notes` come with step 4.
+Built today, each with `--json`; a project is found by its name, its
+repository, or its id:
+
+```text
+openagents projects list | show PROJECT | threads PROJECT
+openagents projects add OWNER/REPO [--protection standard|only_me]
+openagents projects edit PROJECT --protection standard|only_me
+openagents projects remove PROJECT [--detach-threads]
+openagents projects files list PROJECT
+openagents projects files add PROJECT PATH... [--protection standard|only_me]
+openagents projects files get PROJECT FILE [--output PATH]
+openagents projects files remove PROJECT FILE
+openagents projects notes add PROJECT --title T (--text TEXT | --file PATH)
+```
+
+`files list` names only-me files from the vault's index on this computer
+(and lists files added with `openagents vault add --project` too). `files
+get` and `files remove` take a file's name, id, or the start of its id.
 
 It uses the sign-in `openagents login` saved. The GitHub Project board
 command becomes `openagents board`, with `project` kept as a hidden alias

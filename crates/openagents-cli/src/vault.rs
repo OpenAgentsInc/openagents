@@ -169,6 +169,25 @@ fn label() -> String {
     }
 }
 
+/// Run `act` with the signed-in vault, as `openagents vault` opens it;
+/// `openagents projects files` uses it for a project's only-me files.
+pub(crate) fn with_vault<T>(
+    account_dir: Option<&str>,
+    act: impl FnOnce(&Vault<'_>) -> Result<T, String>,
+) -> Result<T, String> {
+    let saved = crate::mac::saved(account_dir)?;
+    let service = api::Http::new(saved)?;
+    let keychain = keys::Keychain::open()?;
+    let vault = Vault {
+        service: &service,
+        keys: &keychain,
+        seen: home().join(".openagents/vault/seen.json"),
+        label: label(),
+        now: now(),
+    };
+    act(&vault)
+}
+
 /// Every command but `serve-local`, against the signed-in service.
 fn live(output: &Output, command: &str, args: &Args) -> Result<Value, String> {
     let saved = crate::mac::saved(args.option("account-dir"))?;

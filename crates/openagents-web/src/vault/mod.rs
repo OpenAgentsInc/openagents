@@ -31,6 +31,7 @@ use axum::routing::{get, post};
 use crate::App;
 use crate::chat_store::Store;
 
+pub(crate) use api::{held_objects, object_size};
 pub(crate) use page::settings_row;
 
 /// The vault page in Settings.

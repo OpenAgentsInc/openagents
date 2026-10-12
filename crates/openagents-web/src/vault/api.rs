@@ -167,6 +167,24 @@ async fn object_ids(store: &Store, owner: &str) -> Result<Vec<String>, Error> {
         .collect())
 }
 
+/// The ids of the objects in the account's vault (a project's vault
+/// files are listed only while their object is here).
+pub(crate) async fn held_objects(app: &App, owner: &str) -> Result<Vec<String>, Error> {
+    object_ids(store(app), owner).await
+}
+
+/// The size of one object in the account's vault; `None` when it isn't
+/// there.
+pub(crate) async fn object_size(app: &App, owner: &str, id: &str) -> Result<Option<u64>, Error> {
+    if !valid_id(id) {
+        return Ok(None);
+    }
+    Ok(store(app)
+        .read_key(&object_key(owner, id)?)
+        .await?
+        .map(|(bytes, _)| bytes.len() as u64))
+}
+
 fn decode(text: &str) -> Option<Vec<u8>> {
     base64::engine::general_purpose::STANDARD.decode(text).ok()
 }

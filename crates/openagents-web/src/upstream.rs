@@ -173,6 +173,7 @@ pub fn owned(path: &str) -> bool {
         || crate::connections::owns(path)
         || crate::sign_in_keys::owns(path)
         || crate::projects::api::owns(path)
+        || crate::projects::files::owns(path)
         || OWNED_PREFIXES.iter().any(|prefix| path.starts_with(prefix))
         || REMOVED.iter().any(|section| {
             path.strip_prefix(section)

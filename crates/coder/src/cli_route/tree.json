@@ -7229,7 +7229,7 @@
               "add"
             ],
             "usage": [
-              "add REPOSITORY"
+              "add REPOSITORY [--protection standard|only_me]"
             ],
             "forms": [
               {
@@ -7241,11 +7241,59 @@
                   {
                     "kind": "positional",
                     "name": "REPOSITORY"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "protection",
+                    "value": "standard|only_me",
+                    "choices": [
+                      "standard",
+                      "only_me"
+                    ],
+                    "optional": true
                   }
                 ]
               }
             ],
             "summary": "Add a project from a connected GitHub repository (owner/name).",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "edit",
+          "leaf": {
+            "path": [
+              "projects",
+              "edit"
+            ],
+            "usage": [
+              "edit PROJECT --protection standard|only_me"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "edit"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PROJECT"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "protection",
+                    "value": "standard|only_me",
+                    "choices": [
+                      "standard",
+                      "only_me"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "summary": "Who can open the project's new files. standard: openagents.com keeps them for your account. only_me: each file is locked on your computer before it's sent, and only your devices can open it (set up once with openagents vault setup).",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -7283,12 +7331,293 @@
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
+        },
+        {
+          "name": "files",
+          "children": [
+            {
+              "name": "list",
+              "leaf": {
+                "path": [
+                  "projects",
+                  "files",
+                  "list"
+                ],
+                "usage": [
+                  "files list PROJECT"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "files"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "list"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "PROJECT"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "The project's files, notes, and Drive sources.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "add",
+              "leaf": {
+                "path": [
+                  "projects",
+                  "files",
+                  "add"
+                ],
+                "usage": [
+                  "files add PROJECT PATH... [--protection standard|only_me]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "files"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "add"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "PROJECT"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "PATH",
+                        "repeated": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "protection",
+                        "value": "standard|only_me",
+                        "choices": [
+                          "standard",
+                          "only_me"
+                        ],
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Add files, 10 MB each at most. They follow the project's protection unless you pass --protection only_me.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "get",
+              "leaf": {
+                "path": [
+                  "projects",
+                  "files",
+                  "get"
+                ],
+                "usage": [
+                  "files get PROJECT FILE [--output PATH]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "files"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "get"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "PROJECT"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "FILE"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "output",
+                        "value": "PATH",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Save one of the project's files or notes here.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "remove",
+              "leaf": {
+                "path": [
+                  "projects",
+                  "files",
+                  "remove"
+                ],
+                "usage": [
+                  "files remove PROJECT FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "files"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "remove"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "PROJECT"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "FILE"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Delete a file or note from the project for good.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "notes",
+          "children": [
+            {
+              "name": "add",
+              "leaf": {
+                "path": [
+                  "projects",
+                  "notes",
+                  "add"
+                ],
+                "usage": [
+                  "notes add PROJECT --title TITLE (--text TEXT | --file PATH)"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "notes"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "add"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "PROJECT"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "title",
+                        "value": "TITLE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "text",
+                        "value": "TEXT",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "file",
+                        "value": "PATH",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Add a text note to the project.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
         }
       ],
       "options": [
         {
           "kind": "option",
+          "name": "protection",
+          "value": "standard|only_me",
+          "choices": [
+            "standard",
+            "only_me"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "detach-threads",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "output",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "title",
+          "value": "TITLE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "text",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "file",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "project",
+          "value": "ID",
+          "open": true,
           "optional": true,
           "repeated": true
         }
