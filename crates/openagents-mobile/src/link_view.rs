@@ -516,7 +516,7 @@ fn running(state: &State) -> Node<Intent> {
     if !any {
         children.push(status(
             "link-running-empty",
-            "Nothing is running on your computers. Coder shows its work here when it's signed in with `coder login` and syncing with `/sync on`.",
+            "Nothing is running on your computers. Coder shows its work here when it's signed in with coder login and syncing with /sync on.",
             quiet(),
         ));
         for (index, computer) in state
