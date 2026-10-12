@@ -356,9 +356,292 @@ pub fn fit(record: &mut Record, aspect: f32, height: f32, x: f32, y: f32) {
     record.transform = [aspect * height / 2.0, 0.0, 0.0, height / 2.0, x, y];
 }
 
+/// One picture in a launch film: a captured screen or Verse frame with the
+/// words shown beside it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Shot {
+    pub image: std::path::PathBuf,
+    /// `desktop` (a bordered window), `phone` (a tall bezel), or `verse`
+    /// (full frame with a caption bar).
+    pub kind: String,
+    pub title: String,
+    pub caption: String,
+}
+
+/// A launch film read from JSON: `{"title","subtitle","shots":[{"image",
+/// "kind","title","caption"}],"closing":["line",..]}`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Launch {
+    pub title: String,
+    pub subtitle: String,
+    pub shots: Vec<Shot>,
+    pub closing: Vec<String>,
+}
+
+impl Launch {
+    pub fn from_json(text: &str, base: &std::path::Path) -> Result<Self, String> {
+        let value: serde_json::Value =
+            serde_json::from_str(text).map_err(|error| format!("launch manifest: {error}"))?;
+        let string = |v: &serde_json::Value, key: &str| {
+            v.get(key)
+                .and_then(|s| s.as_str())
+                .map(str::to_owned)
+                .ok_or_else(|| format!("launch manifest: `{key}` must be a string"))
+        };
+        let mut shots = Vec::new();
+        for shot in value
+            .get("shots")
+            .and_then(|s| s.as_array())
+            .ok_or("launch manifest: `shots` must be a list")?
+        {
+            let kind = string(shot, "kind")?;
+            if !["desktop", "phone", "verse"].contains(&kind.as_str()) {
+                return Err(format!("launch manifest: unknown shot kind `{kind}`"));
+            }
+            shots.push(Shot {
+                image: base.join(string(shot, "image")?),
+                kind,
+                title: string(shot, "title")?,
+                caption: string(shot, "caption")?,
+            });
+        }
+        let closing = value
+            .get("closing")
+            .and_then(|c| c.as_array())
+            .map(|lines| {
+                lines
+                    .iter()
+                    .filter_map(|l| l.as_str().map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(Self {
+            title: string(&value, "title")?,
+            subtitle: string(&value, "subtitle").unwrap_or_default(),
+            shots,
+            closing,
+        })
+    }
+}
+
+fn ease(t: f32) -> f32 {
+    1.0 - (1.0 - t).powi(3)
+}
+
+/// A 1280×720, 60 fps launch film: a title card, every shot sliding in and
+/// holding for `hold` frames, and a closing card.
+pub fn launch(launch: &Launch, hold: u32) -> Result<Vec<u8>, String> {
+    const SLIDE: u32 = 24;
+    const CARD: u32 = 120;
+    let mut film = Film::new(1280, 720, 60.0);
+    let mut font = Font::new();
+    let theme = Theme::noir();
+    let view = crate::take::View {
+        x: -8.0,
+        y: -4.5,
+        width: 16.0,
+        height: 9.0,
+    };
+    let err = |e: Error| e.to_string();
+    let back_key = rounded_rect(&mut film, 16.0, 9.0, 0.0).map_err(err)?;
+    let mut back = Record::new(back_key, Kind::Path);
+    back.fill = theme.background;
+    back.depth = 10.0;
+
+    // Title card: the name writes itself, then the subtitle appears.
+    let (title, width) = font
+        .text(&mut film, &launch.title, 1.4, theme.text, 0.0, 0.2, 0.0)
+        .map_err(err)?;
+    let mut title = title;
+    place(&mut title, -width / 2.0, 0.0, 0.0);
+    let (mut subtitle, width) = font
+        .text(
+            &mut film,
+            &launch.subtitle,
+            0.42,
+            theme.text_secondary,
+            0.0,
+            -1.0,
+            0.0,
+        )
+        .map_err(err)?;
+    place(&mut subtitle, -width / 2.0, 0.0, 0.0);
+    for i in 0..CARD {
+        let t = ease((i as f32 / 50.0).min(1.0));
+        let mut records = vec![back];
+        for r in &title {
+            let mut r = *r;
+            r.reveal = [0.0, t];
+            records.push(r);
+        }
+        if i > 40 {
+            let t = ease(((i - 40) as f32 / 30.0).min(1.0));
+            for r in &subtitle {
+                let mut r = *r;
+                r.reveal = [0.0, t];
+                records.push(r);
+            }
+        }
+        film.frame(view, 1, &records).map_err(err)?;
+    }
+
+    for shot in &launch.shots {
+        let (mut picture, aspect) = image_file(&mut film, &shot.image)?;
+        let mut fixed = vec![back];
+        let (text_x, text_y) = match shot.kind.as_str() {
+            "phone" => {
+                let height = 7.0;
+                fit(&mut picture, aspect, height, 4.6, -0.3);
+                picture.depth = 4.0;
+                let mut bezel = panel(
+                    &mut film,
+                    &theme,
+                    aspect * height + 0.3,
+                    height + 0.3,
+                    0.5,
+                    0.03,
+                )
+                .map_err(err)?;
+                place(std::slice::from_mut(&mut bezel), 4.6, -0.3, 5.0);
+                fixed.push(bezel);
+                (-7.4, 1.0)
+            }
+            "verse" => {
+                // Cover the frame: fit by height, or by width when the capture is narrower.
+                let height = (16.0 / aspect).max(9.0);
+                fit(&mut picture, aspect, height, 0.0, 0.0);
+                picture.depth = 6.0;
+                let mut bar = panel(&mut film, &theme, 16.0, 2.2, 0.0, 0.0).map_err(err)?;
+                bar.fill = [0.04, 0.04, 0.05, 1.0];
+                place(std::slice::from_mut(&mut bar), 0.0, -3.4, 3.0);
+                fixed.push(bar);
+                (-7.4, -3.0)
+            }
+            _ => {
+                let height = 5.6;
+                fit(&mut picture, aspect, height, 0.0, -1.0);
+                picture.depth = 4.0;
+                let mut frame = panel(
+                    &mut film,
+                    &theme,
+                    aspect * height + 0.12,
+                    height + 0.12,
+                    0.18,
+                    0.03,
+                )
+                .map_err(err)?;
+                place(std::slice::from_mut(&mut frame), 0.0, -1.0, 5.0);
+                fixed.push(frame);
+                (-7.4, 3.5)
+            }
+        };
+        let size = if shot.kind == "verse" { 0.6 } else { 0.56 };
+        let (mut heading, _) = font
+            .text(
+                &mut film,
+                &shot.title,
+                size,
+                theme.text,
+                text_x,
+                text_y,
+                0.0,
+            )
+            .map_err(err)?;
+        let (mut caption, _) = font
+            .text(
+                &mut film,
+                &shot.caption,
+                0.3,
+                theme.text_secondary,
+                text_x,
+                text_y - 0.75,
+                0.0,
+            )
+            .map_err(err)?;
+        for i in 0..SLIDE + hold {
+            let t = ease((i as f32 / SLIDE as f32).min(1.0));
+            let mut records = fixed.clone();
+            let mut moving = picture;
+            moving.transform[5] += (1.0 - t) * 9.0;
+            records.push(moving);
+            for r in heading.iter_mut().chain(caption.iter_mut()) {
+                let mut r = *r;
+                r.reveal = [0.0, t];
+                records.push(r);
+            }
+            film.frame(view, 1, &records).map_err(err)?;
+        }
+    }
+
+    // Closing card: the lines appear one after another.
+    let mut lines = Vec::new();
+    let top = (launch.closing.len() as f32 - 1.0) * 0.45;
+    for (n, line) in launch.closing.iter().enumerate() {
+        let (mut text, width) = font
+            .text(
+                &mut film,
+                line,
+                0.5,
+                theme.text,
+                0.0,
+                top - n as f32 * 0.9,
+                0.0,
+            )
+            .map_err(err)?;
+        place(&mut text, -width / 2.0, 0.0, 0.0);
+        lines.push(text);
+    }
+    for i in 0..CARD + hold / 2 {
+        let mut records = vec![back];
+        for (n, line) in lines.iter().enumerate() {
+            let start = n as f32 * 18.0;
+            let t = ease(((i as f32 - start) / 24.0).clamp(0.0, 1.0));
+            for r in line {
+                let mut r = *r;
+                r.reveal = [0.0, t];
+                records.push(r);
+            }
+        }
+        film.frame(view, 1, &records).map_err(err)?;
+    }
+    Ok(film.finish(false))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn launch_manifest_resolves_images_and_refuses_unknown_kinds() {
+        let base = std::path::Path::new("/films");
+        let text = r#"{"title":"T","subtitle":"S","shots":[
+            {"image":"shots/a.png","kind":"desktop","title":"A","caption":"a"},
+            {"image":"/abs/b.jpg","kind":"verse","title":"B","caption":"b"}],
+            "closing":["one","two"]}"#;
+        let launch = Launch::from_json(text, base).unwrap();
+        assert_eq!(launch.shots[0].image, base.join("shots/a.png"));
+        assert_eq!(
+            launch.shots[1].image,
+            std::path::PathBuf::from("/abs/b.jpg")
+        );
+        assert_eq!(launch.closing, vec!["one", "two"]);
+        let bad = text.replace("\"verse\"", "\"tablet\"");
+        assert!(Launch::from_json(&bad, base).is_err());
+    }
+
+    #[test]
+    fn launch_without_shots_is_a_readable_take() {
+        let launch = Launch {
+            title: "OpenAgents".into(),
+            subtitle: "One world.".into(),
+            shots: Vec::new(),
+            closing: vec!["V1".into()],
+        };
+        let bytes = super::launch(&launch, 2).unwrap();
+        let take = crate::read(&bytes).unwrap();
+        assert_eq!((take.width, take.height), (1280, 720));
+        assert!(take.frames.len() > 120);
+    }
     use crate::take::View;
 
     #[test]

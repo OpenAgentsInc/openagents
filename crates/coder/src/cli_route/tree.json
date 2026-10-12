@@ -13567,7 +13567,7 @@
               "demo"
             ],
             "usage": [
-              "demo OUT [--pictures N] [--hold N]"
+              "demo OUT [--pictures N] [--hold N] [--scene square|desktop] [--image FILE]"
             ],
             "forms": [
               {
@@ -13593,11 +13593,28 @@
                     "value": "N",
                     "open": true,
                     "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "scene",
+                    "value": "square|desktop",
+                    "choices": [
+                      "square",
+                      "desktop"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "image",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Write a short demo take (a square sliding across a 1280×720 frame at 60 fps) to OUT.",
+            "summary": "Write a short demo take (a square sliding across a 1280×720 frame at 60 fps, or a Coder Noir desktop scene over FILE, a PNG or JPEG) to OUT.",
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
@@ -13648,6 +13665,93 @@
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
+        },
+        {
+          "name": "launch",
+          "leaf": {
+            "path": [
+              "film",
+              "launch"
+            ],
+            "usage": [
+              "launch MANIFEST OUT [--hold N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "launch"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "MANIFEST"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "OUT"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "hold",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Write a launch film take from MANIFEST, a JSON file naming a title, shots (image, kind desktop|phone|verse, title, caption), and closing lines; images are relative to MANIFEST.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "export",
+          "leaf": {
+            "path": [
+              "film",
+              "export"
+            ],
+            "usage": [
+              "export FILE OUT.mp4 [--background R,G,B] [--crf N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "export"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "FILE"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "OUT.mp4"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "background",
+                    "value": "R,G,B",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "crf",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Draw every frame of a take and encode it with ffmpeg (H.264, yuv420p) at the take's frame rate.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
         }
       ],
       "options": [
@@ -13669,6 +13773,25 @@
         },
         {
           "kind": "option",
+          "name": "scene",
+          "value": "square|desktop",
+          "choices": [
+            "square",
+            "desktop"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "image",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "picture",
           "value": "N",
           "open": true,
@@ -13679,6 +13802,14 @@
           "kind": "option",
           "name": "background",
           "value": "R,G,B",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "crf",
+          "value": "N",
           "open": true,
           "optional": true,
           "repeated": true

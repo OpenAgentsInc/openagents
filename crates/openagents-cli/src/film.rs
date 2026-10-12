@@ -18,6 +18,11 @@ pub(crate) const USAGE: &str = "usage: openagents film COMMAND [ARGS]
   render FILE DIR [--picture N] [--background R,G,B]
                             Draw a take's pictures with wgpu into DIR as
                             frame-NNNN.png (every picture, or only picture N).
+  launch MANIFEST OUT [--hold N]
+                            Write a launch film take from MANIFEST, a JSON
+                            file naming a title, shots (image, kind
+                            desktop|phone|verse, title, caption), and closing
+                            lines; images are relative to MANIFEST.
   export FILE OUT.mp4 [--background R,G,B] [--crf N]
                             Draw every frame of a take and encode it with
                             ffmpeg (H.264, yuv420p) at the take's frame rate.
@@ -31,6 +36,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("demo", Effect::LocalWrite),
     Declared::computer("render", Effect::LocalWrite),
     Declared::computer("export", Effect::LocalWrite),
+    Declared::computer("launch", Effect::LocalWrite),
 ];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
@@ -130,6 +136,38 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                     0
                 }
                 Err(message) => output.fail("film render", &message),
+            }
+        }
+        "launch" => {
+            let [manifest, out] = args.positional() else {
+                return output.usage("film launch", "MANIFEST and OUT are required", USAGE);
+            };
+            let hold = match args.number("hold", 150u32) {
+                Ok(n) if n > 0 => n,
+                _ => return output.usage("film launch", "--hold needs a count above 0", USAGE),
+            };
+            let manifest = Path::new(manifest);
+            let built = std::fs::read_to_string(manifest)
+                .map_err(|error| format!("can't read {}: {error}", manifest.display()))
+                .and_then(|text| {
+                    let base = manifest.parent().unwrap_or(Path::new("."));
+                    verse_film::layers::Launch::from_json(&text, base)
+                })
+                .and_then(|launch| verse_film::layers::launch(&launch, hold));
+            match built {
+                Ok(bytes) => {
+                    if let Err(error) = std::fs::write(out, &bytes) {
+                        return output.fail("film launch", &format!("can't write {out}: {error}"));
+                    }
+                    let mut summary = verse_film::read(&bytes)
+                        .expect("the launch take reads")
+                        .summary();
+                    summary["path"] = json!(out);
+                    summary["bytes"] = json!(bytes.len());
+                    output.emit(&summary, render);
+                    0
+                }
+                Err(message) => output.fail("film launch", &message),
             }
         }
         "export" => {

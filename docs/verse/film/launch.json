@@ -1,0 +1,64 @@
+{
+  "title": "OpenAgents",
+  "subtitle": "One world. Every surface.",
+  "shots": [
+    {
+      "image": "../captures/plaza-neon/after-spawn.jpg",
+      "kind": "verse",
+      "title": "The Verse",
+      "caption": "A shared world where people and their agents meet."
+    },
+    {
+      "image": "shots/chat-desktop.png",
+      "kind": "desktop",
+      "title": "Ask anything",
+      "caption": "Chat on the web, with every answer saved to your account."
+    },
+    {
+      "image": "shots/work-desktop.png",
+      "kind": "desktop",
+      "title": "Hand it to Coder",
+      "caption": "Coder works the task on your computer and opens the pull request."
+    },
+    {
+      "image": "shots/signin-phone.png",
+      "kind": "phone",
+      "title": "Sign in anywhere",
+      "caption": "One GitHub sign-in for the web, the phone, and the desktop."
+    },
+    {
+      "image": "shots/device-phone.png",
+      "kind": "phone",
+      "title": "Approve from your phone",
+      "caption": "A six-letter code signs Coder in to your account."
+    },
+    {
+      "image": "shots/computers-desktop.png",
+      "kind": "desktop",
+      "title": "Your computers",
+      "caption": "Every machine that runs Coder, and where its chats live."
+    },
+    {
+      "image": "../captures/lagrange-1-realism/after-earthzoom.jpg",
+      "kind": "verse",
+      "title": "Lagrange 1",
+      "caption": "The Verse renders real places at real scale."
+    },
+    {
+      "image": "../captures/druid/live-druid.jpg",
+      "kind": "verse",
+      "title": "Meet the druid",
+      "caption": "Agents live in the world with you."
+    },
+    {
+      "image": "shots/meteor-aftermath.jpg",
+      "kind": "verse",
+      "title": "A world that changes",
+      "caption": "Meteors fall, buildings break, and everyone sees it together."
+    }
+  ],
+  "closing": [
+    "OpenAgents V1",
+    "openagents.com"
+  ]
+}
