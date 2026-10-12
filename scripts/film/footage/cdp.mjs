@@ -251,6 +251,11 @@ export class Recorder {
     this.off();
     this.t1 = Date.now() / 1000;
   }
+  /// Encodes one frame per wall-clock time in `epochs` (Unix seconds):
+  /// footage cut on a clock shared with other recordings.
+  encodeAt(out, epochs) {
+    encodeFramesAt(this.frames, out, epochs, this.cdp.size);
+  }
   /// Encodes [from, to] seconds (wall clock since start) into `out` at
   /// 30 fps constant frame rate and the exact device pixel size.
   /// `speed` lists [{from, to, x}] wall-clock ranges shortened to 1/x of
@@ -287,6 +292,19 @@ export class Recorder {
 export async function shoot(cdp, dir, n) {
   const r = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
   fs.writeFileSync(path.join(dir, `${String(n).padStart(6, "0")}.png`), Buffer.from(r.data, "base64"));
+}
+
+/// Encodes screencast `frames` ({file, t}) at the wall-clock `epochs`.
+export function encodeFramesAt(frames, out, epochs, { width, height, dpr }) {
+  const list = [];
+  let k = 0;
+  for (const t of epochs) {
+    while (k + 1 < frames.length && frames[k + 1].t <= t) k++;
+    list.push(`file '${frames[k].file}'\nduration ${1 / 30}`);
+  }
+  const listFile = path.join(path.dirname(frames[0].file), "frames.txt");
+  fs.writeFileSync(listFile, list.join("\n") + "\n");
+  encodeList(listFile, out, width * dpr, height * dpr);
 }
 
 export function encodeList(listFile, out, w, h) {

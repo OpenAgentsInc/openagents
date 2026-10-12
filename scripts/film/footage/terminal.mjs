@@ -32,6 +32,8 @@ export class Session {
     this.events = [];
     this.term = new Terminal({ cols, rows, allowProposedApi: true, scrollback: 5000 });
     this.t0 = performance.now();
+    // The same moment on the wall clock, so other recordings line up.
+    this.epoch0 = Date.now() / 1000;
     this.child = spawn("python3", [path.join(here, "ptyrun.py"), String(cols), String(rows), "--", ...command], {
       cwd,
       env: { ...process.env, ...env },
@@ -98,12 +100,26 @@ export class Session {
       await sleep(base + Math.random() * jitter);
     }
   }
+  /// Wall-clock seconds of a moment on this session's clock.
+  epoch(t) {
+    return this.epoch0 + t;
+  }
+  /// Now, in this session's seconds.
+  now() {
+    return (performance.now() - this.t0) / 1000;
+  }
   mark(label) {
     this.events.push([(performance.now() - this.t0) / 1000, "m", label]);
   }
   save(file) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    const header = { version: 2, width: this.cols, height: this.rows, env: { TERM: "xterm-256color" } };
+    const header = {
+      version: 2,
+      width: this.cols,
+      height: this.rows,
+      timestamp: this.epoch0,
+      env: { TERM: "xterm-256color" },
+    };
     fs.writeFileSync(file, [JSON.stringify(header), ...this.events.map((e) => JSON.stringify(e))].join("\n") + "\n");
   }
   kill() {

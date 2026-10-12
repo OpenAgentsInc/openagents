@@ -179,6 +179,47 @@ export async function replay(castFile, out, opts = {}) {
   return { frames: n, seconds: n / 30 };
 }
 
+/// Renders the recording at exactly the given times (seconds on the
+/// recording's own clock, never decreasing), one frame each: for footage
+/// cut on a clock shared with other recordings. A jump forward feeds
+/// everything in between at once, so the screen is right after a cut.
+export async function replayAt(castFile, out, times) {
+  const lines = fs.readFileSync(castFile, "utf8").trim().split("\n");
+  const header = JSON.parse(lines[0]);
+  const events = lines.slice(1).map((l) => JSON.parse(l)).filter((e) => e[1] === "o");
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), "oa-term-replay-"));
+  const page = path.join(work, "replay.html");
+  fs.writeFileSync(page, pageHtml(header.width, header.height));
+  const cdp = await c.launch({ width: WIDTH, height: HEIGHT, dpr: DPR });
+  await c.navigate(cdp, `file://${page}`);
+  await c.evaluate(cdp, "window.ready");
+  const frames = path.join(work, "frames");
+  fs.mkdirSync(frames);
+  let k = 0;
+  let n = 0;
+  let carry = "";
+  let held = 0;
+  for (const t of times) {
+    let chunk = carry;
+    while (k < events.length && events[k][0] <= t) chunk += events[k++][2];
+    const cut = unsettled(chunk);
+    if (cut >= 0 && held < 4 && k < events.length) {
+      carry = chunk.slice(cut);
+      chunk = chunk.slice(0, cut);
+      held++;
+    } else {
+      carry = "";
+      held = 0;
+    }
+    if (chunk) await c.evaluate(cdp, `window.feed(${JSON.stringify(chunk)})`);
+    await c.shoot(cdp, frames, n++);
+  }
+  await cdp.close();
+  c.encodeFrames(frames, out, WIDTH * DPR, HEIGHT * DPR);
+  fs.rmSync(work, { recursive: true, force: true });
+  return { frames: n, seconds: n / 30 };
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const [cast, out, ...rest] = process.argv.slice(2);
   const opts = { speed: [] };
