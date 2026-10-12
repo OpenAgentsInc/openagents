@@ -1,0 +1,70 @@
+{
+  "schema": "openagents.clef-quant-eval-plan.v1",
+  "issue": 11306,
+  "frozen": "2026-10-12",
+  "router_revision": "dcf31b1e8bfbdc5d867c1c1325715eac3f6589cd",
+  "psionic_revision": "dcf31b1e8bfbdc5d867c1c1325715eac3f6589cd",
+  "corpora": {
+    "routes_v5": {
+      "path": "crates/coder/fixtures/chat-router/routes-v5.json",
+      "sha256": "7d4f72fd2534f82381b9de7cb669ac2bbd049d60ede4a7863bf7a23005b9d8a6",
+      "rows": 1073,
+      "splits": {"tune": 799, "held_out": 274},
+      "use": "tune = calibration/development (map fitting only); held_out = evaluation, never used to pick an artifact, layer, threshold or map"
+    },
+    "chat_goldens": {
+      "path": "bench/web-chat/goldens-v1.json",
+      "sha256": "4c0ab6b45ab77c78292585fdd0dfc2010967a602e2cad05379bad08d38ceece2",
+      "cases": 123,
+      "gate": "min_right 0.9 and no wrong case in a critical flow (#11106)",
+      "use": "held-out product evaluation only; no map or artifact is fitted on it"
+    }
+  },
+  "fixed_conditions": {
+    "request_shape": "the router as shipped at router_revision: staged routing default for a Clef-first judge, split side requests",
+    "answer_bank": "compiled into the router at router_revision",
+    "product_notes": "on (OPENAGENTS_PRODUCT_KB_EMBEDDINGS from the AI Gateway key) for every row, Jev included",
+    "cache": "each Clef row starts a fresh psionic-openai-server, so the exact logit cache is empty; Jev is hosted and uncached on our side",
+    "server_flags": "--decision-device cuda --decision-chunk 2048 --decision-max-tokens 65536 (f16 accumulate)",
+    "device": "NVIDIA H100 80GB HBM3, GCE a3-highgpu-1g spot, us-east5-a (27B Q4 needs 18.1 GB of VRAM; the RTX 4080's 16 GB cannot hold it)"
+  },
+  "candidates": [
+    {
+      "id": "q4",
+      "artifact": "ggml-org/Clef-GGUF Clef-Q4_K_M.gguf",
+      "bytes": 19232219200,
+      "role": "released 27B artifact (baseline)"
+    },
+    {
+      "id": "q8",
+      "artifact": "ggml-org/Clef-GGUF Clef-Q8_0.gguf",
+      "bytes": 28732215360,
+      "weight_gib": 26.76,
+      "role": "larger standard quantization (issue step 3); the same upstream conversion (.src_sha PRIMARY=0b331204bb13fbd2ca93a64df1956f5b55478ce5) and joint head, so checkpoint and head identity are retained; fits the 52 GiB execution cap with about 25 GiB for activations and KV"
+    },
+    {
+      "id": "q4-fixed-down-q6",
+      "artifact": "fixed-down-q6-v1 (PR #11299), sha256 a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+      "role": "retained earlier candidate; generated on the Mac and not on this VM, so not in this run"
+    }
+  ],
+  "systems": [
+    {"id": "jev-on", "judge": "hosted Jev (TYPESAFE_API_KEY)", "map": "Jev map"},
+    {"id": "q4-on", "judge": "27B Q4 direct_local", "map": "Clef-Flash staged map (inherited; not a 27B map)"},
+    {"id": "q4-off", "judge": "27B Q4 direct_local", "map": "raw"},
+    {"id": "q8-on", "judge": "27B Q8_0 direct_local", "map": "Clef-Flash staged map (inherited)"},
+    {"id": "q8-off", "judge": "27B Q8_0 direct_local", "map": "raw"},
+    {"id": "q4-fit", "judge": "27B Q4", "map": "27B map fitted on routes-v5 tune, scored on held_out raw and calibrated (ROUTER_EVAL_PUBLISH=1)"},
+    {"id": "q8-fit", "judge": "27B Q8_0", "map": "27B map fitted on routes-v5 tune, scored on held_out raw and calibrated"}
+  ],
+  "metrics": [
+    "route accuracy (routes-v5 per split; chat-goldens route right)",
+    "prepared-answer selection (answer top right) and served answer (chat-goldens Pass / right ignoring time)",
+    "critical errors (chat-goldens critical flows)",
+    "abstention / no-match (tier model or clarify where a canned answer was expected, and canned precision)",
+    "calibration (route top p p10/p50/p90; fitted-map held-out scores)",
+    "judge latency p50/p90; judge-only results kept apart from complete product results",
+    "VRAM after load and after the run"
+  ],
+  "decision_rule": "Jev stays first unless a candidate meets the product's speed (2 s judge budget) and accuracy gates, critical errors included; a smaller BF16 logit difference alone is not success. Failed candidates and their results are retained."
+}

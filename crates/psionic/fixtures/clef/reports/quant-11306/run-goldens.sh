@@ -1,0 +1,89 @@
+#!/bin/bash
+# The #11306 frozen product comparison, run on the VM vm-startup.sh prepared.
+#
+#   run-goldens.sh build              build chat-goldens and the routes-v5 eval at the plan's revision
+#   run-goldens.sh run SYSTEM MAP     SYSTEM = jev | q4 | q8, MAP = on | off (Clef map; ignored for jev):
+#                                     chat-goldens router (123 cases), plus routes-v5 held-out for jev
+#   run-goldens.sh fit SYSTEM         q4 | q8: fit a 27B map on routes-v5's calibration partition
+#                                     and score held-out raw and calibrated (ROUTER_EVAL_PUBLISH=1)
+#   run-goldens.sh all                build, then every row of plan.json in order
+#
+# Keys come from the caller's environment over SSH (TYPESAFE_API_KEY for Jev,
+# AI_GATEWAY_API_KEY for the product notes' embeddings); nothing is written
+# to disk. Every run uses the same request shape, answer bank, product-note
+# availability, router revision and cache setting: a freshly started Clef
+# server (empty exact-logit cache) per row, product notes on, staged routing
+# as shipped. Results: /var/log/clef-11306/results/<system>-<map>/.
+set -euo pipefail
+ROOT=/opt/clef-11306
+LOG=/var/log/clef-11306
+OUT=$LOG/results
+REV=$(cat "$LOG/rev")
+export PATH=/root/.cargo/bin:/usr/local/cuda/bin:$PATH
+export CARGO_TARGET_DIR=$ROOT/target-coder
+
+build() {
+  if [ ! -d "$ROOT/full/.git" ]; then
+    git clone -q --filter=blob:none https://github.com/OpenAgentsInc/openagents.git "$ROOT/full"
+  fi
+  git -C "$ROOT/full" checkout -q "$REV"
+  ( cd "$ROOT/full" && cargo build -q -p coder --bin chat-goldens \
+      && cargo test -q -p coder --test router_eval --no-run ) > "$LOG/build-coder.log" 2>&1
+  echo built > "$LOG/coder-state"
+}
+
+run() {
+  local system=$1 map=${2:-on} dir
+  dir=$OUT/$system-$map; mkdir -p "$dir"
+  : "${AI_GATEWAY_API_KEY:?product notes need AI_GATEWAY_API_KEY}"
+  export OPENAGENTS_PRODUCT_KB_EMBEDDINGS="$AI_GATEWAY_API_KEY"
+  local -a env=()
+  case "$system" in
+    jev) : "${TYPESAFE_API_KEY:?Jev needs TYPESAFE_API_KEY}" ;;
+    q4|q8)
+      "$ROOT/serve.sh" "$system"
+      local port; port=$([ "$system" = q4 ] && echo 18201 || echo 18202)
+      env=(CODER_DECISION_PROFILE=direct_local CODER_DECISION_URL="http://127.0.0.1:$port"
+           CODER_DECISION_MODEL=clef CODER_WORKER_ROUTER_CALIBRATION="$map")
+      ;;
+    *) echo "system is jev, q4 or q8" >&2; exit 2 ;;
+  esac
+  cd "$ROOT/full"
+  # chat-goldens router: all 123 cases (held-out evaluation).
+  env "${env[@]}" "$CARGO_TARGET_DIR/debug/chat-goldens" router --out "$dir/chat-goldens" \
+    > "$dir/chat-goldens.log" 2>&1 || true
+  # routes-v5 held-out for Jev (its map is fitted elsewhere); a Clef artifact's
+  # routes-v5 numbers come from fit, which reads both partitions once.
+  if [ "$system" = jev ]; then
+    ROUTER_EVAL_SPLIT=held_out ROUTER_EVAL_MAPS=on ROUTER_EVAL_OUT="$dir/routes-v5-held_out" \
+      cargo test -q -p coder --test router_eval -- --ignored --nocapture --test-threads 1 live_router \
+      > "$dir/routes-v5-held_out.log" 2>&1 || true
+  fi
+  [ "$system" = jev ] || cp "$LOG/server-$system.log" "$LOG/vram-$system-after-load.txt" "$dir/" 2>/dev/null || true
+  nvidia-smi --query-gpu=memory.used --format=csv,noheader > "$dir/vram-after-run.txt"
+}
+
+fit() {
+  local system=$1 dir port
+  dir=$OUT/$system-fit; mkdir -p "$dir"
+  "$ROOT/serve.sh" "$system"
+  port=$([ "$system" = q4 ] && echo 18201 || echo 18202)
+  cd "$ROOT/full"
+  CODER_DECISION_PROFILE=direct_local CODER_DECISION_URL="http://127.0.0.1:$port" CODER_DECISION_MODEL=clef \
+    ROUTER_EVAL_PUBLISH=1 ROUTER_EVAL_OUT="$dir" \
+    cargo test -q -p coder --test router_eval -- --ignored --nocapture --test-threads 1 live_router \
+    > "$dir/fit.log" 2>&1 || true
+}
+
+case "${1:-}" in
+  build) build ;;
+  run) shift; run "$@" ;;
+  fit) shift; fit "$@" ;;
+  all) # Keys arrive in a root-only file that is read and removed at once.
+       if [ -f /run/clef-11306.env ]; then set -a; . /run/clef-11306.env; set +a; rm -f /run/clef-11306.env; fi
+       [ -f "$LOG/coder-state" ] || build
+       until [ "$(cat "$LOG/state")" = ready ]; do sleep 30; done
+       run jev on; run q4 on; run q4 off; fit q4; run q8 on; run q8 off; fit q8
+       echo done > "$LOG/run-state" ;;
+  *) sed -n 2,6p "$0"; exit 2 ;;
+esac
