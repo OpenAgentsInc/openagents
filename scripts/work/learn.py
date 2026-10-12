@@ -454,7 +454,7 @@ def cycle(args) -> dict:
         return report
     receipt = json.loads(Path(rec).read_text())
     report["candidate"], report["receipt_path"] = cand, rec
-    report["gate"] = {"pass": receipt["pass"], "why": receipt.get("why"), "cases": receipt.get("cases"),
+    report["gate"] = {"pass": receipt["pass"], "why": receipt.get("why"), "cases": receipt.get("cases", len(receipt["eval_issues"])),
                       "metrics": receipt.get("metrics"), "baseline": receipt.get("baseline"),
                       "candidate": receipt.get("candidate"), "eval_issues": [min(receipt["eval_issues"]),
                                                                              max(receipt["eval_issues"])]}

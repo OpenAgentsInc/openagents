@@ -78,9 +78,15 @@ def _paired(base, cand):
 def decide(base_rows, cand_rows):
     """The plan's verdict on paired per-case rows ({issue, n, r20, r50, r100,
     brier_top100}). Pass needs the primary gain >= 2 SE and every guard held."""
+    # A case with no existing hand-written file (n == 0: the fix only added
+    # files) carries no recall signal for either model; drop it from both
+    # sides before pairing, so it cannot read as a mismatch (#11312: the
+    # 2026-10-12 scheduled cycle failed this way when the window moved).
+    base_rows = [r for r in base_rows if r["n"]]
+    cand_rows = [r for r in cand_rows if r["n"]]
     by = {r["issue"]: r for r in base_rows}
-    pairs = [(by[r["issue"]], r) for r in cand_rows if r["issue"] in by and r["n"]]
-    if len(pairs) != len(base_rows) or len(pairs) != len(cand_rows):
+    pairs = [(by[r["issue"]], r) for r in cand_rows if r["issue"] in by]
+    if not pairs or len(pairs) != len(base_rows) or len(pairs) != len(cand_rows):
         return {"pass": False, "why": ["the two models were not measured on the same cases"], "metrics": {}}
 
     def series(key):

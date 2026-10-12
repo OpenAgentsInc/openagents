@@ -81,6 +81,18 @@ class GateTests(unittest.TestCase):
             gate.promote(same, path, str(self.active))
         self.assertEqual(self.active.read_bytes(), self.active_bytes)
 
+    def test_a_case_with_no_existing_files_is_dropped_from_both_sides(self):
+        # The fix for an eval issue only added files: n == 0 on both sides.
+        empty = {"issue": 9999, "n": 0, "r20": 0, "r50": 0, "r100": 0, "brier_top100": 0.01}
+        v = gate.decide(self.base_rows + [empty], self.better_rows + [dict(empty)])
+        self.assertTrue(v["pass"], v["why"])
+        self.assertEqual(v["cases"], len(self.base_rows))
+        # A case one model saw and the other did not is still a mismatch.
+        v = gate.decide(self.base_rows, self.better_rows[:-1])
+        self.assertFalse(v["pass"])
+        self.assertIn("the two models were not measured on the same cases", v["why"])
+        self.assertFalse(gate.decide([empty], [dict(empty)])["pass"])
+
     def test_a_calibration_regression_fails_even_with_better_recall(self):
         worse_cal = [dict(r, brier_top100=r["brier_top100"] + 0.05) for r in self.better_rows]
         v = gate.decide(self.base_rows, worse_cal)
