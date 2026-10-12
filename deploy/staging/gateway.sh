@@ -134,13 +134,36 @@ idle() {
 # After handing the store over: idle, or with GATEWAY_HOLD=serving wait
 # for this revision to lose its traffic and get it back, then return to
 # claim the store again.
+#
+# The instance that took the store over can be another instance of this
+# same revision (a deploy briefly runs two), and Cloud Run can stop it
+# while this one keeps serving. The holder's watcher writes the time to
+# $state/handoff/beat every 2 seconds; a beat older than 30 seconds while
+# this revision still serves traffic means the holder is gone, and this
+# instance takes the store back (2026-10-12: without this, openagents.com
+# ran 17 minutes with no gateway after such a deploy).
+stale() {
+    beat=$(get "$state/handoff/beat")
+    case $beat in '' | *[!0-9]*) return 1 ;; esac
+    [ $(($(date +%s) - beat)) -gt 30 ]
+}
 rejoin() {
     [ "$hold" = serving ] || idle
     trap 'exit 0' TERM INT
-    until_serving 1
-    echo "gateway: this revision no longer serves traffic; waiting to get it back" >&2
-    until_serving 0
-    echo "gateway: this revision serves traffic again; taking the store back" >&2
+    while :; do
+        if ! serving; then
+            echo "gateway: this revision no longer serves traffic; waiting to get it back" >&2
+            until_serving 0
+            echo "gateway: this revision serves traffic again; taking the store back" >&2
+            break
+        fi
+        if stale; then
+            echo "gateway: the instance holding the store stopped; taking it back" >&2
+            break
+        fi
+        sleep 5 &
+        wait $! || true
+    done
     trap - TERM INT
 }
 # Claim the store, run the gateway, and return only after handing the
@@ -159,6 +182,10 @@ while [ -e "$state/handoff/holder" ]; do
         echo "gateway: a newer instance claimed the store first; not starting" >&2
         rejoin
         return 0
+    fi
+    if stale; then
+        echo "gateway: the holder stopped beating; taking the store over" >&2
+        break
     fi
     if [ "$waited" -ge 150 ]; then
         echo "gateway: the previous holder never released the store; taking it over" >&2
@@ -283,9 +310,12 @@ gateway --config "$private/gateway.json" &
 child=$!
 yielded="$private/yielded"
 rm -f "$yielded"
-# The watcher: when another instance claims the store, stop the gateway.
+# The watcher: when another instance claims the store, stop the gateway;
+# until then, beat every 2 seconds (rejoin's liveness check).
+put "$state/handoff/beat" "$(date +%s)"
 (
     while sleep 2; do
+        put "$state/handoff/beat" "$(date +%s)"
         claim=$(get "$state/handoff/takeover")
         if [ -n "$claim" ] && [ "$claim" != "$me" ]; then
             echo "gateway: a new instance claimed the store; handing it over" >&2
