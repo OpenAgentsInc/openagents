@@ -1,19 +1,22 @@
 //! The `claude` mode: turns run on the Claude Code login this
 //! computer already holds, through the Claude Agent SDK
-//! (`crates/claude_agent_sdk`), on Haiku 5.5 alone.
+//! (`crates/claude_agent_sdk`).
 //!
-//! It is a small agent rather than a full one: a turn is one SDK session
-//! pinned to [`MODEL`], with the basic file tools ([`TOOLS`]) and no
-//! settings files or outside MCP servers. While the Solver plugin is on, one
-//! in-process tool beside them hands an issue to Solver
-//! ([`run_with_solver`]). A tool call is drawn with Coder's own
+//! The mode's own turns are full Claude Code inside Coder (#11434, #11440):
+//! the CLI's whole default toolset, every call approved (the
+//! `--dangerously-skip-permissions` equivalent, owner 2026-10-12), and the
+//! person's and the repository's settings, CLAUDE.md, skills, hooks, agents
+//! and MCP servers loaded without a trust prompt. The model is the one the
+//! person picked in /models ([`choice`]), Haiku 5.5 until they pick. While
+//! the Solver plugin is on, one in-process tool beside them hands an issue
+//! to Solver ([`run_with_solver`]). A tool call is drawn with Coder's own
 //! widgets, the same shapes the briefed agent makes
 //! (`crate::issue_run::agent`), so a Read shows a line count, an Edit shows
 //! a diff, and Grep and Glob show their matches.
 //!
-//! Only the file tools are offered. The mode holds no shell: it reads and
-//! changes files and can be trusted with nothing wider until that is asked
-//! for and given its own approval path.
+//! [`run_with`] stays narrow: Solver's conversational Intaker asks for a
+//! few file tools on Haiku, and its handler keeps every call inside the
+//! checkout.
 //!
 //! Whether the mode may be offered is read through
 //! [`crate::bundled_runtime::claude_print`] and `coder_engine_status`, which
@@ -25,7 +28,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use claude_agent_sdk::{
-    PermissionMode, PermissionResult, QueryOptions, SdkMessage, SdkResultMessage, ToolsConfig,
+    PermissionMode, PermissionResult, QueryOptions, SdkMessage, SdkResultMessage, SettingSource,
+    ToolsConfig,
 };
 use futures::StreamExt;
 use openrouter::{Message, Streamed, Usage};
@@ -39,14 +43,47 @@ pub const LABEL: &str = "claude";
 /// What Shift+Tab says on a computer with no Claude account login.
 pub const NEEDS_LOGIN: &str = "claude needs Claude Code signed in on this computer.";
 
-/// The one model this mode runs: Haiku 5.5, and nothing else.
+/// The model a claude turn runs before the person picks one, and the one
+/// [`run_with`] always runs: Haiku 5.5.
 pub const MODEL: &str = "claude-haiku-5-5";
 
-/// What the mode calls its model where a person reads it.
+/// What the mode calls [`MODEL`] where a person reads it.
 pub const MODEL_LABEL: &str = "Haiku 5.5";
 
-/// The basic file tools a claude turn has, the same names Coder's own
-/// file tools use.
+/// The picker rows' plugin name, so /models knows a claude row from an
+/// OpenRouter one.
+pub const PICKER: &str = "claude";
+
+/// The models /models offers in this mode, [`MODEL`] first: id, name, and
+/// what the row says.
+pub const MODELS: [(&str, &str, &str); 4] = [
+    (
+        MODEL,
+        MODEL_LABEL,
+        "Fastest; the default while the mode is tested",
+    ),
+    (
+        "claude-sonnet-5-5",
+        "Sonnet 5.5",
+        "Balanced speed and intelligence",
+    ),
+    (
+        "claude-opus-5-5",
+        "Opus 5.5",
+        "Most capable for coding and agents",
+    ),
+    ("claude-fable-5-1", "Fable 5.1", "Anthropic's largest model"),
+];
+
+/// The efforts a picked model may run at, as Claude Code's `--effort`
+/// names them.
+const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+
+/// Where the person's pick is kept, beside Coder's other settings.
+const CHOICE_FILE: &str = "claude-model.json";
+
+/// The file tools [`run_with`] may offer, the same names Coder's own file
+/// tools use.
 pub const TOOLS: [&str; 5] = ["Read", "Write", "Edit", "Glob", "Grep"];
 
 /// What a message with a picture says: the mode reads text only.
@@ -69,6 +106,134 @@ const REMOVED_ENV: [&str; 5] = [
 
 /// The most of a conversation one turn carries into its prompt.
 const TASK_LIMIT: usize = 48 * 1024;
+
+/// The model and effort the mode's own turns run, as the person picked
+/// them in /models.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Choice {
+    pub model: String,
+    /// Claude Code's `--effort`, or `None` for the model's own default.
+    pub effort: Option<String>,
+}
+
+impl Default for Choice {
+    fn default() -> Self {
+        Self {
+            model: MODEL.into(),
+            effort: None,
+        }
+    }
+}
+
+/// The pick, and where it is saved once Coder's settings have loaded.
+static CHOICE: std::sync::Mutex<(Option<Choice>, Option<PathBuf>)> =
+    std::sync::Mutex::new((None, None));
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct ChoiceFile {
+    version: u32,
+    model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    effort: Option<String>,
+}
+
+/// The model and effort the next claude turn runs.
+#[must_use]
+pub fn choice() -> Choice {
+    CHOICE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .0
+        .clone()
+        .unwrap_or_default()
+}
+
+/// Reads the saved pick under `root`, Coder's settings folder. A missing
+/// file, or one naming a model the mode does not offer, leaves Haiku 5.5.
+pub fn load_choice(root: &Path) {
+    let path = root.join(CHOICE_FILE);
+    let saved = std::fs::read(&path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<ChoiceFile>(&bytes).ok())
+        .filter(|file| file.version == 1 && offered(&file.model))
+        .map(|file| Choice {
+            model: file.model,
+            effort: file
+                .effort
+                .filter(|effort| EFFORTS.contains(&effort.as_str())),
+        });
+    *CHOICE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = (saved, Some(path));
+}
+
+/// Makes `model` at `effort` the mode's pick and saves it.
+///
+/// # Errors
+/// The mode does not offer `model`, or the pick could not be saved; the
+/// earlier pick stays.
+pub fn choose(model: &str, effort: Option<String>) -> Result<(), String> {
+    if !offered(model) {
+        return Err(format!("claude does not offer {model}."));
+    }
+    let effort = effort.filter(|effort| EFFORTS.contains(&effort.as_str()));
+    let mut held = CHOICE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(path) = &held.1 {
+        let file = ChoiceFile {
+            version: 1,
+            model: model.into(),
+            effort: effort.clone(),
+        };
+        let bytes = serde_json::to_vec_pretty(&file).map_err(|error| error.to_string())?;
+        std::fs::write(path, bytes)
+            .map_err(|_| "Cannot save the claude model. The earlier one stays.".to_string())?;
+    }
+    held.0 = Some(Choice {
+        model: model.into(),
+        effort,
+    });
+    Ok(())
+}
+
+/// Whether /models offers `model` in this mode.
+fn offered(model: &str) -> bool {
+    MODELS.iter().any(|(id, _, _)| *id == model)
+}
+
+/// What /models lists in this mode.
+#[must_use]
+pub fn catalog() -> Vec<crate::models::Model> {
+    MODELS
+        .iter()
+        .map(|(id, name, description)| crate::models::Model {
+            plugin: PICKER.into(),
+            provider: "Anthropic".into(),
+            id: (*id).into(),
+            name: (*name).into(),
+            description: (*description).into(),
+            context_length: None,
+            max_output_tokens: None,
+            efforts: EFFORTS.iter().map(|effort| (*effort).to_owned()).collect(),
+            default_effort: None,
+            supports_output_limit: false,
+        })
+        .collect()
+}
+
+/// Claude Code's effort for the pick's `effort` name.
+fn effort_level(effort: &str) -> Option<claude_agent_sdk::EffortLevel> {
+    use claude_agent_sdk::EffortLevel;
+    Some(match effort {
+        "low" => EffortLevel::Low,
+        "medium" => EffortLevel::Medium,
+        "high" => EffortLevel::High,
+        "xhigh" => EffortLevel::Xhigh,
+        "max" => EffortLevel::Max,
+        _ => return None,
+    })
+}
 
 /// Whether `tool` is one of the mode's [`TOOLS`].
 #[must_use]
@@ -93,7 +258,7 @@ pub fn task_with(messages: &[Message], solver: bool) -> String {
     };
     let prefix = format!(
         "{}\n{tools}The conversation:\n",
-        crate::identity::prompt(MODEL)
+        crate::identity::prompt(&choice().model)
     );
     let allowance = TASK_LIMIT.saturating_sub(prefix.len());
     let mut conversation = crate::live::local_conversation(messages, allowance);
@@ -276,11 +441,11 @@ pub async fn run(
     cancel: &AtomicBool,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Streamed, String> {
-    run_with(prompt, cwd, &TOOLS, None, cancel, emit).await
+    run_inner(prompt, cwd, Access::Full, None, None, cancel, emit).await
 }
 
-/// Runs one Haiku turn like [`run`], with `tools` from Claude Code's own
-/// set and, beside them, the tools of an in-process `server` (the solver's
+/// Runs one narrow Haiku turn, with `tools` from [`TOOLS`] alone and,
+/// beside them, the tools of an in-process `server` (the solver's
 /// conversational Intaker gives it a read-only `gh`).
 ///
 /// # Panics
@@ -303,7 +468,16 @@ pub async fn run_with(
         tools.iter().all(|tool| allows(tool)),
         "run_with may take only the file tools, got {tools:?}"
     );
-    run_inner(prompt, cwd, tools, server, None, cancel, emit).await
+    run_inner(
+        prompt,
+        cwd,
+        Access::Files(tools),
+        server,
+        None,
+        cancel,
+        emit,
+    )
+    .await
 }
 
 /// Runs one turn like [`run`], with the Solver plugin's tool beside the
@@ -326,7 +500,7 @@ pub async fn run_with_solver(
     run_inner(
         prompt,
         cwd,
-        &TOOLS,
+        Access::Full,
         Some(server),
         Some(delegations),
         cancel,
@@ -335,32 +509,66 @@ pub async fn run_with_solver(
     .await
 }
 
+/// What one turn may do.
+#[derive(Clone, Copy)]
+enum Access<'a> {
+    /// The mode's own turns: Claude Code's whole default toolset, every
+    /// call approved, the person's and the repository's settings loaded, on
+    /// the person's pick ([`choice`]).
+    Full,
+    /// Solver's Intaker: only these file tools, each call inside the
+    /// checkout, on Haiku 5.5.
+    Files(&'a [&'a str]),
+}
+
+/// The tool a full turn still refuses: nobody answers its questions inside
+/// a turn, so the model asks in its reply instead.
+const ASKS_PERSON: &str = "AskUserQuestion";
+
 /// The options and the tool names one turn may use.
 ///
-/// `allowed_tools` is deliberately left unset. Claude Code's `--allowedTools`
-/// pre-approves the tool for every call, so the CLI never sends
-/// `can_use_tool` and the permission handler below never runs; a tool named
+/// A narrow turn leaves `allowed_tools` unset on purpose. Claude Code's
+/// `--allowedTools` pre-approves the tool for every call, so the CLI never
+/// sends `can_use_tool` and the permission handler never runs; a tool named
 /// there could read or write any path. `--tools` alone narrows the offered
 /// tools without pre-approving them, so every call still comes to the
 /// handler, which is what holds the checkout boundary.
 fn turn_options(
     cwd: &Path,
-    tools: &[&str],
+    access: Access<'_>,
     server: Option<claude_agent_sdk::SdkMcpServer>,
 ) -> (QueryOptions, Vec<String>) {
-    let mut options = QueryOptions::new()
-        .cwd(cwd)
-        .model(MODEL)
-        .permission_mode(PermissionMode::Default)
-        .no_session_persistence();
-    let mut allowed: Vec<String> = tools.iter().map(|t| (*t).to_owned()).collect();
-    options.tools = Some(ToolsConfig::Names(allowed.clone()));
+    let mut options = QueryOptions::new().cwd(cwd).no_session_persistence();
+    let mut allowed = Vec::new();
+    match access {
+        Access::Full => {
+            let picked = choice();
+            options = options
+                .model(picked.model)
+                .permission_mode(PermissionMode::BypassPermissions);
+            options.allow_dangerously_skip_permissions = true;
+            options.effort = picked.effort.as_deref().and_then(effort_level);
+            options.tools = Some(ToolsConfig::Default);
+            options.setting_sources = Some(vec![
+                SettingSource::User,
+                SettingSource::Project,
+                SettingSource::Local,
+            ]);
+        }
+        Access::Files(tools) => {
+            options = options
+                .model(MODEL)
+                .permission_mode(PermissionMode::Default);
+            allowed = tools.iter().map(|t| (*t).to_owned()).collect();
+            options.tools = Some(ToolsConfig::Names(allowed.clone()));
+            options.setting_sources = Some(Vec::new());
+            options.strict_mcp_config = true;
+        }
+    }
     if let Some(server) = server {
         allowed.extend(server.allowed_tool_names());
         options = options.sdk_mcp_server(server);
     }
-    options.setting_sources = Some(Vec::new());
-    options.strict_mcp_config = true;
     options.env_remove = REMOVED_ENV.iter().map(|name| (*name).to_owned()).collect();
     (options, allowed)
 }
@@ -381,7 +589,7 @@ impl Drop for Delegations {
 async fn run_inner(
     prompt: &str,
     cwd: &Path,
-    tools: &[&str],
+    access: Access<'_>,
     server: Option<claude_agent_sdk::SdkMcpServer>,
     mut delegations: Option<Delegations>,
     cancel: &AtomicBool,
@@ -390,10 +598,15 @@ async fn run_inner(
     if !crate::approval::tools_allowed() {
         return Err("This host refuses every tool, so claude cannot work here.".into());
     }
-    let (options, allowed) = turn_options(cwd, tools, server);
+    let (options, allowed) = turn_options(cwd, access, server);
     let root = cwd.to_owned();
+    let full = matches!(access, Access::Full);
     let handler = claude_agent_sdk::permission_handler(move |request| {
-        let decision = if !allowed.iter().any(|name| *name == request.tool_name) {
+        let decision = if full && request.tool_name == ASKS_PERSON {
+            PermissionResult::deny("Ask the person in your reply instead; they answer there.")
+        } else if full {
+            PermissionResult::allow(request.input.clone())
+        } else if !allowed.iter().any(|name| *name == request.tool_name) {
             PermissionResult::deny("That tool is not available in this mode.")
         } else if !stays_in(&root, &request.tool_name, &request.input) {
             PermissionResult::deny("That path is outside this checkout.")
@@ -689,7 +902,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_mode_runs_haiku_5_5_and_only_the_basic_file_tools() {
+    fn a_narrow_turn_runs_haiku_5_5_and_only_the_basic_file_tools() {
         assert_eq!(MODEL, "claude-haiku-5-5");
         assert_eq!(MODEL_LABEL, "Haiku 5.5");
         assert_eq!(TOOLS, ["Read", "Write", "Edit", "Glob", "Grep"]);
@@ -705,8 +918,11 @@ mod tests {
     /// sending `can_use_tool`, so the checkout boundary in the handler would
     /// never run. A turn must narrow its tools with `--tools` alone.
     #[test]
-    fn a_turn_never_pre_approves_a_tool() {
-        let (options, allowed) = turn_options(Path::new("/work/tree"), &TOOLS, None);
+    fn a_narrow_turn_never_pre_approves_a_tool() {
+        let (options, allowed) = turn_options(Path::new("/work/tree"), Access::Files(&TOOLS), None);
+        assert_eq!(options.model.as_deref(), Some(MODEL));
+        assert_eq!(options.permission_mode, Some(PermissionMode::Default));
+        assert!(options.strict_mcp_config);
         assert_eq!(options.allowed_tools, None);
         assert_eq!(
             options.tools,
@@ -999,19 +1215,74 @@ mod tests {
     /// this computer holds is the only credential it may use.
     #[test]
     fn a_run_strips_api_keys_and_cloud_provider_switches() {
-        let (options, _) = turn_options(Path::new("/work/tree"), &TOOLS, None);
-        for name in [
-            "ANTHROPIC_API_KEY",
-            "ANTHROPIC_AUTH_TOKEN",
-            "CLAUDE_CODE_USE_BEDROCK",
-            "CLAUDE_CODE_USE_VERTEX",
-            "CLAUDE_CODE_USE_FOUNDRY",
-        ] {
-            assert!(options.env_remove.contains(&name.to_owned()), "{name}");
+        for access in [Access::Full, Access::Files(&TOOLS)] {
+            let (options, _) = turn_options(Path::new("/work/tree"), access, None);
+            for name in [
+                "ANTHROPIC_API_KEY",
+                "ANTHROPIC_AUTH_TOKEN",
+                "CLAUDE_CODE_USE_BEDROCK",
+                "CLAUDE_CODE_USE_VERTEX",
+                "CLAUDE_CODE_USE_FOUNDRY",
+            ] {
+                assert!(options.env_remove.contains(&name.to_owned()), "{name}");
+            }
         }
     }
 
-    /// One real turn on this computer's Claude login, proving the checkout
+    /// The mode's own turns are full Claude Code: every tool, every call
+    /// approved, and the person's and the repository's settings (#11440).
+    #[test]
+    fn a_full_turn_is_claude_code_with_every_call_approved() {
+        let (options, _) = turn_options(Path::new("/work/tree"), Access::Full, None);
+        assert_eq!(
+            options.permission_mode,
+            Some(PermissionMode::BypassPermissions)
+        );
+        assert!(options.allow_dangerously_skip_permissions);
+        assert_eq!(options.tools, Some(ToolsConfig::Default));
+        assert_eq!(options.allowed_tools, None);
+        assert_eq!(
+            options.setting_sources,
+            Some(vec![
+                SettingSource::User,
+                SettingSource::Project,
+                SettingSource::Local
+            ])
+        );
+        assert!(!options.strict_mcp_config);
+        assert!(options.model.as_deref().is_some_and(offered));
+    }
+
+    #[test]
+    fn the_picker_offers_haiku_first_and_saves_a_pick() {
+        assert_eq!(catalog()[0].id, MODEL);
+        assert!(catalog().iter().all(|model| model.plugin == PICKER));
+        let dir = tempfile::tempdir().unwrap();
+        load_choice(dir.path());
+        assert_eq!(choice(), Choice::default());
+        choose("claude-opus-5-5", Some("high".into())).unwrap();
+        assert!(choose("gpt-6", None).is_err());
+        load_choice(dir.path());
+        assert_eq!(
+            choice(),
+            Choice {
+                model: "claude-opus-5-5".into(),
+                effort: Some("high".into())
+            }
+        );
+        std::fs::write(
+            dir.path().join(CHOICE_FILE),
+            r#"{"version":1,"model":"nope"}"#,
+        )
+        .unwrap();
+        load_choice(dir.path());
+        assert_eq!(choice(), Choice::default());
+        *CHOICE
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = (None, None);
+    }
+
+    /// One real narrow turn on this computer's Claude login, proving the checkout
     /// boundary is enforced by the CLI, not just by [`stays_in`] on its own:
     /// the model is asked to read a file outside `cwd` and must not see it.
     /// Run by hand:
@@ -1034,7 +1305,7 @@ mod tests {
                 tools.push(name);
             }
         };
-        let text = match run(&prompt, dir.path(), &cancel, &mut emit).await {
+        let text = match run_with(&prompt, dir.path(), &TOOLS, None, &cancel, &mut emit).await {
             Ok(streamed) => streamed.text,
             Err(error) => error,
         };

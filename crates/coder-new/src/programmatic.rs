@@ -551,7 +551,7 @@ fn mode_name(app: &App) -> &'static str {
 
 fn active_model(app: &App) -> String {
     if app.mode == crate::Mode::Claude {
-        crate::claude::MODEL.into()
+        crate::claude::choice().model
     } else if app.plugins.enabled
         && app.plugins.key_configured
         && models::pinned(&app.plugins.model)

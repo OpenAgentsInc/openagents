@@ -540,6 +540,7 @@ impl App {
     }
 
     pub fn load_plugin_settings(&mut self, store: plugin_store::Store) -> Result<(), String> {
+        claude::load_choice(store.root());
         let appearance = self.appearance.load(store.clone());
         self.appearance_error = appearance.as_ref().err().cloned();
         let preferences = self.preferences.load(store.clone());
@@ -1507,8 +1508,8 @@ impl App {
     }
 
     /// A claude turn: the person's message, then one Claude Agent SDK
-    /// session on Haiku 5.5 with the basic file tools
-    /// ([`crate::claude`]). The mode keeps one conversation with the
+    /// session with Claude Code's whole toolset and every call approved, on
+    /// the model picked in /models ([`crate::claude`]). The mode keeps one conversation with the
     /// person; only the engine behind each turn differs from live.
     fn submit_claude(&mut self) {
         if self.draft.text.trim().is_empty() && self.composer.images.is_empty() {
@@ -1890,6 +1891,22 @@ impl App {
 
     pub fn open_models(&mut self) {
         self.resume_picker = None;
+        // claude picks among Claude models on this computer's login, with
+        // no OpenRouter key.
+        if self.mode == Mode::Claude {
+            let picked = claude::choice();
+            self.model_picker = Some(models::Picker::new(
+                claude::catalog(),
+                claude::PICKER,
+                &picked.model,
+                models::GenerationOptions {
+                    reasoning: picked.effort,
+                    max_tokens: None,
+                },
+                false,
+            ));
+            return;
+        }
         if !self.plugins.enabled {
             self.notice = Some("Turn on OpenRouter BYOK in /plugins to choose a model.".into());
             return;
@@ -2246,6 +2263,16 @@ impl App {
                     match picker.handle(key) {
                         models::Action::Continue => {}
                         models::Action::Close => self.model_picker = None,
+                        models::Action::Save(model, options) if model.plugin == claude::PICKER => {
+                            match claude::choose(&model.id, options.reasoning) {
+                                Ok(()) => self.model_picker = None,
+                                Err(error) => {
+                                    if let Some(picker) = &mut self.model_picker {
+                                        picker.error = Some(error);
+                                    }
+                                }
+                            }
+                        }
                         models::Action::Save(model, options) => {
                             if self.plugins.set_model(&model, options) {
                                 self.model_picker = None;
