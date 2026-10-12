@@ -298,6 +298,48 @@ median seconds, and how often the next edit touched a file the result named):
 | B0 | Read | 6.4 | 0.98 | 39 | 1458 | 0.0 | 0.07 |
 | B0 | verify | 1.5 | 1.00 | 16 | 200 | 39.1 | 0.18 |
 
+### Kinds run (#11310): checks per package kind, multi-package briefings
+
+`plans/kinds.json` (tag `ab-kinds`, frozen 2026-10-11 with the pins it names:
+agent sha `a88372f5...`, Claude Code 2.1.291), run on `oa-dev-env-1` from
+main at 616c6f79d0. A against B0 on six closed issues that are not
+single-crate Rust fixes: docs only (#10065), shell with a Python test
+(#10257), a Python script with tests, a shell gate and docs (#11284), two
+multi-crate Rust fixes (#11190, #11281) and Kotlin glue (#11283), 2 reps
+each. Report: `scripts/bench/briefed-ab/results/ab-kinds.md`; rows:
+`results/ab-kinds-trials.csv`.
+
+| Success (B0 vs A) | A | B0 | Difference | 95% CI |
+|---|---|---|---|---|
+| accepted (kinds grade and judge) | 0.250 | 0.167 | -0.083 | [-0.250, +0.000] |
+| kinds grade passes | 0.333 | 0.333 | +0.000 | [+0.000, +0.000] |
+| judge accepts | 0.750 | 0.667 | -0.083 | [-0.333, +0.167] |
+
+| Cost and time | A | B0 |
+|---|---|---|
+| total $ | 15.42 | 11.32 |
+| $ per accepted | 5.14 | 5.66 (-10.1%, CI [-33.8%, +28.8%]) |
+| median s | 169.5 | 195.5 |
+| p90 s | 531.2 | 448.7 |
+
+| Issue | A accepted | B0 accepted | A mean $ | B0 mean $ | A mean s | B0 mean s |
+|---|---|---|---|---|---|---|
+| #10065 | 1/2 | 0/2 | 3.01 | 0.74 | 248 | 132 |
+| #10257 | 0/2 | 0/2 | 0.44 | 0.35 | 46 | 68 |
+| #11190 | 0/2 | 0/2 | 1.85 | 1.78 | 571 | 483 |
+| #11281 | 0/2 | 0/2 | 1.22 | 0.95 | 350 | 315 |
+| #11283 | 2/2 | 2/2 | 0.37 | 0.51 | 30 | 181 |
+| #11284 | 0/2 | 0/2 | 0.82 | 1.34 | 77 | 167 |
+
+Answer to the plan's question: no. Off single-crate Rust, B0 does not beat
+bare Claude Code on success (one accepted change fewer, on the docs issue),
+costs 27% less in total but about the same per accepted change, and is
+slower at the median. Both arms fail the kinds grade on the same four
+issues, so the grade, not the arm, decides most outcomes here; #11283
+(Kotlin, judge only) is accepted 2/2 by both. Six issues x 2 reps: the CIs
+are wide and this is reported as measured. B0's single-crate S2 saving
+(about 54% per accepted change) does not carry over to these kinds yet.
+
 ### Exploratory main round (before #11229, no judge)
 
 Stopped at 101 of 189 trials; 12 issues. Fix tests passing: A 10/34, B0
