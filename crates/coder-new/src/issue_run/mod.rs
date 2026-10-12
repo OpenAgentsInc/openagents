@@ -39,6 +39,7 @@
 pub mod agent;
 pub mod cards;
 pub mod decide;
+pub mod haiku_arm;
 pub mod setup;
 pub mod verdict;
 
@@ -74,6 +75,10 @@ pub enum Decider {
     Jev,
     /// Clef-Flash on this computer's Ollama for every question.
     Clef,
+    /// A constrained Claude Haiku arm (`claude -p`, no tools) answering the
+    /// identical typed question and returning the same answer shape, so the
+    /// arms compare apples to apples (#11387).
+    HaikuArm,
     /// No model questions; the scorer's ranking stands.
     Off,
 }
@@ -111,9 +116,10 @@ impl Decider {
             "auto" => Ok(Self::Auto),
             "jev" => Ok(Self::Jev),
             "clef" => Ok(Self::Clef),
+            "haiku-arm" => Ok(Self::HaikuArm),
             "off" => Ok(Self::Off),
             other => Err(format!(
-                "--decider takes auto, jev, clef or off, not {other}."
+                "--decider takes auto, jev, clef, haiku-arm or off, not {other}."
             )),
         }
     }
@@ -123,6 +129,7 @@ impl Decider {
         match self {
             Self::Jev => "jev",
             Self::Clef => "clef",
+            Self::HaikuArm => "haiku-arm",
             Self::Auto => "auto",
             Self::Off => "off",
         }
@@ -176,7 +183,7 @@ Options:
   --repo PATH        The repository checkout to read (default: this directory).
   --github OWNER/R   The GitHub repository of the issue (default: OpenAgentsInc/openagents).
   --fix SHA          A closed issue's fix commit (default: the newest commit naming #N).
-  --decider WHO      auto, jev, clef, or off (default: auto: Jev with your TypeSafe key,
+  --decider WHO      auto, jev, clef, haiku-arm, or off (default: auto: Jev with your TypeSafe key,
                      else our decision API, keyless); or per point, as in
                      kind=jev,relevance=clef.
   --files K          Files in the briefing (default 6).

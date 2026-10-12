@@ -238,7 +238,9 @@ Options:
   --rounds R            How many times the Tester may hand work back (default 2).
   --decisions DOOR      Which decision door judges the briefing's file relevance,
                         size, and change kind: jev (TypeSafe's API), clef (this
-                        computer's Clef), or off (default; the ranking stands and
+                        computer's Clef), haiku-arm (a constrained Claude Haiku
+                        answering the same typed question, no tools), or off
+                        (default; the ranking stands and
                         the Haiku Briefer judges it). No other door is asked. Or
                         one door per point: kind=jev,relevance=clef.
   --no-pr               Stop after the checks; open no pull request.
@@ -362,7 +364,9 @@ impl Options {
                     let (all, kind, relevance) = issue_run::parse_deciders(&decisions)
                         .map_err(|why| why.replace("--decider", "--decisions"))?;
                     if [all, kind, relevance].contains(&Some(issue_run::Decider::Auto)) {
-                        return Err("--decisions takes jev, clef or off, not auto.".into());
+                        return Err(
+                            "--decisions takes jev, clef, haiku-arm or off, not auto.".into()
+                        );
                     }
                 }
                 "--engine" => {

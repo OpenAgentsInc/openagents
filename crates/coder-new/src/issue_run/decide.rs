@@ -323,11 +323,30 @@ fn reason_for(stage: &str, file: &Value) -> String {
         .map_or_else(|| "found by this stage".to_owned(), |r| (*r).to_owned())
 }
 
-/// A System One client and how to name it on a card.
+/// A System One door and how to name it on a card.
 struct Door {
-    client: jev::Client,
+    backend: Backend,
     label: String,
     model: String,
+}
+
+/// What answers a door's questions: a System One client (Jev, ours, Clef),
+/// or the constrained Haiku arm given the identical request (#11387).
+enum Backend {
+    SystemOne(jev::Client),
+    HaikuArm(std::path::PathBuf),
+}
+
+impl Door {
+    async fn ask(&self, request: jev::SystemOneRequest) -> Result<jev::SystemOneResponse, String> {
+        match &self.backend {
+            Backend::SystemOne(client) => client
+                .system_one(request)
+                .await
+                .map_err(|error| error.to_string()),
+            Backend::HaikuArm(program) => super::haiku_arm::ask(program, &request).await,
+        }
+    }
 }
 
 fn jev_door() -> Option<Door> {
@@ -342,7 +361,7 @@ fn jev_door() -> Option<Door> {
             ..Default::default()
         });
     Some(Door {
-        client: jev::Client::new(config).ok()?,
+        backend: Backend::SystemOne(jev::Client::new(config).ok()?),
         label: "Jev, TypeSafe API".into(),
         model: "jev-latest".into(),
     })
@@ -362,7 +381,7 @@ fn ours_door() -> Option<Door> {
     )
     .ok()?;
     Some(Door {
-        client: resolved.client,
+        backend: Backend::SystemOne(resolved.client),
         label: "OpenAgents decisions".into(),
         model: "jev-latest".into(),
     })
@@ -374,9 +393,18 @@ fn clef_door() -> Option<Door> {
     let config = jev::Config::local("http://127.0.0.1:11434", "clef-flash")
         .timeout(std::time::Duration::from_secs(120));
     Some(Door {
-        client: jev::Client::new(config).ok()?,
+        backend: Backend::SystemOne(jev::Client::new(config).ok()?),
         label: "Clef-Flash, Ollama on this computer".into(),
         model: "clef-flash".into(),
+    })
+}
+
+/// The constrained Haiku arm, when `claude` is on this computer.
+fn haiku_arm_door() -> Option<Door> {
+    Some(Door {
+        backend: Backend::HaikuArm(super::haiku_arm::program()?),
+        label: "Haiku arm, constrained claude -p".into(),
+        model: super::haiku_arm::MODEL.into(),
     })
 }
 
@@ -398,7 +426,7 @@ impl Doors {
     ) -> Result<(jev::SystemOneResponse, &Door), String> {
         let mut last = "No System One door is set up".to_owned();
         while !self.0.is_empty() {
-            match self.0[0].client.system_one(request.clone()).await {
+            match self.0[0].ask(request.clone()).await {
                 Ok(response) => return Ok((response, &self.0[0])),
                 Err(error) => {
                     last = format!("{}: {error}", self.0[0].label);
@@ -420,6 +448,7 @@ fn doors(decider: Decider) -> (Doors, Doors) {
             Decider::Off => Vec::new(),
             Decider::Jev => jev_door().into_iter().collect(),
             Decider::Clef => clef_door().into_iter().collect(),
+            Decider::HaikuArm => haiku_arm_door().into_iter().collect(),
             Decider::Auto => jev_door().into_iter().chain(ours_door()).collect(),
         }
     };
@@ -480,8 +509,9 @@ async fn issue_kind(
         "options": KINDS.iter().map(|(name, _)| json!({"name": name})).collect::<Vec<_>>(),
     });
     let Some(door) = doors.first() else {
-        card["skipped"] =
-            json!("No System One door is set up (TYPESAFE_API_KEY or Ollama with clef-flash)");
+        card["skipped"] = json!(
+            "No System One door is set up (TYPESAFE_API_KEY, Ollama with clef-flash, or claude for the Haiku arm)"
+        );
         let index = transcript.card(card.clone());
         transcript.finish(index, card, json!({"ok": true}));
         return None;
@@ -885,7 +915,7 @@ mod door_tests {
         let config = jev::Config::local("http://127.0.0.1:9", "clef-flash")
             .timeout(std::time::Duration::from_secs(2));
         Door {
-            client: jev::Client::new(config).unwrap(),
+            backend: super::Backend::SystemOne(jev::Client::new(config).unwrap()),
             label: label.into(),
             model: "clef-flash".into(),
         }

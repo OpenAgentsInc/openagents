@@ -19,6 +19,9 @@ fn options_read_the_issue_and_flags() {
     assert!(Options::parse(&args("--plain")).is_err());
     assert!(Options::parse(&args("--replay run.jsonl")).is_ok());
     assert!(Options::parse(&args("7 --decider maybe")).is_err());
+    let arm = Options::parse(&args("7 --decider kind=haiku-arm,relevance=jev")).unwrap();
+    assert_eq!(arm.kind_decider(), Decider::HaikuArm);
+    assert_eq!(arm.relevance_decider(), Decider::Jev);
 }
 
 #[test]
