@@ -1,8 +1,9 @@
 # Haiku briefer: the opening stage of an issue run (#11323)
 
-Status, 2026-10-11: an experiment, off by default. Measured on this Mac:
-briefing recall on the 21 S2 issues, and a local end-to-end pilot (see
-Results).
+Status, 2026-10-12: an experiment, off by default, and it stays off.
+Briefing recall on the 21 S2 issues was measured on this Mac; the end-to-end
+pilot ran on oa-dev-env-4. Haiku's file list scores better on recall, but
+runs briefed with it fixed fewer issues (see Results and Recommendation).
 
 An issue run (`scripts/work/work_issue.py`, `openagents chat work`, the
 bench's B arms) starts with a **briefing**: the files to change, with
@@ -97,7 +98,74 @@ is one the fix changed. Rows: `scripts/bench/briefed-ab/results/haiku-briefer-re
 
 ### End-to-end pilot
 
-PENDING (plans/haiku-briefer.json, running).
+`plans/haiku-briefer.json` (tag `hb1`, frozen in d8bfe34a64 before any
+trial): six S2 issues (#10074, #10181, #10201, #10289, #10301, #10986), two
+reps each, three arms: **A** (no briefing), **B0** (the briefing with
+filefind's files) and **BH** (the same briefing with the Haiku briefer's
+files). That is 36 trials. Everything ran on oa-dev-env-4 (GCE c3-standard-22,
+`AB_HOST=local`) from 2026-10-11 23:29Z to 2026-10-12 09:35Z. The run paused
+for several hours when the Claude login hit its usage limit, then went on.
+Judging ran the same way as for earlier tags. Report:
+`scripts/bench/briefed-ab/results/hb1.md`; rows:
+`scripts/bench/briefed-ab/results/hb1-trials.csv`.
+
+| Arm | Accepted (fix tests and judge) | Fix tests pass | Judge accepts | Total $ | $ per accepted | Median $ per trial | Median s | Median turns |
+|---|---|---|---|---|---|---|---|---|
+| A | 7/12 (0.58) | 8/12 | 8/12 | 9.81 | 1.40 | 0.68 | 157 | 12.5 |
+| B0 | 6/12 (0.50) | 6/12 | 10/12 | 6.48 | **1.08** | 0.51 | 131 | 19 |
+| BH | **2/12 (0.17)** | 2/12 | 7/12 | 5.22 | 2.61 | **0.32** | 198 | 12.5 |
+
+Paired over issues (10,000 bootstrap resamples at the issue level, seed 11211):
+
+- **BH vs B0:** accepted -0.33 (95% CI [-0.67, -0.08]), fix tests -0.33
+  ([-0.67, -0.08]), judge accepts -0.25 ([-0.42, -0.08]). Cost per accepted
+  issue is 142% higher ([+22%, +442%]). All three CIs exclude zero, so this
+  is a clear loss even with 6 issues.
+- **BH vs A:** accepted -0.42 ([-0.83, 0.00]); fix tests -0.50
+  ([-0.83, -0.17]).
+- **B0 vs A** (repeats the S2 question at this size): accepted -0.08
+  ([-0.33, +0.17]), 23% cheaper per accepted issue (CI [-34%, +60%]). Neither
+  difference is significant at 6 issues.
+
+Why BH loses:
+
+- **A shorter list means the agent does less.** BH briefings averaged 3.8
+  files, against 8 for B0. With fewer files the agent read less and stopped
+  sooner: median 12.5 turns against 19, and about 60% less cached input (median 180k tokens against 459k). Each
+  trial cost less ($0.32 median against $0.51; the Haiku stage itself was
+  $0.003 to $0.015). But the fixes it wrote were narrower.
+- **It misses the fix's sibling files.** On #10074 Haiku listed only
+  `autostart.rs`. Both BH reps left out the check that the parent folder is
+  named `Contents`, so the reference test failed; both B0 reps passed. On
+  #10301 Haiku left out `owner.rs` (where the fix goes). Both BH reps patched
+  the store lock instead, and the judge rejected them. B0 also failed #10301.
+- **Its passes fall into the gaps in reference matching.** Three
+  issues (#10074, #10289, #10986) had BH fixes that the judge accepted but
+  whose reference tests failed. Some were real gaps (#10074). Some were API
+  shape: on #10289 the reference test names a `BANNED` constant that the BH
+  fix never added. B0 shows the same pattern (judge 10/12, fix tests 6/12),
+  but BH has it worse.
+- The Haiku stage answered in all 12 BH trials (9 to 36 s). It never fell back to filefind and hung in none of the
+  36 trials (the trim fix 0d50f9e25c, #11309, was in place).
+
+So good recall at a short list (0.76 at 4.8 files) does not carry over to
+results: the files Haiku cut were the ones the agent still needed for context.
+
+## Recommendation
+
+- **Do not adopt the Haiku briefer as the briefing's file step.** Keep the
+  default `--briefer filefind` everywhere (`work_issue.py`,
+  `openagents chat work`, `POST /v1/work`, the Rust issue-run). Keep
+  `--briefer haiku` and the bench's `BH` arm as an opt-in experiment. Do not
+  promote it.
+- What Haiku is good at is **ranking**: its top file was a fix file 0.90 of
+  the time, against 0.43 for filefind. The variant worth trying next uses Haiku
+  only to reorder filefind's top 8 and lets it drop nothing. That keeps B0's
+  context and puts the right file first. Pilot it as a new arm (for example
+  `BR`) against B0 on the same six issues before any default changes.
+- On this sample, the B0 briefing is still the cheapest per accepted issue
+  ($1.08 against $1.40 for no briefing), but at 6 issues the edge is not
+  significant. The S2 result (#11211) remains the main evidence for B0.
 
 ## Reproduce
 
