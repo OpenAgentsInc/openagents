@@ -75,6 +75,8 @@ export async function launch({ width, height, dpr, mobile = false, userAgent } =
   await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   // No text caret: its blink lands unevenly on frames, worst where waits
   // are shortened, and reads as flicker in the film.
+  // The site's CSP refuses inline styles; this one is the recorder's own.
+  await cdp.send("Page.setBypassCSP", { enabled: true });
   await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
     source: `addEventListener("DOMContentLoaded", () => {
       const s = document.createElement("style");
