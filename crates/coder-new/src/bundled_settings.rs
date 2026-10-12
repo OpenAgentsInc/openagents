@@ -33,6 +33,9 @@ struct Preferences {
     /// The agent channel (#11346); on unless turned off.
     #[serde(default = "on")]
     comms: bool,
+    /// The Claude Code plugin and its mode; on unless turned off.
+    #[serde(default = "on")]
+    claude: bool,
     /// The solver swarm (#11346); on unless turned off.
     #[serde(default = "on")]
     swarm: bool,
@@ -59,6 +62,7 @@ impl Default for Preferences {
             acp: true,
             solver: true,
             comms: true,
+            claude: true,
             swarm: true,
             jev_enabled: true,
             jev_model: jev::defaults::MODEL.into(),
@@ -180,6 +184,8 @@ pub struct BundledSettings {
     pub solver: bool,
     /// The agent channel (#11346).
     pub comms: bool,
+    /// The Claude Code plugin, which offers the claude mode.
+    pub claude: bool,
     /// The solver swarm (#11346).
     pub swarm: bool,
     pub jev_enabled: bool,
@@ -221,6 +227,7 @@ impl Default for BundledSettings {
             acp: true,
             solver: true,
             comms: true,
+            claude: true,
             swarm: true,
             jev_enabled: true,
             acp_agents: Vec::new(),
@@ -259,6 +266,7 @@ impl BundledSettings {
             acp: self.acp,
             solver: self.solver,
             comms: self.comms,
+            claude: self.claude,
             swarm: self.swarm,
             jev_enabled: self.jev_enabled,
             jev_model: self.jev_model.clone(),
@@ -280,6 +288,7 @@ impl BundledSettings {
         self.acp = value.acp;
         self.solver = value.solver;
         self.comms = value.comms;
+        self.claude = value.claude;
         self.swarm = value.swarm;
         self.jev_enabled = value.jev_enabled;
         self.jev_model = value.jev_model;
@@ -397,6 +406,8 @@ impl BundledSettings {
             "acp-subagents" => self.acp,
             crate::solver_plugin::PLUGIN => self.solver,
             crate::comms::PLUGIN => self.comms,
+            // Only on a computer signed in to Claude Code.
+            crate::claude::PLUGIN => self.claude && crate::claude::available(),
             crate::swarm::PLUGIN => self.swarm,
             "jev" => self.jev_enabled,
             crate::brainstorm::PLUGIN => self.brainstorm.preferences.enabled,
@@ -414,6 +425,9 @@ impl BundledSettings {
             "acp-subagents" => &mut value.acp,
             crate::solver_plugin::PLUGIN => &mut value.solver,
             crate::comms::PLUGIN => &mut value.comms,
+            // It cannot turn on without a Claude Code sign-in.
+            crate::claude::PLUGIN if !crate::claude::available() => return false,
+            crate::claude::PLUGIN => &mut value.claude,
             crate::swarm::PLUGIN => &mut value.swarm,
             "jev" => &mut value.jev_enabled,
             crate::brainstorm::PLUGIN => &mut value.brainstorm.enabled,
@@ -428,6 +442,9 @@ impl BundledSettings {
     }
 
     pub fn status(&self, id: &str) -> &str {
+        if id == crate::claude::PLUGIN && !crate::claude::available() {
+            return crate::claude::SIGN_IN_FIRST;
+        }
         if !self.enabled(id) {
             return "Disabled";
         }

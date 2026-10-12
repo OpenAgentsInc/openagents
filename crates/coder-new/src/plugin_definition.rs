@@ -153,6 +153,15 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
         composer_rails: &[],
     },
     PluginDefinition {
+        id: crate::claude::PLUGIN,
+        name: "Claude Code",
+        description: "Claude Code inside Coder on this computer's Claude sign-in: its whole toolset, your settings and skills, and Coder's delegation tools. Shift+Tab switches to it.",
+        default_enabled: true,
+        tools: &[],
+        model_provider: None,
+        composer_rails: &[],
+    },
+    PluginDefinition {
         id: crate::comms::PLUGIN,
         name: "Agent channel",
         description: "Let the subagents a chat delegates to talk to each other: what each means to change, overlaps, agreements and shared leases.",

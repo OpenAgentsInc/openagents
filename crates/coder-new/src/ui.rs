@@ -582,16 +582,26 @@ fn repository_rail(app: &App) -> String {
 }
 
 /// What the input's top-right rule carries before the mode's name: the
-/// Claude plan's windows in claude mode, then what the chat has cost.
+/// Claude plan's windows and how full the context is in claude mode, then
+/// what the chat has cost, except on the Claude plan, which the person
+/// pays for by the month rather than by the turn.
 fn top_rail(app: &App) -> Option<String> {
     let mut parts = Vec::new();
-    if app.mode == Mode::Claude
-        && let Some(plan) = crate::claude_plan::rail_text(atif::now_ms() / 1000)
-    {
-        parts.push(plan);
+    if app.mode == Mode::Claude {
+        if let Some(plan) = crate::claude_plan::rail_text(atif::now_ms() / 1000) {
+            parts.push(plan);
+        }
+        if let Some(context) = app
+            .live
+            .claude_session
+            .as_ref()
+            .and_then(|session| crate::claude_stream::context_line(&session.id))
+        {
+            parts.push(context);
+        }
     }
     let cost = crate::long_session::session_cost(app);
-    if cost > 0.0 {
+    if cost > 0.0 && app.mode != Mode::Claude {
         parts.push(agent_fleet::dollars(cost));
     }
     (!parts.is_empty()).then(|| parts.join(" · "))
@@ -632,8 +642,53 @@ fn working_label(app: &App) -> Option<String> {
         .selected_agent
         .and_then(|index| app.delegations.get(index))
         .map_or(&app.live, |agent| &agent.chat);
-    chat.busy
-        .then(|| format!("{} Working", crate::tools::spinner(app.animation_frame)))
+    if !chat.busy {
+        return None;
+    }
+    let mut label = format!("{} Working", crate::tools::spinner(app.animation_frame));
+    // How long the turn has run and what it has written, as Claude Code
+    // shows them: "(34m 8s · ↓ 45.6k tokens)".
+    if let Some(started) = chat.reply_started_at {
+        let mut facts = vec![agent_fleet::elapsed_words(started.elapsed().as_secs())];
+        let tokens = turn_output_tokens(chat);
+        if tokens > 0 {
+            facts.push(format!("↓ {} tokens", agent_fleet::token_words(tokens)));
+        }
+        label.push_str(&format!(" ({})", facts.join(" · ")));
+    }
+    Some(label)
+}
+
+/// The tokens the running turn has written: the output its model calls
+/// reported, or, before any call reports, its streamed words at about four
+/// characters a token.
+fn turn_output_tokens(chat: &crate::live::Chat) -> u64 {
+    let start = chat
+        .entries
+        .iter()
+        .rposition(|entry| matches!(entry, crate::live::Entry::User(_)))
+        .map_or(0, |index| index + 1);
+    let reported: u64 = chat
+        .rounds
+        .iter()
+        .filter(|(index, _)| *index >= start)
+        .map(|(_, usage)| usage.completion_tokens)
+        .sum();
+    if reported > 0 {
+        return reported;
+    }
+    let written: usize = chat.entries[start.min(chat.entries.len())..]
+        .iter()
+        .map(|entry| match entry {
+            crate::live::Entry::Assistant { text, .. } => text.len(),
+            crate::live::Entry::Tool { input, output, .. } => {
+                input.to_string().len() + output["text"].as_str().map_or(0, str::len)
+            }
+            _ => 0,
+        })
+        .sum::<usize>()
+        + chat.partial.len();
+    (written / 4) as u64
 }
 
 fn context_text(app: &App) -> String {
@@ -651,15 +706,7 @@ fn context_text(app: &App) -> String {
     {
         parts.push(plan);
     }
-    // How full the claude session's context is (#11438).
-    if let Some(context) = app
-        .live
-        .claude_session
-        .as_ref()
-        .and_then(|session| crate::claude_stream::context_line(&session.id))
-    {
-        parts.push(context);
-    }
+    // How full the claude session's context is rides the top rail ([`top_rail`]).
     // The signed-in account's name is never shown under the input.
     if let Some(update) = &app.update_line {
         parts.push(update.clone());

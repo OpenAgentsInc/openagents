@@ -970,10 +970,17 @@ pub(crate) fn chat(
     // picks in the terminal.
     match take_option(&mut args, "--mode")?.as_deref() {
         None | Some("auto" | "coder") => {}
-        Some("claude") if crate::claude::available() => {
+        Some("claude") if app.plugins.bundled.enabled(crate::claude::PLUGIN) => {
             app.set_mode(Mode::Claude);
         }
-        Some("claude") => return Err(Error::from(crate::claude::NEEDS_LOGIN)),
+        Some("claude") if !crate::claude::available() => {
+            return Err(Error::from(crate::claude::NEEDS_LOGIN));
+        }
+        Some("claude") => {
+            return Err(Error::from(
+                "Turn on the Claude Code plugin in /plugins to use claude mode.",
+            ));
+        }
         Some(_) => return Err(usage("--mode takes auto, coder, or claude.")),
     }
     let prompt = take_option(&mut args, "-p")?.or(take_option(&mut args, "--prompt")?);

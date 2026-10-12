@@ -28,6 +28,10 @@ const TIMEOUT_MS: u64 = 6 * 60 * 60 * 1000;
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
+/// The rule the model gets while the Solver plugin is on: an issue the
+/// person asks to have done goes to Solver, every time.
+pub const SOLVER_RULE: &str = "When the person asks you to do, solve, fix, implement, build, or work on a GitHub issue (a number like #123, owner/repo#123, or an issue link), call the `solver` tool with that issue right away instead of doing the work yourself in this turn. Turn on `no_pr` only when they ask for no pull request. Do not read the issue, plan, or search the code first: Solver does all of that. Afterwards, report its outcome, pull request link, and cost in a sentence or two. When they ask for several issues at once, use `solver_swarm` if it is offered.\n";
+
 /// The Coder tools one claude chat offers, from the chat's plugin
 /// settings. Two are equal when they offer the same tools, so a chat's
 /// process restarts only when that changes.
@@ -93,10 +97,51 @@ pub fn instructions(tools: &Tools) -> String {
         return String::new();
     };
     let execution = delegation_only(execution.clone());
+    let solver = if tools
+        .names
+        .iter()
+        .any(|name| name == crate::solver_plugin::TOOL)
+    {
+        SOLVER_RULE
+    } else {
+        ""
+    };
     format!(
-        "Coder's own tools are under the `{SERVER}` server. Use them to hand work to Coder rather than doing all of it in this turn: independent tasks to background agents (`agent`, several at once, each in its own worktree), an issue that should end in a pull request to `solver`, and cloud work to the cloud tools. Your own Agent tool stays for quick research inside this turn.\n{}",
+        "{solver}Coder's own tools are under the `{SERVER}` server. Use them to hand work to Coder rather than doing all of it in this turn: independent tasks to background agents (`agent`, several at once, each in its own worktree), an issue that should end in a pull request to `solver`, and cloud work to the cloud tools. Your own Agent tool stays for quick research inside this turn.\n{}",
         execution.instructions()
     )
+}
+
+/// The name a person reads for the engine's tool `name`: Coder's own tools
+/// by their plain names ("GitHub", "Agent list", "Solver"), another
+/// server's as "server: tool name", and every other tool as it is.
+#[must_use]
+pub fn display_name(name: &str) -> String {
+    let Some((server, tool)) = name
+        .strip_prefix("mcp__")
+        .and_then(|rest| rest.split_once("__"))
+    else {
+        return name.to_owned();
+    };
+    let plain = match tool {
+        "github" => "GitHub".to_owned(),
+        "openagents_cli" => "OpenAgents CLI".to_owned(),
+        "acp_subagent" => "Local agent".to_owned(),
+        "gce_delegate" => "GCE job".to_owned(),
+        "boat_delegate" => "Boat job".to_owned(),
+        _ => {
+            let spaced = tool.replace(['_', '-'], " ");
+            let mut chars = spaced.chars();
+            chars.next().map_or_else(String::new, |first| {
+                first.to_uppercase().collect::<String>() + chars.as_str()
+            })
+        }
+    };
+    if server == SERVER {
+        plain
+    } else {
+        format!("{}: {}", server.replace('_', " "), plain.to_lowercase())
+    }
 }
 
 /// Whether `name` is one of this server's tools as the engine names it.
@@ -145,6 +190,12 @@ pub fn server(
         return None;
     }
     let mut server = claude_agent_sdk::SdkMcpServer::new(SERVER, "1.0.0").timeout_ms(TIMEOUT_MS);
+    if tools
+        .iter()
+        .any(|tool| tool["function"]["name"] == crate::solver_plugin::TOOL)
+    {
+        server = server.instructions(SOLVER_RULE);
+    }
     for tool in tools {
         let function = &tool["function"];
         let Some(name) = function["name"].as_str().map(str::to_owned) else {
@@ -162,38 +213,47 @@ pub fn server(
         let events = events.clone();
         let stop = stop.clone();
         let tool_name = name.clone();
-        server = server.tool(name, description, schema, move |input: Value| {
-            let execution = execution.clone();
-            let events = events.clone();
-            let stop = stop.clone();
-            let name = tool_name.clone();
-            async move {
-                let execution = execution
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .clone();
-                let (answer, result) = tokio::sync::oneshot::channel();
-                std::thread::spawn(move || {
-                    let outcome = match tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build()
-                    {
-                        Ok(runtime) => {
-                            runtime.block_on(call(&execution, &name, input, &events, &stop))
-                        }
-                        Err(error) => Err(format!("Coder's tool could not start: {error}")),
-                    };
-                    let _ = answer.send(outcome);
-                });
-                let result = result
-                    .await
-                    .unwrap_or_else(|_| Err("Coder's tool stopped without an answer.".into()));
-                Ok(match result {
-                    Ok(value) => claude_agent_sdk::ToolResult::text(value.to_string()),
-                    Err(error) => claude_agent_sdk::ToolResult::error(error),
-                })
-            }
-        });
+        // Solver and the agent tools are always loaded, never behind tool
+        // search, so the model reaches for them without looking first.
+        let always = matches!(
+            name.as_str(),
+            crate::solver_plugin::TOOL | "solver_swarm" | "agent" | "agent_list"
+        );
+        let tool =
+            claude_agent_sdk::SdkMcpTool::new(name, description, schema, move |input: Value| {
+                let execution = execution.clone();
+                let events = events.clone();
+                let stop = stop.clone();
+                let name = tool_name.clone();
+                async move {
+                    let execution = execution
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .clone();
+                    let (answer, result) = tokio::sync::oneshot::channel();
+                    std::thread::spawn(move || {
+                        let outcome = match tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                        {
+                            Ok(runtime) => {
+                                runtime.block_on(call(&execution, &name, input, &events, &stop))
+                            }
+                            Err(error) => Err(format!("Coder's tool could not start: {error}")),
+                        };
+                        let _ = answer.send(outcome);
+                    });
+                    let result = result
+                        .await
+                        .unwrap_or_else(|_| Err("Coder's tool stopped without an answer.".into()));
+                    Ok(match result {
+                        Ok(value) => claude_agent_sdk::ToolResult::text(value.to_string()),
+                        Err(error) => claude_agent_sdk::ToolResult::error(error),
+                    })
+                }
+            })
+            .always_load(always);
+        server = server.add_tool(tool);
     }
     Some(server)
 }
@@ -311,6 +371,13 @@ mod tests {
         assert!(is_tool("mcp__coder__agent"));
         assert!(is_tool("mcp__coder__solver"));
         assert!(!is_tool("Bash"));
+        assert_eq!(display_name("mcp__coder__github"), "GitHub");
+        assert_eq!(display_name("mcp__coder__agent_list"), "Agent list");
+        assert_eq!(
+            display_name("mcp__stripe__create_customer"),
+            "stripe: create customer"
+        );
+        assert_eq!(display_name("Bash"), "Bash");
         // `agent` only starts a background agent: an ordinary tool call.
         assert!(!draws_itself("mcp__coder__agent"));
         assert!(draws_itself("mcp__coder__solver"));

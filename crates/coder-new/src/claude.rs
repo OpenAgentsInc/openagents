@@ -41,6 +41,14 @@ use crate::bundled_runtime::RuntimeEvent;
 /// The mode's name, in the rail and in the conversation.
 pub const LABEL: &str = "claude";
 
+/// The plugin that offers the mode, in /plugins and `bundled-plugins.json`.
+/// It turns on only on a computer signed in to Claude Code, and Shift+Tab
+/// offers the mode only while it is on.
+pub const PLUGIN: &str = "claude-code";
+
+/// What /plugins says when the plugin cannot turn on here.
+pub const SIGN_IN_FIRST: &str = "Sign in to Claude Code first";
+
 /// What Shift+Tab says on a computer with no Claude account login.
 pub const NEEDS_LOGIN: &str = "claude needs Claude Code signed in on this computer.";
 
@@ -911,6 +919,9 @@ pub(crate) async fn read_turn(
                             let sdk_input = block["input"].clone();
                             let (coder_name, coder_input) =
                                 crate::issue_run::agent::coder_call(name, &sdk_input, cwd, &[]);
+                            // An MCP tool reads by its plain name, never
+                            // `mcp__server__tool`.
+                            let coder_name = crate::claude_tools::display_name(&coder_name);
                             emit(stream.under(
                                 parent,
                                 RuntimeEvent::Tool {

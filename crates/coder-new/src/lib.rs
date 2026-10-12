@@ -1115,7 +1115,9 @@ impl App {
         }
         // Offered only where the OpenRouter plugin is on and holds a key.
         let openrouter = self.plugins.enabled && self.plugins.key_configured;
-        let claude = crate::claude::available();
+        // Offered only while the Claude Code plugin is on, which needs a
+        // Claude Code sign-in.
+        let claude = self.plugins.bundled.enabled(crate::claude::PLUGIN);
         let on_openrouter = self.mode == Mode::Live && self.plugins.model == models::OPENROUTER;
         // The modes after the current one, in order, ending at coder.
         let next = match self.mode {
@@ -2605,6 +2607,12 @@ impl App {
                         KeyCode::Char(' ') => {
                             if self.plugins.toggle_selected() && self.mode == Mode::Live {
                                 self.cancel_request();
+                            }
+                            // Turning the Claude Code plugin off leaves its mode.
+                            if self.mode == Mode::Claude
+                                && !self.plugins.bundled.enabled(crate::claude::PLUGIN)
+                            {
+                                self.set_mode(Mode::Live);
                             }
                         }
                         KeyCode::Enter => self.open_plugin_settings(),
