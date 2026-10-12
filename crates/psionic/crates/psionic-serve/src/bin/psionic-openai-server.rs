@@ -223,6 +223,10 @@ where
                 decision.limits.prefill_chunk =
                     number(&argument, next_value(&mut args, argument.as_str())?)?;
             }
+            "--decision-max-queue" => {
+                decision.limits.max_queue =
+                    number(&argument, next_value(&mut args, argument.as_str())?)?;
+            }
             "--decision-max-questions" => {
                 decision.limits.max_questions =
                     number(&argument, next_value(&mut args, argument.as_str())?)?;
@@ -339,7 +343,7 @@ fn next_value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<Str
 
 fn usage() -> String {
     String::from(
-        "usage: psionic-openai-server -m <model-artifact> [-m <model-artifact> ...] [--backend cpu|cuda|metal] [--qwen38-vision-model-dir <official-model-dir>] [--host <ip>] [--port <port>] [--reasoning-budget <n>] [--mesh-coordination enabled|disabled] [--decision-model <clef-or-qwen35-gguf>] [--clef-head <joint_head dir or .safetensors>] [--decision-max-tokens <n>] [--decision-max-questions <n>] [--decision-max-options <n>] [--decision-chunk <n>] [--decision-device auto|cpu|cuda|metal] [--decision-accumulate f16|f32] [--decision-calibration <map.json> ...] [--decision-export-rows <dir>] [--decision-vision-manifest <manifest> --decision-vision-blobs <dir>] [--allow-origin <https://origin> ...]\n\nA Clef GGUF (general.architecture = clef) given with -m is served as a decision model at POST /v1/systemone; with only decision models, -m may be omitted. --allow-origin lets pages on that exact origin call this server from a browser (CORS, including Chrome's local network preflight).",
+        "usage: psionic-openai-server -m <model-artifact> [-m <model-artifact> ...] [--backend cpu|cuda|metal] [--qwen38-vision-model-dir <official-model-dir>] [--host <ip>] [--port <port>] [--reasoning-budget <n>] [--mesh-coordination enabled|disabled] [--decision-model <clef-or-qwen35-gguf>] [--clef-head <joint_head dir or .safetensors>] [--decision-max-tokens <n>] [--decision-max-questions <n>] [--decision-max-options <n>] [--decision-max-queue <n>] [--decision-chunk <n>] [--decision-device auto|cpu|cuda|metal] [--decision-accumulate f16|f32] [--decision-calibration <map.json> ...] [--decision-export-rows <dir>] [--decision-vision-manifest <manifest> --decision-vision-blobs <dir>] [--allow-origin <https://origin> ...]\n\nA Clef GGUF (general.architecture = clef) given with -m is served as a decision model at POST /v1/systemone; with only decision models, -m may be omitted. --allow-origin lets pages on that exact origin call this server from a browser (CORS, including Chrome's local network preflight).",
     )
 }
 
@@ -361,11 +365,22 @@ mod tests {
             "32768",
             "--decision-chunk",
             "64",
+            "--decision-max-queue",
+            "32",
         ])
         .expect("decision flags");
         assert_eq!(decision.model_paths.len(), 1);
         assert_eq!(decision.limits.max_tokens, 32768);
         assert_eq!(decision.limits.prefill_chunk, 64);
+        assert_eq!(decision.limits.max_queue, 32);
+        assert_eq!(
+            super::split_decision_args::<[&str; 0], &str>([])
+                .unwrap()
+                .0
+                .limits
+                .max_queue,
+            8
+        );
         assert_eq!(decision.limits.max_options, 255);
         assert!(decision.head.is_some());
         assert_eq!(rest, ["--port", "9000"]);

@@ -68,12 +68,27 @@ First full run: 2026-10-11.
     `psionic.timing` shows directly. For example, H100 Flash at 4 clients:
     queue 304 ms, prefill 97 ms, head 3 ms.
   - **Busy refusals.** Past 8 waiting decisions, Psionic answers `503 busy`
-    (`max_queue`). With 16 or 32 clients on the 4080, retrying clients saw
-    p99 latencies of 47 s and 77 s.
+    (`max_queue`, now the `--decision-max-queue` flag). With 16 or 32
+    clients on the 4080, retrying clients saw p99 latencies of 47 s and 77 s.
   - **What would raise it.** Batching prefills across requests (M4).
     Batching questions within one request already does: 13 questions per
     request lift the H100 from 9.9 to 39 decisions/s and the 4080 from 4.2
     to 16/s.
+  - **Batching across requests on the H100 (#11441, 2026-10-12).** On CUDA,
+    `PSIONIC_CLEF_BATCH_REQUESTS=2` serves concurrent requests together.
+    Measured against the same build serial (main with the Hopper GEMM):
+    - Flash, 4–8 clients: 9.3 → 11.2–11.3 decisions/s (1.21×), p99 0.40 s
+      at 4 clients.
+    - Flash, 13 questions: 45.1 → 47.2/s.
+    - 27B: 3.58 → 3.71/s (1.04×).
+    - One client: 0.107 → 0.110 s p50.
+    - Answers are bitwise identical to serial.
+
+    That is less than the 1.5× the issue asked for. The GPU is mostly
+    computing, not waiting: each decision is about 80 ms of kernels, and 27B
+    keeps the GPU 85–100 % busy with one client. These are experiment runs
+    (`clef-11441` notes, kept in the issue), not the weekly rows below.
+    Details: Round 7 in [clef-native.md](clef-native.md).
 - **The head is cheap; prefill is the cost.** The head took 3–12 ms
   against 90–1,500 ms of prefill on the H100.
 - **Warm means the exact logit cache, and it is not a throughput figure.**

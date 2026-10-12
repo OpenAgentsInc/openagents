@@ -1,0 +1,61 @@
+# A quick H100 bundle of psionic-openai-server alone (no oa-att, no
+# att-provider image): the binary built for sm_90 in NVIDIA's CUDA 13.0 devel
+# image plus its CUDA 13 runtime libraries, packed like cloudbuild-bundle.yaml
+# so startup scripts can unpack it the same way. For engine experiments from
+# any local commit (#11441); weekly runs keep using `h100-run.sh bundle`.
+# Release profile with 16 codegen units (faster to build; GPU kernels are the
+# same nvcc output).
+#
+#   ctx=$(mktemp -d); git archive HEAD | tar -x -C "$ctx"
+#   cp scripts/bench/decision-throughput/h100/cloudbuild-psionic.yaml "$ctx/.psionic.yaml"
+#   (cd "$ctx" && gcloud builds submit --project openagentsgemini \
+#     --service-account projects/openagentsgemini/serviceAccounts/oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com \
+#     --config .psionic.yaml --ignore-file deploy/att/att.gcloudignore \
+#     --substitutions _TAG=<sha10>,_DEST=gs://openagentsgemini-decision-throughput/clef-11441/bin .)
+#   -> $_DEST/<_TAG>/bundle.tar.gz
+steps:
+  - name: rust:1.97.1-slim-trixie@sha256:8e8cf8f7fd54a2d23d5a743b3a03f56e26b6c774276c33fa0595111704ebb15c
+    entrypoint: bash
+    args: ["-c", "mkdir -p /workspace/.toolchain && cp -a /usr/local/rustup /usr/local/cargo /workspace/.toolchain/"]
+  - name: nvidia/cuda:13.0.2-devel-ubuntu24.04@sha256:5dc1bca23d05bd37b011be68ec470c03b403a5da07ec3a86e41af9470e9d0cc6
+    entrypoint: bash
+    env:
+      - RUSTUP_HOME=/workspace/.toolchain/rustup
+      - CARGO_HOME=/workspace/.toolchain/cargo
+      - NVCC=/usr/local/cuda/bin/nvcc
+      - PSI_CUDA_ARCH=90
+      - CARGO_INCREMENTAL=0
+      - CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16
+      - CARGO_PROFILE_RELEASE_DEBUG=0
+    args:
+      - -c
+      - |
+        set -eu
+        export PATH=/workspace/.toolchain/cargo/bin:/usr/local/cuda/bin:$$PATH
+        apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends build-essential pkg-config >/dev/null
+        cd crates/psionic
+        cargo build --locked --release -p psionic-serve --bin psionic-openai-server
+        ldd target/release/psionic-openai-server | grep -q 'libcudart\.so\.13'
+        cuobjdump --list-elf target/release/psionic-openai-server | grep -q 'sm_90'
+        strip --strip-all target/release/psionic-openai-server
+        mkdir -p /workspace/bundle/lib
+        cp target/release/psionic-openai-server /workspace/bundle/
+        for l in libcudart.so.13 libcublas.so.13 libcublasLt.so.13; do cp -L /usr/local/cuda/lib64/$$l /workspace/bundle/lib/; done
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
+        cd /workspace/bundle
+        printf '%s\n' "${_TAG}" > commit.txt
+        sha256sum psionic-openai-server lib/* > SHA256SUMS
+        tar -czf /workspace/bundle.tar.gz .
+        gcloud storage cp /workspace/bundle.tar.gz ${_DEST}/${_TAG}/bundle.tar.gz
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_32
+timeout: 3600s
+substitutions:
+  _TAG: dev
+  _DEST: gs://openagentsgemini-decision-throughput/clef-11441/bin

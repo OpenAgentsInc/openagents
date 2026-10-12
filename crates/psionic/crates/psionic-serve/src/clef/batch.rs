@@ -3,9 +3,195 @@
 use super::chunk_schedule::{ChunkScheduler, Completion, Limits, RequestId};
 use super::worker::Worker;
 use super::*;
-use crate::qwen35::clef_metal::batching::MetalSession;
+use crate::qwen35::clef_cuda::batching::{
+    ActiveHead as CudaActiveHead, CudaSession, PreparedInputs,
+};
+#[cfg(target_os = "macos")]
+use crate::qwen35::clef_metal::batching::{ActiveHead as MetalActiveHead, MetalSession};
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Mutex, atomic::AtomicBool, mpsc};
+
+/// One admitted request's backbone state on its device.
+enum BatchSession {
+    Cuda(CudaSession),
+    #[cfg(target_os = "macos")]
+    Metal(MetalSession),
+}
+
+impl BatchSession {
+    fn remaining_tokens(&self) -> usize {
+        match self {
+            Self::Cuda(session) => session.remaining_tokens(),
+            #[cfg(target_os = "macos")]
+            Self::Metal(session) => session.remaining_tokens(),
+        }
+    }
+
+    fn chunk_tokens(&self) -> usize {
+        match self {
+            Self::Cuda(session) => session.chunk_tokens(),
+            #[cfg(target_os = "macos")]
+            Self::Metal(session) => session.chunk_tokens(),
+        }
+    }
+
+    /// Chunk ends the scheduler must keep (a reusable prefix's end on Metal;
+    /// CUDA has no prefix reuse yet).
+    fn boundaries(&self) -> Vec<usize> {
+        match self {
+            Self::Cuda(_) => Vec::new(),
+            #[cfg(target_os = "macos")]
+            Self::Metal(session) => session.boundaries(),
+        }
+    }
+
+    fn device_bytes(&self) -> u64 {
+        match self {
+            Self::Cuda(session) => session.device_bytes(),
+            #[cfg(target_os = "macos")]
+            Self::Metal(session) => session.device_bytes(),
+        }
+    }
+}
+
+/// Holds the device's head memory for one completed request; dropping it
+/// clears that memory.
+#[allow(dead_code)]
+enum ActiveHead<'a> {
+    Cuda(CudaActiveHead<'a>),
+    #[cfg(target_os = "macos")]
+    Metal(MetalActiveHead<'a>),
+}
+
+/// The batch operations of one device trunk.
+impl DeviceTrunk {
+    fn cohort_bytes(&self, tokens: usize) -> Result<u64, String> {
+        match self {
+            Self::Cuda(trunk) => trunk.cohort_bytes(tokens),
+            #[cfg(target_os = "macos")]
+            Self::Metal(trunk) => trunk.cohort_bytes(tokens),
+        }
+    }
+
+    /// Checks the shared cohort buffers against live device memory where
+    /// the device reports it (CUDA); Metal's budget is checked at load.
+    fn admit_cohort(&self, bytes: u64) -> Result<(), String> {
+        match self {
+            Self::Cuda(trunk) => trunk.admit_bytes("batch_cohort", bytes),
+            #[cfg(target_os = "macos")]
+            Self::Metal(_) => Ok(()),
+        }
+    }
+
+    /// `Ok(false)` when live device memory cannot hold `bytes` now.
+    fn admits_session(&self, bytes: u64) -> Result<bool, String> {
+        match self {
+            Self::Cuda(trunk) => match trunk.admit_bytes("batch_request", bytes) {
+                Ok(()) => Ok(true),
+                Err(error) if ClefCudaTrunk::is_memory_refusal(&error) => Ok(false),
+                Err(error) => Err(error),
+            },
+            #[cfg(target_os = "macos")]
+            Self::Metal(_) => Ok(true),
+        }
+    }
+
+    fn reap_pending_prefix(&self) {
+        match self {
+            Self::Cuda(_) => {}
+            #[cfg(target_os = "macos")]
+            Self::Metal(trunk) => trunk.reap_pending_prefix(),
+        }
+    }
+
+    fn session_bytes(
+        &self,
+        length: usize,
+        chunk: usize,
+        spans: usize,
+        heads: usize,
+    ) -> Result<u64, String> {
+        match self {
+            Self::Cuda(trunk) => trunk.session_bytes(length, chunk, spans, heads),
+            #[cfg(target_os = "macos")]
+            Self::Metal(trunk) => trunk.session_bytes(length, chunk, spans, heads),
+        }
+    }
+
+    fn begin_session(
+        &self,
+        tokens: Vec<TokenId>,
+        spans: Vec<(usize, usize)>,
+        chunk: usize,
+        prefix_tokens: usize,
+        prepared: Option<PreparedInputs>,
+    ) -> Result<BatchSession, String> {
+        match self {
+            Self::Cuda(trunk) => {
+                let _ = prefix_tokens;
+                trunk
+                    .begin_session(tokens, spans, chunk, prepared)
+                    .map(BatchSession::Cuda)
+            }
+            #[cfg(target_os = "macos")]
+            Self::Metal(trunk) => trunk
+                .begin_session(tokens, spans, chunk, prefix_tokens)
+                .map(BatchSession::Metal),
+        }
+    }
+
+    /// Advances one chunk of every session; returns the session that
+    /// captured a reusable prefix, if any (Metal only).
+    fn advance_sessions(
+        &self,
+        cpu: &CpuGgufQwen35TextGenerationService,
+        sessions: &mut [(&mut BatchSession, usize)],
+        capture_prefix: bool,
+    ) -> Result<Option<usize>, String> {
+        match self {
+            Self::Cuda(trunk) => {
+                let _ = capture_prefix;
+                let mut own = sessions
+                    .iter_mut()
+                    .map(|(session, count)| match &mut **session {
+                        BatchSession::Cuda(session) => Ok((session, *count)),
+                        #[cfg(target_os = "macos")]
+                        BatchSession::Metal(_) => Err(String::from("session on another device")),
+                    })
+                    .collect::<Result<Vec<_>, String>>()?;
+                trunk.advance_sessions(cpu, &mut own).map(|()| None)
+            }
+            #[cfg(target_os = "macos")]
+            Self::Metal(trunk) => {
+                let mut own = sessions
+                    .iter_mut()
+                    .map(|(session, count)| match &mut **session {
+                        BatchSession::Metal(session) => Ok((session, *count)),
+                        BatchSession::Cuda(_) => Err(String::from("session on another device")),
+                    })
+                    .collect::<Result<Vec<_>, String>>()?;
+                trunk.advance_sessions(cpu, &mut own, capture_prefix)
+            }
+        }
+    }
+
+    fn activate_session(
+        &self,
+        session: BatchSession,
+    ) -> Result<(ClefCudaPrefill, usize, ActiveHead<'_>), String> {
+        match (self, session) {
+            (Self::Cuda(trunk), BatchSession::Cuda(session)) => trunk
+                .activate_session(session)
+                .map(|(prefill, cached, head)| (prefill, cached, ActiveHead::Cuda(head))),
+            #[cfg(target_os = "macos")]
+            (Self::Metal(trunk), BatchSession::Metal(session)) => trunk
+                .activate_session(session)
+                .map(|(prefill, cached, head)| (prefill, cached, ActiveHead::Metal(head))),
+            #[cfg(target_os = "macos")]
+            _ => Err(String::from("session on another device")),
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Config {
@@ -13,6 +199,9 @@ pub(super) struct Config {
     tokens: usize,
     request_bytes: u64,
     cohort_bytes: u64,
+    /// Whether `PSIONIC_CLEF_BATCH_TOKENS` / `_COHORT_BYTES` were set.
+    tokens_set: bool,
+    cohort_bytes_set: bool,
 }
 
 impl Config {
@@ -54,7 +243,11 @@ impl Config {
                 "Clef batch tokens must cover every batch request",
             ));
         }
+        let tokens_set = get("PSIONIC_CLEF_BATCH_TOKENS").is_some();
+        let cohort_bytes_set = get("PSIONIC_CLEF_BATCH_COHORT_BYTES").is_some();
         Ok(Some(Self {
+            tokens_set,
+            cohort_bytes_set,
             requests,
             tokens,
             request_bytes: setting(&mut get, "PSIONIC_CLEF_BATCH_BYTES", 4 << 30, 32 << 30)?,
@@ -65,6 +258,25 @@ impl Config {
                 4 << 30,
             )?,
         }))
+    }
+
+    /// Requests advanced together (2–4).
+    pub fn requests(&self) -> usize {
+        self.requests
+    }
+
+    /// CUDA defaults: without `PSIONIC_CLEF_BATCH_TOKENS`, every request keeps
+    /// the lane's prefill chunk (`requests x chunk` cohort rows, at most
+    /// 16,384), because short chunks are slower on CUDA than the cohort saves;
+    /// without `_COHORT_BYTES`, the shared FFN rows may use up to 4 GiB.
+    pub fn with_cuda_defaults(mut self, chunk: usize) -> Self {
+        if !self.tokens_set {
+            self.tokens = (self.requests * chunk.max(1)).clamp(self.requests, 16384);
+        }
+        if !self.cohort_bytes_set {
+            self.cohort_bytes = 4 << 30;
+        }
+        self
     }
 
     fn check_cohort_bytes(&self, bytes: u64) -> Result<(), String> {
@@ -88,6 +300,8 @@ pub(super) struct BatchResult {
 
 struct Job {
     record: EncodedRecord,
+    /// Host inputs decoded on the request's thread (CUDA).
+    prepared: Option<PreparedInputs>,
     chunk: usize,
     submitted: Instant,
     cancelled: Arc<AtomicBool>,
@@ -102,7 +316,7 @@ impl Job {
 
 struct Session {
     job: Job,
-    metal: Option<MetalSession>,
+    device: Option<BatchSession>,
     prefill_seconds: f64,
     chunks: usize,
     max_cohort: usize,
@@ -121,34 +335,43 @@ impl Drop for Ticket {
 
 pub(super) struct Dispatcher {
     worker: Worker<Job>,
+    cpu: CpuGgufQwen35TextGenerationService,
+    trunk: Arc<DeviceTrunk>,
 }
 
 impl Dispatcher {
     pub fn new(
         cpu: CpuGgufQwen35TextGenerationService,
-        metal: crate::ClefMetalTrunk,
+        trunk: Arc<DeviceTrunk>,
         head: Arc<ClefHeadWeights>,
         running: Arc<Mutex<()>>,
         serial_waiters: Arc<AtomicUsize>,
         config: Config,
         max_queue: usize,
     ) -> Result<Self, String> {
-        config.check_cohort_bytes(metal.cohort_bytes(config.tokens)?)?;
-        let worker = Worker::spawn(max_queue.max(1), move |receiver, stop| {
+        let cohort = trunk.cohort_bytes(config.tokens)?;
+        config.check_cohort_bytes(cohort)?;
+        trunk.admit_cohort(cohort)?;
+        // The lane's waiting guard admits `max_queue` requests beyond the
+        // running ones; the channel must hold all of them while the worker
+        // is inside a GPU step, or it refuses below that limit.
+        let max_queue = max_queue.max(1) + config.requests;
+        let (worker_cpu, worker_trunk) = (cpu.clone(), Arc::clone(&trunk));
+        let worker = Worker::spawn(max_queue, move |receiver, stop| {
             execute(
-                cpu,
-                metal,
+                worker_cpu,
+                worker_trunk,
                 head,
                 running,
                 serial_waiters,
                 config,
-                max_queue.max(1),
+                max_queue,
                 receiver,
                 stop,
             );
         })
         .map_err(|error| format!("cannot start Clef batch worker: {error}"))?;
-        Ok(Self { worker })
+        Ok(Self { worker, cpu, trunk })
     }
 
     pub fn run(
@@ -157,6 +380,18 @@ impl Dispatcher {
         chunk: usize,
         cancelled: Arc<AtomicBool>,
     ) -> Result<BatchResult, ClefRefusal> {
+        // Decode the prompt's rows here, in parallel with the GPU work of
+        // the active requests, instead of on the worker between chunks.
+        let prepared = match &*self.trunk {
+            DeviceTrunk::Cuda(trunk) => {
+                let tokens: Vec<TokenId> = record.input_ids.iter().map(|&id| TokenId(id)).collect();
+                trunk
+                    .prepare_inputs(&self.cpu, &tokens)
+                    .map_err(ClefRefusal::internal)?
+            }
+            #[cfg(target_os = "macos")]
+            DeviceTrunk::Metal(_) => None,
+        };
         let (reply, receiver) = mpsc::channel();
         let ticket = Ticket {
             reply: receiver,
@@ -164,6 +399,7 @@ impl Dispatcher {
         };
         let job = Job {
             record,
+            prepared,
             chunk,
             submitted: Instant::now(),
             cancelled,
@@ -189,7 +425,7 @@ impl Dispatcher {
 #[allow(clippy::too_many_arguments)]
 fn execute(
     cpu: CpuGgufQwen35TextGenerationService,
-    metal: crate::ClefMetalTrunk,
+    trunk: Arc<DeviceTrunk>,
     head: Arc<ClefHeadWeights>,
     running: Arc<Mutex<()>>,
     serial_waiters: Arc<AtomicUsize>,
@@ -205,7 +441,6 @@ fn execute(
         max_reserved_bytes: config.request_bytes,
     })
     .expect("validated batch limits");
-    let trunk = DeviceTrunk::Metal(metal.clone());
     let mut pending = VecDeque::<Job>::new();
     let mut active = BTreeMap::<RequestId, Arc<AtomicBool>>::new();
     let mut prefix_owner = None;
@@ -252,7 +487,7 @@ fn execute(
                 prefix_owner = None;
             }
         }
-        metal.reap_pending_prefix();
+        trunk.reap_pending_prefix();
         while let Some(job) = pending.front() {
             if serial_waiters.load(Ordering::Acquire) > 0 {
                 break;
@@ -263,7 +498,7 @@ fn execute(
             }
             // Leave room for all admitted requests in the next cohort.
             let chunk = job.chunk.min(config.tokens / config.requests).max(1);
-            let estimate = metal.session_bytes(
+            let estimate = trunk.session_bytes(
                 job.record.input_ids.len(),
                 chunk,
                 head_spans(&job.record).len(),
@@ -288,13 +523,32 @@ fn execute(
             if count == config.requests || bytes > config.request_bytes - reserved {
                 break;
             }
-            let job = pending.pop_front().expect("front job");
+            match trunk.admits_session(bytes) {
+                Ok(true) => {}
+                // Wait for active requests to release their memory; with
+                // none active, this request cannot fit on the device now.
+                Ok(false) if count > 0 => break,
+                Ok(false) => {
+                    let job = pending.pop_front().expect("front job");
+                    let _ = job.reply.send(Err(ClefRefusal::not_admitted(
+                        413,
+                        "this request does not fit in free device memory",
+                    )));
+                    continue;
+                }
+                Err(error) => {
+                    pending.pop_front().expect("front job").fail(error);
+                    continue;
+                }
+            }
+            let mut job = pending.pop_front().expect("front job");
             let began = Instant::now();
-            let session = metal.begin_session(
+            let session = trunk.begin_session(
                 job.record.input_ids.iter().map(|&id| TokenId(id)).collect(),
                 head_spans(&job.record),
                 chunk,
                 job.record.prefix_tokens,
+                job.prepared.take(),
             );
             let session = match session {
                 Ok(session) => session,
@@ -313,7 +567,7 @@ fn execute(
             let cancelled = Arc::clone(&job.cancelled);
             let state = Session {
                 job,
-                metal: Some(session),
+                device: Some(session),
                 prefill_seconds: began.elapsed().as_secs_f64(),
                 chunks: 0,
                 max_cohort: 0,
@@ -339,12 +593,12 @@ fn execute(
                 .map(|chunk| {
                     let count = chunk.range().len();
                     (
-                        chunk.state_mut().metal.as_mut().expect("active session"),
+                        chunk.state_mut().device.as_mut().expect("active session"),
                         count,
                     )
                 })
                 .collect();
-            metal.advance_sessions(&cpu, &mut sessions, prefix_owner.is_none())
+            trunk.advance_sessions(&cpu, &mut sessions, prefix_owner.is_none())
         };
         let elapsed = began.elapsed().as_secs_f64();
         match outcome {
@@ -363,7 +617,7 @@ fn execute(
                         prefix_owner = None;
                     }
                 }
-                metal.reap_pending_prefix();
+                trunk.reap_pending_prefix();
                 continue;
             }
         }
@@ -385,7 +639,7 @@ fn execute(
                     }
                 }
                 Completion::Finished(mut completed) => {
-                    let result = finish(&cpu, &metal, &trunk, &head, completed.state_mut());
+                    let result = finish(&cpu, &trunk, &head, completed.state_mut());
                     let _ = completed.state_mut().job.reply.send(result);
                     active.remove(&id);
                     if prefix_owner == Some(id) {
@@ -394,7 +648,7 @@ fn execute(
                 }
             }
         }
-        metal.reap_pending_prefix();
+        trunk.reap_pending_prefix();
         if active.is_empty() {
             execution_guard.take();
         }
@@ -403,20 +657,19 @@ fn execute(
     for id in active.keys() {
         drop(scheduler.cancel(*id));
     }
-    metal.reap_pending_prefix();
+    trunk.reap_pending_prefix();
 }
 
 fn finish(
     cpu: &CpuGgufQwen35TextGenerationService,
-    metal: &crate::ClefMetalTrunk,
     trunk: &DeviceTrunk,
     head: &ClefHeadWeights,
     state: &mut Session,
 ) -> Result<BatchResult, ClefRefusal> {
     let began = Instant::now();
-    let session = state.metal.take().expect("completed session");
+    let session = state.device.take().expect("completed session");
     let prefill_chunk = session.chunk_tokens();
-    let (prefill, cached_input_tokens, _active) = metal
+    let (prefill, cached_input_tokens, _active) = trunk
         .activate_session(session)
         .map_err(ClefRefusal::internal)?;
     let record = &state.job.record;
@@ -508,6 +761,7 @@ mod tests {
         );
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn enabling_batching_fits_real_flash_and_27b_cohort_budgets() {
         use psionic_backend_metal::clef_delta::ClefMetalDelta;
@@ -557,6 +811,24 @@ mod tests {
         assert!(larger.check_cohort_bytes(bytes).is_err());
         larger.cohort_bytes = 2 << 30;
         assert!(larger.check_cohort_bytes(bytes).is_ok());
+    }
+
+    #[test]
+    fn cuda_defaults_keep_the_lane_chunk_unless_configured() {
+        let parse = |tokens: Option<&str>| {
+            Config::parse(|name| match name {
+                "PSIONIC_CLEF_BATCH_REQUESTS" => Some(String::from("4")),
+                "PSIONIC_CLEF_BATCH_TOKENS" => tokens.map(String::from),
+                _ => None,
+            })
+            .unwrap()
+            .unwrap()
+        };
+        let cuda = parse(None).with_cuda_defaults(2048);
+        assert_eq!((cuda.tokens, cuda.cohort_bytes), (8192, 4 << 30));
+        assert_eq!(parse(None).with_cuda_defaults(8192).tokens, 16384);
+        assert_eq!(parse(Some("2048")).with_cuda_defaults(2048).tokens, 2048);
+        assert_eq!(parse(None).tokens, 2048);
     }
 
     #[test]

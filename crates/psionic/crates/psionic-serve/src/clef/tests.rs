@@ -871,7 +871,7 @@ fn metal_layer_major_prefill_matches_chunk_major_bitwise() {
     let configure = |on_demand: Option<bool>, layer_major: bool| {
         let _running = lane.running.lock().unwrap();
         lane.logit_cache.lock().unwrap().clear();
-        match lane.cuda.as_ref().unwrap() {
+        match lane.cuda.as_deref().unwrap() {
             super::DeviceTrunk::Metal(trunk) => {
                 if let Some(on_demand) = on_demand {
                     trunk
@@ -966,7 +966,7 @@ fn metal_weighted_mode_parity(delta_mode: bool) {
     let replace = |enabled| {
         let _running = lane.running.lock().unwrap();
         lane.logit_cache.lock().unwrap().clear();
-        match lane.cuda.as_ref().unwrap() {
+        match lane.cuda.as_deref().unwrap() {
             super::DeviceTrunk::Metal(trunk) => {
                 if delta_mode {
                     trunk

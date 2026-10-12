@@ -28,6 +28,7 @@
 
 use std::sync::Mutex;
 
+pub(crate) mod batching;
 mod load_admission;
 mod memory_admission;
 
@@ -212,6 +213,10 @@ struct DeviceState {
     evidence_norms: Vec<(CudaBuffer, CudaBuffer)>,
     weight_scratch: WeightPipeline,
     scratch: Option<Scratch>,
+    /// The packed FFN rows of a batched cohort ([`batching`]).
+    cohort: Option<batching::CohortScratch>,
+    /// Chunk scratch of finished batched requests, reused by exact capacity.
+    session_scratch: Vec<Scratch>,
     request: Option<Request>,
     attention_scratch: Option<(usize, CudaBuffer, CudaBuffer)>,
     /// Head matrices by host address: `(buffer, rows, columns)`.
@@ -623,6 +628,8 @@ impl ClefCudaTrunk {
             weight_scratch,
             layers,
             scratch: None,
+            cohort: None,
+            session_scratch: Vec::new(),
             request: None,
             attention_scratch: None,
             backend,
@@ -1804,7 +1811,12 @@ fn ensure_scratch(state: &mut DeviceState, dims: Dims, chunk: usize) -> Result<(
         return Ok(());
     }
     state.scratch = None;
-    let backend = &mut state.backend;
+    state.scratch = Some(alloc_scratch(&mut state.backend, dims, chunk)?);
+    Ok(())
+}
+
+/// Activations for one chunk of up to `chunk` tokens.
+fn alloc_scratch(backend: &mut CudaBackend, dims: Dims, chunk: usize) -> Result<Scratch, String> {
     let c = chunk;
     let wide = dims
         .ffn
@@ -1843,7 +1855,7 @@ fn ensure_scratch(state: &mut DeviceState, dims: Dims, chunk: usize) -> Result<(
         .map_err(err)?;
     let out16 = backend.f16_buffer(c * wide.max(mid)).map_err(err)?;
     bytes += act16.byte_len() as u64 + query16.byte_len() as u64 + out16.byte_len() as u64;
-    state.scratch = Some(Scratch {
+    Ok(Scratch {
         capacity: c,
         x,
         act16,
@@ -1865,8 +1877,7 @@ fn ensure_scratch(state: &mut DeviceState, dims: Dims, chunk: usize) -> Result<(
         final_rows,
         norm_rows,
         bytes,
-    });
-    Ok(())
+    })
 }
 
 fn new_request(
@@ -1937,8 +1948,10 @@ fn new_request(
     Ok(request)
 }
 
-/// Dequantize a weight into the f16 scratch and multiply:
-/// `out (+)= x16 · W^T`. With `compute_16f` the GEMM accumulates in f16
+/// `out (+)= x16 · W^T`: on sm_90 the Hopper GEMM; else with `fused` the
+/// fused kernel straight from the GGUF layout (callers pass
+/// `knobs().fused.takes(rows)`); else dequantize the weight into the f16
+/// scratch and multiply. With `compute_16f` that GEMM accumulates in f16
 /// into `out16` and a conversion adds it to `out`.
 #[allow(clippy::too_many_arguments)]
 fn linear(
@@ -1951,6 +1964,7 @@ fn linear(
     n: usize,
     accumulate: bool,
     compute_16f: bool,
+    fused: bool,
 ) -> Result<(), String> {
     let knob = knobs();
     if knob.hopper && !knob.skip_gemm {
@@ -1973,7 +1987,7 @@ fn linear(
             return Ok(());
         }
     }
-    if knob.fused.takes(n) && !knob.skip_gemm {
+    if fused && !knob.skip_gemm {
         // straight from the GGUF layout; f16 accumulation in short spans
         // promoted to f32, or f32 tensor accumulation in strict mode
         let segment = if compute_16f { knob.segment } else { 0 };
@@ -2185,6 +2199,64 @@ fn encode_layer(
     n: usize,
     compute_16f: bool,
 ) -> Result<(), String> {
+    encode_mixer(
+        submission,
+        layer,
+        scratch,
+        weight_scratch,
+        request,
+        layer_index,
+        dims,
+        first,
+        n,
+        compute_16f,
+    )?;
+    let s = scratch;
+    encode_ffn(
+        submission,
+        layer,
+        FfnRows {
+            x: &s.x,
+            act16: &s.act16,
+            gate: &s.big_a,
+            up: &s.big_b,
+            out16: &s.out16,
+        },
+        weight_scratch,
+        dims,
+        n,
+        compute_16f,
+        knobs().fused.takes(n),
+    )
+}
+
+/// The buffers one FFN step reads and writes: the residual rows `x` (f32,
+/// updated in place), the normalized f16 input, the gate and up outputs,
+/// and the f16 GEMM output slot.
+pub(super) struct FfnRows<'a> {
+    pub x: &'a CudaBuffer,
+    pub act16: &'a CudaBuffer,
+    pub gate: &'a CudaBuffer,
+    pub up: &'a CudaBuffer,
+    pub out16: &'a CudaBuffer,
+}
+
+/// Everything in a layer before its feed-forward block: the input norm,
+/// the token mixer (DeltaNet or attention, with this request's state), and
+/// the mixer's output projection accumulated into `scratch.x`.
+#[allow(clippy::too_many_arguments)]
+fn encode_mixer(
+    submission: &mut CudaSubmission,
+    layer: &DeviceLayer,
+    scratch: &Scratch,
+    weight_scratch: &WeightPipeline,
+    request: &Request,
+    layer_index: usize,
+    dims: Dims,
+    first: usize,
+    n: usize,
+    compute_16f: bool,
+) -> Result<(), String> {
     let s = scratch;
     submission
         .clef_rms_norm_to_f16(
@@ -2220,6 +2292,7 @@ fn encode_layer(
                 n,
                 false,
                 compute_16f,
+                knobs().fused.takes(n),
             )?;
             linear(
                 submission,
@@ -2231,6 +2304,7 @@ fn encode_layer(
                 n,
                 false,
                 compute_16f,
+                knobs().fused.takes(n),
             )?;
             linear(
                 submission,
@@ -2242,6 +2316,7 @@ fn encode_layer(
                 n,
                 false,
                 compute_16f,
+                knobs().fused.takes(n),
             )?;
             linear(
                 submission,
@@ -2253,6 +2328,7 @@ fn encode_layer(
                 n,
                 false,
                 compute_16f,
+                knobs().fused.takes(n),
             )?;
             submission
                 .clef_conv1d_seq_silu(
@@ -2328,6 +2404,7 @@ fn encode_layer(
                 n,
                 true,
                 compute_16f,
+                knobs().fused.takes(n),
             )?;
         }
         DeviceMixer::Attention {
@@ -2352,6 +2429,7 @@ fn encode_layer(
                 n,
                 false,
                 compute_16f,
+                knobs().fused.takes(n),
             )?;
             linear(
                 submission,
@@ -2363,6 +2441,7 @@ fn encode_layer(
                 n,
                 false,
                 compute_16f,
+                knobs().fused.takes(n),
             )?;
             linear(
                 submission,
@@ -2374,6 +2453,7 @@ fn encode_layer(
                 n,
                 false,
                 compute_16f,
+                knobs().fused.takes(n),
             )?;
             submission
                 .clef_attention_prep(
@@ -2427,14 +2507,34 @@ fn encode_layer(
                 n,
                 true,
                 compute_16f,
+                knobs().fused.takes(n),
             )?;
         }
     }
+    Ok(())
+}
+
+/// The feed-forward block on `n` rows: post-attention norm, gate and up,
+/// SiLU product, and down accumulated into `rows.x`. The rows may belong to
+/// one request or to a cohort of requests packed together (#11441). With
+/// `fused` every row is computed independently (bitwise the same in any
+/// cohort); dequantize + cuBLAS rows may round differently with the shape.
+#[allow(clippy::too_many_arguments)]
+fn encode_ffn(
+    submission: &mut CudaSubmission,
+    layer: &DeviceLayer,
+    rows: FfnRows<'_>,
+    weight_scratch: &WeightPipeline,
+    dims: Dims,
+    n: usize,
+    compute_16f: bool,
+    fused: bool,
+) -> Result<(), String> {
     submission
         .clef_rms_norm_to_f16(
-            &s.x,
+            rows.x,
             &layer.post_attention_norm,
-            &s.act16,
+            rows.act16,
             n,
             dims.hidden,
             dims.eps,
@@ -2444,39 +2544,41 @@ fn encode_layer(
         submission,
         &layer.gate,
         weight_scratch,
-        &s.act16,
-        &s.big_a,
-        &s.out16,
+        rows.act16,
+        rows.gate,
+        rows.out16,
         n,
         false,
         compute_16f,
+        fused,
     )?;
     linear(
         submission,
         &layer.up,
         weight_scratch,
-        &s.act16,
-        &s.big_b,
-        &s.out16,
+        rows.act16,
+        rows.up,
+        rows.out16,
         n,
         false,
         compute_16f,
+        fused,
     )?;
     submission
-        .clef_silu_mul_to_f16(&s.big_a, &s.big_b, &s.act16, n * dims.ffn)
+        .clef_silu_mul_to_f16(rows.gate, rows.up, rows.act16, n * dims.ffn)
         .map_err(err)?;
     linear(
         submission,
         &layer.down,
         weight_scratch,
-        &s.act16,
-        &s.x,
-        &s.out16,
+        rows.act16,
+        rows.x,
+        rows.out16,
         n,
         true,
         compute_16f,
-    )?;
-    Ok(())
+        fused,
+    )
 }
 
 /// Causal attention of the chunk's queries (f16 in `scratch.query16`)

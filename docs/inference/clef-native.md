@@ -867,6 +867,8 @@ latency per decision:
   after 50 ms. Their p90 is the retry wait.
 - Batching several prompts into one prefill (M4) is what would raise
   throughput beyond 9.4/s. A queue-depth flag is a one-line follow-up.
+  Both landed in #11441 (`PSIONIC_CLEF_BATCH_REQUESTS`,
+  `--decision-max-queue`); see Round 7 below for what they buy on this card.
 
 **The router's three-request replay.** `router_set.py` replays 8
 recorded router calls (main 9,535, `answer` 3,289 and `cli_group` 11,830
@@ -1114,6 +1116,113 @@ epilogue with the other's main loop, and a split-k for the 32/48-row
 alpha/beta weights (fixed per weight, so still chunk-invariant), are the
 remaining known gaps to cuBLAS. Cost of this round: about 1.7 h of one spot
 H100 (about $11) plus a CPU build VM.
+
+### Round 7 (2026-10-12): concurrent requests on CUDA (#11441)
+
+**What runs.** `PSIONIC_CLEF_BATCH_REQUESTS=2..4` now enables the batch worker
+on CUDA too, with the Metal contract: the same settings, admission, cancellation
+between chunks, serial priority and receipts
+(`psionic.batch.{chunks,max_requests,grouped_ffn}`, effective
+`psionic.prefill_chunk`, per-request `psionic.timing`).
+
+- Each request keeps its own conv/DeltaNet state, f16 K/V caches, flash
+  attention, `W_mem` rows, span sums, chunk scratch and head.
+- Per layer, the mixers run per request. Then the residual rows are packed
+  into shared buffers, the three FFN projections run once over the cohort,
+  and the rows are copied back.
+- Each member's rows use the kernel its serial prefill would use for that
+  chunk:
+  - on sm_90, that is the Hopper GEMM for every member;
+  - elsewhere, fused-kernel members run together, and dequantize + cuBLAS
+    members run together as one GEMM per projection.
+
+  The Hopper and fused kernels compute rows independently, so those rows are
+  bitwise the same as serial.
+- The request's thread decodes its embedding rows and rotary table while
+  other requests run. Before this, the worker decoded them between steps,
+  about 20 ms of idle GPU per 1.5k-token request.
+- Memory: the session estimate covers backbone scratch, state, caches, memory
+  rows, spans, evidence views and a head allowance. It is checked against the
+  configured budget and against free device memory.
+
+**Parity** (`fixtures/clef/tools/cuda_batch_check.py`, H100, synthetic
+1.5–1.9k-token cases). Each mode compares 20–22 successful answers with the
+same binary's serial answers. Every mode also checked shared FFN work,
+recovery after a disconnect, and recovery after an overload burst (6 `busy`
+with 2 slots, 4 with 4 slots, the rest answered).
+
+With the Hopper GEMM (Round 6; rows are computed independently in a fixed k
+order), every batched answer is bitwise identical to serial:
+
+| Chunk | Model | 2 slots | 4 slots |
+| --- | --- | --- | --- |
+| 512 | Flash | identical (max \|Δp\| 0) | identical |
+| 2048 (CUDA default) | Flash | identical | identical |
+| 2048 (CUDA default) | 27B | identical | identical |
+
+Before Round 6 was merged, the same check ran on the fused / dequantize +
+cuBLAS kernels:
+
+- the fused shapes (chunks 256 and 512) were identical;
+- the cuBLAS cohort GEMM at chunk 2048 was within 8.8e-5, with every top
+  answer the same.
+
+One early build put 512-token members through one 2,048-row cuBLAS GEMM. It
+was off by 0.0014. That is why, off sm_90, each member keeps its serial
+kernel.
+
+**Throughput** (`harness.py --target h100-clef-flash|h100-clef-27b`, cold,
+45 s per point, one spot H100 in us-central1-a, one session). Every column
+is the same binary, built from main with Round 6. "Serial" is batching off,
+the code main already ran. The batched columns use the default CUDA cohort,
+where each request keeps chunk 2048.
+
+| Flash, decisions/s (p50 / p99) | serial | 2 slots | 4 slots | 4 slots, chunk 512 |
+| --- | --- | --- | --- | --- |
+| 1.5k × 1 q, 1 client | 9.29 (0.107 / 0.119 s) | 9.06 (0.110 / 0.121 s) | 9.08 (0.109 / 0.121 s) | 7.94 (0.126 s) |
+| 1.5k × 1 q, 4 clients | 9.32 (0.43 / 0.45 s) | **11.20 (0.35 / 0.40 s)** | 10.44 (0.35 / 0.56 s) | 10.36 |
+| 1.5k × 1 q, 8 clients | 9.32 (0.86 / 0.88 s) | **11.27 (0.70 / 0.76 s)** | 10.12 | 9.82 |
+| 1.5k × 1 q, 16 clients | 9.31 | 11.02 | 10.06 | 10.04 |
+| 4k × 13 q, 4 clients | 45.13 | **47.18** | 46.52 | 41.96 |
+
+| 27B, decisions/s | serial | 2 slots | 4 slots |
+| --- | --- | --- | --- |
+| 1.5k × 1 q, 1 client | 3.57 (0.277 s p50) | 3.51 (0.281 s) | 3.50 (0.282 s) |
+| 1.5k × 1 q, 4 clients | 3.58 | **3.71** | 3.61 |
+| 1.5k × 1 q, 16 clients | 3.59 | 3.70 | 3.61 |
+| 4k × 13 q, 4 clients | 15.77 | **15.96** | 15.96 |
+
+Before the merge, the same comparison against the main bundle `42334c876b`
+(chunk 2048 on dequantize + cuBLAS) showed:
+
+| Before the merge | serial | 2 slots |
+| --- | --- | --- |
+| Flash, 4–8 clients | 8.9/s | 11.0/s |
+| Flash, 13 questions | 42.1/s | 45.5/s |
+| 27B | 3.44/s | 3.65/s |
+
+Findings:
+
+- **Gains.** Two slots are the best setting. Flash: 1.21× at 4–8 clients,
+  1.05× at 13 questions. 27B: 1.04×.
+- **One client stays within 5 %.** 0.107 s → 0.110 s p50 (+2.6 %).
+- **Short chunks still lose.** Four slots at chunk 512 do no better than
+  chunk 2048 and cost 18 % at one client. The CUDA default stays at chunk
+  2048.
+- **Below the issue's 1.5× target.** Batching does not make a row cheaper,
+  and the GPU is mostly computing, not waiting:
+  - Nsight Systems (Flash, 1.5k tokens, before Round 6): each decision runs
+    about 80 ms of kernels, serial or batched. At 1.5–1.9k rows per request
+    the GEMMs are already large, so packing four requests leaves the FFN time
+    per row unchanged.
+  - 27B keeps the GPU 85–100 % busy from one client up.
+  - Most of the serial lane's idle time was host-side embedding decode,
+    which the worker now overlaps. Even with no idle time left, Flash would
+    top out near 1.4×.
+- **What is left.** The per-decision kernel time: attention, the DeltaNet
+  scan and launch overhead (#11444). Batching multiplies whatever that saves.
+- **Cost.** Five spot runs, about 2 hours of H100 (about $12.5), and three
+  11-minute Cloud Builds.
 
 ## M3 status (2026-10-10, in progress)
 
@@ -1712,10 +1821,10 @@ batching.
 | `PSIONIC_CLEF_METAL_FFN_WEIGHTS` | `resident-f16` | `q4k-on-demand` keeps Q4_K feed-forward weights packed and converts one projection at a time into reusable f16 scratch. Other formats retain the resident path. The conversion slot is 96 MiB for Flash and 170 MiB for 27B, with a 256 MiB limit. |
 | `PSIONIC_CLEF_METAL_WEIGHT_UPLOAD` | `mapped-copy` | `positional` reads packed matrices through the original open file into the existing upload buffer, avoiding bulk reads from mapped pages. It requires `resident-f16` and a memory-mapped source; conversion and inference arithmetic stay unchanged. The 27B text and image checks pass within the 52 GiB process cap at chunk size 512; this does not establish latency acceptance. |
 | `PSIONIC_CLEF_PREFIX_CACHE_BYTES` | `0` | Enables one exact prefix snapshot when nonzero; maximum 536,870,912 bytes, including its token key. |
-| `PSIONIC_CLEF_BATCH_REQUESTS` | `1` | `1` keeps serial execution; `2`–`4` enables the Metal worker and bounds active requests. |
-| `PSIONIC_CLEF_BATCH_TOKENS` | `2048` | Total token rows in one cohort, at most 16,384 and at least the active-request limit. |
+| `PSIONIC_CLEF_BATCH_REQUESTS` | `1` | `1` keeps serial execution; `2`–`4` enables the batch worker (Metal or CUDA) and bounds active requests. |
+| `PSIONIC_CLEF_BATCH_TOKENS` | `2048` (CUDA: requests × `--decision-chunk`) | Total token rows in one cohort, at most 16,384 and at least the active-request limit. On CUDA the default keeps every request at the lane's prefill chunk; on the H100, shorter chunks cost more than the cohort saves (Round 7). |
 | `PSIONIC_CLEF_BATCH_BYTES` | `4294967296` | Total request reservations, at most 32 GiB; includes request scratch, recurrent/KV state, memory rows, spans, and a conservative head allowance. |
-| `PSIONIC_CLEF_BATCH_COHORT_BYTES` | `1073741824` | Separate shared FFN scratch budget, at most 4 GiB. The model's actual scratch estimate must fit before the worker starts. |
+| `PSIONIC_CLEF_BATCH_COHORT_BYTES` | `1073741824` (CUDA: `4294967296`) | Separate shared FFN scratch budget, at most 4 GiB. The model's actual scratch estimate must fit before the worker starts; on CUDA it must also fit in free device memory then. CUDA packs only the FFN rows: `hidden × 4 + ffn × 12` bytes per cohort token (1.34 GB for Flash and 1.88 GB for 27B at 8,192 rows). |
 
 At the default 2,048 cohort tokens, the scratch estimate is 571,080,704 bytes for
 Flash and 759,824,384 bytes for 27B. With both optional Q4 conversion and block
@@ -1727,7 +1836,9 @@ allocations are separate from that cohort budget.
 
 ### Request batching and cancellation
 
-The worker groups independent text requests between chunks. Each request owns
+The same worker (`clef/batch.rs`, `clef/worker.rs`) drives Metal and, since
+#11441, CUDA (`qwen35/clef_cuda/batching.rs`). The worker groups independent
+text requests between chunks. Each request owns
 its recurrent state, attention caches, memory rows, spans, and scratch. At each
 layer, mixer work stays separate; residual rows are packed into shared buffers
 for the three FFN projections, then copied back to their owning requests. This
@@ -1738,6 +1849,11 @@ The effective per-request chunk is at most the configured cohort token count
 divided by its request limit. New work joins between completed chunks, with a
 bounded queue and byte reservation. A request exceeding the whole request-byte
 budget receives `not_admitted` (413); a full queue receives `busy` (503).
+On CUDA a request that does not fit in free device memory while nothing else
+is active also receives `not_admitted` (413); with other requests active it
+waits for their memory. `--decision-max-queue N` (default 8) is the number of
+requests that may wait behind the running ones, serial or batched: a serial
+lane admits `1 + N` decisions at once, a batched lane `requests + N`.
 Profiling or skipped-kernel modes cannot be combined with batching.
 
 Images and raw-row exports use the serial path. A waiting serial request stops
@@ -1749,7 +1865,7 @@ the active batch owns its reservations.
 Dropping an HTTP future marks its work cancelled. The worker checks cancellation
 between completed GPU chunks, drops only that request's state, and releases its
 reservation after the buffers are released. It does not interrupt an in-flight
-Metal command. Dropping the loaded model stops and joins its worker; the worker
+Metal command or CUDA submission. Dropping the loaded model stops and joins its worker; the worker
 shares weight storage and holds no reference cycle back to the model. Queue
 admission happens before image decoding and tokenization.
 
@@ -1844,6 +1960,16 @@ openagents lease build --keep-target-dir -- cargo test --release \
   --manifest-path crates/psionic/Cargo.toml -p psionic-serve --lib clef
 python3 crates/psionic/fixtures/clef/tools/mac_quiet_bench.py --self-test
 python3 crates/psionic/fixtures/clef/tools/metal_batch_check.py --self-test
+python3 crates/psionic/fixtures/clef/tools/cuda_batch_check.py --self-test
+```
+
+On a dedicated CUDA host (no leases), the CUDA batch check starts the binary
+serially and with two and four slots:
+
+```sh
+python3 crates/psionic/fixtures/clef/tools/cuda_batch_check.py \
+  --binary target/release/psionic-openai-server --model Clef-Flash-Q4_K_M.gguf \
+  --model-id clef-flash --chunk 2048 --out /tmp/cuda-batch-check
 ```
 
 Clear model-test environment variables before the CPU filter. Tests that print

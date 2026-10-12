@@ -57,7 +57,7 @@ use crate::{
     select_psion_rvllm_fa3_decode_attention_backend,
 };
 
-mod clef_cuda;
+pub(crate) mod clef_cuda;
 mod clef_media;
 mod cpu_gemm;
 pub use clef_cuda::{ClefCudaHeadParams, ClefCudaPrefill, ClefCudaTrunk, ClefLayerObserver};

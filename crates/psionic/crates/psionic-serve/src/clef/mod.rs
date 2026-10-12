@@ -23,10 +23,8 @@
 //! `truncation: "state_tail"`. Confidence is the reference's: the top
 //! probability. Read probabilities, not `confidence`.
 
-#[cfg(target_os = "macos")]
 mod batch;
 pub mod calibration;
-#[cfg(any(target_os = "macos", test))]
 mod chunk_schedule;
 pub mod encode;
 pub mod head;
@@ -369,7 +367,9 @@ pub struct ClefLimits {
     pub max_options: usize,
     /// Largest request body in bytes.
     pub max_body_bytes: usize,
-    /// Requests that may wait behind the one running before `busy`.
+    /// Requests that may wait behind the running ones before `busy`
+    /// (`--decision-max-queue`, default 8). Serial lanes run one request;
+    /// batched lanes (`PSIONIC_CLEF_BATCH_REQUESTS`) run up to that many.
     pub max_queue: usize,
     /// Tokens per prefill chunk (`--decision-chunk`); 0 picks the device's
     /// default ([`CUDA_PREFILL_CHUNK`], [`CPU_PREFILL_CHUNK`]). On the CPU, 1
@@ -467,7 +467,7 @@ pub struct ClefDecisionLane {
     backbone: CpuGgufQwen35TextGenerationService,
     /// The trunk on CUDA; the CPU backbone then only serves embedding and
     /// output rows.
-    cuda: Option<DeviceTrunk>,
+    cuda: Option<Arc<DeviceTrunk>>,
     head: Arc<ClefHeadWeights>,
     image_runtime: Option<Arc<media::ClefImageRuntime>>,
     limits: ClefLimits,
@@ -478,8 +478,9 @@ pub struct ClefDecisionLane {
     waiting: AtomicUsize,
     running: Arc<std::sync::Mutex<()>>,
     serial_waiters: Arc<AtomicUsize>,
-    #[cfg(target_os = "macos")]
     batching: Option<batch::Dispatcher>,
+    /// Requests the batch worker advances together (1 when serial).
+    batch_slots: usize,
     /// Logits of recent prompts by [`record_key`]. The trunk and head are
     /// deterministic (a repeat is bitwise identical), so a repeated prompt
     /// (the same router state, say) is answered without the device.
@@ -703,20 +704,33 @@ impl ClefDecisionLane {
         };
         let artifact_digest = sha256_file(gguf_path)?;
         let head = Arc::new(head);
+        let cuda = cuda.map(Arc::new);
         let running = Arc::new(std::sync::Mutex::new(()));
         let serial_waiters = Arc::new(AtomicUsize::new(0));
-        #[cfg(target_os = "macos")]
-        let batching = match (batch::Config::from_env()?, &cuda) {
-            (Some(config), Some(DeviceTrunk::Metal(metal))) => Some(batch::Dispatcher::new(
+        let config = batch::Config::from_env()?.map(|config| match cuda.as_deref() {
+            Some(DeviceTrunk::Cuda(_)) => config.with_cuda_defaults(if limits.prefill_chunk == 0 {
+                CUDA_PREFILL_CHUNK
+            } else {
+                limits.prefill_chunk
+            }),
+            _ => config,
+        });
+        let batch_slots = config.map_or(1, |config| config.requests());
+        let batching = match (config, &cuda) {
+            (Some(config), Some(trunk)) => Some(batch::Dispatcher::new(
                 backbone.clone(),
-                metal.clone(),
+                Arc::clone(trunk),
                 Arc::clone(&head),
                 Arc::clone(&running),
                 Arc::clone(&serial_waiters),
                 config,
                 limits.max_queue,
             )?),
-            (Some(_), _) => return Err(String::from("Clef batching requires the Metal backend")),
+            (Some(_), None) => {
+                return Err(String::from(
+                    "Clef batching requires the CUDA or Metal backend",
+                ));
+            }
             (None, _) => None,
         };
         Ok(Self {
@@ -733,8 +747,8 @@ impl ClefDecisionLane {
             waiting: AtomicUsize::new(0),
             running,
             serial_waiters,
-            #[cfg(target_os = "macos")]
             batching,
+            batch_slots,
             logit_cache: std::sync::Mutex::new(std::collections::VecDeque::new()),
         })
     }
@@ -804,7 +818,7 @@ impl ClefDecisionLane {
     /// `cuda`, `metal` or `cpu`.
     #[must_use]
     pub fn backend(&self) -> &'static str {
-        self.cuda.as_ref().map_or("cpu", DeviceTrunk::backend)
+        self.cuda.as_deref().map_or("cpu", DeviceTrunk::backend)
     }
 
     /// The prefill chunk in effect.
@@ -928,7 +942,7 @@ impl ClefDecisionLane {
         capture: Option<&mut HeadInputs>,
     ) -> Result<LogitResult, ClefRefusal> {
         let inference_began = Instant::now();
-        if record.media.is_some() && matches!(&self.cuda, Some(DeviceTrunk::Cuda(_))) {
+        if record.media.is_some() && matches!(self.cuda.as_deref(), Some(DeviceTrunk::Cuda(_))) {
             return Err(ClefRefusal::not_admitted(
                 400,
                 "image inputs are not supported on the CUDA decision backend",
@@ -1138,7 +1152,13 @@ impl ClefDecisionLane {
         let began = Instant::now();
         // Reserve before parsing: media decoding has bounded but substantial
         // allocations, and must share the same request limit as inference.
-        let _waiting = WaitingGuard::reserve(&self.waiting, self.limits.max_queue, &cancelled)?;
+        // Batched lanes run up to `batch_slots` requests at once; the queue
+        // limit counts the requests waiting behind them.
+        let _waiting = WaitingGuard::reserve(
+            &self.waiting,
+            self.limits.max_queue + self.batch_slots - 1,
+            &cancelled,
+        )?;
         let request = self.parse_request(body)?;
         let record = self.encode(&request)?;
         if std::env::var_os("PSIONIC_CLEF_PROFILE").is_some() {
@@ -1173,7 +1193,6 @@ impl ClefDecisionLane {
                 head_seconds: 0.0,
             },
             None => {
-                #[cfg(target_os = "macos")]
                 let batched = if record.media.is_none() && self.export.is_none() {
                     self.batching.as_ref().map(|dispatcher| {
                         dispatcher.run(record.clone(), self.prefill_chunk(), Arc::clone(&cancelled))
@@ -1181,9 +1200,6 @@ impl ClefDecisionLane {
                 } else {
                     None
                 };
-                #[cfg(not(target_os = "macos"))]
-                let batched = None::<Result<(LogitResult, f64, usize, usize, usize), ClefRefusal>>;
-                #[cfg(target_os = "macos")]
                 let batched = batched.map(|result| {
                     result.map(|batch| {
                         (
@@ -1337,7 +1353,7 @@ impl ClefDecisionLane {
             "backend": self.backend(),
             "execution_mode": "native",
             "prefill_chunk": self.prefill_chunk(),
-            "accumulate": if matches!(&self.cuda, Some(DeviceTrunk::Cuda(_))) && self.limits.accumulate_f16 { "f16" } else { "f32" },
+            "accumulate": if matches!(self.cuda.as_deref(), Some(DeviceTrunk::Cuda(_))) && self.limits.accumulate_f16 { "f16" } else { "f32" },
             "prompt_tokens": prompt_tokens,
             "truncated_state_tokens": record.truncated_state_tokens,
             "trained_length": TRAINED_LENGTH,
@@ -1378,7 +1394,7 @@ impl ClefDecisionLane {
                 "head_source": self.head.source,
                 "head_digest": self.head.digest,
                 "backend": self.backend(),
-                "device": self.cuda.as_ref().map(DeviceTrunk::device_name),
+                "device": self.cuda.as_deref().map(DeviceTrunk::device_name),
                 "prefill_chunk": self.prefill_chunk(),
                 "max_tokens": self.limits.max_tokens,
                 "max_questions": self.limits.max_questions,

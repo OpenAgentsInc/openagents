@@ -4,7 +4,7 @@ use serde::Serialize;
 
 pub(super) const DEFAULT_TOKENS: usize = 16_384;
 pub(super) const DEFAULT_CHUNK: usize = 2_048;
-const HEAD_RESERVE_BYTES: u64 = 64 << 20;
+pub(super) const HEAD_RESERVE_BYTES: u64 = 64 << 20;
 const RUNTIME_MARGIN_BYTES: u64 = 128 << 20;
 const SCORE_BUDGET_BYTES: u64 = 512 << 20;
 const MEMORY_REFUSAL_PREFIX: &str = "not enough CUDA memory: ";
