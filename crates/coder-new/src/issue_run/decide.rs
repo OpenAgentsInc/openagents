@@ -53,15 +53,42 @@ pub struct Briefing {
     /// How many answered System One questions reported no cost. When this
     /// is above zero the decisions' cost is unknown, never the subtotal.
     pub decision_unpriced: usize,
+    /// One join row per answered judgment (#11387): which question, which
+    /// door and model, the raw probability, the threshold applied, and the
+    /// decision taken. The run's outcome is added when the summary closes.
+    pub judgments: Vec<Value>,
+}
+
+/// One answered judgment's join row.
+#[must_use]
+pub fn judgment(
+    question_set: &str,
+    subject: Option<&str>,
+    backend: &str,
+    model: &str,
+    probability: f64,
+    threshold: Option<f64>,
+    decision: &str,
+) -> Value {
+    json!({
+        "question_set": question_set,
+        "subject": subject,
+        "backend": backend,
+        "model": model,
+        "probability": probability,
+        "threshold": threshold,
+        "decision": decision,
+    })
 }
 
 /// What the decision questions cost so far: the reported subtotal and the
 /// count of answers that reported no cost (#11230: missing cost is unknown,
 /// never zero).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Spent {
     pub usd: f64,
     pub unpriced: usize,
+    pub judgments: Vec<Value>,
 }
 
 impl Spent {
@@ -125,6 +152,7 @@ pub async fn decide(
     let mut briefing = brief(options, base, &chosen, kind.as_deref(), folder, transcript).await?;
     briefing.decision_usd = spent.usd;
     briefing.decision_unpriced = spent.unpriced;
+    briefing.judgments = spent.judgments;
     Some(briefing)
 }
 
@@ -483,6 +511,15 @@ async fn issue_kind(
             );
             card["chosen"] = json!(answer.choice);
             let chosen = answer.choice.clone();
+            spent.judgments.push(judgment(
+                "issue_kind",
+                None,
+                card["door"].as_str().unwrap_or_default(),
+                &response.model,
+                answer.probabilities.get(&chosen).copied().unwrap_or(0.0),
+                None,
+                &chosen,
+            ));
             transcript.finish(index, card, json!({"ok": true}));
             Some(chosen)
         }
@@ -566,6 +603,19 @@ async fn file_questions(
                         "ms": ms,
                     });
                     answers.push((path.clone(), answer.noul));
+                    spent.judgments.push(judgment(
+                        "file_relevance",
+                        Some(path),
+                        &last_door,
+                        &response.model,
+                        answer.noul,
+                        Some(KEEP_AT),
+                        if answer.noul >= KEEP_AT {
+                            "keep"
+                        } else {
+                            "drop"
+                        },
+                    ));
                 }
             }
             Err(error) => {
@@ -774,6 +824,7 @@ async fn brief(
         markdown,
         decision_usd: 0.0,
         decision_unpriced: 0,
+        judgments: Vec::new(),
     })
 }
 
