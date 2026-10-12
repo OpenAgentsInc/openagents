@@ -2634,6 +2634,14 @@ impl Runtime {
                 dispatched = dispatched.result(format!("atif:{}", path.display()));
             }
             self.advance_runstate(ctx.record, dispatched, ctx.trace.as_deref_mut());
+            if let Some(refused) = requirement_unmet(step, &name, prefix, ctx.produced) {
+                self.advance_runstate(
+                    ctx.record,
+                    Mark::step(&name, refusal_state(&refused)),
+                    ctx.trace.as_deref_mut(),
+                );
+                return StepsEnd::Ended(refused);
+            }
             let remaining = Self::remaining(ctx.until);
             let outcome = match step.kind {
                 Kind::Query => self
@@ -5281,6 +5289,33 @@ fn open_book(
 /// meet — it refuses rather than a later step reading a gap as an
 /// answer. A `program` step's fields were resolved by its child before
 /// its output was written; they are already in the map.
+/// The refusal for a step whose `requires` names an output that is still
+/// empty at run time: missing, null, or an empty string, array, or object.
+fn requirement_unmet(
+    step: &Step,
+    name: &str,
+    prefix: &str,
+    produced: &BTreeMap<String, Value>,
+) -> Option<Refused> {
+    let empty = |value: &Value| match value {
+        Value::Null => true,
+        Value::String(text) => text.trim().is_empty(),
+        Value::Array(items) => items.is_empty(),
+        Value::Object(fields) => fields.is_empty(),
+        Value::Bool(_) | Value::Number(_) => false,
+    };
+    let unmet = step.requires.iter().find(|required| {
+        produced
+            .get(&format!("{prefix}{required}"))
+            .is_none_or(empty)
+    })?;
+    Some(Refused::at(
+        name,
+        "requires_unmet",
+        format!("step {name:?} requires {unmet:?}, whose output is empty"),
+    ))
+}
+
 fn collect_produced(
     step: &Step,
     name: &str,
