@@ -82,11 +82,16 @@ fn run() -> io::Result<()> {
     let mut solver = None;
     if args.len() >= 2
         && args[0] == "solver"
-        && (args[1] == "ledger" || args[1] == "queue" || args[1] == "hand-backs")
+        && (args[1] == "ledger"
+            || args[1] == "queue"
+            || args[1] == "hand-backs"
+            || args[1] == "merge")
     {
         let runtime = tokio::runtime::Runtime::new()?;
         let text = if args[1] == "ledger" {
             runtime.block_on(coder_new::solver::ledger::command(&args[2..]))
+        } else if args[1] == "merge" {
+            runtime.block_on(coder_new::solver::merge::command(&args[2..]))
         } else if args[1] == "hand-backs" {
             coder_new::solver::rollup::command(&args[2..])
         } else {

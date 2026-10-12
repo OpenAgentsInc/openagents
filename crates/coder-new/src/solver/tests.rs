@@ -876,3 +876,16 @@ fn queue_position_counts_earlier_unlanded_runs_sharing_a_file() {
     assert_eq!(value["ahead"], serde_json::json!(["a"]));
     let _ = std::fs::remove_dir_all(&state);
 }
+
+#[test]
+fn merge_plan_and_handoff_follow_github_state() {
+    use super::merge::{handoff, plan};
+    assert_eq!(plan("OPEN", "MERGEABLE"), "merge");
+    assert_eq!(plan("OPEN", "CONFLICTING"), "conflicting");
+    assert_eq!(plan("OPEN", "UNKNOWN"), "wait");
+    assert_eq!(plan("MERGED", "MERGEABLE"), "skip");
+    let text = handoff(&["#1 (https://x/1)".into()], "coder/issue-2");
+    assert!(text.contains("landed ahead of it: #1 (https://x/1)"));
+    assert!(text.contains("Rebase `coder/issue-2`"));
+    assert!(handoff(&[], "b").contains("main moved"));
+}
