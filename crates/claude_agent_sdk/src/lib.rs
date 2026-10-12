@@ -64,6 +64,9 @@
 //! ## Features
 //!
 //! - **Streaming responses**: Process messages as they arrive via async streams
+//! - **Streaming input**: Keep one CLI process for many turns and send
+//!   messages (text or content blocks such as images) at any time
+//!   ([`query_streaming`], [`Query::send_user_message`], [`Query::end_input`])
 //! - **Custom permissions**: Fine-grained control over tool usage
 //! - **Session management**: Continue or resume conversations
 //! - **MCP servers**: Add custom tools via Model Context Protocol, including
@@ -121,7 +124,8 @@ pub use protocol::{
     SdkToolUseSummaryMessage, SdkUserMessage, SdkWorkerShuttingDownMessage, StdinMessage,
     StdoutMessage, SyncHookJSONOutput, TerminalReason, Usage, parse_stdout_line,
 };
-pub use query::Query;
+pub use protocol::{UserMessagePriority, image_block, text_block};
+pub use query::{Query, QueryInput};
 pub use transport::{ExecutableConfig, ProcessTransport};
 
 use std::sync::Arc;
@@ -186,6 +190,45 @@ pub async fn query_with_permissions(
     permissions: Arc<dyn PermissionHandler>,
 ) -> Result<Query> {
     Query::new(prompt, options, Some(permissions)).await
+}
+
+/// Start a query with streaming input and default permissions (allow
+/// all). See [`Query::streaming`].
+///
+/// # Example
+/// ```rust,no_run
+/// use claude_agent_sdk::{query_streaming, QueryOptions, SdkMessage};
+/// use futures::StreamExt;
+///
+/// # async fn example() -> Result<(), claude_agent_sdk::Error> {
+/// let mut stream = query_streaming(QueryOptions::new()).await?;
+/// stream.send_user_message("Start a dev server in the background").await?;
+/// let mut turns = 0;
+/// while let Some(msg) = stream.next().await {
+///     if let SdkMessage::Result(_) = msg? {
+///         turns += 1;
+///         if turns == 1 {
+///             stream.send_user_message("Now check it responds").await?;
+///         } else {
+///             // The CLI exits once its background work is done.
+///             stream.end_input().await?;
+///         }
+///     }
+/// }
+/// # Ok(())
+/// # }
+/// ```
+pub async fn query_streaming(options: QueryOptions) -> Result<Query> {
+    Query::streaming(options, Some(Arc::new(AllowAllPermissions))).await
+}
+
+/// Start a query with streaming input and custom permissions. See
+/// [`Query::streaming`].
+pub async fn query_streaming_with_permissions(
+    options: QueryOptions,
+    permissions: Arc<dyn PermissionHandler>,
+) -> Result<Query> {
+    Query::streaming(options, Some(permissions)).await
 }
 
 /// Create a new query without any permission handling.

@@ -315,6 +315,94 @@ pub struct SdkUserMessage {
     /// main-thread messages and on prompts the host sends.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_id: Option<String>,
+    /// Queue priority of a message sent mid-turn (TS `priority`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub priority: Option<UserMessagePriority>,
+    /// `false` appends the message to the transcript without starting a
+    /// turn; it is merged into the next message that does (TS
+    /// `shouldQuery`).
+    #[serde(
+        rename = "shouldQuery",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub should_query: Option<bool>,
+}
+
+impl SdkUserMessage {
+    /// A user message the host sends, with `content` as the Messages API
+    /// `content`: a string or an array of content blocks.
+    pub fn new(content: impl Into<Value>) -> Self {
+        Self {
+            msg_type: UserMessageType::User,
+            message: serde_json::json!({ "role": "user", "content": content.into() }),
+            parent_tool_use_id: None,
+            is_synthetic: None,
+            tool_use_result: None,
+            uuid: None,
+            session_id: String::new(),
+            is_replay: None,
+            client_composed: None,
+            agent_id: None,
+            priority: None,
+            should_query: None,
+        }
+    }
+
+    /// A plain-text user message.
+    pub fn text(text: impl Into<String>) -> Self {
+        Self::new(Value::String(text.into()))
+    }
+
+    /// A user message made of content blocks (text, image, document, ...).
+    /// See [`text_block`] and [`image_block`].
+    pub fn blocks(blocks: Vec<Value>) -> Self {
+        Self::new(Value::Array(blocks))
+    }
+
+    /// Set the message `uuid`.
+    pub fn with_uuid(mut self, uuid: impl Into<String>) -> Self {
+        self.uuid = Some(uuid.into());
+        self
+    }
+
+    /// Set the mid-turn [`UserMessagePriority`].
+    pub fn with_priority(mut self, priority: UserMessagePriority) -> Self {
+        self.priority = Some(priority);
+        self
+    }
+}
+
+/// A Messages API `text` content block.
+pub fn text_block(text: impl Into<String>) -> Value {
+    serde_json::json!({ "type": "text", "text": text.into() })
+}
+
+/// A Messages API `image` content block with base64 data, for example
+/// `image_block("image/png", base64)`.
+pub fn image_block(media_type: impl Into<String>, base64_data: impl Into<String>) -> Value {
+    serde_json::json!({
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": media_type.into(),
+            "data": base64_data.into(),
+        }
+    })
+}
+
+/// The CLI queue priority of a user message (TS `priority`), which
+/// decides when a message sent during a turn is taken up. The TS SDK does
+/// not document the values further; the CLI decides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UserMessagePriority {
+    /// `now`.
+    Now,
+    /// `next`.
+    Next,
+    /// `later`.
+    Later,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

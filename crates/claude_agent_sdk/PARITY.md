@@ -239,14 +239,43 @@ are the Rust `createSdkMcpServer()` and `tool()`, and
   `system/init`, Claude called `mcp__calc__add(1234, 5678)` once, and the
   result was `success` with `6912`.
 
+## Streaming input
+
+Added after 0.3.296 parity (#11436): the TS `AsyncIterable` prompt and
+`Query.streamInput()`, over the `--input-format stream-json` stdin the
+crate already used.
+
+- `Query::streaming(options, permission_handler)` (and the
+  `query_streaming` / `query_streaming_with_permissions` helpers) runs the
+  `initialize` handshake and sends no prompt. One CLI process serves every
+  turn: a `result` ends a turn, not the stream.
+- `send_user_message(text)`, `send_user_content(blocks)` (with
+  `text_block` and `image_block`), and `send_message(SdkUserMessage)`
+  write `type: "user"` frames at any time, mid-turn included. A message
+  with an empty `session_id` gets the session's from `system/init`, and
+  `verbatim_prompts` sets `client_composed` unless the message sets it.
+  `SdkUserMessage` gained the TS `priority` (`now`/`next`/`later`) and
+  `shouldQuery` fields.
+- `Query::input()` returns a cloneable `QueryInput` with the same send
+  methods, so another task can send while the stream is read.
+- `end_input()` closes stdin (TS `endInput`). The CLI finishes its turn
+  and background work and exits, and the stream then ends. Later sends
+  and control requests fail with `StdinWrite`. Unlike the TS SDK, the
+  crate never closes stdin on its own in streaming mode.
+- `Query::new` (and `query`, `query_with_permissions`) is unchanged: one
+  prompt, and the stream ends at the first `result`.
+- Verified by fake-CLI tests: two turns on one process (text, then text
+  plus an image block from a cloned handle), `interrupt` mid-stream,
+  `end_input` followed by a final `result` and the end of the stream, and
+  the serialized `priority`, `uuid`, and `client_composed` fields.
+
 ## Deferred
 
 - SDK-hosted MCP server extras: input validation against the schema
   (left to the CLI), `resources` and `prompts`, server-sent messages
   (notifications and progress from the host to the CLI), and
   `mcp_set_servers` with in-process servers.
-- Streaming input (`AsyncIterable` prompts, `streamInput`), and
-  `abortController`, `stderr`, `spawnClaudeCodeProcess`, `loadTimeoutMs`,
+- `abortController`, `stderr`, `spawnClaudeCodeProcess`, `loadTimeoutMs`,
   and `toolConfig`.
 - Session stores (`sessionStore`, `sessionStoreFlush`, the
   `transcript_mirror` frame) and the session listing helpers.

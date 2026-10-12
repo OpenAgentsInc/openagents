@@ -356,6 +356,42 @@ let options = QueryOptions::new()
     });
 ```
 
+## Streaming Input
+
+`query_streaming` (or `Query::streaming`) keeps one CLI process for many
+turns, so background Bash jobs and subagents keep running between turns and
+messages can be sent mid-turn. Each turn ends with a `result`; the stream
+ends after `end_input` once the CLI exits.
+
+```rust,no_run
+use claude_agent_sdk::{image_block, query_streaming, text_block, QueryOptions, SdkMessage};
+use futures::StreamExt;
+
+# async fn example(png_base64: String) -> Result<(), claude_agent_sdk::Error> {
+let mut stream = query_streaming(QueryOptions::new()).await?;
+stream.send_user_message("Run the tests in the background").await?;
+
+// Send from another task while this one reads the stream.
+let input = stream.input();
+tokio::spawn(async move {
+    let _ = input
+        .send_user_content(vec![
+            text_block("What is in this screenshot?"),
+            image_block("image/png", png_base64),
+        ])
+        .await;
+});
+
+while let Some(msg) = stream.next().await {
+    if let SdkMessage::Result(_) = msg? {
+        // Close input when done; the CLI exits after its background work.
+        stream.end_input().await?;
+    }
+}
+# Ok(())
+# }
+```
+
 ## Query Control Methods
 
 The `Query` struct provides methods to control execution:

@@ -38,7 +38,8 @@ pub struct ProcessTransport {
     pid: Option<u32>,
     /// Whether the process group was signalled already.
     stopped: bool,
-    stdin: ChildStdin,
+    /// `None` once [`ProcessTransport::end_input`] closed it.
+    stdin: Option<ChildStdin>,
     stdout_rx: Option<mpsc::Receiver<Result<StdoutMessage>>>,
     /// Handle to the stdout reader task.
     _stdout_task: tokio::task::JoinHandle<()>,
@@ -135,7 +136,7 @@ impl ProcessTransport {
             child,
             pid,
             stopped: false,
-            stdin,
+            stdin: Some(stdin),
             stdout_rx: Some(stdout_rx),
             _stdout_task: stdout_task,
         })
@@ -253,17 +254,35 @@ impl ProcessTransport {
         let json = serde_json::to_string(message)?;
         trace!(json = %json, "Sending message to CLI");
 
-        self.stdin
+        let stdin = self.stdin.as_mut().ok_or_else(|| {
+            Error::StdinWrite(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "input was closed with end_input",
+            ))
+        })?;
+        stdin
             .write_all(json.as_bytes())
             .await
             .map_err(Error::StdinWrite)?;
-        self.stdin
-            .write_all(b"\n")
-            .await
-            .map_err(Error::StdinWrite)?;
-        self.stdin.flush().await.map_err(Error::StdinWrite)?;
+        stdin.write_all(b"\n").await.map_err(Error::StdinWrite)?;
+        stdin.flush().await.map_err(Error::StdinWrite)?;
 
         Ok(())
+    }
+
+    /// Close the CLI's stdin (TS `endInput`). The CLI finishes its work,
+    /// including background tasks, and exits. A second call does nothing;
+    /// a later [`ProcessTransport::send`] fails with `StdinWrite`.
+    pub async fn end_input(&mut self) -> Result<()> {
+        if let Some(mut stdin) = self.stdin.take() {
+            stdin.shutdown().await.map_err(Error::StdinWrite)?;
+        }
+        Ok(())
+    }
+
+    /// Whether [`ProcessTransport::end_input`] closed stdin.
+    pub fn is_input_closed(&self) -> bool {
+        self.stdin.is_none()
     }
 
     /// Receive the next message from the CLI.

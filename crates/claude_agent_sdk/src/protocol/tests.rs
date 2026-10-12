@@ -273,12 +273,50 @@ mod tests {
             is_replay: None,
             client_composed: Some(true),
             agent_id: None,
+            priority: None,
+            should_query: None,
         };
 
         let json = serde_json::to_value(&msg).unwrap();
         assert_eq!(json["type"], "user");
         assert_eq!(json["message"]["role"], "user");
         assert_eq!(json["message"]["content"], "Hello, Claude!");
+    }
+
+    #[test]
+    fn streamed_user_message_with_content_blocks_serializes_as_the_ts_sdk_does() {
+        let mut msg = SdkUserMessage::blocks(vec![
+            text_block("describe"),
+            image_block("image/jpeg", "AAAA"),
+        ])
+        .with_priority(UserMessagePriority::Now);
+        msg.should_query = Some(false);
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json["type"], "user");
+        assert_eq!(json["parent_tool_use_id"], serde_json::Value::Null);
+        assert_eq!(json["session_id"], "");
+        assert_eq!(json["message"]["role"], "user");
+        assert_eq!(
+            json["message"]["content"][0],
+            json!({"type": "text", "text": "describe"})
+        );
+        assert_eq!(
+            json["message"]["content"][1],
+            json!({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": "AAAA"}})
+        );
+        assert_eq!(json["priority"], "now");
+        assert_eq!(json["shouldQuery"], false);
+        assert!(json.get("client_composed").is_none());
+
+        let line = serde_json::to_string(&StdinMessage::UserMessage(msg)).unwrap();
+        let back: SdkUserMessage = serde_json::from_str(&line).unwrap();
+        assert_eq!(back.priority, Some(UserMessagePriority::Now));
+        assert_eq!(back.should_query, Some(false));
+
+        let text = serde_json::to_value(SdkUserMessage::text("hi")).unwrap();
+        assert_eq!(text["message"]["content"], "hi");
+        assert!(text.get("priority").is_none());
+        assert!(text.get("shouldQuery").is_none());
     }
 
     #[test]

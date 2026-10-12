@@ -14,7 +14,6 @@ use crate::protocol::{
     RewindFilesRequest, SdkControlRequest, SdkControlResponse, SdkMessage, SdkUserMessage,
     SeedReadStateRequest, SetColorRequest, SetMaxThinkingTokensRequest, SetModelRequest,
     SetPermissionModeRequest, StdinMessage, StdoutMessage, StopTaskRequest, UpdateSettingsRequest,
-    UserMessageType,
 };
 use crate::transport::ProcessTransport;
 use futures::Stream;
@@ -164,6 +163,14 @@ impl ControlHandlers {
 }
 
 /// A query execution that streams messages from Claude.
+///
+/// A query made with [`Query::new`] sends one prompt and its stream ends
+/// with the turn's `result`. A query made with [`Query::streaming`] keeps
+/// the CLI's stdin open (TS `AsyncIterable` prompts and `streamInput`):
+/// send user messages at any time with [`Query::send_user_message`],
+/// [`Query::send_user_content`], or a cloned [`Query::input`] handle; each
+/// turn ends with a `result`, and the stream goes on until
+/// [`Query::end_input`] closes stdin and the CLI exits.
 pub struct Query {
     /// The process transport.
     transport: Arc<Mutex<ProcessTransport>>,
@@ -179,10 +186,69 @@ pub struct Query {
     initialization: Option<Value>,
     /// How long each control request may wait for a response.
     control_timeout: Duration,
-    /// Send prompts with `client_composed: true`.
-    verbatim_prompts: bool,
+    /// Writes user messages to stdin; shared with [`QueryInput`] handles.
+    input: QueryInput,
+    /// Streaming input: a `result` ends a turn, not the stream.
+    streaming: bool,
     /// Whether the query has completed.
     completed: bool,
+}
+
+/// A cloneable handle that writes user messages to a query's CLI, so one
+/// task can send while another reads the [`Query`] stream. Get one with
+/// [`Query::input`].
+#[derive(Clone)]
+pub struct QueryInput {
+    transport: Arc<Mutex<ProcessTransport>>,
+    /// The session ID from `system/init`, empty until it arrives.
+    session_id: Arc<std::sync::Mutex<String>>,
+    /// Send messages with `client_composed: true`.
+    verbatim_prompts: bool,
+}
+
+impl QueryInput {
+    /// Send a user message as it is (TS: yield an `SDKUserMessage` into
+    /// `streamInput`). An empty `session_id` is filled with the session's,
+    /// once known, and `verbatim_prompts` sets `client_composed` when the
+    /// message leaves it unset.
+    pub async fn send_message(&self, mut message: SdkUserMessage) -> Result<()> {
+        if message.session_id.is_empty() {
+            message.session_id = self
+                .session_id
+                .lock()
+                .map(|id| id.clone())
+                .unwrap_or_default();
+        }
+        if message.client_composed.is_none() && self.verbatim_prompts {
+            message.client_composed = Some(true);
+        }
+        let mut transport = self.transport.lock().await;
+        transport.send(&StdinMessage::UserMessage(message)).await
+    }
+
+    /// Send a plain-text user message. During a turn the CLI queues it
+    /// and takes it up as it can; between turns it starts the next turn.
+    pub async fn send_user_message(&self, text: impl Into<String>) -> Result<()> {
+        self.send_message(SdkUserMessage::text(text)).await
+    }
+
+    /// Send a user message made of content blocks, for example
+    /// [`crate::protocol::text_block`] and [`crate::protocol::image_block`].
+    pub async fn send_user_content(&self, blocks: Vec<Value>) -> Result<()> {
+        self.send_message(SdkUserMessage::blocks(blocks)).await
+    }
+
+    /// Close the CLI's stdin (TS `endInput`). The CLI finishes the current
+    /// turn and its background work, then exits, which ends the stream.
+    /// Later sends and control requests fail. A second call does nothing.
+    pub async fn end_input(&self) -> Result<()> {
+        self.transport.lock().await.end_input().await
+    }
+
+    /// Whether [`QueryInput::end_input`] closed stdin.
+    pub async fn is_input_closed(&self) -> bool {
+        self.transport.lock().await.is_input_closed()
+    }
 }
 
 impl Query {
@@ -197,6 +263,33 @@ impl Query {
         permission_handler: Option<Arc<dyn PermissionHandler>>,
     ) -> Result<Self> {
         let prompt = prompt.into();
+        let query = Self::start(options, permission_handler, false).await?;
+        query.send_user_message(prompt).await?;
+        Ok(query)
+    }
+
+    /// Start a query with streaming input and no prompt yet. The CLI runs
+    /// the `initialize` handshake and then waits for user messages; send
+    /// them with [`Query::send_user_message`], [`Query::send_user_content`],
+    /// [`Query::send_message`], or a [`Query::input`] handle. Every turn
+    /// ends with a `result` and the stream continues; it ends after
+    /// [`Query::end_input`], once the CLI exits.
+    ///
+    /// Read the stream until it ends before dropping the query: dropping
+    /// it kills the CLI's process group, background work included.
+    pub async fn streaming(
+        options: QueryOptions,
+        permission_handler: Option<Arc<dyn PermissionHandler>>,
+    ) -> Result<Self> {
+        Self::start(options, permission_handler, true).await
+    }
+
+    /// Spawn the CLI and run the `initialize` handshake.
+    async fn start(
+        options: QueryOptions,
+        permission_handler: Option<Arc<dyn PermissionHandler>>,
+        streaming: bool,
+    ) -> Result<Self> {
         options.validate(permission_handler.is_some())?;
         let args = options.build_args_for(permission_handler.is_some());
         let env = options.env_vars();
@@ -238,6 +331,11 @@ impl Query {
             Self::process_messages(handlers, stdout_rx, pending_clone, message_tx).await;
         });
 
+        let input = QueryInput {
+            transport: transport.clone(),
+            session_id: Arc::new(std::sync::Mutex::new(String::new())),
+            verbatim_prompts: options.verbatim_prompts,
+        };
         let mut query = Self {
             transport,
             pending_requests,
@@ -246,7 +344,8 @@ impl Query {
             session_id: None,
             initialization: None,
             control_timeout: options.control_timeout_or_default(),
-            verbatim_prompts: options.verbatim_prompts,
+            input,
+            streaming,
             completed: false,
         };
 
@@ -263,33 +362,41 @@ impl Query {
             })?;
         query.initialization = Some(init);
 
-        query.send_prompt(&prompt).await?;
-
         Ok(query)
     }
 
-    /// Send a prompt to the CLI.
-    async fn send_prompt(&mut self, prompt: &str) -> Result<()> {
-        let session_id = self.session_id.clone().unwrap_or_default();
+    /// A cloneable handle that sends user messages and closes input while
+    /// another task reads the stream.
+    pub fn input(&self) -> QueryInput {
+        self.input.clone()
+    }
 
-        let message = SdkUserMessage {
-            msg_type: UserMessageType::User,
-            message: serde_json::json!({
-                "role": "user",
-                "content": prompt
-            }),
-            parent_tool_use_id: None,
-            is_synthetic: None,
-            tool_use_result: None,
-            uuid: None,
-            session_id,
-            is_replay: None,
-            client_composed: self.verbatim_prompts.then_some(true),
-            agent_id: None,
-        };
+    /// Whether this query was started with [`Query::streaming`].
+    pub fn is_streaming(&self) -> bool {
+        self.streaming
+    }
 
-        let mut transport = self.transport.lock().await;
-        transport.send(&StdinMessage::UserMessage(message)).await
+    /// Send a user message as it is. See [`QueryInput::send_message`].
+    pub async fn send_message(&self, message: SdkUserMessage) -> Result<()> {
+        self.input.send_message(message).await
+    }
+
+    /// Send a plain-text user message. See
+    /// [`QueryInput::send_user_message`].
+    pub async fn send_user_message(&self, text: impl Into<String>) -> Result<()> {
+        self.input.send_user_message(text).await
+    }
+
+    /// Send a user message made of content blocks. See
+    /// [`QueryInput::send_user_content`].
+    pub async fn send_user_content(&self, blocks: Vec<Value>) -> Result<()> {
+        self.input.send_user_content(blocks).await
+    }
+
+    /// Close the CLI's stdin so it exits once its work is done (TS
+    /// `endInput`). See [`QueryInput::end_input`].
+    pub async fn end_input(&self) -> Result<()> {
+        self.input.end_input().await
     }
 
     /// Process messages from the transport.
@@ -756,9 +863,13 @@ impl Stream for Query {
                 if let Ok(ref msg) = result {
                     match msg {
                         SdkMessage::System(crate::protocol::SdkSystemMessage::Init(init)) => {
-                            self.session_id = Some(init.session_id.clone());
+                            let id = init.session_id.clone();
+                            if let Ok(mut shared) = self.input.session_id.lock() {
+                                shared.clone_from(&id);
+                            }
+                            self.session_id = Some(id);
                         }
-                        SdkMessage::Result(_) => {
+                        SdkMessage::Result(_) if !self.streaming => {
                             self.completed = true;
                         }
                         _ => {}
@@ -2011,6 +2122,184 @@ rl.on('line', (line) => {
             options.validate(false),
             Err(Error::InvalidOptions(_))
         ));
+    }
+
+    /// A fake CLI with streaming input: it answers control requests,
+    /// writes `system/init` after `initialize`, answers every user message
+    /// with a `result` whose text is `<pid>:<content as JSON>`, and on
+    /// stdin EOF writes one more `result` ("closed", standing in for
+    /// background work finishing) and exits.
+    const FAKE_STREAMING: &str = r#"#!/usr/bin/env node
+const fs = require('fs');
+const readline = require('readline');
+const log = process.env.FAKE_LOG;
+const out = (v) => process.stdout.write(JSON.stringify(v) + '\n');
+const result = (text) => out({
+  type: 'result', subtype: 'success', duration_ms: 1, duration_api_ms: 1,
+  is_error: false, num_turns: 1, result: text, total_cost_usd: 0,
+  usage: { input_tokens: 1, output_tokens: 1 }, modelUsage: {},
+  permission_denials: [], uuid: 'u', session_id: 'sess-stream'
+});
+const rl = readline.createInterface({ input: process.stdin });
+rl.on('line', (line) => {
+  if (!line) return;
+  if (log) fs.appendFileSync(log, line + '\n');
+  let msg;
+  try { msg = JSON.parse(line); } catch { return; }
+  if (msg.type === 'control_request') {
+    out({ type: 'control_response', response: { subtype: 'success', request_id: msg.request_id,
+      response: { echo: msg.request.subtype } } });
+    if (msg.request.subtype === 'initialize') {
+      out({ type: 'system', subtype: 'init', apiKeySource: 'user', claude_code_version: '2.1.296',
+        cwd: '/tmp', tools: [], mcp_servers: [], model: 'sonnet', permissionMode: 'default',
+        slash_commands: [], output_style: 'default', skills: [], plugins: [],
+        uuid: 'init-u', session_id: 'sess-stream' });
+    }
+  } else if (msg.type === 'user') {
+    result(process.pid + ':' + JSON.stringify(msg.message.content));
+  }
+});
+rl.on('close', () => { result('closed'); process.exit(0); });
+"#;
+
+    fn streaming_options(dir: &std::path::Path) -> (QueryOptions, PathBuf) {
+        let fake = write_executable(dir, "fake-claude", FAKE_STREAMING);
+        let log = dir.join("stdin.jsonl");
+        let mut options = options_for_fake(fake, Duration::from_secs(5));
+        options.env = Some(
+            [("FAKE_LOG".to_string(), log.display().to_string())]
+                .into_iter()
+                .collect(),
+        );
+        (options, log)
+    }
+
+    /// Read the stream up to and including the next `result`; return its
+    /// text.
+    async fn next_result(query: &mut Query) -> String {
+        use futures::StreamExt;
+        let wait = async {
+            while let Some(message) = query.next().await {
+                if let SdkMessage::Result(crate::protocol::SdkResultMessage::Success(success)) =
+                    message.unwrap()
+                {
+                    return success.result;
+                }
+            }
+            panic!("stream ended before a result");
+        };
+        tokio::time::timeout(Duration::from_secs(5), wait)
+            .await
+            .expect("result in time")
+    }
+
+    #[tokio::test]
+    async fn streaming_query_runs_many_turns_on_one_process_until_input_ends() {
+        use futures::StreamExt;
+        let dir = unique_temp_dir();
+        let (options, log) = streaming_options(&dir);
+        let mut query = Query::streaming(options, None).await.unwrap();
+        assert!(query.is_streaming());
+
+        query.send_user_message("one").await.unwrap();
+        let first = next_result(&mut query).await;
+        let (pid, content) = first.split_once(':').unwrap();
+        assert_eq!(content, "\"one\"");
+        assert!(
+            !query.is_completed(),
+            "a result ends the turn, not the stream"
+        );
+        assert_eq!(query.session_id(), Some("sess-stream"));
+
+        // Content blocks, sent from a cloned handle on another task.
+        let input = query.input();
+        tokio::spawn(async move {
+            input
+                .send_user_content(vec![
+                    crate::protocol::text_block("what is this?"),
+                    crate::protocol::image_block("image/png", "iVBORw0KGgo="),
+                ])
+                .await
+                .unwrap();
+        });
+        let second = next_result(&mut query).await;
+        let (pid2, content) = second.split_once(':').unwrap();
+        assert_eq!(pid2, pid, "every turn runs on the same CLI process");
+        let blocks: Value = serde_json::from_str(content).unwrap();
+        assert_eq!(blocks[0]["type"], "text");
+        assert_eq!(blocks[1]["type"], "image");
+        assert_eq!(blocks[1]["source"]["media_type"], "image/png");
+        assert_eq!(blocks[1]["source"]["data"], "iVBORw0KGgo=");
+
+        // Control requests still work on a streaming query.
+        query.interrupt().await.unwrap();
+
+        query.end_input().await.unwrap();
+        query.end_input().await.unwrap();
+        assert!(query.input().is_input_closed().await);
+        assert!(matches!(
+            query.send_user_message("late").await,
+            Err(Error::StdinWrite(_))
+        ));
+        // The CLI finishes its work after input closes, then the stream ends.
+        assert_eq!(next_result(&mut query).await, "closed");
+        let end = tokio::time::timeout(Duration::from_secs(5), query.next())
+            .await
+            .expect("stream end in time");
+        assert!(end.is_none());
+        assert!(query.is_completed());
+
+        let lines: Vec<Value> = fs::read_to_string(&log)
+            .unwrap()
+            .lines()
+            .filter_map(|line| serde_json::from_str(line).ok())
+            .collect();
+        let users: Vec<&Value> = lines.iter().filter(|v| v["type"] == "user").collect();
+        assert_eq!(users.len(), 2);
+        assert_eq!(users[0]["message"]["role"], "user");
+        assert_eq!(users[0]["parent_tool_use_id"], Value::Null);
+        // Once system/init has named the session, messages carry its ID.
+        assert_eq!(users[1]["session_id"], "sess-stream");
+        assert_eq!(lines[0]["request"]["subtype"], "initialize");
+    }
+
+    #[tokio::test]
+    async fn streaming_query_sends_verbatim_and_priority_fields() {
+        let dir = unique_temp_dir();
+        let (mut options, log) = streaming_options(&dir);
+        options.verbatim_prompts = true;
+        let mut query = Query::streaming(options, None).await.unwrap();
+        query
+            .send_message(
+                SdkUserMessage::text("queued")
+                    .with_uuid("m-1")
+                    .with_priority(crate::protocol::UserMessagePriority::Next),
+            )
+            .await
+            .unwrap();
+        next_result(&mut query).await;
+        let user: Value = fs::read_to_string(&log)
+            .unwrap()
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .find(|v| v["type"] == "user")
+            .unwrap();
+        assert_eq!(user["client_composed"], true);
+        assert_eq!(user["priority"], "next");
+        assert_eq!(user["uuid"], "m-1");
+        assert!(user.get("shouldQuery").is_none());
+    }
+
+    #[tokio::test]
+    async fn a_prompt_query_still_ends_at_its_first_result() {
+        use futures::StreamExt;
+        let dir = unique_temp_dir();
+        let (options, _log) = streaming_options(&dir);
+        let mut query = Query::new("hi", options, None).await.unwrap();
+        assert!(!query.is_streaming());
+        assert!(next_result(&mut query).await.ends_with(":\"hi\""));
+        assert!(query.is_completed());
+        assert!(query.next().await.is_none());
     }
 
     #[tokio::test]
