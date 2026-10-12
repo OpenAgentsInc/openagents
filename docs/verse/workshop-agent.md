@@ -198,7 +198,7 @@ leases, and the agent uses no media.
 | Approver bound to the exact step, consumed once | Implemented | [`studio_approvals.rs`](../../crates/coder/src/task/studio_approvals.rs) |
 | Standing approval rules per seat, tool, command, and directory | Implemented | [`studio_rules.rs`](../../crates/coder/src/task/studio_rules.rs) |
 | Seat engines `codex/loop`, `claude/loop`, `claude/session`, `codex/session`, `claude/sdk` | Implemented | [Agent Studio](agent-studio.md#engine-neutrality) |
-| Seats walking between ten stations, nameplates, beacons, speech bubbles | Implemented on desktop | [`zones/everglade/studio.rs`](../../crates/verse/src/zones/everglade/studio.rs), stations in [`verse-world/src/social/everglade.rs`](../../crates/verse-world/src/social/everglade.rs) |
+| Seats walking between ten stations, nameplates, beacons, speech bubbles | Implemented on desktop | [`verse-zone-everglade/src/zones/everglade/studio.rs`](../../crates/verse-zone-everglade/src/zones/everglade/studio.rs), stations in [`verse-world/src/social/everglade.rs`](../../crates/verse-world/src/social/everglade.rs) |
 | Shared Everglade instance where the host walks seats | Implemented | [Networking, plan step 3](networking.md#plan) |
 | Resident host, grants, rights, delegation, revocation | Implemented | [`coder-host`](../../crates/coder-host/README.md), [`coder-access`](../../crates/coder-access/README.md) |
 | Inert inbox and auto-start policy | Implemented | [`autostart.rs`](../../crates/coder/src/task/autostart.rs), [host auto-start](../coder/runtime/host-autostart.md) |
