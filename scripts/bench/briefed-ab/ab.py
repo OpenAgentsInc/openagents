@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The briefed-agent A/B harness (#11211).
 
-    ab.py batch --tag TAG --issues N,N,... --arms A,B[,C] --reps 3 [--workers 2] [lever=value ...]
+    ab.py batch --tag TAG --issues N,N,... --arms A,B[,C] --reps 3 [--workers 2] [--stall-min 120] [lever=value ...]
     ab.py judge --tag TAG
     ab.py report --tag TAG [--tag TAG ...]
 
@@ -48,6 +48,7 @@ from pathlib import Path
 import briefing as briefing_mod
 import kinds
 import rebrief as rebrief_mod
+import stall
 from common import HERE, LEVERS, REPO, SSH, WORK, dump_json, is_test_file, load_json, run
 from prepare import TASKS, grade, interface_text
 
@@ -909,7 +910,24 @@ def budget_spent(tag_dir: Path) -> float:
     return spent
 
 
+def join_run() -> None:
+    """Record this batch in its run (#11433): the caller's $OA_RUN_ID, or a
+    new bench run, so `stop-agent-burn.sh --run ID` reaps it and every trial
+    it starts. Best effort: the bench runs without it."""
+    tool = HERE.parent.parent / "dev" / "agent-run.py"
+    try:
+        proc = subprocess.run([sys.executable, str(tool), "ensure", "--kind", "bench", "--pid", str(os.getpid())],
+                              capture_output=True, text=True, timeout=30)
+        if proc.returncode == 0 and proc.stdout.strip():
+            os.environ["OA_RUN_ID"] = proc.stdout.strip()
+            print(f"run {os.environ['OA_RUN_ID']} (stop it: scripts/dev/stop-agent-burn.sh --run "
+                  f"{os.environ['OA_RUN_ID']})", flush=True)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def batch(args) -> None:
+    join_run()
     levers = dict(LEVERS)
     for kv in args.levers:
         k, v = kv.split("=", 1)
@@ -928,6 +946,16 @@ def batch(args) -> None:
     dump_json(tag_dir / "levers.json", levers)
     if plan:
         dump_json(tag_dir / "plan.json", plan)
+    # Abort when no result row lands for a bounded interval (#11433): a
+    # dollar cap never trips while nothing is spent.
+    watch = stall.StallWatch(tag_dir, stall.stall_minutes(args.stall_min, plan)).start()
+    try:
+        run_batch(args, plan, levers, tag_dir)
+    finally:
+        watch.stop()
+
+
+def run_batch(args, plan: dict | None, levers: dict, tag_dir: Path) -> None:
     issues = [int(x) for x in (args.issues if isinstance(args.issues, list) else args.issues.split(","))]
     arms = args.arms if isinstance(args.arms, list) else args.arms.split(",")
     rng = random.Random(plan["seed"]) if plan else None
@@ -1390,6 +1418,9 @@ def main() -> None:
     b.add_argument("--workers", type=int, default=2)
     b.add_argument("--keep-bases", action="store_true")
     b.add_argument("--first-slot", type=int, default=0)
+    b.add_argument("--stall-min", type=float, default=None,
+                   help="abort when no result row lands for this many minutes (default: the plan's "
+                        "stall_min, else AB_STALL_MIN, else 120; 0 turns it off)")
     b.add_argument("levers", nargs="*")
     j = sub.add_parser("judge")
     j.add_argument("--tag", action="append", required=True)
