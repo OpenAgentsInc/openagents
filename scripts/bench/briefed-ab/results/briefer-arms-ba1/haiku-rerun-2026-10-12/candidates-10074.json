@@ -1,0 +1,349 @@
+{
+  "issue": 10074,
+  "finder": "filefind (#11210)",
+  "files": [
+    {
+      "path": "crates/coder/src/task/adapter.rs",
+      "score": 0.6224,
+      "lines": [
+        49,
+        91,
+        93,
+        94,
+        97,
+        102,
+        118,
+        131,
+        149,
+        213,
+        215,
+        452,
+        456,
+        458,
+        485,
+        487,
+        509,
+        603,
+        647,
+        649,
+        650,
+        669,
+        715,
+        819
+      ],
+      "why": [
+        "finder confidence 0.6224",
+        "defines `Access`, `Configuration`",
+        "changes with the seeds (co 1.31)",
+        "fixed with similar #10078 (sim 0.80)",
+        "changed by a similar commit: \"Grok Build runs inside Coder's boundary at toolchains access (#10092)\""
+      ]
+    },
+    {
+      "path": "crates/coder/src/task/autostart.rs",
+      "score": 0.6029,
+      "lines": [
+        5,
+        30,
+        34,
+        55,
+        57,
+        58,
+        59,
+        133,
+        134,
+        135,
+        370,
+        378,
+        394,
+        414,
+        432,
+        521,
+        593,
+        594,
+        779,
+        1750,
+        1791,
+        1793,
+        1994,
+        2036,
+        2064,
+        2171,
+        2195,
+        2247,
+        2609,
+        2642,
+        2728,
+        2732,
+        2734
+      ],
+      "why": [
+        "finder confidence 0.6029",
+        "mentions `default_controller`",
+        "defines `default_controller`, `task`",
+        "changes with the seeds (co 1.70)",
+        "fixed with similar #10113 (sim 0.85)"
+      ]
+    },
+    {
+      "path": "crates/coder/src/task/local.rs",
+      "score": 0.5938,
+      "lines": [
+        3,
+        50,
+        53,
+        94,
+        105,
+        300,
+        337,
+        339,
+        347,
+        476,
+        490,
+        685,
+        959,
+        1588,
+        1589,
+        1721,
+        1744,
+        1754,
+        1861,
+        2086,
+        2087,
+        2088
+      ],
+      "why": [
+        "finder confidence 0.5938",
+        "mentions `OPENAGENTS_CODER_CONTROLLER`, `default_controller`",
+        "defines `controller`, `local`, `task`",
+        "changes with the seeds (co 1.02)",
+        "fixed with similar #10113 (sim 0.85)"
+      ]
+    },
+    {
+      "path": "crates/coder/src/task/owner.rs",
+      "score": 0.5666,
+      "lines": [
+        143,
+        152,
+        331,
+        340,
+        343,
+        345,
+        359,
+        648
+      ],
+      "why": [
+        "finder confidence 0.5666",
+        "issue names `owner.rs`",
+        "issue names `crates/coder/src/task/owner.rs`",
+        "defines `Grant`, `parse`",
+        "changes with the seeds (co 0.72)"
+      ]
+    },
+    {
+      "path": "crates/coder/src/task/issue_run.rs",
+      "score": 0.5397,
+      "lines": [
+        8,
+        204,
+        212,
+        885
+      ],
+      "why": [
+        "finder confidence 0.5397",
+        "defines `parse`",
+        "changes with the seeds (co 0.56)",
+        "uses `f:fix_rounds` like `crates/microcoder/src/repository/tests.rs`",
+        "uses `set_max_steps` defined in `crates/coder/src/task/local.rs`"
+      ]
+    },
+    {
+      "path": "crates/coder/src/task/settings.rs",
+      "score": 0.4741,
+      "lines": [
+        2,
+        4,
+        11,
+        21,
+        41,
+        42,
+        225,
+        248,
+        272,
+        440,
+        483,
+        543,
+        546,
+        676
+      ],
+      "why": [
+        "finder confidence 0.4741",
+        "contains `\"access\": \"toolchains\"`",
+        "changes with the seeds (co 0.58)",
+        "uses `MAX_FALLBACKS` defined in `crates/coder/src/task/adapter.rs`",
+        "changes with the top-ranked files (co 0.40)"
+      ]
+    },
+    {
+      "path": "crates/microcoder/src/repository/grok.rs",
+      "score": 0.4733,
+      "lines": [
+        21,
+        217,
+        224,
+        495
+      ],
+      "why": [
+        "finder confidence 0.4733",
+        "changes with the seeds (co 0.20)",
+        "changed by a similar commit: \"Grok Build runs inside Coder's boundary at toolchains access (#10092)\"",
+        "uses `provider-reported-tokens` like `crates/coder/src/task/adapter.rs`",
+        "uses `login_environment` defined in `crates/coder/src/task/adapter.rs`"
+      ]
+    },
+    {
+      "path": "crates/microcoder/src/repository/tests.rs",
+      "score": 0.4581,
+      "lines": [
+        4,
+        6,
+        27,
+        36,
+        89,
+        122,
+        138,
+        444,
+        456,
+        477,
+        495,
+        610,
+        709,
+        756,
+        860,
+        1108,
+        1111,
+        1140,
+        1219,
+        1333,
+        1427,
+        1429,
+        1443,
+        1475,
+        1476,
+        1477,
+        1478,
+        1524,
+        1585,
+        1651,
+        1671,
+        1678,
+        1679,
+        2103,
+        2300,
+        2565,
+        2609
+      ],
+      "why": [
+        "finder confidence 0.4581",
+        "changes with the seeds (co 1.51)",
+        "fixed with similar #10288 (sim 0.78)",
+        "fixed with similar #10285 (sim 0.77)",
+        "changed by a similar commit: \"microcoder test: a chat run's fallbacks don't depend on this computer'\""
+      ]
+    },
+    {
+      "path": "crates/microcoder/src/repository/opencode.rs",
+      "score": 0.4569,
+      "lines": [
+        117,
+        248,
+        299,
+        309,
+        554,
+        617
+      ],
+      "why": [
+        "finder confidence 0.4569",
+        "changes with the seeds (co 0.35)",
+        "changed by a similar commit: \"Grok Build runs inside Coder's boundary at toolchains access (#10092)\"",
+        "uses `opencode-acp` like `crates/coder/src/task/autostart.rs`",
+        "changes in 11 of 15 commits that change `crates/microcoder/src/repository/devin.rs`"
+      ]
+    },
+    {
+      "path": "crates/openagents-cli/src/main.rs",
+      "score": 0.4468,
+      "lines": [
+        201,
+        202,
+        248
+      ],
+      "why": [
+        "finder confidence 0.4468",
+        "changes with the seeds (co 0.87)",
+        "fixed with similar #10113 (sim 0.85)",
+        "changed by a similar commit: \"Build Coder's Windows release binaries again\"",
+        "crate root of `crates/openagents-cli/src/chat.rs`"
+      ]
+    },
+    {
+      "path": "crates/microcoder/src/repository.rs",
+      "score": 0.4431,
+      "lines": [
+        49,
+        385,
+        453,
+        455,
+        457,
+        537,
+        540,
+        557,
+        654,
+        702,
+        704,
+        707,
+        714,
+        720,
+        941,
+        1003
+      ],
+      "why": [
+        "finder confidence 0.4431",
+        "changes with the seeds (co 1.52)",
+        "changed by a similar commit: \"Grok Build runs inside Coder's boundary at toolchains access (#10092)\"",
+        "uses `images_refused` like `crates/microcoder/src/repository/tests.rs`",
+        "changes in 10 of 13 commits that change `crates/microcoder/src/repository/opencode.rs`"
+      ]
+    },
+    {
+      "path": "crates/openagents-cli/src/chat.rs",
+      "score": 0.4168,
+      "lines": [
+        1,
+        42,
+        43,
+        44,
+        50,
+        129,
+        153,
+        216,
+        397,
+        638,
+        766,
+        854,
+        886,
+        952
+      ],
+      "why": [
+        "finder confidence 0.4168",
+        "defines `dispatch`, `local`, `work`",
+        "changes with the seeds (co 0.37)",
+        "changed by a similar commit: \"Terminal and chat CLI offer Coder only when run-coder would accept it \"",
+        "changes in 10 of 15 commits that change `crates/openagents-cli/src/chat_work.rs`"
+      ]
+    }
+  ],
+  "restored_from": "judgments.csv",
+  "finder_rerun_identical": true
+}

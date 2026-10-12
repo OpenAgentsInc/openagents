@@ -1,0 +1,220 @@
+{
+  "issue": 10201,
+  "finder": "filefind (#11210)",
+  "files": [
+    {
+      "path": "crates/openagents-chat/src/client.rs",
+      "score": 0.7574,
+      "lines": [
+        1,
+        57,
+        87,
+        88,
+        99,
+        170,
+        486,
+        575,
+        576,
+        1478
+      ],
+      "why": [
+        "finder confidence 0.7574",
+        "defines `Event`",
+        "changes with the seeds (co 0.45)",
+        "fixed with similar #10108 (sim 0.75)",
+        "changed by a similar commit: \"OpenAgents Terminal: a message sent after the host restarted goes thro\""
+      ]
+    },
+    {
+      "path": "crates/openagents-chat/src/client_tests.rs",
+      "score": 0.7271,
+      "lines": [
+        725,
+        726,
+        764,
+        800,
+        824,
+        909,
+        910,
+        988,
+        989,
+        1028
+      ],
+      "why": [
+        "finder confidence 0.7271",
+        "changes with the seeds (co 0.80)",
+        "fixed with similar #10108 (sim 0.75)",
+        "changed by a similar commit: \"OpenAgents Terminal: a message sent after the host restarted goes thro\"",
+        "tests of `crates/openagents-chat/src/client.rs`"
+      ]
+    },
+    {
+      "path": "crates/openagents-cli/src/chat.rs",
+      "score": 0.6085,
+      "lines": [
+        1,
+        41,
+        43,
+        155,
+        519,
+        526,
+        559,
+        560,
+        563,
+        575,
+        577,
+        597,
+        605,
+        608,
+        628,
+        923,
+        928,
+        934
+      ],
+      "why": [
+        "finder confidence 0.6085",
+        "changes with the seeds (co 0.88)",
+        "fixed with similar #10108 (sim 0.75)",
+        "changed by a similar commit: \"Host restarts for updates only when idle; short reconnects are silent \"",
+        "uses `in_process` like `crates/openagents-chat/src/client.rs`"
+      ]
+    },
+    {
+      "path": "crates/coder-host/src/control/mod.rs",
+      "score": 0.5686,
+      "lines": [
+        1332
+      ],
+      "why": [
+        "finder confidence 0.5686",
+        "changes with the seeds (co 1.02)",
+        "fixed with similar #10108 (sim 0.75)",
+        "fixed with similar #10372 (sim 0.75)",
+        "changed by a similar commit: \"Host restarts for updates only when idle; short reconnects are silent \""
+      ]
+    },
+    {
+      "path": "crates/coder/src/task/chat_client.rs",
+      "score": 0.5501,
+      "lines": [
+        2,
+        381
+      ],
+      "why": [
+        "finder confidence 0.5501",
+        "changes with the seeds (co 0.45)",
+        "fixed with similar #10108 (sim 0.75)",
+        "changed by a similar commit: \"OpenAgents Terminal: a message sent after the host restarted goes thro\"",
+        "changes in 9 of 18 commits that change `crates/openagents-chat/src/client_tests.rs`"
+      ]
+    },
+    {
+      "path": "crates/openagents-terminal/src/app.rs",
+      "score": 0.5712,
+      "lines": [
+        1008,
+        1010,
+        1014,
+        1402
+      ],
+      "why": [
+        "finder confidence 0.5712",
+        "changes with the seeds (co 0.74)",
+        "changed by a similar commit: \"Host restarts for updates only when idle; short reconnects are silent \"",
+        "uses `f:retry_in` like `crates/openagents-cli/src/chat.rs`",
+        "changes in 34 of 46 commits that change `crates/openagents-terminal/src/app_tests.rs`"
+      ]
+    },
+    {
+      "path": "crates/coder-host/src/serve/mod.rs",
+      "score": 0.5125,
+      "lines": [
+        251,
+        1100
+      ],
+      "why": [
+        "finder confidence 0.5125",
+        "changes with the seeds (co 1.01)",
+        "fixed with similar #10372 (sim 0.75)",
+        "changed by a similar commit: \"Host restarts for updates only when idle; short reconnects are silent \"",
+        "mod line of `crates/coder-host/src/serve/activity.rs`"
+      ]
+    },
+    {
+      "path": "crates/openagents-terminal/src/app_tests.rs",
+      "score": 0.4668,
+      "lines": [
+        781,
+        786,
+        789,
+        793
+      ],
+      "why": [
+        "finder confidence 0.4668",
+        "changes with the seeds (co 0.78)",
+        "changed by a similar commit: \"Host restarts for updates only when idle; short reconnects are silent \"",
+        "uses `f:retry_in` like `crates/openagents-cli/src/chat.rs`",
+        "changes in 34 of 40 commits that change `crates/openagents-terminal/src/app.rs`"
+      ]
+    },
+    {
+      "path": "crates/coder-host/tests/control.rs",
+      "score": 0.466,
+      "lines": [
+        120,
+        192
+      ],
+      "why": [
+        "finder confidence 0.466",
+        "fixed with similar #10108 (sim 0.75)",
+        "changed by a similar commit: \"Move the chat client into openagents_chat::client with a typed event s\"",
+        "crate test of `crates/coder-host/tests/idle.rs`",
+        "uses `openagents-chat-scratch` like `crates/openagents-chat/src/client.rs`"
+      ]
+    },
+    {
+      "path": "INVARIANTS.md",
+      "score": 0.4323,
+      "lines": [
+        29,
+        41,
+        44,
+        45,
+        47,
+        81,
+        107,
+        118,
+        119,
+        135,
+        140,
+        177,
+        226,
+        502
+      ],
+      "why": [
+        "finder confidence 0.4323",
+        "changes with the seeds (co 1.82)",
+        "fixed with similar #10108 (sim 0.75)",
+        "fixed with similar #10081 (sim 0.74)",
+        "changed by a similar commit: \"fix(desktop): supervise oa-dev restarts\""
+      ]
+    },
+    {
+      "path": "crates/openagents-cli/src/chat_work.rs",
+      "score": 0.4228,
+      "lines": [],
+      "why": [
+        "finder confidence 0.4228",
+        "changes with the seeds (co 0.20)",
+        "fixed with similar #10108 (sim 0.75)",
+        "changed by a similar commit: \"Move the chat client into openagents_chat::client with a typed event s\"",
+        "uses `issue_url` like `crates/openagents-chat/src/client.rs`"
+      ]
+    },
+    {
+      "path": "crates/openagents-cli/src/connect.rs"
+    }
+  ],
+  "restored_from": "judgments.csv",
+  "finder_rerun_identical": false
+}

@@ -1,0 +1,140 @@
+{
+  "issue": 10181,
+  "finder": "filefind (#11210)",
+  "files": [
+    {
+      "path": "crates/openagents-web/src/tests.rs",
+      "score": 0.6096,
+      "lines": [],
+      "why": [
+        "finder confidence 0.6096",
+        "changes with the seeds (co 0.41)",
+        "fixed with similar #10128 (sim 0.72)",
+        "changed by a similar commit: \"openagents-web: serve security.txt (contact chris+security@openagents.\"",
+        "uses `/static/ask.js` like `crates/openagents-web/src/lib.rs`"
+      ]
+    },
+    {
+      "path": "crates/openagents-web/src/lib.rs",
+      "score": 0.5703,
+      "lines": [],
+      "why": [
+        "finder confidence 0.5703",
+        "fixed with similar #10128 (sim 0.72)",
+        "changed by a similar commit: \"openagents-web: proxy unowned paths to an upstream, rc.2 install page,\"",
+        "uses `/static/ask.js` like `crates/openagents-web/src/tests.rs`",
+        "changes in 39 of 41 commits that change `crates/openagents-web/src/main.rs`"
+      ]
+    },
+    {
+      "path": "crates/openagents-web/src/main.rs",
+      "score": 0.5437,
+      "lines": [],
+      "why": [
+        "finder confidence 0.5437",
+        "fixed with similar #10128 (sim 0.72)",
+        "changed by a similar commit: \"openagents-web: proxy unowned paths to an upstream, rc.2 install page,\"",
+        "changes in 39 of 89 commits that change `crates/openagents-web/src/lib.rs`",
+        "crate root of `crates/openagents-web/src/tests.rs`"
+      ]
+    },
+    {
+      "path": "crates/openagents-web/src/pages/content.rs",
+      "score": 0.4772,
+      "lines": [],
+      "why": [
+        "finder confidence 0.4772",
+        "changes with the seeds (co 0.41)",
+        "changed by a similar commit: \"Self-host guide: run your own OpenAgents from the public repo (#11133)\"",
+        "uses `/docs/download` like `crates/openagents-web/src/tests.rs`",
+        "changes with the top-ranked files (co 0.30)"
+      ]
+    },
+    {
+      "path": "crates/openagents-web/src/upstream.rs",
+      "score": 0.48,
+      "lines": [],
+      "why": [
+        "finder confidence 0.48",
+        "fixed with similar #10128 (sim 0.72)",
+        "changed by a similar commit: \"openagents-web: proxy unowned paths to an upstream, rc.2 install page,\"",
+        "uses `x-forwarded-host` like `crates/openagents-web/src/tests.rs`",
+        "changes in 37 of 89 commits that change `crates/openagents-web/src/lib.rs`"
+      ]
+    },
+    {
+      "path": "crates/openagents-cli/src/ext_eval.rs"
+    },
+    {
+      "path": "crates/openagents-web/src/pages/mod.rs",
+      "score": 0.4608,
+      "lines": [],
+      "why": [
+        "finder confidence 0.4608",
+        "fixed with similar #10128 (sim 0.72)",
+        "changed by a similar commit: \"openagents-web: proxy unowned paths to an upstream, rc.2 install page,\"",
+        "changes with the top-ranked files (co 0.78)"
+      ]
+    },
+    {
+      "path": "crates/openagents-web/Cargo.toml",
+      "score": 0.409,
+      "lines": [],
+      "why": [
+        "finder confidence 0.409",
+        "fixed with similar #10128 (sim 0.72)",
+        "changed by a similar commit: \"openagents-web: proxy unowned paths to an upstream, rc.2 install page,\"",
+        "uses `openagents-web` like `crates/openagents-web/src/tests.rs`",
+        "changes in 22 of 41 commits that change `crates/openagents-web/src/main.rs`"
+      ]
+    },
+    {
+      "path": "crates/openagents-cli/src/catalog.rs",
+      "score": 0.3598,
+      "lines": [],
+      "why": [
+        "finder confidence 0.3598",
+        "changes with the seeds (co 0.33)",
+        "fixed with similar #10182 (sim 0.80)",
+        "uses `f:x402` like `crates/openagents-cli/src/main.rs`",
+        "uses `ext_defaults` defined in `crates/openagents-cli/src/main.rs`"
+      ]
+    },
+    {
+      "path": "crates/openagents-web/web.gcloudignore",
+      "score": 0.3747,
+      "lines": [],
+      "why": [
+        "finder confidence 0.3747",
+        "fixed with similar #10128 (sim 0.72)",
+        "changed by a similar commit: \"openagents-web: proxy unowned paths to an upstream, rc.2 install page,\"",
+        "changes with the top-ranked files (co 0.36)"
+      ]
+    },
+    {
+      "path": "crates/openagents-web/Dockerfile",
+      "score": 0.3747,
+      "lines": [],
+      "why": [
+        "finder confidence 0.3747",
+        "fixed with similar #10128 (sim 0.72)",
+        "changed by a similar commit: \"openagents-web: proxy unowned paths to an upstream, rc.2 install page,\"",
+        "changes with the top-ranked files (co 0.41)"
+      ]
+    },
+    {
+      "path": "crates/openagents-cli/src/main.rs",
+      "score": 0.364,
+      "lines": [],
+      "why": [
+        "finder confidence 0.364",
+        "changes with the seeds (co 0.33)",
+        "fixed with similar #10182 (sim 0.80)",
+        "uses `f:boat` like `crates/coder/src/cli_route/tree.json`",
+        "changes in 14 of 25 commits that change `crates/openagents-cli/src/catalog.rs`"
+      ]
+    }
+  ],
+  "restored_from": "judgments.csv",
+  "finder_rerun_identical": false
+}

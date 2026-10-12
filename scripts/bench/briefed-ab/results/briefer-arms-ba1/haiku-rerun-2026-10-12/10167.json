@@ -1,0 +1,149 @@
+{
+  "arm": "haiku",
+  "ok": true,
+  "kind": null,
+  "judgments": [
+    {
+      "path": "crates/background/src/runner.rs",
+      "decision": "keep",
+      "rank": 0
+    },
+    {
+      "path": "crates/background/src/run.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/background/src/rule.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/background/src/lib.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "decision": "keep",
+      "rank": 1
+    },
+    {
+      "path": "crates/openagents-cli/src/background.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/background/src/paths.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/background/src/plan.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/background/src/view.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/coder/src/task/targets.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-cli/src/screen.rs",
+      "decision": "drop",
+      "rank": null
+    }
+  ],
+  "keep": [
+    "crates/background/src/runner.rs",
+    "crates/background/src/tests.rs"
+  ],
+  "extra": [],
+  "secs": 16.58,
+  "agent_secs": 15.2,
+  "cost_usd": 0.00459835,
+  "unpriced": 0,
+  "turns": 7,
+  "model": "claude-haiku-5-5",
+  "errors": [],
+  "answer": {
+    "files": [
+      {
+        "path": "crates/background/src/runner.rs",
+        "role": "change",
+        "lines": [
+          99,
+          121
+        ],
+        "reason": "serve() runs check(HostStart) at line 100 unconditionally, reschedules next = now + interval() (137-142, defaults to 300 s when no Interval trigger) and fires check(Interval) at 118-121, and task_ended() -> check(TaskEnded) at 112-116 with no trigger check. check() (183-216) also computes next_check with rule.interval().unwrap_or(300) at line 198. Gate each of these on rule.has(...) and skip the interval timer when rule.interval() is None. manual() (175-181) must stay ungated."
+      },
+      {
+        "path": "crates/background/src/rule.rs",
+        "role": "context",
+        "lines": [
+          314,
+          332
+        ],
+        "reason": "Trigger enum at 53-60 (Interval, TaskEnded, HostStart); active(), interval() returns Option<u64> (322-327), has(&Trigger) at 330-332 is the existing helper to gate on. Default rule at 233-237 lists all three triggers."
+      },
+      {
+        "path": "crates/background/src/run.rs",
+        "role": "context",
+        "lines": [
+          15,
+          26
+        ],
+        "reason": "Cause enum (Interval, Threshold, TaskEnded, HostStart, Manual). Manual must keep working for openagents background run and /background; the trigger gating should not change Cause values."
+      },
+      {
+        "path": "crates/background/src/tests.rs",
+        "role": "test",
+        "lines": [],
+        "reason": "Existing tests for the background crate; add tests that a rule with a trigger removed never runs that automatic check, and that an empty trigger list with an enabled rule does nothing automatically. Unit-test decide() and the gating helper here or in runner.rs's test module."
+      }
+    ],
+    "likely_change": "In crates/background/src/runner.rs, gate the three automatic paths on the rule's configured triggers: the HostStart check at line 100, the TaskEnded check at lines 107 and 112-116, and the Interval check at lines 118-121. Only schedule the interval timer (lines 101 and 119) when rule.interval() is Some; otherwise wait only on the task poll. Leave the Request::Run / manual() path ungated so openagents background run and /background still work.",
+    "checks": [
+      "cargo test -p background",
+      "cargo fmt -p background"
+    ],
+    "acceptance": [
+      "Removing HostStart from the rule's triggers means no check runs at host start.",
+      "Removing TaskEnded from the rule's triggers means ending a task does not trigger a check.",
+      "Removing Interval from the rule's triggers means no interval checks are scheduled, with no 300 s fallback.",
+      "An enabled rule with an empty trigger list performs no automatic cleanup, even when disk is low.",
+      "Manual runs (openagents background run and /background) still run the rule regardless of triggers."
+    ],
+    "confidence": 0.85
+  },
+  "issue": 10167,
+  "candidates": [
+    "crates/background/src/runner.rs",
+    "crates/background/src/run.rs",
+    "crates/background/src/rule.rs",
+    "crates/background/src/lib.rs",
+    "crates/background/src/tests.rs",
+    "crates/openagents-cli/src/background.rs",
+    "crates/background/src/paths.rs",
+    "crates/background/src/plan.rs",
+    "docs/background/2026-10-02-background-processes.md",
+    "crates/background/src/view.rs",
+    "crates/coder/src/task/targets.rs",
+    "crates/openagents-cli/src/screen.rs"
+  ],
+  "fix": [
+    "crates/background/src/runner.rs",
+    "crates/background/src/tests.rs",
+    "docs/background/2026-10-02-background-processes.md"
+  ]
+}

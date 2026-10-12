@@ -1,0 +1,144 @@
+{
+  "arm": "haiku",
+  "ok": true,
+  "kind": null,
+  "judgments": [
+    {
+      "path": "crates/coder/src/task/adapter.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/coder/src/task/autostart.rs",
+      "decision": "keep",
+      "rank": 0
+    },
+    {
+      "path": "crates/coder/src/task/local.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/coder/src/task/owner.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/coder/src/task/issue_run.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/coder/src/task/settings.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/microcoder/src/repository/grok.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/microcoder/src/repository/tests.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/microcoder/src/repository/opencode.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-cli/src/main.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/microcoder/src/repository.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-cli/src/chat.rs",
+      "decision": "drop",
+      "rank": null
+    }
+  ],
+  "keep": [
+    "crates/coder/src/task/autostart.rs"
+  ],
+  "extra": [],
+  "secs": 21.91,
+  "agent_secs": 20.75,
+  "cost_usd": 0.00527034,
+  "unpriced": 0,
+  "turns": 6,
+  "model": "claude-haiku-5-5",
+  "errors": [],
+  "answer": {
+    "files": [
+      {
+        "path": "crates/coder/src/task/autostart.rs",
+        "role": "change",
+        "lines": [
+          1994,
+          2009
+        ],
+        "reason": "default_controller() looks for microcoder only beside the canonicalized exe (exe_dir/microcoder), then in ~/.openagents/bin. It never checks the app-bundle layout (Contents/Helpers/openagents to Contents/MacOS/microcoder), so the shipped CLI falls back to a stale installed engine that lacks Access::Toolchains. Add controller_candidates(exe, home) returning, in order: exe_dir/microcoder, exe_dir/../MacOS/microcoder, home/.openagents/bin/microcoder. default_controller then takes the first candidate that is_file(). Add unit tests in the existing tests module (starts about line 2010)."
+      },
+      {
+        "path": "crates/coder/src/task/local.rs",
+        "role": "context",
+        "lines": [
+          99,
+          110
+        ],
+        "reason": "controller() calls autostart::default_controller() after the OPENAGENTS_CODER_CONTROLLER override. It should keep working unchanged if the signature of default_controller stays the same."
+      },
+      {
+        "path": "scripts/desktop/package-macos.sh",
+        "role": "context",
+        "lines": [
+          271,
+          273
+        ],
+        "reason": "Puts microcoder at Contents/MacOS/microcoder and openagents at Contents/Helpers/openagents. The new candidate must match this layout; no change expected."
+      }
+    ],
+    "likely_change": "In crates/coder/src/task/autostart.rs, replace the body of default_controller() with a lookup over a new controller_candidates(exe: Option<&Path>, home: Option<&Path>) -> Vec<PathBuf>. The candidates are the microcoder beside the exe, the bundle sibling ../MacOS/microcoder (for Contents/Helpers/openagents), and ~/.openagents/bin/microcoder, in that order. The first candidate that is a file wins, so a bundled CLI uses the engine that shipped with it. Local.rs keeps calling default_controller unchanged.",
+    "checks": [
+      "cargo test -p coder controller_candidates",
+      "cargo test -p coder autostart",
+      "cargo test -p coder task::local",
+      "cargo fmt -p coder"
+    ],
+    "acceptance": [
+      "A CLI at Contents/Helpers/openagents with microcoder at Contents/MacOS/microcoder resolves to the bundled microcoder.",
+      "When no beside-exe microcoder exists, the resolver falls back to ~/.openagents/bin/microcoder.",
+      "OPENAGENTS_CODER_CONTROLLER still overrides everything in coder::task::local::controller().",
+      "When no candidate exists, the error still names where it looked and suggests --controller.",
+      "A regression test covers controller_candidates ordering and the bundle layout."
+    ],
+    "confidence": 0.7
+  },
+  "issue": 10074,
+  "candidates": [
+    "crates/coder/src/task/adapter.rs",
+    "crates/coder/src/task/autostart.rs",
+    "crates/coder/src/task/local.rs",
+    "crates/coder/src/task/owner.rs",
+    "crates/coder/src/task/issue_run.rs",
+    "crates/coder/src/task/settings.rs",
+    "crates/microcoder/src/repository/grok.rs",
+    "crates/microcoder/src/repository/tests.rs",
+    "crates/microcoder/src/repository/opencode.rs",
+    "crates/openagents-cli/src/main.rs",
+    "crates/microcoder/src/repository.rs",
+    "crates/openagents-cli/src/chat.rs"
+  ],
+  "fix": [
+    "crates/coder/src/task/autostart.rs",
+    "crates/coder/src/task/local.rs",
+    "docs/cli/chat.md"
+  ]
+}

@@ -1,0 +1,125 @@
+{
+  "arm": "haiku",
+  "ok": true,
+  "kind": null,
+  "judgments": [
+    {
+      "path": "crates/coder/src/task/autostart.rs",
+      "decision": "keep",
+      "rank": 0
+    },
+    {
+      "path": "crates/coder/src/task/local.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-cli/src/main.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/coder/src/task/adapter.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/coder/src/task/chat_client.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/coder/src/task/issue_run.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/microcoder/src/repository/tests.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/coder/src/cli_route/tree.json",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-cli/Cargo.toml",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-desktop/src/platform/linux.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/microcoder/src/repository/launch.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/coder/src/delegate_door.rs",
+      "decision": "drop",
+      "rank": null
+    }
+  ],
+  "keep": [
+    "crates/coder/src/task/autostart.rs"
+  ],
+  "extra": [],
+  "secs": 27.93,
+  "agent_secs": 22.16,
+  "cost_usd": 0.00260891,
+  "unpriced": 0,
+  "turns": 7,
+  "model": "claude-haiku-5-5",
+  "errors": [],
+  "answer": {
+    "files": [
+      {
+        "path": "crates/coder/src/task/autostart.rs",
+        "role": "change",
+        "lines": [
+          2353,
+          2364,
+          2372,
+          4434,
+          4467
+        ],
+        "reason": "default_controller (2353-2364) canonicalizes current_exe(); for a rebuilt binary Linux reports '<path>/microcoder (deleted)' (the coder exe itself, or a path ending in ' (deleted)'), canonicalize fails, exe becomes None, and controller_candidates (2372) skips the beside-program engine and falls back to ~/.openagents/bin. Add fn controller_executable_path(exe: PathBuf) -> PathBuf that strips a trailing ' (deleted)' suffix, use it in default_controller without dropping the path on canonicalize failure, and keep the ~/.openagents/bin fallback only when nothing exists beside it. The new test goes in the existing mod tests (after 4468) next to the #10074 test."
+      }
+    ],
+    "likely_change": "In crates/coder/src/task/autostart.rs, add `fn controller_executable_path(exe: PathBuf) -> PathBuf` that strips a trailing \" (deleted)\" from the path, and use it in default_controller (around line 2354) instead of relying on canonicalize() succeeding, so the uncanonicalized parent directory still supplies the freshly rebuilt microcoder beside the program. Keep controller_candidates' order (beside exe, then app bundle MacOS, then ~/.openagents/bin) so the installed copy is used only when nothing is beside the program.\n\nAdd a unit test in the same file's mod tests using a fake exe path ending in \" (deleted)\" under a tempdir that contains MICROCODER, asserting the returned candidate is the beside-program engine and not the ~/.openagents/bin copy.",
+    "checks": [
+      "cargo test -p coder controller_executable_path",
+      "cargo test -p coder the_app_cli_runs_the_engine_its_bundle_ships",
+      "cargo fmt -p coder"
+    ],
+    "acceptance": [
+      "A current_exe path ending in ' (deleted)' is normalized by controller_executable_path to the path without that suffix.",
+      "When the running binary was rebuilt (path ends in ' (deleted)'), default_controller finds the microcoder beside the program rather than ~/.openagents/bin.",
+      "~/.openagents/bin/microcoder is used only when no engine exists beside the program or in the app bundle.",
+      "The existing #10074 test the_app_cli_runs_the_engine_its_bundle_ships still passes."
+    ],
+    "confidence": 0.85
+  },
+  "issue": 10228,
+  "candidates": [
+    "crates/coder/src/task/autostart.rs",
+    "crates/coder/src/task/local.rs",
+    "crates/openagents-cli/src/main.rs",
+    "crates/coder/src/task/adapter.rs",
+    "crates/coder/src/task/chat_client.rs",
+    "crates/coder/src/task/issue_run.rs",
+    "crates/microcoder/src/repository/tests.rs",
+    "crates/coder/src/cli_route/tree.json",
+    "crates/openagents-cli/Cargo.toml",
+    "crates/openagents-desktop/src/platform/linux.rs",
+    "crates/microcoder/src/repository/launch.rs",
+    "crates/coder/src/delegate_door.rs"
+  ],
+  "fix": [
+    "crates/coder/src/task/autostart.rs"
+  ]
+}

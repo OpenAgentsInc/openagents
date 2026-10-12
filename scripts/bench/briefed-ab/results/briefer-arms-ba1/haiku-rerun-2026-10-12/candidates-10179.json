@@ -1,0 +1,147 @@
+{
+  "issue": 10179,
+  "finder": "filefind (#11210)",
+  "files": [
+    {
+      "path": "crates/openagents-cli/src/screen.rs",
+      "score": 0.6462,
+      "lines": [],
+      "why": [
+        "finder confidence 0.6462",
+        "changes with the seeds (co 0.66)",
+        "fixed with similar #10182 (sim 0.78)",
+        "fixed with similar #10156 (sim 0.72)",
+        "fixed with similar #10172 (sim 0.71)"
+      ]
+    },
+    {
+      "path": "crates/openagents-terminal/src/screen.rs",
+      "score": 0.6286,
+      "lines": [],
+      "why": [
+        "finder confidence 0.6286",
+        "changes with the seeds (co 0.65)",
+        "fixed with similar #10182 (sim 0.78)",
+        "fixed with similar #10156 (sim 0.72)",
+        "fixed with similar #10172 (sim 0.71)"
+      ]
+    },
+    {
+      "path": "crates/openagents-terminal/src/app_tests.rs",
+      "score": 0.6284,
+      "lines": [],
+      "why": [
+        "finder confidence 0.6284",
+        "changes with the seeds (co 0.76)",
+        "fixed with similar #10182 (sim 0.78)",
+        "fixed with similar #10156 (sim 0.72)",
+        "fixed with similar #10172 (sim 0.71)"
+      ]
+    },
+    {
+      "path": "crates/openagents-cli/src/main.rs",
+      "score": 0.5527,
+      "lines": [],
+      "why": [
+        "finder confidence 0.5527",
+        "changes with the seeds (co 1.62)",
+        "fixed with similar #10182 (sim 0.78)",
+        "fixed with similar #10156 (sim 0.72)",
+        "changed by a similar commit: \"Keep agent scratch under ~/.openagents/scratch\""
+      ]
+    },
+    {
+      "path": "crates/openagents-cli/src/ext_eval.rs",
+      "score": 0.5259,
+      "lines": [
+        843
+      ],
+      "why": [
+        "finder confidence 0.5259",
+        "contains `openagents plugin test init`",
+        "changes with the seeds (co 0.83)",
+        "fixed with similar #10182 (sim 0.78)",
+        "changed by a similar commit: \"plugin test init: run the try and the full run in place instead of pri\""
+      ]
+    },
+    {
+      "path": "crates/openagents-terminal/src/app.rs",
+      "score": 0.5629,
+      "lines": [],
+      "why": [
+        "finder confidence 0.5629",
+        "changes with the seeds (co 0.95)",
+        "fixed with similar #10182 (sim 0.78)",
+        "fixed with similar #10177 (sim 0.77)",
+        "fixed with similar #10156 (sim 0.72)"
+      ]
+    },
+    {
+      "path": "docs/background/2026-10-02-disk-cleanup-plugin.md",
+      "score": 0.4774,
+      "lines": [],
+      "why": [
+        "finder confidence 0.4774",
+        "issue names `2026-10-02-disk-cleanup-plugin.md`",
+        "issue names `docs/background/2026-10-02-disk-cleanup-plugin.md`",
+        "contains `openagents plugin test init`",
+        "embedding rank 5 (cos 0.75)"
+      ]
+    },
+    {
+      "path": "crates/openagents-terminal/src/lib.rs",
+      "score": 0.4208,
+      "lines": [],
+      "why": [
+        "finder confidence 0.4208",
+        "changes with the seeds (co 0.65)",
+        "fixed with similar #10182 (sim 0.78)",
+        "fixed with similar #10156 (sim 0.72)",
+        "fixed with similar #10172 (sim 0.71)"
+      ]
+    },
+    {
+      "path": "crates/coder/src/cli_route/tree.json",
+      "score": 0.4184,
+      "lines": [],
+      "why": [
+        "finder confidence 0.4184",
+        "changes with the seeds (co 1.46)",
+        "fixed with similar #10182 (sim 0.78)",
+        "fixed with similar #10156 (sim 0.72)",
+        "changed by a similar commit: \"Keep agent scratch under ~/.openagents/scratch\""
+      ]
+    },
+    {
+      "path": "crates/openagents-terminal/src/draw.rs",
+      "score": 0.4804,
+      "lines": [],
+      "why": [
+        "finder confidence 0.4804",
+        "changes with the seeds (co 0.65)",
+        "fixed with similar #10182 (sim 0.78)",
+        "fixed with similar #10156 (sim 0.72)",
+        "changed by a similar commit: \"OpenAgents Terminal: run an installed plugin from /plugins\""
+      ]
+    },
+    {
+      "path": "crates/openagents-cli/tests/plugin_background.rs",
+      "score": 0.3693,
+      "lines": [
+        3
+      ],
+      "why": [
+        "finder confidence 0.3693",
+        "embedding rank 3 (cos 0.75)",
+        "changes with the seeds (co 0.50)",
+        "changed by a similar commit: \"Keep agent scratch under ~/.openagents/scratch\"",
+        "crate test of `crates/openagents-cli/src/ext_eval.rs`"
+      ]
+    },
+    {
+      "path": "INVARIANTS.md"
+    }
+  ],
+  "restored_from": "judgments.csv",
+  "finder_rerun_identical": false
+}

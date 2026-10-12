@@ -1,0 +1,171 @@
+{
+  "arm": "haiku",
+  "ok": true,
+  "kind": null,
+  "judgments": [
+    {
+      "path": "crates/openagents-cli/src/screen.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-terminal/src/screen.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-terminal/src/app_tests.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-cli/src/main.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-cli/src/ext_eval.rs",
+      "decision": "keep",
+      "rank": 1
+    },
+    {
+      "path": "crates/openagents-terminal/src/app.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "docs/background/2026-10-02-disk-cleanup-plugin.md",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-terminal/src/lib.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/coder/src/cli_route/tree.json",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-terminal/src/draw.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-cli/tests/plugin_background.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "INVARIANTS.md",
+      "decision": "drop",
+      "rank": null
+    }
+  ],
+  "keep": [
+    "crates/openagents-cli/src/ext_eval.rs"
+  ],
+  "extra": [
+    "crates/openagents-cli/src/ext_eval_init.rs",
+    "crates/openagents-cli/src/ext_eval_init/tests.rs"
+  ],
+  "secs": 29.53,
+  "agent_secs": 28.36,
+  "cost_usd": 0.00757138,
+  "unpriced": 0,
+  "turns": 15,
+  "model": "claude-haiku-5-5",
+  "errors": [],
+  "answer": {
+    "files": [
+      {
+        "path": "crates/openagents-cli/src/ext_eval_init.rs",
+        "role": "change",
+        "reason": "run() passes &NoRunner (line 104) to interview(), so the try (line 355) and full run (line 430) are refused with a 'run it yourself' message instead of running. Replace NoRunner with a real terminal Runner that runs the suite in place, streams progress to stderr, and prints the headline. Add the 'the plugin isn't on this computer' refusal when the plugin root is not present/resolvable. Line 440 prints the publish command; the offer to publish should follow the result. read_extension (178) and the Stop enum (128) are where a missing-plugin error would surface.",
+        "lines": [
+          44,
+          104,
+          178,
+          263,
+          355,
+          430,
+          440
+        ]
+      },
+      {
+        "path": "crates/openagents-cli/src/ext_eval.rs",
+        "role": "change",
+        "reason": "Holds the real suite-run path used by `openagents plugin test run`: run_command (line 95 dispatch, 'run' at 108), progress() at 508, and the run_suite call with stderr progress at ~700-730. Extract or expose a function the init runner can call, rather than duplicating. resolve() at 218-233 already has the 'is not installed on this computer' wording to mirror for the new message.",
+        "lines": [
+          95,
+          108,
+          218,
+          230,
+          508,
+          700,
+          730
+        ]
+      },
+      {
+        "path": "crates/openagents-cli/src/ext_eval_init/tests.rs",
+        "role": "test",
+        "reason": "Existing interview tests use FakeRunner::helpful (lines 107, 175, 203, 220, 238). Add tests here: the full run executes through the runner and the output contains the headline, and a plugin not on this computer prints `the plugin isn't on this computer`.",
+        "lines": [
+          107,
+          175,
+          203,
+          220,
+          238
+        ]
+      },
+      {
+        "path": "crates/ext-eval/src/author/runner.rs",
+        "role": "context",
+        "reason": "Defines the Runner trait (154-161), RunRequest (141-150) with an optional extension dir, and NoRunner (166-175) whose 'can't run tests from the interview yet' message is the behavior being removed. FakeRunner (209+) is the test double.",
+        "lines": [
+          141,
+          154,
+          166,
+          175,
+          209
+        ]
+      }
+    ],
+    "likely_change": "The terminal interview's try and full-run steps use `NoRunner` (ext_eval_init.rs:104), so after the tests are written the interview prints a command instead of running them. Add a real Runner for the terminal, reusing the suite-run path that `openagents plugin test run` uses in ext_eval.rs (with stderr progress), and show its headline. Return \"the plugin isn't on this computer\" when the plugin directory cannot be resolved, mirroring ext_eval.rs:230, and keep the publish offer after a successful run.",
+    "checks": [
+      "cargo test -p openagents-cli ext_eval_init",
+      "cargo test -p openagents-cli ext_eval",
+      "cargo test -p ext-eval author",
+      "cargo fmt -p openagents-cli -p ext-eval"
+    ],
+    "acceptance": [
+      "The interview's full-run step runs the test set in place and shows the result instead of printing a `plugin test run` command.",
+      "Progress streams to stderr while the run is in progress.",
+      "The output contains `the plugin isn't on this computer` when the plugin is not on this computer.",
+      "After a successful run the interview offers to publish to the Gym.",
+      "Nothing is written into the plugin directory; the test set is still written only to the eval directory or --out."
+    ],
+    "confidence": 0.65
+  },
+  "issue": 10179,
+  "candidates": [
+    "crates/openagents-cli/src/screen.rs",
+    "crates/openagents-terminal/src/screen.rs",
+    "crates/openagents-terminal/src/app_tests.rs",
+    "crates/openagents-cli/src/main.rs",
+    "crates/openagents-cli/src/ext_eval.rs",
+    "crates/openagents-terminal/src/app.rs",
+    "docs/background/2026-10-02-disk-cleanup-plugin.md",
+    "crates/openagents-terminal/src/lib.rs",
+    "crates/coder/src/cli_route/tree.json",
+    "crates/openagents-terminal/src/draw.rs",
+    "crates/openagents-cli/tests/plugin_background.rs",
+    "INVARIANTS.md"
+  ],
+  "fix": [
+    "crates/openagents-cli/src/ext_eval.rs",
+    "crates/openagents-cli/src/ext_eval_init.rs"
+  ]
+}

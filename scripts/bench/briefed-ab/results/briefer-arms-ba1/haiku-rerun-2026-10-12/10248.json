@@ -1,0 +1,150 @@
+{
+  "arm": "haiku",
+  "ok": true,
+  "kind": null,
+  "judgments": [
+    {
+      "path": "crates/coder/src/task/chat_client.rs",
+      "decision": "keep",
+      "rank": 0
+    },
+    {
+      "path": "crates/openagents-chat/src/client.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/coder/src/task/owner.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/coder/src/task/issue_run.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "bench/efficiency/README.md",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "INVARIANTS.md",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-chat/src/client_tests.rs",
+      "decision": "keep",
+      "rank": 2
+    },
+    {
+      "path": "crates/coder/src/task.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-cli/src/chat.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/coder/src/delegate_door.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/coder/src/task/local.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/microcoder/src/repository.rs",
+      "decision": "drop",
+      "rank": null
+    }
+  ],
+  "keep": [
+    "crates/coder/src/task/chat_client.rs",
+    "crates/openagents-chat/src/client_tests.rs"
+  ],
+  "extra": [
+    "crates/openagents-chat/src/coder_events.rs"
+  ],
+  "secs": 35.2,
+  "agent_secs": 31.11,
+  "cost_usd": 0.0051362099999999996,
+  "unpriced": 0,
+  "turns": 11,
+  "model": "claude-haiku-5-5",
+  "errors": [],
+  "answer": {
+    "files": [
+      {
+        "path": "crates/coder/src/task/chat_client.rs",
+        "role": "change",
+        "reason": "`Following::poll` (lines 526-540) maps the local follow's State straight to Progress and never checks whether the task's owner is gone, so a dead owner reads as Running and `chat send` waits forever. Add the owner-ended check here (the task's OWNER_ENDED result or Status::Unknown disposition) and return Progress::Ended with the plain message."
+      },
+      {
+        "path": "crates/openagents-chat/src/coder_events.rs",
+        "role": "change",
+        "reason": "Add `pub const OWNER_ENDED_MESSAGE: &str = \"Coder's process ended unexpectedly.\";` as the issue requires. The chat side renders the plain message from here; the existing `status`/`text` helpers (around lines 1442 and 1336) are where it would be surfaced."
+      },
+      {
+        "path": "crates/coder/src/task/owner.rs",
+        "role": "context",
+        "reason": "Defines OWNER_ENDED (line 28) and OWNER_ENDED_TEXT (line 30), and the liveness logic that decides a run's owner is gone (lines 555-556, 712-748). Reuse this detection rather than adding a new pid check."
+      },
+      {
+        "path": "crates/coder/src/task/local.rs",
+        "role": "context",
+        "reason": "Owns the local `follow` that Following wraps. If the fix belongs at the source, the state returned here (State::Running/Ended) is where a dead owner should be reported."
+      },
+      {
+        "path": "crates/openagents-chat/src/client.rs",
+        "role": "context",
+        "reason": "The send loop (around lines 2600-2660) keeps polling while `state != Progress::Running` is false. Progress::Ended stops it, so it needs no change if chat_client.rs reports Ended. Only edit if the plain message must be emitted here."
+      },
+      {
+        "path": "crates/openagents-chat/src/client_tests.rs",
+        "role": "test",
+        "reason": "Where chat send wait tests live. The new test for a dead owner ending the wait with OWNER_ENDED_MESSAGE belongs here."
+      }
+    ],
+    "likely_change": "In the coder crate, make the chat follow for a task stop waiting when its owner process is gone: check the task's owner disposition (the OWNER_ENDED ending or Status::Unknown from owner.rs) inside `Following::poll` in chat_client.rs and return Progress::Ended. Also add `pub const OWNER_ENDED_MESSAGE` to openagents-chat/src/coder_events.rs and surface it as the plain message, with a test in openagents-chat/src/client_tests.rs.",
+    "checks": [
+      "cargo test -p coder owner",
+      "cargo test -p openagents-chat client",
+      "cargo fmt -p coder -p openagents-chat"
+    ],
+    "acceptance": [
+      "`chat send` ends its wait when the task's owner process has died, instead of waiting forever.",
+      "The ended wait shows the plain message \"Coder's process ended unexpectedly.\" (OWNER_ENDED_MESSAGE in openagents-chat/src/coder_events.rs).",
+      "A live owner's task keeps being followed and is not ended early.",
+      "The owner-ended detection reuses the existing OWNER_ENDED / owner disposition logic rather than a new pid check."
+    ],
+    "confidence": 0.45
+  },
+  "issue": 10248,
+  "candidates": [
+    "crates/coder/src/task/chat_client.rs",
+    "crates/openagents-chat/src/client.rs",
+    "crates/coder/src/task/owner.rs",
+    "crates/coder/src/task/issue_run.rs",
+    "bench/efficiency/README.md",
+    "INVARIANTS.md",
+    "crates/openagents-chat/src/client_tests.rs",
+    "crates/coder/src/task.rs",
+    "crates/openagents-cli/src/chat.rs",
+    "crates/coder/src/delegate_door.rs",
+    "crates/coder/src/task/local.rs",
+    "crates/microcoder/src/repository.rs"
+  ],
+  "fix": [
+    "crates/coder/src/task/issue_run.rs",
+    "crates/coder/src/task/local.rs",
+    "crates/coder/src/task/owner.rs",
+    "crates/coder/src/task/owner/follow_tests.rs",
+    "crates/openagents-chat/src/coder_events.rs"
+  ]
+}

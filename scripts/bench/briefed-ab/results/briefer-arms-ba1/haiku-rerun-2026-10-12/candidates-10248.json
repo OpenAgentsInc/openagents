@@ -1,0 +1,143 @@
+{
+  "issue": 10248,
+  "finder": "filefind (#11210)",
+  "files": [
+    {
+      "path": "crates/coder/src/task/chat_client.rs",
+      "score": 0.5328,
+      "lines": [
+        621
+      ],
+      "why": [
+        "finder confidence 0.5328",
+        "fixed with similar #10279 (sim 0.77)",
+        "fixed with similar #10207 (sim 0.72)",
+        "changed by a similar commit: \"Chat client: say when OpenAgents cannot be reached, retry with backoff\"",
+        "uses `pick_here` defined in `crates/coder/src/task/issue_run.rs`"
+      ]
+    },
+    {
+      "path": "crates/openagents-chat/src/client.rs",
+      "score": 0.4844,
+      "lines": [],
+      "why": [
+        "finder confidence 0.4844",
+        "changes with the seeds (co 0.25)",
+        "fixed with similar #10279 (sim 0.77)",
+        "fixed with similar #10201 (sim 0.74)",
+        "fixed with similar #10207 (sim 0.72)"
+      ]
+    },
+    {
+      "path": "crates/coder/src/task/owner.rs",
+      "score": 0.4403,
+      "lines": [],
+      "why": [
+        "finder confidence 0.4403",
+        "changes with the seeds (co 0.31)",
+        "fixed with similar #10237 (sim 0.72)",
+        "fixed with similar #10207 (sim 0.72)",
+        "changed by a similar commit: \"chat send ends its wait when a task's owner process died (#10248)\""
+      ]
+    },
+    {
+      "path": "crates/coder/src/task/issue_run.rs",
+      "score": 0.4058,
+      "lines": [],
+      "why": [
+        "finder confidence 0.4058",
+        "fixed with similar #10273 (sim 0.73)",
+        "changed by a similar commit: \"chat send ends its wait when a task's owner process died (#10248)\"",
+        "uses `issue_pick` defined in `crates/coder/src/task.rs`"
+      ]
+    },
+    {
+      "path": "bench/efficiency/README.md",
+      "score": 0.3965,
+      "lines": [],
+      "why": [
+        "finder confidence 0.3965",
+        "changes with the seeds (co 0.50)",
+        "fixed with similar #10279 (sim 0.77)",
+        "changed by a similar commit: \"Demo: the same task in OpenAgents Terminal and in Claude Code, side by\""
+      ]
+    },
+    {
+      "path": "INVARIANTS.md",
+      "score": 0.3792,
+      "lines": [],
+      "why": [
+        "finder confidence 0.3792",
+        "changes with the seeds (co 0.26)",
+        "fixed with similar #10279 (sim 0.77)",
+        "fixed with similar #10105 (sim 0.75)",
+        "fixed with similar #10084 (sim 0.74)"
+      ]
+    },
+    {
+      "path": "crates/openagents-chat/src/client_tests.rs",
+      "score": 0.3397,
+      "lines": [],
+      "why": [
+        "finder confidence 0.3397",
+        "fixed with similar #10279 (sim 0.77)",
+        "fixed with similar #10201 (sim 0.74)",
+        "changed by a similar commit: \"Chat client: say when OpenAgents cannot be reached, retry with backoff\"",
+        "uses `f:retry_in` like `crates/openagents-cli/src/chat.rs`"
+      ]
+    },
+    {
+      "path": "crates/coder/src/task.rs",
+      "score": 0.3387,
+      "lines": [],
+      "why": [
+        "finder confidence 0.3387",
+        "changes with the seeds (co 0.51)",
+        "fixed with similar #10105 (sim 0.75)",
+        "fixed with similar #10207 (sim 0.72)",
+        "changed by a similar commit: \"Move the chat client into openagents_chat::client with a typed event s\""
+      ]
+    },
+    {
+      "path": "crates/openagents-cli/src/chat.rs",
+      "score": 0.3537,
+      "lines": [
+        190
+      ],
+      "why": [
+        "finder confidence 0.3537",
+        "changes with the seeds (co 0.19)",
+        "fixed with similar #10201 (sim 0.74)",
+        "fixed with similar #10207 (sim 0.72)",
+        "changed by a similar commit: \"Chat client: say when OpenAgents cannot be reached, retry with backoff\""
+      ]
+    },
+    {
+      "path": "crates/coder/src/delegate_door.rs",
+      "score": 0.3453,
+      "lines": [],
+      "why": [
+        "finder confidence 0.3453",
+        "fixed with similar #10105 (sim 0.75)",
+        "changed by a similar commit: \"Answer through the OpenAgents cloud when nothing on the host can (#991\""
+      ]
+    },
+    {
+      "path": "crates/coder/src/task/local.rs",
+      "score": 0.3122,
+      "lines": [],
+      "why": [
+        "finder confidence 0.3122",
+        "changes with the seeds (co 0.20)",
+        "fixed with similar #10279 (sim 0.77)",
+        "fixed with similar #10213 (sim 0.76)",
+        "fixed with similar #10105 (sim 0.75)"
+      ]
+    },
+    {
+      "path": "crates/microcoder/src/repository.rs"
+    }
+  ],
+  "restored_from": "judgments.csv",
+  "finder_rerun_identical": false
+}

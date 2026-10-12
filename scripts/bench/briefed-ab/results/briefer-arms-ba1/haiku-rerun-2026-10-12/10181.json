@@ -1,0 +1,42 @@
+{
+  "arm": "haiku",
+  "ok": false,
+  "kind": null,
+  "judgments": [],
+  "keep": [],
+  "extra": [],
+  "secs": 36.14,
+  "agent_secs": 33.36,
+  "cost_usd": 0.011103189999999999,
+  "unpriced": 0,
+  "turns": 15,
+  "model": "claude-haiku-5-5",
+  "errors": [
+    "no structured answer (error_max_turns)"
+  ],
+  "answer": null,
+  "issue": 10181,
+  "candidates": [
+    "crates/openagents-web/src/tests.rs",
+    "crates/openagents-web/src/lib.rs",
+    "crates/openagents-web/src/main.rs",
+    "crates/openagents-web/src/pages/content.rs",
+    "crates/openagents-web/src/upstream.rs",
+    "crates/openagents-cli/src/ext_eval.rs",
+    "crates/openagents-web/src/pages/mod.rs",
+    "crates/openagents-web/Cargo.toml",
+    "crates/openagents-cli/src/catalog.rs",
+    "crates/openagents-web/web.gcloudignore",
+    "crates/openagents-web/Dockerfile",
+    "crates/openagents-cli/src/main.rs"
+  ],
+  "fix": [
+    "crates/ext-eval/Cargo.toml",
+    "crates/ext-eval/src/blob.rs",
+    "crates/ext-eval/tests/blob.rs",
+    "docs/deployment/README.md",
+    "docs/deployment/eval-runner.md",
+    "docs/deployment/runbook-cloud-run.md",
+    "docs/protocol/media.md"
+  ]
+}

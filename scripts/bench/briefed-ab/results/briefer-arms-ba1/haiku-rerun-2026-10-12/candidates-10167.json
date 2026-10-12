@@ -1,0 +1,194 @@
+{
+  "issue": 10167,
+  "finder": "filefind (#11210)",
+  "files": [
+    {
+      "path": "crates/background/src/runner.rs",
+      "score": 0.7993,
+      "lines": [
+        23,
+        42,
+        100,
+        107,
+        115,
+        120,
+        209
+      ],
+      "why": [
+        "finder confidence 0.7993",
+        "issue names `runner.rs`",
+        "issue names `crates/background/src/runner.rs`",
+        "mentions `HostStart`, `TaskEnded`",
+        "embedding rank 4 (cos 0.77)"
+      ]
+    },
+    {
+      "path": "crates/background/src/run.rs",
+      "score": 0.7938,
+      "lines": [
+        19,
+        21,
+        22,
+        23
+      ],
+      "why": [
+        "finder confidence 0.7938",
+        "mentions `HostStart`, `TaskEnded`",
+        "embedding rank 5 (cos 0.77)",
+        "changes with the seeds (co 1.12)",
+        "fixed with similar #10156 (sim 0.83)"
+      ]
+    },
+    {
+      "path": "crates/background/src/rule.rs",
+      "score": 0.7848,
+      "lines": [
+        2,
+        53,
+        58,
+        60,
+        234,
+        236,
+        237,
+        281,
+        324
+      ],
+      "why": [
+        "finder confidence 0.7848",
+        "mentions `HostStart`, `TaskEnded`",
+        "embedding rank 9 (cos 0.74)",
+        "changes with the seeds (co 1.80)",
+        "fixed with similar #10156 (sim 0.83)"
+      ]
+    },
+    {
+      "path": "crates/background/src/lib.rs",
+      "score": 0.7231,
+      "lines": [
+        2
+      ],
+      "why": [
+        "finder confidence 0.7231",
+        "defines `rule`",
+        "embedding rank 1 (cos 0.82)",
+        "changes with the seeds (co 1.26)",
+        "fixed with similar #10156 (sim 0.83)"
+      ]
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "score": 0.6801,
+      "lines": [],
+      "why": [
+        "finder confidence 0.6801",
+        "changes with the seeds (co 2.23)",
+        "fixed with similar #10156 (sim 0.83)",
+        "fixed with similar #10158 (sim 0.78)",
+        "fixed with similar #10157 (sim 0.76)"
+      ]
+    },
+    {
+      "path": "crates/openagents-cli/src/background.rs",
+      "score": 0.6748,
+      "lines": [
+        2,
+        4,
+        360,
+        376
+      ],
+      "why": [
+        "finder confidence 0.6748",
+        "embedding rank 3 (cos 0.80)",
+        "changes with the seeds (co 1.79)",
+        "fixed with similar #10156 (sim 0.83)",
+        "fixed with similar #10349 (sim 0.80)"
+      ]
+    },
+    {
+      "path": "crates/background/src/paths.rs",
+      "score": 0.6202,
+      "lines": [],
+      "why": [
+        "finder confidence 0.6202",
+        "changes with the seeds (co 2.32)",
+        "fixed with similar #10156 (sim 0.83)",
+        "fixed with similar #10349 (sim 0.80)",
+        "fixed with similar #10158 (sim 0.78)"
+      ]
+    },
+    {
+      "path": "crates/background/src/plan.rs",
+      "score": 0.6307,
+      "lines": [],
+      "why": [
+        "finder confidence 0.6307",
+        "changes with the seeds (co 1.52)",
+        "fixed with similar #10156 (sim 0.83)",
+        "fixed with similar #10158 (sim 0.78)",
+        "fixed with similar #10157 (sim 0.76)"
+      ]
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "score": 0.5607,
+      "lines": [
+        3,
+        4,
+        98,
+        124,
+        127,
+        128,
+        182,
+        191,
+        231,
+        283,
+        317,
+        337,
+        339,
+        349,
+        392,
+        398,
+        400,
+        422,
+        481,
+        484
+      ],
+      "why": [
+        "finder confidence 0.5607",
+        "mentions `HostStart`, `TaskEnded`",
+        "embedding rank 2 (cos 0.80)",
+        "changes with the seeds (co 2.03)",
+        "fixed with similar #10156 (sim 0.83)"
+      ]
+    },
+    {
+      "path": "crates/background/src/view.rs",
+      "score": 0.5479,
+      "lines": [],
+      "why": [
+        "finder confidence 0.5479",
+        "changes with the seeds (co 1.45)",
+        "fixed with similar #10156 (sim 0.83)",
+        "fixed with similar #10172 (sim 0.79)",
+        "fixed with similar #10384 (sim 0.76)"
+      ]
+    },
+    {
+      "path": "crates/coder/src/task/targets.rs",
+      "score": 0.5174,
+      "lines": [],
+      "why": [
+        "finder confidence 0.5174",
+        "changes with the seeds (co 1.15)",
+        "fixed with similar #10156 (sim 0.83)",
+        "fixed with similar #10384 (sim 0.76)",
+        "fixed with similar #10157 (sim 0.76)"
+      ]
+    },
+    {
+      "path": "crates/openagents-cli/src/screen.rs"
+    }
+  ],
+  "restored_from": "judgments.csv",
+  "finder_rerun_identical": false
+}

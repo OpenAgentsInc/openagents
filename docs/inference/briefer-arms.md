@@ -96,6 +96,35 @@ noise; the measured gap (0.889 vs 0.756) is about twice that. Haiku's 6
 lost issues were not chosen by difficulty (they were the last in its run
 order when the session limit hit).
 
+### Haiku rerun of the limited issues (2026-10-12)
+
+The 6 issues Haiku lost to the session limit were asked again over the same
+frozen candidate lists (rebuilt from `judgments.csv` by
+`briefer_arms_restore.py`; a fresh filefind run differs by one or two files
+on most issues, so the lists were not regenerated). 5 of 6 answered; #10181
+ran out of turns (`error_max_turns`, 14 turns), a real failure, not a limit.
+The rerun stopped at the limit again after those, so the other 15 keep
+their ba1 rows. Rows: `results/briefer-arms-ba1/haiku-rerun-2026-10-12/`.
+
+On the 5 newly answered issues (#10167, #10179, #10201, #10228, #10248):
+
+| Arm | Judgments | Accuracy | Precision (keep) | Recall in candidates | Fix recall | Top 1 is a fix file | $ per issue | Seconds p50 |
+|---|---|---|---|---|---|---|---|---|
+| clef | 57 | 0.754 | 0.375 | 0.600 | 0.373 | 0.200 | 0 (local) | 11.98 |
+| hosted | 60 | 0.800 | 0.438 | 0.800 | 0.573 | 0.800 | unpriced | 16.90 |
+| haiku | 60 | **0.883** | **0.714** | 0.633 | **0.723** | 0.800 | 0.0055 | 29.53 |
+
+Agreement: clef ~ hosted 0.93, hosted ~ haiku 0.78, clef ~ haiku 0.70.
+With these added, Haiku answered 20 of 21 issues; pooled over its 240
+judgments its accuracy is 0.888 (213/240), the same as the 15-issue figure,
+against clef 0.735 and hosted 0.766 over all 21. One repeat (#10074, asked
+in both runs) gave the same keep/drop on all 12 candidates: a first sign
+that the Haiku agent's judgment spread is small, one issue is not a
+measurement of it. On this set the hosted door's top-1 matched Haiku's
+(0.8 each) and its recall inside the candidates was higher (0.80 vs 0.63):
+Haiku keeps fewer files (precise, but it misses some candidate fix files
+that it makes up for with files outside the list). The decision stands.
+
 ## Decision
 
 - **Default arm for the Briefer's file judgments: Haiku** (constrained,

@@ -1,0 +1,155 @@
+{
+  "arm": "haiku",
+  "ok": true,
+  "kind": null,
+  "judgments": [
+    {
+      "path": "crates/openagents-chat/src/client.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-chat/src/client_tests.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-cli/src/chat.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/coder-host/src/control/mod.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/coder/src/task/chat_client.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-terminal/src/app.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/coder-host/src/serve/mod.rs",
+      "decision": "keep",
+      "rank": 0
+    },
+    {
+      "path": "crates/openagents-terminal/src/app_tests.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/coder-host/tests/control.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "INVARIANTS.md",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-cli/src/chat_work.rs",
+      "decision": "drop",
+      "rank": null
+    },
+    {
+      "path": "crates/openagents-cli/src/connect.rs",
+      "decision": "drop",
+      "rank": null
+    }
+  ],
+  "keep": [
+    "crates/coder-host/src/serve/mod.rs"
+  ],
+  "extra": [
+    "crates/coder-host/src/cli.rs",
+    "crates/coder-host/tests/idle.rs"
+  ],
+  "secs": 30.49,
+  "agent_secs": 29.18,
+  "cost_usd": 0.007312600000000001,
+  "unpriced": 0,
+  "turns": 11,
+  "model": "claude-haiku-5-5",
+  "errors": [],
+  "answer": {
+    "files": [
+      {
+        "path": "crates/coder-host/src/serve/mod.rs",
+        "role": "change",
+        "reason": "Holds Running: until_idle (~line 379), drain (~390), shutdown/stop (~430-460). The new pub fn stop_taking_requests(&self) goes here: a flag that makes the control socket, relay and direct paths refuse or hold new requests, so drain() can finish. Base already has the restart-when-idle work from #10201 (commit 869fbe15 is an ancestor of HEAD), so this is the main missing piece."
+      },
+      {
+        "path": "crates/coder-host/src/cli.rs",
+        "role": "change",
+        "reason": "Stop/restart sequence around lines 770-800: the select over wait_for_stop / restart_requested / restart_when_idle, then running.drain(DRAIN) with DRAIN = 10 s at line 812. Call running.stop_taking_requests() before drain on the SIGTERM (stop) path, and on the restart path too, so the drain actually ends. Restart_when_idle is at ~818-825."
+      },
+      {
+        "path": "crates/coder-host/src/control/mod.rs",
+        "role": "context",
+        "reason": "Control socket accept loop (~line 87 accept, ~184 accept with refusal message). Likely needs to respect the stop-taking-requests flag: stop accepting new requests while the socket stays bound for handover."
+      },
+      {
+        "path": "crates/coder-host/tests/idle.rs",
+        "role": "test",
+        "reason": "Existing idle/restart integration tests (until_idle at lines 52, 70, 149). Add a test that after stop_taking_requests a new request is refused or waits, and that drain returns once in-flight requests finish."
+      },
+      {
+        "path": "crates/openagents-terminal/src/app.rs",
+        "role": "context",
+        "reason": "Offline/Online handling at 1008-1016 and status 'reconnecting \u00b7 Esc stops' at 1402. Wording already matches the issue (Esc stops); no change expected unless the issue's wording differs."
+      },
+      {
+        "path": "crates/openagents-chat/src/client.rs",
+        "role": "context",
+        "reason": "QUIET_FOR = 3 s and Outage type at ~77-105 already implement the 3 s silence rule from #10201. Likely unchanged."
+      }
+    ],
+    "likely_change": "Most of the issue is already in the base: the SIGUSR1 restart-when-idle, the handover of the control socket, the 3 s quiet outage in openagents-chat, and the \"Reconnecting to OpenAgents\u2026 (Esc stops / Ctrl-C stops)\" wording all exist (commit 869fbe15 is an ancestor of HEAD). The missing piece is the new pub fn stop_taking_requests(&self) on Running in crates/coder-host/src/serve/mod.rs, which stops new requests on every path (control socket, relay, direct) so drain can finish. Call it in crates/coder-host/src/cli.rs before running.drain(DRAIN) on the SIGTERM stop path and on the restart path, and have the control accept loop refuse or hold new requests while the flag is set. The coderos-hosts oa-terminal-dev script is not in this repo (no match for oa-terminal-dev or build-only outside docs), so it is out of scope here.",
+    "checks": [
+      "cargo test -p coder-host",
+      "cargo test -p coder-host --test idle",
+      "cargo test -p openagents-chat",
+      "cargo test -p openagents-cli",
+      "cargo test -p openagents-terminal",
+      "cargo fmt -p coder-host"
+    ],
+    "acceptance": [
+      "Running::stop_taking_requests(&self) exists in crates/coder-host/src/serve/mod.rs with exactly that signature.",
+      "After stop_taking_requests, no new request is accepted on the control socket, relay, or direct channel.",
+      "A stop (SIGTERM) calls stop_taking_requests and then drains requests being answered, for up to 10 s.",
+      "A restart for an update (SIGUSR1) waits until idle and hands the bound control socket to the new program; clients connecting meanwhile wait in the socket queue.",
+      "An outage shorter than 3 s prints nothing in the terminal and in openagents chat; Online is only reported after an Offline.",
+      "The reconnect wording is 'Reconnecting to OpenAgents\u2026 (Esc stops)' in the terminal and '(Ctrl-C stops)' in openagents chat, and the rail says 'reconnecting \u00b7 Esc stops'.",
+      "The oa-terminal-dev changes (interactive-only background rebuild, --build-only never rebuilds, SIGUSR1 instead of hard restart) are in coderos-hosts, which is not in this repository."
+    ],
+    "confidence": 0.65
+  },
+  "issue": 10201,
+  "candidates": [
+    "crates/openagents-chat/src/client.rs",
+    "crates/openagents-chat/src/client_tests.rs",
+    "crates/openagents-cli/src/chat.rs",
+    "crates/coder-host/src/control/mod.rs",
+    "crates/coder/src/task/chat_client.rs",
+    "crates/openagents-terminal/src/app.rs",
+    "crates/coder-host/src/serve/mod.rs",
+    "crates/openagents-terminal/src/app_tests.rs",
+    "crates/coder-host/tests/control.rs",
+    "INVARIANTS.md",
+    "crates/openagents-cli/src/chat_work.rs",
+    "crates/openagents-cli/src/connect.rs"
+  ],
+  "fix": [
+    "crates/coder-host/src/cli.rs",
+    "crates/coder-host/src/control/mod.rs",
+    "crates/coder-host/src/serve/mod.rs",
+    "crates/coder-host/tests/idle.rs"
+  ]
+}

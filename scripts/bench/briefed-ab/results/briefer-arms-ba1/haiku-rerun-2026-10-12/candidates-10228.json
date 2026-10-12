@@ -1,0 +1,176 @@
+{
+  "issue": 10228,
+  "finder": "filefind (#11210)",
+  "files": [
+    {
+      "path": "crates/coder/src/task/autostart.rs",
+      "score": 0.7536,
+      "lines": [
+        2109,
+        2342,
+        2353,
+        2354,
+        2362,
+        2366,
+        2370,
+        2371,
+        2375,
+        2381,
+        2385,
+        2991,
+        3037,
+        3163,
+        3746,
+        4360,
+        4432,
+        4446,
+        4447,
+        4459,
+        4466
+      ],
+      "why": [
+        "finder confidence 0.7536",
+        "issue names `crates/coder/src/task/autostart.rs`",
+        "issue names `autostart.rs`",
+        "mentions `default_controller`",
+        "defines `default_controller`"
+      ]
+    },
+    {
+      "path": "crates/coder/src/task/local.rs",
+      "score": 0.6039,
+      "lines": [
+        72,
+        101,
+        111,
+        2219
+      ],
+      "why": [
+        "finder confidence 0.6039",
+        "mentions `default_controller`",
+        "changes with the seeds (co 0.23)",
+        "fixed with similar #10113 (sim 0.76)",
+        "fixed with similar #10074 (sim 0.75)"
+      ]
+    },
+    {
+      "path": "crates/openagents-cli/src/main.rs",
+      "score": 0.5013,
+      "lines": [],
+      "why": [
+        "finder confidence 0.5013",
+        "changes with the seeds (co 0.27)",
+        "fixed with similar #10113 (sim 0.76)",
+        "changed by a similar commit: \"Build Coder's Windows release binaries again\"",
+        "crate root of `crates/openagents-cli/src/x402_node.rs`"
+      ]
+    },
+    {
+      "path": "crates/coder/src/task/adapter.rs",
+      "score": 0.4916,
+      "lines": [
+        748
+      ],
+      "why": [
+        "finder confidence 0.4916",
+        "changes with the seeds (co 0.35)",
+        "fixed with similar #10237 (sim 0.76)",
+        "fixed with similar #10281 (sim 0.75)",
+        "fixed with similar #10078 (sim 0.73)"
+      ]
+    },
+    {
+      "path": "crates/coder/src/task/chat_client.rs",
+      "score": 0.3868,
+      "lines": [
+        69
+      ],
+      "why": [
+        "finder confidence 0.3868",
+        "fixed with similar #10113 (sim 0.76)",
+        "uses `start_requested` defined in `crates/coder/src/task/local.rs`"
+      ]
+    },
+    {
+      "path": "crates/coder/src/task/issue_run.rs",
+      "score": 0.3682,
+      "lines": [],
+      "why": [
+        "finder confidence 0.3682",
+        "uses `f:unadmitted` like `crates/coder/src/task/autostart.rs`",
+        "uses `default_branch` defined in `crates/coder/src/task/local.rs`",
+        "changes with the top-ranked files (co 0.29)"
+      ]
+    },
+    {
+      "path": "crates/microcoder/src/repository/tests.rs",
+      "score": 0.3645,
+      "lines": [
+        243,
+        765,
+        776,
+        781,
+        782,
+        786,
+        824,
+        1938,
+        2059,
+        2097,
+        2192,
+        2363
+      ],
+      "why": [
+        "finder confidence 0.3645",
+        "changes with the seeds (co 0.31)",
+        "fixed with similar #10237 (sim 0.76)",
+        "changed by a similar commit: \"microcoder test: a chat run's fallbacks don't depend on this computer'\"",
+        "uses `resets_in_seconds` like `crates/coder/src/task/autostart.rs`"
+      ]
+    },
+    {
+      "path": "crates/coder/src/cli_route/tree.json",
+      "score": 0.3564,
+      "lines": [],
+      "why": [
+        "finder confidence 0.3564",
+        "changes with the seeds (co 0.36)",
+        "changed by a similar commit: \"Help and errors name openagents host and openagents service, not coder\"",
+        "uses `f:discover` like `crates/openagents-cli/src/main.rs`",
+        "changes in 58 of 110 commits that change `crates/openagents-cli/src/main.rs`"
+      ]
+    },
+    {
+      "path": "crates/openagents-cli/Cargo.toml"
+    },
+    {
+      "path": "crates/openagents-desktop/src/platform/linux.rs"
+    },
+    {
+      "path": "crates/microcoder/src/repository/launch.rs",
+      "score": 0.3323,
+      "lines": [
+        71
+      ],
+      "why": [
+        "finder confidence 0.3323",
+        "changes with the seeds (co 0.27)",
+        "fixed with similar #10237 (sim 0.76)",
+        "fixed with similar #10083 (sim 0.76)",
+        "uses `f:owner_process` like `crates/coder/src/task/autostart.rs`"
+      ]
+    },
+    {
+      "path": "crates/coder/src/delegate_door.rs",
+      "score": 0.3152,
+      "lines": [],
+      "why": [
+        "finder confidence 0.3152",
+        "changes with the seeds (co 0.16)",
+        "uses `access_token` like `crates/coder/src/task/autostart.rs`",
+        "changes with the top-ranked files (co 0.25)"
+      ]
+    }
+  ],
+  "restored_from": "judgments.csv",
+  "finder_rerun_identical": false
+}
