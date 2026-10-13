@@ -4376,9 +4376,42 @@
               "delegate"
             ],
             "usage": [
+              "delegate --to HARNESS --task TEXT [--model ID] [--read-only]",
               "delegate AGENT --task TEXT [--session ID] [--on boat|gce] [--mode integrated|coder] [--model ID] [--reasoning EFFORT] [--job ID] [--size small|default|large|xlarge] [--template NAME] [--credential-env NAME] [--timeout SECONDS] [--revision REF] [--workspace-path PATH] [--include FILE] [--no-workspace]"
             ],
             "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "delegate"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "to",
+                    "value": "HARNESS",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "task",
+                    "value": "TEXT",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "model",
+                    "value": "ID",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "read-only",
+                    "optional": true
+                  }
+                ]
+              },
               {
                 "tokens": [
                   {
@@ -4505,7 +4538,7 @@
                 ]
               }
             ],
-            "summary": "Run Microcoder, Solver (--task \"#N [--no-pr]\"), or an enabled ACP subagent.",
+            "summary": "Hand a task to another harness (claude-code, codex, opencode, coder, an ACP agent, auto) through the same code as the delegate tool; prints its short result.",
             "effect": "long_running",
             "runs_on": "connected_computer"
           }
@@ -5716,9 +5749,31 @@
         },
         {
           "kind": "option",
+          "name": "to",
+          "value": "HARNESS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "task",
           "value": "TEXT",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "model",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "read-only",
           "optional": true,
           "repeated": true
         },
@@ -5730,14 +5785,6 @@
             "boat",
             "gce"
           ],
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "model",
-          "value": "ID",
-          "open": true,
           "optional": true,
           "repeated": true
         },

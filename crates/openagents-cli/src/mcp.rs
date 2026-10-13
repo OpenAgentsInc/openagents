@@ -795,15 +795,22 @@ Exit codes: 0 success, 1 refused or failed, 64 invalid usage.";
             .iter()
             .map(|t| t["name"].as_str().unwrap())
             .collect();
-        assert_eq!(names, ["verse", "zone", "version"], "host is not callable");
+        // The bundled command tree is the default build's, which has no
+        // Verse commands (#11514), so `verse` and `zone` are not served
+        // either; `host` never is.
+        assert_eq!(names, ["version"], "host is not callable");
         let unknown = server
             .handle(&mut phase, &json!({ "jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": { "name": "host" } }))
             .unwrap();
         assert_eq!(unknown["error"]["code"], INVALID_PARAMS);
         let bad_args = server
-            .handle(&mut phase, &json!({ "jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": { "name": "zone", "arguments": { "args": "fly" } } }))
+            .handle(&mut phase, &json!({ "jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": { "name": "version", "arguments": { "args": "fly" } } }))
             .unwrap();
         assert_eq!(bad_args["error"]["code"], INVALID_PARAMS);
+        assert_eq!(
+            bad_args["error"]["message"],
+            "`args` must be an array of strings"
+        );
     }
 
     struct FixedToll(Gate);
