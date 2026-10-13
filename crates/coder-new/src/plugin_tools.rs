@@ -465,14 +465,31 @@ impl ExecutionSettings {
                     .await
             }
             name if crate::file_tools::is_tool(name) && self.shell => {
-                crate::floors::hold("Coder", name, &arguments, &self.cwd, cancel).await?;
-                if let Some(boundary) = &self.boundary
-                    && let Some(path) = arguments["path"].as_str()
-                    && let Some(refusal) = boundary.file_refusal(name, path, &self.cwd)
+                // Through the loop's hooks, as its Run is (#11531): the
+                // shared-checkout fence, the floors (asking on the approval
+                // card), and with Token savers on the gate noting what was
+                // read and the first touch of a folder adding its own
+                // instructions.
+                let hooks = crate::sdk_hooks::coder_loop_in(
+                    &self.cwd,
+                    self.boundary
+                        .clone()
+                        .or_else(|| crate::checkout_guard::Boundary::around(&self.cwd)),
+                    cancel,
+                );
+                let input = crate::file_tools::hook_input(name, &arguments);
+                let pre = hooks
+                    .fire(coder_sdk::Call::tool(
+                        coder_sdk::Event::PreToolUse,
+                        name,
+                        input.clone(),
+                    ))
+                    .await;
+                if let coder_sdk::Permission::Deny { reason }
+                | coder_sdk::Permission::Ask { step: reason } = pre.permission
                 {
-                    return Err(refusal);
+                    return Err(reason);
                 }
-                let path = arguments["path"].as_str().map(str::to_owned);
                 let mut output = crate::file_tools::execute_with_checks(
                     name,
                     arguments,
@@ -484,20 +501,18 @@ impl ExecutionSettings {
                         .as_ref()
                         .map(|boundary| boundary.shared.as_path()),
                 )?;
-                // Token savers on the loop (#11520): a Read counts as read
-                // for the gate, and the first touch of a folder adds its own
-                // instructions when they matter.
-                if let Some(path) = path.filter(|_| crate::token_savers::enabled()) {
-                    let session = crate::sdk_hooks::coder_loop_session(&self.cwd);
-                    if name == "Read" {
-                        crate::gate::note_read(&session, &self.cwd, &path);
-                    }
-                    if let Some(text) =
-                        crate::context_hook::coder_loop_touch(&session, &self.cwd, &path)
-                        && let Some(object) = output.as_object_mut()
-                    {
-                        object.insert("context".into(), json!(text));
-                    }
+                let post = hooks
+                    .fire(coder_sdk::Call::tool(
+                        coder_sdk::Event::PostToolUse,
+                        name,
+                        json!({"tool_input": input, "tool_response": output, "failed": false}),
+                    ))
+                    .await;
+                let context = post.context_lines();
+                if !context.is_empty()
+                    && let Some(object) = output.as_object_mut()
+                {
+                    object.insert("context".into(), json!(context.join("\n\n")));
                 }
                 Ok(output)
             }
@@ -1318,6 +1333,57 @@ mod tests {
                 )
                 .await
                 .is_err()
+        );
+    }
+
+    /// The Coder loop's file tools go through the loop's hooks, as its Run
+    /// does (#11531): the floors hold a secret's read, the shared-checkout
+    /// fence refuses a write outside the session's worktree, and the first
+    /// touch of a folder adds its `AGENTS.md` to the result.
+    #[tokio::test]
+    async fn the_loops_file_tools_run_through_its_hooks() {
+        let directory = tempfile::tempdir().unwrap();
+        let shared = directory.path().canonicalize().unwrap();
+        let worktree = shared.join("tree");
+        std::fs::create_dir_all(worktree.join("sub")).unwrap();
+        std::fs::write(worktree.join(".env"), "KEY=x\n").unwrap();
+        std::fs::write(
+            worktree.join("sub/AGENTS.md"),
+            "Tabs in sub, never spaces.\n",
+        )
+        .unwrap();
+        std::fs::write(worktree.join("sub/x.rs"), "fn x() {}\n").unwrap();
+        let mut settings = settings();
+        settings.shell = true;
+        settings.cwd = worktree.clone();
+        settings.boundary = Some(crate::checkout_guard::Boundary {
+            worktree: worktree.clone(),
+            shared: shared.clone(),
+            branch: String::new(),
+        });
+        let cancel = Arc::new(AtomicBool::new(false));
+        let run = |name: &'static str, arguments: Value| {
+            let (settings, cancel) = (&settings, &cancel);
+            async move {
+                settings
+                    .execute(name, arguments, None, cancel, &mut |_| {})
+                    .await
+            }
+        };
+        let secret = run("Read", json!({"path": ".env"})).await.unwrap_err();
+        assert!(secret.starts_with("Held for the person"), "{secret}");
+        let outside = shared.join("other.txt").display().to_string();
+        let fenced = run("Write", json!({"path": outside, "content": "x"}))
+            .await
+            .unwrap_err();
+        assert!(fenced.contains("shared checkout"), "{fenced}");
+        assert!(!shared.join("other.txt").exists());
+        let read = run("Read", json!({"path": "sub/x.rs"})).await.unwrap();
+        assert!(
+            read["context"]
+                .as_str()
+                .is_some_and(|context| context.contains("Tabs in sub")),
+            "{read}"
         );
     }
 }

@@ -50,6 +50,21 @@ pub fn is_tool(name: &str) -> bool {
     NAMES.contains(&name)
 }
 
+/// A call's arguments as the hooks read the same tool on Claude Code
+/// (#11531): Read, Edit and Write name their file `file_path`; Grep's and
+/// Glob's `path` is a folder there too.
+#[must_use]
+pub fn hook_input(name: &str, arguments: &Value) -> Value {
+    let mut input = arguments.clone();
+    if matches!(name, "Read" | "Edit" | "Write")
+        && let Some(object) = input.as_object_mut()
+        && let Some(path) = object.remove("path")
+    {
+        object.insert("file_path".into(), path);
+    }
+    input
+}
+
 /// The tool definitions the model sees.
 #[must_use]
 pub fn definitions() -> Vec<Value> {

@@ -274,70 +274,24 @@ fn append_log(line: &Value) {
     }
 }
 
-/// The `PreToolUse` deny output.
-fn deny_output(reason: &str) -> claude_agent_sdk::HookJSONOutput {
-    claude_agent_sdk::SyncHookJSONOutput {
-        hook_specific_output: Some(json!({
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": reason,
-        })),
-        ..claude_agent_sdk::SyncHookJSONOutput::default()
-    }
-    .into()
-}
-
-/// The hook: tracks reads and writes, and denies an unread script the
-/// decision rates risky.
+/// The gate as a Coder SDK hook for one session, keyed by `session`, in
+/// `cwd` unless the call names its own (#11510, #11531): the same hook on
+/// Claude Code, Codex, ACP agents and the Coder loop. A file the session
+/// reads or writes (Claude Code's and the loop's Read, Edit, Write) counts
+/// as read, as does a script a command reads (Codex's `commandActions`) or
+/// a patch writes; Codex's commands come as `Bash`, the loop's as `Run`,
+/// and a command wrapped as `/bin/zsh -lc '...'` is judged by what it runs.
 #[must_use]
-pub fn claude_hook() -> claude_agent_sdk::HookMatcher {
-    let hook = claude_agent_sdk::hook_fn(move |input: Value, _tool_use_id| async move {
-        let tool = input["tool_name"].as_str().unwrap_or_default().to_owned();
-        let tool_input = input["tool_input"].clone();
-        let session = input["session_id"].as_str().unwrap_or_default().to_owned();
-        let cwd = input["cwd"].as_str().map_or_else(
-            || std::env::current_dir().unwrap_or_default(),
-            PathBuf::from,
-        );
-        let seen = {
-            let mut all = touched()
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let set = all.entry(session).or_default();
-            note_touch(set, &tool, &tool_input, &cwd);
-            set.clone()
-        };
-        let reason = tokio::task::spawn_blocking(move || {
-            evaluate(&seen, &tool, &tool_input, &cwd, &Decisions, &append_log)
-        })
-        .await
-        .ok()
-        .flatten();
-        Ok(match reason {
-            Some(reason) => deny_output(&reason),
-            None => claude_agent_sdk::SyncHookJSONOutput::continue_execution().into(),
-        })
-    });
-    claude_agent_sdk::HookMatcher::new(Some("Read|Edit|Write|MultiEdit|Bash"), hook)
-}
-
-/// The gate as a Coder SDK hook for a session on Codex (#11510), keyed by
-/// `session`: Codex's commands come as `Bash` and its patches as
-/// `apply_patch`. A script the command reads (`cat`, `sed -n`, Codex's
-/// `commandActions`) or a patch writes counts as read; a command wrapped as
-/// `/bin/zsh -lc '...'` is judged by what it runs.
-#[must_use]
-pub fn sdk_hook(session: String) -> coder_sdk::Hook {
+pub fn sdk_hook(session: String, cwd: PathBuf) -> coder_sdk::Hook {
     coder_sdk::Hook::new(
         "gate",
         coder_sdk::Event::PreToolUse,
         coder_sdk::Source::BuiltIn,
         move |call: &coder_sdk::Call| {
             let tool = call.tool.as_deref().unwrap_or_default();
-            let cwd = call.input["cwd"].as_str().map_or_else(
-                || std::env::current_dir().unwrap_or_default(),
-                PathBuf::from,
-            );
+            let cwd = call.input["cwd"]
+                .as_str()
+                .map_or_else(|| cwd.clone(), PathBuf::from);
             let seen = {
                 let mut all = touched()
                     .lock()
@@ -382,24 +336,9 @@ pub fn sdk_hook(session: String) -> coder_sdk::Hook {
             )
         },
     )
-    // `Run` is the Coder loop's shell (#11520).
-    .matching("Bash|Run|apply_patch")
+    // `Run` is the Coder loop's shell (#11520); the file tools are noted.
+    .matching("Read|Edit|Write|MultiEdit|Bash|Run|apply_patch")
     .timeout(TIMEOUT + Duration::from_secs(1))
-}
-
-/// Notes that `session` read `path` with a file tool that fires no hook
-/// (the Coder loop's Read), so the gate knows the script was read
-/// (#11520).
-pub fn note_read(session: &str, cwd: &Path, path: &str) {
-    let mut all = touched()
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    note_touch(
-        all.entry(session.to_owned()).or_default(),
-        "Read",
-        &json!({"file_path": path}),
-        cwd,
-    );
 }
 
 #[cfg(test)]
@@ -515,15 +454,5 @@ mod tests {
         assert!(out.is_none());
         assert_eq!(lines.borrow()[0]["error"], "timeout");
         assert_eq!(lines.borrow()[0]["action"], "none");
-    }
-
-    #[test]
-    fn deny_output_carries_the_reason() {
-        let value = serde_json::to_value(deny_output("why")).unwrap();
-        assert_eq!(value["hookSpecificOutput"]["permissionDecision"], "deny");
-        assert_eq!(
-            value["hookSpecificOutput"]["permissionDecisionReason"],
-            "why"
-        );
     }
 }

@@ -2,16 +2,14 @@
 //! plugin on by default that a person can turn off on the Plugins screen.
 //!
 //! Each shortcut is a lever in [`LEVERS`] (`docs/coder/design/system-one-hooks.md`)
-//! and installs its hooks into a Claude Code session only through
-//! [`install`], so turning the plugin off removes every one of them from
-//! new turns. Whether the plugin is on is a process-wide flag: the app sets
+//! whose hooks go into each session's Coder SDK registry only while the
+//! plugin is on ([`crate::sdk_hooks`], on every harness), so turning it off
+//! removes every one of them from new turns. Whether the plugin is on is a process-wide flag: the app sets
 //! it when it loads its settings and when the person toggles it
 //! ([`set_enabled`]); a headless run that never loads them reads the saved
 //! `bundled-plugins.json`, and a missing or unreadable file means on.
 
 use std::sync::atomic::{AtomicU8, Ordering};
-
-use claude_agent_sdk::{HookEvent, QueryOptions};
 
 /// The plugin's ID.
 pub const PLUGIN: &str = "token-savers";
@@ -156,39 +154,6 @@ pub fn squeeze_instructions() -> Option<String> {
     ))
 }
 
-/// `options` with `lever`'s hooks when the plugin is on.
-#[must_use]
-pub fn install(options: QueryOptions, lever: Lever) -> QueryOptions {
-    install_if(options, lever, enabled())
-}
-
-fn install_if(mut options: QueryOptions, lever: Lever, on: bool) -> QueryOptions {
-    if !on {
-        return options;
-    }
-    match lever {
-        // Registered with the floors in each session's own registry: see
-        // [`sdk_hooks`] and [`crate::sdk_hooks::registry`].
-        Lever::Squeeze => {}
-        Lever::Gate => {
-            options = options.hook(HookEvent::PreToolUse, crate::gate::claude_hook());
-        }
-        Lever::Context => {
-            let cwd = options.cwd.clone().unwrap_or_default();
-            for (event, matcher) in crate::context_hook::hooks(cwd) {
-                options = options.hook(event, matcher);
-            }
-        }
-        // Built per session and registered in its registry: see
-        // [`crate::sdk_hooks::task_registry`].
-        Lever::StopGate => {}
-        // Registered with the floors in the chat's own registry: see
-        // [`crate::sdk_hooks::system_one`] and [`crate::sdk_hooks::route_mode`].
-        Lever::Route => {}
-    }
-    options
-}
-
 /// The Plugins screen's description.
 pub const DESCRIPTION: &str = "Shortcuts that cut what the agent reads and pays for. On Claude Code \
      and Coder's own loop, long build and test output is trimmed to its errors before the agent \
@@ -197,16 +162,6 @@ pub const DESCRIPTION: &str = "Shortcuts that cut what the agent reads and pays 
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    #[test]
-    fn off_installs_nothing_and_on_installs_the_gate() {
-        let options = install_if(QueryOptions::new(), Lever::Gate, false);
-        assert!(options.hooks.get(&HookEvent::PreToolUse).is_none());
-        let options = install_if(QueryOptions::new(), Lever::Gate, true);
-        assert!(options.hooks.get(&HookEvent::PreToolUse).is_some());
-    }
-
     #[test]
     fn the_route_follows_the_plugin_unless_its_switch_says_otherwise() {
         // In tests the plugin is on and `CODER_ROUTE` is unset.

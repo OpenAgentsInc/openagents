@@ -776,15 +776,11 @@ pub(crate) fn turn_options(
     // payment for the person before the tool runs, since under bypass
     // Claude Code never asks; on a full turn the token savers' squeezer
     // (#11486, #11494) wraps a noisy build or test command first, and the
-    // floors judge the wrapped command.
+    // floors judge the wrapped command; the gate (#11489) can only add a
+    // deny, and the first touch of a directory adds its instruction files
+    // (#11490), all in the same registry (#11531).
     options = crate::sdk_hooks::claude(cwd, matches!(access, Access::Full))
         .install(options, coder_sdk::claude::PreTool::Hook);
-    if matches!(access, Access::Full) {
-        // The gate (#11489) runs after the floors and can only add a deny.
-        options = crate::token_savers::install(options, crate::token_savers::Lever::Gate);
-        // The first touch of a directory adds its instruction files (#11490).
-        options = crate::token_savers::install(options, crate::token_savers::Lever::Context);
-    }
     options.env_remove = REMOVED_ENV.iter().map(|name| (*name).to_owned()).collect();
     (options, allowed)
 }
@@ -1767,6 +1763,50 @@ mod tests {
         assert_eq!(
             said_or_ended(None).unwrap_err(),
             "The turn ended without a reply."
+        );
+    }
+
+    /// A full Coder chat turn on Claude Code runs Token savers' gate and
+    /// conditional context in the session's one registry (#11531): one
+    /// PreToolUse hook (no raw gate beside it) holds a merge for the
+    /// person, and the first touch of a folder adds its `AGENTS.md` through
+    /// the same composition.
+    #[tokio::test]
+    async fn a_chat_turns_levers_run_through_the_session_registry() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        std::fs::write(root.join("sub/AGENTS.md"), "Tabs in sub, never spaces.\n").unwrap();
+        std::fs::write(root.join("sub/x.rs"), "fn x() {}\n").unwrap();
+        let (options, _) = turn_options(&root, Access::Full, None);
+        let pre = &options.hooks[&claude_agent_sdk::HookEvent::PreToolUse];
+        assert_eq!(pre.len(), 1, "one PreToolUse composition");
+        let merge = serde_json::json!({
+            "hook_event_name": "PreToolUse", "session_id": "s1", "cwd": root,
+            "tool_name": "Bash", "tool_input": {"command": "gh pr merge 5 --squash"},
+        });
+        let out = serde_json::to_value(pre[0].hooks[0].call(merge, None).await.unwrap()).unwrap();
+        assert_eq!(out["hookSpecificOutput"]["permissionDecision"], "deny");
+        assert!(
+            out["hookSpecificOutput"]["permissionDecisionReason"]
+                .as_str()
+                .unwrap()
+                .starts_with("Held for the person"),
+            "{out}"
+        );
+        let post = &options.hooks[&claude_agent_sdk::HookEvent::PostToolUse];
+        assert_eq!(post.len(), 1, "one PostToolUse composition");
+        let read = serde_json::json!({
+            "hook_event_name": "PostToolUse", "session_id": "s1", "cwd": root,
+            "tool_name": "Read", "tool_input": {"file_path": root.join("sub/x.rs")},
+            "tool_response": "fn x() {}",
+        });
+        let out = serde_json::to_value(post[0].hooks[0].call(read, None).await.unwrap()).unwrap();
+        assert!(
+            out["hookSpecificOutput"]["additionalContext"]
+                .as_str()
+                .is_some_and(|context| context.contains("Tabs in sub")),
+            "{out}"
         );
     }
 

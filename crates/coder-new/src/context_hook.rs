@@ -27,18 +27,17 @@
 //! **After a compaction.** A chat's first briefing is in the system prompt,
 //! which compaction keeps. A later piece of work's briefing goes in a
 //! message ([`crate::claude::with_briefing`]), which compaction summarizes
-//! away, so the hook adds it back. `PostCompact` can't return context, so
-//! `PreCompact` marks the session, and the first of these that fires after
-//! it adds the briefing as `additionalContext`, once: `SessionStart` with
-//! source `compact`, the next `UserPromptSubmit`, or the next `PostToolUse`
-//! of any tool. The last two are there in case Claude Code doesn't send
-//! `SessionStart` to SDK hooks; the mark makes sure only one adds it.
+//! away, so the hook adds it back: `PostCompact` marks the session, and the
+//! first `UserPromptSubmit` or `PostToolUse` after it adds the briefing as
+//! context, once.
+//!
+//! The hooks are Coder SDK hooks ([`sdk_hooks`]), registered in each
+//! session's registry on every harness (#11531).
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex};
 
-use claude_agent_sdk::{HookMatcher, SyncHookJSONOutput, hook_fn};
 use serde_json::{Value, json};
 use squeeze::Judge;
 
@@ -136,17 +135,6 @@ pub fn after_compaction(id: &str, cwd: &Path, event: &str) -> Option<Value> {
     }))
 }
 
-fn specific(output: Option<Value>) -> claude_agent_sdk::HookJSONOutput {
-    match output {
-        Some(specific) => SyncHookJSONOutput {
-            hook_specific_output: Some(specific),
-            ..SyncHookJSONOutput::default()
-        }
-        .into(),
-        None => SyncHookJSONOutput::continue_execution().into(),
-    }
-}
-
 fn with_session<T>(id: &str, f: impl FnOnce(&mut Session) -> T) -> T {
     let mut map = SESSIONS.lock().unwrap_or_else(|e| e.into_inner());
     if map.len() > 64 && !map.contains_key(id) {
@@ -155,84 +143,17 @@ fn with_session<T>(id: &str, f: impl FnOnce(&mut Session) -> T) -> T {
     f(map.entry(id.to_owned()).or_default())
 }
 
-/// The hooks for a session in `cwd`.
+/// The hook as Coder SDK hooks for one session, keyed by `session`, on
+/// every harness (#11510, #11531). A harness that loads `CLAUDE.md` itself
+/// (`claude_md`: Claude Code) is never handed an `AGENTS.md` twin of one;
+/// for the rest (Codex, ACP agents, the Coder loop) an `AGENTS.md` beside a
+/// `CLAUDE.md` is added too. A file tool's path (Read, Edit, Write,
+/// MultiEdit, Grep, Glob), a command's reads (Codex's `commandActions`) and
+/// a patch's files count as touches; the first message is the task; after
+/// a compaction the briefing comes back with the next message or tool.
 #[must_use]
-pub fn hooks(cwd: PathBuf) -> Vec<(claude_agent_sdk::HookEvent, HookMatcher)> {
-    let cwd_for_prompt = cwd.clone();
-    let judge: Arc<dyn Judge + Send + Sync> = Arc::new(squeeze::Decisions);
-    let post = hook_fn(move |input: Value, _| {
-        let cwd = cwd.clone();
-        let judge = Arc::clone(&judge);
-        async move {
-            let output = tokio::task::spawn_blocking(move || on_tool(&input, &cwd, &*judge))
-                .await
-                .ok()
-                .flatten();
-            Ok(specific(output))
-        }
-    });
-    let prompt = {
-        let cwd = cwd_for_prompt.clone();
-        hook_fn(move |input: Value, _| {
-            let cwd = cwd.clone();
-            async move {
-                let id = input["session_id"].as_str().unwrap_or("");
-                if let Some(text) = input["prompt"].as_str() {
-                    with_session(id, |s| {
-                        s.task
-                            .get_or_insert_with(|| text.chars().take(TASK_CHARS).collect());
-                    });
-                }
-                Ok(specific(after_compaction(id, &cwd, "UserPromptSubmit")))
-            }
-        })
-    };
-    let compact = hook_fn(|input: Value, _| async move {
-        on_compact(input["session_id"].as_str().unwrap_or(""));
-        Ok(SyncHookJSONOutput::continue_execution().into())
-    });
-    let after = |event: &'static str| {
-        let cwd = cwd_for_prompt.clone();
-        hook_fn(move |input: Value, _| {
-            let cwd = cwd.clone();
-            async move {
-                let id = input["session_id"].as_str().unwrap_or("");
-                Ok(specific(after_compaction(id, &cwd, event)))
-            }
-        })
-    };
-    vec![
-        (
-            claude_agent_sdk::HookEvent::PreCompact,
-            HookMatcher::new(None, compact),
-        ),
-        (
-            claude_agent_sdk::HookEvent::SessionStart,
-            HookMatcher::new(Some("compact"), after("SessionStart")),
-        ),
-        (
-            claude_agent_sdk::HookEvent::PostToolUse,
-            HookMatcher::new(None, after("PostToolUse")),
-        ),
-        (
-            claude_agent_sdk::HookEvent::PostToolUse,
-            HookMatcher::new(Some(TOOLS), post),
-        ),
-        (
-            claude_agent_sdk::HookEvent::UserPromptSubmit,
-            HookMatcher::new(None, prompt),
-        ),
-    ]
-}
-
-/// The hook as Coder SDK hooks for a session on Codex (#11510), keyed by
-/// `session`: Codex reads no `CLAUDE.md`, so an `AGENTS.md` beside one is
-/// added too. A command's reads (Codex's `commandActions`) and a patch's
-/// files count as touches; the first message is the task; after a
-/// compaction the briefing comes back with the next message or tool.
-#[must_use]
-pub fn sdk_hooks(cwd: PathBuf, session: String) -> Vec<coder_sdk::Hook> {
-    with_session(&session, |s| s.no_claude_md = true);
+pub fn sdk_hooks(cwd: PathBuf, session: String, claude_md: bool) -> Vec<coder_sdk::Hook> {
+    with_session(&session, |s| s.no_claude_md = !claude_md);
     let judge: Arc<dyn Judge + Send + Sync> = Arc::new(squeeze::Decisions);
     let context = |specific: Option<Value>| {
         specific
@@ -250,11 +171,26 @@ pub fn sdk_hooks(cwd: PathBuf, session: String) -> Vec<coder_sdk::Hook> {
             coder_sdk::Source::BuiltIn,
             move |call: &coder_sdk::Call| {
                 let mut added = Vec::new();
-                for path in touched_paths(call) {
-                    let input = json!({
+                let tool = call.tool.as_deref().unwrap_or_default();
+                // A file tool's own call, as its harness made it; a
+                // command's reads and a patch's files, as reads.
+                let inputs = if TOOLS.split('|').any(|name| name == tool) {
+                    vec![json!({
                         "session_id": session, "cwd": cwd,
-                        "tool_name": "Read", "tool_input": {"file_path": path},
-                    });
+                        "tool_name": tool, "tool_input": call.input["tool_input"],
+                    })]
+                } else {
+                    touched_paths(call)
+                        .into_iter()
+                        .map(|path| {
+                            json!({
+                                "session_id": session, "cwd": cwd,
+                                "tool_name": "Read", "tool_input": {"file_path": path},
+                            })
+                        })
+                        .collect()
+                };
+                for input in inputs {
                     if let Some(text) = on_tool(&input, &cwd, &*judge).and_then(|specific| {
                         specific["additionalContext"].as_str().map(str::to_owned)
                     }) {
@@ -423,20 +359,6 @@ fn cut(text: &str, chars: usize) -> String {
 }
 
 /// One `PostToolUse` call: the `hookSpecificOutput` to return, if any.
-/// The Coder loop's first touch of `path` with a file tool (#11520): the
-/// folder's own instructions, when they matter for the task, to add to the
-/// tool's result. Its turn-start briefing already read the root's.
-#[must_use]
-pub fn coder_loop_touch(session: &str, cwd: &Path, path: &str) -> Option<String> {
-    with_session(session, |s| s.no_claude_md = true);
-    let input = json!({
-        "session_id": session, "cwd": cwd,
-        "tool_name": "Read", "tool_input": {"file_path": path},
-    });
-    on_tool(&input, cwd, &squeeze::Decisions)
-        .and_then(|specific| specific["additionalContext"].as_str().map(str::to_owned))
-}
-
 pub fn on_tool(input: &Value, cwd: &Path, judge: &dyn Judge) -> Option<Value> {
     if std::env::var("CODER_CONTEXT").is_ok_and(|v| v.trim().eq_ignore_ascii_case("off")) {
         return None;
@@ -740,16 +662,14 @@ mod tests {
         assert!(after_compaction(sid, &cwd, "SessionStart").is_none());
     }
 
-    #[tokio::test]
-    async fn the_hooks_cover_compaction() {
-        let events: Vec<_> = hooks(PathBuf::from("/tmp"))
-            .into_iter()
-            .map(|(e, _)| e)
-            .collect();
+    #[test]
+    fn the_hooks_cover_the_task_touches_and_compaction() {
+        let hooks = sdk_hooks(PathBuf::from("/tmp"), "s-cover".into(), true);
+        let events: Vec<_> = hooks.iter().map(|hook| hook.event).collect();
         for event in [
-            claude_agent_sdk::HookEvent::PreCompact,
-            claude_agent_sdk::HookEvent::SessionStart,
-            claude_agent_sdk::HookEvent::UserPromptSubmit,
+            coder_sdk::Event::PostCompact,
+            coder_sdk::Event::PostToolUse,
+            coder_sdk::Event::UserPromptSubmit,
         ] {
             assert!(events.contains(&event), "{event:?}");
         }

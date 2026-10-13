@@ -333,12 +333,11 @@ fn claude_code_launches_as_the_table_says_with_the_floors_hook() {
         .hooks
         .get(&claude_agent_sdk::HookEvent::PreToolUse)
         .expect("the floors' hook is installed");
-    // The Coder SDK's one hook first (#11496): the floors on every tool,
-    // with the squeezer's rewrite (#11486) chained before them on Bash;
-    // then the gate (#11489) on file and shell tools.
-    assert_eq!(hooks.len(), 2);
+    // The Coder SDK's one hook (#11496): the floors on every tool, with the
+    // squeezer's rewrite (#11486) chained before them on Bash and the gate
+    // (#11489) in the same composition (#11531).
+    assert_eq!(hooks.len(), 1);
     assert_eq!(hooks[0].matcher, None);
-    assert!(hooks[1].matcher.as_deref().unwrap().contains("Bash"));
     install_desk(None);
     let hook = hooks[0].hooks[0].clone();
     let cwd = repo.path().display().to_string();

@@ -508,6 +508,14 @@ pub fn tool_refusal(
 #[must_use]
 pub fn hook(cwd: PathBuf) -> Hook {
     let boundary = Boundary::around(&cwd);
+    hook_on(cwd, boundary)
+}
+
+/// [`hook`] with the session's `boundary` given, for a session whose fence
+/// isn't the Coder worktree it runs in (an issue run's, whose shared side
+/// is the whole disk); `None` leaves only [`crate::git_guard`].
+#[must_use]
+pub fn hook_on(cwd: PathBuf, boundary: Option<Boundary>) -> Hook {
     Hook::floor(
         "worktree-fence",
         Event::PreToolUse,
