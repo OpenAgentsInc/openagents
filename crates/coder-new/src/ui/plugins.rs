@@ -783,6 +783,21 @@ fn render_fields(
     }
 }
 
+/// What Coder's checks cover on an ACP agent, for the person (#11508).
+fn acp_checks_line(agent: &crate::bundled_runtime::AcpAgent) -> String {
+    if coder_sdk::acp::gated(&agent.id) {
+        format!(
+            "Coder checks every step {} takes before it runs.",
+            agent.name
+        )
+    } else {
+        format!(
+            "{} doesn't ask before every step, so Coder checks only the steps it asks about.",
+            agent.name
+        )
+    }
+}
+
 fn acp_settings(frame: &mut Frame, area: Rect, app: &App) {
     let p = &app.plugins.bundled;
     let agents = p.acp_choices();
@@ -816,6 +831,16 @@ fn acp_settings(frame: &mut Frame, area: Rect, app: &App) {
             .iter()
             .map(|hint| Line::from(span(truncate(hint, area.width), t::GRAY_BRIGHT))),
     );
+    // How far Coder's checks reach on the selected agent (#11508), before
+    // the person delegates to it.
+    if let Some(agent) = agents.get(p.acp_selected)
+        && agent.transport == crate::bundled_runtime::AgentTransport::Acp
+    {
+        let text = acp_checks_line(agent);
+        for range in coder_terminal::wrap_rows(&text, usize::from(area.width).max(1)) {
+            footer.push(Line::from(span(text[range].trim().to_owned(), t::GRAY)));
+        }
+    }
     if let Some(agent) = updatable {
         let (text, color) = if p.engines.updating.as_deref() == Some(agent.id.as_str()) {
             (format!("Updating {}…", agent.name), t::COMMAND)
@@ -1342,6 +1367,12 @@ mod tests {
         assert!(list.contains("cursor-agent update"), "{list}");
         app.screen = Screen::PluginSettings;
         let text = draw(&app, 100, 30).rows.join("\n");
+        // How far Coder's checks reach on it, said before delegating
+        // (#11508).
+        assert!(
+            text.contains("Cursor doesn't ask before every step, so Coder checks only the steps it asks about."),
+            "{text}"
+        );
         assert!(text.contains("Cursor"), "{text}");
         assert!(text.contains("Update required"), "{text}");
         assert!(text.contains("U Update"), "{text}");

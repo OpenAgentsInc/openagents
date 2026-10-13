@@ -1101,7 +1101,7 @@ fn acp_gate(
     }
     let failed =
         |why: String| format!("Coder couldn't set up its checks for {}: {why}", agent.name);
-    let program = std::env::current_exe().map_err(|error| failed(error.to_string()))?;
+    let program = bridge_program().map_err(|error| failed(error.to_string()))?;
     let command = crate::floors::acp_bridge_command(&program);
     let host = coder_sdk::bridge::Host::start(hooks.runner())
         .map_err(|error| failed(error.to_string()))?;
@@ -1137,6 +1137,18 @@ fn acp_gate(
         _host: Some(host),
         _files: Some(files),
     })
+}
+
+/// The program an agent's hook runs for the bridge: this one. A debug build
+/// may name another in `CODER_HOOK_PROGRAM`, for the live runs started from
+/// a test binary (`tests/acp_live.rs`).
+fn bridge_program() -> std::io::Result<PathBuf> {
+    if cfg!(debug_assertions)
+        && let Some(program) = std::env::var_os("CODER_HOOK_PROGRAM").filter(|p| !p.is_empty())
+    {
+        return Ok(program.into());
+    }
+    std::env::current_exe()
 }
 
 /// What the agent reads after Coder refused some of its steps: ACP's
