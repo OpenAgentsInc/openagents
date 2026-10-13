@@ -1,5 +1,5 @@
 //! An [`Action`] as the `openagents` command words that do the same thing
-//! (#11166's `issue` and `project` verbs), and back.
+//! (#11166's `issue` and `board` verbs), and back.
 //!
 //! The chat router proposes a command by descending the command tree with
 //! Jev and filling its free text with the model (`coder::cli_route`); the
@@ -14,8 +14,8 @@
 //! - `issue create --title TEXT [--body TEXT] [--label NAME]... [--project N --status NAME] [--repo OWNER/NAME]`
 //! - `issue comment N --body TEXT [--repo OWNER/NAME]`
 //! - `issue close N [--reason completed|not_planned] [--comment TEXT] [--repo OWNER/NAME]`
-//! - `project move N --status NAME --project N [--repo OWNER/NAME]`
-//! - `project add N --project N --status NAME [--repo OWNER/NAME]`
+//! - `board move N --status NAME --project N [--repo OWNER/NAME]`
+//! - `board add N --project N --status NAME [--repo OWNER/NAME]`
 //! - `pr open --head BRANCH [--base BRANCH] --title TEXT [--body TEXT] [--draft] [--repo OWNER/NAME]`
 //!
 //! Words that name a file (`--body-file`, `--comment-file`) are refused:
@@ -28,8 +28,8 @@ pub const COMMANDS: [&str; 6] = [
     "issue create",
     "issue comment",
     "issue close",
-    "project move",
-    "project add",
+    "board move",
+    "board add",
     "pr open",
 ];
 
@@ -250,7 +250,7 @@ impl Action {
                     reason,
                 }
             }
-            "project move" | "project add" => {
+            "board move" | "board add" => {
                 words.only(&["project", "status", "repo"], &[])?;
                 let board = action::optional_board(
                     required(words.one("project"), "project")?,
@@ -341,7 +341,7 @@ impl Action {
             } => {
                 push(&mut words, "status", status);
                 push(&mut words, "project", &b.to_string());
-                vec!["project".into(), "move".into(), number.to_string()]
+                vec!["board".into(), "move".into(), number.to_string()]
             }
             Action::OpenPullRequest {
                 head,

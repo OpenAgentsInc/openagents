@@ -494,11 +494,11 @@ fn command_words_read_into_the_same_actions_and_back() {
         );
     }
 
-    // `project add` with a status is the same move; labels split on commas.
+    // `board add` with a status is the same move; labels split on commas.
     assert_eq!(
         Action::from_argv(
             &words(&[
-                "project",
+                "board",
                 "add",
                 "5",
                 "--project=22",
@@ -509,7 +509,7 @@ fn command_words_read_into_the_same_actions_and_back() {
         )
         .unwrap()
         .argv()[..2],
-        words(&["project", "move"])[..]
+        words(&["board", "move"])[..]
     );
     let labeled = Action::from_argv(
         &words(&["issue", "create", "--title", "T", "--label", "bug, web"]),
@@ -525,6 +525,8 @@ fn other_commands_and_bad_words_are_refused() {
         (vec!["computer", "list"], ArgvError::NotGithub),
         (vec!["issue", "claim", "3"], ArgvError::NotGithub),
         (vec!["issue"], ArgvError::NotGithub),
+        // `project` was the board's name until #11471 (#11538).
+        (vec!["project", "move", "3"], ArgvError::NotGithub),
     ] {
         assert_eq!(Action::from_argv(&words(&argv), Some("a/b")), Err(want));
     }
@@ -538,8 +540,8 @@ fn other_commands_and_bad_words_are_refused() {
         vec!["issue", "comment", "3", "4", "--body", "x"],
         vec!["issue", "close", "3", "--reason", "duplicate"],
         vec!["issue", "close", "3", "--project", "22"],
-        vec!["project", "move", "3", "--status", "Todo"],
-        vec!["project", "move", "3", "--project", "22"],
+        vec!["board", "move", "3", "--status", "Todo"],
+        vec!["board", "move", "3", "--project", "22"],
         vec!["pr", "open", "--head", "a..b", "--title", "T"],
         vec!["issue", "create", "--repo", "not a repo", "--title", "T"],
         vec!["issue", "create", "--title"],

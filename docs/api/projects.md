@@ -434,8 +434,10 @@ openagents projects notes add PROJECT --title T (--text TEXT | --file PATH)
 get` and `files remove` take a file's name, id, or the start of its id.
 
 It uses the sign-in `openagents login` saved. The GitHub Project board
-command becomes `openagents board`, with `project` kept as a hidden alias
-for one release.
+command is `openagents board`. `project`, its old name, was kept for one
+release and is gone since #11538: `openagents project` now names both
+commands (`openagents projects` for these projects, `openagents board` for
+GitHub boards) instead of guessing one.
 
 ## Coder
 

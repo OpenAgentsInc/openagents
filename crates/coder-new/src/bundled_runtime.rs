@@ -634,9 +634,38 @@ pub(crate) fn set_child_env(vars: Vec<(std::ffi::OsString, std::ffi::OsString)>)
     CHILD_ENV.with(|env| *env.borrow_mut() = vars);
 }
 
-/// The variables children started on this thread get.
+/// The variables children started on this thread get: this thread's
+/// ([`set_child_env`]), with the `openagents` beside Coder's own program
+/// first on `PATH` when one sits there (#11538). Every process Coder
+/// starts (Claude Code, Codex, OpenCode, the ACP agents, the Coder loop's
+/// commands, delegations) takes its variables from here, so none of them
+/// runs an older `openagents` installed elsewhere on `PATH`.
 pub(crate) fn child_env() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
-    CHILD_ENV.with(|env| env.borrow().clone())
+    let vars = CHILD_ENV.with(|env| env.borrow().clone());
+    with_own_cli(vars, coder_lease::shim::own_cli_dir().as_deref())
+}
+
+/// `vars` with `PATH` (theirs, else this process's) led by `cli`, the
+/// directory of the `openagents` beside this program.
+fn with_own_cli(
+    mut vars: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+    cli: Option<&Path>,
+) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+    let path = vars
+        .iter()
+        .rev()
+        .find(|(name, _)| name == "PATH")
+        .map(|(_, value)| value.clone())
+        .or_else(|| std::env::var_os("PATH"));
+    if let Some(fronted) = coder_lease::shim::child_path_with(
+        path.as_deref(),
+        cli,
+        coder_lease::shim::enabled().as_deref(),
+    ) {
+        vars.retain(|(name, _)| name != "PATH");
+        vars.push(("PATH".into(), fronted));
+    }
+    vars
 }
 
 pub(crate) fn apply_child_env(command: &mut std::process::Command) {
@@ -2606,6 +2635,40 @@ pub(crate) fn still_running(group_clear: bool) -> &'static str {
 mod tests {
     use super::*;
     use crate::delegation_events::Sink;
+
+    /// #11538: every child gets the `openagents` beside Coder first on
+    /// `PATH`, ahead of an older one installed elsewhere, whatever else
+    /// its thread sets; with none beside Coder, nothing changes.
+    #[test]
+    fn every_child_finds_the_openagents_beside_coder_first() {
+        use std::ffi::OsString;
+        let cli = Path::new("/opt/coder");
+        let vars = with_own_cli(
+            vec![
+                ("PATH".into(), "/old/bin:/bin".into()),
+                ("CARGO_TARGET_DIR".into(), "/t".into()),
+            ],
+            Some(cli),
+        );
+        assert_eq!(
+            vars,
+            vec![
+                (OsString::from("CARGO_TARGET_DIR"), OsString::from("/t")),
+                (
+                    OsString::from("PATH"),
+                    OsString::from("/opt/coder:/old/bin:/bin")
+                ),
+            ]
+        );
+        // Applied twice: one copy, still first.
+        assert_eq!(with_own_cli(vars.clone(), Some(cli)), vars);
+        // No PATH of the thread's own: this process's, led by the CLI.
+        let fronted = with_own_cli(Vec::new(), Some(cli));
+        let path = &fronted.iter().find(|(name, _)| name == "PATH").unwrap().1;
+        assert_eq!(std::env::split_paths(path).next().as_deref(), Some(cli));
+        let plain = vec![(OsString::from("A"), OsString::from("1"))];
+        assert_eq!(with_own_cli(plain.clone(), None), plain);
+    }
 
     #[tokio::test]
     async fn microcoder_streaming_completion_keeps_one_successful_command() {

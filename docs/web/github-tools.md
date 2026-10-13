@@ -4,7 +4,7 @@ Issue: [#11167](https://github.com/OpenAgentsInc/openagents/issues/11167)
 (orchestrator parity row C2). Code: `crates/openagents-web/src/github_tools/`
 (pages, sealing, the thread card) over `crates/github-actions/` (the typed
 actions, their command-line form, and the REST calls), which the CLI's
-`openagents issue|project` verbs (#11166) share.
+`openagents issue|board` verbs (#11166) share.
 
 A signed-in person with GitHub connected sees **GitHub tools** under a web
 chat's composer. `/chat/{id}/github` lists five tools, each a typed form:
@@ -54,7 +54,7 @@ Todo" goes through the chat router's command route, the same central
 typed selector every surface uses (`crates/coder/src/cli_route.rs`):
 
 1. Jev's `route` reading is `cli` and its `cli_group` reading is `issue`,
-   `project`, or `pr` (`WEB_GROUPS` in `crates/coder/src/router/policy.rs`).
+   `board`, or `pr` (`WEB_GROUPS` in `crates/coder/src/router/policy.rs`).
    On the website every other command group still becomes the model.
 2. The descent picks the leaf with one Jev Choice per level; on the
    website only `github_actions::COMMANDS` are offered
@@ -76,7 +76,7 @@ Nothing reads the message's words to pick a tool.
 `github-actions` has no CLI or web types:
 
 - `Action::from_argv(argv, default_repo)` and `Action::argv()`: the
-  `issue create|comment|close`, `project move|add`, and `pr open` words.
+  `issue create|comment|close`, `board move|add`, and `pr open` words.
 - `rest::run(api, &action)` for a whole action, and the steps
   (`create_issue`, `comment`, `close_issue`, `reopen_issue`, `place`,
   `find_board`, `open_pull_request`) for a verb's own composition, over

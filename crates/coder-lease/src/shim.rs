@@ -237,6 +237,52 @@ pub fn path_with(dir: &Path, path: Option<&OsStr>) -> OsString {
         .unwrap_or_else(|_| path.map(OsStr::to_owned).unwrap_or_default())
 }
 
+/// The directory of this program when an `openagents` sits in it (the
+/// release archive and a dev build put Coder and the CLI side by side),
+/// or when this program is `openagents` itself (#11538).
+#[must_use]
+pub fn own_cli_dir() -> Option<PathBuf> {
+    cli_dir_beside(&std::env::current_exe().ok()?)
+}
+
+/// The directory of `program` when an `openagents` sits in it.
+#[must_use]
+pub fn cli_dir_beside(program: &Path) -> Option<PathBuf> {
+    let dir = program.parent()?;
+    let name = format!("openagents{}", std::env::consts::EXE_SUFFIX);
+    dir.join(name).is_file().then(|| dir.to_path_buf())
+}
+
+/// `path` as every process Coder starts gets it (#11538): the directory of
+/// the `openagents` beside this program ([`own_cli_dir`]) first, so a
+/// child never runs an older `openagents` installed elsewhere on `PATH`;
+/// after the shim directory when `path` already starts with it. `None`
+/// when no `openagents` sits beside this program.
+#[must_use]
+pub fn child_path(path: Option<&OsStr>) -> Option<OsString> {
+    child_path_with(path, own_cli_dir().as_deref(), enabled().as_deref())
+}
+
+/// [`child_path`] with the CLI's directory `cli` and the shim directory
+/// `shims` given.
+#[must_use]
+pub fn child_path_with(
+    path: Option<&OsStr>,
+    cli: Option<&Path>,
+    shims: Option<&Path>,
+) -> Option<OsString> {
+    let cli = cli?;
+    let fronted = path_with(cli, path);
+    let shims_first = shims.is_some_and(|shims| {
+        path.and_then(|path| std::env::split_paths(path).next())
+            .is_some_and(|first| first == shims)
+    });
+    Some(match shims {
+        Some(shims) if shims_first && shims != cli => path_with(shims, Some(&fronted)),
+        _ => fronted,
+    })
+}
+
 /// The variables a delegate's environment sets so the shims reach it:
 /// `PATH` as `path` with the shims first (the `screencapture` shim always;
 /// `cargo` only under [`CARGO_VAR`]), `OPENAGENTS_LEASE_BIN` when this
@@ -244,10 +290,18 @@ pub fn path_with(dir: &Path, path: Option<&OsStr>) -> OsString {
 /// when set, so builds a shim or a manual `openagents lease` starts wait
 /// at the delegation's priority, until [`enable`] none of these; and
 /// `OPENAGENTS_SCRATCH`, the delegates' durable scratch directory, once
-/// [`crate::scratch::enable`] chose one.
+/// [`crate::scratch::enable`] chose one. The `openagents` beside this
+/// program comes first on `PATH` after the shims either way
+/// ([`child_path`], #11538).
 #[must_use]
 pub fn delegate_vars(path: Option<&OsStr>) -> Vec<(OsString, OsString)> {
+    delegate_vars_beside(path, own_cli_dir().as_deref())
+}
+
+fn delegate_vars_beside(path: Option<&OsStr>, cli: Option<&Path>) -> Vec<(OsString, OsString)> {
     let mut vars = Vec::new();
+    let fronted = child_path_with(path, cli, None);
+    let path = fronted.as_deref().or(path);
     if let Ok(enabled) = ENABLED.read()
         && let Some(enabled) = enabled.as_ref()
     {
@@ -261,6 +315,8 @@ pub fn delegate_vars(path: Option<&OsStr>) -> Vec<(OsString, OsString)> {
                 OsString::from(priority.as_str()),
             ));
         }
+    } else if let Some(fronted) = fronted {
+        vars.push((OsString::from("PATH"), fronted));
     }
     if let Some(dir) = crate::scratch::delegate_dir() {
         vars.push((
@@ -331,10 +387,10 @@ mod tests {
     fn delegates_get_the_shims_only_once_enabled() {
         let scratch = tempfile::tempdir().unwrap();
         disable();
-        assert!(delegate_vars(Some(OsStr::new("/bin"))).is_empty());
+        assert!(delegate_vars_beside(Some(OsStr::new("/bin")), None).is_empty());
         let dir = scratch.path().join("shims");
         enable(&dir, None).unwrap();
-        let vars = delegate_vars(Some(OsStr::new("/bin")));
+        let vars = delegate_vars_beside(Some(OsStr::new("/bin")), None);
         let mut expected = dir.clone().into_os_string();
         expected.push(":/bin");
         assert_eq!(vars, vec![(OsString::from("PATH"), expected)]);
@@ -343,6 +399,47 @@ mod tests {
             crate::SCREENCAPTURE_SHIM
         );
         disable();
+    }
+
+    /// #11538: a child finds the `openagents` beside Coder before an older
+    /// one installed elsewhere on `PATH`, after the shims when they lead.
+    #[test]
+    fn the_cli_beside_this_program_comes_first_on_every_child_path() {
+        let scratch = tempfile::tempdir().unwrap();
+        let program = scratch.path().join("coder");
+        assert_eq!(cli_dir_beside(&program), None);
+        std::fs::write(scratch.path().join("openagents"), "").unwrap();
+        let cli = cli_dir_beside(&program).unwrap();
+        assert_eq!(cli, scratch.path());
+        let mut expected = cli.clone().into_os_string();
+        expected.push(":/old/bin:/bin");
+        assert_eq!(
+            child_path_with(Some(OsStr::new("/old/bin:/bin")), Some(&cli), None),
+            Some(expected.clone())
+        );
+        // Again on its own output: unchanged.
+        assert_eq!(
+            child_path_with(Some(&expected), Some(&cli), None),
+            Some(expected.clone())
+        );
+        // The shims keep the lead they had.
+        let shims = Path::new("/s");
+        let mut with_shims = OsString::from("/s:");
+        with_shims.push(&expected);
+        assert_eq!(
+            child_path_with(
+                Some(OsStr::new("/s:/old/bin:/bin")),
+                Some(&cli),
+                Some(shims)
+            ),
+            Some(with_shims)
+        );
+        // Without the shims ahead, the CLI's directory leads.
+        assert_eq!(
+            child_path_with(Some(OsStr::new("/old/bin:/bin")), Some(&cli), Some(shims)),
+            Some(expected.clone())
+        );
+        assert_eq!(child_path_with(Some(OsStr::new("/bin")), None, None), None);
     }
 
     #[test]

@@ -174,7 +174,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     0
 }
 
-/// `openagents board COMMAND` (also `openagents project`, its older name).
+/// `openagents board COMMAND`: GitHub Project boards.
 pub fn project(output: &Output, words: &[String]) -> u8 {
     let usage = crate::github_verbs::PROJECT_USAGE;
     let Some((command, rest)) = words.split_first() else {

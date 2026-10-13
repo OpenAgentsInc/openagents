@@ -1,5 +1,5 @@
 //! The `github` tool (#11166): GitHub issues and Project boards as one
-//! typed tool. Each call becomes an `openagents issue|project` command
+//! typed tool. Each call becomes an `openagents issue|board` command
 //! and runs through the bundled CLI, so it uses this computer's GitHub
 //! sign-in and the same approval gate as every other command: reads
 //! (`issue_list`, `issue_view`, `project_list`) run, and writes wait for
@@ -113,17 +113,17 @@ pub fn arguments(input: Value) -> Result<Vec<String>, String> {
         }
         "issue_view" => words.extend(["issue".into(), "view".into(), number()?]),
         "project_list" => {
-            words.extend(["project".into(), "list".into()]);
+            words.extend(["board".into(), "list".into()]);
             flag(&mut words, "project", project);
             flag(&mut words, "status", call.status.clone());
         }
         "project_add" => {
-            words.extend(["project".into(), "add".into(), number()?]);
+            words.extend(["board".into(), "add".into(), number()?]);
             flag(&mut words, "project", project);
             flag(&mut words, "status", call.status.clone());
         }
         "project_move" => {
-            words.extend(["project".into(), "move".into(), number()?]);
+            words.extend(["board".into(), "move".into(), number()?]);
             let status = call
                 .status
                 .clone()
@@ -174,12 +174,12 @@ mod tests {
             ),
             (
                 json!({"action":"project_move","number":5,"status":"In Progress","repo":"a/b"}),
-                "openagents project move 5 --status 'In Progress' --repo a/b",
+                "openagents board move 5 --status 'In Progress' --repo a/b",
                 false,
             ),
             (
                 json!({"action":"project_add","number":5,"project":22}),
-                "openagents project add 5 --project 22",
+                "openagents board add 5 --project 22",
                 false,
             ),
             (
@@ -194,7 +194,7 @@ mod tests {
             ),
             (
                 json!({"action":"project_list","project":22,"status":"Todo"}),
-                "openagents project list --project 22 --status Todo",
+                "openagents board list --project 22 --status Todo",
                 true,
             ),
         ];

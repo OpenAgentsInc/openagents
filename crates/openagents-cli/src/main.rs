@@ -340,6 +340,19 @@ fn home_from_profile() {
     }
 }
 
+/// What a retired command name is now, by the products it could have
+/// meant, rather than a near spelling that may be another product
+/// (#11538): `project` was the GitHub board's name until #11471.
+fn retired(word: &str) -> Option<&'static str> {
+    (word == "project").then_some(
+        "your openagents.com projects are `openagents projects`, \
+         GitHub Project boards are `openagents board`",
+    )
+}
+
+/// The command nearest `word` by spelling. A retired name ([`retired`])
+/// is never suggested: it is no command, and its nearest spelling may be
+/// another product's.
 fn top_level_suggestion(word: &str) -> Option<&'static str> {
     // Models belong to the decision API's caller, not this CLI.
     if word == "models" {
@@ -457,8 +470,7 @@ fn main() -> ExitCode {
         "task" => runtime().block_on(coder::task::cli::run_with_json(&rest, json)),
         "issue" => issue::run(&output, &rest),
         "projects" => projects::run(&output, &rest),
-        // `project` is the board's older name, kept for one release (#11471).
-        "board" | "project" => issue::project(&output, &rest),
+        "board" => issue::project(&output, &rest),
         "lease" | "leases" => lease::run(&output, &rest),
         "sales" => sales::run(&output, &rest),
         "customer" => customer::run(&output, &rest),
@@ -568,8 +580,12 @@ fn main() -> ExitCode {
             EXIT_FAILURE
         }
         other => {
-            let suggestion = top_level_suggestion(other)
-                .map(|name| format!("; did you mean `openagents {name}`?"))
+            let suggestion = retired(other)
+                .map(|instead| format!("; {instead}"))
+                .or_else(|| {
+                    top_level_suggestion(other)
+                        .map(|name| format!("; did you mean `openagents {name}`?"))
+                })
                 .unwrap_or_default();
             eprintln!(
                 "openagents: unknown command `{other}`{suggestion}\nSee `openagents --help` for available commands."

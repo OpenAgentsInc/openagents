@@ -1058,7 +1058,7 @@ pub fn in_project(routing: &Routing, tier: Tier) -> Tier {
 /// The command groups the website's chat proposes from (#11167): the
 /// groups of `github_actions::COMMANDS`, whose changes the website makes
 /// itself ([`crate::cli_route::gate::WEB_COMMANDS`]).
-pub const WEB_GROUPS: [&str; 3] = ["issue", "project", "pr"];
+pub const WEB_GROUPS: [&str; 3] = ["issue", "board", "pr"];
 
 /// The website's tiers (#10106): refusals, knowledge, the model, and
 /// prepared answers on the answer routes, each without an offer, and the
@@ -1703,7 +1703,7 @@ mod tests {
     fn the_website_proposes_github_changes_from_the_github_groups_only() {
         let mut cli = routed(RouteId::Cli, 0.95, "cli.offer", 0.9, 0.9);
         cli.cli_group = Some(("issue".to_string(), 0.95));
-        cli.cli_alternatives = vec![("project".to_string(), 0.4), ("session".to_string(), 0.3)];
+        cli.cli_alternatives = vec![("board".to_string(), 0.4), ("session".to_string(), 0.3)];
         match decided(&cli, &web(), false) {
             Tier::Cli { group, also, .. } => {
                 assert_eq!(group, "issue");

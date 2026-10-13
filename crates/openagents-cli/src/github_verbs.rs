@@ -1,5 +1,5 @@
 //! `openagents issue create|comment|close|reopen|list|view` and
-//! `openagents project list|add|move` (#11166): GitHub issues and Project
+//! `openagents board list|add|move` (#11166): GitHub issues and Project
 //! boards over REST ([`github_actions::issues`]) with this computer's GitHub
 //! sign-in: `GH_TOKEN` or `GITHUB_TOKEN` when set, else the GitHub CLI's
 //! (`gh auth token`). Boards use the REST projectsV2 endpoints, so they
@@ -297,7 +297,7 @@ pub(crate) fn issue(
     }
 }
 
-/// Runs `openagents project COMMAND`.
+/// Runs `openagents board COMMAND`.
 pub(crate) fn project(
     rest: &dyn Rest,
     command: &str,

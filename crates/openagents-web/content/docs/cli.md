@@ -69,6 +69,23 @@ openagents settings unset coder.start
 
 Every key is in the [settings reference](/docs/settings).
 
+## Projects and GitHub boards
+
+Your projects on openagents.com (the Projects list on the website) are
+`openagents projects`. GitHub Project boards are a different thing, under
+`openagents board`:
+
+```sh
+openagents projects list                       # your openagents.com projects
+openagents projects show finances              # one project and its chats
+openagents projects files list finances        # its files and notes
+openagents board list --project 22 --status Todo   # a GitHub board's items
+openagents board move 101 --status "In Progress"   # move an issue on its boards
+```
+
+Coder runs the `openagents` installed beside it, so its commands always
+match the Coder you run.
+
 ## Plugins
 
 ```sh

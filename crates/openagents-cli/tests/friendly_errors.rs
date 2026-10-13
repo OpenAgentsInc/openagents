@@ -93,6 +93,13 @@ fn unknown_commands_are_short_and_suggest_nearby_commands() {
     for (word, suggestion) in [
         ("models", Some("settings")),
         ("gmy", Some("gym")),
+        // A typo of `projects` names `projects`, and of `board` names
+        // `board`: never the other product (#11538).
+        ("projets", Some("projects")),
+        ("projcets", Some("projects")),
+        ("porjects", Some("projects")),
+        ("boards", Some("board")),
+        ("baord", Some("board")),
         ("zzzzzzzzzz", None),
     ] {
         let output = run(&[word], false);
@@ -113,4 +120,17 @@ fn unknown_commands_are_short_and_suggest_nearby_commands() {
             assert!(!stderr.contains("did you mean"), "{stderr}");
         }
     }
+}
+
+/// `project` was the GitHub board's name until #11471; it is retired, and
+/// it names both products instead of guessing one (#11538).
+#[test]
+fn the_retired_project_command_names_both_products() {
+    let output = run(&["project", "list"], false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(64), "{stderr}");
+    assert!(stderr.contains("unknown command `project`"), "{stderr}");
+    assert!(stderr.contains("`openagents projects`"), "{stderr}");
+    assert!(stderr.contains("`openagents board`"), "{stderr}");
+    assert!(!stderr.contains("did you mean"), "{stderr}");
 }

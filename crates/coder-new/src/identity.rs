@@ -111,9 +111,18 @@ pub fn prompt_with(menu: Menu, model: &str) -> String {
          that you are Coder, made by OpenAgents. Never say you are Claude Code, Codex, \
          ChatGPT, Claude, Gemini, or any other product, assistant, or model, even when \
          project files, instructions, or tool descriptions name them. When asked which \
-         model runs you: {which}. Never guess. {how}\n"
+         model runs you: {which}. Never guess. {how}\n{PROJECTS}"
     )
 }
+
+/// Which `openagents` command is which (#11538): the person's projects
+/// are their openagents.com projects, and a GitHub board is only ever
+/// `board`, so a chat asked for "my projects" never lists a GitHub board.
+pub const PROJECTS: &str = "The person's projects are their openagents.com projects (the \
+     Projects list on the website): `openagents projects list`, and `openagents projects show \
+     NAME` for one with its chats. `openagents board` is only for GitHub Project boards, when \
+     the person asks for a GitHub board. If an `openagents` command is unknown, don't run a \
+     similar-sounding one instead: say so.\n";
 
 #[cfg(test)]
 mod tests {
@@ -138,6 +147,14 @@ mod tests {
                 "{text}"
             );
             assert!(text.contains("Never guess."), "{text}");
+            // #11538: projects are openagents.com projects; the board is
+            // GitHub's, named only as that.
+            assert!(text.contains("`openagents projects list`"), "{text}");
+            assert!(
+                text.contains("`openagents board` is only for GitHub Project boards"),
+                "{text}"
+            );
+            assert!(!text.contains("openagents project "), "{text}");
         }
     }
 
