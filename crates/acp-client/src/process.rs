@@ -25,6 +25,25 @@ use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 
 use crate::client::Client;
 
+/// The variables every harness process Coder starts gets, so it can never
+/// open a browser or start an interactive sign-in on the person's screen:
+/// `BROWSER` (read by most CLIs' "open this URL" helpers) runs `true`
+/// instead, and `NO_OPEN_BROWSER` is Cursor's own switch for its login.
+/// A harness that isn't signed in then fails its turn with a message to
+/// sign in, instead of a sign-in page appearing out of nowhere (owner,
+/// 2026-10-13: "10th time today it asked me to auth w cursor").
+pub const NON_INTERACTIVE: [(&str, &str); 2] = [("BROWSER", "true"), ("NO_OPEN_BROWSER", "1")];
+
+/// Applies [`NON_INTERACTIVE`] to a probe or a harness process.
+pub fn non_interactive(command: &mut std::process::Command) -> &mut std::process::Command {
+    command.envs(NON_INTERACTIVE)
+}
+
+/// [`non_interactive`] for an async command.
+pub fn non_interactive_async(command: &mut Command) -> &mut Command {
+    command.envs(NON_INTERACTIVE)
+}
+
 /// How many of the agent's last standard error lines are kept.
 const STDERR_TAIL: usize = 8;
 /// The longest kept standard error line.
@@ -93,6 +112,9 @@ impl Agent {
                     .map(|(_, path)| coder_lease::shim::delegate_vars(Some(path.as_ref())))
                     .unwrap_or_default(),
             )
+            // Never a browser or an interactive sign-in, whatever the
+            // caller's environment says.
+            .envs(NON_INTERACTIVE)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -402,6 +424,45 @@ mod tests {
         assert!(is_credential_name("GOOGLE_APPLICATION_CREDENTIALS"));
         assert!(!is_credential_name("HOME"));
         assert!(!is_credential_name("TOKENIZER"));
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn an_agent_can_never_open_a_browser() {
+        let dir = tempfile::tempdir().unwrap();
+        let seen = dir.path().join("env");
+        let spec = Spec {
+            program: PathBuf::from("/bin/sh"),
+            arguments: vec![
+                "-c".into(),
+                format!("echo \"$BROWSER $NO_OPEN_BROWSER\" > {}", seen.display()),
+            ],
+            cwd: dir.path().to_path_buf(),
+            // The caller's own BROWSER is overridden.
+            environment: vec![("BROWSER".into(), "open".into())],
+        };
+        let agent = Agent::start(&spec).unwrap();
+        for _ in 0..100 {
+            if std::fs::read_to_string(&seen).is_ok_and(|text| text.ends_with('\n')) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(std::fs::read_to_string(&seen).unwrap().trim(), "true 1");
+        let _ = agent.stop(Duration::from_millis(100)).await;
+    }
+
+    #[test]
+    fn probes_are_non_interactive() {
+        let mut command = std::process::Command::new("true");
+        non_interactive(&mut command);
+        let envs: Vec<_> = command
+            .get_envs()
+            .map(|(k, v)| (k.to_owned(), v.map(|v| v.to_owned())))
+            .collect();
+        for (name, value) in NON_INTERACTIVE {
+            assert!(envs.contains(&(name.into(), Some(value.into()))), "{name}");
+        }
     }
 
     #[tokio::test]

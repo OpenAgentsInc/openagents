@@ -487,6 +487,7 @@ pub async fn run_with(
     let prompt = turn.prompt();
 
     let mut command = tokio::process::Command::new(&program);
+    acp_client::process::non_interactive_async(&mut command);
     command
         .arg("run")
         // `--thinking` prints the model's reasoning parts (#11552).

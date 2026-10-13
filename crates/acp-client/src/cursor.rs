@@ -128,6 +128,8 @@ pub async fn signed_in(
         .current_dir(cwd)
         .env_clear()
         .envs(environment.iter().map(|(name, value)| (name, value)))
+        // A status check never opens Cursor's sign-in page.
+        .envs(crate::process::NON_INTERACTIVE)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())

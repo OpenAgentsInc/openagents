@@ -237,6 +237,7 @@ pub(super) async fn run(
     let session = turn.resume.clone().unwrap_or_else(new_session);
     let on_key = turn.key.is_some();
     let mut command = std::process::Command::new(program);
+    acp_client::process::non_interactive(&mut command);
     command
         .args(["-p", "--output-format", "stream-json", "--verbose"])
         .args(match &turn.resume {

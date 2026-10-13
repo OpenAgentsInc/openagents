@@ -69,6 +69,9 @@ pub struct Output {
 pub fn run(program: &Path, timeout: Duration) -> Option<Output> {
     let mut child = Command::new(program)
         .args(STATUS_ARGS)
+        // A status check never opens a browser or a sign-in (#11549).
+        .env("BROWSER", "true")
+        .env("NO_OPEN_BROWSER", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
