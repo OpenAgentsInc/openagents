@@ -231,10 +231,12 @@ pub(crate) fn whole(row: &Value, turns: Vec<Value>) -> Value {
 pub(crate) fn turns_text(turns: &Value) -> String {
     let mut out = String::new();
     for turn in turns.as_array().into_iter().flatten() {
-        let who = if turn["role"] == "user" {
-            "you"
-        } else {
-            "openagents"
+        // A step and the model's thinking (#11543) say what they are.
+        let who = match turn["role"].as_str() {
+            Some("user") => "you",
+            Some("tool") => "step",
+            Some("thinking") => "thinking",
+            _ => "openagents",
         };
         out.push_str(&format!(
             "\n{who}:\n{}\n",

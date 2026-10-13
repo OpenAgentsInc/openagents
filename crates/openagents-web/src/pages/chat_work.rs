@@ -690,9 +690,9 @@ pub(super) fn composer_prompt(
             env.repository
         ));
     }
-    let spoken = prior
-        .iter()
-        .any(|message| message.role != Role::Tool && !message.text.trim().is_empty());
+    let spoken = prior.iter().any(|message| {
+        !matches!(message.role, Role::Tool | Role::Thinking) && !message.text.trim().is_empty()
+    });
     if !spoken {
         head.push_str(text.trim());
         return head;

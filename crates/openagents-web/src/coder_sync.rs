@@ -131,6 +131,32 @@ pub(crate) struct Upload {
 pub(crate) struct WireMessage {
     pub role: String,
     pub text: String,
+    /// A tool step's opened detail (#11543): its name, line, how it went,
+    /// and its whole input and output.
+    #[serde(default)]
+    pub step: Option<crate::chat_store::StepDetail>,
+}
+
+/// The most bytes of a step's input or output kept (Coder sends at most
+/// 16 KiB of each).
+const MAX_STEP_TEXT: usize = 32 * 1024;
+
+/// A step's detail as kept: bounded, and none when any of it looks like it
+/// holds a credential.
+fn step_detail(step: &crate::chat_store::StepDetail) -> Option<crate::chat_store::StepDetail> {
+    let fields = [&step.name, &step.summary, &step.input, &step.output];
+    if step.name.trim().is_empty()
+        || step.name.len() > 512
+        || step.summary.len() > 4 * 1024
+        || step.input.len() > MAX_STEP_TEXT
+        || step.output.len() > MAX_STEP_TEXT
+        || fields
+            .iter()
+            .any(|text| secret_screen::credential_in(text).is_some())
+    {
+        return None;
+    }
+    Some(step.clone())
 }
 
 /// What became of an upload or a status.
@@ -197,7 +223,15 @@ pub(crate) fn line(value: &str, limit: usize) -> String {
 }
 
 /// The checked chat: title, computer, messages, and the upload's digest.
-fn checked(upload: &Upload) -> Result<(String, String, Vec<Message>, String), Saved> {
+type Checked = (
+    String,
+    String,
+    Vec<Message>,
+    Vec<Option<crate::chat_store::StepDetail>>,
+    String,
+);
+
+fn checked(upload: &Upload) -> Result<Checked, Saved> {
     let computer = line(&upload.computer, 64);
     if computer.is_empty() {
         return Err(Saved::Invalid("Send the computer's name."));
@@ -210,11 +244,13 @@ fn checked(upload: &Upload) -> Result<(String, String, Vec<Message>, String), Sa
         return Err(Saved::Invalid("too_large"));
     }
     let mut messages = Vec::with_capacity(upload.messages.len());
+    let mut steps = Vec::with_capacity(upload.messages.len());
     for message in &upload.messages {
         let role = match message.role.as_str() {
             "user" => Role::User,
             "assistant" => Role::Assistant,
             "tool" => Role::Tool,
+            "thinking" => Role::Thinking,
             _ => return Err(Saved::Invalid("A message has an unknown role.")),
         };
         if message.text.len() > MAX_TEXT {
@@ -231,6 +267,13 @@ fn checked(upload: &Upload) -> Result<(String, String, Vec<Message>, String), Sa
             text: message.text.clone(),
             request_id: None,
         });
+        steps.push(
+            message
+                .step
+                .as_ref()
+                .filter(|_| role == Role::Tool)
+                .and_then(step_detail),
+        );
     }
     if secret_screen::credential_in(&title).is_some() {
         return Err(Saved::Secret);
@@ -245,11 +288,12 @@ fn checked(upload: &Upload) -> Result<(String, String, Vec<Message>, String), Sa
                     .iter()
                     .map(|m| json!([m.role, m.text]))
                     .collect::<Vec<_>>(),
+                "steps": steps,
             }))
             .unwrap_or_default()
         )
     );
-    Ok((title, computer, messages, digest))
+    Ok((title, computer, messages, steps, digest))
 }
 
 /// Save one Coder chat for `owner`.
@@ -262,7 +306,7 @@ pub(crate) async fn save(
     if !valid_session(session) {
         return Ok(Saved::Invalid("That isn't a Coder session id."));
     }
-    let (title, computer, messages, digest) = match checked(upload) {
+    let (title, computer, messages, details, digest) = match checked(upload) {
         Ok(checked) => checked,
         Err(saved) => return Ok(saved),
     };
@@ -294,6 +338,7 @@ pub(crate) async fn save(
                     continued: Vec::new(),
                     continued_taken: 0,
                     asks: Vec::new(),
+                    steps: placed_steps(&details, 0),
                 }),
                 environment: None,
                 tasks: Vec::new(),
@@ -331,12 +376,15 @@ pub(crate) async fn save(
             next.title = title.clone();
         }
         let (all, continued, taken) = with_continued(&messages, terminal);
+        // Coder's transcript leads the chat; any cut is from its start.
+        let cut = (messages.len() + continued.len()).saturating_sub(all.len());
         next.messages = all;
         next.revision += 1;
         next.updated_unix = now_unix();
         if let Some(terminal) = &mut next.terminal {
             terminal.continued = continued;
             terminal.continued_taken = taken;
+            terminal.steps = placed_steps(&details, cut);
             terminal.computer = computer.clone();
             terminal.title = title.clone();
             terminal.digest = digest.clone();
@@ -426,6 +474,20 @@ async fn projects_of(app: &App, headers: &HeaderMap) -> Option<Vec<(String, Stri
     kept.retain(|_, (_, at)| at.elapsed() < FOR);
     kept.insert(key, (projects.clone(), Instant::now()));
     Some(projects)
+}
+
+/// Each uploaded step's detail by its index in the chat's messages, once
+/// the first `cut` uploaded messages were dropped to fit.
+fn placed_steps(
+    details: &[Option<crate::chat_store::StepDetail>],
+    cut: usize,
+) -> std::collections::BTreeMap<usize, crate::chat_store::StepDetail> {
+    details
+        .iter()
+        .enumerate()
+        .skip(cut)
+        .filter_map(|(index, detail)| Some((index - cut, detail.clone()?)))
+        .collect()
 }
 
 /// Coder's transcript, then the messages added on the website by runs on
@@ -1038,6 +1100,7 @@ pub(crate) async fn start_from_web(
                 continued: earlier,
                 continued_taken: 0,
                 asks: Vec::new(),
+                steps: Default::default(),
             }),
             environment: None,
             tasks: Vec::new(),
@@ -1668,6 +1731,7 @@ mod tests {
                 .map(|(role, text)| WireMessage {
                     role: (*role).into(),
                     text: (*text).into(),
+                    step: None,
                 })
                 .collect(),
             repository: None,
@@ -1985,6 +2049,7 @@ mod tests {
             ],
             continued_taken: 2,
             asks: Vec::new(),
+            steps: Default::default(),
         };
         let uploaded = [
             message(Role::User, "Fix it"),

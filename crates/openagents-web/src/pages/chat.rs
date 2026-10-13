@@ -21,7 +21,7 @@ use openagents_ui::content::{MarkdownRoot, PageColumn};
 // use openagents_ui::shell::{ComposerAction, ModelPickerTrigger};
 use openagents_ui::shell::{
     Breadcrumb, ChatList, ChatStatus, Composer, Message as ThreadMessage, ScrollToBottom,
-    composer_panel_host,
+    StepState, composer_panel_host,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -1818,7 +1818,7 @@ async fn answer(
     let turns_with = |attached: &str| -> Vec<Turn> {
         chat.messages
             .iter()
-            .filter(|m| m.role != Role::Tool && !m.text.is_empty())
+            .filter(|m| !matches!(m.role, Role::Tool | Role::Thinking) && !m.text.is_empty())
             .rev()
             .take(crate::ask::MAX_TURNS)
             .collect::<Vec<_>>()
@@ -2302,6 +2302,7 @@ fn turn(
     reply: Option<&openagents_chat::router::Meta>,
     streaming: bool,
     signed_in: bool,
+    step: Option<&crate::chat_store::StepDetail>,
 ) -> ThreadMessage {
     // A chat an account owns is read signed in; an answer's buttons for
     // the other case are left out.
@@ -2331,9 +2332,30 @@ fn turn(
             }
         })
         .author("OpenAgents"),
-        // Tool steps are progress lines ("Run: npm test"), not failures, so
-        // their "Status" heading stays for screen readers only.
-        Role::Tool => ThreadMessage::status(&message.text).quiet(),
+        // A tool step Coder synced (#11543): one compact row with its
+        // mark, the tool's name, and the line Coder's terminal shows after
+        // it, opening to its whole input and output.
+        Role::Tool => match step {
+            Some(step) => ThreadMessage::step(&openagents_ui::shell::Step {
+                name: step.name.clone(),
+                summary: step.summary.clone(),
+                state: match step.status {
+                    crate::chat_store::StepStatus::Running => StepState::Running,
+                    crate::chat_store::StepStatus::Done => StepState::Done,
+                    crate::chat_store::StepStatus::Failed => StepState::Failed,
+                },
+                input: step.input.clone(),
+                output: step.output.clone(),
+                detail_id: format!("chat-step-{index}"),
+            }),
+            // Other tool lines are progress notes ("Run: npm test"), not
+            // failures, so their "Status" heading stays for screen readers
+            // only.
+            None => ThreadMessage::status(&message.text).quiet(),
+        },
+        // The model's thinking (#11543): a "Thinking" row that opens to
+        // its words, dim and slanted, as Coder's terminal shows them.
+        Role::Thinking => ThreadMessage::thinking(&message.text, &format!("chat-step-{index}")),
     }
     .id(format!("chat-message-{index}"))
 }
@@ -2373,6 +2395,7 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
                 crate::suggestions::message_reply(chat, message),
                 streaming(chat, message),
                 crate::chat_store::is_account_owner(&chat.owner),
+                chat.terminal.as_ref().and_then(|t| t.steps.get(&(index + start))),
             ))
             // The files sent with it (#11174).
             (crate::chat_files::shown(&chat.id, crate::chat_files::of_message(chat, message)))
@@ -2415,10 +2438,20 @@ pub(crate) fn shared_messages(chat: &Conversation) -> Markup {
     html! {
         @for (index, message) in chat.messages.iter().enumerate() {
             @if !message.text.trim().is_empty() {
-                (turn(message, index, &[], None, false, false))
+                // A step shows its row, never what it read or printed.
+                (turn(message, index, &[], None, false, false, shared_step(chat, index).as_ref()))
             }
         }
     }
+}
+
+/// A synced step's row for a shared page: its name, line, and mark,
+/// without its input or output.
+fn shared_step(chat: &Conversation, index: usize) -> Option<crate::chat_store::StepDetail> {
+    let mut step = chat.terminal.as_ref()?.steps.get(&index)?.clone();
+    step.input.clear();
+    step.output.clear();
+    Some(step)
 }
 
 async fn transcript(

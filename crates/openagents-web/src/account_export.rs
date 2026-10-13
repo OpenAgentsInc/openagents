@@ -531,6 +531,7 @@ fn role(role: Role) -> &'static str {
         Role::User => "you",
         Role::Assistant => "openagents",
         Role::Tool => "tool",
+        Role::Thinking => "thinking",
     }
 }
 
@@ -539,6 +540,7 @@ fn speaker(role: Role) -> &'static str {
         Role::User => "You",
         Role::Assistant => "OpenAgents",
         Role::Tool => "Tool",
+        Role::Thinking => "Thinking",
     }
 }
 

@@ -12,11 +12,11 @@ use serde_json::{Value, json};
 use crate::bundled_runtime::RuntimeEvent;
 
 /// The entry that holds a thinking block: its words are in `output.text`.
-pub const THINKING: &str = "claude:thinking";
+pub const THINKING: &str = atif::row::THINKING;
 
 /// The entry that holds one short notice in the conversation: its words are
 /// in `output.text`.
-pub const NOTICE: &str = "claude:notice";
+pub const NOTICE: &str = atif::row::NOTICE;
 
 /// What the person reads in a [`THINKING`] or [`NOTICE`] entry.
 #[must_use]

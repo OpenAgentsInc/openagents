@@ -62,6 +62,7 @@ pub mod analysis;
 pub mod content;
 pub mod document;
 pub mod log;
+pub mod row;
 
 pub use activity::{Activity, Classified, Station, classify};
 pub use content::{

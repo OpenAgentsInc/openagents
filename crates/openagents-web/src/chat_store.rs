@@ -130,6 +130,35 @@ pub(crate) struct Terminal {
     /// ([`Store::capture_key`]); the website never reaches the computer.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub asks: Vec<ComputerAsk>,
+    /// What a reader sees on opening each tool step Coder sent (#11543),
+    /// by the step's index in the chat's messages: its name, its line,
+    /// whether it ran, and its whole input and output.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub steps: BTreeMap<usize, StepDetail>,
+}
+
+/// One tool step of a synced Coder chat, opened (#11543): the tool's name,
+/// the line Coder's terminal shows after it (`atif::row`), how it went,
+/// and its whole input and output, bounded.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct StepDetail {
+    pub name: String,
+    pub summary: String,
+    pub status: StepStatus,
+    #[serde(default)]
+    pub input: String,
+    #[serde(default)]
+    pub output: String,
+}
+
+/// How a tool step went: still running, done, or failed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum StepStatus {
+    Running,
+    Done,
+    Failed,
 }
 
 /// A screenshot or file asked for on the website (#11185).
@@ -559,6 +588,9 @@ pub(crate) enum Role {
     User,
     Assistant,
     Tool,
+    /// The model's thinking in a chat synced from Coder's terminal
+    /// (#11543): shown as thinking, never as a reply or a step.
+    Thinking,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

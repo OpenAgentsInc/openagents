@@ -16,8 +16,10 @@
 //! Coder adds them to its own copy, in order, before answering (#11052).
 //!
 //! What goes up is the chat's title, the computer's name, and its
-//! messages: what the person wrote, what the model answered, and one line
-//! per tool call (its name and what it acted on, not its output). Every
+//! messages: what the person wrote, what the model answered, the model's
+//! thinking, and one line per tool call (its name and what it acted on, or
+//! why it failed, not its output), read the way Coder's terminal reads it
+//! ([`atif::row`]). Every
 //! message passes the secret screen ([`secret_screen::Screen`]) first; a
 //! message that looks like it holds a credential is left out
 //! ([`LEFT_OUT`]), never uploaded. Plugin keys, model credentials, and
@@ -362,7 +364,22 @@ pub fn upload(document: &Value, computer: &str, screen: &Screen) -> Upload {
                     .into_iter()
                     .flatten()
                 {
-                    messages.push(json!({"role": "tool", "text": screened(tool_line(call))}));
+                    let Some(row) = tool_row(step, call) else {
+                        continue;
+                    };
+                    let mut message = json!({"role": row.role, "text": screened(row.text)});
+                    if let Some(mut detail) = row.step {
+                        // The whole input and output go up only when
+                        // neither looks like it holds a secret.
+                        for key in ["input", "output"] {
+                            let text = detail[key].as_str().unwrap_or_default();
+                            if screen.check(text).is_err() {
+                                detail[key] = json!(LEFT_OUT);
+                            }
+                        }
+                        message["step"] = detail;
+                    }
+                    messages.push(message);
                 }
             }
             _ => {}
@@ -421,8 +438,35 @@ fn message_text(value: &Value) -> String {
     })
 }
 
-/// One line for a tool call: its name and what it acted on.
-fn tool_line(call: &Value) -> String {
+/// What a call's output was, from the step's observation: the result
+/// whose `source_call_id` is the call's, read as JSON when it is.
+fn call_output(step: &Value, call: &Value) -> Value {
+    let Some(id) = call.get("tool_call_id").and_then(Value::as_str) else {
+        return Value::Null;
+    };
+    step.pointer("/observation/results")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .find(|result| result.get("source_call_id").and_then(Value::as_str) == Some(id))
+        .and_then(|result| result.get("content"))
+        .map_or(Value::Null, |content| match content.as_str() {
+            Some(text) => serde_json::from_str(text).unwrap_or_else(|_| json!(text)),
+            None => content.clone(),
+        })
+}
+
+/// One row for a tool call, with its role: the model's thinking as its
+/// words (`thinking`), else one line (`tool`) that reads as Coder's
+/// terminal row does ([`atif::row`]): the tool's name and what it was
+/// given, or why it failed. A thinking entry with no words is no row, and
+/// neither is a decision call.
+fn tool_row(step: &Value, call: &Value) -> Option<ToolRow> {
+    // A router's judgment is how the reply was chosen, not something that
+    // ran: the person never sees it as a step.
+    if call.pointer("/extra/schema").and_then(Value::as_str) == Some(atif::DECISION_CALL_SCHEMA) {
+        return None;
+    }
     if call.pointer("/extra/schema").and_then(Value::as_str) == Some("openagents.delegation.v1") {
         let agent = call
             .pointer("/arguments/agent")
@@ -432,31 +476,98 @@ fn tool_line(call: &Value) -> String {
             .pointer("/arguments/task")
             .and_then(Value::as_str)
             .unwrap_or("");
-        return line(&format!("Asked {agent}: {task}"), 200);
+        return Some(ToolRow {
+            role: "tool",
+            text: line(&format!("Asked {agent}: {task}"), TOOL_LINE),
+            step: None,
+        });
     }
     let name = call
         .get("function_name")
         .and_then(Value::as_str)
         .unwrap_or("tool");
-    let arguments = call.get("arguments").unwrap_or(&Value::Null);
-    let subject = [
-        "command",
-        "cmd",
-        "path",
-        "file_path",
-        "pattern",
-        "query",
-        "url",
-    ]
-    .iter()
-    .find_map(|key| arguments.get(*key).and_then(Value::as_str))
-    .map(str::to_owned)
-    .or_else(|| arguments.as_str().map(str::to_owned));
-    match subject {
-        Some(subject) if !subject.trim().is_empty() => line(&format!("{name}: {subject}"), 200),
-        _ => line(name, 200),
+    let input = call.get("arguments").unwrap_or(&Value::Null);
+    let output = call_output(step, call);
+    match atif::row::Row::of(name, input, &output)? {
+        atif::row::Row::Thinking(text) => Some(ToolRow {
+            role: THINKING,
+            text,
+            step: None,
+        }),
+        atif::row::Row::Notice(text) => Some(ToolRow {
+            role: "tool",
+            text: line(&text, TOOL_LINE),
+            step: None,
+        }),
+        atif::row::Row::Call(text) => {
+            let status = if call.pointer("/extra/running").and_then(Value::as_bool) == Some(true) {
+                "running"
+            } else if atif::row::failed(&output) || observed_failed(step, call) {
+                "failed"
+            } else {
+                "done"
+            };
+            Some(ToolRow {
+                role: "tool",
+                text: line(&text, TOOL_LINE),
+                step: Some(json!({
+                    "name": line(name, 120),
+                    "summary": line(&atif::row::summary(input, &output), TOOL_LINE),
+                    "status": status,
+                    "input": bounded(atif::row::input_text(input)),
+                    "output": bounded(atif::row::output_text(&output)),
+                })),
+            })
+        }
     }
 }
+
+/// One row a tool call becomes: its role, its one line, and, for a call,
+/// what a reader sees when they open it (`step`: its name, the line after
+/// the name, whether it is running, done, or failed, and its whole input
+/// and output, each at most [`MAX_DETAIL`] bytes).
+struct ToolRow {
+    role: &'static str,
+    text: String,
+    step: Option<Value>,
+}
+
+/// The most bytes of a call's input or output sent for its opened row.
+pub const MAX_DETAIL: usize = 16 * 1024;
+
+/// `text` cut to [`MAX_DETAIL`] bytes on a character boundary.
+fn bounded(mut text: String) -> String {
+    if text.len() <= MAX_DETAIL {
+        return text;
+    }
+    let mut end = MAX_DETAIL;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text.truncate(end);
+    text.push_str("\n…");
+    text
+}
+
+/// Whether the step's observation recorded the call as failed.
+fn observed_failed(step: &Value, call: &Value) -> bool {
+    let id = call.get("tool_call_id").and_then(Value::as_str);
+    step.pointer("/observation/results")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|result| {
+            result.get("source_call_id").and_then(Value::as_str) == id
+                && result.pointer("/extra/status").and_then(Value::as_str) == Some("failed")
+        })
+}
+
+/// The role a thinking row is sent with. A website from before #11543
+/// refuses it; [`put`] then sends those rows as tool rows.
+pub const THINKING: &str = "thinking";
+
+/// The longest tool row sent, in characters.
+const TOOL_LINE: usize = 500;
 
 /// One line of plain text, at most `limit` characters.
 fn line(value: &str, limit: usize) -> String {
@@ -621,7 +732,8 @@ pub async fn put(http: &reqwest::Client, saved: &Saved, session: &str, upload: &
     if named && NO_REPOSITORY.load(Ordering::Relaxed) {
         body.as_object_mut().map(|body| body.remove("repository"));
     }
-    let (answer, answered) = call_v1(http, saved, reqwest::Method::PUT, &path, Some(&body)).await;
+    let (mut answer, mut answered) =
+        call_v1(http, saved, reqwest::Method::PUT, &path, Some(&body)).await;
     if body.get("repository").is_some()
         && matches!(answer, Answer::Refused(_))
         && answered["error"]["code"] == "invalid"
@@ -631,11 +743,38 @@ pub async fn put(http: &reqwest::Client, saved: &Saved, session: &str, upload: &
     {
         NO_REPOSITORY.store(true, Ordering::Relaxed);
         body.as_object_mut().map(|body| body.remove("repository"));
-        return call_v1(http, saved, reqwest::Method::PUT, &path, Some(&body))
+        (answer, answered) = call_v1(http, saved, reqwest::Method::PUT, &path, Some(&body)).await;
+    }
+    // A website from before #11543 knows no thinking rows or opened-row
+    // details: send the rows as plain tool rows, as it shows every step.
+    if matches!(answer, Answer::Refused(_))
+        && answered["error"]["code"] == "invalid"
+        && let Some(older) = without_thinking(&body)
+    {
+        return call_v1(http, saved, reqwest::Method::PUT, &path, Some(&older))
             .await
             .0;
     }
     answer
+}
+
+/// `body` as a website from before #11543 takes it: thinking rows as tool
+/// rows and no opened-row details, when it has any.
+fn without_thinking(body: &Value) -> Option<Value> {
+    let mut older = body.clone();
+    let mut changed = false;
+    for message in older["messages"].as_array_mut().into_iter().flatten() {
+        if message["role"] == THINKING {
+            message["role"] = json!("tool");
+            changed = true;
+        }
+        if let Some(fields) = message.as_object_mut()
+            && fields.remove("step").is_some()
+        {
+            changed = true;
+        }
+    }
+    changed.then_some(older)
 }
 
 /// Say whether Coder is replying in this chat.

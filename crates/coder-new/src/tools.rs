@@ -39,146 +39,17 @@ pub(crate) fn input_color(running: bool, failed: bool) -> Color {
 }
 
 pub(crate) fn output_failed(output: &serde_json::Value) -> bool {
-    output.get("error").is_some()
-        || output
-            .get("exit")
-            .and_then(serde_json::Value::as_i64)
-            .is_some_and(|exit| exit != 0)
-        || output.get("timed_out").and_then(serde_json::Value::as_bool) == Some(true)
-        || output.get("canceled").and_then(serde_json::Value::as_bool) == Some(true)
+    atif::row::failed(output)
 }
 
-/// The keys a call names the file or folder it works on with, in the order
-/// they are preferred.
-/// `filePath` is OpenCode's name for it.
-const PATH_KEYS: [&str; 6] = [
-    "path",
-    "file_path",
-    "filePath",
-    "notebook_path",
-    "folder",
-    "directory",
-];
-
-/// Whether a flattened key is a top-level path key.
-fn is_path_key(key: &str) -> bool {
-    PATH_KEYS.contains(&key)
-}
-
-/// A value's `key: value` pairs, nested keys joined with a dot, at most two
-/// levels deep, with a lone value named `value`.
-fn fields(value: &serde_json::Value) -> Vec<(String, String)> {
-    use serde_json::Value;
-    fn walk(value: &Value, prefix: &str, depth: usize, result: &mut Vec<(String, String)>) {
-        match value {
-            Value::Object(object) if depth < 2 => {
-                for (key, value) in object {
-                    let key = if prefix.is_empty() {
-                        key.clone()
-                    } else {
-                        format!("{prefix}.{key}")
-                    };
-                    walk(value, &key, depth + 1, result);
-                }
-            }
-            Value::Null if prefix.is_empty() => {}
-            value => {
-                let text = match value {
-                    Value::String(text) => text.replace('\n', " ↵ "),
-                    _ => value.to_string(),
-                };
-                result.push((
-                    if prefix.is_empty() {
-                        "value".into()
-                    } else {
-                        prefix.into()
-                    },
-                    text,
-                ));
-            }
-        }
-    }
-    let mut values = Vec::new();
-    walk(value, "", 0, &mut values);
-    values
-}
-
-/// A call's parameters, its path first: a nested `questions.refund` key is
-/// never a path, so only a top-level key moves.
-fn path_first(value: &serde_json::Value) -> Vec<(String, String)> {
-    let mut values = fields(value);
-    if let Some(index) = values.iter().position(|(key, _)| is_path_key(key)) {
-        let path = values.remove(index);
-        values.insert(0, path);
-    }
-    values
-}
-
-/// A call whose only parameter is its argument list (`arguments` or
-/// `args`, all strings), as one command line: words joined by spaces, a
-/// word with a space or a quote in it single-quoted.
-fn argument_line(value: &serde_json::Value) -> Option<String> {
-    let object = value.as_object()?;
-    if object.len() != 1 {
-        return None;
-    }
-    let (key, list) = object.iter().next()?;
-    if key != "arguments" && key != "args" {
-        return None;
-    }
-    let words = list
-        .as_array()?
-        .iter()
-        .map(|word| word.as_str().map(str::to_owned))
-        .collect::<Option<Vec<_>>>()?;
-    Some(
-        words
-            .iter()
-            .map(|word| {
-                if word.is_empty()
-                    || word.contains(|c: char| c.is_whitespace() || c == '\'' || c == '"')
-                {
-                    format!("'{}'", word.replace('\'', "'\\''"))
-                } else {
-                    word.clone()
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" "),
-    )
-}
-
-/// A call's parameters on one row, for the compact view: the path it works
-/// on first and bare, then the rest as `key: value` joined with ` · `, all
-/// together truncated to `width`. Empty when the call has none.
+/// A call's parameters on one row, for the compact view: a command-line
+/// tool's arguments as the command line it runs ("projects show
+/// finances"), else the path it works on first and bare, then the rest as
+/// `key: value` joined with ` · `, all together truncated to `width`.
+/// Empty when the call has none. The words are [`atif::row::params`], the
+/// same the account copy of the chat on openagents.com shows (#11543).
 pub fn compact_params(value: &serde_json::Value, width: u16) -> String {
-    // A command-line tool's arguments read as the command line it runs
-    // ("projects show finances"), not as a list.
-    if let Some(line) = argument_line(value) {
-        return truncate(&line, width);
-    }
-    let values = path_first(value);
-    let path = values
-        .first()
-        .filter(|(key, _)| is_path_key(key))
-        .map(|(_, value)| value.as_str());
-    let rest = values
-        .iter()
-        .filter(|(key, _)| !is_path_key(key))
-        .map(|(key, value)| {
-            if key == "command" {
-                value.clone()
-            } else {
-                format!("{key}: {value}")
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" · ");
-    let text = match (path, rest.is_empty()) {
-        (Some(path), true) => path.to_owned(),
-        (Some(path), false) => format!("{path} · {rest}"),
-        (None, _) => rest,
-    };
+    let text = atif::row::params(value);
     if text.is_empty() {
         text
     } else {
@@ -189,7 +60,7 @@ pub fn compact_params(value: &serde_json::Value, width: u16) -> String {
 /// Display bounded parameter rows without letting serialized objects run off screen.
 /// A path the call names comes first, under the tool's name.
 pub fn parameter_lines(value: &serde_json::Value, width: u16) -> Vec<Line<'static>> {
-    let values = path_first(value);
+    let values = atif::row::path_first(value);
     let omitted = values
         .len()
         .saturating_sub(if values.len() > 5 { 4 } else { 5 });

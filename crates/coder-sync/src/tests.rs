@@ -32,7 +32,15 @@ fn an_upload_carries_messages_and_tool_lines_and_leaves_secrets_out() {
             {"tool_call_id": "c1", "function_name": "shell", "arguments": {"command": "cargo test"}},
             {"tool_call_id": "c2", "function_name": "delegate", "arguments": {"agent": "Reviewer", "task": "Check it"},
              "extra": {"schema": "openagents.delegation.v1"}},
-        ]},
+            {"tool_call_id": "c3", "function_name": "OpenAgents CLI", "arguments": {"arguments": ["projects", "show", "finances"]}},
+            {"tool_call_id": "c4", "function_name": "claude:thinking", "arguments": null},
+            {"tool_call_id": "c5", "function_name": "claude:thinking", "arguments": null},
+            {"tool_call_id": "route-2", "function_name": "chat_router", "arguments": {"set": "chat-router-v5"},
+             "extra": {"schema": "openagents.decision-call.v1"}},
+        ], "observation": {"results": [
+            {"source_call_id": "c4", "content": "{\"text\":\"I'll check the help first.\"}"},
+            {"source_call_id": "c5", "content": "{\"text\":\"  \"}"},
+        ]}},
         {"step_id": 3, "source": "user", "message": format!("use {key}")},
         {"step_id": 4, "source": "system", "message": "ignored"},
     ]));
@@ -51,8 +59,10 @@ fn an_upload_carries_messages_and_tool_lines_and_leaves_secrets_out() {
         [
             ("user", "Fix the  build"),
             ("assistant", "Looking."),
-            ("tool", "shell: cargo test"),
+            ("tool", "shell cargo test"),
             ("tool", "Asked Reviewer: Check it"),
+            ("tool", "OpenAgents CLI projects show finances"),
+            ("thinking", "I'll check the help first."),
             ("user", LEFT_OUT),
         ]
     );
@@ -687,4 +697,67 @@ fn the_repository_goes_with_a_chat_and_an_older_site_gets_it_without() {
         .filter(|b| b.get("repository").is_some())
         .count();
     assert_eq!((bodies.len(), named_count), (3, 1), "{bodies:?}");
+}
+
+#[test]
+fn a_website_that_knows_no_thinking_rows_gets_them_as_tool_rows() {
+    let seen: Arc<Mutex<Vec<Vec<String>>>> = Arc::default();
+    let kept = seen.clone();
+    let (send, address) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(async move {
+                let router = Router::new().route(
+                    "/v1/threads/synced/{session}",
+                    put(move |Json(body): Json<Value>| {
+                        let kept = kept.clone();
+                        async move {
+                            let roles: Vec<String> = body["messages"]
+                                .as_array()
+                                .unwrap()
+                                .iter()
+                                .map(|m| m["role"].as_str().unwrap().to_owned())
+                                .collect();
+                            let old = roles.iter().any(|role| role == THINKING);
+                            kept.lock().unwrap().push(roles);
+                            if old {
+                                // The website from before #11543.
+                                return (
+                                    StatusCode::BAD_REQUEST,
+                                    Json(json!({"error": {"code": "invalid",
+                                    "message": "A message has an unknown role."}})),
+                                );
+                            }
+                            (StatusCode::OK, Json(json!({"chat": "x", "changed": true})))
+                        }
+                    }),
+                );
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                send.send(format!("http://{}", listener.local_addr().unwrap()))
+                    .unwrap();
+                axum::serve(listener, router).await.unwrap();
+            });
+    });
+    let origin = address.recv().unwrap();
+    let doc = document(json!([
+        {"step_id": 1, "source": "user", "message": "Look"},
+        {"step_id": 2, "source": "agent", "tool_calls": [
+            {"tool_call_id": "c1", "function_name": "claude:thinking", "arguments": null},
+        ], "observation": {"results": [
+            {"source_call_id": "c1", "content": "{\"text\":\"Checking.\"}"},
+        ]}},
+    ]));
+    let sent = upload(&doc, "Studio", &Screen::shapes());
+    let answer = tokio::runtime::Runtime::new().unwrap().block_on(super::put(
+        &client().unwrap(),
+        &saved(&origin),
+        "s1",
+        &sent,
+    ));
+    assert_eq!(answer, Answer::Done);
+    assert_eq!(
+        *seen.lock().unwrap(),
+        [vec!["user", "thinking"], vec!["user", "tool"]]
+    );
 }

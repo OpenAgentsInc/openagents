@@ -55,7 +55,7 @@ pub use scroll::{SCROLL_FOLLOW_ATTR, SCROLL_TAIL_ATTR, SCROLL_TO_BOTTOM_ATTR, Sc
 pub use status::{ChatStatus, TaskRow, TaskStatus};
 pub use suggestions::{SuggestionChip, SuggestionChips};
 pub use theme::{THEME_COOKIE, THEME_TOGGLE_ATTR, Theme, ThemeToggle};
-pub use thread::{Message, MessageRole};
+pub use thread::{Message, MessageRole, Step, StepState};
 
 /// The thread stylesheet: messages, the thread column, the home stage.
 pub const THREAD_CSS: &str = include_str!("../../static/components/thread.css");

@@ -1549,10 +1549,8 @@ fn entry_rows(
         let room = width.saturating_sub(name.width() as u16 + 3);
         // A failed call says why in words, not the fields it was sent
         // (#11482); Ctrl+O still shows them.
-        let params = match output.get("error").and_then(serde_json::Value::as_str) {
-            Some(error) => truncate(error.lines().next().unwrap_or_default(), room),
-            None => crate::tools::compact_params(input, room),
-        };
+        // The same words the chat's account copy shows ([`atif::row`]).
+        let params = truncate(&atif::row::summary(input, output), room);
         if !params.is_empty() {
             spans.push(span(" ", t::GRAY_DIM));
             spans.push(span(
@@ -3713,5 +3711,104 @@ mod repository_tests {
         assert!(text.trim_end_matches(['─', '┘']).ends_with(' '), "{text}");
         let top: String = (0..80).map(|x| buffer[(x, row - 1)].symbol()).collect();
         assert!(top.contains("Auto → Coder · $0.25"), "{top}");
+    }
+}
+
+/// #11543: a chat's account copy on openagents.com says what Coder's
+/// terminal says about each step: the same tool row words, from the same
+/// function ([`atif::row`]), and the model's thinking as its words.
+#[cfg(test)]
+mod account_copy_tests {
+    use crate::live::{Chat, Entry};
+    use serde_json::json;
+
+    /// A compact tool row's words, without its outcome glyph.
+    fn terminal_row(entry: &Entry) -> String {
+        let (lines, _) = super::entry_rows(entry, 400, 0, super::ViewMode::Compact);
+        let text: String = lines[0]
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect();
+        text.split_once(' ')
+            .map(|(_, rest)| rest.to_owned())
+            .unwrap()
+    }
+
+    #[test]
+    fn the_account_copy_shows_each_step_as_the_terminal_does() {
+        let tools = vec![
+            Entry::Tool {
+                name: "OpenAgents CLI".into(),
+                input: json!({"arguments": ["projects", "show", "finances"]}),
+                output: json!({"exit": 0, "stdout": "{}"}),
+                running: false,
+            },
+            Entry::Tool {
+                name: "Read".into(),
+                input: json!({"file_path": "src/main.rs", "limit": 40}),
+                output: json!({"text": "fn main() {}"}),
+                running: false,
+            },
+            Entry::Tool {
+                name: "Bash".into(),
+                input: json!({"command": "ls missing"}),
+                output: json!({"error": "No such folder: missing\nmore"}),
+                running: false,
+            },
+        ];
+        let thinking = Entry::Tool {
+            name: crate::claude_stream::THINKING.into(),
+            input: serde_json::Value::Null,
+            output: json!({"text": "I'll check the help first."}),
+            running: false,
+        };
+        let mut entries = vec![Entry::User("Look at my projects.".into())];
+        entries.push(thinking);
+        entries.extend(tools.iter().cloned());
+        let chat = Chat {
+            entries,
+            ..Chat::default()
+        };
+        let document = crate::trajectory::document(
+            &chat,
+            "20261013T145740Z-f35279d8",
+            "auto",
+            std::path::Path::new("/tmp"),
+        );
+        let sent = coder_sync::upload(&document, "Studio", &secret_screen::Screen::shapes());
+        let rows: Vec<(String, String)> = sent.body["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|m| m["role"] != "user")
+            .map(|m| {
+                (
+                    m["role"].as_str().unwrap().to_owned(),
+                    m["text"].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect();
+        let mut expected = vec![(
+            "thinking".to_owned(),
+            "I'll check the help first.".to_owned(),
+        )];
+        expected.extend(tools.iter().map(|entry| {
+            let Entry::Tool { name, .. } = entry else {
+                unreachable!()
+            };
+            (
+                "tool".to_owned(),
+                format!(
+                    "{name} {}",
+                    terminal_row(entry)
+                        .trim_start_matches(name.as_str())
+                        .trim_start()
+                ),
+            )
+        }));
+        assert_eq!(rows, expected);
+        assert_eq!(rows[1].1, "OpenAgents CLI projects show finances");
+        assert_eq!(rows[3].1, "Bash No such folder: missing");
     }
 }

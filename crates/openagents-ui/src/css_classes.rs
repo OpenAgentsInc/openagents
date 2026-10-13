@@ -14,8 +14,10 @@ use std::collections::BTreeSet;
 /// columns, numbered steps, and tabs, `answer.css`, about 5 KB; #11187),
 /// with room for the next component. Raised to 320,000 on 2026-10-13 for
 /// sharing a chat (the share step's link and the shared page's mark) and
-/// the chat's one-step-smaller type scale, about 2 KB.
-pub const STYLESHEET_BUDGET_BYTES: usize = 320_000;
+/// the chat's one-step-smaller type scale, about 2 KB. Raised to 325,000
+/// the same day for the chat's tool-step and thinking rows (`thread.css`,
+/// about 3 KB; #11543).
+pub const STYLESHEET_BUDGET_BYTES: usize = 325_000;
 
 /// Classes that components emit on purpose with no rule of their own:
 /// script hooks (`querySelector`, Alpine roots) and structural wrappers

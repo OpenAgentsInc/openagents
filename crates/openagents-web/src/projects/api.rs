@@ -663,6 +663,7 @@ pub(crate) async fn messages(
                     Role::User => "user",
                     Role::Assistant => "assistant",
                     Role::Tool => "tool",
+                    Role::Thinking => "thinking",
                 },
                 "content": [{"type": "text", "text": message.text}],
                 "files": null,

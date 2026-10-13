@@ -387,6 +387,11 @@ fn every_rendered_class_has_a_rule() {
         (Message::user("hi"))
         (Message::assistant(html! { p { "hello" } }))
         (Message::status("failed"))
+        (Message::thinking("checking", "t-1"))
+        (Message::step(&Step { name: "Bash".into(), summary: "ls".into(), state: StepState::Running,
+            input: String::new(), output: String::new(), detail_id: "s-1".into() }))
+        (Message::step(&Step { name: String::new(), summary: "old row".into(), state: StepState::Done,
+            input: String::new(), output: String::new(), detail_id: "s-2".into() }))
     };
     let shell = format!("{shell}{}", extra.into_string());
     let css = format!("{SHELL_CSS}{COMPOSER_CSS}{THREAD_CSS}");
@@ -485,6 +490,45 @@ fn messages_escape_text_and_keep_authors_for_screen_readers() {
     let status = Message::status("Failed").render().into_string();
     assert!(status.contains(r#"<h2 class="oa-message-author">Status</h2>"#));
     assert_eq!(Message::status("x").role(), MessageRole::Status);
+    // The model's thinking (#11543): a "Thinking" row that opens to its
+    // words, slanted, with the heading for screen readers only.
+    let thinking = Message::thinking("I'll look\nfirst", "t-9")
+        .render()
+        .into_string();
+    assert!(thinking.contains(r#"data-role="thinking""#));
+    assert!(thinking.contains(r#"oa-visually-hidden">Thinking</h2>"#));
+    assert!(thinking.contains(r#"aria-expanded="false" aria-controls="t-9" data-oa-tool-step"#));
+    assert!(thinking.contains(r#"<div class="oa-tool-step__detail" id="t-9" hidden><p class="oa-message-thinking">I'll look"#));
+    // A tool step: its mark, name, and line, opening to its input and
+    // output with a copy action; a failed one says so in words too.
+    let step = Message::step(&Step {
+        name: "OpenAgents CLI".into(),
+        summary: "projects show finances".into(),
+        state: StepState::Failed,
+        input: "projects show finances".into(),
+        output: "No such project".into(),
+        detail_id: "chat-step-3".into(),
+    })
+    .render()
+    .into_string();
+    assert!(step.contains(r#"data-role="step""#));
+    assert!(step.contains(r#"data-state="failed""#));
+    assert!(step.contains(r#"<span class="oa-tool-step__name">OpenAgents CLI</span><span class="oa-tool-step__summary">projects show finances</span>"#));
+    assert!(step.contains(", failed"));
+    assert!(step.contains("data-oa-copy"));
+    assert!(step.contains("No such project"));
+    // With nothing to open it is a plain row.
+    let plain = Message::step(&Step {
+        name: String::new(),
+        summary: "Bash: ls".into(),
+        state: StepState::Done,
+        input: String::new(),
+        output: String::new(),
+        detail_id: "x".into(),
+    })
+    .render()
+    .into_string();
+    assert!(!plain.contains("<button"));
 }
 
 #[test]

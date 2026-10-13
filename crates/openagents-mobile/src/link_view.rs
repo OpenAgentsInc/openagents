@@ -364,7 +364,8 @@ fn chat(state: &State, open: &Open, composer: u64, limit: usize, cut_at: usize) 
         let mut attached: Vec<Vec<&MessageFile>> = vec![vec![]];
         for m in open.messages[start..]
             .iter()
-            .filter(|m| m.role != "tool")
+            // Steps and the model's thinking (#11543) stay on the website.
+            .filter(|m| m.role != "tool" && m.role != "thinking")
             .chain(&open.sent)
         {
             if !m.text.trim().is_empty() {

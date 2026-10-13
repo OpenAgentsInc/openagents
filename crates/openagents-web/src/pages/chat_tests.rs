@@ -1167,6 +1167,7 @@ async fn a_coder_chat_opens_read_only_with_its_computer() {
             continued: Vec::new(),
             continued_taken: 0,
             asks: Vec::new(),
+            steps: Default::default(),
         }),
         environment: None,
         tasks: Vec::new(),
@@ -1234,6 +1235,83 @@ async fn a_coder_chat_opens_read_only_with_its_computer() {
     fixture.no_worker();
 }
 
+/// A synced Coder chat shows each tool step as Coder's terminal does
+/// (#11543): one compact row with its mark, the tool's name, and the line
+/// after it, opening to its whole input and output; the model's thinking
+/// as a "Thinking" row, never the internal `claude:thinking`.
+#[tokio::test]
+async fn a_coder_chat_shows_its_steps_and_thinking_as_rows() {
+    use crate::chat_store::{StepDetail, StepStatus};
+    use crate::coder_sync::{Upload, WireMessage};
+    let fixture = Fixture::new();
+    let store = fixture.app.config.chat_store.clone();
+    let message = |role: &str, text: &str, step: Option<StepDetail>| WireMessage {
+        role: role.into(),
+        text: text.into(),
+        step,
+    };
+    let upload = Upload {
+        computer: "Studio".into(),
+        title: "Look at my projects.".into(),
+        messages: vec![
+            message("user", "Look at my projects.", None),
+            message(
+                "thinking",
+                "I'll glance at the finance threads first.",
+                None,
+            ),
+            message(
+                "tool",
+                "OpenAgents CLI projects show finances",
+                Some(StepDetail {
+                    name: "OpenAgents CLI".into(),
+                    summary: "projects show finances".into(),
+                    status: StepStatus::Done,
+                    input: "projects show finances".into(),
+                    output: "{\"project\":{\"name\":\"finances\"}}".into(),
+                }),
+            ),
+            message(
+                "tool",
+                "Bash No such folder: missing",
+                Some(StepDetail {
+                    name: "Bash".into(),
+                    summary: "No such folder: missing".into(),
+                    status: StepStatus::Failed,
+                    input: "ls missing".into(),
+                    output: "No such folder: missing".into(),
+                }),
+            ),
+            message("assistant", "You have two projects.", None),
+        ],
+        repository: None,
+    };
+    crate::coder_sync::save(&store, OWNER, "coder-new-steps", &upload)
+        .await
+        .unwrap();
+    let chat = crate::coder_sync::chat_id(OWNER, "coder-new-steps");
+    let (status, body) = fixture
+        .request(Method::GET, &format!("/chat/{chat}"), OWNER, &[])
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(!body.contains("claude:thinking"), "{body}");
+    assert!(body.contains(r#"data-role="thinking""#), "{body}");
+    assert!(
+        body.contains(
+            r#"<p class="oa-message-thinking">I'll glance at the finance threads first.</p>"#
+        ) || body.contains("I&#39;ll glance at the finance threads first."),
+        "{body}"
+    );
+    assert!(
+        body.contains(r#"<span class="oa-tool-step__name">OpenAgents CLI</span><span class="oa-tool-step__summary">projects show finances</span>"#),
+        "{body}"
+    );
+    assert!(body.contains(r#"aria-controls="chat-step-2""#), "{body}");
+    assert!(body.contains(r#"data-state="failed""#), "{body}");
+    assert!(body.contains("ls missing"), "{body}");
+    fixture.no_worker();
+}
+
 /// A Coder chat takes a reply from the website while Coder on its computer
 /// is online (#11048): the composer shows, the reply waits for Coder, and
 /// another visitor can't send one.
@@ -1248,6 +1326,7 @@ async fn a_coder_chat_takes_a_reply_while_its_computer_is_online() {
         messages: vec![WireMessage {
             role: "user".into(),
             text: "Fix the build".into(),
+            step: None,
         }],
         repository: None,
     };

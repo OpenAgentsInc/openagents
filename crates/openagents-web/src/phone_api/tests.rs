@@ -250,6 +250,7 @@ async fn threads_list_web_terminal_and_phone_chats_with_their_lines() {
         messages: vec![WireMessage {
             role: "user".into(),
             text: "Hi".into(),
+            step: None,
         }],
         repository: None,
     };
@@ -352,6 +353,7 @@ async fn coder_chats_pass_the_former_two_hundred_cap_and_page_out() {
             messages: vec![WireMessage {
                 role: "user".into(),
                 text: "Hi".into(),
+                step: None,
             }],
             repository: None,
         };

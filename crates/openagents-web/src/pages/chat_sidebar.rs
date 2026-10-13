@@ -226,10 +226,9 @@ fn matches(chat: &Conversation, q: &str) -> bool {
     let q = q.to_lowercase();
     chat.title.to_lowercase().contains(&q)
         || (q.chars().count() >= 2
-            && chat
-                .messages
-                .iter()
-                .any(|m| m.role != Role::Tool && m.text.to_lowercase().contains(&q)))
+            && chat.messages.iter().any(|m| {
+                !matches!(m.role, Role::Tool | Role::Thinking) && m.text.to_lowercase().contains(&q)
+            }))
 }
 
 /// One chat row with its "…" menu. Inside a project's group (`grouped`)

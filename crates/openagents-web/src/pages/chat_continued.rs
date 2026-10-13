@@ -180,7 +180,9 @@ pub(super) fn context_with(
     let room = budget.saturating_sub(head.len() + tail.len() + LEFT_OUT.len());
     let spoken: Vec<&Message> = messages
         .iter()
-        .filter(|message| message.role != Role::Tool && !message.text.trim().is_empty())
+        .filter(|message| {
+            !matches!(message.role, Role::Tool | Role::Thinking) && !message.text.trim().is_empty()
+        })
         .collect();
     let mut kept = Vec::new();
     let mut used = 0;
@@ -473,6 +475,7 @@ mod tests {
                 continued: Vec::new(),
                 continued_taken: 0,
                 asks: Vec::new(),
+                steps: Default::default(),
             }),
             environment: None,
             tasks: Vec::new(),
