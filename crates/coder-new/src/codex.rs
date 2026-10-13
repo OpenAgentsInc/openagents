@@ -199,20 +199,25 @@ pub fn program() -> Option<PathBuf> {
     crate::acp_discovery::resolve(Path::new("codex"), &|name| std::env::var_os(name))
 }
 
+/// A test's `codex`: set only by a live test run by hand, and shared with
+/// the chat's own thread.
 #[cfg(test)]
-thread_local! {
-    static TEST_PROGRAM: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
-}
+static TEST_PROGRAM: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 #[cfg(test)]
 fn test_program() -> Option<PathBuf> {
-    TEST_PROGRAM.with(|cell| cell.borrow().clone())
+    TEST_PROGRAM
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
 }
 
-/// Makes this test thread's computer hold a `codex` at `program`, or none.
+/// Makes the test process hold a `codex` at `program`, or none.
 #[cfg(test)]
 pub(crate) fn set_test_program(program: Option<PathBuf>) {
-    TEST_PROGRAM.with(|cell| *cell.borrow_mut() = program);
+    *TEST_PROGRAM
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = program;
 }
 
 /// Codex's home: `CODEX_HOME`, else `~/.codex`.
