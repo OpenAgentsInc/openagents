@@ -23,9 +23,25 @@ title-overlay.py's) composited on top of it from `at` seconds into the slot.
 `xfade` is the length of the crossfade into this shot, in seconds. Slots keep
 their place on the timeline: the outgoing shot runs past its slot to cover the
 crossfade.
+
+A clip may also carry `"play": S`: only S seconds of the source play, and the
+rest of the slot holds that last frame (never sped up). `"push": 0.04` eases a
+slow push-in over the hold, reaching 4% at the end of the slot, so a long hold
+doesn't read as a stalled picture. A missing clip with `"label"` draws that
+text on its placeholder card (a labelled slot for a shot still being made).
+
+The cut may carry `"captions": [{"text", "at", "dur"}, ...]`: lines of the
+script drawn small in the bottom third (Geist Regular, from FILM_FONTS, default
+~/work/film-out/fonts) on a soft dark band, at timeline seconds `at` for `dur`
+seconds, wrapped to at most two lines. `"caption_style"` can set `size` (a
+fraction of frame height), `y` (the band's center, a fraction of height) and
+`width` (the widest line, a fraction of width). They are for timing a voice
+over before it's recorded; inspect checks they fit, stay on the timeline and
+don't overlap.
 """
 
 import argparse
+import hashlib
 import io
 import json
 import os
@@ -37,10 +53,12 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parents[2]
 FONTS = ROOT / "crates/paper-mono/fonts"
+CACHE_VERSION = 1  # bump when segment rendering changes
+FILM_FONTS = Path(os.path.expanduser(os.environ.get("FILM_FONTS", "~/work/film-out/fonts")))
 
 
 def expand(p):
@@ -175,7 +193,10 @@ def render_title(shot, w, h, fps, out):
 
 
 def placeholder(shot, w, h, fps, out):
-    spec = {"lines": [{"text": f"MISSING  {shot['name']}", "size": 0.04}], "grain": False}
+    lines = [{"text": f"MISSING  {shot['name']}", "size": 0.04}]
+    if shot.get("label"):
+        lines.append({"text": shot["label"], "size": 0.026, "color": [150, 150, 155]})
+    spec = {"lines": lines, "grain": False}
     render_title({**shot, "title": spec}, w, h, fps, out)
 
 
@@ -191,6 +212,9 @@ def render_segment(shot, cut, w, h, out, allow_missing):
             return placeholder(shot, w, h, fps, out)
         raise SystemExit(f"missing source {src}")
     length = shot["dur"] + shot["tail"]
+    play = shot.get("play")
+    if play is not None and play < length - 1e-6:
+        return render_held(shot, cut, w, h, out, src, play, length)
     vf = f"scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,pad={w}:{h}:-1:-1:black,fps={fps},setsar=1"
     if shot.get("speed"):
         vf = f"setpts=PTS/{shot['speed']}," + vf
@@ -206,6 +230,120 @@ def render_segment(shot, cut, w, h, out, allow_missing):
         return
     run(["ffmpeg", "-v", "error", "-y", "-ss", str(shot.get("in", 0.0)), "-i", str(src), "-t", str(length),
          "-vf", vf, "-an", "-c:v", "libx264", "-crf", "8", "-preset", "fast", "-pix_fmt", "yuv420p", str(out)])
+
+
+def render_held(shot, cut, w, h, out, src, play, length):
+    """Plays `play` seconds of the clip, then holds its last frame for the rest
+    of the slot, with an eased push-in of `push` (a fraction of the frame)."""
+    fps = cut["fps"]
+    tmp = out.with_suffix("")
+    played = Path(f"{tmp}-play.mp4")
+    if play > 0:
+        render_segment({**shot, "play": None, "dur": play, "tail": 0.0}, cut, w, h, played, False)
+        run(["ffmpeg", "-v", "error", "-y", "-sseof", "-0.25", "-i", str(played), "-update", "1",
+             "-frames:v", "100", f"{tmp}-last.png"])
+    else:
+        vf = f"scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,pad={w}:{h}:-1:-1:black"
+        run(["ffmpeg", "-v", "error", "-y", "-ss", str(shot.get("in", 0.0)), "-i", str(src), "-frames:v", "1",
+             "-vf", vf, f"{tmp}-last.png"])
+    still = Image.open(f"{tmp}-last.png").convert("RGB")
+    n = int(round((length - play) * fps))
+    push = shot.get("push", 0.0)
+    held = Path(f"{tmp}-hold.mp4")
+    enc = subprocess.Popen(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{w}x{h}",
+                            "-r", str(fps), "-i", "-", "-c:v", "libx264", "-crf", "8", "-preset", "fast",
+                            "-pix_fmt", "yuv420p", str(held)], stdin=subprocess.PIPE)
+    cx, cy = w / 2, h / 2
+    for k in range(n):
+        u = (k + 1) / max(n, 1)
+        z = 1 + push * u * u * (3 - 2 * u)
+        frame = still if push <= 0 else still.transform(
+            (w, h), Image.AFFINE, (1 / z, 0, cx - cx / z, 0, 1 / z, cy - cy / z), resample=Image.BICUBIC)
+        enc.stdin.write(frame.tobytes())
+    enc.stdin.close()
+    enc.wait()
+    parts = ([played] if play > 0 else []) + [held]
+    listing = Path(f"{tmp}-parts.txt")
+    listing.write_text("".join(f"file '{p}'\n" for p in parts))
+    run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(listing), "-c", "copy", str(out)])
+    for p in (played, held, listing, Path(f"{tmp}-last.png")):
+        p.unlink(missing_ok=True)
+
+
+def segment_cached(shot, cut, w, h, seg, cache, allow_missing):
+    """Renders a segment, reusing an earlier render of the same shot (same
+    spec, size, tail and source files) so re-cutting doesn't redo long holds."""
+    srcs = [shot.get("src"), (shot.get("over") or {}).get("src"), ((shot.get("title") or {}).get("under") or {}).get("src")]
+    stamp = []
+    for p in srcs:
+        if p and expand(p).exists():
+            st = expand(p).stat()
+            stamp.append([str(expand(p)), st.st_size, st.st_mtime])
+    spec = {k: v for k, v in shot.items() if k not in ("start", "name", "xfade", "xfade_kind")}
+    key = hashlib.sha1(json.dumps([spec, w, h, cut["fps"], stamp, CACHE_VERSION], sort_keys=True,
+                                  default=str).encode()).hexdigest()[:16]
+    hit = cache / f"{key}.mp4"
+    missing = shot.get("src") and not expand(shot["src"]).exists()
+    if hit.exists() and not missing:
+        return hit
+    render_segment(shot, cut, w, h, seg, allow_missing)
+    if missing:
+        return seg
+    shutil.move(seg, hit)
+    return hit
+
+
+# ---- captions -----------------------------------------------------------------
+
+def caption_style(cut, h):
+    st = {"size": 0.03, "y": 0.855, "width": 0.66, **cut.get("caption_style", {})}
+    st["px"] = max(8, int(st["size"] * h))
+    st["font"] = ImageFont.truetype(str(FILM_FONTS / "Geist-Regular.ttf"), st["px"])
+    return st
+
+
+def wrap(text, f, maxw):
+    lines, cur = [], ""
+    for word in text.split():
+        trial = f"{cur} {word}".strip()
+        if cur and f.getlength(trial) > maxw:
+            lines.append(cur)
+            cur = word
+        else:
+            cur = trial
+    lines += [cur] if cur else []
+    if len(lines) == 2:
+        # Balance two lines so the second isn't a stray word or two.
+        words = text.split()
+        best = min(range(1, len(words)), key=lambda k: max(f.getlength(" ".join(words[:k])),
+                                                           f.getlength(" ".join(words[k:]))))
+        lines = [" ".join(words[:best]), " ".join(words[best:])]
+    return lines
+
+
+def caption_layout(cap, st, w, h):
+    lines = wrap(cap["text"], st["font"], st["width"] * w)
+    asc, desc = st["font"].getmetrics()
+    lh = int((asc + desc) * 1.18)
+    padx, pady = int(st["px"] * 0.8), int(st["px"] * 0.42)
+    bw = int(max(st["font"].getlength(l) for l in lines)) + 2 * padx
+    bh = lh * len(lines) + 2 * pady
+    x, y = (w - bw) // 2, int(st["y"] * h - bh / 2)
+    return lines, (x, y, bw, bh), lh, padx, pady
+
+
+def render_caption(cap, st, w, h, path):
+    lines, (x, y, bw, bh), lh, padx, pady = caption_layout(cap, st, w, h)
+    im = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
+    band = Image.new("L", (bw, bh), 0)
+    ImageDraw.Draw(band).rounded_rectangle([0, 0, bw - 1, bh - 1], radius=int(st["px"] * 0.5), fill=185)
+    im.putalpha(band)
+    d = ImageDraw.Draw(im)
+    for i, l in enumerate(lines):
+        lx = (bw - st["font"].getlength(l)) / 2
+        d.text((lx, pady + i * lh), l, font=st["font"], fill=(238, 239, 242, 255))
+    im.save(path)
+    return x, y
 
 
 # ---- inspect ------------------------------------------------------------------
@@ -241,13 +379,31 @@ def inspect(cut, cut_path, work, w, h, allow_missing):
         if shot.get("over") and not expand(shot["over"]["src"]).exists():
             problems.append(f"{name}: missing overlay {shot['over']['src']}")
         p = probe(src)
-        need = shot.get("in", 0.0) + (shot["dur"] + shot["tail"]) * shot.get("speed", 1.0)
+        played = shot["play"] if shot.get("play") is not None else shot["dur"] + shot["tail"]
+        need = shot.get("in", 0.0) + played * shot.get("speed", 1.0)
         if p["dur"] + 1e-3 < need:
             problems.append(f"{name}: {src.name} is {p['dur']:.2f}s, the cut needs {need:.2f}s")
         if abs(p["w"] / p["h"] - w / h) > 0.01:
             problems.append(f"{name}: {src.name} is {p['w']}x{p['h']}, not {w}:{h}; it would be letterboxed")
         if p["h"] < h:
             notes.append(f"{name}: {src.name} is {p['h']}p, upscaled to {h}p")
+
+    caps = sorted(cut.get("captions", []), key=lambda c: c["at"])
+    if caps:
+        st = caption_style(cut, h)
+        if st["px"] < h * 0.022:
+            problems.append(f"captions are {st['px']}px, too small to read at {h}p")
+        for a, b in zip(caps, caps[1:]):
+            if a["at"] + a["dur"] > b["at"] + 1e-3:
+                problems.append(f"caption '{a['text'][:30]}' overlaps '{b['text'][:30]}'")
+        for c in caps:
+            lines, (x, y, bw, bh), *_ = caption_layout(c, st, w, h)
+            if len(lines) > 2:
+                problems.append(f"caption '{c['text'][:40]}' wraps to {len(lines)} lines")
+            if x < w * 0.05 or y + bh > h * 0.95:
+                problems.append(f"caption '{c['text'][:40]}' leaves the action-safe area")
+            if c["at"] < 0 or c["at"] + c["dur"] > cut["total"] + 1e-3:
+                problems.append(f"caption '{c['text'][:40]}' runs off the timeline")
 
     music = cut.get("music")
     if music and expand(music).exists():
@@ -260,9 +416,10 @@ def inspect(cut, cut_path, work, w, h, allow_missing):
 
     # Render the segments, then check each for black or frozen stretches.
     segs = []
+    cache = expand(cut.get("cache", "~/work/film-out/.cache/cut-segments"))
+    cache.mkdir(parents=True, exist_ok=True)
     for i, shot in enumerate(cut["shots"]):
-        seg = work / f"{i:02d}-{shot['name']}.mp4"
-        render_segment(shot, cut, w, h, seg, allow_missing)
+        seg = segment_cached(shot, cut, w, h, work / f"{i:02d}-{shot['name']}.mp4", cache, allow_missing)
         segs.append(seg)
         if "title" in shot or not expand(shot["src"]).exists():
             continue
@@ -273,9 +430,12 @@ def inspect(cut, cut_path, work, w, h, allow_missing):
             if shot.get("dark_ok"):  # a dark UI on a black stage, checked by eye
                 continue
             problems.append(f"{shot['name']}: black from {float(m[1]):.1f}s to {float(m[2]):.1f}s of its slot")
-        for m in re.finditer(r"freeze_duration: ([\d.]+)", log):
-            if float(m[1]) >= shot.get("hold_ok", 1.5):
-                problems.append(f"{shot['name']}: frame frozen for {float(m[1]):.1f}s")
+        held_from = shot["play"] - 0.5 if shot.get("play") is not None else None
+        for m in re.finditer(r"freeze_start: ([\d.]+).*?freeze_duration: ([\d.]+)", log, re.S):
+            if held_from is not None and float(m[1]) >= held_from:
+                continue  # the hold the cut asked for
+            if float(m[2]) >= shot.get("hold_ok", 1.5):
+                problems.append(f"{shot['name']}: frame frozen for {float(m[2]):.1f}s")
 
     sheets = contact_sheets(cut, segs, cut_path)
     return problems, notes, segs, sheets
@@ -327,6 +487,21 @@ def assemble(cut, segs, w, h, out, master):
             # A hard cut: the outgoing chain already ends at this slot's start.
             chain.append(f"{label}[s{i}]concat=n=2:v=1:a=0,settb=1/{fps},setpts=N/({fps}*TB){nxt}")
         label = nxt
+    n = len(segs)
+    caps = sorted(cut.get("captions", []), key=lambda c: c["at"])
+    if caps:
+        st = caption_style(cut, h)
+        cdir = Path(tempfile.mkdtemp(prefix="film-captions-"))
+        for j, c in enumerate(caps):
+            png = cdir / f"{j:03d}.png"
+            x, y = render_caption(c, st, w, h, png)
+            inputs += ["-loop", "1", "-framerate", str(fps), "-t", f"{c['dur']:.3f}", "-i", str(png)]
+            f = min(0.15, c["dur"] / 4)
+            chain.append(f"[{n}:v]format=rgba,fade=t=in:st=0:d={f}:alpha=1,"
+                         f"fade=t=out:st={c['dur'] - f:.3f}:d={f}:alpha=1,setpts=PTS-STARTPTS+{c['at']}/TB[c{j}]")
+            chain.append(f"{label}[c{j}]overlay=x={x}:y={y}:eof_action=pass[k{j}]")
+            label = f"[k{j}]"
+            n += 1
     fin = cut.get("fade_in", 0.0)
     fout = cut.get("fade_out", 0.0)
     total = cut["total"]
@@ -337,7 +512,6 @@ def assemble(cut, segs, w, h, out, master):
         post += f",fade=t=out:st={total - fout}:d={fout}"
     chain.append(post + "[v]")
 
-    n = len(segs)
     audio = []
     music = expand(cut["music"])
     inputs += ["-i", str(music)]
