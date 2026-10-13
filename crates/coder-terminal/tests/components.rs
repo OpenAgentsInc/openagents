@@ -563,7 +563,8 @@ fn tool_groups() {
     // width, and a condensed stretch is one row a line.
     for width in [0u16, 1, 2, 5, 12] {
         let lines = run::lines(&RunRow::Tools(tool_rows(false)), width, TRUE);
-        assert_eq!(lines.len(), tool_rows(false).len());
+        // One row a line, and a blank row above the thought.
+        assert_eq!(lines.len(), tool_rows(false).len() + 1);
         for line in lines {
             assert!(line.width() <= usize::from(width).max(2), "{width}: {line}");
         }
@@ -576,7 +577,8 @@ fn a_failure_is_loud_and_a_quiet_line_is_half() {
     // bullet at half strength, a red one when the call failed, the words
     // gray, the verb bold, a group's label brighter and bold.
     let lines = run::lines(&RunRow::Tools(tool_rows(false)), 80, TRUE);
-    let failed = &lines[3];
+    // The thought ahead of it keeps a blank row above itself.
+    let failed = &lines[4];
     let last = failed.spans.last().unwrap();
     assert_eq!(last.content.as_ref(), " · exit 101");
     assert_eq!(last.style.fg, Some(Color::Rgb(134, 45, 40)));
@@ -594,6 +596,6 @@ fn a_failure_is_loud_and_a_quiet_line_is_half() {
     // Without color the white ladder still says it.
     let ladder = Ladder::new(Colors::None);
     let lines = run::lines(&RunRow::Tools(tool_rows(false)), 80, ladder);
-    let last = lines[3].spans.last().unwrap();
+    let last = lines[4].spans.last().unwrap();
     assert_eq!(last.style, ladder.style(Intensity::Full));
 }

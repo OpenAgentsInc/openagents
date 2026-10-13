@@ -14,6 +14,7 @@
   $ ls -la && git log --oneline
   total 16
   45f98b7 init
+
  ◆ Now the tests.
  ◆ Run cargo test -p demo · exit 101
   $ cargo test -p demo
