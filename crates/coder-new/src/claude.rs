@@ -752,6 +752,8 @@ pub(crate) fn turn_options(
         options = crate::token_savers::install(options, crate::token_savers::Lever::Squeeze);
         // The gate (#11489) runs after the floors and can only add a deny.
         options = crate::token_savers::install(options, crate::token_savers::Lever::Gate);
+        // The first touch of a directory adds its instruction files (#11490).
+        options = crate::token_savers::install(options, crate::token_savers::Lever::Context);
     }
     options.env_remove = REMOVED_ENV.iter().map(|name| (*name).to_owned()).collect();
     (options, allowed)
@@ -1185,6 +1187,9 @@ pub(crate) fn briefed(
         append: Some(append),
     });
     options.settings = Some(serde_json::json!({ "claudeMdExcludes": excluded(briefing) }));
+    if let Some(cwd) = &options.cwd {
+        crate::context_hook::note_briefed(cwd, &briefing.files);
+    }
     options
 }
 

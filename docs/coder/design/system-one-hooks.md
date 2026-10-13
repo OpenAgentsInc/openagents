@@ -239,6 +239,8 @@ added a test, the checks passed, and the run ended, in 5 turns.
 savers lever, and run the A/B arm with prompt wording about verification
 removed.
 
+**Idea 5 is built for the first half** (#11490, `crates/coder-new/src/context_hook.rs`, `Lever::Context`). A `PostToolUse` hook on `Read|Edit|Write|MultiEdit|Grep|Glob` adds, on the first touch of a directory in a session, the `AGENTS.md` files from there up to the repo root that Claude Code would not load (it never reads `AGENTS.md`; it loads `CLAUDE.md` itself, lazily for subdirectories) and the briefing does not carry. One small candidate is added by rule; otherwise one Decisions API call keeps files at p >= 0.5, capped at 3 KB as `additionalContext`. Decisions log to `~/.openagents/decisions/context.jsonl` (`CODER_CONTEXT_LOG`; `CODER_CONTEXT=off`). The `PostCompact` re-add of the briefing's key facts is not built; open in #11490.
+
 ## Constraints
 
 - **Latency.** A decision takes about 0.2 to 0.6 s. On every one of ~23

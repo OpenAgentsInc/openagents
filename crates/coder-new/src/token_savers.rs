@@ -25,6 +25,9 @@ pub enum Lever {
     /// #11489: a script the session never read is held for a read when the
     /// decision rates running it unread as risky.
     Gate,
+    /// #11490: the first touch of a directory adds the instruction files
+    /// Claude Code would not load for it.
+    Context,
 }
 
 /// Every lever, with the sentence the Plugins screen shows for it.
@@ -36,6 +39,10 @@ pub const LEVERS: &[(Lever, &str)] = &[
     (
         Lever::Gate,
         "A script the agent has not read is held for a read first when running it blind looks risky.",
+    ),
+    (
+        Lever::Context,
+        "A folder's own instructions are added the first time the agent works in it, when they matter for the task.",
     ),
 ];
 
@@ -84,6 +91,12 @@ fn install_if(mut options: QueryOptions, lever: Lever, on: bool) -> QueryOptions
         }
         Lever::Gate => {
             options = options.hook(HookEvent::PreToolUse, crate::gate::claude_hook());
+        }
+        Lever::Context => {
+            let cwd = options.cwd.clone().unwrap_or_default();
+            for (event, matcher) in crate::context_hook::hooks(cwd) {
+                options = options.hook(event, matcher);
+            }
         }
     }
     options

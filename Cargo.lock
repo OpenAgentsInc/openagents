@@ -3638,6 +3638,7 @@ dependencies = [
  "futures",
  "getrandom 0.3.4",
  "globset",
+ "hook-log",
  "ignore",
  "inference",
  "jev",

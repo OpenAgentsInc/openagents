@@ -140,6 +140,32 @@ pub fn append(path: &Path, decision: &Decision) {
     }
 }
 
+/// A hook's own JSON line as a [`Decision`]: the shared fields are read
+/// from it (`hook`, `question`, `p`, `threshold`, `action`, `how`, `model`,
+/// `door`, `latency_ms`), and the whole line is kept in `detail`. `how`
+/// comes from the line when it names one, else from what it holds: an
+/// `error` is a fallback, a `p` a decision, anything else a rule.
+#[must_use]
+pub fn from_line(line: &Value) -> Decision {
+    let text = |key: &str| line[key].as_str().unwrap_or_default().to_owned();
+    let how = match line["how"].as_str() {
+        Some("decision") => How::Decision,
+        Some("rule") => How::Rule,
+        Some(word) if word.contains("unavailable") || word == "fallback" => How::Fallback,
+        _ if line.get("error").is_some_and(|e| !e.is_null()) => How::Fallback,
+        _ if line["p"].is_number() => How::Decision,
+        _ => How::Rule,
+    };
+    let mut decision = Decision::new(&text("hook"), &text("question"), &text("action"), how);
+    decision.p = line["p"].as_f64();
+    decision.threshold = line["threshold"].as_f64();
+    decision.model = line["model"].as_str().map(str::to_owned);
+    decision.door = line["door"].as_str().map(str::to_owned);
+    decision.latency_ms = line["latency_ms"].as_u64();
+    decision.detail = line.clone();
+    decision
+}
+
 /// Appends to the hook's default path.
 pub fn append_default(decision: &Decision) {
     if let Some(path) = default_path(&decision.hook) {
@@ -150,6 +176,23 @@ pub fn append_default(decision: &Decision) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_hook_line_keeps_its_shared_fields_and_the_rest_in_detail() {
+        let line = serde_json::json!({"hook": "gate", "question": "unread_script", "p": 0.97,
+            "threshold": 0.95, "action": "deny", "model": "clef-flash", "door": "clef",
+            "latency_ms": 180, "command": "bash x.sh"});
+        let d = from_line(&line);
+        assert_eq!(
+            (d.hook.as_str(), d.how, d.p),
+            ("gate", How::Decision, Some(0.97))
+        );
+        assert_eq!(d.detail["command"], "bash x.sh");
+        let failed = from_line(
+            &serde_json::json!({"hook": "context", "how": "rule (decision unavailable)"}),
+        );
+        assert_eq!(failed.how, How::Fallback);
+    }
 
     #[test]
     fn append_creates_dirs_and_one_line_per_call() {

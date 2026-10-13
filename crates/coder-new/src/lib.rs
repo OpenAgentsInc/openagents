@@ -29,6 +29,7 @@ pub mod composer_state;
 pub mod computer_tool;
 pub mod connection_tools;
 pub mod context;
+pub mod context_hook;
 #[cfg(test)]
 mod copy_guard_tests;
 pub mod credentials;
