@@ -57,7 +57,9 @@ pub struct Dropped {
 pub enum FailureKind {
     /// It didn't answer within its timeout; a later answer is discarded.
     Late,
-    Error { message: String },
+    Error {
+        message: String,
+    },
     Panicked,
 }
 
@@ -446,29 +448,50 @@ mod tests {
             plain("allow-too", HookOutcome::allow()),
         ])
         .fire(&bash("rm -rf ~"));
-        assert_eq!(applied.permission, Permission::deny("deletes the home folder"));
+        assert_eq!(
+            applied.permission,
+            Permission::deny("deletes the home folder")
+        );
         assert_eq!(applied.decided_by.as_deref(), Some("floor"));
-        let asked = runner(vec![plain("allow", HookOutcome::allow()), floor(HookOutcome::ask("push"))])
-            .fire(&bash("git push"));
+        let asked = runner(vec![
+            plain("allow", HookOutcome::allow()),
+            floor(HookOutcome::ask("push")),
+        ])
+        .fire(&bash("git push"));
         assert_eq!(asked.permission, Permission::ask("push"));
         // A floor wins a tie with another deny, so its reason is the one shown.
-        let tie = runner(vec![plain("other", HookOutcome::deny("other")), floor(HookOutcome::deny("floor"))])
-            .fire(&bash("rm -rf ~"));
+        let tie = runner(vec![
+            plain("other", HookOutcome::deny("other")),
+            floor(HookOutcome::deny("floor")),
+        ])
+        .fire(&bash("rm -rf ~"));
         assert_eq!(tie.decided_by.as_deref(), Some("floor"));
     }
 
     #[test]
     fn a_plugin_only_tightens() {
-        let plugin = Hook::new("p", Event::PreToolUse, Source::Plugin, answering(HookOutcome::allow()));
+        let plugin = Hook::new(
+            "p",
+            Event::PreToolUse,
+            Source::Plugin,
+            answering(HookOutcome::allow()),
+        );
         let applied = runner(vec![plugin]).fire(&bash("ls"));
         assert_eq!(applied.permission, Permission::NoOpinion);
     }
 
     fn appending(id: &str, suffix: &'static str) -> Hook {
-        Hook::new(id, Event::PreToolUse, Source::BuiltIn, move |call: &Call| {
-            let command = call.input["command"].as_str().unwrap_or_default();
-            Ok(HookOutcome::rewrite(json!({"command": format!("{command}{suffix}")})))
-        })
+        Hook::new(
+            id,
+            Event::PreToolUse,
+            Source::BuiltIn,
+            move |call: &Call| {
+                let command = call.input["command"].as_str().unwrap_or_default();
+                Ok(HookOutcome::rewrite(
+                    json!({"command": format!("{command}{suffix}")}),
+                ))
+            },
+        )
     }
 
     #[test]
@@ -486,8 +509,12 @@ mod tests {
                 })
             },
         );
-        let applied = runner(vec![appending("one", " -j"), judge, appending("two", " | tail")])
-            .fire(&bash("make"));
+        let applied = runner(vec![
+            appending("one", " -j"),
+            judge,
+            appending("two", " | tail"),
+        ])
+        .fire(&bash("make"));
         assert_eq!(applied.input, json!({"command": "make -j | tail"}));
         assert_eq!(applied.rewritten_by, ["one", "two"]);
         assert_eq!(applied.permission, Permission::deny("the final command"));
@@ -518,8 +545,13 @@ mod tests {
             Ok(HookOutcome::deny("too late"))
         })
         .timeout(Duration::from_millis(20));
-        let applied = runner(vec![error, panics, late, plain("allow", HookOutcome::allow())])
-            .fire(&bash("ls"));
+        let applied = runner(vec![
+            error,
+            panics,
+            late,
+            plain("allow", HookOutcome::allow()),
+        ])
+        .fire(&bash("ls"));
         assert_eq!(applied.permission, Permission::Allow);
         let kinds: Vec<(&str, &FailureKind)> = applied
             .failures
@@ -539,7 +571,12 @@ mod tests {
                 ("late", &FailureKind::Late),
             ]
         );
-        assert!(applied.failures.iter().all(|f| f.counted_as == Permission::NoOpinion));
+        assert!(
+            applied
+                .failures
+                .iter()
+                .all(|f| f.counted_as == Permission::NoOpinion)
+        );
     }
 
     #[test]
@@ -550,14 +587,22 @@ mod tests {
             Permission::ask("confirm the command"),
             |_: &Call| Err("rule file missing".to_string()),
         );
-        let late = Hook::floor("slow", Event::PreToolUse, Permission::deny("unchecked"), |_: &Call| {
-            std::thread::sleep(Duration::from_millis(300));
-            Ok(HookOutcome::allow())
-        })
+        let late = Hook::floor(
+            "slow",
+            Event::PreToolUse,
+            Permission::deny("unchecked"),
+            |_: &Call| {
+                std::thread::sleep(Duration::from_millis(300));
+                Ok(HookOutcome::allow())
+            },
+        )
         .timeout(Duration::from_millis(20));
         let applied = runner(vec![broken, plain("allow", HookOutcome::allow())]).fire(&bash("ls"));
         assert_eq!(applied.permission, Permission::ask("confirm the command"));
-        assert_eq!(applied.failures[0].counted_as, Permission::ask("confirm the command"));
+        assert_eq!(
+            applied.failures[0].counted_as,
+            Permission::ask("confirm the command")
+        );
         let applied = runner(vec![late]).fire(&bash("ls"));
         assert_eq!(applied.permission, Permission::deny("unchecked"));
         assert_eq!(applied.failures[0].kind, FailureKind::Late);
@@ -568,13 +613,21 @@ mod tests {
             id,
             Event::PostToolUse,
             Source::BuiltIn,
-            answering(HookOutcome::context(Context::new(id, &"x".repeat(chars), priority))),
+            answering(HookOutcome::context(Context::new(
+                id,
+                &"x".repeat(chars),
+                priority,
+            ))),
         )
     }
 
     #[test]
     fn the_event_budget_drops_the_lowest_priority_context_and_records_it() {
-        let mut runner = runner(vec![adding("low", 60, 1), adding("high", 60, 9), adding("mid", 30, 5)]);
+        let mut runner = runner(vec![
+            adding("low", 60, 1),
+            adding("high", 60, 9),
+            adding("mid", 30, 5),
+        ]);
         runner.budget = Budget {
             per_event: 100,
             per_session: 1_000,
@@ -608,10 +661,20 @@ mod tests {
     #[test]
     fn stop_takes_the_strongest_answer() {
         let mut runner = runner(vec![
-            Hook::new("b", Event::Stop, Source::Decision, answering(HookOutcome::stopping(Stop::Block {
-                reason: "tests fail".to_string(),
-            }))),
-            Hook::new("c", Event::Stop, Source::Decision, answering(HookOutcome::none())),
+            Hook::new(
+                "b",
+                Event::Stop,
+                Source::Decision,
+                answering(HookOutcome::stopping(Stop::Block {
+                    reason: "tests fail".to_string(),
+                })),
+            ),
+            Hook::new(
+                "c",
+                Event::Stop,
+                Source::Decision,
+                answering(HookOutcome::none()),
+            ),
         ]);
         let applied = runner.fire(&Call::new(Event::Stop, json!(null)));
         assert_eq!(
@@ -629,10 +692,21 @@ mod tests {
             .register(floor(HookOutcome::none()).matching("Bash"))
             .unwrap();
         registry
-            .register(Hook::new("ctx", Event::PostToolUse, Source::BuiltIn, answering(HookOutcome::none())))
+            .register(Hook::new(
+                "ctx",
+                Event::PostToolUse,
+                Source::BuiltIn,
+                answering(HookOutcome::none()),
+            ))
             .unwrap();
-        for backend in [HookBackend::ClaudeCode, HookBackend::CoderLoop, HookBackend::Codex, HookBackend::Acp] {
+        for backend in [HookBackend::ClaudeCode, HookBackend::Codex] {
             assert!(check_backend(&registry, backend).is_ok(), "{backend:?}");
+        }
+        // The Coder loop fires no hooks yet (#11497), and an ACP agent asks
+        // before a tool only when its own mode says to: a floor can't hold
+        // on either.
+        for backend in [HookBackend::CoderLoop, HookBackend::Acp] {
+            assert!(check_backend(&registry, backend).is_err(), "{backend:?}");
         }
         let refused = check_start(&registry, "the agent", |event| {
             if event == Event::PreToolUse {
@@ -648,8 +722,13 @@ mod tests {
         // A must-deny hook on a Codex event it only sees afterwards.
         registry
             .register(
-                Hook::new("gate", Event::Stop, Source::Decision, answering(HookOutcome::none()))
-                    .needs_deny(),
+                Hook::new(
+                    "gate",
+                    Event::Stop,
+                    Source::Decision,
+                    answering(HookOutcome::none()),
+                )
+                .needs_deny(),
             )
             .unwrap();
         let refused = check_backend(&registry, HookBackend::Codex).unwrap_err();

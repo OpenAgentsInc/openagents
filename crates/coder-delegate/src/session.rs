@@ -246,11 +246,15 @@ pub fn hook_tier(backend: HookBackend, event: &str) -> HookTier {
         return HookTier::None;
     }
     match backend {
-        HookBackend::ClaudeCode | HookBackend::CoderLoop | HookBackend::Scripted => {
-            HookTier::Native
-        }
+        HookBackend::ClaudeCode | HookBackend::Scripted => HookTier::Native,
+        // The Coder loop fires no hooks until its backend lands (#11497);
+        // until then a hook that must deny is refused there at start.
+        HookBackend::CoderLoop => HookTier::None,
         HookBackend::Codex if event == "PreToolUse" => HookTier::Command,
-        HookBackend::Acp if event == "PreToolUse" => HookTier::Native,
+        // An ACP agent asks permission before a tool only when its own mode
+        // says to, and Coder doesn't set that mode for every agent, so a
+        // floor can't count on the request: the host sees the tool in the
+        // stream.
         HookBackend::Codex | HookBackend::Acp => HookTier::Emulated,
     }
 }
@@ -1205,11 +1209,7 @@ mod tests {
 
     #[test]
     fn the_hook_tier_table_matches_the_spec() {
-        for backend in [
-            HookBackend::ClaudeCode,
-            HookBackend::CoderLoop,
-            HookBackend::Scripted,
-        ] {
+        for backend in [HookBackend::ClaudeCode, HookBackend::Scripted] {
             assert!(
                 hook_tiers(backend)
                     .iter()
@@ -1217,9 +1217,14 @@ mod tests {
                 "{backend:?}"
             );
         }
+        assert!(
+            hook_tiers(HookBackend::CoderLoop)
+                .iter()
+                .all(|(_, tier)| *tier == HookTier::None)
+        );
         for (backend, pre) in [
             (HookBackend::Codex, HookTier::Command),
-            (HookBackend::Acp, HookTier::Native),
+            (HookBackend::Acp, HookTier::Emulated),
         ] {
             for (event, tier) in hook_tiers(backend) {
                 let want = if event == "PreToolUse" {
@@ -1230,7 +1235,10 @@ mod tests {
                 assert_eq!(tier, want, "{backend:?} {event}");
             }
         }
-        assert_eq!(hook_tier(HookBackend::ClaudeCode, "Mystery"), HookTier::None);
+        assert_eq!(
+            hook_tier(HookBackend::ClaudeCode, "Mystery"),
+            HookTier::None
+        );
         assert!(HookTier::Command.can_deny() && !HookTier::Emulated.can_deny());
     }
 

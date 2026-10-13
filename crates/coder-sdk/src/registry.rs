@@ -275,7 +275,9 @@ mod tests {
     fn a_matcher_picks_its_tools_and_order_is_kept() {
         let mut registry = Registry::new();
         registry
-            .register(Hook::new("a", Event::PreToolUse, Source::BuiltIn, quiet).matching("Bash|Edit"))
+            .register(
+                Hook::new("a", Event::PreToolUse, Source::BuiltIn, quiet).matching("Bash|Edit"),
+            )
             .unwrap();
         registry
             .register(Hook::new("b", Event::PreToolUse, Source::Command, quiet))

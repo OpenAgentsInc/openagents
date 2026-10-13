@@ -156,9 +156,12 @@ mod tests {
             )
             .unwrap();
         registry
-            .register(Hook::new("trust", Event::PreToolUse, Source::Command, |_| {
-                Ok(HookOutcome::allow())
-            }))
+            .register(Hook::new(
+                "trust",
+                Event::PreToolUse,
+                Source::Command,
+                |_| Ok(HookOutcome::allow()),
+            ))
             .unwrap();
         registry
             .register(Hook::new(
