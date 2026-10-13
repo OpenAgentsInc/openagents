@@ -97,6 +97,15 @@ pub fn choice() -> Choice {
         .unwrap_or_default()
 }
 
+/// A new chat starts on the default model, not an earlier chat's pick
+/// (#11556); the saved pick stays on disk.
+pub fn reset_choice() {
+    CHOICE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .0 = None;
+}
+
 /// Reads the saved pick under `root`, Coder's settings folder.
 pub fn load_choice(root: &Path) {
     let path = root.join(CHOICE_FILE);
@@ -105,10 +114,10 @@ pub fn load_choice(root: &Path) {
         .and_then(|bytes| serde_json::from_slice::<ChoiceFile>(&bytes).ok())
         .filter(|file| file.version == 1 && offered(&file.model))
         .map(|file| Choice {
-            model: file.model,
             effort: file
                 .effort
-                .filter(|effort| EFFORTS.contains(&effort.as_str())),
+                .filter(|effort| effort_offered(&file.model, effort)),
+            model: file.model,
         });
     *CHOICE
         .lock()
@@ -123,7 +132,7 @@ pub fn choose(model: &str, effort: Option<String>) -> Result<(), String> {
     if !offered(model) {
         return Err(format!("Codex does not offer {model}."));
     }
-    let effort = effort.filter(|effort| EFFORTS.contains(&effort.as_str()));
+    let effort = effort.filter(|effort| effort_offered(model, effort));
     let mut held = CHOICE
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -152,38 +161,131 @@ pub fn turn_model(pinned: Option<String>) -> String {
         .unwrap_or_else(|| choice().model)
 }
 
+/// Whether Codex runs `model` at `effort`: one of its usual efforts, or
+/// one its own catalog lists for the model ("ultra").
+fn effort_offered(model: &str, effort: &str) -> bool {
+    EFFORTS.contains(&effort)
+        || listed()
+            .iter()
+            .any(|listed| listed.id == model && listed.efforts.iter().any(|known| known == effort))
+}
+
 /// Whether /models offers `model` for Codex.
 #[must_use]
 pub fn offered(model: &str) -> bool {
-    MODELS.iter().any(|(id, _, _)| *id == model)
+    MODELS.iter().any(|(id, _, _)| *id == model) || listed().iter().any(|listed| listed.id == model)
 }
 
 /// What a person reads for `model`: its name in /models.
 #[must_use]
 pub fn name(model: &str) -> String {
     let bare = model.rsplit('/').next().unwrap_or(model);
-    MODELS.iter().find(|(id, _, _)| *id == bare).map_or_else(
-        || crate::models::label(model),
-        |(_, name, _)| (*name).to_owned(),
-    )
-}
-
-/// What /models lists for Codex.
-#[must_use]
-pub fn catalog() -> Vec<crate::models::Model> {
     MODELS
         .iter()
-        .map(|(id, name, description)| crate::models::Model {
-            plugin: PICKER.into(),
-            provider: "OpenAI".into(),
+        .find(|(id, _, _)| *id == bare)
+        .map(|(_, name, _)| (*name).to_owned())
+        .or_else(|| {
+            listed()
+                .into_iter()
+                .find(|listed| listed.id == bare)
+                .map(|listed| listed.name)
+        })
+        .unwrap_or_else(|| crate::models::label(model))
+}
+
+/// One model Codex's own picker lists.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Listed {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub efforts: Vec<String>,
+    pub default_effort: Option<String>,
+}
+
+/// The models Codex's own `/model` picker shows, from the catalog Codex
+/// keeps (`$CODEX_HOME/models_cache.json`): the ones whose `visibility` is
+/// `list`, in `priority` order, each with its reasoning levels. Ported from
+/// Codex's `model_popups.rs` and `openai_models.rs` (Apache-2.0,
+/// github.com/openai/codex): `show_in_picker` is `visibility == List`.
+#[must_use]
+pub fn parse_models_cache(text: &str) -> Vec<Listed> {
+    let value: serde_json::Value = serde_json::from_str(text).unwrap_or_default();
+    let mut models: Vec<(i64, Listed)> = value["models"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|model| model["visibility"].as_str() == Some("list"))
+        .filter_map(|model| {
+            let id = model["slug"].as_str()?.to_owned();
+            Some((
+                model["priority"].as_i64().unwrap_or(i64::MAX),
+                Listed {
+                    name: model["display_name"].as_str().unwrap_or(&id).to_owned(),
+                    description: model["description"].as_str().unwrap_or_default().to_owned(),
+                    efforts: model["supported_reasoning_levels"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|level| level["effort"].as_str().map(str::to_owned))
+                        .collect(),
+                    default_effort: model["default_reasoning_level"].as_str().map(str::to_owned),
+                    id,
+                },
+            ))
+        })
+        .collect();
+    models.sort_by_key(|(priority, _)| *priority);
+    models.into_iter().map(|(_, model)| model).collect()
+}
+
+/// What Codex's own picker lists on this computer, else [`MODELS`] when
+/// its catalog isn't there. A unit test reads no catalog.
+#[must_use]
+pub fn listed() -> Vec<Listed> {
+    let cached = if cfg!(test) {
+        Vec::new()
+    } else {
+        std::env::var_os("CODEX_HOME")
+            .filter(|dir| !dir.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex")))
+            .and_then(|dir| std::fs::read_to_string(dir.join("models_cache.json")).ok())
+            .map(|text| parse_models_cache(&text))
+            .unwrap_or_default()
+    };
+    if !cached.is_empty() {
+        return cached;
+    }
+    MODELS
+        .iter()
+        .map(|(id, name, description)| Listed {
             id: (*id).into(),
             name: (*name).into(),
             description: (*description).into(),
-            context_length: None,
-            max_output_tokens: None,
             efforts: EFFORTS.iter().map(|effort| (*effort).to_owned()).collect(),
             default_effort: None,
+        })
+        .collect()
+}
+
+/// What /models lists for Codex: Codex's own picker list.
+#[must_use]
+pub fn catalog() -> Vec<crate::models::Model> {
+    listed()
+        .into_iter()
+        .map(|model| crate::models::Model {
+            plugin: PICKER.into(),
+            provider: "OpenAI".into(),
+            id: model.id,
+            name: model.name,
+            description: model.description,
+            context_length: None,
+            max_output_tokens: None,
+            efforts: model.efforts,
+            default_effort: model.default_effort,
             supports_output_limit: false,
+            group: None,
         })
         .collect()
 }

@@ -12,7 +12,7 @@ whichever agent, model, or computer in the network serves it best.
   notes. See [Chat](/docs/chat).
 - **Hand work to Coder.** When a message is coding work, Coder, our coding
   agent, does it on your own computer, with the coding agents you already
-  use there: Codex, Claude Code, Grok Build, OpenCode, or Devin. See
+  use there: Codex, Claude Code, Grok Build, OpenCode, or Devin CLI. See
   [Coder](/docs/coder).
 - **Add plugins.** A plugin is anything you add to OpenAgents. You can make
   one, test whether it helps Coder, and publish the result so other people

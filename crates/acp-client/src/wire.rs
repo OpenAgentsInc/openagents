@@ -23,6 +23,7 @@ pub mod method {
     pub const SESSION_LOAD: &str = "session/load";
     pub const SESSION_LIST: &str = "session/list";
     pub const SESSION_SET_MODE: &str = "session/set_mode";
+    pub const SESSION_SET_CONFIG_OPTION: &str = "session/set_config_option";
     pub const SESSION_PROMPT: &str = "session/prompt";
     pub const SESSION_CANCEL: &str = "session/cancel";
     pub const SESSION_UPDATE: &str = "session/update";

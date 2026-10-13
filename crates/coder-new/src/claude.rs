@@ -155,6 +155,15 @@ pub fn choice() -> Choice {
         .unwrap_or_default()
 }
 
+/// A new chat starts on the default model, not an earlier chat's pick
+/// (#11556); the saved pick stays on disk.
+pub fn reset_choice() {
+    CHOICE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .0 = None;
+}
+
 /// Reads the saved pick under `root`, Coder's settings folder. A missing
 /// file, or one naming a model the mode does not offer, leaves Haiku 5.5.
 pub fn load_choice(root: &Path) {
@@ -242,6 +251,7 @@ pub fn catalog() -> Vec<crate::models::Model> {
             efforts: EFFORTS.iter().map(|effort| (*effort).to_owned()).collect(),
             default_effort: None,
             supports_output_limit: false,
+            group: None,
         })
         .collect()
 }

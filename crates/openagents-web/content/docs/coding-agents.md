@@ -10,12 +10,12 @@ the `coder` terminal app, see [Choose who answers](/docs/coder-agents).
 | Codex | First | `gpt-6.1-sol`, medium reasoning |
 | Claude Code | Second | `claude-opus-5-5` |
 | Grok Build | Third | Grok Build's own default |
-| Devin | Fourth | Devin's own default |
+| Devin CLI | Fourth | SWE-2 Medium |
 | OpenCode | Fifth | The model OpenCode's own configuration names |
 
 Every agent signed in on this computer is on, with nothing to enable.
 Coder tries them in order and uses the first one that is signed in and has
-room in its usage window. Devin bills its own paid API for each run; turn
+room in its usage window. Devin CLI bills its own paid API for each run; turn
 it off if you don't want Coder to use it.
 
 ## Sign in
@@ -26,7 +26,7 @@ the same user that runs Coder:
 1. Install the agent's command-line program. Codex:
    `npm install -g @openai/codex`. Claude Code:
    `npm install -g @anthropic-ai/claude-code`. OpenCode: see
-   [opencode.ai](https://opencode.ai). Grok Build and Devin install from
+   [opencode.ai](https://opencode.ai). Grok Build and Devin CLI install from
    their makers' own instructions.
 2. Run it once in a terminal (for example `codex`, `claude`, or
    `opencode`) and sign in.
@@ -68,8 +68,8 @@ Every signed-in agent is used unless you turn it off.
   first; agents you leave out still follow.
 
 Delegated sessions show inside their Coder chat: when a task hands work to
-OpenCode or Devin, that session appears as a row you can open. Separate
-Codex, Claude Code, OpenCode, and Devin sessions aren't listed in the chat
+OpenCode or Devin CLI, that session appears as a row you can open. Separate
+Codex, Claude Code, OpenCode, and Devin CLI sessions aren't listed in the chat
 list; in the Mac app, **Saved sessions** shows your Codex and Claude Code
 sessions.
 

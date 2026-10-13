@@ -53,11 +53,11 @@ can turn it off in `/plugins`; see [Coder's plugins](/docs/coder-plugins).
 
 ## One Coder in front of every agent
 
-![One Coder in front of every agent: Coder at the center, in a ring marked Auto, with Claude Code, Codex, OpenCode, Grok Build, Devin, and Cursor around it. A light steps from agent to agent, as Shift+Tab does.](/static/docs/coder-agents.svg)
+![One Coder in front of every agent: Coder at the center, in a ring marked Auto, with Claude Code, Codex, OpenCode, Grok Build, Devin CLI, and Cursor around it. A light steps from agent to agent, as Shift+Tab does.](/static/docs/coder-agents.svg)
 
 Coder isn't another agent to switch to. It's the same chat in front of
 the agents you already have: Claude Code and Codex on your own plans,
-OpenCode, Coder's own loop, and others such as Grok Build, Devin, and
+OpenCode, Coder's own loop, and others such as Grok Build, Devin CLI, and
 Cursor when they're installed here.
 
 A new chat starts on **Auto**, and Coder picks who answers. Press

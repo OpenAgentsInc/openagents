@@ -21,7 +21,7 @@ Your choices are saved and kept when you quit.
 | **Codex** | On | Runs chats on Codex with this computer's ChatGPT sign-in, with its own models. Auto can pick it, or you can choose it with `Shift+Tab`. |
 | **OpenCode** | On | Runs chats on OpenCode, with its free model or the models you set up in it; Coder checks each step before it runs. Listed only when OpenCode is installed. |
 | **Coder loop** | On | Coder's own coding loop, on OpenAgents models with your sign-in or on your OpenRouter key. |
-| **ACP Subagents** | On | Hands tasks to other coding agents installed here, such as Devin, Cursor, Grok Build, Goose, Amp, or Kimi Code. |
+| **ACP Subagents** | On | Hands tasks to other coding agents installed here, such as Devin CLI, Cursor, Grok Build, Goose, Amp, or Kimi Code. |
 | **Solver** | On | Takes a GitHub issue to a pull request. See [Solve an issue](/docs/coder-solver). |
 | **Solver swarm** | On | Hands several issues to several Solvers at once. |
 | **Agent channel** | On | Lets the agents a chat hands work to tell each other what they're changing, and warns them about overlaps. |
@@ -82,7 +82,7 @@ on this computer, each with a checkbox. New ones start on.
 
 Each agent uses its own sign-in. Install and sign in with its own program
 first: for Cursor, `cursor-agent` with its login or `CURSOR_API_KEY`.
-Devin bills its own paid service for each run; turn it off here if you
+Devin CLI bills its own paid service for each run; turn it off here if you
 don't want Coder to use it.
 
 ## Token savers

@@ -438,8 +438,8 @@ fn a_held_message_runs_where_the_router_sends_it_and_is_recorded() {
     }
     finish(&mut app);
 
-    // A follow-up judged new repository work moves to Claude Code, whose
-    // session starts from the whole chat.
+    // A follow-up judged new repository work stays on the chat's harness
+    // and its path: one chat never hops harness or payer (#11556).
     let mut work = small_answer();
     work.kind = [("repo_change".to_owned(), 0.9), ("answer".to_owned(), 0.1)]
         .into_iter()
@@ -450,31 +450,18 @@ fn a_held_message_runs_where_the_router_sends_it_and_is_recorded() {
     app.draft.text = "Now add a --verbose flag to src/main.rs".into();
     app.submit_live();
     app.poll_route();
-    assert_eq!(app.live.runs_on, Some(Harness::ClaudeCode));
-    assert!(!app.live.cheap, "new work is not a cheap answer");
-    match app.request.take().map(|request| request.kind) {
-        Some(crate::live::Work::Claude {
-            session, messages, ..
-        }) => {
-            assert!(session.is_none(), "a new session, seeded from the chat");
-            assert!(messages.len() >= 3, "the earlier turns go with it");
-            assert_eq!(
-                messages.last().map(|message| message.content.as_str()),
-                Some("Now add a --verbose flag to src/main.rs")
-            );
-        }
-        _ => panic!("a claude turn"),
-    }
-    app.live.busy = false;
+    assert_eq!(app.live.runs_on, Some(Harness::CoderLoop));
+    assert!(app.live.cheap, "the same path as the chat's first turn");
+    finish(&mut app);
 
-    // A follow-up judged a continuation stays on Claude Code.
+    // A follow-up judged a continuation stays there too.
     let mut more = small_answer();
     more.new_work = Some(0.1);
     set_test_judge(Some(Some(more)));
     app.draft.text = "also print the config path".into();
     app.submit_live();
     app.poll_route();
-    assert_eq!(app.live.runs_on, Some(Harness::ClaudeCode));
+    assert_eq!(app.live.runs_on, Some(Harness::CoderLoop));
     app.live.busy = false;
     app.record_end(Some(crate::routing_record::Ended::Done), None, None);
 
@@ -511,8 +498,8 @@ fn a_held_message_runs_where_the_router_sends_it_and_is_recorded() {
                 Rule::Router,
                 Some("cheap-answer".into())
             ),
-            (Harness::ClaudeCode, Rule::Router, Some("plan-work".into())),
-            (Harness::ClaudeCode, Rule::Router, Some("continue".into())),
+            (Harness::CoderLoop, Rule::Router, Some("plan-work".into())),
+            (Harness::CoderLoop, Rule::Router, Some("continue".into())),
         ]
     );
     assert_eq!(chose[0].inputs.probabilities.len(), 12);
@@ -525,7 +512,13 @@ fn a_held_message_runs_where_the_router_sends_it_and_is_recorded() {
         "{}",
         named.reason
     );
-    assert!(chose[1].model.is_none() && chose[2].model.is_none());
+    // Later turns stay on the same cheap model (#11556).
+    for later in &chose[1..] {
+        assert_eq!(
+            later.model.as_ref().map(|named| named.model.as_str()),
+            Some(crate::route::CHEAP_CODEX_MODEL)
+        );
+    }
     assert_eq!(
         chose[1].inputs.probabilities.len(),
         11,

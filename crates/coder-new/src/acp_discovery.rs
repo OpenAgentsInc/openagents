@@ -97,7 +97,7 @@ pub fn discover(variable: &dyn Fn(&str) -> Option<OsString>) -> Vec<AcpAgent> {
     );
     add(
         "devin-cli",
-        "Devin",
+        "Devin CLI",
         native_binary(
             acp_client::devin::BIN_VAR,
             acp_client::devin::binary,

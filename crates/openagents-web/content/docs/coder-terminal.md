@@ -39,7 +39,7 @@ It works in any terminal, over SSH, and in tmux. Install it from [Download and i
 | Enter | Send. |
 | Shift+Enter, Alt+Enter | A new line. |
 | Esc | Stop the reply. Closes a list or screen. Twice on a draft clears it. |
-| Shift+Tab | Choose who answers: Auto, Claude Code, Codex, OpenCode, or another agent here. |
+| Shift+Tab | In a new chat, before its first message: choose who answers (Auto, Claude Code, Codex, OpenCode, or another agent here). |
 | Tab | Complete a `/` command. |
 | Up, Down | Your earlier messages; Down from the input selects the agent rows under it. |
 | Ctrl+N | Start a new chat in the same folder. The last one stays in `/resume`. |
@@ -60,7 +60,7 @@ Type `/` to see them above the input; keep typing to filter, and press
 | Command | Does |
 | --- | --- |
 | `/help` | Every command and key. |
-| `/models` | Choose the model and reasoning level. |
+| `/models` | Choose the model of whoever answers, before the chat's first message. |
 | `/plugins` | Turn plugins on and off, and add keys. See [Coder's plugins](/docs/coder-plugins). |
 | `/preferences` | How much to favor cost, speed, or intelligence, and your saved choices of agent. |
 | `/resume` | Open an earlier chat. `/resume 3` picks from the last list; `/resume ID` opens one by its ID. |

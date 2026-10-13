@@ -136,7 +136,7 @@ fn catalog(app: &App) -> Vec<Node<Intent>> {
                 coder_history::Harness::Claude => "Claude",
                 coder_history::Harness::Coder => "Coder",
                 coder_history::Harness::OpenCode => "OpenCode",
-                coder_history::Harness::Devin => "Devin",
+                coder_history::Harness::Devin => "Devin CLI",
             };
             let updated = chat.updated_at.as_deref().unwrap_or("");
             button(

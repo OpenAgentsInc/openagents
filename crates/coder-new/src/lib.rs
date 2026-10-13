@@ -4,6 +4,7 @@ pub mod account;
 pub mod account_export;
 pub mod account_sync;
 pub mod acp_discovery;
+pub mod agent_models;
 pub mod agents;
 pub mod appearance;
 pub mod approval;
@@ -71,6 +72,7 @@ pub mod model_catalog;
 pub mod models;
 pub mod no_harness;
 pub mod opencode_chat;
+pub mod opencode_models;
 pub mod ops_tool;
 mod own_runs;
 mod plan;
@@ -125,6 +127,14 @@ use unicode_width::UnicodeWidthStr;
 /// What the composer holds after the model the person chose failed or
 /// refused a turn (#11132): Enter opens the model picker.
 pub const TRY_ANOTHER_MODEL: &str = "/models";
+
+/// What /models says when a model other than the chat's is picked after
+/// its first turn: a chat keeps one harness and one model (#11556).
+pub const MODEL_LOCKED_HINT: &str = "Start a new chat (Ctrl+N) to use another model";
+
+/// How long a rail notice shows before it fades, unless a key is pressed
+/// first (#11556).
+pub const RAIL_NOTICE_TTL: std::time::Duration = std::time::Duration::from_secs(4);
 
 /// How long a finished delegation stays on the rail under the input.
 pub const RAIL_KEEP_SECONDS: u64 = 30;
@@ -316,6 +326,9 @@ pub struct App {
     /// The harness the person picked with Shift+Tab (#11524) since the
     /// chat's last turn; the chat's own pin otherwise.
     pub(crate) next_pick: Option<harness_pick::Pick>,
+    /// The agents this chat already said run steps without asking first
+    /// (#11556), so the rail says it once per chat.
+    pub(crate) unasked_noted: Vec<String>,
     /// When the highlighted pick's facts are refreshed.
     pub(crate) pick_refresher: harness_pick::Refresher,
     /// How many pick refreshes this App has seen finish.
@@ -360,6 +373,44 @@ struct Chat {
 }
 
 impl App {
+    /// A short status about a UI event ("New chat…", "Copied", a model
+    /// switched) on the input's bottom rail for `ttl` or until the next
+    /// keypress (#11556). It is never a transcript row and never synced.
+    pub fn rail_notice(&mut self, text: impl Into<String>, ttl: std::time::Duration) {
+        self.rail_status = Some((std::time::Instant::now() + ttl, text.into()));
+    }
+
+    /// The rail notice showing now, if any.
+    #[must_use]
+    pub fn rail_notice_text(&self) -> Option<&str> {
+        self.rail_status
+            .as_ref()
+            .filter(|(until, _)| std::time::Instant::now() < *until)
+            .map(|(_, text)| text.as_str())
+    }
+
+    /// A new chat starts on Auto or each harness's default model (#11556):
+    /// a model picked in /models belongs to the chat it was picked in, and
+    /// never carries into the next one.
+    pub fn reset_model_picks(&mut self) {
+        claude::reset_choice();
+        codex::reset_choice();
+        opencode_chat::reset_choice();
+        agent_models::reset_choices();
+        self.gateway_model = None;
+        if models::pinned(&self.plugins.model) {
+            self.plugins.model = models::AUTO.into();
+            self.plugins.options = models::GenerationOptions::default();
+        }
+    }
+
+    /// Whether this chat has sent its first message: from then on the
+    /// agent it runs on stays (#11556).
+    #[must_use]
+    pub fn chat_started(&self) -> bool {
+        self.live.user_count() > 0 || self.live.busy || self.request.is_some()
+    }
+
     /// The openagents.com sign-in this chat's state holds, if any: it
     /// reaches the account's Connections and opens `auto`'s gateway lane
     /// (#11238, #11517).
@@ -771,9 +822,13 @@ impl App {
             .filter(|command| {
                 *command != slash::Command::Models
                     || self.plugins.enabled
-                    || self.on_claude()
-                    || self.on_codex()
-                    || self.on_opencode()
+                    || !matches!(
+                        self.model_source(),
+                        harness_pick::ModelSource::Auto
+                            | harness_pick::ModelSource::Harness(
+                                harness_plugin::Harness::CoderLoop
+                            )
+                    )
             })
             // Saving chats to the account needs a sign-in (#11046).
             .filter(|command| *command != slash::Command::Sync || self.account.is_some())
@@ -848,9 +903,21 @@ impl App {
                         .next()
                         .is_some_and(|short| short.to_lowercase() == wanted)
             });
+            // A chat keeps its model once it has a turn (#11556).
+            if let Some((id, _, _)) = picked
+                && self.chat_started()
+                && *id != claude::choice().model
+            {
+                self.rail_notice(MODEL_LOCKED_HINT, RAIL_NOTICE_TTL);
+                return true;
+            }
             self.notice = Some(match picked {
                 Some((id, _, _)) => match claude::choose(id, claude::choice().effort) {
-                    Ok(()) => self.claude_model_switched(id),
+                    Ok(()) => {
+                        let said = self.claude_model_switched(id);
+                        self.rail_notice(said, RAIL_NOTICE_TTL);
+                        return true;
+                    }
                     Err(error) => error,
                 },
                 None => {
@@ -1300,6 +1367,12 @@ impl App {
                         if error.contains("HTTP 401") {
                             self.plugins.connection = plugins::Connection::Failed(error.clone());
                         }
+                        // A model failure the agent streamed as its reply
+                        // is never kept as an answer: the plain line says
+                        // it (#11556).
+                        if agent_models::raw_failure(&self.live.partial) {
+                            self.live.partial.clear();
+                        }
                         if !self.live.partial.is_empty() {
                             self.live.entries.push(live::Entry::Assistant {
                                 elapsed_ms: self.live.reply_elapsed_ms(),
@@ -1325,6 +1398,11 @@ impl App {
                     }
                 }
                 let failed = error.clone();
+                // The record keeps the raw failure the chat leaves out.
+                let error = error.map(|error| match agent_models::take_raw_failure() {
+                    Some(raw) => format!("{error}\n{raw}"),
+                    None => error,
+                });
                 self.record_end(None, model, error);
                 // A turn that ended with failed checks, an error, a limit or
                 // a stall is a checkpoint (#11474).
@@ -2571,54 +2649,110 @@ impl App {
         self.plugins.bundled.check_engines(false);
     }
 
+    /// /models: the model picker of the harness or agent on the rail
+    /// ([`Self::model_source`], #11556), each in its own words and order:
+    /// OpenCode's picker for OpenCode, Codex's for Codex, Claude Code's
+    /// for Claude, an agent's own list for Devin CLI and Grok Build, and
+    /// the gateway's models for the Coder loop and for Auto's own loop.
     pub fn open_models(&mut self) {
+        use harness_pick::ModelSource;
+        use harness_plugin::Harness;
         self.resume_picker = None;
-        // A Claude Code chat picks among Claude models on this computer's
-        // login, with no OpenRouter key.
-        // An OpenCode chat picks among the models the person's OpenCode
-        // reaches (#11507).
-        if self.on_opencode() {
-            let current = self.live.opencode_session.as_ref().map_or_else(
-                || opencode_chat::model(self.live.pinned_model.clone()),
-                |session| session.model.clone(),
+        match self.model_source() {
+            ModelSource::Harness(Harness::OpenCode) => {
+                let pinned = self
+                    .live
+                    .pinned_model
+                    .clone()
+                    .filter(|_| self.live.runs_on == Some(Harness::OpenCode));
+                let current = self.live.opencode_session.as_ref().map_or_else(
+                    || opencode_chat::model(pinned),
+                    |session| session.model.clone(),
+                );
+                self.model_picker = Some(
+                    models::Picker::new(
+                        opencode_chat::catalog(&current),
+                        opencode_chat::PLUGIN,
+                        &current,
+                        models::GenerationOptions::default(),
+                        false,
+                    )
+                    .styled("Select model", true),
+                );
+            }
+            ModelSource::Harness(Harness::Codex) => {
+                let picked = codex::choice();
+                self.model_picker = Some(models::Picker::new(
+                    codex::catalog(),
+                    codex::PICKER,
+                    &picked.model,
+                    models::GenerationOptions {
+                        reasoning: picked.effort,
+                        max_tokens: None,
+                    },
+                    false,
+                ));
+            }
+            ModelSource::Harness(Harness::ClaudeCode) => {
+                let picked = claude::choice();
+                self.model_picker = Some(models::Picker::new(
+                    claude::catalog(),
+                    claude::PICKER,
+                    &picked.model,
+                    models::GenerationOptions {
+                        reasoning: picked.effort,
+                        max_tokens: None,
+                    },
+                    false,
+                ));
+            }
+            ModelSource::Agent { id, name } => self.open_agent_models(&id, &name),
+            ModelSource::Harness(Harness::CoderLoop) => self.open_coder_models(None),
+            ModelSource::Auto => {
+                self.open_coder_models(Some("Coder's models · Auto picks the agent per message"));
+            }
+        }
+    }
+
+    /// /models on an ACP agent: its own list, when it has one.
+    fn open_agent_models(&mut self, id: &str, name: &str) {
+        if !agent_models::lists_models(id) {
+            self.rail_notice(format!("{name} picks its own model."), RAIL_NOTICE_TTL);
+            return;
+        }
+        if agent_models::listed(id).is_none()
+            && let Some(agent) = self
+                .plugins
+                .bundled
+                .acp_registered()
+                .into_iter()
+                .find(|agent| agent.id == id)
+        {
+            let _ = agent_models::read(id, &agent.program);
+        }
+        let catalog = agent_models::catalog(id);
+        if catalog.is_empty() {
+            self.rail_notice(
+                format!("{name} didn't list its models. Try /models again."),
+                RAIL_NOTICE_TTL,
             );
-            self.model_picker = Some(models::Picker::new(
-                opencode_chat::catalog(),
-                opencode_chat::PLUGIN,
+            return;
+        }
+        let current = agent_models::turn_model(id).unwrap_or_default();
+        self.model_picker = Some(
+            models::Picker::new(
+                catalog,
+                &agent_models::picker(id),
                 &current,
                 models::GenerationOptions::default(),
                 false,
-            ));
-            return;
-        }
-        if self.on_codex() {
-            let picked = codex::choice();
-            self.model_picker = Some(models::Picker::new(
-                codex::catalog(),
-                codex::PICKER,
-                &picked.model,
-                models::GenerationOptions {
-                    reasoning: picked.effort,
-                    max_tokens: None,
-                },
-                false,
-            ));
-            return;
-        }
-        if self.on_claude() {
-            let picked = claude::choice();
-            self.model_picker = Some(models::Picker::new(
-                claude::catalog(),
-                claude::PICKER,
-                &picked.model,
-                models::GenerationOptions {
-                    reasoning: picked.effort,
-                    max_tokens: None,
-                },
-                false,
-            ));
-            return;
-        }
+            )
+            .styled("Select model", true),
+        );
+    }
+
+    /// /models on the Coder loop, or on Auto's own loop under `title`.
+    fn open_coder_models(&mut self, title: Option<&str>) {
         // The Coder loop: the OpenAgents gateway's models while this
         // sign-in reaches it (#11526), from the kept list, refreshed in
         // the background; OpenRouter's while BYOK is on.
@@ -2650,13 +2784,17 @@ impl App {
             _ if self.plugins.enabled => (models::OPENROUTER_PLUGIN, self.plugins.model.clone()),
             _ => (gateway_models::PICKER, models::AUTO.to_owned()),
         };
-        self.model_picker = Some(models::Picker::new(
+        let picker = models::Picker::new(
             catalog,
             plugin,
             &model,
             self.plugins.options.clone(),
             self.plugins.enabled && matches!(self.mode, Mode::Live | Mode::Solver),
-        ));
+        );
+        self.model_picker = Some(match title {
+            Some(title) => picker.styled(title, false),
+            None => picker,
+        });
     }
 
     pub fn open_plugin_settings(&mut self) {
@@ -2821,6 +2959,12 @@ impl App {
 
     /// Returns false when the preview should close.
     pub fn handle(&mut self, event: Event) -> bool {
+        // A passing rail notice fades at the next keypress (#11556).
+        if let Event::Key(key) = &event
+            && key.kind != crossterm::event::KeyEventKind::Release
+        {
+            self.rail_status = None;
+        }
         if let Some(screen) = &mut self.question {
             if let Event::Key(key) = event {
                 if key.kind == crossterm::event::KeyEventKind::Release {
@@ -3104,14 +3248,27 @@ impl App {
                     return true;
                 }
                 if let Some(picker) = &mut self.model_picker {
-                    match picker.handle(key) {
+                    let action = picker.handle(key);
+                    // After the chat's first turn its model stays: another
+                    // pick says how to use it instead (#11556).
+                    if let models::Action::Save(model, _) = &action
+                        && (model.plugin != picker.active_plugin || model.id != picker.active_model)
+                        && self.mode == Mode::Live
+                        && self.chat_started()
+                    {
+                        self.model_picker = None;
+                        self.rail_notice(MODEL_LOCKED_HINT, RAIL_NOTICE_TTL);
+                        return true;
+                    }
+                    match action {
                         models::Action::Continue => {}
                         models::Action::Close => self.model_picker = None,
                         models::Action::Save(model, options) if model.plugin == claude::PICKER => {
                             match claude::choose(&model.id, options.reasoning) {
                                 Ok(()) => {
                                     self.model_picker = None;
-                                    self.notice = Some(self.claude_model_switched(&model.id));
+                                    let said = self.claude_model_switched(&model.id);
+                                    self.rail_notice(said, RAIL_NOTICE_TTL);
                                 }
                                 Err(error) => {
                                     if let Some(picker) = &mut self.model_picker {
@@ -3128,14 +3285,15 @@ impl App {
                                     {
                                         self.live.pinned_model = None;
                                     }
-                                    self.notice = Some(if self.live.opencode_session.is_some() {
+                                    let said = if self.live.opencode_session.is_some() {
                                         format!(
                                             "Your next message runs on {}, in this same chat.",
                                             model.id
                                         )
                                     } else {
                                         format!("OpenCode now runs {}.", model.id)
-                                    });
+                                    };
+                                    self.rail_notice(said, RAIL_NOTICE_TTL);
                                 }
                                 Err(error) => {
                                     if let Some(picker) = &mut self.model_picker {
@@ -3148,7 +3306,27 @@ impl App {
                             match codex::choose(&model.id, options.reasoning) {
                                 Ok(()) => {
                                     self.model_picker = None;
-                                    self.notice = Some(self.codex_model_switched(&model.id));
+                                    let said = self.codex_model_switched(&model.id);
+                                    self.rail_notice(said, RAIL_NOTICE_TTL);
+                                }
+                                Err(error) => {
+                                    if let Some(picker) = &mut self.model_picker {
+                                        picker.error = Some(error);
+                                    }
+                                }
+                            }
+                        }
+                        models::Action::Save(model, _) if model.plugin.starts_with("agent:") => {
+                            // An agent's own model (#11556): the next turn
+                            // starts it on the pick.
+                            let agent = model.plugin.trim_start_matches("agent:").to_owned();
+                            match agent_models::choose(&agent, &model.id) {
+                                Ok(()) => {
+                                    self.model_picker = None;
+                                    self.rail_notice(
+                                        format!("Your next message runs on {}.", model.name),
+                                        RAIL_NOTICE_TTL,
+                                    );
                                 }
                                 Err(error) => {
                                     if let Some(picker) = &mut self.model_picker {
@@ -3182,11 +3360,12 @@ impl App {
                                 Ok(picked) => {
                                     self.gateway_model = picked;
                                     self.model_picker = None;
-                                    self.notice = Some(if models::pinned(&model.id) {
+                                    let said = if models::pinned(&model.id) {
                                         format!("Coder now runs {} on OpenAgents.", model.name)
                                     } else {
                                         "OpenAgents picks each turn's model.".into()
-                                    });
+                                    };
+                                    self.rail_notice(said, RAIL_NOTICE_TTL);
                                 }
                                 Err(error) => {
                                     if let Some(picker) = &mut self.model_picker {
@@ -3443,7 +3622,13 @@ impl App {
                     && self.mode == Mode::Live
                     && self.selected_agent.is_none()
                 {
-                    self.cycle_pick();
+                    // Only a new chat switches agents (#11556): once the
+                    // chat has a turn, the rail says how to switch instead.
+                    if self.chat_started() {
+                        self.rail_notice(harness_pick::LOCKED_HINT, RAIL_NOTICE_TTL);
+                    } else {
+                        self.cycle_pick();
+                    }
                     return true;
                 }
                 if self.footer_focused && matches!(key.code, KeyCode::Up | KeyCode::Down) {
@@ -3518,7 +3703,10 @@ impl App {
                                 self.escape_at = None;
                             } else {
                                 self.escape_at = Some(now);
-                                self.notice = Some("Esc again to clear".into());
+                                self.rail_notice(
+                                    "Esc again to clear",
+                                    std::time::Duration::from_secs(1),
+                                );
                             }
                         } else {
                             self.select_agent(None);
@@ -4506,7 +4694,32 @@ mod claude_tests {
         assert!(app.draft.text.is_empty());
         assert_eq!(app.live.runs_on, None, "the new chat is routed anew");
         assert_eq!(app.cwd.as_deref(), Some(std::path::Path::new("/tmp/repo")));
-        assert!(app.notice.as_deref().unwrap().contains("/resume"));
+        // The new chat's transcript is empty: the status is on the rail
+        // (#11556).
+        assert_eq!(app.notice, None);
+        assert_eq!(app.rail_notice_text(), Some(crate::resume::NEW_CHAT_NOTICE));
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 20)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::render(frame, &mut app))
+            .unwrap();
+        let shown: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(
+            shown.contains("New chat. The last one is in /resume."),
+            "{shown}"
+        );
+        // It fades at the next key.
+        app.handle(Event::Key(crossterm::event::KeyEvent::new(
+            KeyCode::Char('h'),
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(app.rail_notice_text(), None);
     }
 
     #[test]

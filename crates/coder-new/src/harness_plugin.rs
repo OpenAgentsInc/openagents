@@ -323,7 +323,18 @@ impl App {
     /// owner decision 1). A chat that moves to Claude Code starts its
     /// session from the transcript ([`crate::live::Chat::claude_resume`]).
     pub fn route_turn(&mut self) -> Harness {
-        if let Some(routed) = self.routed.take() {
+        if let Some(mut routed) = self.routed.take() {
+            // A chat never hops (#11556): once its harness answered, Auto
+            // keeps it there, on the same path (cheap or not), so one chat
+            // runs on one harness and one provider.
+            if let Some(harness) = self.live.runs_on
+                && self.live.answered()
+            {
+                self.routing_rule = Some(routed.rule);
+                routed.trace.follow_up = true;
+                self.routing_router = Some((routed.probabilities, routed.trace));
+                return harness;
+            }
             self.live.runs_on = Some(routed.harness);
             self.live.pinned = false;
             // A pin's model holds until another routing call, a follow-up

@@ -140,6 +140,15 @@ impl Chat {
             .map(|session| (session.id.clone(), session.model.clone()))
     }
 
+    /// Whether a turn of this chat has answered: from then on it stays on
+    /// its harness and model (#11556).
+    #[must_use]
+    pub fn answered(&self) -> bool {
+        self.entries
+            .iter()
+            .any(|entry| matches!(entry, Entry::Assistant { .. }))
+    }
+
     /// How many of the person's messages the chat holds.
     #[must_use]
     pub fn user_count(&self) -> usize {
@@ -1466,7 +1475,10 @@ fn run_with_provider(
                         RuntimeEvent::Model(model) => model_callback(&model),
                         event => event_callback(event),
                     };
-                    let result = crate::bundled_runtime::acp_briefed(&agent, &task, &cwd, None, false, briefing.as_deref(), &cancel, &mut events).await;
+                    // The model picked in /models for this agent, else its
+                    // Coder default (#11556).
+                    let model = crate::agent_models::choice(&agent.id);
+                    let result = crate::bundled_runtime::acp_briefed(&agent, &task, &cwd, model.as_deref(), false, briefing.as_deref(), &cancel, &mut events).await;
                     // The model the agent named, for its pick on the rail next time.
                     if let Some(model) = result.as_ref().ok().and_then(|value| value["model"].as_str()) {
                         let now = atif::now_ms() / 1000;

@@ -753,9 +753,9 @@ pub async fn acp_briefed(
             "The crew charter refuses ACP and Codex delegation, including read-only work.".into(),
         );
     }
-    if model.is_some() && agent.id != "devin-cli" {
+    if model.is_some() && !crate::agent_models::lists_models(&agent.id) {
         return Err(format!(
-            "A model names only the devin-cli agent, not {}.",
+            "A model names only the devin-cli and grok-build agents, not {}.",
             agent.id
         ));
     }
@@ -872,7 +872,34 @@ pub async fn acp_briefed(
     // `accept-edits` under `devin --sandbox` and every ask is refused
     // (#10929). An explicit mode on the agent still wins.
     let mut arguments = match (agent.id.as_str(), model) {
-        ("devin-cli", Some(model)) => acp_client::devin::arguments(model),
+        ("devin-cli", Some(model)) if model != acp_client::devin::DEFAULT_MODEL => {
+            acp_client::devin::arguments(model)
+        }
+        // Devin's account default is never what Coder runs: SWE-2 is
+        // (#11556).
+        ("devin-cli", _) => acp_client::devin::arguments(acp_client::devin::CODER_MODEL),
+        // Grok Build runs the pick, else the default `grok models` names,
+        // read before the session starts so it never opens on Grok's
+        // built-in fallback model while its login refreshes (#11556).
+        (crate::agent_models::GROK, _) => {
+            let mut arguments = agent.arguments.clone();
+            let model = model
+                .filter(|model| *model != acp_client::grok::DEFAULT_MODEL)
+                .map(str::to_owned)
+                .or_else(|| {
+                    crate::agent_models::turn_model_reading(
+                        crate::agent_models::GROK,
+                        &agent.program,
+                    )
+                });
+            if let Some(model) = model
+                && !arguments.iter().any(|argument| argument == "--model")
+            {
+                let at = usize::from(arguments.first().is_some_and(|arg| arg == "agent"));
+                arguments.splice(at..at, ["--model".to_owned(), model]);
+            }
+            arguments
+        }
         _ => agent.arguments.clone(),
     };
     // Cursor's ask mode makes no edits and runs no commands.
@@ -918,9 +945,8 @@ pub async fn acp_briefed(
     let (hooks, refused) = crate::sdk_hooks::acp(cwd, &agent.id, &agent.name, cancel);
     let checks = crate::sdk_hooks::unkept(&agent.name, &refused);
     let _gate = acp_gate(agent, &hooks, &mut arguments, &mut environment)?;
-    if let Some(note) = &checks {
-        emit(RuntimeEvent::Text(format!("{note}\n\n")));
-    }
+    // What it can't be stopped from is a status for the rail and the
+    // result's `checks`, never words of the agent's reply (#11556).
     let briefed = briefing
         .filter(|briefing| !briefing.trim().is_empty())
         .map(|briefing| briefed_task(briefing, task))
@@ -937,6 +963,27 @@ pub async fn acp_briefed(
         meta: None,
         mode,
         authenticate: cursor.then(|| acp_client::cursor::AUTH_METHOD.to_owned()),
+    };
+    // Oh My Pi runs a model Coder names (#11556): the pick, else its first
+    // model that can chat, never a Clef decision model. With none, the
+    // turn says so in one plain line.
+    let named_model = if agent.id == crate::agent_models::OMP {
+        let wanted = model
+            .map(str::to_owned)
+            .filter(|model| !crate::agent_models::is_clef(model))
+            .or_else(|| crate::agent_models::turn_model_reading(&agent.id, &agent.program))
+            .filter(|model| !crate::agent_models::is_clef(model));
+        match wanted {
+            Some(wanted) => Some(wanted),
+            None => {
+                return Err(format!(
+                    "{} has no model here that can chat. Sign in to a provider in {}, then pick one with /models.",
+                    agent.name, agent.name
+                ));
+            }
+        }
+    } else {
+        None
     };
     // A temporary failure before the agent did anything (a provider whose
     // endpoint is down, Devin's retryable internal error) is tried again
@@ -1018,7 +1065,28 @@ pub async fn acp_briefed(
                 .as_ref()
                 .and_then(|info| info.version.as_deref()),
         );
-        let model = session.opened.model().map(str::to_owned);
+        let mut model = session.opened.model().map(str::to_owned);
+        if let Some(named) = &named_model
+            && model.as_deref() != Some(named.as_str())
+        {
+            match session.set_config_option("model", named, &canceled).await {
+                Ok(()) => model = Some(named.clone()),
+                Err(_) => {
+                    session.close(Duration::from_secs(2)).await;
+                    return Err(format!(
+                        "{} couldn't switch to {named}. Pick another with /models.",
+                        agent.name
+                    ));
+                }
+            }
+        }
+        if model.as_deref().is_some_and(crate::agent_models::is_clef) {
+            session.close(Duration::from_secs(2)).await;
+            return Err(format!(
+                "{} couldn't answer: its model can't chat. Pick another with /models.",
+                agent.name
+            ));
+        }
         if let Some(model) = &model {
             emit(RuntimeEvent::Model(model.clone()));
         }
@@ -1086,6 +1154,13 @@ pub async fn acp_briefed(
         let worked = !handler.tools.is_empty() || !text.is_empty();
         let group_clear = session.close(Duration::from_secs(2)).await;
         turns.end("close").await;
+        // An agent that put its model's failure into its reply ("400 …
+        // raw-http-request=…") failed the turn: one plain line shows, and
+        // the raw words are kept for the record only (#11556).
+        if result.is_ok() && crate::agent_models::raw_failure(&text) {
+            crate::agent_models::keep_raw_failure(&text);
+            return Err(crate::agent_models::failure_line(&agent.name, &text));
+        }
         let error = match result {
             Ok(reply) => {
                 let mut result = json!({"session":id,"reply":text,"model":model,"stop_reason":reply.stop_reason.as_str(),"usage":reply.usage,"group_clear":group_clear,"attempts":attempt});
@@ -4207,7 +4282,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
     fn devin_agent(program: PathBuf) -> AcpAgent {
         let mut agent = agent(program);
         agent.id = "devin-cli".into();
-        agent.name = "Devin".into();
+        agent.name = "Devin CLI".into();
         agent.arguments = acp_client::devin::arguments(acp_client::devin::DEFAULT_MODEL);
         agent
     }
@@ -4292,7 +4367,18 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         .unwrap();
         let arguments = acp_client::replay::arguments(dir.path());
         assert_eq!(arguments[0], "--config");
-        assert_eq!(arguments[2..], ["--sandbox", "acp"]);
+        // No model named: Coder's SWE-2 default, never Devin's account
+        // default (#11556).
+        assert_eq!(
+            arguments[2..],
+            [
+                "--sandbox",
+                "acp",
+                "--model",
+                acp_client::devin::CODER_MODEL
+            ]
+        );
+        assert_eq!(acp_client::devin::CODER_MODEL, "swe-2-medium");
         let sent = acp_client::replay::received(dir.path());
         let set_mode = sent
             .iter()

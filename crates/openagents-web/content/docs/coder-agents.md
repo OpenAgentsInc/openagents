@@ -8,7 +8,7 @@ Coder is one chat, whoever answers it. Each chat runs on one of these:
 | **Codex** | Codex installed and signed in with ChatGPT (`codex`, then sign in). |
 | **OpenCode** | OpenCode installed ([opencode.ai](https://opencode.ai)). It can use its free model or the models you set up in it. |
 | **Coder's own loop** | Your openagents.com sign-in (`coder login`), or an OpenRouter key. |
-| **Other agents** | Devin, Cursor, Grok Build, Amp, Goose, and others, each installed and signed in with its own program. |
+| **Other agents** | Devin CLI, Cursor, Grok Build, Amp, Goose, and others, each installed and signed in with its own program. |
 
 Claude Code and Codex run on your own plans, so they cost you nothing
 through OpenAgents.
@@ -18,7 +18,8 @@ through OpenAgents.
 A new chat starts on **Auto**, shown at the input's top right. Coder looks
 at your message and picks who answers among the ones that are on and
 signed in here. With no other reason to choose, it tries Claude Code,
-then OpenCode, then its own loop. Follow-ups stay with the same agent.
+then OpenCode, then its own loop. Once it has answered, the whole chat
+stays with that agent and model; a new chat (`Ctrl+N`) can pick again.
 
 Once Auto has picked, the label says so, with the model once it is
 known: `Auto → Claude (Haiku 5.5)` or `Auto → Coder (Haiku 5.5)`. An agent
@@ -35,11 +36,15 @@ You can also just ask in your message: "use Codex for this".
 `Shift+Tab` steps through who can answer here, in this order:
 
 **Auto → Claude Code → Codex → OpenCode → the other agents found on this
-computer** (such as Devin, Cursor, or Grok Build), then back to Auto.
+computer** (such as Devin CLI, Cursor, or Grok Build), then back to Auto.
 
-Only the ones that can run here are offered. Your pick holds for this
-chat until you press `Shift+Tab` again; your draft stays as it is. It is
-a choice inside the same chat, not a separate mode.
+`Shift+Tab` works in a new chat, before you send its first message. Only
+the ones that can run here are offered, and your draft stays as it is.
+Once the chat has a reply, it keeps its agent: `Shift+Tab` says
+"Start a new chat (Ctrl+N) to switch agents" instead.
+
+An agent that doesn't ask before every step, such as Cursor, says so
+once on the line under the input when you pick it.
 
 ## Plan windows
 
@@ -58,10 +63,18 @@ use Up and Down to choose, and `Enter` to go on; `Esc` steps back.
 | --- | --- |
 | Claude Code | Haiku 5.5 (the default), Sonnet 5.5, Opus 5.5, and Fable 5.1, each with a reasoning level from low to max. |
 | Codex | GPT-6.1-Sol (the default), GPT-6-Astra, GPT-6-Sol, and GPT-6-Luna, each with a reasoning level. |
-| OpenCode | The models your OpenCode can reach. |
+| OpenCode | OpenCode's own model list: free models first (newest first, then Big Pickle), then your favorites and recent models from OpenCode, then each provider's models. |
+| Devin CLI | Devin's own models by family, SWE-2 first. A chat runs SWE-2 Medium unless you pick another. |
+| Grok Build | The models `grok models` lists, with Grok's default marked. |
 | Coder's own loop | **Auto** (OpenAgents picks the model), the OpenAgents models your account can use, and, with the OpenRouter plugin on, OpenRouter models on your key. |
+| Auto, before it has answered | Coder's own loop's models: Auto picks the agent for each message, and these are the models it runs on Coder's own loop. |
 
-The new model answers from your next message, in the same chat. If
+`/models` always lists the models of the agent shown at the input's top
+right, including one you just picked with `Shift+Tab`. Pick a model before
+the chat's first message; the chat then keeps it. After that, `/models`
+shows the chat's model, and another pick says "Start a new chat (Ctrl+N)
+to use another model". Each new chat starts on its agent's default
+model. If
 `/models` says to sign in, run `/login`, or turn on OpenRouter BYOK in
 `/plugins` ([how](/docs/coder-plugins)).
 

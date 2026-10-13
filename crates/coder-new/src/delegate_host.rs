@@ -104,7 +104,7 @@ pub fn available(execution: &ExecutionSettings, provider: bool) -> Vec<Available
             id: OPENCODE.into(),
             name: "OpenCode".into(),
             models: Some(if crate::opencode_chat::installed() {
-                crate::opencode_chat::catalog()
+                crate::opencode_chat::catalog(&crate::opencode_chat::model(None))
                     .into_iter()
                     .map(|model| model.id)
                     .collect()

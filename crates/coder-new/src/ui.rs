@@ -832,6 +832,18 @@ fn top_rail(app: &App) -> Option<String> {
 /// /models, else the model's own words capitalized
 /// (`google/gemini-3.8-flash` reads "Gemini 3.8 Flash").
 pub(crate) fn rail_model_name(model: &str) -> String {
+    // Cursor names a variant in brackets, "composer-2.5[fast=true]": each
+    // switch that is on reads as a word, "Composer 2.5 Fast" (#11556).
+    if let Some((base, rest)) = model.split_once('[') {
+        let mut name = rail_model_name(base);
+        for setting in rest.trim_end_matches(']').split(',') {
+            if let Some((key, "true")) = setting.trim().split_once('=') {
+                name.push(' ');
+                name.push_str(&rail_model_name(key));
+            }
+        }
+        return name;
+    }
     // The Codex login's turns name their model `codex:<id>`.
     if let Some(model) = model.strip_prefix("codex:") {
         return crate::codex::name(model);
@@ -877,6 +889,13 @@ fn rail_harness(app: &App) -> Option<String> {
                 .runs_on
                 .filter(|_| !app.live.pinned && app.live.agent.is_none());
             Some(match routed {
+                // A model picked in /models for the Coder loop pins it:
+                // "Coder (Claude Fable 5.1)", no "Auto" (#11556).
+                Some(harness @ crate::harness_plugin::Harness::CoderLoop)
+                    if coder_model_picked(app) =>
+                {
+                    harness_label(app, harness)
+                }
                 // "Auto picked Claude": the chat can still move (#11537).
                 Some(harness) => format!("Auto → {}", harness_label(app, harness)),
                 None => "Auto".into(),
@@ -884,11 +903,18 @@ fn rail_harness(app: &App) -> Option<String> {
         }
         Pick::Harness(harness) => Some(harness_label(app, harness)),
         Pick::Agent { id, name } => {
-            let model = crate::harness_pick::cached(&format!("agent:{id}"))
-                .and_then(|entry| entry.model)
-                .filter(|model| !model.is_empty());
+            // The model the next turn runs: the pick in /models, else what
+            // the agent's session last reported, else Coder's default for
+            // it; in the agent's own words ("SWE-2 Medium", #11556).
+            let model = crate::agent_models::choice(&id)
+                .or_else(|| {
+                    crate::harness_pick::cached(&format!("agent:{id}"))
+                        .and_then(|entry| entry.model)
+                        .filter(|model| !model.is_empty())
+                })
+                .or_else(|| crate::agent_models::default_model(&id));
             Some(match model {
-                Some(model) => format!("{name} ({})", rail_model_name(&model)),
+                Some(model) => format!("{name} ({})", crate::agent_models::display(&id, &model)),
                 None => name,
             })
         }
@@ -933,12 +959,8 @@ fn harness_label(app: &App, harness: crate::harness_plugin::Harness) -> String {
 /// while signed in (#11526), else the model the chat's latest turn ran
 /// (#11519), else `None` until one is known (#11537).
 fn coder_rail_model(app: &App) -> Option<String> {
-    let keyed = app.plugins.enabled && app.plugins.key_configured;
-    let chosen = keyed
-        .then(|| crate::models::label(&app.plugins.model))
-        .filter(|model| model != crate::models::AUTO_LABEL && model != crate::models::AUTO);
-    if chosen.is_some() {
-        return chosen;
+    if let Some(chosen) = coder_chosen_model(app) {
+        return Some(chosen);
     }
     if app.account.is_some()
         && let Some(picked) = &app.gateway_model
@@ -950,6 +972,30 @@ fn coder_rail_model(app: &App) -> Option<String> {
         return Some(rail_model_name(model));
     }
     served_model(app).map(|model| rail_model_name(&model))
+}
+
+/// The model the person chose for the Coder loop in /models (OpenRouter
+/// BYOK), by its name: "Claude Fable 5.1" (#11556).
+fn coder_chosen_model(app: &App) -> Option<String> {
+    let keyed = app.plugins.enabled && app.plugins.key_configured;
+    let base = app.plugins.model.split(':').next().unwrap_or_default();
+    (keyed && crate::models::pinned(base)).then(|| {
+        crate::models::openrouter_catalog()
+            .into_iter()
+            .find(|model| model.id == base)
+            .map_or_else(|| rail_model_name(base), |model| model.name)
+    })
+}
+
+/// Whether the person chose the Coder loop's model in /models: a pick
+/// pins it, so the rail drops "Auto" (#11556).
+fn coder_model_picked(app: &App) -> bool {
+    coder_chosen_model(app).is_some()
+        || (app.account.is_some()
+            && app
+                .gateway_model
+                .as_deref()
+                .is_some_and(crate::models::pinned))
 }
 
 /// The model the chat's latest Coder loop turn ran, as the transcript
@@ -2866,7 +2912,7 @@ mod export_notice_tests {
         assert!(!shown.contains("openrouter") && !shown.contains("claude"));
         // A model chosen in /models is named after the loop.
         app.plugins.model = crate::models::OPENROUTER.into();
-        assert!(rail(&mut app).contains("Coder (deepseek-v4.1-flash)"));
+        assert!(rail(&mut app).contains("Coder (DeepSeek V4.1 Flash)"));
         // #11519: on auto, the model the last turn ran and how full the
         // context is.
         app.plugins.model = crate::models::AUTO.into();

@@ -5,6 +5,9 @@ use serde_json::json;
 
 use crate::{App, Draft, Mode, Screen, sessions, trajectory};
 
+/// What the rail says when Ctrl+N starts a new chat (#11556).
+pub const NEW_CHAT_NOTICE: &str = "New chat. The last one is in /resume.";
+
 #[derive(Default)]
 pub(crate) struct History {
     store: Option<sessions::Store>,
@@ -228,7 +231,10 @@ impl App {
             self.select_agent(None);
             self.scroll_main_to_end();
             self.resume_picker = None;
-            self.notice = Some(format!("Conversation {id} is already open."));
+            self.rail_notice(
+                format!("Conversation {id} is already open."),
+                crate::RAIL_NOTICE_TTL,
+            );
             return true;
         }
         let lease = if same {
@@ -352,7 +358,11 @@ impl App {
         self.history.last_attempt = None;
         self.history.save_failed = false;
         self.next_pick = (pick != crate::harness_pick::Pick::Auto).then_some(pick);
-        self.notice = Some("New chat. The last one is in /resume.".into());
+        self.unasked_noted.clear();
+        self.reset_model_picks();
+        // A status, not a transcript row: the new chat starts empty (#11556).
+        self.notice = None;
+        self.rail_notice(NEW_CHAT_NOTICE, crate::RAIL_NOTICE_TTL);
         true
     }
 

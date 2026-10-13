@@ -41,6 +41,11 @@ use crate::process::{first_executable, on_path};
 pub const BIN_VAR: &str = "DEVIN_BIN";
 /// The route model that keeps Devin's own default model.
 pub const DEFAULT_MODEL: &str = "default";
+/// The model Coder runs Devin CLI on when the person picked none: SWE-2
+/// at its fastest listed effort (`devin models list` offers `swe-2-medium`,
+/// `swe-2-high` and `swe-2-max`; owner, 2026-10-13). Devin's own account
+/// default (`swe-1-6-slow` at the time) is never what a Coder chat runs.
+pub const CODER_MODEL: &str = "swe-2-medium";
 /// The `session/new` `_meta` key that marks a session Coder's engine
 /// started. Its value is the engine mark.
 pub const ENGINE_META_KEY: &str = "openagents.com/engine";

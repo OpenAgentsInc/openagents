@@ -27,6 +27,10 @@ use serde::{Deserialize, Serialize};
 use crate::bundled_runtime::{AcpAgent, AgentTransport};
 use crate::harness_plugin::Harness;
 
+/// What Shift+Tab says once the chat has a turn: only a new chat switches
+/// agents (#11556).
+pub const LOCKED_HINT: &str = "Start a new chat (Ctrl+N) to switch agents";
+
 /// The harnesses Shift+Tab offers after Auto, in order. The Coder loop is
 /// what Auto falls back to, so it has no stop of its own.
 pub const ORDER: [Harness; 3] = [Harness::ClaudeCode, Harness::Codex, Harness::OpenCode];
@@ -539,6 +543,16 @@ pub fn local(app: &crate::App) -> Local {
     }
 }
 
+/// The rail's short word that `name` runs steps without asking first, so
+/// Coder can't hold a deploy, a merge, a secret or a payment (#11556). The
+/// full account is in /plugins.
+#[must_use]
+pub fn unasked_notice(name: &str) -> String {
+    format!(
+        "{name} runs steps without asking first; deploys, merges, secrets and payments aren't held."
+    )
+}
+
 /// The name a pick goes by in a notice.
 #[must_use]
 pub fn name(pick: &Pick) -> String {
@@ -552,7 +566,40 @@ pub fn name(pick: &Pick) -> String {
     }
 }
 
+/// Whose models /models lists: the harness or agent on the rail (#11556).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ModelSource {
+    /// One harness's own models: Claude Code's, Codex's, OpenCode's, or the
+    /// Coder loop's gateway (and BYOK) models.
+    Harness(Harness),
+    /// One ACP agent's own models, when it lists them.
+    Agent { id: String, name: String },
+    /// Auto before it routed anything: it picks the agent per message, and
+    /// the Coder loop's models are the ones it runs on its own loop.
+    Auto,
+}
+
 impl crate::App {
+    /// The one answer to "whose models does /models list" (#11556): the
+    /// pick the rail shows ([`Self::current_pick`]), never the harness a
+    /// chat ran on before a Shift+Tab switch took hold. On Auto, the
+    /// harness Auto routed the chat to, once it has.
+    #[must_use]
+    pub fn model_source(&self) -> ModelSource {
+        if self.mode != crate::Mode::Live {
+            return ModelSource::Harness(Harness::CoderLoop);
+        }
+        match self.current_pick() {
+            Pick::Harness(harness) => ModelSource::Harness(harness),
+            Pick::Agent { id, name } => ModelSource::Agent { id, name },
+            Pick::Auto => self
+                .live
+                .runs_on
+                .filter(|_| !self.live.pinned && self.live.agent.is_none())
+                .map_or(ModelSource::Auto, ModelSource::Harness),
+        }
+    }
+
     /// The ACP agents a turn can run on here, `(id, name)`.
     fn pick_agents(&self) -> Vec<(String, String)> {
         if !self.plugins.bundled.acp {
@@ -576,7 +623,38 @@ impl crate::App {
         let options = options(&local(self));
         let pick = next(&options, &self.current_pick());
         self.pick_refresher.highlight(pick.key(), Instant::now());
+        // An agent that runs steps without asking first says so once per
+        // chat, on the rail; never in the transcript (#11556).
+        self.note_unasked(&pick);
+        // /models for the pick opens at once: its list is read ahead.
+        match &pick {
+            Pick::Harness(Harness::OpenCode) => crate::opencode_models::warm(),
+            Pick::Agent { id, .. } if crate::agent_models::lists_models(id) => {
+                if let Some(agent) = self
+                    .plugins
+                    .bundled
+                    .acp_registered()
+                    .into_iter()
+                    .find(|agent| agent.id == *id)
+                {
+                    crate::agent_models::warm(id, &agent.program);
+                }
+            }
+            _ => {}
+        }
         self.next_pick = Some(pick);
+    }
+
+    /// Says once per chat, on the rail, that the agent `pick` names runs
+    /// steps without asking first (#11556).
+    pub(crate) fn note_unasked(&mut self, pick: &Pick) {
+        if let Pick::Agent { id, name } = pick
+            && !coder_sdk::acp::gated(id)
+            && !self.unasked_noted.contains(id)
+        {
+            self.unasked_noted.push(id.clone());
+            self.rail_notice(unasked_notice(name), crate::RAIL_NOTICE_TTL);
+        }
     }
 
     /// Puts the Shift+Tab pick on the chat as its next message goes out: a
@@ -735,10 +813,13 @@ impl crate::App {
         }
         self.pick_refreshes_seen = finished;
         if !options(&local(self)).contains(&current) {
-            self.notice = Some(format!(
-                "{} isn't available here any more, so this chat is back on Auto.",
-                name(&current)
-            ));
+            self.rail_notice(
+                format!(
+                    "{} isn't available here any more, so this chat is back on Auto.",
+                    name(&current)
+                ),
+                crate::RAIL_NOTICE_TTL,
+            );
             self.next_pick = Some(Pick::Auto);
         }
     }
@@ -753,14 +834,14 @@ mod tests {
             claude: true,
             codex: true,
             opencode: true,
-            agents: vec![("devin-cli".into(), "Devin".into())],
+            agents: vec![("devin-cli".into(), "Devin CLI".into())],
         }
     }
 
     fn devin() -> Pick {
         Pick::Agent {
             id: "devin-cli".into(),
-            name: "Devin".into(),
+            name: "Devin CLI".into(),
         }
     }
 
@@ -830,7 +911,7 @@ mod tests {
                 AgentTransport::ClaudeCli,
             ),
             agent("grok-build", "Grok Build", true, AgentTransport::Acp),
-            agent("devin-cli", "Devin", true, AgentTransport::Acp),
+            agent("devin-cli", "Devin CLI", true, AgentTransport::Acp),
             agent("opencode", "OpenCode", true, AgentTransport::Acp),
             agent("cursor", "Cursor", false, AgentTransport::Acp),
             agent("codex", "Codex", true, AgentTransport::CodexCli),
@@ -839,7 +920,7 @@ mod tests {
             found,
             [
                 ("grok-build".to_owned(), "Grok Build".to_owned()),
-                ("devin-cli".to_owned(), "Devin".to_owned())
+                ("devin-cli".to_owned(), "Devin CLI".to_owned())
             ]
         );
     }
@@ -859,7 +940,7 @@ mod tests {
         );
         chat.agent = Some("devin-cli".into());
         assert_eq!(
-            Pick::of_chat(&chat, &[("devin-cli".into(), "Devin".into())]),
+            Pick::of_chat(&chat, &[("devin-cli".into(), "Devin CLI".into())]),
             devin()
         );
         assert_eq!(Pick::Harness(Harness::OpenCode).key(), "opencode");
@@ -1132,7 +1213,7 @@ mod tests {
         let reopened = crate::trajectory::from_document(&saved).unwrap();
         assert_eq!(reopened.agent.as_deref(), Some("devin-cli"));
         assert_eq!(
-            Pick::of_chat(&reopened, &[("devin-cli".into(), "Devin".into())]),
+            Pick::of_chat(&reopened, &[("devin-cli".into(), "Devin CLI".into())]),
             devin()
         );
         // An agent that can't run here drops the chat back to Auto.
@@ -1219,5 +1300,304 @@ mod tests {
                 .iter()
                 .all(|summary| summary.harness != Some(Harness::CoderLoop) || summary.chosen == 0)
         );
+    }
+
+    fn key(app: &mut crate::App, code: crossterm::event::KeyCode) {
+        use crossterm::event::{Event, KeyEvent, KeyModifiers};
+        app.handle(Event::Key(KeyEvent::new(code, KeyModifiers::NONE)));
+    }
+
+    fn ctrl_n(app: &mut crate::App) {
+        use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+        app.handle(Event::Key(KeyEvent::new(
+            KeyCode::Char('n'),
+            KeyModifiers::CONTROL,
+        )));
+    }
+
+    fn answered(app: &mut crate::App) {
+        app.live.entries.push(crate::live::Entry::User("hi".into()));
+        app.live.entries.push(crate::live::Entry::Assistant {
+            text: "Hello.".into(),
+            model: None,
+            elapsed_ms: None,
+        });
+    }
+
+    fn picker_plugins(app: &crate::App) -> Vec<String> {
+        app.model_picker
+            .as_ref()
+            .expect("/models opened")
+            .models
+            .iter()
+            .map(|model| model.plugin.clone())
+            .collect()
+    }
+
+    /// Shift+Tab switches agents only in a new chat (#11556): once the
+    /// chat has a turn it leaves the agent alone, and the rail says how
+    /// to switch, never the transcript.
+    #[test]
+    fn shift_tab_switches_only_before_the_first_message() {
+        crate::opencode_chat::install_for_test(true);
+        let mut app = crate::App::default();
+        app.set_mode(crate::Mode::Live);
+        shift_tab(&mut app);
+        assert_eq!(app.current_pick(), Pick::Harness(Harness::OpenCode));
+        app.apply_pick();
+        answered(&mut app);
+        let entries = app.live.entries.len();
+        shift_tab(&mut app);
+        assert_eq!(app.current_pick(), Pick::Harness(Harness::OpenCode));
+        assert_eq!(app.rail_notice_text(), Some(LOCKED_HINT));
+        assert_eq!(app.notice, None);
+        assert_eq!(app.live.entries.len(), entries);
+        let shown = rail(&mut app);
+        assert!(
+            shown.contains("Start a new chat (Ctrl+N) to switch agents"),
+            "{shown}"
+        );
+        // A new chat switches again.
+        ctrl_n(&mut app);
+        assert!(app.live.entries.is_empty());
+        shift_tab(&mut app);
+        assert_eq!(app.current_pick(), Pick::Auto);
+        crate::opencode_chat::install_for_test(false);
+    }
+
+    /// /models lists the models of the harness on the rail from the first
+    /// frame of a new chat, before any turn (#11556).
+    #[test]
+    fn models_lists_the_rails_harness_before_any_turn() {
+        crate::opencode_models::keep(crate::opencode_models::parse_verbose(
+            &crate::opencode_models::tests::fixture(),
+        ));
+        let open = |pick: Pick| {
+            let mut app = crate::App::default();
+            app.set_mode(crate::Mode::Live);
+            app.next_pick = Some(pick);
+            app.open_models();
+            app
+        };
+        // Codex: Codex's models only, the current one marked.
+        let app = open(Pick::Harness(Harness::Codex));
+        assert!(
+            picker_plugins(&app)
+                .iter()
+                .all(|plugin| plugin == crate::codex::PICKER)
+        );
+        let picker = app.model_picker.as_ref().unwrap();
+        assert!(
+            picker
+                .models
+                .iter()
+                .any(|model| model.name == "GPT-6.1-Sol")
+        );
+        assert_eq!(picker.active_model, crate::codex::choice().model);
+        // Claude Code: Claude's.
+        let app = open(Pick::Harness(Harness::ClaudeCode));
+        assert!(
+            picker_plugins(&app)
+                .iter()
+                .all(|plugin| plugin == crate::claude::PICKER)
+        );
+        // OpenCode: OpenCode's own picker, Free first, no gateway models.
+        let app = open(Pick::Harness(Harness::OpenCode));
+        let picker = app.model_picker.as_ref().unwrap();
+        assert!(
+            picker_plugins(&app)
+                .iter()
+                .all(|plugin| plugin == crate::opencode_chat::PLUGIN)
+        );
+        assert!(
+            !picker
+                .models
+                .iter()
+                .any(|model| model.provider == "OpenAgents"
+                    || model.plugin == crate::gateway_models::PICKER)
+        );
+        assert_eq!(picker.models[0].id, "opencode/cat-jam-free");
+        assert_eq!(picker.models[0].group.as_deref(), Some("Free"));
+        assert_eq!(picker.models[1].id, "opencode/big-pickle");
+        assert_eq!(picker.title.as_deref(), Some("Select model"));
+        // Its search matches words fuzzily, as OpenCode's does.
+        let mut app = open(Pick::Harness(Harness::OpenCode));
+        for c in "cmp 2.5".chars() {
+            key(&mut app, crossterm::event::KeyCode::Char(c));
+        }
+        let found: Vec<_> = app
+            .model_picker
+            .as_ref()
+            .unwrap()
+            .matching()
+            .iter()
+            .map(|model| model.id.clone())
+            .collect();
+        assert_eq!(found, ["cursor/composer-2.5"]);
+        // Devin CLI: Devin's own list, SWE-2 first.
+        crate::agent_models::keep(
+            crate::agent_models::DEVIN,
+            crate::agent_models::parse_devin(
+                "SWE-1.6 Slow (swe-1.6-slow)\n  swe-1-6-slow   SWE-1.6 Slow\n\nSWE-2 (swe-2)\n  swe-2-medium   SWE-2 Medium\n",
+            ),
+        );
+        let app = open(devin());
+        let picker = app.model_picker.as_ref().unwrap();
+        assert!(
+            picker_plugins(&app)
+                .iter()
+                .all(|plugin| plugin == "agent:devin-cli")
+        );
+        assert_eq!(picker.models[0].group.as_deref(), Some("SWE-2"));
+    }
+
+    /// Switching the harness in a new chat, then /models, lists the new
+    /// harness's models.
+    #[test]
+    fn models_follows_a_shift_tab_switch() {
+        crate::harness_plugin::sign_in_claude(true);
+        crate::opencode_chat::install_for_test(true);
+        let mut app = crate::App::default();
+        app.set_mode(crate::Mode::Live);
+        app.plugins.enabled = true;
+        // A chat Auto routed to the Coder loop earlier, not answered yet.
+        app.live.runs_on = Some(Harness::CoderLoop);
+        shift_tab(&mut app);
+        app.open_models();
+        assert!(
+            picker_plugins(&app)
+                .iter()
+                .all(|plugin| plugin == crate::claude::PICKER)
+        );
+        app.model_picker = None;
+        shift_tab(&mut app);
+        assert_eq!(app.current_pick(), Pick::Harness(Harness::OpenCode));
+        crate::opencode_models::keep(crate::opencode_models::parse_verbose(
+            &crate::opencode_models::tests::fixture(),
+        ));
+        app.open_models();
+        assert!(
+            picker_plugins(&app)
+                .iter()
+                .all(|plugin| plugin == crate::opencode_chat::PLUGIN)
+        );
+        crate::harness_plugin::sign_in_claude(false);
+        crate::opencode_chat::install_for_test(false);
+    }
+
+    /// After the first turn a chat keeps its model: another pick in
+    /// /models says how to use it and changes nothing (#11556).
+    #[test]
+    fn a_model_pick_after_a_turn_changes_nothing() {
+        use crossterm::event::KeyCode;
+        let mut app = crate::App::default();
+        app.set_mode(crate::Mode::Live);
+        app.plugins.enabled = true;
+        app.live.runs_on = Some(Harness::CoderLoop);
+        answered(&mut app);
+        let before = app.plugins.model.clone();
+        app.open_models();
+        let picker = app.model_picker.as_ref().unwrap();
+        let other = picker
+            .models
+            .iter()
+            .position(|model| model.id != picker.active_model)
+            .unwrap();
+        app.model_picker.as_mut().unwrap().selected = other;
+        for _ in 0..3 {
+            if app.model_picker.is_some() {
+                key(&mut app, KeyCode::Enter);
+            }
+        }
+        assert!(app.model_picker.is_none());
+        assert_eq!(app.plugins.model, before);
+        assert_eq!(app.rail_notice_text(), Some(crate::MODEL_LOCKED_HINT));
+        assert_eq!(app.notice, None);
+    }
+
+    /// Auto never hops (#11556): once a turn answered, a later message
+    /// routed elsewhere stays on the chat's harness and path.
+    #[test]
+    fn auto_keeps_one_harness_for_the_whole_chat() {
+        let mut app = crate::App::default();
+        app.set_mode(crate::Mode::Live);
+        app.live.runs_on = Some(Harness::Codex);
+        app.live.cheap = true;
+        answered(&mut app);
+        app.routed = Some(crate::router::Routed {
+            harness: Harness::ClaudeCode,
+            model: None,
+            rule: crate::routing_record::Rule::Router,
+            probabilities: Vec::new(),
+            trace: crate::router::Trace {
+                question_set: String::new(),
+                policy: String::new(),
+                step: Some("new-work".into()),
+                follow_up: false,
+                ms: 0,
+                missing: None,
+            },
+        });
+        assert_eq!(app.route_turn(), Harness::Codex);
+        assert_eq!(app.live.runs_on, Some(Harness::Codex));
+        assert!(app.live.cheap, "the same path, so the same payer");
+    }
+
+    /// A model picked in one chat never carries into the next (#11556).
+    #[test]
+    fn a_new_chat_starts_on_the_default_model() {
+        let mut app = crate::App::default();
+        app.set_mode(crate::Mode::Live);
+        app.plugins.model = crate::models::OPENROUTER.into();
+        ctrl_n(&mut app);
+        assert_eq!(app.plugins.model, crate::models::AUTO);
+        assert_eq!(app.gateway_model, None);
+    }
+
+    /// An agent that runs steps without asking first says so on the rail,
+    /// once per chat, and the rail names its model in its own words.
+    #[test]
+    fn an_unasking_agent_is_noted_once_on_the_rail() {
+        let cursor = Pick::Agent {
+            id: "cursor".into(),
+            name: "Cursor".into(),
+        };
+        let mut app = crate::App::default();
+        app.set_mode(crate::Mode::Live);
+        app.note_unasked(&cursor);
+        let said = app.rail_notice_text().unwrap().to_owned();
+        assert!(
+            said.starts_with("Cursor runs steps without asking first"),
+            "{said}"
+        );
+        assert!(app.live.entries.is_empty() && app.notice.is_none());
+        app.rail_status = None;
+        app.note_unasked(&cursor);
+        assert_eq!(app.rail_notice_text(), None, "once per chat");
+        ctrl_n(&mut app);
+        app.rail_status = None;
+        app.note_unasked(&cursor);
+        assert!(app.rail_notice_text().is_some(), "and again in a new chat");
+        // The rail names Cursor's model as words.
+        remember("agent:cursor", |entry| {
+            entry.model = Some("composer-2.5[fast=true]".into());
+        });
+        app.next_pick = Some(cursor);
+        let shown = rail(&mut app);
+        assert!(shown.contains("Cursor (Composer 2.5 Fast)"), "{shown}");
+    }
+
+    /// Devin CLI's rail names SWE-2 in Devin's words before any turn.
+    #[test]
+    fn devin_clis_rail_names_swe_2() {
+        crate::agent_models::forget(crate::agent_models::DEVIN);
+        let mut app = crate::App::default();
+        app.set_mode(crate::Mode::Live);
+        app.next_pick = Some(Pick::Agent {
+            id: "devin-cli".into(),
+            name: "Devin CLI".into(),
+        });
+        let shown = rail(&mut app);
+        assert!(shown.contains("Devin CLI (SWE-2 Medium)"), "{shown}");
     }
 }

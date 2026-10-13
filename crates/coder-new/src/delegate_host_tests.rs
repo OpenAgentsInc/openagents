@@ -413,9 +413,8 @@ async fn a_delegated_cursor_child_says_plainly_what_coder_cannot_hold() {
             notice = Some(text);
         }
     }
-    let notice = notice.expect("the plain notice");
-    assert!(notice.starts_with("Cursor doesn't ask"), "{notice}");
-    assert!(notice.contains("merge"), "{notice}");
+    // The notice is a status, never words of the agent's reply (#11556).
+    assert_eq!(notice, None);
     let sent = acp_client::replay::received(&agent_dir);
     assert!(
         sent.iter()

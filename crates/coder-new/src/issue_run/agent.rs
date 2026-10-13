@@ -1890,7 +1890,7 @@ pub async fn run_acp(
     let (mut arguments, mut environment) = (acp.arguments, acp.environment);
     let agent = crate::bundled_runtime::AcpAgent {
         id: "devin-cli".into(),
-        name: "Devin".into(),
+        name: "Devin CLI".into(),
         program: program.clone(),
         transport: crate::bundled_runtime::AgentTransport::default(),
         arguments: Vec::new(),

@@ -58,7 +58,7 @@ pub(super) fn render(frame: &mut Frame, app: &App) {
         height,
     };
     let title = match picker.stage {
-        Stage::Models => "Pick model",
+        Stage::Models => picker.title.as_deref().unwrap_or("Pick model"),
         Stage::Reasoning => "Pick reasoning level",
         Stage::Output => "Maximum output tokens",
     };
@@ -115,7 +115,13 @@ pub(super) fn render(frame: &mut Frame, app: &App) {
     };
     let gap = u16::from(available >= details_height + 5);
     let list_height = available.saturating_sub(details_height + gap + 1);
-    let selected = picker.selected.min(rows.len().saturating_sub(1));
+    // A heading row is never selected: the selection counts choices only.
+    let selected = rows
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| !row.header)
+        .nth(picker.selected)
+        .map_or(0, |(index, _)| index);
     let start = selected
         .saturating_sub(usize::from(list_height) / 2)
         .min(rows.len().saturating_sub(usize::from(list_height)));
@@ -176,6 +182,18 @@ pub(super) fn render(frame: &mut Frame, app: &App) {
 struct Choice {
     label: String,
     description: String,
+    /// A group's heading ("Free", "Recent", a provider), not a choice.
+    header: bool,
+}
+
+impl Choice {
+    fn new(label: String, description: String) -> Self {
+        Self {
+            label,
+            description,
+            header: false,
+        }
+    }
 }
 
 fn choices(picker: &Picker) -> Vec<Choice> {
@@ -183,18 +201,35 @@ fn choices(picker: &Picker) -> Vec<Choice> {
         model.plugin == picker.active_plugin && model.id == picker.active_model
     });
     match picker.stage {
-        Stage::Models => picker
-            .matching()
-            .into_iter()
-            .map(|model| Choice {
-                label: if model.plugin == picker.active_plugin && model.id == picker.active_model {
-                    format!("{} (current)", model.name)
-                } else {
-                    model.name.clone()
-                },
-                description: model.description.clone(),
-            })
-            .collect(),
+        Stage::Models => {
+            // Grouped pickers head each group, as the harness's own does,
+            // until a search lists the matches in one run.
+            let headed = picker.query.text.trim().is_empty();
+            let mut rows = Vec::new();
+            let mut group: Option<&str> = None;
+            for model in picker.matching() {
+                if headed
+                    && let Some(heading) = model.group.as_deref()
+                    && group != Some(heading)
+                {
+                    group = Some(heading);
+                    rows.push(Choice {
+                        label: heading.to_owned(),
+                        description: String::new(),
+                        header: true,
+                    });
+                }
+                rows.push(Choice::new(
+                    if model.plugin == picker.active_plugin && model.id == picker.active_model {
+                        format!("{} (current)", model.name)
+                    } else {
+                        model.name.clone()
+                    },
+                    model.description.clone(),
+                ));
+            }
+            rows
+        }
         Stage::Reasoning => picker
             .reasoning_choices()
             .into_iter()
@@ -210,14 +245,14 @@ fn choices(picker: &Picker) -> Vec<Choice> {
                     Some("max") => ("Maximum", "Maximum reasoning"),
                     Some(other) => (other, ""),
                 };
-                Choice {
-                    label: if current && effort == picker.active_options.reasoning {
+                Choice::new(
+                    if current && effort == picker.active_options.reasoning {
                         format!("{label} (active)")
                     } else {
                         label.into()
                     },
-                    description: description.into(),
-                }
+                    description.into(),
+                )
             })
             .collect(),
         Stage::Output => picker
@@ -228,24 +263,36 @@ fn choices(picker: &Picker) -> Vec<Choice> {
                     || "Model default".into(),
                     |tokens| format!("{} tokens", number(tokens)),
                 );
-                Choice {
-                    label: if current && limit == picker.active_options.max_tokens {
+                Choice::new(
+                    if current && limit == picker.active_options.max_tokens {
                         format!("{label} (active)")
                     } else {
                         label
                     },
-                    description: if limit.is_none() {
+                    if limit.is_none() {
                         "Use the model's default".into()
                     } else {
                         "Maximum generated output".into()
                     },
-                }
+                )
             })
             .collect(),
     }
 }
 
 fn render_choice(frame: &mut Frame, area: Rect, choice: &Choice, selected: bool) {
+    if choice.header {
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                truncate(&choice.label, area.width),
+                Style::default()
+                    .fg(t::ACCENT_MODEL)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            area,
+        );
+        return;
+    }
     let background = if selected { t::BG_DARK } else { t::BG_BASE };
     let style = Style::default()
         .bg(background)

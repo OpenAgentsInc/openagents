@@ -190,6 +190,30 @@ impl Session {
         self.agent.stderr_tail()
     }
 
+    /// Set the open session's configuration option `config` (as `model`)
+    /// to `value`, the way an agent that lists its choices in
+    /// `configOptions` takes them.
+    ///
+    /// # Errors
+    /// See [`ClientError`].
+    pub async fn set_config_option(
+        &mut self,
+        config: &str,
+        value: &str,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<(), ClientError> {
+        let session = self.opened.session_id.clone();
+        let wait = Wait {
+            silence: HANDSHAKE,
+            cancel,
+            on_cancel: OnCancel::Abandon,
+        };
+        self.agent
+            .client
+            .set_config_option(&session, config, value, wait, &mut Ignore)
+            .await
+    }
+
     /// Switch the open session to the agent's mode `mode`.
     ///
     /// # Errors

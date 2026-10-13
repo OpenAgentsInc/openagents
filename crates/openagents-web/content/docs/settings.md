@@ -10,7 +10,7 @@ every setting is its default.
 ```sh
 openagents settings show                          # every setting and the file
 openagents settings get coder.providers
-openagents settings disable devin                 # Coder won't use Devin
+openagents settings disable devin                 # Coder won't use Devin CLI
 openagents settings enable devin                  # back on
 openagents settings set coder.start ask_first
 openagents settings unset coder.start             # back to the default
@@ -29,7 +29,7 @@ Settings only turn an agent off or change the order.
 | Key | Values | Default | What it does |
 | --- | --- | --- | --- |
 | `coder.disabled` | any of `codex`, `claude`, `grok`, `devin`, `opencode` | none | The coding agents you turned off; Coder never uses them. Every other agent is used whenever it's signed in on this computer and has room. At least one stays on. See [Coding agents](/docs/coding-agents). |
-| `coder.providers` | up to 5 of `codex`, `claude`, `grok`, `devin`, `opencode`; each may add `:MODEL` | none: Codex, Claude Code, Grok Build, Devin, OpenCode | The order Coder tries agents in, first preferred, and a model for any of them. Agents you leave out still follow in the default order. |
+| `coder.providers` | up to 5 of `codex`, `claude`, `grok`, `devin`, `opencode`; each may add `:MODEL` | none: Codex, Claude Code, Grok Build, Devin CLI, OpenCode | The order Coder tries agents in, first preferred, and a model for any of them. Agents you leave out still follow in the default order. |
 | `coder.start` | `at_once`, `ask_first` | `at_once` | Whether a coding reply starts Coder at once, or only offers **Run Coder**. It decides for your phone's requests to this computer too. |
 | `coder.usage_threshold_percent` | 1 to 100, or `off` | `90` | How full an agent's usage window can read before Coder moves on to the next agent. With `off`, Coder moves on only when an agent turns it away. |
 | `coder.projects` | folders | none: any Git checkout | Which folders hold your projects. Coder runs only in a checkout inside one of them, and the Mac app tries them when a chat names no project. |
@@ -46,7 +46,7 @@ openagents settings set coder.access toolchains
 ```
 
 OpenCode runs on the model its own configuration names (its `model`
-setting), or the one you name as `opencode:PROVIDER/MODEL`. Devin bills its
+setting), or the one you name as `opencode:PROVIDER/MODEL`. Devin CLI bills its
 own paid API for each run; turn it off if you don't want Coder to use it.
 
 The Mac app reads the file when Coder first starts a run; restart the app

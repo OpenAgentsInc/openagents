@@ -139,7 +139,26 @@ pub fn model(pinned: Option<String>) -> String {
         .unwrap_or_else(|| auto_model().to_owned())
 }
 
+/// This run's pick: `None` until a pick or a new chat, then the chat's
+/// pick (`Some(None)` for none, so a new chat starts on the default).
+static PICK: std::sync::Mutex<Option<Option<String>>> = std::sync::Mutex::new(None);
+
+/// A new chat starts on OpenCode's default, not an earlier chat's pick
+/// (#11556).
+pub fn reset_choice() {
+    *PICK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(None);
+}
+
 fn saved_choice() -> Option<String> {
+    if let Some(pick) = PICK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+    {
+        return pick;
+    }
     if cfg!(test) {
         return None;
     }
@@ -155,6 +174,12 @@ fn saved_choice() -> Option<String> {
 /// The model is not `provider/model`, or the pick can't be saved.
 pub fn choose(model: &str) -> Result<(), String> {
     acp_client::opencode::Model::parse(model)?;
+    *PICK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Some(model.to_owned()));
+    if cfg!(test) {
+        return Ok(());
+    }
     let dir = crate::home::data_dir().ok_or("Coder's settings folder is unavailable.")?;
     std::fs::create_dir_all(&dir).map_err(|_| "Coder could not save the pick.".to_owned())?;
     let file = ChoiceFile {
@@ -167,56 +192,11 @@ pub fn choose(model: &str) -> Result<(), String> {
 }
 
 /// The models the person's OpenCode offers, as /models lists them:
-/// `opencode models`, once per run of Coder.
+/// OpenCode's own picker ([`crate::opencode_models`]), with `current`
+/// marked.
 #[must_use]
-pub fn catalog() -> Vec<crate::models::Model> {
-    static FOUND: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
-    let ids = FOUND.get_or_init(|| {
-        let Some(program) = binary() else {
-            return Vec::new();
-        };
-        std::process::Command::new(program)
-            .arg("models")
-            .stdin(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .output()
-            .ok()
-            .filter(|output| output.status.success())
-            .map(|output| {
-                String::from_utf8_lossy(&output.stdout)
-                    .lines()
-                    .map(str::trim)
-                    .filter(|line| acp_client::opencode::Model::parse(line).is_ok())
-                    .map(str::to_owned)
-                    .collect()
-            })
-            .unwrap_or_default()
-    });
-    let mut ids = ids.clone();
-    if !ids.iter().any(|id| id == DEFAULT_MODEL) {
-        ids.insert(0, DEFAULT_MODEL.to_owned());
-    }
-    ids.into_iter()
-        .map(|id| {
-            let (provider, _) = id.split_once('/').unwrap_or((&id, ""));
-            crate::models::Model {
-                plugin: PLUGIN.into(),
-                provider: provider.to_owned(),
-                description: if id == DEFAULT_MODEL {
-                    "OpenCode's free model.".into()
-                } else {
-                    "A model your OpenCode reaches.".into()
-                },
-                name: id.clone(),
-                id,
-                context_length: None,
-                max_output_tokens: None,
-                efforts: Vec::new(),
-                default_effort: None,
-                supports_output_limit: false,
-            }
-        })
-        .collect()
+pub fn catalog(current: &str) -> Vec<crate::models::Model> {
+    crate::opencode_models::catalog(current)
 }
 
 /// The rail's words for a chat on OpenCode: "OpenCode (Cat Jam)" for

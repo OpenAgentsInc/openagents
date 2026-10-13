@@ -255,6 +255,11 @@ fn run() -> io::Result<()> {
         let _ = coder_new::claude::available();
     });
     coder_new::harness_pick::start(state.clone().or_else(coder_new::home::data_dir));
+    // OpenCode's model list is read in the background, so /models on an
+    // OpenCode chat opens at once (#11556).
+    if coder_new::opencode_chat::installed() {
+        coder_new::opencode_models::warm();
+    }
     let openagents_root = model_access::store::openagents_dir();
     let update = state
         .clone()
@@ -271,6 +276,11 @@ fn run() -> io::Result<()> {
         if let Err(error) = app.load_plugin_settings(coder_new::plugin_store::Store::under(&store))
         {
             app.notice = Some(error);
+        }
+        // A new chat starts on Auto or each harness's default, never a
+        // model picked in an earlier chat (#11556).
+        if follow.is_none() {
+            app.reset_model_picks();
         }
     }
     // The desktop app's Agents panel lists this process's background

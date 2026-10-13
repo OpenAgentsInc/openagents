@@ -310,6 +310,7 @@ pub fn catalog(models: &[Row], with_auto: bool) -> Vec<Model> {
         efforts: Vec::new(),
         default_effort: None,
         supports_output_limit: false,
+        group: None,
     });
     auto.into_iter()
         .chain(models.iter().map(|row| Model {
@@ -327,6 +328,7 @@ pub fn catalog(models: &[Row], with_auto: bool) -> Vec<Model> {
             efforts: Vec::new(),
             default_effort: None,
             supports_output_limit: false,
+            group: None,
         }))
         .collect()
 }

@@ -168,10 +168,9 @@ fn reply_keeps_its_actual_model_without_showing_it_in_the_transcript() {
             .any(|line| line.contains("openai/gpt-6-luna"))
     );
     let rail = label(&rows(&buffer)[top_rule(&rows(&buffer)).unwrap()]).to_owned();
-    assert!(
-        rail.starts_with("Auto → Coder (claude-fable-5.1)"),
-        "{rail}"
-    );
+    // A model picked in /models pins the loop: its name, no "Auto"
+    // (#11556).
+    assert!(rail.starts_with("Coder (Claude Fable 5.1)"), "{rail}");
     assert!(!rows(&buffer).iter().any(|line| line.contains("anthropic/")));
 }
 
@@ -304,12 +303,12 @@ fn long_attribution_does_not_overwrite_the_reply_or_the_draft_after_resize() {
     assert!(text.iter().any(|line| line.contains("Visible reply body.")));
     assert!(text.iter().any(|line| line.contains("❯ draft")));
     assert_eq!(cursor.0, 8);
-    // Narrow, the rail keeps what ran and cuts the model's name short
-    // ("Auto → Coder (cla…", #11524); wide, it names the model whole.
-    assert!(text[top_rule(&text).unwrap()].contains("Coder (cla"));
+    // Narrow, the rail cuts the model's name short ("Coder (Cla…",
+    // #11524); wide, it names the model whole.
+    assert!(text[top_rule(&text).unwrap()].contains("Coder (Cla"));
     assert!(!text.iter().any(|line| line.contains("anthropic/")));
     let text = rows(&render(&mut app, 80, 12).0);
-    assert!(text[top_rule(&text).unwrap()].contains("claude-fable-5.1"));
+    assert!(text[top_rule(&text).unwrap()].contains("Claude Fable 5.1"));
     assert!(!text.iter().any(|line| line.contains("anthropic/")));
 }
 
@@ -333,9 +332,9 @@ fn input_rails_name_the_chosen_model_only_and_the_bottom_rule_names_the_reposito
         let rule = &text[top_rule(&text).unwrap()];
         assert!(
             rule.contains(if width < 80 {
-                "Coder (gpt"
+                "Coder (GPT"
             } else {
-                "gpt-6-luna"
+                "GPT-6 Luna"
             }),
             "{rule}"
         );
@@ -347,10 +346,7 @@ fn input_rails_name_the_chosen_model_only_and_the_bottom_rule_names_the_reposito
     app.plugins.options.reasoning = None;
     let text = rows(&render(&mut app, 110, 24).0);
     // What Auto routed to, and the model the person chose (#11524).
-    assert_eq!(
-        label(&text[top_rule(&text).unwrap()]),
-        "Auto → Coder (gpt-6-luna)"
-    );
+    assert_eq!(label(&text[top_rule(&text).unwrap()]), "Coder (GPT-6 Luna)");
     app.apply_update(Update::Checked {
         id: app.request_id,
         result: Err("HTTP 401".into()),

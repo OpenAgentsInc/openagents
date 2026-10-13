@@ -452,6 +452,29 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Client<R, W> {
         .map(|_| ())
     }
 
+    /// `session/set_config_option`: sets the session's configuration
+    /// option `config` (as `model`) to `value`.
+    ///
+    /// # Errors
+    /// See [`ClientError`].
+    pub async fn set_config_option(
+        &mut self,
+        session: &str,
+        config: &str,
+        value: &str,
+        wait: Wait<'_>,
+        handler: &mut dyn Handler,
+    ) -> Result<(), ClientError> {
+        self.request(
+            method::SESSION_SET_CONFIG_OPTION,
+            &json!({"sessionId": session, "configId": config, "value": value}),
+            wait,
+            handler,
+        )
+        .await
+        .map(|_| ())
+    }
+
     /// `session/prompt` with one text block, until the turn ends.
     ///
     /// # Errors

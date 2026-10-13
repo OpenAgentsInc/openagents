@@ -1229,12 +1229,21 @@ mod tests {
             .await
             .unwrap();
 
-        // An agent that doesn't ask before every step opens with the
-        // notice of the checks Coder can't keep on it (#11508).
-        assert_eq!(events.len(), 5);
-        assert!(matches!(&events[0], RuntimeEvent::Text(text)
-            if text.starts_with("Fixture ACP doesn't ask before every step")));
-        let events = &events[1..];
+        // The checks Coder can't keep on an agent that doesn't ask before
+        // every step are a status, never words of its reply (#11556).
+        assert_eq!(events.len(), 4);
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, RuntimeEvent::Text(text)
+            if text.contains("doesn't ask before every step")))
+        );
+        assert!(
+            result["checks"]["note"]
+                .as_str()
+                .is_some_and(|note| note.starts_with("Fixture ACP doesn't ask before every step"))
+        );
+        let events = &events[..];
         assert!(matches!(&events[0], RuntimeEvent::Model(model) if model == "fixture/[redacted]"));
         for event in &events[1..3] {
             assert!(matches!(event, RuntimeEvent::Tool {name, input, ..}

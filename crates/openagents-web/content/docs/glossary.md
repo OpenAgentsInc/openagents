@@ -10,7 +10,7 @@ The words these docs use, in plain terms.
 | **Check** | Rerunning someone else's published result. It confirms the result when you get the same verdict and disputes it when you don't. |
 | **Chat** | Talking with OpenAgents. The same chat on the website, the Mac app, the iPhone app, and the Terminal. |
 | **Coder** | Our coding agent. It does coding work on your own computer, in your terminal (`coder`) or from the apps, with the coding agents you're signed in to there or its own loop. |
-| **Coding agent** | Claude Code, Codex, OpenCode, Devin, Cursor, Grok Build, and others: the programs Coder runs to do the work. Also called engines. |
+| **Coding agent** | Claude Code, Codex, OpenCode, Devin CLI, Cursor, Grok Build, and others: the programs Coder runs to do the work. Also called engines. |
 | **Computer** | A Mac, Linux, or Windows computer where Coder can run, which your phone can connect to. |
 | **Deck** | A slide presentation the Mac app shows full screen. |
 | **Defaults** | The plugins Coder uses for everyone, once their test results hold up. |

@@ -123,6 +123,9 @@ pub struct Model {
     pub efforts: Vec<String>,
     pub default_effort: Option<String>,
     pub supports_output_limit: bool,
+    /// The heading the row sits under in /models ("Free", "Recent", a
+    /// provider), for a harness whose own picker groups its models.
+    pub group: Option<String>,
 }
 
 /// A small known catalog is available while public model metadata refreshes.
@@ -185,6 +188,7 @@ pub fn openrouter_catalog() -> Vec<Model> {
             efforts: efforts.iter().map(|effort| (*effort).into()).collect(),
             default_effort: default.map(str::to_owned),
             supports_output_limit: true,
+            group: None,
         })
         .collect()
 }
@@ -210,6 +214,22 @@ pub struct Picker {
     pub loading: bool,
     pub refresh_requested: bool,
     pub error: Option<String>,
+    /// The popup's title, when the harness's own picker names it ("Select
+    /// model"); "Pick model" otherwise.
+    pub title: Option<String>,
+    /// Search the way the harness's own picker does: every typed word is a
+    /// fuzzy match (its letters in order) in the name, heading or id, as
+    /// OpenCode's model dialog searches (fuzzysort over title and
+    /// category). Otherwise a plain substring of the row's words.
+    pub fuzzy: bool,
+}
+
+/// Whether every letter of `needle` appears in `haystack` in order.
+fn subsequence(needle: &str, haystack: &str) -> bool {
+    let mut letters = haystack.chars();
+    needle
+        .chars()
+        .all(|wanted| letters.by_ref().any(|letter| letter == wanted))
 }
 
 pub enum Action {
@@ -243,11 +263,38 @@ impl Picker {
             loading: live,
             refresh_requested: live,
             error: None,
+            title: None,
+            fuzzy: false,
         }
+    }
+
+    /// The same picker under `title`, searched as the harness's own is.
+    #[must_use]
+    pub fn styled(mut self, title: &str, fuzzy: bool) -> Self {
+        self.title = Some(title.to_owned());
+        self.fuzzy = fuzzy;
+        self
     }
 
     pub fn matching(&self) -> Vec<&Model> {
         let query = self.query.text.to_lowercase();
+        if self.fuzzy {
+            let words: Vec<&str> = query.split_whitespace().collect();
+            return self
+                .models
+                .iter()
+                .filter(|model| {
+                    let haystack = format!(
+                        "{} {} {}",
+                        model.name,
+                        model.group.as_deref().unwrap_or_default(),
+                        model.id
+                    )
+                    .to_lowercase();
+                    words.iter().all(|word| subsequence(word, &haystack))
+                })
+                .collect();
+        }
         self.models
             .iter()
             .filter(|model| {
