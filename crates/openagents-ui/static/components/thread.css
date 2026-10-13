@@ -246,3 +246,28 @@ a.oa-task-row:focus-visible {
 .oa-share-mark {
   font-size: var(--font-text-sm-size);
 }
+
+/* The chat reads one step smaller on the type scale (owner, 2026-10-13):
+   on the chat surfaces (the thread and its messages, Markdown, code and
+   step lines; the composer; the sidebar's chat list; an app page's header
+   title) each text size maps to the next smaller step of the scale, so
+   their proportions stay the same. `xs` is the floor: body text never goes
+   below it. Markdown headings and code are sized in `em` of the message
+   text, so they step down with it. Controls keep their own sizes. */
+.oa-thread-view,
+.oa-main-composer,
+.oa-composer-root,
+.oa-chat-list,
+.oa-layout[data-mode="app"] .oa-main-header-content {
+  --font-text-lg-size: 1rem;
+  --font-text-lg-line-height: 1.5rem;
+  --font-text-md-size: 0.875rem;
+  --font-text-md-line-height: 1.25rem;
+  --font-text-sm-size: 0.75rem;
+  --font-text-sm-line-height: 1.125rem;
+  --markdown-font-size: 0.875rem;
+}
+/* Text the thread doesn't size itself (step lines, notices) follows it. */
+.oa-thread-view {
+  font-size: var(--font-text-md-size);
+}
