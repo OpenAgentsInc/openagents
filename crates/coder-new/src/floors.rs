@@ -361,10 +361,13 @@ fn command_floor(words: &[String], shown: &str) -> Option<Floor> {
 /// `env` and assignments), however deep.
 #[must_use]
 pub fn command(command: &str) -> Option<Floor> {
-    scripts(command)
-        .iter()
-        .flat_map(|script| simple_commands(script))
-        .find_map(|words| command_floor(&words, command.trim()))
+    // The card names what runs: the script inside a wrapper, not the
+    // wrapper.
+    scripts(command).iter().find_map(|script| {
+        simple_commands(script)
+            .iter()
+            .find_map(|words| command_floor(words, script.trim()))
+    })
 }
 
 /// How many shell wrappers deep a command is read.

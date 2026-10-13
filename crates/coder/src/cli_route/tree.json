@@ -4280,7 +4280,7 @@
               "chat"
             ],
             "usage": [
-              "chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID] [--instructions TEXT | --instructions-file FILE] [--mode auto|coder] [--in-place] [--demo]"
+              "chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID] [--instructions TEXT | --instructions-file FILE] [--mode auto|coder|codex] [--in-place] [--demo]"
             ],
             "forms": [
               {

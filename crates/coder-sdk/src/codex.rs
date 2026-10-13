@@ -376,8 +376,16 @@ impl Codex {
             && !tools.is_empty()
             && open.resume.is_none()
         {
-            params["dynamicTools"] = json!(
-                tools
+            // One namespace, the server's name, so a tool may load on
+            // demand (Codex defers only namespaced tools).
+            params["dynamicTools"] = json!([{
+                "type": "namespace",
+                "name": tools.name,
+                "description": tools
+                    .instructions
+                    .clone()
+                    .unwrap_or_else(|| "Coder's own tools.".to_owned()),
+                "tools": tools
                     .tools()
                     .iter()
                     .map(|tool| json!({
@@ -387,8 +395,8 @@ impl Codex {
                         "inputSchema": tool.schema,
                         "deferLoading": !tool.always_load,
                     }))
-                    .collect::<Vec<_>>()
-            );
+                    .collect::<Vec<_>>(),
+            }]);
         }
         self.tools.clone_from(&open.tools);
         let result = match &open.resume {
@@ -1113,17 +1121,37 @@ pub fn unwrap_display(command: &str) -> String {
     ] {
         if let Some(rest) = command.strip_prefix(shell) {
             let rest = rest.trim();
-            if let Some(inner) = rest
-                .strip_prefix('\'')
-                .and_then(|rest| rest.strip_suffix('\''))
-                .filter(|inner| !inner.contains('\''))
-            {
-                return inner.to_owned();
-            }
-            return rest.to_owned();
+            return one_word(rest).unwrap_or_else(|| rest.to_owned());
         }
     }
     command.to_owned()
+}
+
+/// `text` as one shell word with its quotes taken off, when it is one.
+fn one_word(text: &str) -> Option<String> {
+    let mut word = String::new();
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' => loop {
+                match chars.next()? {
+                    '\'' => break,
+                    c => word.push(c),
+                }
+            },
+            '"' => loop {
+                match chars.next()? {
+                    '"' => break,
+                    '\\' => word.push(chars.next()?),
+                    c => word.push(c),
+                }
+            },
+            '\\' => word.push(chars.next()?),
+            c if c.is_whitespace() => return None,
+            c => word.push(c),
+        }
+    }
+    Some(word)
 }
 
 /// One shell word, quoted when it needs it.

@@ -27,7 +27,7 @@ macro_rules! command_usage {
             "usage: openagents coder COMMAND [OPTIONS]
   status                              Provider, model, plugins, and working directory.
   chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID]
-       [--instructions TEXT | --instructions-file FILE] [--mode auto|coder]
+       [--instructions TEXT | --instructions-file FILE] [--mode auto|coder|codex]
        [--in-place]",
             $demo,
             "

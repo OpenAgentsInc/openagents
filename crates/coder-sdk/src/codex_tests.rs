@@ -559,6 +559,14 @@ fn codex_calls_reach_the_hooks_in_claude_codes_shapes() {
     );
     assert_eq!(unwrap_display("/bin/zsh -lc 'cargo test'"), "cargo test");
     assert_eq!(unwrap_display("ls"), "ls");
+    assert_eq!(
+        unwrap_display(r#"/bin/zsh -lc "rg --files -g 'add.sh'""#),
+        "rg --files -g 'add.sh'"
+    );
+    assert_eq!(
+        unwrap_display(r#"/bin/zsh -lc 'echo '\''hi'\'''"#),
+        "echo 'hi'"
+    );
     // Codex runs no bypass on this path.
     let launch = Launch {
         config: vec!["model_reasoning_effort=\"low\"".into()],
@@ -671,7 +679,10 @@ async fn coder_tools_are_dynamic_tools_through_the_hooks() {
         .find(|(method, _)| method == "thread/start")
         .unwrap()
         .1;
-    let offered: Vec<_> = start["dynamicTools"]
+    let namespace = &start["dynamicTools"][0];
+    assert_eq!(namespace["type"], "namespace");
+    assert_eq!(namespace["name"], "coder");
+    let offered: Vec<_> = namespace["tools"]
         .as_array()
         .unwrap()
         .iter()

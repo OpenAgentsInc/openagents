@@ -141,7 +141,10 @@ impl Boundary {
         // A script (`python3 - <<EOF`, `node -e`, `bash -c`) can write
         // anywhere it names, so one that names a path in the shared checkout
         // is refused, whatever it does with it (#11485).
+        // A shell wrapper (`/bin/zsh -lc '...'`) is not such a script: what
+        // it runs is judged on its own ([`crate::floors::scripts`]).
         if segments(command)
+            .filter(|words| crate::floors::wrapped_script(words).is_none())
             .filter_map(|words| program(&words))
             .any(|program| interpreter(&program))
             && let Some(path) = named_paths(command).find(|path| self.protects(cwd, path))
@@ -905,6 +908,26 @@ mod tests {
                 wt
             )
             .is_none()
+        );
+        // Reading the shared checkout through Codex's wrapper is fine; a
+        // script inside it that names the checkout is not.
+        assert!(
+            tool_refusal(
+                Some(&b),
+                "Bash",
+                &json!({"command": "/bin/zsh -lc 'cat /repo/README.md'"}),
+                wt
+            )
+            .is_none()
+        );
+        assert!(
+            tool_refusal(
+                Some(&b),
+                "Bash",
+                &json!({"command": "/bin/zsh -lc \"python3 -c 'open(\\\"/repo/x\\\", \\\"w\\\")'\""}),
+                wt
+            )
+            .is_some()
         );
         // The shell the agent left in the shared checkout counts as there.
         assert!(
