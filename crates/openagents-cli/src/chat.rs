@@ -526,6 +526,7 @@ async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Fai
                 timeout,
             };
             let ended = client.run(op, &mut |event| printer.print(event)).await?;
+            sync_thread(&mut client, &id).await;
             if ended == Ended::Refused {
                 eprintln!("thread {id}");
                 return Ok(EXIT_FAILURE);
@@ -613,6 +614,7 @@ async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Fai
             };
             let mut client = open(args, Some(&id), false, &mut printer).await?;
             let ended = client.run(op, &mut |event| printer.print(event)).await?;
+            sync_thread(&mut client, &id).await;
             if !output.json() {
                 eprintln!("thread {id}");
             }
@@ -620,6 +622,31 @@ async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Fai
         }
         _ => Err(Failure::Usage(format!("unknown command `{command}`"))),
     }
+}
+
+/// After a turn, the thread to the signed-in account on openagents.com,
+/// as a terminal Coder chat goes (#11543): only a chat this computer keeps
+/// (its host's, or this process's own store), only when saving chats to
+/// the account is on here (`/sync` in Coder), and quietly nothing when it
+/// is off, signed out, or unreachable.
+async fn sync_thread(client: &mut Client, id: &str) {
+    if !matches!(client.kind(), Kind::Host | Kind::InProcess) {
+        return;
+    }
+    let dir = crate::keys::sign_in_dir(None);
+    if !coder_sync::Settings::load(&dir).on {
+        return;
+    }
+    let Ok(whole) = client.collect(id).await else {
+        return;
+    };
+    let mut document = openagents_chat::thread::trajectory(&whole, &crate::version_line());
+    // Its own title, though it was renamed.
+    document["extra"]["title"] = json!(whole.summary.title);
+    let _ = tokio::task::spawn_blocking(move || {
+        coder_new::account_sync::upload_saved_now(&dir, &document);
+    })
+    .await;
 }
 
 /// The thread `arg` names when it isn't a whole ID: a unique ID prefix or
@@ -1268,7 +1295,7 @@ fn read(output: &Output, client: &Client, thread: &openagents_chat::thread::Thre
             "busy": thread.busy,
             "failure": thread.failure,
             "coder": thread.summary.coder,
-            "turns": thread.turns,
+            "turns": turns_json(&thread.turns),
             "coder_turns": endings,
         }),
         |value| {
@@ -1310,6 +1337,23 @@ fn read(output: &Output, client: &Client, thread: &openagents_chat::thread::Thre
     );
 }
 
+/// The turns as `chat read` prints them: each reply's routing judgment as
+/// the object `chat send`'s `route` event carries (#11543), not as the
+/// text it is kept as.
+fn turns_json(turns: &[Turn]) -> Value {
+    let mut value = json!(turns);
+    for turn in value.as_array_mut().into_iter().flatten() {
+        if let Some(judgment) = turn.pointer_mut("/meta/judgment")
+            && let Some(parsed) = judgment
+                .as_str()
+                .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        {
+            *judgment = parsed;
+        }
+    }
+    value
+}
+
 /// One ended Coder turn as `chat read` shows it: how it ended, then its
 /// answer, indented.
 fn coder_turn(ending: &openagents_chat::coder_events::CoderEvent) -> String {
@@ -1342,6 +1386,22 @@ fn coder_turn(ending: &openagents_chat::coder_events::CoderEvent) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_read_turns_judgment_is_an_object_like_sends() {
+        let mut reply = Turn::assistant(
+            "Hi.",
+            Some(Meta {
+                judgment: Some(json!({"route": "smalltalk", "route_p": 0.88}).to_string()),
+                ..Meta::default()
+            }),
+        );
+        reply.at = Some(1);
+        let turns = turns_json(&[Turn::user("Hello"), reply]);
+        assert_eq!(turns[1]["meta"]["judgment"]["route"], "smalltalk");
+        assert_eq!(turns[1]["meta"]["judgment"]["route_p"], 0.88);
+        assert!(turns[0].get("meta").is_none());
+    }
 
     #[test]
     fn a_coder_turn_reads_as_its_outcome_and_answer() {

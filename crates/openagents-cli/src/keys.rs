@@ -262,7 +262,7 @@ fn account_dir(dir: Option<&str>) -> PathBuf {
 /// The folder a sign-in is read from: `account_dir(dir)`, else the
 /// `coder-new` folder when Coder's data hasn't moved to `coder` here
 /// (#11361) and it alone still holds one.
-fn sign_in_dir(dir: Option<&str>) -> PathBuf {
+pub(crate) fn sign_in_dir(dir: Option<&str>) -> PathBuf {
     if dir.is_some() {
         return account_dir(dir);
     }
