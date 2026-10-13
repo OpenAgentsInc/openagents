@@ -108,16 +108,16 @@ def load_backbone(path: Path, cfg: Config):
         L = {
             "in_norm": devf(get(p + "input_layernorm.weight")),
             "post_norm": devf(get(p + "post_attention_layernorm.weight")),
-            # MLP gate|up fused [d, 2F], down [F, d]
+            # gate|up fused [d, 2F] (one wide matmul runs faster than two), down [F, d]
             "gate_up": dev(np.concatenate([get(p + "mlp.gate_proj.weight"), get(p + "mlp.up_proj.weight")], 0).T),
             "down": dev(get(p + "mlp.down_proj.weight").T),
         }
         if cfg.layer_types[i] == "linear_attention":
             a = p + "linear_attn."
             L.update({
-                # qkv | z | b | a fused into one projection [d, conv_dim + vdim + 2*Hv]
-                "in_proj": dev(np.concatenate([get(a + "in_proj_qkv.weight"), get(a + "in_proj_z.weight"),
-                                               get(a + "in_proj_b.weight"), get(a + "in_proj_a.weight")], 0).T),
+                "in_qkv": dev(get(a + "in_proj_qkv.weight").T),
+                "in_z": dev(get(a + "in_proj_z.weight").T),
+                "in_ba": dev(np.concatenate([get(a + "in_proj_b.weight"), get(a + "in_proj_a.weight")], 0).T),
                 "conv": devf(get(a + "conv1d.weight")[:, 0, :]),      # [conv_dim, K]
                 "dt_bias": devf(get(a + "dt_bias")),
                 "A_log": devf(get(a + "A_log")),
@@ -189,8 +189,10 @@ def deltanet(cfg, L, st, x, precision, scan):
     C = x.shape[0]
     Hk, Hv, dk, dv = cfg.lin_k_heads, cfg.lin_v_heads, cfg.lin_k_dim, cfg.lin_v_dim
     kd, vd = Hk * dk, Hv * dv
-    proj = mm(x, L["in_proj"], precision)
-    qkv, z, b, a = jnp.split(proj, [2 * kd + vd, 2 * kd + 2 * vd, 2 * kd + 2 * vd + Hv], -1)
+    qkv = mm(x, L["in_qkv"], precision)
+    z = mm(x, L["in_z"], precision)
+    ba = mm(x, L["in_ba"], precision)
+    b, a = ba[:, :Hv], ba[:, Hv:]
     K = cfg.conv_kernel
     full = jnp.concatenate([st["conv"], qkv], 0)                    # [K-1+C, conv_dim]
     w = L["conv"]                                                   # [conv_dim, K]
@@ -216,6 +218,49 @@ def deltanet(cfg, L, st, x, precision, scan):
     return out, {"conv": new_conv, "S": S}
 
 
+# keys per online-softmax step; the cache buckets are multiples of it
+KEY_BLOCK = int(__import__("os").environ.get("CLEF_TPU_KEY_BLOCK", "2048"))
+
+
+def causal_attention(qh, kc, vc, pos0, precision):
+    """Queries at pos0..pos0+C against the cache's keys 0..pos0+C, in key
+    blocks of KEY_BLOCK with an online softmax: the cost follows the real prefix,
+    not the cache bucket. qh [C, Hkv, rep, D]; returns [C, Hkv, rep, D] f32."""
+    C, Hkv, rep, D = qh.shape
+    scale = 1.0 / math.sqrt(D)
+    qpos = pos0 + jnp.arange(C)
+    if precision == "f32":
+        qx = qh * scale
+        dot = lambda a, b, eq: jnp.einsum(eq, a, b.astype(jnp.float32), precision=jax.lax.Precision.HIGHEST)
+    else:
+        qx = (qh * scale).astype(jnp.bfloat16)
+        dot = lambda a, b, eq: jnp.einsum(eq, a.astype(jnp.bfloat16), b.astype(jnp.bfloat16),
+                                          preferred_element_type=jnp.float32)
+    KB = min(KEY_BLOCK, kc.shape[0]) if kc.shape[0] % KEY_BLOCK == 0 else C
+    n_blocks = (pos0 + C + KB - 1) // KB
+
+    def body(j, carry):
+        m, l, acc = carry
+        start = j * KB
+        kb = jax.lax.dynamic_slice_in_dim(kc, start, KB, 0)
+        vb = jax.lax.dynamic_slice_in_dim(vc, start, KB, 0)
+        s = dot(qx, kb, "cgrd,tgd->grct")
+        kpos = start + jnp.arange(KB)
+        s = jnp.where((kpos[None, :] <= qpos[:, None])[None, None], s, -jnp.inf)
+        m_new = jnp.maximum(m, s.max(-1))
+        p = jnp.exp(s - m_new[..., None])
+        corr = jnp.exp(m - m_new)
+        l = l * corr + p.sum(-1)
+        acc = acc * corr[..., None] + dot(p, vb, "grct,tgd->grcd")
+        return m_new, l, acc
+
+    m0 = jnp.full((Hkv, rep, C), -jnp.inf, jnp.float32)
+    l0 = jnp.zeros((Hkv, rep, C), jnp.float32)
+    a0 = jnp.zeros((Hkv, rep, C, D), jnp.float32)
+    _, l, acc = jax.lax.fori_loop(0, n_blocks, body, (m0, l0, a0))
+    return (acc / l[..., None]).transpose(2, 0, 1, 3)
+
+
 def attention(cfg, L, st, x, pos0, cos, sin, precision):
     C = x.shape[0]
     H, Hkv, D = cfg.heads, cfg.kv_heads, cfg.head_dim
@@ -231,22 +276,9 @@ def attention(cfg, L, st, x, pos0, cos, sin, precision):
     k = apply_rope(k, cos, sin, cfg.rotary_dim)
     kc = jax.lax.dynamic_update_slice(st["k"], k.astype(st["k"].dtype), (pos0, 0, 0))
     vc = jax.lax.dynamic_update_slice(st["v"], v.astype(st["v"].dtype), (pos0, 0, 0))
-    T = kc.shape[0]
     rep = H // Hkv
     qh = q.reshape(C, Hkv, rep, D)
-    if precision == "f32":
-        s = jnp.einsum("cgrd,tgd->grct", qh, kc.astype(jnp.float32), precision=jax.lax.Precision.HIGHEST)
-    else:
-        s = jnp.einsum("cgrd,tgd->grct", qh.astype(jnp.bfloat16), kc, preferred_element_type=jnp.float32)
-    s = s / math.sqrt(D)
-    qpos = pos0 + jnp.arange(C)
-    mask = jnp.arange(T)[None, :] <= qpos[:, None]
-    s = jnp.where(mask[None, None], s, -jnp.inf)
-    p = jax.nn.softmax(s, -1)
-    if precision == "f32":
-        o = jnp.einsum("grct,tgd->cgrd", p, vc.astype(jnp.float32), precision=jax.lax.Precision.HIGHEST)
-    else:
-        o = jnp.einsum("grct,tgd->cgrd", p.astype(jnp.bfloat16), vc, preferred_element_type=jnp.float32)
+    o = causal_attention(qh, kc, vc, pos0, precision)
     o = o.reshape(C, H * D) * jax.nn.sigmoid(gate)
     return mm(o, L["o"], precision), {"k": kc, "v": vc}
 
@@ -274,10 +306,18 @@ def prefill_chunk(cfg: Config, params, state, x, pos0, n_valid, *, precision="bf
         x = jnp.where(real, x + y, 0.0)
         h = rms(x, L["post_norm"], cfg.eps)
         gu = mm(h, L["gate_up"], precision)
-        gt, up = jnp.split(gu, 2, -1)
-        x = x + mm(jax.nn.silu(gt) * up, L["down"], precision)
+        x = x + mm(jax.nn.silu(gu[:, :cfg.ffn]) * gu[:, cfg.ffn:], L["down"], precision)
         x = jnp.where(real, x, 0.0)
     return new_state, rms(x, params["norm"], cfg.eps)
+
+
+@functools.partial(jax.jit, static_argnames=("cfg", "precision", "scan"), donate_argnums=(2,))
+def prefill_chunk_batch(cfg: Config, params, state, x, pos0, n_valid, *, precision="bf16", scan="jax"):
+    """`prefill_chunk` over a batch of independent requests: state, x [B, C, d],
+    pos0 and n_valid [B] carry a leading batch axis; the weights are shared, so
+    every projection is one [B*C, d] matmul."""
+    f = lambda s, xx, p, n: prefill_chunk.__wrapped__(cfg, params, s, xx, p, n, precision=precision, scan=scan)
+    return jax.vmap(f)(state, x, pos0, n_valid)
 
 
 # ------------------------------------------------------------------ head

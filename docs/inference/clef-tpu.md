@@ -29,10 +29,46 @@ bf16 by up to 0.053 (one near-tie flip), against a target of 1e-3. A
 server runs one fixed chunk (2048) and repeats are deterministic, so
 answers are unaffected; prefix reuse (P3) needs the gate closed first.
 
-| Measured on the v6e-1, P1 code (plain JAX, batch 1) | Value |
+**P2 passed: about 20.5k tokens/s per v6e chip.** Batch 1, fresh prompts,
+median of 5 runs; request time includes the head:
+
+| Prompt tokens | Prefill chunk | Prefill tok/s | Request tok/s | Request |
+| ---: | ---: | ---: | ---: | ---: |
+| 1,000 | 512 | 18,393 | 18,112 | 55 ms |
+| 1,536 | 768 | 20,943 | 20,624 | 74 ms |
+| 4,096 | 512 | 21,114 | 20,859 | 196 ms |
+| 8,192 | 512 | 21,129 | 20,919 | 392 ms |
+| 16,384 | 512 | 20,543 | 20,368 | 804 ms |
+
+At 20.4k tok/s a v6e serves Clef-Flash for $0.0079 per million tokens on
+spot ($0.016 at 50 % use) and $0.037 on-demand, against measured spot
+costs of $0.11 on our H100 and $0.072 on our A100, and Jev's $0.042.
+Correctness after the speed work is still 104/104 (median |Δp| 0.0004).
+
+How P2 got from 10.7k to 20.5k tok/s:
+
+- A Newton-Schulz inverse for the UT transform, as in tpu-inference's GDN
+  solver: every step at HIGHEST precision, which is required (lower
+  precision or one step fewer gives NaN answers).
+- Block-causal online-softmax attention.
+- A prefill chunk of 512, or 768 when that pads less.
+- The embedding table on the device.
+- The cumulative decay computed as a matmul.
+
+What did not help:
+
+- Cross-request batching: prefill is already compute-bound.
+- A Pallas scan: no faster than `lax.scan`.
+- Delta sub-chunks other than 64.
+
+The door's latency on the e2e set is 44 ms median and 78 ms p90.
+Compiled programs persist in `~/.cache/clef-tpu-jax`, so a warm restart
+is up in 50 s.
+
+| Measured on the v6e-1, earlier P1 code (plain JAX, batch 1) | Value |
 | --- | --- |
-| Request latency through the door, 155 to 1,090 token prompts | 0.18 s median (0.176 to 0.181), every prompt one padded 2,048 chunk |
-| Worker alone, same requests | 0.125 s bf16, 0.24 s f32 |
+| Request latency through the door, 155 to 1,090 token prompts | 0.18 s median, every prompt one padded 2,048 chunk |
+| Prefill tokens/s at 1.5k / 4k / 16k | 9.0k / 10.8k / 10.7k |
 | Cold start (load 18 GB to HBM, hash the artifact, compile two shapes) | 71 s worker, then 5 s door |
 
 **Where it runs.** `crates/psionic/clef-tpu/`:
@@ -43,7 +79,8 @@ answers are unaffected; prefix reuse (P3) needs the gate closed first.
 - `clef_tpu/delta.py`: the chunked gated delta rule, its UT transform done
   as a triangular solve, with a JAX or Pallas scan.
 - `clef_tpu/server.py`: the localhost worker.
-- `bench/`: the P0 bench and the e2e harness.
+- `bench/`: the P0 bench, the e2e harness, `p2.py` (tokens/s by prompt
+  length), `p2_batch.py` and `layer_profile.py`.
 - `scripts/vm.sh`: create and drive TPU VMs.
 - `scripts/install-units.sh`: installs the systemd units `clef-tpu-worker`
   and `clef-tpu-door`.

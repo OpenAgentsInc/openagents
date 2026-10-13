@@ -20,16 +20,30 @@ import numpy as np
 from . import model as M
 
 
-def _bucket(n, step):
-    return max(step, -(-n // step) * step)
+@jax.jit
+def _gather(table, ids):
+    return table[ids].astype(jnp.float32)
+
+
+def _bucket(n, least):
+    """The next power of two at or above n (at least `least`): the head
+    compiles once per (tokens, questions, options) bucket, so the buckets
+    are few and a persistent compilation cache keeps them across restarts."""
+    b = least
+    while b < n:
+        b *= 2
+    return b
 
 
 class Runner:
-    def __init__(self, path: str, *, chunk=2048, precision="bf16", scan="jax", cache_buckets=(2048, 4096, 8192, 16384)):
+    def __init__(self, path: str, *, chunk=0, precision="bf16", scan="jax", cache_buckets=(2048, 4096, 8192, 16384)):
         self.path = Path(path)
         self.cfg = M.Config.load(self.path)
         t = time.time()
         self.params, self.embed, self.lm_head = M.load_backbone(self.path, self.cfg)
+        # the embedding table on the device (2 GB bf16): a 16k prompt's rows
+        # would otherwise cross from the host as 268 MB of f32
+        self.embed_dev = jnp.asarray(self.embed, jnp.bfloat16)
         self.head_cfg, self.head = M.load_head(self.path)
         self.load_seconds = time.time() - t
         self.chunk = chunk
@@ -42,26 +56,55 @@ class Runner:
 
     def identity(self):
         return {"backend": "tpu", "device": str(jax.devices()[0].device_kind), "precision": self.precision,
-                "prefill_chunk": self.chunk, "head_digest": self.head_digest, "scan": self.scan}
+                "prefill_chunk": self.chunk or "auto (512 | 768)", "head_digest": self.head_digest, "scan": self.scan}
+
+    @staticmethod
+    def auto_chunk(T):
+        """The prefill chunk for a T-token prompt (measured on a v6e-1, P2):
+        768 or 512, whichever pads less, 768 on a tie; 512 above 8k tokens,
+        where 768's extra attention blocks cost more than its padding saves."""
+        if T > 8192:
+            return 512
+        pad = lambda c: -(-T // c) * c - T
+        return 768 if pad(768) <= pad(512) else 512
 
     def hidden_rows(self, ids, chunk=None):
         """Final-normed backbone rows [T_pad, d] (device), T_pad = chunks * C."""
-        C = chunk or self.chunk
+        C = chunk or self.chunk or self.auto_chunk(len(ids))
         T = len(ids)
         n_chunks = -(-T // C)
         Tp = n_chunks * C
-        cache = next((b for b in self.cache_buckets if b >= Tp), Tp)
+        cache = next((b for b in self.cache_buckets if b >= Tp), -(-Tp // 2048) * 2048)
         state = M.init_state(self.cfg, cache)
         ids_p = np.zeros(Tp, np.int64)
         ids_p[:T] = ids
-        emb = np.asarray(self.embed[ids_p], np.float32)
+        ids_dev = jnp.asarray(ids_p, jnp.int32)
         rows = []
         for c in range(n_chunks):
-            x = jnp.asarray(emb[c * C:(c + 1) * C])
+            x = _gather(self.embed_dev, jax.lax.dynamic_slice_in_dim(ids_dev, c * C, C))
             state, h = M.prefill_chunk(self.cfg, self.params, state, x, jnp.int32(c * C), jnp.int32(T),
                                        precision=self.precision, scan=self.scan)
             rows.append(h)
         return jnp.concatenate(rows, 0) if len(rows) > 1 else rows[0]
+
+    HEAD_SHAPES = ((8, 32), (8, 64), (16, 64), (16, 128), (32, 128), (32, 256), (64, 256), (64, 512))
+
+    def warm_head(self, max_tokens=16384):
+        """Compiles the head for every token bucket and the common
+        (questions, options) buckets, so a first request of a new shape does
+        not wait ~30 s for XLA (the persistent cache keeps them across restarts)."""
+        d = self.lm_head.shape[1]
+        hc = self.head_cfg
+        Tb = 512
+        while Tb <= max_tokens:
+            for Qb, Nb in self.HEAD_SHAPES:
+                out = M.head_logits(self.head, jnp.zeros((Tb, d), jnp.float32), jnp.arange(Tb) < 3,
+                                    jnp.zeros((Qb + Nb, Tb), jnp.float32), jnp.zeros(Nb, jnp.int32),
+                                    jnp.arange(Nb) < 2, jnp.arange(Qb) < 1, jnp.zeros(Qb, jnp.int32),
+                                    jnp.zeros((Nb, d), jnp.float32),
+                                    heads=hc["heads"], routing=hc["routing_layers"], layers=hc["layers"])
+                jax.block_until_ready(out)
+            Tb *= 2
 
     def logits(self, ids, questions, chunk=None):
         """questions: [{"type": int, "question_span": [a,b], "option_spans": [[a,b],...]}]."""

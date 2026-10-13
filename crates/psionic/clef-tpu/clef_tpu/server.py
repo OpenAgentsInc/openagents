@@ -34,16 +34,25 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("model")
     ap.add_argument("--port", type=int, default=8091)
-    ap.add_argument("--chunk", type=int, default=2048)
+    ap.add_argument("--chunk", type=int, default=0, help="prefill chunk; 0 picks 512 or 768 per prompt")
     ap.add_argument("--precision", default="bf16")
     ap.add_argument("--scan", default="jax")
-    ap.add_argument("--warm", default="512,2048", help="prompt lengths to compile before serving")
+    ap.add_argument("--warm", default="500,1500,2300,3500,6000,7500,15000", help="prompt lengths to compile before serving")
     a = ap.parse_args()
+    # compiled programs persist across restarts (each new shape compiles once, 10-40 s)
+    import jax
+    jax.config.update("jax_compilation_cache_dir", str(Path.home() / ".cache" / "clef-tpu-jax"))
+    jax.config.update("jax_persistent_cache_min_compile_time_secs", 1.0)
     runner = Runner(a.model, chunk=a.chunk, precision=a.precision, scan=a.scan)
     identity = dict(runner.identity(), artifact_digest=artifact_digest(Path(a.model)),
                     artifact_family="bf16-safetensors", model=Path(a.model).name)
+    t = time.time()
+    runner.warm_head()
+    print(f"head warm in {time.time() - t:.0f} s", file=sys.stderr, flush=True)
     for n in [int(x) for x in a.warm.split(",") if x]:
-        runner.logits([0] * n, [{"type": 0, "question_span": [0, 1], "option_spans": [[1, 2], [2, 3]]}])
+        for nq, no in ((1, 2), (9, 40)):
+            qs = [{"type": 0, "question_span": [0, 1], "option_spans": [[1, 2]] * (no // nq)} for _ in range(nq)]
+            runner.logits([0] * n, qs)
     lock = threading.Lock()
 
     class H(BaseHTTPRequestHandler):

@@ -11,6 +11,8 @@ Semantics follow transformers' `torch_chunk_gated_delta_rule` with
 `use_qk_l2norm_in_kernel=True`.
 """
 
+import os
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -18,6 +20,15 @@ from jax.experimental import pallas as pl
 from jax.experimental.pallas import tpu as pltpu
 
 _HP = jax.lax.Precision.HIGHEST
+# precision of the intra-chunk einsums (keys/queries products, the UT solve)
+# (CLEF_TPU_DELTA_PRECISION: HIGHEST | HIGH | DEFAULT). HIGH (bf16x3) here with the
+# inverse at HIGHEST keeps the e2e answers at 104/104; the inverse at HIGH does not
+# (102/104, max |dp| 0.03) and at DEFAULT overflows.
+PREP = getattr(jax.lax.Precision, os.environ.get("CLEF_TPU_DELTA_PRECISION", "HIGH"))
+# the Newton-Schulz inverse alone (CLEF_TPU_NS_PRECISION)
+NS = getattr(jax.lax.Precision, os.environ.get("CLEF_TPU_NS_PRECISION", "HIGHEST"))
+# its steps before the last (CLEF_TPU_NS_EARLY_PRECISION; HIGH gave NaN answers)
+NS_EARLY = getattr(jax.lax.Precision, os.environ.get("CLEF_TPU_NS_EARLY_PRECISION", "HIGHEST"))
 
 
 def l2n(x):
@@ -37,6 +48,29 @@ def inv_unit_lower(L, C):
     return acc
 
 
+def ns_inverse(A, C):
+    """(I + L)^-1 by Newton-Schulz, S <- S (2I - A S): exact after log2 C steps for
+    nilpotent L and self-correcting (unlike the bare product of powers), as in
+    tpu-inference's GDN triangle solver."""
+    eye = jnp.eye(C, dtype=A.dtype)
+    S = 2 * eye - A
+    steps = int(np.log2(C))
+    for i in range(steps):
+        # every step at HIGHEST: dropping a step, or running the early ones at
+        # HIGH, gives NaN answers on real keys (the inverse's entries are large)
+        p = NS if i == steps - 1 else NS_EARLY
+        S = jnp.matmul(S, 2 * eye - jnp.matmul(A, S, precision=p), precision=p)
+    return S
+
+
+SOLVE = "ns"
+# the delta rule's own chunk inside a prefill chunk (CLEF_TPU_SUBCHUNK). 128 overflows on
+# real decays (NaN answers); 64 is the reference chunk.
+SUBCHUNK = int(os.environ.get("CLEF_TPU_SUBCHUNK", "64"))
+# scan steps XLA unrolls (CLEF_TPU_SCAN_UNROLL)
+UNROLL = int(os.environ.get("CLEF_TPU_SCAN_UNROLL", "8"))
+
+
 def prep(q, k, v, g, beta, C):
     """q,k [H,T,dk] v [H,T,dv] g,beta [H,T] (T % C == 0)."""
     H, T, dk = q.shape
@@ -46,21 +80,25 @@ def prep(q, k, v, g, beta, C):
     q, k, v = (x.reshape(H, N, C, -1) for x in (q, k, v))
     g = g.reshape(H, N, C)
     beta = beta.reshape(H, N, C)
-    gc = jnp.cumsum(g, -1)
+    # cumulative log decay as a matmul with a triangle of ones (cumsum lowers to a slow reduce_window)
+    gc = jnp.matmul(g, jnp.triu(jnp.ones((C, C), g.dtype)), precision=_HP)
     tril = jnp.tril(jnp.ones((C, C), bool))
     decay = jnp.where(tril, jnp.exp(jnp.where(tril, gc[..., :, None] - gc[..., None, :], 0.0)), 0.0)
     kb = k * beta[..., None]
     vb = v * beta[..., None]
     strict = jnp.tril(jnp.ones((C, C), bool), -1)
-    Lm = jnp.where(strict, jnp.einsum("hnik,hnjk->hnij", kb, k, precision=_HP) * decay, 0.0)
+    Lm = jnp.where(strict, jnp.einsum("hnik,hnjk->hnij", kb, k, precision=PREP) * decay, 0.0)
     # (I + L) X = [vb | kb e^gc]: a unit lower-triangular solve. The nilpotent
     # product (`inv_unit_lower`) is matmul-only but its powers of L lose all
     # precision (and overflow) on real keys with decays near 1.
     rhs = jnp.concatenate([vb, kb * jnp.exp(gc)[..., None]], -1)
-    sol = jax.lax.linalg.triangular_solve(Lm + jnp.eye(C, dtype=Lm.dtype), rhs, left_side=True, lower=True,
-                                          unit_diagonal=True)
+    A_ut = Lm + jnp.eye(C, dtype=Lm.dtype)
+    if SOLVE == "ns":
+        sol = jnp.matmul(ns_inverse(A_ut, C), rhs, precision=PREP)
+    else:
+        sol = jax.lax.linalg.triangular_solve(A_ut, rhs, left_side=True, lower=True, unit_diagonal=True)
     u, w = sol[..., :vb.shape[-1]], sol[..., vb.shape[-1]:]
-    A = jnp.where(tril, jnp.einsum("hnik,hnjk->hnij", q, k, precision=_HP) * decay, 0.0)
+    A = jnp.where(tril, jnp.einsum("hnik,hnjk->hnij", q, k, precision=PREP) * decay, 0.0)
     qd = q * jnp.exp(gc)[..., None]
     glast = gc[..., -1]
     kt = k * jnp.exp(glast[..., None] - gc)[..., None]
@@ -79,7 +117,7 @@ def scan_jax(qd, A, u, w, kt, dl, S0):
         return S, o
 
     xs = tuple(jnp.moveaxis(x, 1, 0) for x in (qd, A, u, w, kt, dl))
-    S, o = jax.lax.scan(one, S0, xs)
+    S, o = jax.lax.scan(one, S0, xs, unroll=min(N, UNROLL))
     return jnp.moveaxis(o, 0, 1).reshape(H, N * C, dv), S
 
 
@@ -121,6 +159,7 @@ def scan_pallas(qd, A, u, w, kt, dl, S0):
 
 
 def chunked(q, k, v, g, beta, S0, *, C=64, scan="jax"):
+    C = SUBCHUNK or C
     parts = prep(q, k, v, g, beta, C)
     return (scan_pallas if scan == "pallas" else scan_jax)(*parts, S0)
 

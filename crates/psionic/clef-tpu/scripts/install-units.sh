@@ -15,7 +15,7 @@ After=network-online.target
 [Service]
 User=$U
 WorkingDirectory=$H/oa/clef-tpu
-ExecStart=$H/venv/bin/python -m clef_tpu.server $H/clef-flash --port 8091 --chunk 2048 --precision ${PRECISION:-bf16}
+ExecStart=$H/venv/bin/python -m clef_tpu.server $H/clef-flash --port 8091 --precision ${PRECISION:-bf16}
 # libtpu pins its buffers; systemd's default memlock limit fails TPU init
 LimitMEMLOCK=infinity
 Restart=always

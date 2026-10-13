@@ -29,7 +29,7 @@ def main():
     ap.add_argument("model")
     ap.add_argument("fixtures")
     ap.add_argument("out")
-    ap.add_argument("--chunk", type=int, default=2048)
+    ap.add_argument("--chunk", type=int, default=0)
     ap.add_argument("--chunks", default="", help="extra chunk sizes for the invariance check, e.g. 512,64")
     ap.add_argument("--precision", default="bf16")
     ap.add_argument("--scan", default="jax")
