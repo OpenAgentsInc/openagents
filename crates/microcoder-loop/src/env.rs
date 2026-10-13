@@ -46,6 +46,13 @@ pub trait Env {
     fn steering(&self) -> Vec<String> {
         Vec::new()
     }
+
+    /// Runs the host's hooks on one event the loop fires (#11497,
+    /// [`crate::hooks`]) and returns what they came to, an `Ask` already
+    /// answered. A place with no hooks answers every event unchanged.
+    fn hook(&self, call: coder_sdk::Call) -> impl std::future::Future<Output = coder_sdk::Applied> {
+        std::future::ready(coder_sdk::Applied::unchanged(&call))
+    }
 }
 
 /// A local working directory.

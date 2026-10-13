@@ -605,12 +605,18 @@ pub const FLOORS_POLICY: &str = "coder-floors-v1";
 
 /// Answers the floors' `ask` with the whole rule ([`hold`]) for `agent`
 /// (its name as the rail shows it): the call runs (`NoOpinion`) or is
-/// refused with what the agent reads. An ask from another hook, on a call
+/// refused with what the agent reads; `cancel` ends a wait on the card. An
+/// ask from another hook, on a call
 /// the floors don't cover, is held with its own step.
 #[must_use]
-pub fn asker(cwd: PathBuf, agent: fn() -> String) -> coder_sdk::claude::Asker {
+pub fn asker(
+    cwd: PathBuf,
+    agent: fn() -> String,
+    cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
+) -> coder_sdk::Asker {
     Arc::new(move |applied: coder_sdk::Applied| {
         let cwd = cwd.clone();
+        let cancel = cancel.clone().unwrap_or_default();
         Box::pin(async move {
             let tool = applied.tool.clone().unwrap_or_default();
             if classify(&tool, &applied.input).is_none() {
@@ -621,7 +627,6 @@ pub fn asker(cwd: PathBuf, agent: fn() -> String) -> coder_sdk::claude::Asker {
                     other => other,
                 };
             }
-            let cancel = std::sync::atomic::AtomicBool::new(false);
             match hold(&agent(), &tool, &applied.input, &cwd, &cancel).await {
                 Ok(()) => coder_sdk::Permission::NoOpinion,
                 Err(reason) => coder_sdk::Permission::Deny { reason },

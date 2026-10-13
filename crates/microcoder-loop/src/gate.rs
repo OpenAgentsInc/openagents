@@ -621,9 +621,15 @@ format asks for.",
                 skipped.push(command.clone());
                 continue;
             }
-            let result = env
-                .run(command, Duration::from_secs(limits.command_seconds))
-                .await;
+            // The oracle's commands pass the host's hooks too (#11497).
+            let result = crate::hooks::run(
+                env,
+                command,
+                Duration::from_secs(limits.command_seconds),
+                false,
+            )
+            .await
+            .result;
             failed = !result.ok();
             results.push(result);
         }
@@ -653,9 +659,14 @@ format asks for.",
     report.written = tests.iter().map(|t| t.name.clone()).collect();
     let mut kept = Vec::new();
     for mut test in tests.drain(..) {
-        let result = env
-            .run(&test.script, Duration::from_secs(limits.test_seconds))
-            .await;
+        let result = crate::hooks::run(
+            env,
+            &test.script,
+            Duration::from_secs(limits.test_seconds),
+            false,
+        )
+        .await
+        .result;
         if result.ok() {
             report.trivial.push(test.name.clone());
         } else {

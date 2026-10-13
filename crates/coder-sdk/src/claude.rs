@@ -25,9 +25,7 @@
 //! session start from one declaration.
 
 use std::collections::BTreeSet;
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::Arc;
 
 use claude_agent_sdk::{
     HookEvent, HookJSONOutput, HookMatcher, PermissionResult, QueryOptions, SyncHookJSONOutput,
@@ -35,18 +33,14 @@ use claude_agent_sdk::{
 use coder_delegate::session::HookBackend;
 use serde_json::{Value, json};
 
-use super::compose::{Applied, Budget, Refused, Runner, check_backend};
+use super::compose::{Applied, Budget, Refused};
 use super::events::{Call, Event};
+use super::hooks::Hooks;
+pub use super::hooks::{Asked, Asker};
 use super::outcome::{Context, Permission, Stop};
 use super::registry::Registry;
-
-/// What an `Ask` came to: the person's answer, as a permission. Usually
-/// `NoOpinion` (go ahead) or `Deny`.
-pub type Asked = Pin<Box<dyn Future<Output = Permission> + Send>>;
-
-/// The host's approval surface: answers an `Ask` given what the hooks came
-/// to (the final input, the step).
-pub type Asker = Arc<dyn Fn(Applied) -> Asked + Send + Sync>;
+/// The Claude Agent SDK this backend speaks.
+pub use claude_agent_sdk;
 
 /// Where `PreToolUse` reaches the hooks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -211,18 +205,9 @@ fn takes_context(event: Event) -> bool {
 }
 
 /// One session's hooks on Claude Code.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Claude {
-    runner: Arc<Mutex<Runner>>,
-    asker: Option<Asker>,
-}
-
-impl std::fmt::Debug for Claude {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Claude")
-            .field("asker", &self.asker.is_some())
-            .finish_non_exhaustive()
-    }
+    hooks: Hooks,
 }
 
 impl Claude {
@@ -233,56 +218,27 @@ impl Claude {
     /// The hooks Claude Code can't honor (none today: every event is
     /// native).
     pub fn new(registry: Registry, budget: Budget) -> Result<Self, Vec<Refused>> {
-        check_backend(&registry, HookBackend::ClaudeCode)?;
         Ok(Claude {
-            runner: Arc::new(Mutex::new(Runner::new(registry, budget))),
-            asker: None,
+            hooks: Hooks::new(registry, budget, HookBackend::ClaudeCode)?,
         })
     }
 
     /// Answers each `Ask` through `asker`.
     #[must_use]
     pub fn asking(mut self, asker: Asker) -> Self {
-        self.asker = Some(asker);
+        self.hooks = self.hooks.asking(asker);
         self
     }
 
-    /// The session's registry, read-only.
+    /// The session's registry.
     #[must_use]
     pub fn registry(&self) -> Registry {
-        self.runner
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .registry
-            .clone()
+        self.hooks.registry()
     }
 
-    /// Runs the hooks on `call` and resolves an `Ask` through the asker.
+    /// Runs the hooks on `call` and resolves an `Ask` ([`Hooks::fire`]).
     pub async fn fire(&self, call: Call) -> Applied {
-        let runner = self.runner.clone();
-        let fallback = call.clone();
-        let fire = move || {
-            runner
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .fire(&call)
-        };
-        let mut applied = if tokio::runtime::Handle::try_current().is_ok() {
-            tokio::task::spawn_blocking(fire)
-                .await
-                .unwrap_or_else(|_| unchanged(&fallback))
-        } else {
-            fire()
-        };
-        if let Permission::Ask { step } = &applied.permission {
-            applied.permission = match &self.asker {
-                Some(asker) => asker(applied.clone()).await,
-                None => Permission::Deny {
-                    reason: step.clone(),
-                },
-            };
-        }
-        applied
+        self.hooks.fire(call).await
     }
 
     /// `options` with the hooks installed: one Claude Code hook per event
@@ -334,22 +290,6 @@ impl Claude {
                 Ok::<_, claude_agent_sdk::Error>(permission_result(&applied))
             }
         })
-    }
-}
-
-/// The hooks' outcome when nothing answered.
-fn unchanged(call: &Call) -> Applied {
-    Applied {
-        event: call.event,
-        tool: call.tool.clone(),
-        permission: Permission::NoOpinion,
-        decided_by: None,
-        input: call.input.clone(),
-        rewritten_by: Vec::new(),
-        context: Vec::new(),
-        dropped: Vec::new(),
-        stop: Stop::Continue,
-        failures: Vec::new(),
     }
 }
 

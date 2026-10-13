@@ -12,6 +12,8 @@ acp-client = { path = "../acp-client" }
 coder-lease = { path = "../coder-lease" }
 atif = { path = "../atif" }
 coder-boundary = { path = "../coder-boundary" }
+# The loop fires the Coder SDK's hook events and obeys them (#11497).
+coder-sdk = { path = "../coder-sdk" }
 jev = { path = "../jev" }
 knowledge = { path = "../knowledge" }
 codex-transport = { path = "../codex-transport" }

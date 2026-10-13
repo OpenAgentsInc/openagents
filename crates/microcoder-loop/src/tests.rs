@@ -1959,3 +1959,229 @@ async fn without_checks_stop_frozen_checks_never_run_in_a_plain_loop() {
     assert_eq!(outcome.ending, Ending::Finished);
     assert!(!ran.iter().any(|c| c == "check b"));
 }
+
+/// The Coder loop as a Coder SDK backend (#11497): a fake place whose
+/// hooks run through `coder_sdk::Hooks`, recording each event and what it
+/// came to.
+struct Hooked {
+    inner: Fake,
+    hooks: coder_sdk::Hooks,
+    fired: RefCell<Vec<(coder_sdk::Call, coder_sdk::Applied)>>,
+}
+
+impl Env for Hooked {
+    async fn run(&self, command: &str, deadline: Duration) -> CommandResult {
+        self.inner.run(command, deadline).await
+    }
+
+    async fn read(&self, path: &str) -> Option<String> {
+        self.inner.read(path).await
+    }
+
+    async fn hook(&self, call: coder_sdk::Call) -> coder_sdk::Applied {
+        let applied = self.hooks.fire(call.clone()).await;
+        self.fired.borrow_mut().push((call, applied.clone()));
+        applied
+    }
+}
+
+/// One hook set: a floor that holds a deploy, a rewrite that wraps
+/// `cargo test`, context after each command and each step, context at the
+/// start, and a stop gate that keeps the run going once.
+fn hook_set() -> coder_sdk::Registry {
+    use coder_sdk::{Context, Event, Hook, HookOutcome, Permission, Source, Stop};
+    let mut registry = coder_sdk::Registry::new();
+    let hooks = vec![
+        Hook::floor(
+            "floors",
+            Event::PreToolUse,
+            Permission::ask("confirm"),
+            |call: &coder_sdk::Call| {
+                let command = call.input["command"].as_str().unwrap_or_default();
+                Ok(if command.contains("deploy") {
+                    HookOutcome::deny("Held for the person: this would deploy.")
+                } else {
+                    HookOutcome::none()
+                })
+            },
+        ),
+        Hook::new(
+            "squeeze",
+            Event::PreToolUse,
+            Source::BuiltIn,
+            |call: &coder_sdk::Call| {
+                let command = call.input["command"].as_str().unwrap_or_default();
+                Ok(if command.starts_with("cargo test") {
+                    HookOutcome::rewrite(
+                        serde_json::json!({"command": format!("squeezed {command}")}),
+                    )
+                } else {
+                    HookOutcome::none()
+                })
+            },
+        )
+        .matching("Run"),
+        Hook::new(
+            "seen",
+            Event::PostToolUse,
+            Source::BuiltIn,
+            |call: &coder_sdk::Call| {
+                let exit = &call.input["tool_response"]["exit"];
+                Ok(HookOutcome::context(Context::new(
+                    "monitor",
+                    &format!("exit {exit}"),
+                    0,
+                )))
+            },
+        ),
+        Hook::new(
+            "batch",
+            Event::PostToolBatch,
+            Source::BuiltIn,
+            |call: &coder_sdk::Call| {
+                let n = call.input["results"].as_array().map_or(0, Vec::len);
+                Ok(HookOutcome::context(Context::new(
+                    "monitor",
+                    &format!("{n} ran"),
+                    0,
+                )))
+            },
+        ),
+        Hook::new("start", Event::SessionStart, Source::BuiltIn, |_| {
+            Ok(HookOutcome::context(Context::new(
+                "briefing",
+                "the tests live in t/",
+                0,
+            )))
+        }),
+        Hook::new(
+            "done",
+            Event::Stop,
+            Source::Decision,
+            |call: &coder_sdk::Call| {
+                Ok(
+                    if call.input["stop_hook_active"] == serde_json::json!(true) {
+                        HookOutcome::none()
+                    } else {
+                        HookOutcome::stopping(Stop::Block {
+                            reason: "Run the tests before you finish.".into(),
+                        })
+                    },
+                )
+            },
+        ),
+    ];
+    for hook in hooks {
+        registry.register(hook).unwrap();
+    }
+    registry
+}
+
+#[tokio::test]
+async fn the_loop_fires_the_hooks_and_obeys_them() {
+    let script = Script::new(vec![
+        Ok(act("test", &["cargo test"], false)),
+        Ok(act("ship", &["deploy prod", "echo after"], false)),
+        Ok(act("done", &[], true)),
+        Ok(act("tested", &["cargo test -q"], false)),
+        Ok(act("done", &[], true)),
+    ]);
+    let env = Hooked {
+        inner: Fake {
+            ran: RefCell::new(Vec::new()),
+        },
+        hooks: coder_sdk::Hooks::new(
+            hook_set(),
+            coder_sdk::Budget::default(),
+            coder_sdk::HookBackend::CoderLoop,
+        )
+        .unwrap(),
+        fired: RefCell::new(Vec::new()),
+    };
+    let set = question_set();
+    let route = route_set();
+    let models = Models {
+        generator: &script,
+        judge: &jev(0.1),
+        set: &set,
+        route: &route,
+        strong: None,
+        knowledge: None,
+    };
+    let (state, outcome) = run(
+        state(),
+        "Solve.",
+        &env,
+        &models,
+        &plain(),
+        &mut Log::default(),
+    )
+    .await;
+    // The rewrite ran, the floor held the deploy (and the rest of its step),
+    // and the stop gate kept the run going once.
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert_eq!(outcome.steps, 5);
+    assert_eq!(
+        env.inner.ran.borrow().as_slice(),
+        ["squeezed cargo test", "squeezed cargo test -q"]
+    );
+    let held = &state.actions[1].results[0];
+    assert_eq!(held.exit, None);
+    assert_eq!(held.output, "Held for the person: this would deploy.");
+    assert_eq!(state.actions[1].skipped, ["echo after"]);
+    // What the hooks added is at the tail of the next step's prompt.
+    let prompts = script.prompts.borrow();
+    assert!(prompts[0].contains("[briefing] the tests live in t/"));
+    assert!(prompts[1].contains("[monitor] exit 0") && prompts[1].contains("[monitor] 1 ran"));
+    assert!(prompts[3].contains("Run the tests before you finish."));
+    let events: Vec<coder_sdk::Event> = env.fired.borrow().iter().map(|(c, _)| c.event).collect();
+    assert_eq!(events.first(), Some(&coder_sdk::Event::SessionStart));
+    assert_eq!(events.last(), Some(&coder_sdk::Event::SessionEnd));
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| **e == coder_sdk::Event::Stop)
+            .count(),
+        2
+    );
+
+    // The same hook set on the Claude Code backend gives the same outcome
+    // for every event the loop fired, read as Claude Code reads it.
+    let claude = coder_sdk::claude::Claude::new(hook_set(), coder_sdk::Budget::default()).unwrap();
+    let options = claude.install(
+        coder_sdk::claude::claude_agent_sdk::QueryOptions::new(),
+        coder_sdk::claude::PreTool::Hook,
+    );
+    for (call, on_loop) in env.fired.borrow().iter() {
+        let Some(matchers) = options
+            .hooks
+            .get(&coder_sdk::claude::hook_event(call.event))
+        else {
+            assert_eq!(
+                on_loop,
+                &coder_sdk::Applied::unchanged(call),
+                "{:?}",
+                call.event
+            );
+            continue;
+        };
+        let input = match call.event {
+            coder_sdk::Event::PreToolUse => {
+                serde_json::json!({"tool_name": call.tool, "tool_input": call.input})
+            }
+            coder_sdk::Event::PostToolUse => serde_json::json!({
+                "tool_name": call.tool,
+                "tool_input": call.input["tool_input"],
+                "tool_response": call.input["tool_response"],
+            }),
+            _ => call.input.clone(),
+        };
+        let on_claude = matchers[0].hooks[0].call(input, None).await.unwrap();
+        assert_eq!(
+            serde_json::to_value(on_claude).unwrap(),
+            serde_json::to_value(coder_sdk::claude::output(on_loop)).unwrap(),
+            "{:?}",
+            call.event
+        );
+    }
+}

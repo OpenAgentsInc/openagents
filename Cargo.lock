@@ -9340,6 +9340,7 @@ dependencies = [
  "base64 0.22.1",
  "coder-boundary",
  "coder-lease",
+ "coder-sdk",
  "codex-transport",
  "getrandom 0.3.4",
  "jev",

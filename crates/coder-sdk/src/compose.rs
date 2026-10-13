@@ -699,15 +699,17 @@ mod tests {
                 answering(HookOutcome::none()),
             ))
             .unwrap();
-        for backend in [HookBackend::ClaudeCode, HookBackend::Codex] {
+        // The Coder loop fires PreToolUse itself and obeys it (#11497).
+        for backend in [
+            HookBackend::ClaudeCode,
+            HookBackend::Codex,
+            HookBackend::CoderLoop,
+        ] {
             assert!(check_backend(&registry, backend).is_ok(), "{backend:?}");
         }
-        // The Coder loop fires no hooks yet (#11497), and an ACP agent asks
-        // before a tool only when its own mode says to: a floor can't hold
-        // on either.
-        for backend in [HookBackend::CoderLoop, HookBackend::Acp] {
-            assert!(check_backend(&registry, backend).is_err(), "{backend:?}");
-        }
+        // An ACP agent asks before a tool only when its own mode says to: a
+        // floor can't hold there.
+        assert!(check_backend(&registry, HookBackend::Acp).is_err());
         let refused = check_start(&registry, "the agent", |event| {
             if event == Event::PreToolUse {
                 HookTier::Emulated
@@ -735,5 +737,19 @@ mod tests {
         assert_eq!(refused[0].hook, "gate");
         assert!(refused[0].message.starts_with("Codex can't stop"));
         assert!(check_backend(&registry, HookBackend::ClaudeCode).is_ok());
+        // The loop has no subagents, so it can't hold a subagent's stop.
+        let mut registry = Registry::new();
+        registry
+            .register(
+                Hook::new(
+                    "sub",
+                    Event::SubagentStop,
+                    Source::Decision,
+                    answering(HookOutcome::none()),
+                )
+                .needs_deny(),
+            )
+            .unwrap();
+        assert!(check_backend(&registry, HookBackend::CoderLoop).is_err());
     }
 }

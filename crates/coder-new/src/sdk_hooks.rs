@@ -3,6 +3,8 @@
 //! the turn, Claude Code (#11496) or Coder's own loop (#11497).
 
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use coder_sdk::{Budget, Registry};
 
@@ -36,5 +38,24 @@ pub fn claude(cwd: &Path, full: bool) -> coder_sdk::claude::Claude {
         .asking(crate::floors::asker(
             cwd.to_owned(),
             crate::ui::claude_rail_label,
+            None,
         ))
+}
+
+/// The Coder loop's hooks for a run in `cwd` (#11497): the floors, the
+/// same table as on Claude Code, asking on the approval card until the
+/// run is cancelled.
+#[must_use]
+pub fn coder_loop(cwd: &Path, cancel: &Arc<AtomicBool>) -> coder_sdk::Hooks {
+    coder_sdk::Hooks::new(
+        registry(cwd, false),
+        Budget::default(),
+        coder_sdk::HookBackend::CoderLoop,
+    )
+    .expect("the floors fire natively on the Coder loop")
+    .asking(crate::floors::asker(
+        cwd.to_owned(),
+        || "Coder".to_owned(),
+        Some(Arc::clone(cancel)),
+    ))
 }

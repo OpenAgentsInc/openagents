@@ -238,6 +238,18 @@ impl HookBackend {
     }
 }
 
+/// The events the Coder loop fires (`microcoder_loop::run`, #11497).
+pub const CODER_LOOP_EVENTS: [&str; 8] = [
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "PostToolBatch",
+    "Stop",
+    "PostCompact",
+    "SessionEnd",
+];
+
 /// The tier `backend` gives a hook on `event` (a [`HOOK_EVENTS`] name). An
 /// unknown event has no tier.
 #[must_use]
@@ -247,8 +259,10 @@ pub fn hook_tier(backend: HookBackend, event: &str) -> HookTier {
     }
     match backend {
         HookBackend::ClaudeCode | HookBackend::Scripted => HookTier::Native,
-        // The Coder loop fires no hooks until its backend lands (#11497);
-        // until then a hook that must deny is refused there at start.
+        // The Coder loop fires these itself and obeys them (#11497). It has
+        // no subagents, no file watcher, and compacts inside the step's
+        // prompt build, so those events never fire there.
+        HookBackend::CoderLoop if CODER_LOOP_EVENTS.contains(&event) => HookTier::Native,
         HookBackend::CoderLoop => HookTier::None,
         HookBackend::Codex if event == "PreToolUse" => HookTier::Command,
         // An ACP agent asks permission before a tool only when its own mode
@@ -1217,11 +1231,16 @@ mod tests {
                 "{backend:?}"
             );
         }
-        assert!(
-            hook_tiers(HookBackend::CoderLoop)
-                .iter()
-                .all(|(_, tier)| *tier == HookTier::None)
-        );
+        // The Coder loop is native where it fires (#11497), and claims
+        // nothing it never fires.
+        for (event, tier) in hook_tiers(HookBackend::CoderLoop) {
+            let want = if CODER_LOOP_EVENTS.contains(&event) {
+                HookTier::Native
+            } else {
+                HookTier::None
+            };
+            assert_eq!(tier, want, "{event}");
+        }
         for (backend, pre) in [
             (HookBackend::Codex, HookTier::Command),
             (HookBackend::Acp, HookTier::Emulated),

@@ -18,6 +18,7 @@ pub mod compose;
 pub mod decide;
 pub mod digest;
 pub mod events;
+pub mod hooks;
 pub mod outcome;
 pub mod registry;
 pub mod scripted;
@@ -31,6 +32,7 @@ pub use compose::{
 };
 pub use digest::{adapter_digest, hook_set, hook_set_digest};
 pub use events::{Call, Event};
+pub use hooks::{Asked, Asker, Hooks};
 pub use outcome::{Context, HookOutcome, Permission, Stop};
 pub use registry::{Disclosure, Hook, Registry, Source, Versions};
 pub use scripted::{RECORDED_SESSION_SCHEMA, Recorded, Replay, ScriptedSession};

@@ -304,13 +304,18 @@ pub async fn run_command(
     let boundary = command_boundary(&directory, false)?;
     let sink = RefCell::new(emit);
     let checkout = Checkout {
+        hooks: Some(crate::sdk_hooks::coder_loop(&directory, cancel)),
         directory,
         boundary,
         cancel: Arc::clone(cancel),
         redaction_keys,
         events: Some(&sink),
     };
-    let ran = checkout.run(script, Duration::from_secs(120)).await;
+    // The same hooks as a loop command: the floors hold a production
+    // deploy, a merge, a secret or a payment for the person (#11475, #11497).
+    let ran = microcoder_loop::hooks::run(&checkout, script, Duration::from_secs(120), true)
+        .await
+        .result;
     Ok(json!({"exit":ran.exit,"output":ran.output,"timed_out":ran.timed_out,"seconds":ran.seconds}))
 }
 
@@ -1764,6 +1769,7 @@ async fn run_microcoder_with<G: Generate>(
     };
     let sink = RefCell::new(emit);
     let environment = Checkout {
+        hooks: Some(crate::sdk_hooks::coder_loop(&directory, cancel)),
         directory: directory.clone(),
         boundary,
         cancel: Arc::clone(cancel),
@@ -1965,6 +1971,9 @@ fn command_boundary(
 }
 
 struct Checkout<'a> {
+    /// The session's Coder SDK hooks, fired by the loop (#11497): the
+    /// floors among them.
+    hooks: Option<coder_sdk::Hooks>,
     directory: PathBuf,
     boundary: Option<coder_boundary::Boundary>,
     cancel: Arc<AtomicBool>,
@@ -1975,25 +1984,7 @@ struct Checkout<'a> {
 impl Env for Checkout<'_> {
     async fn run(&self, script: &str, deadline: Duration) -> CommandResult {
         let started = Instant::now();
-        // The floors hold a production deploy, a merge, a secret or a
-        // payment for the person (#11475).
-        if let Err(why) = crate::floors::hold(
-            "Coder",
-            "Run",
-            &serde_json::json!({ "command": script }),
-            &self.directory,
-            &self.cancel,
-        )
-        .await
-        {
-            return CommandResult {
-                command: redact_text(script, self.redaction_keys),
-                exit: None,
-                timed_out: false,
-                seconds: started.elapsed().as_secs_f64(),
-                output: why,
-            };
-        }
+        // The floors are a hook the loop fires before this (#11497).
         // An agent-driven chat asks before anything that is not read-only.
         if let crate::approval::Verdict::Refused(why) = crate::approval::check(script) {
             return CommandResult {
@@ -2104,6 +2095,13 @@ impl Env for Checkout<'_> {
 
     fn stopped(&self) -> bool {
         self.cancel.load(Ordering::Relaxed)
+    }
+
+    async fn hook(&self, call: coder_sdk::Call) -> coder_sdk::Applied {
+        match &self.hooks {
+            Some(hooks) => hooks.fire(call).await,
+            None => coder_sdk::Applied::unchanged(&call),
+        }
     }
 }
 
@@ -2393,6 +2391,7 @@ mod tests {
             "full access"
         );
         let environment = Checkout {
+            hooks: None,
             directory: cwd.clone(),
             boundary: command_boundary(&cwd, false).unwrap(),
             cancel,
@@ -2469,6 +2468,7 @@ mod tests {
         }
         let _reset = Reset;
         let environment = Checkout {
+            hooks: None,
             directory,
             boundary: Some(boundary),
             cancel: Arc::new(AtomicBool::new(false)),
@@ -3864,6 +3864,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         let keys = vec![ApiKey::new(MARKER)];
         let cancel = Arc::new(AtomicBool::new(false));
         let environment = Checkout {
+            hooks: None,
             directory,
             boundary: Some(boundary),
             cancel: Arc::clone(&cancel),

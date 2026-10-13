@@ -24,10 +24,11 @@ use std::time::{Duration, Instant};
 use knowledge::search::{Hit, Retriever};
 
 use serde::Serialize;
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::env::Env;
 use crate::gate::{Checked, GateState, Gates, OracleLimits, OracleReport, OracleStep};
+use crate::hooks::{self, Stopping};
 use crate::models::{
     Ask, Generate, Generated, Judge, Judgment, NextAction, QuestionSet, conform_set, coverage_set,
     dispute_set, knowledge_set, relevance_set,
@@ -1130,7 +1131,10 @@ async fn load_tests<E: Env>(env: &E, deadline: Duration) -> Vec<Test> {
 async fn run_tests<E: Env>(env: &E, tests: &[Test], deadline: Duration) -> Vec<CommandResult> {
     let mut results = Vec::new();
     for test in tests {
-        let mut result = env.run(&test.script, deadline).await;
+        // A frozen test is the model's script: the host's hooks see it too.
+        let mut result = crate::hooks::run(env, &test.script, deadline, false)
+            .await
+            .result;
         result.command = test.name.clone();
         results.push(result);
     }
@@ -1140,13 +1144,28 @@ async fn run_tests<E: Env>(env: &E, tests: &[Test], deadline: Duration) -> Vec<C
 /// What the person said to the running turn (steering, [`Env::steering`])
 /// joins the state, so every later step's prompt reads it. Whether there
 /// was any.
-fn steered<E: Env>(env: &E, state: &mut State) -> bool {
+///
+/// Each message fires `UserPromptSubmit` first (#11497): a deny drops it,
+/// and context the hooks add joins the notes.
+async fn steered<E: Env>(env: &E, state: &mut State) -> bool {
     let messages = env.steering();
     let before = state.actions.last().map_or(1, |action| action.step + 1);
+    let mut any = false;
     for text in &messages {
+        let applied = env
+            .hook(coder_sdk::Call::new(
+                coder_sdk::Event::UserPromptSubmit,
+                json!({ "prompt": text }),
+            ))
+            .await;
+        state.notes.extend(applied.context_lines());
+        if matches!(applied.permission, coder_sdk::Permission::Deny { .. }) {
+            continue;
+        }
         state.steering.push((before, text.trim().to_owned()));
+        any = true;
     }
-    !messages.is_empty()
+    any
 }
 
 /// Runs the loop until the model finishes or a limit stops it.
@@ -1249,11 +1268,28 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
     // cache reads every earlier step back (#10244).
     let mut transcript = Transcript::new();
     let mut step = 0usize;
+    // The host's hooks (#11497): context at session start joins the first
+    // step's notes; a hook that ends the session stops the loop.
+    let started_with = json!({
+        "task": cut(&state.task, 6_000, 0),
+        "environment": cut(&state.environment, 1_500, 0),
+    });
+    let mut hook_ended = hooks::notes(
+        env,
+        &mut state,
+        coder_sdk::Event::SessionStart,
+        started_with,
+    )
+    .await;
+    // Restarts of the prompt log already told to `PostCompact`.
+    let mut compactions = 0usize;
+    // Whether a `Stop` hook already kept the run going.
+    let mut stop_active = false;
     let ending = loop {
-        if env.stopped() {
+        if env.stopped() || hook_ended {
             break Ending::Stopped;
         }
-        steered(env, &mut state);
+        steered(env, &mut state).await;
         if limits.max_steps.is_some_and(|max| step >= max) {
             break Ending::StepLimit;
         }
@@ -1421,6 +1457,18 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
             Ok(action) => {
                 bad = 0;
                 state.notes.clear();
+                // The step's prompt log started again compacted: the hooks
+                // may add what the summary lost, after it.
+                if transcript.restarts() > compactions {
+                    compactions = transcript.restarts();
+                    hook_ended |= hooks::notes(
+                        env,
+                        &mut state,
+                        coder_sdk::Event::PostCompact,
+                        json!({ "step": step, "compactions": compactions }),
+                    )
+                    .await;
+                }
                 action
             }
             Err(error) => {
@@ -1495,7 +1543,11 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
             });
             // A message the person sent meanwhile is read before the turn
             // ends: the next step answers it.
-            if steered(env, &mut state) {
+            if steered(env, &mut state).await {
+                continue;
+            }
+            if hooks::stop(env, &mut state, step, stop_active).await == Stopping::Blocked {
+                stop_active = true;
                 continue;
             }
             break Ending::Finished;
@@ -1540,11 +1592,20 @@ or set finished to true if the task is complete."
                 skipped.push(command.clone());
                 continue;
             }
-            let result = env
-                .run(command, Duration::from_secs(limits.command_seconds))
-                .await;
+            // The host's hooks hold, rewrite or comment on each command
+            // (#11497): the floors among them.
+            let hooked = hooks::run(
+                env,
+                command,
+                Duration::from_secs(limits.command_seconds),
+                true,
+            )
+            .await;
+            let result = hooked.result;
+            state.notes.extend(hooked.context);
+            hook_ended |= hooked.end;
             failed = !result.ok();
-            stopped = env.stopped();
+            stopped = env.stopped() || hook_ended;
             observer.event(
                 started.elapsed().as_secs_f64(),
                 &Event::Ran {
@@ -1554,13 +1615,26 @@ or set finished to true if the task is complete."
             );
             results.push(result);
         }
+        let batch: Vec<Value> = results
+            .iter()
+            .map(|result| json!({"command": result.command, "response": hooks::response(result)}))
+            .collect();
         state.actions.push(Action {
             step,
             rationale: action.rationale,
             results,
             skipped,
         });
-        if stopped {
+        if !stopped && !batch.is_empty() {
+            hook_ended |= hooks::notes(
+                env,
+                &mut state,
+                coder_sdk::Event::PostToolBatch,
+                json!({ "step": step, "results": batch }),
+            )
+            .await;
+        }
+        if stopped || hook_ended {
             break Ending::Stopped;
         }
         // An empty list keeps the files already in view, read fresh.
@@ -1592,13 +1666,17 @@ or set finished to true if the task is complete."
                 green = if pass { green + 1 } else { 0 };
                 if pass && green >= stop.max(1) && !(action.finished && !failed) {
                     // A message the person sent meanwhile is answered first.
-                    if steered(env, &mut state) {
+                    if steered(env, &mut state).await {
                         continue;
                     }
                     break Ending::ChecksPassed;
                 }
             }
-            if action.finished && !failed && !steered(env, &mut state) {
+            if action.finished && !failed && !steered(env, &mut state).await {
+                if hooks::stop(env, &mut state, step, stop_active).await == Stopping::Blocked {
+                    stop_active = true;
+                    continue;
+                }
                 break Ending::Finished;
             }
             continue;
@@ -1836,6 +1914,11 @@ again. Each entry is checked once.",
                     green = 0;
                     continue;
                 }
+                if hooks::stop(env, &mut state, step, stop_active).await == Stopping::Blocked {
+                    stop_active = true;
+                    green = 0;
+                    continue;
+                }
                 break Ending::Finished;
             }
             refused += 1;
@@ -1855,6 +1938,13 @@ The task isn't finished until they pass; see the Acceptance tests section."
             });
         }
     };
+    // Observed only: the hooks hear how the run ended.
+    let _ = env
+        .hook(coder_sdk::Call::new(
+            coder_sdk::Event::SessionEnd,
+            json!({ "ending": ending, "steps": step }),
+        ))
+        .await;
     let outcome = Outcome {
         ending,
         steps: step,

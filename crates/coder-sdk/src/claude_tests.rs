@@ -162,7 +162,7 @@ fn context_stop_and_end_read_as_claude_code_expects() {
     let out = serde_json::to_value(block(stop.call(json!({}), None)).unwrap()).unwrap();
     assert_eq!(out["decision"], "block");
     assert_eq!(out["reason"], "run the tests first");
-    let mut ended = unchanged(&Call::new(Event::PostToolBatch, Value::Null));
+    let mut ended = Applied::unchanged(&Call::new(Event::PostToolBatch, Value::Null));
     ended.stop = Stop::End;
     let out = output(&ended);
     assert_eq!(out.continue_execution, Some(false));
@@ -171,7 +171,7 @@ fn context_stop_and_end_read_as_claude_code_expects() {
 
 #[test]
 fn the_permission_channel_carries_rewrites_and_interrupts_on_end() {
-    let mut applied = unchanged(&Call::tool(
+    let mut applied = Applied::unchanged(&Call::tool(
         Event::PreToolUse,
         "Bash",
         json!({"command": "a"}),
