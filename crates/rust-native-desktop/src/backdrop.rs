@@ -615,7 +615,7 @@ mod tests {
                 })
                 .expect("GPU completion");
             receiver.recv().unwrap().expect("mapped readback");
-            let pixels = slice.get_mapped_range();
+            let pixels = slice.get_mapped_range().expect("mapped readback");
             for (index, (gpu, cpu)) in pixels
                 .chunks_exact(4)
                 .zip(frame.pixels.chunks_exact(4))

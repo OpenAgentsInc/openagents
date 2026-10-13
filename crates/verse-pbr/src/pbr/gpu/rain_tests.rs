@@ -173,7 +173,7 @@ fn a_roof_blocks_rain_wetness_and_a_removed_roof_opens_the_same_column() {
             });
             device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
             rx.recv().unwrap().unwrap();
-            let bytes = readback.slice(..).get_mapped_range();
+            let bytes = readback.slice(..).get_mapped_range().unwrap();
             assert_eq!(
                 bytes[0],
                 if count > 0 { 0 } else { 255 },

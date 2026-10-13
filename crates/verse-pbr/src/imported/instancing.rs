@@ -100,9 +100,9 @@ impl Shadows {
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label:Some("Verse instanced skeletal shadow"),layout:Some(&pipeline_layout),
             vertex:wgpu::VertexState {module:&shader,entry_point:Some("vs"),compilation_options:Default::default(),
-                buffers:&[wgpu::VertexBufferLayout {array_stride:std::mem::size_of::<GpuVertex>() as u64,
+                buffers:&[Some(wgpu::VertexBufferLayout {array_stride:std::mem::size_of::<GpuVertex>() as u64,
                     step_mode:wgpu::VertexStepMode::Vertex,
-                    attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3]}]},
+                    attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3]})]},
             primitive:wgpu::PrimitiveState {cull_mode:None,..Default::default()},
             depth_stencil:Some(wgpu::DepthStencilState {format:wgpu::TextureFormat::Depth32Float,
                 depth_write_enabled:Some(true),depth_compare:Some(wgpu::CompareFunction::LessEqual),
@@ -123,9 +123,9 @@ impl Shadows {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Verse instanced opaque world"), layout: Some(&world_layout),
             vertex: wgpu::VertexState { module: &world_shader, entry_point: Some("vs"), compilation_options: Default::default(),
-                buffers: &[wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<GpuVertex>() as u64,
+                buffers: &[Some(wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<GpuVertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3] }] },
+                    attributes: &wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3] })] },
             primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
             depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float,
                 depth_write_enabled: Some(!additive), depth_compare: Some(wgpu::CompareFunction::LessEqual),

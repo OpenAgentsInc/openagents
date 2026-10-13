@@ -20,7 +20,7 @@ serde_json = "1"
 swash = "0.2.10"
 verse-engine = { path = "../verse-engine" }
 verse-world = { path = "../verse-world", optional = true }
-wgpu = "29.0.4"
+wgpu = "30.0.1"
 
 [lints]
 workspace = true

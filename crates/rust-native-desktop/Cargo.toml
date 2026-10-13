@@ -30,7 +30,7 @@ resvg = { version = "0.48.1", default-features = false }
 rfd = { version = "0.17.2", optional = true }
 arboard = { version = "3.6.1", features = ["wayland-data-control"], optional = true }
 pollster = { version = "0.4", optional = true }
-wgpu = { version = "29.0.4", optional = true }
+wgpu = { version = "30.0.1", optional = true }
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"], optional = true }
 
 # The Wayland seat beside winit's, on winit's own connection: drag and
@@ -51,7 +51,7 @@ objc2-foundation = { version = "0.3.2", optional = true, default-features = fals
 # Reads the accessibility tree as the platform adapters do, in tests.
 accesskit_consumer = "0.39.1"
 # Parses and validates the backdrop's shader with the naga release wgpu uses.
-naga = { version = "29.0.4", features = ["wgsl-in"] }
+naga = { version = "30.0.1", features = ["wgsl-in"] }
 
 [lints]
 workspace = true

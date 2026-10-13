@@ -146,7 +146,7 @@ toml = "0.9"
 sha2 = "0.10"
 swash = "0.2.10"
 futures-util = "0.3"
-wgpu = "29.0.4"
+wgpu = "30.0.1"
 # `wayland-csd-adwaita` is off: it pulls BSD-2-Clause `arrayref`, which deny.toml refuses.
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"], optional = true }
 
@@ -194,7 +194,7 @@ rcgen = { version = "0.14", default-features = false, features = ["crypto", "rin
 coder-host = { path = "../coder-host" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "io-util"] }
 # The GLES test translates every shader with the naga release wgpu uses.
-naga = { version = "29.0.4", features = ["wgsl-in", "glsl-out", "msl-out"] }
+naga = { version = "30.0.1", features = ["wgsl-in", "glsl-out", "msl-out"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Tags the desktop window's layer for extended dynamic range (src/edr.rs).

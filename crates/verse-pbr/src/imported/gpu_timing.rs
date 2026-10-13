@@ -122,7 +122,11 @@ impl Timer {
             match receiver.try_recv() {
                 Ok(result) => {
                     if result.is_ok() {
-                        let bytes = slot.readback.slice(..).get_mapped_range();
+                        let bytes = slot
+                            .readback
+                            .slice(..)
+                            .get_mapped_range()
+                            .expect("a mapped timestamp readback");
                         let mut ticks = std::array::from_fn(|i| {
                             u64::from_ne_bytes(bytes[i * 8..i * 8 + 8].try_into().unwrap())
                         });

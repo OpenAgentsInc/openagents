@@ -23,7 +23,7 @@ serde = { version = "1", features = ["derive"] }
 gloo-timers = { version = "0.3", features = ["futures"] }
 futures-util = "0.3"
 verse = { path = "../verse", default-features = false, features = ["browser-chamber"] }
-wgpu = "29.0.4"
+wgpu = "30.0.1"
 # The Grid's presence: positions, the console's frame lines, and the clock.
 verse-engine = { path = "../verse-engine" }
 verse-world = { path = "../verse-world", features = ["reach-client"] }

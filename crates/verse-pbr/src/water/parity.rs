@@ -232,7 +232,7 @@ fn gpu_displacements(
         })
         .ok()?;
     rx.recv().ok()?.ok()?;
-    let bytes = readback.slice(..).get_mapped_range();
+    let bytes = readback.slice(..).get_mapped_range().ok()?;
     Some(bytemuck::cast_slice::<u8, [f32; 4]>(&bytes).to_vec())
 }
 

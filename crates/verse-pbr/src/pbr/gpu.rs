@@ -960,7 +960,7 @@ fn lit_layout() -> wgpu::VertexBufferLayout<'static> {
 
 /// A textured draw's two streams: [`GpuVertex`] per vertex and
 /// [`Instance`] per instance.
-fn textured_layout() -> [wgpu::VertexBufferLayout<'static>; 2] {
+fn textured_layout() -> [Option<wgpu::VertexBufferLayout<'static>>; 2] {
     const VERTEX: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
         0 => Float32x3, 1 => Snorm16x2, 2 => Float32x2, 3 => Unorm8x4
     ];
@@ -968,16 +968,16 @@ fn textured_layout() -> [wgpu::VertexBufferLayout<'static>; 2] {
         4 => Float32x4, 5 => Float32x4, 6 => Float32x4, 7 => Uint32
     ];
     [
-        wgpu::VertexBufferLayout {
+        Some(wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<GpuVertex>() as u64,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &VERTEX,
-        },
-        wgpu::VertexBufferLayout {
+        }),
+        Some(wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Instance>() as u64,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &INSTANCE,
-        },
+        }),
     ]
 }
 
@@ -1360,7 +1360,7 @@ impl Photo {
                     label: &str,
                     vs: &str,
                     fs: Option<&str>,
-                    buffers: &[wgpu::VertexBufferLayout<'_>],
+                    buffers: &[Option<wgpu::VertexBufferLayout<'_>>],
                     topology: wgpu::PrimitiveTopology,
                     depth: wgpu::DepthStencilState,
                     blend: Option<wgpu::BlendState>,
@@ -1564,7 +1564,7 @@ impl Photo {
         let prepass = plan.runs(PhotoPass::DepthPrepass).then(|| {
             let pipeline = |layout: &wgpu::PipelineLayout,
                             vs: &str,
-                            buffers: &[wgpu::VertexBufferLayout<'_>],
+                            buffers: &[Option<wgpu::VertexBufferLayout<'_>>],
                             fs: Option<&str>| {
                 device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                     label: Some("verse depth prepass"),
@@ -1592,7 +1592,7 @@ impl Photo {
                 })
             };
             Prepass {
-                lit: pipeline(&shadow_layout, "vs_shadow", &[lit_layout()], None),
+                lit: pipeline(&shadow_layout, "vs_shadow", &[Some(lit_layout())], None),
                 textured: pipeline(
                     &shadow_layout,
                     "vs_shadow_textured",
@@ -1787,11 +1787,11 @@ impl Photo {
                 ],
                 immediate_size: 0,
             });
-        let water_vertices = [wgpu::VertexBufferLayout {
+        let water_vertices = [Some(wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<crate::water::WaterVertex>() as u64,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &crate::water::frame::VERTEX_ATTRIBUTES,
-        }];
+        })];
         const SPRITE: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![
             0 => Float32x3, 1 => Float32x4, 2 => Float32x2, 3 => Float32x2, 4 => Float32x4, 5 => Float32x4
         ];
@@ -1829,7 +1829,7 @@ impl Photo {
                 "verse photo shadow",
                 "vs_shadow",
                 None,
-                &[lit_layout()],
+                &[Some(lit_layout())],
                 triangles,
                 shadow_depth,
                 None,
@@ -1841,7 +1841,7 @@ impl Photo {
                 "verse photo lit",
                 "vs_lit",
                 Some("fs_lit"),
-                &[lit_layout()],
+                &[Some(lit_layout())],
                 triangles,
                 depth_state(true, wgpu::CompareFunction::GreaterEqual),
                 None,
@@ -1874,11 +1874,11 @@ impl Photo {
                 "verse photo stars",
                 "vs_star",
                 Some("fs_star"),
-                &[wgpu::VertexBufferLayout {
+                &[Some(wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<StarInstance>() as u64,
                     step_mode: wgpu::VertexStepMode::Instance,
                     attributes: &STAR,
-                }],
+                })],
                 triangles,
                 sky_depth.clone(),
                 Some(ADDITIVE),
@@ -1911,11 +1911,11 @@ impl Photo {
                 "verse photo glow",
                 "vs_glow",
                 Some("fs_glow"),
-                &[wgpu::VertexBufferLayout {
+                &[Some(wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<GlowVertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &GLOW,
-                }],
+                })],
                 triangles,
                 depth_state(false, wgpu::CompareFunction::GreaterEqual),
                 Some(ADDITIVE),
@@ -1926,11 +1926,11 @@ impl Photo {
                 "verse photo sprites",
                 "vs_sprite",
                 Some("fs_sprite"),
-                &[wgpu::VertexBufferLayout {
+                &[Some(wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<crate::fx::SpriteVertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &SPRITE,
-                }],
+                })],
                 triangles,
                 depth_state(false, wgpu::CompareFunction::GreaterEqual),
                 Some(PREMULTIPLIED),
@@ -1941,11 +1941,11 @@ impl Photo {
                 "verse photo legacy faces",
                 "vs_legacy",
                 Some("fs_legacy"),
-                &[wgpu::VertexBufferLayout {
+                &[Some(wgpu::VertexBufferLayout {
                     array_stride: legacy_size,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &LEGACY,
-                }],
+                })],
                 triangles,
                 depth_state(true, wgpu::CompareFunction::GreaterEqual),
                 None,
@@ -1956,7 +1956,7 @@ impl Photo {
                 "verse photo lines",
                 "vs_wide",
                 Some("fs_wide"),
-                &[wgpu::VertexBufferLayout {
+                &[Some(wgpu::VertexBufferLayout {
                     array_stride: legacy_size * 2,
                     step_mode: wgpu::VertexStepMode::Instance,
                     attributes: &[
@@ -1977,7 +1977,7 @@ impl Photo {
                             shader_location: 3,
                         },
                     ],
-                }],
+                })],
                 triangles,
                 depth_state(false, wgpu::CompareFunction::GreaterEqual),
                 Some(PREMULTIPLIED),

@@ -425,11 +425,11 @@ impl Pipelines {
                     module: &shader,
                     entry_point: Some(if reverse { "vs_reverse" } else { "vs" }),
                     compilation_options: Default::default(),
-                    buffers: &[wgpu::VertexBufferLayout {
+                    buffers: &[Some(wgpu::VertexBufferLayout {
                         array_stride: 36,
                         step_mode: wgpu::VertexStepMode::Vertex,
                         attributes: &attributes,
-                    }],
+                    })],
                 },
                 primitive: wgpu::PrimitiveState {
                     topology: if lines {
@@ -713,7 +713,7 @@ mod tests {
                 .recv_timeout(std::time::Duration::from_secs(5))
                 .unwrap()
                 .unwrap();
-            let data = buffer.slice(..).get_mapped_range().to_vec();
+            let data = buffer.slice(..).get_mapped_range().unwrap().to_vec();
             buffer.unmap();
             data
         }

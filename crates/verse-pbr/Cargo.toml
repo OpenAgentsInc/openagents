@@ -31,7 +31,7 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.9"
 verse-engine = { path = "../verse-engine", features = ["asset-io"] }
 verse-gfx = { path = "../verse-gfx" }
-wgpu = "29.0.4"
+wgpu = "30.0.1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -40,7 +40,7 @@ libc = "0.2"
 verse-content = { path = "../verse-content", features = ["compiler"] }
 tempfile = "3"
 # The shader tests validate WGSL with the naga release wgpu uses.
-naga = { version = "29.0.4", features = ["wgsl-in", "glsl-out", "msl-out"] }
+naga = { version = "30.0.1", features = ["wgsl-in", "glsl-out", "msl-out"] }
 
 [lints]
 workspace = true

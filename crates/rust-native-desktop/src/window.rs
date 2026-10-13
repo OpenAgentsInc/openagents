@@ -1199,7 +1199,7 @@ impl<A: App> Shell<A> {
         }
         compositor.encode(&gpu.queue, &mut encoder, &output, theme.background, look);
         gpu.queue.submit([encoder.finish()]);
-        texture.present();
+        gpu.queue.present(texture);
         timing.present_us = presenting.elapsed().as_micros() as u64;
         self.timings
             .record(Phase::Present, presenting.elapsed(), 0, 0);
@@ -1262,6 +1262,7 @@ fn gpu(window: Arc<Window>) -> Result<Gpu, String> {
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
         power_preference: wgpu::PowerPreference::LowPower,
         force_fallback_adapter: false,
+        apply_limit_buckets: false,
         compatible_surface: Some(&surface),
     }))
     .map_err(|error| format!("no graphics adapter: {error}"))?;
@@ -1287,6 +1288,7 @@ fn gpu(window: Arc<Window>) -> Result<Gpu, String> {
         height: size.height.max(1),
         present_mode: wgpu::PresentMode::AutoVsync,
         desired_maximum_frame_latency: 2,
+        color_space: wgpu::SurfaceColorSpace::Auto,
         alpha_mode: if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::Opaque) {
             wgpu::CompositeAlphaMode::Opaque
         } else {

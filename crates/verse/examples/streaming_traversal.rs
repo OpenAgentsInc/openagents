@@ -161,7 +161,10 @@ fn capture(
         .recv_timeout(Duration::from_secs(5))
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;
-    let pixels = buffer.slice(..).get_mapped_range();
+    let pixels = buffer
+        .slice(..)
+        .get_mapped_range()
+        .map_err(|e| e.to_string())?;
     let colored = pixels
         .chunks_exact(4)
         .filter(|p| u16::from(p[1]) > u16::from(p[0]) + 8 && u16::from(p[2]) > u16::from(p[0]) + 8)

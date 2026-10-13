@@ -80,11 +80,11 @@ impl WaterPass {
             bind_group_layouts: &[Some(frame_layout), Some(&layout)],
             immediate_size: 0,
         });
-        let vertices = [wgpu::VertexBufferLayout {
+        let vertices = [Some(wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<crate::water::WaterVertex>() as u64,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &crate::water::frame::VERTEX_ATTRIBUTES,
-        }];
+        })];
         let make = |label: &str, entry: &str, blend: wgpu::BlendState| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),

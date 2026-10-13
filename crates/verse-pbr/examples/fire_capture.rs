@@ -282,6 +282,7 @@ fn physical_capture(
             lines: [(&buffer, 0); 2],
             textured: None,
             figure: None,
+            instances: [None; 2],
             water: None,
         },
         None,
@@ -321,7 +322,10 @@ fn physical_capture(
     rx.recv_timeout(std::time::Duration::from_secs(10))
         .expect("Fire capture failed")
         .expect("Fire capture failed");
-    let bytes = readback.slice(..).get_mapped_range();
+    let bytes = readback
+        .slice(..)
+        .get_mapped_range()
+        .expect("Fire capture failed");
     bytes
         .chunks(row as usize)
         .flat_map(|row| row[..WIDTH as usize * 4].iter().copied())

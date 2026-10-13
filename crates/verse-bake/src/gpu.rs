@@ -495,7 +495,10 @@ impl GpuBackend {
             .recv()
             .map_err(|e| e.to_string())?
             .map_err(|e| format!("{}: {e}", self.adapter))?;
-        let bytes = readback.slice(..).get_mapped_range();
+        let bytes = readback
+            .slice(..)
+            .get_mapped_range()
+            .map_err(|e| e.to_string())?;
         Ok(bytemuck::cast_slice::<u8, RayHit>(&bytes).to_vec())
     }
 }

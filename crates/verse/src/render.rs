@@ -593,6 +593,7 @@ impl Renderer {
             height,
             present_mode: wgpu::PresentMode::AutoVsync,
             desired_maximum_frame_latency: 2,
+            color_space: wgpu::SurfaceColorSpace::Auto,
             // The world is opaque. Android's Vulkan surfaces may offer only
             // Inherit, which the window's own opaque format then decides.
             alpha_mode: if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::Opaque) {
@@ -1054,7 +1055,7 @@ impl Renderer {
         if let Some(photo) = &mut self.scene.photo {
             photo.submitted();
         }
-        frame.present();
+        self.queue.present(frame);
         DrawStatus::Presented
     }
 }
@@ -2151,7 +2152,11 @@ impl Offscreen {
                 .recv()
                 .map_err(|e| format!("GPU timestamps: {e}"))?
                 .map_err(|e| format!("GPU timestamps: {e}"))?;
-            let mapped = timer.readback.slice(..).get_mapped_range();
+            let mapped = timer
+                .readback
+                .slice(..)
+                .get_mapped_range()
+                .map_err(|e| format!("GPU timestamps: {e}"))?;
             let first = u64::from_le_bytes(mapped[..8].try_into().expect("timestamp size"));
             let last = u64::from_le_bytes(mapped[8..16].try_into().expect("timestamp size"));
             self.last_gpu_ms = last
@@ -2164,7 +2169,7 @@ impl Offscreen {
         }
         let mut pixels = Vec::new();
         if read_pixels {
-            let mapped = slice.get_mapped_range();
+            let mapped = slice.get_mapped_range().map_err(|e| e.to_string())?;
             let line = self.width as usize * self.texel as usize;
             pixels.reserve(line * self.height as usize);
             for y in 0..self.height as usize {
@@ -2256,6 +2261,7 @@ async fn open_async(
         .request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             force_fallback_adapter: false,
+            apply_limit_buckets: false,
             compatible_surface: surface,
         })
         .await
@@ -2485,7 +2491,7 @@ impl Scene {
                     module: &shader,
                     entry_point: Some("vs"),
                     compilation_options: Default::default(),
-                    buffers: &[wgpu::VertexBufferLayout {
+                    buffers: &[Some(wgpu::VertexBufferLayout {
                         array_stride: std::mem::size_of::<Vertex>() as u64,
                         step_mode: wgpu::VertexStepMode::Vertex,
                         attributes: &wgpu::vertex_attr_array![
@@ -2493,7 +2499,7 @@ impl Scene {
                             1 => Float32x3,
                             2 => Float32,
                         ],
-                    }],
+                    })],
                 },
                 primitive: wgpu::PrimitiveState {
                     topology,

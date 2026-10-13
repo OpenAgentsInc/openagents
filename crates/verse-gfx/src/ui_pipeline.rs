@@ -161,7 +161,7 @@ pub fn ui_pipeline_with_texture(
                 module: &shader,
                 entry_point: Some("vs"),
                 compilation_options: Default::default(),
-                buffers: &[wgpu::VertexBufferLayout {
+                buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<UiVertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &wgpu::vertex_attr_array![
@@ -169,7 +169,7 @@ pub fn ui_pipeline_with_texture(
                         1 => Float32x2,
                         2 => Float32x4,
                     ],
-                }],
+                })],
             },
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: depth.then(|| wgpu::DepthStencilState {

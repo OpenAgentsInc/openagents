@@ -566,7 +566,7 @@ fn render(layer: &mut Layer, gpu: &Gpu<'_>, size: (u32, u32), now: Instant) -> F
             timeout: Some(Duration::from_secs(10)),
         })
         .unwrap();
-    let mapped = slice.get_mapped_range();
+    let mapped = slice.get_mapped_range().unwrap();
     let mut frame = Frame::transparent(size.0 as usize, size.1 as usize);
     for y in 0..size.1 as usize {
         frame.pixels[y * size.0 as usize * 4..(y + 1) * size.0 as usize * 4]

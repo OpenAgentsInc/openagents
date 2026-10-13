@@ -420,6 +420,7 @@ fn render(
                 lines: [(&scene.lit, 0); 2],
                 textured: None,
                 figure: None,
+                instances: [None; 2],
                 water,
             },
             None,
@@ -491,7 +492,10 @@ fn read(
     rx.recv_timeout(std::time::Duration::from_secs(30))
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;
-    let bytes = readback.slice(..).get_mapped_range();
+    let bytes = readback
+        .slice(..)
+        .get_mapped_range()
+        .map_err(|e| e.to_string())?;
     Ok(bytes
         .chunks(row as usize)
         .flat_map(|row| row[..WIDTH as usize * 4].iter().copied())

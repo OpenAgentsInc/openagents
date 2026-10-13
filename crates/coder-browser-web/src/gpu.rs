@@ -81,6 +81,7 @@ impl Gpu {
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::LowPower,
                 force_fallback_adapter: false,
+                apply_limit_buckets: false,
                 compatible_surface: Some(&surface),
             })
             .await
@@ -114,6 +115,7 @@ impl Gpu {
             height: canvas.height(),
             present_mode: wgpu::PresentMode::AutoVsync,
             desired_maximum_frame_latency: 2,
+            color_space: wgpu::SurfaceColorSpace::Auto,
             alpha_mode: capabilities
                 .alpha_modes
                 .first()
@@ -251,7 +253,7 @@ impl Gpu {
             pass.draw(0..batch.vertices.len() as u32, 0..1);
         }
         self.queue.submit(Some(encoder.finish()));
-        frame.present();
+        self.queue.present(frame);
         Ok(())
     }
 }

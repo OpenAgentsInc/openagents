@@ -900,6 +900,7 @@ fn physical_sampled(
         lines: [(&buffer, 0); 2],
         textured: None,
         figure: None,
+        instances: [None; 2],
         water: with_water.then_some(&water_gpu),
     };
     let mut frame = |photo: &mut Photo| {
@@ -1040,7 +1041,10 @@ fn read(
     rx.recv_timeout(std::time::Duration::from_secs(20))
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;
-    let bytes = readback.slice(..).get_mapped_range();
+    let bytes = readback
+        .slice(..)
+        .get_mapped_range()
+        .map_err(|e| e.to_string())?;
     Ok(bytes
         .chunks(row as usize)
         .flat_map(|row| row[..width as usize * 4].iter().copied())

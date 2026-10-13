@@ -980,6 +980,7 @@ impl Gpu {
             height: size.height.max(1),
             present_mode: wgpu::PresentMode::AutoVsync,
             desired_maximum_frame_latency: 2,
+            color_space: wgpu::SurfaceColorSpace::Auto,
             alpha_mode: caps
                 .alpha_modes
                 .first()
@@ -1051,7 +1052,7 @@ impl Gpu {
             batch,
             atlas,
         )?;
-        frame.present();
+        self.queue.present(frame);
         Ok(true)
     }
 }

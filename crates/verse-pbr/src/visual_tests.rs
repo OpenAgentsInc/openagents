@@ -228,7 +228,7 @@ fn physical_capture(
     rx.recv_timeout(std::time::Duration::from_secs(10))
         .unwrap()
         .unwrap();
-    let bytes = readback.slice(..).get_mapped_range();
+    let bytes = readback.slice(..).get_mapped_range().unwrap();
     bytes
         .chunks(row as usize)
         .flat_map(|row| row[..WIDTH as usize * 4].iter().copied())

@@ -13,7 +13,7 @@ layers = ["dep:swash", "dep:paper-mono", "dep:oa-tokens", "dep:image"]
 
 [dependencies]
 serde_json = "1"
-wgpu = { version = "29.0.4", optional = true }
+wgpu = { version = "30.0.1", optional = true }
 pollster = { version = "0.4", optional = true }
 bytemuck = { version = "1.25", features = ["derive"], optional = true }
 png = { version = "0.18.1", optional = true }

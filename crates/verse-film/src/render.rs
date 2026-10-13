@@ -97,11 +97,11 @@ fn pipeline(
             module: shader,
             entry_point: Some("vs"),
             compilation_options: Default::default(),
-            buffers: &[wgpu::VertexBufferLayout {
+            buffers: &[Some(wgpu::VertexBufferLayout {
                 array_stride: std::mem::size_of::<Vertex>() as u64,
                 step_mode: wgpu::VertexStepMode::Vertex,
                 attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2],
-            }],
+            })],
         },
         primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList,
@@ -147,6 +147,7 @@ impl Renderer {
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             force_fallback_adapter: false,
+            apply_limit_buckets: false,
             compatible_surface: None,
         }))
         .map_err(|e| format!("no graphics adapter: {e}"))?;
@@ -608,7 +609,9 @@ impl Renderer {
             .map_err(|e| format!("the GPU did not finish: {e}"))?;
         let mut pixels = Vec::with_capacity((self.width * self.height * 4) as usize);
         {
-            let mapped = slice.get_mapped_range();
+            let mapped = slice
+                .get_mapped_range()
+                .map_err(|e| format!("the GPU readback did not map: {e}"))?;
             let stride = self.row as usize;
             let line = (self.width * 4) as usize;
             // Clip y goes up and texture row 0 is the top, so the rows are

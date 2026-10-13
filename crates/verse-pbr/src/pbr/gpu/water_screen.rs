@@ -59,7 +59,7 @@ impl WaterScreen {
                         layout: &wgpu::PipelineLayout,
                         vs: &str,
                         fs: &str,
-                        buffers: &[wgpu::VertexBufferLayout<'_>],
+                        buffers: &[Option<wgpu::VertexBufferLayout<'_>>],
                         cull: Option<wgpu::Face>,
                         depth: wgpu::DepthStencilState| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -120,7 +120,7 @@ impl WaterScreen {
                 parts.guide_layout,
                 "vs_lit",
                 "fs_lit",
-                &[lit_layout()],
+                &[Some(lit_layout())],
                 None,
                 write.clone(),
             ),
@@ -129,7 +129,7 @@ impl WaterScreen {
                 parts.guide_layout,
                 "vs_legacy",
                 "fs_legacy",
-                std::slice::from_ref(&parts.legacy),
+                &[Some(parts.legacy.clone())],
                 None,
                 write,
             ),

@@ -57,7 +57,7 @@ fn read(
         .recv_timeout(std::time::Duration::from_secs(5))
         .unwrap()
         .unwrap();
-    let bytes = buffer.slice(..).get_mapped_range();
+    let bytes = buffer.slice(..).get_mapped_range().unwrap();
     let result = bytes
         .chunks(row as usize)
         .flat_map(|row| row[..(width * 4) as usize].iter().copied())
