@@ -39,6 +39,9 @@ struct Preferences {
     /// The solver swarm (#11346); on unless turned off.
     #[serde(default = "on")]
     swarm: bool,
+    /// Token savers (#11494); on unless turned off.
+    #[serde(default = "on")]
+    token_savers: bool,
     jev_enabled: bool,
     jev_model: String,
     jev_endpoint: String,
@@ -64,6 +67,7 @@ impl Default for Preferences {
             comms: true,
             claude: true,
             swarm: true,
+            token_savers: true,
             jev_enabled: true,
             jev_model: jev::defaults::MODEL.into(),
             jev_endpoint: crate::jev_plugin::DEFAULT_ENDPOINT.into(),
@@ -173,6 +177,18 @@ impl Preferences {
     }
 }
 
+/// Whether built-in plugin `id` is on in the settings saved under `dir`,
+/// for a run that never loads the app's settings. Only Token savers is
+/// read this way (#11494); a missing or unreadable file means on.
+#[must_use]
+pub fn saved_enabled(dir: &std::path::Path, id: &str) -> bool {
+    let saved = Store::under(dir).read_extra::<Preferences>(FILE);
+    match (id, saved) {
+        (crate::token_savers::PLUGIN, Ok(Some(value))) => value.token_savers,
+        _ => true,
+    }
+}
+
 pub struct BundledSettings {
     pub brainstorm: crate::brainstorm::Settings,
     pub boat: crate::cloud_settings::Configuration,
@@ -188,6 +204,8 @@ pub struct BundledSettings {
     pub claude: bool,
     /// The solver swarm (#11346).
     pub swarm: bool,
+    /// Token savers (#11494).
+    pub token_savers: bool,
     pub jev_enabled: bool,
     pub acp_agents: Vec<AcpAgent>,
     pub focus: SettingsFocus,
@@ -231,6 +249,7 @@ impl Default for BundledSettings {
             comms: true,
             claude: true,
             swarm: true,
+            token_savers: true,
             jev_enabled: true,
             acp_agents: Vec::new(),
             focus: SettingsFocus::ApiKey,
@@ -271,6 +290,7 @@ impl BundledSettings {
             comms: self.comms,
             claude: self.claude,
             swarm: self.swarm,
+            token_savers: self.token_savers,
             jev_enabled: self.jev_enabled,
             jev_model: self.jev_model.clone(),
             jev_endpoint: self.jev_endpoint.clone(),
@@ -293,6 +313,12 @@ impl BundledSettings {
         self.comms = value.comms;
         self.claude = value.claude;
         self.swarm = value.swarm;
+        self.token_savers = value.token_savers;
+        // The process-wide flag; a test leaves it to the default so tests
+        // running alongside see the plugin on.
+        if self.live && !cfg!(test) {
+            crate::token_savers::set_enabled(value.token_savers);
+        }
         self.jev_enabled = value.jev_enabled;
         self.jev_model = value.jev_model;
         self.jev_endpoint = value.jev_endpoint;
@@ -412,6 +438,7 @@ impl BundledSettings {
             // Only on a computer signed in to Claude Code.
             crate::claude::PLUGIN => self.claude && crate::claude::available(),
             crate::swarm::PLUGIN => self.swarm,
+            crate::token_savers::PLUGIN => self.token_savers,
             "jev" => self.jev_enabled,
             crate::brainstorm::PLUGIN => self.brainstorm.preferences.enabled,
             _ => false,
@@ -432,6 +459,7 @@ impl BundledSettings {
             crate::claude::PLUGIN if !crate::claude::available() => return false,
             crate::claude::PLUGIN => &mut value.claude,
             crate::swarm::PLUGIN => &mut value.swarm,
+            crate::token_savers::PLUGIN => &mut value.token_savers,
             "jev" => &mut value.jev_enabled,
             crate::brainstorm::PLUGIN => &mut value.brainstorm.enabled,
             _ => return false,
@@ -1058,6 +1086,25 @@ mod tests {
         };
         *draft = Draft::default();
         settings.paste(text);
+    }
+
+    #[test]
+    fn token_savers_are_on_by_default_and_a_turned_off_plugin_stays_off_headless() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = crate::token_savers::PLUGIN;
+        assert!(saved_enabled(dir.path(), id), "no file means on");
+        let mut settings = BundledSettings::default();
+        settings.load(Store::under(dir.path())).unwrap();
+        settings.set_live(true);
+        assert!(settings.enabled(id));
+        assert!(settings.toggle(id));
+        assert!(!settings.enabled(id));
+        assert!(
+            !saved_enabled(dir.path(), id),
+            "a headless run reads it off"
+        );
+        assert!(settings.toggle(id));
+        assert!(saved_enabled(dir.path(), id));
     }
 
     #[test]

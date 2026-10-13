@@ -130,6 +130,28 @@ decides when it can, the Decisions API only when the rule is unsure.
    steer followed). Without the join no threshold above can be calibrated
    (the calibration memo's open gap).
 
+## Token savers: the plugin every lever lives in
+
+Every lever ships inside one built-in plugin, **Token savers**
+(`token-savers`, #11494, `crates/coder-new/src/token_savers.rs`). It is on
+by default, and a person turns it off on the Plugins screen (`/plugins`,
+Space).
+
+- **One install point.** A lever is a `Lever` variant with one plain
+  sentence in `LEVERS`, and its hooks go in only through
+  `token_savers::install`. With the plugin off, no hook is installed.
+- **Where the on/off state comes from.** The app sets a process-wide flag
+  when it loads its settings and when the person toggles the plugin.
+  Headless runs (`coder -p`, the cloud runtime, issue runs) read the saved
+  `bundled-plugins.json` instead, and a missing file means on.
+- **Exceptions.** A per-lever environment variable (`CODER_SQUEEZE=off`)
+  still works as an override. The bench's `briefed-agent` keeps explicit
+  config switches, because an A/B arm must state its levers.
+
+A new lever adds a `Lever`, its sentence, and its arm in `install`, and
+nothing else. Per-lever toggles can come later, when there is more than one
+lever.
+
 ## Status
 
 **Idea 1 is built** (#11486, `crates/squeeze`).
@@ -151,7 +173,7 @@ The hook answers with `updatedInput` only. It never gives a permission decision,
 - A failed squeeze shows the output unchanged.
 
 **Where it's installed:**
-- **Coder's Claude Code chat** (`coder-new`, full access), as the `coder-squeeze` subcommand of `coder`, `openagents` and `coder-cloud-runtime`.
+- **Coder's Claude Code chat** (`coder-new`, full access) and the in-process issue-run session once it has Bash, through the Token savers plugin, as the `coder-squeeze` subcommand of `coder`, `openagents` and `coder-cloud-runtime`.
 - **The briefed agent**, with `"squeeze": true` and `Bash` in `tools`. Full outputs go to the run's `squeeze/` directory, which `Read` may open, and decisions to `squeeze/decisions.jsonl`.
 
 **Settings:**

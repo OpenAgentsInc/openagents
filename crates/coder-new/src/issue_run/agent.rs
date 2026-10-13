@@ -1046,6 +1046,13 @@ pub async fn run(
         allowed.extend(server.allowed_tool_names());
         query_options = query_options.sdk_mcp_server(server);
     }
+    // Token savers (#11494): once the session has Bash, its noisy commands
+    // run through the squeezer (#11486). The full output is a file outside
+    // the worktree, which the agent reads with Bash.
+    if tools.iter().any(|tool| tool == "Bash") {
+        query_options =
+            crate::token_savers::install(query_options, crate::token_savers::Lever::Squeeze);
+    }
     query_options.tools = Some(ToolsConfig::Names(tools));
     query_options.allowed_tools = Some(allowed.clone());
     query_options.system_prompt = Some(SystemPromptConfig::Custom(session.system.clone()));

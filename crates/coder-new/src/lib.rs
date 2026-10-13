@@ -90,6 +90,7 @@ mod stuck;
 mod supervise;
 pub mod swarm;
 pub mod theme;
+pub mod token_savers;
 pub mod tools;
 pub mod trace_upload;
 pub mod trajectory;

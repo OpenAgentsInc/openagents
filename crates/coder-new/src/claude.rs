@@ -745,16 +745,11 @@ pub(crate) fn turn_options(
         claude_agent_sdk::HookEvent::PreToolUse,
         crate::floors::claude_hook(cwd.to_owned()),
     );
-    // System One hook 1 (#11486): a noisy build or test command runs
-    // through this binary's squeezer, so its output enters the history
+    // Token savers (#11494): a noisy build or test command runs through
+    // this binary's squeezer (#11486), so its output enters the history
     // small. It rewrites the command only; the floors above still decide.
-    if matches!(access, Access::Full)
-        && let Ok(this) = std::env::current_exe()
-    {
-        options = options.hook(
-            claude_agent_sdk::HookEvent::PreToolUse,
-            squeeze::claude_hook(squeeze::invoker(&this, &[squeeze::CODER_SUBCOMMAND])),
-        );
+    if matches!(access, Access::Full) {
+        options = crate::token_savers::install(options, crate::token_savers::Lever::Squeeze);
     }
     options.env_remove = REMOVED_ENV.iter().map(|name| (*name).to_owned()).collect();
     (options, allowed)
