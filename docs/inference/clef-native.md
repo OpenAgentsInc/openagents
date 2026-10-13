@@ -2043,8 +2043,10 @@ about 40 % device utilization at 338 MHz):
 
 The remaining concrete lever is to draw more clock or less power under the cap.
 Native gets a lower sustained clock than Ollama, which is what makes 27B slower
-at 16k. That is
-[#11477](https://github.com/OpenAgentsInc/openagents/issues/11477).
+at 16k. That was
+[#11477](https://github.com/OpenAgentsInc/openagents/issues/11477); its
+findings are under "Sustained clock study" in M4 below, and the next lever is
+[#11481](https://github.com/OpenAgentsInc/openagents/issues/11481).
 
 ## M4 status (closed 2026-10-13, speed gate not met)
 
@@ -2053,8 +2055,10 @@ inputs, 27B weight-format support, and CUDA memory checks for
 [#11197](https://github.com/OpenAgentsInc/openagents/issues/11197). These features
 have separate controls and acceptance checks. The uncached timing study
 (2026-10-12) and the clock-logged run (2026-10-13), both below, miss the
-1.5× gate. M4 is closed with that result; the open work is in
-[#11477](https://github.com/OpenAgentsInc/openagents/issues/11477).
+1.5× gate. M4 is closed with that result. The follow-up study
+([#11477](https://github.com/OpenAgentsInc/openagents/issues/11477), below)
+also misses it; the next lever is
+[#11481](https://github.com/OpenAgentsInc/openagents/issues/11481).
 
 The [validation bundle](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/README.md)
 (stored in `gs://openagents-bench-artifacts/clef/m3-m4-2026-10-11/`, with a
@@ -2226,6 +2230,105 @@ reply reported zero cached tokens.
 - **Not met:** the all-top same-Q4 check, at 103/104.
 
 Both open items moved to #11477.
+
+### Sustained clock study (#11477, 2026-10-13)
+
+The binary is a release build of main `aa4c39f8fa`, with the same settings,
+harness and reset Ollama as the run above. macmon sampled the GPU clock, GPU
+power, RAM power and CPU power every second. Each engine's CPU use was logged
+every 2 seconds. Evidence is in
+`gs://openagents-bench-artifacts/clef/m3-m4-2026-10-11/11477-2026-10-13/`,
+listed in the bundle manifest. The Mac ran on battery from 01:59 to 03:36 UTC,
+and slept at 1 % charge. Probe runs in that window are relative comparisons
+only; the timing tables below were run on AC.
+
+**27B at ~16k, sustained, on AC** (`d16-1`, 01:33–01:58 UTC). Two
+opposite-order rounds, 4 measured requests per engine per round, zero cached
+tokens on every reply:
+
+| Engine | Median | GPU clock | GPU power | RAM power | Engine CPU |
+| --- | --- | --- | --- | --- | --- |
+| Native, resident f16 | 42.78 s | 650 MHz | 13.0 W | 5.9 W | 0 % |
+| Native, direct Q4_K (`q4k-on-demand`, `Q4_GEMM=direct`) | 50.36 s | 650 MHz | 13.3 W | 5.1–5.6 W | 0–0.5 % |
+| Reset Ollama `clef` | 34.53 s | 846–853 MHz | 22–23 W | 4.5 W | 4–8 % |
+
+Direct Q4_K gets the same clock as f16 and takes 17 % longer in pairs
+(paired f16/direct time 0.86), so it is not a sustained-load lever. Its decode
+and its weight reads repeat for every 64-token tile.
+
+**Paired 27B at 1k/4k/16k** (`b27-2`, 03:42–03:59 UTC, on AC with the battery
+charging from 5 %). Two opposite-order rounds, 5 measured requests per engine
+per round:
+
+| | ~1k | ~4k | ~16k |
+| --- | --- | --- | --- |
+| Native, round 1 | 1.344 s (1,282 MHz) | 4.917 s (1,291 MHz) | 23.50 s (1,128 MHz) |
+| Reset Ollama, round 1 | 1.861 s (935 MHz) | 6.865 s (920 MHz) | 27.26 s (939 MHz) |
+| Native, round 2 | 1.753 s (887 MHz) | 6.607 s (875 MHz) | 36.84 s (741 MHz) |
+| Reset Ollama, round 2 | 2.089 s (952 MHz) | 7.076 s (920 MHz) | 32.12 s (909 MHz) |
+| Paired Ollama/native time, both rounds | **1.30** | **1.26** | **0.96** |
+
+**Result: the M4 speed gate (≥ 1.5×) is not met.** Ollama's clock stays at
+about 0.92–0.95 GHz in both rounds. Native's clock starts at 1.1–1.3 GHz and
+falls to 0.74–0.89 GHz in round 2. Clock times seconds is the same for both
+engines (for example 26.5 vs 25.6 GHz·s at 16k in round 1), so per clock they
+do the same work.
+
+**What sets the clock.**
+
+- **Not CPU spin.** Native's server uses about 0 % CPU while it waits, because
+  `commit_wait` blocks in `waitUntilCompleted`. A busy-polling wait in the
+  synthetic probe does cost about 11 % of the clock (+5.5 W CPU), but native
+  does not poll. A blocking wait, a shared-event wait, a completion-handler
+  wait, a three-deep queue and an `NSProcessInfo` latency-critical activity
+  all give the same clock.
+- **DRAM traffic.** The probe ran one MPP matmul (x[2048, 5120] times eight
+  distinct [17408, 5120] f16 weights) and only changed the tile, in
+  alternating 25-second windows:
+  - native's 64×128 tile: 805–955 MHz at 4.1–4.8 W RAM;
+  - 128×128 and 64×256 tiles (four SIMD groups): 630–676 MHz at about 7 W
+    RAM, with fewer TF per GHz;
+  - a weight-major grid: 790–800 MHz at 15 W RAM, and 30 % fewer TF.
+
+  The governor gives less clock, and less GPU power, to the tiles with more
+  memory traffic. In the model, native draws 5.9 W RAM against Ollama's 4.5 W
+  and gets 650 against 850 MHz.
+- **The GEMMs are what is capped.** With `PSIONIC_CLEF_SKIP=delta,attention`,
+  native's GEMMs alone get the same low clock as the full model. With
+  `PSIONIC_CLEF_SKIP=gemm`, the rest of the model runs at 850–1,050 MHz.
+- **Kernel speed under the cap is not the gap.** Alternating with MLX 0.32.3 in
+  the same thermal state, native's tile sustains 27.5–27.9 TF. MLX f16 sustains
+  28.1–28.8 TF and MLX nvfp4 (Ollama's format) 25.1–25.6 TF.
+- **Grid swizzles of 4 and 8 token tiles** (each weight tile shared by the
+  token tiles that run together) are not consistently faster than the
+  current order.
+- **Energy Mode is Automatic** (`pmset powermode 0`). Whether High Power mode
+  lifts the cap was not tested: it is a system setting, so it is listed in
+  `NEEDS_OWNER.md`.
+
+**Same-Q4 27B check (`text-029`).** All 40 requests and 104 questions were
+re-run against the independent reference (`tools/sameq4.py`):
+
+- **Resident f16:** 103/104, max |Δp| 0.009059. This reproduces the published
+  result exactly.
+- **Direct Q4_K:** 104/104, max |Δp| 0.002644. `text-029` / `日本1` gives
+  P(true) 0.4950 against the reference's 0.4930; f16 gives 0.5021.
+
+The two native paths decode the same f16 weight values and both accumulate in
+f32. They differ only in reduction order, yet they move this answer by 0.007.
+So the case sits inside native arithmetic noise; this is not a defect fix. The
+default path still fails the all-top check.
+
+**#11477 closed (2026-10-13), with:**
+
+- **Not met:** the 1.5× speed gate. Paired ratios are 1.30 / 1.26 / 0.96, and
+  0.81 sustained at 16k.
+- **Not met:** the all-top same-Q4 check on the benchmarked f16 path (103/104).
+  The slower direct Q4_K path passes it (104/104).
+- **Next lever:** a weight-stationary direct Q4_K GEMM that decodes each
+  weight tile once for several token tiles. It cuts DRAM traffic, which is
+  what the governor responds to. That is
+  [#11481](https://github.com/OpenAgentsInc/openagents/issues/11481).
 
 ### Metal controls and memory
 
@@ -2443,6 +2546,7 @@ complete before the native comparison starts; do not overlap their model loads.
 | Block DeltaNet | **FAILED in the combined mode:** Stage 5 passes alone at maximum logit difference `8.871e-4`, but reaches `1.405e-3` with fused attention, weight-shape GEMM, and compressed FFN. It remains disabled by default. Both sides of the comparison use the same other optimizations. |
 | Fused field head | Passed on Stage 6: Flash and 27B each preserve all 104 raw-logit and HTTP top answers against their staged heads, with maximum logit differences below `1e-6`. The source reduces head waits from 23 to 8. This is head-only parity, not independent full-runtime same-Q4 coverage. |
 | Independent same-Q4 27B text runtime | **FAILED:** both Stage 6 head modes agree with the independent reference on 103/104 top answers. Maximum probability difference `0.009059182` passes the fixed `0.02` bound, but `text-029` / `日本1` changes its top answer. All 40 requests, 20,894 input IDs, spans, and options are covered. [Complete evidence](https://github.com/OpenAgentsInc/openagents/blob/46ed6cdcf3fdb8b6d9db59a8e058745670d63f4f/crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/same-q4-runtime-v1/README.md). |
+| Independent same-Q4 27B, direct Q4_K path (#11477) | Passed on main `aa4c39f8fa` with `q4k-on-demand` and `Q4_GEMM=direct`: 104/104 top answers, maximum probability difference `0.002644`. The benchmarked resident-f16 path gives 103/104 and `0.009059` in the same run. The two paths differ only in reduction order, so this does not explain `text-029`. Direct Q4_K takes 17 % longer under sustained load and is not selected. |
 | Shorter DeltaNet blocks | **Rejected:** the 16-token experiment reaches `1.084e-3` alone and `1.355e-3` combined, above the unchanged `1e-3` limit. Its patch and failures are retained; product source restores the preceding block32 experiment. |
 | Official 27B BF16 image goldens and native comparison | Passed again on Stage 6 with fused fields: all six cases and 14 native top answers match the official reference and expected labels, with exact token counts. Maximum probability difference is `0.001779430`; all ten media refusal checks pass. |
 | Real 27B CUDA and Auto startup refusal on the RTX 4080 | Passed: both refused before weight upload, without CPU fallback; GPU memory before/after was unchanged. This does not claim that CUDA context creation uses no memory. |
