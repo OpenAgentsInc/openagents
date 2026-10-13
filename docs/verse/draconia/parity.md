@@ -358,3 +358,16 @@ top), and `~/Downloads/draconia-peacock-progress.png` (one row per version).
   - the neck still reads faintly against the bright fan;
   - the fan's eyes are paler than the reference's white;
   - her hair and outfit (waiting on the face agent's skinned Draconia).
+
+### v12, 2026-10-13
+
+- **Owner flag:** the P3 opening showed a dark, smeared, ghosted face (two
+  rigs blended under a fast pull-back, buried in backlight and fog). It's
+  cut. P3 now opens on a medium-wide backlit silhouette out of a white flash
+  held 0.1 s longer, then pulls back to the wide. No face close-up shows
+  until a proper one exists.
+- **Next:** the face agent is rendering a front-lit extreme close-up of her
+  eyes for this moment
+  (`~/work/film-out/draconia/parity/peacock-open/peacock-open-vN.mp4`). When
+  it lands, it gets cut in at the P3 opening at the reference's timing
+  (114.5–114.7 s), before the pull-back.

@@ -63,7 +63,7 @@ pub struct Set {
 }
 
 /// A small deterministic hash in 0..1.
-fn hash(i: u32) -> f32 {
+pub(crate) fn hash(i: u32) -> f32 {
     let mut x = i.wrapping_mul(0x9E37_79B9) ^ 0x85EB_CA6B;
     x ^= x >> 15;
     x = x.wrapping_mul(0x2C1B_3C6D);
@@ -273,7 +273,11 @@ impl Set {
                 }
             }
             // The tail opens out of the white.
-            (Part::Tail, _) => 2.5 * (1.0 - t / 0.35).clamp(0.0, 1.0).powi(2),
+            (Part::Tail, _) => {
+                // Held white for a few frames, then fading.
+                let k = ((t - 0.1) / 0.3).clamp(0.0, 1.0);
+                4.0 * (1.0 - k).powi(2)
+            }
             _ => 0.0,
         }
     }
@@ -592,7 +596,7 @@ impl Set {
     }
 }
 
-fn key(toward: Vec3, illuminance: f32, sky: f32) -> Key {
+pub(crate) fn key(toward: Vec3, illuminance: f32, sky: f32) -> Key {
     Key {
         dir: toward.normalize(),
         illuminance,
@@ -612,7 +616,7 @@ fn key(toward: Vec3, illuminance: f32, sky: f32) -> Key {
 
 /// Recolors Alice as Draconia: pale platinum hair (the atlas's bottom
 /// band holds the hair strips) and the forest-green coat to black.
-fn draconia(scene: &mut TexturedScene) {
+pub(crate) fn draconia(scene: &mut TexturedScene) {
     let to_lin = |v: u8| (f32::from(v) / 255.0).powf(2.2);
     let to_srgb = |v: f32| (v.clamp(0.0, 1.0).powf(1.0 / 2.2) * 255.0).round() as u8;
     for image in &mut scene.images {
@@ -643,7 +647,7 @@ fn draconia(scene: &mut TexturedScene) {
     }
 }
 
-fn push_quad(out: &mut Vec<LitVertex>, c: [Vec3; 4], color: [f32; 3], rough: f32) {
+pub(crate) fn push_quad(out: &mut Vec<LitVertex>, c: [Vec3; 4], color: [f32; 3], rough: f32) {
     let normal = (c[1] - c[0]).cross(c[2] - c[0]).normalize_or(Vec3::Y);
     for i in [0, 1, 2, 0, 2, 3] {
         out.push(LitVertex {
@@ -659,7 +663,14 @@ fn push_quad(out: &mut Vec<LitVertex>, c: [Vec3; 4], color: [f32; 3], rough: f32
 
 /// A box from `min` to `max`, turned `yaw` about its center, every face
 /// facing out.
-fn push_box(out: &mut Vec<LitVertex>, min: Vec3, max: Vec3, yaw: f32, color: [f32; 3], rough: f32) {
+pub(crate) fn push_box(
+    out: &mut Vec<LitVertex>,
+    min: Vec3,
+    max: Vec3,
+    yaw: f32,
+    color: [f32; 3],
+    rough: f32,
+) {
     let center = (min + max) * 0.5;
     let m = Mat4::from_translation(center) * Mat4::from_rotation_y(yaw);
     let h = (max - min) * 0.5;
@@ -703,7 +714,7 @@ fn push_box(out: &mut Vec<LitVertex>, min: Vec3, max: Vec3, yaw: f32, color: [f3
 
 /// The courtyard's cobbles: rows of rounded-off stones with mortar between,
 /// each its own shade, wet enough to catch the tail's light.
-fn cobbles(out: &mut Vec<LitVertex>) {
+pub(crate) fn cobbles(out: &mut Vec<LitVertex>) {
     push_quad(
         out,
         [
