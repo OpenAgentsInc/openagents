@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
-"""System 1 in front of System 2, on the route map: a 13.5 s shot for the
+"""System 1 in front of System 2, on the route map: a 28 s shot for the
 Coder v1 launch film.
 
   scripts/film/system1-routing.py OUT.mp4 [--frames-dir DIR] [--only SECONDS,...]
 
-Beats:
-  0.0-4.6   The route map (the real routes, engines, plugins, decks and
-            knowledge from crates/openagents-chat-app/src/route_map/sources.json,
-            laid out as route_map/layout.rs lays them out) with System 2, the
-            big model, at the center. Each chat message's white light runs
-            into it, and every tool step goes out and back through it. The
-            cost and time per fix tick up to bare Claude Code's.
-  4.6-8.6   A System 1 ring lights up in front of it (the decisions from
+Beats (the timeline constants below hold the exact times):
+  0-9       Some other harness: the big model (System 2) at the center in a
+            thin ring that only carries its tools (Bash, Read, Edit, Write,
+            Grep, Web). Every message and every tool step goes straight into
+            the model and back. The cost and time per fix climb to bare
+            Claude Code's and hold.
+  9-17.5    OpenAgents: a System 1 ring sweeps in (the decisions from
             docs/coder/design/system-one-hooks.md: route, brief, squeeze,
-            gate, watch, verify). Light now stops at the ring and hops
-            straight to what serves it; only the hard part reaches the
-            center. The counters fall to the briefed agent's.
-  8.6-11.6  The map grows: plugins other people add appear on the outer ring,
-            gold runs out past them to their authors, the ring takes more.
-  11.6-13.5 A calm hold on the whole map.
+            gate, watch, verify) and the route map fades in around it (the
+            real routes, engines, plugins, decks and knowledge from
+            crates/openagents-chat-app/src/route_map/sources.json, at the
+            angles route_map/layout.rs gives them). Light now stops at the
+            ring and hops out to what serves it; only the hard part reaches
+            the center. The counters fall to the briefed agent's and hold.
+  17.5-23.5 The map grows: plugins other people add appear on the outer
+            ring, gold runs out past them to their authors, the ring takes
+            more.
+  23.5-28   A calm hold on the whole map, panned to the middle.
 
 Numbers on screen: docs/inference/briefed-agent-ab.md (#11211): per accepted
 change $4.00 (bare Claude Code) vs $1.84 (briefed), median 284 s vs 121 s,
@@ -56,7 +59,7 @@ SOURCES = REPO / "crates/openagents-chat-app/src/route_map/sources.json"
 GEIST = Path(os.path.expanduser(os.environ.get("FILM_FONTS", "~/work/film-out/fonts")))
 BERKELEY = Path(os.path.expanduser(os.environ.get("BERKELEY_FONTS", "~/Library/Fonts")))
 
-W, H, FPS, SECONDS = 1920, 1080, 30, 14.5
+W, H, FPS = 1920, 1080, 30
 S = 2  # static layers are drawn at twice the size, then scaled down
 
 # --- palette ---------------------------------------------------------------
@@ -399,19 +402,65 @@ m_old = font("BerkeleyMono-Regular.ttf", 24)
 
 LEFT = 118
 
-# Messages: the episode 289 chat's own words, then a coding chat.
-MSG1 = [  # (t, text, target node id, tool steps through System 2)
-    (1.25, "Fix the flaky parser test", "engine:claude_code", ["knowledge:coding", "plugin:crates/plugin-outline", "engine:claude_code"]),
-    (2.05, "Do it with Codex", "engine:codex", ["knowledge:coding", "engine:codex"]),
-    (2.85, "What's new in the Gym?", "route:gym.news", ["route:eval.result", "route:gym.news"]),
-    (3.55, "Show the Test-Time Capabilities deck", "deck:test-time-capabilities", ["route:presentation.open", "deck:test-time-capabilities"]),
+# --- the timeline (seconds) ------------------------------------------------
+# Beat 1, some other harness: the big model in a thin ring of its own tools.
+B1_CAPTION = (0.8, 8.6)
+B1_MSGS = [1.8, 3.0, 4.2, 5.4]
+B1_CLIMB = (1.8, 6.8)        # the counters climb, then hold
+# Beat 2, OpenAgents: System 1 in front, the route map around it.
+B2 = 9.0
+HARNESS_OUT = (9.0, 10.0)
+S1_SWEEP = 9.2               # the ring sweeps on over 1.2 s
+MAP_IN = (10.2, 11.8)
+CAM_OUT = (9.2, 11.4)        # the camera eases back from the close-up
+B2_CAPTION = (9.3, 17.2)
+B2_MSGS = [11.6, 12.4, 13.2, 14.0, 14.8]
+B2_FALL = (11.8, 14.4)       # the counters fall, then hold
+B2_RATIO = 14.4
+METERS_OUT = 22.6
+# Beat 3: the map grows.
+B3 = 17.5
+B3_CAPTION = (17.6, 23.2)
+FUT_START, FUT_STEP = 17.8, 0.21
+MORE_HOOKS_AT = 18.6
+# Beat 4: the hold.
+B4_CAPTION = (23.5, 26.6)
+PAN = (26.0, 27.6)
+SECONDS = 28.0
+Z_CLOSE = 1.6                # beat 1's close-up on the big model
+
+TOOLS = ["Bash", "Read", "Edit", "Write", "Grep", "Web"]
+R_H = 96.0                   # the harness ring, in scene points
+tool_ang = [-math.pi / 2 + math.pi / 6 + i * 2 * math.pi / len(TOOLS) for i in range(len(TOOLS))]
+tool_pos = [polar(R_H, a) for a in tool_ang]
+fut_born = [FUT_START + FUT_STEP * i for i in range(len(FUTURE))]
+
+
+def zcam(t):
+    """The camera's zoom about the map's center."""
+    back = ease((t - CAM_OUT[0]) / (CAM_OUT[1] - CAM_OUT[0]))
+    z = Z_CLOSE + (1.0 - Z_CLOSE) * back
+    return z * (1 + 0.02 * ease((t - CAM_OUT[1]) / 14.0)) * (1 - 0.05 * fade(t, *PAN))
+
+
+def to_scene(p, z):
+    return (CX + (p[0] - CX) / z, CY + (p[1] - CY) / z)
+
+
+LEFT = 118
+
+MSG1 = [  # (text, tool steps through the big model)
+    ("Fix the flaky parser test", [0, 4, 1, 2, 0]),
+    ("Find where the config loads", [4, 1, 4, 1]),
+    ("Add a test for the fix", [1, 3, 0, 2, 0]),
+    ("Is it done?", [0, 1, 0]),
 ]
-MSG2 = [  # (t, text, target, hook index, hard part reaches System 2)
-    (5.35, "Why is the build failing?", "engine:claude_code", 2, True),
-    (5.95, "Send a thousand sats", "screen:wallet", 0, False),
-    (6.55, "Outline this crate", "plugin:crates/plugin-outline", 1, False),
-    (7.15, "Turn my notes into tickets", "plugin:crates/plugin-action-items", 3, False),
-    (7.75, "Is the fix done?", "route:eval.check", 5, False),
+MSG2 = [  # (text, target, hard part reaches System 2)
+    ("Why is the build failing?", "engine:claude_code", True),
+    ("Send a thousand sats", "screen:wallet", False),
+    ("Outline this crate", "plugin:crates/plugin-outline", False),
+    ("Turn my notes into tickets", "plugin:crates/plugin-action-items", False),
+    ("Is the fix done?", "route:eval.check", False),
 ]
 MSG_Y0, MSG_DY = 352, 52
 
@@ -493,67 +542,68 @@ def msg_anchor(k, text):
 
 lights = []
 rng = random.Random(289)
-# Beat 1: every message goes into System 2, and every tool step goes out and
-# back through it.
-for k, (t0, text, target, steps) in enumerate(MSG1):
-    a = msg_anchor(k, text)
-    lights.append(Light([a, CORE], t0 + 0.12, 0.42, width=3.4, glow_r=R_CORE * ZOOM + 4, hold=0.4))
-    t = t0 + 0.58
+# Beat 1: every message goes straight into the big model, and every tool step
+# goes out through the thin ring and back into it.
+for k, ((text, steps), t0) in enumerate(zip(MSG1, B1_MSGS)):
+    a = to_scene(msg_anchor(k, text), Z_CLOSE)
+    lights.append(Light([a, CORE], t0 + 0.15, 0.5, width=3.4, glow_r=R_CORE + 4, hold=0.5))
+    t = t0 + 0.75
     for s in steps:
-        p = SCR[idx(s)]
-        lights.append(Light([CORE, p], t, 0.26, width=1.5, glow_r=RAD[idx(s)] * NODE_PX + 5, hold=0.3, head=0.6))
-        lights.append(Light([p, CORE], t + 0.3, 0.26, width=1.5, glow_r=R_CORE + 3, hold=0.3, head=0.6))
-        t += 0.34
-# Background chatter in beat 1: the big model reading and calling for
-# everything, out and back.
-members = [i for i, n in enumerate(nodes) if n["kind"] in ("plugin", "engine", "knowledge", "answer", "screen", "coder", "model")]
-for j in range(64):
-    t = 1.3 + rng.random() * 3.4
-    p = SCR[rng.choice(members)]
-    lights.append(Light([CORE, p], t, 0.3, width=0.9, glow_r=4, hold=0.25, head=0.4))
-    lights.append(Light([p, CORE], t + 0.34, 0.3, width=0.9, glow_r=R_CORE + 2, hold=0.2, head=0.4))
-# Beat 2: the ring catches each message; a short hop serves it; only the hard
-# part goes on into the center.
+        p = tool_pos[s]
+        lights.append(Light([CORE, p], t, 0.2, width=2.0, glow_r=10, hold=0.3, head=0.7))
+        lights.append(Light([p, CORE], t + 0.24, 0.2, width=2.0, glow_r=R_CORE + 3, hold=0.3, head=0.7))
+        t += 0.24
+# Chatter: the big model calling its tools all the time.
+for j in range(120):
+    t = 2.0 + rng.random() * 6.4
+    p = tool_pos[rng.randrange(len(TOOLS))]
+    lights.append(Light([CORE, p], t, 0.22, width=1.0, glow_r=7, hold=0.2, head=0.45))
+    lights.append(Light([p, CORE], t + 0.26, 0.22, width=1.0, glow_r=R_CORE + 2, hold=0.2, head=0.45))
+
+
+# Beat 2: the ring catches each message and runs it around to the decision
+# nearest what serves it; it hops out; only the hard part goes on inward.
 def arc(a0, a1, n=16):
     d = math.atan2(math.sin(a1 - a0), math.cos(a1 - a0))
     return [s1_point(a0 + d * j / n) for j in range(n + 1)]
 
 
-for k, (t0, text, target, hook, hard) in enumerate(MSG2):
+for k, ((text, target, hard), t0) in enumerate(zip(MSG2, B2_MSGS)):
     a = msg_anchor(k, text)
     ti = idx(target)
     tp = SCR[ti]
     entry = math.atan2(a[1] - CY, a[0] - CX)
     exit_ = math.atan2(tp[1] - CY, tp[0] - CX)
-    lights.append(Light([a] + arc(entry, exit_) + [tp], t0 + 0.1, 0.62, width=2.8,
-                        glow_r=RAD[ti] * NODE_PX + 7, hold=0.6))
+    lights.append(Light([a] + arc(entry, exit_) + [tp], t0 + 0.1, 0.8, width=2.8,
+                        glow_r=RAD[ti] * NODE_PX + 7, hold=0.8))
     if hard:
-        lights.append(Light(arc(entry, entry + 0.5, 4) + [CORE], t0 + 0.45, 0.3, width=1.4,
-                            glow_r=R_CORE + 4, hold=0.5, head=0.6))
+        lights.append(Light(arc(entry, entry + 0.5, 4) + [CORE], t0 + 0.55, 0.4, width=1.4,
+                            glow_r=R_CORE + 4, hold=0.6, head=0.6))
 # Steady traffic from beat 2 on: requests from the ring out to what serves
 # them; in beat 3 also to the new plugins, with gold out past them to their
 # authors (route_live.rs `share`).
-for j in range(190):
-    t = 5.2 + rng.random() * 8.3
+members = [i for i, n in enumerate(nodes) if n["kind"] in ("plugin", "engine", "knowledge", "answer", "screen", "coder", "model")]
+for j in range(330):
+    t = 11.8 + rng.random() * (SECONDS - 11.8)
     hook = rng.randrange(len(HOOKS))
-    if t > 9.0 and rng.random() < 0.55:
+    if t > B3 + 0.6 and rng.random() < 0.55:
         f = rng.randrange(len(FUTURE))
-        if t < fut_born[f] + 0.4:
+        if t < fut_born[f] + 0.5:
             continue
         hp = s1_point(hook_ang[hook])
-        pp = sp(fut_pos[f])
-        lights.append(Dot([hp, SCR[fut_parent[f]], pp], t, 0.75, LIGHT, r=2.4))
-        lights.append(Dot([pp, sp(auth_pos[f])], t + 0.78, 0.45, GOLD, r=3.4))
+        pp = fut_pos[f]
+        lights.append(Dot([hp, SCR[fut_parent[f]], pp], t, 0.9, LIGHT, r=2.4))
+        lights.append(Dot([pp, auth_pos[f]], t + 0.92, 0.55, GOLD, r=3.4))
     else:
         p = SCR[rng.choice(members)]
-        lights.append(Dot([s1_point(hook_ang[hook]), p], t, 0.55, LIGHT, r=2.2))
+        lights.append(Dot([s1_point(hook_ang[hook]), p], t, 0.65, LIGHT, r=2.2))
     if rng.random() < 0.12:  # now and then a hard part goes to System 2
-        lights.append(Dot([s1_point(hook_ang[hook]), CORE], t, 0.4, LIGHT, r=2.6))
-# Gold back to the authors of today's plugins too.
-for j in range(14):
-    t = 9.0 + rng.random() * 4.3
+        lights.append(Dot([s1_point(hook_ang[hook]), CORE], t, 0.45, LIGHT, r=2.6))
+# Gold to the authors of today's plugins too.
+for j in range(26):
+    t = B3 + 0.6 + rng.random() * (SECONDS - B3 - 0.6)
     p = SCR[idx(rng.choice(["plugin:crates/plugin-outline", "plugin:crates/plugin-action-items", "plugin:packages/jev-probe"]))]
-    lights.append(Dot([CORE, p], t, 0.6, GOLD, r=2.6))
+    lights.append(Dot([CORE, p], t, 0.7, GOLD, r=2.6))
 
 
 # --- counters -------------------------------------------------------------
@@ -562,10 +612,10 @@ TIME_BARE, TIME_S1 = 284, 121    # median seconds
 
 
 def counters(t):
-    up = ease((t - 1.2) / 3.4)
-    down = ease((t - 5.4) / 2.4)
-    cost = COST_BARE * up if t < 5.4 else COST_BARE + (COST_S1 - COST_BARE) * down
-    secs = TIME_BARE * up if t < 5.4 else TIME_BARE + (TIME_S1 - TIME_BARE) * down
+    up = ease((t - B1_CLIMB[0]) / (B1_CLIMB[1] - B1_CLIMB[0]))
+    down = ease((t - B2_FALL[0]) / (B2_FALL[1] - B2_FALL[0]))
+    cost = COST_BARE * up + (COST_S1 - COST_BARE) * down
+    secs = TIME_BARE * up + (TIME_S1 - TIME_BARE) * down
     return cost, secs, down
 
 
@@ -600,13 +650,13 @@ def text_layer(draw_fn):
 
 def caption(d, t):
     caps = [
-        (0.6, 4.4, ["Today, every step goes", "through the big model."]),
-        (4.75, 8.45, ["Put System 1 in front.", "Send only the hard parts on."]),
-        (8.75, 11.5, ["Anyone can add to the map,", "and gets paid when it's used."]),
-        (11.75, 13.1, ["System 1 in front.", "System 2 for the hard parts."]),
+        (*B1_CAPTION, ["Today, every step goes", "through the big model."]),
+        (*B2_CAPTION, ["Put System 1 in front.", "Send only the hard parts on."]),
+        (*B3_CAPTION, ["Anyone can add to the map,", "and gets paid when it's used."]),
+        (*B4_CAPTION, ["System 1 in front.", "System 2 for the hard parts."]),
     ]
     for a, b, lines in caps:
-        k = fade(t, a, a + 0.5) * (1 - fade(t, b - 0.35, b))
+        k = fade(t, a, a + 0.6) * (1 - fade(t, b - 0.5, b))
         if k <= 0:
             continue
         for j, line in enumerate(lines):
@@ -614,14 +664,14 @@ def caption(d, t):
 
 
 def messages(d, t):
-    for group, end in ((MSG1, 4.55), (MSG2, 8.5)):
-        for k, m in enumerate(group):
-            t0, text = m[0], m[1]
-            a = fade(t, t0 - 0.15, t0 + 0.15) * (1 - fade(t, end - 0.2, end + 0.2))
+    groups = (([m[0] for m in MSG1], B1_MSGS, B1_CAPTION[1]), ([m[0] for m in MSG2], B2_MSGS, B2_CAPTION[1]))
+    for texts, times, end in groups:
+        for k, (text, t0) in enumerate(zip(texts, times)):
+            a = fade(t, t0 - 0.2, t0 + 0.2) * (1 - fade(t, end - 0.5, end))
             if a <= 0:
                 continue
-            y = MSG_Y0 + k * MSG_DY + 8 * (1 - fade(t, t0 - 0.15, t0 + 0.2))
-            done = fade(t, t0 + 0.6, t0 + 1.4)
+            y = MSG_Y0 + k * MSG_DY + 8 * (1 - fade(t, t0 - 0.2, t0 + 0.25))
+            done = fade(t, t0 + 1.0, t0 + 2.0)
             col = tuple(int(CONTENT[i] + (SECONDARY[i] - CONTENT[i]) * done) for i in range(3))
             d.text((LEFT, y), text, font=g_msg, fill=(*col, int(255 * a)))
             ax, ay = msg_anchor(k, text)
@@ -630,7 +680,7 @@ def messages(d, t):
 
 
 def meters(d, t):
-    a = fade(t, 1.0, 1.5) * (1 - fade(t, 11.4, 11.9))
+    a = fade(t, B1_CLIMB[0] - 0.4, B1_CLIMB[0]) * (1 - fade(t, METERS_OUT - 0.6, METERS_OUT))
     if a <= 0:
         return
     cost, secs, down = counters(t)
@@ -641,34 +691,51 @@ def meters(d, t):
     ):
         d.text((x, y), label, font=g_small, fill=(*SECONDARY, int(255 * a)))
         d.text((x, y + 28), value, font=m_big, fill=(*CONTENT, int(255 * a)))
-        if t > 5.4:  # the old number, struck through
-            k = fade(t, 5.4, 5.9) * a
+        k = fade(t, B2_FALL[0] - 0.3, B2_FALL[0] + 0.3) * a
+        if k > 0:  # the old number, struck through
             ow = m_old.getlength(old)
             d.text((x, y + 98), old, font=m_old, fill=(*TERTIARY, int(255 * k)))
             d.line([(x - 2, y + 113), (x + ow + 2, y + 113)], fill=(*TERTIARY, int(255 * k)), width=2)
-        k = fade(t, 7.7, 8.2) * a
+        k = fade(t, B2_RATIO, B2_RATIO + 0.6) * a
         if k > 0:
             word = "cheaper" if "cost" in label else "faster"
             nw = m_mid.getlength(ratio)
             d.text((x + 100, y + 96), ratio, font=m_mid, fill=(*CONTENT, int(255 * k)))
             d.text((x + 100 + nw + 9, y + 102), word, font=g_core, fill=(*CONTENT, int(255 * k)))
-    k = fade(t, 8.0, 8.5) * a
+    k = fade(t, B2_RATIO + 0.5, B2_RATIO + 1.1) * a
     if k > 0:
-        d.text((LEFT, y + 160), "Same model. 21 real issues, 3 runs each.", font=g_tiny,
-               fill=(*TERTIARY, int(255 * k)))
+        d.text((LEFT, y + 160), "Same model. 21 real issues, 3 runs each.", font=g_small,
+               fill=(*SECONDARY, int(255 * k)))
+
+
+def hook_list():
+    hooks = [(ang, name, S1_SWEEP + 0.2 + 0.16 * i) for i, (ang, name) in enumerate(zip(hook_ang, HOOKS))]
+    hooks += [(ang, name, MORE_HOOKS_AT + 0.5 * i) for i, (ang, name) in enumerate(zip(more_ang, MORE_HOOKS))]
+    return hooks
 
 
 def core_and_ring(d, ld, t):
-    """System 2 at the center and the System 1 ring, drawn at 2x; glows go
-    on the light layer `ld`, which blooms."""
-    busy = fade(t, 1.2, 2.0) * (1 - fade(t, 5.0, 6.2))
-    calm = fade(t, 5.0, 6.2)
+    """System 2 at the center, beat 1's harness ring, and the System 1 ring,
+    drawn at 2x; glows go on the light layer `ld`, which blooms."""
+    busy = fade(t, 1.8, 2.6) * (1 - fade(t, 8.8, 10.0))
+    calm = fade(t, B2, B2 + 1.4)
+    mapk = fade(t, *MAP_IN)
     cx, cy = CORE[0] * S, CORE[1] * S
-    rc = R_CORE * ZOOM * S * (1 + 0.05 * busy * math.sin(t * 19))
-    # spokes from System 2 to the families
-    for i in children[front]:
-        x, y = SCR[i]
-        d.line([(cx, cy), (x * S, y * S)], fill=(255, 255, 255, EDGE_A + int(40 * busy)), width=S)
+    rc = R_CORE * S * (1 + 0.05 * busy * math.sin(t * 19))
+    # spokes from System 2 to the families, once the map is in
+    if mapk > 0:
+        for i in children[front]:
+            x, y = SCR[i]
+            d.line([(cx, cy), (x * S, y * S)], fill=(255, 255, 255, int(EDGE_A * mapk)), width=S)
+    # beat 1: the thin harness ring and its tools
+    hk = fade(t, 0.3, 1.2) * (1 - fade(t, *HARNESS_OUT))
+    if hk > 0:
+        rr = R_H * S
+        d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], outline=(*LIGHT, int(110 * hk)), width=S)
+        for (x, y) in tool_pos:
+            d.line([(cx, cy), (x * S, y * S)], fill=(255, 255, 255, int((EDGE_A + 40 * busy) * hk)), width=S)
+            r = 6 * S
+            d.ellipse([x * S - r, y * S - r, x * S + r, y * S + r], fill=(205, 205, 205, int(255 * hk)))
     heat = 0.35 + 0.65 * busy - 0.15 * calm
     for r, a in ((1.22, 70), (1.08, 120)):
         rr = rc * r
@@ -678,23 +745,21 @@ def core_and_ring(d, ld, t):
         ph = ((t * 1.7) + j / 3) % 1.0
         k = busy * (1 - ph) ** 1.5
         if k > 0.01:
-            rr = rc * (1.1 + 1.1 * ph)
-            ld.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], outline=(*LIGHT, int(150 * k)), width=2 * S)
+            rr = rc * (1.1 + 0.9 * ph)
+            ld.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], outline=(*LIGHT, int(140 * k)), width=2 * S)
     g = int(232 - 40 * calm)
     d.ellipse([cx - rc, cy - rc, cx + rc, cy + rc], fill=(g, g, g, 255))
     # the System 1 ring
-    sweep = out_cubic((t - 4.75) / 1.1)
+    sweep = out_cubic((t - S1_SWEEP) / 1.2)
     if sweep > 0:
-        rr = R_S1 * ZOOM * S
-        grow = fade(t, 8.8, 10.4)
+        rr = R_S1 * S
+        grow = fade(t, B3 + 0.5, B3 + 2.5)
         width = int((2 + 1.2 * grow) * S)
         a0 = -90
         ld.arc([cx - rr, cy - rr, cx + rr, cy + rr], a0, a0 + 360 * sweep, fill=(*LIGHT, 60 + int(30 * grow)), width=width * 3)
         d.arc([cx - rr, cy - rr, cx + rr, cy + rr], a0, a0 + 360 * sweep, fill=(*LIGHT, 230), width=width)
-        hooks = [(ang, name, 4.95 + 0.14 * i) for i, (ang, name) in enumerate(zip(hook_ang, HOOKS))]
-        hooks += [(ang, name, 9.3 + 0.35 * i) for i, (ang, name) in enumerate(zip(more_ang, MORE_HOOKS))]
-        for ang, name, born in hooks:
-            k = out_cubic((t - born) / 0.4)
+        for ang, name, born in hook_list():
+            k = out_cubic((t - born) / 0.45)
             if k <= 0:
                 continue
             x, y = s1_point(ang)
@@ -703,60 +768,56 @@ def core_and_ring(d, ld, t):
             d.ellipse([x * S - r, y * S - r, x * S + r, y * S + r], fill=(*CONTENT, 255))
 
 
+def side_label(d, x, y, ang, name, f, fill, gap=16):
+    c, s_ = math.cos(ang), math.sin(ang)
+    tw = f.getlength(name)
+    ix, iy = x + c * gap, y + s_ * gap
+    lx = ix if c > 0.3 else ix - tw if c < -0.3 else ix - tw / 2
+    ly = iy - 9 + (9 if s_ > 0.5 else -9 if s_ < -0.5 else 0)
+    d.text((lx, ly), name, font=f, fill=fill)
+
+
 def core_labels(d, t):
     a = fade(t, 0.5, 1.2)
     cx, cy = CORE
     if a > 0:
         line1, line2 = "System 2", "the big model"
         w1, w2 = g_core.getlength(line1), g_tiny.getlength(line2)
-        rc = R_CORE * ZOOM
-        dark = 1 - fade(t, 5.0, 6.2) * 0.2
+        dark = 1 - fade(t, B2, B2 + 1.4) * 0.2
         d.text((cx - w1 / 2, cy - 15), line1, font=g_core, fill=(14, 14, 14, int(255 * a * dark)))
         d.text((cx - w2 / 2, cy + 10), line2, font=g_tiny, fill=(40, 40, 40, int(255 * a * dark)))
-    k = fade(t, 5.2, 5.8)
-    if k > 0:
-        hooks = [(ang, name, 4.95 + 0.14 * i) for i, (ang, name) in enumerate(zip(hook_ang, HOOKS))]
-        hooks += [(ang, name, 9.3 + 0.35 * i) for i, (ang, name) in enumerate(zip(more_ang, MORE_HOOKS))]
-        for ang, name, born in hooks:
-            kk = fade(t, born + 0.2, born + 0.6)
-            if kk <= 0:
-                continue
-            x, y = s1_point(ang)
-            # labels just inside the ring, toward the center
-            c, s_ = math.cos(ang), math.sin(ang)
-            tw = g_hook.getlength(name)
-            ix, iy = x + c * 16, y + s_ * 16
-            if c > 0.3:
-                lx = ix
-            elif c < -0.3:
-                lx = ix - tw
-            else:
-                lx = ix - tw / 2
-            ly = iy - 9 + (9 if s_ > 0.5 else -9 if s_ < -0.5 else 0)
-            d.text((lx, ly), name, font=g_hook, fill=(*CONTENT, int(235 * kk)))
+    hk = fade(t, 0.6, 1.4) * (1 - fade(t, HARNESS_OUT[0], HARNESS_OUT[0] + 0.6))
+    if hk > 0:
+        for (x, y), ang, name in zip(tool_pos, tool_ang, TOOLS):
+            side_label(d, x, y, ang, name, g_hook, (*SECONDARY, int(255 * hk)), gap=12)
+    for ang, name, born in hook_list():
+        kk = fade(t, born + 0.25, born + 0.7)
+        if kk <= 0:
+            continue
+        x, y = s1_point(ang)
+        side_label(d, x, y, ang, name, g_hook, (*CONTENT, int(235 * kk)))
+    kk = fade(t, S1_SWEEP + 1.0, S1_SWEEP + 1.6)
+    if kk > 0:
         tag = "System 1"
-        kk = fade(t, 5.6, 6.1)
         tw = g_core.getlength(tag)
-        top = CORE[1] - R_S1 * ZOOM
-        d.text((CORE[0] - tw / 2, top - 40), tag, font=g_core, fill=(*CONTENT, int(255 * kk)))
+        d.text((CORE[0] - tw / 2, CORE[1] - R_S1 - 40), tag, font=g_core, fill=(*CONTENT, int(255 * kk)))
 
 
 def future_layer(d, t):
     for f, name in enumerate(FUTURE):
-        k = out_cubic((t - fut_born[f]) / 0.5)
+        k = out_cubic((t - fut_born[f]) / 0.6)
         if k <= 0:
             continue
-        p, q, au = sp(fut_pos[f]), SCR[fut_parent[f]], sp(auth_pos[f])
+        p, q, au = fut_pos[f], SCR[fut_parent[f]], auth_pos[f]
         e = (q[0] + (p[0] - q[0]) * k, q[1] + (p[1] - q[1]) * k)
         d.line([(q[0] * S, q[1] * S), (e[0] * S, e[1] * S)], fill=(255, 255, 255, int(EDGE_A * 1.3)), width=S)
-        flash = 1 - fade(t, fut_born[f] + 0.2, fut_born[f] + 1.0)
+        flash = 1 - fade(t, fut_born[f] + 0.2, fut_born[f] + 1.2)
         r = 7.5 * S * k
-        g = 210
-        d.ellipse([e[0] * S - r, e[1] * S - r, e[0] * S + r, e[1] * S + r], fill=(g, g, g, 255))
+        d.ellipse([e[0] * S - r, e[1] * S - r, e[0] * S + r, e[1] * S + r], fill=(210, 210, 210, 255))
         if flash > 0:
             rr = r * (1.3 + 0.9 * (1 - flash))
             d.ellipse([e[0] * S - rr, e[1] * S - rr, e[0] * S + rr, e[1] * S + rr], outline=(*LIGHT, int(160 * flash)), width=S)
-        ka = fade(t, fut_born[f] + 0.3, fut_born[f] + 0.8)
+        ka = fade(t, fut_born[f] + 0.4, fut_born[f] + 1.0)
         if ka > 0:  # the author, out past the plugin
             d.line([(p[0] * S, p[1] * S), (au[0] * S, au[1] * S)], fill=(*GOLD, int(40 * ka)), width=S)
             r = 3.6 * S
@@ -765,20 +826,16 @@ def future_layer(d, t):
 
 def future_labels(d, t, placed):
     for f, name in enumerate(FUTURE):
-        k = fade(t, fut_born[f] + 0.25, fut_born[f] + 0.7)
+        k = fade(t, fut_born[f] + 0.3, fut_born[f] + 0.8)
         if k <= 0:
             continue
-        x, y = sp(fut_pos[f])
-        a = fut_ang[f]
-        c, s = math.cos(a), math.sin(a)
+        x, y = fut_pos[f]
+        s = math.sin(fut_ang[f])
         tw = g_fut.getlength(name)
-        gap = 14
-        if s < -0.6 or s > 0.3:
-            lx, ly = x - tw / 2, y - 27
-        else:
-            lx, ly = x - tw / 2, y + 10
+        ly = y - 27 if (s < -0.6 or s > 0.3) else y + 10
+        lx = x - tw / 2
         box = (lx, ly, lx + tw, ly + 16)
-        if box[0] < (600 if t < 12.4 else 0) or box[2] > W - 6:
+        if box[0] < (600 if t < B4_CAPTION[1] - 0.6 else 0) or box[2] > W - 6:
             continue
         if any(not (box[2] < b[0] or box[0] > b[2] or box[3] < b[1] or box[1] > b[3]) for b in placed):
             continue
@@ -788,48 +845,39 @@ def future_labels(d, t, placed):
 
 def render(i):
     t = i / FPS
-    # the map grows in from the center
-    appear = fade(t, 0.0, 1.1)
     frame = BG.copy()
-    if appear > 0:
-        frame = over(frame, MAP_A, appear * (1 - 0.18 * fade(t, 1.2, 2.0) * (1 - fade(t, 5.0, 6.0))))
-    # live drawing at 2x: the center, the ring, new plugins, lights
+    mapk = fade(t, *MAP_IN)
+    if mapk > 0:
+        frame = over(frame, MAP_A, mapk)
+    # live drawing at 2x: the center, the rings, new plugins, lights
     hi = Image.new("RGBA", (W * S, H * S), (0, 0, 0, 0))
     hd = ImageDraw.Draw(hi)
     lit = Image.new("RGBA", (W * S, H * S), (0, 0, 0, 0))
     ld = ImageDraw.Draw(lit)
-    if appear > 0:
-        core_and_ring(hd, ld, t)
+    core_and_ring(hd, ld, t)
     future_layer(hd, t)
     for l in lights:
         l.draw(ld, t)
-    hi_a = np.asarray(hi.resize((W, H), Image.LANCZOS), np.float32) / 255.0
-    lit_img = lit.resize((W, H), Image.LANCZOS)
-    lit_a = np.asarray(lit_img, np.float32) / 255.0
-    frame = over(frame, hi_a)
-    # light adds: the core plus a soft bloom
+    frame = over(frame, np.asarray(hi.resize((W, H), Image.LANCZOS), np.float32) / 255.0)
+    lit_a = np.asarray(lit.resize((W, H), Image.LANCZOS), np.float32) / 255.0
     rgb = lit_a[..., :3] * lit_a[..., 3:4] * 255.0
     small = Image.fromarray(rgb.clip(0, 255).astype(np.uint8)).resize((W // 4, H // 4), Image.BILINEAR)
     bloom = np.asarray(small.filter(ImageFilter.GaussianBlur(5)).resize((W, H), Image.BILINEAR), np.float32)
     frame = frame + rgb + bloom * 1.6
-    # words
-    words = text_layer(lambda d: (caption(d, t), messages(d, t), meters(d, t), core_labels(d, t),
-                                  future_labels(d, t, list(PLACED_1X))))
-    frame = over(frame, words)
-    # a slow push-in over the whole shot
+    frame = over(frame, text_layer(lambda d: (core_labels(d, t), future_labels(d, t, list(PLACED_1X)))))
+    # the camera: zoom about the map's center, and pan it to the middle in the hold
     img = Image.fromarray(frame.clip(0, 255).astype(np.uint8))
-    z = (1.0 + 0.03 * ease(t / 12.0)) * (1 - 0.05 * fade(t, 12.7, 14.3))
-    pan = (CX - W / 2) * fade(t, 12.7, 14.3)
+    z = zcam(t)
+    pan = (CX - W / 2) * fade(t, *PAN)
     cw, ch = W / z, H / z
-    fx, fy = CX - pan, CY  # this world point lands on screen at (CX - pan, CY)
-    ox, oy = CX - (CX - pan) / z, CY - fy / z
-    img = img.transform((W, H), Image.EXTENT, (ox, oy, ox + cw, oy + ch), Image.BICUBIC,
-                        fillcolor=CANVAS)
-    # fade from and to black at the very ends
-    k = fade(t, 0.0, 0.5)
-    arr = np.asarray(img, np.float32) * VIG * k
+    ox, oy = CX - (CX - pan) / z, CY - CY / z
+    img = img.transform((W, H), Image.EXTENT, (ox, oy, ox + cw, oy + ch), Image.BICUBIC, fillcolor=CANVAS)
+    # the words on screen, over the camera
+    arr = over(np.asarray(img, np.float32), text_layer(lambda d: (caption(d, t), messages(d, t), meters(d, t))))
+    arr = arr * VIG * fade(t, 0.0, 0.6)
     noise = np.random.default_rng(i).normal(0, 3.2, (H, W, 1)).astype(np.float32)
     return Image.fromarray((arr + noise).clip(0, 255).astype(np.uint8))
+
 
 
 PLACED_1X = [(b[0] / S, b[1] / S, b[2] / S, b[3] / S) for b in PLACED]
