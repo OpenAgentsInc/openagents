@@ -22,6 +22,10 @@ hook-log = { path = "../hook-log" }
 futures = "0.3"
 tokio = { version = "1", features = ["rt", "io-util", "io-std", "sync", "macros"] }
 
+[[bin]]
+name = "monitor-replay"
+path = "src/bin/monitor_replay.rs"
+
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "io-util"] }

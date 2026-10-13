@@ -175,6 +175,30 @@ lever.
 
 ## Status
 
+**Idea 3 is built as a decision hook** (#11488, `coder_sdk::system_one::monitor`,
+on the Coder SDK's decision hooks, #11498). After each tool call, on Claude
+Code and on the Coder loop, the rule from the stall detector reads the
+last 12 calls: the same failing call again (2+), the same call again (4+),
+or 8+ calls without an edit with a failure in view. Only such a window is
+put to one Decisions API choice (`monitor-v2`, `openagents/decide`): continue,
+steer (adds the one fact the host observed), fetch_evidence (adds
+`git status --short` and `git diff --stat`), or escalate (ends the session,
+past 0.77 from costs 10 vs 3). It runs async, at most once per 8 calls,
+and never asks twice about the same stall before an edit. Off by default:
+`CODER_MONITOR=shadow` records what it would do, `CODER_MONITOR=on` acts.
+Decisions log to `~/.openagents/decisions/monitor.jsonl`.
+
+**Replay, 2026-10-13** (`cargo run -p coder-sdk --bin monitor-replay -- [--live] PATH...`).
+The briefed-ab trials didn't keep their session logs (`results/` holds only
+summaries), so the replay ran over the 18 recent local Claude Code sessions
+with 30+ tool calls (5,476 calls). With the first rule it asked 144 times,
+139 of them the same "no file changed" fact again. Asking once per stall
+before an edit cut that to 40 asks in 17 sessions. Clef answered steer
+every time (acting p 0.43 to 0.86) and never escalated. The replay reads
+the A/B's `events.jsonl` (stream-json) too, so the next arm's traces
+replay as they are. The live A/B arm against the default is still to run.
+
+
 **Idea 4 is started** (#11489, `crates/coder-new/src/gate.rs`, lever `Gate`): a `PreToolUse` hook after the floors that can only add a deny. First question: `Bash` runs a script in the cwd the session never read or wrote and that is not a README-listed `scripts/` entrypoint; then one Decisions predicate, deny at p >= 0.95 (1 - 1/20 from written costs). A failed call does nothing; decisions log to `~/.openagents/decisions/gate.jsonl` (`CODER_GATE_LOG`). More questions are still to add.
 
 **Idea 1 is built** (#11486, `crates/squeeze`).

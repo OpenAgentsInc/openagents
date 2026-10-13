@@ -346,7 +346,7 @@ mod tests {
             .iter()
             .filter_map(|hook| hook["question_set"].as_str())
             .collect();
-        assert_eq!(pinned, ["route-v1", "monitor-v1"]);
+        assert_eq!(pinned, ["route-v1", "monitor-v2"]);
         // The probe reads the working tree.
         assert!(probe(dir.path())().is_none(), "not a checkout");
     }

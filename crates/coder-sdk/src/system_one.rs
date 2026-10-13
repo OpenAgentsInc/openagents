@@ -61,7 +61,7 @@ pub mod monitor {
 
     pub const ID: &str = "monitor";
     /// The question set's version: any wording change is a new one.
-    pub const QUESTION_SET: &str = "monitor-v1";
+    pub const QUESTION_SET: &str = "monitor-v2";
     /// Tool calls the rule and the question read.
     pub const WINDOW: usize = 12;
     /// Calls without an edit that make a session quiet (stall.rs's
@@ -73,7 +73,11 @@ pub mod monitor {
     /// Calls in the window repeating an earlier one (stall.rs's
     /// `REPEATED_COMMANDS`).
     pub const REPEATED_COMMANDS: usize = 4;
-    /// Calls between two questions.
+    /// Calls between two questions. A stall already asked about is not
+    /// asked again until an edit (or a different failing call): replaying
+    /// 18 recorded sessions (5,476 tool calls) without that asked 144
+    /// times, 139 of them the same "no file changed" fact again; with it,
+    /// 40.
     pub const EVERY: usize = 8;
     /// How long one decision may take.
     pub const DEADLINE: Duration = Duration::from_secs(3);
@@ -271,6 +275,25 @@ the host take now? The host only adds facts it observed; it never gives advice."
     struct Memory {
         seen: Vec<Seen>,
         asked_at: Option<usize>,
+        /// What was already asked about since the last edit: a stall the
+        /// model has judged once isn't put to it again until something
+        /// changes (an edit, or a different failing call).
+        asked: Vec<String>,
+    }
+
+    impl Features {
+        /// What a question about this window is about, so the same stall
+        /// isn't asked about twice.
+        #[must_use]
+        pub fn about(&self) -> String {
+            match &self.worst {
+                Some((key, n)) if self.repeated_failures >= REPEATED_FAILURES && *n >= 2 => {
+                    format!("failing:{key}")
+                }
+                _ if self.repeated_commands >= REPEATED_COMMANDS => "repeating".to_owned(),
+                _ => "quiet".to_owned(),
+            }
+        }
     }
 
     /// The monitor for one session. `edits_tracked`: the harness shows file
@@ -295,13 +318,22 @@ the host take now? The host only adds facts it observed; it never gives advice."
             deadline: DEADLINE,
             rule: Arc::new(move |call: &Call| {
                 let mut memory = memory.lock().unwrap_or_else(PoisonError::into_inner);
-                memory.seen.push(Seen::of(call));
+                let seen = Seen::of(call);
+                if seen.edit {
+                    memory.asked.clear();
+                }
+                memory.seen.push(seen);
                 let features = Features::of(&memory.seen, edits_tracked);
                 let calls = memory.seen.len();
-                if !features.suspect() || memory.asked_at.is_some_and(|at| calls - at < EVERY) {
+                let about = features.about();
+                if !features.suspect()
+                    || memory.asked_at.is_some_and(|at| calls - at < EVERY)
+                    || memory.asked.contains(&about)
+                {
                     return Ruled::Pass;
                 }
                 memory.asked_at = Some(calls);
+                memory.asked.push(about);
                 let window = &memory.seen[calls.saturating_sub(WINDOW)..];
                 Ruled::Unsure {
                     input: render(window, &features),
