@@ -1,0 +1,55 @@
+{
+  "name": "draconia-d2-eye",
+  "notes": "D2 shots 11-12 (reference 19.2-20.0): an ECU of Draconia's green eye, then a flash frame. A plate until her face exists (slated).",
+  "scene": {
+    "kind": "courtyard",
+    "shot": "eye"
+  },
+  "duration": 0.8,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.0,
+          1.3,
+          1.5
+        ],
+        "target": [
+          0.6,
+          1.1,
+          -1.5
+        ],
+        "focal_mm": 60,
+        "f_stop": 1.4,
+        "focus": 0.4
+      },
+      {
+        "t": 0.8,
+        "eye": [
+          0.0,
+          1.3,
+          1.45
+        ],
+        "target": [
+          0.6,
+          1.1,
+          -1.5
+        ],
+        "focal_mm": 60,
+        "f_stop": 1.4,
+        "focus": 0.4
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 31
+    }
+  }
+}

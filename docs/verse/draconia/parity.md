@@ -432,3 +432,51 @@ stand in silhouette.
   - uniformed students;
   - the blast frame goes dark on the right once the burst passes;
   - the cloak wipe is a recolored ranger, not a cloth cloak.
+
+### v3, 2026-10-13
+
+- **Gaps fixed:**
+  - The blast frame stays lit after the burst: amber lamps keep the wall's
+    face either side of the boy glowing.
+  - The cloak wipe is cloth: a hooded drape of dark wool with deep,
+    swinging folds and a flaring hem, drawn as lit geometry crossing the
+    lens.
+  - The students are in uniform. Green cloth recolors to black wool robes,
+    and leathers to charcoal; skin, linen and red trim are kept.
+- **Still open:**
+  - shot 1's face;
+  - real uniforms with ties and sweaters on a student base;
+  - the boy's shot still reads as a silhouette.
+
+## Scene: D2 (shots 7–15, reference 9.7–26.3 s)
+
+The same `courtyard` scene kind, with the shots `profile`, `haul`, `runner`,
+`shout`, `eye`, `alone`, `wave` and `wide`
+(`docs/verse/film/verse-shots/draconia-d2-*.json`). They're cut by
+`~/work/film-out/draconia/d2-cut.sh` into `~/Downloads/draconia-d2-vN.mp4`,
+`-vN-side-by-side.mp4` and `~/Downloads/draconia-d2-progress.png`. Same rule
+as D1: no stand-in face in a close-up or medium shot.
+
+### v1, 2026-10-13
+
+- **Built:**
+  - Shot 7, the profile: a slated plate, with embers near the lens and the
+    duel as a deep blur behind.
+  - Shot 8, the haul: a boy hauling a girl away from us, seen from behind,
+    as a green bolt cuts across, with fire in the foreground.
+  - Shot 9, the runner: a boy runs at us past fires that backlight him, and
+    pulls up short.
+  - Shots 10 and 11–12, the shout and the eye: slated fire plates.
+  - Shot 13: Draconia alone in the ruins, low and wide, with fires round
+    her.
+  - Shot 14: a dark wave rolling over the cobbles toward us. This is the new
+    `shadow_wave` effect: dark smoke boiling forward, pale mist skimming
+    under it, and black shreds thrown ahead.
+  - Shot 15: the whole courtyard at night, with fires, the duel and its
+    bolts, and a hooded cloak filling the right foreground.
+- **Gaps:**
+  - The close-ups (7, 10, 11) wait on faces.
+  - Shot 13: she's small in frame and her hair doesn't stream.
+  - The wave lacks the reference's tall rolling darkness.
+  - Shot 15 lacks the reference's grand Gothic courtyard facades and wider
+    scatter of groups.

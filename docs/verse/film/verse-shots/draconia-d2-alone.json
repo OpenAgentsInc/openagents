@@ -1,0 +1,52 @@
+{
+  "name": "draconia-d2-alone",
+  "notes": "D2 shot 13 (reference 20.0-21.4): Draconia stands alone in the ruins, low and wide, fires and rubble round her; a slow push. Alice as Draconia, small in frame.",
+  "scene": {
+    "kind": "courtyard",
+    "shot": "alone"
+  },
+  "duration": 1.4,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          1.2,
+          0.4,
+          4.2
+        ],
+        "target": [
+          0.0,
+          1.5,
+          0.0
+        ],
+        "focal_mm": 24
+      },
+      {
+        "t": 1.4,
+        "eye": [
+          1.1,
+          0.4,
+          3.9
+        ],
+        "target": [
+          0.0,
+          1.5,
+          0.0
+        ],
+        "focal_mm": 24,
+        "ease": "out"
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 31
+    }
+  }
+}

@@ -1,0 +1,73 @@
+# A wave of darkness rolling across the ground toward the camera: dark
+# smoke boiling forward, a pale mist skimming the cobbles under it, and
+# black shreds thrown ahead. Every emitter fires once. The Draconia D2
+# shot 14 starts it far off; a dark spell or a guardian's foe can too.
+description = "Dark smoke boiling forward over a skimming pale mist, shreds thrown ahead."
+
+[[emitter]]
+name = "dark"
+sheet = "smoke"
+animate = "life"
+blend = "alpha"
+light = "emit"
+luminance = 0.02
+burst = 60
+life = [1.2, 1.8]
+shape = "disc"
+radius = 5.0
+direction = [0.0, 0.0, 1.0]
+spread = 12.0
+speed = [7.0, 10.0]
+gravity = 0.6
+drag = 0.3
+size = [1.0, 1.8]
+scale = [[0.0, 0.5], [0.4, 1.3], [1.0, 1.8]]
+color = [0.05, 0.05, 0.07]
+alpha = [[0.0, 0.0], [0.15, 0.95], [0.8, 0.8], [1.0, 0.0]]
+spin = [-1.0, 1.0]
+priority = 7
+
+[[emitter]]
+name = "mist"
+sheet = "smoke"
+animate = "life"
+blend = "alpha"
+light = "emit"
+luminance = 0.9
+burst = 30
+life = [1.0, 1.6]
+shape = "disc"
+radius = 5.0
+direction = [0.0, 0.0, 1.0]
+spread = 8.0
+speed = [9.0, 11.0]
+gravity = -0.2
+drag = 0.2
+size = [0.6, 1.0]
+scale = [[0.0, 0.6], [1.0, 1.6]]
+color = [0.75, 0.82, 0.95]
+alpha = [[0.0, 0.0], [0.2, 0.6], [1.0, 0.0]]
+spin = [-0.3, 0.3]
+priority = 6
+
+[[emitter]]
+name = "shreds"
+sheet = "smoke"
+frames = [12, 15]
+animate = "random"
+blend = "alpha"
+light = "emit"
+luminance = 0.0
+burst = 40
+life = [0.8, 1.4]
+shape = "disc"
+radius = 4.0
+direction = [0.0, 0.3, 1.0]
+spread = 25.0
+speed = [10.0, 14.0]
+drag = 0.4
+size = [0.15, 0.35]
+color = [0.02, 0.02, 0.03]
+alpha = [[0.0, 0.0], [0.1, 1.0], [1.0, 0.0]]
+spin = [-4.0, 4.0]
+priority = 5

@@ -22,7 +22,7 @@ use serde::Deserialize;
 use verse::fx::{Particles, Spawn, feathers};
 use verse::mesh::Mesh;
 use verse::pbr::textured::{Figure, TexturedScene, TexturedVertex};
-use verse::pbr::{Lamp, LitVertex, MAX_LAMPS, Neon};
+use verse::pbr::{Lamp, LitVertex, MAX_LAMPS, Material, Neon};
 use verse::zones::everglade::demolition::join;
 use verse::zones::everglade::player::Beast;
 use verse::zones::everglade_pack::ZonePack;
@@ -38,6 +38,26 @@ pub enum Shot {
     Boy,
     Cloak,
     Duel,
+    /// D2 shot 7: Draconia's profile against the duel (a plate until her
+    /// face exists: embers, and the duelers out of focus behind).
+    Profile,
+    /// D2 shot 8: a boy hauling a girl away as a bolt cuts across, fire in
+    /// the foreground, seen from behind.
+    Haul,
+    /// D2 shot 9: a boy running toward us past fire, backlit.
+    Runner,
+    /// D2 shot 10: a student's shouting mouth (a fire plate until faces
+    /// exist).
+    Shout,
+    /// D2 shots 11-12: Draconia's eye (a fire plate until her face exists).
+    Eye,
+    /// D2 shot 13: Draconia alone in the ruins, low and wide.
+    Alone,
+    /// D2 shot 14: a dark wave rolling across the cobbles toward us.
+    Wave,
+    /// D2 shot 15: the whole courtyard, fires and duels, a hooded figure
+    /// in the right foreground.
+    Wide,
 }
 
 /// The green of the reference's bolts, cd/m².
@@ -79,6 +99,8 @@ fn member(pack: &ZonePack, look: Look) -> Result<(Member, TexturedScene), String
         Look::Draconia | Look::Alice => {
             if matches!(look, Look::Draconia) {
                 draconia(&mut scene);
+            } else {
+                uniform(&mut scene);
             }
             beast
                 .figure()
@@ -89,7 +111,10 @@ fn member(pack: &ZonePack, look: Look) -> Result<(Member, TexturedScene), String
                 .map(|(i, _)| i)
                 .collect()
         }
-        Look::Boy => Vec::new(),
+        Look::Boy => {
+            uniform(&mut scene);
+            Vec::new()
+        }
     };
     Ok((Member { beast, hidden }, scene))
 }
@@ -164,6 +189,10 @@ impl Set {
             Shot::Face => {}
             Shot::Girl => brick_wall(&mut lit, -4.0, 4.0, -0.45, &|_| 2.6, 1),
             Shot::Boy => brick_wall(&mut lit, -4.0, 4.0, -0.4, &|x| broken_top(x), 2),
+            Shot::Haul | Shot::Runner | Shot::Profile | Shot::Shout | Shot::Eye => {
+                brick_wall(&mut lit, -9.0, 9.0, -4.0, &|x| 2.4 + 0.6 * broken_top(x), 5);
+            }
+            Shot::Alone | Shot::Wave | Shot::Wide => crate::peacock::ruins(&mut lit),
             Shot::Cloak | Shot::Duel => {
                 brick_wall(
                     &mut lit,
@@ -188,7 +217,11 @@ impl Set {
             Shot::Girl => &[Look::Alice],
             Shot::Boy => &[Look::Boy],
             Shot::Cloak => &[Look::Boy, Look::Alice, Look::Boy, Look::Boy],
-            Shot::Duel => &[
+            Shot::Shout | Shot::Eye | Shot::Wave => &[],
+            Shot::Haul => &[Look::Boy, Look::Alice],
+            Shot::Runner => &[Look::Boy],
+            Shot::Alone => &[Look::Draconia],
+            Shot::Profile | Shot::Wide | Shot::Duel => &[
                 Look::Boy,
                 Look::Alice,
                 Look::Boy,
@@ -200,11 +233,7 @@ impl Set {
                 Look::Alice,
             ],
         };
-        let mut cast = Cast::new(pack, looks)?;
-        if shot == Shot::Cloak {
-            // The cloak crossing the lens is the first member, all black.
-            darken_first(&mut cast);
-        }
+        let cast = Cast::new(pack, looks)?;
         let mut fx = Particles::new(0xD1);
         let mut lamps = Vec::new();
         let fire = |fx: &mut Particles, lamps: &mut Vec<Lamp>, at: Vec3, power: f32| {
@@ -229,6 +258,74 @@ impl Set {
                     intensity: 4.0,
                     range: 4.0,
                 });
+            }
+            Shot::Shout | Shot::Eye => {
+                fire(&mut fx, &mut lamps, Vec3::new(-1.6, 0.9, -1.5), 0.0);
+                fire(&mut fx, &mut lamps, Vec3::new(1.2, 0.6, -2.5), 0.0);
+                fx.start(
+                    "night_embers",
+                    Spawn::at(Vec3::new(0.0, 0.8, 0.0)).scaled(0.4),
+                );
+            }
+            Shot::Profile => {
+                for at in [Vec3::new(-3.0, 0.3, -3.0), Vec3::new(3.0, 0.3, -2.5)] {
+                    fire(&mut fx, &mut lamps, at, 30.0);
+                }
+                fx.start(
+                    "night_embers",
+                    Spawn::at(Vec3::new(0.0, 0.8, 4.0)).scaled(0.4),
+                );
+            }
+            Shot::Haul => {
+                fire(&mut fx, &mut lamps, Vec3::new(-1.3, 0.1, 3.2), 25.0);
+                fire(&mut fx, &mut lamps, Vec3::new(2.5, 0.2, -2.0), 30.0);
+                fx.start(
+                    "night_embers",
+                    Spawn::at(Vec3::new(0.0, 0.4, 1.0)).scaled(0.5),
+                );
+            }
+            Shot::Runner => {
+                for at in [
+                    Vec3::new(-1.5, 0.2, -3.0),
+                    Vec3::new(1.8, 0.2, -2.0),
+                    Vec3::new(-2.2, 0.2, -4.5),
+                ] {
+                    fire(&mut fx, &mut lamps, at, 40.0);
+                }
+                fx.start(
+                    "night_embers",
+                    Spawn::at(Vec3::new(0.0, 0.4, 0.0)).scaled(0.6),
+                );
+            }
+            Shot::Alone => {
+                for at in [
+                    Vec3::new(-3.5, 0.2, -1.5),
+                    Vec3::new(2.8, 0.2, -2.5),
+                    Vec3::new(4.5, 0.3, 0.5),
+                    Vec3::new(-1.5, 0.2, -4.0),
+                ] {
+                    fire(&mut fx, &mut lamps, at, 25.0);
+                }
+                fx.start("night_embers", Spawn::at(Vec3::new(0.0, 0.3, 0.0)));
+            }
+            Shot::Wave => {
+                fire(&mut fx, &mut lamps, Vec3::new(-4.0, 0.2, -3.0), 20.0);
+            }
+            Shot::Wide => {
+                for at in [
+                    Vec3::new(-6.0, 0.2, -3.0),
+                    Vec3::new(5.0, 0.2, -3.5),
+                    Vec3::new(-2.5, 0.3, -5.0),
+                    Vec3::new(1.5, 0.3, -6.0),
+                    Vec3::new(-4.5, 0.2, 1.0),
+                ] {
+                    fire(&mut fx, &mut lamps, at, 30.0);
+                }
+                fx.start("night_embers", Spawn::at(Vec3::new(0.0, 0.3, -1.0)));
+                fx.start(
+                    "ground_mist",
+                    Spawn::at(Vec3::new(0.0, 0.0, -2.0)).scaled(0.7),
+                );
             }
             Shot::Girl => {
                 fx.start("debris_dust", Spawn::at(Vec3::new(0.6, 2.6, -0.2)));
@@ -266,6 +363,11 @@ impl Set {
         for _ in 0..90 {
             set.fx.tick(1.0 / 30.0, |_, _| 0.0);
         }
+        if shot == Shot::Wave {
+            // The wave starts with the shot, after the fires have settled.
+            set.fx
+                .start("shadow_wave", Spawn::at(Vec3::new(0.0, 0.2, -3.5)));
+        }
         set.advance(1.0 / 30.0, 0.0);
         Ok(set)
     }
@@ -294,6 +396,38 @@ impl Set {
         for (k, m) in self.cast.members.iter_mut().enumerate() {
             let b = &mut m.beast;
             match (shot, k) {
+                (Shot::Shout | Shot::Eye | Shot::Wave, _) => {}
+                (Shot::Haul, 0) => {
+                    // He hauls her away from us, toward the far wall.
+                    let at = Vec3::new(0.3, 0.0, 1.0 - t * 2.6);
+                    b.pose_clip(at, std::f32::consts::PI, 1.0, "run", t, true, dt);
+                }
+                (Shot::Haul, _) => {
+                    let at = Vec3::new(-0.35, 0.0, 1.5 - t * 2.4);
+                    b.pose_clip(
+                        at,
+                        std::f32::consts::PI + 0.2,
+                        1.0,
+                        "run",
+                        t + 0.3,
+                        true,
+                        dt,
+                    );
+                }
+                (Shot::Runner, _) => {
+                    // Toward us, backlit by the fires behind him.
+                    // He pulls up short of the lens, the fires behind him.
+                    let at = Vec3::new(0.2, 0.0, (-3.0 + t * 3.8).min(-0.2));
+                    b.pose_clip(at, 0.15, 1.0, "run", t, true, dt);
+                }
+                (Shot::Alone, _) => {
+                    b.pose_clip(Vec3::ZERO, -0.3, 1.0, "idle", t + 2.0, true, dt);
+                }
+                (Shot::Profile | Shot::Wide, _) => {
+                    let (_, yaw, clip, phase, _) = DUELERS[k % DUELERS.len()];
+                    let at = dueler_at(k, t) + wide_offset(shot);
+                    b.pose_clip(at, yaw, 1.0, clip, phase + t, true, dt);
+                }
                 (Shot::Face, _) => {
                     b.pose_clip(Vec3::ZERO, 0.0, 1.0, "idle", t + 1.0, true, dt);
                 }
@@ -337,18 +471,6 @@ impl Set {
                         );
                     }
                 }
-                (Shot::Cloak, 0) => {
-                    // A dark figure walking right across the lens.
-                    b.pose_clip(
-                        Vec3::new(-1.6 + t * 3.6, 0.0, 3.4),
-                        1.57,
-                        1.0,
-                        "walk",
-                        t,
-                        true,
-                        dt,
-                    );
-                }
                 (Shot::Cloak | Shot::Duel, _) => {
                     let (_, yaw, clip, phase, _) = DUELERS[k % DUELERS.len()];
                     b.pose_clip(dueler_at(k, t), yaw, 1.0, clip, phase + t, true, dt);
@@ -361,7 +483,7 @@ impl Set {
         let t = self.time;
         let mut mesh = Mesh {
             neon: Some(self.stage(t)),
-            figure: Some(self.cast.figure()),
+            figure: (!self.cast.members.is_empty()).then(|| self.cast.figure()),
             ..Mesh::default()
         };
         // The wall top, whole or flying apart.
@@ -397,10 +519,22 @@ impl Set {
                 mesh.ribbons
                     .extend(feathers::beam(from, from.lerp(to, k), 0.05, GREEN));
             }
-            Shot::Cloak | Shot::Duel => {
+            Shot::Haul if t > 0.2 => {
+                let k = ((t - 0.2) / 0.25).clamp(0.0, 1.0);
+                let from = Vec3::new(5.0, 1.7, -1.0);
+                let to = Vec3::new(-5.0, 1.4, 0.4);
+                mesh.ribbons
+                    .extend(feathers::beam(from, from.lerp(to, k), 0.05, GREEN));
+            }
+            Shot::Cloak | Shot::Duel | Shot::Wide | Shot::Profile => {
+                let offset = wide_offset(self.shot);
+                let cast = self.cast.members.len();
                 for (i, &(a, b)) in BOLTS.iter().enumerate() {
-                    let from = dueler_at(a, t) + Vec3::new(0.3, 1.4, 0.2);
-                    let to = dueler_at(b, t) + Vec3::new(0.0, 1.3, 0.0);
+                    if a >= cast || b >= cast {
+                        continue;
+                    }
+                    let from = dueler_at(a, t) + offset + Vec3::new(0.3, 1.4, 0.2);
+                    let to = dueler_at(b, t) + offset + Vec3::new(0.0, 1.3, 0.0);
                     let flicker = 0.85 + 0.15 * (t * 23.0 + i as f32 * 2.0).sin();
                     // The second bolt is red, as the reference's duels mix.
                     let color = if i == 0 { GREEN } else { [6.0, 1.0, 0.6] };
@@ -415,6 +549,14 @@ impl Set {
                 }
             }
             _ => {}
+        }
+        if self.shot == Shot::Wide {
+            // A hooded figure filling the right foreground.
+            cloak(&mut mesh.lit, Vec3::new(1.9, -0.2, 2.6), 0.4);
+        }
+        if self.shot == Shot::Cloak {
+            // A dark wool cloak sweeping right across the lens.
+            cloak(&mut mesh.lit, Vec3::new(-1.7 + t * 4.2, 0.0, 3.6), t);
         }
         self.fx.draw(&mut mesh.sprites);
         mesh
@@ -489,17 +631,38 @@ impl Set {
                         lamps.push(Lamp {
                             position: Vec3::new(x, 1.6, 0.15),
                             color: [1.0, 0.65, 0.3],
-                            intensity: 30.0 * k + 2.0,
+                            intensity: 30.0 * k + 9.0,
                             range: 1.6,
                         });
                     }
                 }
+            }
+            Shot::Shout | Shot::Eye | Shot::Profile => {
+                neon.field = [0.012, 0.007, 0.004];
+                neon.key = Some(key(Vec3::new(-0.6, 0.6, 0.5), 3.0, 0.04));
+                neon.key_color = [1.0, 0.6, 0.3];
+            }
+            Shot::Haul | Shot::Runner => {
+                // Firelight from behind them: they read as silhouettes.
+                neon.field = [0.014, 0.009, 0.006];
+                neon.key = Some(key(Vec3::new(0.2, 0.5, -0.8), 4.0, 0.02));
+                neon.key_color = [1.0, 0.55, 0.25];
+            }
+            Shot::Alone | Shot::Wave | Shot::Wide => {
+                neon.field = [0.012, 0.02, 0.04];
+                neon.key = Some(key(Vec3::new(-0.3, 0.8, -0.6), 2.0, 0.08));
+                neon.key_color = [0.6, 0.7, 1.0];
+                neon.fog_start = 15.0;
+                neon.fog_end = 90.0;
             }
             Shot::Cloak | Shot::Duel => {
                 neon.field = [0.012, 0.009, 0.007];
                 neon.key = Some(key(Vec3::new(-0.4, 0.7, 0.5), 3.0, 0.06));
                 neon.key_color = [1.0, 0.7, 0.4];
                 for (i, &(a, b)) in BOLTS.iter().enumerate() {
+                    if a >= self.cast.members.len() || b >= self.cast.members.len() {
+                        continue;
+                    }
                     let from = dueler_at(a, t) + Vec3::new(0.3, 1.4, 0.2);
                     let to = dueler_at(b, t) + Vec3::new(0.0, 1.3, 0.0);
                     lamps.push(Lamp {
@@ -567,26 +730,19 @@ const DUELERS: [(Vec3, f32, &str, f32, Vec3); 9] = [
 /// Who casts at whom in the duel: caster and target, by `DUELERS` index.
 const BOLTS: [(usize, usize); 2] = [(0, 1), (5, 6)];
 
+/// Where a shot moves the duel: back, for the whole courtyard.
+fn wide_offset(shot: Shot) -> Vec3 {
+    if shot == Shot::Wide {
+        Vec3::new(0.0, 0.0, -4.0)
+    } else {
+        Vec3::ZERO
+    }
+}
+
 /// Where dueler `k` stands at film time `t`.
 fn dueler_at(k: usize, t: f32) -> Vec3 {
     let d = DUELERS[k % DUELERS.len()];
     d.0 + d.4 * t
-}
-
-/// The first member's atlas darkened to near black: a cloak in shadow.
-fn darken_first(cast: &mut Cast) {
-    let mut scene = cast.scene.as_ref().clone();
-    if let Some(first) = cast.members.first() {
-        let images = first.beast.figure().scene.images.len();
-        for image in scene.images.iter_mut().take(images) {
-            for px in image.rgba.chunks_exact_mut(4) {
-                for c in &mut px[..3] {
-                    *c = (f32::from(*c) * 0.12) as u8;
-                }
-            }
-        }
-    }
-    cast.scene = Arc::new(scene);
 }
 
 /// A broken wall top's height at `x`: ragged, lower where it broke.
@@ -677,4 +833,81 @@ fn wall_top_chunks() -> Vec<Chunk> {
         });
     }
     out
+}
+
+/// Recolors a stand-in's atlas toward a school uniform: green cloth to a
+/// black wool robe, saturated browns and leathers to charcoal grey, and the
+/// rest (skin, linen, red trim) left alone.
+fn uniform(scene: &mut TexturedScene) {
+    let to_lin = |v: u8| (f32::from(v) / 255.0).powf(2.2);
+    let to_srgb = |v: f32| (v.clamp(0.0, 1.0).powf(1.0 / 2.2) * 255.0).round() as u8;
+    for image in &mut scene.images {
+        let (w, h) = (image.width as usize, image.height as usize);
+        // Alice's hair strips live in the atlas's bottom band.
+        let band = (h as f32 * 0.84) as usize;
+        for y in 0..band.min(h) {
+            for x in 0..w {
+                let i = (y * w + x) * 4;
+                let [r, g, b] = [image.rgba[i], image.rgba[i + 1], image.rgba[i + 2]].map(to_lin);
+                let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                let max = r.max(g).max(b);
+                let min = r.min(g).min(b);
+                let sat = if max > 1e-4 { (max - min) / max } else { 0.0 };
+                let out = if g > r * 1.08 && g > b * 1.02 {
+                    let k = (luma / 0.05).min(1.5);
+                    [0.016 * k, 0.016 * k, 0.019 * k]
+                } else if r > g && g > b && sat > 0.35 && luma < 0.09 {
+                    let k = (luma / 0.05).min(1.5);
+                    [0.035 * k, 0.035 * k, 0.038 * k]
+                } else {
+                    continue;
+                };
+                image.rgba[i] = to_srgb(out[0]);
+                image.rgba[i + 1] = to_srgb(out[1]);
+                image.rgba[i + 2] = to_srgb(out[2]);
+            }
+        }
+    }
+}
+
+/// A hooded cloak of dark wool at `at`, its hem swinging with `t`: a
+/// drape round a half cylinder with deep folds, flaring toward the hem.
+fn cloak(out: &mut Vec<LitVertex>, at: Vec3, t: f32) {
+    let (around, down) = (28usize, 14usize);
+    let point = |i: usize, j: usize| -> Vec3 {
+        let u = i as f32 / around as f32;
+        let v = j as f32 / down as f32;
+        let theta = std::f32::consts::PI * (u - 0.5) * 1.6;
+        let flare = 0.32 + 0.22 * v;
+        let fold = 0.05 * (theta * 9.0 + v * 2.0 + t * 3.0).sin() * (0.3 + v);
+        let r = flare + fold;
+        let swing = 0.08 * v * v * (t * 5.0).sin();
+        at + Vec3::new(
+            r * theta.sin() - swing,
+            1.85 - 1.7 * v,
+            r * theta.cos() * 0.7,
+        )
+    };
+    let color = [0.018, 0.017, 0.02];
+    for j in 0..down {
+        for i in 0..around {
+            let [a, b, c, d] = [
+                point(i, j),
+                point(i + 1, j),
+                point(i + 1, j + 1),
+                point(i, j + 1),
+            ];
+            let normal = (b - a).cross(d - a).normalize_or(Vec3::Z);
+            for p in [a, b, c, a, c, d] {
+                out.push(LitVertex {
+                    pos: p.to_array(),
+                    normal: normal.to_array(),
+                    tangent: Vec3::Y.to_array(),
+                    local: (p - at).to_array(),
+                    color,
+                    params: [0.0, 0.85, Material::Fabric.code(), 1.0],
+                });
+            }
+        }
+    }
 }

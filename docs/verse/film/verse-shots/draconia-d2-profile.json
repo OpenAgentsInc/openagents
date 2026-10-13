@@ -1,0 +1,56 @@
+{
+  "name": "draconia-d2-profile",
+  "notes": "D2 shot 7 (reference 9.7-14.1): Draconia's profile with a cut and soot, embers in bokeh, a rack to the duelers (not racked here: the duel stays a blur so no stand-in face reads). A plate until her face exists (slated): embers near the lens, the duel out of focus behind.",
+  "scene": {
+    "kind": "courtyard",
+    "shot": "profile"
+  },
+  "duration": 4.4,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.4,
+          1.55,
+          10.0
+        ],
+        "target": [
+          0.0,
+          1.2,
+          0.0
+        ],
+        "focal_mm": 50,
+        "f_stop": 1.4,
+        "focus": 0.9
+      },
+      {
+        "t": 4.4,
+        "eye": [
+          0.4,
+          1.55,
+          9.9
+        ],
+        "target": [
+          0.0,
+          1.2,
+          0.0
+        ],
+        "focal_mm": 50,
+        "f_stop": 1.4,
+        "focus": 0.9,
+        "ease": "in_out"
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 31
+    }
+  }
+}

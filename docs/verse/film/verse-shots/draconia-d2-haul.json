@@ -1,0 +1,51 @@
+{
+  "name": "draconia-d2-haul",
+  "notes": "D2 shot 8 (reference 14.1-15.4): a boy hauls a girl away as a green bolt cuts across; fire in the foreground. Seen from behind, backlit: no stand-in face.",
+  "scene": {
+    "kind": "courtyard",
+    "shot": "haul"
+  },
+  "duration": 1.3,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.2,
+          1.2,
+          4.6
+        ],
+        "target": [
+          0.0,
+          1.1,
+          0.0
+        ],
+        "focal_mm": 35
+      },
+      {
+        "t": 1.3,
+        "eye": [
+          0.2,
+          1.2,
+          4.2
+        ],
+        "target": [
+          0.0,
+          1.1,
+          -1.0
+        ],
+        "focal_mm": 35
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 31
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "name": "draconia-d2-runner",
+  "notes": "D2 shot 9 (reference 15.4-16.8): a boy runs toward us past fire, backlit to a silhouette.",
+  "scene": {
+    "kind": "courtyard",
+    "shot": "runner"
+  },
+  "duration": 1.4,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.6,
+          1.1,
+          3.2
+        ],
+        "target": [
+          0.1,
+          1.1,
+          -2.0
+        ],
+        "focal_mm": 35
+      },
+      {
+        "t": 1.4,
+        "eye": [
+          0.8,
+          1.1,
+          3.4
+        ],
+        "target": [
+          0.2,
+          1.1,
+          0.0
+        ],
+        "focal_mm": 35
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 31
+    }
+  }
+}

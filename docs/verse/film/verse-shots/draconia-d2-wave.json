@@ -1,0 +1,51 @@
+{
+  "name": "draconia-d2-wave",
+  "notes": "D2 shot 14 (reference 21.4-22.0): a dark wave rolls over the cobbles toward us, pale mist skimming under it.",
+  "scene": {
+    "kind": "courtyard",
+    "shot": "wave"
+  },
+  "duration": 0.6,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.0,
+          0.6,
+          4.0
+        ],
+        "target": [
+          0.0,
+          0.8,
+          -6.0
+        ],
+        "focal_mm": 28
+      },
+      {
+        "t": 0.6,
+        "eye": [
+          0.0,
+          0.6,
+          4.0
+        ],
+        "target": [
+          0.0,
+          0.85,
+          -6.0
+        ],
+        "focal_mm": 28
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 31
+    }
+  }
+}

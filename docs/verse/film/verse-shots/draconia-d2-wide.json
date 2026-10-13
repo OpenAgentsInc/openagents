@@ -1,0 +1,55 @@
+{
+  "name": "draconia-d2-wide",
+  "notes": "D2 shot 15 (reference 22.0-26.3): the whole courtyard at night, fires, small groups dueling; a hooded figure fills the right foreground. 28 mm with a slight drift.",
+  "scene": {
+    "kind": "courtyard",
+    "shot": "wide"
+  },
+  "duration": 4.3,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.0,
+          1.7,
+          6.0
+        ],
+        "target": [
+          0.0,
+          1.2,
+          -4.0
+        ],
+        "focal_mm": 28,
+        "f_stop": 2.8,
+        "focus": 10.0
+      },
+      {
+        "t": 4.3,
+        "eye": [
+          -0.3,
+          1.75,
+          5.8
+        ],
+        "target": [
+          0.0,
+          1.2,
+          -4.0
+        ],
+        "focal_mm": 28,
+        "f_stop": 2.8,
+        "focus": 10.0
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 31
+    }
+  }
+}

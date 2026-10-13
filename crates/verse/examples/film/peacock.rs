@@ -754,7 +754,7 @@ pub(crate) fn cobbles(out: &mut Vec<LitVertex>) {
 }
 
 /// Broken walls at the frame's edges and rubble at their feet.
-fn ruins(out: &mut Vec<LitVertex>) {
+pub(crate) fn ruins(out: &mut Vec<LitVertex>) {
     // A ruined wall as a jagged silhouette: vertical strips whose tops
     // break irregularly, with deep notches, and pointed window holes.
     let wall = |out: &mut Vec<LitVertex>,
