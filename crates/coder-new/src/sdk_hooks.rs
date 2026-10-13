@@ -57,6 +57,7 @@ pub fn claude(cwd: &Path, full: bool) -> coder_sdk::claude::Claude {
             true,
         );
         system_one(&mut registry, cwd, Harness::ClaudeCode);
+        crate::second_look::register(&mut registry, cwd);
     }
     coder_sdk::claude::Claude::new(registry, Budget::default())
         .expect("every hook event is native on Claude Code")
@@ -85,6 +86,7 @@ pub fn coder_loop_in(
 ) -> coder_sdk::Hooks {
     let mut registry = coder_loop_registry(cwd, crate::token_savers::enabled(), boundary);
     system_one(&mut registry, cwd, Harness::CoderLoop);
+    crate::second_look::register(&mut registry, cwd);
     coder_sdk::Hooks::new(
         registry,
         Budget::default(),
@@ -161,6 +163,7 @@ pub fn codex(cwd: &Path) -> coder_sdk::Hooks {
     let run = std::env::var(hook_log::RUN_ID_VAR).unwrap_or_default();
     let _ = coder_sdk::command::register(&mut registry, &hooks, cwd, &run);
     system_one(&mut registry, cwd, Harness::Codex);
+    crate::second_look::register(&mut registry, cwd);
     // A hook that must deny where Codex only reports afterwards is left
     // out, and the rest run.
     let refused: Vec<String> =
@@ -210,6 +213,7 @@ pub fn acp(
     let run = std::env::var(hook_log::RUN_ID_VAR).unwrap_or_default();
     let _ = coder_sdk::command::register(&mut registry, &hooks, cwd, &run);
     system_one(&mut registry, cwd, Harness::Acp);
+    crate::second_look::register(&mut registry, cwd);
     let (hooks, refused) = coder_sdk::acp::hooks(registry, Budget::default(), agent, name);
     let label = name.to_owned();
     let hooks = hooks.asking(crate::floors::asker(

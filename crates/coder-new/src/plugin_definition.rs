@@ -180,6 +180,15 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
         composer_rails: &[],
     },
     PluginDefinition {
+        id: crate::second_look::PLUGIN,
+        name: "Second look",
+        description: crate::second_look::DESCRIPTION,
+        default_enabled: false,
+        tools: &[],
+        model_provider: None,
+        composer_rails: &[],
+    },
+    PluginDefinition {
         id: crate::comms::PLUGIN,
         name: "Agent channel",
         description: "Let the subagents a chat delegates to talk to each other: what each means to change, overlaps, agreements and shared leases.",

@@ -102,8 +102,9 @@ fn acp_ids(app: &App) -> Vec<&str> {
 fn bundled_plugins_are_selectable_and_default_on_with_router_off() {
     let mut app = App::default();
     // Claude Code joined as the twelfth bundled plugin (837f848960), Token
-    // savers as the thirteenth (#11494), Codex as the fourteenth (#11510).
-    assert_eq!(DEFINITIONS.len(), 14);
+    // savers as the thirteenth (#11494), Codex as the fourteenth (#11510),
+    // Second look as the fifteenth (#11540), off by default.
+    assert_eq!(DEFINITIONS.len(), 15);
     assert!(
         DEFINITIONS
             .iter()
