@@ -366,7 +366,8 @@ fn facts() -> crate::harness_plugin::Facts {
 }
 
 /// Cursor stays emulated in a delegation (#11534): the child is told
-/// plainly what Coder can't hold before it acts.
+/// plainly what Coder can't hold before it acts, and its asks are still
+/// answered by Coder's hooks.
 #[tokio::test(flavor = "multi_thread")]
 #[cfg(unix)]
 async fn a_delegated_cursor_child_says_plainly_what_coder_cannot_hold() {
@@ -379,7 +380,9 @@ async fn a_delegated_cursor_child_says_plainly_what_coder_cannot_hold() {
     repo(&main);
     let agent_dir = dir.path().join("agent");
     std::fs::create_dir_all(&agent_dir).unwrap();
-    let program = acp_client::replay::script(
+    // The stand-in waits for Coder's answer to each request, as Cursor
+    // does, so the turn can't close before the answer is logged.
+    let program = acp_client::replay::script_answered(
         &agent_dir,
         &acp_client::replay::blocks(acp_client::replay::CURSOR_TURN),
     );
@@ -413,4 +416,10 @@ async fn a_delegated_cursor_child_says_plainly_what_coder_cannot_hold() {
     let notice = notice.expect("the plain notice");
     assert!(notice.starts_with("Cursor doesn't ask"), "{notice}");
     assert!(notice.contains("merge"), "{notice}");
+    let sent = acp_client::replay::received(&agent_dir);
+    assert!(
+        sent.iter()
+            .any(|frame| frame["result"]["outcome"]["optionId"].is_string()),
+        "Cursor's ask was answered"
+    );
 }
