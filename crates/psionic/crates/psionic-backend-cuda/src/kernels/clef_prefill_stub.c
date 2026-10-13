@@ -70,6 +70,18 @@ int psionic_clef_conv1d_seq_silu(const void *in, void *state, const void *w, voi
     return 1;
 }
 
+int psionic_clef_conv1d_state_into(const void *in, const void *state, void *out, int n, int channels, int k,
+                                   void *stream) {
+    (void)in;
+    (void)state;
+    (void)out;
+    (void)n;
+    (void)channels;
+    (void)k;
+    (void)stream;
+    return 1;
+}
+
 int psionic_clef_delta_prep(const void *conv, const void *alpha, const void *beta_in, const void *ssm_a, const void *ssm_dt, void *qn, void *kn, void *decay, void *beta, void *kq, int n, int key_heads, int value_heads, int dim, int conv_width, void *stream) {
     (void)conv;
     (void)alpha;
@@ -302,7 +314,10 @@ int psionic_clef_event_elapsed(void *start, void *end, float *ms) {
 
 int psionic_clef_delta_block(const void *qn, const void *kn, const void *conv, const void *decay, const void *beta,
                              void *coef, void *state, void *out, int n, int key_heads, int value_heads, int dim,
-                             int v_head_reordered, int conv_width, int value_offset, int variant, void *stream) {
+                             int v_head_reordered, int conv_width, int value_offset, int variant, int snap_blocks,
+                             void *snap, void *stream) {
+    (void)snap_blocks;
+    (void)snap;
     (void)qn;
     (void)kn;
     (void)conv;

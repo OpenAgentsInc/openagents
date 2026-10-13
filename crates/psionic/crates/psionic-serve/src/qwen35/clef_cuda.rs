@@ -41,10 +41,14 @@ mod load_admission;
 mod memory_admission;
 mod prefix;
 
-use crate::clef::prefix::{PrefixCache, chunk_len, reusable_boundary};
+use crate::clef::prefix::{PrefixCache, aligned_boundary, chunk_len};
+
+/// Prefix snapshots end on the blocked delta scan's 16-token grid, so cold
+/// and warm requests keep the blocked scan in every chunk (#11442).
+const PREFIX_ALIGN: usize = 16;
 
 use psionic_backend_cuda::clef_prefill::{
-    self, ClefAttentionOut, ClefEvent, ClefOperand, ClefStream, ClefWeightFormat,
+    self, ClefAttentionOut, ClefEvent, ClefOperand, ClefStateSnapshot, ClefStream, ClefWeightFormat,
 };
 use psionic_backend_cuda::{CudaBackend, CudaBuffer, CudaCommandWait, CudaSubmission};
 use rayon::prelude::*;
@@ -216,6 +220,9 @@ struct Request {
     probs: CudaBuffer,
     score_capacity: usize,
     bytes: u64,
+    /// A prefix snapshot taken inside the chunk that contains its end
+    /// ([`prefix::SnapTarget`], #11442), so a miss keeps its cold chunking.
+    snap: Option<prefix::SnapTarget>,
 }
 
 struct DeviceState {
@@ -252,6 +259,12 @@ struct DeviceState {
     /// Captures of batched requests still running; they count against the
     /// same budget and are released if their request is cancelled.
     pending_prefix: Vec<prefix::PendingPrefix>,
+    /// The last finished request, kept so the next one reuses its buffers
+    /// ([`retire_request`]).
+    spare_request: Option<Request>,
+    /// `PSIONIC_CLEF_PREFIX_CACHE_BYTES` was set; a default budget reuses
+    /// prefixes only where a miss can snapshot inside its chunk.
+    prefix_explicit: bool,
 }
 
 /// Input, output and bias arenas for the batched head calls.
@@ -650,6 +663,7 @@ impl ClefCudaTrunk {
         let table_bytes = token_table
             .as_ref()
             .map_or(0, |(buffer, _)| buffer.byte_len() as u64);
+        let (prefix_budget, prefix_explicit) = prefix::capacity(memory.total_bytes)?;
         let state = DeviceState {
             token_table,
             output_norm: upload_f32(&mut backend, &model.output_norm)?,
@@ -675,10 +689,9 @@ impl ClefCudaTrunk {
             session_scratch: Vec::new(),
             request: None,
             attention_scratch: None,
-            prefix: PrefixCache::with_entries(
-                prefix::capacity(memory.total_bytes)?,
-                prefix::MAX_ENTRIES,
-            ),
+            prefix: PrefixCache::with_entries(prefix_budget, prefix::MAX_ENTRIES),
+            prefix_explicit,
+            spare_request: None,
             pending_prefix: Vec::new(),
             backend,
         };
@@ -765,7 +778,7 @@ impl ClefCudaTrunk {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let state = &mut *guard;
-        state.request = None;
+        retire_request(state);
         state.attention_scratch = None;
         ensure_scratch(state, dims, chunk)?;
         let mut request = new_request(state, dims, length, chunk)?;
@@ -811,10 +824,12 @@ impl ClefCudaTrunk {
             && !profile
             && std::env::var_os("PSIONIC_CLEF_SKIP").is_none()
         {
-            reusable_boundary(prefix_tokens, length, spans).filter(|&prefix| {
-                prefix::Snapshot::byte_len(&request, dims, prefix)
-                    .is_ok_and(|bytes| state.prefix.admits(prefix, bytes))
-            })
+            aligned_boundary(prefix_tokens, length, spans, PREFIX_ALIGN)
+                .filter(|_| state.prefix_explicit || prefix::mid_chunk(chunk))
+                .filter(|&prefix| {
+                    prefix::Snapshot::byte_len(&request, dims, prefix)
+                        .is_ok_and(|bytes| state.prefix.admits(prefix, bytes))
+                })
         } else {
             None
         };
@@ -832,6 +847,13 @@ impl ClefCudaTrunk {
             None => 0,
         };
         let mut pending_prefix = None;
+        // On the blocked scan's grid a miss snapshots inside its chunk and
+        // keeps the cold chunking; elsewhere it splits at the prefix end.
+        let mid_chunk = prefix::mid_chunk(chunk);
+        if let Some(at) = boundary.filter(|_| mid_chunk && cached_tokens == 0) {
+            request.snap = prefix::arm_within_budget(state, &request, dims, at)?;
+        }
+        let boundary = boundary.filter(|_| !mid_chunk);
         let mut timings = ProfileTimings::default();
         let began = std::time::Instant::now();
         let mut last = Vec::new();
@@ -1052,7 +1074,20 @@ impl ClefCudaTrunk {
                 prepared = Some(next.map_err(|_| String::from("the embedding thread panicked"))??);
             }
             first += n;
-            if cached_tokens == 0 && boundary == Some(first) {
+            if request
+                .snap
+                .as_ref()
+                .is_some_and(|target| target.at <= first)
+            {
+                // the chunk that contains the prefix end has completed
+                let target = request.snap.take().ok_or("snapshot")?;
+                if !target.failed.get() {
+                    target
+                        .snapshot
+                        .copy_positional(&mut state.backend, &request, dims)?;
+                    pending_prefix = Some((target.bytes, target.snapshot));
+                }
+            } else if cached_tokens == 0 && boundary == Some(first) {
                 // the chunk ending at the prefix has completed
                 pending_prefix = prefix::capture_within_budget(state, &request, dims, first)?;
             }
@@ -2054,12 +2089,63 @@ fn alloc_scratch(backend: &mut CudaBackend, dims: Dims, chunk: usize) -> Result<
     })
 }
 
+/// Moves the finished request (if any) aside for [`new_request`] to reuse:
+/// freeing and allocating a request's buffers cost 3.5–6 ms of host time
+/// per request before its first kernel (#11444, Nsight on the H100).
+fn retire_request(state: &mut DeviceState) {
+    if let Some(request) = state.request.take() {
+        state.spare_request = Some(request);
+    }
+}
+
+/// The spare request's buffers that a new request of `length` tokens can
+/// take as they are: every recurrent state (one size per layer), and the
+/// K/V caches and memory rows when the spare had the same length. The rest
+/// of the spare is freed before anything new is allocated.
+#[derive(Default)]
+struct Reused {
+    conv: Vec<Option<CudaBuffer>>,
+    delta: Vec<Option<CudaBuffer>>,
+    key_cache: Vec<Option<CudaBuffer>>,
+    value_cache: Vec<Option<CudaBuffer>>,
+    memory: Option<CudaBuffer>,
+}
+
+fn reuse_spare(state: &mut DeviceState, length: usize) -> Reused {
+    let Some(spare) = state.spare_request.take() else {
+        return Reused::default();
+    };
+    let same_length = spare.tokens == length;
+    Reused {
+        conv: spare.conv,
+        delta: spare.delta,
+        key_cache: if same_length {
+            spare.key_cache
+        } else {
+            Vec::new()
+        },
+        value_cache: if same_length {
+            spare.value_cache
+        } else {
+            Vec::new()
+        },
+        memory: same_length.then_some(spare.memory),
+    }
+}
+
 fn new_request(
     state: &mut DeviceState,
     dims: Dims,
     length: usize,
     chunk: usize,
 ) -> Result<Request, String> {
+    let mut reused = reuse_spare(state, length);
+    let mut take = |buffers: &mut Vec<Option<CudaBuffer>>, index: usize, bytes: usize| {
+        buffers
+            .get_mut(index)
+            .and_then(Option::take)
+            .filter(|buffer| buffer.byte_len() == bytes)
+    };
     let layers = state.layers.len();
     let group = dims.heads / dims.kv_heads.max(1);
     let widest = chunk * length;
@@ -2089,26 +2175,32 @@ fn new_request(
         delta: (0..layers).map(|_| None).collect(),
         key_cache: (0..layers).map(|_| None).collect(),
         value_cache: (0..layers).map(|_| None).collect(),
-        memory: state.backend.f32_buffer(length * dims.width).map_err(err)?,
+        memory: match reused.memory.take() {
+            Some(memory) => memory,
+            None => state.backend.f32_buffer(length * dims.width).map_err(err)?,
+        },
         normalized_memory: Vec::new(),
         bytes: scores.byte_len() as u64 + probs.byte_len() as u64,
         scores,
         probs,
         score_capacity,
+        snap: None,
     };
     request.bytes += request.memory.byte_len() as u64;
     let mut submission = state.backend.begin_submission().map_err(err)?;
     for (index, layer) in state.layers.iter().enumerate() {
         match &layer.mixer {
             DeviceMixer::Hybrid { .. } => {
-                let conv = state
-                    .backend
-                    .f32_buffer(dims.conv_channels * dims.conv_kernel.saturating_sub(1).max(1))
-                    .map_err(err)?;
-                let delta = state
-                    .backend
-                    .f32_buffer(dims.value_heads * dims.state * dims.state)
-                    .map_err(err)?;
+                let conv_len = dims.conv_channels * dims.conv_kernel.saturating_sub(1).max(1);
+                let conv = match take(&mut reused.conv, index, conv_len * 4) {
+                    Some(buffer) => buffer,
+                    None => state.backend.f32_buffer(conv_len).map_err(err)?,
+                };
+                let delta_len = dims.value_heads * dims.state * dims.state;
+                let delta = match take(&mut reused.delta, index, delta_len * 4) {
+                    Some(buffer) => buffer,
+                    None => state.backend.f32_buffer(delta_len).map_err(err)?,
+                };
                 submission.fill_buffer(&conv, 0).map_err(err)?;
                 submission.fill_buffer(&delta, 0).map_err(err)?;
                 request.bytes += conv.byte_len() as u64 + delta.byte_len() as u64;
@@ -2117,8 +2209,14 @@ fn new_request(
             }
             DeviceMixer::Attention { .. } => {
                 let len = length * dims.kv_heads * dims.head_dim;
-                let key = state.backend.f16_buffer(len).map_err(err)?;
-                let value = state.backend.f16_buffer(len).map_err(err)?;
+                let key = match take(&mut reused.key_cache, index, len * 2) {
+                    Some(buffer) => buffer,
+                    None => state.backend.f16_buffer(len).map_err(err)?,
+                };
+                let value = match take(&mut reused.value_cache, index, len * 2) {
+                    Some(buffer) => buffer,
+                    None => state.backend.f16_buffer(len).map_err(err)?,
+                };
                 request.bytes += key.byte_len() as u64 + value.byte_len() as u64;
                 request.key_cache[index] = Some(key);
                 request.value_cache[index] = Some(value);
@@ -2562,6 +2660,25 @@ fn encode_mixer(
                 compute_16f,
                 knobs().fused.takes(n),
             )?;
+            // a prefix snapshot ending inside this chunk takes the conv state
+            // before the chunk's own update below
+            let snap = request
+                .snap
+                .as_ref()
+                .filter(|target| target.at > first && target.at <= first + n);
+            if let Some(target) = snap {
+                submission
+                    .clef_conv1d_state_into(
+                        &s.big_a,
+                        conv_state,
+                        target.snapshot.buffer(),
+                        target.conv[layer_index].ok_or("snapshot conv region")?,
+                        target.at - first,
+                        dims.conv_channels,
+                        dims.conv_kernel,
+                    )
+                    .map_err(err)?;
+            }
             submission
                 .clef_conv1d_seq_silu(
                     &s.big_a,
@@ -2593,28 +2710,43 @@ fn encode_mixer(
                 )
                 .map_err(err)?;
             let block_scan = match (knobs().scan.block_variant(), &s.delta_coef) {
-                (Some(variant), Some(coef)) if first % 16 == 0 && !knobs().skip_delta => submission
-                    .clef_delta_block(
-                        &s.qn,
-                        &s.kn,
-                        &s.conv_out,
-                        &s.small_c,
-                        &s.small_d,
-                        coef,
-                        delta_state,
-                        &s.mid_b,
-                        n,
-                        dims.key_heads,
-                        dims.value_heads,
-                        dims.state,
-                        dims.v_head_reordered,
-                        dims.conv_channels,
-                        2 * dims.key_heads * dims.state,
-                        variant,
-                    )
-                    .map_err(err)?,
+                (Some(variant), Some(coef)) if first % 16 == 0 && !knobs().skip_delta => {
+                    let snapshot = match snap {
+                        Some(target) => Some(ClefStateSnapshot {
+                            buffer: target.snapshot.buffer(),
+                            offset: target.delta[layer_index].ok_or("snapshot delta region")?,
+                            tokens: target.at - first,
+                        }),
+                        None => None,
+                    };
+                    submission
+                        .clef_delta_block(
+                            &s.qn,
+                            &s.kn,
+                            &s.conv_out,
+                            &s.small_c,
+                            &s.small_d,
+                            coef,
+                            delta_state,
+                            &s.mid_b,
+                            n,
+                            dims.key_heads,
+                            dims.value_heads,
+                            dims.state,
+                            dims.v_head_reordered,
+                            dims.conv_channels,
+                            2 * dims.key_heads * dims.state,
+                            variant,
+                            snapshot,
+                        )
+                        .map_err(err)?
+                }
                 _ => false,
             };
+            if let Some(target) = snap.filter(|_| !block_scan) {
+                // only the blocked scan writes the mid-chunk state
+                target.failed.set(true);
+            }
             if !knobs().skip_delta && !block_scan {
                 submission
                     .clef_delta_seq(

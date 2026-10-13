@@ -27,7 +27,8 @@ pub(crate) struct CudaSession {
     span_sums: CudaBuffer,
     first: usize,
     chunk: usize,
-    /// The reusable prefix end, kept as a chunk end.
+    /// The reusable prefix end, kept as a chunk end when the snapshot is
+    /// not taken inside a chunk ([`prefix::mid_chunk`]).
     boundary: Option<usize>,
     prefix_ids: Vec<u32>,
     cached_tokens: usize,
@@ -135,7 +136,7 @@ impl Drop for ActiveHead<'_> {
             .device
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.request = None;
+        retire_request(&mut state);
     }
 }
 
@@ -293,8 +294,8 @@ impl ClefCudaTrunk {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let state = &mut *guard;
         // The execution mutex excludes a serial prefill or an active head;
-        // drop their request memory before allocating this request's.
-        state.request = None;
+        // retire their request (its buffers may serve this one).
+        retire_request(state);
         state.attention_scratch = None;
         let scratch = match state
             .session_scratch
@@ -330,10 +331,12 @@ impl ClefCudaTrunk {
         }
         request.bytes += span_sums.byte_len() as u64 + span_buffer.byte_len() as u64;
         prefix::reap_pending(state);
-        let boundary = reusable_boundary(prefix_tokens, length, &spans).filter(|&prefix| {
-            prefix::Snapshot::byte_len(&request, dims, prefix)
-                .is_ok_and(|bytes| state.prefix.admits(prefix, bytes))
-        });
+        let boundary = aligned_boundary(prefix_tokens, length, &spans, PREFIX_ALIGN)
+            .filter(|_| state.prefix_explicit || prefix::mid_chunk(chunk))
+            .filter(|&prefix| {
+                prefix::Snapshot::byte_len(&request, dims, prefix)
+                    .is_ok_and(|bytes| state.prefix.admits(prefix, bytes))
+            });
         let prefix_ids: Vec<u32> = boundary.map_or_else(Vec::new, |prefix| {
             tokens[..prefix]
                 .iter()
@@ -347,6 +350,22 @@ impl ClefCudaTrunk {
             }
             None => 0,
         };
+        // On the blocked scan's grid a miss snapshots inside its chunk (the
+        // capture is pending, and counted, from now on) and keeps the cold
+        // chunking; elsewhere it keeps a chunk end at the prefix.
+        let prefix_owner = Arc::new(());
+        let mid_chunk = prefix::mid_chunk(chunk);
+        if let Some(at) = boundary.filter(|_| mid_chunk && cached_tokens == 0)
+            && let Some(target) = prefix::arm_within_budget(state, &request, dims, at)?
+        {
+            state.pending_prefix.push(prefix::PendingPrefix {
+                owner: Arc::downgrade(&prefix_owner),
+                bytes: target.bytes,
+                snapshot: target.snapshot.clone(),
+            });
+            request.snap = Some(target);
+        }
+        let boundary = boundary.filter(|_| !mid_chunk);
         Ok(CudaSession {
             request,
             scratch,
@@ -359,7 +378,7 @@ impl ClefCudaTrunk {
             boundary,
             prefix_ids,
             cached_tokens,
-            prefix_owner: Arc::new(()),
+            prefix_owner,
             last: Vec::new(),
             prepared,
         })
@@ -573,7 +592,22 @@ impl ClefCudaTrunk {
                     .read_f32_at_offset((*count - 1) * dims.hidden, dims.hidden)
                     .map_err(err)?;
             }
-            if session.cached_tokens == 0 && session.boundary == Some(session.first) {
+            if session
+                .request
+                .snap
+                .as_ref()
+                .is_some_and(|target| target.at <= session.first)
+            {
+                // the chunk that contains the prefix end has completed
+                let target = session.request.snap.take().ok_or("snapshot")?;
+                if target.failed.get() {
+                    prefix::drop_pending(state, &session.prefix_owner);
+                } else {
+                    target
+                        .snapshot
+                        .copy_positional(&mut state.backend, &session.request, dims)?;
+                }
+            } else if session.cached_tokens == 0 && session.boundary == Some(session.first) {
                 // Several sessions may hold pending captures; together with
                 // the published snapshots they stay within the budget.
                 if let Some((bytes, snapshot)) =

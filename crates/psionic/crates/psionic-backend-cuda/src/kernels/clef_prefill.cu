@@ -350,6 +350,21 @@ __global__ void conv1d_state_kernel(const float *in, float *state, int n, int ch
     }
 }
 
+// The conv state after the first n of a chunk's tokens, written to `out`
+// (the carried `state` is left alone): conv1d_state_kernel's arithmetic for
+// a prefix snapshot inside the chunk (#11442).
+__global__ void conv1d_state_into_kernel(const float *in, const float *state, float *out, int n, int channels, int k) {
+    const int c = blockIdx.x * blockDim.x + threadIdx.x;
+    if (c >= channels) {
+        return;
+    }
+    const int s = k - 1;
+    for (int j = 0; j < s; ++j) {
+        const int source = n - s + j;
+        out[c * s + j] = source >= 0 ? in[static_cast<long long>(source) * channels + c] : state[c * s + (s + source)];
+    }
+}
+
 // L2-normalize q and k per key head (q also scaled by 1/sqrt(dim)); decay
 // and beta per value head. Block (t, key head), dim threads (dim <= 1024).
 __global__ void delta_prep_kernel(const float *conv, const float *alpha, const float *beta_in,
@@ -834,7 +849,8 @@ template <int SPLIT>
 __global__ void __launch_bounds__(32 * SPLIT)
     delta_block_scan_kernel(const float *__restrict__ qn, const float *__restrict__ kn, const float *__restrict__ conv,
                             const float *__restrict__ coef, float *__restrict__ state, float *__restrict__ out, int n,
-                            int key_heads, int value_heads, int v_head_reordered, int conv_width, int value_offset) {
+                            int key_heads, int value_heads, int v_head_reordered, int conv_width, int value_offset,
+                            int snap_blocks, float *__restrict__ snap) {
     using namespace bscan;
     constexpr int kRows = 16;
     constexpr int kThreads = 32 * SPLIT;
@@ -1038,6 +1054,19 @@ __global__ void __launch_bounds__(32 * SPLIT)
             for (int kt = 0; kt < 2; ++kt) {
                 // B (k = token 8 kt + perm, n = column 8t + g)
                 mma_3xtf32(s[i], ca[kt], ks[buf][8 * kt + 2 * c][8 * t + g], ks[buf][8 * kt + 2 * c + 1][8 * t + g]);
+            }
+        }
+        if (blk + 1 == snap_blocks) {
+            // the state after the first snap_blocks blocks: a prefix snapshot
+            // taken inside the chunk (#11442), in the state's layout
+#pragma unroll
+            for (int r = 0; r < 2; ++r) {
+                float *row = snap + (static_cast<long long>(vh) * kDim + row0 + g + 8 * r) * kDim;
+#pragma unroll
+                for (int i = 0; i < kTiles; ++i) {
+                    *reinterpret_cast<float2 *>(row + 8 * (t_first + i) + 2 * c) =
+                        make_float2(s[i][2 * r], s[i][2 * r + 1]);
+                }
             }
         }
         __syncthreads();
@@ -1962,6 +1991,16 @@ extern "C" int psionic_clef_conv1d_seq_silu(const void *in, void *state, const v
     DONE;
 }
 
+extern "C" int psionic_clef_conv1d_state_into(const void *in, const void *state, void *out, int n, int channels,
+                                             int k, void *stream) {
+    if (k < 1 || k > 4 || n < 0) {
+        return static_cast<int>(cudaErrorInvalidValue);
+    }
+    conv1d_state_into_kernel<<<blocks_for(channels, 256), 256, 0, STREAM>>>(
+        static_cast<const float *>(in), static_cast<const float *>(state), static_cast<float *>(out), n, channels, k);
+    DONE;
+}
+
 extern "C" int psionic_clef_delta_prep(const void *conv, const void *alpha, const void *beta_in, const void *ssm_a,
                                        const void *ssm_dt, void *qn, void *kn, void *decay, void *beta, void *kq, int n,
                                        int key_heads, int value_heads, int dim, int conv_width, void *stream) {
@@ -2015,11 +2054,13 @@ extern "C" int psionic_clef_delta_seq(const void *qn, const void *kn, const void
 // scratch of ceil(n / 16) x value_heads x 544 floats; variant 101, 102 or
 // 104 sets 1, 2 or 4 warps splitting the columns of a CTA's 16 state rows.
 // The chunk must start at an absolute position that is a multiple of 16
-// for the result not to depend on the chunking (the caller checks).
+// for the result not to depend on the chunking (the caller checks). With
+// snap_blocks > 0 the state after that many blocks is also written to snap.
 extern "C" int psionic_clef_delta_block(const void *qn, const void *kn, const void *conv, const void *decay,
                                         const void *beta, void *coef, void *state, void *out, int n, int key_heads,
                                         int value_heads, int dim, int v_head_reordered, int conv_width,
-                                        int value_offset, int variant, void *stream) {
+                                        int value_offset, int variant, int snap_blocks, void *snap,
+                                        void *stream) {
     if (n <= 0) {
         return 0;
     }
@@ -2045,7 +2086,8 @@ extern "C" int psionic_clef_delta_block(const void *qn, const void *kn, const vo
         delta_block_scan_kernel<W><<<value_heads * (bscan::kDim / 16), 32 * W, bscan_smem_bytes(W), STREAM>>>( \
             static_cast<const float *>(qn), static_cast<const float *>(kn), static_cast<const float *>(conv),  \
             static_cast<const float *>(coef), static_cast<float *>(state), static_cast<float *>(out), n,       \
-            key_heads, value_heads, v_head_reordered, conv_width, value_offset);                               \
+            key_heads, value_heads, v_head_reordered, conv_width, value_offset, snap_blocks,                   \
+            static_cast<float *>(snap));                                                                       \
     } while (0)
     switch (variant) {
         case 101: BLOCK_SCAN(1); break;

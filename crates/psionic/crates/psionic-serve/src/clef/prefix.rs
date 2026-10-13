@@ -135,6 +135,20 @@ pub(crate) fn reusable_boundary(
     .then_some(prefix)
 }
 
+/// [`reusable_boundary`] with the prefix rounded down to a multiple of
+/// `align`. CUDA's blocked delta scan (#11444) is chunk-invariant only when
+/// every chunk starts at a multiple of 16 and falls back to the per-token
+/// scan otherwise, so a boundary off that grid would give the split request
+/// different rounding from an unsplit (cache-off) one (#11442).
+pub(crate) fn aligned_boundary(
+    prefix: usize,
+    length: usize,
+    spans: &[(usize, usize)],
+    align: usize,
+) -> Option<usize> {
+    reusable_boundary(prefix - prefix % align.max(1), length, spans)
+}
+
 pub(crate) fn chunk_len(
     first: usize,
     length: usize,
@@ -224,6 +238,29 @@ mod tests {
                         .collect::<Vec<_>>(),
                     chunks(prefix)
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn aligned_boundaries_round_down_and_keep_every_chunk_on_the_grid() {
+        assert_eq!(
+            aligned_boundary(4003, 5000, &[(4003, 5000)], 16),
+            Some(4000)
+        );
+        assert_eq!(
+            aligned_boundary(4000, 5000, &[(4000, 5000)], 16),
+            Some(4000)
+        );
+        assert_eq!(aligned_boundary(15, 40, &[(15, 40)], 16), None);
+        assert_eq!(aligned_boundary(17, 40, &[(17, 40)], 1), Some(17));
+        for prefix in [16, 17, 31, 33, 4003] {
+            let length = prefix + 5000;
+            let boundary = aligned_boundary(prefix, length, &[(prefix, length)], 16);
+            let mut first = 0;
+            while first < length {
+                assert_eq!(first % 16, 0, "prefix {prefix}: chunk at {first}");
+                first += chunk_len(first, length, 2048, boundary);
             }
         }
     }

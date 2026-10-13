@@ -1226,6 +1226,9 @@ Findings:
 
 ### Round 8 (2026-10-12): prefix reuse on CUDA, off by default (#11442)
 
+(Superseded by Round 9: the parity check ran, the drift is explained and
+fixed, and reuse is now on by default on sm_90.)
+
 **What runs.** `PSIONIC_CLEF_PREFIX_CACHE_BYTES` now works on CUDA too, with
 the Metal contract (`clef/prefix.rs`, `qwen35/clef_cuda/prefix.rs`):
 
@@ -1324,6 +1327,123 @@ Parity (`e2e.py compare`, 40 requests): Flash vs the CPU lane 100 %, max
 |Δp| 0.0010; 27B vs the f32-accumulate build 99.0 % (the known 0.495/0.505
 near tie), max 0.0098 (#11443's default: 99.0 %, 0.013).
 `cuda_chunks_and_cpu_agree` was not run this round.
+
+### Round 9 (2026-10-12): exact prefix reuse on by default on the H100, re-measure (#11442, #11443, #11444)
+
+One spot H100 80GB (driver 580), bundles from `cloudbuild-psionic.yaml`
+(nvcc 13.0, `PSI_CUDA_ARCH=90`). Raw rows and scripts:
+`gs://openagentsgemini-decision-throughput/clef-11446/`.
+
+**Why reuse drifted.** `cuda_prefix_check.py` on the Round 7 build
+(`625a3b0081`, cache on vs off, Flash) showed max |Δlogit| 1.2–2.7e-3 on
+every request whose prefix ended off the 16-token grid, and exactly 0 on the
+one whose prefix was 3,856 tokens (a multiple of 16). Restoring itself was
+exact: a miss and a hit of the same body gave the same logits. The cause is
+the blocked DeltaNet scan (Round 7): it is bitwise chunk-invariant only when
+every chunk starts at a multiple of 16 and falls back to the per-token scan
+otherwise, and a miss split its chunks at the prefix end, so every chunk
+after it ran the other scan.
+
+**What changed.**
+
+- The prefix end is rounded down to a multiple of 16
+  (`clef::prefix::aligned_boundary`). The snapshot covers at most 15 fewer
+  tokens; they are recomputed with the suffix.
+- A miss no longer splits its chunks. The chunk that contains the prefix end
+  also writes the conv state and the DeltaNet state at that position
+  straight into the snapshot buffer (`conv1d_state_into_kernel`, and a
+  `snap_blocks` store in `delta_block_scan_kernel`); the K/V and memory rows
+  of the prefix are copied once that chunk completes. A miss therefore runs
+  the same chunks as with the cache off, and costs only those copies. The
+  serial lane and the batch worker both do this; elsewhere (no blocked scan,
+  or a chunk size off the grid) the old split capture remains.
+- On by default where reuse is exact and free: sm_90 with the Hopper GEMM,
+  the Hopper attention and the blocked scan. The default budget is a 32nd of
+  the device, at most 2 GiB per model process (an 80 GB card keeps about ten
+  4k-token Flash states or four 27B ones). `PSIONIC_CLEF_PREFIX_CACHE_BYTES=0`
+  turns it off; an explicit value sets the budget as before. Other devices
+  (the A100, Ada) keep it off unless set.
+- A finished request's buffers serve the next request (`retire_request`):
+  the recurrent states always, the K/V caches and memory rows when the length
+  matches. Nsight showed 3.5–6 ms of `cudaFree` / `cudaMalloc` before each
+  request's first kernel.
+
+**Parity** (`cuda_prefix_check.py`, 4k-token state, schema of 12 questions,
+five pairs, then the LRU, eviction and batched phases):
+
+| Build | Model | max \|Δlogit\| reuse / eviction | batched max \|Δp\| | compared |
+| --- | --- | --- | --- | --- |
+| Round 7, split capture | Flash | 2.1e-3 / 2.7e-3 | — | 205 / 72 questions |
+| aligned split capture | Flash, 27B | **0 / 0** | 0 | 205 / 72 questions, 7 requests |
+| **mid-chunk capture (this round)** | Flash, 27B | **0 / 0** | **0** | 205 / 72 questions, 7 requests |
+
+**Speed of a hit** (median of five, client seconds; `--questions 6` gives a
+~0.8k-token schema):
+
+| | Flash, 1.6k schema | Flash, 0.8k schema | 27B, 1.6k schema | 27B, 0.8k schema |
+| --- | ---: | ---: | ---: | ---: |
+| cache off | 0.225 s | 0.193 s | 0.691 s | 0.601 s |
+| hit | 0.087 s | 0.052 s | 0.238 s | 0.148 s |
+| speedup | 2.5x | 3.6x | 2.9x | 4.0x |
+
+The issue's 5x on a 4k state with a 1k schema is out of reach on CUDA: a hit
+still prefills the schema, so the speedup is bounded by total / schema tokens
+(5,480 / 1,630 = 3.4x and 4,680 / 826 = 5.7x for the two shapes above), and
+the measured hits are at the cost of prefilling the schema alone (a 0.8k
+request takes 0.039 s on Flash cold). Metal's 6.8x came from a cold prefill
+that grows faster than linearly there.
+
+**What a miss costs** (`bench_latency.py`, fresh nonce so every request
+misses and captures, median of 9, two interleaved rounds; Flash / 27B):
+
+| | 0.76k | 1.7k | 4k | 16k |
+| --- | ---: | ---: | ---: | ---: |
+| Round 7 build | 0.040 / 0.110 s | 0.078 / 0.225 s | 0.160 / 0.504 s | 0.629 / 2.00 s |
+| split capture (before this round) | 0.053 / 0.145 s | 0.089 / 0.257 s | 0.177 / 0.537 s | 0.637 / 2.04 s |
+| **this round, reuse on (default)** | **0.039 / 0.108 s** | **0.077 / 0.223 s** | **0.160 / 0.503 s** | **0.629 / 2.00 s** |
+| this round, reuse off | 0.039 / 0.106 s | 0.077 / 0.223 s | 0.159 / 0.500 s | 0.627 / 2.00 s |
+
+Splitting cost a miss up to 33 % (an extra pass over the weights for the short
+chunk); the in-chunk capture costs nothing measurable. Buffer reuse gives 1–2
+ms per request.
+
+**Re-measure of the pushed Round 7 build** (`625a3b0081`, SiLU fusion off,
+against the pre-#11443 bundle `42334c876b` in the same session, median of 9
+(27B: 5), two interleaved rounds):
+
+| | 0.76k | 1k | 1.7k | 4k | 16k | 32k |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Flash, `42334c876b` | 0.100 | 0.073 | 0.102 | 0.209 | 0.833 | 1.76 |
+| **Flash, `625a3b0081`** | **0.040** | **0.058** | **0.079** | **0.161** | **0.627** | **1.29** |
+| Flash speedup | 2.5x | 1.26x | 1.30x | 1.30x | 1.33x | 1.36x |
+| 27B, `42334c876b` | 0.279 | 0.200 | 0.284 | 0.615 | 2.61 | 5.98 |
+| **27B, `625a3b0081`** | **0.109** | **0.159** | **0.226** | **0.504** | **2.01** | **4.15** |
+| 27B speedup | 2.6x | 1.26x | 1.26x | 1.22x | 1.30x | 1.44x |
+
+Against the issues' baseline (Flash 0.210 / 0.843 s, 27B 0.611 / 2.61 s at
+4k / 16k): Flash 1.31x / 1.34x, 27B 1.21x / 1.30x. (Below 1,024 tokens the
+old build ran the slow fused `mma.sync` kernel, hence 2.5x at 0.76k.)
+
+`clef::tests::cuda_chunks_and_cpu_agree` passes on this build on the H100:
+f16 and f32 accumulation are bitwise chunk-invariant (0 at chunks 2048 / 512
+/ 64, 155 and 7,274 tokens), and CUDA vs the CPU lane on the short record is
+max |Δlogit| 1.2e-3, max |Δp| 3.8e-5.
+
+**Where a 16k prefill goes now** (Nsight, kernel time): Flash 648 ms of
+kernels in a 660 ms span, the projection GEMMs 440 ms (68 %), the scan 79 ms,
+attention 54 ms, conv 24 ms, norms and element-wise kernels the rest; 27B
+2.10 s, GEMMs 73 %. The GEMMs run at 65–74 % of the f16 peak (Round 6), so
+1.5x at 4k and 16k in f16 would need the projections near 100 % of peak.
+That is why the 1.5x target is not reachable at f16 precision; FP8 (#11445)
+is the remaining lever.
+
+**CUDA graphs.** Not worth it for the trunk: the host enqueues a chunk's
+~600 launches in about 3 ms while the GPU runs 30+ ms, and the trunk's
+inter-kernel gaps average 1.6 µs. The per-request fixed cost is elsewhere:
+the buffer allocations (fixed above) and the head, whose ~40 small cuBLAS
+calls and 111 synchronous copies leave about 4.6 ms of GPU gaps per request
+(Flash 0.76k: 7.1 ms idle in a 38 ms span). A device-resident head, as on
+Metal (M3 Round 3), is the next fixed-cost step.
 
 ## M3 status (2026-10-10, in progress)
 
@@ -1921,7 +2041,7 @@ batching.
 | `PSIONIC_CLEF_METAL_HEAD` | `staged` | `fused-fields` runs the four field layers in one GPU submission. It supports at most 64 questions, adds 294,912 bytes of model vectors for the current Flash/27B heads, and adds up to 2,883,584 bytes of request scratch. This scratch is included in batch reservations. |
 | `PSIONIC_CLEF_METAL_FFN_WEIGHTS` | `resident-f16` | `q4k-on-demand` keeps Q4_K feed-forward weights packed and converts one projection at a time into reusable f16 scratch. Other formats retain the resident path. The conversion slot is 96 MiB for Flash and 170 MiB for 27B, with a 256 MiB limit. |
 | `PSIONIC_CLEF_METAL_WEIGHT_UPLOAD` | `mapped-copy` | `positional` reads packed matrices through the original open file into the existing upload buffer, avoiding bulk reads from mapped pages. It requires `resident-f16` and a memory-mapped source; conversion and inference arithmetic stay unchanged. The 27B text and image checks pass within the 52 GiB process cap at chunk size 512; this does not establish latency acceptance. |
-| `PSIONIC_CLEF_PREFIX_CACHE_BYTES` | `0` | Enables one exact prefix snapshot when nonzero; maximum 536,870,912 bytes, including its token key. |
+| `PSIONIC_CLEF_PREFIX_CACHE_BYTES` | `0` (CUDA sm_90: a 32nd of the device, at most 2 GiB) | Metal: enables one exact prefix snapshot when nonzero; maximum 536,870,912 bytes, including its token key. CUDA: an LRU of snapshots within the budget (at most 32 GiB and a quarter of the device); on by default where reuse is exact (Round 9), `0` turns it off. |
 | `PSIONIC_CLEF_BATCH_REQUESTS` | `1` | `1` keeps serial execution; `2`–`4` enables the batch worker (Metal or CUDA) and bounds active requests. |
 | `PSIONIC_CLEF_BATCH_TOKENS` | `2048` (CUDA: requests × `--decision-chunk`) | Total token rows in one cohort, at most 16,384 and at least the active-request limit. On CUDA the default keeps every request at the lane's prefill chunk; on the H100, shorter chunks cost more than the cohort saves (Round 7). |
 | `PSIONIC_CLEF_BATCH_BYTES` | `4294967296` | Total request reservations, at most 32 GiB; includes request scratch, recurrent/KV state, memory rows, spans, and a conservative head allowance. |

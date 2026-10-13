@@ -346,11 +346,12 @@ which is exactly what the outline tier spends fewer of.
 
 ### Several passes over one issue: only the issue in `state`
 
-A Psionic lane with prefix reuse on (`PSIONIC_CLEF_PREFIX_CACHE_BYTES`, Metal
-and CUDA; see clef-native.md Round 8) prefills a state once and answers later
-requests with the same state from a snapshot. The reused prefix is the system
-prompt plus the **whole** rendered `state`, matched token for token; the
-schema (the questions and options) is computed fresh every time. So:
+A Psionic lane with prefix reuse on (`PSIONIC_CLEF_PREFIX_CACHE_BYTES` on
+Metal; on by default on the H100 lanes, see clef-native.md Round 9) prefills
+a state once and answers later requests with the same state from a snapshot.
+The reused prefix is the system prompt plus the **whole** rendered `state`
+(on CUDA rounded down to a multiple of 16 tokens), matched token for token;
+the schema (the questions and options) is computed fresh every time. So:
 
 - **The shared text is the entire `state`.** For a tier-2 pass and a tier-3
   re-ask on one issue, send the issue alone as the state and put each

@@ -220,13 +220,20 @@ def check(args):
     model = args.model_id
     pairs = [case(model, args.lines, args.questions) for _ in range(args.pairs)]
     changed = copy.deepcopy(pairs[-1][1])
-    changed["state"] += "\nThe customer has resolved the problem."
+    # changed near the start: CUDA rounds the prefix down to 16 tokens, so a
+    # change in the state's last few tokens can still share (and exactly
+    # restore) the aligned prefix
+    changed["state"] = "Update: the customer has resolved the problem.\n" + changed["state"]
     evict_a, evict_b = case(model, args.lines, args.questions), case(model, args.lines, args.questions)
     batch_pairs = [case(model, args.lines, args.questions) for _ in range(2)]
     cancel_body = {"model": model, "state": state_text(uuid.uuid4().hex, args.cancel_lines),
                    "questions": long_schema(args.cancel_questions, args.cancel_words)}
     cancel_follow = copy.deepcopy(cancel_body)
     cancel_follow["questions"] = schema(2)
+    # a schema not asked before, so the whole-answer logit cache (on without
+    # export) cannot answer it; its state is pairs[0]'s, so it is a hit
+    before_cancel = copy.deepcopy(pairs[0][1])
+    before_cancel["questions"][sorted(before_cancel["questions"])[0]]["instructions"] += " Answer carefully."
     warmup = case(model, 8, 1)[0]
     records = (out / "records.jsonl").open("w")
     lock = threading.Lock()
@@ -334,7 +341,7 @@ def check(args):
             restores = together("restore", [second for _, second in pairs[:2]], True)
             together("capture", [first for first, _ in batch_pairs], False)
             together("restore-captured", [second for _, second in batch_pairs], True)
-            before = send("batch", "before-cancel", pairs[0][1], True)["response"]["psionic"]["prefix_cache"]
+            before = send("batch", "before-cancel", before_cancel, True)["response"]["psionic"]["prefix_cache"]
             raw = encoded(cancel_body)
             with socket.create_connection(("127.0.0.1", args.port), timeout=10) as client:
                 head = ("POST /v1/systemone HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n"

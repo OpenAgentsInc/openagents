@@ -43,7 +43,8 @@ unsafe extern "C" {
     fn psionic_clef_hopper_linear(x: *const c_void, w: *const c_void, out: *mut c_void, n: i32, rows: i32, k: i32, format: i32, accumulate: i32, token_tile: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_hopper_attention(q16: *const c_void, kcache: *const c_void, vcache: *const c_void, out: *mut c_void, gate: *const c_void, out16: *mut c_void, n: i32, heads: i32, kv_heads: i32, dim: i32, first: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_hopper_linear_silu(x: *const c_void, w: *const c_void, gate: *const c_void, out16: *mut c_void, n: i32, rows: i32, k: i32, format: i32, token_tile: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_delta_block(qn: *const c_void, kn: *const c_void, conv: *const c_void, decay: *const c_void, beta: *const c_void, coef: *mut c_void, state: *mut c_void, out: *mut c_void, n: i32, key_heads: i32, value_heads: i32, dim: i32, v_head_reordered: i32, conv_width: i32, value_offset: i32, variant: i32, stream: *mut c_void) -> i32;
+    fn psionic_clef_delta_block(qn: *const c_void, kn: *const c_void, conv: *const c_void, decay: *const c_void, beta: *const c_void, coef: *mut c_void, state: *mut c_void, out: *mut c_void, n: i32, key_heads: i32, value_heads: i32, dim: i32, v_head_reordered: i32, conv_width: i32, value_offset: i32, variant: i32, snap_blocks: i32, snap: *mut c_void, stream: *mut c_void) -> i32;
+    fn psionic_clef_conv1d_state_into(input: *const c_void, state: *const c_void, out: *mut c_void, n: i32, channels: i32, k: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_embed_q4_k(table: *const c_void, ids: *const c_void, out: *mut c_void, n: i32, hidden: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_flash_attention(q16: *const c_void, kcache: *const c_void, vcache: *const c_void, out: *mut c_void, n: i32, heads: i32, kv_heads: i32, dim: i32, first: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_linear_f32_ordered(x: *const c_void, w: *const c_void, out: *mut c_void, n: i32, m: i32, k: i32, stream: *mut c_void) -> i32;
@@ -51,6 +52,16 @@ unsafe extern "C" {
     fn psionic_clef_head_context(mixed: *const c_void, wv: *const c_void, bv: *const c_void, out: *mut c_void, n: i32, heads: i32, width: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_bias_act(x: *mut c_void, b: *const c_void, rows: i64, cols: i32, gelu: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_span_sums(rows: *const c_void, spans: *const c_void, sums: *mut c_void, span_count: i32, d: i32, first: i32, n: i32, stream: *mut c_void) -> i32;
+}
+
+/// Where [`CudaSubmission::clef_delta_block`] also writes the state after
+/// the chunk's first `tokens` tokens (a multiple of 16): `buffer` at f32
+/// element `offset`, in the state's layout.
+#[derive(Clone, Copy)]
+pub struct ClefStateSnapshot<'a> {
+    pub buffer: &'a CudaBuffer,
+    pub offset: usize,
+    pub tokens: usize,
 }
 
 /// Element type of a GEMM operand.
@@ -739,10 +750,25 @@ impl CudaSubmission {
         conv_width: usize,
         value_offset: usize,
         variant: usize,
+        snapshot: Option<ClefStateSnapshot<'_>>,
     ) -> Result<bool, RuntimeError> {
         if dim != 128 || value_offset % 4 != 0 || conv_width % 4 != 0 || !matches!(variant, 101 | 102 | 104) {
             return Ok(false);
         }
+        let (snap_blocks, snap) = match snapshot {
+            Some(target) => {
+                if target.tokens == 0 || target.tokens % 16 != 0 || target.tokens > n {
+                    return Err(RuntimeError::Backend(String::from(
+                        "clef delta: a snapshot must end on a 16-token block inside the chunk",
+                    )));
+                }
+                (
+                    int(target.tokens / 16, "snapshot blocks")?,
+                    span(target.buffer, target.offset, value_heads * dim * dim, 4, "delta snapshot")?,
+                )
+            }
+            None => (0, std::ptr::null_mut()),
+        };
         if n == 0 {
             return Ok(true);
         }
@@ -778,6 +804,8 @@ impl CudaSubmission {
                 int(conv_width, "conv width")?,
                 int(value_offset, "value offset")?,
                 int(variant, "variant")?,
+                snap_blocks,
+                snap,
                 stream,
             )
         };
@@ -934,6 +962,40 @@ impl CudaSubmission {
             )
         };
         self.clef_launch(code, "psionic_clef_conv1d_seq_silu")
+    }
+
+    /// The conv state `[channels, k-1]` after the first `n` of a chunk's
+    /// tokens, written to `out` at element `offset` without touching the
+    /// carried `state` (a prefix snapshot inside the chunk, #11442). Must be
+    /// encoded before [`Self::clef_conv1d_seq_silu`] updates `state`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn clef_conv1d_state_into(
+        &mut self,
+        input: &CudaBuffer,
+        state: &CudaBuffer,
+        out: &CudaBuffer,
+        offset: usize,
+        n: usize,
+        channels: usize,
+        kernel: usize,
+    ) -> Result<(), RuntimeError> {
+        let width = kernel.saturating_sub(1);
+        let input = f32s(input, n * channels, "conv input")?;
+        let state = f32s(state, channels * width, "conv state")?;
+        let out = span(out, offset, channels * width, 4, "conv snapshot")?;
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe {
+            psionic_clef_conv1d_state_into(
+                input,
+                state,
+                out,
+                int(n, "n")?,
+                int(channels, "channels")?,
+                int(kernel, "kernel")?,
+                stream,
+            )
+        };
+        self.clef_launch(code, "psionic_clef_conv1d_state_into")
     }
 
     /// Normalized q/k per key head and decay/beta per value head.
