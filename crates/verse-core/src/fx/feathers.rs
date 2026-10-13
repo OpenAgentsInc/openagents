@@ -340,6 +340,20 @@ pub fn glow_line(points: &[Vec3], half: f32, luminance: [f32; 3]) -> Ribbon {
     }
 }
 
+/// A spell's beam from `from` to `to`: a hot white core inside a wider
+/// glow of `color` (cd/m²), each a stroke of light, `width` m across at
+/// its glow. A wand's bolt, a guardian's ray.
+#[must_use]
+pub fn beam(from: Vec3, to: Vec3, width: f32, color: [f32; 3]) -> [Ribbon; 3] {
+    let points: Vec<Vec3> = (0..=8).map(|i| from.lerp(to, i as f32 / 8.0)).collect();
+    // A stroke's bright core is about a fifth of its half width.
+    [
+        glow_line(&points, width * 2.5, color.map(|c| c * 0.25)),
+        glow_line(&points, width * 1.0, color),
+        glow_line(&points, width * 0.3, [color.iter().sum::<f32>() / 1.5; 3]),
+    ]
+}
+
 /// A fanned tail: rows of feathers growing from `center` in the plane of
 /// `right` and `up`, their eyespots on arcs out to `radius` m.
 #[derive(Clone, Copy, Debug, PartialEq)]

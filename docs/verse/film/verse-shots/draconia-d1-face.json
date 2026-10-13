@@ -1,0 +1,56 @@
+{
+  "name": "draconia-d1-face",
+  "notes": "D1 shot 1 (reference 0.0-3.8): the reference is an ECU of Draconia's lower face. Until the face work's Draconia exists, this is an over-the-shoulder hold: her platinum hair in the foreground against fire and embers out of focus, no face shown.",
+  "scene": {
+    "kind": "courtyard",
+    "shot": "face"
+  },
+  "duration": 3.8,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.32,
+          1.62,
+          -0.55
+        ],
+        "target": [
+          -2.2,
+          1.25,
+          -0.9
+        ],
+        "focal_mm": 50,
+        "f_stop": 2.0,
+        "focus": 0.45
+      },
+      {
+        "t": 3.8,
+        "eye": [
+          0.3,
+          1.62,
+          -0.5
+        ],
+        "target": [
+          -2.2,
+          1.25,
+          -0.9
+        ],
+        "focal_mm": 52,
+        "f_stop": 2.0,
+        "focus": 0.45,
+        "ease": "in_out"
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 21
+    }
+  }
+}

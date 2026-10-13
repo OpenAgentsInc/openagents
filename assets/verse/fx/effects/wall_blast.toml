@@ -1,0 +1,87 @@
+# A spell striking the top of a stone wall: a golden flash, a burst of
+# warm dust rolling out and up, thrown grit and chips falling back, and a
+# haze that hangs. Every emitter fires once. The Draconia D1 shot 4 starts
+# it where the green bolt hits; any spell impact on masonry can.
+description = "A golden flash, a rolling burst of warm dust, thrown grit, and a haze."
+
+[[emitter]]
+name = "flash"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 220.0
+burst = 1
+life = [0.25, 0.25]
+size = [1.6, 1.6]
+scale = [[0.0, 0.5], [0.2, 1.4], [1.0, 2.0]]
+color = [1.0, 0.75, 0.4]
+alpha = [[0.0, 1.0], [1.0, 0.0]]
+priority = 9
+
+[[emitter]]
+name = "dust"
+sheet = "smoke"
+animate = "life"
+blend = "alpha"
+light = "emit"
+luminance = 1.6
+burst = 26
+life = [1.2, 2.2]
+shape = "sphere"
+radius = 0.4
+spread = 120.0
+speed = [1.0, 3.0]
+radial = [1.0, 3.0]
+gravity = 0.2
+drag = 1.6
+size = [0.35, 0.6]
+scale = [[0.0, 0.5], [0.3, 1.4], [1.0, 2.2]]
+color = [[0.0, [1.0, 0.75, 0.42]], [1.0, [0.55, 0.42, 0.3]]]
+alpha = [[0.0, 0.9], [0.5, 0.6], [1.0, 0.0]]
+spin = [-0.6, 0.6]
+priority = 7
+
+[[emitter]]
+name = "grit"
+sheet = "sparks"
+frames = [3, 3]
+animate = "random"
+light = "lit"
+blend = "alpha"
+burst = 70
+life = [0.8, 1.6]
+shape = "sphere"
+radius = 0.3
+spread = 100.0
+speed = [3.0, 8.0]
+radial = [1.0, 4.0]
+gravity = -9.0
+drag = 0.3
+size = [0.03, 0.09]
+color = [0.32, 0.27, 0.22]
+alpha = [[0.0, 1.0], [0.8, 1.0], [1.0, 0.0]]
+spin = [-8.0, 8.0]
+bounce = 0.3
+priority = 6
+
+[[emitter]]
+name = "haze"
+sheet = "smoke"
+animate = "life"
+blend = "alpha"
+light = "emit"
+luminance = 0.7
+delay = 0.3
+burst = 8
+life = [3.0, 4.0]
+shape = "sphere"
+radius = 1.0
+speed = [0.2, 0.5]
+gravity = 0.1
+drag = 0.4
+size = [0.9, 1.3]
+scale = [0.8, 1.4, 1.8]
+color = [0.8, 0.62, 0.42]
+alpha = [0.0, 0.35, 0.0]
+spin = [-0.2, 0.2]
+priority = 3

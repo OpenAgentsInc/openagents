@@ -371,3 +371,43 @@ top), and `~/Downloads/draconia-peacock-progress.png` (one row per version).
   (`~/work/film-out/draconia/parity/peacock-open/peacock-open-vN.mp4`). When
   it lands, it gets cut in at the P3 opening at the reference's timing
   (114.5–114.7 s), before the pull-back.
+
+## Scene: D1 (shots 1–6, reference 0–9.7 s)
+
+Rendered by `crates/verse/examples/film_shot.rs` scene kind `courtyard`
+(`crates/verse/examples/film/courtyard.rs`) from
+`docs/verse/film/verse-shots/draconia-d1-{face,girl,boy,cloak,duel}.json`,
+cut by `~/work/film-out/draconia/d1-cut.sh` into
+`~/Downloads/draconia-d1-vN.mp4`, `-vN-side-by-side.mp4` (reference on top)
+and `~/Downloads/draconia-d1-progress.png`. Internal study only.
+
+**Rule:** no stand-in face appears in a close-up or medium shot. Shot 1
+carries a slate ("face: waiting on Draconia") over a fire-and-embers plate
+until the face work renders it. In the mediums, the stand-ins turn away or
+stand in silhouette.
+
+### v1, 2026-10-13
+
+- **Built:**
+  - The `courtyard` scene: cobbles and brick walls in staggered courses (one
+    with a ragged broken top), plus a cast of pack rigs joined into one
+    figure (Alice, and the male ranger for the boys).
+  - The wall top as loose blocks that fly when the bolt hits.
+  - `feathers::beam`, a spell bolt as a hot white core in a green glow, and
+    the `wall_blast` effect (a golden flash, rolling warm dust, thrown grit,
+    and haze).
+  - The shots, at the reference's cut times:
+    1. a fire plate (slated);
+    2. the girl against the wall as the bolt flashes past and dust falls;
+    3–4. the boy silhouetted against the wall as the bolt passes over it,
+       then the top blows out in golden dust and he ducks and runs;
+    5. a dark cloak crossing the lens;
+    6. a high wide shot of five duelers with a bolt and a shield shimmer.
+- **Gaps:**
+  - Shot 1 needs the face work's Draconia close-up.
+  - The stand-ins aren't the reference's students: no uniforms, the girl
+    faces the wall instead of the camera, and the boy is a silhouette.
+  - The walls are clean brick boxes, not weathered stone.
+  - The blast dust is grey-gold, not the reference's warm amber, and the wall
+    top's blocks don't read as a burst.
+  - The duel lacks the reference's crowding and motion.

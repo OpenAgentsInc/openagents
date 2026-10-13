@@ -1,0 +1,52 @@
+{
+  "name": "draconia-d1-duel",
+  "notes": "D1 shot 6 (reference 8.6-9.7): high wide shot of students dueling and shielding on the cobbles, a green bolt between two; a slow crane down.",
+  "scene": {
+    "kind": "courtyard",
+    "shot": "duel"
+  },
+  "duration": 1.1,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.8,
+          6.0,
+          5.6
+        ],
+        "target": [
+          0.0,
+          0.6,
+          0.0
+        ],
+        "focal_mm": 24
+      },
+      {
+        "t": 1.1,
+        "eye": [
+          0.7,
+          5.2,
+          5.0
+        ],
+        "target": [
+          0.0,
+          0.6,
+          0.0
+        ],
+        "focal_mm": 24,
+        "ease": "out"
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 21
+    }
+  }
+}

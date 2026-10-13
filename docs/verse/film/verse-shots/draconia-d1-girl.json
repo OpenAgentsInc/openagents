@@ -1,0 +1,52 @@
+{
+  "name": "draconia-d1-girl",
+  "notes": "D1 shot 2 (reference 3.8-6.2): a girl crouched against a stone wall in cold shadow; a green bolt flashes past from the left, dust falls. Stand-in: Alice in her own colors.",
+  "scene": {
+    "kind": "courtyard",
+    "shot": "girl"
+  },
+  "duration": 2.4,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          1.5,
+          1.05,
+          2.3
+        ],
+        "target": [
+          0.35,
+          0.75,
+          0.0
+        ],
+        "focal_mm": 35
+      },
+      {
+        "t": 2.4,
+        "eye": [
+          1.2,
+          0.95,
+          1.7
+        ],
+        "target": [
+          0.4,
+          0.8,
+          0.0
+        ],
+        "focal_mm": 40,
+        "ease": "in_out"
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 21
+    }
+  }
+}

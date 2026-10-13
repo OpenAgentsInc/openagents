@@ -1,0 +1,55 @@
+{
+  "name": "draconia-d1-cloak",
+  "notes": "D1 shot 5 (reference 7.9-8.6): a dark cloak crossing the lens, a wipe.",
+  "scene": {
+    "kind": "courtyard",
+    "shot": "cloak"
+  },
+  "duration": 0.7,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.0,
+          1.3,
+          5.2
+        ],
+        "target": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "focal_mm": 35,
+        "f_stop": 2.8,
+        "focus": 5.0
+      },
+      {
+        "t": 0.7,
+        "eye": [
+          0.0,
+          1.3,
+          5.1
+        ],
+        "target": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "focal_mm": 35,
+        "f_stop": 2.8,
+        "focus": 5.0
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 21
+    }
+  }
+}

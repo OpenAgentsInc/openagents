@@ -32,6 +32,8 @@
 //! Run it with `VERSE_QUALITY=high` for the high tier; the world scenes
 //! keep temporal anti-aliasing on unless `VERSE_TAA=0`.
 
+#[path = "film/courtyard.rs"]
+mod courtyard;
 #[path = "film/peacock.rs"]
 mod peacock;
 
@@ -200,6 +202,8 @@ enum SceneSpec {
     /// The Draconia peacock guardian: the feathers of light in the void
     /// (`part` `feathers`, flashing white at `flash_at`), or Draconia
     /// before the fanned tail (`tail`), rising from a crouch at `rise`.
+    /// The Draconia courtyard battle, phase D1: one of its shots.
+    Courtyard { shot: courtyard::Shot },
     Peacock {
         part: peacock::Part,
         #[serde(default)]
@@ -312,6 +316,12 @@ enum Stage {
     Peacock {
         renderer: Box<verse::render::Offscreen>,
         set: Box<peacock::Set>,
+        ui: verse::ui::UiBatch,
+    },
+    /// The Draconia courtyard, on the same stage.
+    Courtyard {
+        renderer: Box<verse::render::Offscreen>,
+        set: Box<courtyard::Set>,
         ui: verse::ui::UiBatch,
     },
     /// The ritual chamber or the great crypt, drawn by the imported
@@ -539,6 +549,22 @@ impl Stage {
                 }
                 Self::world(runtime, w, h, false, shot.hide_guides)
             }
+            SceneSpec::Courtyard { shot: which } => {
+                let pack = load_everglade()?;
+                let set = courtyard::Set::new(*which, &pack)?;
+                let renderer = verse::render::Offscreen::new(
+                    w,
+                    h,
+                    &courtyard::Set::world(*which),
+                    &verse::ui::Atlas::new(16.0),
+                    zones::atmosphere(zones::ZoneId::Plaza),
+                )?;
+                Ok(Self::Courtyard {
+                    renderer: Box::new(renderer),
+                    set: Box::new(set),
+                    ui: verse::ui::UiBatch::default(),
+                })
+            }
             SceneSpec::Peacock {
                 part,
                 flash_at,
@@ -618,6 +644,7 @@ impl Stage {
                 }
             }
             Self::Peacock { set, .. } => set.advance(dt, t),
+            Self::Courtyard { set, .. } => set.advance(dt, t),
             Self::Imported { scene, .. } => match scene {
                 Imported::Ritual { game, start, .. } => game.time = (*start + t).max(0.0),
                 Imported::Crypt { fight, walk } => {
@@ -718,6 +745,11 @@ impl Stage {
                 renderer.draw(View { view_proj, eye }, &dynamic, ui, &lighting)
             }
             Self::Peacock { renderer, set, ui } => {
+                let (view_proj, eye) =
+                    camera_rig::lens_view_projection(&camera, aspect, shot.near, shot.far, lens);
+                renderer.render(View { view_proj, eye }, &set.frame(), ui)
+            }
+            Self::Courtyard { renderer, set, ui } => {
                 let (view_proj, eye) =
                     camera_rig::lens_view_projection(&camera, aspect, shot.near, shot.far, lens);
                 renderer.render(View { view_proj, eye }, &set.frame(), ui)
