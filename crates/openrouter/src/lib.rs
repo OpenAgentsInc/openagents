@@ -1183,6 +1183,10 @@ struct StreamReader {
     reply: Streamed,
     done: bool,
     tools: Option<ToolCalls>,
+    /// Reasoning deltas read and not yet handed on: OpenRouter's
+    /// `delta.reasoning`, or `delta.reasoning_content` as DeepSeek and
+    /// vLLM-style servers send it.
+    reasoning: Vec<String>,
 }
 
 impl StreamReader {
@@ -1289,6 +1293,13 @@ impl StreamReader {
         {
             tools.push(calls)?;
         }
+        if let Some(thought) = choice["delta"]["reasoning"]
+            .as_str()
+            .or_else(|| choice["delta"]["reasoning_content"].as_str())
+            .filter(|thought| !thought.is_empty())
+        {
+            self.reasoning.push(thought.to_string());
+        }
         if let Some(delta) = choice["delta"]["content"].as_str()
             && !delta.is_empty()
         {
@@ -1344,9 +1355,28 @@ impl Client {
         sink: &mut (dyn FnMut(&str) + Send),
         model_sink: &mut (dyn FnMut(&str) + Send),
     ) -> Result<Streamed, Error> {
+        self.stream_with_reasoning(request, sink, model_sink, &mut |_| {})
+            .await
+    }
+
+    /// Streams a reply as [`Client::stream_with_model`] does, and hands each
+    /// piece of the model's reasoning to `reasoning_sink` as it arrives,
+    /// when the provider streams it (`delta.reasoning` or
+    /// `delta.reasoning_content`).
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`Client::stream`].
+    pub async fn stream_with_reasoning(
+        &self,
+        request: &ChatRequest,
+        sink: &mut (dyn FnMut(&str) + Send),
+        model_sink: &mut (dyn FnMut(&str) + Send),
+        reasoning_sink: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<Streamed, Error> {
         let mut request = request.clone();
         request.stream = true;
-        self.stream_body(&request, ToolMode::None, sink, model_sink)
+        self.stream_body(&request, ToolMode::None, sink, model_sink, reasoning_sink)
             .await
             .map(|stream| stream.reply)
     }
@@ -1374,8 +1404,16 @@ impl Client {
         sink: &mut (dyn FnMut(&str) + Send),
         model_sink: &mut (dyn FnMut(&str) + Send),
     ) -> Result<ToolStreamed, Error> {
-        self.stream_tools_body(request, messages, tools, ToolMode::Strict, sink, model_sink)
-            .await
+        self.stream_tools_body(
+            request,
+            messages,
+            tools,
+            ToolMode::Strict,
+            sink,
+            model_sink,
+            &mut |_| {},
+        )
+        .await
     }
 
     /// Streams function calls whose arguments the caller can reject and repair.
@@ -1399,8 +1437,42 @@ impl Client {
         sink: &mut (dyn FnMut(&str) + Send),
         model_sink: &mut (dyn FnMut(&str) + Send),
     ) -> Result<ToolStreamed, Error> {
-        self.stream_tools_body(request, messages, tools, ToolMode::Repair, sink, model_sink)
-            .await
+        self.stream_tools_for_repair_with_reasoning(
+            request,
+            messages,
+            tools,
+            sink,
+            model_sink,
+            &mut |_| {},
+        )
+        .await
+    }
+
+    /// [`Client::stream_tools_for_repair`], handing each piece of the
+    /// model's reasoning to `reasoning_sink` as it arrives.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`Client::stream_tools_for_repair`].
+    pub async fn stream_tools_for_repair_with_reasoning(
+        &self,
+        request: &ChatRequest,
+        messages: &[Value],
+        tools: &[Value],
+        sink: &mut (dyn FnMut(&str) + Send),
+        model_sink: &mut (dyn FnMut(&str) + Send),
+        reasoning_sink: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<ToolStreamed, Error> {
+        self.stream_tools_body(
+            request,
+            messages,
+            tools,
+            ToolMode::Repair,
+            sink,
+            model_sink,
+            reasoning_sink,
+        )
+        .await
     }
 
     async fn stream_tools_body(
@@ -1411,6 +1483,7 @@ impl Client {
         mode: ToolMode,
         sink: &mut (dyn FnMut(&str) + Send),
         model_sink: &mut (dyn FnMut(&str) + Send),
+        reasoning_sink: &mut (dyn FnMut(&str) + Send),
     ) -> Result<ToolStreamed, Error> {
         let mut body = serde_json::to_value(request)
             .map_err(|_| tool_decode("the tool request could not be encoded"))?;
@@ -1422,7 +1495,8 @@ impl Client {
         } else {
             body["provider"] = serde_json::json!({ "require_parameters": true });
         }
-        self.stream_body(&body, mode, sink, model_sink).await
+        self.stream_body(&body, mode, sink, model_sink, reasoning_sink)
+            .await
     }
 
     async fn stream_body<B: Serialize>(
@@ -1431,6 +1505,7 @@ impl Client {
         tool_mode: ToolMode,
         sink: &mut (dyn FnMut(&str) + Send),
         model_sink: &mut (dyn FnMut(&str) + Send),
+        reasoning_sink: &mut (dyn FnMut(&str) + Send),
     ) -> Result<ToolStreamed, Error> {
         let started = std::time::Instant::now();
         let body = self.config.dialect.wire(
@@ -1488,7 +1563,11 @@ impl Client {
                 }
                 sink(delta);
             };
-            reader.push(&chunk, &mut timed, model_sink)?;
+            let pushed = reader.push(&chunk, &mut timed, model_sink);
+            for thought in reader.reasoning.drain(..) {
+                reasoning_sink(&thought);
+            }
+            pushed?;
             if reader.done {
                 break;
             }
@@ -1642,6 +1721,31 @@ mod tests {
         assert_eq!(models, ["m/x"]);
         assert_eq!(reader.reply.finish_reason.as_deref(), Some("stop"));
         assert_eq!(reader.reply.usage.total_tokens, 5);
+    }
+
+    /// Reasoning deltas (OpenRouter's `reasoning`, DeepSeek's
+    /// `reasoning_content`) are kept for the reasoning sink, apart from the
+    /// reply's text.
+    #[test]
+    fn reasoning_deltas_are_kept_apart_from_the_text() {
+        let body = concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"\",\"reasoning\":\"Check 97.\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\" It divides.\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Composite.\"},\"finish_reason\":\"stop\"}]}\n\n",
+            "data: [DONE]\n\n",
+        );
+        let mut reader = StreamReader::default();
+        let mut seen = Vec::new();
+        reader
+            .push(
+                body.as_bytes(),
+                &mut |delta: &str| seen.push(delta.to_string()),
+                &mut |_: &str| {},
+            )
+            .unwrap();
+        assert_eq!(reader.reasoning, ["Check 97.", " It divides."]);
+        assert_eq!(seen, ["Composite."]);
+        assert_eq!(reader.reply.text, "Composite.");
     }
 
     #[test]

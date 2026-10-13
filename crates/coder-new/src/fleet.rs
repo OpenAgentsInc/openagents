@@ -809,6 +809,7 @@ fn record(chat: &mut Chat, event: &RuntimeEvent) {
         RuntimeEvent::Usage(usage) => chat.round(*usage.clone()),
         RuntimeEvent::Harness(run) => chat.harness = Some(*run.clone()),
         RuntimeEvent::Thinking(on) => chat.thinking = *on,
+        RuntimeEvent::ThinkingText(text) => chat.think(text),
         RuntimeEvent::Tool {
             name,
             input,

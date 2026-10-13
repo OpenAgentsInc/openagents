@@ -367,6 +367,9 @@ pub enum Line {
     /// The session the turn runs in.
     Session(String),
     Text(String),
+    /// A finished reasoning part: `opencode run --thinking` prints the
+    /// model's thinking whole, once the part ends (#11552).
+    Thinking(String),
     /// A finished tool: its name and input as Claude Code names them, and
     /// its output (`error` when it failed or was refused).
     Tool {
@@ -400,6 +403,15 @@ pub fn read_line(line: &str) -> Vec<Line> {
         "text" => {
             if let Some(text) = part["text"].as_str().filter(|text| !text.is_empty()) {
                 lines.push(Line::Text(text.to_owned()));
+            }
+        }
+        "reasoning" => {
+            if let Some(text) = part["text"]
+                .as_str()
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+            {
+                lines.push(Line::Thinking(text.to_owned()));
             }
         }
         "tool_use" => {
@@ -497,7 +509,8 @@ pub async fn run_with(
     let mut command = tokio::process::Command::new(&program);
     command
         .arg("run")
-        .args(["--format", "json", "--dir"])
+        // `--thinking` prints the model's reasoning parts (#11552).
+        .args(["--format", "json", "--thinking", "--dir"])
         .arg(&turn.cwd)
         .args(["-m", &turn.model]);
     if let Some(session) = &turn.session {
@@ -573,6 +586,16 @@ pub async fn run_with(
                             }
                             reply.text.push_str(&text);
                             on_event(RuntimeEvent::Text(text));
+                        }
+                        Line::Thinking(text) => {
+                            on_event(RuntimeEvent::Thinking(true));
+                            on_event(RuntimeEvent::Tool {
+                                name: crate::claude_stream::THINKING.into(),
+                                input: Value::Null,
+                                output: json!({"text": text}),
+                                running: false,
+                            });
+                            on_event(RuntimeEvent::Thinking(false));
                         }
                         Line::Tool { name, input, output } => {
                             on_event(RuntimeEvent::Tool {
@@ -685,6 +708,25 @@ mod tests {
         }));
         assert_eq!(read.last(), Some(&Line::Text("hello".into())));
         assert!(read_line("not json").is_empty());
+        // #11552: `opencode run --format json --thinking` (opencode 1.18.26,
+        // recorded 2026-10-13 on opencode/cat-jam-free) prints the
+        // reasoning part whole, ahead of the answer.
+        let path = format!(
+            "{}/fixtures/thinking/opencode-run.jsonl",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let lines: Vec<Line> = std::fs::read_to_string(path)
+            .unwrap()
+            .lines()
+            .flat_map(read_line)
+            .collect();
+        let thinking = lines.iter().position(|line| {
+            matches!(line, Line::Thinking(text) if text.starts_with("The user is asking whether 9991 is prime."))
+        });
+        let text = lines
+            .iter()
+            .position(|line| matches!(line, Line::Text(text) if text.contains("97")));
+        assert!(thinking.is_some() && thinking < text, "{lines:?}");
         let failed = read_line(
             r#"{"type":"error","sessionID":"ses_1","error":{"name":"APIError","data":{"message":"Rate limit exceeded"}}}"#,
         );

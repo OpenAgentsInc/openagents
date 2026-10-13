@@ -205,6 +205,11 @@ pub enum RuntimeEvent {
     /// The model's thinking started (`true`) or stopped streaming in: the
     /// input's rail says `Thinking` while it streams.
     Thinking(bool),
+    /// A piece of the model's thinking, as it streams: it joins the running
+    /// thinking entry, which the finished block's own entry
+    /// ([`crate::claude_stream::THINKING`], `running: false`) then closes.
+    /// See [`crate::claude_stream::Thought`].
+    ThinkingText(String),
 }
 
 /// What one model call used and how long it took.
@@ -241,7 +246,9 @@ impl RuntimeEvent {
             | Self::Harness(_)
             | Self::Plan(_)
             | Self::Thinking(_) => {}
-            Self::Text(text) | Self::Model(text) => *text = redact_text(text, keys),
+            Self::Text(text) | Self::Model(text) | Self::ThinkingText(text) => {
+                *text = redact_text(text, keys);
+            }
             Self::Delegation {
                 id,
                 name,
@@ -1028,6 +1035,7 @@ pub async fn acp_briefed(
         };
         let refusals = Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut handler = AcpEvents {
+            thought: crate::claude_stream::Thought::default(),
             emit: &mut *emit,
             text: String::new(),
             tools: BTreeMap::new(),
@@ -1073,6 +1081,7 @@ pub async fn acp_briefed(
                 )
                 .await;
         }
+        handler.end_thought();
         let text = handler.text;
         let worked = !handler.tools.is_empty() || !text.is_empty();
         let group_clear = session.close(Duration::from_secs(2)).await;
@@ -1577,7 +1586,15 @@ async fn codex_app_server(
         .ok()?;
     let (control, mut controls) = tokio::sync::mpsc::unbounded_channel();
     let mut tokens = 0_u64;
+    // Codex's reasoning summary streams into the delegation's transcript.
+    let mut thought = crate::claude_stream::Thought::default();
     let mut out = |output: Output| match output {
+        Output::Thinking(true) => emit(RuntimeEvent::Thinking(true)),
+        Output::ThinkingText(text) => thought.piece(&text).into_iter().for_each(&mut *emit),
+        Output::Thinking(false) if thought.open() => {
+            thought.end(None).into_iter().for_each(&mut *emit);
+        }
+        Output::Thinking(false) => emit(RuntimeEvent::Thinking(false)),
         Output::Model(model) => emit(RuntimeEvent::Model(
             crate::models::GenerationOptions {
                 reasoning: reasoning.clone(),
@@ -1771,6 +1788,9 @@ impl CodexEvents {
 struct AcpEvents<'a> {
     emit: &'a mut dyn FnMut(RuntimeEvent),
     text: String,
+    /// The agent's thought chunks, streaming into a thinking entry
+    /// (#11552).
+    thought: crate::claude_stream::Thought,
     tools: BTreeMap<String, (String, Value)>,
     /// A read-only task: only asks to read, search, think or fetch are
     /// approved (#11470).
@@ -1861,7 +1881,19 @@ impl Handler for AcpEvents<'_> {
     }
 
     fn update(&mut self, update: Update) {
+        // The agent's thinking ends when it answers or acts.
+        if matches!(
+            update,
+            Update::AgentText(_) | Update::ToolCall { .. } | Update::ToolCallUpdate { .. }
+        ) {
+            self.end_thought();
+        }
         match update {
+            Update::Thought(text) => {
+                for event in self.thought.piece(&bounded(&text, TEXT_MAX)) {
+                    (self.emit)(event);
+                }
+            }
             Update::Usage(usage) if !usage.subagent => {
                 if usage.input_tokens.is_some() || usage.output_tokens.is_some() {
                     (self.emit)(RuntimeEvent::Tokens(
@@ -1934,6 +1966,13 @@ impl Handler for AcpEvents<'_> {
 }
 
 impl AcpEvents<'_> {
+    /// The thinking under way closes with what it said.
+    fn end_thought(&mut self) {
+        for event in self.thought.end(None) {
+            (self.emit)(event);
+        }
+    }
+
     /// Show one of Cursor's extension methods as a finished tool row, with
     /// the client's `answer` when the agent waited on one.
     fn cursor_notice(&mut self, notice: acp_client::cursor::Notice, answer: Value) {
@@ -2098,6 +2137,8 @@ fn claude_watcher(lines: std::sync::mpsc::Sender<Value>) -> microcoder_loop::cla
 #[derive(Default)]
 pub(crate) struct Thoughts {
     streaming: bool,
+    /// The thinking's words as they stream (#11552).
+    words: crate::claude_stream::ClaudeThoughts,
 }
 
 impl Thoughts {
@@ -2120,11 +2161,12 @@ impl Thoughts {
                     self.streaming = now;
                     shown.push(RuntimeEvent::Thinking(now));
                 }
+                shown.extend(self.words.event(event));
             }
             Some("assistant") => {
                 for block in line["message"]["content"].as_array().into_iter().flatten() {
                     if block["type"] == "thinking"
-                        && let Some(entry) = crate::claude_stream::thinking(block)
+                        && let Some(entry) = self.words.block(block)
                     {
                         shown.push(entry);
                     }
@@ -2135,9 +2177,14 @@ impl Thoughts {
         shown
     }
 
-    /// The rail's `Thinking` stops with the call.
-    pub(crate) fn end(&mut self) -> Option<RuntimeEvent> {
-        std::mem::take(&mut self.streaming).then_some(RuntimeEvent::Thinking(false))
+    /// The rail's `Thinking` stops with the call, and thinking still
+    /// streaming closes with what it said.
+    pub(crate) fn end(&mut self) -> Vec<RuntimeEvent> {
+        let mut shown = self.words.end();
+        if std::mem::take(&mut self.streaming) {
+            shown.push(RuntimeEvent::Thinking(false));
+        }
+        shown
     }
 }
 
@@ -2394,8 +2441,10 @@ impl<G> CancellableGenerator<'_, G> {
                 sink.emit(event);
             }
         }
-        if ended && let Some(event) = thoughts.borrow_mut().end() {
-            sink.emit(event);
+        if ended {
+            for event in thoughts.borrow_mut().end() {
+                sink.emit(event);
+            }
         }
     }
 }
@@ -2791,12 +2840,10 @@ mod tests {
         let shown = thoughts.read(&event(json!({"type": "content_block_start",
             "content_block": {"type": "thinking", "thinking": ""}})));
         assert!(matches!(shown.as_slice(), [RuntimeEvent::Thinking(true)]));
-        assert!(
-            thoughts
-                .read(&event(json!({"type": "content_block_delta",
-            "delta": {"type": "thinking_delta", "thinking": "Look"}})))
-                .is_empty()
-        );
+        // #11552: the words stream as they arrive.
+        let shown = thoughts.read(&event(json!({"type": "content_block_delta",
+            "delta": {"type": "thinking_delta", "thinking": "Look"}})));
+        assert!(matches!(shown.as_slice(), [RuntimeEvent::ThinkingText(text)] if text == "Look"));
         assert!(
             thoughts
                 .read(&event(json!({"type": "content_block_delta",
@@ -2815,13 +2862,25 @@ mod tests {
         let shown = thoughts.read(&event(json!({"type": "content_block_start",
             "content_block": {"type": "tool_use", "name": "StructuredOutput"}})));
         assert!(matches!(shown.as_slice(), [RuntimeEvent::Thinking(false)]));
-        assert!(thoughts.end().is_none());
+        assert!(thoughts.end().is_empty());
         thoughts.read(&event(json!({"type": "content_block_start",
             "content_block": {"type": "thinking"}})));
-        assert!(matches!(
-            thoughts.end(),
-            Some(RuntimeEvent::Thinking(false))
-        ));
+        thoughts.read(&event(json!({"type": "content_block_delta",
+            "delta": {"type": "thinking_delta", "thinking": "Cut off"}})));
+        // Thinking still streaming when the call ends keeps its words.
+        match thoughts.end().as_slice() {
+            [
+                RuntimeEvent::Tool {
+                    output,
+                    running: false,
+                    ..
+                },
+                RuntimeEvent::Thinking(false),
+            ] => {
+                assert_eq!(output["text"], "Cut off");
+            }
+            other => panic!("the closed entry and the rail, not {other:?}"),
+        }
     }
     use crate::delegation_events::Sink;
 
@@ -3079,6 +3138,7 @@ mod tests {
         .unwrap();
         let mut emit = |_| {};
         let mut handler = AcpEvents {
+            thought: crate::claude_stream::Thought::default(),
             read_only: false,
             emit: &mut emit,
             text: String::new(),
@@ -3095,6 +3155,49 @@ mod tests {
         desk.close();
         assert_eq!(codex_sandbox().unwrap(), CodexSandbox::ReadOnly);
         assert!(desk.drain().is_empty());
+    }
+
+    /// #11552: an ACP agent's thought chunks (Grok Build 1.0.52's
+    /// `agent_thought_chunk`, recorded 2026-10-13 for "Is 9991 prime?")
+    /// stream into one thinking entry, closed when the answer starts, the
+    /// answer below it.
+    #[test]
+    fn an_acp_agents_thoughts_stream_into_a_thinking_entry() {
+        let mut events = Vec::new();
+        let mut emit = |event| events.push(event);
+        let mut handler = AcpEvents {
+            thought: crate::claude_stream::Thought::default(),
+            read_only: false,
+            emit: &mut emit,
+            text: String::new(),
+            tools: BTreeMap::new(),
+            hooks: None,
+            cwd: PathBuf::new(),
+            seen: BTreeMap::new(),
+            refusals: Arc::default(),
+        };
+        for line in crate::claude_stream::recorded("grok-acp.jsonl") {
+            if let Some((_, update)) = acp_client::wire::parse_update(&line["params"]) {
+                handler.update(update);
+            }
+        }
+        handler.end_thought();
+        let reply = handler.text.clone();
+        let (chat, pieces) = crate::claude_stream::shown_in_chat(&events);
+        assert_eq!(pieces.len(), 5, "{pieces:?}");
+        let entries = crate::claude_stream::thinking_entries(&chat);
+        assert_eq!(entries.len(), 1, "{entries:?}");
+        assert!(
+            entries[0].0.starts_with("Checking whether 9991 is prime."),
+            "{entries:?}"
+        );
+        assert!(!entries[0].1);
+        assert!(
+            matches!(chat.entries.last(), Some(crate::live::Entry::Assistant { text, .. }) if *text == reply.trim())
+        );
+        // The rail's `Thinking` came on with the first piece and went off.
+        assert!(matches!(events.first(), Some(RuntimeEvent::Thinking(true))));
+        assert!(!chat.thinking);
     }
 
     #[tokio::test]
@@ -3691,6 +3794,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         let mut events = vec![];
         let input = json!({"path":"fixture.rs"});
         let mut handler = AcpEvents {
+            thought: crate::claude_stream::Thought::default(),
             read_only: false,
             emit: &mut |event| events.push(event),
             text: String::new(),
@@ -4356,6 +4460,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         };
         let mut emit = |_| {};
         let mut handler = AcpEvents {
+            thought: crate::claude_stream::Thought::default(),
             emit: &mut emit,
             text: String::new(),
             tools: BTreeMap::new(),

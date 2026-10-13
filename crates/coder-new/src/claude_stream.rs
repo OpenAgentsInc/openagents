@@ -56,6 +56,8 @@ pub(crate) struct Stream {
     context: u64,
     /// Whether the main reply's thinking is streaming in now.
     thinking: bool,
+    /// The main reply's thinking words, as they stream (#11552).
+    pub(crate) thoughts: ClaudeThoughts,
 }
 
 impl Stream {
@@ -80,6 +82,15 @@ impl Stream {
             }
             _ => None,
         }
+    }
+
+    /// The main reply's thinking words in one partial `event`, as they
+    /// arrive. A subagent's thinking is left to its whole messages.
+    pub(crate) fn thought(&mut self, event: &SdkStreamEvent) -> Vec<RuntimeEvent> {
+        if event.parent_tool_use_id.is_some() {
+            return Vec::new();
+        }
+        self.thoughts.event(&event.event)
     }
 
     /// Whether the main reply's thinking started or stopped streaming with
@@ -284,6 +295,133 @@ impl Stream {
     }
 }
 
+/// What a turn says once when the model thought but its provider showed
+/// none of the words.
+pub const HIDDEN_THINKING: &str = "Thinking (hidden by the model)";
+
+/// The model's thinking as it streams in pieces, on any harness (Codex's
+/// reasoning summary, an ACP agent's thought chunks, Claude's thinking
+/// deltas): each piece shows at once in a running thinking entry, the
+/// rail says `Thinking` meanwhile, and the end closes the entry with the
+/// whole text, which syncs and exports as the model's reasoning.
+#[derive(Default)]
+pub(crate) struct Thought {
+    text: String,
+    open: bool,
+    /// The turn already said its thinking was hidden.
+    hidden_said: bool,
+}
+
+impl Thought {
+    /// What one streamed `piece` shows.
+    pub(crate) fn piece(&mut self, piece: &str) -> Vec<RuntimeEvent> {
+        if piece.is_empty() {
+            return Vec::new();
+        }
+        let mut shown = Vec::new();
+        if !self.open {
+            self.open = true;
+            shown.push(RuntimeEvent::Thinking(true));
+        }
+        self.text.push_str(piece);
+        shown.push(RuntimeEvent::ThinkingText(piece.to_owned()));
+        shown
+    }
+
+    /// Whether a thinking entry is streaming now.
+    pub(crate) fn open(&self) -> bool {
+        self.open
+    }
+
+    /// The streaming thinking ended: its entry closes with the whole text
+    /// (`whole`, when the harness sent it, else what streamed).
+    pub(crate) fn end(&mut self, whole: Option<&str>) -> Vec<RuntimeEvent> {
+        if !self.open {
+            return Vec::new();
+        }
+        self.open = false;
+        let streamed = std::mem::take(&mut self.text);
+        let text = whole.unwrap_or(&streamed).trim();
+        let mut shown = Vec::new();
+        if !text.is_empty() {
+            shown.push(notice_entry(THINKING, text));
+        }
+        shown.push(RuntimeEvent::Thinking(false));
+        shown
+    }
+
+    /// The model thought but showed no words: a quiet line, once a turn.
+    pub(crate) fn hidden(&mut self) -> Option<RuntimeEvent> {
+        (!std::mem::replace(&mut self.hidden_said, true))
+            .then(|| notice_entry(NOTICE, HIDDEN_THINKING))
+    }
+}
+
+/// Claude's thinking from stream-json with partial messages (#11552): each
+/// `thinking_delta` streams into the running thinking entry; the finished
+/// block (the `assistant` message, which Claude Code sends before the
+/// block's `content_block_stop`) closes it, and a block that already
+/// showed is not shown again. The rail's `Thinking` is left to its own
+/// reader.
+#[derive(Default)]
+pub(crate) struct ClaudeThoughts {
+    thought: Thought,
+    /// Blocks that closed before their whole message arrived.
+    ended: Vec<String>,
+}
+
+impl ClaudeThoughts {
+    /// What one stream `event` (the API's, inside `stream_event`) shows.
+    pub(crate) fn event(&mut self, event: &Value) -> Vec<RuntimeEvent> {
+        let shown = match event["type"].as_str() {
+            Some("content_block_delta") if event["delta"]["type"] == "thinking_delta" => self
+                .thought
+                .piece(event["delta"]["thinking"].as_str().unwrap_or_default()),
+            Some("content_block_stop" | "message_stop") if self.thought.open() => {
+                let shown = self.thought.end(None);
+                if let Some(RuntimeEvent::Tool { output, .. }) = shown.first() {
+                    self.ended.push(entry_text(output).to_owned());
+                }
+                shown
+            }
+            _ => Vec::new(),
+        };
+        shown
+            .into_iter()
+            .filter(|event| !matches!(event, RuntimeEvent::Thinking(_)))
+            .collect()
+    }
+
+    /// A finished thinking `block`: the entry that closes the streamed one,
+    /// or the block's own entry when none streamed, or nothing when it
+    /// already showed.
+    pub(crate) fn block(&mut self, block: &Value) -> Option<RuntimeEvent> {
+        let text = block["thinking"].as_str().unwrap_or_default().trim();
+        if self.thought.open() {
+            return self
+                .thought
+                .end(Some(text))
+                .into_iter()
+                .find(|event| matches!(event, RuntimeEvent::Tool { .. }));
+        }
+        if let Some(index) = self.ended.iter().position(|ended| ended == text) {
+            self.ended.remove(index);
+            return None;
+        }
+        thinking(block)
+    }
+
+    /// The call ended: thinking still streaming closes with what it said.
+    pub(crate) fn end(&mut self) -> Vec<RuntimeEvent> {
+        self.ended.clear();
+        self.thought
+            .end(None)
+            .into_iter()
+            .filter(|event| !matches!(event, RuntimeEvent::Thinking(_)))
+            .collect()
+    }
+}
+
 /// A thinking `block` as its entry, when it carries words.
 #[must_use]
 pub fn thinking(block: &Value) -> Option<RuntimeEvent> {
@@ -466,9 +604,129 @@ pub fn context_line(session: &str) -> Option<String> {
     })
 }
 
+/// What a recorded stream's events leave in a transcript, as the terminal
+/// applies them, and the thinking pieces that arrived on the way.
+#[cfg(test)]
+pub(crate) fn shown_in_chat(events: &[RuntimeEvent]) -> (crate::live::Chat, Vec<String>) {
+    let mut chat = crate::live::Chat::default();
+    let mut pieces = Vec::new();
+    for event in events.iter().cloned() {
+        match event {
+            RuntimeEvent::Text(text) => chat.partial.push_str(&text),
+            RuntimeEvent::Thinking(on) => chat.thinking = on,
+            RuntimeEvent::ThinkingText(text) => {
+                chat.think(&text);
+                pieces.push(text);
+            }
+            RuntimeEvent::Tool {
+                name,
+                input,
+                output,
+                running,
+            } => chat.tool(name, input, output, running),
+            _ => {}
+        }
+    }
+    chat.finish_partial();
+    (chat, pieces)
+}
+
+/// The thinking entries a transcript holds: their words, and whether each
+/// still streams.
+#[cfg(test)]
+pub(crate) fn thinking_entries(chat: &crate::live::Chat) -> Vec<(String, bool)> {
+    chat.entries
+        .iter()
+        .filter_map(|entry| match entry {
+            crate::live::Entry::Tool {
+                name,
+                output,
+                running,
+                ..
+            } if name == THINKING => Some((entry_text(output).to_owned(), *running)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A recorded stream under `fixtures/thinking/`, one JSON value a line.
+#[cfg(test)]
+pub(crate) fn recorded(name: &str) -> Vec<Value> {
+    let path = format!("{}/fixtures/thinking/{name}", env!("CARGO_MANIFEST_DIR"));
+    std::fs::read_to_string(path)
+        .unwrap()
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #11552: Claude Code's thinking (stream-json, partial messages, as
+    /// `claude` 2.1.296 printed it on 2026-10-13 for "Is 9991 prime?")
+    /// streams into one thinking entry piece by piece; the finished block
+    /// closes it with the whole text, and nothing shows twice.
+    #[test]
+    fn claude_codes_thinking_streams_into_one_entry() {
+        let mut stream = Stream::default();
+        let mut events = Vec::new();
+        let mut open_while_streaming = false;
+        for line in recorded("claude-code-stream.jsonl") {
+            match line["type"].as_str() {
+                Some("stream_event") => {
+                    let event = event(line["event"].clone());
+                    events.extend(stream.thinking(&event).map(RuntimeEvent::Thinking));
+                    events.extend(stream.thought(&event));
+                    if let Some(text) = stream.partial(&event) {
+                        events.push(RuntimeEvent::Text(text));
+                    }
+                }
+                Some("assistant") => {
+                    for block in line["message"]["content"].as_array().into_iter().flatten() {
+                        if block["type"] == "thinking" {
+                            events.extend(stream.thoughts.block(block));
+                        }
+                    }
+                }
+                _ => {}
+            }
+            let (chat, _) = shown_in_chat(&events);
+            open_while_streaming |= thinking_entries(&chat).iter().any(|(_, running)| *running);
+        }
+        events.extend(stream.thoughts.end());
+        let (chat, pieces) = shown_in_chat(&events);
+        assert!(open_while_streaming, "the entry shows while it streams");
+        assert!(pieces.len() > 5, "{pieces:?}");
+        let entries = thinking_entries(&chat);
+        assert_eq!(entries.len(), 1, "{entries:?}");
+        assert!(entries[0].0.starts_with("Checking 9991"), "{entries:?}");
+        assert!(!entries[0].1);
+        // The thinking sits above the answer.
+        assert!(
+            matches!(chat.entries.last(), Some(crate::live::Entry::Assistant { text, .. }) if text.starts_with("No, 9991"))
+        );
+        assert!(!chat.thinking);
+    }
+
+    /// A thinking block that closed before its whole message arrived is
+    /// not shown again by that message.
+    #[test]
+    fn a_block_closed_first_is_not_repeated() {
+        let mut thoughts = ClaudeThoughts::default();
+        let mut events = thoughts.event(&json!({"type": "content_block_delta",
+            "delta": {"type": "thinking_delta", "thinking": "Look first."}}));
+        events.extend(thoughts.event(&json!({"type": "content_block_stop", "index": 0})));
+        assert!(
+            thoughts
+                .block(&json!({"type": "thinking", "thinking": "Look first."}))
+                .is_none()
+        );
+        let (chat, _) = shown_in_chat(&events);
+        assert_eq!(thinking_entries(&chat), [("Look first.".to_owned(), false)]);
+    }
 
     fn event(value: Value) -> SdkStreamEvent {
         SdkStreamEvent {

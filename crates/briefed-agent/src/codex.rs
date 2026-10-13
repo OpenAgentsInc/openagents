@@ -102,6 +102,7 @@ fn event_of(output: &Output) -> Value {
         Output::Model(model) => json!({"model": model}),
         Output::Text(text) => json!({"text": text}),
         Output::Thinking(thinking) => json!({"thinking": thinking}),
+        Output::ThinkingText(text) => json!({"thinking_text": text}),
         Output::Tool {
             name,
             input,

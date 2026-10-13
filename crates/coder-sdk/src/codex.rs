@@ -136,6 +136,11 @@ pub enum Output {
     Text(String),
     /// The model is thinking, or stopped.
     Thinking(bool),
+    /// A piece of the model's thinking as it streams: Codex's reasoning
+    /// summary (`item/reasoning/summaryTextDelta`), or its raw reasoning
+    /// (`item/reasoning/textDelta`) where the provider shows it. A summary
+    /// that arrives only whole, with its item, is sent whole.
+    ThinkingText(String),
     /// A tool call, as it starts (`running`) and as it ends.
     Tool {
         name: String,
@@ -653,6 +658,7 @@ impl Codex {
                     Some("reasoning") => {
                         if let Some(turn) = turn.as_deref_mut() {
                             turn.thinking = true;
+                            turn.thought = false;
                         }
                         emit(Output::Thinking(true));
                     }
@@ -666,6 +672,30 @@ impl Codex {
                         }
                     }
                     _ => {}
+                }
+            }
+            // The reasoning summary's words as they arrive; a new summary
+            // part reads as a new paragraph.
+            "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" => {
+                if let (Some(delta), Some(turn)) = (params["delta"].as_str(), turn.as_deref_mut())
+                    && !delta.is_empty()
+                {
+                    if !turn.thinking {
+                        turn.thinking = true;
+                        emit(Output::Thinking(true));
+                    }
+                    turn.thought = true;
+                    emit(Output::ThinkingText(delta.to_owned()));
+                }
+            }
+            "item/reasoning/summaryPartAdded" => {
+                if let Some(turn) = turn.as_deref_mut()
+                    && turn.thought
+                    && params["summaryIndex"]
+                        .as_i64()
+                        .is_some_and(|index| index > 0)
+                {
+                    emit(Output::ThinkingText("\n\n".into()));
                 }
             }
             "item/agentMessage/delta" => {
@@ -698,7 +728,22 @@ impl Codex {
                             }
                         }
                     }
-                    Some("reasoning") => emit(Output::Thinking(false)),
+                    Some("reasoning") => {
+                        // A summary that never streamed is said whole.
+                        let streamed = turn
+                            .as_deref_mut()
+                            .is_some_and(|turn| std::mem::take(&mut turn.thought));
+                        if !streamed {
+                            let summary = reasoning_text(&item);
+                            if !summary.is_empty() {
+                                emit(Output::ThinkingText(summary));
+                            }
+                        }
+                        if let Some(turn) = turn.as_deref_mut() {
+                            turn.thinking = false;
+                        }
+                        emit(Output::Thinking(false));
+                    }
                     _ => {}
                 }
                 if let Some((name, input)) = tool_of(&item) {
@@ -1024,9 +1069,33 @@ struct Turn {
     said: String,
     final_answer: Option<String>,
     thinking: bool,
+    /// The reasoning item under way streamed some of its words.
+    thought: bool,
     /// The message under way arrived in parts.
     streamed: bool,
     error: Option<String>,
+}
+
+/// A reasoning item's words: its summary parts, else its raw content,
+/// each part a paragraph.
+fn reasoning_text(item: &Value) -> String {
+    let parts = |key: &str| -> Vec<String> {
+        item[key]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|part| part.as_str().or_else(|| part["text"].as_str()))
+            .map(str::trim)
+            .filter(|part| !part.is_empty())
+            .map(str::to_owned)
+            .collect()
+    };
+    let summary = parts("summary");
+    if summary.is_empty() {
+        parts("content").join("\n\n")
+    } else {
+        summary.join("\n\n")
+    }
 }
 
 /// Reads one message; a line that isn't JSON is skipped.

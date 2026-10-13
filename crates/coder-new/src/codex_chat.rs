@@ -82,6 +82,22 @@ impl Chat {
         briefing: Option<crate::context::Briefing>,
         model: String,
     ) -> Self {
+        Self::start_on(None, cwd, tools, resume, newest, seed, briefing, model)
+    }
+
+    /// [`Chat::start`] on `program` when given, else the `codex` this
+    /// computer runs.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn start_on(
+        program: Option<PathBuf>,
+        cwd: PathBuf,
+        tools: crate::claude_tools::Tools,
+        resume: Option<String>,
+        newest: String,
+        seed: String,
+        briefing: Option<crate::context::Briefing>,
+        model: String,
+    ) -> Self {
         let (commands, receiver) = tokio::sync::mpsc::unbounded_channel();
         let (sender, events) = mpsc::channel();
         let (kill, killed) = tokio::sync::oneshot::channel();
@@ -91,6 +107,7 @@ impl Chat {
         }));
         let key = briefing.as_ref().map(crate::context::Briefing::key);
         let thread = Thread {
+            program,
             cwd: cwd.clone(),
             tools: tools.clone(),
             resume: resume.clone(),
@@ -208,6 +225,11 @@ impl Drop for Chat {
     }
 }
 
+/// Milliseconds since `since`.
+fn elapsed_ms(since: std::time::Instant) -> u64 {
+    u64::try_from(since.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
 fn lock(reading: &Mutex<Reading>) -> std::sync::MutexGuard<'_, Reading> {
     reading
         .lock()
@@ -216,6 +238,8 @@ fn lock(reading: &Mutex<Reading>) -> std::sync::MutexGuard<'_, Reading> {
 
 /// The process thread's side.
 struct Thread {
+    /// The `codex` to run, when not this computer's own.
+    program: Option<PathBuf>,
     cwd: PathBuf,
     tools: crate::claude_tools::Tools,
     resume: Option<String>,
@@ -285,6 +309,7 @@ impl Thread {
 
     async fn serve(self) {
         let Thread {
+            program,
             cwd,
             tools,
             resume,
@@ -305,7 +330,9 @@ impl Thread {
         if !crate::approval::tools_allowed() {
             return fail("This host refuses every tool, so Codex cannot work here.".into());
         }
-        let Some(program) = crate::codex::program() else {
+        // A named program is a real app-server, given its full time.
+        let named = program.is_some();
+        let Some(program) = program.or_else(crate::codex::program) else {
             return fail(crate::codex::NEEDS_LOGIN.into());
         };
         // Coder's tools, in process; what a background agent reports goes
@@ -329,7 +356,10 @@ impl Thread {
                 std::future::pending::<()>().await;
             }
         };
-        let launch = crate::codex::launch(program, &cwd, briefing.is_some());
+        let mut launch = crate::codex::launch(program, &cwd, briefing.is_some());
+        if named {
+            launch.start_wait = None;
+        }
         let hooks = crate::sdk_hooks::codex(&cwd);
         let mut codex = match Codex::spawn(&launch, hooks).await {
             Ok(codex) => codex,
@@ -398,6 +428,16 @@ impl Thread {
                     turn,
                     event: RuntimeEvent::Model(running_model.clone()),
                 });
+                // Codex's reasoning summary streams into a thinking entry;
+                // reasoning that shows no words says so once (#11552).
+                let mut thought = crate::claude_stream::Thought::default();
+                let mut reasoning = false;
+                // Each call's usage names the model it ran on and how long
+                // it took since the turn started or the call before ended
+                // (#11552).
+                let mut call_model = running_model.clone();
+                let mut call_started = std::time::Instant::now();
+                let mut first_text: Option<u64> = None;
                 let result = {
                     let mut emit = |output: Output| {
                         let event = match output {
@@ -405,9 +445,41 @@ impl Thread {
                                 let _ = events.send(Event::Session(id));
                                 return;
                             }
-                            Output::Model(model) => RuntimeEvent::Model(model),
-                            Output::Text(text) => RuntimeEvent::Text(text),
-                            Output::Thinking(on) => RuntimeEvent::Thinking(on),
+                            Output::Model(model) => {
+                                call_model.clone_from(&model);
+                                RuntimeEvent::Model(model)
+                            }
+                            Output::Text(text) => {
+                                if first_text.is_none() {
+                                    first_text = Some(elapsed_ms(call_started));
+                                }
+                                RuntimeEvent::Text(text)
+                            }
+                            Output::Thinking(true) => {
+                                reasoning = true;
+                                RuntimeEvent::Thinking(true)
+                            }
+                            Output::ThinkingText(text) => {
+                                for event in thought.piece(&text) {
+                                    let _ = events.send(Event::Runtime { turn, event });
+                                }
+                                return;
+                            }
+                            Output::Thinking(false) => {
+                                if thought.open() {
+                                    for event in thought.end(None) {
+                                        let _ = events.send(Event::Runtime { turn, event });
+                                    }
+                                    reasoning = false;
+                                    return;
+                                }
+                                if std::mem::take(&mut reasoning)
+                                    && let Some(event) = thought.hidden()
+                                {
+                                    let _ = events.send(Event::Runtime { turn, event });
+                                }
+                                RuntimeEvent::Thinking(false)
+                            }
                             Output::Tool {
                                 name,
                                 input,
@@ -422,14 +494,15 @@ impl Thread {
                             Output::Usage(usage) => {
                                 let last = &usage["last"];
                                 let round = RoundUsage {
-                                    model: String::new(),
+                                    model: call_model.clone(),
                                     prompt_tokens: last["inputTokens"].as_u64().unwrap_or(0),
                                     completion_tokens: last["outputTokens"].as_u64().unwrap_or(0),
                                     reasoning_tokens: last["reasoningOutputTokens"].as_u64(),
                                     cost: None,
-                                    milliseconds: 0,
-                                    first_token_ms: None,
+                                    milliseconds: elapsed_ms(call_started),
+                                    first_token_ms: first_text.take(),
                                 };
+                                call_started = std::time::Instant::now();
                                 used.prompt_tokens += round.prompt_tokens;
                                 used.completion_tokens += round.completion_tokens;
                                 used.total_tokens += round.prompt_tokens + round.completion_tokens;

@@ -761,3 +761,29 @@ fn a_website_that_knows_no_thinking_rows_gets_them_as_tool_rows() {
         [vec!["user", "thinking"], vec!["user", "tool"]]
     );
 }
+
+/// #11552: Coder now keeps the model's thinking as each step's
+/// `reasoning_content`; it syncs as a thinking row ahead of the reply,
+/// as the older thinking calls did.
+#[test]
+fn reasoning_content_syncs_as_a_thinking_row() {
+    let doc = document(json!([
+        {"step_id": 1, "source": "user", "message": "Is 9991 prime?"},
+        {"step_id": 2, "source": "agent", "message": "", "reasoning_content": "Checking 97 × 103."},
+        {"step_id": 3, "source": "agent", "message": "No: 97 × 103.", "reasoning_content": "  "},
+    ]));
+    let sent = upload(&doc, "Studio", &Screen::shapes());
+    let messages = sent.body["messages"].as_array().unwrap();
+    let rows: Vec<(&str, &str)> = messages
+        .iter()
+        .map(|m| (m["role"].as_str().unwrap(), m["text"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            ("user", "Is 9991 prime?"),
+            ("thinking", "Checking 97 × 103."),
+            ("assistant", "No: 97 × 103."),
+        ]
+    );
+}

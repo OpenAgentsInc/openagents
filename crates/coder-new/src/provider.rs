@@ -464,6 +464,18 @@ impl Provider {
             }
             let mut first = true;
             let mut partial = String::new();
+            // The model's reasoning, when the provider streams it, goes
+            // into a thinking entry as it arrives (#11552).
+            let thought = std::sync::Mutex::new(crate::claude_stream::Thought::default());
+            let mut reasoning_sink = |piece: &str| {
+                let shown = thought
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .piece(piece);
+                for event in shown {
+                    event_callback(event);
+                }
+            };
             let mut sink = |delta: &str| {
                 if delta.is_empty() {
                     return;
@@ -488,13 +500,21 @@ impl Provider {
                             role: message["role"].as_str()?.into(),
                             content: message["content"].as_str().or_else(|| message["content"][0]["text"].as_str())?.into(),
                         })).collect();
-                        self.chat.stream_with_model(&request, &mut sink, model_callback).await.map(|reply| openrouter::ToolStreamed {reply, calls: vec![]})
+                        self.chat.stream_with_reasoning(&request, &mut sink, model_callback, &mut reasoning_sink).await.map(|reply| openrouter::ToolStreamed {reply, calls: vec![]})
                     } else {
-                        self.chat.stream_tools_for_repair(&request, &model_history, &definitions, &mut sink, model_callback).await
+                        self.chat.stream_tools_for_repair_with_reasoning(&request, &model_history, &definitions, &mut sink, model_callback, &mut reasoning_sink).await
                     }
                 } => result,
                 () = canceled(cancel) => return Err("The OpenRouter request was canceled; whether it was billed is unknown.".into()),
             };
+            drop(reasoning_sink);
+            for event in thought
+                .into_inner()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .end(None)
+            {
+                event_callback(event);
+            }
             let streamed = match result {
                 Ok(streamed) => streamed,
                 Err(error) => {

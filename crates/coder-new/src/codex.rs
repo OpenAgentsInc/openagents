@@ -261,14 +261,31 @@ pub fn recheck() {
         .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
 }
 
+/// Codex's reasoning summary, asked for when the person's own config
+/// names none (#11552): without it Codex reasons in silence and the chat
+/// shows `Thinking` with no words.
+pub const REASONING_SUMMARY: &str = "model_reasoning_summary=\"auto\"";
+
+/// Whether the person's Codex config (`config.toml` under [`home`]) picks
+/// a reasoning summary itself, `none` included.
+fn summary_configured(home: Option<&Path>) -> bool {
+    home.and_then(|home| std::fs::read_to_string(home.join("config.toml")).ok())
+        .and_then(|text| text.parse::<toml::Table>().ok())
+        .is_some_and(|table| table.contains_key("model_reasoning_summary"))
+}
+
 /// How a chat's app-server starts: the person's own config and login, with
 /// `AGENTS.md` reading off when the chat carries a briefing (#11473), the
+/// reasoning summary on unless the person's config says otherwise, the
 /// engine mark, and no inherited API credentials.
 #[must_use]
 pub fn launch(program: PathBuf, cwd: &Path, briefed: bool) -> coder_sdk::codex::Launch {
     let mut config = Vec::new();
     if briefed {
         config.push("project_doc_max_bytes=0".to_owned());
+    }
+    if !summary_configured(home().as_deref()) {
+        config.push(REASONING_SUMMARY.to_owned());
     }
     let (mark, value) = coder_delegate::delegate::Agent::Codex.engine_mark();
     let mut env = vec![(mark.to_owned(), value.to_owned())];
@@ -307,7 +324,8 @@ pub fn observe_limits(limits: &Value, now: u64) {
 }
 
 /// Codex's windows that have not reset yet: (minutes the window spans,
-/// percent used).
+/// percent used). A window Codex leaves out (`null`, as `secondary` is on
+/// a plan with one window) or reports without its length is not one.
 #[must_use]
 pub fn windows(now: u64) -> Vec<(u64, f64)> {
     let held = PLAN
@@ -320,14 +338,10 @@ pub fn windows(now: u64) -> Vec<(u64, f64)> {
     ["primary", "secondary"]
         .iter()
         .filter_map(|key| {
-            let window = limits.get(*key)?;
+            let window = limits.get(*key).filter(|window| window.is_object())?;
+            let minutes = window["windowDurationMins"].as_u64().filter(|m| *m > 0)?;
             let resets = window["resetsAt"].as_u64().unwrap_or(u64::MAX);
-            (resets > now).then(|| {
-                (
-                    window["windowDurationMins"].as_u64().unwrap_or(0),
-                    window["usedPercent"].as_f64().unwrap_or(0.0),
-                )
-            })
+            (resets > now).then(|| (minutes, window["usedPercent"].as_f64().unwrap_or(0.0)))
         })
         .collect()
 }
@@ -339,7 +353,8 @@ pub fn at_limit(now: u64) -> bool {
 }
 
 /// The windows as the rail shows them beside Codex's name: "5h 12% · week
-/// 15%". Empty before Codex reported any.
+/// 15%". Empty before Codex reported any. Codex rounds each window to a
+/// whole percent, so a little use reads "<1%", not a flat 0%.
 #[must_use]
 pub fn windows_text(now: u64) -> String {
     windows(now)
@@ -352,7 +367,11 @@ pub fn windows_text(now: u64) -> String {
                 m if m % 60 == 0 => format!("{}h", m / 60),
                 m => format!("{m}m"),
             };
-            format!("{span} {}%", used.round() as u64)
+            if *used < 0.5 {
+                format!("{span} <1%")
+            } else {
+                format!("{span} {}%", used.round() as u64)
+            }
         })
         .collect::<Vec<_>>()
         .join(" · ")
@@ -405,6 +424,22 @@ mod tests {
             1_000,
         );
         assert_eq!(windows_text(1_000), "5h 12% · week 100%");
+        // #11552: what codex-cli 0.162.1 sent on a Pro plan on 2026-10-13
+        // (`account/rateLimits/updated`): one weekly window, `secondary`
+        // null. The null window is no "0d 0%", and a rounded 0 is "<1%".
+        observe_limits(
+            &serde_json::json!({"limitId": "codex", "limitName": null,
+                "primary": {"usedPercent": 0, "windowDurationMins": 10080, "resetsAt": 1_792_480_941},
+                "secondary": null, "planType": "pro"}),
+            1_791_916_188,
+        );
+        assert_eq!(windows_text(1_791_916_188), "week <1%");
+        assert!(!at_limit(1_791_916_188));
+        observe_limits(
+            &serde_json::json!({"primary": {"usedPercent": 12.4, "windowDurationMins": 300, "resetsAt": 2_000},
+                "secondary": {"usedPercent": 100, "windowDurationMins": 10_080, "resetsAt": 9_000}}),
+            1_000,
+        );
         assert!(at_limit(1_000));
         // A window past its reset is gone.
         assert_eq!(windows_text(5_000), "week 100%");
@@ -423,5 +458,22 @@ mod tests {
                 .contains(&"project_doc_max_bytes=0".to_owned())
         );
         assert!(!launch.args().iter().any(|arg| arg.contains("bypass")));
+    }
+
+    /// #11552: Codex's reasoning summary is asked for unless the person's
+    /// own config picks one.
+    #[test]
+    fn the_reasoning_summary_is_asked_for_unless_configured() {
+        let home = tempfile::tempdir().unwrap();
+        assert!(!summary_configured(Some(home.path())));
+        assert!(!summary_configured(None));
+        std::fs::write(home.path().join("config.toml"), "model = \"gpt-6.1-sol\"\n").unwrap();
+        assert!(!summary_configured(Some(home.path())));
+        std::fs::write(
+            home.path().join("config.toml"),
+            "model_reasoning_summary = \"concise\"\n",
+        )
+        .unwrap();
+        assert!(summary_configured(Some(home.path())));
     }
 }

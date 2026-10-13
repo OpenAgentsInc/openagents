@@ -355,6 +355,16 @@ pub fn upload(document: &Value, computer: &str, screen: &Screen) -> Upload {
                 messages.push(json!({"role": "user", "text": screened(text)}));
             }
             Some("agent") => {
+                // The model's thinking, kept as the step's reasoning.
+                if let Some(reasoning) = step
+                    .get("reasoning_content")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|reasoning| !reasoning.is_empty())
+                {
+                    messages
+                        .push(json!({"role": THINKING, "text": screened(reasoning.to_owned())}));
+                }
                 if !text.trim().is_empty() {
                     messages.push(json!({"role": "assistant", "text": screened(text)}));
                 }

@@ -46,6 +46,10 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
                     step
                 }
             }
+            // The model's thinking is the step's reasoning (#11552).
+            Entry::Tool { name, output, .. } if name == crate::claude_stream::THINKING => {
+                Step::thought(crate::claude_stream::entry_text(output))
+            }
             Entry::Tool {
                 name,
                 input,
@@ -599,6 +603,18 @@ pub fn from_document(value: &Value) -> Result<Chat, String> {
         match step.get("source").and_then(Value::as_str) {
             Some("user") => chat.entries.push(Entry::User(text)),
             Some("agent") => {
+                if let Some(reasoning) = step
+                    .get("reasoning_content")
+                    .and_then(Value::as_str)
+                    .filter(|reasoning| !reasoning.trim().is_empty())
+                {
+                    chat.entries.push(Entry::Tool {
+                        name: crate::claude_stream::THINKING.into(),
+                        input: Value::Null,
+                        output: json!({ "text": reasoning }),
+                        running: false,
+                    });
+                }
                 if !text.is_empty() {
                     chat.entries.push(Entry::Assistant {
                         elapsed_ms: step
@@ -817,6 +833,30 @@ fn text(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #11552: the model's thinking is saved and exported as the step's
+    /// `reasoning_content`, and reads back as a thinking entry.
+    #[test]
+    fn thinking_is_saved_as_reasoning_content() {
+        let mut chat = Chat::default();
+        chat.entries.push(Entry::User("Is 9991 prime?".into()));
+        chat.think("Checking ");
+        chat.think("97 × 103.");
+        chat.partial.push_str("No: 97 × 103.");
+        chat.finish_partial();
+        let document = document(&chat, "test", crate::codex::MODEL, Path::new("/workspace"));
+        let steps = document["steps"].as_array().unwrap();
+        assert_eq!(steps[1]["reasoning_content"], "Checking 97 × 103.");
+        assert!(steps[1].get("tool_calls").is_none(), "{}", steps[1]);
+        let restored = from_document(&document).unwrap();
+        assert!(
+            matches!(&restored.entries[1], Entry::Tool { name, output, running: false, .. }
+            if name == crate::claude_stream::THINKING && output["text"] == "Checking 97 × 103.")
+        );
+        assert!(
+            matches!(&restored.entries[2], Entry::Assistant { text, .. } if text == "No: 97 × 103.")
+        );
+    }
 
     /// A saved Codex chat keeps its thread and its harness (#11510), so a
     /// follow-up continues the same thread.

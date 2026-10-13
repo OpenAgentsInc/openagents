@@ -955,6 +955,9 @@ pub(crate) async fn read_turn(
                 if let Some(thinking) = stream.thinking(&event) {
                     emit(RuntimeEvent::Thinking(thinking));
                 }
+                for thought in stream.thought(&event) {
+                    emit(thought);
+                }
                 if let Some(text) = stream.partial(&event) {
                     if first_text_ms.is_none() {
                         first_text_ms = Some(elapsed_ms(started));
@@ -1024,6 +1027,11 @@ pub(crate) async fn read_turn(
                             reply.text.push_str(text);
                             if !streamed {
                                 emit(RuntimeEvent::Text(text.to_owned()));
+                            }
+                        }
+                        Some("thinking") if parent.is_none() => {
+                            if let Some(thinking) = stream.thoughts.block(block) {
+                                emit(thinking);
                             }
                         }
                         Some("thinking") => {
@@ -1146,6 +1154,9 @@ pub(crate) async fn read_turn(
                 }
             }
             Ok(SdkMessage::Result(result)) => {
+                for thought in stream.thoughts.end() {
+                    emit(thought);
+                }
                 if !keep {
                     let _ = query.kill().await;
                 }

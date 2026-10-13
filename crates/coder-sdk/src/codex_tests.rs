@@ -830,3 +830,117 @@ async fn a_rewritten_command_is_sent_back_to_run_as_rewritten() {
         seen.steered[0]
     );
 }
+
+/// A recorded turn, `fixtures/codex/NAME.jsonl`: what `codex app-server`
+/// (codex-cli 0.162.1) sent on 2026-10-13 for "Is 9991 prime?", the ids
+/// renamed to the recorded server's.
+fn recorded(name: &str) -> Script {
+    let path = format!("{}/fixtures/codex/{name}.jsonl", env!("CARGO_MANIFEST_DIR"));
+    std::fs::read_to_string(path)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
+}
+
+/// The thinking a turn streamed, and whether `Thinking` was on when each
+/// piece arrived.
+fn thoughts(outputs: &[Output]) -> (String, bool) {
+    let mut on = false;
+    let mut always_on = true;
+    let mut text = String::new();
+    for output in outputs {
+        match output {
+            Output::Thinking(now) => on = *now,
+            Output::ThinkingText(piece) => {
+                always_on &= on;
+                text.push_str(piece);
+            }
+            _ => {}
+        }
+    }
+    (text, always_on)
+}
+
+/// The owner's "no thinking on Codex": Codex's reasoning summary streams
+/// as `item/reasoning/summaryTextDelta` and reaches the host piece by
+/// piece, with `Thinking` on while it does and off before the answer.
+#[tokio::test]
+async fn the_reasoning_summary_streams_as_thinking() {
+    let (mut codex, _seen, _task) = server(vec![recorded("reasoning-summary")]);
+    open(&mut codex).await;
+    let mut outputs = Vec::new();
+    let ended = codex
+        .turn("Is 9991 prime?", None, None, &mut |output| {
+            outputs.push(output)
+        })
+        .await
+        .unwrap();
+    assert_eq!(ended.status, "completed");
+    let pieces = outputs
+        .iter()
+        .filter(|output| matches!(output, Output::ThinkingText(_)))
+        .count();
+    assert!(pieces > 10, "streamed in pieces, not whole: {pieces}");
+    let (text, always_on) = thoughts(&outputs);
+    assert!(always_on);
+    assert!(text.starts_with("**Verifying a multiplication**"), "{text}");
+    assert!(text.contains("97 times 103"));
+    // Thinking stops before the first word of the answer.
+    let first_text = outputs
+        .iter()
+        .position(|output| matches!(output, Output::Text(_)))
+        .unwrap();
+    let last_off = outputs
+        .iter()
+        .rposition(|output| *output == Output::Thinking(false))
+        .unwrap();
+    assert!(last_off < first_text);
+    assert!(!ended.text.contains("Verifying"));
+}
+
+/// A reasoning item with no summary (Codex's default, or a short think)
+/// shows `Thinking` and no words; a summary that came only with the
+/// finished item is said whole.
+#[tokio::test]
+async fn hidden_reasoning_has_no_words_and_a_whole_summary_is_said_once() {
+    let (mut codex, _seen, _task) = server(vec![recorded("reasoning-hidden")]);
+    open(&mut codex).await;
+    let mut outputs = Vec::new();
+    codex
+        .turn("Is 9991 prime?", None, None, &mut |output| {
+            outputs.push(output)
+        })
+        .await
+        .unwrap();
+    assert!(outputs.contains(&Output::Thinking(true)));
+    assert_eq!(thoughts(&outputs).0, "");
+
+    let whole = vec![
+        note(
+            "item/started",
+            json!({"item": {"type": "reasoning", "id": "rs-1", "summary": [], "content": []}}),
+        ),
+        note(
+            "item/completed",
+            json!({"item": {"type": "reasoning", "id": "rs-1", "summary": ["**Plan**\n\nCheck 97.", "Then answer."], "content": []}}),
+        ),
+    ]
+    .into_iter()
+    .chain(message("turn-1", "Composite."))
+    .chain([completed("turn-1", "completed")])
+    .collect();
+    let (mut codex, _seen, _task) = server(vec![whole]);
+    open(&mut codex).await;
+    let mut outputs = Vec::new();
+    codex
+        .turn("Is 9991 prime?", None, None, &mut |output| {
+            outputs.push(output)
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        thoughts(&outputs).0,
+        "**Plan**\n\nCheck 97.\n\nThen answer."
+    );
+}

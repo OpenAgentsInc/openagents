@@ -1680,6 +1680,7 @@ fn delegate(
                     RuntimeEvent::Usage(usage) => app.live.round(*usage),
                     RuntimeEvent::Harness(run) => app.live.harness = Some(*run),
                     RuntimeEvent::Thinking(on) => app.live.thinking = on,
+                    RuntimeEvent::ThinkingText(text) => app.live.think(&text),
                     RuntimeEvent::Text(text) => {
                         app.live.text_streamed = true;
                         app.live.partial.push_str(&text);
@@ -1717,6 +1718,7 @@ fn delegate(
         }
     };
     app.live.busy = false;
+    app.live.close_thinking();
     app.live.thinking = false;
     let output = match result {
         Ok(output) => output,
@@ -1770,6 +1772,7 @@ fn runtime_value(event: &RuntimeEvent) -> Value {
             "duration_ms":usage.milliseconds,"first_token_ms":usage.first_token_ms}),
         RuntimeEvent::Harness(run) => json!({"event":"harness","harness":run}),
         RuntimeEvent::Thinking(on) => json!({"event":"thinking","on":on}),
+        RuntimeEvent::ThinkingText(text) => json!({"event":"thinking_delta","text":text}),
         RuntimeEvent::Text(text) => json!({"event":"delta","text":text}),
         RuntimeEvent::Model(model) => json!({"event":"model","model":model}),
         RuntimeEvent::Progress { step, complete } => {

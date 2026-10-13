@@ -548,6 +548,7 @@ impl App {
             bundled_runtime::RuntimeEvent::Usage(usage) => child.chat.round(*usage),
             bundled_runtime::RuntimeEvent::Harness(run) => child.chat.harness = Some(*run),
             bundled_runtime::RuntimeEvent::Thinking(on) => child.chat.thinking = on,
+            bundled_runtime::RuntimeEvent::ThinkingText(text) => child.chat.think(&text),
             bundled_runtime::RuntimeEvent::Text(text) => child.chat.partial.push_str(&text),
             bundled_runtime::RuntimeEvent::Model(model) => {
                 child.chat.partial_model = live::model_slug(&model)
@@ -1162,7 +1163,13 @@ impl App {
             live::Update::Thinking { on, .. } if self.live.busy => {
                 self.live.thinking = on;
             }
+            live::Update::ThinkingText { text, .. } if self.live.busy => {
+                self.live.think(&text);
+                self.scroll_main_to_end();
+            }
             live::Update::Delta { text, .. } if self.live.busy => {
+                // The rail says `Thinking` only while thinking streams.
+                self.live.thinking = false;
                 self.live.text_streamed = true;
                 self.live.partial.push_str(&text);
                 self.scroll_main_to_end();
@@ -1190,6 +1197,7 @@ impl App {
             live::Update::Finished { result, .. } if self.live.busy => {
                 self.live.busy = false;
                 self.live.thinking = false;
+                self.live.close_thinking();
                 let text_streamed = std::mem::take(&mut self.live.text_streamed);
                 if let Some(id) = self.active_delegation.take() {
                     if let Some(child) = self.delegations.iter_mut().find(|child| child.id == id) {

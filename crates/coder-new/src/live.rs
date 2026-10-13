@@ -264,7 +264,45 @@ impl Chat {
         self.open_tools.retain(|index| *index < self.entries.len());
     }
 
+    /// A piece of the model's thinking as it streams: it joins the running
+    /// thinking entry, or opens one. The finished block's entry closes it.
+    pub fn think(&mut self, piece: &str) {
+        if let Some(Entry::Tool {
+            name,
+            output,
+            running: true,
+            ..
+        }) = self.entries.last_mut()
+            && name == crate::claude_stream::THINKING
+        {
+            let mut text = crate::claude_stream::entry_text(output).to_owned();
+            text.push_str(piece);
+            *output = serde_json::json!({ "text": text });
+            return;
+        }
+        self.finish_partial();
+        self.entries.push(Entry::Tool {
+            name: crate::claude_stream::THINKING.into(),
+            input: serde_json::Value::Null,
+            output: serde_json::json!({ "text": piece }),
+            running: true,
+        });
+    }
+
+    /// Thinking still streaming when a turn ends keeps what it said.
+    pub fn close_thinking(&mut self) {
+        for entry in &mut self.entries {
+            if let Entry::Tool { name, running, .. } = entry
+                && *running
+                && name == crate::claude_stream::THINKING
+            {
+                *running = false;
+            }
+        }
+    }
+
     pub fn stop_tools(&mut self, reason: &str) {
+        self.close_thinking();
         for entry in &mut self.entries {
             if let Entry::Tool {
                 running, output, ..
@@ -578,6 +616,11 @@ pub enum Update {
         id: u64,
         on: bool,
     },
+    /// A piece of the model's thinking, as it streams.
+    ThinkingText {
+        id: u64,
+        text: String,
+    },
     Model {
         id: u64,
         model: String,
@@ -606,6 +649,7 @@ impl Update {
             | Self::Usage { id, .. }
             | Self::Harness { id, .. }
             | Self::Thinking { id, .. }
+            | Self::ThinkingText { id, .. }
             | Self::Model { id, .. }
             | Self::OpenCodeSession { id, .. }
             | Self::Finished { id, .. } => *id,
@@ -1090,6 +1134,7 @@ impl Background {
                     RuntimeEvent::Usage(usage) => Update::Usage { id, usage: *usage },
                     RuntimeEvent::Harness(run) => Update::Harness { id, run: *run },
                     RuntimeEvent::Thinking(on) => Update::Thinking { id, on },
+                    RuntimeEvent::ThinkingText(text) => Update::ThinkingText { id, text },
                     _ => return,
                 };
                 app.apply_update(update);
@@ -1310,6 +1355,9 @@ fn run_with_provider(
             },
             RuntimeEvent::Thinking(on) => {
                 let _ = sender.send(Update::Thinking { id, on });
+            },
+            RuntimeEvent::ThinkingText(text) => {
+                let _ = sender.send(Update::ThinkingText { id, text });
             },
             RuntimeEvent::Harness(run) => {
                 let _ = sender.send(Update::Harness { id, run: *run });
@@ -1897,6 +1945,9 @@ async fn local_turn(
     let cancel = cancel.clone();
     let mut events = |event| match event {
         RuntimeEvent::Text(text) => text_callback(&execution.redact_text(&text)),
+        RuntimeEvent::ThinkingText(text) => {
+            event_callback(RuntimeEvent::ThinkingText(execution.redact_text(&text)));
+        }
         RuntimeEvent::Model(model) => model_callback(&model),
         RuntimeEvent::Tool {
             name,
