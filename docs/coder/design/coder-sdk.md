@@ -369,7 +369,7 @@ balance, offers in the route contract); the SDK would call them from a
 | Coder loop | `microcoder_loop::run` (`Env::hook`, `microcoder_loop::hooks`), used by Coder's live loop and Microcoder | native for SessionStart, UserPromptSubmit, Pre/PostToolUse, PostToolBatch, Stop, PostCompact, SessionEnd; none for the subagent, PreCompact and FileChanged events it never fires | built (#11497): the floors are the loop's hook (`sdk_hooks::coder_loop`); Microcoder's own places fire with no hooks yet |
 | Scripted | recorded sessions | native | first, for tests |
 | Codex | `codex app-server` (`coder_sdk::codex`); `exec` with command hooks as the fallback | app-server: native for SessionStart, UserPromptSubmit, PreToolUse (Codex asks before each command and patch under `approval_policy = "untrusted"`), Stop (a block starts the next turn on the same thread) and SessionEnd; emulated otherwise. exec: command (`PreToolUse`), emulated otherwise | built (#11510): approvals answered by the session's `PreToolUse` composition, an ask answered on the approval card while Codex waits, Coder's tools as dynamic tools in process |
-| ACP agents (Cursor, Devin, OpenCode, Grok) | `acp-client` | permission requests native; the rest emulated | later |
+| ACP agents (OpenCode, Grok Build, Devin, Cursor, Amp, Goose, the rest) | `acp-client` (`coder_sdk::acp`) | per agent, from live runs: OpenCode asking before every tool is native for `PreToolUse`; Grok Build's plugin hooks and Devin's config hooks run the bridge, the command tier; Cursor and the rest stay emulated before a tool. Every agent: native for SessionStart, UserPromptSubmit, Stop and SessionEnd, which the host drives; emulated otherwise | built (#11508) |
 
 Built (#11510): Codex on `codex app-server` (`coder_sdk::codex`).
 Threads open under `approval_policy = "untrusted"` with full disk access,
@@ -392,6 +392,38 @@ it runs. A background Codex agent with full access uses app-server too;
 `exec` with the command hook stays the fallback where app-server won't
 start, and for read-only and workspace-write runs, whose sandbox Codex
 enforces itself.
+
+Built (#11508): every ACP agent the ACP Subagents plugin delegates to runs
+on `coder_sdk::acp`, with the same hooks as Codex (`sdk_hooks::acp`: the
+fence, the floors, the gate and conditional context when Token savers is
+on, the command and plugin hooks, the monitor). Each agent is started so
+its tools reach those hooks first where it allows it, and the tier table
+(`coder_delegate::session::acp_backend`) records only what was seen live
+on 2026-10-13:
+
+| Agent | Started with | Before a tool | Seen live |
+|---|---|---|---|
+| OpenCode 1.18.26 | `permission` set to ask (`OPENCODE_CONFIG_CONTENT`, the person's other settings kept) | native: it asks before every read, command and edit, and each ask is answered by the hooks; a read's ask names no file, so a secret file read that way is not judged | yes |
+| Grok Build | a `--plugin-dir` plugin whose `PreToolUse` hook runs `coder coder-hook --format acp` | command: the hook runs before every tool, reads included, and Grok obeys a denial and shows the model its reason | yes |
+| Devin 3000.11.3 | `--config` with the person's own configuration plus that hook | command, as for Grok, in any of its modes | yes |
+| Cursor | its `agent` mode | emulated: it asks before a command outside its allowlist, and those asks are answered by the hooks, but it edits and reads without asking | yes |
+| Amp, Goose, Kimi, Oh My Pi, Hermes, Codex's ACP adapter | as before | emulated; their asks are answered by the hooks | not installed here |
+
+Claude Code delegated from the plugin runs `claude -p` (the Claude Code
+backend), not ACP.
+
+On an agent that can't be stopped before a tool, a hook that must deny
+there (the floors, the fence) is reported before the run, in plain words,
+on the agent tray and in the delegation's `checks` ("Cursor doesn't ask
+before every step, so Coder can't hold a deploy, a merge, a secret or a
+payment for you, or keep it out of the shared checkout before it acts.
+The steps it asks about are still checked."); the hooks stay registered
+and answer the asks it does send. A floor's ask waits on the approval card
+for an agent that asks; through the bridge it is held (nobody can answer
+from inside the agent), as for Codex `exec`. ACP's refusal carries no
+reason, so a refused step's reason is sent as the next prompt in the same
+session; a `Stop` block's reason is sent the same way, a few times at
+most. The chat's briefing goes ahead of the task.
 
 ## Open questions
 
@@ -419,5 +451,5 @@ Tracked on project 22.
 | 7 | One Coder tools MCP server for every harness | [#11501](https://github.com/OpenAgentsInc/openagents/issues/11501) |
 
 Built since: the Codex backend on app-server (#11510; #11493 described
-its permission half). Deferred, filed when needed: an ACP backend at the
-emulated tier, and paid plugins.
+its permission half), and the ACP backend with per-agent tiers (#11508).
+Deferred, filed when needed: paid plugins.

@@ -716,11 +716,13 @@ pub const FLOORS_POLICY: &str = "coder-floors-v1";
 #[must_use]
 pub fn asker(
     cwd: PathBuf,
-    agent: fn() -> String,
+    agent: impl Fn() -> String + Send + Sync + 'static,
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
 ) -> coder_sdk::Asker {
+    let agent = Arc::new(agent);
     Arc::new(move |applied: coder_sdk::Applied| {
         let cwd = cwd.clone();
+        let agent = agent.clone();
         let cancel = cancel.clone().unwrap_or_default();
         Box::pin(async move {
             let tool = applied.tool.clone().unwrap_or_default();
@@ -732,7 +734,7 @@ pub fn asker(
                     other => other,
                 };
             }
-            match hold(&agent(), &tool, &applied.input, &cwd, &cancel).await {
+            match hold(&(*agent)(), &tool, &applied.input, &cwd, &cancel).await {
                 Ok(()) => coder_sdk::Permission::NoOpinion,
                 Err(reason) => coder_sdk::Permission::Deny { reason },
             }
@@ -764,6 +766,16 @@ pub fn codex_args(program: &Path) -> Vec<String> {
         ),
         "--dangerously-bypass-hook-trust".into(),
     ]
+}
+
+/// The command an agent's own hooks run for Coder's bridge (#11508):
+/// `program coder-hook --format acp`.
+#[must_use]
+pub fn acp_bridge_command(program: &Path) -> String {
+    format!(
+        "{} {BRIDGE_COMMAND} --format acp",
+        shell_quote(&program.display().to_string())
+    )
 }
 
 fn shell_quote(text: &str) -> String {

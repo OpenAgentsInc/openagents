@@ -830,6 +830,21 @@ pub async fn acp_briefed(
     if cursor {
         cursor_signed_in(&program, &environment, cwd).await?;
     }
+    // Coder's hooks on the agent (#11508): the fence, the floors and the
+    // rest answer its asks, and an agent that runs its own hooks runs
+    // Coder's bridge before every tool. What it can't be stopped from is
+    // said plainly.
+    let (hooks, refused) = crate::sdk_hooks::acp(cwd, &agent.id, &agent.name, cancel);
+    let checks = crate::sdk_hooks::unkept(&agent.name, &refused);
+    let _gate = acp_gate(agent, &hooks, &mut arguments, &mut environment)?;
+    if let Some(note) = &checks {
+        emit(RuntimeEvent::Text(format!("{note}\n\n")));
+    }
+    let briefed = briefing
+        .filter(|briefing| !briefing.trim().is_empty())
+        .map(|briefing| briefed_task(briefing, task))
+        .filter(|briefed| briefed.len() <= TEXT_MAX);
+    let task = briefed.as_deref().unwrap_or(task);
     let opening = Opening {
         spec: acp_client::process::Spec {
             program,
@@ -906,37 +921,89 @@ pub async fn acp_briefed(
                 false,
                 "The agent's asks to change files are refused.",
             ),
-            (None, false) => permissions(false, false, "The agent's asks are approved."),
+            (None, false) => permissions(
+                false,
+                false,
+                "The agent's asks are answered by Coder's checks.",
+            ),
         };
         let id = session.id().to_owned();
         let model = session.opened.model().map(str::to_owned);
         if let Some(model) = &model {
             emit(RuntimeEvent::Model(model.clone()));
         }
+        // The host's turn events (#11508): SessionStart and
+        // UserPromptSubmit add their context ahead of the task, or refuse
+        // it.
+        let mut turns = coder_sdk::acp::Turns::new(hooks.clone());
+        let prompt = match turns.prompt(cwd, task).await {
+            Ok(prompt) => prompt,
+            Err(reason) => {
+                session.close(Duration::from_secs(2)).await;
+                return Err(format!("A Coder check refused the task: {reason}"));
+            }
+        };
+        let refusals = Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut handler = AcpEvents {
             emit: &mut *emit,
             text: String::new(),
             tools: BTreeMap::new(),
             read_only,
+            hooks: Some(hooks.clone()),
+            cwd: cwd.to_path_buf(),
+            seen: BTreeMap::new(),
+            refusals: Arc::clone(&refusals),
         };
-        let result = session
+        let mut result = session
             .prompt(
-                task,
+                &prompt,
                 Duration::from_secs(120),
                 &canceled,
                 Duration::from_secs(2),
                 &mut handler,
             )
             .await;
+        // A refused step is told to the agent (ACP's refusal carries no
+        // reason), and a Stop hook's block sends its reason, each as the
+        // next prompt in the same session, a few times at most.
+        let mut follow_ups = 0;
+        while result.is_ok() && follow_ups < coder_sdk::acp::MAX_CONTINUED && !canceled() {
+            let refused: Vec<String> = std::mem::take(
+                &mut *refusals
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            );
+            let next = if refused.is_empty() {
+                turns.stopped(&handler.text).await
+            } else {
+                Some(refused_steps(&refused))
+            };
+            let Some(next) = next else { break };
+            follow_ups += 1;
+            result = session
+                .prompt(
+                    &next,
+                    Duration::from_secs(120),
+                    &canceled,
+                    Duration::from_secs(2),
+                    &mut handler,
+                )
+                .await;
+        }
         let text = handler.text;
         let worked = !handler.tools.is_empty() || !text.is_empty();
         let group_clear = session.close(Duration::from_secs(2)).await;
+        turns.end("close").await;
         let error = match result {
             Ok(reply) => {
                 let mut result = json!({"session":id,"reply":text,"model":model,"stop_reason":reply.stop_reason.as_str(),"usage":reply.usage,"group_clear":group_clear,"attempts":attempt});
                 if let Some(note) = &checked.note {
                     result["update"] = json!(note);
                 }
+                result["checks"] = json!({
+                    "before_each_step": checks.is_none(),
+                    "note": checks.clone().unwrap_or_else(|| format!("Every step {} takes goes through Coder's checks first.", agent.name)),
+                });
                 return Ok(with(result, access));
             }
             Err(error) => error,
@@ -984,6 +1051,105 @@ pub async fn acp_briefed(
             group_clear,
         ));
     }
+}
+
+/// What a session keeps alive so an agent's own hooks reach Coder's
+/// (#11508): the socket the bridge asks, and the folder holding the plugin
+/// or configuration that names the bridge.
+#[derive(Default)]
+struct AcpGate {
+    _host: Option<coder_sdk::bridge::Host>,
+    _files: Option<tempfile::TempDir>,
+}
+
+/// How long an agent's hook waits for the bridge, in seconds: past the
+/// bridge's own wait for the host, so the bridge always answers.
+const ACP_HOOK_TIMEOUT: u64 = 600;
+
+/// Starts `agent` so every tool reaches the session's hooks first, where
+/// it can (#11508): OpenCode asks before every tool; Grok Build runs the
+/// bridge as a `--plugin-dir` plugin's hook; Devin runs it from the
+/// configuration it is started with, the person's own plus that hook.
+///
+/// # Errors
+/// The bridge, its socket or its files can't be set up: the agent would
+/// run unchecked, so it doesn't run.
+fn acp_gate(
+    agent: &AcpAgent,
+    hooks: &coder_sdk::Hooks,
+    arguments: &mut Vec<String>,
+    environment: &mut Vec<(String, String)>,
+) -> Result<AcpGate, String> {
+    let set = |environment: &mut Vec<(String, String)>, name: &str, value: String| {
+        environment.retain(|(existing, _)| existing != name);
+        environment.push((name.to_owned(), value));
+    };
+    if agent.id == "opencode" {
+        let existing = environment
+            .iter()
+            .find(|(name, _)| name == acp_client::opencode::CONFIG_VAR)
+            .map(|(_, value)| value.clone());
+        set(
+            environment,
+            acp_client::opencode::CONFIG_VAR,
+            acp_client::opencode::asking_config(existing.as_deref()),
+        );
+        return Ok(AcpGate::default());
+    }
+    if !coder_sdk::acp::hooked(&agent.id) {
+        return Ok(AcpGate::default());
+    }
+    let failed =
+        |why: String| format!("Coder couldn't set up its checks for {}: {why}", agent.name);
+    let program = std::env::current_exe().map_err(|error| failed(error.to_string()))?;
+    let command = crate::floors::acp_bridge_command(&program);
+    let host = coder_sdk::bridge::Host::start(hooks.runner())
+        .map_err(|error| failed(error.to_string()))?;
+    set(
+        environment,
+        coder_sdk::bridge::SOCKET_VAR,
+        host.path().display().to_string(),
+    );
+    let files = tempfile::Builder::new()
+        .prefix("coder-acp-")
+        .tempdir()
+        .map_err(|error| failed(error.to_string()))?;
+    if agent.id == "grok-build" {
+        acp_client::grok::write_hook_plugin(files.path(), &command, ACP_HOOK_TIMEOUT)
+            .map_err(|error| failed(error.to_string()))?;
+        acp_client::grok::add_plugin_dir(arguments, files.path());
+    } else {
+        let variable = |name: &str| {
+            environment
+                .iter()
+                .find(|(existing, _)| existing == name)
+                .map(|(_, value)| std::ffi::OsString::from(value))
+        };
+        let person =
+            acp_client::devin::config_path(&variable).and_then(|path| std::fs::read(path).ok());
+        let config =
+            acp_client::devin::hooked_config(person.as_deref(), &command, ACP_HOOK_TIMEOUT);
+        let file = files.path().join("config.json");
+        std::fs::write(&file, config.to_string()).map_err(|error| failed(error.to_string()))?;
+        acp_client::devin::add_config(arguments, &file);
+    }
+    Ok(AcpGate {
+        _host: Some(host),
+        _files: Some(files),
+    })
+}
+
+/// What the agent reads after Coder refused some of its steps: ACP's
+/// refusal carries no reason, so this is where it learns why.
+fn refused_steps(reasons: &[String]) -> String {
+    let mut text = String::from("Coder refused these steps:\n");
+    for reason in reasons {
+        text.push_str("- ");
+        text.push_str(reason);
+        text.push('\n');
+    }
+    text.push_str("Don't try them another way. Finish what you can without them, and say what the person needs to do.");
+    text
 }
 
 /// The pauses before each new try of a turn that failed for a temporary
@@ -1573,6 +1739,14 @@ struct AcpEvents<'a> {
     /// A read-only task: only asks to read, search, think or fetch are
     /// approved (#11470).
     read_only: bool,
+    /// The session's hooks, which answer each ask (#11508).
+    hooks: Option<coder_sdk::Hooks>,
+    cwd: PathBuf,
+    /// Each tool call's input as its `tool_call` update gave it, for an ask
+    /// that carries none (Cursor's).
+    seen: BTreeMap<String, Value>,
+    /// Why the hooks refused a step, for the agent's next prompt.
+    refusals: Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 /// Whether an ACP tool kind only looks, never changes anything.
@@ -1595,6 +1769,40 @@ impl Handler for AcpEvents<'_> {
         option.map_or(acp_client::wire::PermissionAnswer::Cancelled, |option| {
             acp_client::wire::PermissionAnswer::Selected(option.to_owned())
         })
+    }
+
+    /// An ask the chat would approve goes to the session's hooks first
+    /// (#11508): the fence, the floors and the rest decide, and a floor's
+    /// ask waits on the approval card. A gated chat or a read-only task
+    /// refuses what it always refused, at once.
+    fn permission_later(
+        &mut self,
+        request: &acp_client::wire::PermissionRequest,
+    ) -> Option<acp_client::PendingAnswer> {
+        let hooks = self.hooks.clone()?;
+        if crate::approval::gated()
+            || (self.read_only && !looks_only(request.tool_call.kind.as_deref()))
+        {
+            return None;
+        }
+        let seen = request
+            .tool_call
+            .tool_call_id
+            .as_ref()
+            .and_then(|id| self.seen.get(id));
+        let call = coder_sdk::acp::call(request, seen, &self.cwd);
+        let request = request.clone();
+        let refusals = Arc::clone(&self.refusals);
+        Some(Box::pin(async move {
+            let applied = hooks.fire(call).await;
+            if let Some(reason) = coder_sdk::acp::refusal(&applied) {
+                refusals
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .push(reason);
+            }
+            coder_sdk::acp::answer(&applied.permission, &request)
+        }))
     }
 
     fn notification(&mut self, method: &str, params: &Value) {
@@ -1640,6 +1848,12 @@ impl Handler for AcpEvents<'_> {
                 status,
                 ..
             } => {
+                if raw_input
+                    .as_object()
+                    .is_some_and(|fields| !fields.is_empty())
+                {
+                    self.seen.insert(id.clone(), raw_input.clone());
+                }
                 self.tools.insert(id, (title.clone(), raw_input.clone()));
                 (self.emit)(RuntimeEvent::Tool {
                     name: title,
@@ -2578,6 +2792,10 @@ mod tests {
             emit: &mut emit,
             text: String::new(),
             tools: BTreeMap::new(),
+            hooks: None,
+            cwd: PathBuf::new(),
+            seen: BTreeMap::new(),
+            refusals: Arc::default(),
         };
         assert_eq!(
             handler.permission(&request),
@@ -3185,6 +3403,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             emit: &mut |event| events.push(event),
             text: String::new(),
             tools: BTreeMap::new(),
+            hooks: None,
+            cwd: PathBuf::new(),
+            seen: BTreeMap::new(),
+            refusals: Arc::default(),
         };
         handler.update(Update::ToolCall {
             id: "read-1".into(),
@@ -3616,9 +3838,20 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         assert_eq!(result["group_clear"], true);
         // The model the call names becomes `devin acp --model MODEL`, and
         // an ungated chat sets Devin's `bypass` mode.
+        // Devin starts with a configuration whose `PreToolUse` hook runs
+        // Coder's bridge before every tool (#11508).
+        let arguments = acp_client::replay::arguments(dir.path());
+        assert_eq!(arguments[0], "--config");
+        assert!(arguments[1].ends_with("config.json"), "{arguments:?}");
+        assert_eq!(arguments[2..], ["acp", "--model", "swe-2-high"]);
+        assert!(
+            !Path::new(&arguments[1]).exists(),
+            "the configuration is removed with the session"
+        );
         assert_eq!(
-            acp_client::replay::arguments(dir.path()),
-            vec!["acp", "--model", "swe-2-high"]
+            result["checks"]["before_each_step"], true,
+            "{}",
+            result["checks"]
         );
         let sent = acp_client::replay::received(dir.path());
         let set_mode = sent
@@ -3659,10 +3892,9 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         )
         .await
         .unwrap();
-        assert_eq!(
-            acp_client::replay::arguments(dir.path()),
-            vec!["--sandbox", "acp"]
-        );
+        let arguments = acp_client::replay::arguments(dir.path());
+        assert_eq!(arguments[0], "--config");
+        assert_eq!(arguments[2..], ["--sandbox", "acp"]);
         let sent = acp_client::replay::received(dir.path());
         let set_mode = sent
             .iter()
@@ -3833,6 +4065,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             text: String::new(),
             tools: BTreeMap::new(),
             read_only: true,
+            hooks: None,
+            cwd: PathBuf::new(),
+            seen: BTreeMap::new(),
+            refusals: Arc::default(),
         };
         let chosen = |answer| match answer {
             acp_client::wire::PermissionAnswer::Selected(option) => option,

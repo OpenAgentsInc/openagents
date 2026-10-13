@@ -115,6 +115,79 @@ pub fn codex(cwd: &Path) -> coder_sdk::Hooks {
     ))
 }
 
+/// An ACP agent's session (#11508): the same hooks as Codex's (the fence
+/// and the floors, the token savers' gate and conditional context when
+/// that plugin is on, the person's and the project's command hooks, the
+/// plugins' hooks, the System One monitor), composed by one runner that
+/// answers the agent's asks and, for an agent that runs its own hooks, the
+/// bridge on the session's socket. An ask goes to the approval card while
+/// the agent waits, labeled with the agent's `name`. Also the hooks the
+/// agent can't keep before a tool, stated for the person
+/// ([`coder_sdk::acp::hooks`]).
+#[must_use]
+pub fn acp(
+    cwd: &Path,
+    agent: &str,
+    name: &str,
+    cancel: &Arc<AtomicBool>,
+) -> (coder_sdk::Hooks, Vec<coder_sdk::Refused>) {
+    let session = format!(
+        "acp-{}-{}",
+        std::process::id(),
+        SESSIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
+    let mut registry = registry(cwd, false);
+    if crate::token_savers::enabled() {
+        let _ = registry.register(crate::gate::sdk_hook(session.clone()));
+        for hook in crate::context_hook::sdk_hooks(cwd.to_owned(), session) {
+            let _ = registry.register(hook);
+        }
+    }
+    let (hooks, _problems) = coder_sdk::command::load(cwd, coder_sdk::command::home().as_deref());
+    let run = std::env::var(hook_log::RUN_ID_VAR).unwrap_or_default();
+    let _ = coder_sdk::command::register(&mut registry, &hooks, cwd, &run);
+    system_one(&mut registry, cwd, Harness::Acp);
+    let (hooks, refused) = coder_sdk::acp::hooks(registry, Budget::default(), agent, name);
+    let label = name.to_owned();
+    let hooks = hooks.asking(crate::floors::asker(
+        cwd.to_owned(),
+        move || label.clone(),
+        Some(Arc::clone(cancel)),
+    ));
+    (hooks, refused)
+}
+
+/// The hooks an ACP agent can't keep before a tool, as the person reads
+/// them: what Coder can't do there, and that the steps it asks about are
+/// still checked. `None` when it keeps them all.
+#[must_use]
+pub fn unkept(name: &str, refused: &[coder_sdk::Refused]) -> Option<String> {
+    let mut lost: Vec<(u8, String)> = Vec::new();
+    for refused in refused {
+        let what = match refused.hook.as_str() {
+            "floors" => (
+                0,
+                "hold a deploy, a merge, a secret or a payment for you".to_owned(),
+            ),
+            "worktree-fence" => (1, "keep it out of the shared checkout".to_owned()),
+            other => (2, format!("run the {other} check")),
+        };
+        if !lost.contains(&what) {
+            lost.push(what);
+        }
+    }
+    lost.sort();
+    let lost: Vec<String> = lost.into_iter().map(|(_, what)| what).collect();
+    let list = match lost.as_slice() {
+        [] => return None,
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{}, or {last}", rest.join(", ")),
+    };
+    Some(format!(
+        "{name} doesn't ask before every step, so Coder can't {list} before it acts. The steps it asks about are still checked."
+    ))
+}
+
 /// Codex sessions started in this process, for their hooks' keys.
 static SESSIONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
@@ -124,6 +197,8 @@ pub enum Harness {
     ClaudeCode,
     CoderLoop,
     Codex,
+    /// An ACP agent (#11508).
+    Acp,
 }
 
 /// How a System One hook runs until its A/B arm has measured it: off,
@@ -428,6 +503,56 @@ mod tests {
             ),
             "{plain:?}"
         );
+    }
+
+    /// An ACP agent's asks reach the same fence and floors (#11508): a
+    /// discard is refused, a merge held when nobody can answer, a plain
+    /// command runs; an agent that can't be stopped before a tool is told
+    /// to the person in plain words.
+    #[tokio::test]
+    async fn acp_asks_are_answered_by_the_floors_and_the_fence() {
+        let _lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::floors::install_desk(None);
+        let repo = tempfile::tempdir().unwrap();
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .arg(repo.path())
+            .status()
+            .unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (hooks, refused) = acp(repo.path(), "opencode", "OpenCode", &cancel);
+        assert!(refused.is_empty(), "{refused:?}");
+        let ask = |command: &str| -> acp_client::wire::PermissionRequest {
+            serde_json::from_value(json!({"toolCall": {"title": command, "kind": "execute", "rawInput": {"command": command}},
+                "options": [{"optionId": "once", "kind": "allow_once"}, {"optionId": "reject", "kind": "reject_once"}]}))
+            .unwrap()
+        };
+        let fire =
+            |command: &str| hooks.fire(coder_sdk::acp::call(&ask(command), None, repo.path()));
+        let discard = fire("git stash").await;
+        assert!(
+            matches!(&discard.permission, coder_sdk::Permission::Deny { reason } if reason.starts_with("Refused")),
+            "{discard:?}"
+        );
+        let held = fire("gh pr merge 5 --squash").await;
+        assert!(
+            matches!(&held.permission, coder_sdk::Permission::Deny { reason } if reason.starts_with("Held for the person")),
+            "{held:?}"
+        );
+        let plain = fire("cargo test").await;
+        assert_eq!(
+            coder_sdk::acp::answer(&plain.permission, &ask("cargo test")),
+            acp_client::wire::PermissionAnswer::Selected("once".into())
+        );
+        let (_, refused) = acp(repo.path(), "cursor", "Cursor", &cancel);
+        let note = unkept("Cursor", &refused).unwrap();
+        assert_eq!(
+            note,
+            "Cursor doesn't ask before every step, so Coder can't hold a deploy, a merge, a secret or a payment for you, or keep it out of the shared checkout before it acts. The steps it asks about are still checked."
+        );
+        assert_eq!(unkept("OpenCode", &[]), None);
     }
 
     /// With its switch on, the monitor is registered on both harnesses and
