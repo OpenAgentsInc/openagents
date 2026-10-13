@@ -1499,11 +1499,33 @@ mod tests {
         (format!("http://{address}/api/v1"), server)
     }
 
-    fn runtime() -> tokio::runtime::Runtime {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
+    /// A runtime for one turn, holding the approval gate's test lock while it
+    /// lives (#11564). The gate is process-wide: a parallel test's tool-free
+    /// gate refuses every tool (`approval::tools_allowed`), so a turn that
+    /// calls `update_plan`, `Read` or `jev` without the lock failed now and
+    /// then in full parallel runs. Use it as `runtime().block_on(..)` so the
+    /// lock lasts the one statement; never hold it while taking the lock again.
+    fn runtime() -> GateFree {
+        GateFree {
+            _lock: crate::approval::test_lock()
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            runtime: tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap(),
+        }
+    }
+
+    struct GateFree {
+        runtime: tokio::runtime::Runtime,
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl GateFree {
+        fn block_on<F: std::future::Future>(&self, future: F) -> F::Output {
+            self.runtime.block_on(future)
+        }
     }
 
     fn sequence(bodies: Vec<String>) -> (String, JoinHandle<Vec<Value>>) {
@@ -2701,9 +2723,11 @@ mod tests {
         let cancel = Arc::new(AtomicBool::new(false));
         let trigger = cancel.clone();
         let mut events = vec![];
-        let started = Instant::now();
+        // The clock starts once the runtime holds the gate lock.
+        let mut started = Instant::now();
         let error = runtime()
             .block_on(async {
+                started = Instant::now();
                 tokio::spawn(async move {
                     tokio::time::sleep(Duration::from_millis(150)).await;
                     trigger.store(true, Ordering::Relaxed);
@@ -2870,10 +2894,6 @@ mod tests {
     /// reason before any child starts.
     #[test]
     fn naming_an_agent_keeps_the_chats_tools_and_an_agent_that_is_off_is_refused() {
-        // Another test's tool-free gate would remove every tool.
-        let _gate_lock = crate::approval::test_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let wrong = format!(
             "data: {}\n\ndata: [DONE]\n\n",
             json!({"choices":[{"delta":{"tool_calls":[{"index":0,"id":"wrong-agent","function":{"name":"acp_subagent","arguments":"{\"agent\":\"cursor\",\"task\":\"Provide a delegation example.\"}"}}]},"finish_reason":"tool_calls"}]})
@@ -3202,10 +3222,6 @@ mod tests {
     /// image part; a text-only model gets the note line and why.
     #[test]
     fn an_attached_screenshot_reaches_a_vision_model_and_a_note_reaches_others() {
-        // Another test's tool-free gate would remove every tool.
-        let _gate_lock = crate::approval::test_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = tempfile::tempdir().unwrap();
         let store = dir.path().join("attachments");
         let image = crate::attachments::from_data_url(&format!(
@@ -3283,10 +3299,6 @@ mod tests {
     /// built-in Edit tool, and the transcript draws the change as a diff.
     #[test]
     fn a_golden_chat_edits_a_file_through_edit_and_shows_the_diff() {
-        // Edit asks when another test's approval gate is installed.
-        let _gate_lock = crate::approval::test_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = tempfile::tempdir().unwrap();
         let repo = dir.path().canonicalize().unwrap();
         std::fs::create_dir(repo.join(".git")).unwrap();

@@ -3156,6 +3156,10 @@ mod tests {
     #[tokio::test]
     #[cfg(unix)]
     async fn silent_run_reports_elapsed_and_silence() {
+        // Another test's approval gate refuses or holds commands (#11564).
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = tempfile::tempdir().unwrap();
         let mut updates = Vec::new();
         let result = run_command(
@@ -3189,6 +3193,10 @@ mod tests {
     #[tokio::test]
     #[cfg(unix)]
     async fn run_streams_both_pipes_before_exit_and_retains_final_output() {
+        // Another test's approval gate refuses or holds commands (#11564).
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = tempfile::tempdir().unwrap();
         let started = Instant::now();
         let mut updates = Vec::new();
@@ -3226,6 +3234,10 @@ mod tests {
     #[tokio::test]
     #[cfg(unix)]
     async fn default_commands_can_write_and_read_outside_the_working_directory() {
+        // Another test's approval gate refuses or holds commands (#11564).
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = tempfile::tempdir().unwrap();
         let cwd = dir.path().join("checkout");
         std::fs::create_dir(&cwd).unwrap();
@@ -3700,6 +3712,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":11,"output_token
     #[tokio::test]
     #[cfg(unix)]
     async fn a_writing_codex_delegation_uses_the_workspace_sandbox_and_names_a_limit() {
+        // Another test's approval gate refuses or holds commands (#11564).
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         let program = dir.path().join("codex");
@@ -3760,6 +3776,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
 
     #[test]
     fn a_codex_limit_carries_its_kind_and_reset_in_microcoders_shape() {
+        // Another test's approval gate refuses or holds commands (#11564).
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         // 2026-10-12T21:00:00Z, the demo's run.
         let now = 1_791_838_800;
         let said =
@@ -3991,6 +4011,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
     #[tokio::test]
     #[cfg(unix)]
     async fn cli_passes_argv_without_a_shell_and_captures_bounded_json() {
+        // Another test's approval gate refuses or holds commands (#11564).
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         let program = dir.path().join("openagents");
@@ -4014,6 +4038,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
     #[tokio::test]
     #[cfg(unix)]
     async fn canceling_cli_cleans_up_its_children() {
+        // Another test's approval gate refuses or holds commands (#11564).
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         let program = dir.path().join("openagents");
@@ -4487,6 +4515,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
     #[tokio::test]
     #[cfg(unix)]
     async fn microcoder_uses_the_real_loop_with_offline_generation() {
+        // Another test's approval gate refuses or holds commands (#11564).
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         use microcoder_loop::models::{Ask, Basis, Generated, NextAction};
         struct Finished;
         impl Generate for Finished {
@@ -4551,6 +4583,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
     /// enforced mode (#11469, #11470).
     #[tokio::test]
     async fn a_read_only_microcoder_task_runs_in_the_folder_and_cannot_write() {
+        // Another test's approval gate refuses or holds commands (#11564).
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         use microcoder_loop::models::{Ask, Basis, Generated, NextAction};
         struct Touching(std::cell::Cell<usize>);
         impl Generate for Touching {
@@ -4644,6 +4680,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
 
     #[tokio::test]
     async fn canceling_generation_does_not_wait_for_the_provider() {
+        // Another test's approval gate refuses or holds commands (#11564).
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         struct Waiting;
         impl Generate for Waiting {
             async fn generate(
@@ -4676,6 +4716,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
     #[tokio::test]
     #[cfg(unix)]
     async fn local_loop_commands_forward_cli_delegations_without_mixing_parent_text() {
+        // Another test's approval gate refuses or holds commands (#11564).
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         use microcoder_loop::models::{Ask, Basis, Generated, NextAction};
         struct Fixture {
             command: String,
@@ -4747,6 +4791,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
     #[tokio::test]
     #[cfg(unix)]
     async fn microcoder_redacts_command_and_file_observations_before_the_next_generation() {
+        // Another test's approval gate refuses or holds commands (#11564).
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         use microcoder_loop::models::{Ask, Basis, Generated, NextAction};
         const MARKER: &str = "fixture-saved-provider-credential";
         // This test is about redaction: the floor that holds a secret read
@@ -4842,6 +4890,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
 
     #[tokio::test]
     async fn unconfigured_jev_is_missing_evidence() {
+        // Another test's approval gate refuses or holds commands (#11564).
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let judge = PluginJudge(None);
         let result = judge
             .judge(
@@ -4856,6 +4908,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
 
     #[test]
     fn a_judged_step_reaches_the_run_as_jevs_estimate_and_only_jevs() {
+        // Another test's approval gate refuses or holds commands (#11564).
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut events = Vec::new();
         {
             let mut push = |event: RuntimeEvent| events.push(event);
@@ -4957,6 +5013,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
     #[tokio::test]
     #[cfg(unix)]
     async fn no_login_gateway_repairs_bad_replies_and_continues_past_old_step_and_idle_limits() {
+        // Another test's approval gate refuses or holds commands (#11564).
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = tempfile::tempdir().unwrap();
         if coder_boundary::Boundary::writing(dir.path())
             .build()
@@ -4994,6 +5054,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
     #[tokio::test]
     #[cfg(unix)]
     async fn a_local_provider_failure_mid_task_falls_back_without_replaying_completed_commands() {
+        // Another test's approval gate refuses or holds commands (#11564).
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         enum FixtureProvider {
             Unavailable(Arc<std::sync::atomic::AtomicUsize>),
             Gateway(coder::cloud::CloudLane<GatewayFixture>),
