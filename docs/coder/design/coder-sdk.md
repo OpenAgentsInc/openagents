@@ -529,7 +529,8 @@ child, harness, model, depth, chain, outcome) to
 
 **One code path.** `Delegator::delegate` runs every delegation: the tool
 on each harness, `coder delegate --to HARNESS --task TEXT [--model ID]
-[--read-only] [--background]`, and the headless JSON path (`--json`
+[--read-only]` (a one-shot command has no tray, so `--background` is
+refused there as in any chat without one), and the headless JSON path (`--json`
 prints the child's events, then the report).
 
 **Tests.**
@@ -541,7 +542,22 @@ prints the child's events, then the report).
   own worktree and the parent gets a short report. Plus call-time
   refusals, fixed tool bytes, nesting to the bound, authority, and
   background.
-- Live runs: see the results recorded on #11511.
+- Live (`scripts/coder/delegation-live.sh`, isolated HOME and `--state`,
+  2026-10-13): Claude Code -> Codex, Codex -> Claude Code, Coder loop
+  (OpenRouter) -> Claude Code, Claude Code -> OpenCode
+  (`opencode/big-pickle`), Claude Code -> OpenCode's ACP agent
+  (read-only), and OpenCode -> Codex over `openagents coder-tools-mcp`:
+  each child changed its file in its own worktree and the parent got the
+  short report; the records show each parent -> child. Cache check: the
+  same three-turn Claude Code chat with and without a delegation in turn
+  2 read 0.997 and 0.998 of its last turn's prompt from the cache (Claude
+  Code's usage records), and the delegating chat's first call read the
+  other chat's whole cached prefix, so the tools and system prompt are
+  the same bytes. A free model can claim a change it never made; the
+  report's empty `changed_files` shows it.
+- The bundled Microcoder loop with no model provider (on a Codex login)
+  has only shell commands, not `delegate`; there it uses `openagents coder
+  delegate --to`.
 
 ## Where sessions start (#11509)
 

@@ -35,7 +35,7 @@ macro_rules! command_usage {
                                       In a Git repository the chat works in its own
                                       worktree and branch (chat/ID); --in-place uses
                                       this folder instead.
-  delegate --to HARNESS --task TEXT [--model ID] [--read-only] [--background]
+  delegate --to HARNESS --task TEXT [--model ID] [--read-only]
                                       Hand a task to another harness (claude-code,
                                       codex, opencode, coder, an ACP agent, auto)
                                       through the same code as the delegate tool;
@@ -1449,17 +1449,14 @@ fn delegate_to(
     let background = flag("--background");
     if !args.is_empty() {
         return Err(usage(
-            "Use delegate --to HARNESS --task TEXT [--model ID] [--read-only] [--background].",
+            "Use delegate --to HARNESS --task TEXT [--model ID] [--read-only].",
         ));
     }
     let mut execution = app.plugins.execution_settings(context.cwd.clone());
     execution.boundary = app.boundary.clone();
-    if background {
-        execution.fleet = Some(crate::fleet::Host::local(
-            crate::fleet::Fleet::default(),
-            None,
-        ));
-    }
+    // A one-shot command has no agent tray to outlive it: the same refusal
+    // a chat without a tray gives.
+    execution.fleet = None;
     let mut arguments =
         json!({"to": to, "task": task, "read_only": read_only, "background": background});
     if let Some(model) = model {

@@ -441,6 +441,16 @@ pub fn stdio_main(args: &[String]) -> i32 {
     {
         eprintln!("{error}");
     }
+    // The installed agents, as a headless chat finds them, so `delegate`
+    // reaches Codex and the ACP agents from here too (#11511).
+    let acp_cwd = cwd.clone().into_os_string();
+    app.plugins.bundled.discover_acp(&|name| {
+        if name == "CODER_ACP_CWD" {
+            Some(acp_cwd.clone())
+        } else {
+            std::env::var_os(name)
+        }
+    });
     let admission = if decide {
         coder_sdk::Admission::none().admitting(coder_sdk::decide::disclosure())
     } else {
