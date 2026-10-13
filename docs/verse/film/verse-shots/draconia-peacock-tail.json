@@ -4,7 +4,7 @@
   "scene": {
     "kind": "peacock",
     "part": "tail",
-    "rise": 0.0
+    "rise": 0.4
   },
   "duration": 3.5,
   "width": 1920,
@@ -15,8 +15,8 @@
     "keys": [
       {
         "t": 0.0,
-        "eye": [0.0, 1.52, 0.75],
-        "target": [0.0, 1.5, 0.0],
+        "eye": [0.0, 1.25, 0.9],
+        "target": [0.0, 1.3, 0.0],
         "focal_mm": 40,
         "ease": "out"
       },

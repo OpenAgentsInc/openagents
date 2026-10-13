@@ -60,3 +60,16 @@ top), and `~/Downloads/draconia-peacock-progress.png` (one row per version).
     the face agent's Draconia asset);
   - P1's barbs are sparser and less fine than the reference's;
   - the reference's walls and fires read more clearly at the frame edges.
+
+### v4, 2026-10-13
+
+- **Gap fixed:** the P3 open. She now lands in a crouch (Alice's swing
+  stance, sunk 10 cm) and rises to her idle between 0.15 and 0.4 s, while the
+  camera pulls back from her lowered face to the wide. The pack has no
+  crouch-to-stand clip, so two rigs hold the two poses and their vertices
+  blend.
+- **Still open:**
+  - her hair doesn't fly up; the pack's skinned hair has no joints to lift;
+  - her outline is still Alice's coat;
+  - P1's barbs are sparser than the reference's;
+  - the walls and fires at the frame edges read weaker than the reference's.

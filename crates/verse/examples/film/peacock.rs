@@ -54,6 +54,10 @@ pub struct Set {
     rise: f32,
     fx: Particles,
     alice: Option<(Beast, Arc<TexturedScene>, Vec<usize>)>,
+    /// Her vertices this frame.
+    posed: Vec<verse::pbr::textured::TexturedVertex>,
+    /// Her crouch's vertices, which she rises from.
+    crouch: Vec<verse::pbr::textured::TexturedVertex>,
     stars: Vec<(Vec3, f32, f32)>,
     lamps: Vec<Lamp>,
 }
@@ -93,6 +97,7 @@ impl Set {
         let mut fx = Particles::new(0xD2AC);
         let mut lamps = Vec::new();
         let mut alice = None;
+        let mut crouch = Vec::new();
         let mut stars = Vec::new();
         match part {
             Part::Feathers => {
@@ -124,6 +129,19 @@ impl Set {
                     .filter(|(_, v)| v.pos[2] < -0.12 && v.pos[0] > 0.1 && v.pos[1] > 1.1)
                     .map(|(i, _)| i)
                     .collect();
+                // A second rig holds the crouch, so neither rig blends
+                // between clips it switches each frame.
+                let mut low = Beast::new(pack, form)?;
+                low.pose_clip(
+                    Vec3::new(0.0, -0.1, 0.0),
+                    0.0,
+                    1.0,
+                    "swing",
+                    0.4,
+                    false,
+                    0.0,
+                );
+                crouch = low.vertices().to_vec();
                 alice = Some((beast, Arc::new(scene), staff));
                 fx.start("ground_mist", Spawn::at(Vec3::new(0.0, 0.0, 0.5)));
                 fx.start(
@@ -174,6 +192,8 @@ impl Set {
             rise,
             fx,
             alice,
+            posed: Vec::new(),
+            crouch,
             stars,
             lamps,
         };
@@ -204,16 +224,36 @@ impl Set {
             self.fx.tick(dt / steps as f32, |_, _| 0.0);
         }
         if let Some((beast, _, _)) = &mut self.alice {
-            // She lands crouched and rises, then stands in the wind.
-            let (clip, time) = if t < self.rise {
-                ("jump", 0.15)
+            // She lands in a crouch (the swing's wide, bent-knee stance,
+            // sunk a little) and rises into her idle over `RISE` seconds
+            // before `rise`: the two poses' vertices blend, since the pack
+            // has no crouch-to-stand clip.
+            const RISE: f32 = 0.25;
+            beast.pose_clip(
+                Vec3::ZERO,
+                0.0,
+                1.0,
+                "idle",
+                (t - self.rise).max(0.0),
+                true,
+                dt,
+            );
+            let k = ((t - (self.rise - RISE)) / RISE).clamp(0.0, 1.0);
+            let k = k * k * (3.0 - 2.0 * k);
+            self.posed = if k >= 1.0 {
+                beast.vertices().to_vec()
             } else {
-                ("idle", t - self.rise)
+                let stand = beast.vertices().to_vec();
+                let mut low = self.crouch.clone();
+                for (v, s) in low.iter_mut().zip(&stand) {
+                    v.pos = Vec3::from(v.pos).lerp(Vec3::from(s.pos), k).to_array();
+                    v.normal = Vec3::from(v.normal)
+                        .lerp(Vec3::from(s.normal), k)
+                        .normalize_or(Vec3::Y)
+                        .to_array();
+                }
+                low
             };
-            let sink = if t < self.rise { -0.28 } else { 0.0 };
-            if !beast.pose_clip(Vec3::new(0.0, sink, 0.0), 0.0, 1.0, clip, time, true, dt) {
-                beast.pose_clip(Vec3::ZERO, 0.0, 1.0, "idle", t, true, dt);
-            }
         }
     }
 
@@ -301,8 +341,8 @@ impl Set {
                         1.0,
                     ));
                 }
-                if let Some((beast, scene, staff)) = &self.alice {
-                    let mut vertices = beast.vertices().to_vec();
+                if let Some((_, scene, staff)) = &self.alice {
+                    let mut vertices = self.posed.clone();
                     if let Some(&first) = staff.first() {
                         let point = vertices[first].pos;
                         for &i in staff {
