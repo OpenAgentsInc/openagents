@@ -34,6 +34,8 @@
 
 #[path = "film/courtyard.rs"]
 mod courtyard;
+#[path = "film/night.rs"]
+mod night;
 #[path = "film/peacock.rs"]
 mod peacock;
 
@@ -204,6 +206,8 @@ enum SceneSpec {
     /// before the fanned tail (`tail`), rising from a crouch at `rise`.
     /// The Draconia courtyard battle, phase D1: one of its shots.
     Courtyard { shot: courtyard::Shot },
+    /// The Draconia night sky, phase D3: one of its shots.
+    Night { shot: night::Shot },
     Peacock {
         part: peacock::Part,
         #[serde(default)]
@@ -316,6 +320,12 @@ enum Stage {
     Peacock {
         renderer: Box<verse::render::Offscreen>,
         set: Box<peacock::Set>,
+        ui: verse::ui::UiBatch,
+    },
+    /// The Draconia night sky, on the same stage.
+    Night {
+        renderer: Box<verse::render::Offscreen>,
+        set: Box<night::Set>,
         ui: verse::ui::UiBatch,
     },
     /// The Draconia courtyard, on the same stage.
@@ -549,6 +559,22 @@ impl Stage {
                 }
                 Self::world(runtime, w, h, false, shot.hide_guides)
             }
+            SceneSpec::Night { shot: which } => {
+                let pack = load_everglade()?;
+                let set = night::Set::new(*which, &pack)?;
+                let renderer = verse::render::Offscreen::new(
+                    w,
+                    h,
+                    &night::Set::world(*which),
+                    &verse::ui::Atlas::new(16.0),
+                    zones::atmosphere(zones::ZoneId::Plaza),
+                )?;
+                Ok(Self::Night {
+                    renderer: Box::new(renderer),
+                    set: Box::new(set),
+                    ui: verse::ui::UiBatch::default(),
+                })
+            }
             SceneSpec::Courtyard { shot: which } => {
                 let pack = load_everglade()?;
                 let set = courtyard::Set::new(*which, &pack)?;
@@ -645,6 +671,7 @@ impl Stage {
             }
             Self::Peacock { set, .. } => set.advance(dt, t),
             Self::Courtyard { set, .. } => set.advance(dt, t),
+            Self::Night { set, .. } => set.advance(dt, t),
             Self::Imported { scene, .. } => match scene {
                 Imported::Ritual { game, start, .. } => game.time = (*start + t).max(0.0),
                 Imported::Crypt { fight, walk } => {
@@ -745,6 +772,11 @@ impl Stage {
                 renderer.draw(View { view_proj, eye }, &dynamic, ui, &lighting)
             }
             Self::Peacock { renderer, set, ui } => {
+                let (view_proj, eye) =
+                    camera_rig::lens_view_projection(&camera, aspect, shot.near, shot.far, lens);
+                renderer.render(View { view_proj, eye }, &set.frame(), ui)
+            }
+            Self::Night { renderer, set, ui } => {
                 let (view_proj, eye) =
                     camera_rig::lens_view_projection(&camera, aspect, shot.near, shot.far, lens);
                 renderer.render(View { view_proj, eye }, &set.frame(), ui)

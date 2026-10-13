@@ -1,0 +1,52 @@
+{
+  "name": "draconia-d3-sky",
+  "notes": "D3, 35-37 s: wraiths crossing the moonlit night sky through cloud.",
+  "scene": {
+    "kind": "night",
+    "shot": "sky"
+  },
+  "duration": 2.0,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "far": 4000.0,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.0,
+          1.5,
+          5.0
+        ],
+        "target": [
+          0.0,
+          40.0,
+          -35.0
+        ],
+        "focal_mm": 24
+      },
+      {
+        "t": 2.0,
+        "eye": [
+          0.0,
+          1.5,
+          5.0
+        ],
+        "target": [
+          2.0,
+          40.0,
+          -35.0
+        ],
+        "focal_mm": 24
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 41
+    }
+  }
+}

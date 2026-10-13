@@ -510,3 +510,43 @@ as D1: no stand-in face in a close-up or medium shot.
   - the close-ups' faces;
   - the reference's warm firelit facade faces and lit windows;
   - Draconia's streaming hair (waiting on the face work's joint chains).
+
+### D2 v3, 2026-10-13
+
+- **Gaps fixed:**
+  - Fires along the far range's foot light its face warm.
+  - Firelight burns in some of its pointed windows: tall, flickering warm
+    glows.
+- **Still open:** the close-ups' faces; Draconia's streaming hair.
+
+## Scene: D3 (the night sky, reference 26–56 s)
+
+The `night` scene kind (`crates/verse/examples/film/night.rs`, shots
+`plate`, `vortex`, `sky`, `behind`, `boots` in
+`docs/verse/film/verse-shots/draconia-d3-*.json`). It's cut by
+`~/work/film-out/draconia/d3-cut.sh` into `~/Downloads/draconia-d3-vN.mp4`,
+`-vN-side-by-side.mp4` and `~/Downloads/draconia-d3-progress.png`, 30 s at
+the reference's times. Same rule: no stand-in face in a close-up or medium
+shot.
+
+### v1, 2026-10-13
+
+- **Built:**
+  - hooded wraiths: tattered cloaks with hoods and no faces, rags stirring;
+  - a vortex of dark cloud and circling wraiths round the moon, seen
+    looking up from the courtyard with Draconia tiny below in a ring of
+    fires (31–34 s);
+  - the black beat (34–35 s);
+  - wraiths crossing the moonlit sky (35–37 s);
+  - Draconia from behind, her platinum hair down her back, looking up at the
+    sky full of them (43–47 s);
+  - her boots walking toward us before a wall of fire, dueling silhouettes
+    and red and green bolts (51–56 s);
+  - slated plates for the close-ups and the students (26–31, 37–41 and
+    47–51 s), and a slate for the spider web (41–43 s, not built).
+- **Gaps:**
+  - the faces;
+  - the spiders and their web;
+  - the reference's wraiths are torn and wispy, and darker against the
+    moon;
+  - the duelers behind her boots are wraith shapes, not students.

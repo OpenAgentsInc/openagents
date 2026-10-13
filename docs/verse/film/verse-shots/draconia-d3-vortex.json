@@ -1,0 +1,53 @@
+{
+  "name": "draconia-d3-vortex",
+  "notes": "D3, 31-34 s: hooded wraiths wheel round the moon in a vortex of dark cloud above the courtyard; Draconia stands tiny at the bottom, her back to us, a ring of fires round her.",
+  "scene": {
+    "kind": "night",
+    "shot": "vortex"
+  },
+  "duration": 3.0,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "far": 4000.0,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.0,
+          0.3,
+          10.0
+        ],
+        "target": [
+          0.0,
+          32.0,
+          -22.0
+        ],
+        "focal_mm": 10
+      },
+      {
+        "t": 3.0,
+        "eye": [
+          0.0,
+          0.3,
+          9.6
+        ],
+        "target": [
+          0.0,
+          32.0,
+          -22.0
+        ],
+        "focal_mm": 10,
+        "ease": "in_out"
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 41
+    }
+  }
+}

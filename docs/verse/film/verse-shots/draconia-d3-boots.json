@@ -1,0 +1,56 @@
+{
+  "name": "draconia-d3-boots",
+  "notes": "D3, 51-56 s: her boots walking toward us, low on the cobbles, a wall of fire and dueling silhouettes behind, red and green bolts.",
+  "scene": {
+    "kind": "night",
+    "shot": "boots"
+  },
+  "duration": 5.0,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "far": 4000.0,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.0,
+          0.25,
+          1.6
+        ],
+        "target": [
+          0.0,
+          0.45,
+          -3.0
+        ],
+        "focal_mm": 35,
+        "f_stop": 2.0,
+        "focus": 1.8
+      },
+      {
+        "t": 5.0,
+        "eye": [
+          0.0,
+          0.25,
+          1.9
+        ],
+        "target": [
+          0.0,
+          0.45,
+          -3.0
+        ],
+        "focal_mm": 35,
+        "f_stop": 2.0,
+        "focus": 1.6
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 41
+    }
+  }
+}

@@ -350,6 +350,15 @@ impl Set {
                 ] {
                     fire(&mut fx, &mut lamps, at, 30.0);
                 }
+                // Fires along the far range's foot light its face warm.
+                for at in [
+                    Vec3::new(-9.0, 0.2, -11.4),
+                    Vec3::new(-2.5, 0.2, -11.8),
+                    Vec3::new(4.0, 0.2, -11.4),
+                    Vec3::new(10.0, 0.2, -11.0),
+                ] {
+                    fire(&mut fx, &mut lamps, at, 140.0);
+                }
                 fx.start("night_embers", Spawn::at(Vec3::new(0.0, 0.3, -1.0)));
                 fx.start(
                     "ground_mist",
@@ -578,6 +587,24 @@ impl Set {
                 }
             }
             _ => {}
+        }
+        if matches!(self.shot, Shot::Wide | Shot::Alone | Shot::Wave) {
+            // Firelight in some of the far range's windows.
+            for i in 0..9u32 {
+                if hash(i * 31 + 7) < 0.45 {
+                    continue;
+                }
+                let flicker = 0.85 + 0.15 * (t * 7.0 + i as f32).sin();
+                let x = -18.0 + i as f32 * 4.0 + 2.0;
+                let mut glow = feathers::dot(
+                    Vec3::new(x, 4.0, -12.5),
+                    0.9,
+                    [9.0 * flicker, 4.5 * flicker, 1.3 * flicker],
+                    1.0,
+                );
+                glow.tail = Vec3::Y * 2.6;
+                mesh.sprites.push(glow);
+            }
         }
         if self.shot == Shot::Wide {
             // A hooded figure filling the right foreground.
@@ -970,7 +997,7 @@ fn facade(out: &mut Vec<LitVertex>, start: Vec3, along: Vec3, length: f32, heigh
         [k * 1.04, k, k * 0.92]
     };
     // A box between two along-positions, two heights, and two depths.
-    let mut slab =
+    let slab =
         |out: &mut Vec<LitVertex>, u0: f32, u1: f32, y0: f32, y1: f32, d0: f32, d1: f32, n: u32| {
             let a = place(u0, y0, d0);
             let b = place(u1, y1, d1);

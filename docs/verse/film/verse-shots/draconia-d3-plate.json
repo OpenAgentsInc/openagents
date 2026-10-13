@@ -1,0 +1,56 @@
+{
+  "name": "draconia-d3-plate",
+  "notes": "D3, 26-31 s and 47-51 s: Draconia's face in close-up. A warm plate of embers and firelit cobbles out of focus until her face exists (slated).",
+  "scene": {
+    "kind": "night",
+    "shot": "plate"
+  },
+  "duration": 5.0,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "far": 4000.0,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.0,
+          1.2,
+          3.0
+        ],
+        "target": [
+          -1.0,
+          0.6,
+          -2.0
+        ],
+        "focal_mm": 50,
+        "f_stop": 1.4,
+        "focus": 0.5
+      },
+      {
+        "t": 5.0,
+        "eye": [
+          0.1,
+          1.2,
+          2.9
+        ],
+        "target": [
+          -1.0,
+          0.6,
+          -2.0
+        ],
+        "focal_mm": 50,
+        "f_stop": 1.4,
+        "focus": 0.5
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 41
+    }
+  }
+}
