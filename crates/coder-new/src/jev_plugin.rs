@@ -578,6 +578,7 @@ mod tests {
             favor: crate::route::Favor::default(),
             routing: None,
             briefing: None,
+            gateway_model: None,
         };
         let client = settings.jev_client().unwrap().unwrap();
         assert_eq!(jev_hosted::via(&client), "direct");
@@ -863,6 +864,7 @@ mod tests {
                 favor: crate::route::Favor::default(),
                 routing: None,
                 briefing: None,
+                gateway_model: None,
             };
             let result = if chat_tool {
                 settings

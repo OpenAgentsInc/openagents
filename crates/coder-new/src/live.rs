@@ -1474,6 +1474,29 @@ async fn auto_route(
                 .await
                 {
                     Ok(result) => result,
+                    // A picked model's failure is its own (#11526): no
+                    // other door takes its turn.
+                    Err(why) if plan.lanes == [crate::route::Lane::Gateway] => {
+                        if let Some(model) = &execution.gateway_model {
+                            let name = crate::ui::rail_model_name(model);
+                            let why = if why.contains("(HTTP 402)") {
+                                format!(
+                                    "{name} needs credit on your OpenAgents account (HTTP 402). Add credit at openagents.com, or pick another model in /models."
+                                )
+                            } else {
+                                format!(
+                                    "{name} didn't answer: {}. Pick another model in /models.",
+                                    why.trim().trim_end_matches('.')
+                                )
+                            };
+                            return Update::Finished {
+                                id,
+                                result: Err(why),
+                            };
+                        }
+                        reasons.push(why);
+                        continue;
+                    }
                     Err(why) => {
                         reasons.push(why);
                         continue;
@@ -1584,9 +1607,14 @@ async fn gateway_turn(
             }
             event_callback(event);
         };
+        // The model the person picked in /models (#11526), else the
+        // gateway's own router.
         provider
             .chat_with_plugins(
-                crate::models::GATEWAY_AUTO,
+                execution
+                    .gateway_model
+                    .as_deref()
+                    .unwrap_or(crate::models::GATEWAY_AUTO),
                 &crate::models::GenerationOptions::default(),
                 messages.to_vec(),
                 &execution,
@@ -1810,7 +1838,14 @@ pub(crate) fn local_task(
     let mut prefix = format!(
         "Standing instructions (from the host, not the user):\n{}",
         crate::identity::prompt_with(
-            crate::identity::Menu::coder_loop(execution.openrouter, execution.claude),
+            crate::identity::Menu::coder_loop(
+                execution.openrouter,
+                execution
+                    .connections
+                    .as_ref()
+                    .is_some_and(crate::provider::gateway_open),
+                execution.claude,
+            ),
             crate::models::AUTO
         )
     );
@@ -2120,6 +2155,74 @@ mod tests {
             update,
             Update::Finished { result: Ok(reply), .. } if reply.text == "From the gateway"
         )));
+    }
+
+    /// #11526: a gateway model picked in /models is what the gateway is
+    /// asked for, and when it fails no other door takes the turn.
+    #[test]
+    fn a_picked_gateway_model_runs_on_the_gateway_and_its_failure_is_its_own() {
+        let pick = |token: &str, origin: &str| {
+            let mut turn = auto_turn(token, origin);
+            if let Work::Chat { execution, .. } = &mut turn.kind {
+                execution.gateway_model = Some("zai/glm-5.3-flash".into());
+            }
+            turn
+        };
+        let (listener, base) = fixture_listener();
+        let origin = base.trim_end_matches("/api/v1").to_owned();
+        let server = thread::spawn(move || {
+            let mut socket = accept(&listener);
+            let request = read_request(&mut socket);
+            let body = reply_stream("zai/glm-5.3-flash", "From the pick");
+            headers(&mut socket, "text/event-stream", body.len());
+            socket.write_all(body.as_bytes()).unwrap();
+            request
+        });
+        let (sender, receiver) = mpsc::channel();
+        let (_cancel, canceled) = oneshot::channel();
+        run_with_provider(pick("sess_gateway_pick", &origin), sender, canceled, |_| {
+            panic!("a picked gateway model never reaches OpenRouter")
+        });
+        let request = server.join().unwrap();
+        let body: Value = serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
+        assert_eq!(body["model"], "zai/glm-5.3-flash");
+        assert!(receiver.try_iter().any(|update| matches!(
+            update,
+            Update::Finished { result: Ok(reply), .. }
+                if reply.text == "From the pick" && reply.model == "zai/glm-5.3-flash"
+        )));
+
+        let (listener, base) = fixture_listener();
+        let origin = base.trim_end_matches("/api/v1").to_owned();
+        let failing = thread::spawn(move || {
+            let mut socket = accept(&listener);
+            read_request(&mut socket);
+            let body = r#"{"error":{"type":"bad_request","message":"no"}}"#;
+            write!(
+                socket,
+                "HTTP/1.1 400 Bad Request\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+        });
+        let (sender, receiver) = mpsc::channel();
+        let (_cancel, canceled) = oneshot::channel();
+        run_with_provider(
+            pick("sess_gateway_pick_fails", &origin),
+            sender,
+            canceled,
+            |_| panic!("a picked gateway model's failure never falls back to OpenRouter"),
+        );
+        failing.join().unwrap();
+        let ended = receiver.try_iter().find_map(|update| match update {
+            Update::Finished {
+                result: Err(why), ..
+            } => Some(why),
+            _ => None,
+        });
+        let why = ended.expect("the turn ends with the pick's failure");
+        assert!(why.starts_with("GLM 5.3 Flash didn't answer: "), "{why}");
+        assert!(why.ends_with("Pick another model in /models."), "{why}");
     }
 
     /// When the gateway refuses the sign-in, the same turn goes to the

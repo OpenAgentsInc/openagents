@@ -766,7 +766,7 @@ fn top_rail(app: &App) -> Option<String> {
 /// A model id as a person reads it: Claude's and Codex's names from
 /// /models, else the model's own words capitalized
 /// (`google/gemini-3.8-flash` reads "Gemini 3.8 Flash").
-fn rail_model_name(model: &str) -> String {
+pub(crate) fn rail_model_name(model: &str) -> String {
     if crate::claude::MODELS.iter().any(|(id, _, _)| *id == model) {
         return crate::claude::name(model);
     }
@@ -812,9 +812,16 @@ fn rail_harness(app: &App) -> Option<String> {
             } else {
                 "auto".into()
             };
+            // A gateway model picked in /models while signed in (#11526).
+            let on_auto = model == crate::models::AUTO_LABEL || model == crate::models::AUTO;
+            let picked = (on_auto && app.account.is_some())
+                .then(|| app.gateway_model.clone())
+                .flatten();
             // On auto, the model the last turn ran, as the transcript
             // knows it (#11519).
-            let model = if model == crate::models::AUTO_LABEL {
+            let model = if let Some(picked) = picked {
+                rail_model_name(&picked)
+            } else if model == crate::models::AUTO_LABEL {
                 app.live
                     .entries
                     .iter()
@@ -2676,6 +2683,12 @@ mod export_notice_tests {
         let shown = rail(&mut app);
         assert!(shown.contains("Coder (Gemini 3.8 Flash)"), "{shown}");
         assert!(shown.contains("Context 0%"), "{shown}");
+        // #11526: a gateway model picked in /models, while signed in.
+        app.gateway_model = Some("zai/glm-5.3-flash".into());
+        assert!(rail(&mut app).contains("Coder (Gemini 3.8 Flash)"));
+        app.account = Some("Fixture".into());
+        let shown = rail(&mut app);
+        assert!(shown.contains("Coder (GLM 5.3 Flash)"), "{shown}");
     }
 
     #[test]

@@ -88,6 +88,9 @@ pub struct ExecutionSettings {
     /// Coder loop reads it instead of every instruction file and note, and
     /// a Codex delegation reads it in its task.
     pub briefing: Option<crate::context::Briefing>,
+    /// The gateway model the person picked in /models (#11526): the
+    /// Coder loop's turns run on it through the gateway. `None` is `auto`.
+    pub gateway_model: Option<String>,
 }
 
 #[derive(Clone)]
@@ -990,6 +993,7 @@ mod tests {
             favor: crate::route::Favor::default(),
             routing: None,
             briefing: None,
+            gateway_model: None,
         }
     }
 

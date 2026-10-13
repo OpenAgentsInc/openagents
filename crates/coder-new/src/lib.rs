@@ -46,6 +46,7 @@ pub mod fleet;
 mod fleet_app;
 pub mod floors;
 pub mod gate;
+pub mod gateway_models;
 mod git_guard;
 pub mod github_tool;
 pub mod harness;
@@ -205,6 +206,9 @@ pub struct App {
     pub branch: Option<String>,
     /// The signed-in openagents.com account's name (#11045).
     pub account: Option<String>,
+    /// The OpenAgents gateway model picked in /models (#11526); `None` is
+    /// `auto`.
+    pub gateway_model: Option<String>,
     /// Where the account sign-in is kept (`~/.openagents/coder`).
     pub account_dir: Option<std::path::PathBuf>,
     pub(crate) login: Option<account::Login>,
@@ -689,6 +693,7 @@ impl App {
     pub fn load_plugin_settings(&mut self, store: plugin_store::Store) -> Result<(), String> {
         claude::load_choice(store.root());
         codex::load_choice(store.root());
+        self.gateway_model = gateway_models::load_choice(store.root());
         let appearance = self.appearance.load(store.clone());
         self.appearance_error = appearance.as_ref().err().cloned();
         let preferences = self.preferences.load(store.clone());
@@ -2238,6 +2243,12 @@ impl App {
         execution.boundary = self.boundary.clone();
         // Google Drive through the signed-in account's Connections (#11238).
         execution.connections = self.connections();
+        // A gateway model picked in /models, while the gateway answers
+        // this sign-in (#11526).
+        execution.gateway_model = crate::gateway_models::active(
+            self.gateway_model.as_deref(),
+            execution.connections.as_ref(),
+        );
         execution.fleet = Some(self.fleet_host());
         // The chat keeps the harness its first tool turn chose (#11289).
         execution.harness = self.live.harness.clone();
@@ -2475,16 +2486,43 @@ impl App {
             ));
             return;
         }
-        if !self.plugins.enabled {
-            self.notice = Some("Turn on OpenRouter BYOK in /plugins to choose a model.".into());
+        // The Coder loop: the OpenAgents gateway's models while this
+        // sign-in reaches it (#11526), from the kept list, refreshed in
+        // the background; OpenRouter's while BYOK is on.
+        let account = self.connections();
+        let gateway = self
+            .plugins
+            .store_root()
+            .map(|root| gateway_models::listed(root, account.as_ref()))
+            .unwrap_or_default();
+        let reachable = account.as_ref().is_some_and(gateway_models::reachable);
+        if !self.plugins.enabled && !reachable {
+            self.notice = Some(
+                "Sign in to OpenAgents or turn on OpenRouter BYOK in /plugins to choose a model."
+                    .into(),
+            );
             return;
         }
+        let mut catalog = if self.plugins.enabled {
+            models::openrouter_catalog()
+        } else {
+            Vec::new()
+        };
+        catalog.extend(gateway_models::catalog(&gateway, !self.plugins.enabled));
+        let picked = gateway_models::active(self.gateway_model.as_deref(), account.as_ref());
+        let (plugin, model) = match &picked {
+            Some(model) if !models::pinned(&self.plugins.model) => {
+                (gateway_models::PICKER, model.clone())
+            }
+            _ if self.plugins.enabled => (models::OPENROUTER_PLUGIN, self.plugins.model.clone()),
+            _ => (gateway_models::PICKER, models::AUTO.to_owned()),
+        };
         self.model_picker = Some(models::Picker::new(
-            models::openrouter_catalog(),
-            models::OPENROUTER_PLUGIN,
-            &self.plugins.model,
+            catalog,
+            plugin,
+            &model,
             self.plugins.options.clone(),
-            matches!(self.mode, Mode::Live | Mode::Solver),
+            self.plugins.enabled && matches!(self.mode, Mode::Live | Mode::Solver),
         ));
     }
 
@@ -2985,7 +3023,49 @@ impl App {
                                 }
                             }
                         }
+                        models::Action::Save(model, _)
+                            if model.plugin == gateway_models::PICKER =>
+                        {
+                            // A gateway pick (#11526) is the Coder loop's
+                            // model; an OpenRouter pick it replaces goes
+                            // back to auto.
+                            let reset = !self.plugins.enabled
+                                || !models::pinned(&self.plugins.model)
+                                || self.plugins.set_model(
+                                    &models::openrouter_catalog()[0],
+                                    models::GenerationOptions::default(),
+                                );
+                            let saved = if reset {
+                                gateway_models::choose(self.plugins.store_root(), Some(&model.id))
+                            } else {
+                                Err(self
+                                    .plugins
+                                    .storage_error
+                                    .clone()
+                                    .unwrap_or_else(|| "Cannot save the model.".into()))
+                            };
+                            match saved {
+                                Ok(picked) => {
+                                    self.gateway_model = picked;
+                                    self.model_picker = None;
+                                    self.notice = Some(if models::pinned(&model.id) {
+                                        format!("Coder now runs {} on OpenAgents.", model.name)
+                                    } else {
+                                        "OpenAgents picks each turn's model.".into()
+                                    });
+                                }
+                                Err(error) => {
+                                    if let Some(picker) = &mut self.model_picker {
+                                        picker.error = Some(error);
+                                    }
+                                }
+                            }
+                        }
                         models::Action::Save(model, options) => {
+                            // An OpenRouter pick replaces a gateway pick.
+                            if gateway_models::choose(self.plugins.store_root(), None).is_ok() {
+                                self.gateway_model = None;
+                            }
                             if self.plugins.set_model(&model, options) {
                                 self.model_picker = None;
                             } else if let Some(picker) = &mut self.model_picker {

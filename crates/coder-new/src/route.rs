@@ -94,6 +94,19 @@ pub struct Plan {
 pub fn plan(execution: &ExecutionSettings, has_key: bool, favor: Favor) -> Plan {
     let mut lanes = Vec::new();
     let mut notes = Vec::new();
+    // A gateway model the person picked (#11526) runs only there: a
+    // chosen model's turn is never handed to another model.
+    if execution.gateway_model.is_some()
+        && execution
+            .connections
+            .as_ref()
+            .is_some_and(crate::provider::gateway_open)
+    {
+        return Plan {
+            lanes: vec![Lane::Gateway],
+            notes,
+        };
+    }
     match &execution.connections {
         Some(account) if crate::provider::gateway_open(account) => lanes.push(Lane::Gateway),
         Some(_) => notes.push("the OpenAgents account can't answer right now".to_owned()),
@@ -263,6 +276,22 @@ mod tests {
             plan.lanes,
             [Lane::Gateway, Lane::Local, Lane::OpenCode, Lane::OpenRouter]
         );
+    }
+
+    /// #11526: a gateway model picked in /models runs only on the
+    /// gateway, whatever the favor; signed out, the pick waits and `auto`
+    /// walks its doors.
+    #[test]
+    fn a_picked_gateway_model_runs_only_on_the_gateway() {
+        let mut settings = settings(&["opencode"]);
+        settings.gateway_model = Some("zai/glm-5.3-flash".into());
+        let favor = Favor {
+            intelligence: 5,
+            ..BALANCED
+        };
+        assert_eq!(plan(&settings, true, favor).lanes, [Lane::Gateway]);
+        settings.connections = None;
+        assert!(!plan(&settings, true, favor).lanes.contains(&Lane::Gateway));
     }
 
     #[test]

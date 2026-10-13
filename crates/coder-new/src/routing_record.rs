@@ -910,7 +910,9 @@ impl crate::App {
                     local: facts.local,
                     images: u32::try_from(images).unwrap_or(u32::MAX),
                     prompt_chars: u32::try_from(prompt_chars).unwrap_or(u32::MAX),
-                    pinned_model: crate::models::pinned(&self.plugins.model),
+                    // A gateway model picked in /models counts too (#11526).
+                    pinned_model: crate::models::pinned(&self.plugins.model)
+                        || (self.gateway_model.is_some() && self.account.is_some()),
                 },
                 probabilities,
                 router,

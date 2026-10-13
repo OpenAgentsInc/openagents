@@ -291,6 +291,12 @@ impl Plugins {
         true
     }
 
+    /// Coder's settings folder, once settings are loaded.
+    #[must_use]
+    pub fn store_root(&self) -> Option<&std::path::Path> {
+        self.store.as_ref().map(Store::root)
+    }
+
     pub fn set_model(&mut self, model: &Model, options: GenerationOptions) -> bool {
         if model.plugin != OPENROUTER_PLUGIN
             || !options.valid()
@@ -511,6 +517,7 @@ impl Plugins {
                 .as_ref()
                 .map(|store| crate::routing_preferences::path(store.root())),
             briefing: None,
+            gateway_model: None,
         }
     }
 

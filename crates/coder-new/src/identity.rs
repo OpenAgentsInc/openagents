@@ -36,17 +36,23 @@ pub enum Menu {
     Codex,
     /// The person's OpenRouter models (OpenRouter BYOK is on).
     OpenRouter,
+    /// The OpenAgents gateway's models, while the signed-in account
+    /// reaches it (#11526).
+    Gateway,
     /// Nothing to pick: OpenAgents picks each turn's model.
     Nothing,
 }
 
 impl Menu {
-    /// The menu a Coder-loop turn has: OpenRouter's when BYOK is on, Claude
-    /// Code's while its plugin is on, else none.
+    /// The menu a Coder-loop turn has: OpenRouter's when BYOK is on, the
+    /// gateway's while signed in, Claude Code's while its plugin is on,
+    /// else none.
     #[must_use]
-    pub fn coder_loop(openrouter: bool, claude: bool) -> Self {
+    pub fn coder_loop(openrouter: bool, gateway: bool, claude: bool) -> Self {
         if openrouter {
             Self::OpenRouter
+        } else if gateway {
+            Self::Gateway
         } else if claude {
             Self::Claude
         } else {
@@ -91,9 +97,13 @@ pub fn prompt_with(menu: Menu, model: &str) -> String {
         Menu::OpenRouter => "To run a certain model, the person types /models and picks one of \
              their OpenRouter models; asked how, say that in one line."
             .to_owned(),
+        Menu::Gateway => "To run a certain model, the person types /models and picks one of \
+             the OpenAgents models listed there; asked how, say that in one line."
+            .to_owned(),
         Menu::Nothing => "There is no model to pick here now: OpenAgents picks each turn's \
-             model. Asked how to run a certain model, say in one line that turning on Claude Code \
-             or OpenRouter BYOK in /plugins adds models to pick in /models."
+             model. Asked how to run a certain model, say in one line that signing in to \
+             OpenAgents, or turning on Claude Code or OpenRouter BYOK in /plugins, adds models \
+             to pick in /models."
             .to_owned(),
     };
     format!(
@@ -143,13 +153,18 @@ mod tests {
         }
         assert!(prompt("auto").contains("types /models and picks it (Claude Code offers Haiku 5.5, Sonnet 5.5, Opus 5.5, Fable 5.1)"));
         // #11519: with Claude Code off and no OpenRouter, no menu at all.
-        let off = super::prompt_with(super::Menu::coder_loop(false, false), "auto");
+        let off = super::prompt_with(super::Menu::coder_loop(false, false, false), "auto");
         assert!(
             !off.contains("Opus") && !off.contains("types /models"),
             "{off}"
         );
         assert!(off.contains("no model to pick here now"), "{off}");
-        let byok = super::prompt_with(super::Menu::coder_loop(true, false), "auto");
+        let gateway = super::prompt_with(super::Menu::coder_loop(false, true, true), "auto");
+        assert!(
+            gateway.contains("OpenAgents models") && !gateway.contains("Opus"),
+            "{gateway}"
+        );
+        let byok = super::prompt_with(super::Menu::coder_loop(true, true, false), "auto");
         assert!(
             byok.contains("OpenRouter models") && !byok.contains("Opus"),
             "{byok}"

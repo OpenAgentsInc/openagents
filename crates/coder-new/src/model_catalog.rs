@@ -41,6 +41,34 @@ impl Loader {
     }
 
     fn sync_with_base(&mut self, app: &mut App, base: &str) {
+        // The gateway's models, when a background refresh finished while
+        // the Coder loop's /models is open (#11526).
+        if app.model_picker.is_some()
+            && let Some((account, fresh)) = crate::gateway_models::take_fresh()
+            && app
+                .connections()
+                .is_some_and(|signed| signed.account == account)
+        {
+            let with_auto = !app.plugins.enabled;
+            if let Some(picker) = app.model_picker.as_mut()
+                && picker.models.iter().all(|model| {
+                    model.plugin == models::OPENROUTER_PLUGIN
+                        || model.plugin == crate::gateway_models::PICKER
+                })
+            {
+                let mut catalog: Vec<_> = picker
+                    .models
+                    .iter()
+                    .filter(|model| model.plugin != crate::gateway_models::PICKER)
+                    .cloned()
+                    .collect();
+                catalog.extend(crate::gateway_models::catalog(&fresh, with_auto));
+                let error = picker.error.clone();
+                let loading = picker.loading;
+                picker.refresh(catalog, error);
+                picker.loading = loading;
+            }
+        }
         let Some(picker) = app.model_picker.as_mut() else {
             self.cancel();
             return;

@@ -333,7 +333,14 @@ impl Provider {
         }
         // Coder's own identity first, whichever model answers (#11264).
         // The /models menu it names is the one this chat has (#11519).
-        let menu = crate::identity::Menu::coder_loop(execution.openrouter, execution.claude);
+        let menu = crate::identity::Menu::coder_loop(
+            execution.openrouter,
+            execution
+                .connections
+                .as_ref()
+                .is_some_and(crate::provider::gateway_open),
+            execution.claude,
+        );
         let mut history =
             vec![json!({"role":"system","content":crate::identity::prompt_with(menu, model)})];
         if let Some(standing) = execution
@@ -1513,6 +1520,7 @@ mod tests {
             favor: crate::route::Favor::default(),
             routing: None,
             briefing: None,
+            gateway_model: None,
         }
     }
 

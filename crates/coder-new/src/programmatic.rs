@@ -588,6 +588,8 @@ fn active_model(app: &App) -> String {
         && models::pinned(&app.plugins.model)
     {
         app.plugins.options.slug(&app.plugins.model)
+    } else if let Some(model) = app.account.as_ref().and(app.gateway_model.clone()) {
+        model
     } else {
         "auto".into()
     }
@@ -876,6 +878,14 @@ fn model_command(app: &mut App, args: &[String]) -> Result<Value, Error> {
         if app.plugins.enabled {
             catalog.extend(models::openrouter_catalog().iter().map(|model|json!({"plugin":model.plugin,"id":model.id,"name":model.name,"reasoning":model.efforts,"context_length":model.context_length,"max_output_tokens":model.max_output_tokens})));
         }
+        // The OpenAgents gateway's models while this sign-in reaches it
+        // (#11526).
+        let gateway = app
+            .plugins
+            .store_root()
+            .map(|root| crate::gateway_models::listed_now(root, app.connections().as_ref()))
+            .unwrap_or_default();
+        catalog.extend(crate::gateway_models::catalog(&gateway, false).iter().map(|model|json!({"plugin":model.plugin,"id":model.id,"name":model.name,"reasoning":model.efforts,"context_length":model.context_length,"max_output_tokens":model.max_output_tokens})));
         return Ok(json!({"selected":active_model(app),"models":catalog}));
     }
     if args.first().is_none_or(|arg| arg != "set") {
@@ -928,7 +938,35 @@ fn model_command(app: &mut App, args: &[String]) -> Result<Value, Error> {
         if app.plugins.enabled && !app.plugins.toggle_enabled() {
             return Err("Cannot save provider selection.".into());
         }
+        app.gateway_model =
+            crate::gateway_models::choose(app.plugins.store_root(), None).map_err(Error::from)?;
         return Ok(json!({"model":"auto","provider":"openagents-gateway"}));
+    }
+    // A gateway model (#11526): the Coder loop's turns run on it through
+    // the gateway.
+    let account = app.connections();
+    if app.plugins.store_root().is_some_and(|root| {
+        crate::gateway_models::listed_now(root, account.as_ref())
+            .iter()
+            .any(|row| row.id == slug)
+    }) {
+        if reasoning.is_some() || max_tokens.is_some() {
+            return Err(usage(
+                "OpenAgents models do not take reasoning or output limits here.",
+            ));
+        }
+        if app.plugins.enabled
+            && models::pinned(&app.plugins.model)
+            && !app.plugins.set_model(
+                &models::openrouter_catalog()[0],
+                models::GenerationOptions::default(),
+            )
+        {
+            return Err("Cannot save model settings.".into());
+        }
+        app.gateway_model = crate::gateway_models::choose(app.plugins.store_root(), Some(&slug))
+            .map_err(Error::from)?;
+        return Ok(json!({"model":slug,"provider":"openagents-gateway"}));
     }
     let model = models::openrouter_catalog()
         .into_iter()
@@ -2054,6 +2092,71 @@ mod tests {
         let app = bootstrap(&context).unwrap();
         assert_eq!(app.account.as_deref(), Some("Fixture"));
         assert_eq!(plan(&app).first(), Some(&crate::route::Lane::Gateway));
+    }
+
+    /// #11526: signed in, `models list` offers the gateway's models (one
+    /// fetch, then the kept list), `models set` picks one for the Coder
+    /// loop's turns, and `auto` clears it. Signed out, none are listed.
+    #[test]
+    fn a_headless_chat_lists_and_picks_the_gateways_models() {
+        use std::io::{Read as _, Write as _};
+        let _ = crate::account::without_env_sign_in();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 4096];
+            let read = socket.read(&mut request).unwrap();
+            let body = json!({"data":[
+                {"id":"zai/glm-5.3-flash","openagents":{"providers":[{"capabilities":{"tools":true}}]}},
+                {"id":"openagents/auto","openagents":{"router":true}}
+            ]})
+            .to_string();
+            write!(
+                socket,
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+            String::from_utf8_lossy(&request[..read]).into_owned()
+        });
+        let temp = tempfile::tempdir().unwrap();
+        let context = context(&temp);
+        std::fs::create_dir_all(&context.root).unwrap();
+        let mut app = bootstrap(&context).unwrap();
+        let ids = |listed: &Value| {
+            listed["models"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|model| model["id"].as_str().unwrap().to_owned())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(&model_command(&mut app, &[]).unwrap()), ["auto"]);
+        std::fs::write(
+            context.root.join("account.json"),
+            json!({
+                "origin": origin, "account": "acct_models", "label": "Fixture",
+                "expires_at": u64::MAX, "token": "fixture-models-token",
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let mut app = bootstrap(&context).unwrap();
+        let listed = model_command(&mut app, &["list".into()]).unwrap();
+        assert_eq!(ids(&listed), ["auto", "zai/glm-5.3-flash"]);
+        let request = server.join().unwrap();
+        assert!(request.starts_with("GET /api/v1/models "), "{request}");
+        assert!(request.contains("Bearer fixture-models-token"));
+        // The kept list answers the next read without asking again.
+        let set = model_command(&mut app, &["set".into(), "zai/glm-5.3-flash".into()]).unwrap();
+        assert_eq!(set["model"], "zai/glm-5.3-flash");
+        assert_eq!(active_model(&app), "zai/glm-5.3-flash");
+        let app = bootstrap(&context).unwrap();
+        assert_eq!(app.gateway_model.as_deref(), Some("zai/glm-5.3-flash"));
+        let mut app = app;
+        model_command(&mut app, &["set".into(), "auto".into()]).unwrap();
+        assert_eq!(active_model(&app), "auto");
     }
 
     fn context(temp: &tempfile::TempDir) -> Context {
