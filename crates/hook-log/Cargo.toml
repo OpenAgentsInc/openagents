@@ -1,0 +1,17 @@
+[package]
+name = "hook-log"
+description = "System One hooks (#11492): one decision-log format every hook writes, and a join with run outcomes for threshold calibration"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

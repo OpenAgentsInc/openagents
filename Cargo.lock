@@ -7214,6 +7214,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hook-log"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "http"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -14800,6 +14809,7 @@ name = "squeeze"
 version = "0.1.0"
 dependencies = [
  "claude_agent_sdk",
+ "hook-log",
  "jev",
  "serde_json",
  "tempfile",

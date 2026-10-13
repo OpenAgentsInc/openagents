@@ -28,7 +28,7 @@
 //! Environment: `CODER_SQUEEZE=off` turns the hook off,
 //! `CODER_SQUEEZE_DIR` names where full outputs go (default: a
 //! `coder-squeeze` directory under the temp dir), `CODER_SQUEEZE_LOG` names
-//! the decision log (default `~/.openagents/decisions/squeeze.jsonl`), and
+//! the decision log (default `~/.openagents/decisions/squeeze.jsonl`, the shared `hook-log` format), and
 //! `OPENAGENTS_DECISIONS_URL` another Decisions API root.
 
 pub mod shell;
@@ -461,19 +461,20 @@ pub fn render(
     out
 }
 
-/// What the squeezer logs for one run.
+/// What the squeezer logs for one run: one shared-format [`hook_log::Decision`]
+/// (per-chunk ratings in `detail.rated`), as JSON.
 fn record(command: &str, status: i32, total: usize, kept: &[usize], picked: &Picked) -> Value {
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
-    let mut line = json!({
-        "hook": "squeeze",
-        "ts": stamp,
+    let how = match picked {
+        Picked::Rule => hook_log::How::Rule,
+        Picked::Decision { .. } => hook_log::How::Decision,
+        Picked::Fallback(_) => hook_log::How::Fallback,
+    };
+    let mut d = hook_log::Decision::new("squeeze", "keep_chunk", "keep_chunks", how);
+    d.detail = json!({
         "command": command,
         "exit": status,
         "lines": total,
         "kept_chunks": kept,
-        "how": picked.word(),
     });
     match picked {
         Picked::Decision {
@@ -482,44 +483,26 @@ fn record(command: &str, status: i32, total: usize, kept: &[usize], picked: &Pic
             latency_ms,
             rated,
         } => {
-            line["model"] = json!(model);
-            line["door"] = json!(door);
-            line["latency_ms"] = json!(latency_ms);
-            line["threshold"] = json!(KEEP_AT);
-            line["rated"] = json!(
+            d.model = Some(model.clone());
+            d.door = door.clone();
+            d.latency_ms = Some(*latency_ms);
+            d.threshold = Some(KEEP_AT);
+            d.detail["rated"] = json!(
                 rated
                     .iter()
                     .map(|(i, p)| json!({"chunk": i, "p": p}))
                     .collect::<Vec<_>>()
             );
         }
-        Picked::Fallback(error) => line["error"] = json!(error),
+        Picked::Fallback(error) => d.detail["error"] = json!(error),
         Picked::Rule => {}
     }
-    line
-}
-
-fn log_path() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var(LOG_VAR)
-        && !path.trim().is_empty()
-    {
-        return Some(PathBuf::from(path));
-    }
-    let home = std::env::var_os("HOME")?;
-    Some(PathBuf::from(home).join(".openagents/decisions/squeeze.jsonl"))
+    serde_json::to_value(&d).unwrap_or(Value::Null)
 }
 
 fn append_log(line: &Value) {
-    let Some(path) = log_path() else { return };
-    if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-    {
-        let _ = writeln!(file, "{line}");
+    if let Ok(d) = serde_json::from_value::<hook_log::Decision>(line.clone()) {
+        hook_log::append_default(&d);
     }
 }
 
@@ -638,7 +621,7 @@ pub fn main(args: &[String]) -> i32 {
         Some((reply, line)) => {
             let _ = stdout.write_all(reply.as_bytes());
             let mut line = line;
-            line["full"] = json!(full);
+            line["detail"]["full"] = json!(full);
             append_log(&line);
         }
     }

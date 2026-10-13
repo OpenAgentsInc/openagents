@@ -130,6 +130,27 @@ decides when it can, the Decisions API only when the rule is unsure.
    steer followed). Without the join no threshold above can be calibrated
    (the calibration memo's open gap).
 
+   **The log (`crates/hook-log`).** Every hook writes the same line through
+   `hook_log::append`: `hook`, `question`, `p` (raw probability), `threshold`,
+   `action`, `how` (`rule`, `decision`, or `fallback`), `model`, `door`,
+   `latency_ms`, `run_id` (from `CODER_RUN_ID` when set), `ts` (ms), and a
+   free `detail`. It lives at `~/.openagents/decisions/<hook>.jsonl`;
+   `CODER_<HOOK>_LOG` overrides the path (`CODER_SQUEEZE_LOG` still works).
+   The squeezer writes one line per squeezed run, with the per-chunk ratings
+   in `detail.rated`.
+
+   **Outcomes file.** One JSON line per run:
+   `{"run_id": "...", "passed": true, "labels": [{"decision_ts": 1760000000000, "correct": true}]}`.
+   `passed` is the run's check result; a label says whether one decision (its
+   `ts`) was right. Labels are optional.
+
+   **Report.**
+   `cargo run -p hook-log -- report ~/.openagents/decisions/gate.jsonl --outcomes outcomes.jsonl`
+   joins on `run_id` and `ts`, then prints per hook and question the count,
+   mean p, a 5-bin table (n, mean p, observed rate), and ECE (expected
+   calibration error: the bin gaps weighted by size; 0 is perfect). Without
+   `--outcomes` it prints counts and the p histogram.
+
 ## Token savers: the plugin every lever lives in
 
 Every lever ships inside one built-in plugin, **Token savers**

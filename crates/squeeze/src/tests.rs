@@ -93,7 +93,7 @@ fn too_many_flagged_chunks_ask_the_decision_model() {
     assert_eq!(judge.calls.get(), 1);
     assert_eq!(line["how"], "decision");
     assert_eq!(line["door"], "clef");
-    assert_eq!(line["kept_chunks"], json!([10]));
+    assert_eq!(line["detail"]["kept_chunks"], json!([10]));
     assert!(reply.contains("middle chunks kept by decision"));
 }
 
@@ -103,9 +103,9 @@ fn a_failed_decision_falls_back_to_the_first_flagged_chunks() {
     let text = log(600, &errors);
     let judge = failing();
     let (reply, line) = squeeze(&text, "cargo test", 101, None, &judge).unwrap();
-    assert_eq!(line["how"], "rule (decision unavailable)");
+    assert_eq!(line["how"], "fallback");
     assert!(reply.contains("case_10' panicked"), "the first error stays");
-    let kept = line["kept_chunks"].as_array().unwrap().len();
+    let kept = line["detail"]["kept_chunks"].as_array().unwrap().len();
     assert!(kept > 0 && kept * CHUNK_LINES <= MIDDLE_BUDGET + CHUNK_LINES);
 }
 
@@ -117,7 +117,7 @@ fn unflagged_long_output_asks_and_can_keep_nothing() {
         .join("\n");
     let judge = fake(|_| 0.05);
     let (reply, line) = squeeze(&text, "cargo build", 0, None, &judge).unwrap();
-    assert_eq!(line["kept_chunks"], json!([]));
+    assert_eq!(line["detail"]["kept_chunks"], json!([]));
     assert_eq!(reply.lines().count(), HEAD_LINES + 1 + TAIL_LINES + 1);
 }
 
