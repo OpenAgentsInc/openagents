@@ -263,6 +263,17 @@ impl ToolServer {
         applied
     }
 
+    /// The bytes of the server's `tools/list` answer: what a harness reads
+    /// into its prompt. Two servers that offer the same tools give the
+    /// same bytes, so a test can hold the parent's tool list fixed.
+    pub async fn list_bytes(&self) -> Vec<u8> {
+        let reply = self
+            .in_process()
+            .handle_message(&json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}))
+            .await;
+        serde_json::to_vec(&reply["result"]).unwrap_or_default()
+    }
+
     /// The server in process, for Claude Code. Each call goes through
     /// [`ToolServer::call`].
     #[must_use]

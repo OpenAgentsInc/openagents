@@ -379,25 +379,7 @@ impl Codex {
         {
             // One namespace, the server's name, so a tool may load on
             // demand (Codex defers only namespaced tools).
-            params["dynamicTools"] = json!([{
-                "type": "namespace",
-                "name": tools.name,
-                "description": tools
-                    .instructions
-                    .clone()
-                    .unwrap_or_else(|| "Coder's own tools.".to_owned()),
-                "tools": tools
-                    .tools()
-                    .iter()
-                    .map(|tool| json!({
-                        "type": "function",
-                        "name": tool.name,
-                        "description": tool.description,
-                        "inputSchema": tool.schema,
-                        "deferLoading": !tool.always_load,
-                    }))
-                    .collect::<Vec<_>>(),
-            }]);
+            params["dynamicTools"] = dynamic_tools(tools);
         }
         self.tools.clone_from(&open.tools);
         let result = match &open.resume {
@@ -1002,6 +984,31 @@ fn kept_tools(thread: &Value, name: &str) -> Option<Vec<String>> {
             .filter_map(|tool| tool["name"].as_str().map(str::to_owned))
             .collect(),
     )
+}
+
+/// Coder's tools as Codex's `dynamicTools`: one namespace, the server's
+/// name, so a tool may load on demand (Codex defers only namespaced tools).
+#[must_use]
+pub fn dynamic_tools(tools: &ToolServer) -> Value {
+    json!([{
+        "type": "namespace",
+        "name": tools.name,
+        "description": tools
+            .instructions
+            .clone()
+            .unwrap_or_else(|| "Coder's own tools.".to_owned()),
+        "tools": tools
+            .tools()
+            .iter()
+            .map(|tool| json!({
+                "type": "function",
+                "name": tool.name,
+                "description": tool.description,
+                "inputSchema": tool.schema,
+                "deferLoading": !tool.always_load,
+            }))
+            .collect::<Vec<_>>(),
+    }])
 }
 
 /// A dynamic tool's answer to Codex.

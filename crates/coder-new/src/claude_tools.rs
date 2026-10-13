@@ -80,13 +80,56 @@ pub fn delegation_only(mut execution: ExecutionSettings) -> ExecutionSettings {
     execution
 }
 
+/// `execution` as the tool server lists it: [`delegation_only`], and with
+/// the harness plugins' own tools (`agent`, `acp_subagent`, `microcoder`)
+/// left out. Every harness is reached through the one fixed `delegate`
+/// tool instead, checked at call time (#11511), so turning a harness on
+/// or off never changes the parent's tool list or its instructions.
+#[must_use]
+pub fn listed(execution: &ExecutionSettings) -> ExecutionSettings {
+    let mut listed = delegation_only(execution.clone());
+    listed.acp = false;
+    listed.microcoder = false;
+    listed
+}
+
+/// The background agents' tools offered beside `delegate` when the session
+/// has an agent tray: list, message and stop. Fixed, like `delegate`.
+pub const TRAY_TOOLS: [&str; 3] = ["agent_list", "agent_message", "agent_stop"];
+
 /// The tools a claude turn gets from `execution`, by name.
 #[must_use]
 pub fn names(execution: &ExecutionSettings) -> Vec<String> {
-    delegation_only(execution.clone())
+    let mut names: Vec<String> = listed(execution)
         .defs()
         .iter()
         .filter_map(|tool| tool["function"]["name"].as_str().map(str::to_owned))
+        .collect();
+    if crate::approval::tools_allowed() {
+        names.push(coder_sdk::delegation::TOOL.to_owned());
+        if execution.fleet.is_some() {
+            names.extend(TRAY_TOOLS.iter().map(|name| (*name).to_owned()));
+        }
+    }
+    names
+}
+
+/// The tray tools' definitions, without the `agent` tool whose engine list
+/// changes with the plugins.
+fn tray_definitions() -> Vec<Value> {
+    let mut execution = crate::App::default().agent_execution();
+    execution.microcoder = true;
+    execution.fleet = Some(crate::fleet::Host::local(
+        crate::fleet::Fleet::default(),
+        None,
+    ));
+    crate::fleet::tool_definitions(&execution)
+        .into_iter()
+        .filter(|tool| {
+            tool["function"]["name"]
+                .as_str()
+                .is_some_and(|name| TRAY_TOOLS.contains(&name))
+        })
         .collect()
 }
 
@@ -96,7 +139,7 @@ pub fn instructions(tools: &Tools) -> String {
     let Some(execution) = tools.execution.as_ref().filter(|_| !tools.names.is_empty()) else {
         return String::new();
     };
-    let execution = delegation_only(execution.clone());
+    let execution = listed(execution);
     let solver = if tools
         .names
         .iter()
@@ -107,7 +150,7 @@ pub fn instructions(tools: &Tools) -> String {
         ""
     };
     format!(
-        "{solver}Coder's own tools are under the `{SERVER}` server. Use them to hand work to Coder rather than doing all of it in this turn: independent tasks to background agents (`agent`, several at once, each in its own worktree), an issue that should end in a pull request to `solver`, and cloud work to the cloud tools. Your own Agent tool stays for quick research inside this turn.\n{}",
+        "{solver}Coder's own tools are under the `{SERVER}` server. Use them to hand work to Coder rather than doing all of it in this turn: another agent (Claude Code, Codex, OpenCode, Coder's own loop, or any installed agent) through `delegate`, which answers with a short result, or in the background with `background` set, several at once, each in its own worktree, an issue that should end in a pull request to `solver`, and cloud work to the cloud tools. Your own Agent tool stays for quick research inside this turn.\n{}",
         execution.instructions()
     )
 }
@@ -181,7 +224,7 @@ pub fn server(
     events: tokio::sync::mpsc::UnboundedSender<RuntimeEvent>,
     stop: Arc<AtomicBool>,
 ) -> Option<claude_agent_sdk::SdkMcpServer> {
-    tool_server(tools, events, stop).map(|server| server.in_process())
+    tool_server(tools, crate::delegate_host::CLAUDE, events, stop).map(|server| server.in_process())
 }
 
 /// Coder's tools as the one tool server the SDK offers every harness that
@@ -190,15 +233,17 @@ pub fn server(
 #[must_use]
 pub fn tool_server(
     tools: &Tools,
+    harness: &str,
     events: tokio::sync::mpsc::UnboundedSender<RuntimeEvent>,
     stop: Arc<AtomicBool>,
 ) -> Option<coder_sdk::ToolServer> {
+    let full = tools.execution.clone()?;
     let execution = delegation_only(tools.execution.clone()?);
-    let tools = execution.defs();
+    let tools = listed(&execution).defs();
     // Coder's tool calls hold values that stay on one thread, so each call
     // runs on a thread of its own and the server waits for its answer.
     let execution = Arc::new(std::sync::Mutex::new(execution));
-    if tools.is_empty() {
+    if !crate::approval::tools_allowed() {
         return None;
     }
     let mut server = coder_sdk::ToolServer::new(SERVER, "1.0.0").timeout_ms(TIMEOUT_MS);
@@ -263,11 +308,100 @@ pub fn tool_server(
         .always_load(always);
         server = server.add(tool);
     }
+    // The one fixed `delegate` tool (#11511), and the tray's tools when the
+    // session has a tray: the same bytes whatever is turned on.
+    server = server.add(delegate_tool(
+        full.clone(),
+        harness,
+        events.clone(),
+        stop.clone(),
+    ));
+    if let Some(host) = full.fleet.clone() {
+        for definition in tray_definitions() {
+            let function = &definition["function"];
+            let Some(name) = function["name"].as_str().map(str::to_owned) else {
+                continue;
+            };
+            let host = host.clone();
+            let full = full.clone();
+            let tool_name = name.clone();
+            let tool = coder_sdk::Tool::new(
+                &name,
+                function["description"].as_str().unwrap_or_default(),
+                function["parameters"].clone(),
+                move |input: Value| {
+                    let result = crate::fleet::execute(&host, &full, &tool_name, input, None);
+                    async move {
+                        Ok(match result {
+                            Ok(value) => claude_agent_sdk::ToolResult::text(value.to_string()),
+                            Err(error) => claude_agent_sdk::ToolResult::error(error),
+                        })
+                    }
+                },
+            )
+            .always_load(name == "agent_list");
+            server = server.add(tool);
+        }
+    }
     Some(server)
 }
 
+/// The `delegate` tool for a session on `harness`: its fixed definition,
+/// each call run on a thread of its own through
+/// [`crate::delegate_host::execute`], the child drawn as a delegation.
+fn delegate_tool(
+    execution: ExecutionSettings,
+    harness: &str,
+    events: tokio::sync::mpsc::UnboundedSender<RuntimeEvent>,
+    stop: Arc<AtomicBool>,
+) -> coder_sdk::Tool {
+    let harness = harness.to_owned();
+    coder_sdk::Tool::new(
+        coder_sdk::delegation::TOOL,
+        coder_sdk::delegation::DESCRIPTION,
+        coder_sdk::delegation::schema(),
+        move |input: Value| {
+            let execution = execution.clone();
+            let events = events.clone();
+            let stop = stop.clone();
+            let harness = harness.clone();
+            async move {
+                let (answer, result) = tokio::sync::oneshot::channel();
+                std::thread::spawn(move || {
+                    let outcome = match tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                    {
+                        Ok(runtime) => runtime.block_on(async {
+                            let mut emit = |event: RuntimeEvent| {
+                                let _ = events.send(event);
+                            };
+                            crate::delegate_host::execute(
+                                &execution, &harness, input, None, &stop, &mut emit,
+                            )
+                            .await
+                        }),
+                        Err(error) => Err(format!("Coder's tool could not start: {error}")),
+                    };
+                    let _ = answer.send(outcome);
+                });
+                Ok(
+                    match result
+                        .await
+                        .unwrap_or_else(|_| Err("The delegation stopped without an answer.".into()))
+                    {
+                        Ok(value) => claude_agent_sdk::ToolResult::text(value.to_string()),
+                        Err(error) => claude_agent_sdk::ToolResult::error(error),
+                    },
+                )
+            }
+        },
+    )
+    .always_load(true)
+}
+
 /// The subcommand that serves Coder's tools over stdio: `coder
-/// coder-tools-mcp [--decide] [--cwd DIR]`.
+/// coder-tools-mcp [--decide] [--harness NAME] [--cwd DIR]`.
 pub const STDIO_COMMAND: &str = "coder-tools-mcp";
 
 /// `coder coder-tools-mcp`: the person's Coder tools (the plugins they
@@ -276,6 +410,7 @@ pub const STDIO_COMMAND: &str = "coder-tools-mcp";
 /// API. Returns the exit code.
 pub fn stdio_main(args: &[String]) -> i32 {
     let mut decide = false;
+    let mut harness = String::from("mcp");
     let mut cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let mut rest = args.iter();
     while let Some(arg) = rest.next() {
@@ -286,8 +421,15 @@ pub fn stdio_main(args: &[String]) -> i32 {
                     cwd = std::path::PathBuf::from(dir);
                 }
             }
+            // The harness that reads these tools, for the delegation
+            // records (#11511): opencode, an ACP agent's id.
+            "--harness" => {
+                if let Some(name) = rest.next() {
+                    harness.clone_from(name);
+                }
+            }
             other => {
-                eprintln!("Unknown option {other}. Use --decide or --cwd DIR.");
+                eprintln!("Unknown option {other}. Use --decide, --harness NAME or --cwd DIR.");
                 return 2;
             }
         }
@@ -315,7 +457,7 @@ pub fn stdio_main(args: &[String]) -> i32 {
     runtime.block_on(async move {
         let (events, _drawn) = tokio::sync::mpsc::unbounded_channel();
         let stop = Arc::new(AtomicBool::new(false));
-        let mut server = tool_server(&Tools::new(execution), events, stop)
+        let mut server = tool_server(&Tools::new(execution), &harness, events, stop)
             .unwrap_or_else(|| coder_sdk::ToolServer::new(SERVER, "1.0.0"));
         match coder_sdk::decide::tool(&admission, Arc::new(coder_sdk::decide::Api)) {
             Ok(tool) => server = server.add(tool),

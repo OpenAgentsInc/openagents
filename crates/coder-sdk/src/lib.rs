@@ -21,6 +21,7 @@ pub mod command;
 pub mod compose;
 pub mod decide;
 pub mod decision;
+pub mod delegation;
 pub mod digest;
 pub mod events;
 pub mod hooks;

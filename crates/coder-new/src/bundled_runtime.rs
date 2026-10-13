@@ -584,6 +584,44 @@ thread_local! {
         const { RefCell::new(Vec::new()) };
 }
 
+thread_local! {
+    static CODEX_MODEL: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+/// The model the next Codex run on this thread uses, ahead of
+/// `CODER_CODEX_MODEL`: a delegation that named one (#11511).
+pub(crate) fn set_next_codex_model(model: Option<String>) {
+    CODEX_MODEL.with(|next| *next.borrow_mut() = model);
+}
+
+fn next_codex_model() -> Option<String> {
+    CODEX_MODEL.with(|next| next.borrow().clone())
+}
+
+/// Codex on a delegated task (#11511): on app-server under Coder's hooks
+/// with full access, or in Codex's read-only sandbox, on `model` when the
+/// call named one. Codex reads its own `AGENTS.md`; the task is the
+/// child's briefing.
+pub(crate) async fn codex_delegated(
+    program: &Path,
+    task: &str,
+    cwd: &Path,
+    model: Option<&str>,
+    read_only: bool,
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Value, String> {
+    let sandbox = if read_only {
+        codex_sandbox().map(|_| CodexSandbox::ReadOnly)?
+    } else {
+        codex_sandbox()?
+    };
+    set_next_codex_model(model.map(str::to_owned));
+    let result = codex_cli(program, task, cwd, sandbox, false, cancel, emit).await;
+    set_next_codex_model(None);
+    result
+}
+
 /// Sets the variables children started on this thread get.
 pub(crate) fn set_child_env(vars: Vec<(std::ffi::OsString, std::ffi::OsString)>) {
     CHILD_ENV.with(|env| *env.borrow_mut() = vars);
@@ -1361,7 +1399,7 @@ async fn codex_cli(
     let mut command = std::process::Command::new(program);
     command.args(["exec", "--json", "--skip-git-repo-check"]);
     let variable = |name| std::env::var(name).ok().filter(|value| !value.is_empty());
-    let model = variable("CODER_CODEX_MODEL");
+    let model = next_codex_model().or_else(|| variable("CODER_CODEX_MODEL"));
     let reasoning = variable("CODER_CODEX_REASONING");
     if let Some(model) = &model {
         command.args(["--model", model]);
@@ -1532,7 +1570,7 @@ async fn codex_app_server(
     let mut codex = Codex::spawn(&launch, crate::sdk_hooks::codex(cwd))
         .await
         .ok()?;
-    let model = variable("CODER_CODEX_MODEL");
+    let model = next_codex_model().or_else(|| variable("CODER_CODEX_MODEL"));
     let reasoning = variable("CODER_CODEX_REASONING");
     let mut session = None;
     codex

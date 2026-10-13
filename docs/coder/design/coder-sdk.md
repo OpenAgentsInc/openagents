@@ -432,6 +432,88 @@ reason, so a refused step's reason is sent as the next prompt in the same
 session; a `Stop` block's reason is sent the same way, a few times at
 most. The chat's briefing goes ahead of the task.
 
+## Delegation across harnesses
+
+Built (#11511). Any harness hands work to any other through **one
+`delegate` tool**: Claude Code, Codex, OpenCode, the other ACP agents
+and Coder's own loop, as parent or child. It is served the way every
+Coder tool is: in process for Claude Code (`mcp__coder__delegate`), as a
+dynamic tool in the `coder` namespace for Codex on app-server, by `coder
+coder-tools-mcp [--harness NAME]` on stdio for OpenCode and ACP agents,
+and natively for the Coder loop (`ExecutionSettings::defs`). The SDK half
+is `coder_sdk::delegation`; Coder's host is
+`crates/coder-new/src/delegate_host.rs`.
+
+**Cache-safe for the parent.**
+
+- The tool's name, description and schema are constants
+  (`delegation::DESCRIPTION`, `schema()`). No harness list, model list or
+  plugin state is embedded. The target harness and its model are checked
+  when the call arrives (`Host::target`; models against the harness's
+  catalog, as #11482 does for preferences), so an unavailable harness or
+  model is refused with the ones that exist.
+- In the Coder tools server the harness plugins' own tools (`agent`,
+  `acp_subagent`, `microcoder`) are no longer listed; `delegate` and the
+  tray tools (`agent_list`, `agent_message`, `agent_stop`) replace them.
+  Turning a harness plugin on or off (Claude Code, Codex, OpenCode, the
+  Coder loop, any local agent) leaves the server's `tools/list` bytes, the
+  Codex `dynamicTools` bytes and the server's instructions identical
+  (`delegate_host` tests). Other plugins (Solver, cloud, GitHub) still add
+  their own tools.
+- Nothing is added to the parent's system prompt for delegation; the old
+  line about background agents now names `delegate`.
+- The child's answer is a `Report`: outcome, a summary clipped to 800
+  bytes, up to 40 changed files (the rest counted), up to 20 checks, the
+  worktree and branch, depth, run id, chain, and the path of the full
+  transcript on disk. Never the transcript itself.
+- A background child (`background: true`) answers at once with its id and
+  runs on the agent tray (`agent_fleet`), which shows its activity; its
+  result reaches the tray, not the parent's context.
+
+**The child.** It reads its own briefing (`delegation::briefing`: the
+task, where it works, and a closing JSON block with summary, done and
+checks), not the parent's history. A writing child gets a fresh worktree
+on its own branch (`coder::branch_checkout`); a read-only child works in
+the folder with each engine held to reading. It runs under its harness's
+own hooks: Claude Code through the Agent SDK with the fence and floors
+(`claude::run_delegated`), Codex on app-server under `sdk_hooks::codex`
+or in its read-only sandbox (`bundled_runtime::codex_delegated`), the
+Coder loop under its floors hook, and ACP agents through `acp_briefed`
+(their permission requests answered by Coder; the SDK's ACP backend from
+#11508 is not yet wired into this path). A worktree with no changes is
+removed with its branch.
+
+**Authority never widens.** `Authority { write, admission }`: a child's is
+`parent.child(read_only)`, so a read-only (gated) parent can only start
+read-only children, and a child carries only the parent's admitted
+disclosures. What a child's environment claims (`CODER_DELEGATION_AUTHORITY`)
+is intersected with its own host's authority, never added to it.
+
+**Nesting is bounded and recorded.** `Lineage` travels in the child's
+environment (`CODER_RUN_ID` is the root's run id, so every decision in the
+tree logs under it; `CODER_DELEGATION_ID`, `_DEPTH`, `_MAX`, `_CHAIN`,
+`_HARNESS`). The bound is 2 (parent, child, grandchild); a child may lower
+it, never raise it. Every call, refused ones included, appends an
+`openagents.coder.delegation.v1` record (run, parent, parent harness,
+child, harness, model, depth, chain, outcome) to
+`delegations/delegations.jsonl` under `--state` or `~/.openagents/coder`.
+
+**One code path.** `Delegator::delegate` runs every delegation: the tool
+on each harness, `coder delegate --to HARNESS --task TEXT [--model ID]
+[--read-only] [--background]`, and the headless JSON path (`--json`
+prints the child's events, then the report).
+
+**Tests.**
+
+- Scripted matrix (`coder_sdk::delegation` tests): every parent
+  transport (in process, Codex dynamic, MCP stdio, native) calls
+  `delegate` to every scripted harness (Claude Code, Codex, OpenCode, an
+  ACP agent, the Coder loop): 25 pairs, each child writes a file in its
+  own worktree and the parent gets a short report. Plus call-time
+  refusals, fixed tool bytes, nesting to the bound, authority, and
+  background.
+- Live runs: see the results recorded on #11511.
+
 ## Open questions
 
 - Is a decision hook's `act` plain Rust, or a workflow step, so a plugin
@@ -456,6 +538,7 @@ Tracked on project 22.
 | 5 | Plugin hooks | [#11499](https://github.com/OpenAgentsInc/openagents/issues/11499) |
 | 6 | Command hooks and the hook bridge | [#11500](https://github.com/OpenAgentsInc/openagents/issues/11500) |
 | 7 | One Coder tools MCP server for every harness | [#11501](https://github.com/OpenAgentsInc/openagents/issues/11501) |
+| 8 | Delegation across harnesses through one `delegate` tool | [#11511](https://github.com/OpenAgentsInc/openagents/issues/11511) |
 
 Built since: the Codex backend on app-server (#11510; #11493 described
 its permission half), and the ACP backend with per-agent tiers (#11508).

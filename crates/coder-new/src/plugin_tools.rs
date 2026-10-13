@@ -262,6 +262,8 @@ impl ExecutionSettings {
         if self.shell {
             definitions.push(crate::plan::definition());
             definitions.push(crate::workflow::definition());
+            // The one `delegate` tool, fixed whatever is on (#11511).
+            definitions.push(coder_sdk::delegation::function_definition());
         }
         if let Some(run) = &self.harness {
             definitions.retain(|tool| {
@@ -419,6 +421,17 @@ impl ExecutionSettings {
         };
         let result = match name {
             crate::plan::TOOL if self.shell => crate::plan::execute(arguments),
+            coder_sdk::delegation::TOOL if self.shell => {
+                crate::delegate_host::execute(
+                    self,
+                    crate::delegate_host::CODER,
+                    arguments,
+                    provider,
+                    cancel,
+                    &mut emit,
+                )
+                .await
+            }
             crate::routing_preferences::TOOL if self.routing.is_some() => self
                 .routing
                 .as_deref()

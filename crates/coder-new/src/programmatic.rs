@@ -35,6 +35,11 @@ macro_rules! command_usage {
                                       In a Git repository the chat works in its own
                                       worktree and branch (chat/ID); --in-place uses
                                       this folder instead.
+  delegate --to HARNESS --task TEXT [--model ID] [--read-only] [--background]
+                                      Hand a task to another harness (claude-code,
+                                      codex, opencode, coder, an ACP agent, auto)
+                                      through the same code as the delegate tool;
+                                      prints its short result.
   delegate AGENT --task TEXT [--session ID]
        [--on boat|gce] [--mode integrated|coder] [--model ID] [--reasoning EFFORT]
        [--job ID] [--size small|default|large|xlarge] [--template NAME]
@@ -1424,6 +1429,81 @@ fn entry_value(entry: &live::Entry) -> Value {
     }
 }
 
+/// `coder delegate --to HARNESS --task TEXT [--model ID] [--read-only]
+/// [--background]` (#11511): the same delegation the `delegate` tool runs
+/// on every harness ([`crate::delegate_host::execute`]), its child's events
+/// on the JSON stream and its short result printed.
+fn delegate_to(
+    app: &mut App,
+    mut args: Vec<String>,
+    context: &Context,
+    emit: &mut dyn FnMut(Value),
+) -> Result<Value, Error> {
+    let to = take_option(&mut args, "--to")?.ok_or_else(|| usage("Supply --to HARNESS."))?;
+    let task = take_option(&mut args, "--task")?.ok_or_else(|| usage("Supply --task TEXT."))?;
+    let model = take_option(&mut args, "--model")?;
+    let mut flag = |name: &str| {
+        let found = args.iter().any(|arg| arg == name);
+        args.retain(|arg| arg != name);
+        found
+    };
+    let read_only = flag("--read-only");
+    let background = flag("--background");
+    if !args.is_empty() {
+        return Err(usage(
+            "Use delegate --to HARNESS --task TEXT [--model ID] [--read-only] [--background].",
+        ));
+    }
+    let mut execution = app.plugins.execution_settings(context.cwd.clone());
+    execution.boundary = app.boundary.clone();
+    if background {
+        execution.fleet = Some(crate::fleet::Host::local(
+            crate::fleet::Fleet::default(),
+            None,
+        ));
+    }
+    let mut arguments =
+        json!({"to": to, "task": task, "read_only": read_only, "background": background});
+    if let Some(model) = model {
+        arguments["model"] = json!(model);
+    }
+    let cancel = context
+        .canceled
+        .clone()
+        .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| "Cannot start the delegation.".to_owned())?;
+        let mut send = |event: RuntimeEvent| {
+            let _ = sender.send(event);
+        };
+        runtime.block_on(crate::delegate_host::execute(
+            &execution,
+            &std::env::var(coder_sdk::delegation::HARNESS_VAR)
+                .unwrap_or_else(|_| "coder-cli".to_owned()),
+            arguments,
+            None,
+            &cancel,
+            &mut send,
+        ))
+    });
+    for event in receiver {
+        emit(runtime_value(&event));
+    }
+    let result = worker
+        .join()
+        .map_err(|_| Error::from("The delegation stopped without a result."))?;
+    let mut report = result.map_err(Error::from)?;
+    report["schema"] = json!("openagents.coder.delegate.v1");
+    if let Some(summary) = report["summary"].as_str() {
+        report["reply"] = json!(summary);
+    }
+    Ok(report)
+}
+
 fn delegate(
     app: &mut App,
     args: &[String],
@@ -1431,6 +1511,9 @@ fn delegate(
     emit: &mut dyn FnMut(Value),
 ) -> Result<Value, Error> {
     let mut args = args.to_vec();
+    if args.iter().any(|arg| arg == "--to") {
+        return delegate_to(app, args, context, emit);
+    }
     let task = take_option(&mut args, "--task")?.ok_or_else(|| usage("Supply --task TEXT."))?;
     let session = take_option(&mut args, "--session")?.unwrap_or_else(new_id);
     if args.len() != 1 {

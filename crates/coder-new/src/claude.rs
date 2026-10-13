@@ -593,7 +593,7 @@ pub async fn run(
     cancel: &AtomicBool,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Streamed, String> {
-    run_inner(prompt, cwd, Access::Full, None, None, cancel, emit).await
+    run_inner(prompt, cwd, Access::Full, None, None, None, cancel, emit).await
 }
 
 /// Runs one narrow Haiku turn, with `tools` from [`TOOLS`] alone and,
@@ -626,6 +626,7 @@ pub async fn run_with(
         Access::Files(tools),
         server,
         None,
+        None,
         cancel,
         emit,
     )
@@ -655,10 +656,35 @@ pub async fn run_with_solver(
         Access::Full,
         Some(server),
         Some(delegations),
+        None,
         cancel,
         emit,
     )
     .await
+}
+
+/// Runs a delegated task (#11511): the child's briefing as one turn, on
+/// `model` when the call named one, under the session's hooks and floors.
+/// A read-only task gets only the reading tools, each call held inside the
+/// folder; another gets Claude Code's whole toolset in its worktree.
+///
+/// # Errors
+/// As [`run`].
+pub async fn run_delegated(
+    prompt: &str,
+    cwd: &Path,
+    model: Option<&str>,
+    read_only: bool,
+    cancel: &AtomicBool,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Streamed, String> {
+    const READING: [&str; 3] = ["Read", "Glob", "Grep"];
+    let access = if read_only {
+        Access::Files(&READING)
+    } else {
+        Access::Full
+    };
+    run_inner(prompt, cwd, access, None, None, model, cancel, emit).await
 }
 
 /// What one turn may do.
@@ -771,13 +797,29 @@ async fn run_inner(
     access: Access<'_>,
     server: Option<claude_agent_sdk::SdkMcpServer>,
     mut delegations: Option<Delegations>,
+    model: Option<&str>,
     cancel: &AtomicBool,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Streamed, String> {
     if !crate::approval::tools_allowed() {
         return Err("This host refuses every tool, so claude cannot work here.".into());
     }
-    let (options, allowed) = turn_options(cwd, access, server);
+    let (mut options, allowed) = turn_options(cwd, access, server);
+    if let Some(model) = model {
+        options = options.model(model);
+    }
+    // A delegated child's place in the tree (#11511) and the variables
+    // this thread's children get.
+    let vars = crate::bundled_runtime::child_env();
+    if !vars.is_empty() {
+        let env = options.env.get_or_insert_with(Default::default);
+        for (name, value) in vars {
+            env.insert(
+                name.to_string_lossy().into_owned(),
+                value.to_string_lossy().into_owned(),
+            );
+        }
+    }
     let root = cwd.to_owned();
     let full = matches!(access, Access::Full);
     let handler = claude_agent_sdk::permission_handler(move |request| {

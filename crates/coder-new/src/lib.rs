@@ -35,6 +35,7 @@ pub mod context_hook;
 #[cfg(test)]
 mod copy_guard_tests;
 pub mod credentials;
+pub mod delegate_host;
 mod delegation_events;
 mod demo;
 pub mod dispatch;

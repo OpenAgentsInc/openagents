@@ -312,7 +312,12 @@ impl Thread {
         // to the chat's tray as it happens.
         let (sender, mut delegations) = tokio::sync::mpsc::unbounded_channel();
         let stop = Arc::new(AtomicBool::new(false));
-        let server = crate::claude_tools::tool_server(&tools, sender, stop.clone());
+        let server = crate::claude_tools::tool_server(
+            &tools,
+            crate::delegate_host::CODEX,
+            sender,
+            stop.clone(),
+        );
         let forward = {
             let events = events.clone();
             let reading = reading.clone();

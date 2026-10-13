@@ -47,6 +47,7 @@ fn record_dirs(
     [
         (crate::routing_record::DIR_ENV, "routing"),
         (hook_log::DIR_VAR, "decisions"),
+        (crate::delegate_host::DIR_ENV, "delegations"),
     ]
     .into_iter()
     .filter(|(name, _)| variable(name).is_none_or(|value| value.is_empty()))
@@ -124,12 +125,16 @@ mod tests {
             [
                 ("CODER_ROUTING_DIR", state.join("routing")),
                 ("CODER_DECISIONS_DIR", state.join("decisions")),
+                ("CODER_DELEGATIONS_DIR", state.join("delegations")),
             ]
         );
         let routing_set = |name: &str| (name == "CODER_ROUTING_DIR").then(|| "/elsewhere".into());
         assert_eq!(
             super::record_dirs(state, &routing_set),
-            [("CODER_DECISIONS_DIR", state.join("decisions"))]
+            [
+                ("CODER_DECISIONS_DIR", state.join("decisions")),
+                ("CODER_DELEGATIONS_DIR", state.join("delegations")),
+            ]
         );
     }
 
