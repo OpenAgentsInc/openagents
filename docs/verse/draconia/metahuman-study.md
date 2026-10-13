@@ -6,6 +6,26 @@ produce her assets. We take ideas from Unreal's MetaHuman stack and copy none
 of its assets. Sources are linked inline. Where a claim comes only from press
 or a third party, the text says so.
 
+## 0. Decision (2026-10-13): a real MetaHuman, privately
+
+The owner chose to build Draconia as a real MetaHuman: authored in Unreal
+Engine 5.7 (5.8 when installed) with MetaHuman Creator's Python API,
+exported through the DCC pipeline, and loaded into Verse through the
+private asset pipeline (`docs/verse/private-assets.md`). Per the licence
+below this is permitted: MetaHuman characters are "Non-Engine Products"
+usable in other engines, royalty-free, but not redistributable as source
+assets and **never usable to train AI models**. The Unreal render of the
+same MetaHuman is the quality reference Verse is measured against.
+
+Findings from the first headless run on this Mac (UE 5.7):
+- The plugins are installed (MetaHumanCharacter, MetaHumanSDK,
+  MetaHumanCoreTech). Without the "MetaHuman Creator Optional Content"
+  the editor logs "MetaHuman Optional Content folder not found ... limited
+  features": no grooms or clothing (an owner step in NEEDS_OWNER.md).
+- Auto-rigging (`request_auto_rigging`) and high-resolution textures
+  (`request_texture_sources`) are Epic cloud services; skin synthesis,
+  sculpting by landmarks, eyes and the DCC export run locally.
+
 ## 1. Licences
 
 ### Summary
@@ -275,3 +295,45 @@ Not adopted in v1:
 - DNA file compatibility.
 
 Each can come later without changing the rig JSON or the material id scheme.
+
+## Photo-sourced skin: licence options (2026-10-13)
+
+The MakeHuman CC0 mesh plus procedural textures reads as CG. Real pore, wrinkle and albedo variation has to come from photos. Two rules decide which sources we can use. First, Draconia must not look like any real person, so a scanned face is used only for micro/meso detail (high-pass normal, roughness and albedo variation). Its low-frequency shape and colour are never transferred. Second, anything in git must be redistributable under its licence. Everything else lives in an untracked `assets-private/` path and is fetched by a script with an owner-held token. Licence texts were checked on 2026-10-13.
+
+| Source | Licence (link) | What you get | Usable for us? |
+|---|---|---|---|
+| Lee Perry-Smith "Infinite" head (Infinite Realities / Triplegangers), as used in three.js | CC BY 3.0 Unported. Notice: "Infinite, 3D Head Scan by Lee Perry-Smith is licensed under a Creative Commons Attribution 3.0 Unported License. Based on a work at www.triplegangers.com." ([three.js copy](https://github.com/mrdoob/three.js/blob/dev/examples/models/gltf/LeePerrySmith/LeePerrySmith_License.txt)) | `Map-COL.jpg` (albedo), `Map-SPEC.jpg`, `Infinite-Level_02_Tangent_SmoothUV.jpg` (normal), `Infinite-Level_02_Disp_NoSmoothUV-4096.jpg` (displacement), GLB mesh | **Yes, detail-only.** A high-passed cheek/forehead patch makes a tileable pore normal and roughness variation, and the result can be committed with attribution. It is a male face and a real person (CC licences do not grant publicity rights), so never use its albedo or shape directly |
+| Captured Dimensions "Neutral Female Head Scan" (Sketchfab, 2020) | Listing says "Royalty Free" but gives no clear licence ([page](https://sketchfab.com/3d-models/neutral-female-head-scan-c20ae69e1eb640b19ade6624fed10092)) | 4K/2K maps | No, until the licence is confirmed in writing |
+| Digital Emily 2 (Wikihuman / USC ICT, female light-stage scan) | Free download, **non-commercial only** ([AWN](https://www.awn.com/news/digital-human-league-releases-first-batch-data-digital-emily-2)) | EXR albedo/spec/displacement | No (NC, and a real actress) |
+| Eisko free female head (2015) | CC non-commercial, since withdrawn ([CG Channel](https://www.cgchannel.com/2015/02/download-eiskos-free-hi-res-3d-scan-of-a-female-head/)) | n/a | No |
+| ambientCG / Poly Haven | CC0 ([ambientCG licence](https://docs.ambientcg.com/license/)) | No human-skin materials (API searches for "skin" return only leather on ambientCG and nothing on Poly Haven) | Nothing to use. Leather/pore-like materials are not a substitute |
+| FLAME texture space (MPI) | CC BY-NC-SA 4.0 ([texture licence](https://flame.is.tue.mpg.de/texturelicense.html)) | Albedo PCA space | No (NC) |
+| ICT-FaceKit Light | MIT ([LICENSE](https://github.com/USC-ICT/ICT-FaceKit/blob/master/LICENSE)) | Topology + 100 PCA shape modes; **0 albedo modes**. Albedo/displacement are only in the "full" model under a separate USC licence | Shape/expressions only, no skin |
+| FaceScape | "only released for non-commercial research use" ([README](https://github.com/zhuhao-nju/facescape)) | Albedo + displacement | No |
+| Multiface (Meta) | CC BY-NC 4.0 ([LICENSE](https://github.com/facebookresearch/multiface/blob/main/LICENSE)) | Multi-view captures | No |
+| Smithsonian Open Access 3D | CC0 | Mostly objects; the life masks are plaster casts of real people with no skin albedo | No |
+| **TexturingXYZ** (Microskin tiles, VFace multichannel face packs) | ToS updated 2026-08-29 ([terms](https://texturing.xyz/pages/terms-of-service)). Business Commercial Project licence covers games and films. §7 forbids "Release Materials or derivative products under an Open Source License" and redistribution of raw Materials | Microskin tile (albedo/normal/displacement/roughness-style channels): $5.90 personal / **$19.90 commercial** each. VFace face pack (albedo, displacement, utility masks, scanned from a named real person): $39.90 personal / **$299.90 commercial** | **Yes, out of git only.** Allowed: rendered frames/film and a shipped build. Not allowed: committing the maps or derived maps, or putting them under Apache-2.0 |
+| **3D Scan Store** (Ten24) | Personal / Business R&D / **Business Commercial Single Project** ([licensing](https://www.3dscanstore.com/terms-and-conditions-licensing)). Open-source release of scans "or derivative products" is prohibited, as are character-generator/exportable use and AI datasets | HD female heads (e.g. [HD Female 01](https://www.3dscanstore.com/hd-head-scans/hd-head-models/hd-female-head-model-01)): ZBrush, OBJ/FBX, Blender and Marmoset files plus textures (check the product page for map resolution). About £70 list, £31-52 on sale. The commercial licence costs more and is per project | Same as TexturingXYZ: private path only, one licence per project |
+| Triplegangers | No public licence page found; commercial scans are sold per quote | n/a | Ask only if needed |
+
+Observations:
+
+- **No CC0/CC-BY female skin scan of production quality was found.** Every free female scan we found is non-commercial or has an unclear licence. Lee Perry-Smith is the only open (CC BY) photoreal head scan with pore-level maps, and it is male. Pores and fine wrinkles are close enough across sexes for detail use.
+- The commercial stores (TexturingXYZ, 3D Scan Store) both ban open-source release of "derivative products". Their maps, and anything baked from them, must never enter the public repo. This also means a third party cloning the repo cannot rebuild Draconia's skin. CI and public builds have to fall back to the CC/procedural textures.
+- No EULA has a likeness clause. Our own "not a real person" rule is stricter: a VFace or 3D Scan Store albedo is the face of a named real model. If used, it is wrapped onto Draconia's topology, then reduced to high-pass detail, and its low-frequency colour is replaced by our own painted tone map.
+
+Local tools for maps from photos we own (Apache/compatible, run offline):
+
+- **Photometric stereo** with a phone and 4-8 lamp positions, or a ring light with cross-polarised film (about $30 of linear polariser sheet). Owner-shot close-ups of the owner's own (or a consenting, released model's) forearm or cheek skin give albedo (cross-polarised), normal (least-squares Lambertian solve, about 50 lines of numpy/OpenCV) and roughness proxy (parallel minus cross-polarised specular). These can be committed under our licence with a signed model release.
+- **Materialize** (GPL-3.0 tool, [repo](https://github.com/BoundingBoxSoftware/Materialize)) generates height/normal/AO/smoothness from one albedo photo. Its output is ours, but single-image normals are guesses, so use it for meso detail only.
+- **Meshroom / AliceVision** (MPL-2.0) for a full photogrammetry capture if we ever scan a consenting, released model. That would still be a real likeness, so detail-only use applies.
+
+Recommendation:
+
+- **(a) Tileable micro-detail (pores and wrinkles normal + roughness).** Commit-safe path: derive one tileable pore normal plus a roughness-variation tile from the Lee Perry-Smith CC BY 3.0 normal/displacement maps (high-pass, then make tileable), with the CC BY attribution notice in a credits file next to the asset. Add an owner-shot photometric-stereo tile from the owner's own skin (cross-polarised, with a release) for a second, female-proportioned tile. Optional premium path: buy 2-4 TexturingXYZ Microskin tiles at the **$19.90 commercial** price (cheek/forehead/nose/lip) into `assets-private/`, fetched by script and never committed.
+- **(b) Full photoreal female head albedo.** No open source exists, so the realistic route is one **TexturingXYZ VFace pack at $299.90 commercial** or one **3D Scan Store HD female head with a Business Commercial Single Project licence**. Wrap it to Draconia's UVs and keep only the high-pass detail plus regional albedo variance (pore colour, freckle/vessel noise) layered over our painted base tone. The result stays in `assets-private/`. The public repo builds with the CC BY/procedural fallback.
+- **Owner action:**
+  1. Decide whether a non-open-source premium skin tier is acceptable. Public builds would then differ from private renders.
+  2. If yes, buy under the company account: one TexturingXYZ VFace female pack (Business Commercial, $299.90) plus about 4 Microskin tiles ($19.90 each), or a 3D Scan Store HD female head with a commercial licence.
+  3. Provide the private bucket/token for `assets-private/`.
+  4. Optionally, shoot cross-polarised close-ups of their own forearm/cheek and sign a model release so the photometric-stereo tile can be committed.

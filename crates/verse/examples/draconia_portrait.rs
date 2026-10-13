@@ -100,7 +100,7 @@ fn shot(
             eye: face + Vec3::new(0.06, 0.0, -0.74),
             target: eyes + Vec3::new(0.022, -0.048, 0.0),
             focal_mm: 85.0,
-            fstop: 2.4,
+            fstop: 3.2,
         },
         // The peacock guardian's opening (P3, ~114.5 s of the Draconia
         // film): an extreme close-up from the brows to the upper lip, ear to
@@ -228,9 +228,9 @@ fn lighting(face: Vec3, kind: &str) -> Lighting {
             // reference's face light.
             soft(
                 &mut lights,
-                face + Vec3::new(-0.75, 0.45, -0.85),
+                face + Vec3::new(-0.95, 0.4, -0.6),
                 Vec3::new(1.0, 0.93, 0.86),
-                1.6,
+                2.0,
                 0.35,
                 6,
             );
@@ -239,7 +239,7 @@ fn lighting(face: Vec3, kind: &str) -> Lighting {
                 &mut lights,
                 face + Vec3::new(0.9, 0.1, -1.0),
                 Vec3::new(0.62, 0.82, 0.86),
-                0.3,
+                0.08,
                 0.4,
                 3,
             );
@@ -333,6 +333,10 @@ struct Args {
     /// (70), loose long hair swings (25).
     stiffness: f32,
     gust: Option<f32>,
+    /// Apply the filmic grade (on by default; `--no-grade`).
+    grade: bool,
+    /// The model is static (no Universal rig): render it at rest.
+    static_model: bool,
     /// Aim the eyes at the lens.
     gaze: bool,
     /// The share of the camera's distance it pushes in over a video.
@@ -365,6 +369,8 @@ fn args() -> Result<Args, String> {
         video: false,
         stiffness: 70.0,
         gust: None,
+        grade: true,
+        static_model: false,
         gaze: false,
         push: 0.0,
     };
@@ -410,6 +416,8 @@ fn args() -> Result<Args, String> {
             "--stiffness" => a.stiffness = value()?.parse().map_err(|_| "bad stiffness")?,
             "--gust" => a.gust = Some(value()?.parse().map_err(|_| "bad gust")?),
             "--gaze" => a.gaze = true,
+            "--no-grade" => a.grade = false,
+            "--static" => a.static_model = true,
             "--push" => a.push = value()?.parse().map_err(|_| "bad push")?,
             other => return Err(format!("Unknown argument {other}")),
         }
@@ -430,7 +438,7 @@ fn frame(
         .skin
         .as_ref()
         .and_then(|s| s.names.iter().position(|n| n == "Head"))
-        .ok_or("no Head")?;
+        .unwrap_or(0);
     let clip = if model.clips.iter().any(|c| c.id == PORTRAIT_CLIP) {
         PORTRAIT_CLIP
     } else {
@@ -541,6 +549,25 @@ fn pack(
     };
     let universal =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/verse/characters/quaternius");
+    if a.static_model {
+        // A static character (a MetaHuman head from its DNA, not yet on a
+        // rig Verse plays): one empty clip, so it stands at rest.
+        let mut draconia = characters::import_with(&mut pack, dir, model, options)?;
+        for id in [PORTRAIT_CLIP - 1, PORTRAIT_CLIP] {
+            draconia.clips.push(verse_engine::assets::Clip {
+                id,
+                duration: 1.0,
+                bones: vec![],
+            });
+        }
+        pack.models.insert("draconia".into(), draconia.clone());
+        if let Some(set) = set {
+            let room = characters::import_with(&mut pack, dir, set, options)?;
+            pack.models.insert("draconia-set".into(), room);
+        }
+        pack.validate()?;
+        return Ok((pack, draconia));
+    }
     let mut draconia = characters::film_character(&mut pack, dir, model, &universal, options)?;
     turn_head(
         &mut draconia,
@@ -654,7 +681,7 @@ fn main() -> Result<(), String> {
         .skin
         .as_ref()
         .and_then(|s| s.names.iter().position(|n| n == "Head"))
-        .ok_or("no Head")?;
+        .unwrap_or(0);
     let pose = verse_engine::animation::pose(&model, PORTRAIT_CLIP, a.time);
     let posed = |w: Vec3| {
         placed.transform_point3(pose[head].transform_point3(placed.inverse().transform_point3(w)))
@@ -769,12 +796,9 @@ fn main() -> Result<(), String> {
         let rgba: Vec<u8> = acc
             .chunks_exact(3)
             .flat_map(|c| {
-                [
-                    to_srgb(c[0] / n as f32),
-                    to_srgb(c[1] / n as f32),
-                    to_srgb(c[2] / n as f32),
-                    255,
-                ]
+                let lin = [c[0] / n as f32, c[1] / n as f32, c[2] / n as f32];
+                let [r, g, b] = if a.grade { film_grade(lin) } else { lin };
+                [to_srgb(r), to_srgb(g), to_srgb(b), 255]
             })
             .collect();
         if let Some(enc) = encoder.as_mut() {
@@ -803,6 +827,22 @@ fn main() -> Result<(), String> {
     }
     let _ = std::fs::remove_dir_all(dir);
     Ok(())
+}
+
+/// A filmic grade over the display image, after the renderer's own tone
+/// curve: a little desaturated, more contrast through the mid-tones, and
+/// blacks crushed a touch, as the photoreal reference is graded.
+fn film_grade(lin: [f32; 3]) -> [f32; 3] {
+    let enc = |c: f32| c.clamp(0.0, 1.0).powf(1.0 / 2.2);
+    let dec = |c: f32| c.clamp(0.0, 1.0).powf(2.2);
+    let s = lin.map(enc);
+    let luma = 0.2126 * s[0] + 0.7152 * s[1] + 0.0722 * s[2];
+    s.map(|c| {
+        let c = luma + (c - luma) * 0.78;
+        let c = ((c - 0.035) / 0.965).max(0.0);
+        let c = c + 0.35 * c * (1.0 - c) * (2.0 * c - 1.0);
+        dec(c)
+    })
 }
 
 fn halton(mut i: usize, base: usize) -> f32 {

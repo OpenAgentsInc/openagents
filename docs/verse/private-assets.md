@@ -385,3 +385,25 @@ placements.
   1 GB) cost about $0.02 a month. Egress to the internet is about $0.12 per
   GB, so a few hundred loads a month cost under $0.20, and the content
   cache means a computer downloads a pack once. The broker scales to zero.
+
+## MetaHuman characters (Draconia)
+
+Draconia's film model is an Epic MetaHuman authored in Unreal Engine 5.7+
+by `scripts/unreal/draconia_metahuman.py` (run through
+`scripts/unreal/run_ue.sh`, which picks the newest finished engine). It
+follows this page's rules, with one more:
+
+- **Private.** The Unreal project (`~/work/film-out/draconia/ue/`) and the
+  DCC export (`~/work/film-out/draconia/metahuman/`: DNA, meshes,
+  textures, grooms) stay outside the repository, as the Fab kits do.
+  Committed code names no MetaHuman file; it takes the export folder as a
+  path.
+- **Never used to train AI models.** The MetaHuman terms (UE EULA, since
+  UE 5.6) forbid using MetaHuman characters to train or improve AI models.
+  Both folders carry a `NO-TRAINING.txt` marker. No dataset, gym, trace, or
+  training collection may include these folders, files derived from
+  them, or images rendered from them. (As of 2026-10-13 no dataset builder
+  in this repository scans `~/work/film-out/`.) Films and renders for
+  review are fine.
+- **Licence:** see `docs/verse/draconia/metahuman-study.md`.
+

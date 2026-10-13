@@ -189,9 +189,9 @@ def grow(skin, marks, seed=7, style="updo"):
     bvh = BVHTree.FromObject(skin, bpy.context.evaluated_depsgraph_get())
     scalp = _scalp_faces(skin, centre)
     # The knot: behind and above the occiput.
-    knot = Vector((0.004, hi.y - 0.012, centre.z + 0.045))
+    knot = Vector((0.004, hi.y - 0.022, centre.z + 0.07))
     knot_axis = Vector((0.15, 1.0, 0.35)).normalized()  # out of the back of the head
-    knot_r = 0.028
+    knot_r = 0.034
 
     def surface(p):
         loc, nrm, _, _ = bvh.find_nearest(p)
@@ -254,7 +254,7 @@ def grow(skin, marks, seed=7, style="updo"):
 
     body = Ribbons()
     wander = _noise3(rng)
-    roots = _sample_surface(me, scalp, 9000, rng)
+    roots = _sample_surface(me, scalp, 14000, rng)
     # Extra roots along the hairline, so the edge is dense and soft.
     edge = [f for f in scalp if _angles(me.polygons[f].center, centre)[1] < _hairline_el(_angles(me.polygons[f].center, centre)[0]) + 0.12]
     roots += _sample_surface(me, edge, 1600, rng)
@@ -269,7 +269,7 @@ def grow(skin, marks, seed=7, style="updo"):
         loops = wrap(pts[-1], rng.uniform(0.6, 1.8), knot_r * rng.uniform(0.6, 1.25), rng)
         all_pts = pts + loops
         all_n = nrms + [None] * len(loops)
-        width = rng.uniform(0.0014, 0.0030) * (1.3 - 0.5 * layer)
+        width = rng.uniform(0.0009, 0.0019) * (1.3 - 0.5 * layer)
         body.add(all_pts, all_n, width, rng.randrange(VARIANTS), taper=0.5, free=knot_axis)
     # Loose loops that stand off the bun, and strands through its middle.
     for k in range(520):
@@ -290,20 +290,20 @@ def grow(skin, marks, seed=7, style="updo"):
         cands = [fr for fr in front_roots if fr[0].x * side > 0.012]
         # Many loose locks: the reference's updo lets strands fall from the
         # temples and the front hairline past the cheeks to the jaw.
-        for k in range(15):
+        for k in range(9):
             if not cands:
                 break
             root, rn = cands[k * 7 % len(cands)]
             clumps.append((root, rn, side))
     joints = []
     for c, (root, rn, side) in enumerate(clumps):
-        length = rng.uniform(0.13, 0.26)
+        length = rng.uniform(0.08, 0.2)
         links = [f"hair_{c}_{k}" for k in range(5)]
         chain_made = False
         sway = rng.uniform(0.6, 1.4)
         phase = rng.uniform(0, 6.28)
-        n_hairs = rng.randint(8, 18)
-        spread = rng.uniform(0.0015, 0.004)
+        n_hairs = rng.randint(3, 8)
+        spread = rng.uniform(0.001, 0.003)
         for h in range(n_hairs):
             off = Vector((rng.gauss(0, spread), rng.gauss(0, spread * 0.5), rng.gauss(0, spread * 0.5)))
             pts, nrms = [], []
@@ -329,9 +329,9 @@ def grow(skin, marks, seed=7, style="updo"):
                 for k, name in enumerate(links):
                     at = pts[min(int(k / 5 * (L - 1)), L - 1)]
                     joints.append((name, "Head" if k == 0 else links[k - 1], at.copy()))
-            locks.add(pts, None, rng.uniform(0.0005, 0.0011), rng.randrange(VARIANTS), taper=0.75, free=Vector((0, -1, 0)), skin=chain_skin(links) if chain_made else None)
+            locks.add(pts, None, rng.uniform(0.00025, 0.0006), rng.randrange(VARIANTS), taper=0.75, free=Vector((0, -1, 0)), skin=chain_skin(links) if chain_made else None)
     # Wisps at the temples and hairline: short curls of a few hairs.
-    for k in range(140):
+    for k in range(320):
         root, rn = front_roots[k % len(front_roots)]
         pts = []
         p = root.copy()
@@ -348,7 +348,7 @@ def grow(skin, marks, seed=7, style="updo"):
 
     # Flyaways: single hairs arcing off the top and sides.
     fly = Ribbons()
-    for root, rn in _sample_surface(me, scalp, 420, rng):
+    for root, rn in _sample_surface(me, scalp, 900, rng):
         pts = []
         loc, nrm = surface(root)
         p = loc + nrm * 0.008

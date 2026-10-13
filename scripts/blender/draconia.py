@@ -63,23 +63,23 @@ FACE = [
     ("cheek/r-cheek-bones-incr", 0.45),
     ("cheek/l-cheek-inner-decr", 0.25),
     ("cheek/r-cheek-inner-decr", 0.25),
-    ("chin/chin-width-decr", 0.25),
+    ("chin/chin-width-decr", 0.0),
     ("chin/chin-prominent-incr", 0.15),
-    ("chin/chin-height-decr", 0.35),
+    ("chin/chin-height-decr", 0.45),
     ("nose/nose-scale-horiz-decr", 0.5),
-    ("nose/nose-point-width-decr", 0.25),
+    ("nose/nose-point-width-decr", 0.1),
     ("nose/nose-nostrils-width-decr", 0.15),
     ("nose/nose-point-up", 0.25),
     ("nose/nose-hump-decr", 0.4),
     ("nose/nose-scale-vert-decr", 0.25),
     ("mouth/mouth-trans-up", 0.15),
-    ("cheek/l-cheek-volume-incr", 0.1),
-    ("cheek/r-cheek-volume-incr", 0.1),
-    # A narrower face, a slim defined nose with a finer tip, a V jaw.
-    ("head/head-scale-horiz-decr", 0.18),
-    ("nose/nose-scale-depth-incr", 0.25),
-    ("nose/nose-point-width-decr", 0.3),
-    ("chin/chin-triangle", 0.35),
+    ("cheek/l-cheek-volume-incr", 0.25),
+    ("cheek/r-cheek-volume-incr", 0.25),
+    # Fitted to the reference's neutral frame (0:24): a broader, softer
+    # lower face, high cheekbones, a defined bridge and a softer tip.
+    ("nose/nose-scale-depth-incr", 0.2),
+    ("cheek/l-cheek-bones-incr", 0.2),
+    ("cheek/r-cheek-bones-incr", 0.2),
     ("forehead/forehead-scale-vert-decr", 0.3),
     ("eyebrows/eyebrows-trans-forward", 0.3),
     # Heavier upper lids: the fold sits lower over the eye.
@@ -109,7 +109,8 @@ FACE = [
 # (radians) for the teeth and tongue, which the units don't move.
 EXPRESSIONS = {
     "neutral": {},
-    "speak": {"mouth-open": 0.2, "mouth-parling": 0.2, "eyebrows-left-inner-up": 0.15, "eyebrows-right-inner-up": 0.15, "jaw": 0.04},
+    # Speaking, lips just parted (the reference barely opens her mouth).
+    "speak": {"mouth-open": 0.09, "mouth-parling": 0.35, "eyebrows-left-inner-up": 0.12, "eyebrows-right-inner-up": 0.12, "jaw": 0.02},
     "surprise": {
         "mouth-open": 0.55,
         "eyebrows-left-up": 0.6,
@@ -651,6 +652,25 @@ def brows(skin, marks, eyes, count=650, rest=None):
     return [o]
 
 
+def mouth_cavity(marks):
+    """An ellipsoid shell facing inward behind the lips: a dark, reddish
+    oral cavity (MetaHuman's mouth interior, much simplified)."""
+    m = marks.mouth
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, segments=32, ring_count=16, location=m + Vector((0, 0.028, -0.004)))
+    o = bpy.context.object
+    o.name = "mouth_cavity"
+    o.scale = (0.022, 0.026, 0.016)
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.mesh.flip_normals()
+    bpy.ops.object.mode_set(mode="OBJECT")
+    for p in o.data.polygons:
+        p.use_smooth = True
+    o.data.materials.append(material("draconia_mouth", "skin", color=(0.09, 0.025, 0.025, 1), rough=0.5))
+    return o
+
+
 def earrings(skin, marks):
     """Small gold hoops (17 mm across, a 2.2 mm wire) through each earlobe:
     the lowest point of the ear's outer rim."""
@@ -940,6 +960,10 @@ def build(expr, tex, out, skip_paint=False):
         wet += wet_eye(side, sign, openings[side], centre)
     objs += wet
 
+    # The mouth's interior: a dark, soft cavity behind the lips, so parted
+    # lips show depth, not the head's inside.
+    objs.append(mouth_cavity(marks))
+
     # Teeth and tongue from the CC0 helpers, for the open-mouth expressions.
     mouth = []
     # (The CC0 tongue helper sits forward of the lips once the jaw opens;
@@ -948,6 +972,11 @@ def build(expr, tex, out, skip_paint=False):
         faces = [(vs, ts) for vs, ts, gg in base.faces if gg == g]
         o, _ = mesh_from_faces(base, g.replace("helper-", ""), faces, shift, weights=weights)
         subdivide(o, 1)
+        # The CC0 teeth sit a little proud of the lips at the corners: set
+        # them 2.5 mm back and narrow the arch 8 %.
+        for v in o.data.vertices:
+            v.co.y += 0.0025
+            v.co.x = marks.mouth.x + (v.co.x - marks.mouth.x) * 0.92
         mouth.append(o)
 
     hair_objs, hair_joints = draconia_hair.grow(skin, marks, seed=7, style=HAIR_STYLE)

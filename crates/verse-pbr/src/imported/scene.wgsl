@@ -104,12 +104,15 @@ fn reflectance(n:vec3<f32>,view:vec3<f32>,light:vec3<f32>,diffuse_color:vec3<f32
 // Each returns the light reflected toward the eye for unit radiance from
 // direction l, with the shadow term `shadow` (0..1) folded in, so skin
 // can bleed light into its own penumbra.
-fn skin_light(n:vec3<f32>,soft:vec3<f32>,view:vec3<f32>,l:vec3<f32>,albedo:vec3<f32>,roughness:f32,nv:f32,shadow:f32)->vec3<f32>{
+fn skin_light(n:vec3<f32>,soft:vec3<f32>,view:vec3<f32>,l:vec3<f32>,albedo:vec3<f32>,roughness:f32,nv:f32,shadow:f32,curvature:f32)->vec3<f32>{
  let sss=material.shading.y;let lobe_mix=material.shading.z;
  // Scattered light wraps past the terminator, most in red: wrapped
  // diffuse per channel on the softened normal (red) and the detail normal
  // (green, blue), normalized so a wrap loses no energy.
- let w=vec3(0.48,0.20,0.12)*sss;
+ // Pre-integrated scattering (after Penner): light wraps further where the
+ // surface curves tightly (nose, lids, ears) than on the broad cheek, per
+ // channel by skin's mean free path (red ~3.5 mm, green 1.4, blue 0.7).
+ let w=clamp(vec3(0.0035,0.0014,0.0007)*curvature*1.6+vec3(0.14,0.06,0.035),vec3(0.0),vec3(0.9))*sss;
  let nl_soft=dot(soft,l);let nl=dot(n,l);
  let nl3=vec3(nl_soft,mix(nl_soft,nl,0.6),nl);
  let diffuse=clamp((nl3+w)/((vec3(1.0)+w)*(vec3(1.0)+w)),vec3(0.0),vec3(1.0));
@@ -305,6 +308,8 @@ fn portal(v:Out,t:f32,x_axis:vec3<f32>,z_axis:vec3<f32>,center:vec3<f32>)->vec4<
  let f0=mix(vec3(0.04),albedo,metallic);
  let nv=max(dot(n,view_direction),0.0001);
  let strand=normalize(grad_v+vec3(0.0,0.0,1e-9));
+ // Surface curvature (1/m), for skin's pre-integrated scattering.
+ let curvature=length(fwidth(geometric))/max(length(fwidth(v.pos)),1e-6);
  for(var i=0u;i<u32(frame.settings.x);i++){
   let source=frame.lights[i*2u];let radiance=frame.lights[i*2u+1u];
   let delta=source.xyz-v.pos;let distance_squared=dot(delta,delta);
@@ -317,7 +322,7 @@ fn portal(v:Out,t:f32,x_axis:vec3<f32>,z_axis:vec3<f32>,center:vec3<f32>)->vec4<
   let shadow=occlusion(i,v.pos,geometric);
   var reflected=vec3(0.0);
   switch model {
-   case 1u:{reflected=skin_light(n,soft,view_direction,direction,diffuse_color,roughness,nv,shadow);}
+   case 1u:{reflected=skin_light(n,soft,view_direction,direction,diffuse_color,roughness,nv,shadow,curvature);}
    case 3u:{reflected=cornea_light(n,view_direction,direction,d,roughness,nv,shadow);}
    case 4u:{reflected=hair_light(strand,geometric,view_direction,direction,diffuse_color,roughness,shadow);}
    case 5u:{reflected=cloth_light(n,view_direction,direction,diffuse_color,nv,shadow);}

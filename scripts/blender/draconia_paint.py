@@ -36,6 +36,8 @@ BATTLE = False
 BROWS = "natural"
 # The expression being built: a glare adds furrow creases between the brows.
 EXPRESSION = "neutral"
+# (path, repeats over the map, strength): a tiled micro-normal to blend in.
+DETAIL_TILE = None
 
 # ------------------------------------------------------------------ noise ---
 
@@ -258,7 +260,7 @@ def paint_skin(skin, marks, size, out):
     cheek_r = mid + np.array([-0.042, -0.01, -0.03], np.float32)
 
     # Base: fair skin, linear albedo; low-frequency mottling in hue/value.
-    base = np.array([0.66, 0.52, 0.47], np.float32)
+    base = np.array([0.64, 0.53, 0.50], np.float32)
     mott = fbm(P, 0.03, 4, seed=1) - 0.5
     mott2 = fbm(P, 0.006, 3, seed=2) - 0.5
     mott3 = fbm(P, 0.0035, 3, seed=3) - 0.5
@@ -463,6 +465,20 @@ def paint_skin(skin, marks, size, out):
     dhdv = (np.roll(hgt, -1, 0) - np.roll(hgt, 1, 0)) / (2 * dv)
     nrm = np.stack([-dhdu, -dhdv, np.ones_like(hgt)], axis=2)
     nrm /= np.linalg.norm(nrm, axis=2, keepdims=True)
+    if DETAIL_TILE:
+        # A tiled micro-detail normal (MetaHuman's skin micro normal when
+        # building from the MetaHuman pipeline), blended in whiteout style.
+        tile_path, repeats, strength = DETAIL_TILE
+        timg = bpy.data.images.load(tile_path)
+        tw, th = timg.size
+        t = np.array(timg.pixels[:], np.float32).reshape(th, tw, timg.channels)[::-1][:, :, :3] * 2 - 1
+        bpy.data.images.remove(timg)
+        ys = (np.arange(size) * repeats * th // size) % th
+        xs = (np.arange(size) * repeats * tw // size) % tw
+        d = t[ys][:, xs]
+        d[..., :2] *= strength
+        nrm = np.stack([nrm[..., 0] + d[..., 0], nrm[..., 1] + d[..., 1], nrm[..., 2] * np.clip(d[..., 2], 0.2, 1)], axis=2)
+        nrm /= np.linalg.norm(nrm, axis=2, keepdims=True)
     nrm_img = np.concatenate([nrm * 0.5 + 0.5, np.ones((size, size, 1), np.float32)], axis=2)
     base_img = np.concatenate([to_srgb(col_img), np.ones((size, size, 1), np.float32)], axis=2)
     ao_img = _bake_ao(skin, size)
