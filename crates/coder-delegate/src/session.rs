@@ -216,20 +216,32 @@ pub enum HookBackend {
     /// thread and each turn and sees each turn end, and the rest is seen in
     /// the stream.
     CodexAppServer,
-    /// ACP agents (Cursor, Devin, OpenCode, Grok): permission requests
-    /// before a tool, the rest seen in the stream.
+    /// An ACP agent Coder can't gate before a tool (Cursor, which edits
+    /// and reads without asking; Amp, Goose and the rest): the host opens
+    /// the session and each turn and sees each turn end; the tools are seen
+    /// in the stream, and the asks the agent does send are answered by the
+    /// hooks.
     Acp,
+    /// An ACP agent started so that it asks before every tool, each ask
+    /// answered by the session's `PreToolUse` composition (#11508):
+    /// OpenCode with its `permission` set to ask.
+    AcpAsking,
+    /// An ACP agent that runs Coder's hook program before every tool, and
+    /// obeys it (#11508): Grok Build's plugin hooks, Devin's config hooks.
+    AcpHooked,
 }
 
 impl HookBackend {
     /// Every backend, in the tier table's order.
-    pub const ALL: [HookBackend; 6] = [
+    pub const ALL: [HookBackend; 8] = [
         HookBackend::ClaudeCode,
         HookBackend::CoderLoop,
         HookBackend::Scripted,
         HookBackend::Codex,
         HookBackend::CodexAppServer,
         HookBackend::Acp,
+        HookBackend::AcpAsking,
+        HookBackend::AcpHooked,
     ];
 
     /// The backend's name for people.
@@ -241,10 +253,33 @@ impl HookBackend {
             HookBackend::Scripted => "a recorded session",
             HookBackend::Codex => "Codex",
             HookBackend::CodexAppServer => "Codex",
-            HookBackend::Acp => "an ACP agent",
+            HookBackend::Acp | HookBackend::AcpAsking | HookBackend::AcpHooked => "an ACP agent",
         }
     }
 }
+
+/// The backend an ACP agent's session runs on, by the agent's ID in the
+/// installed-agent catalog (#11508). Only what was verified live counts:
+/// on 2026-10-13 OpenCode 1.18.26 asked before every read, command and
+/// edit with its `permission` set to `ask`; Grok Build ran its plugin
+/// `PreToolUse` hooks before every tool under `--always-approve` and obeyed
+/// a denial; Devin 3000.11.3 ran the `PreToolUse` hooks of the config it
+/// was started with before every tool in `bypass` and obeyed a denial.
+/// Cursor asks before a command outside its allowlist, but edits and
+/// reads without asking, so it stays on [`HookBackend::Acp`].
+#[must_use]
+pub fn acp_backend(agent: &str) -> HookBackend {
+    match agent {
+        "opencode" => HookBackend::AcpAsking,
+        "grok-build" | "devin-cli" => HookBackend::AcpHooked,
+        _ => HookBackend::Acp,
+    }
+}
+
+/// The events the host itself drives on an ACP agent (#11508): it opens
+/// the session, sends each turn, sees each turn end (and can send the next
+/// with a reason), and closes the session.
+pub const ACP_HOST_EVENTS: [&str; 4] = ["SessionStart", "UserPromptSubmit", "Stop", "SessionEnd"];
 
 /// The events the Coder loop fires (`microcoder_loop::run`, #11497).
 pub const CODER_LOOP_EVENTS: [&str; 8] = [
@@ -289,11 +324,24 @@ pub fn hook_tier(backend: HookBackend, event: &str) -> HookTier {
         // (UserPromptSubmit), sees each turn complete and can start the
         // next with a reason (Stop), and closes it (SessionEnd).
         HookBackend::CodexAppServer if CODEX_APP_SERVER_EVENTS.contains(&event) => HookTier::Native,
-        // An ACP agent asks permission before a tool only when its own mode
-        // says to, and Coder doesn't set that mode for every agent, so a
-        // floor can't count on the request: the host sees the tool in the
-        // stream.
-        HookBackend::Codex | HookBackend::CodexAppServer | HookBackend::Acp => HookTier::Emulated,
+        // The host opens an ACP session, sends each turn and sees it end
+        // (#11508). Before a tool: an agent started to ask before every tool
+        // (OpenCode) is native, one that runs Coder's hook program before
+        // every tool (Grok Build, Devin) is the command tier, and any other
+        // agent is seen in the stream, so a floor can't count on it
+        // ([`acp_backend`]).
+        HookBackend::Acp | HookBackend::AcpAsking | HookBackend::AcpHooked
+            if ACP_HOST_EVENTS.contains(&event) =>
+        {
+            HookTier::Native
+        }
+        HookBackend::AcpAsking if event == "PreToolUse" => HookTier::Native,
+        HookBackend::AcpHooked if event == "PreToolUse" => HookTier::Command,
+        HookBackend::Codex
+        | HookBackend::CodexAppServer
+        | HookBackend::Acp
+        | HookBackend::AcpAsking
+        | HookBackend::AcpHooked => HookTier::Emulated,
     }
 }
 
@@ -1265,19 +1313,37 @@ mod tests {
             };
             assert_eq!(tier, want, "{event}");
         }
+        for (event, tier) in hook_tiers(HookBackend::Codex) {
+            let want = if event == "PreToolUse" {
+                HookTier::Command
+            } else {
+                HookTier::Emulated
+            };
+            assert_eq!(tier, want, "{event}");
+        }
+        // ACP agents (#11508): the host's own events are native; before a
+        // tool, only as far as the agent was verified to let the hooks act.
         for (backend, pre) in [
-            (HookBackend::Codex, HookTier::Command),
             (HookBackend::Acp, HookTier::Emulated),
+            (HookBackend::AcpAsking, HookTier::Native),
+            (HookBackend::AcpHooked, HookTier::Command),
         ] {
             for (event, tier) in hook_tiers(backend) {
                 let want = if event == "PreToolUse" {
                     pre
+                } else if ACP_HOST_EVENTS.contains(&event) {
+                    HookTier::Native
                 } else {
                     HookTier::Emulated
                 };
                 assert_eq!(tier, want, "{backend:?} {event}");
             }
         }
+        assert_eq!(acp_backend("opencode"), HookBackend::AcpAsking);
+        assert_eq!(acp_backend("grok-build"), HookBackend::AcpHooked);
+        assert_eq!(acp_backend("devin-cli"), HookBackend::AcpHooked);
+        assert_eq!(acp_backend("cursor"), HookBackend::Acp);
+        assert_eq!(acp_backend("amp"), HookBackend::Acp);
         // Codex on app-server (#11510): native where the host acts first or
         // Codex asks, seen in the stream otherwise.
         for (event, tier) in hook_tiers(HookBackend::CodexAppServer) {

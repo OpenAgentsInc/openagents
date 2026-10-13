@@ -3773,6 +3773,7 @@ dependencies = [
 name = "coder-sdk"
 version = "0.1.0"
 dependencies = [
+ "acp-client",
  "claude_agent_sdk",
  "coder-delegate",
  "futures",

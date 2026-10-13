@@ -109,6 +109,47 @@ pub fn arguments(model: &str) -> Vec<String> {
     arguments
 }
 
+/// Devin's user configuration: `$XDG_CONFIG_HOME/devin/config.json`, else
+/// `~/.config/devin/config.json`.
+#[must_use]
+pub fn config_path(variable: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    let dir = variable("XDG_CONFIG_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .or_else(|| variable("HOME").map(|home| Path::new(&home).join(".config")))?;
+    Some(dir.join("devin").join("config.json"))
+}
+
+/// The configuration a Coder session starts Devin with (`devin --config
+/// FILE acp`, #11508): the person's own (`person`, when it reads), with one
+/// more `PreToolUse` hook that runs `command` (Coder's hook bridge) before
+/// every tool. Devin reads Claude Code's hook shape there and obeys a
+/// denial in any permission mode. `timeout` is in seconds.
+#[must_use]
+pub fn hooked_config(person: Option<&[u8]>, command: &str, timeout: u64) -> Value {
+    let mut config = person
+        .and_then(|bytes| serde_json::from_slice::<Value>(bytes).ok())
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({}));
+    let group = json!({"hooks": [{"type": "command", "command": command, "timeout": timeout}]});
+    if !config["hooks"].is_object() {
+        config["hooks"] = json!({});
+    }
+    match config["hooks"]["PreToolUse"].as_array_mut() {
+        Some(groups) => groups.push(group),
+        None => config["hooks"]["PreToolUse"] = json!([group]),
+    }
+    config
+}
+
+/// `arguments` started with `--config file`, a global option, ahead of
+/// the subcommand.
+pub fn add_config(arguments: &mut Vec<String>, file: &Path) {
+    arguments.insert(0, file.display().to_string());
+    arguments.insert(0, "--config".into());
+}
+
 /// The `_meta` a Coder engine session opens with.
 #[must_use]
 pub fn engine_meta(mark: &str) -> Value {

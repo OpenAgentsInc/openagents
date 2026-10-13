@@ -54,6 +54,24 @@ impl Hooks {
         })
     }
 
+    /// `registry`'s hooks on `backend`, kept even where `backend` can't
+    /// honor one: the caller has stated those (an ACP agent's asks are
+    /// still answered by them, #11508).
+    pub(crate) fn keeping(registry: Registry, budget: Budget, backend: HookBackend) -> Self {
+        let _ = backend;
+        Hooks {
+            runner: Arc::new(Mutex::new(Runner::new(registry, budget))),
+            asker: None,
+        }
+    }
+
+    /// The session's runner, for a host that answers the same hooks
+    /// elsewhere (the hook bridge's socket, [`super::bridge::Host`]).
+    #[must_use]
+    pub fn runner(&self) -> Arc<Mutex<Runner>> {
+        self.runner.clone()
+    }
+
     /// Answers each `Ask` through `asker`.
     #[must_use]
     pub fn asking(mut self, asker: Asker) -> Self {

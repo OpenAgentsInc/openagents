@@ -42,6 +42,14 @@ pub trait Handler {
         }
     }
 
+    /// Answer a `session/request_permission` later: a handler that must
+    /// wait (for its hooks, or for the person) returns the answer's future,
+    /// and the request waits on it before it reads on. `None`, the default,
+    /// answers now through [`Handler::permission`].
+    fn permission_later(&mut self, _request: &PermissionRequest) -> Option<PendingAnswer> {
+        None
+    }
+
     /// Any notification other than `session/update`, such as an agent's
     /// own vendor-namespaced ones. The default ignores it.
     fn notification(&mut self, _method: &str, _params: &Value) {}
@@ -52,6 +60,10 @@ pub trait Handler {
         Err(RpcError::method_not_found(method))
     }
 }
+
+/// A permission answer still being decided ([`Handler::permission_later`]).
+pub type PendingAnswer =
+    std::pin::Pin<Box<dyn std::future::Future<Output = PermissionAnswer> + Send>>;
 
 /// A handler that keeps nothing, for handshakes.
 pub struct Ignore;
@@ -267,9 +279,13 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Client<R, W> {
                     params,
                 } => {
                     let result = if name == method::REQUEST_PERMISSION {
-                        serde_json::from_value::<PermissionRequest>(params)
-                            .map(|request| handler.permission(&request).to_value())
-                            .map_err(|_| RpcError::new(-32602, "invalid permission request"))
+                        match serde_json::from_value::<PermissionRequest>(params) {
+                            Ok(request) => Ok(match handler.permission_later(&request) {
+                                Some(pending) => pending.await.to_value(),
+                                None => handler.permission(&request).to_value(),
+                            }),
+                            Err(_) => Err(RpcError::new(-32602, "invalid permission request")),
+                        }
                     } else {
                         handler.reverse(&name, &params)
                     };

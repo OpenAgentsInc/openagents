@@ -32,7 +32,7 @@ use super::events::Event;
 /// environment so its hook processes inherit it.
 pub const SOCKET_VAR: &str = "CODER_HOOK_SOCKET";
 /// The Coder subcommand that runs the bridge: `coder coder-hook --format
-/// claude|codex`.
+/// claude|codex|acp`.
 pub const COMMAND: &str = "coder-hook";
 /// How long the bridge waits for the host.
 pub const WAIT: Duration = Duration::from_secs(60);
@@ -42,6 +42,13 @@ pub const WAIT: Duration = Duration::from_secs(60);
 pub enum Format {
     Claude,
     Codex,
+    /// An ACP agent's own hooks (#11508): Claude Code's hook input with the
+    /// agent's tool names (Grok Build's `run_terminal_command`, Devin's
+    /// `exec`), read as Claude Code's ([`super::acp::claude_tool`]); the
+    /// reply is narrowed as Codex's is, since nobody can answer from
+    /// inside the agent and a rewrite in Claude Code's shapes would not fit
+    /// the agent's tool.
+    Acp,
 }
 
 impl Format {
@@ -50,6 +57,7 @@ impl Format {
         match name {
             "claude" => Some(Format::Claude),
             "codex" => Some(Format::Codex),
+            "acp" => Some(Format::Acp),
             _ => None,
         }
     }
@@ -59,6 +67,7 @@ impl Format {
         match self {
             Format::Claude => "claude",
             Format::Codex => "codex",
+            Format::Acp => "acp",
         }
     }
 }
@@ -76,6 +85,7 @@ pub fn event_of(input: &Value) -> Option<Event> {
 /// harness go on unchanged (the program prints nothing).
 pub fn answer(runner: &mut Runner, format: Format, input: &Value) -> Option<Value> {
     let event = event_of(input)?;
+    let input = &normalized(format, input);
     let applied = runner.fire(&super::claude::call(event, input));
     let output = super::claude::output(&applied);
     if output == claude_agent_sdk::SyncHookJSONOutput::continue_execution() {
@@ -85,7 +95,53 @@ pub fn answer(runner: &mut Runner, format: Format, input: &Value) -> Option<Valu
     match format {
         Format::Claude => Some(output),
         Format::Codex => codex(event, output, &applied.input),
+        Format::Acp => {
+            let mut output = codex(event, output, &applied.input)?;
+            // A rewrite is in Claude Code's shapes, which the agent's tool
+            // would not read: the call goes as the agent asked, and only a
+            // denial or added context is sent.
+            if let Some(specific) = output
+                .get_mut("hookSpecificOutput")
+                .and_then(Value::as_object_mut)
+                && specific.remove("updatedInput").is_some()
+                && specific.get("permissionDecision") == Some(&json!("allow"))
+            {
+                specific.remove("permissionDecision");
+            }
+            let empty = output["hookSpecificOutput"]
+                .as_object()
+                .is_some_and(|fields| fields.len() <= 1);
+            if empty && let Some(object) = output.as_object_mut() {
+                object.remove("hookSpecificOutput");
+            }
+            output
+                .as_object()
+                .is_some_and(|o| !o.is_empty())
+                .then_some(output)
+        }
     }
+}
+
+/// The hook input as the registry reads it: an ACP agent's tool name and
+/// input in Claude Code's, with the session's folder on a command.
+#[must_use]
+pub fn normalized(format: Format, input: &Value) -> Value {
+    if format != Format::Acp {
+        return input.clone();
+    }
+    let mut input = input.clone();
+    if let Some(tool) = input["tool_name"].as_str().map(str::to_owned) {
+        let (tool, mut tool_input) = super::acp::claude_tool(&tool, &input["tool_input"]);
+        if tool == super::acp::COMMAND_TOOL
+            && tool_input.get("cwd").and_then(Value::as_str).is_none()
+            && let Some(cwd) = input["cwd"].as_str()
+        {
+            tool_input["cwd"] = json!(cwd);
+        }
+        input["tool_name"] = json!(tool);
+        input["tool_input"] = tool_input;
+    }
+    input
 }
 
 /// Claude Code's reply narrowed to what Codex accepts. Codex has no one to
@@ -285,7 +341,7 @@ pub fn run(
     {
         return reply;
     }
-    fallback(input)
+    fallback(&normalized(format, input))
 }
 
 /// The bridge program: `args` may name `--format claude|codex` (Claude by
@@ -302,7 +358,7 @@ pub fn main(args: &[String], fallback: impl FnOnce(&Value) -> Option<Value>) -> 
             match Format::from_name(name) {
                 Some(named) => format = named,
                 None => {
-                    eprintln!("Unknown hook format {name}. Use claude or codex.");
+                    eprintln!("Unknown hook format {name}. Use claude, codex or acp.");
                     return 0;
                 }
             }

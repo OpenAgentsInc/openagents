@@ -9,9 +9,10 @@
 //! over stdio), with the `decide` tool behind the disclosure check
 //! ([`Admission`]).
 //!
-//! The Claude Code backend is [`claude`]; the Coder loop, Codex and ACP
-//! backends build on this crate elsewhere.
+//! The Claude Code backend is [`claude`], Codex's [`codex`], and the ACP
+//! agents' [`acp`]; the Coder loop's builds on this crate elsewhere.
 
+pub mod acp;
 pub mod admission;
 pub mod bridge;
 pub mod claude;
@@ -31,7 +32,7 @@ pub mod system_one;
 pub mod tools;
 
 pub use admission::{Admission, DisclosureRefused};
-pub use coder_delegate::session::{HookBackend, HookTier, hook_tier, hook_tiers};
+pub use coder_delegate::session::{HookBackend, HookTier, acp_backend, hook_tier, hook_tiers};
 pub use compose::{
     Applied, Budget, Dropped, Failure, FailureKind, Refused, Runner, check_backend, check_session,
     check_start,

@@ -135,6 +135,28 @@ impl Permission {
     }
 }
 
+/// OpenCode's `permission` when every tool must ask the host first
+/// (#11508): each ask is answered by the session's hooks. Its own to-do
+/// list runs, and asking the person a question is refused (the host has no
+/// one to ask from inside the agent).
+#[must_use]
+pub fn asking_permission() -> Value {
+    json!({"*": "ask", "todoread": "allow", "todowrite": "allow", "question": "deny"})
+}
+
+/// The inline configuration (`OPENCODE_CONFIG_CONTENT`) that makes OpenCode
+/// ask before every tool, merged over `existing` (the value already set,
+/// if any): only `permission` is replaced.
+#[must_use]
+pub fn asking_config(existing: Option<&str>) -> String {
+    let mut config = existing
+        .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({}));
+    config["permission"] = asking_permission();
+    config.to_string()
+}
+
 /// The inline configuration an engine session runs with: the route's
 /// model, the permission, no sharing, and no self-update.
 #[must_use]

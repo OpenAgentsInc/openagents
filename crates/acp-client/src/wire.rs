@@ -748,6 +748,11 @@ impl PermissionOption {
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PermissionTool {
+    /// The tool call the request is about, as its `tool_call` update named
+    /// it. Cursor's requests carry no input, so the call's own update is
+    /// where its command is.
+    #[serde(default)]
+    pub tool_call_id: Option<String>,
     #[serde(default)]
     pub kind: Option<String>,
     #[serde(default)]

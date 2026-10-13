@@ -37,7 +37,7 @@ pub mod replay;
 pub mod session;
 pub mod wire;
 
-pub use client::{Client, ClientError, Handler, OnCancel, Wait};
+pub use client::{Client, ClientError, Handler, OnCancel, PendingAnswer, Wait};
 pub use session::{Failure, Opening, Session};
 pub use wire::{PermissionAnswer, PermissionRequest, StopReason, Update, Usage};
 
@@ -181,5 +181,100 @@ mod tests {
         let sent = replay::received(dir.path());
         assert_eq!(sent[1]["method"], "session/load");
         assert_eq!(sent[1]["params"]["sessionId"], "gone-session");
+    }
+    /// How each gated agent is started so its tools reach Coder's hooks
+    /// first (#11508).
+    #[test]
+    fn the_gated_agents_are_started_with_coders_hook_or_asking() {
+        let mut grok = grok::arguments(grok::DEFAULT_MODEL, false);
+        grok::add_plugin_dir(&mut grok, std::path::Path::new("/t/plugin"));
+        assert_eq!(
+            grok,
+            ["agent", "--no-leader", "--plugin-dir", "/t/plugin", "stdio"]
+        );
+        let plugin = grok::hook_plugin("coder coder-hook --format acp", 600);
+        assert_eq!(
+            plugin["hooks"]["PreToolUse"][0]["hooks"][0]["command"],
+            "coder coder-hook --format acp"
+        );
+        let dir = tempfile::tempdir().unwrap();
+        grok::write_hook_plugin(dir.path(), "x", 5).unwrap();
+        assert!(dir.path().join("hooks/hooks.json").is_file());
+
+        let mut devin = devin::arguments(devin::DEFAULT_MODEL);
+        devin::add_config(&mut devin, std::path::Path::new("/t/devin.json"));
+        assert_eq!(devin, ["--config", "/t/devin.json", "acp"]);
+        // The person's settings stay, and their own hooks run too.
+        let person = br#"{"devin":{"org_id":"o"},"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"mine"}]}]}}"#;
+        let config = devin::hooked_config(Some(person), "coder", 600);
+        assert_eq!(config["devin"]["org_id"], "o");
+        assert_eq!(config["hooks"]["PreToolUse"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            devin::hooked_config(Some(b"not json"), "c", 1)["hooks"]["PreToolUse"][0]["hooks"][0]["command"],
+            "c"
+        );
+        let home = |name: &str| (name == "HOME").then(|| std::ffi::OsString::from("/h"));
+        assert_eq!(
+            devin::config_path(&home),
+            Some(PathBuf::from("/h/.config/devin/config.json"))
+        );
+
+        let asking: serde_json::Value = serde_json::from_str(&opencode::asking_config(Some(
+            r#"{"model":"opencode/big-pickle","permission":"allow"}"#,
+        )))
+        .unwrap();
+        assert_eq!(asking["model"], "opencode/big-pickle");
+        assert_eq!(asking["permission"]["*"], "ask");
+        assert_eq!(asking["permission"]["question"], "deny");
+    }
+
+    /// A handler that answers later: the request waits for its answer.
+    #[tokio::test]
+    async fn a_permission_answered_later_is_awaited() {
+        struct Later;
+        impl Handler for Later {
+            fn update(&mut self, _update: Update) {}
+            fn permission_later(&mut self, request: &PermissionRequest) -> Option<PendingAnswer> {
+                let reject = request.reject().unwrap_or_default().to_owned();
+                Some(Box::pin(async move {
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    PermissionAnswer::Selected(reject)
+                }))
+            }
+        }
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let (client_in, mut agent_out) = tokio::io::duplex(8192);
+        let (agent_in, client_out) = tokio::io::duplex(8192);
+        let agent = tokio::spawn(async move {
+            let mut lines = BufReader::new(agent_in).lines();
+            let request: serde_json::Value =
+                serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+            let ask = wire::request(
+                9,
+                wire::method::REQUEST_PERMISSION,
+                &serde_json::json!({"sessionId":"s","toolCall":{"kind":"execute"},"options":[{"optionId":"y","kind":"allow_once"},{"optionId":"n","kind":"reject_once"}]}),
+            );
+            agent_out
+                .write_all(format!("{ask}\n").as_bytes())
+                .await
+                .unwrap();
+            let answer: serde_json::Value =
+                serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+            let reply = wire::reply(
+                &request["id"],
+                Ok(serde_json::json!({"stopReason":"end_turn"})),
+            );
+            agent_out
+                .write_all(format!("{reply}\n").as_bytes())
+                .await
+                .unwrap();
+            answer
+        });
+        let mut client = Client::new(client_in, client_out);
+        client
+            .prompt("s", "go", Wait::plain(Duration::from_secs(5)), &mut Later)
+            .await
+            .unwrap();
+        assert_eq!(agent.await.unwrap()["result"]["outcome"]["optionId"], "n");
     }
 }

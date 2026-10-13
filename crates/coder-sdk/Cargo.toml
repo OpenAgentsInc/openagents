@@ -9,6 +9,8 @@ description = "Coder's harness-independent hook layer: normalized events, hook o
 [dependencies]
 # The `Session` capability matrix and its hook tiers.
 coder-delegate = { path = "../coder-delegate" }
+# The ACP backend's permission asks (#11508).
+acp-client = { path = "../acp-client" }
 # The adapter digest the hook set joins (`route_contract::recipe`).
 route-contract = { path = "../route-contract" }
 # The Claude Code backend (#11496), and the tool server's MCP shapes and

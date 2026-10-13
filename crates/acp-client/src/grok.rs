@@ -162,6 +162,43 @@ pub fn arguments_with_effort(model: &str, approve: bool, effort: Option<&str>) -
     arguments
 }
 
+/// The plugin a Coder session hands Grok Build with `--plugin-dir`
+/// (#11508): one `PreToolUse` hook, run before every tool, that runs
+/// `command` (Coder's hook bridge). Grok Build trusts a `--plugin-dir`
+/// plugin without asking, obeys a hook's denial, and passes its reason to
+/// the model; a hook that fails lets the call through, so the bridge
+/// always answers. `timeout` is in seconds.
+#[must_use]
+pub fn hook_plugin(command: &str, timeout: u64) -> serde_json::Value {
+    serde_json::json!({"hooks": {"PreToolUse": [{"hooks": [
+        {"type": "command", "command": command, "timeout": timeout}
+    ]}]}})
+}
+
+/// Writes [`hook_plugin`] as a plugin in `dir` (`hooks/hooks.json`).
+///
+/// # Errors
+/// The folder or the file can't be written.
+pub fn write_hook_plugin(dir: &Path, command: &str, timeout: u64) -> std::io::Result<()> {
+    let hooks = dir.join("hooks");
+    std::fs::create_dir_all(&hooks)?;
+    std::fs::write(
+        hooks.join("hooks.json"),
+        hook_plugin(command, timeout).to_string(),
+    )
+}
+
+/// `arguments` with `--plugin-dir dir`, an agent option, ahead of the
+/// transport (`stdio`).
+pub fn add_plugin_dir(arguments: &mut Vec<String>, dir: &Path) {
+    let at = arguments
+        .iter()
+        .position(|argument| argument == "stdio")
+        .unwrap_or(arguments.len());
+    arguments.insert(at, dir.display().to_string());
+    arguments.insert(at, "--plugin-dir".into());
+}
+
 /// Whether the session's reported model is the one the route admitted.
 /// [`DEFAULT_MODEL`] admits whichever model Grok Build reports.
 #[must_use]
