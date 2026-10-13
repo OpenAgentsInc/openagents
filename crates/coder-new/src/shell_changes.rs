@@ -372,7 +372,10 @@ impl TurnRecord {
             .map(|out| String::from_utf8_lossy(&out).trim().to_owned());
         if let (Some(old), Some(new)) = (&start.head, &head)
             && old != new
-            && let Some(out) = git(root, &["diff", "--name-only", "-z", "--no-renames", old, new])
+            && let Some(out) = git(
+                root,
+                &["diff", "--name-only", "-z", "--no-renames", old, new],
+            )
         {
             paths.extend(
                 out.split(|b| *b == 0)

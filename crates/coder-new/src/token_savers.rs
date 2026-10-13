@@ -33,6 +33,10 @@ pub enum Lever {
     /// or asks a question. The gate needs the session's checks, so the
     /// session builds it and installs it through [`install_stop_gate`].
     StopGate,
+    /// #11491: each later chat message is routed: it continues the
+    /// session, Coder answers it from what it knows, or new unrelated work
+    /// starts a fresh session with a fresh briefing.
+    Route,
 }
 
 /// Every lever, with the sentence the Plugins screen shows for it.
@@ -52,6 +56,10 @@ pub const LEVERS: &[(Lever, &str)] = &[
     (
         Lever::StopGate,
         "An agent that stops on an issue before its final checks pass is sent back with what failed, instead of being told up front to verify everything.",
+    ),
+    (
+        Lever::Route,
+        "A later message that only asks what Coder already knows is answered without the agent, and one that starts unrelated work starts a fresh session instead of re-reading the old one.",
     ),
 ];
 
@@ -131,6 +139,9 @@ fn install_if(mut options: QueryOptions, lever: Lever, on: bool) -> QueryOptions
         }
         // Built per session: see [`install_stop_gate`].
         Lever::StopGate => {}
+        // Registered with the floors in the chat's own registry: see
+        // [`crate::sdk_hooks::system_one`] and [`crate::sdk_hooks::route_mode`].
+        Lever::Route => {}
     }
     options
 }
@@ -173,6 +184,12 @@ mod tests {
         let options = install_if(QueryOptions::new(), Lever::Squeeze, true);
         let hooks = options.hooks.get(&HookEvent::PreToolUse).unwrap();
         assert_eq!(hooks[0].matcher.as_deref(), Some("Bash"));
+    }
+
+    #[test]
+    fn the_route_follows_the_plugin_unless_its_switch_says_otherwise() {
+        // In tests the plugin is on and `CODER_ROUTE` is unset.
+        assert_eq!(crate::sdk_hooks::route_mode(), crate::sdk_hooks::Mode::On);
     }
 
     #[test]

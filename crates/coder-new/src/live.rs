@@ -530,6 +530,31 @@ impl Update {
     }
 }
 
+/// The message-route hook's note for `newest` (#11491).
+fn route_note(
+    app: &crate::App,
+    newest: &str,
+    model: &str,
+    midturn: bool,
+) -> crate::message_route::Note {
+    let mut earlier = crate::router::earlier(&app.live.entries);
+    if earlier
+        .last()
+        .is_some_and(|said| said.role == "user" && said.text == newest)
+    {
+        earlier.pop();
+    }
+    crate::message_route::Note {
+        earlier,
+        latest: newest.to_owned(),
+        midturn,
+        facts: crate::message_route::Facts {
+            model: Some(crate::claude::name(model)),
+            spend: (app.live.tokens > 0).then_some((app.live.tokens, app.live.cost_usd)),
+        },
+    }
+}
+
 /// One active request. Cancellation also waits for child process cleanup.
 #[derive(Default)]
 pub struct Background {
@@ -551,6 +576,17 @@ pub struct Background {
     /// bookkeeping above: a chat runs on one harness at a time.
     codex: Option<crate::codex_chat::Chat>,
     codex_closing: Vec<crate::codex_chat::Chat>,
+    /// The newest message handed to the chat's process, kept so a re-brief
+    /// (#11491) can start it again in a fresh session.
+    claude_last: Option<ClaudeAsk>,
+}
+
+/// A message handed to the chat's Claude Code process.
+struct ClaudeAsk {
+    message: Message,
+    tools: crate::claude_tools::Tools,
+    briefing: Option<crate::context::Briefing>,
+    model: String,
 }
 
 impl Background {
@@ -738,6 +774,22 @@ impl Background {
         let running = self.claude.as_ref().is_some_and(|chat| {
             !chat.exited() && chat.cwd == cwd && chat.tools == *tools && chat.session == session
         });
+        // What the message-route hook reads (#11491): the chat before this
+        // message, and what Coder knows without asking the agent. A new
+        // process without a session reads the whole conversation as its
+        // first message, which is not routed.
+        let midturn = self.claude_turn.is_some();
+        if running || session.is_some() {
+            crate::message_route::note(&cwd, route_note(app, &newest, &model, midturn));
+        }
+        if let Some(last) = messages.last() {
+            self.claude_last = Some(ClaudeAsk {
+                message: last.clone(),
+                tools: (*tools).clone(),
+                briefing: briefing.as_deref().cloned(),
+                model: model.clone(),
+            });
+        }
         if !running {
             self.close_claude();
             let seed = crate::claude::task_with(&messages, &tools, &model);
@@ -785,6 +837,38 @@ impl Background {
             .as_ref()
             .map_or(1, crate::claude_chat::Chat::turn);
         self.claude_turn = Some((request.id, turn));
+    }
+
+    /// Starts the chat's newest message again in a fresh Claude Code
+    /// session (#11491): the current briefing in its system prompt and
+    /// only this message, so the old history is not re-read on every later
+    /// call. Returns whether it started.
+    fn rebrief(&mut self, app: &mut crate::App, id: u64) -> bool {
+        let (Some(ask), Some(cwd)) = (
+            self.claude_last.take(),
+            self.claude.as_ref().map(|chat| chat.cwd.clone()),
+        ) else {
+            return false;
+        };
+        self.close_claude();
+        app.live.claude_session = None;
+        let seed =
+            crate::claude::task_with(std::slice::from_ref(&ask.message), &ask.tools, &ask.model);
+        self.claude = Some(crate::claude_chat::Chat::start(
+            cwd,
+            ask.tools,
+            None,
+            ask.message.content,
+            seed,
+            ask.briefing,
+            Some(ask.model),
+        ));
+        let turn = self
+            .claude
+            .as_ref()
+            .map_or(1, crate::claude_chat::Chat::turn);
+        self.claude_turn = Some((id, turn));
+        true
     }
 
     /// Ends the input of the chat's process, which finishes its work and
@@ -935,8 +1019,32 @@ impl Background {
                 if let Some((id, on_screen)) = self.claude_turn
                     && turn >= on_screen
                 {
-                    self.claude_turn = None;
-                    app.apply_update(Update::Finished { id, result });
+                    // The message-route hook (#11491) blocked this message:
+                    // Coder answers it, or starts it in a fresh session.
+                    let routed = self
+                        .claude
+                        .as_ref()
+                        .filter(|_| !codex)
+                        .and_then(|chat| crate::message_route::take_routed(&chat.cwd));
+                    match routed {
+                        Some(crate::message_route::Routed::Host(text)) => {
+                            self.claude_turn = None;
+                            app.apply_update(Update::Finished {
+                                id,
+                                result: Ok(Streamed {
+                                    text,
+                                    model: "coder".into(),
+                                    finish_reason: Some("stop".into()),
+                                    ..Streamed::default()
+                                }),
+                            });
+                        }
+                        Some(crate::message_route::Routed::Rebrief) if self.rebrief(app, id) => {}
+                        _ => {
+                            self.claude_turn = None;
+                            app.apply_update(Update::Finished { id, result });
+                        }
+                    }
                 }
             }
             crate::claude_chat::Event::Exited => {

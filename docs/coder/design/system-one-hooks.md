@@ -275,6 +275,26 @@ the verification wording removed from the prompt.
 
 **After a compaction.** A chat's first briefing is in the system prompt, which compaction keeps; a later piece of work's briefing arrives in a message, which compaction summarizes away. `PostCompact` can't return context, so `PreCompact` marks the session, and the first of `SessionStart` (source `compact`), the next `UserPromptSubmit`, or the next `PostToolUse` adds that message briefing back as `additionalContext`, once (capped at 12,000 characters). The last two cover a Claude Code that doesn't send `SessionStart` to SDK hooks.
 
+**Idea 6 is built** (#11491, `crates/coder-new/src/message_route.rs`, `Lever::Route`). A `UserPromptSubmit` decision hook on the Coder SDK (`coder_sdk::DecisionHook`, Claude Code backend) routes each later message of a Coder chat on Claude Code:
+
+- **Rule first.** The host notes each message it hands the chat's Claude Code process (the chat before it, and what Coder knows: the model, the tokens and dollars used so far). No note (a session's first message, the pasted conversation of a new process), a message sent while a turn runs, or a slash command: nothing is asked.
+- **One choice** (`message-route-v1`, `openagents/decide`, Clef first): `continue`, `rebrief` (new work unrelated to everything earlier), `host_model` or `host_spend` (offered only when Coder has that fact).
+- **Thresholds from written costs.** A host answer at p >= 0.89 (a wrong one costs a re-ask, 2 minutes; a missed one an executor turn that re-reads the session, a quarter minute); a re-brief at p >= 0.86 (a wrong one loses what the agent read, 3 minutes; a missed one re-reads stale history on later calls, half a minute). Below them, or on a failed or late call (1.5 s deadline), the message continues.
+- **What the host does.** A routed message is blocked (Claude Code ends that turn with no model call). A host answer is shown as the reply in the same chat. A re-brief closes the process and starts a new Claude Code session on the same chat, with the current briefing in its system prompt and only this message, so the old history is not re-read on every later call. No modes: it stays one conversation.
+- **Where it goes in.** It is Token savers' `Lever::Route`, registered with the floors in the chat's Claude Code registry by `sdk_hooks::system_one` (the slot #11498 left for it, in place of the SDK's generic `system_one::route`, which has no host to answer or re-brief). On with the plugin; `CODER_ROUTE=off|shadow|on` overrides.
+- **Log.** `~/.openagents/decisions/route.jsonl` (`CODER_ROUTE_LOG`).
+
+**Live, 2026-10-13.** The Decisions API (Clef, 160 to 190 ms) routed "Which model are you running on right now?" to `host_model` at 0.94, "Also add a regression test for that timeout." to `continue` at 0.84, and put an unrelated limerick request top on `rebrief` at 0.84 to 0.86, at the threshold. In one real Claude Code chat (Haiku 5.5), the later message "Which AI model is answering me in this chat?" was answered by the host at p 0.95 (Clef, 185 ms): Claude Code ran no model call for it (0 input tokens; the blocked turn still took about 3.5 s inside Claude Code), and the next message continued the same session and remembered the first.
+
+**Replay.** `cargo test -p coder-new --lib message_route::tests::replay_recorded -- --ignored --nocapture` runs every later message of this computer's recorded Coder chats on Claude Code through the same rule, question and act, against the real API, and estimates the tokens saved from Claude Code's own session files: a host answer saves the turn's prompt tokens; a re-brief saves each later call's history beyond a fresh session's opening size (mostly cache reads, so the billed figure weighs them at a tenth). 
+
+| Question set wording | Later messages (14 chats) | continue | host | re-brief | pass (opened a session) | Saved of 76.0 M later-turn prompt tokens |
+| --- | --- | --- | --- | --- | --- | --- |
+| first draft | 41 | 38 | 2 (one wrong: "Are you basing that on…") | 1 ("Tell me about the Claude hooks…", p 0.87) | not split out | 0.92 M (1.2%; 1.1% billed) |
+| `message-route-v1` (host options say "nothing about the work") | 43 | 38 | 0 | 0 | 5 | 0 |
+
+So on this computer's recorded chats, which are long single-topic working sessions, the route almost always continues and saves nothing; the one wrong host answer of the first draft is gone. The re-brief and host routes pay off only in chats that change topic or ask about the chat itself, and the thresholds sit where the written costs put them. Not yet measured: an A/B on live chats with mixed topics.
+
 ## Constraints
 
 - **Latency.** A decision takes about 0.2 to 0.6 s. On every one of ~23

@@ -162,7 +162,20 @@ pub fn mode(var: &str) -> Mode {
 /// registered only when the session's admission covers what it sends; the
 /// switch is that admission.
 pub fn system_one(registry: &mut Registry, cwd: &Path, harness: Harness) {
-    system_one_with(registry, cwd, harness, mode(MONITOR_VAR), mode(ROUTE_VAR));
+    system_one_with(registry, cwd, harness, mode(MONITOR_VAR), route_mode());
+}
+
+/// The router's mode: [`ROUTE_VAR`] when set, else on with the Token
+/// savers plugin, whose lever it is ([`crate::token_savers::Lever::Route`]).
+#[must_use]
+pub fn route_mode() -> Mode {
+    if std::env::var(ROUTE_VAR).is_ok_and(|value| !value.trim().is_empty()) {
+        mode(ROUTE_VAR)
+    } else if crate::token_savers::enabled() {
+        Mode::On
+    } else {
+        Mode::Off
+    }
 }
 
 /// [`system_one`] with the monitor's and the router's modes given.
@@ -189,12 +202,17 @@ pub fn system_one_with(
             )
         });
     }
+    // The chat's router (#11491): Coder's own, which reads the chat's
+    // earlier turns and what Coder knows, and leaves a host answer or a
+    // re-brief for the chat to carry out ([`crate::message_route`]).
     if route != Mode::Off && harness == Harness::ClaudeCode {
-        admission = admission.admitting(coder_sdk::system_one::route::disclosure());
-        hooks.push(coder_sdk::DecisionHook {
-            shadow: route == Mode::Shadow,
-            ..coder_sdk::system_one::route::hook(None, decider, recorder)
-        });
+        admission = admission.admitting(crate::message_route::disclosure());
+        hooks.push(crate::message_route::hook(
+            cwd.to_owned(),
+            decider,
+            recorder,
+            route == Mode::Shadow,
+        ));
     }
     for hook in hooks {
         // A refusal is recorded by the hook kind itself.
@@ -443,7 +461,7 @@ mod tests {
             .iter()
             .filter_map(|hook| hook["question_set"].as_str())
             .collect();
-        assert_eq!(pinned, ["route-v1", "monitor-v2"]);
+        assert_eq!(pinned, ["message-route-v1", "monitor-v2"]);
         // The probe reads the working tree.
         assert!(probe(dir.path())().is_none(), "not a checkout");
     }

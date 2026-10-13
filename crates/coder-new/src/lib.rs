@@ -60,6 +60,7 @@ mod loops;
 pub mod media;
 pub mod memory;
 mod memory_sync;
+pub mod message_route;
 pub mod model_catalog;
 pub mod models;
 pub mod ops_tool;
