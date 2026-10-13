@@ -19,7 +19,7 @@ vertical stack [card]
 message user
   markdown "Yes, cover it."
 vertical stack [card]
-  body "Coder continued on Claude Code · claude-opus-5-5 (turn 2)"
+  body "Coder continued on Claude Code (turn 2)"
 tool "Thinking" "Write the output." [done]
   code "Write the output."
 tool "Run" "printf 'x = 1\\n' >> test_slugs.py" [done]
