@@ -1180,9 +1180,9 @@ class Run:
         for p in parts:
             if p.startswith("Context"):
                 continue
-            m = re.fullmatch(r"(\S+) (\d+)%", p)
+            m = re.fullmatch(r"(?:Codex |Claude )?(\S+) (<1|\d+)%", p)
             if m:
-                windows.append((m.group(1), int(m.group(2))))
+                windows.append((m.group(1), 0 if m.group(2) == "<1" else int(m.group(2))))
         if not windows:
             self.fail("usage", f"no plan windows on the rail (`{label}`)")
             return
