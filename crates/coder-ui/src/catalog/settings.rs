@@ -36,7 +36,7 @@ const PLUGINS: [Plugin; 8] = [
     Plugin {
         id: "microcoder",
         name: "Coder loop",
-        description: "Coder's own coding loop, with local model logins and bounded commands.",
+        description: "Coder's own coding loop, on a model you're signed in to here or your OpenRouter key.",
         enabled: true,
     },
     Plugin {
@@ -48,13 +48,13 @@ const PLUGINS: [Plugin; 8] = [
     Plugin {
         id: "openagents-cli",
         name: "OpenAgents CLI",
-        description: "Discover and call the bundled openagents command in this working directory.",
+        description: "Lets Coder use the openagents command that comes with it, in this folder.",
         enabled: true,
     },
     Plugin {
         id: "acp-subagents",
         name: "ACP Subagents",
-        description: "Define named ACP agents and delegate tasks to their registered executables.",
+        description: "Hands tasks to other coding agents installed on this computer, like Claude Code, Codex, or Cursor.",
         enabled: true,
     },
     Plugin {
@@ -1375,7 +1375,6 @@ fn details(plugin: Plugin, state: &FixtureState) -> Vec<Node<CatalogIntent>> {
             ]);
         }
         "jev" => rows.extend([
-            ("Tool", "jev".into()),
             ("Gateway", get(state, "gateway").into()),
             ("API key", key_help(true, state)),
             ("Model", get(state, "jev-model").into()),
@@ -1384,34 +1383,23 @@ fn details(plugin: Plugin, state: &FixtureState) -> Vec<Node<CatalogIntent>> {
         ]),
         "microcoder" => {
             rows.extend([
-                ("Tool", "microcoder".into()),
-                (
-                    "Provider",
-                    "Local model login or configured OpenRouter".into(),
-                ),
+                ("Provider", "Your model login here, or OpenRouter".into()),
                 ("Working folder", "Current checkout".into()),
             ]);
+        }
+        "openagents-cli" => {
+            rows.extend([("Command", "openagents".into())]);
             children.push(text(
-                "detail-limits",
-                "The host applies command, step, and time limits.",
+                "detail-cli-help",
+                "Installed with Coder. Run openagents --help to see its commands.",
                 GRAY,
             ));
         }
-        "openagents-cli" => {
-            rows.extend([
-                ("Tool", "openagents_cli".into()),
-                ("Command", "openagents".into()),
-            ]);
-            children.push(text("detail-cli-help", "Installed with Coder. Use --help to discover commands.\nRuns argument arrays in the current working folder.", GRAY));
-        }
         "acp-subagents" => {
-            rows.extend([
-                ("Tool", "acp_subagent".into()),
-                (
-                    "Agents",
-                    format!("{} detected", number(state, "acp-count", 11)),
-                ),
-            ]);
+            rows.extend([(
+                "Agents",
+                format!("{} detected", number(state, "acp-count", 11)),
+            )]);
             children.push(text(
                 "detail-acp-help",
                 "Installed agents appear automatically. Choose which to use.",

@@ -287,7 +287,6 @@ fn plugin_details(app: &App, width: u16) -> Vec<Line<'static>> {
         "jev" => {
             lines.push(Line::default());
             lines.extend([
-                detail("Tool", "jev", width),
                 detail("Gateway", p.bundled.gateway_label(), width),
                 detail("API key", p.bundled.key_label(), width),
                 detail("Model", p.bundled.jev_model(), width),
@@ -298,30 +297,16 @@ fn plugin_details(app: &App, width: u16) -> Vec<Line<'static>> {
         "microcoder" => {
             lines.push(Line::default());
             lines.extend([
-                detail("Tool", "microcoder", width),
-                detail(
-                    "Provider",
-                    "Local model login or configured OpenRouter",
-                    width,
-                ),
+                detail("Provider", "Your model login here, or OpenRouter", width),
                 detail("Working folder", "Current checkout", width),
-                Line::from(span(
-                    "The host applies command, step, and time limits.",
-                    t::GRAY,
-                )),
             ]);
         }
         "openagents-cli" => {
             lines.push(Line::default());
             lines.extend([
-                detail("Tool", "openagents_cli", width),
                 detail("Command", "openagents", width),
                 Line::from(span(
-                    "Installed with Coder. Use --help to discover commands.",
-                    t::GRAY,
-                )),
-                Line::from(span(
-                    "Runs argument arrays in the current working folder.",
+                    "Installed with Coder. Run openagents --help to see its commands.",
                     t::GRAY,
                 )),
             ]);
@@ -329,7 +314,6 @@ fn plugin_details(app: &App, width: u16) -> Vec<Line<'static>> {
         "acp-subagents" => {
             lines.push(Line::default());
             lines.extend([
-                detail("Tool", "acp_subagent", width),
                 detail(
                     "Agents",
                     &format!("{} detected", p.bundled.acp_choices().len()),
@@ -915,22 +899,6 @@ fn acp_settings(frame: &mut Frame, area: Rect, app: &App) {
                     ),
                 ];
                 let label = p.engines.state(&agent.id).and_then(|state| state.label());
-                if area.width >= 56 {
-                    let program = agent
-                        .program
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .into_owned();
-                    let room = usize::from(area.width.saturating_sub(30));
-                    let program = match label {
-                        Some(label) if room > label.len() + 3 => {
-                            truncate(&program, (room - label.len() - 3) as u16)
-                        }
-                        _ => truncate(&program, room as u16),
-                    };
-                    spans.push(span(program, t::GRAY));
-                }
                 if let Some(label) = label {
                     spans.push(span(format!(" {label}"), status_color(label)));
                 }
@@ -1393,17 +1361,21 @@ mod tests {
     }
 
     #[test]
-    fn bundled_tool_info_screens_name_the_registered_tools() {
+    fn bundled_tool_info_screens_speak_plainly() {
         let mut app = App::default();
         app.screen = Screen::PluginSettings;
-        for (id, tool) in [
-            ("microcoder", "microcoder"),
-            ("openagents-cli", "openagents_cli"),
+        // The pages describe the plugin in words; the model's tool names
+        // (microcoder, openagents_cli) are not for the person.
+        for (id, tool, shown) in [
+            ("microcoder", "microcoder", "Current checkout"),
+            ("openagents-cli", "openagents_cli", "openagents --help"),
         ] {
             select(&mut app, id);
             let canvas = draw(&app, 80, 24);
             assert!(canvas.rows[0].contains(app.plugins.selected_definition().name));
-            assert!(canvas.rows.join("\n").contains(tool));
+            let screen = canvas.rows.join("\n");
+            assert!(screen.contains(shown), "{screen}");
+            assert!(!screen.contains(tool), "{screen}");
             assert!(!canvas.cursor_visible);
         }
     }

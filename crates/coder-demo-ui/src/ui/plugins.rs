@@ -238,7 +238,6 @@ fn plugin_details(app: &App, width: u16) -> Vec<Line<'static>> {
         "jev" => {
             lines.push(Line::default());
             lines.extend([
-                detail("Tool", "jev", width),
                 detail("Gateway", p.bundled.gateway_label(), width),
                 detail("API key", p.bundled.key_label(), width),
                 detail("Model", p.bundled.jev_model(), width),
@@ -249,30 +248,16 @@ fn plugin_details(app: &App, width: u16) -> Vec<Line<'static>> {
         "microcoder" => {
             lines.push(Line::default());
             lines.extend([
-                detail("Tool", "microcoder", width),
-                detail(
-                    "Provider",
-                    "Local model login or configured OpenRouter",
-                    width,
-                ),
+                detail("Provider", "Your model login here, or OpenRouter", width),
                 detail("Working folder", "Current checkout", width),
-                Line::from(span(
-                    "The host applies command, step, and time limits.",
-                    t::GRAY,
-                )),
             ]);
         }
         "openagents-cli" => {
             lines.push(Line::default());
             lines.extend([
-                detail("Tool", "openagents_cli", width),
                 detail("Command", "openagents", width),
                 Line::from(span(
-                    "Installed with Coder. Use --help to discover commands.",
-                    t::GRAY,
-                )),
-                Line::from(span(
-                    "Runs argument arrays in the current working folder.",
+                    "Installed with Coder. Run openagents --help to see its commands.",
                     t::GRAY,
                 )),
             ]);
@@ -280,7 +265,6 @@ fn plugin_details(app: &App, width: u16) -> Vec<Line<'static>> {
         "acp-subagents" => {
             lines.push(Line::default());
             lines.extend([
-                detail("Tool", "acp_subagent", width),
                 detail(
                     "Agents",
                     &format!("{} detected", p.bundled.acp_choices().len()),

@@ -83,7 +83,7 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
     PluginDefinition {
         id: "microcoder",
         name: "Coder loop",
-        description: "Coder's own coding loop, with local model logins and bounded commands.",
+        description: "Coder's own coding loop, on a model you're signed in to here or your OpenRouter key.",
         default_enabled: true,
         tools: &[ToolBinding::Microcoder],
         model_provider: None,
@@ -101,7 +101,7 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
     PluginDefinition {
         id: "openagents-cli",
         name: "OpenAgents CLI",
-        description: "Discover and call the bundled openagents command in this working directory.",
+        description: "Lets Coder use the openagents command that comes with it, in this folder.",
         default_enabled: true,
         tools: &[ToolBinding::OpenAgentsCli, ToolBinding::Github],
         model_provider: None,
@@ -110,7 +110,7 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
     PluginDefinition {
         id: "acp-subagents",
         name: "ACP Subagents",
-        description: "Define named ACP agents and delegate tasks to their registered executables.",
+        description: "Hands tasks to other coding agents installed on this computer, like Claude Code, Codex, or Cursor.",
         default_enabled: true,
         tools: &[ToolBinding::AcpSubagent],
         model_provider: None,
