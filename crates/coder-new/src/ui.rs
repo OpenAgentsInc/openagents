@@ -6,6 +6,7 @@ mod models;
 mod plugins;
 mod preferences;
 mod resume;
+mod rewind;
 
 use coder_terminal::selection::{self, RowCopy};
 use coder_terminal::{
@@ -131,6 +132,10 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
     }
     if app.resume_picker.is_some() {
         resume::render(frame, area, app);
+        return;
+    }
+    if app.rewind_picker.is_some() {
+        rewind::render(frame, area, app);
         return;
     }
     if app.agents_panel.is_some() {

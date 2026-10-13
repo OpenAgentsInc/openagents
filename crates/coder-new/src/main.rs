@@ -174,6 +174,8 @@ fn run() -> io::Result<()> {
     };
     let mut app = App::default();
     app.routing_records = true;
+    // Each turn keeps the files it changed, for /rewind (#11515).
+    app.rewind_records = true;
     let mut capture = false;
     let mut models = false;
     let mut follow: Option<String> = None;

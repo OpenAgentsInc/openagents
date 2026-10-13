@@ -268,7 +268,10 @@ impl Lease {
     pub fn delete(&self) -> Result<(), String> {
         self.store.directory(false)?;
         regular_or_missing(&self.path, "The chat session is not a regular file.")?;
-        fs::remove_file(&self.path).map_err(|_| "Cannot remove the chat session.".into())
+        fs::remove_file(&self.path).map_err(|_| "Cannot remove the chat session.")?;
+        // The files its turns changed, kept for /rewind (#11515).
+        crate::rewind::write(&self.path, &[]);
+        Ok(())
     }
 }
 
