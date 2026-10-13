@@ -36,6 +36,8 @@ fn span(text: impl Into<String>, color: Color) -> Span<'static> {
 }
 
 pub fn render(frame: &mut Frame, app: &mut App) {
+    // Set again below only when the input is drawn.
+    app.composer_text = None;
     render_contents(frame, app);
     // The terminal's own background shows through where Coder paints its
     // base; the bands on top (diff rows, your messages, Run output) stay.
@@ -233,7 +235,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         .on_claude()
         .then(|| crate::claude_stream::load_warning(std::time::Instant::now()))
         .flatten();
-    composer_view(
+    let drawn = composer_view(
         frame,
         Rect {
             x: terminal_x,
@@ -256,6 +258,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         working.as_deref(),
         copied,
     );
+    app.composer_text = drawn;
     let path = repository_rail(app);
     let composer_area = Rect {
         x: terminal_x,
@@ -2105,7 +2108,7 @@ fn composer_view(
     warning: Option<&str>,
     working: Option<&str>,
     copied: bool,
-) {
+) -> Option<(Rect, u16)> {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(t::PROMPT_BORDER_ACTIVE))
@@ -2275,7 +2278,7 @@ fn composer_view(
         }
     }
     if inner.width < 4 || inner.height == 0 {
-        return;
+        return None;
     }
     frame.render_widget(
         Paragraph::new(span(
@@ -2322,6 +2325,7 @@ fn composer_view(
             text_area.y + cursor.1.saturating_sub(scroll),
         ));
     }
+    Some((text_area, scroll))
 }
 
 #[cfg(test)]

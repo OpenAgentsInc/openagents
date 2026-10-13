@@ -159,6 +159,56 @@ mod tests {
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
     #[test]
+    fn a_double_click_on_a_paste_chip_turns_it_back_into_text() {
+        use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+        let mut app = crate::App::default();
+        app.set_mode(crate::Mode::Live);
+        app.composer_width = 40;
+        app.handle(Event::Key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::NONE,
+        )));
+        let pasted = "one\ntwo\nthree\nfour";
+        app.handle(Event::Paste(pasted.into()));
+        app.handle(Event::Key(KeyEvent::new(
+            KeyCode::Char('b'),
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(app.draft.wrapped(40).0, ["a[Pasted: 4 lines]b"]);
+        // The input's text drawn at column 10, row 20.
+        app.composer_text = Some((ratatui::layout::Rect::new(10, 20, 40, 3), 0));
+        let click = |column| {
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column,
+                row: 20,
+                modifiers: KeyModifiers::empty(),
+            })
+        };
+        // A click on the `a` puts the cursor before it.
+        assert!(app.handle(click(10)));
+        assert_eq!(app.draft.cursor, 0);
+        // One click on the chip only puts the cursor after it.
+        app.handle(click(15));
+        assert_eq!(app.draft.chips().len(), 1);
+        assert_eq!(app.draft.cursor, 1 + pasted.len());
+        // The second click expands it into plain text to edit.
+        app.handle(click(15));
+        assert!(app.draft.chips().is_empty());
+        assert_eq!(app.draft.text, format!("a{pasted}b"));
+        assert_eq!(app.draft.wrapped(40).0, ["aone", "two", "three", "fourb"]);
+        // A click past the end of a row goes to that row's end.
+        app.composer_text = Some((ratatui::layout::Rect::new(10, 20, 40, 4), 0));
+        app.handle(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 30,
+            row: 21,
+            modifiers: KeyModifiers::empty(),
+        }));
+        assert_eq!(&app.draft.text[..app.draft.cursor], "aone\ntwo");
+    }
+
+    #[test]
     fn a_large_paste_is_one_chip_that_sends_every_line() {
         let mut app = crate::App::default();
         app.set_mode(crate::Mode::Live);

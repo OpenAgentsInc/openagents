@@ -246,6 +246,10 @@ pub struct App {
     pending_copy: Option<String>,
     /// Counts presses on the transcript for double- and triple-click.
     clicks: coder_terminal::selection::Clicks,
+    /// Counts presses on the input, for a double-click on a paste chip.
+    composer_clicks: coder_terminal::selection::Clicks,
+    /// Where the input's text was last drawn, and how far it was scrolled.
+    pub(crate) composer_text: Option<(ratatui::layout::Rect, u16)>,
     /// A transcript selection went to the clipboard: the input's top-left
     /// rail says so until then.
     pub(crate) copied_until: Option<std::time::Instant>,
@@ -1398,6 +1402,46 @@ impl App {
         true
     }
 
+    /// A click in the input puts the cursor there; a double-click on a
+    /// `[Pasted: N lines]` chip turns it back into plain text to edit, as
+    /// Grok Build's composer does. Returns whether the click was used up.
+    fn composer_click(&mut self, event: &Event) -> bool {
+        use crossterm::event::MouseButton;
+        let Event::Mouse(mouse) = event else {
+            return false;
+        };
+        if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
+            return false;
+        }
+        let Some((area, scroll)) = self.composer_text else {
+            return false;
+        };
+        if mouse.column < area.x
+            || mouse.column >= area.x + area.width
+            || mouse.row < area.y
+            || mouse.row >= area.y + area.height
+        {
+            return false;
+        }
+        let (column, row) = (mouse.column - area.x, mouse.row - area.y + scroll);
+        let (offset, chip) = self.draft.hit(self.composer_width, column, row);
+        let at = coder_terminal::selection::Point {
+            row: usize::from(row),
+            col: column,
+        };
+        let presses = self.composer_clicks.press(std::time::Instant::now(), at);
+        if let Some(start) = chip
+            && presses >= 2
+        {
+            self.draft.expand_chip(start);
+        }
+        self.composer_selected = false;
+        self.footer_focused = false;
+        self.draft.cursor = offset;
+        self.draft.snap_cursor();
+        true
+    }
+
     /// Keep scrolling while a selecting drag is held past the transcript's
     /// top or bottom edge; called on each tick.
     fn drag_scroll(&mut self) {
@@ -2377,6 +2421,15 @@ impl App {
             && self.model_picker.is_none()
             && self.resume_picker.is_none()
             && self.agents_panel.is_none()
+            && self.composer_click(&event)
+        {
+            return true;
+        }
+        if matches!(self.mode, Mode::Live | Mode::Solver)
+            && self.screen == Screen::Conversation
+            && self.model_picker.is_none()
+            && self.resume_picker.is_none()
+            && self.agents_panel.is_none()
             && self.transcript_select(&event)
         {
             return true;
@@ -3067,6 +3120,16 @@ impl PasteChip {
     }
 }
 
+/// One grapheme of the draft as the composer lays it out.
+struct Placed {
+    offset: Option<usize>,
+    chip: Option<usize>,
+    row: usize,
+    column: usize,
+    cells: usize,
+    text: String,
+}
+
 /// A paste of this many lines or more shows as a chip.
 pub const PASTE_CHIP_LINES: usize = 4;
 /// A paste over this many bytes shows as a chip, whatever its lines.
@@ -3165,7 +3228,7 @@ impl Draft {
             .find(|(start, end)| *start < offset && offset < *end)
     }
 
-    fn snap_cursor(&mut self) {
+    pub(crate) fn snap_cursor(&mut self) {
         // Edits can join surrounding graphemes; keep the cursor at a boundary.
         while self.cursor < self.text.len()
             && !self
@@ -3241,19 +3304,19 @@ impl Draft {
     }
 
     /// Hard-wraps by terminal cells so the rendered cursor matches the draft.
-    pub fn wrapped(&self, width: u16) -> (Vec<String>, (u16, u16)) {
+    /// Each drawn grapheme in the wrapped layout: the byte offset it
+    /// starts at (`None` for a chip label's later graphemes), the chip it
+    /// belongs to, its row and column, and its text.
+    fn layout(&self, width: u16) -> Vec<Placed> {
         let width = usize::from(width.max(1));
-        let mut lines = vec![String::new()];
-        let mut column = 0;
-        let mut cursor = (0, 0);
-        // A chip draws as its label: its first grapheme carries the label,
-        // the rest of its text draws nothing.
         let chips: Vec<(usize, usize, String)> = self
             .chips()
             .into_iter()
             .map(|chip| (chip.start, chip.end(), chip.label()))
             .collect();
-        let mut pieces: Vec<(usize, String)> = Vec::new();
+        // A chip draws as its label: its first grapheme carries the label's
+        // start, the rest of its text draws nothing.
+        let mut pieces: Vec<(Option<usize>, Option<usize>, String)> = Vec::new();
         let mut skip_to = 0;
         for (offset, grapheme) in self.text.grapheme_indices(true) {
             if offset < skip_to {
@@ -3263,42 +3326,121 @@ impl Draft {
                 skip_to = *end;
                 for (index, part) in label.graphemes(true).enumerate() {
                     pieces.push((
-                        if index == 0 { offset } else { usize::MAX },
+                        (index == 0).then_some(offset),
+                        Some(offset),
                         part.to_owned(),
                     ));
                 }
             } else {
-                pieces.push((offset, grapheme.to_owned()));
+                pieces.push((Some(offset), None, grapheme.to_owned()));
             }
         }
-        for (offset, grapheme) in pieces.iter().map(|(offset, g)| (*offset, g.as_str())) {
-            let cells = grapheme.width();
-            if grapheme != "\n" && column + cells > width && column > 0 {
-                lines.push(String::new());
+        let mut placed = Vec::with_capacity(pieces.len());
+        let (mut row, mut column) = (0usize, 0usize);
+        for (offset, chip, text) in pieces {
+            let cells = text.width();
+            if text != "\n" && column + cells > width && column > 0 {
+                row += 1;
                 column = 0;
             }
-            if offset == self.cursor {
-                cursor = (column as u16, (lines.len() - 1) as u16);
-            }
-            if grapheme == "\n" {
-                lines.push(String::new());
+            placed.push(Placed {
+                offset,
+                chip,
+                row,
+                column,
+                cells,
+                text,
+            });
+            let last = placed.last().expect("just pushed");
+            if last.text == "\n" {
+                row += 1;
                 column = 0;
             } else {
-                lines
-                    .last_mut()
-                    .expect("the draft always has a line")
-                    .push_str(grapheme);
                 column += cells;
             }
         }
+        placed
+    }
+
+    /// Hard-wraps by terminal cells so the rendered cursor matches the draft.
+    pub fn wrapped(&self, width: u16) -> (Vec<String>, (u16, u16)) {
+        let wide = usize::from(width.max(1));
+        let mut lines = vec![String::new()];
+        let mut cursor = (0, 0);
+        let mut column = 0;
+        for piece in self.layout(width) {
+            while lines.len() <= piece.row {
+                lines.push(String::new());
+            }
+            if piece.offset == Some(self.cursor) {
+                cursor = (piece.column as u16, piece.row as u16);
+            }
+            if piece.text == "\n" {
+                lines.push(String::new());
+                column = 0;
+            } else {
+                lines[piece.row].push_str(&piece.text);
+                column = piece.column + piece.cells;
+            }
+        }
         if self.cursor == self.text.len() {
-            if column >= width {
+            if column >= wide {
                 lines.push(String::new());
                 column = 0;
             }
             cursor = (column as u16, (lines.len() - 1) as u16);
         }
         (lines, cursor)
+    }
+
+    /// What a click at `column`, `row` of the wrapped draft lands on: the
+    /// byte offset the cursor goes to, and the paste chip under it, if any.
+    pub(crate) fn hit(&self, width: u16, column: u16, row: u16) -> (usize, Option<usize>) {
+        let (column, row) = (usize::from(column), usize::from(row));
+        let layout = self.layout(width);
+        if let Some(piece) = layout.iter().find(|piece| {
+            piece.row == row
+                && piece.text != "\n"
+                && column >= piece.column
+                && column < piece.column + piece.cells.max(1)
+        }) {
+            if let Some(start) = piece.chip {
+                let end = self
+                    .chips()
+                    .into_iter()
+                    .find(|chip| chip.start == start)
+                    .map_or(start, PasteChip::end);
+                return (end, Some(start));
+            }
+            return (piece.offset.unwrap_or(self.text.len()), None);
+        }
+        // Past the end of a row: its line break, or just after its last
+        // grapheme (a chip's whole text); a row past the end is the end.
+        let on_row: Vec<&Placed> = layout.iter().filter(|piece| piece.row == row).collect();
+        let end = if let Some(newline) = on_row.iter().find(|piece| piece.text == "\n") {
+            newline.offset.unwrap_or(self.text.len())
+        } else {
+            on_row
+                .last()
+                .map_or(self.text.len(), |piece| match piece.chip {
+                    Some(start) => self
+                        .chips()
+                        .into_iter()
+                        .find(|chip| chip.start == start)
+                        .map_or(self.text.len(), PasteChip::end),
+                    None => piece
+                        .offset
+                        .map_or(self.text.len(), |at| at + piece.text.len()),
+                })
+        };
+        (end, None)
+    }
+
+    /// Turns the paste chip that starts at `start` back into plain text.
+    pub(crate) fn expand_chip(&mut self, start: usize) -> bool {
+        let before = self.pastes.len();
+        self.pastes.retain(|chip| chip.start != start);
+        self.pastes.len() != before
     }
 }
 
