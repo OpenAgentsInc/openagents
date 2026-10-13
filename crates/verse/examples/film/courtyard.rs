@@ -188,7 +188,17 @@ impl Set {
             Shot::Girl => &[Look::Alice],
             Shot::Boy => &[Look::Boy],
             Shot::Cloak => &[Look::Boy, Look::Alice, Look::Boy, Look::Boy],
-            Shot::Duel => &[Look::Boy, Look::Alice, Look::Boy, Look::Alice, Look::Boy],
+            Shot::Duel => &[
+                Look::Boy,
+                Look::Alice,
+                Look::Boy,
+                Look::Alice,
+                Look::Boy,
+                Look::Boy,
+                Look::Alice,
+                Look::Boy,
+                Look::Alice,
+            ],
         };
         let mut cast = Cast::new(pack, looks)?;
         if shot == Shot::Cloak {
@@ -340,8 +350,8 @@ impl Set {
                     );
                 }
                 (Shot::Cloak | Shot::Duel, _) => {
-                    let (at, yaw, clip, phase) = DUELERS[k % DUELERS.len()];
-                    b.pose_clip(at, yaw, 1.0, clip, phase + t, true, dt);
+                    let (_, yaw, clip, phase, _) = DUELERS[k % DUELERS.len()];
+                    b.pose_clip(dueler_at(k, t), yaw, 1.0, clip, phase + t, true, dt);
                 }
             }
         }
@@ -388,17 +398,21 @@ impl Set {
                     .extend(feathers::beam(from, from.lerp(to, k), 0.05, GREEN));
             }
             Shot::Cloak | Shot::Duel => {
-                let from = DUELERS[0].0 + Vec3::new(0.3, 1.4, 0.2);
-                let to = DUELERS[1].0 + Vec3::new(0.0, 1.3, 0.0);
-                let flicker = 0.85 + 0.15 * (t * 23.0).sin();
-                mesh.ribbons
-                    .extend(feathers::beam(from, to, 0.04, GREEN.map(|c| c * flicker)));
-                // A shield shimmer where it lands.
-                mesh.sprites.push(feathers::eyespot(
-                    to + Vec3::new(0.0, 0.0, 0.25),
-                    0.55,
-                    [0.6, 1.6, 1.0],
-                ));
+                for (i, &(a, b)) in BOLTS.iter().enumerate() {
+                    let from = dueler_at(a, t) + Vec3::new(0.3, 1.4, 0.2);
+                    let to = dueler_at(b, t) + Vec3::new(0.0, 1.3, 0.0);
+                    let flicker = 0.85 + 0.15 * (t * 23.0 + i as f32 * 2.0).sin();
+                    // The second bolt is red, as the reference's duels mix.
+                    let color = if i == 0 { GREEN } else { [6.0, 1.0, 0.6] };
+                    mesh.ribbons
+                        .extend(feathers::beam(from, to, 0.04, color.map(|c| c * flicker)));
+                    // A shield shimmer where it lands.
+                    mesh.sprites.push(feathers::eyespot(
+                        to + (from - to).normalize_or_zero() * 0.3,
+                        0.55,
+                        [0.6, 1.6, 1.0],
+                    ));
+                }
             }
             _ => {}
         }
@@ -449,6 +463,15 @@ impl Set {
                         intensity: 70.0,
                         range: 6.0,
                     });
+                    // Its green on the wall's face either side of him.
+                    for x in [-1.6_f32, 2.2] {
+                        lamps.push(Lamp {
+                            position: Vec3::new(x, 1.8, 0.15),
+                            color: [0.3, 1.0, 0.45],
+                            intensity: 18.0 * k,
+                            range: 1.6,
+                        });
+                    }
                 }
                 if t >= BLAST {
                     // The blast's golden light, fading.
@@ -460,20 +483,36 @@ impl Set {
                         range: 9.0,
                     });
                     neon.key_color = [1.0, 0.8, 0.55];
+                    // The burst lights the wall's face either side of him
+                    // (short-range lamps clear of his face).
+                    for x in [-1.6_f32, 2.2] {
+                        lamps.push(Lamp {
+                            position: Vec3::new(x, 1.6, 0.15),
+                            color: [1.0, 0.65, 0.3],
+                            intensity: 30.0 * k + 2.0,
+                            range: 1.6,
+                        });
+                    }
                 }
             }
             Shot::Cloak | Shot::Duel => {
                 neon.field = [0.012, 0.009, 0.007];
                 neon.key = Some(key(Vec3::new(-0.4, 0.7, 0.5), 3.0, 0.06));
                 neon.key_color = [1.0, 0.7, 0.4];
-                let from = DUELERS[0].0 + Vec3::new(0.3, 1.4, 0.2);
-                let to = DUELERS[1].0 + Vec3::new(0.0, 1.3, 0.0);
-                lamps.push(Lamp {
-                    position: from.lerp(to, 0.5),
-                    color: [0.3, 1.0, 0.45],
-                    intensity: 50.0,
-                    range: 6.0,
-                });
+                for (i, &(a, b)) in BOLTS.iter().enumerate() {
+                    let from = dueler_at(a, t) + Vec3::new(0.3, 1.4, 0.2);
+                    let to = dueler_at(b, t) + Vec3::new(0.0, 1.3, 0.0);
+                    lamps.push(Lamp {
+                        position: from.lerp(to, 0.5),
+                        color: if i == 0 {
+                            [0.3, 1.0, 0.45]
+                        } else {
+                            [1.0, 0.25, 0.15]
+                        },
+                        intensity: 50.0,
+                        range: 6.0,
+                    });
+                }
             }
         }
         for (i, lamp) in lamps.iter().take(MAX_LAMPS).enumerate() {
@@ -489,13 +528,50 @@ impl Set {
 
 /// The duelers: where each stands, which way it faces, its clip, and the
 /// clip's phase. The first casts the bolt at the second.
-const DUELERS: [(Vec3, f32, &str, f32); 5] = [
-    (Vec3::new(-1.6, 0.0, 0.4), 1.2, "swing", 0.3),
-    (Vec3::new(1.4, 0.0, -0.2), -1.9, "idle", 0.0),
-    (Vec3::new(-0.2, 0.0, -1.8), 0.3, "run", 0.2),
-    (Vec3::new(2.6, 0.0, 1.6), -2.4, "swing", 0.7),
-    (Vec3::new(-2.8, 0.0, -1.2), 0.9, "idle", 0.5),
+const DUELERS: [(Vec3, f32, &str, f32, Vec3); 9] = [
+    (Vec3::new(-1.6, 0.0, 0.4), 1.2, "swing", 0.3, Vec3::ZERO),
+    (Vec3::new(1.4, 0.0, -0.2), -1.9, "idle", 0.0, Vec3::ZERO),
+    (
+        Vec3::new(-0.6, 0.0, -2.2),
+        0.3,
+        "run",
+        0.2,
+        Vec3::new(0.6, 0.0, 2.2),
+    ),
+    (Vec3::new(2.6, 0.0, 1.6), -2.4, "swing", 0.7, Vec3::ZERO),
+    (Vec3::new(-2.8, 0.0, -1.2), 0.9, "idle", 0.5, Vec3::ZERO),
+    (Vec3::new(0.6, 0.0, 2.0), -2.8, "swing", 0.1, Vec3::ZERO),
+    (
+        Vec3::new(-0.4, 0.0, -0.4),
+        0.4,
+        "backpedal",
+        0.3,
+        Vec3::new(-0.3, 0.0, -1.0),
+    ),
+    (
+        Vec3::new(3.4, 0.0, -1.4),
+        -1.2,
+        "run",
+        0.6,
+        Vec3::new(-2.6, 0.0, 0.8),
+    ),
+    (
+        Vec3::new(-3.6, 0.0, 1.4),
+        1.6,
+        "strafe_left",
+        0.2,
+        Vec3::new(0.0, 0.0, 1.2),
+    ),
 ];
+
+/// Who casts at whom in the duel: caster and target, by `DUELERS` index.
+const BOLTS: [(usize, usize); 2] = [(0, 1), (5, 6)];
+
+/// Where dueler `k` stands at film time `t`.
+fn dueler_at(k: usize, t: f32) -> Vec3 {
+    let d = DUELERS[k % DUELERS.len()];
+    d.0 + d.4 * t
+}
 
 /// The first member's atlas darkened to near black: a cloak in shadow.
 fn darken_first(cast: &mut Cast) {
@@ -528,6 +604,18 @@ fn brick_wall(
     height: &dyn Fn(f32) -> f32,
     seed: u32,
 ) {
+    // Dark mortar behind the stones, so the joints read as shadow.
+    let tallest = (0..40)
+        .map(|i| height(x0 + (x1 - x0) * i as f32 / 39.0))
+        .fold(0.0_f32, f32::max);
+    push_box(
+        out,
+        Vec3::new(x0, 0.0, z - 0.26),
+        Vec3::new(x1, tallest - 0.1, z + 0.17),
+        0.0,
+        [0.012, 0.011, 0.01],
+        1.0,
+    );
     let course = 0.24;
     let mut n = seed * 100_000;
     let mut row = 0;
@@ -536,17 +624,31 @@ fn brick_wall(
         let mut x = x0 - if row % 2 == 0 { 0.0 } else { 0.25 };
         while x < x1 {
             n += 1;
-            let w = 0.48 + 0.06 * hash(n);
+            let w = 0.46 + 0.1 * hash(n);
             let top = height(x + w * 0.5);
-            if y + course <= top + 0.1 * hash(n + 7) {
-                let shade = 0.09 + 0.08 * hash(n + 3);
+            // A few stones are gone, and some sit proud or sunk, chipped
+            // smaller than their neighbors.
+            let missing = hash(n + 11) < 0.03;
+            if y + course <= top + 0.1 * hash(n + 7) && !missing {
+                let chip = 0.012 + 0.03 * hash(n + 13).powi(3);
+                let proud = 0.04 * (hash(n + 9) - 0.5);
+                // Weathered: grime darkens toward the ground and in
+                // streaks, and the stones vary from cool grey to warm.
+                let grime = 0.55 + 0.45 * (y / 2.2).min(1.0);
+                let streak = 0.75 + 0.25 * ((x * 3.1).sin() * 0.5 + 0.5);
+                let shade = (0.06 + 0.1 * hash(n + 3)) * grime * streak;
+                let warm = hash(n + 5);
                 push_box(
                     out,
-                    Vec3::new(x.max(x0), y, z - 0.25 + 0.01 * hash(n + 9)),
-                    Vec3::new((x + w - 0.006).min(x1), y + course - 0.006, z + 0.25),
+                    Vec3::new(x.max(x0) + chip, y + chip, z - 0.25),
+                    Vec3::new((x + w - chip).min(x1), y + course - chip, z + 0.2 + proud),
                     0.0,
-                    [shade * 1.05, shade * 0.97, shade * 0.86],
-                    0.9,
+                    [
+                        shade * (0.95 + 0.15 * warm),
+                        shade * (0.95 + 0.03 * warm),
+                        shade * (1.0 - 0.15 * warm),
+                    ],
+                    0.92,
                 );
             }
             x += w;
@@ -560,7 +662,7 @@ fn brick_wall(
 /// when it does.
 fn wall_top_chunks() -> Vec<Chunk> {
     let mut out = Vec::new();
-    for i in 0..18u32 {
+    for i in 0..34u32 {
         let x = -0.8 + 2.2 * hash(i * 3 + 900);
         let y = 1.6 + 0.5 * hash(i * 3 + 901);
         let s = Vec3::new(0.22, 0.12, 0.2) * (0.8 + 0.6 * hash(i * 3 + 902));
@@ -569,7 +671,7 @@ fn wall_top_chunks() -> Vec<Chunk> {
         out.push(Chunk {
             min: at - s,
             max: at + s,
-            velocity: out_dir * (3.0 + 4.0 * hash(i + 77)) + Vec3::new(0.0, 2.5, 1.5),
+            velocity: out_dir * (3.0 + 5.0 * hash(i + 77)) + Vec3::new(0.0, 4.0, 1.2),
             spin: 4.0 * (hash(i + 55) - 0.5),
             shade: 0.1 + 0.06 * hash(i + 33),
         });

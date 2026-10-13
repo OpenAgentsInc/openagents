@@ -411,3 +411,24 @@ stand in silhouette.
   - The blast dust is grey-gold, not the reference's warm amber, and the wall
     top's blocks don't read as a burst.
   - The duel lacks the reference's crowding and motion.
+
+### v2, 2026-10-13
+
+- **Gaps fixed:**
+  - The walls are weathered stone:
+    - dark mortar behind the stones;
+    - stones of varied size, some chipped smaller, some proud or sunk, a few
+      missing;
+    - grime darkening toward the ground and in streaks;
+    - tones from cool grey to warm.
+  - The blast is warm amber, with brighter dust and haze. 34 wall-top chunks
+    fly higher. Short-range lamps light the wall's face either side of the
+    silhouetted boy, green as the bolt passes and amber after the blast.
+  - The duel is busier: nine students, runners crossing, someone
+    backpedaling, someone strafing, and two bolts (green and red), each with
+    a shield shimmer and its own light.
+- **Still open:**
+  - shot 1's face (waiting on the face work);
+  - uniformed students;
+  - the blast frame goes dark on the right once the burst passes;
+  - the cloak wipe is a recolored ranger, not a cloth cloak.
