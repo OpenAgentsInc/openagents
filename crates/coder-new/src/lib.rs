@@ -2134,8 +2134,12 @@ impl App {
         // The turn runs on the harness the chat was routed to; its first
         // turn routes it ([`harness_plugin`]). Claude Code runs turns of its
         // own, on the Claude Agent SDK.
+        // A `/brainstorm` lookup is Coder's own native read, whatever
+        // harness the chat runs on: it never reaches a harness's model.
+        let native_lookup = brainstorm::parse(self.draft.text.trim()).is_some();
         if self.mode == Mode::Live
             && self.selected_agent.is_none()
+            && !native_lookup
             && (!self.draft.text.trim().is_empty() || !self.composer.images.is_empty())
         {
             // The person's own message ends a checkpoint still waiting
@@ -4128,6 +4132,37 @@ mod claude_tests {
         app.draft.text = text.into();
         app.draft.cursor = text.len();
         app
+    }
+
+    /// A `/brainstorm` lookup is Coder's own native read on every
+    /// harness: it never reaches Claude Code's, Codex's or OpenCode's
+    /// model, and with Brainstorm off it is refused before any request.
+    #[test]
+    fn a_brainstorm_lookup_never_reaches_a_harness() {
+        let key = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+        for harness in [
+            Harness::ClaudeCode,
+            Harness::Codex,
+            Harness::OpenCode,
+            Harness::CoderLoop,
+        ] {
+            let mut app = typed(harness, &format!("/brainstorm rank {key}"));
+            app.plugins.bundled.claude = true;
+            app.plugins.bundled.codex = true;
+            app.plugins.bundled.opencode = true;
+            app.submit_live();
+            assert!(app.request.is_none(), "{harness:?}");
+            assert!(app.live.entries.is_empty(), "{harness:?}");
+            assert!(!app.live.busy, "{harness:?}");
+            assert!(
+                app.live
+                    .notice
+                    .as_deref()
+                    .is_some_and(|notice| notice.starts_with("Enable Brainstorm")),
+                "{harness:?}: {:?}",
+                app.live.notice
+            );
+        }
     }
 
     #[test]
