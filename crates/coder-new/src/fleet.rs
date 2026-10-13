@@ -388,13 +388,16 @@ pub fn execute(
             let args: StartArguments = serde_json::from_value(arguments).map_err(
                 |_| "agent takes engine and task, and optionally name, background and worktree.",
             )?;
+            // The worktree is made when the agent starts running, so the
+            // row has none yet; answer with what it will get.
+            let worktree = args.worktree.unwrap_or(true);
             let row = start(host, execution, args, provider)?;
             Ok(json!({
                 "agent": row.id,
                 "name": row.name,
                 "engine": row.engine,
                 "status": "running",
-                "worktree": row.worktree.is_some() || row.branch.is_some(),
+                "worktree": worktree,
                 "note": "It is working now. Its report arrives as a new message when it ends; do not wait for it."
             }))
         }
