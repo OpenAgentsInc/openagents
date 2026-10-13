@@ -584,7 +584,7 @@ fn environment_panel(
 
 async fn selected_choice(
     app: &App,
-    headers: &HeaderMap,
+    _headers: &HeaderMap,
     owner: &str,
     value: &str,
     choices: &[RuntimeChoice],

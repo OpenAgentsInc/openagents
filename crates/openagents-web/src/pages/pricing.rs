@@ -11,7 +11,7 @@
 use axum::Router;
 use axum::extract::State;
 use axum::http::HeaderMap;
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use maud::{Markup, Render, html};
 use openagents_ui::content::{Heading, MarkdownRoot, PageColumn, Paragraph, PlanCard, PlanCards};
@@ -32,6 +32,14 @@ pub(crate) fn routes() -> Router<App> {
     Router::new().route(PRICING, get(pricing))
 }
 
+/// Whether this page is served. It promises the 3-day trial and Pro
+/// features that aren't built yet (`docs/pro/README.md`, build steps 2-6),
+/// so a deployment shows it only with `OPENAGENTS_PRICING_PAGE=1`;
+/// otherwise `/pricing` goes to the pricing guide, as it did before.
+fn served() -> bool {
+    cfg!(test) || std::env::var("OPENAGENTS_PRICING_PAGE").is_ok_and(|v| v == "1")
+}
+
 /// Who is looking: what each card's button says and where it goes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Visitor {
@@ -43,6 +51,9 @@ enum Visitor {
 }
 
 async fn pricing(State(app): State<App>, headers: HeaderMap) -> Response {
+    if !served() {
+        return axum::response::Redirect::temporary("/docs/pricing").into_response();
+    }
     let visitor = match crate::account::current() {
         Account::Unknown => Visitor::Anonymous,
         Account::SignedOut => Visitor::SignedOut,
