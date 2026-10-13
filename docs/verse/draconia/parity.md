@@ -372,6 +372,17 @@ top), and `~/Downloads/draconia-peacock-progress.png` (one row per version).
   it lands, it gets cut in at the P3 opening at the reference's timing
   (114.5–114.7 s), before the pull-back.
 
+### v13, 2026-10-13
+
+- **The eyes close-up is in.** The face work's
+  `~/work/film-out/draconia/parity/peacock-open/peacock-open-v1.mp4` (the
+  owner approved v1; v2's glare was overdone) is cut in at the reference's
+  114.5–114.7 s, between the white flash and the pull-back. The cut takes
+  0.2 s of it, from 0.5 s into the clip, at 30 fps. It replaces the first
+  0.2 s of the tail shot, so the cut stays 5.0 s and lines up frame for
+  frame with the reference. The cut script (`~/work/film-out/draconia/cut.sh`,
+  `OPEN=…`) swaps in a later approved version the same way.
+
 ## Scene: D1 (shots 1–6, reference 0–9.7 s)
 
 Rendered by `crates/verse/examples/film_shot.rs` scene kind `courtyard`
