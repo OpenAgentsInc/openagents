@@ -19,10 +19,40 @@ pub struct Ran {
     pub milliseconds: u64,
 }
 
-/// The first `python3` on `PATH`.
+/// The oldest Python the graders and the mini-tasks' sources are written
+/// for: the cancellation grader relies on 3.11's `asyncio.run` (one SIGINT
+/// cancels the main task) and the solutions on `Task.cancelling()`.
+pub const MIN_PYTHON: (u32, u32) = (3, 11);
+
+/// A Python of at least [`MIN_PYTHON`] on `PATH`: `python3` when it is new
+/// enough, else the newest versioned `python3.N` (Homebrew may link only
+/// `python3.13`, leaving `python3` the system's 3.9). `None` when there is
+/// none, so a grader says it can't run rather than failing a good
+/// solution on an older interpreter.
 #[must_use]
 pub fn python() -> Option<PathBuf> {
-    which("python3")
+    static FOUND: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+    FOUND
+        .get_or_init(|| {
+            std::iter::once("python3".to_owned())
+                .chain((MIN_PYTHON.1..=20).rev().map(|minor| format!("python3.{minor}")))
+                .filter_map(|name| which(&name))
+                .find(|path| version(path).is_some_and(|found| found >= MIN_PYTHON))
+        })
+        .clone()
+}
+
+/// The `(major, minor)` version `python` reports.
+fn version(python: &Path) -> Option<(u32, u32)> {
+    let out = Command::new(python)
+        .args(["-c", "import sys; print(*sys.version_info[:2])"])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    let text = String::from_utf8(out.stdout).ok()?;
+    let mut words = text.split_whitespace().map(str::parse::<u32>);
+    Some((words.next()?.ok()?, words.next()?.ok()?))
 }
 
 /// The first `name` on `PATH`.
