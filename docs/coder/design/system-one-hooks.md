@@ -235,11 +235,21 @@ Each decision is logged as a `hook-log` line in the run's
 stopped. The gate (Clef, 147 ms) sent it back with `no_tests`; the agent
 added a test, the checks passed, and the run ended, in 5 turns.
 
-**Next steps:** wire it into the product issue-run session as a Token
-savers lever, and run the A/B arm with prompt wording about verification
-removed.
+**In the product issue run** (`coder issue-run`, `Lever::StopGate` in
+Token savers): the same gate (`briefed_agent::stop_gate`), with the
+checks the harness runs after the agent (`check:`, `wasm:`, and required
+ones) as the final checks, run through the check server's `run_check` path
+and baseline. Decisions go to the run folder's `stop_gate.jsonl`, the
+tally to `summary.json`'s `stop_gate`, and the run's pass to
+`outcome.jsonl` for the join (idea 7). Only the issue run's own agent is
+gated; the Solver's hands already hand their work to a Tester.
 
-**Idea 5 is built for the first half** (#11490, `crates/coder-new/src/context_hook.rs`, `Lever::Context`). A `PostToolUse` hook on `Read|Edit|Write|MultiEdit|Grep|Glob` adds, on the first touch of a directory in a session, the `AGENTS.md` files from there up to the repo root that Claude Code would not load (it never reads `AGENTS.md`; it loads `CLAUDE.md` itself, lazily for subdirectories) and the briefing does not carry. One small candidate is added by rule; otherwise one Decisions API call keeps files at p >= 0.5, capped at 3 KB as `additionalContext`. Decisions log to `~/.openagents/decisions/context.jsonl` (`CODER_CONTEXT_LOG`; `CODER_CONTEXT=off`). The `PostCompact` re-add of the briefing's key facts is not built; open in #11490.
+**Not yet measured:** the briefed-ab arm with only `stop_gate` changed and
+the verification wording removed from the prompt.
+
+**Idea 5 is built for the first half** (#11490, `crates/coder-new/src/context_hook.rs`, `Lever::Context`). A `PostToolUse` hook on `Read|Edit|Write|MultiEdit|Grep|Glob` adds, on the first touch of a directory in a session, the `AGENTS.md` files from there up to the repo root that Claude Code would not load (it never reads `AGENTS.md`; it loads `CLAUDE.md` itself, lazily for subdirectories) and the briefing does not carry. One small candidate is added by rule; otherwise one Decisions API call keeps files at p >= 0.5, capped at 3 KB as `additionalContext`. Decisions log to `~/.openagents/decisions/context.jsonl` (`CODER_CONTEXT_LOG`; `CODER_CONTEXT=off`). 
+
+**After a compaction.** A chat's first briefing is in the system prompt, which compaction keeps; a later piece of work's briefing arrives in a message, which compaction summarizes away. `PostCompact` can't return context, so `PreCompact` marks the session, and the first of `SessionStart` (source `compact`), the next `UserPromptSubmit`, or the next `PostToolUse` adds that message briefing back as `additionalContext`, once (capped at 12,000 characters). The last two cover a Claude Code that doesn't send `SessionStart` to SDK hooks.
 
 ## Constraints
 
