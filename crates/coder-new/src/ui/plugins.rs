@@ -24,7 +24,26 @@ pub(super) fn render(frame: &mut Frame, area: Rect, app: &App) {
     } else {
         "Plugins"
     };
-    let context_width = if area.width >= 42 { 17 } else { 0 };
+    // The folder and branch Coder is working in (the demo, with no folder,
+    // shows its sample repository).
+    let (folder, branch) = match &app.cwd {
+        Some(cwd) => (
+            cwd.file_name()
+                .map(|name| display_text(&name.to_string_lossy()))
+                .unwrap_or_default(),
+            app.branch.as_deref().map(display_text),
+        ),
+        None => ("openagents".to_owned(), Some("main".to_owned())),
+    };
+    let branch = branch
+        .map(|branch| format!(" / {branch}"))
+        .unwrap_or_default();
+    let context = (folder.width() + branch.width()) as u16;
+    let context_width = if area.width >= 42 && !folder.is_empty() {
+        context.min(area.width / 2)
+    } else {
+        0
+    };
     frame.render_widget(
         Paragraph::new(Span::styled(
             truncate(
@@ -40,8 +59,11 @@ pub(super) fn render(frame: &mut Frame, area: Rect, app: &App) {
     if context_width > 0 {
         frame.render_widget(
             Paragraph::new(Line::from(vec![
-                span("openagents", t::TEXT_PRIMARY),
-                span(" / main", t::GRAY),
+                span(truncate(&folder, context_width), t::TEXT_PRIMARY),
+                span(
+                    truncate(&branch, context_width.saturating_sub(folder.width() as u16)),
+                    t::GRAY,
+                ),
             ]))
             .right_aligned(),
             Rect {
@@ -1358,6 +1380,21 @@ mod tests {
         app.plugins.bundled.set_live(false);
         let demo = draw(&app, 100, 30).rows.join("\n");
         assert!(!demo.contains("U Update"), "{demo}");
+    }
+
+    #[test]
+    fn the_header_names_the_folder_and_branch_coder_is_in() {
+        let mut app = App::default();
+        app.screen = Screen::Plugins;
+        app.cwd = Some("/tmp/work/slugkit".into());
+        app.branch = Some("main".into());
+        let canvas = draw(&app, 80, 24);
+        assert!(
+            canvas.rows[0].trim_end().ends_with("slugkit / main"),
+            "{}",
+            canvas.rows[0]
+        );
+        assert!(!canvas.rows[0].contains("openagents"));
     }
 
     #[test]
