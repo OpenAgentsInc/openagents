@@ -300,6 +300,56 @@ fn agent_label<'a>(name: &'a str, model: Option<&str>) -> std::borrow::Cow<'a, s
     }
 }
 
+/// The model an agent last named: the reply it is writing, else the newest
+/// finished reply that said, so the rail keeps it between replies.
+fn agent_model(chat: &crate::live::Chat) -> Option<&str> {
+    chat.partial_model.as_deref().or_else(|| {
+        chat.entries.iter().rev().find_map(|entry| match entry {
+            crate::live::Entry::Assistant {
+                model: Some(model), ..
+            } => Some(model.as_str()),
+            _ => None,
+        })
+    })
+}
+
+/// What a running agent is doing, on one line: the line it is writing, else
+/// its newest step: a thought, or a tool and what it was given ("Bash ·
+/// run the tests"). `None` before it has done anything.
+fn agent_activity(chat: &crate::live::Chat) -> Option<String> {
+    fn latest_line(text: &str) -> Option<String> {
+        text.lines()
+            .map(str::trim)
+            .rfind(|line| !line.is_empty())
+            .map(str::to_owned)
+    }
+    if let Some(line) = latest_line(&chat.partial) {
+        return Some(line);
+    }
+    chat.entries.iter().rev().find_map(|entry| match entry {
+        crate::live::Entry::Tool { name, output, .. } if name == crate::claude_stream::THINKING => {
+            latest_line(crate::claude_stream::entry_text(output))
+        }
+        crate::live::Entry::Tool { name, .. } if name == crate::claude_stream::NOTICE => None,
+        crate::live::Entry::Tool { name, input, .. } => {
+            let tool = crate::claude_tools::display_name(name);
+            // A shell call's own description reads better than its command.
+            let what = input
+                .get("description")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+                .unwrap_or_else(|| crate::tools::compact_params(input, 120));
+            Some(if what.is_empty() {
+                tool
+            } else {
+                format!("{tool} · {what}")
+            })
+        }
+        crate::live::Entry::Assistant { text, .. } => latest_line(text),
+        crate::live::Entry::User(_) | crate::live::Entry::Delegation { .. } => None,
+    })
+}
+
 /// A model's name as a person reads it: a Claude model by its picker name
 /// ("Opus 5.5"), any other by its own short name.
 fn model_words(model: &str) -> String {
@@ -341,9 +391,12 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
                         task.push_str(&agent_fleet::dollars(cost));
                         task.push_str(" · ");
                     }
-                    task.push_str(&agent.task);
+                    match agent_activity(&agent.chat).filter(|_| agent.running) {
+                        Some(doing) => task.push_str(&doing),
+                        None => task.push_str(&agent.task),
+                    }
                     return (
-                        std::borrow::Cow::Borrowed(agent.name.as_str()),
+                        agent_label(&agent.name, agent_model(&agent.chat)),
                         std::borrow::Cow::Owned(task),
                         if row.tokens == 0 {
                             String::new()
@@ -355,9 +408,16 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
                     );
                 }
                 (
-                    agent_label(&agent.name, agent.chat.partial_model.as_deref()),
+                    agent_label(&agent.name, agent_model(&agent.chat)),
+                    // What a running agent is doing right now: its tool, its
+                    // thinking, or the line it is writing; its task until
+                    // it has done anything.
+                    if agent.running
+                        && let Some(doing) = agent_activity(&agent.chat)
+                    {
+                        std::borrow::Cow::Owned(doing)
                     // A finished delegation's dollars (#11179).
-                    if agent.chat.cost_usd > 0.0 {
+                    } else if agent.chat.cost_usd > 0.0 {
                         std::borrow::Cow::Owned(format!(
                             "{} · {}",
                             agent_fleet::dollars(agent.chat.cost_usd),
@@ -611,21 +671,7 @@ fn header_view(frame: &mut Frame, area: Rect, app: &App) {
         let model = app
             .selected_agent
             .and_then(|index| app.delegations.get(index))
-            .and_then(|agent| {
-                agent.chat.partial_model.as_deref().or_else(|| {
-                    agent
-                        .chat
-                        .entries
-                        .iter()
-                        .rev()
-                        .find_map(|entry| match entry {
-                            crate::live::Entry::Assistant {
-                                model: Some(model), ..
-                            } => Some(model.as_str()),
-                            _ => None,
-                        })
-                })
-            });
+            .and_then(|agent| agent_model(&agent.chat));
         let mut title = vec![Span::styled(
             agent.to_owned(),
             Style::default()
@@ -2963,6 +3009,50 @@ mod export_notice_tests {
         assert_eq!(buffer[(9, 2)].fg, t::GRAY);
         assert_eq!(buffer[(39, 2)].symbol(), "↓");
         assert_eq!(buffer[(39, 2)].fg, t::ACCENT_MODEL);
+    }
+}
+
+#[cfg(test)]
+mod agent_rail_tests {
+    use crate::live::{Chat, Entry};
+
+    #[test]
+    fn a_running_agent_shows_what_it_is_doing_and_keeps_its_model() {
+        let mut chat = Chat {
+            entries: vec![Entry::User("11515".into())],
+            ..Chat::default()
+        };
+        assert_eq!(super::agent_activity(&chat), None);
+        assert_eq!(super::agent_model(&chat), None);
+        chat.entries.push(Entry::Assistant {
+            text: "Reading the issue.".into(),
+            model: Some("claude-haiku-5-5".into()),
+            elapsed_ms: None,
+        });
+        chat.entries.push(Entry::Tool {
+            name: "Bash".into(),
+            input: serde_json::json!({"command": "cargo test -p coder-new", "description": "Run the crate's tests"}),
+            output: serde_json::Value::Null,
+            running: true,
+        });
+        // The model stays after the reply that named it has finished.
+        assert_eq!(super::agent_model(&chat), Some("claude-haiku-5-5"));
+        assert_eq!(
+            super::agent_activity(&chat).as_deref(),
+            Some("Bash · Run the crate's tests")
+        );
+        chat.entries.push(Entry::Tool {
+            name: crate::claude_stream::THINKING.into(),
+            input: serde_json::Value::Null,
+            output: serde_json::json!({"text": "The snapshot needs the turn's start."}),
+            running: false,
+        });
+        assert_eq!(
+            super::agent_activity(&chat).as_deref(),
+            Some("The snapshot needs the turn's start.")
+        );
+        chat.partial = "Writing the restore step\nnow".into();
+        assert_eq!(super::agent_activity(&chat).as_deref(), Some("now"));
     }
 }
 
