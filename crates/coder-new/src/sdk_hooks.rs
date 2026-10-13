@@ -289,6 +289,24 @@ pub fn task_acp(
     (hooks, refused)
 }
 
+/// A task session on OpenCode (#11533): [`opencode_registry`] (the floors
+/// held, since nobody answers from inside OpenCode's tool call, the
+/// person's and the project's command hooks, the plugins' hooks) with the
+/// session's own `fence` (a write lands in its folder or is refused, a
+/// shell's included) and the worktree guard over what the hand may change.
+/// OpenCode's plugin asks it before every tool; a Stop gate can't hold
+/// there, so none is added.
+#[must_use]
+pub fn task_opencode(
+    cwd: &Path,
+    guard: coder_sdk::worktree::Guard,
+    fence: crate::checkout_guard::Boundary,
+) -> Registry {
+    let (mut registry, _problems) = opencode_registry_in(cwd, Some(fence));
+    let _ = registry.register(guard.hook());
+    registry
+}
+
 /// The hooks an ACP agent can't keep before a tool, as the person reads
 /// them: what Coder can't do there, and that the steps it asks about are
 /// still checked. `None` when it keeps them all.
@@ -502,9 +520,17 @@ pub fn codex_registry(cwd: &Path) -> (Registry, Vec<String>) {
 /// check again and again (five times for one fix).
 #[must_use]
 pub fn opencode_registry(cwd: &Path) -> (Registry, Vec<String>) {
+    opencode_registry_in(cwd, crate::checkout_guard::Boundary::around(cwd))
+}
+
+/// [`opencode_registry`] with the session's fence given.
+fn opencode_registry_in(
+    cwd: &Path,
+    boundary: Option<crate::checkout_guard::Boundary>,
+) -> (Registry, Vec<String>) {
     let mut registry = Registry::new();
     let hooks = [
-        crate::checkout_guard::hook(cwd.to_owned()),
+        crate::checkout_guard::hook_on(cwd.to_owned(), boundary),
         held_floors(cwd.to_owned()),
     ];
     for hook in hooks {

@@ -785,6 +785,123 @@ async fn a_hands_asks_meet_the_floors_and_the_worktree_guard() {
     );
 }
 
+/// Issue runs and Solver hands take the harness order every Coder surface
+/// uses (#11533): Claude Code, OpenCode, the Coder loop; `--engine
+/// opencode` runs on the person's OpenCode model.
+#[test]
+fn the_engine_order_is_claude_code_opencode_then_the_coder_loop() {
+    use super::Engine;
+    assert_eq!(Engine::pick(true, true), Engine::Claude);
+    assert_eq!(Engine::pick(false, true), Engine::OpenCode);
+    assert_eq!(Engine::pick(false, false), Engine::Coder);
+    assert!(Engine::OpenCode.prompted());
+    let options = crate::issue_run::Options::parse(&[
+        "7".to_owned(),
+        "--engine".to_owned(),
+        "opencode".to_owned(),
+    ])
+    .unwrap();
+    assert_eq!(options.engine, Engine::OpenCode);
+    assert_eq!(options.model, crate::opencode_chat::model(None));
+}
+
+/// A stand-in `opencode run`: for four tool calls it asks the session's
+/// hook host in OpenCode's terms, as Coder's plugin does before each tool,
+/// and reports each as OpenCode would (an error when refused), then ends
+/// with a reply.
+#[cfg(unix)]
+const OPENCODE_STAND_IN: &str = r#"#!/bin/sh
+exec node --input-type=module -e '
+import net from "node:net";
+const ask = (call) => new Promise((resolve) => {
+  const socket = net.createConnection(process.env.CODER_HOOK_SOCKET);
+  let out = "";
+  socket.on("data", (data) => {
+    out += data;
+    if (out.includes("\n")) { socket.destroy(); resolve(JSON.parse(out.trim())); }
+  });
+  socket.on("error", () => resolve({ deny: "no host" }));
+  socket.write(JSON.stringify({ format: "opencode", input: call }) + "\n");
+});
+const cwd = process.cwd();
+const calls = [
+  ["bash", { command: "gh pr merge 5 --squash" }],
+  ["write", { filePath: "/etc/opencode-hand-outside", content: "x" }],
+  ["bash", { command: "echo hi > /tmp/opencode-hand-outside.txt" }],
+  ["write", { filePath: cwd + "/notes.md", content: "x" }],
+];
+for (const [tool, args] of calls) {
+  const reply = await ask({ tool, sessionID: "ses_1", callID: "c1", args, cwd });
+  const state = reply && reply.deny
+    ? { status: "error", input: args, error: reply.deny }
+    : { status: "completed", input: args, output: "ok" };
+  console.log(JSON.stringify({ type: "tool_use", sessionID: "ses_1", part: { tool, state } }));
+}
+console.log(JSON.stringify({ type: "text", sessionID: "ses_1", part: { text: "Done." } }));
+'
+"#;
+
+/// An OpenCode hand (#11533), started through `agent::run` on a stand-in
+/// `opencode`, runs under the session's hooks: the floors hold a merge,
+/// the worktree guard refuses a write outside the worktree, the fence
+/// refuses a shell write outside it, and a write inside runs.
+#[tokio::test]
+#[cfg(unix)]
+async fn an_opencode_hands_calls_meet_the_floors_the_fence_and_the_worktree_guard() {
+    use crate::issue_run::agent;
+    if std::process::Command::new("node")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        eprintln!("node isn't installed; skipping");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let program = root.join("opencode");
+    std::fs::write(&program, OPENCODE_STAND_IN).unwrap();
+    let mut permissions = std::fs::metadata(&program).unwrap().permissions();
+    std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+    std::fs::set_permissions(&program, permissions).unwrap();
+    let worktree = root.join("tree");
+    std::fs::create_dir_all(&worktree).unwrap();
+    let (_feed, mut transcript) = crate::issue_run::channel(None);
+    let session = agent::Session {
+        title: "Coder".into(),
+        detail: "Changes the working copy".into(),
+        model: crate::opencode_chat::DEFAULT_MODEL.into(),
+        timeout: std::time::Duration::from_secs(60),
+        engine: agent::Engine::OpenCode {
+            writes: true,
+            program: Some(program),
+        },
+        checks: Vec::new(),
+        system: String::new(),
+        prompt: "Merge it, then write notes.md.".into(),
+        briefed: Default::default(),
+        events_file: "coder-0-events.jsonl".into(),
+        baseline: None,
+        follow: None,
+    };
+    let work = agent::run(session, &worktree, &root, &mut transcript).await;
+    assert_eq!(work.error, None);
+    assert_eq!(work.reply.as_deref(), Some("Done."));
+    let events = std::fs::read_to_string(root.join("coder-0-events.jsonl")).unwrap();
+    let outputs: Vec<serde_json::Value> = events
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .filter(|event| event["type"] == "tool")
+        .map(|event| event["output"].clone())
+        .collect();
+    assert_eq!(outputs.len(), 4, "{events}");
+    let refused = |at: usize| outputs[at]["error"].as_str().unwrap_or_default().to_owned();
+    assert!(refused(0).starts_with("Held for the person"), "{outputs:?}");
+    assert!(!refused(1).is_empty(), "{outputs:?}");
+    assert!(refused(2).starts_with("Refused"), "{outputs:?}");
+    assert_eq!(outputs[3]["output"], "ok", "{outputs:?}");
+}
+
 /// A Devin hand whose binary is missing surfaces the start error instead
 /// of hanging: the same shape "Claude Code did not start" takes.
 #[tokio::test]

@@ -438,10 +438,27 @@ pub async fn run(
     on_event: &mut (dyn FnMut(RuntimeEvent) + Send),
     on_session: &mut (dyn FnMut(&str) + Send),
 ) -> Result<Streamed, String> {
-    use tokio::io::AsyncBufReadExt;
-
     let program = binary().ok_or("OpenCode is not installed on this computer.")?;
     let (registry, _problems) = crate::sdk_hooks::opencode_registry(&turn.cwd);
+    run_with(&program, turn, registry, cancel, on_event, on_session).await
+}
+
+/// [`run`] on OpenCode's `program`, under `registry`'s hooks: an issue
+/// run's or a Solver hand's session adds the worktree guard and its own
+/// fence (#11533).
+///
+/// # Errors
+/// As [`run`].
+pub async fn run_with(
+    program: &Path,
+    turn: Turn,
+    registry: coder_sdk::Registry,
+    cancel: &Arc<AtomicBool>,
+    on_event: &mut (dyn FnMut(RuntimeEvent) + Send),
+    on_session: &mut (dyn FnMut(&str) + Send),
+) -> Result<Streamed, String> {
+    use tokio::io::AsyncBufReadExt;
+
     if let Err(refused) = coder_sdk::check_backend(&registry, coder_sdk::HookBackend::OpenCode) {
         return Err(refused
             .into_iter()

@@ -190,8 +190,16 @@ pub async fn execute_in(
     emit: &mut (dyn FnMut(RuntimeEvent) + Send),
 ) -> Result<Value, String> {
     let mut options = options(arguments, cwd)?;
+    // Without Claude Code, the next harness in the order (#11533).
     if !claude && options.engine == crate::solver::Engine::Claude {
-        options.use_coder();
+        let opencode_on = crate::home::data_dir().is_none_or(|dir| {
+            crate::bundled_settings::saved_enabled(&dir, crate::opencode_chat::PLUGIN)
+        });
+        if crate::solver::Engine::opencode_here(opencode_on) {
+            options.use_opencode();
+        } else {
+            options.use_coder();
+        }
     }
     if account.is_some() {
         options.inner.account = account;

@@ -134,6 +134,14 @@ async fn environment_text(repo: &Path, engine: Engine) -> String {
                 "missing"
             }
         )),
+        Engine::OpenCode => lines.push(format!(
+            "opencode: {}",
+            if crate::opencode_chat::installed() {
+                "present"
+            } else {
+                "missing"
+            }
+        )),
         Engine::Devin => {
             lines.push(format!(
                 "devin: {}",
@@ -195,8 +203,8 @@ fn check_lines(checks: &[Check]) -> String {
 }
 
 /// A hand's agent on the run's engine: a Claude Code session with only
-/// `tools`, a `devin acp` session, or a Coder-loop session on the gateway
-/// (#11518). `writes` says whether the hand may change the worktree.
+/// `tools`, a `devin acp` session, an OpenCode session (#11533), or a
+/// Coder-loop session on the gateway (#11518). `writes` says whether the hand may change the worktree.
 fn hand_engine(options: &Options, model: &str, writes: bool, tools: &[&str]) -> agent::Engine {
     match options.engine {
         Engine::Claude => agent::Engine::Claude {
@@ -207,6 +215,10 @@ fn hand_engine(options: &Options, model: &str, writes: bool, tools: &[&str]) -> 
         Engine::Coder => agent::Engine::Coder {
             writes,
             account: options.inner.account.clone(),
+        },
+        Engine::OpenCode => agent::Engine::OpenCode {
+            writes,
+            program: crate::opencode_chat::binary(),
         },
     }
 }
@@ -287,7 +299,7 @@ pub async fn intake(options: &Options, folder: &Path, transcript: &mut Transcrip
             baseline: None,
             follow: None,
         },
-        Engine::Devin | Engine::Coder => {
+        Engine::Devin | Engine::Coder | Engine::OpenCode => {
             // An ACP or Coder-loop session cannot reach the in-process
             // `environment` and `issue` tools, so the harness's own answers
             // go in its prompt.
@@ -520,7 +532,7 @@ pub async fn code(
         Engine::Claude => prompt.push_str(
             "\n\nYou code: change the files, and reply with what you changed. You have no shell, but `run_check` compiles a crate (`check:<package>`, and `wasm:<package>` for a browser build's wasm32 half). Every crate your change touches has its `check:`, a crate you create included, as soon as a file in it changes. After your edits, run `check:` for each crate you changed and fix what fails before you finish. The Tester runs the full checks and tests after you.",
         ),
-        Engine::Devin | Engine::Coder => {
+        Engine::Devin | Engine::Coder | Engine::OpenCode => {
             prompt.push_str(
                 "\n\nYou code: change the files, and reply with what you changed. After your edits, run the compile checks in the working copy yourself, plus `cargo check -p <package> --tests` for any other crate you change or create, and fix what fails before you finish:",
             );
@@ -543,7 +555,7 @@ pub async fn code(
         events_file: format!("coder-{round}-events.jsonl"),
         baseline: match options.engine {
             Engine::Claude => Some(Baseline::of(base)),
-            Engine::Devin | Engine::Coder => None,
+            Engine::Devin | Engine::Coder | Engine::OpenCode => None,
         },
         follow: Some(agent::Follow {
             base: base.base.clone(),
@@ -747,7 +759,7 @@ pub async fn test(
                 base.issue, base.title, diff, failures
             ),
         ),
-        Engine::Devin | Engine::Coder => (
+        Engine::Devin | Engine::Coder | Engine::OpenCode => (
             TESTER_ACP.to_owned(),
             format!(
                 "Issue #{}: {}\n\nThe Coder's change (every changed file is here; a long file's diff is cut short and says so):\n\n```diff\n{}\n```\n\nThe harness ran the required checks. What failed:{}\n\nRerun a check in the working copy when you need more of its output:{}\n\nGive your verdict.",
@@ -772,7 +784,7 @@ pub async fn test(
         events_file: format!("tester-{round}-events.jsonl"),
         baseline: match options.engine {
             Engine::Claude => Some(Baseline::of(base)),
-            Engine::Devin | Engine::Coder => None,
+            Engine::Devin | Engine::Coder | Engine::OpenCode => None,
         },
         follow: Some(agent::Follow {
             base: base.base.clone(),

@@ -182,9 +182,9 @@ pub struct Options {
     pub files: usize,
     /// Where the run's folders and its working copy live.
     pub state: PathBuf,
-    /// The agent the run's sessions run on: Claude Code, or the Coder loop
-    /// on the OpenAgents gateway, the default when the Claude Code plugin
-    /// is off (#11518).
+    /// The agent the run's sessions run on, in the harness order: Claude
+    /// Code, OpenCode (#11533), or the Coder loop on the OpenAgents gateway
+    /// (#11518).
     pub engine: crate::solver::Engine,
     /// The openagents.com sign-in the Coder loop's gateway turns use.
     pub account: Option<openagents_login::Saved>,
@@ -206,10 +206,13 @@ Options:
                      with your TypeSafe key, then our decision API); or per point, as in
                      kind=jev,relevance=clef.
   --files K          Files in the briefing (default 6).
-  --engine NAME      claude (a Claude Code session) or coder (the Coder loop on the
-                     OpenAgents gateway). Default: claude while the Claude Code plugin
-                     is on and signed in, otherwise coder.
-  --model NAME       The agent's model (default claude-opus-5-5; openagents/auto on coder).
+  --engine NAME      claude (a Claude Code session), opencode (an OpenCode session
+                     under Coder's plugin) or coder (the Coder loop on the OpenAgents
+                     gateway). Default: claude while the Claude Code plugin is on and
+                     signed in, then opencode while it is installed and its plugin is
+                     on, otherwise coder.
+  --model NAME       The agent's model (default claude-opus-5-5; your OpenCode model on
+                     opencode; openagents/auto on coder).
   --timeout SECS     How long the agent may work (default 1800).
   --open-pr          Commit, push a branch, and open a pull request (open issues only).
   --plain            Print the run as text instead of opening the terminal screen.
@@ -297,8 +300,11 @@ impl Options {
                     options.engine = match value("--engine")?.as_str() {
                         "claude" => crate::solver::Engine::Claude,
                         "coder" => crate::solver::Engine::Coder,
+                        "opencode" => crate::solver::Engine::OpenCode,
                         other => {
-                            return Err(format!("--engine takes claude or coder, not {other}."));
+                            return Err(format!(
+                                "--engine takes claude, opencode or coder, not {other}."
+                            ));
                         }
                     };
                 }
@@ -338,6 +344,9 @@ impl Options {
         }
         if options.engine == crate::solver::Engine::Coder && !model_given {
             options.model = crate::models::GATEWAY_AUTO.into();
+        }
+        if options.engine == crate::solver::Engine::OpenCode && !model_given {
+            options.model = crate::opencode_chat::model(None);
         }
         match (issue, &options.replay) {
             (Some(issue), _) => options.issue = issue,

@@ -245,11 +245,13 @@ Options:
   --repo PATH           The repository checkout to read (default: this directory).
   --github OWNER/R      The GitHub repository of the issue (default: OpenAgentsInc/openagents).
   --engine NAME         The agent each hand runs on: claude (four Claude Code
-                        sessions), coder (four Coder-loop sessions on the
+                        sessions), opencode (four OpenCode sessions under
+                        Coder's plugin), coder (four Coder-loop sessions on the
                         OpenAgents gateway) or devin (four `devin acp` sessions
                         on this computer's Devin login). Default: claude while
-                        the Claude Code plugin is on and signed in, otherwise
-                        coder.
+                        the Claude Code plugin is on and signed in, then
+                        opencode while it is installed and its plugin is on,
+                        otherwise coder.
   --rounds R            How many times the Tester may hand work back (default 2).
   --decisions DOOR      Which decision door judges the run: the gate before any
                         hand works, the briefing's file relevance and change
@@ -308,6 +310,10 @@ pub enum Engine {
     /// run's worktree by the same fence and floors as any Coder chat
     /// (#11518).
     Coder,
+    /// Four `opencode run` sessions under Coder's OpenCode plugin, held to
+    /// the run's worktree by the same fence, floors and worktree guard
+    /// (#11533).
+    OpenCode,
 }
 
 impl Engine {
@@ -317,29 +323,55 @@ impl Engine {
             Self::Claude => "claude",
             Self::Devin => "devin",
             Self::Coder => "coder",
+            Self::OpenCode => "opencode",
         }
     }
 
-    /// The engine a run takes when none is named: Claude Code while its
-    /// plugin is on and this computer is signed in to it, otherwise the
-    /// Coder loop on the gateway (#11518).
+    /// The engine a run takes when none is named, in the harness order
+    /// every Coder surface uses (#11533): Claude Code while its plugin is
+    /// on and this computer is signed in to it, then OpenCode while its
+    /// plugin is on, it is installed and its free model isn't rate
+    /// limited, otherwise the Coder loop on the gateway (#11518).
     #[must_use]
     pub fn default_here() -> Self {
-        let plugin_on = crate::home::data_dir()
-            .is_none_or(|dir| crate::bundled_settings::saved_enabled(&dir, crate::claude::PLUGIN));
         // Tests never ask this computer; they keep the long-standing default.
-        if cfg!(test) || (plugin_on && crate::claude::available()) {
+        if cfg!(test) {
+            return Self::Claude;
+        }
+        let on = |plugin: &str| {
+            crate::home::data_dir()
+                .is_none_or(|dir| crate::bundled_settings::saved_enabled(&dir, plugin))
+        };
+        Self::pick(
+            on(crate::claude::PLUGIN) && crate::claude::available(),
+            Self::opencode_here(on(crate::opencode_chat::PLUGIN)),
+        )
+    }
+
+    /// The order itself: Claude Code, OpenCode, the Coder loop.
+    #[must_use]
+    pub const fn pick(claude: bool, opencode: bool) -> Self {
+        if claude {
             Self::Claude
+        } else if opencode {
+            Self::OpenCode
         } else {
             Self::Coder
         }
+    }
+
+    /// Whether OpenCode can take a run here: its plugin `on`, installed,
+    /// and its free model not rate limited.
+    #[must_use]
+    pub fn opencode_here(on: bool) -> bool {
+        on && crate::opencode_chat::installed() && !crate::opencode_chat::rate_limited()
     }
 
     /// Whether the hands read their checks and tools from the prompt (an
     /// engine that can't host Coder's in-process `run_check`).
     #[must_use]
     pub const fn prompted(self) -> bool {
-        matches!(self, Self::Devin | Self::Coder)
+        matches!(self, Self::Devin | Self::Coder | Self::OpenCode)
     }
 }
 
@@ -441,9 +473,10 @@ impl Options {
                         "claude" => Engine::Claude,
                         "devin" => Engine::Devin,
                         "coder" => Engine::Coder,
+                        "opencode" => Engine::OpenCode,
                         other => {
                             return Err(format!(
-                                "--engine takes claude, coder or devin, not {other}."
+                                "--engine takes claude, opencode, coder or devin, not {other}."
                             ));
                         }
                     };
@@ -479,12 +512,20 @@ impl Options {
             inner.model = acp_client::devin::DEFAULT_MODEL.to_owned();
             small_coder = Some(acp_client::devin::DEFAULT_MODEL.to_owned());
         }
+        // On the OpenCode engine every hand runs the person's OpenCode
+        // model; a model flag still fixes the hand it names.
+        if engine == Engine::OpenCode && small_coder.is_some() {
+            inner.model = crate::opencode_chat::model(None);
+            small_coder = Some(inner.model.clone());
+        }
         let model_default = |given: Option<String>| {
             given.unwrap_or_else(|| {
                 if engine == Engine::Devin {
                     acp_client::devin::DEFAULT_MODEL.to_owned()
                 } else if engine == Engine::Coder {
                     crate::models::GATEWAY_AUTO.to_owned()
+                } else if engine == Engine::OpenCode {
+                    crate::opencode_chat::model(None)
                 } else {
                     "haiku".to_owned()
                 }
@@ -505,6 +546,18 @@ impl Options {
 }
 
 impl Options {
+    /// Moves the run to OpenCode (#11533): every hand on the person's
+    /// OpenCode model.
+    pub fn use_opencode(&mut self) {
+        let model = crate::opencode_chat::model(None);
+        self.engine = Engine::OpenCode;
+        self.inner.engine = Engine::OpenCode;
+        self.inner.model.clone_from(&model);
+        self.small_coder = Some(model.clone());
+        self.briefer_model.clone_from(&model);
+        self.tester_model = model;
+    }
+
     /// Moves the run to the Coder loop on the gateway (#11518): every hand
     /// on the gateway's own router.
     pub fn use_coder(&mut self) {
