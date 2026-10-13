@@ -232,3 +232,24 @@ top), and `~/Downloads/draconia-peacock-progress.png` (one row per version).
   - the fires at the edges are soft orange blobs, not the reference's crisp
     flames;
   - the P1 sheet is 512 px, so close-ups soften.
+
+### v6, 2026-10-13
+
+- **Gaps fixed:**
+  - P1 now has five huge feathers, not thirteen. The sheet's eyespot is an
+    egg: longer along the shaft, wider toward the tip, with a thick bright rim
+    round a softer, slightly darker fill. The rainbow is fainter.
+  - The guardian has a body: a glowing breast, a neck and a head with a
+    three-point crest rise from the tail's center above her head.
+    `feathers::glow_line` draws the strokes and is reusable for wand beams.
+  - The fan is a sparser six rings of 130 slim feathers with dim vanes, so it
+    reads as thin radial shafts with eyes at their tips.
+  - She stands with her feet apart: below the hips her idle leans halfway to
+    the crouch's wide stance.
+  - The fires are licking tongues (velocity-stretched flames), not orange
+    puffs.
+- **Still open:**
+  - her hair and outfit wait on the face agent's skinned Draconia and its rise
+    clip with an upward gust;
+  - the reference tail is brighter and denser near the core;
+  - the peacock's body reads small next to the reference's.

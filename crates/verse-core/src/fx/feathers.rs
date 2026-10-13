@@ -190,6 +190,27 @@ pub fn rainbow(
         .collect()
 }
 
+/// A stroke of light through `points`, `half` m wide, glowing
+/// `luminance`: a peacock's neck or crest, a wand's beam, a rune's line.
+#[must_use]
+pub fn glow_line(points: &[Vec3], half: f32, luminance: [f32; 3]) -> Ribbon {
+    let (rect, layer) = from_sheet(DOT);
+    Ribbon {
+        points: points
+            .iter()
+            .map(|&at| RibbonPoint {
+                at,
+                half,
+                color: luminance,
+                alpha: 1.0,
+            })
+            .collect(),
+        layer,
+        rect,
+        priority: 8,
+    }
+}
+
 /// A fanned tail: rows of feathers growing from `center` in the plane of
 /// `right` and `up`, their eyespots on arcs out to `radius` m.
 #[derive(Clone, Copy, Debug, PartialEq)]

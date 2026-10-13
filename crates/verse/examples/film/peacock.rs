@@ -240,10 +240,18 @@ impl Set {
             );
             let k = ((t - (self.rise - RISE)) / RISE).clamp(0.0, 1.0);
             let k = k * k * (3.0 - 2.0 * k);
+            // She stands with her feet apart: below the hips her idle
+            // leans toward the crouch's wide stance (lifted back to the
+            // ground).
+            let mut stand = beast.vertices().to_vec();
+            for (v, c) in stand.iter_mut().zip(&self.crouch) {
+                let w = 0.5 * ((0.95 - v.pos[1]) / 0.3).clamp(0.0, 1.0);
+                let wide = Vec3::from(c.pos) + Vec3::Y * 0.1;
+                v.pos = Vec3::from(v.pos).lerp(wide, w).to_array();
+            }
             self.posed = if k >= 1.0 {
-                beast.vertices().to_vec()
+                stand
             } else {
-                let stand = beast.vertices().to_vec();
                 let mut low = self.crouch.clone();
                 for (v, s) in low.iter_mut().zip(&stand) {
                     v.pos = Vec3::from(v.pos).lerp(Vec3::from(s.pos), k).to_array();
@@ -302,12 +310,12 @@ impl Set {
                         // Leaning back, so the fan reads wider than tall.
                         up: Vec3::new(0.0, 0.78, -0.62),
                         radius: TAIL_RADIUS,
-                        rows: 9,
-                        feathers: 175,
+                        rows: 6,
+                        feathers: 130,
                         droop: 0.16,
-                        luminance: [1.6, 1.85, 2.3],
-                        vane: 0.3,
-                        slim: 0.7,
+                        luminance: [2.4, 2.75, 3.3],
+                        vane: 0.22,
+                        slim: 0.55,
                         open,
                         time: t,
                     }
@@ -326,6 +334,44 @@ impl Set {
                     [0.12, 0.16, 0.24],
                     1.0,
                 ));
+                // The guardian's body, neck, head, and crest rising from the
+                // tail's center just above her head.
+                let lum = [2.2, 2.5, 3.0];
+                for (i, (x, y, r)) in [
+                    (0.0, 2.35, 0.5),
+                    (-0.2, 2.6, 0.4),
+                    (0.2, 2.6, 0.4),
+                    (0.0, 2.85, 0.36),
+                    (0.0, 2.15, 0.42),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    sprites.push(feathers::dot(
+                        Vec3::new(x, y, -1.0 - 0.01 * i as f32),
+                        r * 1.6,
+                        lum,
+                        1.0,
+                    ));
+                }
+                let neck: Vec<Vec3> = (0..=10)
+                    .map(|i| {
+                        let u = i as f32 / 10.0;
+                        Vec3::new(0.1 * (u * 3.0).sin(), 2.85 + 0.85 * u, -0.98)
+                    })
+                    .collect();
+                let head = *neck.last().unwrap_or(&Vec3::ZERO) + Vec3::new(0.06, 0.06, 0.0);
+                mesh.ribbons.push(feathers::glow_line(&neck, 0.11, lum));
+                sprites.push(feathers::dot(head, 0.22, lum.map(|c| c * 1.2), 1.0));
+                for k in [-1.0_f32, 0.0, 1.0] {
+                    let tip = head + Vec3::new(0.1 * k, 0.32, 0.0);
+                    mesh.ribbons.push(feathers::glow_line(
+                        &[head, tip],
+                        0.012,
+                        lum.map(|c| c * 0.8),
+                    ));
+                    sprites.push(feathers::dot(tip, 0.06, lum.map(|c| c * 1.4), 1.0));
+                }
                 // The core's pool of light on the cobbles behind her.
                 sprites.push(verse::fx::Sprite {
                     facing: verse::fx::Facing::Ground,
@@ -366,20 +412,12 @@ impl Set {
         let t = self.time;
         let center = Vec3::new(-5.0, -9.0, -9.0);
         // Angle from the fan's center, depth, length, and the hero.
-        let set: [(f32, f32, f32); 13] = [
+        let set: [(f32, f32, f32); 5] = [
             (0.0, 0.0, 12.6),
-            (0.42, -3.0, 13.5),
-            (-0.4, -1.5, 13.0),
-            (0.75, 2.0, 11.5),
-            (-0.78, 1.0, 12.0),
-            (0.2, -8.0, 14.5),
-            (-0.18, -9.0, 15.0),
-            (0.6, -12.0, 15.5),
-            (-0.62, -11.0, 16.0),
-            (1.0, -6.0, 13.0),
-            (-1.02, -5.0, 13.4),
-            (0.3, 3.5, 10.6),
-            (-0.3, 4.0, 10.2),
+            (0.5, -2.0, 14.0),
+            (-0.45, -1.0, 13.5),
+            (0.95, 1.5, 12.0),
+            (-1.0, -4.0, 14.5),
         ];
         for (i, (angle, depth, length)) in set.into_iter().enumerate() {
             let turn = 0.035 * (t * 0.7 + i as f32 * 1.3).sin();
@@ -414,7 +452,7 @@ impl Set {
             0.8,
             2.0,
             2.9,
-            0.18,
+            0.08,
         ));
         // A faint blue haze where the feathers gather.
         sprites.push(feathers::dot(

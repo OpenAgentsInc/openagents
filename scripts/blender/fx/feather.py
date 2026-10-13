@@ -75,7 +75,7 @@ def feather():
     q = ys / (H - 1) * 2.0 - 1.0
     # Visual units: lengths in feather lengths, so across is q * width / 2.
     across = q / (2.0 * ASPECT)
-    cs, a, b = 0.17, 0.085, 0.072
+    cs, a, b = 0.2, 0.11, 0.074
 
     # The vane: barbs from the shaft, swept toward the tip, to a teardrop
     # envelope widest round the eyespot and nearly bare toward the quill.
@@ -102,17 +102,20 @@ def feather():
             col = np.array([0.7, 0.8, 1.0])[None, :] * (0.12 * fade)[:, None]
             splat(barbs_img, sv, qv, col, 0.42)
 
-    e = np.sqrt(((s - cs) / a) ** 2 + (across / b) ** 2)
+    # An egg: wider toward the tip than toward the shaft.
+    b_egg = b * np.clip(1.0 + 0.22 * (cs - s) / a, 0.6, 1.4)
+    e = np.sqrt(((s - cs) / a) ** 2 + (across / b_egg) ** 2)
     # Barbs pass behind the eyespot, so the disc stays clean.
     barbs_img *= np.clip((e - 0.9) / 0.25, 0.0, 1.0)[..., None]
     img += np.minimum(barbs_img, 0.6)
 
     # The eyespot: a white rim round a pale blue disc, egg-shaped along
     # the shaft, with a soft halo.
-    disc = np.clip((0.70 - e) / 0.04, 0.0, 1.0)
-    rim = np.clip((e - 0.64) / 0.05, 0.0, 1.0) * np.clip((1.0 - e) / 0.05, 0.0, 1.0)
+    # A thick bright rim round a soft, slightly darker fill.
+    disc = np.clip((0.62 - e) / 0.08, 0.0, 1.0)
+    rim = np.clip((e - 0.54) / 0.08, 0.0, 1.0) * np.clip((1.0 - e) / 0.05, 0.0, 1.0)
     halo = np.exp(-np.maximum(e - 0.98, 0.0) ** 2 / (2 * 0.16**2)) * (e > 0.95)
-    inner = np.array([0.72, 0.86, 1.0]) * (0.86 + 0.12 * np.clip(1 - e / 0.7, 0, 1))[..., None]
+    inner = np.array([0.68, 0.82, 1.0]) * (0.72 - 0.08 * np.clip(1 - e / 0.62, 0, 1))[..., None]
     img += disc[..., None] * inner
     img += rim[..., None] * np.array([1.0, 1.0, 1.0])
     img += halo[..., None] * np.array([0.4, 0.5, 0.8]) * 0.35
