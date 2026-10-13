@@ -484,7 +484,14 @@ pub(crate) fn arch(
     at: glam::Vec3,
     elapsed: f32,
 ) {
-    use crate::mesh::Vertex;
+    arch_frame(mesh, sign, at);
+    arch_rings(mesh, zone, at, elapsed);
+}
+
+/// An arch's pillars, lintel, and lettering, without the rings in its
+/// opening: the Grid's Everglade arch fills its opening with a view of the
+/// town instead ([`crate::grid_pack::PORTAL_EVERGLADE`]).
+pub(crate) fn arch_frame(mesh: &mut crate::mesh::Mesh, sign: &str, at: glam::Vec3) {
     use coder_ui::theme::Intensity;
     use glam::{Mat4, Vec3};
     for x in [-1.9, 1.9] {
@@ -506,8 +513,14 @@ pub(crate) fn arch(
         if sign.len() > 6 { 0.3 } else { 0.45 },
         Intensity::Full,
     );
+}
+
+/// The broken concentric rings turning in an arch's opening.
+fn arch_rings(mesh: &mut crate::mesh::Mesh, zone: ZoneId, at: glam::Vec3, elapsed: f32) {
+    use crate::mesh::Vertex;
+    use glam::Vec3;
     let color = match zone {
-        ZoneId::Plaza => crate::palette::amber(Intensity::Half),
+        ZoneId::Plaza => crate::palette::amber(coder_ui::theme::Intensity::Half),
         ZoneId::Lagrange1 => [0.35, 0.7, 1.0],
         ZoneId::PhysicsLab => [0.3, 0.85, 1.0],
         ZoneId::Everglade | ZoneId::Grove | ZoneId::MeteorStressTest | ZoneId::MeteorShowcase => {

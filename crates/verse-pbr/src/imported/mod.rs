@@ -557,6 +557,10 @@ fn make_pose(pack: &Pack, instance: Option<&Instance>) -> Result<Pose, String> {
         if pack.models[&i.model].source.starts_with("verse/ribbon/") {
             pose.params = [4.0, i.emission.x.clamp(0.0, 1.0), i.time, 0.0];
         }
+        // A living portal view: its texture swirled and rimmed by the clock.
+        if pack.models[&i.model].source.starts_with("verse/portal/") {
+            pose.params = [5.0, 1.0, i.time, 0.0];
+        }
         if matches!(i.model.as_str(), "particle-fire" | "effect-fire") {
             pose.params[3] = 1.0;
         }

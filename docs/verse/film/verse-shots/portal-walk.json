@@ -1,0 +1,94 @@
+{
+  "name": "portal-walk-raw",
+  "notes": "Launch film ending: a first-person walk on the Grid up to the Everglade portal from 19 m out, at an even 1.6 m/s, crossing its plane at 12.0 s. The bob is the eye's steps. scripts/film/portal-walk.py --cross 12.0 adds the fade to white and the Coming soon card.",
+  "scene": {
+    "kind": "grid",
+    "bob": {
+      "steps": 1.9,
+      "rise": 0.035,
+      "sway": 0.018,
+      "walk": 1.4
+    }
+  },
+  "duration": 12.4,
+  "subframes": 8,
+  "near": 0.05,
+  "far": 600.0,
+  "grade": {
+    "vignette": 0.12
+  },
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          -3.158,
+          1.65,
+          -13.86
+        ],
+        "target": [
+          9.507,
+          2.05,
+          1.619
+        ],
+        "focal_mm": 28
+      },
+      {
+        "t": 4.0,
+        "eye": [
+          0.895,
+          1.65,
+          -8.907
+        ],
+        "target": [
+          13.559,
+          2.05,
+          6.572
+        ],
+        "focal_mm": 28
+      },
+      {
+        "t": 8.0,
+        "eye": [
+          4.947,
+          1.65,
+          -3.953
+        ],
+        "target": [
+          17.612,
+          2.05,
+          11.526
+        ],
+        "focal_mm": 28
+      },
+      {
+        "t": 12.0,
+        "eye": [
+          9.0,
+          1.65,
+          1.0
+        ],
+        "target": [
+          21.665,
+          2.05,
+          16.479
+        ],
+        "focal_mm": 28
+      },
+      {
+        "t": 12.4,
+        "eye": [
+          9.405,
+          1.65,
+          1.495
+        ],
+        "target": [
+          22.07,
+          2.05,
+          16.974
+        ],
+        "focal_mm": 28
+      }
+    ]
+  }
+}

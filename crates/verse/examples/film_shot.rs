@@ -8,7 +8,9 @@
 //! many sub-frames each frame averages; see `docs/verse/film/verse-shots/`.
 //! The scenes are the ritual chamber's cold open (`ritual`), the great
 //! crypt (`crypt`), the Meteor Showcase (`meteor`), the druid's Grove
-//! (`grove`), and the Lagrange 1 station (`lagrange`).
+//! (`grove`), the Lagrange 1 station (`lagrange`), and the Grid (`grid`),
+//! the OpenAgents app's bare world drawn from its pinned engine pack as the
+//! apps draw it, with its Everglade portal standing.
 //!
 //! Each output frame is the mean of `subframes` renders spread over the
 //! shutter (`shutter`, the fraction of the frame interval it is open, 0.5
@@ -184,6 +186,28 @@ enum SceneSpec {
     },
     /// The Lagrange 1 station.
     Lagrange,
+    /// The Grid, with the Everglade portal standing and nobody's avatar
+    /// drawn, so the rig is the eye. `bob` walks the eye: a step's rise
+    /// and fall and a half-rate sway, scaled by how fast the rig moves.
+    Grid {
+        #[serde(default)]
+        bob: Option<Bob>,
+    },
+}
+
+/// A walking eye's motion on top of the rig.
+#[derive(Clone, Copy, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Bob {
+    /// Steps a second.
+    steps: f32,
+    /// The rise and fall each step, m.
+    rise: f32,
+    /// The side-to-side sway over two steps, m.
+    #[serde(default)]
+    sway: f32,
+    /// The rig speed, m/s, at which the bob is full; slower, it fades.
+    walk: f32,
 }
 
 struct Args {
@@ -260,6 +284,14 @@ enum Stage {
         /// Use the zone's own impact shake and keep the eye above ground.
         zone_camera: bool,
         hide_guides: bool,
+    },
+    /// The Grid, drawn by the imported renderer from its pinned pack.
+    Grid {
+        runtime: Box<WorldRuntime>,
+        renderer: Box<Renderer>,
+        ui: verse::ui::UiBatch,
+        /// Keeps the zone cache that stands the Everglade portal.
+        _cache: tempfile::TempDir,
     },
     /// The ritual chamber or the great crypt, drawn by the imported
     /// renderer.
@@ -443,6 +475,34 @@ impl Stage {
                 eprintln!("the druid stands at {}", runtime.player.pos);
                 Self::world(runtime, w, h, true, shot.hide_guides)
             }
+            SceneSpec::Grid { .. } => {
+                // A spectator's Grid: the robots and arches, no avatar.
+                let mut runtime = Box::new(WorldRuntime::unoccupied());
+                let cache = tempfile::tempdir().map_err(|e| e.to_string())?;
+                runtime.configure_zone_cache(cache.path().to_path_buf());
+                let Some(gate) = runtime.everglade_gate() else {
+                    return Err("The Grid's Everglade portal did not stand".into());
+                };
+                // For aiming: where the portal stands and which way it opens.
+                eprintln!("everglade portal at {} yaw {}", gate.at, gate.yaw);
+                let pack = verse::grid_pack::load_pinned()?;
+                let statics = verse::grid_frame::statics(&pack);
+                let atlas = verse::ui::Atlas::new(16.0);
+                let renderer = Renderer::new(
+                    pack,
+                    &verse::grid_pack::pinned_dir(),
+                    w,
+                    h,
+                    &atlas,
+                    &statics,
+                )?;
+                Ok(Self::Grid {
+                    runtime,
+                    renderer: Box::new(renderer),
+                    ui: verse::ui::UiBatch::default(),
+                    _cache: cache,
+                })
+            }
             SceneSpec::Lagrange => {
                 let mut runtime = Box::new(WorldRuntime::new());
                 runtime.set_spawn(Vec3::new(12.0, 0.0, 9.0), 0.0)?;
@@ -505,6 +565,12 @@ impl Stage {
                     }
                 }
             }
+            Self::Grid { runtime, .. } => {
+                let steps = (dt * 120.0).ceil().max(1.0) as usize;
+                for _ in 0..steps {
+                    runtime.tick_unoccupied(dt / steps as f32);
+                }
+            }
             Self::Imported { scene, .. } => match scene {
                 Imported::Ritual { game, start, .. } => game.time = (*start + t).max(0.0),
                 Imported::Crypt { fight, walk } => {
@@ -526,8 +592,27 @@ impl Stage {
 
     /// The camera at film time `t`: the rig's, or the director's for the
     /// ritual, whose scene holds the rig.
-    fn camera(&self, rig: &CameraRig, t: f32) -> CameraSample {
+    fn camera(&self, shot: &Shot, t: f32) -> CameraSample {
+        let rig = &shot.rig;
         let mut camera = rig.sample(t);
+        if let SceneSpec::Grid { bob: Some(bob) } = &shot.scene {
+            // How fast the rig walks here, from a short central difference.
+            let h = 1.0 / 120.0;
+            let ahead = rig.sample(t + h).eye - rig.sample((t - h).max(0.0)).eye;
+            let speed = Vec3::new(ahead.x, 0.0, ahead.z).length() / (2.0 * h);
+            let k = (speed / bob.walk).clamp(0.0, 1.0);
+            let k = k * k * (3.0 - 2.0 * k);
+            let phase = std::f32::consts::TAU * bob.steps * t;
+            // A step lifts the eye and sets it down: lowest at each footfall.
+            let rise = bob.rise * k * (0.5 - 0.5 * phase.cos());
+            let forward = (camera.target - camera.eye).with_y(0.0).normalize_or_zero();
+            let side = Vec3::new(-forward.z, 0.0, forward.x);
+            let sway = side * bob.sway * k * (phase * 0.5).sin();
+            let lift = Vec3::Y * rise + sway;
+            camera.eye += lift;
+            // The head turns a little less than it moves.
+            camera.target += lift * 0.6;
+        }
         if let Self::Imported {
             scene: Imported::Ritual { game, .. },
             ..
@@ -572,6 +657,18 @@ impl Stage {
                     dynamic.lines.clear();
                 }
                 renderer.render(View { view_proj, eye }, &dynamic, ui)
+            }
+            Self::Grid {
+                runtime,
+                renderer,
+                ui,
+                ..
+            } => {
+                let (view_proj, eye) =
+                    camera_rig::lens_view_projection(&camera, aspect, shot.near, shot.far, lens);
+                let dynamic = verse::grid_frame::dynamic(runtime, &[], &[]);
+                let lighting = verse::grid_frame::lighting(&runtime.atmosphere());
+                renderer.draw(View { view_proj, eye }, &dynamic, ui, &lighting)
             }
             Self::Imported {
                 renderer,
@@ -716,7 +813,7 @@ fn main() -> Result<(), String> {
     clock = at(first, 0);
     eprintln!("warming up");
     for _ in 0..shot.prewarm {
-        stage.render(shot, stage.camera(&shot.rig, clock), Vec2::ZERO)?;
+        stage.render(shot, stage.camera(shot, clock), Vec2::ZERO)?;
     }
     let mut encoder = if args.video {
         Some(ffmpeg(shot, &args.out)?)
@@ -748,7 +845,7 @@ fn main() -> Result<(), String> {
             let t = at(k, i);
             stage.advance(shot, t - clock, t)?;
             clock = t;
-            let camera = stage.camera(&shot.rig, t);
+            let camera = stage.camera(shot, t);
             let lens = if camera.aperture > 0.0 {
                 camera_rig::lens_sample((i * 5 + 3) % n.max(1), n, turn)
             } else {

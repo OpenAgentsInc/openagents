@@ -289,6 +289,14 @@ impl WorldRuntime {
             .collect()
     }
 
+    /// Seconds the Grid has run here, wrapping every 1000 s: the clock its
+    /// Everglade portal view ripples by. It runs for a spectator too, as
+    /// the robots' does.
+    #[must_use]
+    pub fn portal_clock(&self) -> f32 {
+        (self.robot_clock % 1000.0) as f32
+    }
+
     /// The bare world's ball; other worlds have none.
     #[must_use]
     pub fn ball(&self) -> Option<&crate::ball::Ball> {

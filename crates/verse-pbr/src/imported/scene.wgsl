@@ -32,7 +32,7 @@ struct Out { @builtin(position) clip:vec4<f32>,@location(0) pos:vec3<f32>,@locat
   let world=center+right*v.pos.x*length(pose.model[0].xyz)+up*v.pos.y*length(pose.model[1].xyz);
   var o:Out;o.clip=frame.view*vec4(world,1.0);o.pos=world;o.normal=forward;o.uv=v.uv;o.tint=v.tint;return o;
  }
- if pose.params.x>3.5 {
+ if pose.params.x>3.5 && pose.params.x<4.5 {
   let center=pose.model[3].xyz;let axis=pose.model[1].xyz;
   let forward=normalize(frame.eye.xyz-center);
   let tangent=normalize(axis);let cross_axis=cross(tangent,forward);
@@ -110,6 +110,47 @@ fn fog_amount(p:vec3<f32>)->f32{
  if abs(k)>0.0001{shape=(1.0-exp(-k))/k;}
  return min(1.0-exp(-at_start*travel*shape),frame.fog_shape.w);
 }
+// A portal's opening: the baked view of the zone beyond, seen soft through
+// a slow swirl and outward ripples, hazing toward a glowing white rim with a
+// breath of the zone's own color (the tint) and bright arcs turning in it, as
+// the line arches' rings did. uv spans the disc, 0.5 its center. From afar
+// the view lies on the disc; near, it becomes a window, the view's direction
+// from the eye choosing what shows, so walking up opens the scene around you.
+// `axes` are the portal's local X and Z (through the opening) and its center.
+// Explicit-level samples are valid in this non-uniform branch. It reads no
+// pose, so the instanced variant's pose rewrite leaves it alone.
+fn portal(v:Out,t:f32,x_axis:vec3<f32>,z_axis:vec3<f32>,center:vec3<f32>)->vec4<f32>{
+ let disc=v.uv*2.0-1.0;let r=length(disc);
+ if r>1.0{discard;}
+ let ray=v.pos-frame.eye.xyz;
+ let depth=max(abs(dot(ray,normalize(z_axis))),0.05);
+ let slope=vec2(-dot(ray,normalize(x_axis)),-ray.y)/depth;
+ let window=1.3*slope/sqrt(1.0+dot(slope,slope))+vec2(0.0,0.085);
+ let near=smoothstep(7.0,2.0,length(frame.eye.xyz-center-vec3(0.0,2.1,0.0)));
+ let p=mix(disc*0.88,window,near);
+ let rp=length(p);let angle=atan2(p.y,p.x);
+ let twist=r*r*0.5*sin(t*0.31)+0.06*sin(t*0.53+r*3.0);
+ let ripple=rp+0.016*sin(r*19.0-t*2.3)*(0.3+0.7*r);
+ let q=vec2(cos(angle+twist),sin(angle+twist))*ripple;
+ let uv=clamp(q*0.5+0.5,vec2(0.002),vec2(0.998));
+ let blur=0.4+1.8*r*r;let d=0.004+0.016*r;
+ var view=textureSampleLevel(image,tex_sampler,uv,blur).rgb*0.4;
+ view+=textureSampleLevel(image,tex_sampler,uv+vec2(d,0.0),blur).rgb*0.15;
+ view+=textureSampleLevel(image,tex_sampler,uv-vec2(d,0.0),blur).rgb*0.15;
+ view+=textureSampleLevel(image,tex_sampler,uv+vec2(0.0,d),blur).rgb*0.15;
+ view+=textureSampleLevel(image,tex_sampler,uv-vec2(0.0,d),blur).rgb*0.15;
+ // The light beyond breathes, and a faint mist drifts across it.
+ let mist=0.5+0.5*sin(disc.x*3.1+t*0.42)*sin(disc.y*2.3-t*0.37);
+ view=view*(1.2+0.06*sin(t*1.1))+vec3(0.05)*mist*r;
+ let haze=smoothstep(0.62,0.99,r);let around=atan2(disc.y,disc.x);
+ let arcs=0.5+0.5*sin(around*5.0-t*0.9+sin(around*3.0+t*0.4));
+ let rim=smoothstep(0.9,0.985,r);
+ var color=mix(view,vec3(1.0),haze*0.4);
+ color+=(vec3(0.75)+v.tint*0.25)*rim*(1.0+1.8*arcs);
+ color+=v.tint*smoothstep(0.7,0.97,r)*0.1*arcs;
+ let fogged=mix(color,frame.fog.rgb,fog_amount(v.pos)*0.6);
+ return vec4(min(fogged*frame.ambient.w,vec3(60000.0)),1.0);
+}
 @fragment fn fs(v:Out,@builtin(front_facing) front:bool)->@location(0) vec4<f32>{
  // Samples and derivatives come before any per-instance branch: WebGPU
  // requires uniform control flow for them.
@@ -129,6 +170,7 @@ fn fog_amount(p:vec3<f32>)->f32{
   let volume=verse_fire_volume(v.uv*2.0-1.0,v.pos,pose.params.z,tex.a,u32(frame.settings.w),fire_noise,fire_lut,fire_sampler,fire_sampler);
   return vec4(volume.rgb*v.tint*1.6/max(volume.a,0.001),volume.a*pose.params.y);
  }
+ if pose.params.x>4.5 && pose.params.x<5.5 {return portal(v,pose.params.z,pose.model[0].xyz,pose.model[2].xyz,pose.model[3].xyz);}
  if pose.params.x>1.5 {
   let color=tex.rgb*1.6;
   return vec4(color*v.tint,tex.a*pose.params.y);

@@ -186,6 +186,17 @@ portal [below](#the-grids-portal-to-lagrange-1) does, with the same gate,
 cooldown, return, and presence rules, except that Everglade loads its pinned
 pack first.
 
+- **The view through it.** The opening shows Everglade: a soft, slowly
+  swirling and rippling view of the town in late-afternoon light, hazing to
+  a glowing white rim with a touch of the glade's green-gold, where the
+  other arches have turning rings. The Grid cannot draw Everglade live (its
+  pack loads only on entry), so the view is a render of the town from its
+  approach path baked into the Grid pack
+  (`assets/verse/grid-sources/everglade-portal.png`, made by
+  `cargo run -p verse --example everglade_portal_view`, then pinned with
+  `cargo run -p verse --example grid_pack`). The engine renderer draws it as
+  a portal (`grid/portal-everglade`, model source `verse/portal/`): one
+  disc and five texture reads a pixel, on every build that draws the Grid.
 - **Placement.** The arch stands in the Grid's fixed layout frame
   (`verse::blocks::Layout::grid`, the frame the ball and blocks use) at
   `verse::zones::gate::GRID_EVERGLADE_AT`: 9 m to the dominoes' side of the

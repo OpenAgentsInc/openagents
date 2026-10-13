@@ -245,6 +245,10 @@ name = "everglade_capture"
 required-features = ["capture"]
 
 [[example]]
+name = "everglade_portal_view"
+required-features = ["capture"]
+
+[[example]]
 name = "render_scale"
 required-features = ["capture"]
 

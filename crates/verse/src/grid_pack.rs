@@ -40,6 +40,23 @@ pub const ARCH_EVERGLADE: &str = "grid/arch-everglade";
 pub const ARCH_LAGRANGE: &str = "grid/arch-lagrange-1";
 /// The RITUAL arch, at the origin facing +Z.
 pub const ARCH_RITUAL: &str = "grid/arch-ritual";
+/// The view of Everglade in the Everglade arch's opening, at the origin
+/// facing +Z: a soft disc showing the baked town ([`PORTAL_VIEW_SOURCE`]),
+/// which the renderer swirls and rims by its model source
+/// ([`PORTAL_SOURCE`]) and the instance's clock.
+pub const PORTAL_EVERGLADE: &str = "grid/portal-everglade";
+/// The portal view's model source; the engine renderer draws models whose
+/// source starts `verse/portal/` as a living portal.
+pub const PORTAL_SOURCE: &str = "verse/portal/everglade";
+/// The baked view of Everglade, relative to the repository root, made by
+/// `cargo run -p verse --example everglade_portal_view`.
+pub const PORTAL_VIEW_SOURCE: &str = "assets/verse/grid-sources/everglade-portal.png";
+/// The portal view's file name inside the pinned pack.
+pub const PORTAL_VIEW: &str = "everglade-portal.png";
+/// The portal view's half width and half height, m, and its center's
+/// height: it fills the arch's opening from the ground to the lintel.
+const PORTAL_HALF: [f32; 2] = [1.62, 2.12];
+const PORTAL_CENTER: f32 = 2.14;
 /// The line-figure avatar, feet at the origin facing +Z.
 pub const FIGURE: &str = "grid/figure";
 /// The Gym's RESULTS, EVALS, and board lettering at the Grid site.
@@ -120,11 +137,17 @@ pub fn load_pinned() -> Result<Pack, String> {
 /// The pinned manifest, built into the binary for hosts without the
 /// repository: phones and browsers.
 const EMBEDDED_MANIFEST: &str = include_str!("../../../assets/verse/grid/pack.json");
-/// The pinned pack's one texture file, the white texel.
-const EMBEDDED_WHITE: (&str, &[u8]) = (
-    "verse-flat-white.png",
-    include_bytes!("../../../assets/verse/grid/verse-flat-white.png"),
-);
+/// The pinned pack's texture files: the white texel and the portal view.
+const EMBEDDED_TEXTURES: [(&str, &[u8]); 2] = [
+    (
+        "verse-flat-white.png",
+        include_bytes!("../../../assets/verse/grid/verse-flat-white.png"),
+    ),
+    (
+        PORTAL_VIEW,
+        include_bytes!("../../../assets/verse/grid/everglade-portal.png"),
+    ),
+];
 
 /// Validates the pinned pack built into the binary.
 pub fn embedded() -> Result<Pack, String> {
@@ -136,7 +159,7 @@ pub fn embedded() -> Result<Pack, String> {
 /// Admits the built-in pack for a renderer, with no file system: the same
 /// digests and budgets the directory load checks.
 pub fn prepare_embedded() -> Result<verse_engine::loading::Prepared, String> {
-    verse_engine::loading::Prepared::from_bytes(embedded()?, &[EMBEDDED_WHITE], Default::default())
+    verse_engine::loading::Prepared::from_bytes(embedded()?, &EMBEDDED_TEXTURES, Default::default())
 }
 
 /// Compiles the Grid into `dir`: the white texel, every model, the floor
@@ -167,11 +190,19 @@ pub fn compile(dir: &Path) -> Result<Pack, String> {
         (ARCH_RITUAL, ZoneId::Plaza, gate::RITUAL_SIGN),
     ] {
         let mut arch = Mesh::default();
-        crate::zones::arch(&mut arch, zone, sign, Vec3::ZERO, 0.0);
+        if name == ARCH_EVERGLADE {
+            // Its opening shows the town ([`PORTAL_EVERGLADE`]), not rings.
+            crate::zones::arch_frame(&mut arch, sign, Vec3::ZERO);
+        } else {
+            crate::zones::arch(&mut arch, zone, sign, Vec3::ZERO, 0.0);
+        }
         arch.neutralize();
         pack.models
             .insert(name.into(), mesh_model(name, &arch, white, 5.2));
     }
+    let view = portal_view(&mut pack, dir)?;
+    pack.models
+        .insert(PORTAL_EVERGLADE.into(), portal_model(view));
     pack.models.insert(FIGURE.into(), figure(white));
     let mut boards = crate::world::gym_display(crate::world::GymSite::GRID, None);
     boards.extend(&crate::world::results_display(
@@ -280,16 +311,21 @@ pub fn blockers(pack: &Pack) -> Vec<crate::controller::Footprint> {
         .collect()
 }
 
-/// The arches the runtime currently stands on the Grid, as engine instances.
+/// The arches the runtime currently stands on the Grid, as engine instances,
+/// with the view of Everglade in the Everglade arch's opening, rippling by
+/// the runtime's portal clock.
 #[must_use]
 pub fn gates(runtime: &crate::runtime::WorldRuntime) -> Vec<verse_engine::presentation::Instance> {
+    let clock = runtime.portal_clock();
+    let everglade = runtime.everglade_gate();
     [
-        (ARCH_EVERGLADE, runtime.everglade_gate()),
-        (ARCH_LAGRANGE, runtime.grid_gate()),
-        (ARCH_RITUAL, runtime.ritual_gate()),
+        (ARCH_EVERGLADE, everglade, 0.0),
+        (PORTAL_EVERGLADE, everglade, clock),
+        (ARCH_LAGRANGE, runtime.grid_gate(), 0.0),
+        (ARCH_RITUAL, runtime.ritual_gate(), 0.0),
     ]
     .into_iter()
-    .filter_map(|(model, gate)| {
+    .filter_map(|(model, gate, time)| {
         let gate = gate?;
         Some(verse_engine::presentation::Instance {
             mount: None,
@@ -297,12 +333,63 @@ pub fn gates(runtime: &crate::runtime::WorldRuntime) -> Vec<verse_engine::presen
             model: model.into(),
             transform: Mat4::from_rotation_translation(Quat::from_rotation_y(gate.yaw), gate.at),
             animation: 0.into(),
-            time: 0.,
+            time: if time.is_finite() { time.max(0.0) } else { 0.0 },
             animation_epoch: None,
             emission: Vec3::ZERO,
         })
     })
     .collect()
+}
+
+/// Copies the baked view of Everglade into `dir` and adds it to the pack;
+/// returns its texture slot.
+fn portal_view(pack: &mut Pack, dir: &Path) -> Result<usize, String> {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(PORTAL_VIEW_SOURCE);
+    let bytes = std::fs::read(&source).map_err(|e| format!("{}: {e}", source.display()))?;
+    let decoder = png::Decoder::new(std::io::Cursor::new(&bytes));
+    let reader = decoder.read_info().map_err(|e| e.to_string())?;
+    let (width, height) = (reader.info().width, reader.info().height);
+    std::fs::write(dir.join(PORTAL_VIEW), &bytes).map_err(|e| e.to_string())?;
+    pack.textures.push(verse_engine::assets::Texture {
+        file: PORTAL_VIEW.into(),
+        sha256: format!("{:x}", Sha256::digest(&bytes)),
+        width,
+        height,
+    });
+    Ok(pack.textures.len() - 1)
+}
+
+/// The portal view: an unlit, opaque disc filling the arch's opening (it
+/// hides what stands beyond; the shader discards past its rim),
+/// its UVs spanning the baked view as the approaching player sees it (the
+/// arch's local -X is their right).
+fn portal_model(texture: usize) -> Model {
+    const SEGMENTS: u32 = 64;
+    // The tint is Everglade's leaf green warmed by its sun; the rim takes a
+    // quarter of it over white.
+    let mut surface = flat::surface(texture, [0.72, 0.95, 0.5], Topology::Triangles);
+    let vertex = |p: Vec3, uv: [f32; 2]| verse_engine::assets::Vertex {
+        position: p.to_array(),
+        normal: [0., 0., -1.],
+        uv,
+        joints: [0; 4],
+        weights: [1., 0., 0., 0.],
+    };
+    surface
+        .vertices
+        .push(vertex(Vec3::new(0.0, PORTAL_CENTER, 0.0), [0.5, 0.5]));
+    for i in 0..SEGMENTS {
+        let a = i as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
+        let (s, c) = a.sin_cos();
+        surface.vertices.push(vertex(
+            Vec3::new(c * PORTAL_HALF[0], PORTAL_CENTER + s * PORTAL_HALF[1], 0.0),
+            [0.5 - 0.5 * c, 0.5 - 0.5 * s],
+        ));
+        surface.indices.extend([0, 1 + i, 1 + (i + 1) % SEGMENTS]);
+    }
+    flat::model(PORTAL_SOURCE, vec![surface], 4.3)
 }
 
 /// Records the pack's provenance: this compiler's sources, the white texel,
@@ -706,6 +793,7 @@ mod tests {
             FLOOR,
             GYM,
             ARCH_EVERGLADE,
+            PORTAL_EVERGLADE,
             ARCH_LAGRANGE,
             ARCH_RITUAL,
             FIGURE,
@@ -718,6 +806,51 @@ mod tests {
         }
         assert_eq!(pack.placements.len(), 3);
         verse_engine::loading::Prepared::load(pack, &pinned_dir(), Default::default()).unwrap();
+    }
+
+    #[test]
+    fn the_everglade_arch_shows_the_town_in_its_opening() {
+        let pack = load_pinned().unwrap();
+        // The arch keeps its pillars, lintel, and lettering, but not the
+        // rings the other arches turn in their openings.
+        let lines = |name: &str| -> usize {
+            pack.models[name]
+                .surfaces
+                .iter()
+                .filter(|s| s.topology == Topology::Lines)
+                .map(|s| s.indices.len())
+                .sum()
+        };
+        assert!(lines(ARCH_EVERGLADE) < lines(ARCH_LAGRANGE));
+        // The opening is one opaque disc showing the baked view, drawn as a
+        // portal, inside the pillars and under the lintel.
+        let view = &pack.models[PORTAL_EVERGLADE];
+        assert!(view.source.starts_with("verse/portal/"));
+        let [disc] = view.surfaces.as_slice() else {
+            panic!("one surface");
+        };
+        assert_eq!(pack.textures[disc.texture].file, PORTAL_VIEW);
+        assert_eq!(disc.blend, 0);
+        for v in &disc.vertices {
+            let [x, y, z] = v.position;
+            assert!(x.abs() < 1.725 && (0.0..4.325).contains(&y) && z == 0.0);
+            assert!(v.uv.iter().all(|c| (0.0..=1.0).contains(c)));
+        }
+        // It stands with the arch, on the arch's transform, and ripples by
+        // the Grid's clock.
+        let mut runtime = crate::runtime::WorldRuntime::bare();
+        assert!(gates(&runtime).is_empty());
+        let cache = tempfile::tempdir().unwrap();
+        runtime.configure_zone_cache(cache.path().to_path_buf());
+        for _ in 0..30 {
+            runtime.tick(&crate::controller::InputState::default(), 1.0 / 60.0);
+        }
+        let stood = gates(&runtime);
+        let arch = stood.iter().find(|i| i.model == ARCH_EVERGLADE).unwrap();
+        let portal = stood.iter().find(|i| i.model == PORTAL_EVERGLADE).unwrap();
+        assert_eq!(arch.transform, portal.transform);
+        assert!((portal.time - runtime.portal_clock()).abs() < 1e-6);
+        assert!(portal.time > 0.4);
     }
 
     #[test]
@@ -740,7 +873,7 @@ mod tests {
             from_memory.receipt().encoded_bytes,
             from_dir.receipt().encoded_bytes
         );
-        assert_eq!(from_memory.textures().len(), 1);
+        assert_eq!(from_memory.textures().len(), 2);
     }
 
     #[test]
