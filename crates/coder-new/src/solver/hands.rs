@@ -33,7 +33,7 @@ plan or write code.";
 const INTAKER_ACP: &str = "You are the Intaker of a four-hand coding run. Your only job is to \
 confirm the run can start. The environment check and the issue are below; read them, then answer \
 in a few lines: the issue's title and what it asks in one sentence, and a last line that is \
-exactly `INTAKE: ready` when git, gh and a signed-in Devin are present and the issue was read, \
+exactly `INTAKE: ready` when git, gh and the hands' engine are present and the issue was read, \
 or `INTAKE: blocked: <why>` otherwise. A dirty checkout is not a blocker: the run works in its \
 own fresh worktree. Do not plan or write code.";
 
@@ -122,6 +122,18 @@ async fn environment_text(repo: &Path, engine: Engine) -> String {
                 "missing"
             }
         )),
+        Engine::Coder => lines.push(format!(
+            "openagents sign-in: {}",
+            if crate::home::data_dir()
+                .as_deref()
+                .and_then(crate::connection_tools::signed_in)
+                .is_some()
+            {
+                "present"
+            } else {
+                "missing"
+            }
+        )),
         Engine::Devin => {
             lines.push(format!(
                 "devin: {}",
@@ -180,6 +192,23 @@ fn check_lines(checks: &[Check]) -> String {
         lines.push_str(&format!("\n- `{}` ({})", check.argv.join(" "), check.id));
     }
     lines
+}
+
+/// A hand's agent on the run's engine: a Claude Code session with only
+/// `tools`, a `devin acp` session, or a Coder-loop session on the gateway
+/// (#11518). `writes` says whether the hand may change the worktree.
+fn hand_engine(options: &Options, model: &str, writes: bool, tools: &[&str]) -> agent::Engine {
+    match options.engine {
+        Engine::Claude => agent::Engine::Claude {
+            tools: tools.iter().map(|t| (*t).to_owned()).collect(),
+            server: None,
+        },
+        Engine::Devin => agent::Engine::Acp(agent::AcpOptions::devin(model, writes)),
+        Engine::Coder => agent::Engine::Coder {
+            writes,
+            account: options.inner.account.clone(),
+        },
+    }
 }
 
 /// Runs one hand's session and records it as a turn.
@@ -258,10 +287,11 @@ pub async fn intake(options: &Options, folder: &Path, transcript: &mut Transcrip
             baseline: None,
             follow: None,
         },
-        Engine::Devin => {
-            // An ACP session cannot reach the in-process `environment` and
-            // `issue` tools, so the harness's own answers go in its prompt.
-            let environment = environment_text(&options.inner.repo, Engine::Devin).await;
+        Engine::Devin | Engine::Coder => {
+            // An ACP or Coder-loop session cannot reach the in-process
+            // `environment` and `issue` tools, so the harness's own answers
+            // go in its prompt.
+            let environment = environment_text(&options.inner.repo, options.engine).await;
             let issue = issue_text(&options.inner.github, options.inner.issue)
                 .await
                 .unwrap_or_else(|why| format!("The issue could not be read: {why}"));
@@ -270,7 +300,7 @@ pub async fn intake(options: &Options, folder: &Path, transcript: &mut Transcrip
                 detail: "Checks the environment and reads the issue".into(),
                 model: options.briefer_model.clone(),
                 timeout: options.inner.timeout,
-                engine: agent::Engine::Acp(agent::AcpOptions::devin(&options.briefer_model, false)),
+                engine: hand_engine(options, &options.briefer_model, false, &[]),
                 checks: Vec::new(),
                 system: INTAKER_ACP.into(),
                 prompt: format!(
@@ -421,15 +451,7 @@ pub async fn brief(
         detail: "Reads the briefed files and writes what the change should look like".into(),
         model: options.briefer_model.clone(),
         timeout: options.inner.timeout,
-        engine: match options.engine {
-            Engine::Claude => agent::Engine::Claude {
-                tools: READ_TOOLS.iter().map(|t| (*t).to_owned()).collect(),
-                server: None,
-            },
-            Engine::Devin => {
-                agent::Engine::Acp(agent::AcpOptions::devin(&options.briefer_model, false))
-            }
-        },
+        engine: hand_engine(options, &options.briefer_model, false, &READ_TOOLS),
         checks: Vec::new(),
         system: BRIEFER.into(),
         prompt,
@@ -498,7 +520,7 @@ pub async fn code(
         Engine::Claude => prompt.push_str(
             "\n\nYou code: change the files, and reply with what you changed. You have no shell, but `run_check` compiles a crate (`check:<package>`, and `wasm:<package>` for a browser build's wasm32 half). Every crate your change touches has its `check:`, a crate you create included, as soon as a file in it changes. After your edits, run `check:` for each crate you changed and fix what fails before you finish. The Tester runs the full checks and tests after you.",
         ),
-        Engine::Devin => {
+        Engine::Devin | Engine::Coder => {
             prompt.push_str(
                 "\n\nYou code: change the files, and reply with what you changed. After your edits, run the compile checks in the working copy yourself, plus `cargo check -p <package> --tests` for any other crate you change or create, and fix what fails before you finish:",
             );
@@ -513,13 +535,7 @@ pub async fn code(
         detail: "Changes the working copy from the briefing and the analysis".into(),
         model: model.to_owned(),
         timeout: options.inner.timeout,
-        engine: match options.engine {
-            Engine::Claude => agent::Engine::Claude {
-                tools: CODE_TOOLS.iter().map(|t| (*t).to_owned()).collect(),
-                server: None,
-            },
-            Engine::Devin => agent::Engine::Acp(agent::AcpOptions::devin(model, true)),
-        },
+        engine: hand_engine(options, model, true, &CODE_TOOLS),
         checks,
         system: briefing.system.clone(),
         prompt,
@@ -527,7 +543,7 @@ pub async fn code(
         events_file: format!("coder-{round}-events.jsonl"),
         baseline: match options.engine {
             Engine::Claude => Some(Baseline::of(base)),
-            Engine::Devin => None,
+            Engine::Devin | Engine::Coder => None,
         },
         follow: Some(agent::Follow {
             base: base.base.clone(),
@@ -731,7 +747,7 @@ pub async fn test(
                 base.issue, base.title, diff, failures
             ),
         ),
-        Engine::Devin => (
+        Engine::Devin | Engine::Coder => (
             TESTER_ACP.to_owned(),
             format!(
                 "Issue #{}: {}\n\nThe Coder's change (every changed file is here; a long file's diff is cut short and says so):\n\n```diff\n{}\n```\n\nThe harness ran the required checks. What failed:{}\n\nRerun a check in the working copy when you need more of its output:{}\n\nGive your verdict.",
@@ -748,15 +764,7 @@ pub async fn test(
         detail: "Runs the briefing's checks and hands back what fails".into(),
         model: options.tester_model.clone(),
         timeout: options.inner.timeout,
-        engine: match options.engine {
-            Engine::Claude => agent::Engine::Claude {
-                tools: READ_TOOLS.iter().map(|t| (*t).to_owned()).collect(),
-                server: None,
-            },
-            Engine::Devin => {
-                agent::Engine::Acp(agent::AcpOptions::devin(&options.tester_model, false))
-            }
-        },
+        engine: hand_engine(options, &options.tester_model, false, &READ_TOOLS),
         checks: briefing.checks.clone(),
         system,
         prompt,
@@ -764,7 +772,7 @@ pub async fn test(
         events_file: format!("tester-{round}-events.jsonl"),
         baseline: match options.engine {
             Engine::Claude => Some(Baseline::of(base)),
-            Engine::Devin => None,
+            Engine::Devin | Engine::Coder => None,
         },
         follow: Some(agent::Follow {
             base: base.base.clone(),

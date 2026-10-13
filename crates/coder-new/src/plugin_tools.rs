@@ -146,7 +146,7 @@ impl ExecutionSettings {
             ToolBinding::Microcoder => self.microcoder,
             ToolBinding::OpenAgentsCli | ToolBinding::Github => self.cli,
             ToolBinding::AcpSubagent => self.acp,
-            ToolBinding::Solver => self.solver,
+            ToolBinding::Solver => self.solver && crate::solver_plugin::runnable(self),
             ToolBinding::Comms => self.comms && self.channel.is_some(),
             ToolBinding::SolverSwarm => self.swarm,
             ToolBinding::Jev => self.jev_enabled,
@@ -645,7 +645,7 @@ impl ExecutionSettings {
                 .await
             }
             crate::solver_plugin::TOOL if self.registered(ToolBinding::Solver) => {
-                crate::solver_plugin::execute(&arguments, &self.cwd, cancel, &mut emit).await
+                crate::solver_plugin::execute(&arguments, self, cancel, &mut emit).await
             }
             crate::comms::TOOL if self.registered(ToolBinding::Comms) => {
                 let channel = self.channel.as_ref().ok_or(crate::comms::NO_SESSION)?;

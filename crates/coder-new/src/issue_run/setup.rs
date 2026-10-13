@@ -848,7 +848,7 @@ pub fn summary(report: &Report<'_>) -> Value {
     };
     let agent_unknown = match work {
         None => "the agent did not run",
-        Some(work) if work.cost_usd.is_none() => "Claude Code reported no cost for the session",
+        Some(work) if work.cost_usd.is_none() => "the agent's session reported no cost",
         Some(_) => "",
     };
     let decision_usd = briefing

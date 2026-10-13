@@ -160,12 +160,51 @@ pub fn options(arguments: &Value, cwd: &Path) -> Result<crate::solver::Options, 
 /// result.
 pub async fn execute(
     arguments: &Value,
-    cwd: &Path,
+    execution: &crate::plugin_tools::ExecutionSettings,
     cancel: &AtomicBool,
     emit: &mut (dyn FnMut(RuntimeEvent) + Send),
 ) -> Result<Value, String> {
-    let options = options(arguments, cwd)?;
+    execute_in(
+        arguments,
+        &execution.cwd,
+        execution.claude,
+        execution.connections.clone(),
+        cancel,
+        emit,
+    )
+    .await
+}
+
+/// [`execute`] in `cwd`, with the Claude Code plugin `claude` and the
+/// chat's `account`. With the plugin off the hands run on the Coder loop
+/// through the gateway, on this chat's sign-in (#11518).
+///
+/// # Errors
+/// As [`execute`].
+pub async fn execute_in(
+    arguments: &Value,
+    cwd: &Path,
+    claude: bool,
+    account: Option<openagents_login::Saved>,
+    cancel: &AtomicBool,
+    emit: &mut (dyn FnMut(RuntimeEvent) + Send),
+) -> Result<Value, String> {
+    let mut options = options(arguments, cwd)?;
+    if !claude && options.engine == crate::solver::Engine::Claude {
+        options.use_coder();
+    }
+    if account.is_some() {
+        options.inner.account = account;
+    }
     run(crate::solver::start(options), cancel, emit).await
+}
+
+/// Whether Solver has an engine it can run on in this chat: Claude Code
+/// while its plugin is on, or the Coder loop on a signed-in gateway
+/// (#11518). With neither, the tool isn't offered.
+#[must_use]
+pub fn runnable(execution: &crate::plugin_tools::ExecutionSettings) -> bool {
+    execution.claude || execution.connections.is_some()
 }
 
 /// Follows a started run's `feed` to its end.
@@ -417,7 +456,8 @@ pub fn mcp_server(
                     output: Value::Null,
                     running: true,
                 });
-                let result = execute(&input, &cwd, &stop, &mut emit).await;
+                // Claude Code calls this, so its plugin is on.
+                let result = execute_in(&input, &cwd, true, None, &stop, &mut emit).await;
                 let output = match &result {
                     Ok(value) => value.clone(),
                     Err(error) => json!({"error": error}),

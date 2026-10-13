@@ -287,14 +287,13 @@ impl Boundary {
                                         | "-u"
                                         | "--set-upstream-to"
                                         | "--unset-upstream"
-                                        | "-e"
-                                        | "--edit"
-                                        | "-a"
-                                        | "--annotate"
-                                        | "-s"
-                                        | "--sign"
+                                        | "--edit-description"
                                         | "--create-reflog"
-                                )
+                                ) || (subcommand == "tag"
+                                    && matches!(
+                                        word.as_str(),
+                                        "-e" | "--edit" | "-a" | "--annotate" | "-s" | "--sign"
+                                    ))
                             })
                     }
                     // `config` writes with a mutating flag or a `key value`
@@ -643,6 +642,9 @@ fn segments(command: &str) -> impl Iterator<Item = Vec<String>> + '_ {
         .flat_map(|part| part.split("&&"))
         .map(|part| {
             part.split_whitespace()
+                // A comment (an unquoted `#` starting a word) runs to the end
+                // of its line.
+                .take_while(|word| !word.starts_with('#'))
                 .map(|word| word.trim_matches(|c| c == '\'' || c == '"').to_owned())
                 // A shell keyword (`do sed -i ...`) leads into the command.
                 .skip_while(|word| {
@@ -755,6 +757,9 @@ mod tests {
             "git -C /repo stash list",
             "git -C /repo tag -l",
             "git -C /repo branch --show-current",
+            "git -C /repo branch -a",
+            "cd /repo && git status; git branch -a --list",
+            "# look around\ncd /repo && git log -3",
             "git -C /repo fetch origin",
             "git -C /repo config --get user.name",
             "cd /repo && git status",

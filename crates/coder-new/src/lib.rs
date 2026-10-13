@@ -2024,6 +2024,8 @@ impl App {
                 messages,
                 cwd,
                 github: solver::DEFAULT_GITHUB.into(),
+                claude: self.plugins.enabled_for(crate::claude::PLUGIN),
+                account: self.connections(),
             },
         });
     }

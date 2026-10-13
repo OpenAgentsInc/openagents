@@ -1197,3 +1197,89 @@ fn the_reply_states_the_final_checks_and_outcome() {
         "The run ended: already done. Main already has a commit. No final check ran."
     );
 }
+
+#[test]
+fn the_coder_engine_runs_every_hand_on_the_gateway() {
+    // #11518: a non-Claude engine for Solver and issue-run.
+    use super::Engine;
+    let options = Options::parse(&args(&["11518", "--engine", "coder"])).unwrap();
+    assert_eq!(options.engine, Engine::Coder);
+    assert_eq!(options.inner.engine, Engine::Coder);
+    for model in [
+        options.briefer_model.as_str(),
+        options.tester_model.as_str(),
+        options.inner.model.as_str(),
+        options.small_coder.as_deref().unwrap(),
+    ] {
+        assert_eq!(model, crate::models::GATEWAY_AUTO);
+    }
+    // A Claude run moved to the Coder loop (the plugin is off) does the same.
+    let mut moved = Options::parse(&args(&["11518", "--engine", "claude"])).unwrap();
+    moved.use_coder();
+    assert_eq!(moved.engine, Engine::Coder);
+    assert_eq!(moved.inner.model, crate::models::GATEWAY_AUTO);
+    assert_eq!(moved.briefer_model, crate::models::GATEWAY_AUTO);
+    // issue-run takes the engine too.
+    let run = crate::issue_run::Options::parse(&args(&["11518", "--engine", "coder"])).unwrap();
+    assert_eq!(run.engine, Engine::Coder);
+    assert_eq!(run.model, crate::models::GATEWAY_AUTO);
+    let pinned = crate::issue_run::Options::parse(&args(&[
+        "11518",
+        "--engine",
+        "coder",
+        "--model",
+        "google/gemini-3.8-flash",
+    ]))
+    .unwrap();
+    assert_eq!(pinned.model, "google/gemini-3.8-flash");
+    assert!(crate::issue_run::Options::parse(&args(&["1", "--engine", "devin"])).is_err());
+    // The briefed agent is a Coder-loop session that may write.
+    let session = crate::issue_run::agent::Session::briefed(
+        &run,
+        &crate::issue_run::decide::Briefing::default(),
+    );
+    assert!(matches!(
+        session.engine,
+        crate::issue_run::agent::Engine::Coder { writes: true, .. }
+    ));
+}
+
+#[test]
+fn a_coder_hand_writes_only_in_its_worktree_and_a_reading_hand_nowhere() {
+    // #11518: the same fence as any Coder chat, with the whole disk as the
+    // shared side.
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let writer = crate::issue_run::agent::coder_settings(&root, true);
+    let boundary = writer.boundary.as_ref().unwrap();
+    assert!(boundary.file_refusal("Edit", "src/lib.rs", &root).is_none());
+    assert!(
+        boundary
+            .file_refusal("Write", "/etc/hosts", &root)
+            .is_some()
+    );
+    assert!(
+        boundary
+            .run_refusal("cargo test -p x > out.txt", &root)
+            .is_none()
+    );
+    assert!(
+        boundary
+            .run_refusal("echo x > /tmp/elsewhere.txt", &root)
+            .is_some()
+    );
+    assert!(!writer.claude && !writer.solver && !writer.acp && writer.shell);
+    let reader = crate::issue_run::agent::coder_settings(&root, false);
+    let boundary = reader.boundary.as_ref().unwrap();
+    assert!(boundary.file_refusal("Edit", "src/lib.rs", &root).is_some());
+    assert!(boundary.run_refusal("touch src/new.rs", &root).is_some());
+    assert!(boundary.run_refusal("python3 fix.py", &root).is_some());
+    for reading in [
+        "cargo test -p x",
+        "gh issue view 1",
+        "rg foo src",
+        "git diff",
+    ] {
+        assert!(boundary.run_refusal(reading, &root).is_none(), "{reading}");
+    }
+}

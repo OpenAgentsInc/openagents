@@ -493,6 +493,16 @@ pub enum Engine {
     },
     /// An ACP session (`devin acp`), opened as [`AcpOptions`] describes.
     Acp(AcpOptions),
+    /// A Coder-loop session on the OpenAgents gateway (#11518): Coder's
+    /// own Run and file tools under the same floors and fence as any Coder
+    /// chat, held to the worktree.
+    Coder {
+        /// Whether the hand may change files in the worktree; when not,
+        /// the whole disk is read-only for it.
+        writes: bool,
+        /// The sign-in the gateway turn uses.
+        account: Option<openagents_login::Saved>,
+    },
 }
 
 /// How an ACP session opens: the agent's binary, arguments, mode, session
@@ -981,14 +991,26 @@ impl Session {
     /// Glob and `run_check` over the briefing's checks.
     #[must_use]
     pub fn briefed(options: &super::Options, briefing: &Briefing) -> Self {
+        let coder = options.engine == crate::solver::Engine::Coder;
         Self {
             title: "Briefed agent".into(),
-            detail: "Claude Agent SDK session on this computer's Claude Code login".into(),
+            detail: if coder {
+                "Coder loop on the OpenAgents gateway".into()
+            } else {
+                "Claude Agent SDK session on this computer's Claude Code login".into()
+            },
             model: options.model.clone(),
             timeout: options.timeout,
-            engine: Engine::Claude {
-                tools: TOOLS.iter().map(|t| (*t).to_owned()).collect(),
-                server: None,
+            engine: if coder {
+                Engine::Coder {
+                    writes: true,
+                    account: options.account.clone(),
+                }
+            } else {
+                Engine::Claude {
+                    tools: TOOLS.iter().map(|t| (*t).to_owned()).collect(),
+                    server: None,
+                }
             },
             checks: briefing.checks.clone(),
             system: briefing.system.clone(),
@@ -1015,6 +1037,10 @@ impl Session {
                 names.join(", ")
             }
             Engine::Acp(_) => "the agent's own tools".into(),
+            Engine::Coder { writes: true, .. } => {
+                "Run, Read, Edit, Write, Grep, Glob, held to the worktree".into()
+            }
+            Engine::Coder { writes: false, .. } => "Run, Read, Grep, Glob, read-only".into(),
         }
     }
 }
@@ -1218,13 +1244,16 @@ pub async fn run_gated(
     if matches!(session.engine, Engine::Acp(_)) {
         return run_acp(session, worktree, folder, transcript).await;
     }
+    if matches!(session.engine, Engine::Coder { .. }) {
+        return run_coder(session, worktree, folder, transcript).await;
+    }
     let root = worktree
         .canonicalize()
         .unwrap_or_else(|_| worktree.to_path_buf());
     let checks = Arc::new(session.checks.clone());
     let tools_text = session.tools_text();
     let Engine::Claude { tools, server } = session.engine else {
-        unreachable!("the ACP arm returned");
+        unreachable!("the ACP and Coder arms returned");
     };
     let mut allowed: Vec<String> = tools.clone();
     let mut query_options = QueryOptions::new()
@@ -2084,6 +2113,264 @@ pub async fn run_acp(
             });
         }
     }
+    work
+}
+
+/// The longest prompt a Coder-loop session is given, in bytes; the rest of
+/// a longer one (a very large diff) is cut with a note.
+const CODER_PROMPT_MAX: usize = 60 * 1024;
+
+/// The settings of a Coder-loop session in `root` (#11518): Coder's Run
+/// and file tools and nothing else, under the floors and the fence. With
+/// `writes`, everything outside `root` is read-only for it; without, the
+/// whole disk is, and only reading commands run.
+#[must_use]
+pub fn coder_settings(root: &Path, writes: bool) -> crate::plugin_tools::ExecutionSettings {
+    let mut execution = crate::plugins::Plugins::default().execution_settings(root.to_path_buf());
+    execution.microcoder = false;
+    execution.cli = false;
+    execution.acp = false;
+    execution.claude = false;
+    execution.solver = false;
+    execution.comms = false;
+    execution.swarm = false;
+    execution.channel = None;
+    execution.boat.enabled = false;
+    execution.gce.enabled = false;
+    execution.brainstorm = None;
+    execution.memory = None;
+    execution.routing = None;
+    execution.fleet = None;
+    execution.agents = Vec::new();
+    execution.connections = None;
+    execution.shell = true;
+    execution.harness = Some(crate::harness::Run::choose(
+        None,
+        crate::harness::DecidedBy::Fallback,
+        0,
+    ));
+    // The fence with the whole disk as the shared side: a write lands in
+    // the session's own folder or is refused. A read-only hand's own folder
+    // is one that never exists, so nothing it writes lands anywhere.
+    execution.boundary = Some(crate::checkout_guard::Boundary {
+        worktree: if writes {
+            root.to_path_buf()
+        } else {
+            root.join(".coder-read-only-hand")
+        },
+        shared: PathBuf::from("/"),
+        branch: String::new(),
+    });
+    execution
+}
+
+/// One session on the Coder loop through the OpenAgents gateway (#11518):
+/// the hand's system text and prompt as one turn, its tool calls drawn as
+/// they run, bounded by the hand's timeout and the run's stop.
+pub async fn run_coder(
+    session: Session,
+    worktree: &Path,
+    folder: &Path,
+    transcript: &mut Transcript,
+) -> Work {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let root = worktree
+        .canonicalize()
+        .unwrap_or_else(|_| worktree.to_path_buf());
+    let started = Instant::now();
+    let mut work = Work::default();
+    let card = json!({
+        "kind": "agent",
+        "title": session.title,
+        "detail": session.detail,
+        "rows": [
+            {"label": "engine", "text": "Coder loop on the OpenAgents gateway"},
+            {"label": "model", "text": session.model},
+            {"label": "tools", "text": session.tools_text()},
+            {"label": "checks", "text": session.checks.iter().map(|check| check.id.clone()).collect::<Vec<_>>().join(", ")},
+            {"label": "briefing", "text": format!("{} files, {} characters in the prompt", session.briefed.len(), session.system.chars().count() + session.prompt.chars().count())},
+        ],
+    });
+    let card_index = transcript.card(card.clone());
+    let Engine::Coder { writes, account } = session.engine else {
+        unreachable!("run_coder takes a Coder session")
+    };
+    let Some(account) = account else {
+        let why = "The Coder loop needs your OpenAgents sign-in: run coder login.".to_owned();
+        transcript.finish(card_index, card, json!({"error": why.clone()}));
+        work.error = Some(why);
+        return work;
+    };
+    let provider = match crate::provider::Provider::gateway(&account) {
+        Ok(provider) => provider,
+        Err(why) => {
+            transcript.finish(card_index, card, json!({"error": why.clone()}));
+            work.error = Some(why);
+            return work;
+        }
+    };
+    transcript.finish(card_index, card, json!({"ok": true}));
+    let mut execution = coder_settings(&root, writes);
+    execution
+        .redaction_keys
+        .push(model_access::ApiKey::new(account.token()));
+    let mut prompt = session.prompt.clone();
+    if prompt.len() > CODER_PROMPT_MAX {
+        let mut cut = CODER_PROMPT_MAX;
+        while !prompt.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        prompt.truncate(cut);
+        prompt.push_str("\n\n[The rest of this prompt was cut to fit.]");
+    }
+    let mut messages = Vec::new();
+    if !session.system.trim().is_empty() {
+        messages.push(openrouter::Message {
+            role: "system".into(),
+            content: session.system.clone(),
+        });
+    }
+    messages.push(openrouter::Message {
+        role: "user".into(),
+        content: prompt.clone(),
+    });
+    let mut events = String::new();
+    events
+        .push_str(&json!({"type": "prompt", "model": session.model, "prompt": prompt}).to_string());
+    events.push('\n');
+
+    // The hand's stop: the run's own, or its time running out.
+    let stop = Arc::new(AtomicBool::new(false));
+    let watcher = {
+        let (stop, run_stop, timeout) = (stop.clone(), transcript.cancel.clone(), session.timeout);
+        async move {
+            while !run_stop.load(Ordering::Relaxed) && started.elapsed() <= timeout {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+            stop.store(true, Ordering::Relaxed);
+            std::future::pending::<()>().await;
+        }
+    };
+    let model_seen: Arc<Mutex<Option<String>>> = Arc::default();
+    let briefed = session.briefed;
+    let mut opened: BTreeSet<String> = BTreeSet::new();
+    let mut misses = Vec::new();
+    let mut running: Vec<(usize, String, Value)> = Vec::new();
+    let result = {
+        let mut on_text = |_: &str| {};
+        let mut on_model = {
+            let model_seen = model_seen.clone();
+            move |model: &str| *lock(&model_seen) = Some(model.to_owned())
+        };
+        let mut on_event = |event: crate::bundled_runtime::RuntimeEvent| {
+            let crate::bundled_runtime::RuntimeEvent::Tool {
+                name,
+                input,
+                output,
+                running: still,
+            } = event
+            else {
+                return;
+            };
+            events.push_str(&json!({"type": "tool", "t_ms": started.elapsed().as_millis() as u64, "name": name, "input": input, "output": output, "running": still}).to_string());
+            events.push('\n');
+            if name == "Read"
+                && let Some(Some(path)) = inside(&root, &input)
+                && !briefed.contains(&path)
+                && opened.insert(path.clone())
+            {
+                misses.push(path);
+            }
+            let entry = Entry::Tool {
+                name: name.clone(),
+                input: input.clone(),
+                output,
+                running: still,
+            };
+            // A running call's progress and its end update its own entry.
+            match running
+                .iter()
+                .rposition(|(_, open, open_input)| *open == name && *open_input == input)
+            {
+                Some(at) => {
+                    transcript.set(running[at].0, entry);
+                    if !still {
+                        running.remove(at);
+                    }
+                }
+                None => {
+                    let index = transcript.push(entry);
+                    if still {
+                        running.push((index, name, input));
+                    }
+                }
+            }
+        };
+        let options = crate::models::GenerationOptions::default();
+        // The turn's state lives on the heap: a solver hand runs on a plain
+        // thread's stack, which a debug build's turn would overflow.
+        let turn = Box::pin(provider.chat_with_plugins(
+            crate::models::GATEWAY_AUTO,
+            &options,
+            messages,
+            &execution,
+            &mut on_text,
+            &mut on_model,
+            &mut on_event,
+            &stop,
+        ));
+        tokio::select! {
+            result = turn => result,
+            () = watcher => unreachable!("the watcher never finishes"),
+        }
+    };
+    for (index, name, input) in running {
+        transcript.set(
+            index,
+            Entry::Tool {
+                name,
+                input,
+                output: json!({"error": "The agent stopped before this tool returned."}),
+                running: false,
+            },
+        );
+    }
+    let t_ms = started.elapsed().as_millis() as u64;
+    match result {
+        Ok(reply) => {
+            let model = Some(reply.model.clone())
+                .filter(|model| !model.is_empty())
+                .or_else(|| lock(&model_seen).clone());
+            let text = reply.text.trim().to_owned();
+            if !text.is_empty() {
+                transcript.push(Entry::Assistant {
+                    text: text.clone(),
+                    model: model.clone(),
+                    elapsed_ms: Some(t_ms),
+                });
+                work.reply = Some(text);
+            }
+            events.push_str(&json!({"type": "result", "t_ms": t_ms, "model": model, "tokens": reply.usage.total_tokens, "cost": reply.usage.cost}).to_string());
+            events.push('\n');
+            work.input_tokens =
+                (reply.usage.prompt_tokens > 0).then_some(reply.usage.prompt_tokens);
+            work.output_tokens =
+                (reply.usage.completion_tokens > 0).then_some(reply.usage.completion_tokens);
+            work.cost_usd = reply.usage.cost;
+        }
+        Err(why) => {
+            work.error = Some(if transcript.cancelled() {
+                "The run was stopped.".to_owned()
+            } else if started.elapsed() > session.timeout {
+                "The agent ran out of its time.".to_owned()
+            } else {
+                why
+            });
+        }
+    }
+    let _ = std::fs::write(folder.join(&session.events_file), events);
+    work.wall_ms = t_ms;
+    work.misses = misses;
     work
 }
 

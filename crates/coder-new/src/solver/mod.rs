@@ -90,6 +90,16 @@ pub fn intake_task(messages: &[openrouter::Message], github: &str) -> String {
     )
 }
 
+/// [`intake_task`] for the Intaker on the Coder loop (#11518): its `gh`
+/// is the Run tool, read-only.
+#[must_use]
+pub fn intake_task_coder(messages: &[openrouter::Message], github: &str) -> String {
+    format!(
+        "{}\n\nCall `gh` through the Run tool (for example `gh issue list -R {github} --search ...`), with read-only commands only; this session cannot change anything.",
+        intake_task(messages, github)
+    )
+}
+
 /// The issue an Intaker reply settles on: its last `ISSUE:` line.
 #[must_use]
 pub fn chosen(reply: &str) -> Option<(Option<String>, u64)> {
@@ -234,9 +244,12 @@ and the issue is open, the run opens a pull request.
 Options:
   --repo PATH           The repository checkout to read (default: this directory).
   --github OWNER/R      The GitHub repository of the issue (default: OpenAgentsInc/openagents).
-  --engine NAME         The agent each hand runs on: claude (default, four Claude
-                        Code sessions) or devin (four `devin acp` sessions on
-                        this computer's Devin login).
+  --engine NAME         The agent each hand runs on: claude (four Claude Code
+                        sessions), coder (four Coder-loop sessions on the
+                        OpenAgents gateway) or devin (four `devin acp` sessions
+                        on this computer's Devin login). Default: claude while
+                        the Claude Code plugin is on and signed in, otherwise
+                        coder.
   --rounds R            How many times the Tester may hand work back (default 2).
   --decisions DOOR      Which decision door judges the run: the gate before any
                         hand works, the briefing's file relevance and change
@@ -291,6 +304,10 @@ pub enum Engine {
     Claude,
     /// Four `devin acp` sessions on this computer's Devin login (#11373).
     Devin,
+    /// Four Coder-loop sessions on the OpenAgents gateway, held to the
+    /// run's worktree by the same fence and floors as any Coder chat
+    /// (#11518).
+    Coder,
 }
 
 impl Engine {
@@ -299,7 +316,30 @@ impl Engine {
         match self {
             Self::Claude => "claude",
             Self::Devin => "devin",
+            Self::Coder => "coder",
         }
+    }
+
+    /// The engine a run takes when none is named: Claude Code while its
+    /// plugin is on and this computer is signed in to it, otherwise the
+    /// Coder loop on the gateway (#11518).
+    #[must_use]
+    pub fn default_here() -> Self {
+        let plugin_on = crate::home::data_dir()
+            .is_none_or(|dir| crate::bundled_settings::saved_enabled(&dir, crate::claude::PLUGIN));
+        // Tests never ask this computer; they keep the long-standing default.
+        if cfg!(test) || (plugin_on && crate::claude::available()) {
+            Self::Claude
+        } else {
+            Self::Coder
+        }
+    }
+
+    /// Whether the hands read their checks and tools from the prompt (an
+    /// engine that can't host Coder's in-process `run_check`).
+    #[must_use]
+    pub const fn prompted(self) -> bool {
+        matches!(self, Self::Devin | Self::Coder)
     }
 }
 
@@ -355,7 +395,7 @@ impl Options {
         let mut rounds = 2;
         let mut json = false;
         let mut open_pr = true;
-        let mut engine = Engine::Claude;
+        let mut engine = Engine::default_here();
         let mut briefer_model: Option<String> = None;
         let mut tester_model: Option<String> = None;
         let mut small_coder = Some("sonnet".to_owned());
@@ -400,8 +440,11 @@ impl Options {
                     engine = match value("--engine")?.as_str() {
                         "claude" => Engine::Claude,
                         "devin" => Engine::Devin,
+                        "coder" => Engine::Coder,
                         other => {
-                            return Err(format!("--engine takes claude or devin, not {other}."));
+                            return Err(format!(
+                                "--engine takes claude, coder or devin, not {other}."
+                            ));
                         }
                     };
                 }
@@ -423,6 +466,13 @@ impl Options {
         let mut inner = issue_run::Options::parse(&inner_args)
             .map_err(|why| why.replace("coder issue-run", "coder solver"))?;
         inner.open_pr = open_pr;
+        inner.engine = engine;
+        // On the Coder engine every hand runs the gateway's own router; a
+        // model flag still fixes the hand it names.
+        if engine == Engine::Coder && small_coder.is_some() {
+            inner.model = crate::models::GATEWAY_AUTO.to_owned();
+            small_coder = Some(crate::models::GATEWAY_AUTO.to_owned());
+        }
         // On the Devin engine every hand's model defaults to the Devin
         // CLI's own; a model flag still fixes the hand it names.
         if engine == Engine::Devin && small_coder.is_some() {
@@ -433,6 +483,8 @@ impl Options {
             given.unwrap_or_else(|| {
                 if engine == Engine::Devin {
                     acp_client::devin::DEFAULT_MODEL.to_owned()
+                } else if engine == Engine::Coder {
+                    crate::models::GATEWAY_AUTO.to_owned()
                 } else {
                     "haiku".to_owned()
                 }
@@ -449,6 +501,20 @@ impl Options {
             gate,
             review,
         })
+    }
+}
+
+impl Options {
+    /// Moves the run to the Coder loop on the gateway (#11518): every hand
+    /// on the gateway's own router.
+    pub fn use_coder(&mut self) {
+        let auto = crate::models::GATEWAY_AUTO.to_owned();
+        self.engine = Engine::Coder;
+        self.inner.engine = Engine::Coder;
+        self.inner.model.clone_from(&auto);
+        self.small_coder = Some(auto.clone());
+        self.briefer_model.clone_from(&auto);
+        self.tester_model = auto;
     }
 }
 
@@ -504,29 +570,34 @@ pub fn start(options: Options) -> Feed {
         .ok()
         .and_then(|run| std::fs::File::create(run.folder.join("events.jsonl")).ok());
     let (feed, mut transcript) = issue_run::channel(log);
-    std::thread::spawn(move || {
-        if let Some(replay) = replay {
-            transcript.replay(&replay, speed);
-            return;
-        }
-        let run = match made {
-            Ok(run) => run,
-            Err(why) => {
-                transcript.notice(format!("The run could not start: {why}"));
+    // A Coder-loop hand's turn is deep; give the run room (#11518).
+    // Without a thread the closure, and the feed's sender with it, is
+    // dropped, so the feed ends as a stopped run's does.
+    let _ = std::thread::Builder::new()
+        .stack_size(issue_run::RUN_STACK)
+        .spawn(move || {
+            if let Some(replay) = replay {
+                transcript.replay(&replay, speed);
                 return;
             }
-        };
-        transcript.busy(true);
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
-            .build();
-        match runtime {
-            Ok(runtime) => runtime.block_on(drive(&options, &run, &mut transcript)),
-            Err(_) => transcript.notice("The run could not start its worker threads."),
-        }
-        transcript.busy(false);
-    });
+            let run = match made {
+                Ok(run) => run,
+                Err(why) => {
+                    transcript.notice(format!("The run could not start: {why}"));
+                    return;
+                }
+            };
+            transcript.busy(true);
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build();
+            match runtime {
+                Ok(runtime) => runtime.block_on(drive(&options, &run, &mut transcript)),
+                Err(_) => transcript.notice("The run could not start its worker threads."),
+            }
+            transcript.busy(false);
+        });
     feed
 }
 

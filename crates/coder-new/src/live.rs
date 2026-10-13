@@ -438,6 +438,10 @@ pub enum Work {
         messages: Vec<Message>,
         cwd: std::path::PathBuf,
         github: String,
+        /// Claude Code is on and signed in; otherwise the Intaker runs on
+        /// the Coder loop through the gateway, on `account` (#11518).
+        claude: bool,
+        account: Option<openagents_login::Saved>,
     },
     /// A summary of the older part of the chat (#11179), written by the
     /// chat's model without tools; nothing streams into the transcript.
@@ -1269,7 +1273,29 @@ fn run_with_provider(
                 // ([`Background::claude_request`]), never on a worker.
                 Work::Claude { .. } => Update::Finished { id, result: Err("The claude chat has no process to run in.".into()) },
                 Work::Codex { .. } => Update::Finished { id, result: Err("The Codex chat has no process to run in.".into()) },
-                Work::SolverIntake { messages, cwd, github } => {
+                Work::SolverIntake { messages, cwd, github, claude: false, account } => {
+                    let result = match account.as_ref().map(Provider::gateway) {
+                        None => Err("Solver's Intaker needs Claude Code or your OpenAgents sign-in: run coder login, or turn Claude Code on in /plugins.".to_owned()),
+                        Some(Err(why)) => Err(why),
+                        Some(Ok(provider)) => {
+                            let mut execution = crate::issue_run::agent::coder_settings(&cwd, false);
+                            if let Some(account) = &account {
+                                execution.redaction_keys.push(model_access::ApiKey::new(account.token()));
+                            }
+                            let prompt = crate::solver::intake_task_coder(&messages, &github);
+                            provider.chat_with_plugins(
+                                crate::models::GATEWAY_AUTO,
+                                &crate::models::GenerationOptions::default(),
+                                vec![Message { role: "user".into(), content: prompt }],
+                                &execution,
+                                &mut text_callback, &mut model_callback,
+                                &mut event_callback, &cancel,
+                            ).await
+                        }
+                    };
+                    Update::Finished { id, result }
+                }
+                Work::SolverIntake { messages, cwd, github, .. } => {
                     let prompt = crate::solver::intake_task(&messages, &github);
                     let mut events = |event: RuntimeEvent| match event {
                         RuntimeEvent::Text(text) => text_callback(&text),

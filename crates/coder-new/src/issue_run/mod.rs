@@ -182,6 +182,12 @@ pub struct Options {
     pub files: usize,
     /// Where the run's folders and its working copy live.
     pub state: PathBuf,
+    /// The agent the run's sessions run on: Claude Code, or the Coder loop
+    /// on the OpenAgents gateway, the default when the Claude Code plugin
+    /// is off (#11518).
+    pub engine: crate::solver::Engine,
+    /// The openagents.com sign-in the Coder loop's gateway turns use.
+    pub account: Option<openagents_login::Saved>,
 }
 
 pub const USAGE: &str = "Usage: coder issue-run N [OPTIONS]
@@ -200,7 +206,10 @@ Options:
                      with your TypeSafe key, then our decision API); or per point, as in
                      kind=jev,relevance=clef.
   --files K          Files in the briefing (default 6).
-  --model NAME       The agent's model (default claude-opus-5-5).
+  --engine NAME      claude (a Claude Code session) or coder (the Coder loop on the
+                     OpenAgents gateway). Default: claude while the Claude Code plugin
+                     is on and signed in, otherwise coder.
+  --model NAME       The agent's model (default claude-opus-5-5; openagents/auto on coder).
   --timeout SECS     How long the agent may work (default 1800).
   --open-pr          Commit, push a branch, and open a pull request (open issues only).
   --plain            Print the run as text instead of opening the terminal screen.
@@ -256,7 +265,12 @@ impl Options {
             timeout: Duration::from_secs(1800),
             files: 6,
             state: default_state(),
+            engine: crate::solver::Engine::default_here(),
+            account: crate::home::data_dir()
+                .as_deref()
+                .and_then(crate::connection_tools::signed_in),
         };
+        let mut model_given = false;
         let mut args = args.iter();
         while let Some(arg) = args.next() {
             let mut value = |name: &str| {
@@ -275,7 +289,19 @@ impl Options {
                         .map_err(|_| "--files takes a number.".to_owned())?
                         .clamp(1, 20);
                 }
-                "--model" => options.model = value("--model")?,
+                "--model" => {
+                    options.model = value("--model")?;
+                    model_given = true;
+                }
+                "--engine" => {
+                    options.engine = match value("--engine")?.as_str() {
+                        "claude" => crate::solver::Engine::Claude,
+                        "coder" => crate::solver::Engine::Coder,
+                        other => {
+                            return Err(format!("--engine takes claude or coder, not {other}."));
+                        }
+                    };
+                }
                 "--timeout" => {
                     options.timeout = Duration::from_secs(
                         value("--timeout")?
@@ -310,6 +336,9 @@ impl Options {
                 }
             }
         }
+        if options.engine == crate::solver::Engine::Coder && !model_given {
+            options.model = crate::models::GATEWAY_AUTO.into();
+        }
         match (issue, &options.replay) {
             (Some(issue), _) => options.issue = issue,
             (None, Some(_)) => {}
@@ -318,6 +347,10 @@ impl Options {
         Ok(options)
     }
 }
+
+/// The stack of a run's thread: a Coder-loop session's turn runs deep in a
+/// debug build, past a plain thread's 2 MiB (#11518).
+pub(crate) const RUN_STACK: usize = 32 * 1024 * 1024;
 
 /// `~/.openagents/coder/issue-runs`.
 fn default_state() -> PathBuf {
@@ -577,43 +610,48 @@ pub fn start(options: Options) -> Feed {
         events,
         cancel: cancel.clone(),
     };
-    std::thread::spawn(move || {
-        if let Some(replay) = options.replay.clone() {
-            play(&replay, options.speed, &sender, &cancel);
-            return;
-        }
-        let made = new_run(&options);
-        let log = made
-            .as_ref()
-            .ok()
-            .and_then(|run| std::fs::File::create(run.folder.join("events.jsonl")).ok());
-        let mut transcript = Transcript {
-            entries: Vec::new(),
-            sender,
-            log,
-            started: Instant::now(),
-            cancel,
-        };
-        let run = match made {
-            Ok(run) => run,
-            Err(why) => {
-                transcript.notice(format!("The run could not start: {why}"));
+    // A Coder-loop hand's turn is deep; give the run room (#11518).
+    // Without a thread the closure, and the feed's sender with it, is
+    // dropped, so the feed ends as a stopped run's does.
+    let _ = std::thread::Builder::new()
+        .stack_size(RUN_STACK)
+        .spawn(move || {
+            if let Some(replay) = options.replay.clone() {
+                play(&replay, options.speed, &sender, &cancel);
                 return;
             }
-        };
-        transcript.busy(true);
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
-            .build();
-        match runtime {
-            Ok(runtime) => {
-                runtime.block_on(drive(&options, &run, &mut transcript));
+            let made = new_run(&options);
+            let log = made
+                .as_ref()
+                .ok()
+                .and_then(|run| std::fs::File::create(run.folder.join("events.jsonl")).ok());
+            let mut transcript = Transcript {
+                entries: Vec::new(),
+                sender,
+                log,
+                started: Instant::now(),
+                cancel,
+            };
+            let run = match made {
+                Ok(run) => run,
+                Err(why) => {
+                    transcript.notice(format!("The run could not start: {why}"));
+                    return;
+                }
+            };
+            transcript.busy(true);
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build();
+            match runtime {
+                Ok(runtime) => {
+                    runtime.block_on(drive(&options, &run, &mut transcript));
+                }
+                Err(_) => transcript.notice("The run could not start its worker threads."),
             }
-            Err(_) => transcript.notice("The run could not start its worker threads."),
-        }
-        transcript.busy(false);
-    });
+            transcript.busy(false);
+        });
     feed
 }
 

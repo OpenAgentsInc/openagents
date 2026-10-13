@@ -273,3 +273,27 @@ fn a_run_that_never_set_up_reports_its_closing_line() {
     );
     assert!(Mapper::default().result().is_err());
 }
+
+#[test]
+fn with_claude_off_solver_is_offered_only_on_a_signed_in_gateway() {
+    // #11518: nothing for Solver to run on, no Solver tool.
+    let offered = |settings: &ExecutionSettings| {
+        settings
+            .defs()
+            .iter()
+            .any(|definition| definition["function"]["name"] == TOOL)
+    };
+    let mut settings = settings(true);
+    assert!(settings.claude && offered(&settings));
+    settings.claude = false;
+    settings.connections = None;
+    assert!(!runnable(&settings) && !offered(&settings));
+    settings.connections = Some(
+        serde_json::from_value(json!({
+            "origin": "http://fixture", "account": "acct", "label": "Fixture",
+            "expires_at": u64::MAX, "token": "fixture-solver-token",
+        }))
+        .unwrap(),
+    );
+    assert!(runnable(&settings) && offered(&settings));
+}

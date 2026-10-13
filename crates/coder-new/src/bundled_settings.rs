@@ -182,13 +182,15 @@ impl Preferences {
 }
 
 /// Whether built-in plugin `id` is on in the settings saved under `dir`,
-/// for a run that never loads the app's settings. Only Token savers is
-/// read this way (#11494); a missing or unreadable file means on.
+/// for a run that never loads the app's settings. Only Token savers
+/// and Claude Code are read this way (#11494, #11518); a missing or
+/// unreadable file means on.
 #[must_use]
 pub fn saved_enabled(dir: &std::path::Path, id: &str) -> bool {
     let saved = Store::under(dir).read_extra::<Preferences>(FILE);
     match (id, saved) {
         (crate::token_savers::PLUGIN, Ok(Some(value))) => value.token_savers,
+        (crate::claude::PLUGIN, Ok(Some(value))) => value.claude,
         _ => true,
     }
 }
