@@ -781,6 +781,7 @@ pub fn report(graph: &Graph, summary: &Summary) -> String {
             .lines()
             .next()
             .unwrap_or_default()
+            .trim_end_matches(['.', ':'])
             .to_owned();
         let who = part
             .report
