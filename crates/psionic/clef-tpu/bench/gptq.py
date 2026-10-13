@@ -46,18 +46,33 @@ def _out_err(W, Q, s, H):
     return jnp.sum(jnp.dot(H, E, precision=jax.lax.Precision.HIGHEST) * E)
 
 
-def gptq(W, H, block=128, damp=0.01):
-    """W [K, N] f32 (input rows), H [K, K]. Returns (q int8 [K, N], scale [N])."""
-    K, N = W.shape
-    scale = jnp.maximum(jnp.max(jnp.abs(W), 0), 1e-12) / 127.0
-    d = jnp.diag(H)
-    dead = d == 0
+@jax.jit
+def inv_factor(H, damp=0.01):
+    """Upper U with (H + damp mean(diag H) I)^-1 = U^T U (dead inputs get H_jj = 1)."""
+    K = H.shape[0]
+    dead = jnp.diag(H) == 0
     H = jnp.where(jnp.diag(dead), 1.0, H)
-    W = jnp.where(dead[:, None], 0.0, W)
     H = H + damp * jnp.mean(jnp.diag(H)) * jnp.eye(K, dtype=H.dtype)
     L = jnp.linalg.cholesky(H)
     Hinv = jax.scipy.linalg.cho_solve((L, True), jnp.eye(K, dtype=H.dtype))
-    U = jnp.linalg.cholesky(Hinv).T                     # upper: H^-1 = U^T U
+    return jnp.linalg.cholesky(Hinv).T
+
+
+def _inv_factor_host(H, damp=0.01):
+    H = H.astype(np.float64)
+    d = np.diag(H).copy()
+    dead = d == 0
+    H[dead, dead] = 1.0
+    H += damp * np.mean(np.diag(H)) * np.eye(H.shape[0])
+    Hinv = np.linalg.inv(H)
+    Hinv = (Hinv + Hinv.T) / 2
+    return np.linalg.cholesky(Hinv).T
+
+
+def gptq(W, U, block=128):
+    """W [K, N] f32 (input rows), U from `inv_factor`. Returns (q int8 [K, N], scale [N])."""
+    K, N = W.shape
+    scale = jnp.maximum(jnp.max(jnp.abs(W), 0), 1e-12) / 127.0
     hp = jax.lax.Precision.HIGHEST
 
     def blk(b, carry):
@@ -102,7 +117,8 @@ def main():
     stats = dict(np.load(a.calib)) if a.calib else {}
     r = Runner(a.model)
     cfg = r.cfg
-    recs = calibration_records(Path(a.fixtures))[:a.records]
+    # records up to 2048 tokens: one K/V cache bucket, so two compiled chunk programs
+    recs = [x for x in calibration_records(Path(a.fixtures)) if len(x["input_ids"]) <= 2048][:a.records]
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     names = [n for n in M.os.environ.get("CLEF_TPU_INT8", "gate_up,down,in_qkv,in_z,qkv,o,out").split(",") if n]
@@ -145,7 +161,13 @@ def main():
                     smd = jnp.asarray(sm)
                     Hn = Hn / (smd[:, None] * smd[None, :])
                     arrs[f"{nm}.inv"] = (1.0 / sm).astype(np.float32)
-                q, s = gptq(W, Hn)
+                # output channels are independent in GPTQ: slice them to bound device memory
+                # (on the host for the 12288-wide down input: XLA's Cholesky there needs ~33 GB)
+                U = inv_factor(Hn) if Hn.shape[0] <= 8192 else jnp.asarray(_inv_factor_host(np.asarray(Hn)), jnp.float32)
+                qs = [gptq(W[:, n0:n0 + 2048], U) for n0 in range(0, W.shape[1], 2048)]
+                del U
+                q = jnp.concatenate([x[0] for x in qs], 1)
+                s = jnp.concatenate([x[1] for x in qs], 0)
                 rtn = jnp.clip(jnp.round(W / s), -127, 127)
                 x_err = lambda Q: float(_out_err(W, Q, s, Hn))
                 report[f"{i}.{nm}"] = {"gptq": x_err(q.astype(jnp.float32)), "rtn": x_err(rtn)}

@@ -52,6 +52,9 @@ def main():
     t = time.time()
     runner.warm_head()
     print(f"head warm in {time.time() - t:.0f} s", file=sys.stderr, flush=True)
+    t = time.time()
+    runner.warm_prefill()
+    print(f"prefill warm in {time.time() - t:.0f} s", file=sys.stderr, flush=True)
     for n in [int(x) for x in a.warm.split(",") if x]:
         for nq, no in ((1, 2), (9, 40)):
             qs = [{"type": 0, "question_span": [0, 1], "option_spans": [[1, 2]] * (no // nq)} for _ in range(nq)]

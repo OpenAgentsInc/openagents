@@ -37,6 +37,19 @@ def main():
                           **{k + "_ms": round(v * 1e3, 1) for k, v in times.items()},
                           "speedup": round(times["whole"] / times["hit"], 2)}), flush=True)
 
+    # fresh prompts with a new prefix length each time (live traffic): every
+    # miss must run at prefill speed, with no compile for the new length
+    for base_T, base_P in ((1100, 800), (4096, 3500)):
+        fresh = []
+        for j in range(6):
+            T, P = base_T + 3 * j, base_P + 7 * j
+            ids = rng.integers(1000, 200000, T).tolist()
+            q = [{"type": 0, "question_span": [P - 50, P - 10], "option_spans": [[T - 4, T - 3], [T - 3, T - 2]]}]
+            t = time.perf_counter()
+            r.logits(ids, q, prefix_tokens=P)
+            fresh.append(round((time.perf_counter() - t) * 1e3, 1))
+        print(json.dumps({"fresh_misses_ms": fresh, "tokens_from": base_T, "prefix_from": base_P}), flush=True)
+
 
 if __name__ == "__main__":
     main()

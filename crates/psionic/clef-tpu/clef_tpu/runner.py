@@ -9,6 +9,7 @@ Rust door; this worker only runs the model.
 from __future__ import annotations
 
 import collections
+import functools
 import hashlib
 import math
 import time
@@ -24,6 +25,14 @@ from . import model as M
 @jax.jit
 def _gather(table, ids):
     return table[ids].astype(jnp.float32)
+
+
+@functools.partial(jax.jit, static_argnames=("Tb",))
+def _assemble(prefix_rows, rest, P, Tb):
+    """Rows [Tb, d]: the prefix's rows, then the rest's rows from position P on."""
+    H = jnp.zeros((Tb, prefix_rows.shape[1]), prefix_rows.dtype)
+    H = jax.lax.dynamic_update_slice(H, prefix_rows, (0, 0))
+    return jax.lax.dynamic_update_slice(H, rest, (P, 0))
 
 
 def _bucket(n, least):
@@ -76,16 +85,41 @@ class Runner:
         pad = lambda c: -(-T // c) * c - T
         return 768 if pad(768) <= pad(512) else 512
 
+    # sizes a segment's last chunk may take (with the fused delta rule any
+    # multiple of 64 works; a short ladder keeps the compiled programs few)
+    TAIL_CHUNKS = (128, 256, 512, 768)
+
+    @classmethod
+    def plan(cls, n, C):
+        """Chunk sizes covering n tokens: full chunks of C, then the smallest
+        ladder size that holds the rest (a 300-token tail costs 384, not C)."""
+        sizes = [C] * (n // C)
+        rest = n - C * len(sizes)
+        if rest:
+            sizes.append(next((t for t in cls.TAIL_CHUNKS if rest <= t <= C), C))
+        return sizes
+
     def _segment(self, state, ids_dev, start, end, C):
-        """Prefills positions start..end (end exclusive) in chunks of C from
-        `state`; returns (state, rows [ceil((end-start)/C)*C, d])."""
+        """Prefills positions start..end (end exclusive) from `state` in the
+        chunks of `plan`; returns (state, rows [sum of the chunks, d])."""
         rows = []
-        for c0 in range(start, end, C):
-            x = _gather(self.embed_dev, jax.lax.dynamic_slice_in_dim(ids_dev, c0, C))
+        c0 = start
+        for size in self.plan(end - start, C):
+            x = _gather(self.embed_dev, jax.lax.dynamic_slice_in_dim(ids_dev, c0, size))
             state, h = M.prefill_chunk(self.cfg, self.params, state, x, jnp.int32(c0), jnp.int32(end),
                                        precision=self.precision, scan=self.scan)
             rows.append(h)
+            c0 += size
         return state, (jnp.concatenate(rows, 0) if len(rows) > 1 else rows[0])
+
+    def warm_prefill(self):
+        """Compiles one chunk of every size the plans use at every cache bucket."""
+        for cache in self.cache_buckets:
+            for size in sorted(set(self.TAIL_CHUNKS) | {512, 768}):
+                x = jnp.zeros((size, self.cfg.hidden), jnp.float32)
+                _, h = M.prefill_chunk(self.cfg, self.params, M.init_state(self.cfg, cache), x, jnp.int32(0),
+                                       jnp.int32(1), precision=self.precision, scan=self.scan)
+                jax.block_until_ready(h)
 
     def hidden_rows(self, ids, chunk=None, prefix_tokens=0):
         """Final-normed backbone rows [T_pad, d] (device); rows past len(ids)
@@ -96,11 +130,13 @@ class Runner:
         T = len(ids)
         C = chunk or self.chunk or self.auto_chunk(T)
         P = prefix_tokens if self.prefix_budget and 512 <= prefix_tokens < T else 0
-        n_rest = -(-(T - P) // C)
-        Tp = P + n_rest * C
-        need = max(Tp, -(-P // C) * C)
+        Pc = sum(self.plan(P, C))
+        Tp = P + sum(self.plan(T - P, C)) if P else sum(self.plan(T, C))
+        need = max(Tp, Pc)
         cache = next((b for b in self.cache_buckets if b >= need), -(-need // 2048) * 2048)
-        ids_p = np.zeros(need + C, np.int64)
+        # every array shape below depends on (C, cache bucket, chunk counts),
+        # never on T or P themselves: a fresh prefix length must not compile
+        ids_p = np.zeros(cache + C, np.int64)
         ids_p[:T] = ids
         ids_dev = jnp.asarray(ids_p, jnp.int32)
         if not P:
@@ -121,9 +157,10 @@ class Runner:
                 state.append(st)
             restored = P
         else:
-            state, rows = self._segment(M.init_state(self.cfg, cache), ids_dev, 0, P, C)
-            prefix_rows = rows[:P]
-            snap = [{n: (v[:P] if "k" in st else jnp.array(v, copy=True)) for n, v in st.items()} for st in state]
+            # rows and K/V up to the chunk boundary Pc; the rows past P are pads
+            # (zero) and the K/V past P are overwritten by the rest of the prompt
+            state, prefix_rows = self._segment(M.init_state(self.cfg, cache), ids_dev, 0, P, C)
+            snap = [{n: (v[:Pc] if "k" in st else jnp.array(v, copy=True)) for n, v in st.items()} for st in state]
             size = sum(int(np.prod(v.shape)) * v.dtype.itemsize for st in snap for v in st.values())
             size += int(np.prod(prefix_rows.shape)) * 4
             self._prefixes[key] = (snap, prefix_rows)
@@ -133,7 +170,8 @@ class Runner:
                 self._prefix_bytes.pop(old, None)
             restored = 0
         _, rest = self._segment(state, ids_dev, P, T, C)
-        return jnp.concatenate([prefix_rows, rest], 0), restored
+        Tb = _bucket(P + rest.shape[0], self.HEAD_MIN_TOKENS)
+        return _assemble(prefix_rows, rest, jnp.int32(P), Tb), restored
 
     # (questions, options) buckets the head compiles for, and its token
     # buckets (powers of two from 2048): 4 x 4 programs, all warmed at start

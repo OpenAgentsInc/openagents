@@ -245,7 +245,9 @@ def rms(x, w, eps):
     return x * jax.lax.rsqrt(jnp.mean(x * x, -1, keepdims=True) + eps) * (1.0 + w)
 
 
-MM_BARRIER = os.environ.get("CLEF_TPU_MM_BARRIER", "0") == "1"
+# 1: materialize each matmul's bf16 input; 2: and its f32 output (no fusion
+# across the matmul at all)
+MM_BARRIER = int(os.environ.get("CLEF_TPU_MM_BARRIER", "0"))
 # int8 error diagnostics (CLEF_TPU_INT8_DIAG): "w8a16" quantizes only the
 # weights, "a8w16" only the activations
 INT8_DIAG = os.environ.get("CLEF_TPU_INT8_DIAG", "")
@@ -281,7 +283,8 @@ def mm(x, w, precision, tap=None, name=None):
         # materialize the bf16 operand: XLA otherwise fuses the norm (or the
         # gating) producing it into the matmul, which recomputes it per tile
         xb = jax.lax.optimization_barrier(xb)
-    return jnp.dot(xb, w, preferred_element_type=jnp.float32)
+    y = jnp.dot(xb, w, preferred_element_type=jnp.float32)
+    return jax.lax.optimization_barrier(y) if MM_BARRIER >= 2 else y
 
 
 def rope_tables(cfg: Config, positions):
@@ -370,22 +373,40 @@ ATTN_TWO_PASS = os.environ.get("CLEF_TPU_ATTN_TWO_PASS", "0") == "1"
 KEY_BLOCK = int(__import__("os").environ.get("CLEF_TPU_KEY_BLOCK", "2048"))
 
 
+# queries per attention block (CLEF_TPU_ATTN_QBLOCK, 0 = the whole chunk): a
+# fixed query block makes every row's arithmetic the same whatever the chunk
+ATTN_QBLOCK = int(os.environ.get("CLEF_TPU_ATTN_QBLOCK", "0"))
+
+
 def causal_attention(qh, kc, vc, pos0, precision):
+    C = qh.shape[0]
+    if ATTN_QBLOCK and C > ATTN_QBLOCK and C % ATTN_QBLOCK == 0:
+        nb = C // ATTN_QBLOCK
+        qb = qh.reshape((nb, ATTN_QBLOCK) + qh.shape[1:])
+        # the key range follows the whole chunk (fixed per call), so blocks share it
+        f = lambda q, p: _causal_attention(q, kc, vc, p, precision, n_keys=pos0 + C)
+        o = jax.vmap(f)(qb, pos0 + ATTN_QBLOCK * jnp.arange(nb))
+        return o.reshape(qh.shape)
+    return _causal_attention(qh, kc, vc, pos0, precision)
+
+
+def _causal_attention(qh, kc, vc, pos0, precision, n_keys=None):
     """Queries at pos0..pos0+C against the cache's keys 0..pos0+C, in key
     blocks of KEY_BLOCK with an online softmax: the cost follows the real prefix,
     not the cache bucket. qh [C, Hkv, rep, D]; returns [C, Hkv, rep, D] f32."""
     C, Hkv, rep, D = qh.shape
     scale = 1.0 / math.sqrt(D)
     qpos = pos0 + jnp.arange(C)
+    bar = (lambda v: jax.lax.optimization_barrier(v)) if MM_BARRIER >= 2 else (lambda v: v)
     if precision == "f32":
         qx = qh * scale
-        dot = lambda a, b, eq: jnp.einsum(eq, a, b.astype(jnp.float32), precision=jax.lax.Precision.HIGHEST)
+        dot = lambda a, b, eq: bar(jnp.einsum(eq, a, b.astype(jnp.float32), precision=jax.lax.Precision.HIGHEST))
     else:
-        qx = (qh * scale).astype(jnp.bfloat16)
-        dot = lambda a, b, eq: jnp.einsum(eq, a.astype(jnp.bfloat16), b.astype(jnp.bfloat16),
-                                          preferred_element_type=jnp.float32)
+        qx = bar((qh * scale).astype(jnp.bfloat16))
+        dot = lambda a, b, eq: bar(jnp.einsum(eq, bar(a.astype(jnp.bfloat16)), b.astype(jnp.bfloat16),
+                                              preferred_element_type=jnp.float32))
     KB = min(KEY_BLOCK, kc.shape[0]) if kc.shape[0] % KEY_BLOCK == 0 else C
-    n_blocks = (pos0 + C + KB - 1) // KB
+    n_blocks = ((pos0 + C if n_keys is None else n_keys) + KB - 1) // KB
 
     def body(j, carry):
         m, l, acc = carry

@@ -311,8 +311,14 @@ def _prep(q_ref, k_ref, v_ref, g_ref, b_ref, x_ref, *, C, rep, dk, prec):
             k * jnp.exp(gl - gcol), jnp.exp(gl))
 
 
+# precision of the three state matmuls (CLEF_TPU_FUSED_STATE_PRECISION; default FUSED_PREC)
+STATE_PREC = getattr(jax.lax.Precision, os.environ.get("CLEF_TPU_FUSED_STATE_PRECISION", "")
+                     or os.environ.get("CLEF_TPU_FUSED_PRECISION", "HIGHEST"))
+
+
 def _scan(S, u, w, qe, Aq, kt, dl, *, C, prec):
     """One sub-chunk against the state: (o, new state)."""
+    prec = STATE_PREC
     WQ = _bdot(jnp.concatenate([w, qe], 1), S, 2, 1, prec)          # [Hv, 2C, dv]
     vn = u - WQ[:, :C]
     o = WQ[:, C:] + _bdot(Aq, vn, 2, 1, prec)
