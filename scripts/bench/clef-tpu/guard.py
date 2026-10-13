@@ -16,7 +16,7 @@ def vms():
     res = []
     for v in json.loads(out or "[]"):
         name = v["name"].split("/")[-1]; zone = v["name"].split("/")[3]; t = v["acceleratorType"].split("/")[-1]
-        if v.get("state") not in ("READY", "CREATING"): continue
+        if v.get("state") != "READY": continue  # CREATING attempts often fail; count only billing VMs
         n = int(t.split("-")[-1]); chips = n // 2 if t.startswith("v5p") else n
         spot = bool((v.get("schedulingConfig") or {}).get("spot") or (v.get("schedulingConfig") or {}).get("preemptible"))
         fam = FAM[t.split("-")[0]]

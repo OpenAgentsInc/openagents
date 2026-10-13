@@ -1,8 +1,13 @@
 # Clef/Qwen3.5 text backbone only: skip the vision tower (its 1152-wide layers break SGL-JAX's
-# quantized shard_map at TP 1). Per-channel int8 weights; activations: null (dynamic per token).
+# quantized shard_map at TP 1). Per-channel int8 weights; activations: none (weight-only).
 quantization:
   linear:
     rules:
       - module_path: '^(?!visual).*'
         weight_dtype: 'int8'
         activation_dtype: null
+
+  # required by the loader; Clef has no MoE layers
+  moe:
+    weight_dtype: 'int8'
+    activation_dtype: null

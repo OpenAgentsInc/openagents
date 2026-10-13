@@ -6,3 +6,8 @@ quantization:
       - module_path: '^(?!visual).*'
         weight_dtype: 'int8'
         activation_dtype: 'int8'
+
+  # required by the loader; Clef has no MoE layers
+  moe:
+    weight_dtype: 'int8'
+    activation_dtype: 'int8'

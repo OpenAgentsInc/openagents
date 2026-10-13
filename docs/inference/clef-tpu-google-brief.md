@@ -57,14 +57,17 @@ Spot and on-demand TPU capacity, not quota and not software, limited this
 campaign. Between 23:20 on 2026-10-12 and 01:30 UTC on 2026-10-13 (EIDs in
 [clef-tpu-data.md](clef-tpu-data.md), "Capacity log"):
 
-- **v6e, on demand:** "User does not have permission to submit requests for
-  accelerator type v6e-1" in **us-central1-b** (EID 0xf986782ffb08c245)
-  and **us-east1-d** (0x454746e6c3bafdd2). Yet *spot* v6e did run in both
-  zones for us (a v6e-1 in us-central1-b, a v6e-8 in us-east1-d), so the
-  on-demand block is an access setting on our project, not missing
-  hardware. "No more capacity" in us-east5-a/b
-  and europe-west4-a; "Insufficient capacity" in us-south1-a. The only
-  on-demand v6e we got was in **asia-northeast1-b** (Tokyo).
+- **v6e, on demand:** at 01:30 UTC we asked for v6e-4 on demand in nine
+  zones (us-central1-a/c, us-south1-a/c, us-east5-a/b, us-west1-c,
+  asia-northeast1-b, asia-southeast1-b): **all nine failed** ("Insufficient
+  capacity" / "no more capacity", e.g. us-central1-a EID 0x4795f544a937c738).
+  v6e-1 on demand in ten zones: only **Tokyo** (asia-northeast1-b) worked,
+  at $3.24/chip-h. In **us-central1-b** and **us-east1-d** on-demand v6e is
+  refused outright: "User does not have permission to submit requests for
+  accelerator type v6e-1" (EIDs 0xf986782ffb08c245, 0x454746e6c3bafdd2).
+  Yet *spot* v6e did run in both zones for us (a v6e-1 in us-central1-b, a
+  v6e-8 in us-east1-d), so the on-demand block is an access setting on our
+  project, not missing hardware.
 - **v6e, spot:** 56 create attempts (v6e-1, -4, -8) across 17 zones on four
   continents. Two succeeded, both v6e-1 (us-central1-b and europe-west4-a).
   Every v6e-4 and v6e-8 attempt failed with "no more capacity" or
