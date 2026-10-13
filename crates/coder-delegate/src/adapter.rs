@@ -725,7 +725,7 @@ pub mod standin {
     /// `resume`, or `briefing` by what the message says.
     /// `STANDIN_DELAY` sleeps between a turn's events; `STANDIN_HANG`
     /// names a marker a background child writes after two seconds while
-    /// the turn hangs.
+    /// the turn hangs, after saying `hanging`.
     pub const CLAUDE: &str = r#"#!/bin/sh
 id=""; json_in=0
 while [ $# -gt 0 ]; do
@@ -741,6 +741,7 @@ turn() {
   echo "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"$id\",\"model\":\"stand-in\",\"claude_code_version\":\"stand-in\"}"
   sleep "${STANDIN_DELAY:-0}"
   if [ -n "$STANDIN_HANG" ] && [ "$1" = briefing ]; then
+    echo "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_hang\",\"content\":[{\"type\":\"text\",\"text\":\"hanging\"}],\"usage\":{\"input_tokens\":1}}}"
     (sleep 2; printf harmless > "$STANDIN_HANG") &
     wait
   fi
@@ -779,6 +780,7 @@ if [ -n "$STANDIN_OFFLINE" ]; then
 fi
 sleep "${STANDIN_DELAY:-0}"
 if [ -n "$STANDIN_HANG" ] && [ "$what" = briefing ]; then
+  echo '{"type":"item.completed","item":{"id":"i0","type":"agent_message","text":"hanging"}}'
   (sleep 2; printf harmless > "$STANDIN_HANG") &
   wait
 fi
@@ -810,6 +812,7 @@ input=$(cat)
 case "$input" in *resume*) what=resume ;; *) what=briefing ;; esac
 sleep "${STANDIN_DELAY:-0}"
 if [ -n "$STANDIN_HANG" ] && [ "$what" = briefing ]; then
+  line text '{"type":"text","text":"hanging","time":{"start":1,"end":2}}'
   (sleep 2; printf harmless > "$STANDIN_HANG") &
   wait
 fi
@@ -1094,12 +1097,14 @@ mod tests {
             let marker = dir.join("marker");
             let marker_text = marker.to_string_lossy().into_owned();
             let cli = cli(agent, &dir, &[("STANDIN_HANG", &marker_text)]);
-            // OpenCode names its session only in its stream, so the stop
-            // waits long enough for a loaded machine's first line, still
-            // well before the hang's marker at two seconds.
-            let stop_ms = if agent == Agent::OpenCode { 1_200 } else { 400 };
+            // Codex and OpenCode name their session only in their stream,
+            // so a stop on the clock can land before a loaded machine's
+            // first line and leave nothing to resume. The stop waits for
+            // the stand-in's word that it hangs, which follows its ID.
             let controls = Controls {
-                stop_when: Some(Trigger::After { ms: stop_ms }),
+                stop_when: Some(Trigger::Claim {
+                    contains: "hanging".to_string(),
+                }),
                 resume: Some("Please resume and finish.".to_string()),
                 ..controls()
             };
