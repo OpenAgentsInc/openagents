@@ -148,6 +148,7 @@ impl App {
                     crate::Draft {
                         cursor: text.len(),
                         text,
+                        ..Default::default()
                     },
                 );
                 let composer = std::mem::take(&mut self.composer);

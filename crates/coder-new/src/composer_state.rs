@@ -159,6 +159,51 @@ mod tests {
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
     #[test]
+    fn a_large_paste_is_one_chip_that_sends_every_line() {
+        let mut app = crate::App::default();
+        app.set_mode(crate::Mode::Live);
+        app.handle(Event::Key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::NONE,
+        )));
+        let pasted = "one\ntwo\nthree\nfour\nfive";
+        app.handle(Event::Paste(pasted.into()));
+        app.handle(Event::Key(KeyEvent::new(
+            KeyCode::Char('b'),
+            KeyModifiers::NONE,
+        )));
+        // The text keeps the whole paste; the composer draws one chip.
+        assert_eq!(app.draft.text, format!("a{pasted}b"));
+        let (rows, _) = app.draft.wrapped(80);
+        assert_eq!(rows, ["a[Pasted: 5 lines]b"]);
+        // The cursor steps over the chip as one piece.
+        app.handle(Event::Key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE)));
+        app.handle(Event::Key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE)));
+        assert_eq!(app.draft.cursor, 1);
+        // Backspace after it removes it whole.
+        app.handle(Event::Key(KeyEvent::new(
+            KeyCode::Right,
+            KeyModifiers::NONE,
+        )));
+        app.handle(Event::Key(KeyEvent::new(
+            KeyCode::Backspace,
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(app.draft.text, "ab");
+        assert!(app.draft.chips().is_empty());
+        // A short paste stays text; a long single line chips by size.
+        app.handle(Event::Paste("two\nlines".into()));
+        assert!(app.draft.chips().is_empty());
+        app.handle(Event::Paste("x".repeat(12_345)));
+        assert_eq!(app.draft.chips()[0].label(), "[Pasted: 12 KB]");
+        // A draft replaced from outside drops the stale chip.
+        app.draft.text = "fresh".into();
+        app.draft.cursor = 5;
+        assert!(app.draft.chips().is_empty());
+        assert_eq!(app.draft.wrapped(80).0, ["fresh"]);
+    }
+
+    #[test]
     fn a_dropped_screenshot_attaches_and_goes_out_as_a_saved_note_line() {
         let dir = tempfile::tempdir().unwrap();
         let cwd = dir.path().canonicalize().unwrap();
@@ -174,9 +219,10 @@ mod tests {
         )));
         assert_eq!(app.composer.images.len(), 1);
         assert!(app.draft.text.is_empty());
-        assert!(
-            crate::attachments::chip_for(&app.composer.images[0].source, 1)
-                .starts_with("Image #1 shot.png")
+        // The chip names the image by number, never by its path.
+        assert_eq!(
+            crate::attachments::chip_for(&app.composer.images[0].source, 1),
+            "[Image #1]"
         );
         app.draft.insert("what's wrong here");
         assert_eq!(app.attach_to_prompt().unwrap(), 1);

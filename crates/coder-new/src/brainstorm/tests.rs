@@ -312,6 +312,7 @@ fn settings_migrate_private_atomic_storage_and_keep_demo_separate() {
     app.plugins.bundled.brainstorm.draft = crate::Draft {
         text: ORIGIN.into(),
         cursor: ORIGIN.len(),
+        ..Default::default()
     };
     assert!(app.plugins.bundled.save_brainstorm());
     let mut restored = App::default();
@@ -353,6 +354,7 @@ fn settings_migrate_private_atomic_storage_and_keep_demo_separate() {
     restored.plugins.bundled.brainstorm.draft = crate::Draft {
         text: "https://demo.invalid".into(),
         cursor: 20,
+        ..Default::default()
     };
     assert!(restored.plugins.bundled.save_brainstorm());
     assert_eq!(
@@ -398,6 +400,7 @@ fn opening_enabling_saving_and_disabling_never_dispatch_a_read() {
     app.plugins.bundled.brainstorm.draft = crate::Draft {
         text: "http://example.invalid".into(),
         cursor: 22,
+        ..Default::default()
     };
     assert!(!app.plugins.bundled.save_brainstorm());
     assert_eq!(app.plugins.bundled.brainstorm.preferences.origin, ORIGIN);

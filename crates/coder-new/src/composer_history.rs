@@ -241,6 +241,7 @@ impl App {
         self.draft = Draft {
             cursor: text.len(),
             text,
+            ..Default::default()
         };
         if let Some(entry) = self
             .composer_history
@@ -329,6 +330,7 @@ impl App {
                 self.draft = Draft {
                     text: entry.text.clone(),
                     cursor: if h.recall_up { 0 } else { entry.text.len() },
+                    ..Default::default()
                 };
             }
         }
@@ -439,6 +441,7 @@ impl App {
                 self.draft = Draft {
                     text: text.clone(),
                     cursor: 0,
+                    ..Default::default()
                 };
                 h.index = Some(next);
                 h.applied = Some((next, entry.id.clone(), true));
@@ -462,6 +465,7 @@ impl App {
                 self.draft = Draft {
                     cursor: text.len(),
                     text,
+                    ..Default::default()
                 };
                 h.index = Some(index - 1);
                 h.applied = Some((index - 1, entry.id, false));
@@ -494,6 +498,10 @@ impl Draft {
             .map(|(i, _)| i)
             .chain(std::iter::once(self.text.len()))
         {
+            // The cursor never rests inside a paste chip.
+            if self.chip_around(offset).is_some() {
+                continue;
+            }
             self.cursor = offset;
             let (_, (col, r)) = self.wrapped(width);
             if r == target {
@@ -537,6 +545,7 @@ mod tests {
         app.draft = Draft {
             text: text.into(),
             cursor: text.len(),
+            ..Default::default()
         };
         app.record_prompt();
         app.draft = Draft::default();
@@ -549,6 +558,7 @@ mod tests {
         a.draft = Draft {
             text: "draft".into(),
             cursor: 2,
+            ..Default::default()
         };
         a.composer_arrow(true);
         assert_eq!((a.draft.text.as_str(), a.draft.cursor), ("second", 0));
@@ -570,6 +580,7 @@ mod tests {
         a.draft = Draft {
             text: "one\ntwo".into(),
             cursor: 6,
+            ..Default::default()
         };
         a.composer_arrow(true);
         assert_eq!(a.draft.text, "one\ntwo");
@@ -587,6 +598,7 @@ mod tests {
         let mut d = Draft {
             text: "日本語\n🦀abc".into(),
             cursor: 0,
+            ..Default::default()
         };
         assert!(d.vertical(4, false));
         assert!(d.text.is_char_boundary(d.cursor));
@@ -600,6 +612,7 @@ mod tests {
         a.draft = Draft {
             text: "  ".into(),
             cursor: 0,
+            ..Default::default()
         };
         a.composer_arrow(true);
         a.composer_arrow(false);
@@ -651,6 +664,7 @@ mod tests {
         a.draft = Draft {
             text: "unsent".into(),
             cursor: 6,
+            ..Default::default()
         };
         let escape = || {
             crossterm::event::Event::Key(crossterm::event::KeyEvent::new(
@@ -674,6 +688,7 @@ mod tests {
         a.draft = Draft {
             text: "/".into(),
             cursor: 1,
+            ..Default::default()
         };
         let key = |code| {
             crossterm::event::Event::Key(crossterm::event::KeyEvent::new(
@@ -699,6 +714,7 @@ mod tests {
         a.draft = Draft {
             text: "draft".into(),
             cursor: 0,
+            ..Default::default()
         };
         a.composer_arrow(true);
         a.composer_arrow(false);

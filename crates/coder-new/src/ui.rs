@@ -816,9 +816,37 @@ fn prompt(text: &str, width: u16) -> Vec<Line<'static>> {
 
 /// [`prompt`] with what a copy takes from each row: the text, not the
 /// `❯` or the band's padding.
+/// Rows a message the person sent shows in the compact view; the rest
+/// waits behind ` …` until Ctrl+O, as Grok Build collapses a sent prompt.
+const PROMPT_COLLAPSED_ROWS: usize = 3;
+
 fn prompt_rows(text: &str, width: u16) -> (Vec<Line<'static>>, Vec<RowCopy>) {
-    let (mut rows, copy) = message_rows(text, width.saturating_sub(2));
+    prompt_rows_limited(text, width, None)
+}
+
+/// [`prompt_rows`] with attachment notes drawn as `[Image #1]` and, given
+/// `max_rows`, the message cut to that many rows ending in ` …`.
+fn prompt_rows_limited(
+    text: &str,
+    width: u16,
+    max_rows: Option<usize>,
+) -> (Vec<Line<'static>>, Vec<RowCopy>) {
+    let text = crate::attachments::shown(text);
+    let (mut rows, copy) = message_rows(&text, width.saturating_sub(2));
     let mut copy: Vec<RowCopy> = copy.into_iter().map(|row| row.shifted(2)).collect();
+    if let Some(max) = max_rows
+        && rows.len() > max
+    {
+        // Wrap two cells narrower so the ` …` fits on the last row kept.
+        let (narrow, narrow_copy) = message_rows(&text, width.saturating_sub(4));
+        rows = narrow;
+        copy = narrow_copy.into_iter().map(|row| row.shifted(2)).collect();
+        rows.truncate(max);
+        copy.truncate(max);
+        if let Some(last) = rows.last_mut() {
+            last.spans.push(span(" …", t::TEXT_SECONDARY));
+        }
+    }
     if rows.is_empty() {
         rows.push(Line::default());
         copy.push(RowCopy::lead(2));
@@ -1213,7 +1241,12 @@ fn entry_rows(
     }
     match entry {
         crate::live::Entry::User(text) => {
-            exact(&mut lines, &mut copy, prompt_rows(text, width));
+            let max_rows = (view == ViewMode::Compact).then_some(PROMPT_COLLAPSED_ROWS);
+            exact(
+                &mut lines,
+                &mut copy,
+                prompt_rows_limited(text, width, max_rows),
+            );
         }
         // The reply's model and time stay in the entry (exports read them);
         // the transcript shows neither.
@@ -2697,6 +2730,33 @@ mod export_notice_tests {
         assert!(text.contains("Update ready"), "{text}");
         // The account's name never shows.
         assert!(!text.contains("Christopher"), "{text}");
+    }
+
+    #[test]
+    fn a_sent_message_shows_image_chips_and_collapses_in_the_compact_view() {
+        let entry = crate::live::Entry::User(format!(
+            "{} last\n\n[Image #1: /Users/me/.openagents/coder/attachments/ab.png]",
+            "word ".repeat(60)
+        ));
+        let text = |view| {
+            entry_rows(&entry, 60, 0, view)
+                .0
+                .iter()
+                .map(|line| line.to_string())
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let compact = text(ViewMode::Compact);
+        assert_eq!(
+            compact.lines().filter(|row| !row.trim().is_empty()).count(),
+            3,
+            "{compact}"
+        );
+        assert!(compact.contains(" …"), "{compact}");
+        assert!(!compact.contains("last"), "{compact}");
+        let verbose = text(ViewMode::Verbose);
+        assert!(verbose.contains("[Image #1]"), "{verbose}");
+        assert!(!verbose.contains("/Users/me"), "{verbose}");
     }
 
     #[test]

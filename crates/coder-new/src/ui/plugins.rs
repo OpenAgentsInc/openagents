@@ -954,7 +954,11 @@ fn field(
     };
     lines.push(Line::from(span(rule.clone(), color)));
     let row = lines.len() as u16;
-    let draft = Draft { text, cursor };
+    let draft = Draft {
+        text,
+        cursor,
+        ..Default::default()
+    };
     let usable = width.saturating_sub(3).max(1);
     let (wrapped, location) = draft.wrapped(usable);
     let text = &wrapped[if focused { usize::from(location.1) } else { 0 }];

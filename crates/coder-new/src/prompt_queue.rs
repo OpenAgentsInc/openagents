@@ -263,6 +263,7 @@ impl App {
         self.draft = Draft {
             cursor: last.text.len(),
             text: std::mem::take(&mut last.text),
+            ..Default::default()
         };
         self.replaying_prompt = true;
         if self.composer.mode == crate::composer_state::InputMode::Bash {

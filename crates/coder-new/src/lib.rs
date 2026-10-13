@@ -1179,6 +1179,7 @@ impl App {
                             self.draft = Draft {
                                 text: TRY_ANOTHER_MODEL.into(),
                                 cursor: TRY_ANOTHER_MODEL.len(),
+                                ..Default::default()
                             };
                         }
                     }
@@ -2502,7 +2503,7 @@ impl App {
                             self.draft = Draft::default();
                         }
                         self.composer.pasted.push(text.clone());
-                        self.draft.insert(&text);
+                        self.draft.paste(&text);
                     }
                     self.slash_selected = 0;
                     self.slash_hidden = false;
@@ -3024,7 +3025,51 @@ impl App {
 pub struct Draft {
     pub text: String,
     pub cursor: usize,
+    /// Large pastes, each drawn as one `[Pasted: 12 lines]` chip while the
+    /// text keeps every pasted byte, as Grok Build's composer does.
+    pub pastes: Vec<PasteChip>,
 }
+
+/// One pasted run of the draft shown as a chip. It holds the pasted text, so
+/// a chip whose text no longer sits at `start` (the draft was replaced) is
+/// simply not a chip any more.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PasteChip {
+    pub start: usize,
+    pub text: String,
+}
+
+impl PasteChip {
+    fn end(&self) -> usize {
+        self.start + self.text.len()
+    }
+
+    /// `[Pasted: N lines]`, or `[Pasted: 12 KB]` for a paste over
+    /// [`PASTE_CHIP_BYTES`].
+    #[must_use]
+    pub fn label(&self) -> String {
+        let bytes = self.text.len();
+        if bytes > PASTE_CHIP_BYTES {
+            let size = if bytes >= 1_000_000 {
+                format!("{:.1} MB", bytes as f64 / 1_000_000.0)
+            } else {
+                format!("{} KB", bytes / 1000)
+            };
+            format!("[Pasted: {size}]")
+        } else {
+            let lines = self.text.lines().count();
+            format!(
+                "[Pasted: {lines} line{}]",
+                if lines == 1 { "" } else { "s" }
+            )
+        }
+    }
+}
+
+/// A paste of this many lines or more shows as a chip.
+pub const PASTE_CHIP_LINES: usize = 4;
+/// A paste over this many bytes shows as a chip, whatever its lines.
+pub const PASTE_CHIP_BYTES: usize = 10_000;
 
 impl Draft {
     fn edit(&mut self, key: crossterm::event::KeyEvent) {
@@ -3039,11 +3084,15 @@ impl Draft {
             // Readline: Ctrl+A to the start of the line, Ctrl+E to its end.
             KeyCode::Char('a') if key.modifiers == KeyModifiers::CONTROL => {
                 self.cursor = self.text[..self.cursor].rfind('\n').map_or(0, |at| at + 1);
+                if let Some((start, _)) = self.chip_around(self.cursor) {
+                    self.cursor = start;
+                }
             }
             KeyCode::Char('e') if key.modifiers == KeyModifiers::CONTROL => {
                 self.cursor += self.text[self.cursor..]
                     .find('\n')
                     .unwrap_or(self.text.len() - self.cursor);
+                self.snap_cursor();
             }
             KeyCode::Backspace => self.backspace(),
             KeyCode::Delete => self.delete(),
@@ -3055,17 +3104,64 @@ impl Draft {
         }
     }
 
-    fn insert(&mut self, text: &str) {
-        let clean: String = text
-            .replace("\r\n", "\n")
-            .replace('\r', "\n")
+    fn clean(text: &str) -> String {
+        text.replace("\r\n", "\n")
+            .replace(['\r', '\u{2028}', '\u{2029}'], "\n")
             .replace('\t', "    ")
             .chars()
             .filter(|ch| *ch == '\n' || !ch.is_control())
-            .collect();
-        self.text.insert_str(self.cursor, &clean);
+            .collect()
+    }
+
+    fn insert(&mut self, text: &str) {
+        let clean = Self::clean(text);
+        self.insert_clean(&clean);
+    }
+
+    fn insert_clean(&mut self, clean: &str) {
+        self.pastes
+            .retain(|chip| self.text.get(chip.start..chip.end()) == Some(&chip.text));
+        for chip in &mut self.pastes {
+            if chip.start >= self.cursor {
+                chip.start += clean.len();
+            }
+        }
+        self.text.insert_str(self.cursor, clean);
         self.cursor += clean.len();
         self.snap_cursor();
+    }
+
+    /// Inserts a paste: one of [`PASTE_CHIP_LINES`] lines or more, or over
+    /// [`PASTE_CHIP_BYTES`], becomes a chip that the cursor steps over and
+    /// Backspace removes whole; the text sent is still the whole paste.
+    pub(crate) fn paste(&mut self, text: &str) {
+        let clean = Self::clean(text);
+        if clean.lines().count() < PASTE_CHIP_LINES && clean.len() <= PASTE_CHIP_BYTES {
+            self.insert_clean(&clean);
+            return;
+        }
+        let start = self.cursor;
+        self.insert_clean(&clean);
+        self.pastes.push(PasteChip { start, text: clean });
+    }
+
+    /// The chips still in the draft, in order.
+    pub fn chips(&self) -> Vec<&PasteChip> {
+        let mut chips: Vec<&PasteChip> = self
+            .pastes
+            .iter()
+            .filter(|chip| self.text.get(chip.start..chip.end()) == Some(chip.text.as_str()))
+            .collect();
+        chips.sort_by_key(|chip| chip.start);
+        chips
+    }
+
+    /// The chip the cursor would sit inside at `offset`, if any.
+    fn chip_around(&self, offset: usize) -> Option<(usize, usize)> {
+        self.chips()
+            .into_iter()
+            .map(|chip| (chip.start, chip.end()))
+            .find(|(start, end)| *start < offset && offset < *end)
     }
 
     fn snap_cursor(&mut self) {
@@ -3081,9 +3177,20 @@ impl Draft {
                 .next()
                 .map_or(0, char::len_utf8);
         }
+        // The cursor never rests inside a paste chip.
+        if let Some((_, end)) = self.chip_around(self.cursor) {
+            self.cursor = end;
+        }
     }
 
     fn previous(&self) -> usize {
+        if let Some(chip) = self
+            .chips()
+            .into_iter()
+            .find(|chip| chip.end() == self.cursor)
+        {
+            return chip.start;
+        }
         self.text[..self.cursor]
             .grapheme_indices(true)
             .next_back()
@@ -3091,6 +3198,13 @@ impl Draft {
     }
 
     fn next(&self) -> usize {
+        if let Some(chip) = self
+            .chips()
+            .into_iter()
+            .find(|chip| chip.start == self.cursor)
+        {
+            return chip.end();
+        }
         self.cursor
             + self.text[self.cursor..]
                 .graphemes(true)
@@ -3098,15 +3212,30 @@ impl Draft {
                 .map_or(0, str::len)
     }
 
+    /// Removes `range`, dropping a chip it touches and moving the later ones.
+    fn remove(&mut self, range: std::ops::Range<usize>) {
+        let len = range.len();
+        self.pastes.retain(|chip| {
+            self.text.get(chip.start..chip.end()) == Some(chip.text.as_str())
+                && (chip.end() <= range.start || chip.start >= range.end)
+        });
+        for chip in &mut self.pastes {
+            if chip.start >= range.end {
+                chip.start -= len;
+            }
+        }
+        self.text.drain(range);
+    }
+
     fn backspace(&mut self) {
         let previous = self.previous();
-        self.text.drain(previous..self.cursor);
+        self.remove(previous..self.cursor);
         self.cursor = previous;
         self.snap_cursor();
     }
 
     fn delete(&mut self) {
-        self.text.drain(self.cursor..self.next());
+        self.remove(self.cursor..self.next());
         self.snap_cursor();
     }
 
@@ -3116,7 +3245,32 @@ impl Draft {
         let mut lines = vec![String::new()];
         let mut column = 0;
         let mut cursor = (0, 0);
+        // A chip draws as its label: its first grapheme carries the label,
+        // the rest of its text draws nothing.
+        let chips: Vec<(usize, usize, String)> = self
+            .chips()
+            .into_iter()
+            .map(|chip| (chip.start, chip.end(), chip.label()))
+            .collect();
+        let mut pieces: Vec<(usize, String)> = Vec::new();
+        let mut skip_to = 0;
         for (offset, grapheme) in self.text.grapheme_indices(true) {
+            if offset < skip_to {
+                continue;
+            }
+            if let Some((_, end, label)) = chips.iter().find(|(start, ..)| *start == offset) {
+                skip_to = *end;
+                for (index, part) in label.graphemes(true).enumerate() {
+                    pieces.push((
+                        if index == 0 { offset } else { usize::MAX },
+                        part.to_owned(),
+                    ));
+                }
+            } else {
+                pieces.push((offset, grapheme.to_owned()));
+            }
+        }
+        for (offset, grapheme) in pieces.iter().map(|(offset, g)| (*offset, g.as_str())) {
             let cells = grapheme.width();
             if grapheme != "\n" && column + cells > width && column > 0 {
                 lines.push(String::new());

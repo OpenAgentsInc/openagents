@@ -57,22 +57,11 @@ impl Attachment {
         )
     }
 
-    /// What the composer chip shows: the name and the size.
+    /// What the composer chip shows: `[Image #1]`, never the file's path,
+    /// as Grok Build's composer shows it.
     #[must_use]
     pub fn chip(&self, number: usize) -> String {
-        self.chip_sized(number, self.bytes.len())
-    }
-
-    fn chip_sized(&self, number: usize, bytes: usize) -> String {
-        let size = if bytes >= 1024 * 1024 {
-            format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
-        } else {
-            format!("{} KB", bytes.div_ceil(1024))
-        };
-        match &self.name {
-            Some(name) => format!("{} #{number} {name} · {size}", self.label()),
-            None => format!("{} #{number} · {size}", self.label()),
-        }
+        format!("[{} #{number}]", self.label())
     }
 
     /// Saves the bytes under `dir` by digest, and returns the file.
@@ -349,33 +338,39 @@ pub const TEXT_ONLY_NOTE: &str = "This model cannot view images or PDFs. A line 
 pub const TEXT_ONLY_NOTICE: &str = "This model can't see images, so it got each file's location instead. Pick a model that takes images in /models to send the picture itself.";
 
 /// The composer chip for an attachment source (a `data:` URL or a path)
-/// without reading or decoding the whole file.
+/// without reading or decoding the file.
 #[must_use]
 pub fn chip_for(source: &str, number: usize) -> String {
-    let (pdf, name, bytes) = if let Some(rest) = source.strip_prefix("data:") {
-        let (header, data) = rest.split_once(',').unwrap_or((rest, ""));
-        (
-            header.starts_with("application/pdf"),
-            None,
-            data.len() / 4 * 3,
-        )
-    } else {
-        let path = Path::new(source);
-        let bytes = std::fs::metadata(path)
-            .map_or(0, |meta| usize::try_from(meta.len()).unwrap_or(usize::MAX));
-        (
-            source.to_ascii_lowercase().ends_with(".pdf"),
-            path.file_name()
-                .map(|name| name.to_string_lossy().into_owned()),
-            bytes,
-        )
+    let pdf = match source.strip_prefix("data:") {
+        Some(rest) => rest.starts_with("application/pdf"),
+        None => source.to_ascii_lowercase().ends_with(".pdf"),
     };
-    Attachment {
-        media_type: if pdf { "application/pdf" } else { "image/png" },
-        bytes: Vec::new(),
-        name,
+    format!("[{} #{number}]", if pdf { "PDF" } else { "Image" })
+}
+
+/// `text` as the transcript shows it: each note line
+/// `[Image #1: /path/to/file.png]` drawn as `[Image #1]`. The model still
+/// reads the path; the person sees the short chip.
+#[must_use]
+pub fn shown(text: &str) -> std::borrow::Cow<'_, str> {
+    let short = |line: &str| -> Option<String> {
+        let inner = line.trim().strip_prefix('[')?.strip_suffix(']')?;
+        let (head, _) = inner.split_once(": ")?;
+        let (label, number) = head.split_once(" #")?;
+        (matches!(label, "Image" | "PDF")
+            && !number.is_empty()
+            && number.bytes().all(|b| b.is_ascii_digit()))
+        .then(|| format!("[{head}]"))
+    };
+    if !text.lines().any(|line| short(line).is_some()) {
+        return std::borrow::Cow::Borrowed(text);
     }
-    .chip_sized(number, bytes)
+    std::borrow::Cow::Owned(
+        text.split('\n')
+            .map(|line| short(line).unwrap_or_else(|| line.to_owned()))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
 }
 
 /// `content` as the request's content parts: the text, then each image or
@@ -460,7 +455,7 @@ mod tests {
         );
         let image = from_data_url(&pasted).unwrap();
         assert_eq!(image.media_type, "image/png");
-        assert_eq!(image.chip(1), "Image #1 · 1 KB");
+        assert_eq!(image.chip(1), "[Image #1]");
         assert!(from_data_url("data:image/png;base64,AA").is_err());
         assert!(from_data_url("hello").is_err());
     }
@@ -492,12 +487,11 @@ mod tests {
         assert!(expand("no attachments").is_none());
         assert!(mentions(&prompt));
         assert!(!mentions(&note("Image", 1, &elsewhere)));
+        assert_eq!(chip_for(&saved.display().to_string(), 3), "[Image #3]");
+        assert_eq!(shown(&prompt), "What's wrong here?\n[Image #1]\n[Image #2]");
         assert_eq!(
-            chip_for(&saved.display().to_string(), 3),
-            format!(
-                "Image #3 {} · 1 KB",
-                saved.file_name().unwrap().to_string_lossy()
-            )
+            shown("plain [Image #1: not a note] text"),
+            "plain [Image #1: not a note] text"
         );
     }
 }
