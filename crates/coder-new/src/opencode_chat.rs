@@ -302,6 +302,8 @@ pub fn config(model: &str, tools: Option<(&Path, &Path)>) -> Value {
                 "command": [
                     program.display().to_string(),
                     crate::claude_tools::STDIO_COMMAND,
+                    "--harness",
+                    "opencode",
                     "--cwd",
                     cwd.display().to_string(),
                 ],
@@ -485,6 +487,8 @@ pub async fn run(
         .env("OPENCODE_DISABLE_AUTOUPDATE", "1")
         .env(coder_sdk::bridge::SOCKET_VAR, host.path())
         .env(coder_sdk::opencode::PROGRAM_VAR, &this)
+        // A delegated child's place in the tree (#11511).
+        .envs(crate::bundled_runtime::child_env())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -708,7 +712,14 @@ mod tests {
         );
         assert_eq!(
             tools["mcp"]["coder"]["command"],
-            json!(["/bin/coder", "coder-tools-mcp", "--cwd", "/r"])
+            json!([
+                "/bin/coder",
+                "coder-tools-mcp",
+                "--harness",
+                "opencode",
+                "--cwd",
+                "/r"
+            ])
         );
         assert_eq!(
             coder_sdk::opencode::CODER_SERVER,

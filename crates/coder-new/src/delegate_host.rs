@@ -36,6 +36,8 @@ pub const CODER: &str = "coder";
 pub const CLAUDE: &str = "claude-code";
 /// Codex, as `delegate` names it.
 pub const CODEX: &str = "codex";
+/// OpenCode, as `delegate` names it.
+pub const OPENCODE: &str = "opencode";
 
 /// One harness a child can run on here.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -87,6 +89,23 @@ pub fn available(execution: &ExecutionSettings, provider: bool) -> Vec<Available
             ),
         });
     }
+    // OpenCode as a harness (#11507) when it is installed, on the models
+    // its `opencode models` lists; else an enabled OpenCode ACP agent.
+    let opencode_agent = agents().any(|agent| agent.id == OPENCODE);
+    if crate::opencode_chat::installed() || opencode_agent {
+        harnesses.push(Available {
+            id: OPENCODE.into(),
+            name: "OpenCode".into(),
+            models: Some(if crate::opencode_chat::installed() {
+                crate::opencode_chat::catalog()
+                    .into_iter()
+                    .map(|model| model.id)
+                    .collect()
+            } else {
+                Vec::new()
+            }),
+        });
+    }
     if execution.microcoder {
         harnesses.push(Available {
             id: CODER.into(),
@@ -102,7 +121,10 @@ pub fn available(execution: &ExecutionSettings, provider: bool) -> Vec<Available
         });
     }
     for agent in agents().filter(|agent| {
-        agent.id != CODEX && agent.id != CLAUDE && !crate::fleet::runs_claude(&agent.id)
+        agent.id != CODEX
+            && agent.id != CLAUDE
+            && agent.id != OPENCODE
+            && !crate::fleet::runs_claude(&agent.id)
     }) {
         harnesses.push(Available {
             id: agent.id.clone(),
@@ -499,6 +521,23 @@ async fn engine(
                 )
                 .await
                 .map(|output| output["reply"].as_str().unwrap_or_default().to_owned())
+        }
+        // OpenCode as a harness (#11507): `opencode run` under Coder's
+        // hooks, on the model the call named or the person's OpenCode pick.
+        // A read-only task goes to its ACP agent, which has a plan mode.
+        OPENCODE if !read_only && crate::opencode_chat::installed() => {
+            let turn = crate::opencode_chat::Turn {
+                messages: vec![openrouter::Message::user(task)],
+                cwd: cwd.to_owned(),
+                session: None,
+                last_model: None,
+                briefing: None,
+                model: model.map_or_else(|| crate::opencode_chat::model(None), str::to_owned),
+                tools: false,
+            };
+            crate::opencode_chat::run(turn, cancel, emit, &mut |_| {})
+                .await
+                .map(|streamed| streamed.text)
         }
         harness => {
             let agent = execution

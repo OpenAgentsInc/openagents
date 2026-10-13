@@ -47,7 +47,7 @@ fn harnesses_and_models_are_checked_when_the_call_arrives() {
         .into_iter()
         .map(|harness| harness.id)
         .collect();
-    assert_eq!(ids, vec!["claude-code", "codex", "coder", "opencode"]);
+    assert_eq!(ids, vec!["claude-code", "codex", "opencode", "coder"]);
     assert_eq!(
         host.target(&request("auto", None)).unwrap().harness,
         "claude-code"
@@ -67,8 +67,21 @@ fn harnesses_and_models_are_checked_when_the_call_arrives() {
         .target(&request("opencode", Some("opencode/big-pickle")))
         .unwrap_err();
     assert!(error.contains("leave model out"), "{error}");
+    // OpenCode as a harness, once installed: its models are taken.
+    crate::opencode_chat::install_for_test(true);
+    assert_eq!(
+        host.target(&request(
+            "opencode",
+            Some(crate::opencode_chat::DEFAULT_MODEL)
+        ))
+        .unwrap()
+        .model
+        .as_deref(),
+        Some(crate::opencode_chat::DEFAULT_MODEL)
+    );
+    crate::opencode_chat::install_for_test(false);
     let error = host.target(&request("cursor", None)).unwrap_err();
-    assert!(error.contains("codex, coder, opencode"), "{error}");
+    assert!(error.contains("codex, opencode, coder"), "{error}");
     // Turned off after the chat started: refused at the call, not hidden.
     let mut off = execution();
     off.claude = false;
