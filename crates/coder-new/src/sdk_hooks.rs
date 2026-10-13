@@ -68,11 +68,62 @@ pub fn coder_loop(cwd: &Path, cancel: &Arc<AtomicBool>) -> coder_sdk::Hooks {
     ))
 }
 
+/// Codex on app-server (#11510): the fence and the floors, the token
+/// savers' gate and conditional context when that plugin is on, the
+/// person's and the project's command hooks, the plugins' hooks and the
+/// System One monitor, composed by one runner that answers each of Codex's
+/// approval requests. A floor's ask goes to the approval card while Codex
+/// waits; with nobody to answer it is held. The squeezer is left out:
+/// Codex runs the command it asked about, so a rewrite can't reach it.
+#[must_use]
+pub fn codex(cwd: &Path) -> coder_sdk::Hooks {
+    let session = format!(
+        "codex-{}-{}",
+        std::process::id(),
+        SESSIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
+    let mut registry = registry(cwd, false);
+    if crate::token_savers::enabled() {
+        let _ = registry.register(crate::gate::sdk_hook(session.clone()));
+        for hook in crate::context_hook::sdk_hooks(cwd.to_owned(), session) {
+            let _ = registry.register(hook);
+        }
+    }
+    let (hooks, _problems) = coder_sdk::command::load(cwd, coder_sdk::command::home().as_deref());
+    let run = std::env::var(hook_log::RUN_ID_VAR).unwrap_or_default();
+    let _ = coder_sdk::command::register(&mut registry, &hooks, cwd, &run);
+    system_one(&mut registry, cwd, Harness::Codex);
+    // A hook that must deny where Codex only reports afterwards is left
+    // out, and the rest run.
+    let refused: Vec<String> =
+        coder_sdk::check_backend(&registry, coder_sdk::HookBackend::CodexAppServer)
+            .err()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|refused| refused.hook)
+            .collect();
+    let mut kept = Registry::new();
+    for hook in registry.hooks().filter(|hook| !refused.contains(&hook.id)) {
+        let _ = kept.register(hook.clone());
+    }
+    let hooks = coder_sdk::codex::hooks(kept, Budget::default())
+        .expect("the hooks Codex refuses were left out");
+    hooks.asking(crate::floors::asker(
+        cwd.to_owned(),
+        crate::codex::rail_label,
+        None,
+    ))
+}
+
+/// Codex sessions started in this process, for their hooks' keys.
+static SESSIONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Where a session's System One hooks run.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Harness {
     ClaudeCode,
     CoderLoop,
+    Codex,
 }
 
 /// How a System One hook runs until its A/B arm has measured it: off,
@@ -316,6 +367,48 @@ mod tests {
         assert_eq!(
             reason,
             alone["hookSpecificOutput"]["permissionDecisionReason"]
+        );
+    }
+
+    /// Codex's approval requests reach the same floors and fence as Claude
+    /// Code (#11510): a merge in Codex's `/bin/zsh -lc` wrapper is held
+    /// when nobody can answer, a discard is refused, a plain command runs.
+    #[tokio::test]
+    async fn codex_approvals_are_answered_by_the_floors_and_the_fence() {
+        let _lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::floors::install_desk(None);
+        let repo = tempfile::tempdir().unwrap();
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .arg(repo.path())
+            .status()
+            .unwrap();
+        let hooks = codex(repo.path());
+        let fire = |command: &str| {
+            hooks.fire(coder_sdk::codex::command_call(
+                &json!({"command": format!("/bin/zsh -lc '{command}'"), "cwd": repo.path()}),
+                repo.path(),
+            ))
+        };
+        let held = fire("gh pr merge 5 --squash").await;
+        assert!(
+            matches!(&held.permission, coder_sdk::Permission::Deny { reason } if reason.starts_with("Held for the person")),
+            "{held:?}"
+        );
+        let discard = fire("git stash").await;
+        assert!(
+            matches!(&discard.permission, coder_sdk::Permission::Deny { reason } if reason.starts_with("Refused")),
+            "{discard:?}"
+        );
+        let plain = fire("cargo test").await;
+        assert!(
+            matches!(
+                plain.permission,
+                coder_sdk::Permission::NoOpinion | coder_sdk::Permission::Allow
+            ),
+            "{plain:?}"
         );
     }
 

@@ -36,6 +36,9 @@ struct Preferences {
     /// The Claude Code plugin and its mode; on unless turned off.
     #[serde(default = "on")]
     claude: bool,
+    /// The Codex plugin (#11510); on unless turned off.
+    #[serde(default = "on")]
+    codex: bool,
     /// The solver swarm (#11346); on unless turned off.
     #[serde(default = "on")]
     swarm: bool,
@@ -66,6 +69,7 @@ impl Default for Preferences {
             solver: true,
             comms: true,
             claude: true,
+            codex: true,
             swarm: true,
             token_savers: true,
             jev_enabled: true,
@@ -202,6 +206,8 @@ pub struct BundledSettings {
     pub comms: bool,
     /// The Claude Code plugin, which turns on the Claude Code harness.
     pub claude: bool,
+    /// The Codex plugin, which turns on the Codex harness (#11510).
+    pub codex: bool,
     /// The solver swarm (#11346).
     pub swarm: bool,
     /// Token savers (#11494).
@@ -248,6 +254,7 @@ impl Default for BundledSettings {
             solver: true,
             comms: true,
             claude: true,
+            codex: true,
             swarm: true,
             token_savers: true,
             jev_enabled: true,
@@ -289,6 +296,7 @@ impl BundledSettings {
             solver: self.solver,
             comms: self.comms,
             claude: self.claude,
+            codex: self.codex,
             swarm: self.swarm,
             token_savers: self.token_savers,
             jev_enabled: self.jev_enabled,
@@ -312,6 +320,7 @@ impl BundledSettings {
         self.solver = value.solver;
         self.comms = value.comms;
         self.claude = value.claude;
+        self.codex = value.codex;
         self.swarm = value.swarm;
         self.token_savers = value.token_savers;
         // The process-wide flag; a test leaves it to the default so tests
@@ -437,6 +446,8 @@ impl BundledSettings {
             crate::comms::PLUGIN => self.comms,
             // Only on a computer signed in to Claude Code.
             crate::claude::PLUGIN => self.claude && crate::claude::available(),
+            // Only on a computer signed in to Codex.
+            crate::codex::PLUGIN => self.codex && crate::codex::available(),
             crate::swarm::PLUGIN => self.swarm,
             crate::token_savers::PLUGIN => self.token_savers,
             "jev" => self.jev_enabled,
@@ -458,6 +469,8 @@ impl BundledSettings {
             // It cannot turn on without a Claude Code sign-in.
             crate::claude::PLUGIN if !crate::claude::available() => return false,
             crate::claude::PLUGIN => &mut value.claude,
+            crate::codex::PLUGIN if !crate::codex::available() => return false,
+            crate::codex::PLUGIN => &mut value.codex,
             crate::swarm::PLUGIN => &mut value.swarm,
             crate::token_savers::PLUGIN => &mut value.token_savers,
             "jev" => &mut value.jev_enabled,
@@ -475,6 +488,9 @@ impl BundledSettings {
     pub fn status(&self, id: &str) -> &str {
         if id == crate::claude::PLUGIN && !crate::claude::available() {
             return crate::claude::SIGN_IN_FIRST;
+        }
+        if id == crate::codex::PLUGIN && !crate::codex::available() {
+            return crate::codex::SIGN_IN_FIRST;
         }
         if !self.enabled(id) {
             return "Disabled";

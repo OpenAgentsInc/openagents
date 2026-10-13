@@ -559,6 +559,8 @@ fn status(app: &App, context: &Context) -> Value {
 fn mode_name(app: &App) -> &'static str {
     if app.on_claude() {
         crate::claude::LABEL
+    } else if app.on_codex() {
+        crate::codex::PLUGIN
     } else {
         "live"
     }
@@ -567,6 +569,8 @@ fn mode_name(app: &App) -> &'static str {
 fn active_model(app: &App) -> String {
     if app.on_claude() {
         crate::claude::choice().model
+    } else if app.on_codex() {
+        crate::codex::turn_model(app.live.pinned_model.clone())
     } else if app.plugins.enabled
         && app.plugins.key_configured
         && models::pinned(&app.plugins.model)
@@ -999,7 +1003,19 @@ pub(crate) fn chat(
                 "Turn on the Claude Code plugin in /plugins to run on Claude Code.",
             ));
         }
-        Some(_) => return Err(usage("--mode takes auto or coder.")),
+        // `codex` pins Codex on this computer's ChatGPT login (#11510).
+        Some("codex") if app.plugins.bundled.enabled(crate::codex::PLUGIN) => {
+            Some(crate::harness_plugin::Harness::Codex)
+        }
+        Some("codex") if !crate::codex::available() => {
+            return Err(Error::from(crate::codex::NEEDS_LOGIN));
+        }
+        Some("codex") => {
+            return Err(Error::from(
+                "Turn on the Codex plugin in /plugins to run on Codex.",
+            ));
+        }
+        Some(_) => return Err(usage("--mode takes auto, coder or codex.")),
     };
     let prompt = take_option(&mut args, "-p")?.or(take_option(&mut args, "--prompt")?);
     let file = take_option(&mut args, "--prompt-file")?;

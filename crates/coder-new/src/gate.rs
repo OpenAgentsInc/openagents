@@ -324,6 +324,71 @@ pub fn claude_hook() -> claude_agent_sdk::HookMatcher {
     claude_agent_sdk::HookMatcher::new(Some("Read|Edit|Write|MultiEdit|Bash"), hook)
 }
 
+/// The gate as a Coder SDK hook for a session on Codex (#11510), keyed by
+/// `session`: Codex's commands come as `Bash` and its patches as
+/// `apply_patch`. A script the command reads (`cat`, `sed -n`, Codex's
+/// `commandActions`) or a patch writes counts as read; a command wrapped as
+/// `/bin/zsh -lc '...'` is judged by what it runs.
+#[must_use]
+pub fn sdk_hook(session: String) -> coder_sdk::Hook {
+    coder_sdk::Hook::new(
+        "gate",
+        coder_sdk::Event::PreToolUse,
+        coder_sdk::Source::BuiltIn,
+        move |call: &coder_sdk::Call| {
+            let tool = call.tool.as_deref().unwrap_or_default();
+            let cwd = call.input["cwd"].as_str().map_or_else(
+                || std::env::current_dir().unwrap_or_default(),
+                PathBuf::from,
+            );
+            let seen = {
+                let mut all = touched()
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let set = all.entry(session.clone()).or_default();
+                match tool {
+                    "apply_patch" => {
+                        for change in call.input["changes"].as_array().into_iter().flatten() {
+                            if let Some(path) = change["path"].as_str() {
+                                set.insert(normalize(&cwd, path));
+                            }
+                        }
+                    }
+                    "Bash" => {
+                        for action in call.input["commandActions"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                        {
+                            if action["type"] == "read"
+                                && let Some(path) = action["path"].as_str()
+                            {
+                                set.insert(normalize(&cwd, path));
+                            }
+                        }
+                    }
+                    _ => note_touch(set, tool, &call.input, &cwd),
+                }
+                set.clone()
+            };
+            let Some(command) = call.input["command"].as_str() else {
+                return Ok(coder_sdk::HookOutcome::none());
+            };
+            // What a shell wrapper runs, one script per line.
+            let command = crate::floors::scripts(command).join("\n");
+            let input = json!({"command": command});
+            Ok(
+                match evaluate(&seen, "Bash", &input, &cwd, &Decisions, &append_log) {
+                    Some(reason) => coder_sdk::HookOutcome::deny(&reason),
+                    None => coder_sdk::HookOutcome::none(),
+                },
+            )
+        },
+    )
+    .matching("Bash|apply_patch")
+    .timeout(TIMEOUT + Duration::from_secs(1))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

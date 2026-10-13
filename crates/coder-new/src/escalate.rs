@@ -374,12 +374,20 @@ pub struct Situation {
     pub moved: bool,
 }
 
-/// The stronger harness for work `current` could not finish: Claude Code
-/// over Coder's own loop. Codex takes no chat turns yet.
+/// The stronger harness for work `current` could not finish: from Coder's
+/// own loop, Claude Code, else Codex; from Codex, Claude Code (#11510).
+/// Claude Code has none above it.
 #[must_use]
 pub fn stronger(current: Harness, admitted: &[Harness]) -> Option<Harness> {
-    (current == Harness::CoderLoop && admitted.contains(&Harness::ClaudeCode))
-        .then_some(Harness::ClaudeCode)
+    let order: &[Harness] = match current {
+        Harness::CoderLoop => &[Harness::ClaudeCode, Harness::Codex],
+        Harness::Codex => &[Harness::ClaudeCode],
+        Harness::ClaudeCode => &[],
+    };
+    order
+        .iter()
+        .copied()
+        .find(|harness| admitted.contains(harness))
 }
 
 /// Any other admitted harness that takes chat turns, for a usage limit.
@@ -733,7 +741,7 @@ pub fn harness_words(app: &crate::App, harness: Harness) -> String {
                 format!("Coder ({model})")
             }
         }
-        Harness::Codex => "Codex".to_owned(),
+        Harness::Codex => crate::codex::rail_label(),
     }
 }
 

@@ -141,9 +141,10 @@ impl App {
             if self.on_coder_loop() && self.plugins.enabled && self.plugins.key_configured {
                 // The model reads it as its next input, even mid-turn.
                 self.queue_notice(text);
-            } else if self.on_claude() {
-                // Claude reads the report as its next message, mid-turn
-                // too, and what the person was typing stays in the input.
+            } else if self.on_claude() || self.on_codex() {
+                // Claude Code or Codex reads the report as its next
+                // message, mid-turn too, and what the person was typing
+                // stays in the input.
                 let typed = std::mem::replace(
                     &mut self.draft,
                     crate::Draft {
@@ -153,7 +154,11 @@ impl App {
                     },
                 );
                 let composer = std::mem::take(&mut self.composer);
-                self.submit_claude();
+                if self.on_codex() {
+                    self.submit_codex();
+                } else {
+                    self.submit_claude();
+                }
                 self.draft = typed;
                 self.composer = composer;
             } else {

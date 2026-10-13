@@ -371,6 +371,28 @@ balance, offers in the route contract); the SDK would call them from a
 | Codex | `codex app-server` (`coder_sdk::codex`); `exec` with command hooks as the fallback | app-server: native for SessionStart, UserPromptSubmit, PreToolUse (Codex asks before each command and patch under `approval_policy = "untrusted"`), Stop (a block starts the next turn on the same thread) and SessionEnd; emulated otherwise. exec: command (`PreToolUse`), emulated otherwise | built (#11510): approvals answered by the session's `PreToolUse` composition, an ask answered on the approval card while Codex waits, Coder's tools as dynamic tools in process |
 | ACP agents (Cursor, Devin, OpenCode, Grok) | `acp-client` | permission requests native; the rest emulated | later |
 
+Built (#11510): Codex on `codex app-server` (`coder_sdk::codex`).
+Threads open under `approval_policy = "untrusted"` with full disk access,
+never Codex's bypass flags, and every command and patch approval runs the
+session's `PreToolUse` composition (`sdk_hooks::codex`: the fence, the
+floors, the gate, conditional context, the command and plugin hooks, the
+monitor). An allow accepts the call; a deny declines it and the reason is
+steered into the same turn; an ask goes to the approval card while Codex
+waits, so Allow once and Deny both continue the same thread. Calls reach
+the hooks in Claude Code's shapes (`Bash` with the command, `apply_patch`
+with the patch text), and the floors read through Codex's
+`/bin/zsh -lc '...'` wrapper. Coder's tools ride along as Codex dynamic
+tools in process, through the same hooks, so delegations reach the agent
+tray. The squeezer is not installed there: Codex runs the command it asked
+about, so a rewrite can't reach it. Coder chat runs Codex as a harness
+(`coder_new::codex_chat`): one app-server per chat, follow-ups on the same
+thread, the briefing as developer instructions with `AGENTS.md` reading
+off, a /models list of Codex's models, its plan windows on the rail while
+it runs. A background Codex agent with full access uses app-server too;
+`exec` with the command hook stays the fallback where app-server won't
+start, and for read-only and workspace-write runs, whose sandbox Codex
+enforces itself.
+
 ## Open questions
 
 - Is a decision hook's `act` plain Rust, or a workflow step, so a plugin

@@ -518,3 +518,22 @@ fn a_multi_part_ask_runs_as_a_plan_with_one_record_per_part() {
     };
     assert!(first.starts_with("In this repo:\n1. Add"));
 }
+
+/// Escalation reaches Codex and leaves it (#11510): from Coder's loop to
+/// Claude Code, else Codex; from Codex to Claude Code; nothing above Claude.
+#[test]
+fn escalation_goes_to_and_from_codex() {
+    use crate::harness_plugin::Harness::{ClaudeCode, CoderLoop, Codex};
+    assert_eq!(
+        stronger(CoderLoop, &[ClaudeCode, CoderLoop, Codex]),
+        Some(ClaudeCode)
+    );
+    assert_eq!(stronger(CoderLoop, &[CoderLoop, Codex]), Some(Codex));
+    assert_eq!(
+        stronger(Codex, &[ClaudeCode, CoderLoop, Codex]),
+        Some(ClaudeCode)
+    );
+    assert_eq!(stronger(Codex, &[CoderLoop, Codex]), None);
+    assert_eq!(stronger(ClaudeCode, &[ClaudeCode, CoderLoop, Codex]), None);
+    assert_eq!(other(Codex, &[CoderLoop, Codex]), Some(CoderLoop));
+}

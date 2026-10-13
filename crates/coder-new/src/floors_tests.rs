@@ -404,9 +404,21 @@ fn the_permission_table_names_every_harness_once() {
         assert_eq!(TABLE.iter().filter(|row| row.harness == harness).count(), 1);
         assert_eq!(row(harness).permission, PERMISSION);
     }
+    // Codex's row is what the SDK's Codex backend opens threads with.
+    let codex = row(Harness::Codex);
+    assert!(
+        codex.native.contains(
+            &format!("approval_policy=\"{}\"", coder_sdk::codex::APPROVAL_POLICY).as_str()
+        )
+    );
+    assert!(
+        codex
+            .native
+            .contains(&format!("sandbox=\"{}\"", coder_sdk::codex::SANDBOX).as_str())
+    );
     // The documented table says the same.
     let doc = include_str!("../../../docs/coder/permissions.md");
-    for row in TABLE {
+    for row in TABLE.iter().chain([&CODEX_EXEC_FALLBACK]) {
         for native in row.native {
             assert!(doc.contains(native), "{native} is documented");
         }

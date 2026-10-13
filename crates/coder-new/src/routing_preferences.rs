@@ -846,7 +846,8 @@ mod tests {
                 signed_in: true,
                 at_limit: false,
             },
-            codex_on: true,
+            // These are about Claude Code and the Coder loop; Codex is off.
+            codex_on: false,
             codex: Health {
                 signed_in: true,
                 at_limit: false,

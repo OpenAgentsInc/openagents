@@ -162,6 +162,15 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
         composer_rails: &[],
     },
     PluginDefinition {
+        id: crate::codex::PLUGIN,
+        name: "Codex",
+        description: "Codex inside Coder on this computer's ChatGPT sign-in: its own tools and models, and Coder's delegation tools. Coder can pick it for a chat, or you can ask for it.",
+        default_enabled: true,
+        tools: &[],
+        model_provider: None,
+        composer_rails: &[],
+    },
+    PluginDefinition {
         id: crate::token_savers::PLUGIN,
         name: "Token savers",
         description: crate::token_savers::DESCRIPTION,

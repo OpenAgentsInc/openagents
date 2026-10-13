@@ -182,6 +182,10 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
     if let Some(session) = &chat.claude_session {
         result["extra"]["claude_session"] = json!({"id": session.id, "users": session.users});
     }
+    // The Codex thread the chat's Codex turns continue (#11510).
+    if let Some(session) = &chat.codex_session {
+        result["extra"]["codex_session"] = json!({"id": session.id, "users": session.users});
+    }
     // The harness plugin the chat runs on (#11453), so a reopened chat's
     // follow-ups stay on it.
     if let Some(harness) = chat.runs_on {
@@ -687,6 +691,17 @@ pub fn from_document(value: &Value) -> Result<Chat, String> {
                 .and_then(Value::as_u64)
                 .map_or(0, |users| users as usize),
         });
+    chat.codex_session = value
+        .pointer("/extra/codex_session/id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .map(|id| crate::live::ClaudeSession {
+            id: id.to_owned(),
+            users: value
+                .pointer("/extra/codex_session/users")
+                .and_then(Value::as_u64)
+                .map_or(0, |users| users as usize),
+        });
     // A chat saved before harness plugins ran on Claude Code when it holds
     // a Claude Code session.
     chat.runs_on = value
@@ -768,6 +783,23 @@ fn text(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A saved Codex chat keeps its thread and its harness (#11510), so a
+    /// follow-up continues the same thread.
+    #[test]
+    fn a_saved_chat_keeps_its_codex_thread() {
+        let mut chat = Chat::default();
+        chat.entries.push(Entry::User("hi".into()));
+        chat.codex_session = Some(crate::live::ClaudeSession {
+            id: "019a-thread".into(),
+            users: 1,
+        });
+        chat.runs_on = Some(crate::harness_plugin::Harness::Codex);
+        let document = document(&chat, "test", crate::codex::MODEL, Path::new("/workspace"));
+        let restored = from_document(&document).unwrap();
+        assert_eq!(restored.codex_session, chat.codex_session);
+        assert_eq!(restored.runs_on, chat.runs_on);
+    }
 
     /// A saved chat keeps its Claude Code session (#11435), so reopening it
     /// continues the same session, and only while that session has read

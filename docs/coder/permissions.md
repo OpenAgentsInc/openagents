@@ -12,7 +12,8 @@ drifts from its row or when this page stops naming what the table says.
 | --- | --- | --- | --- |
 | Coder's loop | `bypass` | no approval gate | Coder's tool gate: the Run tool's commands and file reads |
 | Claude Code | `bypass` | permissionMode=bypassPermissions, allowDangerouslySkipPermissions | a PreToolUse hook Coder installs in the session |
-| Codex | `bypass` | --dangerously-bypass-approvals-and-sandbox, approval_policy="never" | a PreToolUse hook Coder passes with -c hooks.PreToolUse, run without hook trust |
+| Codex | `bypass` | approval_policy="untrusted", sandbox="danger-full-access" | Codex's approval requests on app-server, answered by the hooks Coder runs for the session |
+| Codex, exec fallback | `bypass` | --dangerously-bypass-approvals-and-sandbox, approval_policy="never" | a PreToolUse hook Coder passes with -c hooks.PreToolUse, run without hook trust |
 
 ## The floors
 
@@ -39,9 +40,19 @@ not open the owner's gate.
 
 When a rule asks and someone is at the terminal, the person sees one plain
 choice on the approval card, such as "Let Claude (Haiku 5.5) merge a pull
-request?", with the exact command. With nobody to answer, and always inside
-Codex, the call is held: the agent is told to finish what it can and hand
-that step back to the person.
+request?", with the exact command. Codex on app-server (#11510) waits on the
+same card: Allow once runs that call and Deny declines it, and the same
+Codex thread goes on either way. With nobody to answer, and always inside
+Codex's exec fallback, the call is held: the agent is told to finish what it
+can and hand that step back to the person.
+
+Codex runs on `codex app-server` with `approval_policy="untrusted"`, so it
+asks before every command and patch, and Coder's hooks answer: the floors,
+the shared checkout's fence, the token savers' gate, and the person's,
+project's and plugins' hooks. Its bypass flags are used only by `exec`, the
+fallback where app-server won't start. The floors read through shell
+wrappers (`/bin/zsh -lc '...'`, `bash -c`, `env`), so wrapping a command
+never hides it.
 
 ## The session's own worktree
 

@@ -65,6 +65,9 @@ struct Session {
     decided: HashSet<PathBuf>,
     /// A compaction happened and the briefing has not been added back.
     compacted: bool,
+    /// The session runs on a harness that never loads `CLAUDE.md` (Codex),
+    /// so an `AGENTS.md` twin of one is still news to it.
+    no_claude_md: bool,
 }
 
 static SESSIONS: LazyLock<Mutex<HashMap<String, Session>>> = LazyLock::new(Mutex::default);
@@ -222,6 +225,118 @@ pub fn hooks(cwd: PathBuf) -> Vec<(claude_agent_sdk::HookEvent, HookMatcher)> {
     ]
 }
 
+/// The hook as Coder SDK hooks for a session on Codex (#11510), keyed by
+/// `session`: Codex reads no `CLAUDE.md`, so an `AGENTS.md` beside one is
+/// added too. A command's reads (Codex's `commandActions`) and a patch's
+/// files count as touches; the first message is the task; after a
+/// compaction the briefing comes back with the next message or tool.
+#[must_use]
+pub fn sdk_hooks(cwd: PathBuf, session: String) -> Vec<coder_sdk::Hook> {
+    with_session(&session, |s| s.no_claude_md = true);
+    let judge: Arc<dyn Judge + Send + Sync> = Arc::new(squeeze::Decisions);
+    let context = |specific: Option<Value>| {
+        specific
+            .and_then(|specific| specific["additionalContext"].as_str().map(str::to_owned))
+            .map_or_else(coder_sdk::HookOutcome::none, |text| {
+                coder_sdk::HookOutcome::context(coder_sdk::Context::new("context", &text, 1))
+            })
+    };
+    let touch = {
+        let cwd = cwd.clone();
+        let session = session.clone();
+        coder_sdk::Hook::new(
+            "context",
+            coder_sdk::Event::PostToolUse,
+            coder_sdk::Source::BuiltIn,
+            move |call: &coder_sdk::Call| {
+                let mut added = Vec::new();
+                for path in touched_paths(call) {
+                    let input = json!({
+                        "session_id": session, "cwd": cwd,
+                        "tool_name": "Read", "tool_input": {"file_path": path},
+                    });
+                    if let Some(text) = on_tool(&input, &cwd, &*judge).and_then(|specific| {
+                        specific["additionalContext"].as_str().map(str::to_owned)
+                    }) {
+                        added.push(text);
+                    }
+                }
+                let back = after_compaction(&session, &cwd, "PostToolUse");
+                Ok(if added.is_empty() {
+                    context(back)
+                } else {
+                    coder_sdk::HookOutcome::context(coder_sdk::Context::new(
+                        "context",
+                        &added.join("\n\n"),
+                        1,
+                    ))
+                })
+            },
+        )
+        .timeout(std::time::Duration::from_secs(4))
+    };
+    let prompt = {
+        let cwd = cwd.clone();
+        let session = session.clone();
+        coder_sdk::Hook::new(
+            "context-task",
+            coder_sdk::Event::UserPromptSubmit,
+            coder_sdk::Source::BuiltIn,
+            move |call: &coder_sdk::Call| {
+                if let Some(text) = call.input["prompt"].as_str() {
+                    with_session(&session, |s| {
+                        s.task
+                            .get_or_insert_with(|| text.chars().take(TASK_CHARS).collect());
+                    });
+                }
+                Ok(context(after_compaction(
+                    &session,
+                    &cwd,
+                    "UserPromptSubmit",
+                )))
+            },
+        )
+    };
+    let compact = {
+        let session = session.clone();
+        coder_sdk::Hook::new(
+            "context-compact",
+            coder_sdk::Event::PostCompact,
+            coder_sdk::Source::BuiltIn,
+            move |_: &coder_sdk::Call| {
+                on_compact(&session);
+                Ok(coder_sdk::HookOutcome::none())
+            },
+        )
+    };
+    vec![touch, prompt, compact]
+}
+
+/// The files a Codex call touched: a command's reads, a patch's files.
+fn touched_paths(call: &coder_sdk::Call) -> Vec<String> {
+    let input = &call.input["tool_input"];
+    let mut paths: Vec<String> = input["commandActions"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|action| {
+            matches!(
+                action["type"].as_str(),
+                Some("read" | "listFiles" | "search")
+            )
+        })
+        .filter_map(|action| action["path"].as_str().map(str::to_owned))
+        .collect();
+    paths.extend(
+        input["changes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|change| change["path"].as_str().map(str::to_owned)),
+    );
+    paths
+}
+
 /// The directory a tool call touched.
 fn touched(input: &Value, cwd: &Path) -> Option<PathBuf> {
     let args = &input["tool_input"];
@@ -271,7 +386,12 @@ fn twin_of_claude_md(agents: &Path) -> bool {
 
 /// The candidates for `dir`: `AGENTS.md` files from `dir` up to the repo
 /// root that nothing has decided about and the briefing does not carry.
-fn candidates(dir: &Path, cwd: &Path, decided: &HashSet<PathBuf>) -> Vec<(PathBuf, String)> {
+fn candidates(
+    dir: &Path,
+    cwd: &Path,
+    decided: &HashSet<PathBuf>,
+    twins: bool,
+) -> Vec<(PathBuf, String)> {
     let root = repo_root(dir);
     let briefed: Vec<PathBuf> = BRIEFED
         .lock()
@@ -285,7 +405,7 @@ fn candidates(dir: &Path, cwd: &Path, decided: &HashSet<PathBuf>) -> Vec<(PathBu
         if file.is_file()
             && !decided.contains(&real)
             && !briefed.iter().any(|b| *b == file || *b == real)
-            && !twin_of_claude_md(&file)
+            && !(twins && twin_of_claude_md(&file))
             && let Ok(text) = std::fs::read_to_string(&file)
             && !text.trim().is_empty()
         {
@@ -319,7 +439,8 @@ pub fn on_tool(input: &Value, cwd: &Path, judge: &dyn Judge) -> Option<Value> {
     if !first {
         return None;
     }
-    let found = candidates(&dir, cwd, &decided);
+    let twins = !with_session(&id, |s| s.no_claude_md);
+    let found = candidates(&dir, cwd, &decided, twins);
     if found.is_empty() {
         return None;
     }

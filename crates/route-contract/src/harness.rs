@@ -23,9 +23,9 @@ pub enum Harness {
     /// Coder's own loop on the OpenAgents gateway, or on the person's
     /// OpenRouter key, with Coder's tools.
     CoderLoop,
-    /// Codex on the person's ChatGPT login. Today it runs only as a
-    /// background agent; a chat turn on it is not built yet
-    /// ([`Turn::NotYet`]).
+    /// Codex on the person's ChatGPT login, through `codex app-server`:
+    /// one long-lived thread per chat, Codex's approvals answered by
+    /// Coder's hooks, Coder's tools in process (#11510).
     Codex,
 }
 
@@ -112,10 +112,16 @@ pub const DECLARATIONS: [Declaration; 3] = [
     Declaration {
         harness: Harness::Codex,
         name: "Codex",
-        plugin: Some("acp-subagents"),
+        plugin: Some("codex"),
         place: Place::ThisComputer,
-        can: &[Can::RepoEdits, Can::Shell, Can::BackgroundWork],
-        turn: Turn::NotYet,
+        can: &[
+            Can::Answer,
+            Can::RepoEdits,
+            Can::Shell,
+            Can::IssueToPullRequest,
+            Can::BackgroundWork,
+        ],
+        turn: Turn::Session,
     },
 ];
 

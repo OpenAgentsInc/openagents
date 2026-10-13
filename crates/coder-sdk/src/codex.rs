@@ -68,7 +68,15 @@ pub struct Launch {
     pub env: Vec<(String, String)>,
     /// Variables removed from the process.
     pub env_remove: Vec<String>,
+    /// Where the process runs; `None` keeps the host's folder.
+    pub cwd: Option<PathBuf>,
+    /// How long Codex has to answer `initialize`; `None` waits
+    /// [`START_WAIT`]. A program that never answers is not app-server.
+    pub start_wait: Option<std::time::Duration>,
 }
+
+/// How long Codex has to answer `initialize` unless the launch says.
+pub const START_WAIT: std::time::Duration = std::time::Duration::from_secs(20);
 
 impl Launch {
     /// `codex` on `PATH`.
@@ -185,6 +193,8 @@ pub struct Codex {
     items: HashMap<String, Value>,
     usage: Value,
     tools: Option<ToolServer>,
+    /// Codex's version, from its `initialize` answer.
+    version: Option<String>,
 }
 
 impl std::fmt::Debug for Codex {
@@ -223,6 +233,9 @@ impl Codex {
             .kill_on_drop(true);
         #[cfg(unix)]
         command.process_group(0);
+        if let Some(cwd) = &launch.cwd {
+            command.current_dir(cwd);
+        }
         for (name, value) in &launch.env {
             command.env(name, value);
         }
@@ -236,7 +249,11 @@ impl Codex {
         let stdin = child.stdin.take().ok_or("Codex has no input.")?;
         let mut codex = Codex::over(BufReader::new(stdout), stdin, hooks);
         codex.child = Some(child);
-        codex.initialize().await?;
+        let wait = launch.start_wait.unwrap_or(START_WAIT);
+        match tokio::time::timeout(wait, codex.initialize()).await {
+            Ok(result) => result?,
+            Err(_) => return Err("Codex didn't answer as app-server.".into()),
+        };
         Ok(codex)
     }
 
@@ -259,6 +276,7 @@ impl Codex {
             items: HashMap::new(),
             usage: Value::Null,
             tools: None,
+            version: None,
         }
     }
 
@@ -273,6 +291,12 @@ impl Codex {
     #[must_use]
     pub fn thread(&self) -> Option<&str> {
         self.thread.as_deref()
+    }
+
+    /// Codex's version, once initialized.
+    #[must_use]
+    pub fn version(&self) -> Option<&str> {
+        self.version.as_deref()
     }
 
     /// The model the thread runs on, once Codex says.
@@ -300,6 +324,13 @@ impl Codex {
             )
             .await?;
         self.notify("initialized", Value::Null).await?;
+        // `codex_cli_rs/0.162.1 (Mac OS 26.4.0; arm64) ...`: the version is
+        // the first word's tail.
+        self.version = result["userAgent"]
+            .as_str()
+            .and_then(|agent| agent.split_whitespace().next())
+            .and_then(|first| first.rsplit('/').next())
+            .map(str::to_owned);
         Ok(result)
     }
 
@@ -313,7 +344,7 @@ impl Codex {
     pub async fn open(
         &mut self,
         open: &Open,
-        emit: &mut (dyn FnMut(Output) + Send),
+        emit: &mut dyn FnMut(Output),
     ) -> Result<String, String> {
         self.cwd.clone_from(&open.cwd);
         let started = self
@@ -394,7 +425,7 @@ impl Codex {
         prompt: &str,
         model: Option<&str>,
         mut control: Option<&mut UnboundedReceiver<Control>>,
-        emit: &mut (dyn FnMut(Output) + Send),
+        emit: &mut dyn FnMut(Output),
     ) -> Result<Ended, String> {
         let thread = self.thread.clone().ok_or("Codex has no thread open.")?;
         let submitted = self
@@ -443,7 +474,7 @@ impl Codex {
         text: &str,
         model: Option<&str>,
         mut control: Option<&mut UnboundedReceiver<Control>>,
-        emit: &mut (dyn FnMut(Output) + Send),
+        emit: &mut dyn FnMut(Output),
     ) -> Result<Ended, String> {
         let mut params = json!({
             "threadId": thread,
@@ -546,7 +577,7 @@ impl Codex {
         &mut self,
         method: &str,
         params: Value,
-        emit: &mut (dyn FnMut(Output) + Send),
+        emit: &mut dyn FnMut(Output),
     ) -> Result<Value, String> {
         let id = self.send_request(method, params).await?;
         loop {
@@ -569,7 +600,7 @@ impl Codex {
         &mut self,
         message: Value,
         mut turn: Option<&mut Turn>,
-        emit: &mut (dyn FnMut(Output) + Send),
+        emit: &mut dyn FnMut(Output),
     ) -> Result<Option<Ended>, String> {
         let Some(method) = message["method"].as_str().map(str::to_owned) else {
             // An answer to a request we don't wait on (an interrupt, a
@@ -756,7 +787,7 @@ impl Codex {
         &mut self,
         turn: &Turn,
         applied: &Applied,
-        emit: &mut (dyn FnMut(Output) + Send),
+        emit: &mut dyn FnMut(Output),
     ) -> Result<(), String> {
         if !applied.context.is_empty() || applied.stop != Stop::Continue {
             emit(Output::Gated(Box::new(applied.clone())));
@@ -778,7 +809,7 @@ impl Codex {
         &mut self,
         method: &str,
         params: &Value,
-        emit: &mut (dyn FnMut(Output) + Send),
+        emit: &mut dyn FnMut(Output),
     ) -> (Result<Value, String>, Option<String>) {
         let legacy = matches!(method, "execCommandApproval" | "applyPatchApproval");
         let call = match method {
@@ -850,7 +881,7 @@ impl Codex {
 
     /// One of Coder's tools, called by Codex: through the hooks (as
     /// `mcp__coder__<name>`, the name it has on Claude Code), then the tool.
-    async fn tool_call(&mut self, params: &Value, emit: &mut (dyn FnMut(Output) + Send)) -> Value {
+    async fn tool_call(&mut self, params: &Value, emit: &mut dyn FnMut(Output)) -> Value {
         let name = params["tool"].as_str().unwrap_or_default().to_owned();
         let arguments = params["arguments"].clone();
         let Some(tools) = self.tools.clone() else {

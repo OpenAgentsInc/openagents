@@ -743,8 +743,16 @@ fn top_rail(app: &App) -> Option<String> {
             parts.push(context);
         }
     }
+    // Codex's windows, the same way, only while Codex runs the chat
+    // (#11510).
+    if app.on_codex() {
+        let windows = crate::codex::windows_text(atif::now_ms() / 1000);
+        if !windows.is_empty() {
+            parts.push(windows);
+        }
+    }
     let cost = crate::long_session::session_cost(app);
-    if cost > 0.0 && !app.on_claude() {
+    if cost > 0.0 && !app.on_claude() && !app.on_codex() {
         parts.push(agent_fleet::dollars(cost));
     }
     (!parts.is_empty()).then(|| parts.join(" · "))
@@ -782,7 +790,11 @@ fn rail_harness(app: &App) -> Option<String> {
             };
             Some(format!("{CODER_RAIL} ({model})"))
         }
-        Harness::Codex => Some(Harness::Codex.declaration().name.into()),
+        // "Codex (GPT-6.1-Sol)": the model the next turn runs (#11510).
+        Harness::Codex => Some(format!(
+            "Codex ({})",
+            crate::codex::name(&crate::codex::turn_model(app.live.pinned_model.clone()))
+        )),
     }
 }
 

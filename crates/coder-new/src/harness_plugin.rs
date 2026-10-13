@@ -76,7 +76,7 @@ pub struct Facts {
     pub local: bool,
     pub claude_plugin_on: bool,
     pub claude: Health,
-    /// Codex is an enabled background engine here.
+    /// The Codex plugin is on here (#11510).
     pub codex_on: bool,
     pub codex: Health,
     /// The person's OpenRouter key is on and set; the Coder loop then pays
@@ -114,13 +114,12 @@ impl Facts {
                 signed_in: claude_signed_in,
                 at_limit: claude_signed_in && claude_at_limit(now),
             },
-            codex_on: crate::fleet::engines(execution)
-                .iter()
-                .any(|engine| engine == "codex"),
-            // An enabled, valid ACP agent is one whose program resolved.
+            codex_on: app.plugins.bundled.codex,
+            // The sign-in is read once and cached ([`crate::codex::available`]);
+            // the windows are what Codex last reported.
             codex: Health {
-                signed_in: true,
-                at_limit: false,
+                signed_in: app.plugins.bundled.codex && crate::codex::available(),
+                at_limit: crate::codex::at_limit(now),
             },
             openrouter_key: app.plugins.enabled && app.plugins.key_configured,
             leaning: crate::routing_preferences::Leaning::read(
@@ -128,7 +127,7 @@ impl Facts {
                 |harness| match harness {
                     Harness::ClaudeCode => Some(crate::claude::choice().model),
                     Harness::CoderLoop => Some(app.plugins.model.clone()),
-                    Harness::Codex => None,
+                    Harness::Codex => Some(crate::codex::choice().model),
                 },
             ),
         }
@@ -800,11 +799,22 @@ impl App {
         self.mode == Mode::Live && self.live.runs_on == Some(Harness::ClaudeCode)
     }
 
+    /// Whether this chat runs on Codex (#11510).
+    #[must_use]
+    pub fn on_codex(&self) -> bool {
+        self.mode == Mode::Live && self.live.runs_on == Some(Harness::Codex)
+    }
+
     /// Whether this chat runs Coder's own loop: a live chat not on Claude
-    /// Code, including one whose first turn has not been routed yet.
+    /// Code or Codex, including one whose first turn has not been routed
+    /// yet.
     #[must_use]
     pub fn on_coder_loop(&self) -> bool {
-        self.mode == Mode::Live && self.live.runs_on != Some(Harness::ClaudeCode)
+        self.mode == Mode::Live
+            && !matches!(
+                self.live.runs_on,
+                Some(Harness::ClaudeCode | Harness::Codex)
+            )
     }
 
     /// Starts the draft's turn on `harness` and keeps the chat on it: a
@@ -816,7 +826,7 @@ impl App {
     /// The harness takes no chat turns yet.
     pub fn submit_on(&mut self, harness: Harness) -> Result<(), &'static str> {
         if harness.declaration().turn == Turn::NotYet {
-            return Err("Codex runs as a background agent; it takes no chat turns yet.");
+            return Err("That harness takes no chat turns yet.");
         }
         if self.mode != Mode::Live {
             self.set_mode(Mode::Live);
@@ -870,10 +880,35 @@ mod tests {
     }
 
     #[test]
-    fn a_signed_in_computer_offers_claude_code_and_the_coder_loop() {
+    fn a_signed_in_computer_offers_every_harness_in_order() {
         let found = candidates(&facts());
-        assert_eq!(found.admitted, [Harness::ClaudeCode, Harness::CoderLoop]);
-        assert_eq!(found.excluded, [(Harness::Codex, Exclusion::NoChatTurn)]);
+        assert_eq!(
+            found.admitted,
+            [Harness::ClaudeCode, Harness::CoderLoop, Harness::Codex]
+        );
+        assert!(found.excluded.is_empty());
+    }
+
+    /// Codex is a bundled plugin that can be turned off, needs its sign-in,
+    /// and steps aside at a plan limit (#11510).
+    #[test]
+    fn each_reason_leaves_codex_out() {
+        let mut off = facts();
+        off.codex_on = false;
+        assert_eq!(exclusion(Harness::Codex, &off), Some(Exclusion::PluginOff));
+        let mut signed_out = facts();
+        signed_out.codex.signed_in = false;
+        assert_eq!(
+            exclusion(Harness::Codex, &signed_out),
+            Some(Exclusion::NotSignedIn)
+        );
+        let mut limited = facts();
+        limited.codex.at_limit = true;
+        assert_eq!(
+            exclusion(Harness::Codex, &limited),
+            Some(Exclusion::AtPlanLimit)
+        );
+        assert_eq!(payer(Harness::Codex, &facts()), Payer::ChatGptLogin);
     }
 
     #[test]
@@ -933,7 +968,18 @@ mod tests {
         app.submit_on(Harness::CoderLoop).unwrap();
         assert_eq!(app.mode, Mode::Live);
         assert_eq!(app.live.runs_on, Some(Harness::CoderLoop));
-        assert!(app.submit_on(Harness::Codex).is_err());
+        // Codex takes chat turns (#11510): a pin starts one on it.
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.draft.text = "hello".into();
+        app.draft.cursor = 5;
+        app.submit_on(Harness::Codex).unwrap();
+        assert_eq!(app.live.runs_on, Some(Harness::Codex));
+        assert!(app.on_codex() && !app.on_coder_loop() && !app.on_claude());
+        assert!(matches!(
+            app.request.as_ref().map(|request| &request.kind),
+            Some(crate::live::Work::Codex { session: None, .. })
+        ));
     }
 
     #[test]

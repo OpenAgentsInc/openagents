@@ -63,6 +63,8 @@ pub struct Chat {
     pub harness: Option<crate::harness::Run>,
     /// The Claude Code session this chat's claude turns continue (#11435).
     pub claude_session: Option<ClaudeSession>,
+    /// The Codex thread this chat's Codex turns continue (#11510).
+    pub codex_session: Option<ClaudeSession>,
     /// The harness plugin this chat's turns run on, once its first turn
     /// was routed ([`App::route_turn`](crate::App::route_turn)); follow-ups
     /// stay on it (#11453).
@@ -116,6 +118,15 @@ impl Chat {
     #[must_use]
     pub fn claude_resume(&self) -> Option<String> {
         self.claude_session
+            .as_ref()
+            .filter(|session| session.users + 1 == self.user_count())
+            .map(|session| session.id.clone())
+    }
+
+    /// The Codex thread the next Codex turn continues, on the same rule.
+    #[must_use]
+    pub fn codex_resume(&self) -> Option<String> {
+        self.codex_session
             .as_ref()
             .filter(|session| session.users + 1 == self.user_count())
             .map(|session| session.id.clone())
@@ -407,6 +418,20 @@ pub enum Work {
         /// in /models, read for every turn.
         model: Option<String>,
     },
+    /// A Codex turn: the person's message to the chat's long-lived Codex
+    /// process ([`crate::codex_chat`]), started for it when the chat has
+    /// none (#11510).
+    Codex {
+        messages: Vec<Message>,
+        cwd: std::path::PathBuf,
+        /// Coder's own tools, offered to Codex in process.
+        tools: Box<crate::claude_tools::Tools>,
+        /// The Codex thread the chat holds, which this turn continues.
+        session: Option<String>,
+        briefing: Option<Box<crate::context::Briefing>>,
+        /// The model a pin names; `None` runs the pick in /models.
+        model: Option<String>,
+    },
     /// A turn of solver's conversational Intaker: Haiku with a read-only
     /// `gh`, helping the person find or pick the issue to solve.
     SolverIntake {
@@ -522,6 +547,10 @@ pub struct Background {
     claude_ended: u64,
     /// Processes of chats that were closed, finishing their work.
     claude_closing: Vec<crate::claude_chat::Chat>,
+    /// The Codex chat's long-lived process (#11510). It shares the turn
+    /// bookkeeping above: a chat runs on one harness at a time.
+    codex: Option<crate::codex_chat::Chat>,
+    codex_closing: Vec<crate::codex_chat::Chat>,
 }
 
 impl Background {
@@ -541,6 +570,9 @@ impl Background {
             if let Some(chat) = &self.claude {
                 self.claude_stopped = self.claude_stopped.max(chat.interrupt(turn));
             }
+            if let Some(chat) = &self.codex {
+                self.claude_stopped = self.claude_stopped.max(chat.interrupt(turn));
+            }
         }
         // A process belongs to the chat that holds its session; another chat
         // on screen closes it.
@@ -555,12 +587,34 @@ impl Background {
         }) {
             self.close_claude();
         }
+        if self.codex.as_ref().is_some_and(|chat| {
+            chat.session.is_some()
+                && chat.session.as_deref()
+                    != app
+                        .live
+                        .codex_session
+                        .as_ref()
+                        .map(|session| session.id.as_str())
+        }) {
+            self.close_codex();
+        }
         if let Some(request) = app
             .request
             .take_if(|request| matches!(request.kind, Work::Claude { .. }))
         {
             self.cancel();
+            self.close_codex();
             self.claude_request(request, app);
+        }
+        if let Some(request) = app
+            .request
+            .take_if(|request| matches!(request.kind, Work::Codex { .. }))
+        {
+            self.cancel();
+            if self.claude.is_some() {
+                self.close_claude();
+            }
+            self.codex_request(request, app);
         }
         if let Some(request) = app.request.take() {
             self.cancel();
@@ -622,6 +676,7 @@ impl Background {
             self.active = None;
         }
         self.poll_claude(app);
+        self.poll_codex(app);
         self.show_question(app);
         app.claude_turn = self.claude_turn.is_some();
         app.poll_disclosure();
@@ -758,7 +813,7 @@ impl Background {
             return;
         };
         for event in chat.poll() {
-            self.claude_event(app, event);
+            self.claude_event(app, event, false);
         }
         if self
             .claude
@@ -772,13 +827,23 @@ impl Background {
     }
 
     /// One event of the claude process onto the chat.
-    fn claude_event(&mut self, app: &mut crate::App, event: crate::claude_chat::Event) {
+    fn claude_event(
+        &mut self,
+        app: &mut crate::App,
+        event: crate::claude_chat::Event,
+        codex: bool,
+    ) {
         match event {
             crate::claude_chat::Event::Session(session) => {
-                app.live.claude_session = Some(ClaudeSession {
+                let session = Some(ClaudeSession {
                     id: session,
                     users: app.live.user_count(),
                 });
+                if codex {
+                    app.live.codex_session = session;
+                } else {
+                    app.live.claude_session = session;
+                }
                 app.history.dirty = true;
             }
             crate::claude_chat::Event::Runtime { turn, event } => {
@@ -878,10 +943,113 @@ impl Background {
                 if let Some((id, _)) = self.claude_turn.take() {
                     app.apply_update(Update::Finished {
                         id,
-                        result: Err("Claude Code stopped before the turn ended.".into()),
+                        result: Err(if codex {
+                            "Codex stopped before the turn ended.".into()
+                        } else {
+                            "Claude Code stopped before the turn ended.".into()
+                        }),
                     });
                 }
             }
+        }
+    }
+
+    /// Hands a Codex message to the chat's process: steered into the turn
+    /// running now, sent to the one already running this chat, or to a new
+    /// one started on the chat's thread (#11510).
+    fn codex_request(&mut self, request: Request, app: &mut crate::App) {
+        let Work::Codex {
+            messages,
+            cwd,
+            tools,
+            session,
+            briefing,
+            model,
+        } = request.kind
+        else {
+            return;
+        };
+        let newest = messages
+            .last()
+            .map(|message| message.content.clone())
+            .unwrap_or_default();
+        let model = crate::codex::turn_model(model);
+        let running = self.codex.as_ref().is_some_and(|chat| {
+            !chat.exited() && chat.cwd == cwd && chat.tools == *tools && chat.session == session
+        });
+        if !running {
+            self.close_codex();
+            let seed = crate::codex::seed(&messages);
+            self.codex = Some(crate::codex_chat::Chat::start(
+                cwd,
+                *tools,
+                session,
+                newest,
+                seed,
+                briefing.map(|briefing| *briefing),
+                model,
+            ));
+        } else if let Some(chat) = &mut self.codex {
+            // A new piece of work: its briefing goes with the message, so
+            // the thread and its cache stay (#11473).
+            let key = briefing.as_ref().map(|briefing| briefing.key());
+            let newest = match briefing.filter(|_| key != chat.briefing) {
+                Some(briefing) => {
+                    chat.briefing = key;
+                    crate::context_hook::note_message_briefing(&cwd, Some(briefing.render(false)));
+                    crate::claude::with_briefing(&briefing, &newest)
+                }
+                None => newest,
+            };
+            let newest = if chat.model == model {
+                newest
+            } else {
+                chat.set_model(&model);
+                crate::codex::with_switch(&model, &newest)
+            };
+            chat.say(&newest, self.claude_turn.is_some());
+            let users = app.live.user_count();
+            if let Some(session) = &mut app.live.codex_session {
+                session.users = users;
+            }
+        }
+        let turn = self.codex.as_ref().map_or(1, crate::codex_chat::Chat::turn);
+        self.claude_turn = Some((request.id, turn));
+    }
+
+    /// Ends the chat's Codex process once its turn is done.
+    fn close_codex(&mut self) {
+        if let Some(mut chat) = self.codex.take() {
+            if !chat.exited() {
+                chat.close();
+                self.codex_closing.push(chat);
+            }
+            self.claude_turn = None;
+            self.claude_stopped = 0;
+            self.claude_ended = 0;
+        }
+    }
+
+    /// What the Codex process reported, onto the chat.
+    fn poll_codex(&mut self, app: &mut crate::App) {
+        for chat in &mut self.codex_closing {
+            chat.poll();
+        }
+        self.codex_closing.retain(|chat| !chat.exited());
+        let Some(chat) = self.codex.as_mut() else {
+            return;
+        };
+        for event in chat.poll() {
+            self.claude_event(app, event, true);
+        }
+        if self
+            .codex
+            .as_ref()
+            .is_some_and(crate::codex_chat::Chat::exited)
+        {
+            self.codex = None;
+            self.claude_stopped = 0;
+            self.claude_ended = 0;
         }
     }
 }
@@ -992,6 +1160,7 @@ fn run_with_provider(
                 // A claude turn runs in its chat's own process
                 // ([`Background::claude_request`]), never on a worker.
                 Work::Claude { .. } => Update::Finished { id, result: Err("The claude chat has no process to run in.".into()) },
+                Work::Codex { .. } => Update::Finished { id, result: Err("The Codex chat has no process to run in.".into()) },
                 Work::SolverIntake { messages, cwd, github } => {
                     let prompt = crate::solver::intake_task(&messages, &github);
                     let mut events = |event: RuntimeEvent| match event {
@@ -2064,6 +2233,7 @@ mod tests {
                 turn: 1,
                 event: text("Hi"),
             },
+            false,
         );
         assert_eq!(app.program_status().0, "working");
         background.claude_event(
@@ -2072,6 +2242,7 @@ mod tests {
                 turn: 1,
                 result: Ok(Streamed::default()),
             },
+            false,
         );
         assert_eq!(app.program_status().0, "idle");
         background.claude_event(
@@ -2080,6 +2251,7 @@ mod tests {
                 turn: 1,
                 event: RuntimeEvent::Plan(Default::default()),
             },
+            false,
         );
         background.claude_event(
             &mut app,
@@ -2087,6 +2259,7 @@ mod tests {
                 turn: 1,
                 event: text("late"),
             },
+            false,
         );
         assert_eq!(app.program_status().0, "idle");
         assert!(!app.live.busy);
@@ -2096,6 +2269,7 @@ mod tests {
                 turn: 2,
                 event: text("Back"),
             },
+            false,
         );
         assert_eq!(app.program_status().0, "working");
     }

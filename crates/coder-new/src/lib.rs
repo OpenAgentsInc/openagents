@@ -22,6 +22,8 @@ pub mod claude_tools;
 pub mod cloud;
 pub mod cloud_settings;
 pub mod cloud_tools;
+pub mod codex;
+pub mod codex_chat;
 mod codex_usage;
 pub mod comms;
 mod composer_history;
@@ -672,6 +674,7 @@ impl App {
 
     pub fn load_plugin_settings(&mut self, store: plugin_store::Store) -> Result<(), String> {
         claude::load_choice(store.root());
+        codex::load_choice(store.root());
         let appearance = self.appearance.load(store.clone());
         self.appearance_error = appearance.as_ref().err().cloned();
         let preferences = self.preferences.load(store.clone());
@@ -729,7 +732,10 @@ impl App {
                     || (self.mode == Mode::Live && self.live.user_count() > 0)
             })
             .filter(|command| {
-                *command != slash::Command::Models || self.plugins.enabled || self.on_claude()
+                *command != slash::Command::Models
+                    || self.plugins.enabled
+                    || self.on_claude()
+                    || self.on_codex()
             })
             // Saving chats to the account needs a sign-in (#11046).
             .filter(|command| *command != slash::Command::Sync || self.account.is_some())
@@ -1162,7 +1168,7 @@ impl App {
                 // Coder's own loop waits for its agents within the turn: one
                 // still shown running when the turn ends never reported back,
                 // and would keep its chat working (#11462).
-                if !self.on_claude() {
+                if !self.on_claude() && !self.on_codex() {
                     for child in &mut self.delegations {
                         if child.running && !child.background {
                             child.running = false;
@@ -1849,6 +1855,81 @@ impl App {
         });
     }
 
+    /// A Codex turn (#11510): the person's message to the chat's own Codex
+    /// process ([`crate::codex_chat`]) on `codex app-server`, with Codex's
+    /// own tools, Coder's tools in process, and each command and patch
+    /// answered by Coder's hooks. A message sent while a turn runs is read
+    /// in that turn. The same one conversation; only the harness differs.
+    pub(crate) fn submit_codex(&mut self) {
+        if self.draft.text.trim().is_empty() && self.composer.images.is_empty() {
+            return;
+        }
+        if self.checking_key || self.checking_jev {
+            self.queue_prompt();
+            return;
+        }
+        if self.live.busy && !self.claude_turn {
+            self.queue_prompt();
+            return;
+        }
+        let midturn = self.live.busy;
+        if let Err(error) = self.attach_to_prompt() {
+            self.live.notice = Some(error);
+            return;
+        }
+        self.record_prompt();
+        if !midturn {
+            self.cancel_request();
+        }
+        let cwd = self.cwd.clone().unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+        });
+        let text = std::mem::take(&mut self.draft.text);
+        let (images, chars) = (self.composer.images.len(), text.chars().count());
+        self.draft.cursor = 0;
+        self.composer = Default::default();
+        self.screen = Screen::Conversation;
+        self.live.finish_partial();
+        self.live.entries.push(live::Entry::User(text));
+        let messages = self.live.messages();
+        let session = self.live.codex_resume();
+        self.history.dirty = true;
+        self.scroll = u16::MAX;
+        if !midturn {
+            self.begin_claude_turn();
+            self.record_choice(harness_plugin::Harness::Codex, images, chars);
+            // A floor asks the person on the approval card while Codex
+            // waits (#11475).
+            self.open_floor_desk();
+        }
+        self.request = Some(live::Request {
+            id: self.request_id,
+            key: model_access::ApiKey::new(""),
+            kind: live::Work::Codex {
+                messages,
+                cwd,
+                tools: Box::new(crate::claude_tools::Tools::new(self.agent_execution())),
+                session,
+                briefing: self.live.briefing.clone().map(Box::new),
+                model: self.live.pinned_model.clone(),
+            },
+        });
+    }
+
+    /// After the person picks `model` for Codex in /models: the next
+    /// message runs on it, in this same chat and thread.
+    fn codex_model_switched(&mut self, model: &str) -> String {
+        if self.live.runs_on == Some(harness_plugin::Harness::Codex) {
+            self.live.pinned_model = None;
+        }
+        let name = codex::name(model);
+        if self.live.codex_session.is_some() {
+            format!("Your next message runs on {name}, in this same chat.")
+        } else {
+            format!("Codex now runs {name}.")
+        }
+    }
+
     /// After the person picks `model` for claude in /models (#11480): a
     /// pin's model no longer holds this chat's Claude Code turns, so the
     /// next message runs on the pick, and the words saying so.
@@ -1983,9 +2064,16 @@ impl App {
             if self.ask_router() {
                 return;
             }
-            if self.route_turn() == harness_plugin::Harness::ClaudeCode {
-                self.submit_claude();
-                return;
+            match self.route_turn() {
+                harness_plugin::Harness::ClaudeCode => {
+                    self.submit_claude();
+                    return;
+                }
+                harness_plugin::Harness::Codex => {
+                    self.submit_codex();
+                    return;
+                }
+                harness_plugin::Harness::CoderLoop => {}
             }
         }
         if self.live.busy
@@ -2262,6 +2350,20 @@ impl App {
         self.resume_picker = None;
         // A Claude Code chat picks among Claude models on this computer's
         // login, with no OpenRouter key.
+        if self.on_codex() {
+            let picked = codex::choice();
+            self.model_picker = Some(models::Picker::new(
+                codex::catalog(),
+                codex::PICKER,
+                &picked.model,
+                models::GenerationOptions {
+                    reasoning: picked.effort,
+                    max_tokens: None,
+                },
+                false,
+            ));
+            return;
+        }
         if self.on_claude() {
             let picked = claude::choice();
             self.model_picker = Some(models::Picker::new(
@@ -2749,6 +2851,19 @@ impl App {
                                 }
                             }
                         }
+                        models::Action::Save(model, options) if model.plugin == codex::PICKER => {
+                            match codex::choose(&model.id, options.reasoning) {
+                                Ok(()) => {
+                                    self.model_picker = None;
+                                    self.notice = Some(self.codex_model_switched(&model.id));
+                                }
+                                Err(error) => {
+                                    if let Some(picker) = &mut self.model_picker {
+                                        picker.error = Some(error);
+                                    }
+                                }
+                            }
+                        }
                         models::Action::Save(model, options) => {
                             if self.plugins.set_model(&model, options) {
                                 self.model_picker = None;
@@ -2962,6 +3077,13 @@ impl App {
                             // chat's next turn again.
                             if self.on_claude()
                                 && !self.plugins.bundled.enabled(crate::claude::PLUGIN)
+                            {
+                                self.cancel_request();
+                                self.live.runs_on = None;
+                            }
+                            // So does turning the Codex plugin off.
+                            if self.on_codex()
+                                && !self.plugins.bundled.enabled(crate::codex::PLUGIN)
                             {
                                 self.cancel_request();
                                 self.live.runs_on = None;

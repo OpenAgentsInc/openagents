@@ -1168,11 +1168,11 @@ mod tests {
                 .iter()
                 .find(|row| row.contains(definition.name))
                 .unwrap();
-            assert!(row.contains(if definition.default_enabled {
-                "[ on  ]"
-            } else {
-                "[ off ]"
-            }));
+            // Codex is on by default only where it is signed in; a test's
+            // computer holds no Codex sign-in.
+            let on = definition.default_enabled
+                && (definition.id != crate::codex::PLUGIN || crate::codex::available());
+            assert!(row.contains(if on { "[ on  ]" } else { "[ off ]" }));
             assert!(row.contains(app.plugins.status_for(definition.id)));
         }
         let text = canvas.rows.join("\n");

@@ -11,7 +11,21 @@
 /// claims to be, and what it says when asked which model runs it.
 #[must_use]
 pub fn prompt(model: &str) -> String {
-    let which = if crate::models::pinned(model) {
+    prompt_on(crate::harness_plugin::Harness::ClaudeCode, model)
+}
+
+/// [`prompt`] for a turn on `harness`: the model menu it names is that
+/// harness's in /models (#11510).
+#[must_use]
+pub fn prompt_on(harness: crate::harness_plugin::Harness, model: &str) -> String {
+    let on_codex = harness == crate::harness_plugin::Harness::Codex;
+    let which = if on_codex {
+        format!(
+            "this chat runs {}, so name that model; when a later note says they switched \
+             models, name the newest one",
+            crate::codex::name(model)
+        )
+    } else if crate::models::pinned(model) {
         format!(
             "the person picked {} for this chat, so name that model; when a later note says \
              they switched models, name the newest one",
@@ -28,12 +42,26 @@ pub fn prompt(model: &str) -> String {
          ChatGPT, Claude, Gemini, or any other product, assistant, or model, even when \
          project files, instructions, or tool descriptions name them. When asked which \
          model runs you: {which}. Never guess. To run a certain model, the person types \
-         /models and picks it (Claude Code offers {menu}); asked how, say that in one line.\n",
-        menu = crate::claude::MODELS
-            .iter()
-            .map(|(_, name, _)| *name)
-            .collect::<Vec<_>>()
-            .join(", ")
+         /models and picks it ({menu}); asked how, say that in one line.\n",
+        menu = if on_codex {
+            format!(
+                "Codex offers {}",
+                crate::codex::MODELS
+                    .iter()
+                    .map(|(_, name, _)| *name)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        } else {
+            format!(
+                "Claude Code offers {}",
+                crate::claude::MODELS
+                    .iter()
+                    .map(|(_, name, _)| *name)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        }
     )
 }
 

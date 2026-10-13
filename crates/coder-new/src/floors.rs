@@ -77,12 +77,24 @@ pub const TABLE: [Row; 3] = [
         harness: Harness::Codex,
         permission: PERMISSION,
         native: &[
-            "--dangerously-bypass-approvals-and-sandbox",
-            "approval_policy=\"never\"",
+            "approval_policy=\"untrusted\"",
+            "sandbox=\"danger-full-access\"",
         ],
-        floors: "a PreToolUse hook Coder passes with -c hooks.PreToolUse, run without hook trust",
+        floors: "Codex's approval requests on app-server, answered by the hooks Coder runs for the session",
     },
 ];
+
+/// Codex's `exec`, the fallback where app-server won't start (#11510): its
+/// own modes, and where the floors hold there.
+pub const CODEX_EXEC_FALLBACK: Row = Row {
+    harness: Harness::Codex,
+    permission: PERMISSION,
+    native: &[
+        "--dangerously-bypass-approvals-and-sandbox",
+        "approval_policy=\"never\"",
+    ],
+    floors: "a PreToolUse hook Coder passes with -c hooks.PreToolUse, run without hook trust",
+};
 
 /// The row for `harness`.
 #[must_use]
@@ -447,6 +459,10 @@ fn quote_word(word: &str) -> String {
 /// Codex's `shell`), a file read, or the OpenAgents CLI tool.
 #[must_use]
 pub fn classify(tool: &str, input: &Value) -> Option<Floor> {
+    // Coder's own tools by their plain names, however a harness names them
+    // (`mcp__coder__openagents_cli` on Claude Code and Codex).
+    let server = format!("mcp__{}__", crate::claude_tools::SERVER);
+    let tool = tool.strip_prefix(&server).unwrap_or(tool);
     match tool {
         "Bash" | "Run" | "shell" | "exec_command" | "local_shell" => command(&command_text(input)?),
         "Read" | "read_file" | "View" => {

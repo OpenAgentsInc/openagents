@@ -344,7 +344,7 @@ pub fn acp_tool_definition(agents: &[AcpAgent]) -> Option<Value> {
     }
     Some(json!({"type":"function","function":{
         "name":"acp_subagent",
-        "description":"Delegate a task to a registered local agent through ACP or the built-in native Codex bridge. Use exactly the agent the user names; never substitute another agent. If that agent is unavailable, report the reason and let the user choose. The host supplies the executable. Include the task, relevant context, and the result you need. This starts one child session in the current working directory, streams its work, and closes it when the task ends; the result names the folder under cwd. Agents start with full permissions by default: native Codex has no sandbox or approval prompts, and ACP permission requests are approved. Explicit host approval policies still apply.",
+        "description":"Delegate a task to a registered local agent through ACP or the built-in native Codex bridge. Use exactly the agent the user names; never substitute another agent. If that agent is unavailable, report the reason and let the user choose. The host supplies the executable. Include the task, relevant context, and the result you need. This starts one child session in the current working directory, streams its work, and closes it when the task ends; the result names the folder under cwd. Agents start with full permissions by default: native Codex has no sandbox and Coder answers its approval requests, and ACP permission requests are approved. Explicit host approval policies still apply.",
         "parameters":{"type":"object","properties":{"agent":{"type":"string","enum":ids},"task":{"type":"string","minLength":1,"maxLength":65536},"model":{"type":"string","description":"The model the agent runs; only devin-cli takes one."},"read_only":{"type":"boolean","description":"Set for an audit, review or check that must not change files. Codex, Claude Code and Cursor are held to it; another agent is switched to its own read-only mode when it has one. The result's permissions field says the mode it ran in and whether it was enforced."}},"required":["agent","task"],"additionalProperties":false}
     }}))
 }
@@ -1173,6 +1173,13 @@ async fn codex_cli(
     if !crate::approval::tools_allowed() {
         return Err("The crew charter refuses Codex delegation, including read-only work.".into());
     }
+    // Full access runs on app-server under Coder's hooks, never Codex's
+    // bypass (#11510); exec stays the fallback where app-server won't start.
+    if sandbox == CodexSandbox::FullAccess
+        && let Some(result) = codex_app_server(program, task, cwd, briefed, cancel, emit).await
+    {
+        return result;
+    }
     let mut command = std::process::Command::new(program);
     command.args(["exec", "--json", "--skip-git-repo-check"]);
     let variable = |name| std::env::var(name).ok().filter(|value| !value.is_empty());
@@ -1323,6 +1330,124 @@ async fn codex_cli(
     Ok(
         json!({"session":events.session,"reply":events.text,"model":events.model.map(|model| crate::models::GenerationOptions { reasoning: events.reasoning, max_tokens: None }.slug(&model)),"stop_reason":"end_turn","usage":events.usage,"tokens":tokens,"group_clear":stopped.group_clear,"transport":"codex-cli","sandbox":sandbox.word(),"truncated":!reader.gaps().is_empty()}),
     )
+}
+
+/// A delegated Codex task on `codex app-server` (#11510): one thread, one
+/// turn, each command and patch answered by Coder's hooks. `None` when
+/// app-server didn't start or open a thread, so the caller falls back to
+/// `exec`.
+async fn codex_app_server(
+    program: &Path,
+    task: &str,
+    cwd: &Path,
+    briefed: bool,
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Option<Result<Value, String>> {
+    use coder_sdk::codex::{Codex, Control, Open, Output};
+    let variable = |name| {
+        std::env::var(name)
+            .ok()
+            .filter(|value: &String| !value.is_empty())
+    };
+    let launch = crate::codex::launch(program.to_owned(), cwd, briefed);
+    let mut codex = Codex::spawn(&launch, crate::sdk_hooks::codex(cwd))
+        .await
+        .ok()?;
+    let model = variable("CODER_CODEX_MODEL");
+    let reasoning = variable("CODER_CODEX_REASONING");
+    let mut session = None;
+    codex
+        .open(
+            &Open {
+                cwd: cwd.to_owned(),
+                model: model.clone(),
+                effort: reasoning.clone(),
+                ..Open::default()
+            },
+            &mut |output| {
+                if let Output::Thread(id) = output {
+                    session = Some(id);
+                }
+            },
+        )
+        .await
+        .ok()?;
+    let (control, mut controls) = tokio::sync::mpsc::unbounded_channel();
+    let mut tokens = 0_u64;
+    let mut out = |output: Output| match output {
+        Output::Model(model) => emit(RuntimeEvent::Model(
+            crate::models::GenerationOptions {
+                reasoning: reasoning.clone(),
+                max_tokens: None,
+            }
+            .slug(&model),
+        )),
+        Output::Text(text) => emit(RuntimeEvent::Text(text)),
+        Output::Tool {
+            name,
+            input,
+            output,
+            running,
+        } => emit(RuntimeEvent::Tool {
+            name,
+            input,
+            output,
+            running,
+        }),
+        Output::Usage(usage) => {
+            tokens = usage["total"]["totalTokens"].as_u64().unwrap_or(tokens);
+            emit(RuntimeEvent::Tokens(tokens));
+        }
+        Output::RateLimits(limits) => {
+            crate::codex::observe_limits(&limits, coder_delegate::limit::now());
+        }
+        _ => {}
+    };
+    let watch = async {
+        while !cancel.load(Ordering::Relaxed) {
+            tokio::time::sleep(POLL).await;
+        }
+        let _ = control.send(Control::Interrupt);
+        std::future::pending::<()>().await;
+    };
+    let ended = tokio::select! {
+        ended = codex.turn(task, model.as_deref(), Some(&mut controls), &mut out) => ended,
+        () = watch => unreachable!("the watcher never ends"),
+    };
+    codex.close().await;
+    Some(match ended {
+        Ok(ended) if ended.interrupted() || cancel.load(Ordering::Relaxed) => {
+            Err("The Codex task was canceled.".into())
+        }
+        Ok(ended) if ended.status == "failed" => {
+            let reason = ended
+                .error
+                .unwrap_or_else(|| "The Codex turn failed.".into());
+            if coder_delegate::limit::says_limited(&reason) {
+                Err(codex_out_of_capacity(
+                    &codex_refusal(&reason, coder_delegate::limit::now()),
+                    &reason,
+                    true,
+                ))
+            } else {
+                Err(format!("Codex could not finish the task: {reason}."))
+            }
+        }
+        Ok(ended) => Ok(json!({
+            "session": session.or(Some(ended.thread)),
+            "reply": ended.text,
+            "model": ended.model.map(|model| crate::models::GenerationOptions { reasoning, max_tokens: None }.slug(&model)),
+            "stop_reason": "end_turn",
+            "usage": ended.usage,
+            "tokens": tokens,
+            "group_clear": true,
+            "transport": "codex-app-server",
+            "sandbox": CodexSandbox::FullAccess.word(),
+            "truncated": false,
+        })),
+        Err(error) => Err(format!("Codex could not finish the task: {error}")),
+    })
 }
 
 #[derive(Default)]
@@ -2636,7 +2761,8 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"o
             .lines()
             .map(str::to_owned)
             .collect();
-        let row = crate::floors::row(crate::harness_plugin::Harness::Codex);
+        // A stand-in that is no app-server: the exec fallback ran.
+        let row = &crate::floors::CODEX_EXEC_FALLBACK;
         assert_eq!(row.permission, crate::floors::PERMISSION);
         for flag in row.native {
             assert!(args.iter().any(|arg| arg == flag), "{flag} in {args:?}");
