@@ -11,7 +11,163 @@ Context: [decision-profitability.md](decision-profitability.md),
 Survey of existing TPU stacks, kernels, quantization and prices:
 [clef-tpu-survey.md](clef-tpu-survey.md).
 
-## Status (2026-10-13)
+## Status after the speed work (2026-10-13, #11502)
+
+[#11502](https://github.com/OpenAgentsInc/openagents/issues/11502). The live
+lane on `p6-asia-northeast1-b` (`X-Decision-Order: tpu`) runs the version
+described here. BF16 is still the served precision.
+
+**Speed** (v6e-1, one request at a time, fresh prompts, request tokens/s
+including the head; `bench/p2.py`, median of 5):
+
+| Prompt | P2 (#11459) | **BF16 now (live)** | int8 (not served) |
+| ---: | ---: | ---: | ---: |
+| 1,100 | — | **22,257** | 24,342 |
+| 1,536 | 19,789 | **26,736** | 28,741 |
+| 4,096 | 20,517 | **27,857** | 34,367 |
+| 16,384 | 20,016 | **26,824** | 33,462 |
+
+**Latency through the door on the live machine**
+(`fixtures/clef/tools/bench_latency.py`: fresh nonce, median of 9, the
+`docs/audits/2026-10-10-clef-mac-performance/requests/len*.json` prompts
+used for the H100 rows in [clef-native.md](clef-native.md)):
+
+| Prompt | TPU before | **TPU now** | H100 Psionic Q4 (production, Round 12) | A100 Psionic Q4 (production, Round 12) |
+| ---: | ---: | ---: | ---: | ---: |
+| 1,082 tokens | 0.12 s (0.10–0.60) | **0.052 s** | 0.055 s | 0.131 s |
+| 3,918 tokens | 0.24 s (0.19–0.63) | **0.152 s** | 0.161 s | 0.419 s |
+| 15,510 tokens | 1.26 s (0.62–1.29) | **0.597 s** | 0.843 s (10-10 run) | — |
+
+The e2e set through the door: 34 ms median, 64 ms p90 (was 46 / 84).
+
+**Cost per million prompt tokens**, fully busy, at 4k-token prompts:
+
+| Lane | tokens/s | Spot $/M | On-demand $/M |
+| --- | ---: | ---: | ---: |
+| v6e-1, BF16 now | 27,857 | **0.0058** ($0.584/h, US) | 0.027 ($2.70/h, US); 0.032 ($3.24/h, Tokyo, what P1 pays) |
+| v6e-1, int8 | 34,367 | 0.0047 | 0.022; 0.026 |
+| v6e-1, P2 (#11459) | 20,517 | 0.0079 | 0.037; 0.044 |
+| H100, Psionic Q4 | 15,000–18,000 | 0.10–0.11 | 0.20 |
+| A100, Psionic Q4 | 8,500 | 0.072 | 0.120 |
+
+Jev sells at $0.042/M. At 50 % utilization, double every figure.
+
+**Accuracy** (the 40 e2e requests, 104 questions, against
+`reference-hf-f32.jsonl`):
+
+| Lane | Top answer | median \|Δp\| | max \|Δp\| |
+| --- | ---: | ---: | ---: |
+| TPU BF16 now, through the live door | **104/104** | 0.0004 | 0.016 |
+| TPU int8 (SmoothQuant + GPTQ, all seven projection families) | 102/104 (98.1 %) | 0.0042 | 0.071 |
+| Psionic Q4_K_M on CUDA (production GPU lanes) | 98/104 (94.2 %) | 0.0129 | 0.177 |
+
+What changed, in order of effect:
+
+1. **A fused Pallas delta rule** (`delta.fused`, default `--scan fused`).
+   The XLA delta rule was ~34 % of BF16 prefill: 33 ms of a 191 ms 4k
+   request went to the 16-wide block solve, whose 16x16 matmuls had 16 in
+   the lane dimension and ran at 0.6 TFLOPS. The kernel does one grid step
+   per 64-token sub-chunk with all 32 heads batched. It covers the l2
+   norms, the cumulative decay, `(I+L)^-1` by forward substitution on the
+   VPU in 16-row blocks, the UT transform, intra-chunk attention and the
+   state update. The state stays f32 in VMEM, and every matmul is at
+   HIGHEST. It reads q/k/v straight from the conv output and writes `o` as
+   `[T, Hv dv]` (the head split happens in VMEM by `einshape`), so no
+   transposes surround it.
+   - Against the token-step f32 reference it is within 1e-6 relative on
+     random and near-parallel keys; the XLA path is 1.4e-5 / 4e-5.
+   - Time: 0.163 ms per 512-token layer-chunk, against 0.362 for the XLA
+     path.
+   - This is why our worker trailed SGL-JAX's bf16 (~26k at 4k × 8): SGL-JAX
+     runs a fused GDN kernel. We are now ahead of it with one request at a
+     time.
+   - On a v6e, one small matmul in a Pallas kernel is ~1 µs of latency
+     whatever its size or precision, and 32 independent ones cost little
+     more. So the kernel batches heads rather than lowering precision. A
+     whole-matrix Newton-Schulz inverse, a per-head grid and software
+     pipelining across sub-chunks were all slower.
+2. **Prefix snapshots at chunk boundaries.**
+   - Every chunk call streams all 18 GB of weights (~11 ms on a v6e). A
+     prefix miss used to run the prefix and the rest as separate segments,
+     an extra call plus dozens of eager copies. It now runs in its normal
+     chunks and snapshots the state at the last chunk boundary at or below
+     the door's prefix. A miss costs the same as a run without a prefix
+     (1,080 tokens: 71 → 49 ms).
+   - A hit is bitwise identical to a fresh run (max |Δlogit| 0, against
+     0.001–0.003 before), at 3.1–8.7× the speed.
+   - The old prefix path also compiled new programs for every distinct
+     prefix length, so a fresh ticket paid up to ~0.5 s. That is the bimodal
+     "before" latency above. Shapes now depend only on chunk sizes and cache
+     buckets.
+3. **Chunk plans and dispatch.**
+   - A prompt's last chunk takes the smallest of 128/256/512/768 that holds
+     the tail.
+   - State init, snapshot and restore are one jitted call each (they were
+     ~6 ms and ~5 ms of eager ops per request).
+4. **Head buckets.** 4 (questions, options) shapes × 4 token buckets from
+   2,048 (16 programs, was 48), so every request hits a warmed shape. A cold
+   worker warms in ~6 min (was 19). A warm restart, with the persistent
+   compile cache, is up in 45–70 s (was under 4 min). The cache can be
+   built on any v6e with the same jax/libtpu (0.11.2 / 0.0.48) and copied
+   (`gs://openagentsgemini-decision-throughput/tpu/11502/jaxcache-v6e-jax0.11.2.tar`).
+
+**int8 (P3), not served.** Gate: ≥ 97 % top answers and ≥ 1.6× BF16.
+
+- **Accuracy: met.**
+  - Per-channel int8 weights with per-token dynamic int8 activations
+    (int8 × int8 on the MXU). Head, norms and the GDN gates (`in_ba`) stay
+    in bf16/f32.
+  - SmoothQuant scales come from the activation maxima of the 160 encoder
+    fixture records that the e2e gate does not use, with a per-projection α
+    picked from 0.4–0.9 by output error (`bench/calibrate.py --search 40`).
+  - Weights are then rounded by GPTQ on those activations
+    (`bench/gptq.py`), which cuts the weight-induced output error 5–25×
+    against round-to-nearest.
+  - 102/104 (98.1 %), median |Δp| 0.0042. Both misses are near ties
+    (0.216/0.234 and 0.495/0.505).
+  - Earlier steps, for the record:
+
+    | int8 recipe | Top answer | median \|Δp\| |
+    | --- | ---: | ---: |
+    | naive | 84.6 % | 0.021 |
+    | SmoothQuant α 0.5 | 97.1 % | 0.0088 |
+    | SmoothQuant, α searched | 92.3 % | 0.0054 |
+    | block-Hadamard rotation (4096) | 96.2 % | 0.0037 |
+
+    Raw top-answer agreement swings with the set's ~12 near ties; the
+    median is the steadier signal.
+  - Where the error comes from, with rotation: int8 weights alone give a
+    median of 0.0029, int8 activations alone 0.0017.
+  - The artifact (6.5 GB) and calibration maps are in
+    `gs://openagentsgemini-decision-throughput/tpu/11502/`. Load with
+    `--precision int8` and `CLEF_TPU_INT8_ARTIFACT=<dir>`.
+- **Speed: met only against P2.**
+  - Against today's BF16: 1.09× / 1.07× / 1.23× / 1.25×.
+  - Against the P2 BF16 baseline: 1.45× at 1.5k, 1.68× at 4k, 1.67× at 16k.
+  - The fused delta kernel (25 % of int8 time) and the per-token
+    quantization passes (10 %) do not shrink with int8.
+  - Hadamard rotation is more accurate, but online it costs more than int8
+    saves (23.6k at 4k).
+
+  The served lane therefore stays BF16. It is faster than P2 by 1.35× and
+  at 104/104.
+
+**Chunk invariance (gate 5): not met.**
+- BF16 logits across prefill chunks 2048 / 512 / 64 still differ by up to
+  0.028 (two near-tie flips). `bench/invariance.py` follows the
+  per-projection inputs layer by layer.
+- The first differences are 1-ulp f32 changes in XLA's fused matmul
+  epilogues and in attention at different chunk heights; bf16 rounding
+  then amplifies them. Plain matmuls are row-invariant.
+  - Materializing every matmul input and output (`CLEF_TPU_MM_BARRIER=2`)
+    makes layers 0–2 bitwise invariant.
+  - The first attention layer still differs, even with a fixed 64-query
+    block (`CLEF_TPU_ATTN_QBLOCK=64`) and a two-pass softmax
+    (`CLEF_TPU_ATTN_TWO_PASS=1`).
+- Prefix reuse no longer depends on this: a snapshot is taken in the same
+  chunking a fresh run uses, so hits are exact.
+
+## P1–P3 under #11459 (2026-10-13)
 
 **P1 passed: Clef-Flash in BF16 answers correctly on a v6e-1.** The 40 e2e
 fixture requests (104 questions) run through the Rust door
@@ -172,38 +328,47 @@ every machine here so none is orphaned.
 
 Not held: a queued on-demand v6e-4 request (`clef-qr-v6e4`, for 27B in
 BF16) was withdrawn when this work stopped. The data agent's
-`cd-v6e1-ane1b-d` is recorded in its own brief.
+`cd-v6e1-ane1b-d` is recorded in its own brief. #11502 developed on it and
+on a second on-demand v6e-1, `tp-dev-ane1b`, which it created and deleted
+(2026-10-13 05:58–08:31 UTC, about $8).
+
+On `p6-asia-northeast1-b` the worker runs from `~/oa/clef-tpu` (commit
+`60aed54d70`). Earlier trees are kept for rollback: `~/oa/clef-tpu-prev`
+(the #11459 code), `~/oa/clef-tpu-1c19` and `~/oa/clef-tpu-d66b`. To roll
+back: `sudo systemctl stop clef-tpu-door clef-tpu-worker`, swap the
+directory, then `sudo systemctl start clef-tpu-worker clef-tpu-door`.
 
 Capacity on 2026-10-12: no v6e anywhere in the US, spot or on-demand. The
 one spot v6e-1 we got (us-east1-d) was preempted within 5 minutes. The
 automation account creates TPU VMs only with
 `--service-account oa-mvp-automation@…`, and us-east4-a has a v6e quota of 0.
 
-### Remaining work (not started)
+### Remaining work
 
-- **P3 int8.** Calibrated activation scales (SmoothQuant-style migration
-  of activation outliers into the weights) or per-group int8, judged by
-  the e2e gate (≥ 97 % top answer). Naive w8a8 reached at most 95 % at
-  1.2×.
-- **Chunk invariance (gate 5).** Find where 0.02–0.04 in logits enters
-  across prefill chunk sizes (bf16 rounding of activations at different
-  tilings, or K/V stored in bf16) and close it to 1e-3.
-- **P4 Clef 27B.** Needs a v6e-4 (BF16, tensor parallel over 4 chips; none
-  was available in any zone on 2026-10-12/13) or a working int8 (above)
-  to fit a v6e-1.
-- **P5 production pool member.** Deploy the gateway with the `tpu` order.
-  Run a 24 h shadow beside the H100 and A100 with ≥ 99 % top-answer
-  agreement on live traffic. Add a spot restarter. Then decide whether
-  the TPU joins the default `clef-flash` pool.
-- **Run time in Rust (path D).** Export the JAX graph to StableHLO and run
-  it from the Rust door through PJRT, retiring the Python sidecar.
-- **Speed.**
-  - A Pallas kernel fusing the delta rule's prep and scan; the delta rule
-    is about 15 % of prefill.
-  - The head in one dispatch with the last chunk.
-  - Fewer head compile buckets: the first cold start warms 48 head shapes
-    in 19 minutes; afterwards the persistent cache brings a restart up in
-    under 4 minutes.
+From #11502 (measured leads, not started):
+
+- **Attention kernel.** Attention is still XLA's online softmax, which is
+  f32 elementwise over every (query, key block) pair. That is why prefill
+  chunks above 768 lose speed (2k chunks: 24.1k at 4k, 22.0k at 16k), even
+  though larger chunks would read the 18 GB of weights fewer times and give
+  the MXU taller matmuls. A splash/flash Pallas kernel (head_dim 256, GQA
+  16/4) should make 1–2k chunks pay. It would also fix the attention part of
+  chunk invariance with a fixed query tile.
+- **int8 speed.** An rms-norm + smoothing + per-token-quantize pass fused
+  into one kernel (today ~10 % of int8 time). Rotations folded into the
+  residual stream (QuaRot-style) instead of online, to get rotation
+  accuracy at int8 speed. A shared smoothing for `in_qkv` and `in_z` so they
+  quantize once and run as one matmul.
+- **Chunk invariance to 1e-3:** a fixed-tile attention kernel (above), then
+  the remaining epilogue fusions.
+- **The head in one dispatch with the last chunk.** It is 1–3 % of a
+  request (request minus prefill: 1.4 ms at 1.1k, 5 ms at 16k), so it is
+  left for later.
+- **P4 Clef 27B.** The int8 path now works end to end (GPTQ builder,
+  artifact loader), so 27B int8 on one v6e (~27 GB) is the next thing to try
+  if no v6e-4 appears.
+- **P5.** The 24 h shadow beside the H100 and A100, and a spot restarter.
+- **Run time in Rust (path D):** StableHLO plus PJRT from the door.
 
 ## Why look at TPUs
 
