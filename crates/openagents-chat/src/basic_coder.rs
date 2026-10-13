@@ -829,6 +829,15 @@ impl Relay {
                     let ended = {
                         let mut reply = lock(&reply);
                         reading.take(&event, &mut reply);
+                        // When the judgment and the whole reply arrived,
+                        // timed from the request leaving (#11543).
+                        let ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+                        if reply.meta.judgment.is_some() && reply.meta.judged_ms.is_none() {
+                            reply.meta.judged_ms = Some(ms);
+                        }
+                        if reply.done && reply.meta.reply_ms.is_none() {
+                            reply.meta.reply_ms = Some(ms);
+                        }
                         reply.ended()
                     };
                     // Each partial shows at once.
@@ -973,10 +982,19 @@ mod tests {
             &mut reply,
         );
         assert_eq!(reply.text, "Hello");
-        let result = json!({"v": 2, "type": "result", "text": "Hello there!", "model": "m"});
+        let result = json!({"v": 2, "type": "result", "text": "Hello there!", "model": "m",
+            "usage": {"input": 812, "output": 9}});
         reading.take(&event(CJ_CONVERSATION_RESULT, result), &mut reply);
         assert_eq!(reply.text, "Hello there!");
         assert_eq!(reply.model.as_deref(), Some("m"));
+        // The tokens the worker reported stay with the reply (#11543).
+        assert_eq!(
+            reply.meta.usage,
+            Some(crate::router::TokenUsage {
+                input: 812,
+                output: 9
+            })
+        );
         assert!(reply.done);
         // Nothing moves an ended reply.
         let late = json!({"v": 2, "type": "result", "text": "Other"});

@@ -180,7 +180,7 @@ pub fn trajectory_with(thread: &Thread, version: &str, tasks: Vec<Value>) -> Val
     for (index, turn) in thread.turns.iter().enumerate() {
         let at = turn.at.unwrap_or(last);
         last = at;
-        steps.push(step(turn, index + 1, at));
+        steps.push(step(turn, &thread.turns[..index], index + 1, at));
     }
     // The delegating reply: the last one before the task was started.
     let delegated = summary.coder.as_ref().and_then(|coder| {
@@ -215,7 +215,16 @@ pub fn trajectory_with(thread: &Thread, version: &str, tasks: Vec<Value>) -> Val
         "archived": summary.archived,
         "named": summary.named,
     });
-    document["extra"]["router"] = json!(ROUTER);
+    // The question set the replies were routed with, by its name: what the
+    // worker answered under, else what this device asks for.
+    document["extra"]["router"] = json!(
+        thread
+            .turns
+            .iter()
+            .rev()
+            .find_map(|turn| judgment(turn).and_then(|answers| set_name(&answers)))
+            .unwrap_or_else(|| ROUTER.to_owned())
+    );
     if let Some(failure) = &thread.failure {
         document["extra"]["failure"] = json!(failure);
     }
@@ -258,8 +267,63 @@ pub fn trajectory_with(thread: &Thread, version: &str, tasks: Vec<Value>) -> Val
     document
 }
 
-/// One turn as one step; `ordinal` numbers its decision call.
-fn step(turn: &Turn, ordinal: usize, at: u64) -> atif::Step {
+/// A reply's judgment as the worker sent it, when it kept one.
+fn judgment(turn: &Turn) -> Option<Value> {
+    let judgment = turn.meta.as_ref()?.judgment.as_deref()?;
+    Some(serde_json::from_str(judgment).unwrap_or_else(|_| json!(judgment)))
+}
+
+/// The name of the question set a judgment was answered under
+/// (`chat-router-v5` of `chat-router-v5@0fc444292c46`).
+fn set_name(answers: &Value) -> Option<String> {
+    let set = answers["set"].as_str()?;
+    let name = set.split('@').next().unwrap_or(set);
+    (!name.is_empty()).then(|| name.to_owned())
+}
+
+/// What the router read for a reply: the person's last message and the
+/// conversation before the reply, as the turn's request carried them
+/// (`basic_coder::payload`'s `task` and `transcript`).
+fn routed_state(before: &[Turn]) -> Value {
+    let task = before
+        .iter()
+        .rev()
+        .find(|turn| turn.role == Role::User)
+        .map_or("", |turn| turn.text.as_str());
+    json!({
+        "task": task,
+        "transcript": before
+            .iter()
+            .map(|turn| json!({"role": turn.role, "content": turn.text}))
+            .collect::<Vec<_>>(),
+    })
+}
+
+/// The questions a judgment answered, by id, each with the set it is in:
+/// the ids its decisions name, in order, else the route question.
+fn routed_questions(answers: &Value) -> Value {
+    let set = answers["set"].clone();
+    let mut questions = serde_json::Map::new();
+    for decision in answers["decisions"].as_array().into_iter().flatten() {
+        if let Some(id) = decision["question"].as_str() {
+            let of = match &decision["question_set"] {
+                Value::Null => set.clone(),
+                named => named.clone(),
+            };
+            questions
+                .entry(id.to_owned())
+                .or_insert_with(|| json!({"set": of}));
+        }
+    }
+    if questions.is_empty() && answers.get("route").is_some() {
+        questions.insert("route".into(), json!({"set": set}));
+    }
+    Value::Object(questions)
+}
+
+/// One turn as one step, after the turns `before` it; `ordinal` numbers
+/// its decision call.
+fn step(turn: &Turn, before: &[Turn], ordinal: usize, at: u64) -> atif::Step {
     let source = match turn.role {
         Role::User => atif::Source::User,
         Role::Assistant => atif::Source::Agent,
@@ -271,9 +335,13 @@ fn step(turn: &Turn, ordinal: usize, at: u64) -> atif::Step {
             step = step.by(model);
         }
         if let Some(meta) = &turn.meta {
-            if let Some(judgment) = meta.judgment.as_deref() {
-                let answers: Value =
-                    serde_json::from_str(judgment).unwrap_or_else(|_| json!(judgment));
+            // What the reply's model used and how long the reply took, as
+            // the worker reported and this device timed them (#11543).
+            if let Some(usage) = meta.usage {
+                step.tokens = Some((usage.input, usage.output));
+            }
+            step.milliseconds = meta.reply_ms;
+            if let Some(answers) = judgment(turn) {
                 let model = answers["model"]
                     .as_str()
                     .map_or_else(|| MODEL.to_owned(), str::to_owned);
@@ -284,13 +352,18 @@ fn step(turn: &Turn, ordinal: usize, at: u64) -> atif::Step {
                         door: door(),
                         model,
                         // The worker asked the routing question set it
-                        // names (`set`, `bank`) about the turn; the thread
-                        // records that identity, not the worker's state.
+                        // names (`set`, `bank`) about the turn: the state
+                        // is what the turn's request carried, and the
+                        // questions are the ones its judgment answered, so
+                        // their digests fingerprint this turn's inputs.
                         request: json!({
-                            "router": ROUTER,
+                            "router": set_name(&answers).unwrap_or_else(|| ROUTER.to_owned()),
                             "set": answers["set"],
                             "bank": answers["bank"],
+                            "state": routed_state(before),
+                            "questions": routed_questions(&answers),
                         }),
+                        milliseconds: meta.judged_ms.unwrap_or(0),
                         route: meta.route.clone(),
                         // The chat worker asked its decision door and relayed
                         // the judgment as NIP-CJ feedback; a judgment that
@@ -325,7 +398,9 @@ fn step(turn: &Turn, ordinal: usize, at: u64) -> atif::Step {
             }
             let mut said = serde_json::to_value(meta).unwrap_or_default();
             if let Some(fields) = said.as_object_mut() {
-                fields.remove("judgment");
+                for recorded in ["judgment", "usage", "judged_ms", "reply_ms"] {
+                    fields.remove(recorded);
+                }
             }
             if said.as_object().is_some_and(|fields| !fields.is_empty()) {
                 step = step.noting(ROUTER_EXTRA, said);
@@ -636,5 +711,75 @@ mod tests {
             ))
             .is_err()
         );
+    }
+
+    /// #11543: each judged reply records what the router read and the
+    /// questions it answered, so two turns' fingerprints differ; the
+    /// reply's tokens and timings are the ones this device kept; and the
+    /// router is named once, by the set the worker answered under.
+    #[test]
+    fn each_routed_reply_fingerprints_its_own_inputs_and_keeps_its_usage() {
+        let judged = |route: &str| {
+            json!({"v": 2, "type": "judgment", "route": route,
+            "set": "chat-router-v5@0fc444292c46", "bank": "chat-answers-v1@c2e5baa50550",
+            "decisions": [
+                {"question": "route", "question_set": "chat-router-v5@0fc444292c46"},
+                {"question": "answer", "question_set": "chat-router-v5@0fc444292c46"},
+            ]})
+            .to_string()
+        };
+        let reply = |text: &str, judgment: String, usage| {
+            Turn::assistant(
+                text,
+                Some(Meta {
+                    route: Some("smalltalk".into()),
+                    judgment: Some(judgment),
+                    usage,
+                    judged_ms: Some(180),
+                    reply_ms: Some(1_240),
+                    ..Meta::default()
+                }),
+            )
+        };
+        let mut thread = thread();
+        thread.turns = vec![
+            Turn::user("Testing. Hello."),
+            reply("We're here.", judged("smalltalk"), None),
+            Turn::user("What's 2 plus 2?"),
+            reply(
+                "2 plus 2 is 4.",
+                judged("smalltalk"),
+                Some(crate::router::TokenUsage {
+                    input: 812,
+                    output: 9,
+                }),
+            ),
+        ];
+        let document = trajectory(&thread, "test");
+        assert!(atif::validate(&document).is_empty(), "{document}");
+        let first = &document["steps"][1]["tool_calls"][0];
+        let second = &document["steps"][3]["tool_calls"][0];
+        assert_ne!(
+            first["extra"]["state_digest"],
+            second["extra"]["state_digest"]
+        );
+        let empty = atif::digest(&Value::Null);
+        for call in [first, second] {
+            assert_ne!(call["extra"]["state_digest"], empty.as_str());
+            assert_ne!(call["extra"]["questions_digest"], empty.as_str());
+            assert_eq!(call["extra"]["question_ids"], json!(["route", "answer"]));
+            assert_eq!(call["extra"]["latency_ms"], 180);
+            assert_eq!(call["arguments"]["router"], "chat-router-v5");
+        }
+        assert_eq!(second["arguments"]["state"]["task"], "What's 2 plus 2?");
+        assert_eq!(document["extra"]["router"], "chat-router-v5");
+        let answered = &document["steps"][3];
+        assert_eq!(answered["metrics"]["prompt_tokens"], 812);
+        assert_eq!(answered["metrics"]["completion_tokens"], 9);
+        assert_eq!(answered["extra"]["duration_ms"], 1_240);
+        assert!(answered["extra"][ROUTER_EXTRA].get("usage").is_none());
+        assert_eq!(document["final_metrics"]["total_prompt_tokens"], 812);
+        // A canned reply no model wrote reports no tokens, not zero.
+        assert!(document["steps"][1].get("metrics").is_none());
     }
 }

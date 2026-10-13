@@ -1248,6 +1248,36 @@ pub struct Meta {
     /// answer ([`nostr::cj_conversation::switched::Switched::line`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub switched: Option<nostr::cj_conversation::switched::Switched>,
+    /// The tokens the reply's model read and wrote, as the worker's
+    /// result reported them (#11543); none when no model wrote it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<TokenUsage>,
+    /// Milliseconds from the message leaving this device to the router's
+    /// judgment arriving, as this device timed it (#11543).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub judged_ms: Option<u64>,
+    /// Milliseconds from the message leaving this device to the whole
+    /// reply arriving, as this device timed it (#11543).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_ms: Option<u64>,
+}
+
+/// A reply's tokens as the worker reported them: what its model read
+/// (`input`) and wrote (`output`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TokenUsage {
+    pub input: u64,
+    pub output: u64,
+}
+
+impl TokenUsage {
+    /// The result's `usage` field (`{input, output}`), when it has one.
+    pub fn parse(value: &Value) -> Option<Self> {
+        Some(Self {
+            input: value.get("input")?.as_u64()?,
+            output: value.get("output")?.as_u64()?,
+        })
+    }
 }
 
 impl Meta {
@@ -1362,6 +1392,7 @@ impl Meta {
         if payload["plugins"].is_array() {
             self.plugins = plugin_slugs(&payload["plugins"]);
         }
+        self.usage = TokenUsage::parse(&payload["usage"]);
     }
 
     fn take_words(&mut self, payload: &Value) {
