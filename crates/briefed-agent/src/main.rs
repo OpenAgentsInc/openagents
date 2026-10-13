@@ -304,10 +304,12 @@ async fn run() -> Result<(), String> {
             squeeze::LOG_VAR.to_owned(),
             dir.join("decisions.jsonl").display().to_string(),
         );
-        options = options.hook(
-            claude_agent_sdk::HookEvent::PreToolUse,
-            squeeze::claude_hook(squeeze::invoker(&this, &["--squeeze"])),
-        );
+        // Through the Coder SDK's Claude backend (#11496).
+        let mut registry = coder_sdk::Registry::new();
+        registry.register(squeeze::sdk_hook(squeeze::invoker(&this, &["--squeeze"])))?;
+        options = coder_sdk::claude::Claude::new(registry, coder_sdk::Budget::default())
+            .map_err(|refused| format!("{refused:?}"))?
+            .install(options, coder_sdk::claude::PreTool::Hook);
         spill = Some(dir);
     }
 

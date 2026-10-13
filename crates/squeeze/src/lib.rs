@@ -113,6 +113,26 @@ pub fn claude_hook(invoker: String) -> claude_agent_sdk::HookMatcher {
     claude_agent_sdk::HookMatcher::new(Some("Bash"), hook)
 }
 
+/// The squeezer as a Coder SDK hook (#11496): a built-in `PreToolUse`
+/// rewrite on `Bash`, chained before the floors so they judge the wrapped
+/// command. The same rule as [`claude_hook`], on every backend.
+#[must_use]
+pub fn sdk_hook(invoker: String) -> coder_sdk::Hook {
+    coder_sdk::Hook::new(
+        "squeeze",
+        coder_sdk::Event::PreToolUse,
+        coder_sdk::Source::BuiltIn,
+        move |call: &coder_sdk::Call| {
+            let input = json!({"tool_name": call.tool, "tool_input": call.input});
+            Ok(match hook_output(&input, &invoker) {
+                Some(specific) => coder_sdk::HookOutcome::rewrite(specific["updatedInput"].clone()),
+                None => coder_sdk::HookOutcome::none(),
+            })
+        },
+    )
+    .matching("Bash")
+}
+
 /// The hook's `hookSpecificOutput` for one `PreToolUse` call, or `None` to
 /// let the call through unchanged.
 #[must_use]

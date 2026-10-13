@@ -246,19 +246,6 @@ pub fn catalog() -> Vec<crate::models::Model> {
         .collect()
 }
 
-/// Claude Code's effort for the pick's `effort` name.
-fn effort_level(effort: &str) -> Option<claude_agent_sdk::EffortLevel> {
-    use claude_agent_sdk::EffortLevel;
-    Some(match effort {
-        "low" => EffortLevel::Low,
-        "medium" => EffortLevel::Medium,
-        "high" => EffortLevel::High,
-        "xhigh" => EffortLevel::Xhigh,
-        "max" => EffortLevel::Max,
-        _ => return None,
-    })
-}
-
 /// Whether `tool` is one of the mode's [`TOOLS`].
 #[must_use]
 pub fn allows(tool: &str) -> bool {
@@ -706,11 +693,22 @@ pub(crate) fn turn_options(
     match access {
         Access::Full => {
             let picked = choice();
-            options = options
-                .model(picked.model)
-                .permission_mode(PermissionMode::BypassPermissions);
+            // The box, through the Coder SDK (#11496): the person's model
+            // and effort, Claude Code's own tools and system prompt, and
+            // the person's and the repository's settings.
+            options = coder_sdk::claude::SessionBox {
+                model: Some(picked.model),
+                effort: picked.effort,
+                setting_sources: Some(vec![
+                    SettingSource::User,
+                    SettingSource::Project,
+                    SettingSource::Local,
+                ]),
+                ..coder_sdk::claude::SessionBox::default()
+            }
+            .apply(options)
+            .permission_mode(PermissionMode::BypassPermissions);
             options.allow_dangerously_skip_permissions = true;
-            options.effort = picked.effort.as_deref().and_then(effort_level);
             options.tools = Some(ToolsConfig::Default);
             // The reply's words as they arrive, and the model's thinking in
             // words, so the conversation shows both (#11438).
@@ -718,11 +716,6 @@ pub(crate) fn turn_options(
             options.thinking = Some(ThinkingConfig::Adaptive {
                 display: Some(ThinkingDisplay::Summarized),
             });
-            options.setting_sources = Some(vec![
-                SettingSource::User,
-                SettingSource::Project,
-                SettingSource::Local,
-            ]);
         }
         Access::Files(tools) => {
             options = options
@@ -738,18 +731,15 @@ pub(crate) fn turn_options(
         allowed.extend(server.allowed_tool_names());
         options = options.sdk_mcp_server(server);
     }
-    // The floors' hook (#11475): under bypass Claude Code never asks, so
-    // Coder holds a production deploy, a merge, a secret or a payment for
-    // the person before the tool runs.
-    options = options.hook(
-        claude_agent_sdk::HookEvent::PreToolUse,
-        crate::floors::claude_hook(cwd.to_owned()),
-    );
-    // Token savers (#11494): a noisy build or test command runs through
-    // this binary's squeezer (#11486), so its output enters the history
-    // small. It rewrites the command only; the floors above still decide.
+    // The session's Coder SDK hooks (#11496), composed by one runner: the
+    // floors (#11475) hold a production deploy, a merge, a secret or a
+    // payment for the person before the tool runs, since under bypass
+    // Claude Code never asks; on a full turn the token savers' squeezer
+    // (#11486, #11494) wraps a noisy build or test command first, and the
+    // floors judge the wrapped command.
+    options = crate::sdk_hooks::claude(cwd, matches!(access, Access::Full))
+        .install(options, coder_sdk::claude::PreTool::Hook);
     if matches!(access, Access::Full) {
-        options = crate::token_savers::install(options, crate::token_savers::Lever::Squeeze);
         // The gate (#11489) runs after the floors and can only add a deny.
         options = crate::token_savers::install(options, crate::token_savers::Lever::Gate);
         // The first touch of a directory adds its instruction files (#11490).

@@ -2400,6 +2400,7 @@ name = "briefed-agent"
 version = "0.1.0"
 dependencies = [
  "claude_agent_sdk",
+ "coder-sdk",
  "futures",
  "hook-log",
  "jev",
@@ -3628,6 +3629,7 @@ dependencies = [
  "coder-engine-status",
  "coder-history",
  "coder-lease",
+ "coder-sdk",
  "coder-sync",
  "coder-terminal",
  "coder-ui",
@@ -3770,10 +3772,12 @@ dependencies = [
 name = "coder-sdk"
 version = "0.1.0"
 dependencies = [
+ "claude_agent_sdk",
  "coder-delegate",
  "route-contract",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -9298,6 +9302,7 @@ dependencies = [
  "coder-delegate",
  "coder-engine-status",
  "coder-history",
+ "coder-sdk",
  "codex-transport",
  "futures-util",
  "jev",
@@ -14823,6 +14828,7 @@ name = "squeeze"
 version = "0.1.0"
 dependencies = [
  "claude_agent_sdk",
+ "coder-sdk",
  "hook-log",
  "jev",
  "serde_json",

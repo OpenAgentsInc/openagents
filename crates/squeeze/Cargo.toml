@@ -8,6 +8,8 @@ publish.workspace = true
 
 [dependencies]
 claude_agent_sdk = { path = "../claude_agent_sdk" }
+# The squeezer as a Coder SDK hook (#11496).
+coder-sdk = { path = "../coder-sdk" }
 hook-log = { path = "../hook-log" }
 jev = { path = "../jev" }
 serde_json = "1"

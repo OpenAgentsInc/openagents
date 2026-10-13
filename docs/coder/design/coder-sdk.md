@@ -324,7 +324,7 @@ balance, offers in the route contract); the SDK would call them from a
 
 | Backend | Path | Hook tier | When |
 |---|---|---|---|
-| Claude Code | `claude_agent_sdk` | native, all events | first |
+| Claude Code | `claude_agent_sdk` (`coder_sdk::claude`: hooks, or `can_use_tool` for sessions that ask) | native, all events | built (#11496): floors and squeeze in one registry for Coder chat, squeeze for the briefed agent, the worktree gate for the `claude/sdk:` seat |
 | Coder loop | `coder-new` live loop, Microcoder loop | native (we own it) | first |
 | Scripted | recorded sessions | native | first, for tests |
 | Codex | `exec` command hooks now; app-server later | command (`PreToolUse`), emulated otherwise | deferred: its usage is spent and it isn't being tested now |

@@ -252,6 +252,11 @@ impl Registry {
             .filter(move |hook| hook.matches(tool))
     }
 
+    /// Every hook on `event`, whatever its tool, in registration order.
+    pub fn matching_any(&self, event: Event) -> impl Iterator<Item = &Hook> {
+        self.hooks.get(&event).into_iter().flatten()
+    }
+
     /// Every hook, by event and then registration order.
     pub fn hooks(&self) -> impl Iterator<Item = &Hook> {
         self.hooks.values().flatten()

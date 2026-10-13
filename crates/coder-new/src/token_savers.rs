@@ -70,6 +70,26 @@ pub fn enabled() -> bool {
     }
 }
 
+/// The squeezer as a Coder SDK hook (#11496), run through this binary's
+/// squeeze subcommand, when the plugin is on. A session puts it in the
+/// same registry as the floors, so the floors judge the command it wraps.
+#[must_use]
+pub fn sdk_hooks() -> Vec<coder_sdk::Hook> {
+    if enabled() {
+        squeeze_hook().into_iter().collect()
+    } else {
+        Vec::new()
+    }
+}
+
+fn squeeze_hook() -> Option<coder_sdk::Hook> {
+    let this = std::env::current_exe().ok()?;
+    Some(squeeze::sdk_hook(squeeze::invoker(
+        &this,
+        &[squeeze::CODER_SUBCOMMAND],
+    )))
+}
+
 /// `options` with `lever`'s hooks when the plugin is on.
 #[must_use]
 pub fn install(options: QueryOptions, lever: Lever) -> QueryOptions {
@@ -82,11 +102,13 @@ fn install_if(mut options: QueryOptions, lever: Lever, on: bool) -> QueryOptions
     }
     match lever {
         Lever::Squeeze => {
-            if let Ok(this) = std::env::current_exe() {
-                options = options.hook(
-                    HookEvent::PreToolUse,
-                    squeeze::claude_hook(squeeze::invoker(&this, &[squeeze::CODER_SUBCOMMAND])),
-                );
+            let mut registry = coder_sdk::Registry::new();
+            if let Some(hook) = squeeze_hook()
+                && registry.register(hook).is_ok()
+                && let Ok(backend) =
+                    coder_sdk::claude::Claude::new(registry, coder_sdk::Budget::default())
+            {
+                options = backend.install(options, coder_sdk::claude::PreTool::Hook);
             }
         }
         Lever::Gate => {

@@ -23,6 +23,8 @@ coder = { path = "../coder" }
 coder-boundary = { path = "../coder-boundary" }
 # The delegate recipe's groundwork and table (#10208).
 coder-delegate = { path = "../coder-delegate" }
+# The worktree gate on the Coder SDK's Claude backend (#11496).
+coder-sdk = { path = "../coder-sdk" }
 route-contract = { path = "../route-contract" }
 futures-util = "0.3"
 jev = { path = "../jev" }

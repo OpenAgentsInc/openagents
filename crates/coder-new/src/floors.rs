@@ -15,7 +15,7 @@
 //! - the Coder loop, in its tool gate: the Run tool's commands and file
 //!   reads ([`hold`]);
 //! - Claude Code, in a `PreToolUse` hook Coder installs in the session
-//!   ([`claude_hook`]);
+//!   through the Coder SDK ([`sdk_hook`], #11496);
 //! - Codex, in a `PreToolUse` hook Coder passes on its command line
 //!   ([`codex_args`]), which runs this program's [`HOOK_COMMAND`].
 //!
@@ -566,35 +566,68 @@ fn approvals() -> Option<PathBuf> {
     risk_policy::approvals_path()
 }
 
-/// The `PreToolUse` hook Coder installs in a Claude Code session: the same
-/// floors, asking the person on the approval card while one can answer.
+/// The floors as a Coder SDK hook (#11496, #11497): one floor on
+/// `PreToolUse`, the same table on Claude Code and the Coder loop. A
+/// floored call whose rule is not `allow` asks, with the words a held or
+/// refused call reads; the backend's asker ([`asker`]) then applies the
+/// whole rule ([`hold`]): `deny` refuses, `ask` shows the approval card
+/// where someone can answer, and holds the call where nobody can. A floor
+/// that fails asks too.
 #[must_use]
-pub fn claude_hook(cwd: PathBuf) -> claude_agent_sdk::HookMatcher {
-    let hook = claude_agent_sdk::hook_fn(move |input: Value, _tool_use_id| {
-        let cwd = cwd.clone();
-        async move {
-            let tool = input["tool_name"].as_str().unwrap_or_default().to_owned();
-            let tool_input = input["tool_input"].clone();
-            let cancel = std::sync::atomic::AtomicBool::new(false);
-            let agent = crate::ui::claude_rail_label();
-            Ok(
-                match hold(&agent, &tool, &tool_input, &cwd, &cancel).await {
-                    Ok(()) => claude_agent_sdk::SyncHookJSONOutput::continue_execution().into(),
-                    Err(reason) => deny(&reason),
-                },
-            )
-        }
-    });
-    claude_agent_sdk::HookMatcher::new(None, hook)
+pub fn sdk_hook(cwd: PathBuf) -> coder_sdk::Hook {
+    coder_sdk::Hook::floor(
+        "floors",
+        coder_sdk::Event::PreToolUse,
+        coder_sdk::Permission::ask(
+            "Held for the person: Coder could not check this step. Ask the person to do it or approve it.",
+        ),
+        move |call: &coder_sdk::Call| {
+            let tool = call.tool.as_deref().unwrap_or_default();
+            let Some(floor) = classify(tool, &call.input) else {
+                return Ok(coder_sdk::HookOutcome::none());
+            };
+            Ok(match rule(&cwd, floor.ability) {
+                Rule::Allow => coder_sdk::HookOutcome::none(),
+                Rule::Deny => coder_sdk::HookOutcome::ask(&refused(&floor)),
+                Rule::Ask => coder_sdk::HookOutcome::ask(&held(&floor)),
+            })
+        },
+    )
+    .pinned(coder_sdk::Versions {
+        question_set: None,
+        policy: Some(FLOORS_POLICY.to_owned()),
+        model: None,
+    })
 }
 
-/// A `PreToolUse` denial with its reason.
-fn deny(reason: &str) -> claude_agent_sdk::HookJSONOutput {
-    claude_agent_sdk::SyncHookJSONOutput {
-        hook_specific_output: Some(deny_output(reason)),
-        ..claude_agent_sdk::SyncHookJSONOutput::default()
-    }
-    .into()
+/// The floors table's version in the hook set digest.
+pub const FLOORS_POLICY: &str = "coder-floors-v1";
+
+/// Answers the floors' `ask` with the whole rule ([`hold`]) for `agent`
+/// (its name as the rail shows it): the call runs (`NoOpinion`) or is
+/// refused with what the agent reads. An ask from another hook, on a call
+/// the floors don't cover, is held with its own step.
+#[must_use]
+pub fn asker(cwd: PathBuf, agent: fn() -> String) -> coder_sdk::claude::Asker {
+    Arc::new(move |applied: coder_sdk::Applied| {
+        let cwd = cwd.clone();
+        Box::pin(async move {
+            let tool = applied.tool.clone().unwrap_or_default();
+            if classify(&tool, &applied.input).is_none() {
+                return match applied.permission {
+                    coder_sdk::Permission::Ask { step } => {
+                        coder_sdk::Permission::Deny { reason: step }
+                    }
+                    other => other,
+                };
+            }
+            let cancel = std::sync::atomic::AtomicBool::new(false);
+            match hold(&agent(), &tool, &applied.input, &cwd, &cancel).await {
+                Ok(()) => coder_sdk::Permission::NoOpinion,
+                Err(reason) => coder_sdk::Permission::Deny { reason },
+            }
+        })
+    })
 }
 
 fn deny_output(reason: &str) -> Value {

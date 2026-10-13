@@ -582,6 +582,45 @@ struct Attempt {
     error: Option<String>,
 }
 
+/// The worktree gate as a Coder SDK floor (#11496): `can_use_tool` runs it
+/// through the Claude Code backend's permission channel. An allow keeps the
+/// request's input; a refusal that interrupts ends the turn.
+fn gate_hook(gate: &Arc<Gate>) -> coder_sdk::Hook {
+    let gate = gate.clone();
+    coder_sdk::Hook::floor(
+        "worktree",
+        coder_sdk::Event::PreToolUse,
+        coder_sdk::Permission::deny(
+            "OpenAgents could not check whether this step stays in the task's worktree, so it did not run.",
+        ),
+        move |call: &coder_sdk::Call| {
+            let tool = call.tool.as_deref().unwrap_or_default();
+            Ok(match gate.decide(tool, &call.input) {
+                PermissionResult::Allow { .. } => coder_sdk::HookOutcome::allow(),
+                PermissionResult::Deny {
+                    message, interrupt, ..
+                } => coder_sdk::HookOutcome {
+                    stop: if interrupt == Some(true) {
+                        coder_sdk::Stop::End
+                    } else {
+                        coder_sdk::Stop::Continue
+                    },
+                    ..coder_sdk::HookOutcome::deny(&message)
+                },
+            })
+        },
+    )
+}
+
+/// The `can_use_tool` callback for a session gated by `gate`.
+fn sdk_handler(gate: &Arc<Gate>) -> Arc<dyn claude_agent_sdk::PermissionHandler> {
+    let mut registry = coder_sdk::Registry::new();
+    let _ = registry.register(gate_hook(gate));
+    coder_sdk::claude::Claude::new(registry, coder_sdk::Budget::default())
+        .expect("every hook event is native on Claude Code")
+        .permission_handler()
+}
+
 /// Run one session with `options` on `prompt` until its result, a
 /// cancellation, or the end of its output, answering its permission
 /// requests through `gate`. The `claude` process group is stopped before
@@ -594,13 +633,7 @@ async fn attempt(
     transcript: &Transcript<'_>,
 ) -> Attempt {
     let mut attempt = Attempt::default();
-    let handler = {
-        let gate = gate.clone();
-        claude_agent_sdk::permission_handler(move |request| {
-            let decision = gate.decide(&request.tool_name, &request.input);
-            async move { Ok::<_, claude_agent_sdk::Error>(decision) }
-        })
-    };
+    let handler = sdk_handler(gate);
     let mut query = match claude_agent_sdk::query_with_permissions(prompt, options, handler).await {
         Ok(query) => query,
         Err(error) => {
@@ -1032,6 +1065,41 @@ pub(crate) async fn turn(
 #[cfg(test)]
 mod unit {
     use super::*;
+
+    /// Through the Coder SDK's permission channel the gate answers as it
+    /// does directly: inside runs with its input, outside asks and ends the
+    /// turn, and the denied request is refused (#11496).
+    #[test]
+    fn the_sdk_permission_channel_answers_as_the_gate_does() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = json!({"command": "rm -rf /tmp/x"});
+        let denied = Request::of("Bash", &outside);
+        let gate = Arc::new(Gate::new(dir.path(), None, Some(denied)));
+        let handler = sdk_handler(&gate);
+        let ask = |tool: &str, input: &Value| {
+            let result = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(handler.can_use_tool(tool, input, None, None, None, "t", None))
+                .unwrap();
+            serde_json::to_value(result).unwrap()
+        };
+        let inside = json!({"file_path": dir.path().join("a.rs").display().to_string()});
+        assert_eq!(
+            ask("Edit", &inside),
+            serde_json::to_value(PermissionResult::allow(inside.clone())).unwrap()
+        );
+        assert_eq!(
+            ask("Bash", &outside),
+            serde_json::to_value(PermissionResult::deny(DENIED)).unwrap()
+        );
+        assert_eq!(
+            ask("Bash", &json!({"command": "ls /"})),
+            serde_json::to_value(PermissionResult::deny_and_interrupt(ASKED)).unwrap()
+        );
+        assert!(gate.asked().is_some());
+    }
 
     /// A session's `get_usage` answer and its `rate_limit_event`s land in
     /// the usage book (#11292), and only the book is written: no login or

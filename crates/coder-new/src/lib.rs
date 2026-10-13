@@ -81,6 +81,7 @@ pub mod routing_preferences;
 pub mod routing_record;
 mod schedule;
 mod schedule_sync;
+pub mod sdk_hooks;
 pub mod sessions;
 pub mod shell_changes;
 mod shells;

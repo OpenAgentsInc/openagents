@@ -264,12 +264,12 @@ fn claude_code_launches_as_the_table_says_with_the_floors_hook() {
         .hooks
         .get(&claude_agent_sdk::HookEvent::PreToolUse)
         .expect("the floors' hook is installed");
-    // The floors first, on every tool; the squeezer's rewrite (#11486) on Bash,
+    // The Coder SDK's one hook first (#11496): the floors on every tool,
+    // with the squeezer's rewrite (#11486) chained before them on Bash;
     // then the gate (#11489) on file and shell tools.
-    assert_eq!(hooks.len(), 3);
+    assert_eq!(hooks.len(), 2);
     assert_eq!(hooks[0].matcher, None);
-    assert_eq!(hooks[1].matcher.as_deref(), Some("Bash"));
-    assert!(hooks[2].matcher.as_deref().unwrap().contains("Bash"));
+    assert!(hooks[1].matcher.as_deref().unwrap().contains("Bash"));
     install_desk(None);
     let hook = hooks[0].hooks[0].clone();
     let cwd = repo.path().display().to_string();
@@ -288,6 +288,47 @@ fn claude_code_launches_as_the_table_says_with_the_floors_hook() {
     .unwrap();
     let value = serde_json::to_value(&allowed).unwrap();
     assert!(value.get("hookSpecificOutput").is_none(), "{value}");
+}
+
+/// Floors and squeeze both fire on one `Bash` call (#11496): the squeezer
+/// rewrites, and the floors judge the rewritten command.
+#[test]
+fn squeeze_rewrites_and_the_floors_judge_the_rewritten_command() {
+    let _lock = crate::approval::test_lock()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    install_desk(None);
+    let repo = checkout(None);
+    let backend = crate::sdk_hooks::claude(repo.path(), true);
+    let fire = |command: &str| {
+        block(backend.fire(coder_sdk::Call::tool(
+            coder_sdk::Event::PreToolUse,
+            "Bash",
+            json!({ "command": command }),
+        )))
+    };
+    // A noisy command alone: rewritten, and let through.
+    let squeezed = fire("cargo test -p squeeze");
+    assert_eq!(squeezed.rewritten_by, ["squeeze"]);
+    let wrapped = squeezed.input["command"].as_str().unwrap().to_owned();
+    assert!(wrapped.contains(squeeze::CODER_SUBCOMMAND), "{wrapped}");
+    assert!(wrapped.contains("cargo test -p squeeze"), "{wrapped}");
+    assert_eq!(squeezed.permission, coder_sdk::Permission::NoOpinion);
+    // A noisy command and a merge: the squeezer wraps the test, and the
+    // floors find the merge in the wrapped command and hold it.
+    let both = fire("cargo test && gh pr merge 3");
+    assert_eq!(both.rewritten_by, ["squeeze"]);
+    let judged = both.input["command"].as_str().unwrap();
+    assert!(judged.contains(squeeze::CODER_SUBCOMMAND) && judged.contains("gh pr merge 3"));
+    assert_eq!(both.decided_by.as_deref(), Some("floors"));
+    let coder_sdk::Permission::Deny { reason } = &both.permission else {
+        panic!("the merge is held: {:?}", both.permission);
+    };
+    assert!(reason.starts_with("Held for the person"), "{reason}");
+    // What Claude Code reads: a denial, and no rewritten input to run.
+    let out = serde_json::to_value(coder_sdk::claude::output(&both)).unwrap();
+    assert_eq!(out["hookSpecificOutput"]["permissionDecision"], "deny");
+    assert!(out["hookSpecificOutput"].get("updatedInput").is_none());
 }
 
 /// Every harness has one row, all on the one permission.

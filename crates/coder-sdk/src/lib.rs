@@ -6,9 +6,10 @@
 //! adapter digest, and a [`ScriptedSession`] that replays a recorded session
 //! through the hooks with no login.
 //!
-//! The backends (Claude Code, the Coder loop, Codex, ACP agents) build on
-//! this crate; none of them is here.
+//! The Claude Code backend is [`claude`]; the Coder loop, Codex and ACP
+//! backends build on this crate elsewhere.
 
+pub mod claude;
 pub mod compose;
 pub mod digest;
 pub mod events;
