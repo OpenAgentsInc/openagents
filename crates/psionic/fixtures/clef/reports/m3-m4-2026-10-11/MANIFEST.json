@@ -4,8 +4,8 @@
   "source_branch": "codex/clef-m3-m4",
   "gcs": "gs://openagents-bench-artifacts/clef/m3-m4-2026-10-11/",
   "https": "https://storage.googleapis.com/openagents-bench-artifacts/clef/m3-m4-2026-10-11/",
-  "file_count": 3711,
-  "total_bytes": 59807331,
+  "file_count": 3814,
+  "total_bytes": 68350404,
   "files": [
     {
       "path": "2026-10-12/27b-parity-1/config.json",
@@ -496,6 +496,521 @@
       "path": "2026-10-12/weight-major-candidate/test-backend-cpu.log",
       "size": 9134,
       "sha256": "3ee81909c3a088618ad22bcaafc9fe9636c6f8f730a5b1592d699220bb59fc53"
+    },
+    {
+      "path": "2026-10-13/README.md",
+      "size": 1308,
+      "sha256": "c16f73c11e9b05c5efc6b70e8eb60562c00c410a9cb0bbc4500a75f9dab2eef2"
+    },
+    {
+      "path": "2026-10-13/runs/b27-1.log",
+      "size": 4444,
+      "sha256": "8867ddfd3698e9942be18e0a54c02260b3eb0897f0bba4a57cba762a056dc820"
+    },
+    {
+      "path": "2026-10-13/runs/b27-1/bench/host.jsonl",
+      "size": 56528,
+      "sha256": "d18f54822e26e7d7022df401b62e7d637c4757e739179fa409da74372c3c161c"
+    },
+    {
+      "path": "2026-10-13/runs/b27-1/bench/metadata.json",
+      "size": 4457,
+      "sha256": "f1e53cb6c22e4ea9089593998d2d96df2a2e093e82c52c948807ba95981e4581"
+    },
+    {
+      "path": "2026-10-13/runs/b27-1/bench/records.jsonl",
+      "size": 133695,
+      "sha256": "a561b5c9d2efceb82d488fd0cae7100b8365831bfff8d51784f29521e43c9ee8"
+    },
+    {
+      "path": "2026-10-13/runs/b27-1/bench/rss-r0-native.jsonl",
+      "size": 485003,
+      "sha256": "aa6462c1979eefe9992ddc211209b60ff439af2426ba222b0e7a190894f1dfcf"
+    },
+    {
+      "path": "2026-10-13/runs/b27-1/bench/rss-r0-ollama-reset.jsonl",
+      "size": 458631,
+      "sha256": "6bf92c795ce39b27813301b54e6d3691f48cf69432a345f8b9c06ed92d5036c3"
+    },
+    {
+      "path": "2026-10-13/runs/b27-1/bench/rss-r1-native.jsonl",
+      "size": 518968,
+      "sha256": "f311fcadb0f28a1d0441e2561a9e6d71d97c221b7fed70ed69949ad39fe492ca"
+    },
+    {
+      "path": "2026-10-13/runs/b27-1/bench/rss-r1-ollama-reset.jsonl",
+      "size": 444252,
+      "sha256": "e7db3ccebba4d53fa4554131e92065d6d0dd845dc2cc24d7c3d5e1d65ca58715"
+    },
+    {
+      "path": "2026-10-13/runs/b27-1/bench/server-r0-native.log",
+      "size": 1437,
+      "sha256": "65aa46ffef910cbfb2d3069607a4b28076958d78d309ddba60ce06ffb5ac27fe"
+    },
+    {
+      "path": "2026-10-13/runs/b27-1/bench/server-r0-ollama-reset.log",
+      "size": 14921,
+      "sha256": "734386a8a263f86ef51a213269a5900e449d523d5c1197d8e7fbbf8191e2af6b"
+    },
+    {
+      "path": "2026-10-13/runs/b27-1/bench/server-r1-native.log",
+      "size": 1437,
+      "sha256": "fce59326a7d0da184d111a9171c32846f68aa528fe0ef3c8a8a5e3ee71fdaeb9"
+    },
+    {
+      "path": "2026-10-13/runs/b27-1/bench/server-r1-ollama-reset.log",
+      "size": 14929,
+      "sha256": "a6033c29b0187238060e2d75464c52464f86534e91a330f2da288a21ea26926f"
+    },
+    {
+      "path": "2026-10-13/runs/b27-1/bench/summary.json",
+      "size": 3216,
+      "sha256": "2309f6c26cf429b04e6cd2d1f85e65529817538c80e34b5368d34dc21764c8d0"
+    },
+    {
+      "path": "2026-10-13/runs/b27-1/config.json",
+      "size": 1968,
+      "sha256": "61ec29f44e7f8618f8b28c91567162633f3ef2319b07d4861f93553d26726783"
+    },
+    {
+      "path": "2026-10-13/runs/b27-1/identities.json",
+      "size": 1510,
+      "sha256": "d35929fda3213e54041dccc8b54901806ee068d8f823e9c7409a8f9f9a7fb6ef"
+    },
+    {
+      "path": "2026-10-13/runs/b27-1/result.json",
+      "size": 6477,
+      "sha256": "0787f32cd291023c0a0c72814e35e4f65f6e4431241e24c0a0fcf973c1117768"
+    },
+    {
+      "path": "2026-10-13/runs/flash-1.log",
+      "size": 3092,
+      "sha256": "e1dcb616a1b1a407e9d5c6d78b55a9bd4d09d7a3ff9468a4c13be04c0ef87e46"
+    },
+    {
+      "path": "2026-10-13/runs/flash-1/bench/host.jsonl",
+      "size": 17091,
+      "sha256": "f21952fc8334bf4d898b7756f108b36616a724b9b18eb52f922440dd8268cf82"
+    },
+    {
+      "path": "2026-10-13/runs/flash-1/bench/metadata.json",
+      "size": 4336,
+      "sha256": "e146ddea5b0e11834f50fc64854696a32adb97681cf2954945fdfc3f5691eefd"
+    },
+    {
+      "path": "2026-10-13/runs/flash-1/bench/records.jsonl",
+      "size": 133933,
+      "sha256": "349ff53900c52e920b7406d2fcb98b722bdb4d08c9462c9d6290ff22ca149cc9"
+    },
+    {
+      "path": "2026-10-13/runs/flash-1/bench/rss-r0-native.jsonl",
+      "size": 103311,
+      "sha256": "8eaa51dbadebedfd119b4a4054a6b474b9fc814822da16cd930e9603dbfd6871"
+    },
+    {
+      "path": "2026-10-13/runs/flash-1/bench/rss-r0-ollama-reset.jsonl",
+      "size": 151960,
+      "sha256": "dcacffd089320bd9de0d7dd4d9132a6c79562091c3e79b2720e76a72d552709b"
+    },
+    {
+      "path": "2026-10-13/runs/flash-1/bench/rss-r1-native.jsonl",
+      "size": 170078,
+      "sha256": "7df7ec1fff84c28be182616b11f77090b07b805e635dd850fd6f029ed0b32450"
+    },
+    {
+      "path": "2026-10-13/runs/flash-1/bench/rss-r1-ollama-reset.jsonl",
+      "size": 136045,
+      "sha256": "6bb7e14d64ef1bd9df001bf0eea7646b724ff510be902c9319ec4b57c962670c"
+    },
+    {
+      "path": "2026-10-13/runs/flash-1/bench/server-r0-native.log",
+      "size": 1431,
+      "sha256": "ba37bd0abc69bc20f51e12ab00edcd9d0884cb446e48a816f1922683c98e3f3f"
+    },
+    {
+      "path": "2026-10-13/runs/flash-1/bench/server-r0-ollama-reset.log",
+      "size": 14948,
+      "sha256": "ce79ebcd7858b2d58cefb192761512b24b77b4a28863e175515900d322da135f"
+    },
+    {
+      "path": "2026-10-13/runs/flash-1/bench/server-r1-native.log",
+      "size": 1438,
+      "sha256": "4767888a79bce7a87d5ff23e41b14e323cbae113611ab6f50aebe97ceeab82de"
+    },
+    {
+      "path": "2026-10-13/runs/flash-1/bench/server-r1-ollama-reset.log",
+      "size": 14948,
+      "sha256": "9f075e7f4980325670b8891b5c8cb057a53f22ccac9ddb6dcc5a163810638ab0"
+    },
+    {
+      "path": "2026-10-13/runs/flash-1/bench/summary.json",
+      "size": 3215,
+      "sha256": "5c7847bdc4883e0cee3df987b8f08a123a4f307ca4c2746d7f2aba88afe9b354"
+    },
+    {
+      "path": "2026-10-13/runs/flash-1/config.json",
+      "size": 1837,
+      "sha256": "ad505c8120c97ec9083bb35a8135ed7c73f62c890a3ff060aa37b1d58b5ae2a8"
+    },
+    {
+      "path": "2026-10-13/runs/flash-1/identities.json",
+      "size": 1517,
+      "sha256": "047bc0ce03126bcab7ab1a93ba2eddaa760a7c56a226709d3630a8252a1f6ce2"
+    },
+    {
+      "path": "2026-10-13/runs/flash-1/result.json",
+      "size": 6512,
+      "sha256": "06d433b759f337b83e3fedb7dfd2c26868ef1f1a6d2266e8ecdac161fceb2b0c"
+    },
+    {
+      "path": "2026-10-13/runs/flash-2.log",
+      "size": 2931,
+      "sha256": "9ed8bd0ec130c963266f4e87710a89b297073f20f881518745277c652a2a955b"
+    },
+    {
+      "path": "2026-10-13/runs/flash-2/bench/host.jsonl",
+      "size": 13663,
+      "sha256": "b69f40850847bf1ccd3c985e25137c7c64d88dfcf08eba8be95f11ecf64f46e0"
+    },
+    {
+      "path": "2026-10-13/runs/flash-2/bench/metadata.json",
+      "size": 4336,
+      "sha256": "abd810eaa45a0dde81cec5b74d64c4d821fed728d4bbec04a2d1f921473d8405"
+    },
+    {
+      "path": "2026-10-13/runs/flash-2/bench/records.jsonl",
+      "size": 133583,
+      "sha256": "90c02a7227a5714e17d8e3f1d8a30962d2d8f14d47ad0ee76b6117ac6640ccae"
+    },
+    {
+      "path": "2026-10-13/runs/flash-2/bench/rss-r0-native.jsonl",
+      "size": 88148,
+      "sha256": "2fc4373ab225f52d6cb888ce9a51709aeab09cd526dd866c88f554731947fb6b"
+    },
+    {
+      "path": "2026-10-13/runs/flash-2/bench/rss-r0-ollama-reset.jsonl",
+      "size": 99678,
+      "sha256": "0a2eaefa2fbc5e954ce83efa38b8df16523abf559341aa5979dc7ea67b494c23"
+    },
+    {
+      "path": "2026-10-13/runs/flash-2/bench/rss-r1-native.jsonl",
+      "size": 128384,
+      "sha256": "141c8a6500d610941b3a711b6798e6bb2ee7f3b5a896d8afbb0cb252e5e28d65"
+    },
+    {
+      "path": "2026-10-13/runs/flash-2/bench/rss-r1-ollama-reset.jsonl",
+      "size": 145158,
+      "sha256": "a2419ec82578d0733c6cc3126f4e53f3d3d430fe33a5a00f8d34ca9fc3b36723"
+    },
+    {
+      "path": "2026-10-13/runs/flash-2/bench/server-r0-native.log",
+      "size": 1431,
+      "sha256": "1829ec8887d130dae28012edf5edb6b2e205591052bf6da6a297f7e60d9bfe41"
+    },
+    {
+      "path": "2026-10-13/runs/flash-2/bench/server-r0-ollama-reset.log",
+      "size": 14938,
+      "sha256": "4cdb2d84b5d7c51d9b7f9d009d38084abb16a3659e0f363d9cc8a878754afd9f"
+    },
+    {
+      "path": "2026-10-13/runs/flash-2/bench/server-r1-native.log",
+      "size": 1435,
+      "sha256": "cfe7a734eb8f78ce19e835f7f51a8459f96c18d160d57e2bff5f184532202073"
+    },
+    {
+      "path": "2026-10-13/runs/flash-2/bench/server-r1-ollama-reset.log",
+      "size": 14934,
+      "sha256": "7c429f5097df378e39c1c2a694414d7e71f985825779517cc2d299821cfe06d2"
+    },
+    {
+      "path": "2026-10-13/runs/flash-2/bench/summary.json",
+      "size": 3185,
+      "sha256": "ee488721101debee929796b33a23bb59cee4927bf530efb3800328debef7d2f5"
+    },
+    {
+      "path": "2026-10-13/runs/flash-2/config.json",
+      "size": 1837,
+      "sha256": "6604b00988ef0596112572e2710d32c98f487f1b7a7ad89019b9929b4d994dfc"
+    },
+    {
+      "path": "2026-10-13/runs/flash-2/identities.json",
+      "size": 1517,
+      "sha256": "047bc0ce03126bcab7ab1a93ba2eddaa760a7c56a226709d3630a8252a1f6ce2"
+    },
+    {
+      "path": "2026-10-13/runs/flash-2/result.json",
+      "size": 6414,
+      "sha256": "7da99c24adad9f68e3dc4b663c549ee75e0458c74ec85a73d6ecf3d4df0cfff0"
+    },
+    {
+      "path": "2026-10-13/runs/gpulog-flash-1.txt",
+      "size": 2428,
+      "sha256": "24d26ae4e934e0a15501d53e2ee45ae144603a39c3c6ab400aac5025ac35dd60"
+    },
+    {
+      "path": "2026-10-13/runs/macmon-continuous.jsonl",
+      "size": 3432806,
+      "sha256": "2c6576d5c55ffafc4fdb6f3e36f019106e9db6f94a3aab08424435cb47835d17"
+    },
+    {
+      "path": "2026-10-13/runs/mlx-cold-sustained-2.jsonl",
+      "size": 1867,
+      "sha256": "d973227d7590a899d5580927c002fb4bf7c699dcf8c1c05e5c41fb06ab9451a4"
+    },
+    {
+      "path": "2026-10-13/runs/mlx-hot-sustained-2.jsonl",
+      "size": 1859,
+      "sha256": "452bed2119ad9dafd6dfa8f73bfd510c78a34b0524d4281176574fa936555787"
+    },
+    {
+      "path": "2026-10-13/runs/mlx-idle-1830.jsonl",
+      "size": 3679,
+      "sha256": "5cbe18c69c4e25c8ad30752ab908d1d1471b7e210f3e43cca480e5258deec058"
+    },
+    {
+      "path": "2026-10-13/runs/mlx-now-macmon.jsonl",
+      "size": 233006,
+      "sha256": "42369bffdd8f4e4c53d7b794e3792321b5861aefae8a4ef3b3f4e6436bfecb0c"
+    },
+    {
+      "path": "2026-10-13/runs/probe-log.txt",
+      "size": 195,
+      "sha256": "2349c06fbe2157101ac019443dc7008b547ca71224834a1ed3320f8be9373900"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-1/gpulog.txt",
+      "size": 729,
+      "sha256": "3052e788e8a2019e265110122e64892f7aeec8d5809258dd87e0a93c3b169daa"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-1/req.json",
+      "size": 3239,
+      "sha256": "0f675f2f09e3fb96a4c1c70b5d7bd7d587d84fc8f42b6d3ccaf2845ac32e66fd"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-1/resp-16k-1.json",
+      "size": 1184,
+      "sha256": "e7e6e6be85f511975513024a42738facf7c25b45e0dedb29668e1516fd387b7e"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-1/resp-16k-2.json",
+      "size": 1186,
+      "sha256": "7236a97c05a0593306b86b8b352c0c9ae20842ed2c872e799e391a046e251656"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-1/resp-16k-3.json",
+      "size": 1187,
+      "sha256": "1eeada3c9149a93f15ee8b3a468082f8f249ecfa172285c4ba3c2a505513ca28"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-1/resp-16k-4.json",
+      "size": 1183,
+      "sha256": "e8b282b769bca929393ca1795bd216589745aec32397052147af11d2e5ac4188"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-1/resp-16k-5.json",
+      "size": 1181,
+      "sha256": "e8522db8152dd1c410bb294b94de22fe607763fb1a8334a0e661f8fedb91d8f9"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-1/resp-16k-6.json",
+      "size": 1183,
+      "sha256": "cfc6446872f654650cb52352928b8bcc94924940b59f454acff21ba204cc3751"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-1/resp-1k-1.json",
+      "size": 1177,
+      "sha256": "3d91cbd7b580344c07273768773e97a6d6ccbcd37225b06247f5fc50641f4df9"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-1/resp-1k-2.json",
+      "size": 1176,
+      "sha256": "4a06eb1826b6795a94e1b0179be08f7d73474a30428e634011a94ca43a92a55a"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-1/resp-1k-3.json",
+      "size": 1176,
+      "sha256": "8b62d0a05cf2ae9ff8f825fa4f2a4b41daaf08d811a9cc77110f207ee3f907f4"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-1/resp-1k-4.json",
+      "size": 1178,
+      "sha256": "7e3e3f6fc41b5e49ff0acd2e3db12d1f61f6223e6ef6ddde53ba4a9faae71a24"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-1/resp-1k-5.json",
+      "size": 1173,
+      "sha256": "abd1d18f6dd608a7450ac267c582f59dbe3c89469e452b0e7bffa47d1d99445d"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-1/resp-1k-6.json",
+      "size": 1177,
+      "sha256": "1a1dcb16186de6ba48dc3bdfa2ca9615cfb71cd151197b4c60d576e3e9cf9178"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-1/server.log",
+      "size": 1364,
+      "sha256": "001821b8a5f110cf9ccdf21f56aa11e2192f09d6470dd61c30597386ffa06388"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-1/thermal.txt",
+      "size": 1547,
+      "sha256": "be113ae8ad5814707e1810c4fb4149d81b4427e7ab52f510c9876ba293c072e0"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-1/times.txt",
+      "size": 851,
+      "sha256": "dca64e9028408f40a22a33c9ae49a48938940f9f6aefc395711c12b24e952ec8"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-2/gpulog.txt",
+      "size": 713,
+      "sha256": "3ffc55fc036fa41ffbcc01867b44863a9c0c048036ecc74a23f387529e4b7182"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-2/macmon.jsonl",
+      "size": 1146807,
+      "sha256": "4bec897e9b9b68533c7234440a55c8211484d4142c59739bf5fa0f322a1b60a1"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-2/req.json",
+      "size": 54315,
+      "sha256": "b3ff32574d13f4cd29aa5089e06cf5c57becbe8f777634beb97a043545396d62"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-2/resp-16k-1.json",
+      "size": 1186,
+      "sha256": "8a11edc53fd3d195d2e0e6be2b76737b9e7553fc1839022f5eb4c0b17f295ee3"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-2/resp-16k-2.json",
+      "size": 1186,
+      "sha256": "b00c3106f860f3edadda678dfe72438b810b300590f7093a53f206a0b49147a5"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-2/resp-16k-3.json",
+      "size": 1183,
+      "sha256": "f979f13e0a268e20aa2729cab3da467283678acf5b18604cfdc6acdaaaf93314"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-2/resp-16k-4.json",
+      "size": 1186,
+      "sha256": "e9f64462363a8738e6cf1b1815463d7385947e4b198c07e6180a4122912e35fe"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-2/resp-16k-5.json",
+      "size": 1185,
+      "sha256": "6afb24f5ae7724c0bcc8a2b3a04c052b3fb13d579c0be6cbe74fa61f3ee88112"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-2/resp-16k-6.json",
+      "size": 1181,
+      "sha256": "4c023cfc5380ab9a1c5d41777215b77ed4cb43bbb56977a5c3018489edfc1e01"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-2/resp-16k-7.json",
+      "size": 1185,
+      "sha256": "5857027a146e43d6601addfc090467a8da10d32cb1543ba66f5f844873b57bc4"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-2/resp-16k-8.json",
+      "size": 1186,
+      "sha256": "d96b36218a18720a81553fa6b65dbce1d4424c9668fdddb31476495244b923ca"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-2/server.log",
+      "size": 720,
+      "sha256": "346305f1f0254142d84b4bb5085b8745a001d69904660eda4780675d7bc03a1c"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-2/thermal.txt",
+      "size": 1560,
+      "sha256": "9fe221fd08b46b59f8f8f8888cfdc9fce145dec1bc9be26559e0646e85de6c21"
+    },
+    {
+      "path": "2026-10-13/runs/sustained-2/times.txt",
+      "size": 397,
+      "sha256": "63a715967a173dbfcfd8610b9f96e645ec992126177896333d2a8d1fad4e0d73"
+    },
+    {
+      "path": "2026-10-13/runs/thermal-continuous.txt",
+      "size": 30225,
+      "sha256": "212af710021318a8b25b09ee8f9c1a830375b35f1ca2686ebf86f1fad1d61e54"
+    },
+    {
+      "path": "2026-10-13/tools/27b.json",
+      "size": 184,
+      "sha256": "9e87c68a95863e0421d86cde247fd0e51dd6179987a71fa110b1c08cea0578b2"
+    },
+    {
+      "path": "2026-10-13/tools/bench.py",
+      "size": 9847,
+      "sha256": "9480adeff87bae23daac1a17053907fce3faa8edfe7dfc99c32e42d67281ad51"
+    },
+    {
+      "path": "2026-10-13/tools/clock_join.py",
+      "size": 1374,
+      "sha256": "ce1972c493ba1effea674f1176fdbcdb2a0a3f0b93ef0d9e2a0ae8eef5abae9e"
+    },
+    {
+      "path": "2026-10-13/tools/cool_then.sh",
+      "size": 385,
+      "sha256": "178cf1a71509d4e3670f96a0da114046ce605214e8bcd93b2f0edab934d2aba4"
+    },
+    {
+      "path": "2026-10-13/tools/flash-idle.json",
+      "size": 186,
+      "sha256": "a85fa0d7295e5e1f4686b99212215c20a01700dbd4929a683f27fe204bcc73ea"
+    },
+    {
+      "path": "2026-10-13/tools/gpulog.sh",
+      "size": 207,
+      "sha256": "f964f04d8235ad1853ec11e1c0151352888924672bd9b56b841741cd740e9bba"
+    },
+    {
+      "path": "2026-10-13/tools/gputop.py",
+      "size": 882,
+      "sha256": "78e4ec47e035d0374d5eaaf9c8f4e823c4a888160eac93385507719c0b2c1f13"
+    },
+    {
+      "path": "2026-10-13/tools/mlx_proj.py",
+      "size": 2777,
+      "sha256": "60c79ec5cc3a6da91a3285c8a3cd137c364eb5e80180c04cd93fb8d501cdeef1"
+    },
+    {
+      "path": "2026-10-13/tools/profile.sh",
+      "size": 1909,
+      "sha256": "4cb906fa60550706151060ab813a7f5b034bf9d7cf365c0a083153880a85472a"
+    },
+    {
+      "path": "2026-10-13/tools/qos_tf.py",
+      "size": 563,
+      "sha256": "ff7cca2b6b337a955de9579f5ea7b72f24cc7f8664730a46493a980054ba8f57"
+    },
+    {
+      "path": "2026-10-13/tools/quick_tf.py",
+      "size": 393,
+      "sha256": "36d2c9ccdf8e26f1c48ed5c6d6ab3e9c2224f7155534382bb20e946c072bd8b4"
+    },
+    {
+      "path": "2026-10-13/tools/sustained.sh",
+      "size": 335,
+      "sha256": "82948f19f3ef4a5ab43d3613337f3075492a1851b548ba3d81bc9efb1582d1e6"
+    },
+    {
+      "path": "2026-10-13/tools/thermal.swift",
+      "size": 297,
+      "sha256": "7a7bd39024ce7c3ef016dc8b011e945b0cc9051fbe5f1c796e2d1cf802e17fe9"
+    },
+    {
+      "path": "2026-10-13/tools/wait_idle.sh",
+      "size": 383,
+      "sha256": "c95fe274055324ddfba981aa7d8d2ec19adf54f800709f7c1788735a60918315"
+    },
+    {
+      "path": "2026-10-13/tools/when_fast.sh",
+      "size": 960,
+      "sha256": "8c2a5d551039104b647323dc635f8f821e46506a458431402cebfbbc69ffb49a"
     },
     {
       "path": "27b-ollama-reset-control-v1/artifacts.json",

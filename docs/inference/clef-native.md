@@ -1445,7 +1445,7 @@ calls and 111 synchronous copies leave about 4.6 ms of GPU gaps per request
 (Flash 0.76k: 7.1 ms idle in a 38 ms span). A device-resident head, as on
 Metal (M3 Round 3), is the next fixed-cost step.
 
-## M3 status (2026-10-10, in progress)
+## M3 status (closed 2026-10-13)
 
 The [October 10 Mac performance audit](../audits/2026-10-10-clef-mac-performance/README.md)
 records the later paired comparison, numerical checks, partial configuration
@@ -1869,29 +1869,89 @@ that the default output-fast order is the better one. Launch order is not
 what holds back sustained GEMM throughput. The patch and every run are kept
 in the evidence (`weight-major-candidate/`). It is not on main.
 
-### Next
+### Gate run with the GPU clock logged (2026-10-13)
 
-- **Re-measure on an idle GPU.** The 1k gap to 0.35 s is mostly contention.
-  Under build load alone it was 0.58 s, and under the GPU render it was
-  1.25 s. Re-measure with no other GPU job, and record the GPU utilization
-  next to the load.
-- **Read fewer weight bytes.** Every exact reordering of the f16 GEMM has now
-  failed. What is left is reading fewer weight bytes per FLOP: in-kernel Q4
-  dequantization into the matmul tile, the way MLX's 4-bit kernels do it. It
-  cannot be bitwise equal to the f16 path, so it needs the 1e-3 raw-logit
-  bound and the 104-answer CPU agreement instead.
-- **Overlap scans with GEMMs.** In layer-major order, the Delta scan of chunk
-  c+1 depends only on chunk c's scan state. It could run beside chunk c's
-  out-projection and FFN.
+The binary is a release build of main `81d041f458`, run with the same settings
+as the M4 study (resident f16, fused-tensorops attention, weight-shape GEMM,
+fused-field head, chunk 2048, prefix cache 0). The harness is the pinned
+`mac_quiet_bench.py` in shared mode, with the reset Ollama 0.40 and zero cached
+tokens on every reply. This time GPU frequency, power and temperature were
+logged with `macmon` (it reads IOReport, so no sudo), along with
+`ProcessInfo.thermalState`. A watcher ran a 4-second f16 GEMM probe every
+3 minutes and started the bench when it sustained at least 40 TF. Evidence is in
+`gs://openagents-bench-artifacts/clef/m3-m4-2026-10-11/2026-10-13/`, listed in
+the bundle manifest.
 
-## M4 status (2026-10-11, validation in progress)
+**Flash, `flash-2`, 00:43–00:48 UTC** (one-minute load 5–9; WindowServer held
+about 40 % device utilization at 338 MHz):
+
+| | ~1k | ~4k | ~16k |
+| --- | --- | --- | --- |
+| Native, round 1: median of 5 | **0.326 s** | 1.306 s | **6.229 s** (5.88–6.45) |
+| GPU clock / power during native round 1 | not sampled (2 s log, 0.33 s requests) | 1,595 MHz / 87 W | 1,361 MHz / 52 W |
+| Reset Ollama, round 1 | 0.446 s | 1.713 s | 7.662 s |
+| Native, round 2 (GPU at 0.8–0.97 GHz, 19–25 W) | 0.561 s | 1.937 s | 10.429 s |
+| Reset Ollama, round 2 | 0.580 s | 3.267 s | 10.262 s |
+| Paired native/Ollama time, both rounds | 0.812 | 0.712 | 0.846 |
+| Target | ≤ 0.35 s | — | ≤ 7.5 s |
+
+- **At full GPU clock, both M3 targets are met:** 0.326 s at ~1k and 6.229 s at
+  ~16k. That also beats the MLX card's 7.0 s at 16k, though not its 0.31 s at 1k.
+- **Native beats Ollama** on every paired median in the same session.
+- An earlier run (`flash-1`, 00:11–00:18 UTC, no clock log) matched this. Round 1
+  gave 0.334 / 1.309 / 8.03 s, and its 16k samples rose from 6.16 to 9.76 s
+  in order. Round 2 gave 0.833 / 3.006 / 13.11 s. Ollama held steady at
+  0.75–0.78 / 2.8–3.0 / 11.3–11.8 s across both rounds.
+
+**The sustained ceiling is the GPU clock, not the kernels.**
+
+- **Clock under sustained load.** After a minute or two of sustained load,
+  macOS runs the GPU at 0.55–0.95 GHz and 10–25 W. Bursts reach 1.4–1.6 GHz and
+  up to 87 W. Meanwhile the GPU sits near 68 °C, the Mac is on its 140 W
+  adapter, Low Power Mode is off, and `thermalState` reads 0 or 1. When our GPU
+  job starts, CPU power falls from about 27 W to about 11 W with the CPUs still
+  100 % busy (other agents' builds), so the package budget is being shared.
+- **MLX shows the same.** MLX 0.32.3 ran only the Flash trunk's projections
+  (f16, distinct weights per layer, no attention or scan):
+  - at 18:30 local, with the GPU idle: 0.29–0.36 s at 1k and 5.14–5.41 s at
+    16k (4-bit: 0.38–0.43 s and 5.36–5.87 s);
+  - at 19:31, under the cap: 0.88 s and 9.0–9.4 s.
+
+  A 4-second f16 GEMM probe gives about 53 TF in a short burst and 20–27 TF
+  sustained in the capped state.
+- **QoS has no effect.** Setting the submitting thread's QoS to
+  user-interactive, default or background changed nothing.
+- **What it means for the 1k target.** Even at full clock, MLX's projections
+  alone take 0.29 s at 1k. So the 1k target leaves about 60 ms for the Delta
+  scan, attention, head and host work, and it only holds at full clock.
+
+**Conclusion (M3 closed).**
+
+- **Correctness gates:** pass.
+- **Absolute targets:** met as specified, with medians of 5 on a cold, unloaded
+  GPU: 0.326 s at ~1k and 6.229 s at ~16k.
+- **Against Ollama:** native beats it in the same session.
+- **Under sustained load:** neither absolute target holds once the laptop's GPU
+  clock governor caps the GPU (0.56 s and 10.4 s in the capped round). That is a
+  limit of this machine, not something a kernel change has moved:
+  - MLX's own matmuls slow the same way;
+  - the exact GEMM reorderings, the direct Q4_K reads and the other candidates
+    recorded above did not help under load.
+
+The remaining concrete lever is to draw more clock or less power under the cap.
+Native gets a lower sustained clock than Ollama, which is what makes 27B slower
+at 16k. That is
+[#11477](https://github.com/OpenAgentsInc/openagents/issues/11477).
+
+## M4 status (closed 2026-10-13, speed gate not met)
 
 The current implementation adds Metal text batching, exact prefix reuse, image
 inputs, 27B weight-format support, and CUDA memory checks for
 [#11197](https://github.com/OpenAgentsInc/openagents/issues/11197). These features
 have separate controls and acceptance checks. The uncached timing study
-(2026-10-12, below) gives the current speed result: it misses the 1.5× gate.
-No M3/M4 acceptance gate is complete.
+(2026-10-12) and the clock-logged run (2026-10-13), both below, miss the
+1.5× gate. M4 is closed with that result; the open work is in
+[#11477](https://github.com/OpenAgentsInc/openagents/issues/11477).
 
 The [validation bundle](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/README.md)
 (stored in `gs://openagents-bench-artifacts/clef/m3-m4-2026-10-11/`, with a
@@ -2024,6 +2084,45 @@ Ollama `clef` at 1k and 16k and is 9 % faster at 4k. The gate is ≥ 1.5×.
 
 The independent same-Q4 runtime check also still stands at 103/104 top
 answers (`text-029`, `日本1`).
+
+### 27B timing with the GPU clock logged (2026-10-13)
+
+`b27-1`, 00:53–01:12 UTC. It uses the same binary, settings, harness and logs
+as the M3 gate run above. It started right after a probe sustained 56 TF. Every
+reply reported zero cached tokens.
+
+| | ~1k | ~4k | ~16k |
+| --- | --- | --- | --- |
+| Native, round 1 | 1.107 s (1,533 MHz, 77 W) | 5.628 s (1,154 MHz, 39 W) | 44.08 s (645 MHz, 12.8 W) |
+| Reset Ollama `clef`, round 1 | 2.484 s (788 MHz) | 9.015 s (782 MHz) | 34.79 s (828 MHz, 22 W) |
+| Native, round 2 | 2.339 s (744 MHz) | 8.711 s (730 MHz) | 44.65 s (657 MHz) |
+| Reset Ollama, round 2 | 2.317 s | 8.431 s | 35.33 s |
+| Paired Ollama/native time, both rounds | **1.32** | **1.22** | **0.79** |
+
+**Result: the M4 speed gate (≥ 1.5×) is not met.**
+
+- **At full clock native is well ahead.** At 1k it ran 2.24× faster than
+  Ollama and at 4k 1.60× faster. In those pairs, though, Ollama ran at the
+  capped clock, so they don't count as like-for-like.
+- **Under the clock cap native is slower at 16k.** The governor gives native
+  645 MHz and 12.8 W but gives Ollama 828 MHz and 22 W. Per clock both engines
+  do about the same work, so native loses on the clock it is given. It also
+  takes longer than the 28.3 s it took under build load on 2026-10-12.
+- **Open work.** Why native gets a lower sustained clock, and whether a
+  lower-power projection path gets more, is
+  [#11477](https://github.com/OpenAgentsInc/openagents/issues/11477). So is the
+  103/104 same-Q4 agreement (`text-029`, `日本1`, P(true) 0.502 native vs 0.493
+  reference, max |Δp| 0.009, inside the 0.02 bound).
+
+**M4 closed (2026-10-13), with:**
+
+- **Passing:** images, prefix reuse (exact, ≥ 5× faster), batching, and the
+  CUDA memory refusal.
+- **Not met:** the 1.5× speed gate. The paired ratios are 1.32 / 1.22 / 0.79 on
+  this laptop under sustained load.
+- **Not met:** the all-top same-Q4 check, at 103/104.
+
+Both open items moved to #11477.
 
 ### Metal controls and memory
 
