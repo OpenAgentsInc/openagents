@@ -695,6 +695,9 @@ impl Background {
             let newest = match briefing.filter(|_| key != chat.briefing) {
                 Some(briefing) => {
                     chat.briefing = key;
+                    // A compaction would summarize this message away; the
+                    // context hook adds it back after one (#11490).
+                    crate::context_hook::note_message_briefing(&cwd, Some(briefing.render(false)));
                     crate::claude::with_briefing(&briefing, &newest)
                 }
                 None => newest,

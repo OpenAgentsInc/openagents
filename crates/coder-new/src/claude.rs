@@ -1174,6 +1174,11 @@ pub(crate) fn briefed(
     briefing: Option<&crate::context::Briefing>,
 ) -> QueryOptions {
     let Some(briefing) = briefing else {
+        // A new process: no message briefing to add back after a
+        // compaction (#11490).
+        if let Some(cwd) = &options.cwd {
+            crate::context_hook::note_message_briefing(cwd, None);
+        }
         return options;
     };
     let text = briefing.render(false);

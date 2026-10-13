@@ -22,8 +22,17 @@
 //! `CODER_CONTEXT=off` turns it off.
 //!
 //! `UserPromptSubmit` records the session's first message, the task the
-//! questions are asked against. Not built: re-adding the briefing's key facts
-//! after a compaction (`PostCompact` carries no context output; see #11490).
+//! questions are asked against.
+//!
+//! **After a compaction.** A chat's first briefing is in the system prompt,
+//! which compaction keeps. A later piece of work's briefing goes in a
+//! message ([`crate::claude::with_briefing`]), which compaction summarizes
+//! away, so the hook adds it back. `PostCompact` can't return context, so
+//! `PreCompact` marks the session, and the first of these that fires after
+//! it adds the briefing as `additionalContext`, once: `SessionStart` with
+//! source `compact`, the next `UserPromptSubmit`, or the next `PostToolUse`
+//! of any tool. The last two are there in case Claude Code doesn't send
+//! `SessionStart` to SDK hooks; the mark makes sure only one adds it.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -54,16 +63,84 @@ struct Session {
     dirs: HashSet<PathBuf>,
     /// Files added or refused; never asked about again.
     decided: HashSet<PathBuf>,
+    /// A compaction happened and the briefing has not been added back.
+    compacted: bool,
 }
 
 static SESSIONS: LazyLock<Mutex<HashMap<String, Session>>> = LazyLock::new(Mutex::default);
 /// Files the briefing already carries, by working directory.
 static BRIEFED: LazyLock<Mutex<HashMap<PathBuf, Vec<PathBuf>>>> = LazyLock::new(Mutex::default);
 
-/// Records the instruction files `cwd`'s briefing carries, so the hook skips them.
+/// The briefing a running chat in a working directory got in a message,
+/// which a compaction loses.
+static MESSAGE_BRIEFING: LazyLock<Mutex<HashMap<PathBuf, String>>> = LazyLock::new(Mutex::default);
+/// The most of a briefing added back after a compaction.
+const REBRIEF_CHARS: usize = 12_000;
+
+/// Records the instruction files `cwd`'s briefing carries, so the hook skips
+/// them. That briefing is in the system prompt, so a message briefing noted
+/// earlier no longer applies.
 pub fn note_briefed(cwd: &Path, files: &[PathBuf]) {
     if let Ok(mut map) = BRIEFED.lock() {
         map.insert(cwd.to_owned(), files.to_vec());
+    }
+    note_message_briefing(cwd, None);
+}
+
+/// Records the briefing `cwd`'s running chat got in a message (`None`: it has
+/// none), to add back after a compaction.
+pub fn note_message_briefing(cwd: &Path, text: Option<String>) {
+    let mut map = MESSAGE_BRIEFING.lock().unwrap_or_else(|e| e.into_inner());
+    match text {
+        Some(text) => map.insert(cwd.to_owned(), text),
+        None => map.remove(cwd),
+    };
+}
+
+/// Marks session `id` as compacted.
+pub fn on_compact(id: &str) {
+    with_session(id, |s| s.compacted = true);
+}
+
+/// After a compaction of session `id`, once: the briefing to add back for
+/// `event`, as a `hookSpecificOutput`. `None` when there was no compaction,
+/// it was already added back, or the briefing is in the system prompt.
+pub fn after_compaction(id: &str, cwd: &Path, event: &str) -> Option<Value> {
+    if !with_session(id, |s| std::mem::take(&mut s.compacted)) {
+        return None;
+    }
+    let briefing = MESSAGE_BRIEFING
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(cwd)
+        .cloned()?;
+    append_log(&json!({
+        "hook": "context",
+        "ts": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs()),
+        "dir": cwd.display().to_string(),
+        "after_compaction": event,
+        "added_bytes": briefing.len().min(REBRIEF_CHARS),
+        "how": "rule",
+    }));
+    Some(json!({
+        "hookEventName": event,
+        "additionalContext": format!(
+            "<briefing>\nThe conversation was compacted. This is the briefing for the current piece of work, as it was given before the compaction. Follow it.\n\n{}\n</briefing>",
+            cut(briefing.trim_end(), REBRIEF_CHARS)
+        ),
+    }))
+}
+
+fn specific(output: Option<Value>) -> claude_agent_sdk::HookJSONOutput {
+    match output {
+        Some(specific) => SyncHookJSONOutput {
+            hook_specific_output: Some(specific),
+            ..SyncHookJSONOutput::default()
+        }
+        .into(),
+        None => SyncHookJSONOutput::continue_execution().into(),
     }
 }
 
@@ -78,6 +155,7 @@ fn with_session<T>(id: &str, f: impl FnOnce(&mut Session) -> T) -> T {
 /// The hooks for a session in `cwd`.
 #[must_use]
 pub fn hooks(cwd: PathBuf) -> Vec<(claude_agent_sdk::HookEvent, HookMatcher)> {
+    let cwd_for_prompt = cwd.clone();
     let judge: Arc<dyn Judge + Send + Sync> = Arc::new(squeeze::Decisions);
     let post = hook_fn(move |input: Value, _| {
         let cwd = cwd.clone();
@@ -87,26 +165,52 @@ pub fn hooks(cwd: PathBuf) -> Vec<(claude_agent_sdk::HookEvent, HookMatcher)> {
                 .await
                 .ok()
                 .flatten();
-            Ok(match output {
-                Some(specific) => SyncHookJSONOutput {
-                    hook_specific_output: Some(specific),
-                    ..SyncHookJSONOutput::default()
-                }
-                .into(),
-                None => SyncHookJSONOutput::continue_execution().into(),
-            })
+            Ok(specific(output))
         }
     });
-    let prompt = hook_fn(|input: Value, _| async move {
-        if let (Some(id), Some(text)) = (input["session_id"].as_str(), input["prompt"].as_str()) {
-            with_session(id, |s| {
-                s.task
-                    .get_or_insert_with(|| text.chars().take(TASK_CHARS).collect());
-            });
-        }
+    let prompt = {
+        let cwd = cwd_for_prompt.clone();
+        hook_fn(move |input: Value, _| {
+            let cwd = cwd.clone();
+            async move {
+                let id = input["session_id"].as_str().unwrap_or("");
+                if let Some(text) = input["prompt"].as_str() {
+                    with_session(id, |s| {
+                        s.task
+                            .get_or_insert_with(|| text.chars().take(TASK_CHARS).collect());
+                    });
+                }
+                Ok(specific(after_compaction(id, &cwd, "UserPromptSubmit")))
+            }
+        })
+    };
+    let compact = hook_fn(|input: Value, _| async move {
+        on_compact(input["session_id"].as_str().unwrap_or(""));
         Ok(SyncHookJSONOutput::continue_execution().into())
     });
+    let after = |event: &'static str| {
+        let cwd = cwd_for_prompt.clone();
+        hook_fn(move |input: Value, _| {
+            let cwd = cwd.clone();
+            async move {
+                let id = input["session_id"].as_str().unwrap_or("");
+                Ok(specific(after_compaction(id, &cwd, event)))
+            }
+        })
+    };
     vec![
+        (
+            claude_agent_sdk::HookEvent::PreCompact,
+            HookMatcher::new(None, compact),
+        ),
+        (
+            claude_agent_sdk::HookEvent::SessionStart,
+            HookMatcher::new(Some("compact"), after("SessionStart")),
+        ),
+        (
+            claude_agent_sdk::HookEvent::PostToolUse,
+            HookMatcher::new(None, after("PostToolUse")),
+        ),
         (
             claude_agent_sdk::HookEvent::PostToolUse,
             HookMatcher::new(Some(TOOLS), post),
@@ -475,5 +579,48 @@ mod tests {
         let judge = Fake::new(Err("no".into()));
         let input = json!({"session_id": "s6", "tool_name": "Grep", "tool_input": {"path": sub}});
         assert!(text(on_tool(&input, t.path(), &judge)).contains("grep rule"));
+    }
+
+    #[test]
+    fn a_message_briefing_is_added_back_once_after_a_compaction() {
+        let cwd = PathBuf::from("/tmp/context-hook-compaction-test");
+        let sid = "compaction-session";
+        // No compaction: nothing.
+        note_message_briefing(&cwd, Some("Use the floors.".into()));
+        assert!(after_compaction(sid, &cwd, "SessionStart").is_none());
+        // After one, the first hook to fire adds it, and only that one.
+        on_compact(sid);
+        let out = after_compaction(sid, &cwd, "SessionStart").unwrap();
+        assert_eq!(out["hookEventName"], "SessionStart");
+        assert!(
+            out["additionalContext"]
+                .as_str()
+                .unwrap()
+                .contains("Use the floors.")
+        );
+        assert!(after_compaction(sid, &cwd, "PostToolUse").is_none());
+        // The fallback route: a later compaction, then a prompt.
+        on_compact(sid);
+        let out = after_compaction(sid, &cwd, "UserPromptSubmit").unwrap();
+        assert_eq!(out["hookEventName"], "UserPromptSubmit");
+        // A briefing in the system prompt survives compaction: nothing to add.
+        note_briefed(&cwd, &[]);
+        on_compact(sid);
+        assert!(after_compaction(sid, &cwd, "SessionStart").is_none());
+    }
+
+    #[tokio::test]
+    async fn the_hooks_cover_compaction() {
+        let events: Vec<_> = hooks(PathBuf::from("/tmp"))
+            .into_iter()
+            .map(|(e, _)| e)
+            .collect();
+        for event in [
+            claude_agent_sdk::HookEvent::PreCompact,
+            claude_agent_sdk::HookEvent::SessionStart,
+            claude_agent_sdk::HookEvent::UserPromptSubmit,
+        ] {
+            assert!(events.contains(&event), "{event:?}");
+        }
     }
 }
