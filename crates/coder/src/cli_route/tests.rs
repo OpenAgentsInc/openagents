@@ -290,10 +290,10 @@ async fn money_is_never_proposed_and_costs_no_model_call() {
 
 #[tokio::test]
 async fn the_phone_is_not_offered_what_is_off_its_list() {
-    let (jev, _) = judge(vec![sure(descend::LEVEL_QUESTION, "say")]);
-    let route = CommandRoute::new(jev, canned(r#"{"TEXT": "hello"}"#));
+    let (jev, _) = judge(vec![sure(descend::LEVEL_QUESTION, "close")]);
+    let route = CommandRoute::new(jev, canned(r#"{"N": 42}"#));
     let outcome = route
-        .outcome(&ask("verse", "say hello in the plaza", Surface::Phone))
+        .outcome(&ask("issue", "close issue 42", Surface::Phone))
         .await
         .unwrap();
     assert!(matches!(
@@ -303,18 +303,18 @@ async fn the_phone_is_not_offered_what_is_off_its_list() {
             ..
         }
     ));
-    // In the terminal it is offered; `--to` is an enum, so it is selected.
+    // In the terminal it is offered; `--reason` is an enum, so it is selected.
     let (jev, _) = judge(vec![
-        sure(descend::LEVEL_QUESTION, "say"),
-        sure("--to", "none"),
+        sure(descend::LEVEL_QUESTION, "close"),
+        sure("--reason", "none"),
     ]);
-    let route = CommandRoute::new(jev, canned(r#"{"TEXT": "hello"}"#));
+    let route = CommandRoute::new(jev, canned(r#"{"N": 42}"#));
     let outcome = route
-        .outcome(&ask("verse", "say hello in the plaza", Surface::Terminal))
+        .outcome(&ask("issue", "close issue 42", Surface::Terminal))
         .await
         .unwrap();
     assert!(
-        matches!(&outcome, Outcome::Proposal { argv, .. } if argv == &["verse", "say", "hello"]),
+        matches!(&outcome, Outcome::Proposal { argv, .. } if argv == &["issue", "close", "42"]),
         "{outcome:?}"
     );
 }
@@ -400,16 +400,16 @@ async fn a_host_is_selected_from_the_devices_computers_or_asked_for() {
 #[tokio::test]
 async fn a_node_that_is_also_a_command_can_be_chosen_itself() {
     let (jev, _) = judge(vec![
-        sure(descend::LEVEL_QUESTION, "xp"),
+        sure(descend::LEVEL_QUESTION, "adopt"),
         sure(descend::LEVEL_QUESTION, descend::SELF),
     ]);
     let route = CommandRoute::new(jev, Arc::new(NoFill));
     let outcome = route
-        .outcome(&ask("verse", "show my XP", Surface::Phone))
+        .outcome(&ask("host", "adopt this machine's setup", Surface::Desktop))
         .await
         .unwrap();
     assert!(
-        matches!(&outcome, Outcome::Proposal { argv, runs_on: RunsOn::ConnectedComputer, .. } if argv == &words("verse xp")),
+        matches!(&outcome, Outcome::Proposal { argv, runs_on: RunsOn::ThisDevice, .. } if argv == &words("host adopt")),
         "{outcome:?}"
     );
 }
@@ -430,20 +430,24 @@ async fn a_fill_that_does_not_parse_asks_rather_than_guesses() {
 
 #[tokio::test]
 async fn the_seam_lists_every_group_and_its_recipients() {
-    let (jev, _) = judge(vec![sure(descend::LEVEL_QUESTION, "who")]);
+    let (jev, _) = judge(vec![sure(descend::LEVEL_QUESTION, "list")]);
     let route: Arc<dyn CliRoute> = Arc::new(CommandRoute::new(jev, canned("{}")));
     let groups = route.groups();
     assert_eq!(groups.len(), tree::bundled().groups.len());
     assert!(groups.iter().any(|g| g.id == "x402"));
     assert_eq!(route.recipients(), ["test model"]);
     let answer = route
-        .propose(&ask("verse", "who is around", Surface::Phone))
+        .propose(&ask(
+            "session",
+            "list the chats on my computers",
+            Surface::Phone,
+        ))
         .await
         .unwrap();
     assert_eq!(
         answer,
         CliAnswer::Proposal(CliProposal {
-            argv: words("verse who"),
+            argv: words("session list"),
             effect: Effect::ReadOnly,
             runs_on: RunsOn::ConnectedComputer,
         })

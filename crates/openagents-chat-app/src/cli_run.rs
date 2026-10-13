@@ -2,7 +2,7 @@
 //! connected computer.
 //!
 //! The chat router may offer a read-only `openagents` command that runs on
-//! a computer (`verse who`, `kb search …`). The person's **Run** tap is the
+//! a computer (`session list`, `kb search …`). The person's **Run** tap is the
 //! confirmation. The phone then checks, from typed state and never from
 //! the words on screen, that the command is on its own read-only list
 //! ([`crate::router::READ_ONLY`]), that a computer is ready, and that this
@@ -223,7 +223,7 @@ mod tests {
             );
         }
         // A plugin listing runs under either name (#10089).
-        for argv in ["verse who", "ext list", "plugin list"] {
+        for argv in ["session list", "ext list", "plugin list"] {
             assert_eq!(
                 target(&words(argv), None, None),
                 Err(CliOutcome::Refused(

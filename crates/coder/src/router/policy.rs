@@ -1666,7 +1666,7 @@ mod tests {
         ));
         // A group reading for another group is not the wallet's rule.
         let mut other = wallet.clone();
-        other.cli_group = Some(("verse".into(), 0.9));
+        other.cli_group = Some(("kb".into(), 0.9));
         assert!(!matches!(
             decided(&other, &terminal, false),
             Tier::Cli { group, .. } if group == "wallet"

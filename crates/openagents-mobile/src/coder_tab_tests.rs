@@ -1609,7 +1609,7 @@ fn a_read_only_command_runs_only_when_tapped() {
     hand.route(&[
         json!({"v": 2, "type": "offer", "offer": "cli", "argv": ["computer", "list"],
             "effect": "read_only", "runs_on": "this_device", "confirm": true}),
-        json!({"v": 2, "type": "offer", "offer": "cli", "argv": ["verse", "xp"],
+        json!({"v": 2, "type": "offer", "offer": "cli", "argv": ["session", "list"],
             "effect": "read_only", "runs_on": "connected_computer", "confirm": true}),
         json!({"v": 2, "type": "offer", "offer": "cli", "argv": ["wallet", "pay", "lnbc1"],
             "effect": "read_only", "runs_on": "this_device", "confirm": true}),
@@ -1699,15 +1699,15 @@ fn a_computer_command_runs_there_after_the_tap() {
     let gate = std::sync::Arc::new(std::sync::Mutex::new(false));
     let asked: RemoteAsked = std::sync::Arc::default();
     let remote = Remote {
-        output: "{\"xp\": 120}",
+        output: "{\"sessions\": 2}",
         gate: gate.clone(),
         asked: asked.clone(),
     };
     fixture.coder = std::mem::replace(&mut fixture.coder, CoderTab::new("x".into()))
         .with_remote_cli(Some(std::sync::Arc::new(remote)));
-    fixture.say("What level am I?");
+    fixture.say("What chats are on my computers?");
     hand.route(&[
-        json!({"v": 2, "type": "offer", "offer": "cli", "argv": ["verse", "xp"],
+        json!({"v": 2, "type": "offer", "offer": "cli", "argv": ["session", "list"],
             "effect": "read_only", "runs_on": "connected_computer", "confirm": true}),
     ]);
     hand.say("We can check on your computer.", true);
@@ -1740,10 +1740,10 @@ fn a_computer_command_runs_there_after_the_tap() {
         std::thread::sleep(std::time::Duration::from_millis(10));
         done = fixture.render();
     }
-    assert_eq!(cli_output(&done), "{\n  \"xp\": 120\n}");
+    assert_eq!(cli_output(&done), "{\n  \"sessions\": 2\n}");
     let asked = asked.lock().unwrap();
     assert_eq!(asked.len(), 1);
-    assert_eq!(asked[0].1, ["openagents", "--json", "verse", "xp"]);
+    assert_eq!(asked[0].1, ["openagents", "--json", "session", "list"]);
     assert!(!fixture.coder.live(Some(&fixture.computers)));
 }
 

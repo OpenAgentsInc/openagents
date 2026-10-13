@@ -4,7 +4,7 @@
 //! value the device can enumerate is selected, never generated: a `HOST`
 //! from the device's own computers, a `--workspace LABEL` from that
 //! host's workspaces, and an enum from the usage line
-//! (`--to all|ads|zone`) are each a Jev Choice over candidates code lists
+//! (`--state open|closed|all`) are each a Jev Choice over candidates code lists
 //! ([`selection`]). Free text (a search string, a key, a count) is written
 //! by the model into a JSON object whose keys code derives from the form
 //! ([`fill_instructions`], [`read_fill`]). The assembled command is then
@@ -639,10 +639,12 @@ mod tests {
             ]
         );
         assert!(needs_model(&search.forms[0]));
-        let (who, _) = leaf("verse who");
-        assert!(!needs_model(&who.forms[0]));
-        let (say, _) = leaf("verse say");
-        assert!(matches!(&params(&say.forms[0])[1].kind, Kind::Enum(values) if values.len() == 5));
+        let (devices, _) = leaf("connect devices");
+        assert!(!needs_model(&devices.forms[0]));
+        let (issues, _) = leaf("issue list");
+        assert!(
+            matches!(&params(&issues.forms[0])[0].kind, Kind::Enum(values) if values.len() == 3)
+        );
         let (task, _) = leaf("computer task");
         assert!(
             params(&task.forms[0])
@@ -663,13 +665,20 @@ mod tests {
         assert!(validate(list, computer, &argv_of("computer list")).is_ok());
         assert!(validate(list, computer, &argv_of("computer list --same-machine")).is_ok());
         assert!(validate(list, computer, &argv_of("computer show")).is_err());
-        let (say, verse) = leaf("verse say");
-        assert!(validate(say, verse, &argv_of("verse say hi --to near")).is_ok());
-        assert!(validate(say, verse, &argv_of("verse say hi --to everyone")).is_err());
+        let (issues, issue) = leaf("issue list");
+        assert!(validate(issues, issue, &argv_of("issue list --state closed")).is_ok());
+        assert!(validate(issues, issue, &argv_of("issue list --state everyone")).is_err());
         let (describe, cap) = leaf("cap describe");
         assert!(validate(describe, cap, &argv_of("cap describe --author abc slug")).is_ok());
-        let (control, _) = leaf("verse control move");
-        assert!(validate(control, verse, &argv_of("verse control e1 move 1,2,3")).is_ok());
+        let (agent_note, agent) = leaf("agent memory note");
+        assert!(
+            validate(
+                agent_note,
+                agent,
+                &argv_of("agent memory ada note use postgres")
+            )
+            .is_ok()
+        );
         let (exec, _) = leaf("computer exec");
         assert!(validate(exec, computer, &argv_of("computer exec box -- ls -la")).is_ok());
         assert!(validate(exec, computer, &argv_of("computer exec box")).is_err());

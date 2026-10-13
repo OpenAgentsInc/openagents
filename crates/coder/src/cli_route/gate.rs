@@ -19,10 +19,6 @@ pub const PHONE_COMMANDS: &[&str] = &[
     "computer list",
     "computer show",
     "computer workspaces",
-    "verse who",
-    "verse quests",
-    "verse board",
-    "verse xp",
     "kb search",
     "cap list",
     "prg list",
@@ -205,9 +201,9 @@ mod tests {
         let approve = bundled().leaf(&words("computer approve")).unwrap();
         assert!(!offered(approve, Surface::Phone));
         assert!(offered(approve, Surface::Desktop));
-        let who = bundled().leaf(&words("verse who")).unwrap();
-        assert_eq!(runs_on(who, Surface::Phone), RunsOn::ConnectedComputer);
-        assert_eq!(runs_on(who, Surface::Terminal), RunsOn::ThisDevice);
+        let sessions = bundled().leaf(&words("session list")).unwrap();
+        assert_eq!(runs_on(sessions, Surface::Phone), RunsOn::ConnectedComputer);
+        assert_eq!(runs_on(sessions, Surface::Terminal), RunsOn::ThisDevice);
         let list = bundled().leaf(&words("computer list")).unwrap();
         assert_eq!(runs_on(list, Surface::Phone), RunsOn::ThisDevice);
     }

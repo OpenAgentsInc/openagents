@@ -315,7 +315,11 @@ mod tests {
         let row = set
             .rows
             .iter()
-            .find(|row| row.command == ["kb", "search"] && row.surface == "phone")
+            .find(|row| {
+                row.command == ["kb", "search"]
+                    && row.surface == "phone"
+                    && row.args.get("TEXT").is_some_and(|text| text == "docker cp")
+            })
             .unwrap();
         let proposal = |argv: &[&str], effect| Outcome::Proposal {
             argv: argv.iter().map(|w| (*w).to_string()).collect(),

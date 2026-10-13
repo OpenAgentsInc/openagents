@@ -75,106 +75,89 @@
   {
    "id": "r06",
    "surface": "phone",
-   "message": "who's around in the verse right now?",
+   "message": "which computers can I reach from here?",
    "expect": "proposal",
    "command": [
-    "verse",
-    "who"
+    "computer",
+    "list"
    ]
   },
   {
    "id": "r07",
    "surface": "phone",
-   "message": "who is in the plaza?",
+   "message": "list the coding sessions running on my computers",
    "expect": "proposal",
    "command": [
-    "verse",
-    "who"
+    "session",
+    "list"
    ]
   },
   {
    "id": "r08",
    "surface": "phone",
-   "message": "what quests are there?",
+   "message": "what programs have been published?",
    "expect": "proposal",
    "command": [
-    "verse",
-    "quests"
-   ],
-   "also": [
-    [
-     "verse",
-     "board"
-    ]
+    "prg",
+    "list"
    ]
   },
   {
    "id": "r09",
    "surface": "phone",
-   "message": "show my XP",
+   "message": "what plugins are published on the relay?",
    "expect": "proposal",
    "command": [
-    "verse",
-    "xp"
+    "plugin",
+    "list"
    ]
   },
   {
    "id": "r10",
    "surface": "phone",
-   "message": "what level am I?",
+   "message": "search my knowledge base for postgres migrations",
    "expect": "proposal",
    "command": [
-    "verse",
-    "xp"
+    "kb",
+    "search"
    ],
-   "also": [
-    [
-     "verse",
-     "board"
-    ]
-   ]
+   "args": {
+    "TEXT": "postgres migration"
+   }
   },
   {
    "id": "r11",
    "surface": "phone",
-   "message": "how much XP do I have?",
+   "message": "find kb entries about the cargo build cache",
    "expect": "proposal",
    "command": [
-    "verse",
-    "xp"
-   ]
+    "kb",
+    "search"
+   ],
+   "args": {
+    "TEXT": "cargo build cache"
+   }
   },
   {
    "id": "r12",
    "surface": "phone",
-   "message": "what's on the quest board right now",
+   "message": "list the published capabilities",
    "expect": "proposal",
    "command": [
-    "verse",
-    "board"
-   ],
-   "also": [
-    [
-     "verse",
-     "quests"
-    ]
+    "cap",
+    "list"
    ]
   },
   {
    "id": "r13",
    "surface": "phone",
-   "message": "list the quests I can do",
-   "expect": "proposal",
+   "message": "which workspaces does my studio accept?",
+   "expect": "missing",
    "command": [
-    "verse",
-    "quests"
+    "computer",
+    "workspaces"
    ],
-   "also": [
-    [
-     "verse",
-     "board"
-    ]
-   ]
+   "what": "which computer"
   },
   {
    "id": "r14",
@@ -381,14 +364,14 @@
   {
    "id": "r36",
    "surface": "phone",
-   "message": "say hello everyone in the verse",
+   "message": "tell the chat on my laptop to switch to postgres",
    "expect": "none",
    "why": "publishes"
   },
   {
    "id": "r37",
    "surface": "phone",
-   "message": "move my avatar to 10,0,5",
+   "message": "close issue 42 as completed",
    "expect": "none",
    "why": "publishes"
   },
@@ -473,14 +456,14 @@
   {
    "id": "r48",
    "surface": "terminal",
-   "message": "say hello to everyone nearby in the verse",
+   "message": "list the closed issues",
    "expect": "proposal",
    "command": [
-    "verse",
-    "say"
+    "issue",
+    "list"
    ],
    "args": {
-    "TEXT": "hello"
+    "--state": "closed"
    }
   },
   {
@@ -504,9 +487,9 @@
    "message": "what's my wallet balance?",
    "expect": "proposal",
    "command": [
-      "wallet",
-      "balance"
-    ]
+    "wallet",
+    "balance"
+   ]
   },
   {
    "id": "r51",
@@ -521,11 +504,12 @@
   {
    "id": "r52",
    "surface": "desktop",
-   "message": "show the lagrange zone's landmarks and parts",
+   "message": "which models can coder use?",
    "expect": "proposal",
    "command": [
-    "zone",
-    "info"
+    "coder",
+    "models",
+    "list"
    ]
   },
   {
@@ -578,20 +562,20 @@
    "message": "list the x402 node's lightning channels",
    "expect": "proposal",
    "command": [
-      "x402",
-      "node",
-      "channel",
-      "list"
-    ]
+    "x402",
+    "node",
+    "channel",
+    "list"
+   ]
   },
   {
    "id": "r58",
    "surface": "terminal",
-   "message": "who is around in the verse?",
+   "message": "which devices are connected to this host?",
    "expect": "proposal",
    "command": [
-    "verse",
-    "who"
+    "connect",
+    "devices"
    ]
   },
   {
@@ -628,9 +612,9 @@
    "message": "check my wallet balance",
    "expect": "proposal",
    "command": [
-      "wallet",
-      "balance"
-    ]
+    "wallet",
+    "balance"
+   ]
   },
   {
    "id": "r64",
@@ -638,9 +622,9 @@
    "message": "balance and wallet address basic readonly identifying shit",
    "expect": "proposal",
    "command": [
-      "wallet",
-      "balance"
-    ]
+    "wallet",
+    "balance"
+   ]
   },
   {
    "id": "r65",
@@ -648,9 +632,9 @@
    "message": "how many sats do I have",
    "expect": "proposal",
    "command": [
-      "wallet",
-      "balance"
-    ]
+    "wallet",
+    "balance"
+   ]
   },
   {
    "id": "r66",

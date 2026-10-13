@@ -1,6 +1,6 @@
 //! Descending the command tree, one typed choice per level.
 //!
-//! Level 0 picks the group (`computer`, `verse`, `kb`); each later level
+//! Level 0 picks the group (`computer`, `session`, `kb`); each later level
 //! picks among the children of the node chosen above it (`list`, `show`,
 //! or `channel` and then `open`). Every level is one Jev Choice whose
 //! options are exactly that node's children plus `none`, and each option's
@@ -33,7 +33,7 @@ pub const GROUP_QUESTION: &str = "cli_group";
 pub const LEVEL_QUESTION: &str = "cli_command";
 
 /// The option id that picks a node's own command when it also has
-/// children (`verse xp` beside `verse xp verify-card`).
+/// children (`host adopt` beside `host adopt detect`).
 pub const SELF: &str = "self";
 
 /// The least probability at which a group is taken, from the design's
@@ -56,7 +56,7 @@ pub const BEAM_FLOOR: f64 = 0.20;
 pub const SUBTREE_COMMANDS: usize = 16;
 
 const PREMISE: &str = "We are OpenAgents. The `openagents` program reaches every OpenAgents \
-surface for the user: their connected computers, the Verse and its quests and XP, the \
+surface for the user: their connected computers and the chats on them, the \
 knowledge base, relays, the wallet, and more. The user does not need to name the program: \
 asking for something it does is asking for it.";
 
@@ -322,16 +322,16 @@ mod tests {
                 .validate()
                 .is_ok()
         );
-        let verse = tree.group("verse").unwrap();
-        let level = level_question(&["verse".to_string()], verse);
-        assert!(level.criteria.contains_key("who"));
-        assert!(level.criteria.contains_key("control"));
+        let host = tree.group("host").unwrap();
+        let level = level_question(&["host".to_string()], host);
+        assert!(level.criteria.contains_key("list"));
+        assert!(level.criteria.contains_key("adopt"));
         assert!(level.criteria.contains_key("none"));
         assert!(!level.criteria.contains_key(SELF));
-        let xp = verse.child("xp").unwrap();
-        let level = level_question(&["verse".to_string(), "xp".to_string()], xp);
+        let adopt = host.child("adopt").unwrap();
+        let level = level_question(&["host".to_string(), "adopt".to_string()], adopt);
         assert!(level.criteria.contains_key(SELF));
-        assert!(level.criteria.contains_key("verify-card"));
+        assert!(level.criteria.contains_key("detect"));
     }
 
     #[test]

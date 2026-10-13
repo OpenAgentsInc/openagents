@@ -210,8 +210,8 @@ impl Leaf {
 }
 
 /// One level of the tree: a group, an intermediate word (`channel`), or a
-/// command. A node can be both a command and a parent (`verse xp` and
-/// `verse xp verify-card`).
+/// command. A node can be both a command and a parent (`host adopt` and
+/// `host adopt detect`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Node {
     pub name: String,

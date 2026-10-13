@@ -419,10 +419,10 @@ mod tests {
     #[test]
     fn the_bundled_tree_is_generated_from_this_help() {
         let tree = generate().unwrap_or_else(|errors| panic!("{errors}"));
-        // The bundled tree is generated from a `verse` build (Coder's routes
-        // still name the Verse commands); a build without them checks only
-        // that its tree generates.
-        if !cfg!(feature = "verse") {
+        // The bundled tree is generated from the default build (no Verse
+        // commands, as Coder's companion CLI ships); a `verse` build checks
+        // only that its tree generates.
+        if cfg!(feature = "verse") {
             return;
         }
         let text = tree.to_file();
@@ -434,7 +434,7 @@ mod tests {
         assert!(
             bundled == text,
             "crates/coder/src/cli_route/tree.json is stale; run \
-             `OPENAGENTS_WRITE_CLI_TREE=1 cargo test -p openagents-cli --features verse tree` to regenerate it"
+             `OPENAGENTS_WRITE_CLI_TREE=1 cargo test -p openagents-cli --bin openagents tree::tests::the_bundled_tree` to regenerate it"
         );
     }
 

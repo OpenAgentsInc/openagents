@@ -844,7 +844,6 @@ pub enum RunsOn {
 /// (#10089).
 pub const READ_ONLY: &[(&str, &[&str])] = &[
     ("computer", &["list", "show", "workspaces"]),
-    ("verse", &["who", "quests", "board", "xp"]),
     ("kb", &["search"]),
     ("cap", &["list"]),
     ("prg", &["list"]),
