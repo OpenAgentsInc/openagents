@@ -169,7 +169,7 @@ impl ScriptedHost {
         } else {
             let dir = child.run_dir.join("worktree");
             let branch = format!("delegate/{}", child.lineage.id);
-            match worktree(&self.repo, &dir, &branch) {
+            match worktree(&self.repo, &dir, &branch, child.start.as_deref()) {
                 Ok(base) => (dir, Some(base), Some(branch)),
                 Err(error) => return report.failed(&error),
             }
@@ -268,7 +268,12 @@ fn write_transcript(path: &Path, lines: &[Value]) {
 /// # Errors
 ///
 /// Git refused.
-pub fn worktree(repo: &Path, dir: &Path, branch: &str) -> Result<String, String> {
+pub fn worktree(
+    repo: &Path,
+    dir: &Path,
+    branch: &str,
+    start: Option<&str>,
+) -> Result<String, String> {
     let git = |args: &[&str]| -> Result<String, String> {
         let output = std::process::Command::new("git")
             .arg("-C")
@@ -282,7 +287,7 @@ pub fn worktree(repo: &Path, dir: &Path, branch: &str) -> Result<String, String>
             Err(String::from_utf8_lossy(&output.stderr).trim().to_owned())
         }
     };
-    let base = git(&["rev-parse", "HEAD"])?;
+    let base = git(&["rev-parse", start.unwrap_or("HEAD")])?;
     let dir_text = dir.display().to_string();
     git(&["worktree", "add", "-q", "-b", branch, &dir_text, &base])?;
     Ok(base)

@@ -403,7 +403,7 @@ fn record_end(
 
 /// The name a child shows: its harness, with the model when the call
 /// named one.
-fn label(target: &Target) -> String {
+pub(crate) fn label(target: &Target) -> String {
     match &target.model {
         Some(model) => format!("{} ({model})", target.name),
         None => target.name.clone(),
@@ -512,8 +512,9 @@ pub async fn run_child(
         return report.failed("A child that changes files gets its own worktree, and this folder is not in a Git repository. Ask again with read_only.");
     } else {
         let name = format!("delegate-{}", child.lineage.id.replace('.', "-"));
-        match coder::branch_checkout::add(&execution.cwd, &name, &format!("delegate/{name}")).await
-        {
+        let branch = format!("delegate/{name}");
+        let start = child.start.as_deref().unwrap_or("HEAD");
+        match coder::branch_checkout::add_at(&execution.cwd, &name, &branch, start).await {
             Ok(checkout) => Some(checkout),
             Err(error) => return report.failed(&error),
         }

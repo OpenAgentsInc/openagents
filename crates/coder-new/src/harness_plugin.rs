@@ -747,12 +747,19 @@ impl App {
         };
         // A list-shaped ask System One judged several pieces of work runs
         // as a plan, each part routed on its own (#11474).
-        if let Some(plan) = pending
+        if let Some((plan, needs)) = pending
             .dispatch
             .take()
-            .and_then(crate::dispatch::Asking::plan)
+            .and_then(crate::dispatch::Asking::judged)
         {
-            self.start_plan(pending.draft.text, plan);
+            // Parts that don't need each other run at the same time, each
+            // in its own worktree (#11539).
+            match crate::fanout::Graph::fan(&plan.parts, needs)
+                .filter(|_| crate::fanout::enabled() && self.can_fan_out())
+            {
+                Some(graph) => self.start_fanout(pending.draft.text, plan, graph),
+                None => self.start_plan(pending.draft.text, plan),
+            }
             return;
         }
         // A new piece of work starts here: its first message, a plan's

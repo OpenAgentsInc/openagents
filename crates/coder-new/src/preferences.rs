@@ -48,6 +48,9 @@ pub struct Preferences {
     pub cost: u8,
     pub speed: u8,
     pub intelligence: u8,
+    /// How many parts of a multi-part ask run at once (#11539); `None`
+    /// takes the default for this computer ([`crate::fanout::cap`]).
+    pub parallel_parts: Option<u32>,
     pub selected: usize,
     store: Option<Store>,
     /// The routing preferences file, once settings have loaded.
@@ -62,6 +65,7 @@ impl Default for Preferences {
             cost: DEFAULT,
             speed: DEFAULT,
             intelligence: DEFAULT,
+            parallel_parts: None,
             selected: 0,
             store: None,
             routing_path: None,
@@ -80,6 +84,10 @@ struct Document {
     speed: u8,
     #[serde(default = "default_value")]
     intelligence: u8,
+    /// How many parts of a multi-part ask run at once, from 1 to
+    /// [`crate::fanout::CAP_MAX`]; absent takes the default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    parallel_parts: Option<u32>,
 }
 
 const fn default_value() -> u8 {
@@ -93,6 +101,7 @@ impl Default for Document {
             cost: DEFAULT,
             speed: DEFAULT,
             intelligence: DEFAULT,
+            parallel_parts: None,
         }
     }
 }
@@ -103,6 +112,9 @@ impl Document {
             && [self.cost, self.speed, self.intelligence]
                 .into_iter()
                 .all(|value| (MIN..=MAX).contains(&value))
+            && self
+                .parallel_parts
+                .is_none_or(|n| (1..=crate::fanout::CAP_MAX as u32).contains(&n))
     }
 }
 
@@ -189,6 +201,7 @@ impl Preferences {
             cost,
             speed,
             intelligence,
+            parallel_parts: self.parallel_parts,
         };
         if let Some(store) = &self.store {
             read(store)?;
@@ -204,6 +217,7 @@ impl Preferences {
         self.cost = document.cost;
         self.speed = document.speed;
         self.intelligence = document.intelligence;
+        self.parallel_parts = document.parallel_parts;
     }
 }
 

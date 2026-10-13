@@ -219,6 +219,9 @@ pub enum Line {
     /// A checkpoint's escalation call (#11474): after the turn `id` ended
     /// with failed checks, an error, a limit or a stall, or was redone.
     Escalated(EscalatedLine),
+    /// A multi-part ask whose independent parts ran at the same time
+    /// (#11539): its parts, the judged edges, and each part's outcome.
+    Fanout(crate::fanout::FanoutLine),
 }
 
 /// An escalation call as written.
@@ -604,6 +607,11 @@ impl Recorder {
     /// Writes an escalation call.
     pub fn escalated(&self, line: EscalatedLine) {
         let _ = self.append(line.at_ms, &Line::Escalated(line));
+    }
+
+    /// Writes a fan-out's graph and outcomes.
+    pub fn fanout(&self, line: crate::fanout::FanoutLine) {
+        let _ = self.append(line.at_ms, &Line::Fanout(line));
     }
 
     /// Writes the outcome of `open`.

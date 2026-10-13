@@ -13,6 +13,10 @@
 //!
 //! When System One says no or does not answer within [`BUDGET`], the
 //! message runs as one piece of work, as before.
+//!
+//! The same request carries `fanout-v1`'s questions ([`crate::fanout`]):
+//! which part needs which. When some parts can run at once, the plan fans
+//! out to delegated agents instead of running one part at a time.
 
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -179,13 +183,23 @@ impl Plan {
     }
 }
 
+/// System One's answers about a list-shaped message.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Judged {
+    /// Whether it is several separate pieces of work.
+    pub multi_part: f64,
+    /// Which part needs which (`fanout-v1`); `None` when any pair went
+    /// unanswered.
+    pub needs: Option<Vec<crate::fanout::Need>>,
+}
+
 /// The question about a message, under way.
 pub struct Asking {
-    pub receiver: mpsc::Receiver<Result<f64, String>>,
+    pub receiver: mpsc::Receiver<Result<Judged, String>>,
     pub started: Instant,
     pub around: String,
     pub parts: Vec<String>,
-    pub answer: Option<Result<f64, String>>,
+    pub answer: Option<Result<Judged, String>>,
 }
 
 impl Asking {
@@ -221,7 +235,19 @@ impl Asking {
     /// The plan, when System One judged the message several pieces of work.
     #[must_use]
     pub fn plan(self) -> Option<Plan> {
-        matches!(self.answer, Some(Ok(p)) if p >= 0.5).then(|| Plan::new(self.around, self.parts))
+        self.judged().map(|(plan, _)| plan)
+    }
+
+    /// The plan and which part needs which, when System One judged the
+    /// message several pieces of work.
+    #[must_use]
+    pub fn judged(self) -> Option<(Plan, Option<Vec<crate::fanout::Need>>)> {
+        match self.answer {
+            Some(Ok(judged)) if judged.multi_part >= 0.5 => {
+                Some((Plan::new(self.around, self.parts), judged.needs))
+            }
+            _ => None,
+        }
     }
 }
 
@@ -231,18 +257,26 @@ impl Asking {
 pub fn ask(earlier: &[crate::router::Said], message: &str) -> Option<Asking> {
     let (around, parts) = parts(message)?;
     let (sender, receiver) = mpsc::channel();
-    let request = jev::SystemOneRequest::new(crate::router::state(earlier, message), questions());
+    let mut asked = questions();
+    for (id, question) in crate::fanout::questions(parts.len()) {
+        asked = asked.with(id, question);
+    }
+    let request = jev::SystemOneRequest::new(crate::router::state(earlier, message), asked);
     #[cfg(test)]
     {
         if let Some(Some(p)) = TEST_JUDGE.with(std::cell::Cell::get) {
-            let _ = sender.send(Ok(p));
+            let _ = sender.send(Ok(Judged {
+                multi_part: p,
+                needs: crate::fanout::test_needs(parts.len()),
+            }));
         }
         drop(request);
     }
     #[cfg(not(test))]
     {
+        let n = parts.len();
         std::thread::spawn(move || {
-            let _ = sender.send(ask_now(request));
+            let _ = sender.send(ask_now(request, n));
         });
     }
     Some(Asking {
@@ -254,11 +288,12 @@ pub fn ask(earlier: &[crate::router::Said], message: &str) -> Option<Asking> {
     })
 }
 
-/// The question, answered or given up on within [`BUDGET`].
+/// The questions about an `n`-part list, answered or given up on within
+/// [`BUDGET`].
 ///
 /// # Errors
 /// No door answered in time, or the answer could not be read.
-pub fn ask_now(request: jev::SystemOneRequest) -> Result<f64, String> {
+pub fn ask_now(request: jev::SystemOneRequest, n: usize) -> Result<Judged, String> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -272,10 +307,14 @@ pub fn ask_now(request: jev::SystemOneRequest) -> Result<f64, String> {
             .await
         })
         .map_err(|_| "System One did not answer in time.".to_owned())??;
-    response
+    let multi_part = response
         .noul("multi_part")
         .map(|answer| answer.noul)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    Ok(Judged {
+        multi_part,
+        needs: crate::fanout::needs(&response, n),
+    })
 }
 
 /// Whether routing points make plans. `CODER_DISPATCH=off` turns it off.

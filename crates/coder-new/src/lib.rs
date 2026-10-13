@@ -48,6 +48,7 @@ pub mod floors;
 pub mod gate;
 pub mod gateway_models;
 use coder_sdk::git_guard;
+pub mod fanout;
 pub mod github_tool;
 pub mod harness;
 pub mod harness_pick;
@@ -550,6 +551,7 @@ impl App {
                 output,
                 running,
             } if tool == "microcoder"
+                || tool == coder_sdk::delegation::TOOL
                 || tool == "acp_subagent"
                 || tool == "remote_delegate"
                 || tool == solver_plugin::TOOL =>

@@ -350,6 +350,10 @@ pub struct Child {
     pub briefing: String,
     /// Where its transcript and records go.
     pub run_dir: PathBuf,
+    /// The commit a writing child's worktree starts from; `None` is the
+    /// parent checkout's `HEAD`. A part that needs another part's work
+    /// starts from a commit holding it (#11539).
+    pub start: Option<String>,
 }
 
 impl Child {
@@ -678,6 +682,7 @@ impl Delegator {
             lineage,
             authority,
             run_dir,
+            start: None,
         })
     }
 
@@ -711,6 +716,16 @@ impl Delegator {
         };
         self.record(&child, &report);
         Ok(report)
+    }
+
+    /// Runs a child [`Delegator::prepare`] made, waiting for it, and
+    /// records it: a caller that names the child before it runs (a fan-out
+    /// part, #11539) or starts it from another commit ([`Child::start`]).
+    pub async fn run_prepared(&self, child: Child) -> Report {
+        let _ = std::fs::create_dir_all(&child.run_dir);
+        let report = self.host.run(child.clone()).await;
+        self.record(&child, &report);
+        report
     }
 
     fn record(&self, child: &Child, report: &Report) {

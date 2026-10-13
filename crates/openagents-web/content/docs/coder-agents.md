@@ -101,6 +101,29 @@ openagents coder delegate --to codex --task "Review the last commit for bugs" --
 `--to` takes `claude-code`, `codex`, `opencode`, `coder`, an agent ID
 from `openagents coder agents list`, or `auto`.
 
+## Several things at once
+
+Send a list of separate jobs and Coder works out which ones need each
+other. The ones that don't start at the same time, each with its own
+agent in its own worktree; one that needs another's result waits for it
+and starts from its changes. Each part gets a row under the input while
+it works.
+
+When they finish, their changes come back to your folder together, the
+checks they ran are run once on the result, and one report lists how
+each part went. Coder never overwrites anything: if two parts (or you)
+changed the same lines, that part's changes stay on its own branch and
+the report names the branch and the files.
+
+Two to four parts run at once, depending on how many cores your
+computer has. To set your own number,
+add `"parallel_parts": 2` to `~/.openagents/coder/preferences.json`, or
+start Coder with it for one session:
+
+```sh
+CODER_PARALLEL_PARTS=2 openagents coder
+```
+
 ## Background agents
 
 A background agent works at the same time as your chat, in its own copy

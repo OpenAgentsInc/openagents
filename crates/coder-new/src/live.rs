@@ -505,6 +505,12 @@ pub enum Work {
         model: String,
         messages: Vec<Message>,
     },
+    /// A multi-part ask's independent parts at the same time (#11539):
+    /// each a delegated child in its own worktree, then one converge step
+    /// and the combined report as the reply.
+    Fanout {
+        run: Box<crate::fanout::Run>,
+    },
     Delegate {
         delegation: String,
         name: String,
@@ -1325,6 +1331,11 @@ fn run_with_provider(
                     events(RuntimeEvent::Tool { name: tool, input: serde_json::Value::Null, output, running: false });
                     Update::Finished { id, result: result.map(|value| Streamed { text: value["reply"].as_str().unwrap_or_default().into(), model: value["model"].as_str().unwrap_or_default().into(), ..Streamed::default() }) }
                 },
+                Work::Fanout { run } => {
+                    let mut events = |event: RuntimeEvent| event_callback(event);
+                    let result = crate::fanout::work(*run, &cancel, &mut events).await;
+                    Update::Finished { id, result }
+                }
                 Work::CheckJev { endpoint, model } => Update::CheckedJev {
                     id,
                     result: crate::jev_plugin::test_key_for_model(request.key.expose(), &endpoint, &model).await,
