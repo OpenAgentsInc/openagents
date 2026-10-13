@@ -220,6 +220,9 @@ enum SceneSpec {
         /// in place of Alice recolored.
         #[serde(default)]
         draconia: Option<String>,
+        /// The guardian alone with its wings spread, no Draconia.
+        #[serde(default)]
+        wings: bool,
     },
 }
 
@@ -602,6 +605,7 @@ impl Stage {
                 flash_at,
                 rise,
                 draconia: her,
+                wings,
             } => {
                 let mut pack = if *part == peacock::Part::Tail {
                     Some(load_everglade()?)
@@ -609,8 +613,14 @@ impl Stage {
                     None
                 };
                 let her = her.as_deref().map(draconia::path);
-                let set =
-                    peacock::Set::new(*part, *flash_at, *rise, pack.as_mut(), her.as_deref())?;
+                let set = peacock::Set::new(
+                    *part,
+                    *flash_at,
+                    *rise,
+                    pack.as_mut(),
+                    her.as_deref(),
+                    *wings,
+                )?;
                 let renderer = verse::render::Offscreen::new(
                     w,
                     h,

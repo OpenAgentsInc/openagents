@@ -1,0 +1,54 @@
+{
+  "name": "draconia-d6-wings",
+  "notes": "D6, 119-122 s: the guardian alone, its neck and crest, wings of light spread and beating, over the fan.",
+  "scene": {
+    "kind": "peacock",
+    "part": "tail",
+    "wings": true
+  },
+  "duration": 3.0,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "far": 4000.0,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.0,
+          2.6,
+          3.6
+        ],
+        "target": [
+          0.0,
+          3.0,
+          -1.0
+        ],
+        "focal_mm": 28
+      },
+      {
+        "t": 3.0,
+        "eye": [
+          0.4,
+          2.7,
+          3.3
+        ],
+        "target": [
+          0.0,
+          3.0,
+          -1.0
+        ],
+        "focal_mm": 28,
+        "ease": "in_out"
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 61
+    }
+  }
+}

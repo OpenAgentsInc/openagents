@@ -42,6 +42,13 @@ pub enum Shot {
     Star,
     /// 70–73 s: a wraith lunging at a student by the fires, others fallen.
     Attack,
+    /// 93–95 s: wide under the moon, wraiths filling the sky, frost
+    /// spreading over the courtyard from where she stands, tiny.
+    Frost,
+    /// 118–119 s: three wraiths recoiling from a cold blue-white light.
+    Recoil,
+    /// 92–93 s: a wraith's hood close, empty dark inside it.
+    Hood,
 }
 
 /// The moon, far up the sky.
@@ -81,7 +88,7 @@ impl Set {
         let mut lamps = Vec::new();
         let her = if matches!(
             shot,
-            Shot::Vortex | Shot::Behind | Shot::Boots | Shot::Stride | Shot::Attack
+            Shot::Vortex | Shot::Behind | Shot::Boots | Shot::Stride | Shot::Attack | Shot::Frost
         ) {
             let form = pack
                 .form("npc/alice")
@@ -128,7 +135,17 @@ impl Set {
                     );
                 }
             }
-            Shot::Sky | Shot::Star => {}
+            Shot::Sky | Shot::Star | Shot::Recoil | Shot::Hood => {}
+            Shot::Frost => {
+                for at in [
+                    Vec3::new(-9.0, 0.2, -10.0),
+                    Vec3::new(-4.0, 0.2, -12.0),
+                    Vec3::new(5.0, 0.2, -11.0),
+                    Vec3::new(10.0, 0.2, -9.0),
+                ] {
+                    fire(&mut fx, at, 30.0);
+                }
+            }
             Shot::Stride => {
                 for at in [
                     Vec3::new(-2.5, 0.2, -4.0),
@@ -202,6 +219,18 @@ impl Set {
                         dt,
                     );
                 }
+                // Tiny, far off, facing the wraiths.
+                Shot::Frost => {
+                    beast.pose_clip(
+                        Vec3::new(0.0, 0.0, -8.0),
+                        std::f32::consts::PI,
+                        1.0,
+                        "idle",
+                        t,
+                        true,
+                        dt,
+                    );
+                }
                 // She strides away from us.
                 Shot::Stride => {
                     beast.pose_clip(
@@ -262,7 +291,10 @@ impl Set {
                 vertices: Arc::new(vertices),
             });
         }
-        let sky = matches!(self.shot, Shot::Vortex | Shot::Sky | Shot::Behind);
+        let sky = matches!(
+            self.shot,
+            Shot::Vortex | Shot::Sky | Shot::Behind | Shot::Frost
+        );
         if self.shot == Shot::Star {
             // A cloudy night sky behind the star.
             clouds(&mut mesh.sprites, false, t);
@@ -351,6 +383,69 @@ impl Set {
                 ));
             }
             Shot::Plate => {}
+            Shot::Frost => {
+                // Wraiths filling the sky.
+                for i in 0..30u32 {
+                    let at = Vec3::new(
+                        -30.0 + 60.0 * hash(i * 3 + 801),
+                        8.0 + 20.0 * hash(i * 3 + 802),
+                        -20.0 - 20.0 * hash(i * 3 + 803),
+                    );
+                    let size = 1.5 + 1.5 * hash(i * 3 + 804);
+                    wraith(&mut mesh.lit, at, hash(i + 805) * 6.28, size, t + i as f32);
+                    wisps(&mut mesh.sprites, at, size, t, i + 300);
+                }
+                // Frost spreading over the cobbles from her: pale, ground-
+                // laid patches, an expanding ring of them.
+                let reach = 3.0 + 9.0 * (t / 2.0).min(1.0);
+                for i in 0..160u32 {
+                    let a = hash(i + 900) * std::f32::consts::TAU;
+                    let r = reach * hash(i + 901).sqrt();
+                    let at = Vec3::new(a.cos() * r, 0.04, -8.0 + a.sin() * r * 0.8);
+                    mesh.sprites.push(Sprite {
+                        facing: verse::fx::Facing::Ground,
+                        angle: hash(i + 902) * 6.28,
+                        ..feathers::dot(at, 0.9 + 0.8 * hash(i + 903), [0.25, 0.32, 0.45], 1.0)
+                    });
+                }
+            }
+            Shot::Recoil | Shot::Hood => {
+                // Wraiths, close, lit cold from the guardian's light, the
+                // nearest recoiling back from it.
+                let k = (t / 0.8).min(1.0);
+                let set: &[(Vec3, f32)] = if self.shot == Shot::Hood {
+                    &[(Vec3::new(0.0, 2.1, -0.6), 1.0)]
+                } else {
+                    &[
+                        (Vec3::new(-1.2, 2.3, -2.0 - 0.6 * k), 1.1),
+                        (Vec3::new(1.0, 2.4, -2.4 - 0.7 * k), 1.1),
+                        (Vec3::new(0.0, 2.6, -4.0 - 0.5 * k), 1.0),
+                    ]
+                };
+                for (i, &(at, size)) in set.iter().enumerate() {
+                    // Facing us, leaning back as they recoil.
+                    wraith(
+                        &mut mesh.lit,
+                        at,
+                        0.0,
+                        size,
+                        2.3 + i as f32 * 0.4 - k,
+                    );
+                    wisps(&mut mesh.sprites, at, size, t, i as u32 + 500);
+                    // The hood's opening: a void with nothing in it.
+                    mesh.sprites.push(Sprite {
+                        additive: 0.0,
+                        alpha: 0.95,
+                        priority: 9,
+                        ..feathers::dot(
+                            at + Vec3::new(0.0, -0.32 * size, 0.38 * size),
+                            0.2 * size,
+                            [0.0, 0.0, 0.0],
+                            1.0,
+                        )
+                    });
+                }
+            }
             Shot::Stride => {
                 if (0.6..1.5).contains(&t) {
                     let k = ((t - 0.6) / 0.25).clamp(0.0, 1.0);
@@ -465,6 +560,14 @@ impl Set {
         // The moon as the key, from up and behind.
         neon.key = Some(key((MOON - Vec3::Y * 20.0).normalize(), 2.5, 0.1));
         neon.key_color = [0.6, 0.7, 1.0];
+        if matches!(self.shot, Shot::Recoil | Shot::Hood) {
+            // The guardian's cold light, from behind the camera.
+            // Mostly from behind and above them: dark shapes with cold
+            // rims, a little fill on their fronts.
+            neon.key = Some(key(Vec3::new(0.2, 0.6, -0.8), 3.0, 0.01));
+            neon.key_color = [0.75, 0.85, 1.0];
+            neon.field = [0.01, 0.016, 0.03];
+        }
         if self.shot == Shot::Spiders {
             // The bolt's light among the spiders.
             let (at, color) = if t < 1.0 {

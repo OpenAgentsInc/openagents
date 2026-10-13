@@ -1,0 +1,53 @@
+{
+  "name": "draconia-d6-tail",
+  "notes": "D6, 130-131 s: close on the tail's eyespots, flaring.",
+  "scene": {
+    "kind": "peacock",
+    "part": "tail",
+    "wings": true
+  },
+  "duration": 1.0,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "far": 4000.0,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          2.5,
+          3.5,
+          2.0
+        ],
+        "target": [
+          3.0,
+          4.0,
+          -3.0
+        ],
+        "focal_mm": 50
+      },
+      {
+        "t": 1.0,
+        "eye": [
+          2.3,
+          3.5,
+          1.6
+        ],
+        "target": [
+          3.0,
+          4.0,
+          -3.0
+        ],
+        "focal_mm": 55
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 61
+    }
+  }
+}

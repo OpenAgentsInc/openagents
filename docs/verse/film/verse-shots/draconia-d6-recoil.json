@@ -1,0 +1,52 @@
+{
+  "name": "draconia-d6-recoil",
+  "notes": "D6, 118-119 s (the peacock scene's P4): three wraiths recoil from the guardian's cold light.",
+  "scene": {
+    "kind": "night",
+    "shot": "recoil"
+  },
+  "duration": 1.4,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "far": 4000.0,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.0,
+          1.6,
+          3.2
+        ],
+        "target": [
+          0.0,
+          1.5,
+          -2.5
+        ],
+        "focal_mm": 32
+      },
+      {
+        "t": 1.4,
+        "eye": [
+          0.0,
+          1.6,
+          3.0500000000000003
+        ],
+        "target": [
+          0.0,
+          1.5,
+          -2.5
+        ],
+        "focal_mm": 32
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 61
+    }
+  }
+}

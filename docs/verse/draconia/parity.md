@@ -737,3 +737,50 @@ rule: no stand-in face, hands or hair in close-up.
     waiting on the cast.
   - The fallen students are dark heaps, not bodies.
   - The 56 s shot runs with students, not with Draconia.
+
+## Scenes: D5 (reference 92–113 s) and D6 (118–150 s)
+
+D5 leads into the peacock scene and D6 follows it. They're cut by
+`~/work/film-out/draconia/d5-cut.sh` and `d6-cut.sh` (sharing
+`seg.sh`) into `~/Downloads/draconia-d5-vN.mp4` and `draconia-d6-vN.mp4`,
+each with a side-by-side and a progress sheet. They use new shots
+(`draconia-d5-*`, `draconia-d6-*`), and the night scene gains `hood`,
+`frost` and `recoil`. The peacock scene gains `wings` (the guardian alone,
+wings of light spread and beating), and a tail shot without a rise skips the
+opening flash. Same rule: no stand-in face, hands or hair in close-up. The
+one face close-up used is the face work's approved peacock-open v1.
+
+### v1, 2026-10-13
+
+- **D5 (21.0 s):**
+  - 92–93 s: a wraith's hood, close and dark.
+  - 93–95 s: wide under the moon, wraiths filling the sky, frost spreading
+    over the courtyard from Draconia, tiny.
+  - 95–101 s and 102–104 s: slated plates (the boy, her face, the hand and
+    wand).
+  - 101–102 s: the stand-off from behind.
+  - 104–105 s: her silhouette rising in the guardian's light.
+  - 105–107 s: the approved eyes close-up.
+  - 107–109 s: the white flash.
+  - 109–113 s: feathers of light swirling.
+- **D6 (32.0 s):**
+  - 118–119 s: three hooded wraiths recoiling.
+  - 119–122 s: the guardian alone with wings of light.
+  - 122–124 s: feathers.
+  - 124–126 s: low on her legs, the tail of light behind.
+  - 126–130 s: slated plate (her profile).
+  - 130–131 s: close on the tail's eyes.
+  - 131–133 s: a wraith reaching.
+  - 133–134 s: the frosted courtyard.
+  - 134–142 s: slated plates (hair, the flashback girls).
+  - 142–144 s: the Gothic courtyard.
+  - 144–146 s: wraiths fleeing across the sky.
+  - 146–148 s: a wraith.
+  - 148–150 s: her silhouette in the white light.
+- **Gaps:**
+  - About a third of each is slated close-ups and the flashback cast.
+  - The wraith close-ups are smooth hoods, not the reference's tattered,
+    skeletal hands and fanged face.
+  - The guardian's wings don't separate from the tail.
+  - Her legs show Alice's bare skin rather than tights and boots.
+  - The light wave over the courtyard (142 s) is a plain wide shot.

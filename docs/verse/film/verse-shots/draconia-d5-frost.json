@@ -1,0 +1,52 @@
+{
+  "name": "draconia-d5-frost",
+  "notes": "D5, 93-95 s: wide and low under the moon, wraiths filling the sky, frost spreading over the courtyard from Draconia, tiny, facing them.",
+  "scene": {
+    "kind": "night",
+    "shot": "frost"
+  },
+  "duration": 2.0,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "far": 4000.0,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.0,
+          1.4,
+          8.0
+        ],
+        "target": [
+          0.0,
+          6.0,
+          -20.0
+        ],
+        "focal_mm": 20
+      },
+      {
+        "t": 2.0,
+        "eye": [
+          0.0,
+          1.4,
+          7.6
+        ],
+        "target": [
+          0.0,
+          6.0,
+          -20.0
+        ],
+        "focal_mm": 20
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 61
+    }
+  }
+}

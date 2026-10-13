@@ -1,0 +1,52 @@
+{
+  "name": "draconia-d5-hood",
+  "notes": "D5, 92-93 s: a wraith's hood close and dark, lit cold.",
+  "scene": {
+    "kind": "night",
+    "shot": "hood"
+  },
+  "duration": 1.0,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "far": 4000.0,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.0,
+          1.75,
+          1.1
+        ],
+        "target": [
+          0.0,
+          1.75,
+          -0.6
+        ],
+        "focal_mm": 35
+      },
+      {
+        "t": 1.0,
+        "eye": [
+          0.0,
+          1.75,
+          0.9500000000000001
+        ],
+        "target": [
+          0.0,
+          1.75,
+          -0.6
+        ],
+        "focal_mm": 35
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 61
+    }
+  }
+}

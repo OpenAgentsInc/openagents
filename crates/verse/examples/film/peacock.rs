@@ -48,6 +48,9 @@ const NIGHT: [f32; 3] = [0.03, 0.075, 0.12];
 
 pub struct Set {
     part: Part,
+    /// The guardian alone, its wings spread (the shot after the tail):
+    /// no Draconia, two wing fans either side of the neck.
+    pub wings: bool,
     time: f32,
     flash_at: Option<f32>,
     flash_started: bool,
@@ -97,6 +100,7 @@ impl Set {
         rise: f32,
         pack: Option<&mut ZonePack>,
         her: Option<&std::path::Path>,
+        wings: bool,
     ) -> Result<Self, String> {
         let mut fx = Particles::new(0xD2AC);
         let mut lamps = Vec::new();
@@ -160,6 +164,9 @@ impl Set {
                     crouch = low.vertices().to_vec();
                     alice = Some((beast, Arc::new(scene), staff));
                 }
+                if wings {
+                    alice = None;
+                }
                 fx.start("ground_mist", Spawn::at(Vec3::new(0.0, 0.0, 0.5)));
                 fx.start(
                     "ground_mist",
@@ -199,6 +206,7 @@ impl Set {
         }
         let mut set = Self {
             part,
+            wings,
             time: 0.0,
             flash_at,
             flash_started: false,
@@ -298,6 +306,9 @@ impl Set {
                 }
             }
             // The tail opens out of the white.
+            // The tail shot opens out of the white; shots after it
+            // (no rise) don't.
+            (Part::Tail, _) if self.rise <= 0.0 => 0.0,
             (Part::Tail, _) => {
                 // Held white for a few frames, then fading.
                 let k = ((t - 0.1) / 0.3).clamp(0.0, 1.0);
@@ -346,6 +357,33 @@ impl Set {
                     }
                     .sprites(),
                 );
+                if self.wings {
+                    // Two wings of light spread from the guardian's breast,
+                    // raised and swept back, beating slowly.
+                    let beat = 0.25 * (t * 2.2).sin();
+                    for side in [-1.0_f32, 1.0] {
+                        let right = Vec3::new(side, 0.0, 0.0);
+                        let up = Vec3::new(0.0, (0.95 + beat).cos(), -(0.95 + beat).sin() * 0.3)
+                            .normalize();
+                        sprites.extend(
+                            feathers::Fan {
+                                center: Vec3::new(side * 0.3, 2.6, -0.8),
+                                right,
+                                up,
+                                radius: 3.4,
+                                rows: 4,
+                                feathers: 44,
+                                droop: -0.9,
+                                luminance: [3.6, 4.0, 4.8],
+                                vane: 0.55,
+                                slim: 0.5,
+                                open: 1.0,
+                                time: t,
+                            }
+                            .sprites(),
+                        );
+                    }
+                }
                 // The core of light behind her.
                 // A blinding center behind her torso and hips, clipped
                 // white, so her silhouette pops against it.

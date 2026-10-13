@@ -1,0 +1,53 @@
+{
+  "name": "draconia-d6-legs",
+  "notes": "D6, 124-126 s: low on Draconia's legs, the tail of light trailing on the cobbles behind her.",
+  "scene": {
+    "kind": "peacock",
+    "part": "tail",
+    "rise": 0.0
+  },
+  "duration": 2.0,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "far": 4000.0,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          -1.0,
+          0.35,
+          2.4
+        ],
+        "target": [
+          0.0,
+          0.6,
+          -1.0
+        ],
+        "focal_mm": 35
+      },
+      {
+        "t": 2.0,
+        "eye": [
+          -0.9,
+          0.35,
+          2.2
+        ],
+        "target": [
+          0.0,
+          0.6,
+          -1.0
+        ],
+        "focal_mm": 35
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 61
+    }
+  }
+}
