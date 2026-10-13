@@ -353,6 +353,10 @@ if [ -n "$engines_missing" ]; then
     record engine-logins FAIL "no usable login for:$engines_missing (pass --allow-missing-engine to skip those scenarios)"
   fi
 fi
+# Nothing the gate starts may open a browser or an interactive sign-in on
+# the owner's screen: CLIs' URL openers run `true`, and Cursor's login
+# never opens its page (#11549).
+export BROWSER=true NO_OPEN_BROWSER=1
 export OPENAGENTS_ACCEPTANCE_ENGINES="codex=$codex_ok,claude=$claude_ok,grok=$grok_ok,allow_missing=$allow_missing"
 
 export_env

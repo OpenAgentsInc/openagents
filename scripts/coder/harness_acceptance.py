@@ -116,6 +116,8 @@ def say(msg: str) -> None:
 
 
 def run(cmd, env=None, timeout=90, input=None) -> tuple[int, str]:
+    env = dict(env if env is not None else os.environ)
+    env.update(BROWSER="true", NO_OPEN_BROWSER="1")
     try:
         p = subprocess.run(
             cmd, env=env, input=input, capture_output=True, text=True, timeout=timeout
@@ -249,6 +251,10 @@ def harness_env(home: Path, path: str, extra: dict | None = None) -> dict:
         COLORTERM="truecolor",
         LANG=env.get("LANG", "en_US.UTF-8"),
         CODER_UPDATE="off",
+        # Nothing the gate starts may open a browser or an interactive
+        # sign-in on the owner's screen (owner, 2026-10-13).
+        BROWSER="true",
+        NO_OPEN_BROWSER="1",
         XDG_CONFIG_HOME=str(home / ".config"),
         XDG_DATA_HOME=str(home / ".local/share"),
         XDG_CACHE_HOME=str(home / ".cache"),
@@ -524,6 +530,19 @@ def native_reasoning(key: str, home: Path, since: float) -> dict:
 # ---------------------------------------------------------------- expectations
 
 
+def cursor_headless(path: str, root: Path) -> bool:
+    """Whether Cursor is signed in inside an isolated home, read with
+    `cursor-agent status --format json` and nothing that can open a
+    browser. Without that, the gate never starts Cursor: a signed-out
+    Cursor opens a browser sign-in on the owner's screen."""
+    home = make_home(root, "cursor-check", ["cursor"])
+    code, out = run(["cursor-agent", "status", "--format", "json"], env=harness_env(home, path), timeout=20)
+    try:
+        return json.loads(out[out.index("{"):]).get("isAuthenticated") is True
+    except (ValueError, AttributeError):
+        return False
+
+
 def expectations(path: str, homes_root: Path) -> dict:
     """Each harness's intended default model and its own catalog, read from
     the harness's own CLI or config where it has one."""
@@ -562,8 +581,9 @@ def expectations(path: str, homes_root: Path) -> dict:
             "catalog": ids,
             "names": names,
         }
-    # Cursor: the CLI's selected model.
-    if which("cursor-agent", path):
+    # Cursor: the CLI's selected model, only when its login works headless
+    # (the status check never opens a browser).
+    if which("cursor-agent", path) and cursor_headless(path, root=homes_root):
         code, out = run(["cursor-agent", "models"], env=env, timeout=90)
         ids = re.findall(r"^(\S+) - ", out, re.M)
         sel = ""
@@ -1553,7 +1573,7 @@ def write_report(out: Path, build: str, coder: str, rows: list[dict], exp: dict,
         "passed": fails == 0,
     }
     (out / "report.json").write_text(json.dumps(doc, indent=2))
-    mark = {"pass": "pass", "fail": "**FAIL**", "n/a": "n/a", "not installed": "not installed"}
+    mark = {"pass": "pass", "fail": "**FAIL**", "n/a": "n/a", "not installed": "not installed", "skipped": "skipped"}
     lines = [
         f"# Coder harness acceptance: {build}",
         "",
@@ -1652,6 +1672,9 @@ def main() -> int:
             if h["key"] in ("goose", "kimi", "amp", "hermes"):
                 continue
             rows.append({"harness": h["key"], "results": {c: ["not installed", ""] for c in CHECKS}, "facts": {}})
+            continue
+        if h["key"] == "cursor" and not cursor_headless(path, root):
+            rows.append({"harness": "cursor", "results": {c: ["skipped", "no login available headless (cursor-agent status says signed out in an isolated home); never started, so it can't open a sign-in"] for c in CHECKS}, "facts": {}})
             continue
         if h["key"] == "amp" and not which("amp-acp", path):
             rows.append({"harness": "amp", "results": {c: ["not installed", "amp is installed without amp-acp, so Coder can't run it"] for c in CHECKS}, "facts": {}})
