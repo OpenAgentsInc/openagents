@@ -277,6 +277,7 @@ impl App {
     pub fn route_turn(&mut self) -> Harness {
         if let Some(routed) = self.routed.take() {
             self.live.runs_on = Some(routed.harness);
+            self.live.pinned = false;
             // A pin's model holds until another routing call, a follow-up
             // that continues keeps it.
             if routed.rule == crate::routing_record::Rule::Pin {
@@ -301,12 +302,14 @@ impl App {
             .find(|pin| pin.kind.is_none() && found.admitted.contains(&pin.harness));
         if let Some(pin) = pin {
             self.live.runs_on = Some(pin.harness);
+            self.live.pinned = false;
             self.live.pinned_model = pin.model;
             self.routing_rule = Some(crate::routing_record::Rule::Pin);
             return pin.harness;
         }
         let harness = fixed_rule(&found);
         self.live.runs_on = Some(harness);
+        self.live.pinned = false;
         // A chat with earlier turns lost its harness (its plugin went off)
         // and is routed again (#11454).
         self.routing_rule = Some(if self.live.user_count() > 0 {
@@ -404,6 +407,7 @@ impl App {
             || self.live.busy
             || self.request.is_some()
             || self.routing_rule == Some(crate::routing_record::Rule::Pin)
+            || (self.live.pinned && self.live.runs_on.is_some())
             || self.draft.text.trim_start().starts_with('/')
         {
             return false;
@@ -832,6 +836,7 @@ impl App {
             self.set_mode(Mode::Live);
         }
         self.live.runs_on = Some(harness);
+        self.live.pinned = true;
         self.routing_rule = Some(crate::routing_record::Rule::Pin);
         self.submit_live();
         Ok(())
@@ -1005,5 +1010,52 @@ mod tests {
         app.live = Default::default();
         assert_eq!(app.route_turn(), Harness::CoderLoop);
         assert!(app.on_coder_loop());
+    }
+
+    /// A pinned chat reopened in a new process (`coder chat --session`
+    /// without `--mode`, #11525) keeps its pin on every harness: its
+    /// follow-up is not routed, even one System One would call new work.
+    /// An unpinned chat's follow-up is a routing point, where a
+    /// continuation keeps the harness and new work is routed.
+    #[test]
+    fn a_reopened_pinned_chat_stays_on_its_harness() {
+        let map = |pairs: &[(&str, f64)]| {
+            pairs
+                .iter()
+                .map(|(name, p)| ((*name).to_owned(), *p))
+                .collect()
+        };
+        crate::router::set_test_judge(Some(Some(crate::router::Recorded {
+            kind: map(&[("repo_change", 0.9), ("answer", 0.1)]),
+            size: map(&[("medium", 0.9), ("small", 0.1)]),
+            needs_repo: 0.9,
+            own_tools: 0.9,
+            risk: map(&[("low", 0.9), ("medium", 0.1)]),
+            new_work: Some(0.9),
+        })));
+        crate::harness_plugin::sign_in_claude(true);
+        for harness in [Harness::ClaudeCode, Harness::CoderLoop, Harness::Codex] {
+            for pinned in [true, false] {
+                let chat = crate::live::Chat {
+                    runs_on: Some(harness),
+                    pinned,
+                    ..Default::default()
+                };
+                let saved =
+                    crate::trajectory::document(&chat, "s", "m", std::path::Path::new("/w"));
+                let mut app = App::default();
+                app.set_mode(Mode::Live);
+                app.plugins.bundled.claude = true;
+                crate::trajectory::restore_app(&mut app, &saved).unwrap();
+                assert_eq!(app.live.pinned, pinned, "{harness:?}");
+                app.draft.text = "now something else".into();
+                assert_eq!(app.ask_router(), !pinned, "{harness:?} pinned {pinned}");
+                if pinned {
+                    assert_eq!(app.route_turn(), harness);
+                }
+            }
+        }
+        crate::harness_plugin::sign_in_claude(false);
+        crate::router::set_test_judge(None);
     }
 }

@@ -190,6 +190,9 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
     // follow-ups stay on it.
     if let Some(harness) = chat.runs_on {
         result["extra"]["runs_on"] = serde_json::to_value(harness).unwrap_or_default();
+        if chat.pinned {
+            result["extra"]["pinned"] = json!(true);
+        }
     }
     // Context management (#11286): the peak the model read, whether old
     // outputs were stubbed, and how many summaries were written.
@@ -712,6 +715,8 @@ pub fn from_document(value: &Value) -> Result<Chat, String> {
                 .is_some()
                 .then_some(crate::harness_plugin::Harness::ClaudeCode)
         });
+    chat.pinned = chat.runs_on.is_some()
+        && value.pointer("/extra/pinned").and_then(Value::as_bool) == Some(true);
     Ok(chat)
 }
 

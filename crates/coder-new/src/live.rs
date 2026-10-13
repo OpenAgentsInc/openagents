@@ -69,6 +69,10 @@ pub struct Chat {
     /// was routed ([`App::route_turn`](crate::App::route_turn)); follow-ups
     /// stay on it (#11453).
     pub runs_on: Option<crate::harness_plugin::Harness>,
+    /// The person pinned [`Chat::runs_on`] (`coder chat --mode`, a pick
+    /// in the terminal): follow-ups are not routed, in this process or a
+    /// later one that reopens the chat (#11525).
+    pub pinned: bool,
     /// The briefing every harness reads for this chat's current piece of
     /// work, chosen at its routing point (#11473); `None` loads what each
     /// harness loaded before.

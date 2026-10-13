@@ -1004,7 +1004,8 @@ pub(crate) fn chat(
     // `auto` (the default) leaves it to the selector, and `coder` pins
     // Coder's own loop. `claude` is a hidden alias, kept for one release,
     // that pins Claude Code on this computer's login.
-    let pin = match take_option(&mut args, "--mode")?.as_deref() {
+    let mode = take_option(&mut args, "--mode")?;
+    let pin = match mode.as_deref() {
         None | Some("auto") => None,
         Some("coder") => Some(crate::harness_plugin::Harness::CoderLoop),
         Some("claude") if app.plugins.bundled.enabled(crate::claude::PLUGIN) => {
@@ -1084,10 +1085,17 @@ pub(crate) fn chat(
         trajectory::restore_app(app, &document)?;
         saved_document = Some(document);
     }
-    // A pin holds for this turn and the chat's follow-ups; without one, a
-    // continued chat stays on its harness and a new one is routed.
+    // A pin holds for this turn and the chat's follow-ups, also those sent
+    // without `--mode` again (#11525); `--mode auto` lifts it. Without
+    // one, a follow-up the router judges a continuation stays on the
+    // chat's harness and new work is routed.
     if pin.is_some() {
         app.live.runs_on = pin;
+        app.live.pinned = true;
+        app.routing_rule = Some(crate::routing_record::Rule::Pin);
+    } else if mode.as_deref() == Some("auto") {
+        app.live.pinned = false;
+    } else if app.live.pinned && app.live.runs_on.is_some() {
         app.routing_rule = Some(crate::routing_record::Rule::Pin);
     }
     // Each session works in its own worktree (#11372); the folder it was
