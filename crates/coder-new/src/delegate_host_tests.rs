@@ -201,3 +201,174 @@ async fn a_writing_child_outside_git_is_refused_and_reported_short() {
         .unwrap_err();
     assert!(error.contains("agent tray"), "{error}");
 }
+
+/// A git repository with one commit, for a writing child's worktree.
+#[cfg(unix)]
+fn repo(dir: &std::path::Path) {
+    for args in [
+        &["init", "-q", "-b", "main"][..],
+        &[
+            "-c",
+            "user.email=a@b",
+            "-c",
+            "user.name=a",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "init",
+        ][..],
+    ] {
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?}");
+    }
+}
+
+/// `program` as the installed ACP agent `id`, the only agent on.
+#[cfg(unix)]
+fn on_acp(repo: &std::path::Path, id: &str, name: &str, program: PathBuf) -> ExecutionSettings {
+    let mut execution = execution();
+    execution.cwd = repo.to_owned();
+    execution.fleet = None;
+    let mut agent = agent(id, name);
+    agent.program = program;
+    if id == "cursor" {
+        agent.arguments = acp_client::cursor::arguments();
+    }
+    execution.agents = vec![agent];
+    execution
+}
+
+/// A delegated ACP child starts on the Coder SDK's ACP backend with its
+/// agent's gate (#11534): Grok Build runs Coder's bridge from a
+/// `--plugin-dir` plugin, and a merge the floors hold is refused in the
+/// child, with the reason sent to it as the next prompt.
+#[tokio::test(flavor = "multi_thread")]
+#[cfg(unix)]
+async fn a_delegated_grok_child_runs_under_its_hooks_and_a_held_merge_is_refused() {
+    let _gate_lock = crate::approval::test_lock()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let dir = tempfile::tempdir().unwrap();
+    let main = dir.path().join("main");
+    std::fs::create_dir_all(&main).unwrap();
+    repo(&main);
+    let agent_dir = dir.path().join("agent");
+    std::fs::create_dir_all(&agent_dir).unwrap();
+    let mut blocks = acp_client::replay::blocks(acp_client::replay::GROK_TURN);
+    let completed = std::mem::replace(
+        &mut blocks[2],
+        vec![
+            json!({"jsonrpc":"2.0","id":"permission-1","method":"session/request_permission","params":{"sessionId":"grok-session-1","toolCall":{"toolCallId":"merge-1","title":"gh pr merge 1 --squash","kind":"execute","rawInput":{"command":"gh pr merge 1 --squash"}},"options":[{"optionId":"allow","name":"Allow","kind":"allow_once"},{"optionId":"deny","name":"Deny","kind":"reject_once"}]}}),
+        ],
+    );
+    // The refused step's reason comes as prompt 4; prompt 3 ends after the
+    // answer.
+    blocks.push(vec![
+        json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"grok-session-1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":" The merge was held."}}}}),
+        json!({"jsonrpc":"2.0","id":4,"result":{"stopReason":"end_turn"}}),
+    ]);
+    blocks.push(completed);
+    let program = acp_client::replay::script(&agent_dir, &blocks);
+    let script = std::fs::read_to_string(&program).unwrap().replace(
+        "case \"$line\" in",
+        "case \"$line\" in\n    *'\"id\":\"permission-1\"'*) cat \"$dir/5.jsonl\" ;;",
+    );
+    std::fs::write(&program, script).unwrap();
+    let execution = on_acp(&main, "grok-build", "Grok Build", program);
+    let delegator = Delegator::new(
+        Arc::new(host(execution)),
+        Lineage::root("run-x", CODER),
+        Authority::default(),
+        &dir.path().join("runs"),
+    );
+    let report = delegator
+        .delegate(json!({"to": "grok-build", "task": "Merge PR 1."}))
+        .await
+        .unwrap();
+    assert_eq!(report.outcome, Outcome::Done, "{report:?}");
+    assert_eq!(report.harness, "grok-build");
+    let arguments = acp_client::replay::arguments(&agent_dir);
+    assert!(
+        arguments.iter().any(|arg| arg == "--plugin-dir"),
+        "{arguments:?}"
+    );
+    let sent = acp_client::replay::received(&agent_dir);
+    let answer = sent
+        .iter()
+        .find(|frame| frame["id"] == "permission-1")
+        .unwrap();
+    assert_eq!(answer["result"]["outcome"]["optionId"], "deny", "{answer}");
+    let prompts: Vec<&serde_json::Value> = sent
+        .iter()
+        .filter(|frame| frame["method"] == "session/prompt")
+        .collect();
+    assert_eq!(prompts.len(), 2, "{prompts:?}");
+    let told = prompts[1]["params"]["prompt"].to_string();
+    assert!(told.contains("gh pr merge"), "{told}");
+    // The child's transcript has its run, not the parent's.
+    let transcript = std::fs::read_to_string(report.transcript.unwrap()).unwrap();
+    assert!(transcript.contains("The merge was held."), "{transcript}");
+}
+
+/// Cursor stays emulated in a delegation (#11534): the child is told
+/// plainly what Coder can't hold before it acts, and its asks are still
+/// answered by Coder's hooks.
+#[tokio::test(flavor = "multi_thread")]
+#[cfg(unix)]
+async fn a_delegated_cursor_child_says_plainly_what_coder_cannot_hold() {
+    let _gate_lock = crate::approval::test_lock()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let dir = tempfile::tempdir().unwrap();
+    let main = dir.path().join("main");
+    std::fs::create_dir_all(&main).unwrap();
+    repo(&main);
+    let agent_dir = dir.path().join("agent");
+    std::fs::create_dir_all(&agent_dir).unwrap();
+    let program = acp_client::replay::script(
+        &agent_dir,
+        &acp_client::replay::blocks(acp_client::replay::CURSOR_TURN),
+    );
+    let (sender, mut events) = tokio::sync::mpsc::unbounded_channel();
+    let execution = on_acp(&main, "cursor", "Cursor", program);
+    let delegator = Delegator::new(
+        Arc::new(CoderHost::new(
+            execution,
+            None,
+            Arc::new(AtomicBool::new(false)),
+            Some(sender),
+        )),
+        Lineage::root("run-x", CODER),
+        Authority::default(),
+        &dir.path().join("runs"),
+    );
+    let report = delegator
+        .delegate(json!({"to": "cursor", "task": "Run echo, then reply done."}))
+        .await
+        .unwrap();
+    assert_eq!(report.outcome, Outcome::Done, "{report:?}");
+    let mut notice = None;
+    while let Ok(event) = events.try_recv() {
+        if let RuntimeEvent::Delegation { event, .. } = event
+            && let RuntimeEvent::Text(text) = *event
+            && text.contains("doesn't ask before every step")
+        {
+            notice = Some(text);
+        }
+    }
+    let notice = notice.expect("the plain notice");
+    assert!(notice.starts_with("Cursor doesn't ask"), "{notice}");
+    assert!(notice.contains("merge"), "{notice}");
+    let sent = acp_client::replay::received(&agent_dir);
+    assert!(
+        sent.iter()
+            .any(|frame| frame["result"]["outcome"]["optionId"].is_string()),
+        "Cursor's ask was answered"
+    );
+}

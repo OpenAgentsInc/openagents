@@ -8,8 +8,15 @@
 //!   read-only sandbox for a read-only task.
 //! - `coder`: Coder's own loop (the Microcoder plugin), whose floors are
 //!   its hook.
-//! - `opencode` and every other installed ACP agent: through the ACP
-//!   client, its permission requests answered by Coder.
+//! - `opencode`: the OpenCode harness (`opencode run` with Coder's
+//!   plugin hook); a read-only task goes to its ACP agent.
+//! - Every other installed ACP agent: the Coder SDK's ACP backend
+//!   (#11508, [`crate::bundled_runtime::acp_briefed`]), the same one ACP
+//!   Subagents run on, with the agent's gate from its tier
+//!   ([`coder_sdk::acp_backend`]): OpenCode's ACP agent asks before every
+//!   tool, Grok Build and Devin run Coder's bridge from their own hooks,
+//!   and Cursor and the rest are emulated, the steps they ask about
+//!   checked and the rest said plainly before the run (#11534).
 //!
 //! A child that may write gets a fresh worktree on its own branch (the
 //! fence keeps it out of the shared checkout); a read-only child works in
