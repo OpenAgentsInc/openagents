@@ -3622,7 +3622,7 @@
               "threads"
             ],
             "usage": [
-              "threads [--all] [--limit N]"
+              "threads [--all] [--limit N] [--account]"
             ],
             "forms": [
               {
@@ -3642,11 +3642,16 @@
                     "value": "N",
                     "open": true,
                     "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "account",
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "List threads, newest first; --all includes archived threads.",
+            "summary": "List threads, newest first; --all includes archived threads. --account lists the signed-in account's chats on openagents.com instead: those made on the website, the phone, and every terminal.",
             "effect": "read_only",
             "runs_on": "connected_computer"
           }
@@ -3677,7 +3682,7 @@
                 ]
               }
             ],
-            "summary": "Print a thread's turns.",
+            "summary": "Print a thread's turns. A thread this computer doesn't keep is read from the signed-in account on openagents.com, so a website or phone chat's ID (as `chat threads --account` or `projects show` lists it), a unique prefix of it, or its title prints its messages.",
             "effect": "read_only",
             "runs_on": "connected_computer"
           }
@@ -3708,7 +3713,7 @@
                 ]
               }
             ],
-            "summary": "Print the thread as an ATIF-v1.8 trajectory whose session_id is ID.",
+            "summary": "Print the thread as an ATIF-v1.8 trajectory whose session_id is ID; an account chat exports the same way.",
             "effect": "read_only",
             "runs_on": "connected_computer"
           }
@@ -3914,6 +3919,12 @@
           "name": "limit",
           "value": "N",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "account",
           "optional": true,
           "repeated": true
         },
@@ -4495,6 +4506,47 @@
             ],
             "summary": "Run Microcoder, Solver (--task \"#N [--no-pr]\"), or an enabled ACP subagent.",
             "effect": "long_running",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "comms",
+          "leaf": {
+            "path": [
+              "coder",
+              "comms"
+            ],
+            "usage": [
+              "comms SUBCOMMAND --channel DIR --as NAME"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "comms"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "SUBCOMMAND"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "channel",
+                    "value": "DIR",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "as",
+                    "value": "NAME",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Talk on a session's agent channel (comms --help lists the subcommands).",
+            "effect": "local_write",
             "runs_on": "connected_computer"
           }
         },
@@ -5773,6 +5825,28 @@
         {
           "kind": "option",
           "name": "no-pr]\"",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "channel",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "as",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "help",
           "optional": true,
           "repeated": true
         },
@@ -7222,6 +7296,40 @@
           }
         },
         {
+          "name": "read",
+          "leaf": {
+            "path": [
+              "projects",
+              "read"
+            ],
+            "usage": [
+              "read PROJECT [CHAT]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "read"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PROJECT"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "CHAT",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Every chat in the project, message by message, or only CHAT (its id, a unique id prefix, or its title). One chat also reads with openagents chat read --thread ID.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "add",
           "leaf": {
             "path": [
@@ -7564,6 +7672,14 @@
         }
       ],
       "options": [
+        {
+          "kind": "option",
+          "name": "thread",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
         {
           "kind": "option",
           "name": "protection",
@@ -15803,6 +15919,41 @@
           }
         },
         {
+          "name": "scan",
+          "leaf": {
+            "path": [
+              "background",
+              "scan"
+            ],
+            "usage": [
+              "scan [ID] [--json]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "scan"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ID",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "json",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "A full, read-only scan (ID defaults to `disk`): every candidate of every class with its size, age, and reason, every kept folder and why, and what is not a known cache. Nothing is deleted and no state is written.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "log",
           "leaf": {
             "path": [
@@ -16106,6 +16257,14 @@
         {
           "kind": "option",
           "name": "dry-run",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "json",
+          "value": "A",
+          "open": true,
           "optional": true,
           "repeated": true
         },

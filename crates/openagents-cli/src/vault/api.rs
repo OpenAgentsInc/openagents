@@ -20,7 +20,8 @@ pub(crate) struct State {
     /// The file list's current version number, and its sealed bytes.
     pub epoch: u32,
     pub blob: Vec<u8>,
-    /// Stored objects and their sizes.
+    /// Stored objects and their sizes (read by the tests' fake service).
+    #[cfg_attr(not(test), allow(dead_code))]
     pub objects: Vec<(String, u64)>,
 }
 

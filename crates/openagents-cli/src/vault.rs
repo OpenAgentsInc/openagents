@@ -23,6 +23,7 @@ use std::collections::BTreeMap;
 use std::io::{BufRead, IsTerminal, Read, Write as _};
 use std::path::{Path, PathBuf};
 
+#[cfg(test)]
 use coder::cli_route::tree::{Declared, Effect};
 use oa_vault::index::{Add, Route};
 use oa_vault::{Entry, Index, Kind, Method, Slot, Vmk, slot};
@@ -66,6 +67,7 @@ FILE is a file's name or the start of its id. Signs in as Coder does
 (coder login), or with --account-dir DIR. See docs/security/sensitive-data-vault.md.";
 
 /// What each command does, for the chat router's command tree.
+#[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("setup", Effect::Secret),
     Declared::computer("unlock", Effect::Secret),

@@ -18,6 +18,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+#[cfg(test)]
 use coder::cli_route::tree::{Declared, Effect};
 use mac_jobs::Recipe;
 use openagents_login::Saved;
@@ -50,6 +51,7 @@ sign-in key in OPENAGENTS_TOKEN (and OPENAGENTS_ORIGIN). The repository defaults
 OpenAgentsInc/openagents. See docs/cloud/linked-mac.md.";
 
 /// What each command does, for the chat router's command tree.
+#[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("run", Effect::Publishes),
     Declared::computer("jobs", Effect::ReadOnly),

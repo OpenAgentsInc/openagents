@@ -26,6 +26,7 @@ use serde_json::{Value, json};
 
 use crate::approval_gate::{self, Opened};
 use crate::{Args, Output};
+#[cfg(test)]
 use coder::cli_route::tree::{Declared, Effect};
 
 pub(crate) const USAGE: &str = "usage: openagents deploy COMMAND
@@ -43,6 +44,7 @@ Deny, or a failed smoke, leaves production as it is. The approval policy is
 .openagents/approvals.json in the checkout.";
 
 /// What each command does, for the chat router's command tree.
+#[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("staging", Effect::Publishes),
     Declared::computer("production", Effect::Publishes),

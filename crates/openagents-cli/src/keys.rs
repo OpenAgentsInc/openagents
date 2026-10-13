@@ -12,6 +12,7 @@ use std::io::{BufRead, IsTerminal, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 
+#[cfg(test)]
 use coder::cli_route::tree::{Declared, Effect};
 use openagents_login::Saved;
 use serde_json::{Value, json};
@@ -39,6 +40,7 @@ save it where Coder keeps its sign-in (or in DIR). To skip saving, set it in
 the environment instead: OPENAGENTS_TOKEN=oa_sk_... openagents ...";
 
 /// What each command does, for the chat router's command tree.
+#[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("list", Effect::ReadOnly),
     Declared::computer("create", Effect::Secret),
@@ -47,6 +49,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("rotate", Effect::Secret),
 ];
 
+#[cfg(test)]
 pub(crate) const LOGIN_EFFECTS: &[Declared] = &[Declared::computer("", Effect::LocalWrite)];
 
 const DAY: u64 = 86_400;

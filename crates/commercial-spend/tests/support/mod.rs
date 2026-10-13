@@ -693,6 +693,9 @@ impl Fixture {
         }
         self.controller.take();
     }
+    // The openagents CLI's plugin tests include this module and never
+    // restart the in-process controller.
+    #[allow(dead_code)]
     pub fn restart_controller(&mut self) {
         assert!(self.controller.is_none());
         let controller = Arc::new(Controller::open(&self.config).unwrap());

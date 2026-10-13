@@ -61,6 +61,8 @@ const CODER: &[Declared] = &[
     Declared::computer("status", Effect::ReadOnly),
     Declared::computer("chat", Effect::LongRunning),
     Declared::computer("delegate", Effect::LongRunning),
+    // Posts to and reads a session's agent channel, a folder on this computer.
+    Declared::computer("comms", Effect::LocalWrite),
     Declared::computer("plugins list", Effect::ReadOnly),
     Declared::computer("plugins enable", Effect::LocalWrite),
     Declared::computer("plugins disable", Effect::LocalWrite),
@@ -185,7 +187,8 @@ pub fn help() -> Vec<GroupHelp<'static>> {
         declared,
         alias: false,
     };
-    vec![
+    #[allow(unused_mut)]
+    let mut groups = vec![
         group("pylon", Some(pylon_usage()), PYLON),
         group("host", Some(coder_host::cli::USAGE), HOST),
         group(
@@ -232,7 +235,6 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             crate::customer::tree_effects(),
         ),
         group("lease", Some(crate::lease::USAGE), crate::lease::EFFECTS),
-        group("film", Some(crate::film::USAGE), crate::film::EFFECTS),
         group(
             "scratch",
             Some(crate::scratch::USAGE),
@@ -293,19 +295,6 @@ pub fn help() -> Vec<GroupHelp<'static>> {
         group("mac", Some(crate::mac::USAGE), crate::mac::EFFECTS),
         group("vault", Some(crate::vault::USAGE), crate::vault::EFFECTS),
         group("land", Some(crate::land::USAGE), crate::land::EFFECTS),
-        group("verse", Some(crate::world::USAGE), crate::world::EFFECTS),
-        GroupHelp {
-            name: "xp",
-            usage: None,
-            declared: &[],
-            alias: true,
-        },
-        group("zone", Some(crate::zone::USAGE), crate::zone::EFFECTS),
-        group(
-            "chamber",
-            Some(crate::chamber::USAGE),
-            crate::chamber::EFFECTS,
-        ),
         group("sov", Some(crate::sov::USAGE), crate::sov::EFFECTS),
         group("eval", Some(crate::eval::USAGE), crate::eval::EFFECTS),
         group("gym", Some(crate::gym::USAGE), crate::gym::EFFECTS),
@@ -363,7 +352,42 @@ pub fn help() -> Vec<GroupHelp<'static>> {
         group("completions", Some(completions_usage()), COMPLETIONS),
         group("doctor", None, DOCTOR),
         group("version", None, VERSION),
-    ]
+    ];
+    // The Verse commands exist only in a build with the `verse` feature.
+    #[cfg(feature = "verse")]
+    {
+        let at = |groups: &Vec<GroupHelp<'static>>, after: &str| {
+            groups
+                .iter()
+                .position(|g| g.name == after)
+                .map_or(groups.len(), |i| i + 1)
+        };
+        let film = at(&groups, "lease");
+        groups.insert(
+            film,
+            group("film", Some(crate::film::USAGE), crate::film::EFFECTS),
+        );
+        let verse = at(&groups, "land");
+        groups.splice(
+            verse..verse,
+            [
+                group("verse", Some(crate::world::USAGE), crate::world::EFFECTS),
+                GroupHelp {
+                    name: "xp",
+                    usage: None,
+                    declared: &[],
+                    alias: true,
+                },
+                group("zone", Some(crate::zone::USAGE), crate::zone::EFFECTS),
+                group(
+                    "chamber",
+                    Some(crate::chamber::USAGE),
+                    crate::chamber::EFFECTS,
+                ),
+            ],
+        );
+    }
+    groups
 }
 
 /// The tree this program's help builds.
@@ -395,6 +419,12 @@ mod tests {
     #[test]
     fn the_bundled_tree_is_generated_from_this_help() {
         let tree = generate().unwrap_or_else(|errors| panic!("{errors}"));
+        // The bundled tree is generated from a `verse` build (Coder's routes
+        // still name the Verse commands); a build without them checks only
+        // that its tree generates.
+        if !cfg!(feature = "verse") {
+            return;
+        }
         let text = tree.to_file();
         if std::env::var_os("OPENAGENTS_WRITE_CLI_TREE").is_some() {
             std::fs::write(BUNDLED, &text).expect("write the bundled tree");
@@ -404,7 +434,7 @@ mod tests {
         assert!(
             bundled == text,
             "crates/coder/src/cli_route/tree.json is stale; run \
-             `OPENAGENTS_WRITE_CLI_TREE=1 cargo test -p openagents-cli tree` to regenerate it"
+             `OPENAGENTS_WRITE_CLI_TREE=1 cargo test -p openagents-cli --features verse tree` to regenerate it"
         );
     }
 

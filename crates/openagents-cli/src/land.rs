@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
+#[cfg(test)]
 use coder::cli_route::tree::{Declared, Effect};
 use coder::task::land_lanes::{Control, Lanes, RepoPlanner};
 use coder::task::land_queue::{self, Effects, Entry, Instance, Live, Queue, State, Store};
@@ -53,6 +54,7 @@ folder); by default gs://openagentsgemini-coder-artifacts/land-queue/openagents.
 See docs/cloud/land-queue.md.";
 
 /// What each command does, for the chat router's command tree.
+#[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("submit", Effect::Publishes),
     Declared::computer("status", Effect::ReadOnly),

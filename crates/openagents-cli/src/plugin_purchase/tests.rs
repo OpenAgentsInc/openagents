@@ -2096,10 +2096,8 @@ fn installed_purchase_case(binary: std::ffi::OsString, mapped: bool, shared: boo
         assert!(book.shared_refund(&first_review.id).unwrap().is_none());
         assert_eq!(f.fake.incoming.load(Ordering::SeqCst), 3);
         process.as_mut().unwrap().kill();
-        process = Some(ControllerProcess::start(
-            controller_binary.as_ref().unwrap(),
-            f,
-        ));
+        // The restarted controller runs until the test ends.
+        let _restarted = ControllerProcess::start(controller_binary.as_ref().unwrap(), f);
         let recovered = f
             .plugin
             .call(pay_ledger::shared::Operation::RefundStatus {

@@ -87,6 +87,8 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("resume", Effect::LocalWrite),
     Declared::computer("run", Effect::LocalWrite),
     Declared::computer("log", Effect::ReadOnly),
+    // A full scan reports what a rule would take and changes nothing.
+    Declared::computer("scan", Effect::ReadOnly),
     Declared::computer("undo", Effect::LocalWrite),
     Declared::computer("proposals", Effect::ReadOnly),
     Declared::computer("confirm", Effect::LocalWrite),

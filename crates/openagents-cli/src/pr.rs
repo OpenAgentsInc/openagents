@@ -32,6 +32,7 @@ use serde_json::{Value, json};
 
 use crate::approval_gate;
 use crate::{Args, Output};
+#[cfg(test)]
 use coder::cli_route::tree::{Declared, Effect};
 
 pub(crate) const USAGE: &str = "usage: openagents pr COMMAND
@@ -50,6 +51,7 @@ Reads, reviews, and merges with gh. review and merge wait for the owner
 repository is this checkout's.";
 
 /// What each command does, for the chat router's command tree.
+#[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("status", Effect::ReadOnly),
     Declared::computer("diff", Effect::ReadOnly),

@@ -157,7 +157,7 @@ fn outline_to_cubics(outline: &swash::scale::outline::Outline) -> Vec<[f32; 2]> 
     let mut start = [0.0f32; 2];
     let mut last = [0.0f32; 2];
     let mut first_start: Option<[f32; 2]> = None;
-    let mut line = |out: &mut Vec<[f32; 2]>, a: [f32; 2], b: [f32; 2]| {
+    let line = |out: &mut Vec<[f32; 2]>, a: [f32; 2], b: [f32; 2]| {
         out.push([a[0] + (b[0] - a[0]) / 3.0, a[1] + (b[1] - a[1]) / 3.0]);
         out.push([
             a[0] + 2.0 * (b[0] - a[0]) / 3.0,

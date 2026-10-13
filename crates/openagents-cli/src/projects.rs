@@ -19,6 +19,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+#[cfg(test)]
 use coder::cli_route::tree::{Declared, Effect};
 use serde_json::{Value, json};
 
@@ -63,6 +64,7 @@ only-me files with openagents vault ask FILE --project ID. GitHub Project
 boards are openagents board.";
 
 /// What each command does, for the chat router's command tree.
+#[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("list", Effect::ReadOnly),
     Declared::computer("show", Effect::ReadOnly),
