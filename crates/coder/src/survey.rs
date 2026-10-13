@@ -265,8 +265,10 @@ mod tests {
             survey.capability("devin-local").is_some(),
             "the repository declares devin-local"
         );
-        assert_eq!(survey.programs.programs().len(), 7);
+        // programs/*.json: solve-issue joined as the eighth (#11392).
+        assert_eq!(survey.programs.programs().len(), 8);
         assert!(survey.programs.get("delegate-fan-out").is_some());
+        assert!(survey.programs.get("solve-issue").is_some());
         assert!(
             survey.sources.get("work-list").is_some(),
             "the repository declares a task source"

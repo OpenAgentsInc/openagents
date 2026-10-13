@@ -225,7 +225,9 @@ mod tests {
                     ("CODER_DECISION_PROFILE", "hosted_http"),
                     ("CODER_DECISION_KEY", "oak_test.secret"),
                 ][..],
-                jev::defaults::BASE_URL,
+                // TypeSafe's door goes to our decision API, Clef first and
+                // Jev as a backup (392f0f7ed3).
+                jev_hosted::OPENAGENTS,
             ),
             (
                 &[

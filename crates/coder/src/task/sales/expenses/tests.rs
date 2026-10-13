@@ -689,10 +689,18 @@ fn synthetic_training_has_no_customer_or_outbound_authority_and_shares_floor() {
             .is_err()
     );
     drop(admission);
-    assert_eq!(
-        store.sales_model_reservation(&owner, &r.id).unwrap().status,
-        e::Status::Unknown
-    );
+    // The attempt's OS lock is released with it; a process another test
+    // spawns at that moment can hold the inherited descriptor until it
+    // execs, so the recovery is read again for a moment before it counts.
+    let started = std::time::Instant::now();
+    let status = loop {
+        let status = store.sales_model_reservation(&owner, &r.id).unwrap().status;
+        if status != e::Status::Reserved || started.elapsed().as_secs() >= 5 {
+            break status;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    assert_eq!(status, e::Status::Unknown);
     assert!(store.state.leads.is_empty());
 }
 

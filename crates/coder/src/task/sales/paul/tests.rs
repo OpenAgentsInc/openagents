@@ -716,7 +716,9 @@ fn actual_host_owner_stop_reaches_priced_adapter_and_preserves_unknown_liability
             },
         )
     });
-    rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+    // Only a hang guard: under the full suite's load the adapter can take
+    // more than 5 s to start (timed out once in a 1,700-test run).
+    rx.recv_timeout(std::time::Duration::from_secs(60)).unwrap();
     host.stop("paul", "fixture explicit owner stop", "owner")
         .unwrap();
     assert!(thread.join().unwrap().is_err());
