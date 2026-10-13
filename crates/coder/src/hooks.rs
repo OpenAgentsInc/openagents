@@ -1,8 +1,9 @@
 //! The Coder SDK's hooks on this crate's sessions (#11529): the Coder
 //! Terminal turn's Claude Code or Codex session and the issue flow's
 //! Microcoder turns run the session's registry before every tool: the
-//! floors, held (nobody answers a delegated session from inside), and the
-//! worktree guard holding file writes to the turn's folder.
+//! floors, held (nobody answers a delegated session from inside), the
+//! worktree guard holding file writes to the turn's folder, and the
+//! shared-checkout fence (#11532).
 //!
 //! A CLI session reaches the registry through the SDK's hook bridge,
 //! installed as the CLI's own `PreToolUse` hook
@@ -13,8 +14,9 @@
 
 use std::path::Path;
 
-/// A turn's registry in `workdir`: the held floors and the worktree
-/// guard, refusing every write on a read-only turn.
+/// A turn's registry in `workdir`: the held floors, the worktree guard
+/// (refusing every write on a read-only turn) and the shared-checkout
+/// fence.
 #[must_use]
 pub fn registry(workdir: &Path, read_only: bool) -> coder_sdk::Registry {
     microcoder_loop::env::held_hooks(workdir, !read_only).registry()

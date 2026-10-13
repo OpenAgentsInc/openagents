@@ -92,16 +92,18 @@ impl<E: Env> Env for Hooked<E> {
 }
 
 /// A session's hooks for the loop in `dir` that nobody answers from inside
-/// (#11527, #11529): the held floors and the worktree guard holding the
-/// session's writes to `dir`.
+/// (#11527, #11529): the held floors, the worktree guard holding the
+/// session's writes to `dir`, and the shared-checkout fence (#11532).
 #[must_use]
 pub fn held_hooks(dir: &std::path::Path, writes: bool) -> coder_sdk::Hooks {
     let mut guard = coder_sdk::worktree::Guard::writes(dir);
     if !writes {
         guard = guard.read_only();
     }
+    let mut registry = coder_sdk::floors::held_registry(Some(guard));
+    let _ = registry.register(coder_sdk::checkout_guard::hook(dir.to_path_buf()));
     coder_sdk::Hooks::new(
-        coder_sdk::floors::held_registry(Some(guard)),
+        registry,
         coder_sdk::Budget::default(),
         coder_sdk::HookBackend::CoderLoop,
     )

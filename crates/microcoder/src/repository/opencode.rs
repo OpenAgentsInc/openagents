@@ -18,7 +18,9 @@
 //!   (`auth.json`) or the owner's configured providers. The process gets
 //!   no variable named `*_API_KEY`, `*_TOKEN`, or `*_SECRET`.
 //! - **Access**: full access allows every OpenCode tool
-//!   ([`acp_client::opencode::Permission::Full`]). Under the boundary,
+//!   ([`acp_client::opencode::Permission::Full`]), with OpenCode made to
+//!   ask before each one so it meets the session's floors and worktree
+//!   guard first (#11527, [`super::hooks`]). Under the boundary,
 //!   OpenCode may read, search, and edit inside the workspace; every other
 //!   tool asks ([`acp_client::opencode::Permission::Edits`]), and the host
 //!   answers every ask with OpenCode's own reject option, so it runs no
@@ -122,9 +124,26 @@ pub(crate) async fn turn(
         Access::Full => Permission::Full,
         Access::Boundary | Access::Toolchains => Permission::Edits,
     };
-    let variables = opencode_environment(host, &model, permission).await;
+    let mut variables = opencode_environment(host, &model, permission).await;
     let database = engine_database(&variables);
-    let arguments = acp_client::opencode::arguments();
+    let mut arguments = acp_client::opencode::arguments();
+    // Every ask meets the session's hooks first (#11527). Under full access
+    // OpenCode is made to ask before every tool, so each reaches them;
+    // under the boundary it asks before all but its edits inside the
+    // workspace, and every ask is refused.
+    let hooks = super::hooks::acp(host.workspace(), &[], "opencode", "OpenCode");
+    if access == Access::Full
+        && let Err(why) = super::hooks::gate(
+            "opencode",
+            "OpenCode",
+            &hooks,
+            &mut arguments,
+            &mut variables,
+        )
+    {
+        ended.error = Some(why);
+        return Turn::Ended(ended);
+    }
     let resume = host.earlier_note(SESSION_NOTE).and_then(|note| {
         note.get("session")
             .and_then(Value::as_str)
@@ -212,7 +231,14 @@ pub(crate) async fn turn(
             return Turn::Ended(ended);
         }
     };
-    let mut recorder = Recorder::new(host, "OpenCode", "opencode", route.model.clone(), access);
+    let mut recorder = Recorder::new(
+        host,
+        "OpenCode",
+        "opencode",
+        route.model.clone(),
+        access,
+        hooks,
+    );
     let silence = SILENCE;
     let (result, checks_passed) = super::recipe::prompt_watched(
         &mut session,
@@ -423,7 +449,9 @@ mod tests {
         assert_eq!(replay::arguments(agent_dir.path()), vec!["acp"]);
         let config = started_config(agent_dir.path());
         assert_eq!(config["model"], MODEL);
-        assert_eq!(config["permission"], "allow");
+        // Full access asks the host about every tool, so each meets the
+        // session's hooks first (#11527), and the host allows the rest.
+        assert_eq!(config["permission"]["*"], "ask");
         let environment = std::fs::read_to_string(agent_dir.path().join("environment")).unwrap();
         assert!(environment.contains(&format!(
             "OPENCODE_DB={}",

@@ -180,3 +180,133 @@ mod tests {
         assert!(cli.system.is_some());
     }
 }
+
+#[cfg(all(test, unix))]
+mod session_tests {
+    use super::super::tests::fixture_with;
+    use super::super::{AgentEngine, Stage, run_stages};
+    use super::*;
+    use coder::task::adapter::{Access, Configuration, Route as GrantRoute};
+    use serde_json::{Value, json};
+
+    const MODEL: &str = "claude-opus-5-5";
+
+    /// #11527: a lean Claude Code session, started through the repository
+    /// turn's own stages on a stand-in `claude`, carries the Coder SDK's
+    /// hook bridge as its `PreToolUse` hook, and the turn's host holds a
+    /// merge for the person and keeps a write in the worktree.
+    #[tokio::test]
+    async fn a_lean_session_runs_the_floors_through_the_hook_bridge() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_root, store, grant) = fixture_with(MODEL, |configuration: &mut Configuration| {
+            configuration.provider = "claude".into();
+            configuration.model = MODEL.into();
+            configuration.effort = None;
+            configuration.generation_endpoint = CLAUDE_SESSION_ENDPOINT.into();
+            configuration.decision_endpoint = "https://decision.example.invalid".into();
+            configuration.access = Access::Full;
+        });
+        let bin = tempfile::tempdir().unwrap();
+        let recorded = bin.path().join("recorded");
+        std::fs::create_dir_all(&recorded).unwrap();
+        let program = bin.path().join("claude");
+        std::fs::write(
+            &program,
+            format!(
+                r#"#!/bin/sh
+while [ $# -gt 0 ]; do
+  if [ "$1" = --settings ]; then printf '%s' "$2" > '{dir}/settings.json'; fi
+  shift
+done
+printf '%s' "$CODER_HOOK_SOCKET" > '{dir}/socket'
+cat > /dev/null
+n=0
+while [ ! -f '{dir}/go' ] && [ $n -lt 400 ]; do sleep 0.05; n=$((n+1)); done
+echo '{{"type":"system","subtype":"init","session_id":"s-1","model":"{MODEL}"}}'
+echo '{{"type":"result","subtype":"success","is_error":false,"num_turns":1,"result":"done","session_id":"s-1","total_cost_usd":0.01,"usage":{{"input_tokens":1,"output_tokens":1}}}}'
+"#,
+                dir = recorded.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let host = Host::admit(&store, &grant).await.unwrap();
+        let workspace = host.workspace().to_path_buf();
+        let route = GrantRoute {
+            provider: "claude".into(),
+            model: MODEL.into(),
+            effort: None,
+            generation_endpoint: CLAUDE_SESSION_ENDPOINT.into(),
+        };
+        let stages: Vec<Stage<codex_transport::codex::CodexTransport>> =
+            vec![Stage::Agent(AgentEngine::ClaudeSession, route, program)];
+        let run = run_stages(
+            host,
+            store.clone(),
+            stages,
+            Err("no decision service in this test".into()),
+            "fixture-session",
+            &[],
+        );
+        let asked = async {
+            let socket = recorded.join("socket");
+            for _ in 0..400 {
+                if std::fs::read_to_string(&socket).is_ok_and(|text| !text.is_empty()) {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            let socket = PathBuf::from(std::fs::read_to_string(&socket).unwrap());
+            let ask = |input: Value| {
+                coder_sdk::bridge::ask(
+                    &socket,
+                    coder_sdk::bridge::Format::Claude,
+                    &input,
+                    std::time::Duration::from_secs(10),
+                )
+                .unwrap()
+            };
+            let merge = ask(json!({"hook_event_name": "PreToolUse", "tool_name": "Bash",
+                "tool_input": {"command": "gh pr merge 5 --squash"}}))
+            .unwrap();
+            let outside = ask(
+                json!({"hook_event_name": "PreToolUse", "tool_name": "Write",
+                "tool_input": {"file_path": "/etc/elsewhere", "content": "x"}}),
+            )
+            .unwrap();
+            let inside = ask(
+                json!({"hook_event_name": "PreToolUse", "tool_name": "Write",
+                "tool_input": {"file_path": workspace.join("a.txt"), "content": "x"}}),
+            );
+            std::fs::write(recorded.join("go"), "").unwrap();
+            (merge, outside, inside)
+        };
+        let (task, (merge, outside, inside)) = tokio::join!(run, asked);
+        let task = task.unwrap();
+        let result = task.run.as_ref().unwrap().result.as_ref().unwrap();
+        assert_eq!(result.ending, "model_finished", "{result:?}");
+        let settings: Value =
+            serde_json::from_str(&std::fs::read_to_string(recorded.join("settings.json")).unwrap())
+                .unwrap();
+        let command = settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap();
+        assert!(
+            command.ends_with(" coder-hook --format claude"),
+            "{command}"
+        );
+        assert_eq!(merge["hookSpecificOutput"]["permissionDecision"], "deny");
+        assert!(
+            merge["hookSpecificOutput"]["permissionDecisionReason"]
+                .as_str()
+                .unwrap()
+                .starts_with("Held for the person"),
+            "{merge}"
+        );
+        assert_eq!(
+            outside["hookSpecificOutput"]["permissionDecisionReason"],
+            coder_sdk::worktree::OUTSIDE
+        );
+        assert_eq!(inside, None);
+    }
+}

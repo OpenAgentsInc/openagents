@@ -227,6 +227,9 @@ pub(crate) async fn turn(
         .iter()
         .map(|&setting| setting.to_owned())
         .collect();
+    // The session runs the floors and the worktree guard before every
+    // tool, through the hook bridge (#11527); the host lives as the turn.
+    let _hooks = super::hooks::install(&mut cli, host.workspace());
 
     let transcript = Transcript {
         host,

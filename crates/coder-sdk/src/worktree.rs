@@ -151,6 +151,9 @@ pub struct Guard {
     /// Whether the session may read anywhere: only its writes are held to
     /// the worktree ([`Guard::writes`]).
     pub reads_anywhere: bool,
+    /// Folders outside the worktree the session may also write, such as
+    /// its boundary's scratch.
+    pub writable: Vec<PathBuf>,
 }
 
 impl Guard {
@@ -163,7 +166,25 @@ impl Guard {
             writes: true,
             readable: Vec::new(),
             reads_anywhere: false,
+            writable: Vec::new(),
         }
+    }
+
+    /// Also lets the session write under `dir`.
+    #[must_use]
+    pub fn writing(mut self, dir: &Path) -> Self {
+        self.writable.push(resolved(dir, "."));
+        self
+    }
+
+    /// Whether the session may write `path` (relative to the worktree).
+    fn may_write(&self, path: &str) -> bool {
+        contains(&self.root, path)
+            || (!path.starts_with('~')
+                && self
+                    .writable
+                    .iter()
+                    .any(|dir| resolved(&self.root, path).starts_with(dir)))
     }
 
     /// A guard on `root` holding only writes to it (#11527): a session
@@ -220,7 +241,7 @@ impl Guard {
         if writes && !self.writes {
             return Some(READ_ONLY);
         }
-        if written.iter().any(|path| !contains(&self.root, path)) {
+        if written.iter().any(|path| !self.may_write(path)) {
             return Some(OUTSIDE);
         }
         if !FILE_TOOLS.contains(&tool) {
@@ -240,7 +261,9 @@ impl Guard {
         }
         let writing = WRITE_TOOLS.contains(&tool);
         let refused = paths.into_iter().any(|path| {
-            if contains(&self.root, path) || (!writing && self.reads_anywhere) {
+            if (writing && self.may_write(path))
+                || (!writing && (contains(&self.root, path) || self.reads_anywhere))
+            {
                 return false;
             }
             let readable = tool == "Read"
@@ -323,6 +346,15 @@ mod tests {
             strict.refusal("Glob", &json!({"pattern": "src/**/*.rs"})),
             None
         );
+        let scratch = tempfile::tempdir().unwrap();
+        let with_scratch = Guard::writes(dir.path()).writing(scratch.path());
+        let inside = scratch.path().join("x").display().to_string();
+        assert_eq!(
+            with_scratch.refusal("Write", &json!({"file_path": inside})),
+            None
+        );
+        let moved = json!({"file_path": "a.rs", WRITTEN_PATHS: ["a.rs", inside]});
+        assert_eq!(with_scratch.refusal("Edit", &moved), None);
     }
 
     #[test]

@@ -71,6 +71,91 @@ pub fn hooked(agent: &str) -> bool {
     acp_backend(agent) == HookBackend::AcpHooked
 }
 
+/// What a session keeps alive so an agent's own hooks reach the session's
+/// (#11508): the socket the bridge asks, and the folder holding the plugin
+/// or configuration that names the bridge.
+#[derive(Default)]
+pub struct Gate {
+    _host: Option<super::bridge::Host>,
+    _files: Option<tempfile::TempDir>,
+}
+
+/// Starts the ACP agent `agent` (catalog ID; `name` for people) so every
+/// tool reaches `hooks` first, where it can (#11508, #11527): OpenCode asks
+/// before every tool; Grok Build runs the bridge (`program coder-hook
+/// --format acp`) as a `--plugin-dir` plugin's hook; Devin runs it from the
+/// configuration it is started with, the person's own plus that hook.
+/// `arguments` and `environment` are the agent's, changed in place.
+///
+/// # Errors
+/// The bridge, its socket or its files can't be set up: the agent would
+/// run unchecked, so it shouldn't run.
+pub fn gate(
+    agent: &str,
+    name: &str,
+    hooks: &Hooks,
+    program: std::io::Result<std::path::PathBuf>,
+    arguments: &mut Vec<String>,
+    environment: &mut Vec<(String, String)>,
+) -> Result<Gate, String> {
+    let set = |environment: &mut Vec<(String, String)>, name: &str, value: String| {
+        environment.retain(|(existing, _)| existing != name);
+        environment.push((name.to_owned(), value));
+    };
+    if agent == "opencode" {
+        let existing = environment
+            .iter()
+            .find(|(name, _)| name == acp_client::opencode::CONFIG_VAR)
+            .map(|(_, value)| value.clone());
+        set(
+            environment,
+            acp_client::opencode::CONFIG_VAR,
+            acp_client::opencode::asking_config(existing.as_deref()),
+        );
+        return Ok(Gate::default());
+    }
+    if !hooked(agent) {
+        return Ok(Gate::default());
+    }
+    let failed = |why: String| format!("Coder couldn't set up its checks for {name}: {why}");
+    let program = program.map_err(|error| failed(error.to_string()))?;
+    let host =
+        super::bridge::Host::start(hooks.runner()).map_err(|error| failed(error.to_string()))?;
+    let command = super::bridge::hook_bridge(&host, program).command("acp");
+    set(
+        environment,
+        super::bridge::SOCKET_VAR,
+        host.path().display().to_string(),
+    );
+    let files = tempfile::Builder::new()
+        .prefix("coder-acp-")
+        .tempdir()
+        .map_err(|error| failed(error.to_string()))?;
+    let timeout = coder_delegate::delegate::HOOK_TIMEOUT_SECS;
+    if agent == "grok-build" {
+        acp_client::grok::write_hook_plugin(files.path(), &command, timeout)
+            .map_err(|error| failed(error.to_string()))?;
+        acp_client::grok::add_plugin_dir(arguments, files.path());
+    } else {
+        let variable = |name: &str| {
+            environment
+                .iter()
+                .find(|(existing, _)| existing == name)
+                .map(|(_, value)| std::ffi::OsString::from(value))
+        };
+        let person =
+            acp_client::devin::config_path(&variable).and_then(|path| std::fs::read(path).ok());
+        let config = acp_client::devin::hooked_config(person.as_deref(), &command, timeout);
+        let file = files.path().join("config.json");
+        std::fs::write(&file, config.to_string()).map_err(|error| failed(error.to_string()))?;
+        acp_client::devin::add_config(arguments, &file);
+    }
+    Ok(Gate {
+        _host: Some(host),
+        _files: Some(files),
+    })
+}
+
 /// The first string among `fields` of `input`.
 fn field<'a>(input: &'a Value, fields: &[&str]) -> Option<&'a str> {
     fields

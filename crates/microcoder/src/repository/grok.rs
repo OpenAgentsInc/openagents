@@ -41,6 +41,9 @@ use serde_json::{Value, json};
 
 use super::devin::{Answering, CANCEL_GRACE, Ended, Recorder, SILENCE, STOP_GRACE, Turn};
 
+/// Grok Build's catalog ID, by which the Coder SDK knows its hooks.
+const AGENT: &str = "grok-build";
+
 /// How long the copied sign-in must still last, besides the margin, for a
 /// turn to start. A turn has no time limit; this is the half hour a long
 /// turn is expected to take (the time limit turns had before #10103), and
@@ -276,7 +279,29 @@ pub(crate) async fn turn(
         ended.error = Some(why);
         return Turn::Ended(ended);
     }
-    let arguments = acp_client::grok::arguments_with_effort(&model, approve, effort.as_deref());
+    let mut arguments = acp_client::grok::arguments_with_effort(&model, approve, effort.as_deref());
+    let mut environment = environment;
+    // Every tool meets the session's hooks first (#11527). Under full
+    // access Grok Build approves its own tools, so its plugin hook runs the
+    // bridge, which asks this turn's host; inside the boundary it asks the
+    // host about each one.
+    let approving = approve.then(|| super::hooks::acp(host.workspace(), &[], AGENT, "Grok Build"));
+    let _gate = match &approving {
+        Some(hooks) => match super::hooks::gate(
+            AGENT,
+            "Grok Build",
+            hooks,
+            &mut arguments,
+            environment.get_or_insert_with(Vec::new),
+        ) {
+            Ok(gate) => Some(gate),
+            Err(why) => {
+                ended.error = Some(why);
+                return Turn::Ended(ended);
+            }
+        },
+        None => None,
+    };
     let earlier = host.earlier_note(SESSION_NOTE).and_then(|note| {
         note.get("session")
             .and_then(Value::as_str)
@@ -396,19 +421,24 @@ pub(crate) async fn turn(
             return Turn::Ended(ended);
         }
     };
-    let mut recorder = Recorder::new(host, "Grok Build", "grok", model.clone(), access);
-    if let Some(contained) = &contained {
-        let roots = contained
-            .boundary
-            .checkout()
-            .into_iter()
-            .chain(contained.boundary.writable().iter().map(PathBuf::as_path))
-            .map(std::path::Path::to_path_buf)
-            .collect();
-        recorder = recorder.answering(Answering::Contained {
-            base: host.workspace().to_path_buf(),
-            roots,
-        });
+    let hooks = match (&contained, approving) {
+        (_, Some(hooks)) => hooks,
+        (Some(contained), None) => {
+            // The boundary's checkout and scratch are where it may write.
+            let roots: Vec<PathBuf> = contained
+                .boundary
+                .checkout()
+                .into_iter()
+                .chain(contained.boundary.writable().iter().map(PathBuf::as_path))
+                .map(std::path::Path::to_path_buf)
+                .collect();
+            super::hooks::acp(host.workspace(), &roots, AGENT, "Grok Build")
+        }
+        (None, None) => super::hooks::acp(host.workspace(), &[], AGENT, "Grok Build"),
+    };
+    let mut recorder = Recorder::new(host, "Grok Build", "grok", model.clone(), access, hooks);
+    if contained.is_some() {
+        recorder = recorder.answering(Answering::Contained);
     }
     let silence = SILENCE;
     let (result, checks_passed) = super::recipe::prompt_watched(
@@ -587,8 +617,9 @@ mod tests {
         ] {
             assert!(trace.contains(expected), "missing {expected}");
         }
+        // The plugin that runs the hook bridge is loaded (#11527).
         assert_eq!(
-            replay::arguments(agent_dir.path()),
+            plugin_free(replay::arguments(agent_dir.path())),
             vec!["agent", "--always-approve", "--no-leader", "stdio"]
         );
         let sent = replay::received(agent_dir.path());
@@ -618,7 +649,7 @@ mod tests {
             "model_finished"
         );
         assert_eq!(
-            replay::arguments(agent_dir.path()),
+            plugin_free(replay::arguments(agent_dir.path())),
             vec![
                 "agent",
                 "--always-approve",
@@ -693,6 +724,26 @@ mod tests {
             )];
         });
         login
+    }
+
+    /// `arguments` without the `--plugin-dir` that loads the hook bridge's
+    /// plugin, which must be there.
+    fn plugin_free(arguments: Vec<String>) -> Vec<String> {
+        let at = arguments
+            .iter()
+            .position(|argument| argument == "--plugin-dir")
+            .expect("the hook bridge's plugin");
+        let hooks = std::path::Path::new(&arguments[at + 1]).join("hooks/hooks.json");
+        // The plugin's folder lasts as long as the turn.
+        assert!(
+            !hooks.exists()
+                || std::fs::read_to_string(&hooks)
+                    .unwrap()
+                    .contains("coder-hook")
+        );
+        let mut rest = arguments;
+        rest.drain(at..at + 2);
+        rest
     }
 
     fn ask(id: &str, kind: &str, title: &str, path: Option<&str>) -> Value {
@@ -799,7 +850,7 @@ mod tests {
         assert_eq!(answer("ask-run"), "allow");
         assert_eq!(answer("ask-out"), "reject");
         assert_eq!(answer("ask-in"), "allow");
-        assert!(trace.contains("outside the workspace"), "{trace}");
+        assert!(trace.contains(coder_sdk::worktree::OUTSIDE), "{trace}");
         assert!(trace.contains("\"login\":\"copy\""), "{trace}");
         assert!(leaked_credential_names(&agent_dir).is_empty());
     }
@@ -828,7 +879,7 @@ mod tests {
         let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
         assert!(
             trace.contains(
-                "Grok Build stopped after the host refused a tool it asked to run (Write /etc/hosts: it would write /etc/hosts, outside the workspace)."
+                &format!("Grok Build stopped after the host refused a tool it asked to run (Write /etc/hosts: {})", coder_sdk::worktree::OUTSIDE)
             ),
             "{trace}"
         );

@@ -307,6 +307,16 @@ async fn main() -> ExitCode {
         );
         return ExitCode::SUCCESS;
     }
+    // The Coder SDK's hook bridge a delegated CLI runs before every tool
+    // (#11527).
+    if args
+        .first()
+        .is_some_and(|argument| argument == microcoder::repository::hooks::COMMAND)
+    {
+        return ExitCode::from(
+            u8::try_from(microcoder::repository::hooks::main(&args[1..])).unwrap_or(1),
+        );
+    }
     // Delegates get the lease shims on `PATH` (#10756).
     coder::task::targets::enable_lease_shims();
     if args
@@ -704,6 +714,11 @@ async fn go(options: Options) -> Result<u8, String> {
                 ..State::default()
             };
             let mut both = Both(&mut terminal, &mut record);
+            // Every command meets the floors first (#11527).
+            let env = microcoder::env::Hooked {
+                hooks: microcoder::env::held_hooks(std::path::Path::new(&env.workdir), true),
+                env: env.clone(),
+            };
             run(state, &options.prompt, &env, &Models { generator: &generator, judge: &judge, set: &set, route: &route, strong: Some(&strong), knowledge: retriever.as_ref() }, &options.limits, &mut both).await
         } => result,
         _ = tokio::signal::ctrl_c() => {

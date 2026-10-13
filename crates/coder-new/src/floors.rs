@@ -345,16 +345,6 @@ pub fn codex_args(program: &Path) -> Vec<String> {
     ]
 }
 
-/// The command an agent's own hooks run for Coder's bridge (#11508):
-/// `program coder-hook --format acp`.
-#[must_use]
-pub fn acp_bridge_command(program: &Path) -> String {
-    format!(
-        "{} {BRIDGE_COMMAND} --format acp",
-        shell_quote(&program.display().to_string())
-    )
-}
-
 fn shell_quote(text: &str) -> String {
     if text
         .chars()

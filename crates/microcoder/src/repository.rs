@@ -459,7 +459,11 @@ async fn run_loop<G: Generate, J: Judge>(
 ) -> Result<(State, crate::run::Outcome), task::Error> {
     let configuration = host.configuration().clone();
     let judge = RecordedJudge { host, inner: judge };
-    let env = Repository { host };
+    // Every command meets the session's floors first (#11527).
+    let env = crate::env::Hooked {
+        env: Repository { host },
+        hooks: hooks::loop_hooks(host.workspace()),
+    };
     let mut observer = RecordedEvents { host, replies };
     let limits = limits(recipe);
     // A later turn carries the conversation's earlier turns.
@@ -1315,6 +1319,7 @@ mod coder_v1;
 pub mod codex_session;
 mod devin;
 mod grok;
+pub mod hooks;
 pub mod launch;
 mod lean_session;
 mod native;

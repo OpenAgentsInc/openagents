@@ -9,9 +9,11 @@
 //!
 //! - **Inside the worktree**: a file tool (`Read`, `Edit`, `Write`,
 //!   `Glob`, `Grep`) whose every path resolves inside the task's worktree
-//!   is allowed.
+//!   (the Coder SDK's worktree guard, `coder_sdk::worktree`) is allowed,
+//!   unless a floor names it (`coder_sdk::floors`, #11527: a secret file).
 //! - **Outside the worktree**: any other request, including every `Bash`
-//!   command, whose effects the host cannot bound, ends the turn asking
+//!   command, whose effects the host cannot bound, and anything a floor
+//!   names (a deploy, a merge, a secret, a payment, DNS), ends the turn asking
 //!   the person to approve it. The host denies the request with
 //!   `interrupt`, so Claude Code stops, and the turn's reply names the
 //!   step in a fenced `openagents.coder.approval-step.v1` block
@@ -66,7 +68,7 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::devin::{Ended, Turn, resolved};
+use super::devin::{Ended, Turn};
 use super::lean_session::{bounded, input_parts};
 
 pub use coder::task::capacity::CLAUDE_SDK_ENDPOINT;
@@ -80,18 +82,6 @@ pub const ENGINE: &str = "claude-agent-sdk";
 const EFFECT: &str = "claude_sdk";
 /// The tools the session runs with: the lean session's six.
 pub const TOOLS: [&str; 6] = ["Bash", "Read", "Edit", "Write", "Glob", "Grep"];
-/// The file tools a path inside the worktree admits without asking.
-const FILE_TOOLS: [&str; 7] = [
-    "Read",
-    "Edit",
-    "MultiEdit",
-    "Write",
-    "NotebookEdit",
-    "Glob",
-    "Grep",
-];
-/// The input fields that name a file tool's paths.
-const PATH_FIELDS: [&str; 3] = ["file_path", "notebook_path", "path"];
 /// The effort when neither the recipe nor the route names one.
 pub const EFFORT: &str = "medium";
 /// Credentials the CLI must not inherit, so it uses the Claude Code login.
@@ -174,8 +164,8 @@ struct GateState {
 pub(crate) struct Gate {
     /// The worktree, against which relative paths resolve.
     base: PathBuf,
-    /// The worktree, resolved.
-    root: PathBuf,
+    /// The Coder SDK's worktree guard on it (#11527).
+    guard: coder_sdk::worktree::Guard,
     state: Mutex<GateState>,
 }
 
@@ -184,7 +174,7 @@ impl Gate {
     pub(crate) fn new(workspace: &Path, once: Option<Request>, denied: Option<Request>) -> Self {
         Self {
             base: workspace.to_path_buf(),
-            root: resolved(workspace, "."),
+            guard: coder_sdk::worktree::Guard::new(workspace),
             state: Mutex::new(GateState {
                 once,
                 denied,
@@ -227,29 +217,15 @@ impl Gate {
         result
     }
 
-    /// Whether `tool` with `input` stays inside the worktree: a file tool
-    /// whose every path resolves inside it. A `Glob` or `Grep` that names
-    /// no path searches the worktree, Claude Code's working directory.
+    /// Whether `tool` with `input` runs without asking: a file tool the
+    /// Coder SDK's worktree guard keeps inside the worktree (a `Glob` or
+    /// `Grep` that names no path searches it, Claude Code's working
+    /// directory), on nothing a floor names (`coder_sdk::floors`: a secret
+    /// file is the person's to open).
     fn inside(&self, tool: &str, input: &Value) -> bool {
-        if !FILE_TOOLS.contains(&tool) {
-            return false;
-        }
-        let mut paths: Vec<&str> = PATH_FIELDS
-            .iter()
-            .filter_map(|field| input.get(*field).and_then(Value::as_str))
-            .collect();
-        if tool == "Glob"
-            && let Some(pattern) = input.get("pattern").and_then(Value::as_str)
-            && (pattern.starts_with('/') || pattern.starts_with('~') || pattern.contains(".."))
-        {
-            paths.push(pattern);
-        }
-        if paths.is_empty() {
-            return matches!(tool, "Glob" | "Grep");
-        }
-        paths.iter().all(|path| {
-            !path.starts_with('~') && resolved(&self.base, path).starts_with(&self.root)
-        })
+        coder_sdk::worktree::FILE_TOOLS.contains(&tool)
+            && self.guard.refusal(tool, input).is_none()
+            && coder_sdk::floors::classify(tool, input).is_none()
     }
 
     /// The request this turn stopped to ask about, if it did.
@@ -283,7 +259,7 @@ pub(crate) fn step(tool: &str, input: &Value, cwd: &Path) -> interaction::Step {
     let text = |field: &str| input.get(field).and_then(Value::as_str);
     let command = match tool {
         "Bash" => text("command").map(str::to_owned),
-        _ => PATH_FIELDS
+        _ => coder_sdk::worktree::PATH_FIELDS
             .iter()
             .find_map(|field| text(field))
             .map(str::to_owned),
@@ -1273,6 +1249,8 @@ dir=$(dirname "$0")
 printf '%s\n' "$*" >> "$dir/arguments"
 env | cut -d= -f1 >> "$dir/environment"
 session='"session_id":"sdk-session-1"'
+tool=$(cat "$dir/tool" 2>/dev/null || printf Bash)
+input=$(cat "$dir/input" 2>/dev/null || printf '%s' '{"command":"make check","description":"Runs the checks"}')
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "$dir/stdin"
   case "$line" in
@@ -1281,8 +1259,8 @@ while IFS= read -r line; do
       printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s","response":{}}}\n' "$id"
       ;;
     *'"type":"user"'*)
-      printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I will run the checks."},{"type":"tool_use","id":"tu-1","name":"Bash","input":{"command":"make check","description":"Runs the checks"}}]},"parent_tool_use_id":null,"uuid":"a-1",'"$session"'}'
-      printf '%s\n' '{"type":"control_request","request_id":"cli-1","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"make check","description":"Runs the checks"},"tool_use_id":"tu-1"}}'
+      printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I will run the checks."},{"type":"tool_use","id":"tu-1","name":"'"$tool"'","input":'"$input"'}]},"parent_tool_use_id":null,"uuid":"a-1",'"$session"'}'
+      printf '%s\n' '{"type":"control_request","request_id":"cli-1","request":{"subtype":"can_use_tool","tool_name":"'"$tool"'","input":'"$input"',"tool_use_id":"tu-1"}}'
       ;;
     *'"behavior":"allow"'*)
       printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu-1","content":"checks passed","is_error":false}]},"parent_tool_use_id":null,'"$session"'}'
@@ -1494,6 +1472,31 @@ done
                 .unwrap()
                 .contains("allowed this step once")
         );
+    }
+
+    /// #11527: a file read inside the worktree runs without asking, but a
+    /// secret file there is a floor (`coder_sdk::floors`): the seat's
+    /// registry holds it, and the turn ends asking the person.
+    #[tokio::test]
+    async fn a_floored_read_inside_the_worktree_ends_the_turn_asking() {
+        let (_root, store, grant) = fixture_with(MODEL, sdk_route);
+        let (dir, program) = fake();
+        std::fs::write(dir.path().join("tool"), "Read").unwrap();
+        std::fs::write(dir.path().join("input"), r#"{"file_path":".env"}"#).unwrap();
+        let waiting = run_turn(&store, &grant, &program).await;
+        let result = waiting.run.as_ref().unwrap().result.as_ref().unwrap();
+        assert_eq!(result.ending, interaction::APPROVAL_ENDING);
+        let step = interaction::Step::in_reply(&last_reply(&store, 1)).expect("the step");
+        assert_eq!(step.tool, "Read");
+        assert_eq!(step.command, ".env");
+        let reply = permission_reply(&dir);
+        assert_eq!(reply["behavior"], "deny");
+        assert_eq!(reply["interrupt"], true);
+        // The same tool on a plain file inside runs without asking.
+        let gate = Gate::new(dir.path(), None, None);
+        assert!(gate.inside("Read", &json!({"file_path": "src/lib.rs"})));
+        assert!(!gate.inside("Read", &json!({"file_path": ".env"})));
+        assert!(!gate.inside("Glob", &json!({"pattern": "/etc/*"})));
     }
 
     #[tokio::test]

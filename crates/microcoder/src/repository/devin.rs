@@ -30,7 +30,7 @@
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use acp_client::wire::Update;
@@ -45,6 +45,8 @@ use serde_json::{Value, json};
 pub const SESSION_NOTE: &str = "devin_session";
 /// The engine a Devin turn records.
 pub const ENGINE: &str = "devin-acp";
+/// Devin's catalog ID, by which the Coder SDK knows its hooks.
+const AGENT: &str = "devin-cli";
 /// The longest Devin may write nothing during a prompt. A turn has no
 /// time limit; this is the whole agent's stuck guard.
 pub(super) const SILENCE: Duration = Duration::from_secs(20 * 60);
@@ -196,49 +198,15 @@ pub(super) enum Answering {
     Reject,
     /// The agent's whole process runs inside the host's operating-system
     /// boundary (Grok Build under the boundary or toolchains), which holds
-    /// whatever it runs: an ask is allowed, except a tool that writes
-    /// files and names one outside `roots` (the workspace and the
-    /// boundary's scratch), relative names read against `base`.
-    Contained { base: PathBuf, roots: Vec<PathBuf> },
-}
-
-/// `path` as an absolute, resolved name: relative to `base`, `.` and `..`
-/// taken lexically, and the longest part that exists resolved through its
-/// symbolic links, so `/tmp` and `/private/tmp` compare equal.
-pub(super) fn resolved(base: &Path, path: &str) -> PathBuf {
-    let mut lexical = PathBuf::new();
-    for component in base.join(path).components() {
-        match component {
-            std::path::Component::ParentDir => {
-                lexical.pop();
-            }
-            std::path::Component::CurDir => {}
-            other => lexical.push(other),
-        }
-    }
-    let mut existing = lexical.as_path();
-    let mut rest = Vec::new();
-    loop {
-        if let Ok(real) = existing.canonicalize() {
-            let mut out = real;
-            for part in rest.iter().rev() {
-                out.push(part);
-            }
-            return out;
-        }
-        match (existing.parent(), existing.file_name()) {
-            (Some(parent), Some(name)) => {
-                rest.push(name.to_owned());
-                existing = parent;
-            }
-            _ => return lexical,
-        }
-    }
+    /// whatever it runs: an ask is allowed, once. A tool that writes outside
+    /// the workspace and the boundary's scratch is the session's worktree
+    /// guard's to refuse ([`super::hooks`]).
+    Contained,
 }
 
 impl Answering {
-    /// The answer to `request`: the option chosen, and, for a refusal under
-    /// [`Answering::Contained`], why.
+    /// The answer to `request`: the option chosen, and, for a refusal,
+    /// why.
     fn answer<'r>(&self, request: &'r PermissionRequest) -> (Option<&'r str>, Option<String>) {
         match self {
             Answering::Allow => (request.allow(), None),
@@ -246,20 +214,8 @@ impl Answering {
                 request.reject(),
                 Some("this run's access refuses every tool the agent asks for".to_owned()),
             ),
-            Answering::Contained { base, roots } => {
-                let outside = request.tool_call.written_paths().into_iter().find(|path| {
-                    let path = resolved(base, path);
-                    !roots.iter().any(|root| path.starts_with(root))
-                });
-                match outside {
-                    Some(path) => (
-                        request.reject(),
-                        Some(format!("it would write {path}, outside the workspace")),
-                    ),
-                    // Once, so the agent asks again for its next tool.
-                    None => (request.allow_once(), None),
-                }
-            }
+            // Once, so the agent asks again for its next tool.
+            Answering::Contained => (request.allow_once(), None),
         }
     }
 }
@@ -274,8 +230,12 @@ pub(super) struct Recorder<'a> {
     note: &'static str,
     model: String,
     access: Access,
-    /// How the host answers the agent's permission requests.
+    /// How the host answers the agent's permission requests, once the
+    /// session's hooks let one through.
     answering: Answering,
+    /// The session's hooks (#11527): every ask meets the floors and the
+    /// worktree guard first.
+    hooks: coder_sdk::Hooks,
     /// The first tool the host refused, and why.
     pub(super) refused: Option<String>,
     text: String,
@@ -303,15 +263,18 @@ fn bounded(text: &str, limit: usize) -> String {
 }
 
 impl<'a> Recorder<'a> {
-    /// A recorder for `name`'s turn on `model`, noting under `note`.
+    /// A recorder for `name`'s turn on `model`, noting under `note`, its
+    /// asks answered through `hooks` first.
     pub(super) fn new(
         host: &'a Host,
         name: &'static str,
         note: &'static str,
         model: String,
         access: Access,
+        hooks: coder_sdk::Hooks,
     ) -> Self {
         Recorder {
+            hooks,
             host,
             name,
             note,
@@ -497,7 +460,30 @@ impl Handler for Recorder<'_> {
         // rule, Grok Build's `--always-approve`); anything still asked is
         // allowed. Under the boundary, Devin and OpenCode get nothing; Grok
         // Build, inside the host's own boundary, gets what that holds.
-        let (chosen, why) = self.answering.answer(request);
+        // The session's hooks first (#11527): a floored call is held for
+        // the person, a write outside the worktree refused.
+        let call = coder_sdk::acp::call(request, None, self.host.workspace());
+        let applied = self
+            .hooks
+            .runner()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .fire(&call);
+        let (chosen, why) = match &applied.permission {
+            coder_sdk::Permission::Deny { reason }
+            | coder_sdk::Permission::Ask { step: reason } => {
+                let rejected = match coder_sdk::acp::answer(&applied.permission, request) {
+                    PermissionAnswer::Selected(option) => request
+                        .options
+                        .iter()
+                        .find(|candidate| candidate.option_id == option)
+                        .map(|candidate| candidate.option_id.as_str()),
+                    _ => None,
+                };
+                (rejected, Some(reason.clone()))
+            }
+            _ => self.answering.answer(request),
+        };
         let refused = why.is_some() || chosen.is_none();
         if refused && self.refused.is_none() {
             let tool = request
@@ -626,6 +612,23 @@ pub(crate) async fn turn(
             .and_then(Value::as_str)
             .map(str::to_owned)
     });
+    let mut ended = Ended {
+        engine: ENGINE,
+        agent: "Devin",
+        ..Ended::default()
+    };
+    // Every tool meets the session's hooks first (#11527): Devin's asks
+    // through the recorder, the rest through its own hook running the
+    // bridge, which asks this turn's host.
+    let hooks = super::hooks::acp(host.workspace(), &[], AGENT, "Devin");
+    let mut variables = environment(host).await;
+    let _gate = match super::hooks::gate(AGENT, "Devin", &hooks, &mut arguments, &mut variables) {
+        Ok(gate) => gate,
+        Err(why) => {
+            ended.error = Some(why);
+            return Turn::Ended(ended);
+        }
+    };
     let opening = Opening {
         spec: super::private_spec(
             host,
@@ -633,18 +636,13 @@ pub(crate) async fn turn(
                 program: program.clone(),
                 arguments: arguments.clone(),
                 cwd: host.workspace().to_path_buf(),
-                environment: environment(host).await,
+                environment: variables,
             },
         ),
         resume: resume.clone(),
         meta: Some(acp_client::devin::engine_meta(coder_history_mark())),
         mode: Some(permission.mode_id().into()),
         authenticate: None,
-    };
-    let mut ended = Ended {
-        engine: ENGINE,
-        agent: "Devin",
-        ..Ended::default()
     };
     let sequence = match host.effect(
         "devin_session",
@@ -715,7 +713,7 @@ pub(crate) async fn turn(
             return Turn::Ended(ended);
         }
     };
-    let mut recorder = Recorder::new(host, "Devin", "devin", model, access);
+    let mut recorder = Recorder::new(host, "Devin", "devin", model, access, hooks);
     let silence = SILENCE;
     let (result, checks_passed) = super::recipe::prompt_watched(
         &mut session,
@@ -918,10 +916,10 @@ mod tests {
         ] {
             assert!(trace.contains(expected), "missing {expected}");
         }
-        assert_eq!(
-            replay::arguments(agent_dir.path()),
-            vec!["acp", "--model", MODEL]
-        );
+        // Started with the configuration that runs the hook bridge (#11527).
+        let arguments = replay::arguments(agent_dir.path());
+        assert_eq!(arguments[0], "--config");
+        assert_eq!(arguments[2..], ["acp", "--model", MODEL]);
         let sent = replay::received(agent_dir.path());
         assert_eq!(sent[1]["method"], "session/new");
         assert_eq!(
@@ -973,10 +971,9 @@ mod tests {
             task.run.as_ref().unwrap().result.as_ref().unwrap().ending,
             "model_finished"
         );
-        assert_eq!(
-            replay::arguments(agent_dir.path()),
-            vec!["--sandbox", "acp", "--model", MODEL]
-        );
+        let arguments = replay::arguments(agent_dir.path());
+        assert_eq!(arguments[0], "--config");
+        assert_eq!(arguments[2..], ["--sandbox", "acp", "--model", MODEL]);
         let sent = replay::received(agent_dir.path());
         assert_eq!(sent[2]["params"]["modeId"], "accept-edits");
         let answer = sent
@@ -984,6 +981,39 @@ mod tests {
             .find(|line| line["id"] == "ask-1")
             .expect("the permission answer");
         assert_eq!(answer["result"]["outcome"]["optionId"], "reject_once");
+    }
+
+    /// #11527: a Devin turn starts through the Coder SDK: Devin runs the
+    /// hook bridge from the configuration it is started with, and an ask
+    /// for a floored step (a merge) is answered by the session's hooks:
+    /// refused, with why, even under full access.
+    #[tokio::test]
+    async fn a_devin_turn_meets_the_floors_under_full_access() {
+        let (_root, store, grant) = fixture_with(MODEL, |c| devin(c, Access::Full));
+        let agent_dir = tempfile::tempdir().unwrap();
+        let mut blocks = replay::blocks(replay::DEVIN_TURN);
+        let ask = serde_json::json!({"jsonrpc":"2.0","id":"ask-1","method":"session/request_permission",
+            "params":{"sessionId":"cheddar-cashew","toolCall":{"kind":"execute","title":"gh pr merge 5 --squash",
+                "rawInput":{"command":"gh pr merge 5 --squash"}},
+            "options":[{"optionId":"allow_once","kind":"allow_once"},{"optionId":"reject_once","kind":"reject_once"}]}});
+        blocks[3].insert(0, ask);
+        let agent = replay::script(agent_dir.path(), &blocks);
+        let task = run_turn(&store, &grant, agent).await;
+        assert_eq!(
+            task.run.as_ref().unwrap().result.as_ref().unwrap().ending,
+            "model_finished"
+        );
+        let arguments = replay::arguments(agent_dir.path());
+        assert_eq!(arguments[0], "--config");
+        assert_eq!(arguments[2..], ["acp", "--model", MODEL]);
+        let sent = replay::received(agent_dir.path());
+        let answer = sent
+            .iter()
+            .find(|line| line["id"] == "ask-1")
+            .expect("the permission answer");
+        assert_eq!(answer["result"]["outcome"]["optionId"], "reject_once");
+        let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+        assert!(trace.contains("Held for the person"), "{trace}");
     }
 
     #[tokio::test]

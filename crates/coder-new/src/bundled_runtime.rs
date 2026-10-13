@@ -1099,22 +1099,12 @@ pub async fn acp_briefed(
 }
 
 /// What a session keeps alive so an agent's own hooks reach Coder's
-/// (#11508): the socket the bridge asks, and the folder holding the plugin
-/// or configuration that names the bridge.
-#[derive(Default)]
-pub(crate) struct AcpGate {
-    _host: Option<coder_sdk::bridge::Host>,
-    _files: Option<tempfile::TempDir>,
-}
-
-/// How long an agent's hook waits for the bridge, in seconds: past the
-/// bridge's own wait for the host, so the bridge always answers.
-const ACP_HOOK_TIMEOUT: u64 = 600;
+/// (#11508): [`coder_sdk::acp::Gate`].
+pub(crate) type AcpGate = coder_sdk::acp::Gate;
 
 /// Starts `agent` so every tool reaches the session's hooks first, where
-/// it can (#11508): OpenCode asks before every tool; Grok Build runs the
-/// bridge as a `--plugin-dir` plugin's hook; Devin runs it from the
-/// configuration it is started with, the person's own plus that hook.
+/// it can (#11508): [`coder_sdk::acp::gate`], with this program as the
+/// bridge.
 ///
 /// # Errors
 /// The bridge, its socket or its files can't be set up: the agent would
@@ -1125,63 +1115,14 @@ pub(crate) fn acp_gate(
     arguments: &mut Vec<String>,
     environment: &mut Vec<(String, String)>,
 ) -> Result<AcpGate, String> {
-    let set = |environment: &mut Vec<(String, String)>, name: &str, value: String| {
-        environment.retain(|(existing, _)| existing != name);
-        environment.push((name.to_owned(), value));
-    };
-    if agent.id == "opencode" {
-        let existing = environment
-            .iter()
-            .find(|(name, _)| name == acp_client::opencode::CONFIG_VAR)
-            .map(|(_, value)| value.clone());
-        set(
-            environment,
-            acp_client::opencode::CONFIG_VAR,
-            acp_client::opencode::asking_config(existing.as_deref()),
-        );
-        return Ok(AcpGate::default());
-    }
-    if !coder_sdk::acp::hooked(&agent.id) {
-        return Ok(AcpGate::default());
-    }
-    let failed =
-        |why: String| format!("Coder couldn't set up its checks for {}: {why}", agent.name);
-    let program = bridge_program().map_err(|error| failed(error.to_string()))?;
-    let command = crate::floors::acp_bridge_command(&program);
-    let host = coder_sdk::bridge::Host::start(hooks.runner())
-        .map_err(|error| failed(error.to_string()))?;
-    set(
+    coder_sdk::acp::gate(
+        &agent.id,
+        &agent.name,
+        hooks,
+        bridge_program(),
+        arguments,
         environment,
-        coder_sdk::bridge::SOCKET_VAR,
-        host.path().display().to_string(),
-    );
-    let files = tempfile::Builder::new()
-        .prefix("coder-acp-")
-        .tempdir()
-        .map_err(|error| failed(error.to_string()))?;
-    if agent.id == "grok-build" {
-        acp_client::grok::write_hook_plugin(files.path(), &command, ACP_HOOK_TIMEOUT)
-            .map_err(|error| failed(error.to_string()))?;
-        acp_client::grok::add_plugin_dir(arguments, files.path());
-    } else {
-        let variable = |name: &str| {
-            environment
-                .iter()
-                .find(|(existing, _)| existing == name)
-                .map(|(_, value)| std::ffi::OsString::from(value))
-        };
-        let person =
-            acp_client::devin::config_path(&variable).and_then(|path| std::fs::read(path).ok());
-        let config =
-            acp_client::devin::hooked_config(person.as_deref(), &command, ACP_HOOK_TIMEOUT);
-        let file = files.path().join("config.json");
-        std::fs::write(&file, config.to_string()).map_err(|error| failed(error.to_string()))?;
-        acp_client::devin::add_config(arguments, &file);
-    }
-    Ok(AcpGate {
-        _host: Some(host),
-        _files: Some(files),
-    })
+    )
 }
 
 /// The program an agent's hook runs for the bridge: this one. A debug build

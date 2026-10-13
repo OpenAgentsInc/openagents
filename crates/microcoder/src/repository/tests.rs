@@ -401,6 +401,22 @@ async fn a_run_without_a_jev_key_still_runs_its_commands_and_finishes() {
     assert!(trace.contains(NO_JEV));
 }
 
+/// #11527: a repository run's loop fires the session's Coder SDK hooks on
+/// every command: a merge is held for the person and never runs, and the
+/// run goes on to finish.
+#[tokio::test]
+async fn a_repository_run_holds_a_floored_command() {
+    let (root, store, grant) = fixture();
+    let generator = generator("gh pr merge 5 --squash > merged.txt");
+    let host = Host::admit(&store, &grant).await.unwrap();
+    let result = run(host, &generator, &JudgeFixture).await.unwrap();
+    assert_eq!(result.execution, task::Execution::Finished);
+    assert_eq!(generator.calls.get(), 2);
+    assert!(!root.path().join("checkout/merged.txt").exists());
+    let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+    assert!(trace.contains("Held for the person"), "{trace}");
+}
+
 #[tokio::test]
 async fn unsafe_reads_and_outside_writes_do_not_escape_the_repository() {
     use std::os::unix::fs::symlink;
