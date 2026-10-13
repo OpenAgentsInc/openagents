@@ -139,6 +139,11 @@ def words(s: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[│┌┐└┘─╭╮╰╯●❯]", " ", s or "")).strip()
 
 
+def unmark(s: str) -> str:
+    """Text as Markdown draws it: no emphasis, code or heading marks."""
+    return re.sub(r"\s+", " ", re.sub(r"(\*\*|__|[*_`]|^#+\s)", "", s or "")).strip()
+
+
 def owner_path() -> str:
     keep = []
     for part in os.environ.get("PATH", "").split(":"):
@@ -158,9 +163,14 @@ def which(name: str, path: str) -> str | None:
 def make_home(root: Path, key: str, keys: list[str]) -> Path:
     """A private HOME holding copies of just the logins `keys` need."""
     home = root / key
-    for sub in ("Library", "proj", ".config", ".local/share", ".cache"):
+    for sub in ("Library", "proj", ".config", ".local/share", ".cache", "state"):
         (home / sub).mkdir(parents=True, exist_ok=True)
     os.chmod(home, 0o700)
+    # The gate's chats stay in its own home: chat sync is chosen off, so
+    # nothing it says reaches the owner's account (and Coder doesn't ask).
+    sync = home / "state" / "sync.json"
+    if not sync.exists():
+        sync.write_text(json.dumps({"on": False, "chosen": True, "folder": str(home / "state")}))
 
     def copy(src: Path, dst_rel: str) -> None:
         if src.is_file():
@@ -173,9 +183,15 @@ def make_home(root: Path, key: str, keys: list[str]) -> Path:
         if src.is_file():
             dst = home / dst_rel
             dst.parent.mkdir(parents=True, exist_ok=True)
-            con = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
             out = sqlite3.connect(dst)
-            con.backup(out)
+            try:
+                con = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
+                con.backup(out)
+            except sqlite3.OperationalError:
+                # A WAL database whose -shm is gone (nothing has it open)
+                # can't open read-only; read it as an unchanging file.
+                con = sqlite3.connect(f"file:{src}?mode=ro&immutable=1", uri=True)
+                con.backup(out)
             out.close()
             con.close()
             os.chmod(dst, 0o600)
@@ -237,6 +253,12 @@ def make_home(root: Path, key: str, keys: list[str]) -> Path:
     return home
 
 
+SIGNIN_KEY_FILES = [
+    REAL_HOME / "work/.secrets/coder-gate-signin.env",
+    REAL_HOME / "work/.secrets/coder-acceptance.env",
+]
+
+
 def harness_env(home: Path, path: str, extra: dict | None = None) -> dict:
     env = {
         k: v
@@ -258,6 +280,9 @@ def harness_env(home: Path, path: str, extra: dict | None = None) -> dict:
         XDG_CONFIG_HOME=str(home / ".config"),
         XDG_DATA_HOME=str(home / ".local/share"),
         XDG_CACHE_HOME=str(home / ".cache"),
+        # Signed in with the gate's key, Coder must not pose as the owner's
+        # Mac: no check-in under its name, no replies taken from the web.
+        OPENAGENTS_COMPUTER_NAME="harness-acceptance-gate",
     )
     if extra:
         env.update(extra)
@@ -389,7 +414,14 @@ def answers(screen: str) -> list[str]:
 def picker_open(screen: str) -> bool:
     # Any boxed picker: Coder's own ("Pick model", "Pick reasoning level")
     # or a harness's model list, all with the same footer.
-    return "╭ Pick" in screen or "Pick model" in screen or ("╭" in screen and "Enter Select" in screen)
+    # A long list can push the footer off screen; the title still shows.
+    return (
+        "╭ Pick" in screen
+        or "Pick model" in screen
+        or "╭ Select model" in screen
+        or "╭ What runs here" in screen
+        or ("╭" in screen and "Enter Select" in screen)
+    )
 
 
 def read_picker(tui: Tui, limit=60) -> dict:
@@ -491,6 +523,21 @@ def atif_steps(doc: dict) -> list[dict]:
     return doc.get("steps", []) if isinstance(doc, dict) else []
 
 
+def devin_refused(home: Path, since: float) -> str:
+    """Devin's own log line, since `since`, saying the model Coder asked
+    for (`devin acp --model`) isn't one its server allows here."""
+    for f in sorted((home / ".local/share/devin/cli/logs").glob("*.log")):
+        try:
+            if f.stat().st_mtime < since:
+                continue
+            for line in f.read_text(errors="replace").splitlines():
+                if "`devin acp --model` value did not resolve" in line:
+                    return "`devin acp --model` value did not resolve to an available model"
+        except OSError:
+            pass
+    return ""
+
+
 def native_reasoning(key: str, home: Path, since: float) -> dict:
     """What the harness's own logs say it reasoned: tokens and any text."""
     tokens, texts = 0, []
@@ -576,10 +623,11 @@ def expectations(path: str, homes_root: Path) -> dict:
         except (OSError, ValueError):
             pass
         configured = ((conf.get("agent") or {}).get("model")) or ""
+        # Coder runs the model the person configured for Devin, else its
+        # own SWE-2 Medium (owner, 2026-10-13).
         exp["devin-cli"] = {
-            "default": configured or "swe-2",
-            "family": "swe-2",
-            "rule": f"configured `{configured}` (devin config), SWE-2 family" if configured else "SWE-2 family",
+            "default": configured or "swe-2-medium",
+            "rule": f"configured `{configured}` (devin config)" if configured else "Coder's SWE-2 Medium (nothing configured)",
             "catalog": ids,
             "names": names,
         }
@@ -608,13 +656,19 @@ def expectations(path: str, homes_root: Path) -> dict:
         run(["opencode", "models"], env=env, timeout=120)
         code, out = run(["opencode", "models", "--verbose"], env=env, timeout=120)
         ids = [l.strip() for l in out.splitlines() if re.match(r"^[\w.-]+/\S+$", l.strip())]
-        configured = ""
+        configured, display = "", ""
         try:
-            configured = json.loads((REAL_HOME / ".config/opencode/opencode.json").read_text()).get("model", "")
-        except (OSError, ValueError):
+            conf = json.loads((REAL_HOME / ".config/opencode/opencode.json").read_text())
+            configured = conf.get("model", "")
+            if "/" in configured:
+                prov, mid = configured.split("/", 1)
+                display = (((conf.get("provider") or {}).get(prov) or {}).get("models") or {}).get(mid, {}).get("name", "")
+        except (OSError, ValueError, AttributeError):
             pass
         exp["opencode"] = {
             "default": configured,
+            # Its name in the person's opencode.json, as OpenCode shows it.
+            "display": display,
             "rule": f"configured `{configured}` (opencode.json)" if configured else "OpenCode's own default (a free model)",
             "catalog": ids,
         }
@@ -634,6 +688,8 @@ def expectations(path: str, homes_root: Path) -> dict:
             "never": r"clef",
             "rule": "a chat-capable model, never clef*",
             "catalog": ids,
+            # Signed in to nothing that chats: only the Clef decision models.
+            "no_chat": code == 0 and all(re.search(r"clef", i, re.I) for i in ids),
         }
     exp["claude-code"] = {
         "default": os.environ.get("HACC_CLAUDE_DEFAULT", "claude-haiku-5-5"),
@@ -686,6 +742,9 @@ class Run:
 
     def na(self, check, evidence):
         self.results[check] = ("n/a", evidence)
+
+    def skip(self, check, evidence):
+        self.results[check] = ("skipped", evidence)
 
     def save(self, name, text):
         (self.ev / name).write_text(text if isinstance(text, str) else json.dumps(text, indent=2))
@@ -741,6 +800,10 @@ class Run:
         env = harness_env(self.home, self.path)
         self.seed_state()
         signed_in = self.login(env)
+        if signed_in:
+            # The isolated run sees the key as OPENAGENTS_TOKEN too, as the
+            # tools Coder starts (openagents …) read it.
+            env["OPENAGENTS_TOKEN"] = self.signin
         self.facts["signed_in"] = signed_in
         if self.spec.get("gateway") and not signed_in:
             for c in CHECKS:
@@ -942,6 +1005,7 @@ class Run:
             self.ok("click-model", f"showed `{words(shown)[-50:]}`, gone after 4 s, not in the export")
 
     def models_check(self, check: str, p: dict, r: dict | None) -> None:
+        self.facts[f"{check}-screen"] = words(p.get("screen") or "")
         if not p.get("opened"):
             self.fail(check, f"/models didn't open a picker: “{p.get('notice', '')[:140]}”")
             return
@@ -995,7 +1059,33 @@ class Run:
         times = ", ".join(f"{t['secs']}s" for t in turns)
         if len(turns) < len(PROMPTS) and not bad:
             bad.append("stopped early")
-        if bad:
+        # OpenCode on the owner's configured model, refused by that model's
+        # provider on every turn ("Update Required" from a third-party
+        # Cursor proxy, 2026-10-13): the owner's provider to fix, not
+        # Coder's. Coder must show the provider's words plainly and add
+        # nothing to the chat.
+        diags = [str(((t["ended"] or {}).get("ended") or {}).get("diagnostic") or "") for t in turns]
+        ends = [((t["ended"] or {}).get("ended") or {}).get("ended") for t in turns]
+        self.refused = ""
+        if (
+            self.key == "opencode"
+            and turns
+            and len(turns) == len(PROMPTS)
+            and all(e == "error" for e in ends)
+            and diags[0]
+            and all(d == diags[0] for d in diags)
+        ):
+            said = re.sub(r"^OpenCode:\s*", "", diags[0])
+            screen = words(" ".join(transcript(turns[-1]["final"])))
+            plain = '{"' not in screen and words(said)[:30].replace("[path]", "") in screen.replace("[path]", "")
+            if plain or words(said)[:30] in screen:
+                self.refused = said
+        if self.refused:
+            self.skip(
+                "answer",
+                f"OpenCode's configured model `{self.exp.get('default')}` is refused by its provider on every turn: “{self.refused[:140]}”. Coder shows it plainly. Owner: update or replace that provider in OpenCode (NEEDS_OWNER.md)",
+            )
+        elif bad:
             self.fail("answer", "; ".join(bad) + f" (times {times})")
         else:
             first = answers(turns[0]["final"])
@@ -1003,7 +1093,8 @@ class Run:
         # models that ran
         ran = [((t["ended"] or {}).get("ended") or {}).get("model") or "" for t in turns]
         ran = [m or "" for m in ran]
-        export_models = [st.get("model_name") or "" for st in agent_msgs]
+        # The replies' models: a thinking step ahead of a reply isn't one.
+        export_models = [st.get("model_name") or "" for st in agent_msgs if str(st.get("message") or "").strip()]
         model = ran[0] or (export_models[0] if export_models else "") or (export.get("agent") or {}).get("model_name", "")
         self.facts["models_ran"] = ran
         self.facts["export_models"] = export_models
@@ -1039,6 +1130,13 @@ class Run:
             self.na("default-model", f"no single default; ran `{model}`")
         elif not model:
             self.fail("default-model", "no model recorded for the turn")
+        elif self.key == "devin-cli" and norm(strip_params(model)) != norm(e.get("default", "")) and (refused := devin_refused(self.home, start)):
+            # Coder asked for the model (`devin acp --model`); Devin's own
+            # server refused it for this account. Not Coder's to fix.
+            self.skip(
+                "default-model",
+                f"Devin's server here won't run `{e.get('default')}` for Coder (its log: “{refused}”), so `{model}` ran and the rail says so. Owner: allow it for the Devin account (NEEDS_OWNER.md)",
+            )
         elif e.get("never") and re.search(e["never"], model, re.I):
             self.fail("default-model", f"ran `{model}` ({e['rule']})")
         elif e.get("family") and not (norm(model).startswith(norm(e["family"])) or norm(strip_params(model)) == norm(e.get("default", ""))):
@@ -1059,7 +1157,8 @@ class Run:
             for call in ((st.get("extra") or {}).get("model_calls") or []):
                 reasoning_tokens = max(reasoning_tokens, int(call.get("reasoning_tokens") or 0))
             reasoning_tokens = max(reasoning_tokens, int(((st.get("metrics") or {}).get("extra") or {}).get("reasoning_tokens") or 0))
-        frames = " ".join(words(" ".join(transcript(f))) for t in turns for f in t["frames"])
+        # Coder draws the thinking as Markdown: `**Bold**` shows as `Bold`.
+        frames = unmark(" ".join(words(" ".join(transcript(f))) for t in turns for f in t["frames"]))
         self.facts["reasoning_tokens"] = reasoning_tokens
         if not texts and reasoning_tokens == 0:
             self.na("thinking", "the model reported no reasoning")
@@ -1068,7 +1167,7 @@ class Run:
         else:
             found = False
             for text in texts:
-                w = words(text).split(" ")
+                w = unmark(words(text)).split(" ")
                 for i in range(0, max(1, len(w) - 4)):
                     frag = " ".join(w[i : i + 4])
                     if len(frag) > 12 and frag in frames:
@@ -1102,7 +1201,8 @@ class Run:
         for t in turns:
             c = (t["ended"] or {}).get("chose") or {}
             en = (t["ended"] or {}).get("ended") or {}
-            lanes.append((c.get("harness") or en.get("harness"), strip_params(en.get("model") or ""), c.get("payer")))
+            # Who actually paid, as the turn's end records it.
+            lanes.append((c.get("harness") or en.get("harness"), strip_params(en.get("model") or ""), en.get("payer") or c.get("payer")))
         self.facts["lanes"] = lanes
         if len(set(lanes)) > 1:
             picked = self.facts.get("picked_mid_chat", {})
@@ -1130,7 +1230,7 @@ class Run:
             for n, (a, b) in enumerate(zip(ran, export_models), 1):
                 if a and b and strip_params(a) != strip_params(b):
                     mism.append(f"turn {n}: ran `{a}`, export says `{b}`")
-            if len(agent_msgs) < len(turns):
+            if len(agent_msgs) < len(turns) and not self.refused:
                 mism.append(f"{len(agent_msgs)} agent steps for {len(turns)} turns")
         if mism:
             self.fail("export", "; ".join(mism)[:300])
@@ -1150,9 +1250,24 @@ class Run:
         else:
             self.ok("model-calls", f"{len(calls)} calls, each with a model and duration")
         # prompt tokens
+        # The first turn's first model call: a thinking step ahead of the
+        # reply carries no metrics of its own.
         first_prompt = None
-        if agent_msgs:
-            first_prompt = (agent_msgs[0].get("metrics") or {}).get("prompt_tokens")
+        first_turn = []
+        for st in steps[1:]:
+            if st.get("source") == "user":
+                break
+            first_turn.append(st)
+        for st in first_turn:
+            calls_here = (st.get("extra") or {}).get("model_calls") or []
+            if calls_here and calls_here[0].get("prompt_tokens") is not None:
+                first_prompt = calls_here[0]["prompt_tokens"]
+                break
+            if (st.get("metrics") or {}).get("prompt_tokens") is not None:
+                first_prompt = st["metrics"]["prompt_tokens"]
+                break
+        if first_prompt == 0:
+            first_prompt = None
         self.facts["first_prompt_tokens"] = first_prompt
         lane = lanes[0][0] if lanes else None
         if self.key == "coder-loop" or (self.key == "auto" and lane == "coder-loop"):
@@ -1174,6 +1289,47 @@ class Run:
                 self.na("billing", f"payer `{payer}`; the Claude-model billing turn needs the signed-in run")
         else:
             self.na("billing", "Coder loop only")
+        if self.exp.get("no_chat"):
+            self.no_chat_checks(turns, r0, rail_after)
+        if self.refused:
+            self.skip("click-model", "no reply to click: the provider refused every turn (see answer)")
+
+    def no_chat_checks(self, turns, r0, rail_after) -> None:
+        """Oh My Pi with no chat-capable model signed in (`omp models` lists
+        only clef*): nothing can answer, which is the owner's login to add,
+        not Coder's to fix. Coder must say so plainly, on screen and on the
+        rail, and never name a Clef model."""
+        why = (
+            "Oh My Pi has no chat-capable model signed in on this Mac (`omp models` lists only "
+            + ", ".join(self.exp.get("catalog") or ["nothing"])
+            + "), so it can't answer. Owner: sign in to a provider in Oh My Pi (NEEDS_OWNER.md)"
+        )
+        plain = "no model here that can chat"
+        screens = " ".join(words(t["final"]) for t in turns)
+        if turns and plain in screens and not re.search(r"\bclef", " ".join(transcript(turns[-1]["final"])), re.I):
+            self.skip("answer", why + "; every turn said so plainly")
+        else:
+            self.fail("answer", "no chat model here, and the screen didn't say so plainly")
+        rails = [r for r in (r0, rail_after) if r]
+        heads = [r.get("head") or r.get("label") or "" for r in rails]
+        # A new chat's rail may name no model while Oh My Pi's list is read;
+        # after a turn it must say there's none, and never name a Clef one.
+        if (
+            heads
+            and "no chat model" in heads[-1]
+            and all(not re.search(r"clef", h, re.I) and (h.endswith("(no chat model)") or "(" not in h) for h in heads)
+        ):
+            self.ok("rail", f"`{heads[-1]}`")
+        else:
+            self.fail("rail", "the rail should say there's no chat model, never a Clef model: " + "; ".join(f"`{h}`" for h in heads))
+        for check in ("default-model", "thinking", "export", "click-model"):
+            self.skip(check, why)
+        for check in ("models-new", "models-turn"):
+            notice = self.facts.get(f"{check}-screen", "")
+            if plain in notice:
+                self.ok(check, "/models says plainly that Oh My Pi has no model here that can chat")
+            elif self.results.get(check, ("",))[0] != "pass":
+                self.fail(check, "/models on Oh My Pi with no chat model didn't say so plainly")
 
     def usage_check(self, r: dict | None) -> None:
         if self.key not in ("codex", "claude-code"):
@@ -1436,9 +1592,7 @@ def projects_run(coder, root, path, signin, evidence, turn_timeout) -> dict:
     elif not os.access(oa, os.X_OK):
         out["projects-live"] = ["n/a", f"no openagents next to {coder}"]
     else:
-        code, text = run([str(oa), "projects", "list"], env=harness_env(r.home, path, {"OPENAGENTS_TOKEN": signin}), timeout=60)
-        (ev / "live-list.txt").write_text(re.sub(r"oa_sk_\w+", "oa_sk_…", text))
-        out["projects-live"] = ["pass", "projects list read"] if code == 0 else ["fail", f"projects list exited {code}: {text.strip()[:120]}"]
+        out["projects-live"] = projects_live(oa, harness_env(r.home, path, {"OPENAGENTS_TOKEN": signin}), ev)
     # A local or test server: the full flow.
     origin, token = os.environ.get("HACC_PROJECTS_ORIGIN"), os.environ.get("HACC_PROJECTS_TOKEN")
     if not (origin and token):
@@ -1446,6 +1600,55 @@ def projects_run(coder, root, path, signin, evidence, turn_timeout) -> dict:
     else:
         out["projects-local"] = projects_local(origin.rstrip("/"), token, ev)
     return out
+
+
+def projects_live(oa: Path, env: dict, ev: Path) -> list:
+    """The live account: list, then make a `zz-gate-*` project with just a
+    name, see it listed with no chats, and remove it. The gate touches only
+    `zz-gate-*` projects, never a chat."""
+    log = []
+
+    def call(*args):
+        code, text = run([str(oa), "--json", "projects", *args], env=env, timeout=60)
+        shown = re.sub(r"oa_sk_\w+", "oa_sk_…", text)
+        log.append(f"$ openagents projects {' '.join(args)}\n{code}\n{shown}")
+        try:
+            return code, json.JSONDecoder().raw_decode(text[text.index("{"):])[0]
+        except ValueError:
+            return code, text
+
+    def listed(doc):
+        return doc.get("data", []) if isinstance(doc, dict) else []
+
+    try:
+        code, doc = call("list")
+        if code != 0:
+            return ["fail", f"projects list exited {code}: {str(doc).strip()[:120]}"]
+        # Leftovers of an earlier, interrupted gate run.
+        for p in listed(doc):
+            if str(p.get("name", "")).startswith("zz-gate-") and p.get("id"):
+                call("remove", p["id"])
+        name = f"zz-gate-{time.strftime('%Y%m%d-%H%M%S')}"
+        code, made = call("create", name)
+        pid = made.get("id") if isinstance(made, dict) else None
+        if code != 0 or not pid:
+            return ["fail", f"creating {name} with just a name: {code} {str(made)[:120]}"]
+        bad = []
+        code, doc = call("list")
+        row = next((p for p in listed(doc) if p.get("id") == pid), None)
+        if not row:
+            bad.append(f"{name} isn't in the list")
+        elif (row.get("threads") or row.get("thread_count") or row.get("chats") or 0) not in (0, [], None):
+            bad.append(f"{name} has chats: {row.get('threads') or row.get('thread_count') or row.get('chats')}")
+        code, gone = call("remove", pid)
+        if code != 0:
+            bad.append(f"removing {name}: {code} {str(gone)[:100]}")
+        code, doc = call("list")
+        if any(p.get("id") == pid for p in listed(doc)):
+            bad.append(f"{name} is still listed after remove")
+        return ["fail", "; ".join(bad)] if bad else ["pass", f"listed, made `{name}` with just a name, removed it"]
+    finally:
+        (ev / "live.txt").write_text("\n\n".join(log))
 
 
 def projects_local(origin: str, token: str, ev: Path) -> list:
@@ -1654,7 +1857,9 @@ def main() -> int:
     ap.add_argument("--jobs", type=int, default=3)
     ap.add_argument("--keep", action="store_true")
     ap.add_argument("--list", action="store_true")
-    ap.add_argument("--signin-key-file", default=str(REAL_HOME / "work/.secrets/coder-acceptance.env"))
+    # The gate's own sign-in key ("harness-acceptance-gate" on the owner's
+    # account), never committed: the first of these files that exists.
+    ap.add_argument("--signin-key-file", default="")
     ap.add_argument("--prompt-budget", type=int, default=int(os.environ.get("HACC_PROMPT_BUDGET", "5000")))
     ap.add_argument("--turn-timeout", type=int, default=240)
     ap.add_argument("--fresh-state", action="store_true", help="don't start from the owner's harness facts")
@@ -1694,7 +1899,9 @@ def main() -> int:
         say(f"warning: no {' or '.join(missing)} beside {coder}; tools that call them fail as on a broken install")
 
     signin = ""
-    kf = Path(a.signin_key_file).expanduser()
+    kf = Path(a.signin_key_file).expanduser() if a.signin_key_file else next(
+        (f for f in SIGNIN_KEY_FILES if f.is_file()), SIGNIN_KEY_FILES[0]
+    )
     if kf.is_file():
         for line in kf.read_text().splitlines():
             mm = re.match(r"^\s*(?:export\s+)?OPENAGENTS_TOKEN=['\"]?(oa_sk_[^'\"\s]+)", line)

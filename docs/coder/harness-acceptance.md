@@ -30,6 +30,11 @@ copied. Claude Code reads the login Keychain through a link, as
 `scripts/release/acceptance.sh` does. The gate never writes to
 `~/.openagents` or to a harness's own folders.
 
+Signed in with the gate's key, Coder runs as its own computer,
+`harness-acceptance-gate` (`OPENAGENTS_COMPUTER_NAME`), with chat sync chosen
+off in its `sync.json`. Its chats stay in its temporary home and never reach
+the owner's account, and it never takes replies typed on the website.
+
 Nothing the gate starts can open a browser or an interactive sign-in. Every
 process gets `BROWSER=true` and `NO_OPEN_BROWSER=1`. Cursor runs only when
 `cursor-agent status --format json` reports it signed in inside the isolated
@@ -51,12 +56,12 @@ Checks for each harness:
 | --- | --- |
 | answer | Every turn ends with a non-empty reply on screen. The time is recorded. |
 | rail | The rail reads `Harness (Model display name)` and names the model that actually ran. A raw id or slug (`[fast=true]`, `opencode/big-pickle`, "Swe 1 6 Slow") fails. |
-| default-model | The model that ran is the harness's intended default, read from the harness's own CLI or config: Grok uses the `grok models` default, Devin uses its configured SWE-2 model, Cursor uses `cursor-agent`'s selected model, OpenCode uses `opencode.json`'s model, and Oh My Pi uses any chat-capable model but never `clef*`. Codex and Claude use Coder's own defaults. |
+| default-model | The model that ran is the harness's intended default, read from the harness's own CLI or config: Grok uses the `grok models` default, Devin uses the model configured in Devin's `config.json` (else Coder's SWE-2 Medium), Cursor uses `cursor-agent`'s selected model, OpenCode uses `opencode.json`'s model, and Oh My Pi uses any chat-capable model but never `clef*`. Codex and Claude use Coder's own defaults. |
 | thinking | When the model reported reasoning (in the export or the harness's own session log), the reasoning text appeared in the transcript. |
 | clean | The replies, the transcript and the export hold only the conversation. They contain no "doesn't ask before every step" notice, no "New chat…" line, no raw HTTP error and no log path. |
 | models-new | `/models` in a new chat with the harness picked, before any message, lists that harness's own catalog. |
 | models-turn | The same after a turn. The current model is marked, and OpenCode lists free models first. |
-| one-lane | Every turn in the chat ran on the same harness, model and payer, even after another model was picked mid-chat. |
+| one-lane | Every turn in the chat ran on the same harness, model and payer (as each turn's end records it), even after another model was picked mid-chat. |
 | shift-tab | Shift+Tab after a turn doesn't switch the chat's harness. |
 | export | The `/export` ATIF matches the screen: the prompts, the replies and the models. |
 | ctrl-n | Ctrl+N leaves the new chat's transcript empty. |
@@ -81,9 +86,28 @@ Other scenarios:
 A harness that isn't installed shows as "not installed", and a check that
 doesn't apply shows as "n/a". Neither counts as a pass. The Coder-loop checks
 need an OpenAgents sign-in key just for the gate: an `oa_sk_` key saved as
-`OPENAGENTS_TOKEN=…` in `~/work/.secrets/coder-acceptance.env`, which
-`--signin-key-file` can override. Without the key, those checks are skipped
-and the report says so.
+`OPENAGENTS_TOKEN=…` in `~/work/.secrets/coder-gate-signin.env` (or the older
+`~/work/.secrets/coder-acceptance.env`), which `--signin-key-file` can
+override. The gate signs each isolated run in with it (`coder login --key`
+into the run's own state) and gives the run `OPENAGENTS_TOKEN`; it is never
+written into a committed file. Without the key, those checks are skipped
+and the report says so. The live projects check makes and removes only
+`zz-gate-*` projects, with no chats in them.
+
+"Skipped" is only for what the gate can't test on this Mac, never a failure
+Coder could fix. Each skip names the owner's step:
+
+- Cursor, when `cursor-agent` has no login that works headless.
+- Oh My Pi's chat checks, when `omp models` lists only the Clef decision
+  models: nothing can chat. Coder must still say so on the rail
+  ("Oh My Pi (no chat model)") and on each turn, and never name Clef.
+- OpenCode's chat checks, when the provider behind the model in
+  `opencode.json` refuses every turn the same way (a third-party Cursor
+  proxy's "Update Required", 2026-10-13). Coder must show the provider's own
+  words plainly, add no turn of its own, and run the configured model.
+- Devin's default-model, when Devin's own log says the model Coder asked for
+  (`devin acp --model`) "did not resolve to an available model" for the
+  account. Coder asked for the right one; the rail names the one Devin ran.
 
 ## Where it is required
 
