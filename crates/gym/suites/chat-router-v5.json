@@ -3,7 +3,7 @@
   "name": "chat-router-v5",
   "description": "The chat router's labeled route set for chat-router-v5 (#10157), from crates/coder/fixtures/chat-router/routes-v5.json: the v4 rows and rows for the standing.rule route and its near misses, across 21 routes, labeled with the route a correct router takes. The fixture's held-out rows are the locked partition.",
   "created": "2026-10-02",
-  "digest": "2ef2369015eb6fb7a24411756cbe129442f15edd078f2db28e5b0f4cf84d6450",
+  "digest": "f62a1cba852b170122787603f23da34377550b48f25b4ea159b31298648d9ebc",
   "tier": "scored",
   "gate": "router-v1",
   "questions": "chat-router-route-v6",
@@ -20104,6 +20104,60 @@
       },
       "truth": "meta",
       "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/check-and-question-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "Second test message. What's 2 plus 2?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "Second test message. What's 2 plus 2?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/check-and-question-002",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "testing. can you explain what a mutex is?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "testing. can you explain what a mutex is?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/check-and-question-003",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "hi! what's the capital of France?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "hi! what's the capital of France?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
       "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
     }
   ]
