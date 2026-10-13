@@ -444,6 +444,59 @@ fn setting_the_cancel_flag_stops_a_running_guest() {
     );
 }
 
+/// Guests share the process's engine (#11513): cancelling one leaves
+/// another running guest alone.
+#[test]
+fn cancelling_one_guest_leaves_another_running() {
+    let spin = wat::parse_str(
+        r#"
+        (module
+          (memory (export "memory") 1)
+          (func (export "oa_alloc") (param i32) (result i32) (i32.const 100))
+          (func (export "oa_free") (param i32 i32))
+          (func (export "oa_handle") (param i32 i32) (result i64)
+            (loop $again (br $again))
+            (i64.const 0)))
+        "#,
+    )
+    .unwrap();
+    let guest = |fuel: u64, flag: Arc<AtomicBool>| {
+        let spin = spin.clone();
+        std::thread::spawn(move || {
+            let started = std::time::Instant::now();
+            let outcome = invoke(plugin::Call {
+                wasm: &spin,
+                profile: Profile::Pure,
+                invocation: "inv-1",
+                operation: "echo",
+                input: &json!(null),
+                snapshot: &Snapshot::default(),
+                handles: &BTreeMap::new(),
+                limits: Limits {
+                    fuel,
+                    ..Limits::default()
+                },
+                cancelled: flag,
+                required: true,
+            });
+            (outcome, started.elapsed())
+        })
+    };
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let stopped = guest(u64::MAX / 2, Arc::clone(&cancelled));
+    let kept = guest(4_000_000_000, Arc::new(AtomicBool::new(false)));
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    cancelled.store(true, std::sync::atomic::Ordering::SeqCst);
+    let (outcome, _) = stopped.join().unwrap();
+    assert!(matches!(outcome, Err(HostError::Cancelled)), "{outcome:?}");
+    let (outcome, elapsed) = kept.join().unwrap();
+    assert_eq!(outcome, Err(HostError::Limit("fuel".into())));
+    assert!(
+        elapsed > std::time::Duration::from_millis(50),
+        "{elapsed:?}"
+    );
+}
+
 #[test]
 fn a_listed_child_is_readable_through_its_minted_handle() {
     let body = ok_body();

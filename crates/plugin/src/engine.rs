@@ -191,37 +191,28 @@ pub(crate) fn metered_with(
     if call.cancelled.load(Ordering::SeqCst) {
         return (Err(HostError::Cancelled), 0);
     }
-    // `replay::ENGINE` names this configuration. Change both together.
-    let mut config = wasmtime::Config::new();
-    config.consume_fuel(true);
-    config.epoch_interruption(true);
-    // On macOS, Wasmtime's default trap handler is a Mach-port thread that
-    // receives with `MACH_RCV_INTERRUPT` and aborts the process when the
-    // receive is interrupted. The host installs a SIGCHLD handler to reap
-    // child processes, so a child exiting while the kernel delivers that
-    // signal to the trap thread killed the whole host with SIGABRT. Unix
-    // signal handlers trap guests the same way and survive other signals.
-    // Trap delivery does not change guest results, so `replay::ENGINE`
-    // keeps its name. Every engine in a process must agree on this.
-    config.macos_use_mach_ports(false);
-    let engine = match Engine::new(&config) {
-        Ok(engine) => engine,
-        Err(error) => return (Err(HostError::Failed(error.to_string())), 0),
+    // One engine per process, its compiled modules kept by digest (#11513);
+    // the configuration `replay::ENGINE` names is in `modules`.
+    let modules = match crate::modules::shared() {
+        Ok(modules) => modules,
+        Err(error) => return (Err(error), 0),
     };
+    let engine = modules.engine();
     let cancelled = Arc::clone(&call.cancelled);
     let done = AtomicBool::new(false);
     std::thread::scope(|scope| {
-        let watcher = scope.spawn(|| interrupt_on_cancel(&engine, &cancelled, &done));
+        let watcher = scope.spawn(|| interrupt_on_cancel(engine, &cancelled, &done));
         let mut fuel = 0;
-        let outcome = run_guest(&engine, call, host, &mut fuel);
+        let outcome = run_guest(modules, call, host, &mut fuel);
         done.store(true, Ordering::SeqCst);
         watcher.thread().unpark();
         (outcome, fuel)
     })
 }
 
-/// Bumps the engine's epoch once the cancel flag is set, which traps a
-/// running guest, and returns when the invocation is done.
+/// Bumps the engine's epoch once the cancel flag is set, which reaches
+/// every guest running on the engine; each checks its own flag and only
+/// the cancelled one traps. Returns when the invocation is done.
 fn interrupt_on_cancel(engine: &Engine, cancelled: &AtomicBool, done: &AtomicBool) {
     while !done.load(Ordering::SeqCst) {
         if cancelled.load(Ordering::SeqCst) {
@@ -233,7 +224,7 @@ fn interrupt_on_cancel(engine: &Engine, cancelled: &AtomicBool, done: &AtomicBoo
 }
 
 fn run_guest(
-    engine: &Engine,
+    modules: &crate::modules::Modules,
     call: Call<'_>,
     host: Option<HostCalls>,
     fuel: &mut u64,
@@ -250,8 +241,8 @@ fn run_guest(
         cancelled,
         required,
     } = call;
-    let module =
-        Module::new(engine, wasm).map_err(|error| HostError::Malformed(error.to_string()))?;
+    let engine = modules.engine();
+    let module = modules.module(wasm)?;
     check_imports(&module, profile)?;
     let state = GuestState {
         snapshot: snapshot.clone(),
@@ -299,6 +290,15 @@ fn drive(
     // bump that landed before this deadline was set would not trap, so the
     // flag is read again after it.
     store.set_epoch_deadline(1);
+    // The engine is shared: another invocation's cancel bumps the epoch
+    // too, and this guest runs on unless its own flag is set.
+    store.epoch_deadline_callback(|guest| {
+        if guest.data().cancelled.load(Ordering::SeqCst) {
+            Err(Trap::Interrupt.into())
+        } else {
+            Ok(wasmtime::UpdateDeadline::Continue(1))
+        }
+    });
     if cancelled.load(Ordering::SeqCst) {
         return Err(HostError::Cancelled);
     }

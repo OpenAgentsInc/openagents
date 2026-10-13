@@ -9,6 +9,7 @@
 
 mod engine;
 mod memory;
+mod modules;
 mod replay;
 pub mod scope;
 mod snapshot;
@@ -17,6 +18,7 @@ pub use engine::{
     BuildReceipt, Call, GuestValue, HostCalls, HostError, Limits, Profile, build_receipt, digest,
     invoke, invoke_with_host, representation,
 };
+pub use modules::{ModuleStats, module_stats};
 pub use replay::{
     ENGINE, EXACT_REPLAY, InvocationReceipt, Outcome, RECEIPT_SCHEMA, Replay, canonical,
     invoke_with_receipt, invoke_with_receipt_and_host, replay, replay_with_host, snapshot_digest,

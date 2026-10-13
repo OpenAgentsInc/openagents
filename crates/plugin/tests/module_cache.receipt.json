@@ -1,0 +1,24 @@
+{
+  "engine": "wasmtime/48.0.5+consume_fuel+epoch_interruption",
+  "fuel_consumed": 57417,
+  "input": "sha256:ca92e86cb60314c2b29a4dd9cf2caa35f2b498b6accf9f49f00670a2ade8d9b3",
+  "invocation": "hook-cache-1",
+  "limits": {
+    "fuel": 1000000,
+    "memory_bytes": 8388608,
+    "module_bytes": 2097152,
+    "output_bytes": 65536,
+    "read_bytes": 65536
+  },
+  "module": "sha256:86998c2bc55b4e4e4735e34913195e9cca616743c6794f67226e5cc8d75ffc0d",
+  "operation": "guard",
+  "outcome": {
+    "output": "sha256:6969e29b83420a5fdf969e93a5d1144c74f35db928ced846ed68af7962b77308",
+    "status": "ok",
+    "type": "value"
+  },
+  "profile": "snapshot-read",
+  "required": false,
+  "schema": "openagents.plugin-invocation-receipt.v1",
+  "snapshot": "sha256:2974f053e1916aa8e28ef8e10d221c532e845fe498651e2479383b9f9b8ff09b"
+}
