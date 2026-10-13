@@ -1,7 +1,6 @@
 // The phone's shell (#11126), as on iOS (Shell.swift): the top bar (menu,
-// the Coder / Verse switch, new chat), the feature cards on a new chat, the
-// drawer with the main places and recent chats, and the link cards under
-// replies. Rust owns the state (`coder_tab::shell`, the packet's `shell`
+// the Coder / Verse switch, new chat), the drawer with the main places and
+// recent chats, and the link cards under replies. Rust owns the state (`coder_tab::shell`, the packet's `shell`
 // and `links`); this file draws it and sends the person's taps back as
 // shell actions.
 package com.openagents.app
@@ -22,10 +21,6 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.TextView
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.LinearSnapHelper
-import androidx.recyclerview.widget.RecyclerView
 import org.json.JSONObject
 
 /** A round 44 dp button with a glyph; its label is the spoken name. */
@@ -98,232 +93,6 @@ internal class ShellTopBar(private val context: Context, private val bridge: Mob
                 isClickable = true; isFocusable = true
                 setOnClickListener { bridge.shell("switch", "verse" to (title == "Verse")) }
             }, LinearLayout.LayoutParams(-2, context.dp(38)))
-        }
-    }
-}
-
-/**
- * When the feature cards move on by themselves: the same rules as Rust's
- * `carousel::AutoScroll` (one card each dwell, nothing while a finger is
- * down, a pause after it lifts, never with animations off).
- */
-internal class CarouselClock(var dwellMs: Long, var resumeMs: Long, var reduceMotion: Boolean, now: Long) {
-    private var touching = false
-    private var since = now
-
-    fun touch() { touching = true }
-
-    fun release(now: Long) { touching = false; since = now + resumeMs }
-
-    fun step(now: Long): Boolean {
-        if (reduceMotion || touching || now < since + dwellMs) return false
-        since = now
-        return true
-    }
-}
-
-/**
- * The feature cards on a new chat: a fan of tilted cards to swipe through
- * (the row repeats, so there are cards on both sides), the centered card's
- * headline and line, and **Try it**. It opens on the card Rust picks and
- * moves on by itself ([CarouselClock]).
- */
-internal class HomeCards(private val context: Context, private val tryIt: (String) -> Unit) {
-    private data class Card(val id: String, val title: String, val line: String)
-
-    val root = context.column().apply { gravity = Gravity.CENTER_HORIZONTAL }
-    private var cards: List<Card> = emptyList()
-    private var encoded: String? = null
-    private val side = context.dp(SIDE_DP)
-    private val list = RecyclerView(context)
-    private val manager = LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false)
-    private val snap = LinearSnapHelper()
-    private val title = context.text("", 19f).apply {
-        typeface = Fonts.typeface(context, Fonts.BOLD); gravity = Gravity.CENTER
-    }
-    private val line = context.text("", 15f, Palette.SECONDARY).apply { gravity = Gravity.CENTER }
-    private val tryButton = context.pill("Try it") { current()?.let { tryIt(it.id) } }
-    private var centered = -1
-    private var started = false
-    /** The card Rust opens the carousel on, by index. */
-    private var start = 0
-    private var clock = CarouselClock(3_500, 4_000, false, now())
-    private val ticker = object : Runnable {
-        override fun run() {
-            if (root.isAttachedToWindow && root.isShown && clock.step(now())) advance()
-            root.postDelayed(this, 250)
-        }
-    }
-
-    private fun now() = android.os.SystemClock.uptimeMillis()
-
-    /** The middle copy's position of the start card. */
-    private fun startPosition() = cards.size * (COPIES / 2) + start.coerceIn(0, (cards.size - 1).coerceAtLeast(0))
-
-    /** One card on, smoothly; near the end of the copies it first jumps back to the same card's middle copy. */
-    private fun advance() {
-        if (cards.isEmpty() || centered < 0) return
-        if (centered >= cards.size * (COPIES - 1)) {
-            manager.scrollToPositionWithOffset(cards.size * (COPIES / 2) + centered % cards.size, 0)
-            list.post { tilt(); list.smoothScrollBy(side + context.dp(22), 0) }
-            return
-        }
-        list.smoothScrollBy(side + context.dp(22), 0)
-    }
-
-    private val adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-        override fun getItemCount() = cards.size * COPIES
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder =
-            object : RecyclerView.ViewHolder(FrameLayout(parent.context).apply {
-                layoutParams = RecyclerView.LayoutParams(side, side).apply {
-                    marginStart = context.dp(11); marginEnd = context.dp(11)
-                }
-                elevation = context.dpf(10f)
-                outlineProvider = object : ViewOutlineProvider() {
-                    override fun getOutline(view: View, outline: Outline) =
-                        outline.setRoundRect(0, 0, view.width, view.height, context.dpf(20f))
-                }
-                addView(ImageView(parent.context).apply {
-                    scaleType = ImageView.ScaleType.FIT_CENTER
-                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                }, FrameLayout.LayoutParams(context.dp(40), context.dp(40), Gravity.CENTER))
-                isClickable = true; isFocusable = true
-            }) {}
-
-        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-            val card = cards[position % cards.size]
-            val view = holder.itemView as FrameLayout
-            // Coder Noir: the theme's raised gray, a hairline edge, no hue.
-            view.background = context.rounded(Palette.RAISED, 20f, Palette.BORDER)
-            (view.getChildAt(0) as ImageView).apply { setImageResource(look(card.id)); setColorFilter(Palette.PRIMARY) }
-            view.contentDescription = card.title
-            view.tag = "shell-card-${card.id}"
-            view.setOnClickListener { center(holder.bindingAdapterPosition, true); clock.release(now()) }
-        }
-    }
-
-    init {
-        list.layoutManager = manager
-        list.adapter = adapter
-        list.clipToPadding = false
-        list.clipChildren = false
-        list.overScrollMode = View.OVER_SCROLL_NEVER
-        list.itemAnimator = null
-        snap.attachToRecyclerView(list)
-        // A finger on the cards stops them; they move again a while after it lifts.
-        list.addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
-            override fun onInterceptTouchEvent(view: RecyclerView, event: android.view.MotionEvent): Boolean {
-                when (event.actionMasked) {
-                    android.view.MotionEvent.ACTION_DOWN -> clock.touch()
-                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> clock.release(now())
-                }
-                return false
-            }
-        })
-        root.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-            override fun onViewAttachedToWindow(view: View) { root.removeCallbacks(ticker); root.postDelayed(ticker, 250) }
-            override fun onViewDetachedFromWindow(view: View) { root.removeCallbacks(ticker) }
-        })
-        list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrolled(view: RecyclerView, dx: Int, dy: Int) = tilt()
-            override fun onScrollStateChanged(view: RecyclerView, state: Int) {
-                if (state == RecyclerView.SCROLL_STATE_IDLE) tilt()
-            }
-        })
-        list.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
-            if (right - left != oldRight - oldLeft) {
-                val pad = ((right - left) - side) / 2 - context.dp(11)
-                list.setPadding(pad.coerceAtLeast(0), context.dp(50), pad.coerceAtLeast(0), context.dp(50))
-                if (!started && cards.isNotEmpty()) {
-                    started = true
-                    list.post { manager.scrollToPositionWithOffset(startPosition(), 0); list.post { tilt() } }
-                } else list.post { tilt() }
-            }
-        }
-        root.clipChildren = false
-        root.addView(View(context), LinearLayout.LayoutParams(-1, 0, 1f))
-        root.addView(list, LinearLayout.LayoutParams(-1, side + context.dp(120)))
-        root.addView(title, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = context.dp(16); marginStart = context.dp(32); marginEnd = context.dp(32) })
-        root.addView(line, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = context.dp(6); marginStart = context.dp(32); marginEnd = context.dp(32) })
-        root.addView(tryButton, LinearLayout.LayoutParams(-2, -2).apply { topMargin = context.dp(18) })
-        root.addView(View(context), LinearLayout.LayoutParams(-1, 0, 2f))
-    }
-
-    /** Takes the packet's `shell.cards` and `shell.carousel`. */
-    fun update(shell: JSONObject?) {
-        val array = shell?.optJSONArray("cards") ?: return
-        val carousel = shell.objectOrNull("carousel")
-        val next = array.toString() + carousel?.optInt("start")
-        if (next == encoded) return
-        encoded = next
-        cards = array.objects().map { Card(it.getString("id"), it.getString("title"), it.getString("line")) }
-        start = carousel?.optInt("start") ?: 0
-        clock = CarouselClock(carousel?.optLong("dwell_ms", 3_500) ?: 3_500, carousel?.optLong("resume_ms", 4_000) ?: 4_000,
-            !android.animation.ValueAnimator.areAnimatorsEnabled(), now())
-        started = false
-        centered = -1
-        adapter.notifyDataSetChanged()
-        if (list.width > 0 && cards.isNotEmpty()) {
-            started = true
-            list.post { manager.scrollToPositionWithOffset(startPosition(), 0); list.post { tilt() } }
-        }
-        show()
-    }
-
-    private fun current(): Card? = cards.getOrNull(if (centered < 0) 0 else centered % cards.size.coerceAtLeast(1))
-
-    private fun show() {
-        val card = current() ?: return
-        if (title.text.toString() != card.title) {
-            title.text = card.title
-            line.text = card.line
-            tryButton.tag = "shell-try-${card.id}"
-            tryButton.contentDescription = "Try it: ${card.title}"
-        }
-    }
-
-    /** Scrolls the card at `position` to the middle. */
-    private fun center(position: Int, animate: Boolean) {
-        val view = manager.findViewByPosition(position) ?: return
-        val distance = snap.calculateDistanceToFinalSnap(manager, view) ?: return
-        if (animate) list.smoothScrollBy(distance[0], 0) else list.scrollBy(distance[0], 0)
-    }
-
-    /** Tilts each card by its distance from the middle, and names the middle one. */
-    private fun tilt() {
-        val middle = list.width / 2f
-        var nearest = -1
-        var nearestDistance = Float.MAX_VALUE
-        for (index in 0 until list.childCount) {
-            val child = list.getChildAt(index)
-            val offset = (child.left + child.right) / 2f - middle
-            val turn = (offset / context.dpf(118f)).coerceIn(-2f, 2f)
-            child.rotation = turn * 12f
-            child.translationY = turn * turn * context.dpf(16f)
-            val scale = 1f - minOf(Math.abs(turn), 1.5f) * 0.06f
-            child.scaleX = scale; child.scaleY = scale
-            if (Math.abs(offset) < nearestDistance) {
-                nearestDistance = Math.abs(offset)
-                nearest = list.getChildAdapterPosition(child)
-            }
-        }
-        if (nearest >= 0 && nearest != centered) { centered = nearest; show() }
-    }
-
-    companion object {
-        /** How many times the row repeats; the middle copy shows first. */
-        private const val COPIES = 7
-        private const val SIDE_DP = 96
-
-        /** A card's glyph, as on iOS. */
-        fun look(id: String): Int = when (id) {
-            "verse" -> R.drawable.ic_tab_verse
-            "coder" -> R.drawable.ic_glyph_code
-            "codebase" -> R.drawable.ic_glyph_folder
-            "roadmap" -> R.drawable.ic_glyph_map
-            else -> R.drawable.ic_glyph_ask
         }
     }
 }
@@ -608,7 +377,7 @@ internal object VersePortal {
         addView(FrameLayout(context).apply {
             background = context.rounded(Palette.SURFACE, 14f, Palette.BORDER)
             addView(ImageView(context).apply {
-                setImageResource(HomeCards.look("verse")); setColorFilter(Palette.PRIMARY)
+                setImageResource(R.drawable.ic_tab_verse); setColorFilter(Palette.PRIMARY)
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }, FrameLayout.LayoutParams(context.dp(30), context.dp(30), Gravity.CENTER))
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO

@@ -3839,3 +3839,147 @@ fn a_hidden_gym_shows_no_entry_point_in_chat() {
         keys(&chat)
     );
 }
+
+/// A phone that draws the shell (#11126), its Coder list and chats kept in
+/// `dir` as the app keeps them, so a second one on the same `dir` is a
+/// relaunch (#11557).
+fn shell_kept(hand: &Hand, dir: &std::path::Path) -> Fixture {
+    let secret = secp256k1::SecretKey::from_byte_array([0x11; 32]).expect("key");
+    let mut fixture = Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now)));
+    fixture.coder = CoderTab::new("coder:test".into())
+        .with_shell(true)
+        .with_list(Store::open(
+            Cache::open(&dir.join("coder-list"), &secret).ok(),
+        ));
+    fixture.answered_and_kept(hand, &dir.join("basic"))
+}
+
+fn shell_screen(fixture: &mut Fixture) -> &'static str {
+    fixture
+        .coder
+        .shell_view(Some(&fixture.computers), &fixture.chats)
+        .expect("the shell")
+        .screen
+}
+
+/// A new chat is a clean composer: no feature cards, no carousel, no
+/// **Try it** (owner review of the launch film, #11557).
+fn assert_no_cards(view: &Value) {
+    let text = view.to_string();
+    for gone in [
+        "home-cards",
+        "shell-cards",
+        "Try it",
+        "See the roadmap",
+        "carousel",
+    ] {
+        assert!(!text.contains(gone), "{gone} in {text}");
+    }
+}
+
+/// A person with no chats opens on the welcome, with one action; it opens
+/// a clean new chat, ready to type.
+#[test]
+fn launch_with_no_chats_opens_the_welcome_with_one_action() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let hand = Hand::default();
+    let mut fixture = shell_kept(&hand, dir.path());
+    let view = fixture.render();
+    assert_eq!(shell_screen(&mut fixture), "new");
+    assert!(
+        node(&view, "shell-welcome-title").is_some(),
+        "{:?}",
+        keys(&view)
+    );
+    let buttons: Vec<_> = nodes(&view)
+        .into_iter()
+        .filter(|node| node["element"]["kind"] == "button")
+        .map(|node| node["key"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(buttons, ["shell-welcome-start"]);
+    assert!(
+        !nodes(&view)
+            .iter()
+            .any(|node| node["element"]["kind"] == "composer"),
+        "the welcome is not an empty chat"
+    );
+    assert_no_cards(&view);
+    let shell = serde_json::to_value(
+        fixture
+            .coder
+            .shell_view(Some(&fixture.computers), &fixture.chats),
+    )
+    .unwrap();
+    assert!(shell.get("cards").is_none() && shell.get("carousel").is_none());
+
+    // Start a chat: a clean composer, the welcome gone for good.
+    let view = fixture.tap("shell-welcome-start");
+    assert!(node(&view, "shell-welcome").is_none(), "{:?}", keys(&view));
+    assert!(node(&view, "coder-composer").is_some(), "{:?}", keys(&view));
+    assert!(view.to_string().contains("Ask OpenAgents"));
+    assert_no_cards(&view);
+}
+
+/// The chat on view when the app was last used opens at launch.
+#[test]
+fn launch_reopens_the_chat_on_view_last_time() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let hand = Hand::default();
+    let mut fixture = shell_kept(&hand, dir.path());
+    fixture.tap("shell-welcome-start");
+    fixture.say("Where did I leave off?");
+    hand.say("Right here.", true);
+    let view = fixture.render();
+    assert_eq!(shell_screen(&mut fixture), "chat");
+    assert!(view.to_string().contains("Right here."));
+    drop(fixture);
+
+    let hand = Hand::default();
+    let mut fixture = shell_kept(&hand, dir.path());
+    let view = fixture.render();
+    assert_eq!(shell_screen(&mut fixture), "chat");
+    let text = view.to_string();
+    assert!(text.contains("Where did I leave off?"), "{text}");
+    assert!(text.contains("Right here."), "{text}");
+    // New chat stays one tap away, and is a clean composer.
+    fixture.coder.shell(
+        crate::coder_tab::ShellAction::NewChat,
+        Some(&mut fixture.computers),
+        &mut fixture.chats,
+    );
+    let view = fixture.render();
+    assert_eq!(shell_screen(&mut fixture), "new");
+    assert!(node(&view, "shell-welcome").is_none(), "{:?}", keys(&view));
+    assert_no_cards(&view);
+}
+
+/// With chats but none open when the app was last used, the app opens on
+/// every chat.
+#[test]
+fn launch_with_no_chat_open_opens_the_chats_list() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let hand = Hand::default();
+    let mut fixture = shell_kept(&hand, dir.path());
+    fixture.tap("shell-welcome-start");
+    fixture.say("A first question");
+    hand.say("A first answer.", true);
+    fixture.render();
+    fixture.coder.shell(
+        crate::coder_tab::ShellAction::NewChat,
+        Some(&mut fixture.computers),
+        &mut fixture.chats,
+    );
+    fixture.render();
+    drop(fixture);
+
+    let hand = Hand::default();
+    let mut fixture = shell_kept(&hand, dir.path());
+    let view = fixture.render();
+    assert_eq!(shell_screen(&mut fixture), "list");
+    assert!(view.to_string().contains("A first question"), "{view}");
+    // The list's own New chat opens a clean composer.
+    let view = fixture.tap("coder-new");
+    assert_eq!(shell_screen(&mut fixture), "new");
+    assert!(node(&view, "coder-composer").is_some());
+    assert_no_cards(&view);
+}

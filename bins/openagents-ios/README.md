@@ -51,14 +51,10 @@ The app has four tabs, shown as icons:
   (`openagents-chat-app` `coder_tab/shell.rs`); `Shell.swift` draws it.
   `--drawer` opens on the drawer, `--tab verse` on the Grid, and
   `--appearance light|dark|system` picks the theme, for screenshots. The
-  chat itself opens on a new chat with OpenAgents, ready to type: the
-  composer (**Ask OpenAgents**) under four feature cards to swipe through
-  (the list in `openagents-chat` `home_cards.rs`, shared with the
-  website), each with **Try it**, which starts a chat with its question
-  (**Explore the Verse**'s opens the Grid). The cards open on a different
-  card each time and move on by themselves (`openagents-chat-app`
-  `carousel.rs`), pausing under a finger and never with Reduce Motion.
-  Every chat goes to OpenAgents, even while a computer is ready; there is
+  chat opens where it was left (#11557): the chat on view last time, else
+  every chat, else, with no chats yet, a welcome with one action, **Start
+  a chat**. A new chat is a clean composer (**Ask OpenAgents**), ready to
+  type. Every chat goes to OpenAgents, even while a computer is ready; there is
   no chat or code mode. **Verse** is the plain Grid with your avatar and
   the other players (no Gym or Everglade outside preview builds); a reply
   that offers it shows an **Enter the Grid** card. A reply that took time starts with **Worked for 6s**, which

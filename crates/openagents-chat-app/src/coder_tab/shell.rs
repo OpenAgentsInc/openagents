@@ -1,19 +1,23 @@
 //! The phone's shell (#11126): a top bar with the menu, a **Coder** /
-//! **Verse** switch, and a new-chat button; a new chat with the feature
-//! cards; and a drawer with the main places and recent chats. A host that
-//! draws the shell turns it on ([`CoderTab::set_shell`]); the tab then
-//! leaves out its own header rows, and the host draws the top bar, the
-//! drawer, and the cards from [`CoderTab::shell_view`], sending
-//! [`ShellAction`]s back.
+//! **Verse** switch, and a new-chat button; a drawer with the main places
+//! and recent chats. A host that draws the shell turns it on
+//! ([`CoderTab::set_shell`]); the tab then leaves out its own header rows,
+//! and the host draws the top bar and the drawer from
+//! [`CoderTab::shell_view`], sending [`ShellAction`]s back.
+//!
+//! The app opens where the person left off (#11557): the chat on view
+//! when they last used it, else every chat, else, for a person with no
+//! chats yet, a welcome with one action, **Start a chat**. A new chat is
+//! a clean composer, with no cards over it.
 //!
 //! **Coder** is the one conversation: one composer that asks OpenAgents,
 //! whose network decides when a message needs Coder on a computer and
 //! offers it under the reply. **Verse** is the Grid world, which the host
-//! draws over the chat. The **Explore the Verse** card's **Try it** and a
-//! reply's **Enter the Grid** card switch to the Verse.
+//! draws over the chat. A reply's **Enter the Grid** card switches to the
+//! Verse.
 
 use super::*;
-use openagents_chat::home_cards::{self, HOME_CARDS};
+use crate::coder_list::LastOpen;
 
 /// Recent chats the drawer lists before **See all**.
 const DRAWER_ROWS: usize = 8;
@@ -21,6 +25,11 @@ const DRAWER_ROWS: usize = 8;
 const SEARCH_ROWS: usize = 50;
 /// The longest drawer search, in bytes.
 const MAX_QUERY: usize = 200;
+/// The welcome's words, for a person with no chats yet.
+pub const WELCOME_TITLE: &str = "Welcome to OpenAgents";
+pub const WELCOME_LINE: &str =
+    "Ask anything. When it takes code, Coder writes it on your computer.";
+pub const WELCOME_START: &str = "Start a chat";
 /// The surface resource of a reply's **Enter the Grid** card.
 pub const VERSE_PORTAL: &str = "verse-portal";
 /// The height the transcript keeps for that card, in points.
@@ -38,11 +47,11 @@ pub(super) struct Shell {
     query: String,
     /// What each drawer row opens, by its index in the last view.
     intents: Vec<Intent>,
-    /// The feature cards were on view at the last view.
-    cards_shown: bool,
-    /// The card the carousel opens on this time; the list keeps it for
-    /// the next time (`List::last_card`).
-    start: usize,
+    /// The launch's first view chose where the app opens ([`CoderTab::reopen`]).
+    launched: bool,
+    /// The app opened with no chats at all: the new chat shows the welcome
+    /// until the person starts a chat.
+    pub(super) welcome: bool,
 }
 
 /// What the host's shell asks of the tab.
@@ -61,8 +70,6 @@ pub enum ShellAction {
     Open { index: usize },
     /// **See all**: every chat.
     SeeAll,
-    /// A feature card's **Try it**.
-    TryCard { id: String },
 }
 
 /// The shell as the host draws it.
@@ -70,23 +77,12 @@ pub enum ShellAction {
 pub struct ShellView {
     /// `coder` (the conversation) or `verse` (the Grid world).
     pub place: &'static str,
-    /// `new` (a new chat), `chat` (a conversation), or `list` (every chat,
-    /// which draws its own header).
+    /// `new` (a new chat, or the welcome), `chat` (a conversation), or
+    /// `list` (every chat, which draws its own header).
     pub screen: &'static str,
-    /// The feature cards a new chat shows.
-    pub cards: Vec<Card>,
-    /// The card the carousel opens on and how it moves by itself.
-    pub carousel: crate::carousel::Timing,
     /// The drawer's rows, while it is open.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drawer: Option<Drawer>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct Card {
-    pub id: &'static str,
-    pub title: &'static str,
-    pub line: &'static str,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -151,36 +147,83 @@ impl CoderTab {
             .shell
             .drawer
             .then(|| self.drawer_rows(computers, chats));
-        // Each time the cards come on view they open on another card.
-        let shown = screen == "new" && !self.shell.verse;
-        if shown && !self.shell.cards_shown {
-            self.shell.start = crate::carousel::pick_start(
-                HOME_CARDS.len(),
-                self.list.list.last_card,
-                crate::carousel::roll(),
-            );
-            self.list.list.last_card = Some(self.shell.start);
-            self.list.save();
-        }
-        self.shell.cards_shown = shown;
         Some(ShellView {
             place: if self.shell.verse { "verse" } else { "coder" },
             screen,
-            cards: HOME_CARDS
-                .iter()
-                .map(|card| Card {
-                    id: card.id,
-                    title: card.title,
-                    line: card.line,
-                })
-                .collect(),
-            carousel: crate::carousel::Timing {
-                start: self.shell.start,
-                dwell_ms: crate::carousel::DWELL_MS,
-                resume_ms: crate::carousel::RESUME_MS,
-            },
             drawer,
         })
+    }
+
+    /// Where the app opens, once, at the launch's first view: the chat on
+    /// view when the person last used the app, while it still exists; else
+    /// every chat, when there are any; else the welcome. A debug script,
+    /// the Gym's intro chat, or a host launch argument that already chose
+    /// a screen keeps it.
+    pub(super) fn reopen(&mut self, computers: Option<&Computers>, chats: &mut Chats) {
+        if !self.shell.on || self.shell.launched {
+            return;
+        }
+        self.shell.launched = true;
+        if self.open.is_some()
+            || self.talk.is_some()
+            || self.threads.opened().is_some()
+            || self.drawer
+            || self.shell.verse
+            || !self.script.is_empty()
+        {
+            return;
+        }
+        match self.list.list.last_open.clone() {
+            Some(LastOpen::Talk { id }) if self.basic.get(&id).is_some() => {
+                self.talk_turns = TALK_TURNS;
+                self.talk = Some(id);
+                return;
+            }
+            Some(LastOpen::Task { host, task })
+                if self
+                    .list
+                    .list
+                    .rows
+                    .iter()
+                    .any(|row| row.host == host && row.task == task) =>
+            {
+                self.open(host, task, chats);
+                return;
+            }
+            _ => {}
+        }
+        let any = !self.list.list.rows.is_empty()
+            || self
+                .recent(computers, chats)
+                .iter()
+                .any(|row| row.group != crate::chat_list::Group::Archived);
+        if any {
+            self.drawer = true;
+        } else {
+            self.shell.welcome = true;
+        }
+    }
+
+    /// Keep the chat on view for the next launch ([`CoderTab::reopen`]):
+    /// none while every chat or a new chat shows.
+    pub(super) fn remember_open(&mut self) {
+        if !self.shell.on || !self.shell.launched {
+            return;
+        }
+        let on_view = if self.drawer {
+            None
+        } else if let Some(id) = &self.talk {
+            Some(LastOpen::Talk { id: id.clone() })
+        } else {
+            self.open.as_ref().map(|open| LastOpen::Task {
+                host: open.host.clone(),
+                task: open.task.clone(),
+            })
+        };
+        if self.list.list.last_open != on_view {
+            self.list.list.last_open = on_view;
+            self.list.save();
+        }
     }
 
     /// Carry out a shell action.
@@ -227,17 +270,6 @@ impl CoderTab {
                 self.shell.verse = false;
                 self.shell.query.clear();
                 self.run_intent(Intent::Menu, computers, chats);
-            }
-            ShellAction::TryCard { id } => {
-                let Some(card) = home_cards::find(&id) else {
-                    return;
-                };
-                if card.opens_verse {
-                    self.shell.verse = true;
-                } else {
-                    self.shell.verse = false;
-                    self.start_talk(card.message, computers.as_deref());
-                }
             }
         }
     }
@@ -291,23 +323,27 @@ impl CoderTab {
         }
     }
 
-    /// A new chat under the shell: the feature cards over a composer ready
-    /// to type.
+    /// A new chat under the shell: a clean composer under an empty
+    /// conversation, its field's **Ask OpenAgents** the only prompt; or,
+    /// for a person with no chats yet, the welcome.
     pub(super) fn shell_landing(&self) -> Node<Intent> {
+        if self.shell.welcome {
+            return self.shell_welcome();
+        }
         let mut children = vec![];
         if let Some(notice) = &self.notice {
             children.push(status("coder-notice", notice));
         }
-        // The host draws the cards and fills the screen with them.
-        let mut cards = node(
-            "shell-cards",
-            Element::Surface {
-                resource: "home-cards".into(),
-                label: "What's new".into(),
+        // An empty conversation fills the screen above the field.
+        children.push(node(
+            "coder-new-transcript",
+            Element::Transcript {
+                label: "New chat".into(),
+                children: vec![],
+                earlier: None,
+                source: None,
             },
-        );
-        cards.style.fill_height = Some(true);
-        children.push(cards);
+        ));
         children.extend(self.attachments());
         children.push(self.composer_with(
             self.ask_words().to_owned(),
@@ -315,9 +351,38 @@ impl CoderTab {
             false,
             &[],
             None,
-            // No keyboard over the cards until the person taps the field.
-            false,
+            // A new chat opened on purpose is ready to type.
+            true,
         ));
+        page(children)
+    }
+
+    /// The first screen for a person with no chats: what OpenAgents is, in
+    /// one line, and one action, **Start a chat**, which opens a new chat.
+    fn shell_welcome(&self) -> Node<Intent> {
+        let mut children = vec![];
+        if let Some(notice) = &self.notice {
+            children.push(status("coder-notice", notice));
+        }
+        let title = heading("shell-welcome-title", WELCOME_TITLE);
+        let mut line = body("shell-welcome-line", WELCOME_LINE);
+        line.style.foreground = Some(gray());
+        let start = pill(
+            "shell-welcome-start",
+            WELCOME_START,
+            Glyph::Compose,
+            Intent::NewChat,
+        );
+        let mut welcome = node(
+            "shell-welcome",
+            Element::Stack {
+                axis: Axis::Vertical,
+                children: vec![title, line, start],
+            },
+        );
+        welcome.style.gap = Some(Space::Md);
+        welcome.style.padding_top = Some(Space::Lg);
+        children.push(welcome);
         page(children)
     }
 }
@@ -494,21 +559,16 @@ mod tests {
     }
 
     #[test]
-    fn the_switch_is_coder_or_verse_and_the_verse_card_opens_the_grid() {
+    fn the_switch_is_coder_or_verse() {
         let (_runtime, mut chats) = chats();
         let mut tab = CoderTab::new("coder:shell".into()).with_shell(true);
         let view = tab.shell_view(None, &chats).unwrap();
         assert_eq!((view.place, view.screen), ("coder", "new"));
         let json = serde_json::to_value(&view).unwrap();
         assert!(json.get("mode").is_none(), "no Chat / Code mode");
-        assert_eq!(json["carousel"]["dwell_ms"], crate::carousel::DWELL_MS);
-        // Explore the Verse's Try it goes straight to the Grid, sending
-        // nothing.
-        tab.shell(
-            ShellAction::TryCard { id: "verse".into() },
-            None,
-            &mut chats,
-        );
+        assert!(json.get("cards").is_none(), "no feature cards");
+        assert!(json.get("carousel").is_none(), "no carousel");
+        tab.shell(ShellAction::Switch { verse: true }, None, &mut chats);
         assert!(tab.in_verse());
         assert!(tab.talk.is_none());
         assert_eq!(tab.shell_view(None, &chats).unwrap().place, "verse");
@@ -522,24 +582,9 @@ mod tests {
             serde_json::from_str(r#"{"action":"switch","verse":true}"#).unwrap();
         assert_eq!(action, ShellAction::Switch { verse: true });
         assert!(serde_json::from_str::<ShellAction>(r#"{"action":"mode","code":true}"#).is_err());
-    }
-
-    #[test]
-    fn the_cards_open_on_another_card_each_time_they_come_on_view() {
-        let (_runtime, mut chats) = chats();
-        let mut tab = CoderTab::new("coder:cards".into()).with_shell(true);
-        let mut last = tab.shell_view(None, &chats).unwrap().carousel.start;
-        for _ in 0..12 {
-            // Still on view: the same card.
-            assert_eq!(tab.shell_view(None, &chats).unwrap().carousel.start, last);
-            tab.shell(ShellAction::Switch { verse: true }, None, &mut chats);
-            tab.shell_view(None, &chats);
-            tab.shell(ShellAction::Switch { verse: false }, None, &mut chats);
-            let start = tab.shell_view(None, &chats).unwrap().carousel.start;
-            assert_ne!(start, last);
-            assert!(start < HOME_CARDS.len());
-            last = start;
-        }
+        assert!(
+            serde_json::from_str::<ShellAction>(r#"{"action":"try_card","id":"verse"}"#).is_err()
+        );
     }
 
     #[test]
@@ -636,7 +681,7 @@ mod tests {
     }
 
     #[test]
-    fn the_shell_draws_cards_and_asks_openagents() {
+    fn the_shell_welcomes_a_new_person_then_asks_openagents() {
         let mut tab = CoderTab::new("coder".into());
         tab.set_shell(true);
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -645,14 +690,20 @@ mod tests {
             .unwrap();
         let secret = secp256k1::SecretKey::from_byte_array([0x31; 32]).unwrap();
         let mut chats = Chats::new(runtime.handle().clone(), secret, Err("test".into()));
+        // No chats yet: the welcome, with one action.
+        let text = tab.render(None, &mut chats).expect("a view").to_string();
+        assert!(text.contains(WELCOME_START), "{text}");
+        assert!(!text.contains("coder-composer"), "{text}");
+        assert!(!text.contains("home-cards"), "{text}");
+        tab.shell(ShellAction::NewChat, None, &mut chats);
         let view = tab.render(None, &mut chats).expect("a view");
         let text = view.to_string();
-        assert!(text.contains("home-cards"), "{text}");
+        assert!(!text.contains("home-cards"), "{text}");
+        assert!(!text.contains(WELCOME_START), "{text}");
         assert!(text.contains("Ask OpenAgents"), "{text}");
         assert!(!text.contains("coder-header"), "{text}");
         let shell = tab.shell_view(None, &chats).expect("the shell");
         assert_eq!((shell.place, shell.screen), ("coder", "new"));
-        assert_eq!(shell.cards.len(), 4);
         assert!(shell.drawer.is_none());
         // One conversation: no Coder mode words over the field.
         assert!(!text.contains("Work with Coder"), "{text}");
@@ -671,16 +722,16 @@ mod tests {
 
     #[test]
     fn shell_words_pass_the_copy_guard() {
-        let mut words: Vec<&str> = vec![
+        let words = [
             "Ask OpenAgents",
             "Enter the Grid",
             "The Verse",
             "Coder",
             "Verse",
+            WELCOME_TITLE,
+            WELCOME_LINE,
+            WELCOME_START,
         ];
-        for card in HOME_CARDS {
-            words.extend([card.title, card.line]);
-        }
         for text in words {
             assert!(oa_copy::violations(text, &[]).is_empty(), "{text}");
         }

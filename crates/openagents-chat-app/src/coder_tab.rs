@@ -1655,6 +1655,7 @@ impl CoderTab {
             Intent::Back if self.drawer => self.drawer = false,
             // A new chat, or back from a chat: a new chat, ready to type.
             Intent::NewChat | Intent::Back => {
+                self.shell.welcome = false;
                 self.keep(true);
                 self.open = None;
                 self.talk = None;
@@ -2977,6 +2978,8 @@ impl CoderTab {
             self.intro_reopened = true;
             self.talk = Some(first);
         }
+        // The phone opens where the person left off (#11557).
+        self.reopen(computers, chats);
         self.play(computers);
         self.follow(computers, chats);
         self.settle_echoes(computers.map_or_else(unix_now, |c| c.snapshot().now));
@@ -3000,6 +3003,7 @@ impl CoderTab {
                 .collect();
             self.basic.want_rank(candidates);
         }
+        self.remember_open();
         self.revision += 1;
         self.links.begin_view();
         let view = loop {

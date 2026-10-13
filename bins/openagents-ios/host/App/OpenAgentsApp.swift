@@ -345,12 +345,6 @@ struct CoderTab: View {
                     NativeRenderer(node: view.root, revision: view.revision, followTarget: nil,
                                    followChanged: nil,
                                    surface: { resource, label in
-                                       if resource == "home-cards" {
-                                           return AnyView(HomeCardsSurface(cards: bridge.packet?.shell?.cards ?? [],
-                                                                           carousel: bridge.packet?.shell?.carousel) {
-                                               bridge.shell("try_card", ["id": $0])
-                                           })
-                                       }
                                        if resource == "verse-portal" {
                                            return AnyView(VersePortalSurface(label: label) {
                                                bridge.shell("switch", ["verse": true])

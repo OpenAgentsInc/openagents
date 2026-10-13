@@ -28,7 +28,18 @@ final class ReleaseGateUITests: XCTestCase {
         try? text.write(to: directory.appendingPathComponent("\(name).txt"), atomically: true, encoding: .utf8)
     }
 
+    /// A new chat, wherever the app opened (#11557): the welcome's Start a
+    /// chat, a chat's New chat, or the list's; nothing while one shows.
+    private func newChat(_ app: XCUIApplication) {
+        let field = app.textViews["Ask OpenAgents"]
+        let ways = ["shell-welcome-start", "shell-new-chat", "coder-new"].map { app.buttons[$0].firstMatch }
+        let shown = NSPredicate { _, _ in field.exists || ways.contains { $0.exists } }
+        wait(for: [expectation(for: shown, evaluatedWith: nil)], timeout: 30)
+        if !field.exists { ways.first { $0.exists }?.tap() }
+    }
+
     private func ask(_ app: XCUIApplication, _ question: String, _ name: String) {
+        newChat(app)
         let field = app.textViews["Ask OpenAgents"]
         XCTAssertTrue(field.waitForExistence(timeout: 30))
         field.tap()

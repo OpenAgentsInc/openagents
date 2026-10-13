@@ -16,12 +16,11 @@ menu button, a **Coder** / **Verse** switch on a new chat and in the Verse,
 and **New chat** in a conversation; the menu opens a drawer with **Coder**,
 **Computers**, **Wallet**, **Verse**, **Settings** (formerly Account), the
 recent chats with search and **See all…**, a **Chat** pill for a new chat,
-and the account button. A new chat shows the four feature cards
-(`openagents-chat` `home_cards.rs`) to swipe through, each with **Try it**,
-over the composer (**Ask OpenAgents**); they open on a different card each
-time and move on by themselves, pausing under a finger and never with
-animations off. **Explore the Verse**'s Try it, the switch, and a reply's
-**Enter the Grid** card open the Verse: the plain Grid (no Gym or Everglade
+and the account button. The app opens where it was left (#11557): the chat
+on view last time, else every chat, else, with no chats yet, a welcome with
+one action, **Start a chat**. A new chat is a clean composer (**Ask
+OpenAgents**). The switch and a reply's **Enter the Grid** card open the
+Verse: the plain Grid (no Gym or Everglade
 outside preview builds). A reply that took time
 starts with **Worked for 6s**, which opens the steps, and a reply that names
 web links shows a card for each under it: the page's title, its site, and its

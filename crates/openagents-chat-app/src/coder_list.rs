@@ -111,11 +111,11 @@ impl Row {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct List {
     pub rows: Vec<Row>,
-    /// The feature card the new chat's carousel last opened on, so the
-    /// next open, after a relaunch too, starts on another
-    /// ([`crate::carousel::pick_start`]).
+    /// The chat on view when the app last showed one, so a launch opens
+    /// where the person left off; `None` when no chat was open (a new
+    /// chat, or the chats list).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub last_card: Option<usize>,
+    pub last_open: Option<LastOpen>,
     /// The first line of each chat this device started, by task ID.
     #[serde(default)]
     pub titles: BTreeMap<String, String>,
@@ -132,6 +132,16 @@ pub struct List {
     /// card after a relaunch.
     #[serde(default)]
     pub started: BTreeMap<String, Started>,
+}
+
+/// A chat a launch can reopen.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LastOpen {
+    /// A conversation with OpenAgents, by its ID.
+    Talk { id: String },
+    /// A Coder chat on a computer.
+    Task { host: String, task: String },
 }
 
 /// The reply that started or continued a conversation's Coder task.

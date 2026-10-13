@@ -1,17 +1,12 @@
 // The phone's shell (#11126): the top bar (menu, the Coder / Verse switch,
-// new chat), the feature cards on a new chat, and the drawer with the main
-// places and recent chats. Rust owns the state (`coder_tab::shell`); this
-// file draws it and sends the person's taps back as shell actions.
+// new chat) and the drawer with the main places and recent chats. Rust owns
+// the state (`coder_tab::shell`); this file draws it and sends the person's
+// taps back as shell actions.
 import SwiftUI
 import UIKit
 
 /// Rust's `coder_tab::ShellView`.
 struct ShellState: Decodable, Equatable {
-    struct Card: Decodable, Equatable, Identifiable {
-        let id: String
-        let title: String
-        let line: String
-    }
     struct Recent: Decodable, Equatable, Identifiable {
         let index: Int
         let title: String
@@ -23,18 +18,10 @@ struct ShellState: Decodable, Equatable {
         let recent: [Recent]
         let more: Bool
     }
-    struct Carousel: Decodable, Equatable {
-        /// The card the carousel opens on, by index.
-        let start: Int
-        let dwell_ms: Int
-        let resume_ms: Int
-    }
     /// `coder` (the conversation) or `verse` (the Grid world).
     let place: String
-    let carousel: Carousel?
     /// `new`, `chat`, or `list`.
     let screen: String
-    let cards: [Card]
     let drawer: Drawer?
 }
 
@@ -147,214 +134,12 @@ struct ShellPlaceSwitch: View {
     }
 }
 
-/// When the feature cards move on by themselves: the same rules as Rust's
-/// `carousel::AutoScroll` (one card each dwell, nothing while a finger is
-/// down, a pause after it lifts, never with Reduce Motion).
-struct CarouselClock {
-    var dwell: TimeInterval
-    var resume: TimeInterval
-    var reduceMotion: Bool
-    var touching = false
-    var since: TimeInterval
-
-    mutating func touch() { touching = true }
-
-    mutating func release(_ now: TimeInterval) {
-        touching = false
-        since = now + resume
-    }
-
-    mutating func step(_ now: TimeInterval) -> Bool {
-        if reduceMotion || touching || now < since + dwell { return false }
-        since = now
-        return true
-    }
-}
-
-/// The feature cards on a new chat: a fan of tilted cards to swipe
-/// through (the row repeats, so there are cards on both sides), the chosen
-/// card's headline and line, and **Try it**. It opens on the card Rust
-/// picks and moves on by itself (`CarouselClock`).
-struct HomeCardsSurface: View {
+/// The Verse's picture on a reply's **Enter the Grid** card: a Coder Noir
+/// tile (the theme's raised gray, a hairline edge, no hue) with the globe in
+/// the primary ink.
+struct VerseTileArt: View {
     @Environment(\.appColors) private var appColors
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let cards: [ShellState.Card]
-    var carousel: ShellState.Carousel?
-    let tryIt: (String) -> Void
-    @State private var chosen: String?
-    @State private var clock: CarouselClock?
-    /// The keyboard is up: the cards step aside so the composer stays in
-    /// view above it.
-    @State private var keyboard = false
-
-    /// How many times the row repeats; the middle copy shows first.
-    private static let copies = 7
-    private static let side: CGFloat = 96
-
-    private struct Slot: Identifiable {
-        let id: String
-        let card: ShellState.Card
-    }
-
-    private var slots: [Slot] {
-        (0..<Self.copies).flatMap { copy in
-            cards.map { Slot(id: "\(copy)#\($0.id)", card: $0) }
-        }
-    }
-
-    private var current: ShellState.Card? {
-        slots.first { $0.id == chosen }?.card ?? cards.first
-    }
-
-    /// One card on, smoothly; near the end of the copies it first jumps
-    /// back to the middle copy of the same card, which looks the same.
-    private func advance(_ reader: ScrollViewProxy) {
-        let all = slots
-        guard !all.isEmpty else { return }
-        var at = all.firstIndex { $0.id == chosen } ?? (Self.copies / 2) * cards.count
-        if at >= all.count - cards.count {
-            at = (Self.copies / 2) * cards.count + at % cards.count
-            reader.scrollTo(all[at].id, anchor: .center)
-        }
-        let next = all[at + 1].id
-        withAnimation(.easeInOut(duration: 0.8)) {
-            reader.scrollTo(next, anchor: .center)
-            chosen = next
-        }
-    }
-
-    var body: some View {
-        Group {
-            if keyboard {
-                Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                cardsBody
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-            keyboard = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            keyboard = false
-        }
-    }
-
-    private var cardsBody: some View {
-        VStack(spacing: 16) {
-            Spacer(minLength: 0)
-            GeometryReader { outer in
-                ScrollViewReader { reader in
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 22) {
-                            ForEach(slots) { slot in
-                                HomeCardArt(id: slot.card.id)
-                                    .frame(width: Self.side, height: Self.side)
-                                    .visualEffect { content, proxy in
-                                        let middle = outer.size.width / 2
-                                        let offset = proxy.frame(in: .named("home-cards")).midX - middle
-                                        let turn = max(-2, min(2, offset / 118))
-                                        return content
-                                            .rotationEffect(.degrees(turn * 12))
-                                            .offset(y: turn * turn * 16)
-                                            .scaleEffect(1 - min(abs(turn), 1.5) * 0.06)
-                                    }
-                                    .id(slot.id)
-                                    .onTapGesture {
-                                        withAnimation(.snappy) { chosen = slot.id }
-                                        clock?.release(Date().timeIntervalSinceReferenceDate)
-                                    }
-                                    .accessibilityElement(children: .ignore)
-                                    .accessibilityLabel(slot.card.title)
-                                    .accessibilityAddTraits(.isButton)
-                            }
-                        }
-                        .scrollTargetLayout()
-                        .padding(.vertical, 50)
-                    }
-                    .coordinateSpace(name: "home-cards")
-                    .scrollClipDisabled()
-                    .contentMargins(.horizontal, max(0, (outer.size.width - Self.side) / 2), for: .scrollContent)
-                    .scrollTargetBehavior(.viewAligned)
-                    .scrollPosition(id: $chosen, anchor: .center)
-                    // A finger on the cards stops them; they move again a
-                    // while after it lifts.
-                    .simultaneousGesture(DragGesture(minimumDistance: 0)
-                        .onChanged { _ in clock?.touch() }
-                        .onEnded { _ in clock?.release(Date().timeIntervalSinceReferenceDate) })
-                    .onAppear {
-                        guard chosen == nil, !cards.isEmpty else { return }
-                        let index = min(max(carousel?.start ?? 0, 0), cards.count - 1)
-                        let start = "\(Self.copies / 2)#\(cards[index].id)"
-                        clock = CarouselClock(dwell: Double(carousel?.dwell_ms ?? 3500) / 1000,
-                                              resume: Double(carousel?.resume_ms ?? 4000) / 1000,
-                                              reduceMotion: reduceMotion,
-                                              since: Date().timeIntervalSinceReferenceDate)
-                        DispatchQueue.main.async {
-                            reader.scrollTo(start, anchor: .center)
-                            chosen = start
-                        }
-                    }
-                    .onChange(of: reduceMotion) { _, on in clock?.reduceMotion = on }
-                    .task {
-                        while !Task.isCancelled {
-                            try? await Task.sleep(for: .milliseconds(250))
-                            guard clock?.step(Date().timeIntervalSinceReferenceDate) == true else { continue }
-                            advance(reader)
-                        }
-                    }
-                }
-            }
-            .frame(height: Self.side + 120)
-            if let card = current {
-                VStack(spacing: 6) {
-                    Text(card.title)
-                        .font(.paper(19, weight: .semibold))
-                        .foregroundStyle(appColors.primary)
-                    Text(card.line)
-                        .font(.paper(15))
-                        .foregroundStyle(appColors.secondary)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.horizontal, 32)
-                .id(card.id)
-                .transition(.opacity)
-                Button { tryIt(card.id) } label: {
-                    Text("Try it")
-                        .font(.paper(16, weight: .semibold))
-                        .foregroundStyle(appColors.primary)
-                        .padding(.horizontal, 22)
-                        .frame(height: 44)
-                        .background(Capsule().fill(appColors.raised))
-                        .overlay(Capsule().strokeBorder(appColors.border, lineWidth: 0.5))
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 6)
-                .accessibilityIdentifier("shell-try-\(card.id)")
-            }
-            Spacer(minLength: 0)
-            Spacer(minLength: 0)
-        }
-        .animation(.snappy(duration: 0.2), value: current?.id)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-/// One card's picture: a Coder Noir tile (the theme's raised gray, a
-/// hairline edge, no hue) with the card's glyph in the primary ink.
-struct HomeCardArt: View {
-    @Environment(\.appColors) private var appColors
-    let id: String
-
-    private var symbol: String {
-        switch id {
-        case "verse": "globe.americas.fill"
-        case "coder": "chevron.left.forwardslash.chevron.right"
-        case "codebase": "folder.fill"
-        case "roadmap": "map.fill"
-        default: "sparkles"
-        }
-    }
+    private let symbol = "globe.americas.fill"
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -656,7 +441,7 @@ struct VersePortalSurface: View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         Button(action: enter) {
             HStack(spacing: 14) {
-                HomeCardArt(id: "verse")
+                VerseTileArt()
                     .frame(width: 64, height: 64)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(label)

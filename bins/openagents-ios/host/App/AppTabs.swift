@@ -220,28 +220,7 @@ struct AppTabs: View {
             // The chat's keyboard goes away with the chat.
             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         }
-        .onAppear {
-            // `--tab verse` opens on the Grid.
-            if AppTabLaunch.tab == .verse {
-                tab = .coder
-                bridge.shell("switch", ["verse": true])
-            }
-            NativeRowView.giveFeedback = { text, row in
-                reporter.feedback = FeedbackRequest(text: text, row: row)
-            }
-            #if targetEnvironment(simulator)
-            // `--connect` opens Connect a computer, the scanner.
-            if ProcessInfo.processInfo.arguments.contains("--connect") {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { bridge.connectOpen() }
-            }
-            // `--report` opens Report a problem for the first screen.
-            if ProcessInfo.processInfo.arguments.contains("--report") {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    reporter.start(bridge: bridge, place: place)
-                }
-            }
-            #endif
-        }
+        .onAppear(perform: appeared)
         .environmentObject(place)
         .environmentObject(reporter)
         // An agent's payment request shows over any tab until the owner
@@ -330,6 +309,31 @@ extension AppTabs {
     }
 
     private func openDrawer() { drawer = true }
+
+    /// On first show: the launch arguments that open a place, and row
+    /// feedback. Its own function, so the body type-checks in time.
+    private func appeared() {
+        // `--tab verse` opens on the Grid.
+        if AppTabLaunch.tab == .verse {
+            tab = .coder
+            bridge.shell("switch", ["verse": true])
+        }
+        NativeRowView.giveFeedback = { text, row in
+            reporter.feedback = FeedbackRequest(text: text, row: row)
+        }
+        #if targetEnvironment(simulator)
+        // `--connect` opens Connect a computer, the scanner.
+        if ProcessInfo.processInfo.arguments.contains("--connect") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { bridge.connectOpen() }
+        }
+        // `--report` opens Report a problem for the first screen.
+        if ProcessInfo.processInfo.arguments.contains("--report") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                reporter.start(bridge: bridge, place: place)
+            }
+        }
+        #endif
+    }
     private func closeDrawer() { drawer = false }
 
     /// Open a place from the drawer. Any place but the Verse leaves it.

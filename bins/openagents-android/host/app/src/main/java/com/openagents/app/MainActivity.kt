@@ -157,13 +157,12 @@ class MainActivity : ComponentActivity() {
     private lateinit var root: FrameLayout
     private val pages = mutableMapOf<AppTab, FrameLayout>()
 
-    // The shell (#11126): the chat's top bar, the drawer, and the new
-    // chat's feature cards. Rust's `shell` packet says what they show.
+    // The shell (#11126): the chat's top bar and the drawer. Rust's `shell`
+    // packet says what they show.
     private lateinit var body: LinearLayout
     private lateinit var shellBar: ShellTopBar
     private lateinit var drawer: ShellDrawer
     private lateinit var scrim: View
-    private lateinit var homeCards: HomeCards
     private var drawerOpen = false
     private val walletMenu by lazy { FrameLayout(this) }
     /** The Verse's top bar: the menu and the Coder / Verse switch over the world. */
@@ -252,12 +251,10 @@ class MainActivity : ComponentActivity() {
             } else null) { render() }
         bridge.systemAppearance(night(resources.configuration))
         gym = GymViews(this) { id -> bridge.gym(id) }
-        homeCards = HomeCards(this) { id -> bridge.shell("try_card", "id" to id) }
         verseBar = ShellTopBar(this, bridge, { openDrawer(true) }) { report() }
         coderRenderer = NativeRenderer(this, { view, node -> bridge.activate("coder", view, node) },
             { token, value -> bridge.submit("coder", token, value) }, floating = true, surfaces = { resource ->
-                if (resource == "home-cards") homeCards.root
-                else if (resource == "verse-portal") VersePortal.card(this, "Enter the Grid") {
+                if (resource == "verse-portal") VersePortal.card(this, "Enter the Grid") {
                     bridge.shell("switch", "verse" to true)
                     select(AppTab.VERSE)
                 }
@@ -1019,7 +1016,6 @@ class MainActivity : ComponentActivity() {
             }
         }
         verseBar.update(shell)
-        homeCards.update(shell)
         mount(coderRenderer, coderContent, fixture ?: packet?.objectOrNull("coder"))
         renderGym(packet?.objectOrNull("gym"))
         val gymScreen = packet?.objectOrNull("gym")?.optString("screen") ?: "chat"
@@ -1238,7 +1234,6 @@ class MainActivity : ComponentActivity() {
         shellBar.update(bridge.packet?.objectOrNull("shell"), force = true)
         drawer.build()
         drawer.update(bridge.packet?.objectOrNull("shell"))
-        homeCards = HomeCards(this) { id -> bridge.shell("try_card", "id" to id) }
         menus()
         coderRenderer.clear()
         coderContent.removeAllViews()
