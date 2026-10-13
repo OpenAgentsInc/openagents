@@ -27,7 +27,8 @@ pub mod system;
 pub use def::Effect;
 pub use library::Library;
 pub use sprite::{
-    Facing, Ribbon, RibbonPoint, Sprite, SpriteVertex, budget, vertices, vertices_with_ribbons,
+    Facing, Ribbon, RibbonPoint, Sprite, SpriteVertex, budget, set_budget, vertices,
+    vertices_with_ribbons,
 };
 pub use system::{Handle, Particles, Spawn, Style};
 

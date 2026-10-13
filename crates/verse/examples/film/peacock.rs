@@ -43,7 +43,7 @@ const TAIL_CENTER: Vec3 = Vec3::new(0.0, 0.9, -1.8);
 const TAIL_RADIUS: f32 = 8.0;
 
 /// The void's color and the courtyard's night.
-const VOID: [f32; 3] = [0.004, 0.008, 0.022];
+const VOID: [f32; 3] = [0.012, 0.03, 0.07];
 const NIGHT: [f32; 3] = [0.03, 0.075, 0.12];
 
 pub struct Set {
@@ -149,12 +149,7 @@ impl Set {
                     Spawn::at(Vec3::new(0.0, 0.0, -3.0)).scaled(1.3),
                 );
                 fx.start("night_embers", Spawn::at(Vec3::new(0.0, 0.3, 0.0)));
-                for at in [
-                    Vec3::new(-2.5, 0.1, 2.7),
-                    Vec3::new(-4.1, 0.3, 0.6),
-                    Vec3::new(2.7, 0.1, 2.4),
-                    Vec3::new(4.3, 0.4, 0.3),
-                ] {
+                for at in [Vec3::new(-3.0, 0.1, 2.4), Vec3::new(-4.6, 0.3, 0.2)] {
                     fx.start("ruin_fire", Spawn::at(at));
                     if at.z > 1.0 {
                         continue;
@@ -323,8 +318,8 @@ impl Set {
                 );
                 // The core of light behind her.
                 sprites.push(feathers::dot(
-                    TAIL_CENTER + Vec3::new(0.0, 0.1, 0.3),
-                    2.0,
+                    TAIL_CENTER + Vec3::new(0.0, 0.4, 0.4),
+                    3.6,
                     [3.6, 4.0, 4.6],
                     1.0,
                 ));
@@ -417,7 +412,7 @@ impl Set {
                 // The core's pool of light on the cobbles behind her.
                 sprites.push(verse::fx::Sprite {
                     facing: verse::fx::Facing::Ground,
-                    ..feathers::dot(Vec3::new(0.0, 0.03, -1.4), 4.5, [0.35, 0.42, 0.55], 1.0)
+                    ..feathers::dot(Vec3::new(0.0, 0.03, -0.2), 5.5, [0.9, 1.0, 1.25], 1.0)
                 });
                 // A luminous haze filling the fan behind the feathers.
                 for i in 0..9 {
@@ -503,7 +498,7 @@ impl Set {
             0.025,
         ));
         // A blue nebula: soft clouds of light far behind.
-        for i in 0..18u32 {
+        for i in 0..30u32 {
             let at = Vec3::new(
                 (hash(i * 5 + 300) * 2.0 - 1.0) * 45.0,
                 (hash(i * 5 + 301) * 2.0 - 1.0) * 22.0 + 2.0,
@@ -521,7 +516,12 @@ impl Set {
                 layer,
                 angle: hash(i * 5 + 302) * 6.28,
                 priority: 2,
-                ..feathers::dot(at, 12.0 + 10.0 * hash(i * 5 + 303), [0.05, 0.09, 0.2], 1.0)
+                ..feathers::dot(
+                    at,
+                    12.0 + 10.0 * hash(i * 5 + 303),
+                    [0.02, 0.038, 0.085],
+                    1.0,
+                )
             });
         }
         // A faint blue haze where the feathers gather.

@@ -139,7 +139,7 @@ pub fn fine(
         })
         .collect();
     // The rim, and a wider, fainter rim round it that blooms outward.
-    ribbons.push(glow_line(&egg, eye * 0.08, luminance));
+    ribbons.push(glow_line(&egg, eye * 0.2, luminance.map(|c| c * 1.6)));
     ribbons.push(glow_line(&egg, eye * 0.3, luminance.map(|c| c * 0.16)));
     let (rect, layer) = from_sheet(DISC);
     let disc = |at: Vec3, half: f32, gain: f32| Sprite {
@@ -162,10 +162,10 @@ pub fn fine(
     let shaft: Vec<Vec3> = (0..=24)
         .map(|i| at(start + (1.0 - start) * i as f32 / 24.0))
         .collect();
-    ribbons.push(glow_line(&shaft, eye * 0.03, luminance.map(|c| c * 0.9)));
+    ribbons.push(glow_line(&shaft, eye * 0.09, luminance.map(|c| c * 1.4)));
     // Barbs from the shaft, swept toward the tip, longest round the eye.
     let barb = luminance.map(|c| c * 0.3);
-    let per_side = 100;
+    let per_side = 140;
     for side in [-1.0_f32, 1.0] {
         for i in 0..per_side {
             let k = (i as f32 + hash(i * 2 + side.max(0.0) as u32)) / per_side as f32;
@@ -173,11 +173,16 @@ pub fn fine(
             let p = at(u);
             let t = tangent(u);
             let n = plane.cross(t).normalize_or(Vec3::X) * side;
-            let reach = eye * (0.25 + 1.5 * (1.0 - u).powf(2.0)) * (0.8 + 0.4 * hash(i + 999));
+            let reach = eye * (0.5 + 2.2 * (1.0 - u).powf(1.5)) * (0.8 + 0.4 * hash(i + 999));
             let sweep = 0.55 + 0.25 * hash(i + 77);
             let dir = (n * sweep.cos() - t * sweep.sin()).normalize_or(n);
-            let end = p + dir * reach - t * reach * 0.12;
-            let mut line = glow_line(&[p, end], eye * 0.011, barb);
+            // Each barb leaves the shaft at an angle and bends to flow
+            // toward the tip, nearly along the shaft.
+            let flow = (dir * 0.35 - t).normalize_or(-t);
+            let p1 = p + dir * reach * 0.3;
+            let p2 = p1 + (dir * 0.6 + flow * 0.4).normalize_or(dir) * reach * 0.35;
+            let end = p2 + flow * reach * 0.6;
+            let mut line = glow_line(&[p, p1, p2, end], eye * 0.012, barb);
             if let Some(last) = line.points.last_mut() {
                 last.color = [0.0; 3];
             }

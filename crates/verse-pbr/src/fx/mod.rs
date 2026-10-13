@@ -7,5 +7,6 @@ pub mod sheet;
 pub mod sprite;
 
 pub use sprite::{
-    Facing, Ribbon, RibbonPoint, Sprite, SpriteVertex, budget, vertices, vertices_with_ribbons,
+    Facing, Ribbon, RibbonPoint, Sprite, SpriteVertex, budget, set_budget, vertices,
+    vertices_with_ribbons,
 };

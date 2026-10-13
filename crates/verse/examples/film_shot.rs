@@ -844,6 +844,8 @@ fn main() -> Result<(), String> {
     if std::env::var("VERSE_QUALITY").as_deref() != Ok("high") {
         eprintln!("film_shot: set VERSE_QUALITY=high for the high tier");
     }
+    // A film frame's cost is no matter: let every sprite and ribbon draw.
+    verse::fx::set_budget(Some(16_384));
     if let Some(dir) = &args.stills {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     }

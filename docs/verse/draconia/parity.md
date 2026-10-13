@@ -298,3 +298,25 @@ top), and `~/Downloads/draconia-peacock-progress.png` (one row per version).
     feather toward the tip, not straight ones crossing it;
   - its shaft and rim are much thicker and blown out;
   - its sky is a lighter blue nebula; ours is still dark.
+
+### v9, 2026-10-13
+
+- **Gaps fixed:**
+  - P1's barbs are long strokes that leave the shaft at an angle and bend to
+    flow toward the tip, 140 a side. The shaft and the egg's rim are thick
+    and blown out, and a mid-blue nebula of soft clouds fills the sky.
+  - The engine change behind it: `verse::fx::set_budget` lets an offline
+    render raise the per-frame sprite and ribbon budget (High is 2048).
+    `film_shot` raises it to 16,384, since a film frame's cost doesn't matter
+    and a stroked close-up draws thousands of ribbon segments.
+  - P3:
+    - the white-hot core is a big wash from her hip to her shoulders;
+    - a bright pool of light lies on the cobbles under her feet, and the
+      ground mist burns brighter;
+    - the fires are two small, ragged clusters with smoke at the far left.
+- **Still open:**
+  - the guardian's neck still blends into the core rather than reading as a
+    white peacock;
+  - the fan's eyes are greyer and less contrasty than the reference's white
+    rings;
+  - the core light shows the cobbles as a hard checker pattern.

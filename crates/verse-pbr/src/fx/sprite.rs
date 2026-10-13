@@ -71,13 +71,31 @@ pub struct SpriteVertex {
 /// size. Each is six 76-byte vertices, so the high tier's 2048, enough for
 /// an eight-meteor swarm's trails and blasts together, cost about 934 KB a
 /// frame.
+/// An offline render (a film shot) may raise it with [`set_budget`].
 #[must_use]
 pub fn budget(tier: Tier) -> usize {
+    let raised = BUDGET_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed);
+    if raised > 0 {
+        return raised;
+    }
     match tier {
         Tier::Low => 160,
         Tier::Medium => 768,
         Tier::High => 2048,
     }
+}
+
+static BUDGET_OVERRIDE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Sets the sprites every frame may draw, whatever the tier, or `None` for
+/// the tier's own budget. For offline renders, where a frame's cost is no
+/// matter: a close-up of stroked feathers (`verse::fx::feathers::fine`)
+/// draws thousands of ribbon segments. Clamped to 16..=65,536.
+pub fn set_budget(sprites: Option<usize>) {
+    BUDGET_OVERRIDE.store(
+        sprites.map_or(0, |n| n.clamp(16, 65_536)),
+        std::sync::atomic::Ordering::Relaxed,
+    );
 }
 
 /// Builds `sprites`' quads for a camera at `eye`, at most `budget` of
