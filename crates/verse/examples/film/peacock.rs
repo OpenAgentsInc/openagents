@@ -44,7 +44,7 @@ const TAIL_RADIUS: f32 = 7.6;
 
 /// The void's color and the courtyard's night.
 const VOID: [f32; 3] = [0.004, 0.008, 0.022];
-const NIGHT: [f32; 3] = [0.006, 0.014, 0.02];
+const NIGHT: [f32; 3] = [0.018, 0.045, 0.058];
 
 pub struct Set {
     part: Part,
@@ -306,7 +306,8 @@ impl Set {
                         feathers: 175,
                         droop: 0.16,
                         luminance: [1.6, 1.85, 2.3],
-                        vane: 0.42,
+                        vane: 0.3,
+                        slim: 0.7,
                         open,
                         time: t,
                     }
@@ -337,7 +338,7 @@ impl Set {
                     sprites.push(feathers::dot(
                         TAIL_CENTER + dir * TAIL_RADIUS * 0.62 - Vec3::Z * 0.4,
                         TAIL_RADIUS * 0.55,
-                        [0.1, 0.14, 0.22],
+                        [0.04, 0.055, 0.09],
                         1.0,
                     ));
                 }
@@ -393,13 +394,13 @@ impl Set {
             // Each shaft bows the same way, so the feathers sweep in arcs.
             let side = Vec3::new(-dir.y, dir.x, 0.0);
             let bend = (eye + base) * 0.5 + side * length * 0.3;
-            let lum = [3.4, 3.8, 4.4];
+            let lum = [1.35, 1.55, 1.9];
             let (head, ribbons) = feathers::curved(eye, bend, base, length * 0.8, lum);
             sprites.push(head);
             ribbons_out.extend(ribbons);
             sprites.push(feathers::dot(
                 eye,
-                length * 0.08,
+                length * 0.05,
                 lum.map(|c| c * 0.15),
                 1.0,
             ));
@@ -429,7 +430,10 @@ impl Set {
         neon.fog_start = 300.0;
         neon.fog_end = 900.0;
         neon.vignette = 0.3;
-        neon.bloom = 0.3;
+        neon.bloom = match self.part {
+            Part::Feathers => 0.2,
+            Part::Tail => 0.22,
+        };
         neon.grade.exposure = self.flash(t);
         neon.grade.saturation = 0.92;
         neon.grade.contrast = 1.25;
@@ -615,7 +619,7 @@ fn ruins(out: &mut Vec<LitVertex>) {
             let course = 0.45;
             let mut layer = 0;
             let mut y = 0.0;
-            while y < 9.0 {
+            while y < 11.0 {
                 let mut x = x0 + if layer % 2 == 0 { 0.0 } else { 0.4 };
                 while x < x1 {
                     n += 1;
@@ -639,14 +643,14 @@ fn ruins(out: &mut Vec<LitVertex>) {
             }
         };
     // Left: a tall broken wall stepping down toward the middle.
-    wall(out, -14.0, -3.5, 0.2, &|x: f32| {
-        let k = ((x + 3.5) / -5.0).clamp(0.0, 1.0);
-        0.6 + 6.5 * k.powf(0.9) + 0.9 * ((x * 2.3).sin() * (x * 0.9).cos())
+    wall(out, -16.0, -5.6, -3.0, &|x: f32| {
+        let k = ((x + 5.6) / -4.0).clamp(0.0, 1.0);
+        1.0 + 9.0 * k.powf(0.8) + 0.9 * ((x * 2.3).sin() * (x * 0.9).cos())
     });
     // Right: lower, more broken.
-    wall(out, 3.8, 14.0, -0.2, &|x: f32| {
-        let k = ((x - 3.8) / 5.0).clamp(0.0, 1.0);
-        0.5 + 4.8 * k.powf(1.0) + 0.8 * ((x * 1.7).sin() * (x * 1.1).cos())
+    wall(out, 5.8, 16.0, -3.4, &|x: f32| {
+        let k = ((x - 5.8) / 4.0).clamp(0.0, 1.0);
+        0.8 + 7.5 * k.powf(0.9) + 0.8 * ((x * 1.7).sin() * (x * 1.1).cos())
     });
     // Rubble.
     for i in 0..70u32 {

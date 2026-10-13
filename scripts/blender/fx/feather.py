@@ -85,7 +85,7 @@ def feather():
         return 0.15 * head * (0.1 + 0.9 * tail)
 
     rng = np.random.default_rng(7)
-    barbs = 320
+    barbs = 520
     for side in (-1.0, 1.0):
         for i in range(barbs):
             s0 = 0.08 + 0.78 * (i + rng.uniform(0, 1)) / barbs
@@ -99,8 +99,8 @@ def feather():
             av = side * reach * np.sin(sweep) * t * (1 - 0.2 * bend)
             qv = av * 2.0 * ASPECT
             fade = (1.0 - t) ** 0.8 * (0.5 + 0.5 * t)
-            col = np.array([0.7, 0.8, 1.0])[None, :] * (0.11 * fade)[:, None]
-            splat(barbs_img, sv, qv, col, 0.6)
+            col = np.array([0.7, 0.8, 1.0])[None, :] * (0.12 * fade)[:, None]
+            splat(barbs_img, sv, qv, col, 0.42)
 
     e = np.sqrt(((s - cs) / a) ** 2 + (across / b) ** 2)
     # Barbs pass behind the eyespot, so the disc stays clean.

@@ -73,3 +73,24 @@ top), and `~/Downloads/draconia-peacock-progress.png` (one row per version).
   - her outline is still Alice's coat;
   - P1's barbs are sparser than the reference's;
   - the walls and fires at the frame edges read weaker than the reference's.
+
+### v5, 2026-10-13
+
+- **Gaps fixed:**
+  - v3's hazy tail eyespots (a regression). `feathers::Fan` gains `slim`:
+    narrower feathers with egg-shaped eyespots and darker gaps (0.7 here).
+    Vanes burn at 0.3 of the light, and each eyespot gets a larger white core,
+    so the rows read as crisp white eyes again, with v3's silhouette and
+    framing.
+  - P1 was blobby and overexposed. The feather sheet has 520 finer barbs a
+    side, feathers burn at about two-thirds the light, and the lower vane's
+    ribbon is dimmer, so fine barbs show with dark between.
+  - The edges: the walls stand back at the fan's sides and rise into the
+    top corners against a teal night, occluding the fan's outer feathers as
+    the reference's ruins do.
+- **Still open:**
+  - her hair doesn't fly (the face agent is adding hair joint chains);
+  - her outline is still Alice's coat;
+  - the fires at the edges are soft orange blobs, not the reference's crisp
+    flames;
+  - the P1 sheet is 512 px, so close-ups soften.

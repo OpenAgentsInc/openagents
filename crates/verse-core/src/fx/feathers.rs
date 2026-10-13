@@ -130,7 +130,7 @@ pub fn curved(
                 priority: 8,
             },
             Ribbon {
-                points: points(width * 0.6, 0.25),
+                points: points(width * 0.5, 0.12),
                 layer,
                 rect: vane_rect,
                 priority: 7,
@@ -211,6 +211,9 @@ pub struct Fan {
     /// a dense fan from washing into one sheet of light, so its eyespots
     /// read as rows of bright points.
     pub vane: f32,
+    /// The feathers' width as a share of the sheet's, 0 to 1: narrower
+    /// feathers have egg-shaped eyespots and leave darker gaps between.
+    pub slim: f32,
     /// How far the fan has opened, 0 folded to 1 fully fanned.
     pub open: f32,
     /// Seconds, for a slow shimmer.
@@ -249,18 +252,24 @@ impl Fan {
                 let eye = self.center + dir * r * (0.35 + 0.65 * open);
                 let lum = self.luminance.map(|c| c * shimmer * (1.0 - 0.2 * k));
                 let vane = self.vane.clamp(0.0, 1.0);
-                out.push(feather(
+                let mut quill = feather(
                     eye,
                     -dir,
                     length * (0.35 + 0.65 * open),
                     lum.map(|c| c * vane),
                     1.0,
-                ));
+                );
+                let slim = self.slim.clamp(0.1, 1.0);
+                // Keep the sprite's length while narrowing it: the tail
+                // grows by what the head's half width gives up.
+                quill.tail += quill.tail.normalize_or_zero() * 2.0 * quill.half * (1.0 - slim);
+                quill.half *= slim;
+                out.push(quill);
                 // The eyespot burns brighter than its vane.
                 out.push(dot(
                     eye,
-                    length * 0.1,
-                    lum.map(|c| c * (1.0 - vane) * 3.0),
+                    length * 0.13 * slim,
+                    lum.map(|c| c * (1.0 - vane) * 2.6),
                     1.0,
                 ));
             }
@@ -287,6 +296,7 @@ mod tests {
             droop: 0.1,
             luminance: [4.0; 3],
             vane: 0.5,
+            slim: 1.0,
             open: 1.0,
             time: 0.0,
         };
