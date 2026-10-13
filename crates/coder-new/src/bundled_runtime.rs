@@ -973,6 +973,15 @@ pub async fn acp_briefed(
             ),
         };
         let id = session.id().to_owned();
+        // Its version, for the routing records (#11535).
+        crate::routing_record::note_agent_version(
+            &agent.id,
+            session
+                .initialized
+                .agent_info
+                .as_ref()
+                .and_then(|info| info.version.as_deref()),
+        );
         let model = session.opened.model().map(str::to_owned);
         if let Some(model) = &model {
             emit(RuntimeEvent::Model(model.clone()));

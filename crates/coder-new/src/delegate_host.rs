@@ -154,6 +154,9 @@ pub struct CoderHost {
     cancel: Arc<AtomicBool>,
     /// The parent chat's events: each child shows there as a delegation.
     events: Option<tokio::sync::mpsc::UnboundedSender<RuntimeEvent>>,
+    /// Where a child on an ACP agent writes its routing record (#11535),
+    /// taken when the host is made, on the parent's thread.
+    routing: Option<crate::routing_record::Recorder>,
 }
 
 impl CoderHost {
@@ -169,6 +172,7 @@ impl CoderHost {
             provider,
             cancel,
             events,
+            routing: crate::routing_record::recorder(),
         }
     }
 }
@@ -247,14 +251,17 @@ impl Host for CoderHost {
                             });
                         }
                     };
-                    run_child(
+                    let record = record_start(host.routing.as_ref(), &host.execution, &child);
+                    let report = run_child(
                         &host.execution,
                         host.provider.clone(),
                         &child,
                         &host.cancel,
                         &mut emit,
                     )
-                    .await
+                    .await;
+                    record_end(record, &report);
+                    report
                 }),
                 Err(error) => fallback.failed(&format!("The child could not start: {error}")),
             };
@@ -284,6 +291,7 @@ impl Host for CoderHost {
         let execution = self.execution.clone();
         let provider = self.provider.clone();
         let running = child.clone();
+        let routing = self.routing.clone();
         agent_fleet::spawn(control, move |control| {
             let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -293,10 +301,12 @@ impl Host for CoderHost {
             };
             let cancel = control.cancel_flag();
             control.set_transcript(running.transcript());
+            let record = record_start(routing.as_ref(), &execution, &running);
             let report = runtime.block_on(async {
                 let mut emit = |event: RuntimeEvent| control.event(event);
                 run_child(&execution, provider, &running, &cancel, &mut emit).await
             });
+            record_end(record, &report);
             if let Some(worktree) = &report.worktree {
                 control.set_checkout(Some(worktree.clone()), report.branch.clone());
             }
@@ -317,6 +327,78 @@ impl Host for CoderHost {
         Ok(Report::for_child(&child, Outcome::Running)
             .summarized("Started in the background; it reports in the agent tray."))
     }
+}
+
+/// A child on an ACP agent's routing record (#11535): a `delegation` line
+/// naming the agent and the version it last reported, hosted by Coder,
+/// chosen by the parent's call; [`record_end`] adds its outcome. `None`
+/// for a child on a harness, or with records off.
+fn record_start(
+    routing: Option<&crate::routing_record::Recorder>,
+    execution: &ExecutionSettings,
+    child: &Child,
+) -> Option<(crate::routing_record::Recorder, crate::routing_record::Open)> {
+    use crate::routing_record::{Choice, Features, Inputs, Kind, Rule};
+    let routing = routing?;
+    let agent = execution
+        .agents
+        .iter()
+        .find(|agent| agent.id == child.target.harness && agent.transport == AgentTransport::Acp)?;
+    let candidates = crate::harness_plugin::Candidates {
+        admitted: Vec::new(),
+        excluded: Vec::new(),
+    };
+    let choice = Choice {
+        chat: Some(child.lineage.id.clone()),
+        turn: child.lineage.depth,
+        kind: Kind::Delegation,
+        candidates: &candidates,
+        inputs: Inputs {
+            features: Features {
+                local: true,
+                images: 0,
+                prompt_chars: u32::try_from(child.request.task.chars().count()).unwrap_or(u32::MAX),
+                pinned_model: child.target.model.is_some(),
+            },
+            ..Inputs::default()
+        },
+        harness: crate::harness_plugin::Harness::CoderLoop,
+        agent: Some(crate::harness_plugin::Agent {
+            id: agent.id.clone(),
+            version: crate::routing_record::agent_version(&agent.id),
+        }),
+        rule: Rule::Delegated,
+        payer: crate::harness_plugin::Payer::AgentLogin,
+    };
+    let open = routing.chose(&choice, 0, 0.0);
+    Some((routing.clone(), open))
+}
+
+/// The outcome of a child [`record_start`] recorded: how it ended, its
+/// checks, and its error, scrubbed by the record.
+fn record_end(
+    record: Option<(crate::routing_record::Recorder, crate::routing_record::Open)>,
+    report: &Report,
+) {
+    use crate::routing_record::Ended;
+    let Some((routing, open)) = record else {
+        return;
+    };
+    routing.ended(
+        &open,
+        crate::routing_record::Outcome {
+            ended: Some(match report.outcome {
+                Outcome::Done | Outcome::Running => Ended::Done,
+                Outcome::Failed => Ended::Error,
+                Outcome::Stopped => Ended::Stopped,
+            }),
+            checks_passed: (!report.checks.is_empty())
+                .then(|| report.checks.iter().all(|check| check.passed)),
+            model: report.model.clone(),
+            error: report.error.clone(),
+            ..crate::routing_record::Outcome::default()
+        },
+    );
 }
 
 /// The name a child shows: its harness, with the model when the call

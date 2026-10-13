@@ -31,7 +31,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 
-use crate::harness_plugin::{Candidates, Exclusion, Harness, Payer};
+use crate::harness_plugin::{Agent, Candidates, Exclusion, Harness, Payer};
 
 /// The environment variable that moves the records' folder.
 pub const DIR_ENV: &str = "CODER_ROUTING_DIR";
@@ -53,6 +53,9 @@ pub enum Kind {
     Title,
     /// Any other helper call Coder makes for itself.
     Generate,
+    /// A child a `delegate` call started (#11535): its parent's work, not
+    /// a turn the person sent.
+    Delegation,
 }
 
 /// When a harness was left out.
@@ -150,6 +153,8 @@ pub enum Rule {
     /// first admitted candidate. Also: the chosen harness failed and this
     /// one took the turn instead.
     Fallback,
+    /// A parent's `delegate` call named it (#11535).
+    Delegated,
 }
 
 /// The selector's call when it gives a turn to a harness.
@@ -164,6 +169,9 @@ pub struct Choice<'a> {
     pub candidates: &'a Candidates,
     pub inputs: Inputs,
     pub harness: Harness,
+    /// The ACP agent the turn runs on, when it runs on one (#11535); the
+    /// harness is then the one hosting it, Coder's.
+    pub agent: Option<Agent>,
     pub rule: Rule,
     pub payer: Payer,
 }
@@ -358,6 +366,9 @@ pub struct ChoseLine {
     pub excluded: Vec<Excluded>,
     pub inputs: Inputs,
     pub harness: Harness,
+    /// The ACP agent the turn ran on, by id and version (#11535).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<Agent>,
     pub rule: Rule,
     pub payer: Payer,
 }
@@ -368,6 +379,10 @@ pub struct EndedLine {
     pub id: String,
     pub at_ms: u64,
     pub harness: Harness,
+    /// The ACP agent the turn ran on, with the version it reported
+    /// (#11535).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<Agent>,
     pub ended: Ended,
     pub elapsed_ms: u64,
     pub cost_usd: Option<f64>,
@@ -386,6 +401,7 @@ pub struct EndedLine {
 pub struct Open {
     pub id: String,
     pub harness: Harness,
+    pub agent: Option<Agent>,
     started: std::time::Instant,
     /// The chat's totals when the turn started, so the turn's own share
     /// can be taken at the end.
@@ -478,6 +494,46 @@ pub fn version(harness: Harness) -> Option<String> {
         .cloned()
 }
 
+/// Notes the version the ACP agent `id` reported when it started
+/// (#11535), from its `initialize` reply.
+pub fn note_agent_version(id: &str, version: Option<&str>) {
+    let Some(version) = version.map(str::trim).filter(|v| !v.is_empty()) else {
+        return;
+    };
+    VERSIONS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(agent_key(id), version.chars().take(64).collect());
+}
+
+/// The version the ACP agent `id` last reported.
+#[must_use]
+pub fn agent_version(id: &str) -> Option<String> {
+    VERSIONS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(&agent_key(id))
+        .cloned()
+}
+
+fn agent_key(id: &str) -> String {
+    format!("agent:{id}")
+}
+
+/// An agent as a record keeps it: its id and version kept whole when they
+/// are plain names, scrubbed like a diagnostic otherwise, and the version
+/// it last reported when the caller has none.
+#[must_use]
+pub fn scrub_agent(agent: &Agent) -> Agent {
+    let version = agent.version.clone().or_else(|| agent_version(&agent.id));
+    Agent {
+        id: scrub_model(&agent.id),
+        version: version
+            .as_deref()
+            .map(|version| scrub_model(&version.chars().take(64).collect::<String>())),
+    }
+}
+
 fn key(harness: Harness) -> String {
     serde_json::to_value(harness)
         .ok()
@@ -516,6 +572,7 @@ impl Recorder {
                 .collect(),
             inputs: choice.inputs.clone(),
             harness: choice.harness,
+            agent: choice.agent.as_ref().map(scrub_agent),
             rule: choice.rule,
             payer: choice.payer,
         });
@@ -523,6 +580,7 @@ impl Recorder {
         Open {
             id,
             harness: choice.harness,
+            agent: choice.agent.clone(),
             started: std::time::Instant::now(),
             tokens_before,
             cost_before,
@@ -555,6 +613,13 @@ impl Recorder {
             id: open.id.clone(),
             at_ms,
             harness: open.harness,
+            // The version it reported while the turn ran.
+            agent: open.agent.as_ref().map(|agent| {
+                scrub_agent(&Agent {
+                    id: agent.id.clone(),
+                    version: agent_version(&agent.id).or_else(|| agent.version.clone()),
+                })
+            }),
             ended: outcome.ended.unwrap_or(if outcome.error.is_some() {
                 Ended::Error
             } else {
@@ -735,6 +800,10 @@ pub fn read(dir: &Path) -> Vec<Line> {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct HarnessSummary {
     pub harness: Option<Harness>,
+    /// The ACP agent these turns ran on, by id (#11535); its turns are
+    /// counted apart from their host harness's own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
     /// Person turns given to it (`primary` requests only).
     pub chosen: u64,
     /// How those turns ended, by [`Ended`].
@@ -790,7 +859,7 @@ pub fn summarize(lines: &[Line]) -> Vec<HarnessSummary> {
             }
             primary.insert(chose.id.clone());
             open.insert(chose.id.clone());
-            let summary = of(&mut by, chose.harness);
+            let summary = of_turn(&mut by, chose.harness, chose.agent.as_ref());
             summary.chosen += 1;
             *summary.rules.entry(name(&chose.rule)).or_default() += 1;
             for excluded in &chose.excluded {
@@ -807,7 +876,7 @@ pub fn summarize(lines: &[Line]) -> Vec<HarnessSummary> {
                 continue;
             }
             open.remove(&ended.id);
-            let summary = of(&mut by, ended.harness);
+            let summary = of_turn(&mut by, ended.harness, ended.agent.as_ref());
             *summary.ended.entry(name(&ended.ended)).or_default() += 1;
             summary.cost_usd += ended.cost_usd.unwrap_or_default();
             summary.tokens = summary.tokens.saturating_add(ended.tokens.unwrap_or(0));
@@ -825,10 +894,28 @@ pub fn summarize(lines: &[Line]) -> Vec<HarnessSummary> {
         if let Line::Chose(chose) = line
             && open.contains(&chose.id)
         {
-            of(&mut by, chose.harness).unfinished += 1;
+            of_turn(&mut by, chose.harness, chose.agent.as_ref()).unfinished += 1;
         }
     }
     by.into_values().collect()
+}
+
+/// The summary a turn counts in: its agent's, when it ran on one, else
+/// its harness's.
+fn of_turn<'a>(
+    by: &'a mut BTreeMap<String, HarnessSummary>,
+    harness: Harness,
+    agent: Option<&Agent>,
+) -> &'a mut HarnessSummary {
+    match agent {
+        Some(agent) => by
+            .entry(agent_key(&agent.id))
+            .or_insert_with(|| HarnessSummary {
+                agent: Some(agent.id.clone()),
+                ..HarnessSummary::default()
+            }),
+        None => of(by, harness),
+    }
 }
 
 fn of(by: &mut BTreeMap<String, HarnessSummary>, harness: Harness) -> &mut HarnessSummary {
@@ -859,6 +946,28 @@ impl crate::App {
     /// this message re-asks the chat's last turn. Does nothing when records
     /// are off.
     pub(crate) fn record_choice(&mut self, harness: Harness, images: usize, prompt_chars: usize) {
+        self.record_choice_on(harness, None, images, prompt_chars);
+    }
+
+    /// [`Self::record_choice`] for a turn on the ACP agent the chat is
+    /// pinned to (#11524, #11535): the agent is named, Coder's loop is the
+    /// harness hosting it, and the agent's own login pays.
+    pub(crate) fn record_agent_choice(&mut self, agent: &str, prompt_chars: usize) {
+        self.routing_rule = Some(Rule::Pin);
+        let agent = Agent {
+            id: agent.to_owned(),
+            version: agent_version(agent),
+        };
+        self.record_choice_on(Harness::CoderLoop, Some(agent), 0, prompt_chars);
+    }
+
+    fn record_choice_on(
+        &mut self,
+        harness: Harness,
+        agent: Option<Agent>,
+        images: usize,
+        prompt_chars: usize,
+    ) {
         let rule = self.routing_rule.take().unwrap_or(Rule::Continues);
         let (probabilities, router) = self
             .routing_router
@@ -920,8 +1029,13 @@ impl crate::App {
                 plan: self.plan_part(),
             },
             harness,
+            payer: if agent.is_some() {
+                Payer::AgentLogin
+            } else {
+                crate::harness_plugin::payer(harness, &facts)
+            },
+            agent,
             rule,
-            payer: crate::harness_plugin::payer(harness, &facts),
         };
         let mut open = recorder.chose(&choice, self.live.tokens, self.live.cost_usd);
         open.entries_before = self.live.entries.len();
@@ -1018,6 +1132,7 @@ mod tests {
                 plan: None,
             },
             harness,
+            agent: None,
             rule: Rule::FirstAdmitted,
             payer: Payer::ClaudePlan,
         }
@@ -1425,5 +1540,30 @@ mod tests {
             None
         );
         assert_eq!(redo(&last(Ended::Error), "keep going", &[]), None);
+    }
+
+    /// An agent's id and version are kept whole when they are plain
+    /// names, and scrubbed like a diagnostic when not (#11535).
+    #[test]
+    fn an_agent_is_kept_by_name_and_scrubbed_otherwise() {
+        let plain = scrub_agent(&Agent {
+            id: "devin-cli".into(),
+            version: Some("3000.11.3".into()),
+        });
+        assert_eq!(plain.id, "devin-cli");
+        assert_eq!(plain.version.as_deref(), Some("3000.11.3"));
+        let odd = scrub_agent(&Agent {
+            id: "/Users/someone/bin/agent".into(),
+            version: Some("build token=abcdef0123456789abcdef".into()),
+        });
+        assert_eq!(odd.id, "[path]");
+        let version = odd.version.unwrap();
+        assert!(!version.contains("abcdef0123"), "{version}");
+        // A line from before agents were named still reads.
+        let old = r#"{"type":"ended","id":"1","at_ms":1,"harness":"codex","ended":"done","elapsed_ms":1,"cost_usd":null,"tokens":null,"checks_passed":null,"redone":null,"model":null,"harness_version":null,"diagnostic":null}"#;
+        let Line::Ended(ended) = serde_json::from_str::<Line>(old).unwrap() else {
+            panic!("an ended line");
+        };
+        assert_eq!(ended.agent, None);
     }
 }

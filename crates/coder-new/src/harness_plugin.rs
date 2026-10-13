@@ -24,7 +24,7 @@ use crate::{App, Mode, plugin_tools::ExecutionSettings};
 // The harness contract itself (identity, place, abilities, turn, and the
 // declarations) lives in `route_contract::harness`, so the phone and the
 // web read the same table (#11456).
-pub use route_contract::harness::{Can, DECLARATIONS, Declaration, Harness, Place, Turn};
+pub use route_contract::harness::{Agent, Can, DECLARATIONS, Declaration, Harness, Place, Turn};
 
 /// Who pays for a harness's work.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -42,6 +42,9 @@ pub enum Payer {
     /// up in it (#11507).
     #[serde(rename = "opencode")]
     OpenCode,
+    /// An ACP agent's own login (Grok Build, Devin, Cursor...), for a turn
+    /// or a delegation on one (#11535).
+    AgentLogin,
 }
 
 /// Why a harness is not a candidate for this chat.

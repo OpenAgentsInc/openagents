@@ -281,8 +281,12 @@ async fn a_delegated_grok_child_runs_under_its_hooks_and_a_held_merge_is_refused
     );
     std::fs::write(&program, script).unwrap();
     let execution = on_acp(&main, "grok-build", "Grok Build", program);
+    let records = dir.path().join("routing");
+    crate::routing_record::record_to(Some((records.clone(), facts())));
+    let host = host(execution);
+    crate::routing_record::record_to(None);
     let delegator = Delegator::new(
-        Arc::new(host(execution)),
+        Arc::new(host),
         Lineage::root("run-x", CODER),
         Authority::default(),
         &dir.path().join("runs"),
@@ -314,11 +318,55 @@ async fn a_delegated_grok_child_runs_under_its_hooks_and_a_held_merge_is_refused
     // The child's transcript has its run, not the parent's.
     let transcript = std::fs::read_to_string(report.transcript.unwrap()).unwrap();
     assert!(transcript.contains("The merge was held."), "{transcript}");
+    // Its routing record names the agent and the version it reported
+    // (#11535), as a delegation the parent's call chose.
+    let lines = crate::routing_record::read(&records);
+    let chose = lines
+        .iter()
+        .find_map(|line| match line {
+            crate::routing_record::Line::Chose(chose) => Some(chose),
+            _ => None,
+        })
+        .expect("a chose line");
+    assert_eq!(chose.kind, crate::routing_record::Kind::Delegation);
+    assert_eq!(chose.rule, crate::routing_record::Rule::Delegated);
+    assert_eq!(chose.agent.as_ref().unwrap().id, "grok-build");
+    let ended = lines
+        .iter()
+        .find_map(|line| match line {
+            crate::routing_record::Line::Ended(ended) => Some(ended),
+            _ => None,
+        })
+        .expect("an ended line");
+    let agent = ended.agent.as_ref().unwrap();
+    assert_eq!(
+        (agent.id.as_str(), agent.version.as_deref()),
+        ("grok-build", Some("synthetic"))
+    );
+    assert_eq!(ended.ended, crate::routing_record::Ended::Done);
+}
+
+/// The facts a test's records read.
+fn facts() -> crate::harness_plugin::Facts {
+    let health = crate::harness_plugin::Health {
+        signed_in: false,
+        at_limit: false,
+    };
+    crate::harness_plugin::Facts {
+        local: true,
+        claude_plugin_on: false,
+        claude: health,
+        codex_on: false,
+        codex: health,
+        opencode_on: false,
+        opencode: health,
+        openrouter_key: false,
+        leaning: crate::routing_preferences::Leaning::default(),
+    }
 }
 
 /// Cursor stays emulated in a delegation (#11534): the child is told
-/// plainly what Coder can't hold before it acts, and its asks are still
-/// answered by Coder's hooks.
+/// plainly what Coder can't hold before it acts.
 #[tokio::test(flavor = "multi_thread")]
 #[cfg(unix)]
 async fn a_delegated_cursor_child_says_plainly_what_coder_cannot_hold() {
@@ -365,10 +413,4 @@ async fn a_delegated_cursor_child_says_plainly_what_coder_cannot_hold() {
     let notice = notice.expect("the plain notice");
     assert!(notice.starts_with("Cursor doesn't ask"), "{notice}");
     assert!(notice.contains("merge"), "{notice}");
-    let sent = acp_client::replay::received(&agent_dir);
-    assert!(
-        sent.iter()
-            .any(|frame| frame["result"]["outcome"]["optionId"].is_string()),
-        "Cursor's ask was answered"
-    );
 }

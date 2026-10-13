@@ -667,6 +667,7 @@ impl crate::App {
             .clone()
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
         let text = std::mem::take(&mut self.draft.text);
+        let chars = text.chars().count();
         self.draft.cursor = 0;
         self.composer = Default::default();
         self.screen = crate::Screen::Conversation;
@@ -681,6 +682,8 @@ impl crate::App {
         self.history.dirty = true;
         self.scroll = u16::MAX;
         self.begin_claude_turn();
+        // Its routing record names the agent (#11535).
+        self.record_agent_choice(&agent.id, chars);
         self.request = Some(crate::live::Request {
             id: self.request_id,
             key: model_access::ApiKey::new(""),
@@ -1132,6 +1135,80 @@ mod tests {
                 .notice
                 .as_deref()
                 .is_some_and(|notice| notice.contains("back on Auto"))
+        );
+    }
+
+    /// A turn on the picked ACP agent writes its routing record naming the
+    /// agent and the version it reported, its own login paying (#11535).
+    #[test]
+    fn an_agent_turn_writes_a_routing_record_naming_the_agent() {
+        use crate::routing_record::{Kind, Line, Rule};
+        let dir = tempfile::tempdir().unwrap();
+        let health = crate::harness_plugin::Health {
+            signed_in: false,
+            at_limit: false,
+        };
+        crate::routing_record::record_to(Some((
+            dir.path().to_owned(),
+            crate::harness_plugin::Facts {
+                local: true,
+                claude_plugin_on: false,
+                claude: health,
+                codex_on: false,
+                codex: health,
+                opencode_on: false,
+                opencode: health,
+                openrouter_key: false,
+                leaning: crate::routing_preferences::Leaning::default(),
+            },
+        )));
+        let mut app = crate::App::default();
+        app.set_mode(crate::Mode::Live);
+        app.draft.text = "fix the test".into();
+        let agent: AcpAgent =
+            serde_json::from_value(serde_json::json!({"id":"amp","name":"Amp","program":"grok"}))
+                .unwrap();
+        app.submit_agent(agent);
+        // The agent reports its version when its session starts.
+        crate::routing_record::note_agent_version("amp", Some("0.9.4"));
+        let id = app.request_id;
+        app.apply_update(crate::live::Update::Finished {
+            id,
+            result: Ok(openrouter::Streamed {
+                text: "done".into(),
+                model: "grok-4.6".into(),
+                ..Default::default()
+            }),
+        });
+        crate::routing_record::record_to(None);
+        let lines = crate::routing_record::read(dir.path());
+        let Some(Line::Chose(chose)) = lines.first() else {
+            panic!("{lines:?}");
+        };
+        let agent = chose.agent.as_ref().expect("the agent is named");
+        assert_eq!(agent.id, "amp");
+        assert_eq!(chose.kind, Kind::Primary);
+        assert_eq!(chose.rule, Rule::Pin);
+        assert_eq!(chose.payer, crate::harness_plugin::Payer::AgentLogin);
+        let Some(Line::Ended(ended)) = lines.get(1) else {
+            panic!("{lines:?}");
+        };
+        let agent = ended.agent.as_ref().expect("the agent is named");
+        assert_eq!(
+            (agent.id.as_str(), agent.version.as_deref()),
+            ("amp", Some("0.9.4"))
+        );
+        // Its turns are counted apart from the Coder loop's.
+        let summary = crate::routing_record::summarize(&lines);
+        let amp = summary
+            .iter()
+            .find(|summary| summary.agent.as_deref() == Some("amp"))
+            .expect("the agent's own summary");
+        assert_eq!((amp.harness, amp.chosen), (None, 1));
+        assert!(
+            summary
+                .iter()
+                .all(|summary| summary.harness != Some(Harness::CoderLoop) || summary.chosen == 0)
         );
     }
 }

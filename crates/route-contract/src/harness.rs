@@ -34,6 +34,20 @@ pub enum Harness {
     Codex,
 }
 
+/// An ACP agent a turn or a delegation ran on (#11535): Grok Build, Devin,
+/// Cursor and the others Coder speaks the Agent Client Protocol to. They
+/// are not harnesses of their own (the person picks one, or a `delegate`
+/// call names it, and Coder hosts the session), so a record names the
+/// agent beside its harness: its catalog id and the version it reported
+/// when it started, when it reported one.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Agent {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+}
+
 /// Where a harness runs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
