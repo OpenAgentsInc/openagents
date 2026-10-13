@@ -1,7 +1,7 @@
 """Budget guard: every 2 min, total the hourly list price of every READY/CREATING TPU VM in the
 project (ours plus anything else, e.g. the P1 worker) and, while it exceeds CAP_PER_DAY/24,
-release our least useful VM: v5e first, then v5p, then a second v6e-1 (never v6e-4/-8, never
-another agent's VM). Syncs the VM's results to GCS before deleting. Logs to ops/guard.jsonl."""
+release our least useful VM: v5e first, then v5p, then our v6e-1s, then extra v6e-4/-8 beyond
+one of each (never another agent's VM). Syncs the VM's results to GCS before deleting. Logs to ops/guard.jsonl."""
 import json, os, subprocess, time, datetime as dt
 HERE = os.path.dirname(os.path.abspath(__file__))
 P = json.load(open(os.path.join(HERE, "prices.json")))
@@ -28,9 +28,11 @@ while True:
     rec = {"ts": dt.datetime.utcnow().strftime("%FT%TZ"), "rate_h": round(rate, 2), "day": round(rate * 24), "n": len(v)}
     if rate > CAP:
         ours = [x for x in v if x["name"].startswith(("cd-", "cq-"))]
-        v6e1 = [x for x in ours if x["type"] == "v6e-1"]
-        cand = [x for x in ours if x["fam"] in ("v5e", "v5p")] + (v6e1[1:] if len(v6e1) > 1 else [])
-        cand.sort(key=lambda x: (ORDER.get(x["fam"] if x["fam"] != "v6e" else "v6e1", 9), -x["price"]))
+        # release order: v5e, v5p, our v6e-1s, then any second-or-later v6e-4 / v6e-8 (keep one of each)
+        cand = sorted([x for x in ours if x["fam"] in ("v5e", "v5p")], key=lambda x: (ORDER[x["fam"]], -x["price"]))
+        cand += sorted([x for x in ours if x["type"] == "v6e-1"], key=lambda x: -x["price"])
+        for t in ("v6e-4", "v6e-8"):
+            cand += sorted([x for x in ours if x["type"] == t], key=lambda x: -x["price"])[:-1]
         if cand:
             x = cand[0]
             subprocess.run([os.path.join(HERE, "vm.sh"), "sync", x["name"], x["zone"]], env=dict(ENV, DATE="2026-10-13"), capture_output=True, timeout=180)

@@ -37,6 +37,9 @@ synced JSON; the headline section is written by hand.
   one v5p chip: 9.8k tok/s, $0.024/M spot** — the cheapest 27B we measured.
   Chunked-prefill size (4k / 8k / 16k) makes no difference. Weight-only
   int8 gains 0 % (v5p) to 9 % (v6e); W8A8 is where the speed is.
+- **Replicas do not interfere.** Four single-chip Clef-Flash int8 engines
+  on one v5p-8 host at once: 29.2k tok/s each at 4k × 8 (29.2k alone), 19.9k
+  each at 16k × 8 — 117k tok/s per host.
 - **Cold start.** Real weights from Hugging Face: Qwen3.5-9B on v6e 147 s
   from process start to a ready engine (18 GB), Qwen3.5-27B on v5p 473 s
   (54 GB); both then run at dummy-weight speed. With a warm GCS compile

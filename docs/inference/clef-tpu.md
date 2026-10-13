@@ -299,17 +299,30 @@ moving the run time to D.
 
 Owner policy (2026-10-13): hold useful TPU capacity rather than release
 it, up to $500/day across all TPU work. Measured results:
-[clef-tpu-data.md](clef-tpu-data.md). Updated 2026-10-13 01:30 UTC.
+[clef-tpu-data.md](clef-tpu-data.md). Final state of the measurement
+campaign, 2026-10-13 04:55 UTC (catalog list prices):
 
 | Name | Zone | Type | Mode | $/h | $/day | Purpose |
 | --- | --- | --- | --- | ---: | ---: | --- |
-| p6-asia-northeast1-b | asia-northeast1-b | v6e-1 | on-demand | 2.70 | 65 | P1 correctness/serving worker (other agent) |
-| cd-v5e8-uw1c-s | us-west1-c | v5e-8 | spot | 2.87 | 69 | Flash prefill TP 1/2/4 and int8 |
-| cd-v5e8-ue1c-s | us-east1-c | v5e-8 | spot | 2.87 | 69 | Clef 27B prefill TP 8 |
-| cd-v5e8-uw4a-s | us-west4-a | v5e-8 | spot | 4.15 | 100 | kernel benches (release when done) |
-| cd-v5p8-ue5a-s | us-east5-a | v5p-8 | spot | 3.44 | 83 | 27B / Flash prefill on v5p |
-| cd-v6e8-*-uscentral1b | us-central1-b | v6e-8 | spot | 4.67 | 112 | creating; v6e standard plan |
-| queued: v6e-8 us-central1-a/b, us-east1-d, us-south1-c; v6e-4 us-central1-a/b, us-east1-d | | | spot | 0 until granted | | waiting for capacity |
+| p6-asia-northeast1-b | asia-northeast1-b | v6e-1 | on-demand | 3.24 | 78 | P1 correctness/serving worker (other agent) |
+| cd-v6e1-ane1b-d | asia-northeast1-b | v6e-1 | on-demand | 3.24 | 78 | measurement campaign: held v6e capacity (int8 sweeps done) |
+| cd-v5p8-ue5a-s | us-east5-a | v5p-8 | spot | 3.44 | 83 | v5p measurements (done); held |
+| cd-v5e8-ue1c-s2 | us-east1-c | v5e-8 | spot | 2.87 | 69 | 27B int8 TP 8 run; held |
+| **Total** | | | | **12.80** | **307** | |
+
+Queued spot requests ($0 until granted; a granted one starts the standard
+job automatically): v6e-8 and v6e-4 in us-central1-a, us-central1-b,
+us-east1-d and asia-southeast1-b.
+
+Unattended automation runs **only on the owner's Mac** (it stops if that
+machine sleeps or the session ends), from `scripts/bench/clef-tpu/`:
+`guard.py` (holds the project at or under $500/day by releasing v5e, then
+v5p, then our v6e-1s, then extra v6e-4/-8 beyond one of each; never the P1
+VM), `keeper.sh` (re-tries spot v6e), `requeue.sh` (refiles preempted
+queued requests), `autorun.sh` (starts jobs on new VMs), `watch.sh` and
+`syncall.sh`. If they stop, nothing enforces the cap: queued requests that
+are granted later would bill unchecked (worst case about $30/h if every
+request lands).
 
 ## Owner decisions
 
