@@ -603,7 +603,10 @@ def expectations(path: str, homes_root: Path) -> dict:
         }
     # OpenCode: opencode.json's model, else its own default.
     if which("opencode", path):
-        code, out = run(["opencode", "models"], env=env, timeout=120)
+        # The first run in a fresh home lists OpenCode's cached catalog and
+        # refreshes it; the second reads the fresh one, as Coder later does.
+        run(["opencode", "models"], env=env, timeout=120)
+        code, out = run(["opencode", "models", "--verbose"], env=env, timeout=120)
         ids = [l.strip() for l in out.splitlines() if re.match(r"^[\w.-]+/\S+$", l.strip())]
         configured = ""
         try:
