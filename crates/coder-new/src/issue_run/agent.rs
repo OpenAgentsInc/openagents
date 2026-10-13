@@ -1606,6 +1606,7 @@ fn update_json(update: &Update) -> Value {
             status,
             title,
             text,
+            ..
         } => {
             json!({"kind": "tool_call_update", "id": id, "status": status, "title": title, "text": text})
         }

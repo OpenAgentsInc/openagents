@@ -569,6 +569,8 @@ enum Raw {
         #[serde(default)]
         content: Option<Vec<ToolContent>>,
         #[serde(default)]
+        raw_input: Option<Value>,
+        #[serde(default)]
         raw_output: Option<Value>,
     },
     Plan {
@@ -624,6 +626,10 @@ pub enum Update {
         /// The update's text content blocks joined with newlines, or the
         /// `rawOutput` string when there are none.
         text: Option<String>,
+        /// The call's input when this update carries it: OpenCode, for
+        /// one, opens a call with only its folder and sends the command and
+        /// its description in a later update.
+        raw_input: Option<Value>,
     },
     /// The agent's plan, as it stands.
     Plan(Vec<PlanEntry>),
@@ -676,6 +682,7 @@ pub fn parse_update(params: &Value) -> Option<(Option<String>, Update)> {
             status,
             title,
             content,
+            raw_input,
             raw_output,
         } => {
             let blocks: Vec<String> = content
@@ -693,6 +700,8 @@ pub fn parse_update(params: &Value) -> Option<(Option<String>, Update)> {
                 status,
                 title,
                 text,
+                raw_input: raw_input
+                    .filter(|input| input.as_object().is_some_and(|f| !f.is_empty())),
             }
         }
         Raw::Plan { entries } => Update::Plan(entries),
@@ -1044,8 +1053,14 @@ mod tests {
                 status: Some("completed".into()),
                 title: None,
                 text: Some("line 1\nline 2".into()),
+                raw_input: None,
             })
         );
+        let input = json!({"update":{"sessionUpdate":"tool_call_update","toolCallId":"t3","rawInput":{"command":"node --test","description":"Run the tests"}}});
+        assert!(matches!(
+            parse_update(&input),
+            Some((_, Update::ToolCallUpdate { raw_input: Some(ref input), .. })) if input["description"] == "Run the tests"
+        ));
         let raw = json!({"update":{"sessionUpdate":"tool_call_update","toolCallId":"t2","rawOutput":"out"}});
         assert!(matches!(
             parse_update(&raw),

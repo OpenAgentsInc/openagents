@@ -408,6 +408,7 @@ impl Handler for Recorder<'_> {
                 status,
                 title,
                 text,
+                ..
             } => {
                 if let Some(pending) = self.tools.get_mut(&id) {
                     if let Some(title) = title {

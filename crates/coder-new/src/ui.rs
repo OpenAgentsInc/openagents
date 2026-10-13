@@ -332,13 +332,23 @@ fn agent_activity(chat: &crate::live::Chat) -> Option<String> {
         }
         crate::live::Entry::Tool { name, .. } if name == crate::claude_stream::NOTICE => None,
         crate::live::Entry::Tool { name, input, .. } => {
+            // An agent's own lowercase tool id ("bash") reads as a name.
             let tool = crate::claude_tools::display_name(name);
-            // A shell call's own description reads better than its command.
+            let mut chars = tool.chars();
+            let tool = chars.next().map_or_else(String::new, |first| {
+                first.to_uppercase().collect::<String>() + chars.as_str()
+            });
+            // A shell call's own description reads better than its command;
+            // the folder it runs in says nothing about what it is doing.
+            let mut shown = input.clone();
+            if let Some(fields) = shown.as_object_mut() {
+                fields.remove("cwd");
+            }
             let what = input
                 .get("description")
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_owned)
-                .unwrap_or_else(|| crate::tools::compact_params(input, 120));
+                .unwrap_or_else(|| crate::tools::compact_params(&shown, 120));
             Some(if what.is_empty() {
                 tool
             } else {
@@ -3209,6 +3219,15 @@ mod agent_rail_tests {
             super::agent_activity(&chat).as_deref(),
             Some("The snapshot needs the turn's start.")
         );
+        // An agent that opens a call with only its folder shows the tool
+        // by name, never the folder.
+        chat.entries.push(Entry::Tool {
+            name: "bash".into(),
+            input: serde_json::json!({"cwd": "/Users/someone/code/slugkit"}),
+            output: serde_json::Value::Null,
+            running: true,
+        });
+        assert_eq!(super::agent_activity(&chat).as_deref(), Some("Bash"));
         chat.partial = "Writing the restore step\nnow".into();
         assert_eq!(super::agent_activity(&chat).as_deref(), Some("now"));
     }

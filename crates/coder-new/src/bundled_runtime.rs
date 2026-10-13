@@ -1874,11 +1874,22 @@ impl Handler for AcpEvents<'_> {
                 title,
                 status,
                 text,
+                raw_input,
             } => {
                 let (name, input) = self
                     .tools
                     .entry(id.clone())
                     .or_insert_with(|| (title.unwrap_or(id), Value::Null));
+                // Input that arrives after the call opened (OpenCode sends
+                // the command and its description here) joins what it had.
+                if let Some(Value::Object(fields)) = raw_input {
+                    if !input.is_object() {
+                        *input = json!({});
+                    }
+                    if let Some(held) = input.as_object_mut() {
+                        held.extend(fields);
+                    }
+                }
                 (self.emit)(RuntimeEvent::Tool {
                     name: name.clone(),
                     input: input.clone(),
@@ -3450,12 +3461,14 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             title: Some("Read finished".into()),
             status: None,
             text: None,
+            raw_input: None,
         });
         handler.update(Update::ToolCallUpdate {
             id: "read-1".into(),
             title: None,
             status: Some("completed".into()),
             text: Some("contents".into()),
+            raw_input: None,
         });
         drop(handler);
         assert_eq!(events.len(), 3);
