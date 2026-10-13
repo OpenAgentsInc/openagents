@@ -1,0 +1,56 @@
+{
+  "name": "draconia-d3-spiders",
+  "notes": "D3, 41-43 s: giant spiders behind a great orb web in the ruined garden, a green bolt and then a red one striking among them; fires behind.",
+  "scene": {
+    "kind": "night",
+    "shot": "spiders"
+  },
+  "duration": 2.0,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "far": 4000.0,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.3,
+          1.6,
+          4.2
+        ],
+        "target": [
+          0.0,
+          1.2,
+          -4.0
+        ],
+        "focal_mm": 28,
+        "f_stop": 2.8,
+        "focus": 7.5
+      },
+      {
+        "t": 2.0,
+        "eye": [
+          0.2,
+          1.6,
+          4.0
+        ],
+        "target": [
+          0.0,
+          1.2,
+          -4.0
+        ],
+        "focal_mm": 28,
+        "f_stop": 2.8,
+        "focus": 7.3
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 43
+    }
+  }
+}

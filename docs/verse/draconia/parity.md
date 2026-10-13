@@ -658,3 +658,25 @@ shot.
   - the spiders;
   - the reference's wraiths fly in looser, more dynamic poses;
   - the field could press closer as the shot goes on.
+
+### D3 v3, 2026-10-13
+
+- **Gaps fixed:**
+  - The wraiths swoop and bank, each on its own rhythm: a forward lean that
+    breathes and a rolling bank, so a crowd never hangs in one pose.
+  - The stand-off field sinks and presses about 5 m closer to her over the
+    shot.
+  - The spiders (41–43 s), built where the slate was:
+    - a great orb web across the lens, with radial threads and a capture
+      spiral broken in places, silvered by the moon and trembling;
+    - three giant spiders behind it, each with a dark abdomen and head and
+      eight two-segment legs stepping in turn;
+    - a green bolt, then a red one, striking among them and lighting them;
+    - fires behind.
+- **Still open:**
+  - the faces;
+  - the spiders are smooth and glossy, not hairy;
+  - the garden's ruined arches behind them;
+  - switching every Draconia shot to the MetaHuman asset once
+    "Current asset for scenes" lists it. It lists only the round-1 static
+    bust so far.
