@@ -543,6 +543,42 @@ prints the child's events, then the report).
   background.
 - Live runs: see the results recorded on #11511.
 
+## Where sessions start (#11509)
+
+Every place an agent session starts, its harnesses, and what of the SDK it
+runs. "The registry" is one `coder_sdk::Registry` composed by one
+`Runner`: the floors (`coder_sdk::floors`, one table, moved out of Coder
+for this), the shared-checkout fence (#11485, still in
+`coder_new::checkout_guard`), the worktree guard (`coder_sdk::worktree`,
+the one copy of the "file tools held to the worktree" check that the issue
+run, the briefed agent and the Solver's Devin boundary each wrote), Token
+savers' levers, the plugins' hooks, and the System One monitor; decisions
+log through `hook-log`.
+
+| Surface | Starts at | Harnesses | On the SDK | Left |
+|---|---|---|---|---|
+| Coder chat (terminal, desktop) | `coder_new::claude`, `codex_chat`, `opencode_chat`, `provider::chat_with_plugins` | Claude Code, Codex app-server, OpenCode, Coder loop | `sdk_hooks::claude` / `codex` / `opencode_registry` / `coder_loop`: the registry, harness order Claude Code → OpenCode → Coder loop (`escalate::fallback`) | Claude's gate and context levers are raw Claude hooks; the loop's file tools call `floors::hold` directly (#11531) |
+| Issue runs (`coder issue-run`) | `issue_run::agent::run_gated` | Claude Code (Agent SDK), Devin (ACP), Coder loop | Claude: `sdk_hooks::task_claude` (the registry, the worktree guard over the offered tools, squeeze and the Stop gate as registry hooks, `can_use_tool` through the runner). Devin: `sdk_hooks::task_acp` answering every ask, Devin's own hooks running the bridge (`acp_gate`). Coder loop: `sdk_hooks::coder_loop` | No OpenCode engine, so no OpenCode step in the order (#11533) |
+| Solver hands (Intaker, Briefer, Coder, Tester) | `solver::hands` → the same `agent::run` | as issue runs | as issue runs; a read-only hand's guard refuses every write | as issue runs |
+| Briefed agent (bench, `openagents work`) | `briefed-agent` `run` → `compose` | Claude Code (Agent SDK); Codex `exec`; OpenCode `run` | Claude: one registry on the Claude backend: the worktree guard (offered tools, the squeeze folder readable), the floors held, squeeze, the Stop gate | Codex and OpenCode engines run no hooks (#11530); no shared-checkout fence (#11532) |
+| Coder One delegations | `coder_delegate::adapter::CliSession` from `coder_one` (issue mode `main.rs`, episodes `episode.rs`) | Claude Code `-p`, Codex `exec`, OpenCode `run` | `coder_one::hooks::install`: a bridge host with the floors held; `Cli::hooks` (`HookBridge`) puts the bridge in as Claude Code's `--settings` PreToolUse hook and Codex's `-c hooks.PreToolUse`; `coder-one coder-hook` is the bridge program, holding the floors alone when the host is gone | OpenCode `run` takes no command hooks (emulated) |
+| Coder Terminal turn and `crates/coder`'s issue flow | `coder_delegate::terminal::answer` | Claude Code, Codex | none | #11529 |
+| ACP Subagents, background agents, the `delegate` tool | `bundled_runtime::acp_briefed`, `delegate_host` (#11511) | ACP agents, Codex, Coder loop, Claude Code | `sdk_hooks::acp` / `codex` / `coder_loop`; delegation per #11511 | a Claude background agent runs `claude_print` (`claude -p`) with no hooks (#11528) |
+| Microcoder | `microcoder::repository` (claude_sdk seat, lean/Claude/Codex CLI sessions, Devin/OpenCode/Grok ACP turns), `microcoder_loop::run` | Claude Code, Codex, ACP agents, the loop | the `claude/sdk:` seat's worktree gate is one SDK floor; the loop fires every hook event | no floors anywhere; its own path checks and ACP answering; its environments register no hooks (#11527) |
+| Cloud runtime | `coder_cloud::drive` → `coder delegate <agent>` on the machine | as background agents | as background agents | Claude through `claude_print` (#11528) |
+| Web and phone chat worker | `crates/coder/src/bin/coder-worker.rs` `start_model` | none: model calls through the gateway fallback chain, no tools | nothing to run: no session, no tool | its "Run Claude Code" goes through the cloud runtime (#11528) |
+
+Each surface moved here has one test that runs a scripted session through
+its real start path and shows a floor holding:
+`sdk_hooks::tests::a_task_session_on_claude_code_meets_the_floors_and_the_guard`
+(issue runs and Solver hands on Claude Code),
+`solver::tests::a_hands_asks_meet_the_floors_and_the_worktree_guard` (the
+recorded Devin turn with asks injected, through `agent::run`),
+`compose_tests::a_scripted_session_meets_the_floors_and_the_worktree_guard`
+(the briefed agent), and
+`hooks::tests::a_delegated_session_runs_the_floors_through_the_bridge`
+(Coder One, through `CliSession` on a stand-in Claude Code).
+
 ## Open questions
 
 - Is a decision hook's `act` plain Rust, or a workflow step, so a plugin
@@ -568,6 +604,14 @@ Tracked on project 22.
 | 6 | Command hooks and the hook bridge | [#11500](https://github.com/OpenAgentsInc/openagents/issues/11500) |
 | 7 | One Coder tools MCP server for every harness | [#11501](https://github.com/OpenAgentsInc/openagents/issues/11501) |
 | 8 | Delegation across harnesses through one `delegate` tool | [#11511](https://github.com/OpenAgentsInc/openagents/issues/11511) |
+| 9 | Every surface on the SDK: the inventory, the floors and worktree guard in the SDK, issue runs, Solver hands, the briefed agent, Coder One | [#11509](https://github.com/OpenAgentsInc/openagents/issues/11509) |
+| 9a | Microcoder's sessions | [#11527](https://github.com/OpenAgentsInc/openagents/issues/11527) |
+| 9b | Background Claude agents and the cloud runtime | [#11528](https://github.com/OpenAgentsInc/openagents/issues/11528) |
+| 9c | The Coder Terminal turn and `crates/coder`'s issue flow | [#11529](https://github.com/OpenAgentsInc/openagents/issues/11529) |
+| 9d | The briefed agent's Codex and OpenCode engines | [#11530](https://github.com/OpenAgentsInc/openagents/issues/11530) |
+| 9e | Coder chat's remaining per-harness wiring | [#11531](https://github.com/OpenAgentsInc/openagents/issues/11531) |
+| 9f | The shared-checkout fence into the SDK | [#11532](https://github.com/OpenAgentsInc/openagents/issues/11532) |
+| 9g | OpenCode in the issue-run and Solver engine order | [#11533](https://github.com/OpenAgentsInc/openagents/issues/11533) |
 
 Built since: the Codex backend on app-server (#11510; #11493 described
 its permission half), and the ACP backend with per-agent tiers (#11508).
