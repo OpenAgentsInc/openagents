@@ -388,7 +388,7 @@ fn book_usage(now: u64) -> Option<coder_engine_status::PlanUsage> {
 fn with_book(
     book: Option<coder_engine_status::PlanUsage>,
 ) -> Option<coder_engine_status::PlanUsage> {
-    use coder_engine_status::{PlanUsage, PlanWindow, WindowKind};
+    use coder_engine_status::{PlanWindow, WindowKind};
     use microcoder_loop::usage::WindowName;
     let seen = WINDOWS
         .lock()

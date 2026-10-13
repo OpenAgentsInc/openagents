@@ -154,7 +154,7 @@ fn reply_keeps_its_actual_model_without_showing_it_in_the_transcript() {
     assert!(!text.iter().any(|line| line.contains("openai/gpt-6-luna")));
     assert_eq!(
         label(&rows(&buffer)[top_rule(&rows(&buffer)).unwrap()]),
-        "coder"
+        "Coder"
     );
     app.plugins.model = "anthropic/claude-fable-5.1".into();
     let (buffer, _) = render(&mut app, 110, 36);
@@ -177,12 +177,12 @@ fn composer_registration_follows_enablement_and_preserves_input_geometry() {
         let (buffer, cursor) = render(&mut app, width, height);
         let text = rows(&buffer);
         let top = top_rule(&text).unwrap();
-        assert_eq!(label(&text[top]), "coder");
+        assert_eq!(label(&text[top]), "Coder");
         assert!(text[top].ends_with('┐'));
         assert!(text[top + 1].starts_with("│❯ ") && text[top + 1].ends_with('│'));
         assert!(text[top + 2].starts_with('└') && text[top + 2].ends_with('┘'));
         assert_eq!(cursor, (3, (top + 1) as u16));
-        let byte = text[top].find("coder").unwrap();
+        let byte = text[top].find("Coder").unwrap();
         let x = UnicodeWidthStr::width(&text[top][..byte]) as u16;
         // Which engine runs is a quiet fact in gray, never a colored
         // control that reads as a mode (owner, 2026-10-12).
@@ -200,7 +200,7 @@ fn composer_registration_follows_enablement_and_preserves_input_geometry() {
     let (buffer, cursor) = render(&mut app, 80, 24);
     let text = rows(&buffer);
     let top = top_rule(&text).unwrap();
-    assert_eq!(label(&text[top]), "coder");
+    assert_eq!(label(&text[top]), "Coder");
     assert_eq!(cursor, (8, (top + 3) as u16));
     assert!(text[top + 4].starts_with('└'));
 }
