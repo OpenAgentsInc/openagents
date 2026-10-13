@@ -4342,10 +4342,11 @@
                   {
                     "kind": "option",
                     "name": "mode",
-                    "value": "auto|coder",
+                    "value": "auto|coder|codex",
                     "choices": [
                       "auto",
-                      "coder"
+                      "coder",
+                      "codex"
                     ],
                     "optional": true
                   },
@@ -5692,10 +5693,11 @@
         {
           "kind": "option",
           "name": "mode",
-          "value": "auto|coder",
+          "value": "auto|coder|codex",
           "choices": [
             "auto",
-            "coder"
+            "coder",
+            "codex"
           ],
           "optional": true,
           "repeated": true
