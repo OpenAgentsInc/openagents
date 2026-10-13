@@ -771,6 +771,10 @@ impl ClefCudaTrunk {
         if length == 0 {
             return Err(String::from("empty prompt"));
         }
+        // Snapshots are keyed on the lane's chunk, not the one clamped to a
+        // short prompt: requests sharing a state differ in length, and their
+        // chunk ends stay on the same grid either way.
+        let lane_chunk = chunk;
         let chunk = chunk.clamp(1, length);
         let model = &cpu.model;
         let mut guard = self
@@ -825,7 +829,7 @@ impl ClefCudaTrunk {
             && std::env::var_os("PSIONIC_CLEF_SKIP").is_none()
         {
             aligned_boundary(prefix_tokens, length, spans, PREFIX_ALIGN)
-                .filter(|_| state.prefix_explicit || prefix::mid_chunk(chunk))
+                .filter(|_| state.prefix_explicit || prefix::mid_chunk(lane_chunk))
                 .filter(|&prefix| {
                     prefix::Snapshot::byte_len(&request, dims, prefix)
                         .is_ok_and(|bytes| state.prefix.admits(prefix, bytes))
@@ -839,7 +843,7 @@ impl ClefCudaTrunk {
                 .map(|token| token.as_u32())
                 .collect()
         });
-        let cached_tokens = match state.prefix.get(&prefix_ids, chunk) {
+        let cached_tokens = match state.prefix.get(&prefix_ids, lane_chunk) {
             Some(saved) => {
                 saved.restore(&mut state.backend, &request, dims)?;
                 prefix_ids.len()
@@ -849,7 +853,7 @@ impl ClefCudaTrunk {
         let mut pending_prefix = None;
         // On the blocked scan's grid a miss snapshots inside its chunk and
         // keeps the cold chunking; elsewhere it splits at the prefix end.
-        let mid_chunk = prefix::mid_chunk(chunk);
+        let mid_chunk = prefix::mid_chunk(lane_chunk);
         if let Some(at) = boundary.filter(|_| mid_chunk && cached_tokens == 0) {
             request.snap = prefix::arm_within_budget(state, &request, dims, at)?;
         }
@@ -1111,7 +1115,9 @@ impl ClefCudaTrunk {
         let scratch_bytes = state.scratch.as_ref().map_or(0, |scratch| scratch.bytes);
         let request_device_bytes = request.bytes + scratch_bytes;
         if let Some((bytes, snapshot)) = pending_prefix {
-            state.prefix.insert(&prefix_ids, chunk, bytes, snapshot);
+            state
+                .prefix
+                .insert(&prefix_ids, lane_chunk, bytes, snapshot);
         }
         state.request = Some(request);
         Ok((
@@ -2317,6 +2323,14 @@ fn linear(
     if knobs().skip_gemm {
         return Ok(());
     }
+    if knobs().fp8_sim {
+        submission
+            .clef_fake_e4m3_rows(weight_scratch, weight.rows, weight.columns)
+            .map_err(err)?;
+        submission
+            .clef_fake_e4m3_rows(x16, n, weight.columns)
+            .map_err(err)?;
+    }
     let result = gemm(
         submission,
         weight,
@@ -2459,18 +2473,26 @@ struct Knobs {
     hopper_attention: bool,
     silu_fused: bool,
     device_embed: bool,
+    /// `PSIONIC_CLEF_FP8_SIM=1` (#11445): the projections run through the
+    /// dequantize + cuBLAS path with both operands rounded to E4M3 (one
+    /// scale per 128 k of a row), the numerics of an FP8 GEMM, to gate FP8
+    /// before writing its kernel. Measurement only; slower than f16.
+    fp8_sim: bool,
 }
 
 fn knobs() -> Knobs {
     static KNOBS: std::sync::OnceLock<Knobs> = std::sync::OnceLock::new();
     *KNOBS.get_or_init(|| {
         let value = std::env::var("PSIONIC_CLEF_SKIP").unwrap_or_default();
+        let fp8_sim = std::env::var("PSIONIC_CLEF_FP8_SIM").is_ok_and(|v| v == "1");
         Knobs {
+            fp8_sim,
             skip_dequant: value.contains("dequant"),
             skip_gemm: value.contains("gemm"),
             skip_delta: value.contains("delta"),
             skip_attention: value.contains("attention"),
             fused: match std::env::var("PSIONIC_CLEF_FUSED").as_deref() {
+                _ if fp8_sim => Fused::Never,
                 Ok("1") => Fused::Always,
                 Ok("0") => Fused::Never,
                 Ok(other) => other.parse().map_or(Fused::UpTo(FUSED_UP_TO), Fused::UpTo),
@@ -2489,6 +2511,7 @@ fn knobs() -> Knobs {
             },
             flash: std::env::var("PSIONIC_CLEF_FLASH").map_or(true, |v| v != "0"),
             hopper: std::env::var("PSIONIC_CLEF_HOPPER").map_or(true, |v| v != "0")
+                && !fp8_sim
                 && clef_prefill::clef_hopper_supported(),
             hopper_attention: std::env::var("PSIONIC_CLEF_HOPPER_ATTENTION")
                 .map_or(true, |v| v != "0")

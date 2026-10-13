@@ -347,3 +347,11 @@ int psionic_clef_embed_q4_k(const void *table, const void *ids, void *out, int n
     (void)stream;
     return 1;
 }
+
+int psionic_clef_fake_e4m3_rows(void *x, int rows, int k, void *stream) {
+    (void)x;
+    (void)rows;
+    (void)k;
+    (void)stream;
+    return 1;
+}

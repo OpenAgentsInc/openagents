@@ -27,6 +27,8 @@ pub(crate) struct CudaSession {
     span_sums: CudaBuffer,
     first: usize,
     chunk: usize,
+    /// The lane's chunk, which keys this session's prefix snapshot.
+    prefix_chunk: usize,
     /// The reusable prefix end, kept as a chunk end when the snapshot is
     /// not taken inside a chunk ([`prefix::mid_chunk`]).
     boundary: Option<usize>,
@@ -287,6 +289,8 @@ impl ClefCudaTrunk {
             return Err(String::from("invalid prompt span"));
         }
         let dims = self.dims;
+        // the prefix key uses the lane's chunk (see prefill_with_prefix)
+        let lane_chunk = chunk;
         let chunk = chunk.clamp(1, length);
         let mut guard = self
             .device
@@ -332,7 +336,7 @@ impl ClefCudaTrunk {
         request.bytes += span_sums.byte_len() as u64 + span_buffer.byte_len() as u64;
         prefix::reap_pending(state);
         let boundary = aligned_boundary(prefix_tokens, length, &spans, PREFIX_ALIGN)
-            .filter(|_| state.prefix_explicit || prefix::mid_chunk(chunk))
+            .filter(|_| state.prefix_explicit || prefix::mid_chunk(lane_chunk))
             .filter(|&prefix| {
                 prefix::Snapshot::byte_len(&request, dims, prefix)
                     .is_ok_and(|bytes| state.prefix.admits(prefix, bytes))
@@ -343,7 +347,7 @@ impl ClefCudaTrunk {
                 .map(|token| token.as_u32())
                 .collect()
         });
-        let cached_tokens = match state.prefix.get(&prefix_ids, chunk) {
+        let cached_tokens = match state.prefix.get(&prefix_ids, lane_chunk) {
             Some(saved) => {
                 saved.restore(&mut state.backend, &request, dims)?;
                 prefix_ids.len()
@@ -354,7 +358,7 @@ impl ClefCudaTrunk {
         // capture is pending, and counted, from now on) and keeps the cold
         // chunking; elsewhere it keeps a chunk end at the prefix.
         let prefix_owner = Arc::new(());
-        let mid_chunk = prefix::mid_chunk(chunk);
+        let mid_chunk = prefix::mid_chunk(lane_chunk);
         if let Some(at) = boundary.filter(|_| mid_chunk && cached_tokens == 0)
             && let Some(target) = prefix::arm_within_budget(state, &request, dims, at)?
         {
@@ -375,6 +379,7 @@ impl ClefCudaTrunk {
             span_sums,
             first: cached_tokens,
             chunk,
+            prefix_chunk: lane_chunk,
             boundary,
             prefix_ids,
             cached_tokens,
@@ -669,7 +674,7 @@ impl ClefCudaTrunk {
             &mut state,
             &session.prefix_owner,
             &session.prefix_ids,
-            session.chunk,
+            session.prefix_chunk,
         );
         state.session_scratch.push(session.scratch);
         state.request = Some(session.request);

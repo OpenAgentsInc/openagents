@@ -7,6 +7,7 @@
 // order (no atomics), so a repeated launch is bitwise identical.
 
 #include <cuda_fp16.h>
+#include <cuda_fp8.h>
 #include <cuda_runtime.h>
 #include <stdint.h>
 
@@ -2139,6 +2140,41 @@ extern "C" int psionic_clef_softmax_rows_f32(void *scores, int rows, int keys, f
 extern "C" int psionic_clef_sigmoid_gate_to_f16(const void *o, const void *gate, void *out, long long count, void *stream) {
     sigmoid_gate_to_f16_kernel<<<blocks_for(count, 256), 256, 0, STREAM>>>(
         static_cast<const float *>(o), static_cast<const float *>(gate), static_cast<__half *>(out), count);
+    DONE;
+}
+
+// FP8 simulation (#11445): rounds f16 rows [rows, k] in place to what an
+// E4M3 operand with one f32 scale per 128 consecutive k of a row carries:
+// scale = 448 / amax of the block, x = f16(e4m3(x * scale) / scale). A GEMM
+// on two such operands with f32 accumulation has the numerics of an FP8
+// GEMM with per-row, per-128-k scaling (and exact products).
+__global__ void fake_e4m3_rows_kernel(__half *x, int k) {
+    __shared__ float warp_max[4];
+    const long long index = static_cast<long long>(blockIdx.x) * k + blockIdx.y * 128 + threadIdx.x;
+    const bool live = blockIdx.y * 128 + threadIdx.x < k;
+    const float v = live ? __half2float(x[index]) : 0.0f;
+    float m = fabsf(v);
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        m = fmaxf(m, __shfl_xor_sync(0xffffffffu, m, offset));
+    }
+    if (threadIdx.x % 32 == 0) {
+        warp_max[threadIdx.x / 32] = m;
+    }
+    __syncthreads();
+    const float amax = fmaxf(fmaxf(warp_max[0], warp_max[1]), fmaxf(warp_max[2], warp_max[3]));
+    if (!live || amax == 0.0f) {
+        return;
+    }
+    const float scale = 448.0f / amax;
+    const __nv_fp8_e4m3 q(v * scale);
+    x[index] = __float2half_rn(static_cast<float>(q) / scale);
+}
+
+extern "C" int psionic_clef_fake_e4m3_rows(void *x, int rows, int k, void *stream) {
+    if (rows <= 0 || k <= 0) {
+        return 0;
+    }
+    fake_e4m3_rows_kernel<<<dim3(rows, (k + 127) / 128), 128, 0, STREAM>>>(static_cast<__half *>(x), k);
     DONE;
 }
 

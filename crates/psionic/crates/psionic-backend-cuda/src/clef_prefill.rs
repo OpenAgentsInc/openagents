@@ -44,6 +44,7 @@ unsafe extern "C" {
     fn psionic_clef_hopper_attention(q16: *const c_void, kcache: *const c_void, vcache: *const c_void, out: *mut c_void, gate: *const c_void, out16: *mut c_void, n: i32, heads: i32, kv_heads: i32, dim: i32, first: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_hopper_linear_silu(x: *const c_void, w: *const c_void, gate: *const c_void, out16: *mut c_void, n: i32, rows: i32, k: i32, format: i32, token_tile: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_delta_block(qn: *const c_void, kn: *const c_void, conv: *const c_void, decay: *const c_void, beta: *const c_void, coef: *mut c_void, state: *mut c_void, out: *mut c_void, n: i32, key_heads: i32, value_heads: i32, dim: i32, v_head_reordered: i32, conv_width: i32, value_offset: i32, variant: i32, snap_blocks: i32, snap: *mut c_void, stream: *mut c_void) -> i32;
+    fn psionic_clef_fake_e4m3_rows(x: *mut c_void, rows: i32, k: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_conv1d_state_into(input: *const c_void, state: *const c_void, out: *mut c_void, n: i32, channels: i32, k: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_embed_q4_k(table: *const c_void, ids: *const c_void, out: *mut c_void, n: i32, hidden: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_flash_attention(q16: *const c_void, kcache: *const c_void, vcache: *const c_void, out: *mut c_void, n: i32, heads: i32, kv_heads: i32, dim: i32, first: i32, stream: *mut c_void) -> i32;
@@ -1271,6 +1272,15 @@ impl CudaSubmission {
         let stream = self.platform.raw_stream()?;
         let code = unsafe { psionic_clef_sigmoid_gate_to_f16(o, gate, out, count as i64, stream) };
         self.clef_launch(code, "psionic_clef_sigmoid_gate_to_f16")
+    }
+
+    /// FP8 simulation (#11445): rounds the f16 rows `x` `[rows, k]` in
+    /// place to E4M3 with one scale per 128 k of a row (amax to 448).
+    pub fn clef_fake_e4m3_rows(&mut self, x: &CudaBuffer, rows: usize, k: usize) -> Result<(), RuntimeError> {
+        let pointer = f16s(x, rows * k, "fp8 rows")?;
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe { psionic_clef_fake_e4m3_rows(pointer, int(rows, "rows")?, int(k, "k")?, stream) };
+        self.clef_launch(code, "psionic_clef_fake_e4m3_rows")
     }
 
     /// `out16 = silu(gate) * up`.

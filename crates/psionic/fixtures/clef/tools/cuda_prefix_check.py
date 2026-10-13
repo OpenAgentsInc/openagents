@@ -13,6 +13,9 @@ schema of about 1k tokens:
             misses; every state asked again hits (the LRU keeps them all).
   eviction  a budget of about 1.5 snapshots: a second state evicts the
             first, which then misses once and hits again.
+  default   PSIONIC_CLEF_PREFIX_CACHE_BYTES unset (on by default on sm_90):
+            prompts shorter than one chunk that share a state hit too
+            (--no-default skips this on devices where reuse is off).
   batch     the cache on with PSIONIC_CLEF_BATCH_REQUESTS=2 (no export, so
             probabilities are compared): concurrent requests restore
             snapshots, concurrent cold requests each publish one, and a
@@ -155,9 +158,10 @@ def restored(response):
 
 class Server:
     def __init__(self, args, name, out, env, export=None):
-        environment = dict(os.environ, PSIONIC_CLEF_LOG="0", **env)
-        for key in ("PSIONIC_CLEF_PROFILE", "PSIONIC_CLEF_SKIP"):
+        environment = dict(os.environ, PSIONIC_CLEF_LOG="0")
+        for key in ("PSIONIC_CLEF_PROFILE", "PSIONIC_CLEF_SKIP", "PSIONIC_CLEF_PREFIX_CACHE_BYTES"):
             environment.pop(key, None)
+        environment.update(env)
         command = [args.binary, "-m", args.model, "--host", "127.0.0.1", "--port", str(args.port),
                    "--decision-device", "cuda", "--decision-chunk", str(args.chunk),
                    "--decision-max-tokens", "65536", "--decision-max-questions", "64"]
@@ -226,6 +230,8 @@ def check(args):
     changed["state"] = "Update: the customer has resolved the problem.\n" + changed["state"]
     evict_a, evict_b = case(model, args.lines, args.questions), case(model, args.lines, args.questions)
     batch_pairs = [case(model, args.lines, args.questions) for _ in range(2)]
+    # shorter than one chunk, so the lane clamps their chunk to their length
+    short_pairs = [case(model, args.short_lines, 3) for _ in range(2)]
     cancel_body = {"model": model, "state": state_text(uuid.uuid4().hex, args.cancel_lines),
                    "questions": long_schema(args.cancel_questions, args.cancel_words)}
     cancel_follow = copy.deepcopy(cancel_body)
@@ -266,6 +272,7 @@ def check(args):
             cold = []
             bodies = [b for pair in pairs for b in pair] + [changed] + list(evict_a) + list(evict_b)
             bodies += [b for pair in batch_pairs for b in pair] + [cancel_follow]
+            bodies += [b for pair in short_pairs for b in pair]
             for index, body in enumerate(bodies):
                 row = send("disabled", f"reference-{index}", body, False)
                 reference_probabilities[digest(body)] = probabilities(body, row["response"])
@@ -317,6 +324,19 @@ def check(args):
         delta_e, compared_e = logit_delta(exported(out / "disabled"), exported(out / "eviction"))
         summary["eviction_budget_bytes"] = int(small)
         summary["eviction_max_abs_logit_delta"], summary["eviction_compared_questions"] = delta_e, compared_e
+
+        # default: no budget set, short prompts
+        summary["default_max_abs_logit_delta"] = None
+        if not args.no_default:
+            server = Server(args, "default", out, {}, out / "default")
+            try:
+                for index, (first, second) in enumerate(short_pairs):
+                    send("default", f"prime-{index}", first, False)
+                    send("default", f"measure-{index}", second, True)
+            finally:
+                server.close()
+            delta_d, compared_d = logit_delta(exported(out / "disabled"), exported(out / "default"))
+            summary["default_max_abs_logit_delta"], summary["default_compared_questions"] = delta_d, compared_d
 
         # batch: concurrent restores, concurrent captures, cancellation
         server = Server(args, "batch", out, {"PSIONIC_CLEF_PREFIX_CACHE_BYTES": budget,
@@ -378,7 +398,8 @@ def check(args):
         summary.update(median_seconds=medians, median_server_ms=server_ms,
                        speedup=medians["disabled"] / medians["reuse"],
                        server_speedup=server_ms["disabled"] / server_ms["reuse"])
-        worst = max(summary["reuse_max_abs_logit_delta"], summary["eviction_max_abs_logit_delta"])
+        worst = max(summary["reuse_max_abs_logit_delta"], summary["eviction_max_abs_logit_delta"],
+                    summary["default_max_abs_logit_delta"] or 0.0)
         summary["logit_gate"] = worst <= args.tolerance and batch_delta <= args.tolerance
         summary["speed_gate"] = summary["speedup"] >= args.speedup
         summary["status"] = "passed" if summary["logit_gate"] and summary["speed_gate"] else "gate failed"
@@ -437,6 +458,8 @@ if __name__ == "__main__":
     parser.add_argument("--pairs", type=int, default=5)
     parser.add_argument("--lines", type=int, default=125, help="log lines in the state (125: about 4k tokens)")
     parser.add_argument("--questions", type=int, default=12, help="questions in the schema (12: about 1k tokens)")
+    parser.add_argument("--short-lines", type=int, default=30, help="log lines of the short cases (about 1k tokens)")
+    parser.add_argument("--no-default", action="store_true", help="skip the default-budget phase")
     parser.add_argument("--cancel-lines", type=int, default=60)
     parser.add_argument("--cancel-questions", type=int, default=64)
     parser.add_argument("--cancel-words", type=int, default=200)
