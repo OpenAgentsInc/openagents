@@ -1,4 +1,142 @@
-# Draconia parity log
+# Draconia: character parity with a photoreal reference
+
+Status: in progress, 2026-10-13. One entry per round below; newest last.
+
+The goal is Verse rendering Draconia, our own original face of the same
+type, at the realism of a photoreal reference clip: a young woman with a
+messy platinum updo, freckles and grey-green eyes in a dim dungeon
+classroom. Her face is the target look and quality, not a copy. The
+reference clip and stills from it stay out of git (`~/Desktop/hICimQqsWFwwDPcE.mp4`,
+stills in `~/work/film-out/draconia/parity/ref/`). Review artifacts live in
+`~/work/film-out/draconia/parity/round-NN/` and `~/Downloads/draconia-parity-*`.
+
+## Current asset for scenes
+
+- **Round 1 (2026-10-13): `~/work/film-out/draconia/build/draconia.neutral.glb`**
+  (built locally, not committed: 1.6 M triangles, 4K maps; rebuild with the
+  commands under [Build and render](#build-and-render)). Load it as
+  `crates/verse/examples/draconia_portrait.rs` does:
+  `characters::import_with(&mut pack, dir, path, ImportOptions { max_texture_edge: 4096 })`,
+  then `verse_engine::loading::Prepared::load` with a raised `Budget` (the
+  manifest is ~400 MB of JSON) and `Renderer::from_prepared`; place it with
+  `chamber::basis()`. `draconia.landmarks.json` beside it gives her eye,
+  mouth and chest points for aiming cameras. Her materials carry the
+  character shading models, so any scene on the imported renderer gets her
+  skin, eyes, hair and cloth shading.
+- **Limits for scene work today:** she is a static posed mesh (arms down),
+  not yet skinned to the Universal rig, and her hair has no joint chains
+  yet, so it can't blow in wind. Joint-chain hair (spring chains driven by
+  a wind field) is the next round's first item.
+
+## Current state vs reference
+
+| Area | State | Gap |
+| --- | --- | --- |
+| Face shape | Realistic proportions (CC0 base, our face weights) | Reads young and soft, a long lower face; the reference's face is fuller in the cheeks with a stronger brow and heavier lids |
+| Skin | Wrapped red-shifted diffuse, two lobes, pores and fine lines in a 4K normal map | Still smooth and waxy at close range; no cavity or micro-normal detail, too even in tone |
+| Freckles | A light dusting over nose and cheeks | Present; reads as dots, needs softer, varied, clustered freckles |
+| Eyes | Separate eyeballs, a refracting iris under an additive cornea, limbal ring | The lids sit too open and the sclera shows a hard white wedge at the corners; no caruncle, tear line or wet rim |
+| Brows | Painted strands | Too thin and drawn-on; the reference's brows are fuller, natural |
+| Lips | Analytic vermilion, rose, glossier | Shape fine; colour too orange-pink and edge too crisp |
+| Hair (updo, strands) | 10,700 strand ribbons over a cap, a knot, locks at the temples, flyaways | Reads as a tight helmet with a visible cap; no volume, no messy loops at the sides, no root-to-tip shading |
+| Uniform | Shirt collar, striped tie, V-neck sweater with trim, open robe with green facing | Blocky shells with hard cuts; no folds, no wool or knit texture, no hood drape |
+| Lighting response | Teal rims and jar glow, a soft key, true depth of field | Background bokeh is blocky; jars are plain glowing cylinders; the face lacks the reference's soft wrap and deep shadow side |
+| Expressions | Five FACS-unit presets (neutral, speak, surprise, closed, smile) at build time | Built per expression; no runtime blend shapes or rig yet |
+
+## How it's built
+
+- **Rights.** The face is original (MakeHuman's CC0 base mesh and targets
+  with our own face weights), never a copy of the reference actress or
+  anyone else; the professor is not modelled; the uniform's colours are
+  generic green and silver with no crest of any real school.
+- **Assets** (`scripts/blender/`): `draconia.py` builds her (head and bust,
+  eyes, lashes, teeth), `draconia_paint.py` paints skin and eye maps,
+  `draconia_hair.py` grows the updo, `draconia_cloth.py` cuts the uniform,
+  `draconia_set.py` builds the dungeon backdrop, `draconia_mh.py` reads the
+  CC0 MakeHuman source (fetched outside the repo, see below).
+- **Renderer** (`crates/verse-pbr/src/imported/scene.wgsl`): character
+  shading models any imported glTF can use through a material extra
+  (`"verse_shading": "skin" | "eye" | "cornea" | "hair" | "cloth"`), see
+  [Renderer features](#renderer-features).
+- **Comparison renders** (`crates/verse/examples/draconia_portrait.rs`).
+
+## Renderer features
+
+All are general: any glTF imported through `verse_content::compiler::characters`
+gets them by naming the model in its material extras, and
+`verse_engine::material::Shading` documents the parameters.
+
+| Model | Extras | What it does |
+| --- | --- | --- |
+| `skin` | `"verse_shading": "skin"`, optional `"verse_shading_params": [sss, lobe_mix, spec_weight, 0]` | Per-channel wrapped diffuse (red wraps furthest), a blurrier normal for red, a red-tinted shadow penumbra, two GGX lobes at 0.75x and 1.3x roughness |
+| `eye` | `"verse_shading": "eye"`, params `[iris_depth_m, iris_uv_radius, 0, 0]` | Offsets the iris texture by the refracted view ray's travel to the iris plane (parallax under the cornea) |
+| `cornea` | `"verse_shading": "cornea"` | Specular only, drawn additively over the eye (the importer sets blend 3) |
+| `hair` | `"verse_shading": "hair"`, params `[shift_r, shift_trt, transmission, 0]` | Strand lighting along the surface's +v (root to tip): Kajiya-Kay diffuse, two shifted lobes (R white, TRT tinted), backlit transmission; cutout coverage is stochastic per sub-frame, so averaged frames give soft strands |
+| `cloth` | `"verse_shading": "cloth"`, params `[sheen, sheen_roughness, 0, 0]` | Charlie sheen over a softly wrapped diffuse |
+
+Other shared pieces:
+- `characters::ImportOptions { max_texture_edge }` keeps textures up to
+  4096 (game characters stay at 1024).
+- The material uniform grew from four to six vec4s (the shading model and
+  its parameters); standard materials serialize exactly as before, so
+  existing packs and their digests don't change.
+- Depth of field and anti-aliasing in `draconia_portrait` are the film
+  path's: the mean of sub-frames over the lens
+  (`camera_rig::lens_view_projection`) with a sub-pixel jitter. Bloom is
+  the imported renderer's own.
+
+## Build and render
+
+```sh
+scripts/blender/draconia_fetch.sh          # CC0 MakeHuman data, outside the repo
+B=/Applications/Blender.app/Contents/MacOS/Blender
+$B -b --factory-startup --python scripts/blender/draconia.py -- [--expr neutral,speak,surprise,closed,smile]
+$B -b --factory-startup --python scripts/blender/draconia_set.py
+cargo build --release -p verse --example draconia_portrait
+draconia_portrait OUT.png --shot closeup|eyes|medium|three|side|back [--subframes 48]
+python3 scripts/verse/draconia_parity.py sbs REF.jpg OUT.png "Verse round N" SBS.png
+```
+
+## Rounds
+
+### Round 1, 2026-10-13: from nothing to a photoreal pipeline
+
+- **Gap.** There was no Draconia: Alice's stylized, base-colour-baked head
+  can't reach photoreal, and the imported renderer had one shading model,
+  1024-pixel character textures and no film portrait path.
+- **What changed.**
+  - A new head and bust on the CC0 MakeHuman base mesh (19k vertices,
+    realistic topology) with our own face weights, posed arms-down with the
+    CC0 skeleton's weights, subdivided twice; 34 CC0 expression units as
+    FACS-like controls with five presets.
+  - Separate 11.9 mm eyeballs seated behind the lid margins, cornea domes,
+    eyelash ribbons from the lid margins, CC0 teeth and tongue.
+  - Skin painted from baked position maps: mottling, redness zones,
+    freckles, lips, painted brow strands; a 4K normal map of pores, fine
+    lines and lip lines; a roughness map with an oilier T-zone.
+  - A grey-green iris with fibres, crypts, collarette and limbal ring.
+  - A messy updo as ~10,700 strand ribbons with painted strand strips,
+    a knot of loose loops, temple locks and flyaways.
+  - A uniform of offset shells with plane-cut openings: collar, striped
+    tie, V-neck sweater with trim, open robe with green facing.
+  - The dungeon set: stone blocks, shelves of glowing jars, a cabinet, a
+    candle on a table.
+  - Renderer: the five character shading models above, 4K character
+    textures, and `draconia_portrait` with teal-and-candle lighting and
+    lens-sampled depth of field.
+- **Files.** `scripts/blender/draconia*.py`, `scripts/blender/draconia_fetch.sh`,
+  `scripts/verse/draconia_parity.py`, `crates/verse-engine/src/material.rs`,
+  `crates/verse-content/src/compiler/characters.rs`,
+  `crates/verse-pbr/src/imported/{scene.wgsl,material_gpu.rs}`,
+  `crates/verse/examples/draconia_portrait.rs`.
+- **Artifacts.** `~/work/film-out/draconia/parity/round-01/sbs-{closeup,eyes,medium}.png`,
+  `~/Downloads/draconia-parity-round-01.png`, `~/Downloads/draconia-parity-progress.png`.
+- **Honest state.** Far from the reference: she reads as a CG mannequin.
+  Skin is waxy, the hair is a helmet, the eyes stare, the uniform is
+  blocky, the background bokeh is blocky.
+- **Next gap.** Hair: joint chains for scenes (the peacock scene needs
+  them), then real volume and a messy updo silhouette; then the eyes
+  (lids, caruncle, tear line, sclera shading).
 
 ## Peacock scene
 

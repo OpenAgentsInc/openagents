@@ -87,11 +87,28 @@ fn globals(model: &Model) -> Vec<Mat4> {
     }
     result
 }
+/// How [`import_bytes_with`] imports a model.
+#[derive(Clone, Copy, Debug)]
+pub struct ImportOptions {
+    /// The largest texture edge the pack keeps; larger images are
+    /// downsampled. Characters drawn at game distances keep 1024; film
+    /// close-ups (Draconia) keep up to 4096, the pack's limit.
+    pub max_texture_edge: u32,
+}
+impl Default for ImportOptions {
+    fn default() -> Self {
+        Self {
+            max_texture_edge: 1024,
+        }
+    }
+}
+
 fn texture(
     pack: &mut Pack,
     dir: &Path,
     image: &gltf::image::Data,
     file: String,
+    max_edge: u32,
 ) -> Result<usize, String> {
     use gltf::image::Format;
     let channels = match image.format {
@@ -102,8 +119,8 @@ fn texture(
         _ => return Err("Unsupported character image format".into()),
     };
     // Compile a bounded GPU texture while retaining the original source image.
-    let width = image.width.min(1024);
-    let height = image.height.min(1024);
+    let width = image.width.min(max_edge);
+    let height = image.height.min(max_edge);
     let mut rgba = Vec::with_capacity((width * height * 4) as usize);
     for y in 0..height {
         for x in 0..width {
@@ -149,6 +166,7 @@ fn material_image(
     buffers: &[gltf::buffer::Data],
     cache: &mut BTreeMap<usize, usize>,
     source: gltf::image::Image<'_>,
+    max_edge: u32,
 ) -> Result<usize, String> {
     if let Some(index) = cache.get(&source.index()) {
         return Ok(*index);
@@ -162,13 +180,20 @@ fn material_image(
             buffers[view.buffer().index()].0[view.offset()..view.offset() + view.length()].to_vec()
         }
     };
-    let file = format!("universal-source-{:x}.png", Sha256::digest(&bytes));
+    let file = if max_edge == ImportOptions::default().max_texture_edge {
+        format!("universal-source-{:x}.png", Sha256::digest(&bytes))
+    } else {
+        format!(
+            "universal-source-{:x}-{max_edge}.png",
+            Sha256::digest(&bytes)
+        )
+    };
     let index = if let Some(i) = pack.textures.iter().position(|t| t.file == file) {
         i
     } else {
         let data = gltf::image::Data::from_source(source.source(), base, buffers)
             .map_err(|e| e.to_string())?;
-        texture(pack, dir, &data, file)?
+        texture(pack, dir, &data, file, max_edge)?
     };
     cache.insert(source.index(), index);
     Ok(index)
@@ -179,11 +204,52 @@ fn material_uv(set: u32) -> Result<(), String> {
     }
     Ok(())
 }
+/// The shading model a material's extras name, with its parameters.
+fn shading_of(
+    material: &gltf::Material<'_>,
+) -> Result<Option<(verse_engine::material::Shading, [f32; 4])>, String> {
+    use verse_engine::material::Shading;
+    let Some(raw) = material.extras() else {
+        return Ok(None);
+    };
+    let extras: serde_json::Value =
+        serde_json::from_str(raw.get()).map_err(|e| format!("material extras: {e}"))?;
+    let Some(name) = extras.get("verse_shading").and_then(|v| v.as_str()) else {
+        return Ok(None);
+    };
+    let model =
+        Shading::from_name(name).ok_or_else(|| format!("Unknown verse_shading model {name:?}"))?;
+    let mut params = model.defaults();
+    if let Some(list) = extras
+        .get("verse_shading_params")
+        .and_then(|v| v.as_array())
+    {
+        for (slot, value) in params.iter_mut().zip(list) {
+            *slot = value
+                .as_f64()
+                .ok_or("verse_shading_params must be numbers")? as f32;
+        }
+    }
+    Ok(Some((model, params)))
+}
+
 /// Imports skinned triangle meshes using their full rest hierarchy and inverse binds.
 pub fn import(pack: &mut Pack, dir: &Path, path: &Path) -> Result<Model, String> {
     let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let name = path.file_name().unwrap_or_default().to_string_lossy();
     import_bytes(pack, dir, &name, &bytes, path.parent())
+}
+
+/// [`import`] with options ([`import_bytes_with`]).
+pub fn import_with(
+    pack: &mut Pack,
+    dir: &Path,
+    path: &Path,
+    options: ImportOptions,
+) -> Result<Model, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    import_bytes_with(pack, dir, &name, &bytes, path.parent(), options)
 }
 
 /// Imports a model from the glTF file `bytes`, named `name`, as [`import`]
@@ -199,6 +265,26 @@ pub fn import_bytes(
     name: &str,
     bytes: &[u8],
     base: Option<&Path>,
+) -> Result<Model, String> {
+    import_bytes_with(pack, dir, name, bytes, base, ImportOptions::default())
+}
+
+/// [`import_bytes`] with options. A material's glTF extras may name its
+/// shading model (`"verse_shading": "skin"`, see
+/// [`verse_engine::material::Shading`]) and override its parameters
+/// (`"verse_shading_params": [a, b, c, d]`); a cornea draws additively.
+///
+/// # Errors
+///
+/// Returns a message when the file cannot be parsed or imported, or a
+/// material names an unknown shading model.
+pub fn import_bytes_with(
+    pack: &mut Pack,
+    dir: &Path,
+    name: &str,
+    bytes: &[u8],
+    base: Option<&Path>,
+    options: ImportOptions,
 ) -> Result<Model, String> {
     let gltf = gltf::Gltf::from_slice(bytes).map_err(|e| format!("{name}: {e}"))?;
     let buffers =
@@ -344,8 +430,18 @@ pub fn import_bytes(
             let material = primitive.material();
             let color = material.pbr_metallic_roughness().base_color_factor();
             let pbr = material.pbr_metallic_roughness();
-            let mut load =
-                |image| material_image(pack, dir, base, &buffers, &mut image_textures, image);
+            let max_edge = options.max_texture_edge.clamp(1, 4096);
+            let mut load = |image| {
+                material_image(
+                    pack,
+                    dir,
+                    base,
+                    &buffers,
+                    &mut image_textures,
+                    image,
+                    max_edge,
+                )
+            };
             let texture = if let Some(t) = pbr.base_color_texture() {
                 material_uv(t.tex_coord())?;
                 load(t.texture().source())?
@@ -378,6 +474,11 @@ pub fn import_bytes(
                 material_uv(t.tex_coord())?;
                 authored.emissive_texture = Some(load(t.texture().source())?);
             }
+            let shading = shading_of(&material)?;
+            if let Some((model, params)) = shading {
+                authored.shading = model as u8;
+                authored.shading_params = params;
+            }
             authored.validate(pack.textures.len())?;
             let vertices = positions
                 .into_iter()
@@ -401,10 +502,11 @@ pub fn import_bytes(
                     .into_u32()
                     .collect(),
                 texture,
-                blend: match material.alpha_mode() {
-                    gltf::material::AlphaMode::Opaque => 0,
-                    gltf::material::AlphaMode::Mask => 1,
-                    gltf::material::AlphaMode::Blend => 2,
+                blend: match (material.alpha_mode(), shading.map(|(m, _)| m)) {
+                    (_, Some(verse_engine::material::Shading::Cornea)) => 3,
+                    (gltf::material::AlphaMode::Opaque, _) => 0,
+                    (gltf::material::AlphaMode::Mask, _) => 1,
+                    (gltf::material::AlphaMode::Blend, _) => 2,
                 },
                 emissive: false,
                 tint: [color[0], color[1], color[2]],

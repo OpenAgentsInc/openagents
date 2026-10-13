@@ -4,7 +4,10 @@
 // water_control: what this tier's water draws (`verse_pbr::water::control`).
 struct Frame { view:mat4x4<f32>,eye:vec4<f32>,ambient:vec4<f32>,fog:vec4<f32>,settings:vec4<f32>,lights:array<vec4<f32>,64>,shadow:array<mat4x4<f32>,24>,fog_shape:vec4<f32>,water_control:vec4<f32> };
 struct Pose { model:mat4x4<f32>,params:vec4<f32>,bones:array<mat4x4<f32>,256> };
-struct Material { params:vec4<f32>,channels:vec4<f32>,emission:vec4<f32>,maps:vec4<f32> };
+// shading: x the model (0 standard, 1 skin, 2 eye, 3 cornea, 4 hair,
+// 5 cloth; verse_engine::material::Shading), yzw and shading_more.x its
+// parameters.
+struct Material { params:vec4<f32>,channels:vec4<f32>,emission:vec4<f32>,maps:vec4<f32>,shading:vec4<f32>,shading_more:vec4<f32> };
 @group(0) @binding(0) var<uniform> frame:Frame;
 @group(0) @binding(1) var shadows:texture_depth_2d_array;
 @group(0) @binding(2) var shadow_sampler:sampler_comparison;
@@ -97,6 +100,69 @@ fn reflectance(n:vec3<f32>,view:vec3<f32>,light:vec3<f32>,diffuse_color:vec3<f32
  let diffuse=(vec3(1.0)-fresnel)*diffuse_color/3.14159265;
  return (diffuse+distribution*visibility*fresnel)*nl*3.14159265;
 }
+// The character shading models (docs/verse/draconia/metahuman-study.md).
+// Each returns the light reflected toward the eye for unit radiance from
+// direction l, with the shadow term `shadow` (0..1) folded in, so skin
+// can bleed light into its own penumbra.
+fn skin_light(n:vec3<f32>,soft:vec3<f32>,view:vec3<f32>,l:vec3<f32>,albedo:vec3<f32>,roughness:f32,nv:f32,shadow:f32)->vec3<f32>{
+ let sss=material.shading.y;let lobe_mix=material.shading.z;
+ // Scattered light wraps past the terminator, most in red: wrapped
+ // diffuse per channel on the softened normal (red) and the detail normal
+ // (green, blue), normalized so a wrap loses no energy.
+ let w=vec3(0.48,0.20,0.12)*sss;
+ let nl_soft=dot(soft,l);let nl=dot(n,l);
+ let nl3=vec3(nl_soft,mix(nl_soft,nl,0.6),nl);
+ let diffuse=clamp((nl3+w)/((vec3(1.0)+w)*(vec3(1.0)+w)),vec3(0.0),vec3(1.0));
+ // The penumbra glows red: the shadow softens per channel.
+ let s3=vec3(pow(shadow,mix(1.0,0.45,sss)),pow(shadow,mix(1.0,0.8,sss)),shadow);
+ // Two GGX lobes (0.75x and 1.3x roughness), an oily sheen over skin.
+ let f0=vec3(0.028);
+ let spec=lobe_mix*reflectance(n,view,l,vec3(0.0),f0,clamp(roughness*0.75,0.07,1.0),nv)
+   +(1.0-lobe_mix)*reflectance(n,view,l,vec3(0.0),f0,clamp(roughness*1.3,0.07,1.0),nv);
+ return albedo*diffuse*s3+spec*material.shading.w*shadow;
+}
+fn hair_light(t:vec3<f32>,n:vec3<f32>,view:vec3<f32>,l:vec3<f32>,albedo:vec3<f32>,roughness:f32,shadow:f32)->vec3<f32>{
+ // Kajiya-Kay diffuse with a soft wrap (strands are thin and scatter),
+ // two shifted Marschner-like lobes along the strand, and transmission
+ // for backlit hair.
+ let tl=dot(t,l);let sin_tl=sqrt(max(1.0-tl*tl,0.0));
+ let wrap=clamp(dot(n,l)*0.5+0.5,0.0,1.0);
+ let diffuse=albedo*mix(0.3,1.0,sin_tl)*wrap*0.85;
+ let h=normalize(l+view);
+ let t1=normalize(t+n*material.shading.y);let t2=normalize(t+n*material.shading.z);
+ let th1=dot(t1,h);let th2=dot(t2,h);
+ let e1=clamp(2.0/max(roughness*roughness*roughness,0.0004),8.0,600.0);let e2=e1*0.3;
+ let s1=pow(sqrt(max(1.0-th1*th1,0.0)),e1)*(e1+2.0)/6.2832*0.045;
+ let s2=pow(sqrt(max(1.0-th2*th2,0.0)),e2)*(e2+2.0)/6.2832*0.06;
+ let lit_side=clamp(dot(n,l)*0.6+0.4,0.0,1.0);
+ let spec=(vec3(s1)+albedo*s2*1.6)*lit_side;
+ // TT: light through the strands toward the eye.
+ let back=pow(clamp(-dot(view,l),0.0,1.0),6.0);
+ let tt=albedo*back*material.shading.w*2.2;
+ return (diffuse+spec)*shadow+tt*mix(shadow,1.0,0.6);
+}
+fn cloth_light(n:vec3<f32>,view:vec3<f32>,l:vec3<f32>,albedo:vec3<f32>,nv:f32,shadow:f32)->vec3<f32>{
+ let nl=dot(n,l);
+ let diffuse=albedo*clamp((nl+0.25)/1.5625,0.0,1.0);
+ let h=normalize(l+view);let nh=clamp(dot(n,h),0.0,1.0);
+ let a=clamp(material.shading.z,0.07,1.0);let alpha=a*a;let inv=1.0/alpha;
+ let sin2=max(1.0-nh*nh,0.0078125);
+ let d=(2.0+inv)*pow(sin2,inv*0.5)/6.2832;
+ let nlc=clamp(nl,0.0,1.0);
+ let vis=1.0/max(4.0*(nlc+nv-nlc*nv),0.0001);
+ let lum=max(dot(albedo,vec3(0.2126,0.7152,0.0722)),0.0001);
+ let tint=mix(vec3(1.0),albedo/lum,0.4);
+ let sheen=tint*material.shading.y*0.12*d*vis*nlc;
+ return (diffuse+sheen*3.14159265)*shadow;
+}
+fn cornea_light(n:vec3<f32>,view:vec3<f32>,l:vec3<f32>,roughness:f32,nv:f32,shadow:f32)->vec3<f32>{
+ return reflectance(n,view,l,vec3(0.0),vec3(0.025),roughness,nv)*shadow;
+}
+fn stochastic(p:vec2<f32>,seed:f32)->f32{
+ let q=fract(p*vec2(0.1031,0.1030)+vec2(seed*0.7548776662,seed*0.56984029));
+ let r=q+dot(q,q.yx+33.33);
+ return fract((r.x+r.y)*r.x);
+}
 // Exponential height fog (verse_engine::lighting::HeightFog) between the eye
 // and p: the closed-form optical depth from the start distance, capped.
 // Without falloff, start, or cap it is uniform fog, 1 - exp(-density x distance).
@@ -154,8 +220,34 @@ fn portal(v:Out,t:f32,x_axis:vec3<f32>,z_axis:vec3<f32>,center:vec3<f32>)->vec4<
 @fragment fn fs(v:Out,@builtin(front_facing) front:bool)->@location(0) vec4<f32>{
  // Samples and derivatives come before any per-instance branch: WebGPU
  // requires uniform control flow for them.
- let tex=textureSample(image,tex_sampler,v.uv);
+ let model=u32(material.shading.x+0.5);
+ var tex=textureSample(image,tex_sampler,v.uv);
  let geometric=normalize(select(-v.normal,v.normal,front));let n=surface_normal(v,geometric);
+ // The cotangent frame: world gradients of u and v on this surface.
+ let px=dpdx(v.pos);let py=dpdy(v.pos);let ux=dpdx(v.uv);let uy=dpdy(v.uv);
+ let ca=cross(py,geometric);let cb=cross(geometric,px);
+ let det=dot(px,ca);let inv_det=select(0.0,1.0/det,abs(det)>1e-20);
+ let grad_u=(ca*ux.x+cb*uy.x)*inv_det;let grad_v=(ca*ux.y+cb*uy.y)*inv_det;
+ var soft=n;
+ if model==1u && material.maps.x>0.5 {
+  // Skin: the normal map seen through scattering, from a blurrier mip.
+  let blurred=textureSampleBias(normal_image,tex_sampler,v.uv,3.5).xyz*2.0-1.0;
+  let tl=max(dot(grad_u,grad_u),max(dot(grad_v,grad_v),1e-20));
+  let tw=(grad_u*blurred.x*material.channels.x+grad_v*blurred.y*material.channels.x)*inverseSqrt(tl)+geometric*blurred.z;
+  soft=normalize(mix(geometric,normalize(tw),0.5));
+ }
+ if model==2u {
+  // Eye: the iris lies on a plane behind the cornea; offset its texture by
+  // the refracted view ray's travel to that plane.
+  let to_eye=normalize(frame.eye.xyz-v.pos);
+  let rho=length(v.uv-vec2(0.5))/max(material.shading.z,0.0001);
+  let depth=material.shading.y*max(1.0-rho*rho,0.0);
+  let r=refract(-to_eye,geometric,1.0/1.376);
+  let travel=r*(depth/max(-dot(r,geometric),0.25));
+  let shifted=v.uv+vec2(dot(grad_u,travel),dot(grad_v,travel));
+  let iris=textureSample(image,tex_sampler,shifted);
+  tex=mix(tex,iris,step(rho,1.0));
+ }
  var roughness=material.params.z;var metallic=material.params.w;
  if material.maps.y>0.5 {
   let orm=textureSample(orm_image,tex_sampler,v.uv);
@@ -191,22 +283,38 @@ fn portal(v:Out,t:f32,x_axis:vec3<f32>,z_axis:vec3<f32>,center:vec3<f32>)->vec4<
   return vec4(min(mix(flat,frame.fog.rgb,flat_fog)*frame.ambient.w,vec3(60000.0)),verse_coverage(flat_alpha,material.params.y));
  }
  let alpha=tex.a*material.channels.z;
- if material.params.y==1.0 && alpha<material.channels.w{discard;}
+ // Hair's cutout is stochastic, so the mean of jittered sub-frames gives
+ // each strand its true soft coverage instead of a hard edge.
+ var cutoff=material.channels.w;
+ if model==4u {cutoff=max(stochastic(v.clip.xy,frame.settings.y*60.0),0.04);}
+ if material.params.y==1.0 && alpha<cutoff{discard;}
  let albedo=tex.rgb*v.tint;
  var lit=albedo*(1.0-metallic)*frame.ambient.rgb*ao;
+ if model==3u {lit=vec3(0.0);}
  let view_delta=frame.eye.xyz-v.pos;let view_direction=view_delta/max(length(view_delta),0.0001);
  let diffuse_color=albedo*(1.0-metallic);
  let f0=mix(vec3(0.04),albedo,metallic);
  let nv=max(dot(n,view_direction),0.0001);
+ let strand=normalize(grad_v+vec3(0.0,0.0,1e-9));
  for(var i=0u;i<u32(frame.settings.x);i++){
   let source=frame.lights[i*2u];let radiance=frame.lights[i*2u+1u];
   let delta=source.xyz-v.pos;let distance_squared=dot(delta,delta);
   if distance_squared>=source.w*source.w || radiance.w<=0.0 {continue;}
   let d=sqrt(distance_squared);let direction=delta/max(d,0.001);
-  if dot(n,direction)<=0.0 {continue;}
+  // Standard surfaces end at the terminator; skin, hair and cloth wrap
+  // or transmit past it.
+  if (model==0u||model==2u||model==3u) && dot(n,direction)<=0.0 {continue;}
   let falloff=verse_point_falloff(distance_squared,source.w,false);
-  lit+=reflectance(n,view_direction,direction,diffuse_color,f0,roughness,nv)
-      *radiance.rgb*radiance.w*falloff*occlusion(i,v.pos,geometric);
+  let shadow=occlusion(i,v.pos,geometric);
+  var reflected=vec3(0.0);
+  switch model {
+   case 1u:{reflected=skin_light(n,soft,view_direction,direction,diffuse_color,roughness,nv,shadow);}
+   case 3u:{reflected=cornea_light(n,view_direction,direction,roughness,nv,shadow);}
+   case 4u:{reflected=hair_light(strand,geometric,view_direction,direction,diffuse_color,roughness,shadow);}
+   case 5u:{reflected=cloth_light(n,view_direction,direction,diffuse_color,nv,shadow);}
+   default:{reflected=reflectance(n,view_direction,direction,diffuse_color,f0,roughness,nv)*shadow;}
+  }
+  lit+=reflected*radiance.rgb*radiance.w*falloff;
  }
  emission+=select(vec3(0.0),albedo*0.7,material.params.x>0.5);
  lit+=emission;

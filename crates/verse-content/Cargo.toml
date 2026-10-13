@@ -23,7 +23,7 @@ serde = { version = "1", features = ["derive"], optional = true }
 serde_path_to_error = { version = "0.1", optional = true }
 sha2 = "0.10"
 secp256k1 = { version = "0.31.1", optional = true }
-gltf = { version = "1.4.1", features = ["import", "utils", "names", "KHR_materials_emissive_strength"], optional = true }
+gltf = { version = "1.4.1", features = ["import", "utils", "names", "extras", "KHR_materials_emissive_strength"], optional = true }
 libm = { version = "0.2.16", optional = true }
 png = { version = "0.18.1", optional = true }
 resvg = { version = "0.48.1", default-features = false, optional = true }

@@ -10,6 +10,8 @@ pub(super) struct Key {
     pub lines: bool,
     pub unlit: bool,
     values: [u32; 9],
+    shading: u8,
+    shading_params: [u32; 4],
 }
 impl Key {
     pub fn from_surface(surface: &Surface) -> Self {
@@ -38,6 +40,8 @@ impl Key {
                 m.emissive_factor[2],
             ]
             .map(f32::to_bits),
+            shading: m.shading,
+            shading_params: m.shading_params.map(f32::to_bits),
         }
     }
     pub fn base_role(self) -> verse_engine::mips::Role {
@@ -51,9 +55,11 @@ impl Key {
             verse_engine::mips::Role::Color
         }
     }
-    /// Four aligned vec4 values, shared with the WGSL Material declaration.
-    pub fn uniform(self) -> [[f32; 4]; 4] {
+    /// Six aligned vec4 values, shared with the WGSL Material declaration:
+    /// the last two are the shading model and its parameters.
+    pub fn uniform(self) -> [[f32; 4]; 6] {
         let v = self.values.map(f32::from_bits);
+        let p = self.shading_params.map(f32::from_bits);
         [
             [
                 u8::from(self.emissive) as f32,
@@ -64,6 +70,8 @@ impl Key {
             [v[2], v[3], v[4], v[5]],
             [v[6], v[7], v[8], u8::from(self.unlit) as f32],
             self.maps.map(|slot| u8::from(slot.is_some()) as f32),
+            [f32::from(self.shading), p[0], p[1], p[2]],
+            [p[3], 0.0, 0.0, 0.0],
         ]
     }
 }
@@ -148,9 +156,16 @@ mod tests {
         surface.material.metallic = 0.75;
         surface.material.opacity = 0.5;
         let uniform = Key::from_surface(&surface).uniform();
-        assert_eq!(std::mem::size_of_val(&uniform), 64);
+        assert_eq!(std::mem::size_of_val(&uniform), 96);
         assert_eq!(uniform[0], [0., 0., 0.25, 0.75]);
         assert_eq!(uniform[1], [1., 1., 0.5, 0.5]);
         assert_eq!(uniform[3], [1., 0., 0., 0.]);
+        assert_eq!(uniform[4], [0.; 4]);
+        surface.material.shading = verse_engine::material::Shading::Hair as u8;
+        surface.material.shading_params = [0.1, -0.2, 0.6, 0.3];
+        let hair = Key::from_surface(&surface);
+        assert_ne!(hair, Key::from_surface(&self::surface()));
+        assert_eq!(hair.uniform()[4], [4., 0.1, -0.2, 0.6]);
+        assert_eq!(hair.uniform()[5], [0.3, 0., 0., 0.]);
     }
 }
