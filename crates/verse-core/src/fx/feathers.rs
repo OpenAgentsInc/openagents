@@ -14,7 +14,7 @@
 
 use glam::Vec3;
 
-use super::{Facing, Sprite, sheet};
+use super::{Facing, Ribbon, RibbonPoint, Sprite, sheet};
 
 /// A feather's length over its width, as the sheet is painted.
 pub const ASPECT: f32 = 3.0;
@@ -75,6 +75,119 @@ pub fn dot(at: Vec3, half: f32, luminance: [f32; 3], alpha: f32) -> Sprite {
         priority: 6,
         ..feather(at, Vec3::NEG_Y, half * 2.0 * ASPECT, luminance, alpha)
     }
+}
+
+/// A long feather whose shaft curves: the head (the eyespot and the vane
+/// round it) as a sprite, and the shaft and the lower vane as two ribbons
+/// along a quadratic curve from `eyespot` through `bend` (a control point)
+/// to `quill`, so a feather seen close sweeps in an arc instead of a
+/// straight stroke. `head` is the head sprite's length, m.
+#[must_use]
+pub fn curved(
+    eyespot: Vec3,
+    bend: Vec3,
+    quill: Vec3,
+    head: f32,
+    luminance: [f32; 3],
+) -> (Sprite, [Ribbon; 2]) {
+    let at = |u: f32| {
+        let v = 1.0 - u;
+        eyespot * (v * v) + bend * (2.0 * v * u) + quill * (u * u)
+    };
+    let tangent = (bend - eyespot).normalize_or(Vec3::NEG_Y);
+    let sprite = feather(eyespot, tangent, head, luminance, 1.0);
+    let (dot_rect, layer) = from_sheet(DOT);
+    let (vane_rect, _) = from_sheet(FEATHER);
+    // The vane's cross-section a quarter of the way down a straight
+    // feather: barbs either side of the shaft.
+    let column = vane_rect[0] + (vane_rect[2] - vane_rect[0]) * 0.3;
+    let vane_rect = [column, vane_rect[1], column, vane_rect[3]];
+    let width = head / (2.0 * ASPECT);
+    let n = 24;
+    // The ribbons start inside the head sprite, past its eyespot.
+    let start = (head * 0.3) / eyespot.distance(quill).max(1e-3);
+    let points = |half: f32, gain: f32| -> Vec<RibbonPoint> {
+        (0..=n)
+            .map(|i| {
+                let u = start + (1.0 - start) * i as f32 / n as f32;
+                let fade = (1.0 - u).powf(0.6) * ((u - start) / 0.08).clamp(0.0, 1.0);
+                RibbonPoint {
+                    at: at(u),
+                    half: half * (1.0 - 0.6 * u),
+                    color: luminance.map(|c| c * gain * fade),
+                    alpha: 1.0,
+                }
+            })
+            .collect()
+    };
+    (
+        sprite,
+        [
+            Ribbon {
+                points: points(width * 0.12, 0.9),
+                layer,
+                rect: dot_rect,
+                priority: 8,
+            },
+            Ribbon {
+                points: points(width * 0.6, 0.25),
+                layer,
+                rect: vane_rect,
+                priority: 7,
+            },
+        ],
+    )
+}
+
+/// A faint rainbow arc, as light splits at a bright edge: six bands from
+/// red outside to violet inside, round `center` at `radius` m in the plane
+/// of `right` and `up`, from angle `from` to `to` (radians).
+#[must_use]
+pub fn rainbow(
+    center: Vec3,
+    right: Vec3,
+    up: Vec3,
+    radius: f32,
+    width: f32,
+    from: f32,
+    to: f32,
+    luminance: f32,
+) -> Vec<Ribbon> {
+    let (rect, layer) = from_sheet(DOT);
+    let bands = [
+        [1.0, 0.25, 0.2],
+        [1.0, 0.6, 0.15],
+        [0.9, 0.95, 0.2],
+        [0.25, 1.0, 0.35],
+        [0.2, 0.5, 1.0],
+        [0.55, 0.25, 1.0],
+    ];
+    let n = 32;
+    bands
+        .iter()
+        .enumerate()
+        .map(|(k, color)| {
+            let r = radius - width * k as f32 / bands.len() as f32;
+            Ribbon {
+                points: (0..=n)
+                    .map(|i| {
+                        let u = i as f32 / n as f32;
+                        let a = from + (to - from) * u;
+                        let fade = (u * std::f32::consts::PI).sin();
+                        RibbonPoint {
+                            at: center + (right * a.cos() + up * a.sin()) * r,
+                            half: width * 0.45,
+                            color: color.map(|c| c * luminance * fade),
+                            alpha: 1.0,
+                        }
+                    })
+                    .collect(),
+                layer,
+                rect,
+                priority: 5,
+            }
+        })
+        .collect()
 }
 
 /// A fanned tail: rows of feathers growing from `center` in the plane of

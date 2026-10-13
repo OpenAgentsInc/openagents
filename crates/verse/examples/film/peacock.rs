@@ -40,7 +40,7 @@ pub const HERO: Vec3 = Vec3::new(0.4, 1.2, -6.0);
 
 /// The center the guardian's tail fans from, behind Draconia.
 const TAIL_CENTER: Vec3 = Vec3::new(0.0, 0.9, -1.8);
-const TAIL_RADIUS: f32 = 7.0;
+const TAIL_RADIUS: f32 = 7.6;
 
 /// The void's color and the courtyard's night.
 const VOID: [f32; 3] = [0.004, 0.008, 0.022];
@@ -53,7 +53,7 @@ pub struct Set {
     flash_started: bool,
     rise: f32,
     fx: Particles,
-    alice: Option<(Beast, Arc<TexturedScene>)>,
+    alice: Option<(Beast, Arc<TexturedScene>, Vec<usize>)>,
     stars: Vec<(Vec3, f32, f32)>,
     lamps: Vec<Lamp>,
 }
@@ -112,7 +112,19 @@ impl Set {
                 let beast = Beast::new(pack, form)?;
                 let mut scene = beast.figure().scene.as_ref().clone();
                 draconia(&mut scene);
-                alice = Some((beast, Arc::new(scene)));
+                // Alice's staff, slung across her back and up past her
+                // head, is no part of Draconia: its vertices (found in the
+                // bind pose, behind the shoulder blades and out to her
+                // left) collapse to a point every frame.
+                let staff: Vec<usize> = beast
+                    .figure()
+                    .vertices
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, v)| v.pos[2] < -0.12 && v.pos[0] > 0.1 && v.pos[1] > 1.1)
+                    .map(|(i, _)| i)
+                    .collect();
+                alice = Some((beast, Arc::new(scene), staff));
                 fx.start("ground_mist", Spawn::at(Vec3::new(0.0, 0.0, 0.5)));
                 fx.start(
                     "ground_mist",
@@ -126,6 +138,9 @@ impl Set {
                     Vec3::new(4.3, 0.4, 0.3),
                 ] {
                     fx.start("ruin_fire", Spawn::at(at));
+                    if at.z > 1.0 {
+                        continue;
+                    }
                     lamps.push(Lamp {
                         position: at + Vec3::new(0.0, 0.5, -0.6),
                         color: [1.0, 0.42, 0.12],
@@ -133,22 +148,16 @@ impl Set {
                         range: 6.0,
                     });
                 }
-                for i in 0..7 {
-                    let theta = std::f32::consts::PI * (i as f32 + 0.5) / 7.0;
-                    let r = TAIL_RADIUS * 0.6;
+                // The tail's light on the cobbles comes from low lamps out
+                // at its sides, none near her, so she stays a silhouette.
+                for x in [-5.5_f32, -3.2, 3.2, 5.5] {
                     lamps.push(Lamp {
-                        position: TAIL_CENTER + Vec3::new(theta.cos() * r, theta.sin() * r, 0.4),
+                        position: Vec3::new(x, 0.6, -2.4),
                         color: [0.7, 0.82, 1.0],
-                        intensity: 14.0,
-                        range: 12.0,
+                        intensity: 10.0,
+                        range: 7.0,
                     });
                 }
-                lamps.push(Lamp {
-                    position: TAIL_CENTER + Vec3::new(0.0, 0.4, 0.6),
-                    color: [0.75, 0.85, 1.0],
-                    intensity: 14.0,
-                    range: 10.0,
-                });
                 for i in 0..90 {
                     let u = hash(i * 5) * 2.0 - 1.0;
                     let v = hash(i * 5 + 1);
@@ -194,7 +203,7 @@ impl Set {
         for _ in 0..steps {
             self.fx.tick(dt / steps as f32, |_, _| 0.0);
         }
-        if let Some((beast, _)) = &mut self.alice {
+        if let Some((beast, _, _)) = &mut self.alice {
             // She lands crouched and rises, then stands in the wind.
             let (clip, time) = if t < self.rise {
                 ("jump", 0.15)
@@ -243,7 +252,7 @@ impl Set {
             ));
         }
         match self.part {
-            Part::Feathers => self.drifting(sprites),
+            Part::Feathers => self.drifting(sprites, &mut mesh.ribbons),
             Part::Tail => {
                 let open = 0.92 + 0.08 * (t / 3.0).min(1.0);
                 sprites.extend(
@@ -276,6 +285,11 @@ impl Set {
                     [0.12, 0.16, 0.24],
                     1.0,
                 ));
+                // The core's pool of light on the cobbles behind her.
+                sprites.push(verse::fx::Sprite {
+                    facing: verse::fx::Facing::Ground,
+                    ..feathers::dot(Vec3::new(0.0, 0.03, -1.4), 4.5, [0.35, 0.42, 0.55], 1.0)
+                });
                 // A luminous haze filling the fan behind the feathers.
                 for i in 0..9 {
                     let theta = std::f32::consts::PI * (i as f32 + 0.5) / 9.0;
@@ -287,10 +301,17 @@ impl Set {
                         1.0,
                     ));
                 }
-                if let Some((beast, scene)) = &self.alice {
+                if let Some((beast, scene, staff)) = &self.alice {
+                    let mut vertices = beast.vertices().to_vec();
+                    if let Some(&first) = staff.first() {
+                        let point = vertices[first].pos;
+                        for &i in staff {
+                            vertices[i].pos = point;
+                        }
+                    }
                     mesh.figure = Some(Figure {
                         scene: scene.clone(),
-                        vertices: Arc::new(beast.vertices().to_vec()),
+                        vertices: Arc::new(vertices),
                     });
                 }
             }
@@ -300,7 +321,7 @@ impl Set {
     }
 
     /// The feathers of the void: one fan's worth seen close, turning.
-    fn drifting(&self, sprites: &mut Vec<Sprite>) {
+    fn drifting(&self, sprites: &mut Vec<Sprite>, ribbons_out: &mut Vec<verse::fx::Ribbon>) {
         let t = self.time;
         let center = Vec3::new(-5.0, -9.0, -9.0);
         // Angle from the fan's center, depth, length, and the hero.
@@ -329,9 +350,13 @@ impl Set {
             if i == 0 {
                 eye = HERO;
             }
-            let quill = (base - eye).normalize();
+            // Each shaft bows the same way, so the feathers sweep in arcs.
+            let side = Vec3::new(-dir.y, dir.x, 0.0);
+            let bend = (eye + base) * 0.5 + side * length * 0.3;
             let lum = [3.4, 3.8, 4.4];
-            sprites.push(feathers::feather(eye, quill, length * 1.05, lum, 1.0));
+            let (head, ribbons) = feathers::curved(eye, bend, base, length * 0.8, lum);
+            sprites.push(head);
+            ribbons_out.extend(ribbons);
             sprites.push(feathers::dot(
                 eye,
                 length * 0.08,
@@ -339,6 +364,17 @@ impl Set {
                 1.0,
             ));
         }
+        // The rainbow fringe low across the frame.
+        ribbons_out.extend(feathers::rainbow(
+            Vec3::new(4.0, -6.0, -4.0),
+            Vec3::X,
+            Vec3::Y,
+            9.0,
+            0.8,
+            2.0,
+            2.9,
+            0.18,
+        ));
         // A faint blue haze where the feathers gather.
         sprites.push(feathers::dot(
             Vec3::new(0.0, -6.0, -20.0),
@@ -364,7 +400,8 @@ impl Set {
             }
             Part::Tail => {
                 neon.field = NIGHT;
-                neon.key = Some(key(Vec3::new(0.0, 0.42, -1.0), 5.0, 0.012));
+                // No key: the tail backlights her and the lamps light the ground.
+                neon.key = Some(key(Vec3::new(0.0, 0.42, -1.0), 0.0, 0.0));
                 neon.key_color = [0.72, 0.84, 1.0];
                 neon.rim_color = [1.0, 0.6, 0.3];
                 for (i, lamp) in self.lamps.iter().take(MAX_LAMPS).enumerate() {

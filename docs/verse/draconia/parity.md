@@ -40,3 +40,23 @@ top), and `~/Downloads/draconia-peacock-progress.png` (one row per version).
 - **Still open:** curved P1 feathers and the rainbow fringe; the haze between
   the reference's eyespots is brighter and bluer; her outfit, the rise from a
   crouch, and the lifting hair.
+
+### v3, 2026-10-13
+
+- **Gaps fixed:**
+  - P1's feathers were straight sticks. `feathers::curved` now draws the head
+    as a sprite, with the shaft and lower vane as ribbons along a curve, so
+    the feathers sweep in arcs. `feathers::rainbow` adds the soft rainbow
+    fringe low across the frame.
+  - P3: she was front-lit. The tail now backlights her into a near-black
+    silhouette: no key light, no lamps near her, the cobbles lit by low lamps
+    at the fan's sides, and a pool of light under the core.
+  - Alice's staff no longer shows (its vertices collapse every frame).
+  - The P3 framing is closer: she's larger, and the fan (radius 7.6 m) reaches
+    near the top of the frame.
+- **Still open:**
+  - the P3 open: the reference rises from a crouch with her hair flying up;
+  - her outline is Alice's coat, not the skirt, tights and boots (waiting for
+    the face agent's Draconia asset);
+  - P1's barbs are sparser and less fine than the reference's;
+  - the reference's walls and fires read more clearly at the frame edges.
