@@ -1217,6 +1217,12 @@ async fn codex_cli(
     let (mark, value) = coder_delegate::delegate::Agent::Codex.engine_mark();
     command.env(mark, value);
     scrub_credentials(&mut command);
+    // The run's hooks on Codex's command tier (#11500): its hook bridge
+    // asks this host, kept until the run ends.
+    let hook_host = crate::sdk_hooks::codex_host(cwd);
+    if let Some(host) = &hook_host {
+        command.env(coder_sdk::bridge::SOCKET_VAR, host.path());
+    }
     let mut live = supervise::Job::from_command(command)
         .bounded(supervise::Limits::until_stopped().keeping(TEXT_MAX))
         .start(supervise::Input::Piped)?;

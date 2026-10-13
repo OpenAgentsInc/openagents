@@ -113,6 +113,20 @@ one of:
   rewrite what already ran (ACP agents, mostly).
 - **None.**
 
+Built (#11500): the bridge is `coder_sdk::bridge`. The host keeps a
+session's runner on a Unix socket (`bridge::Host`, named to the harness
+by `CODER_HOOK_SOCKET`); the hook program (`coder coder-hook --format
+claude|codex`, and `coder-floor-hook` for Codex) reads the harness's hook
+input, asks that host, and prints the reply in the harness's format
+(Codex's narrower one: an ask is held, `allow` only with
+`updatedInput`). With no host, the floors answer alone. A Codex run
+(`bundled_runtime::codex_cli`) starts a host with the floors and the
+command hooks (`sdk_hooks::codex_registry`). Command hooks
+(`coder_sdk::command`) come from `.openagents/hooks.json` in the checkout
+and `~/.openagents/hooks.json`, in Claude Code's `hooks` shape, run under
+`sh -c` with Claude Code's hook input and are read as Claude Code reads
+them (exit 2 blocks); they compose with the built-ins, never past a floor.
+
 The tier is part of the capability matrix the router reads. A hook that
 needs to deny (a floor) declares that, and a harness that can only emulate
 it is refused at start for that work, as the harness contract already

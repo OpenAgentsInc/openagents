@@ -425,6 +425,10 @@ fn main() -> ExitCode {
             coder_new::floors::hook_main();
             0
         }
+        // The hook bridge for any harness with command hooks (#11500).
+        coder_new::floors::BRIDGE_COMMAND => {
+            u8::try_from(coder_new::floors::bridge_main(&rest).clamp(0, 255)).unwrap_or(1)
+        }
         // The squeezer a Claude Code session under Coder runs a noisy
         // command through (#11486).
         squeeze::CODER_SUBCOMMAND => u8::try_from(squeeze::main(&rest).clamp(0, 255)).unwrap_or(1),

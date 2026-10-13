@@ -270,37 +270,6 @@ pub fn tool_server(
 /// coder-tools-mcp [--decide] [--cwd DIR]`.
 pub const STDIO_COMMAND: &str = "coder-tools-mcp";
 
-/// The floors as a hook on this server's calls, for a harness whose own
-/// hooks don't reach MCP tools: each call is judged by its plain name
-/// (`openagents_cli`), as a live chat's tool gate judges it. Nobody can
-/// answer from inside the harness, so an ask holds the call.
-#[must_use]
-pub fn floors_hook(cwd: std::path::PathBuf) -> coder_sdk::Hook {
-    coder_sdk::Hook::floor(
-        "floors",
-        coder_sdk::Event::PreToolUse,
-        coder_sdk::Permission::ask("confirm this step"),
-        move |call: &coder_sdk::Call| {
-            let tool = call.tool.as_deref().unwrap_or_default();
-            let plain = tool
-                .strip_prefix(&format!("mcp__{SERVER}__"))
-                .unwrap_or(tool);
-            let Some(floor) = crate::floors::classify(plain, &call.input) else {
-                return Ok(coder_sdk::HookOutcome::none());
-            };
-            Ok(match crate::floors::rule(&cwd, floor.ability) {
-                crate::risk_policy::Rule::Allow => coder_sdk::HookOutcome::none(),
-                crate::risk_policy::Rule::Deny => {
-                    coder_sdk::HookOutcome::deny(&crate::floors::refused(&floor))
-                }
-                crate::risk_policy::Rule::Ask => {
-                    coder_sdk::HookOutcome::deny(&crate::floors::held(&floor))
-                }
-            })
-        },
-    )
-}
-
 /// `coder coder-tools-mcp`: the person's Coder tools (the plugins they
 /// turned on) over MCP stdio for a harness that takes MCP, gated by the
 /// floors, with `decide` when `--decide` admits sending to the Decisions
@@ -354,7 +323,7 @@ pub fn stdio_main(args: &[String]) -> i32 {
             Err(_) => {}
         }
         let mut registry = coder_sdk::Registry::new();
-        if let Err(error) = registry.register(floors_hook(cwd)) {
+        if let Err(error) = registry.register(crate::sdk_hooks::held_floors(cwd)) {
             eprintln!("{error}");
             return 1;
         }

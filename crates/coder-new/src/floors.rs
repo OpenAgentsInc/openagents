@@ -707,19 +707,23 @@ pub fn hook_decision(input: &Value) -> Option<Value> {
     Some(json!({"hookSpecificOutput": deny_output(&reason)}))
 }
 
-/// `coder-floor-hook`: [`hook_decision`] over standard input and output.
-/// Always exits cleanly; an unreadable call is let through for the harness's
-/// own rules.
+/// `coder-floor-hook`: the hook bridge (#11500) in Codex's format. A run
+/// Coder started names its session's hook host ([`coder_sdk::bridge`]),
+/// which answers from the whole registry (the floors and the command
+/// hooks); with no host, [`hook_decision`] answers alone. Always exits
+/// cleanly; an unreadable call is let through for the harness's own rules.
 pub fn hook_main() {
-    use std::io::{Read, Write};
-    let mut text = String::new();
-    let _ = std::io::stdin().read_to_string(&mut text);
-    let Ok(input) = serde_json::from_str::<Value>(&text) else {
-        return;
-    };
-    if let Some(output) = hook_decision(&input) {
-        let _ = writeln!(std::io::stdout(), "{output}");
-    }
+    let _ = bridge_main(&["--format".into(), "codex".into()]);
+}
+
+/// The general hook bridge, `coder-hook --format claude|codex`, for any
+/// harness with Claude- or Codex-style command hooks; the floors answer
+/// when no host does.
+pub const BRIDGE_COMMAND: &str = coder_sdk::bridge::COMMAND;
+
+/// [`BRIDGE_COMMAND`]'s program. Returns the exit code.
+pub fn bridge_main(args: &[String]) -> i32 {
+    coder_sdk::bridge::main(args, hook_decision)
 }
 
 #[cfg(test)]

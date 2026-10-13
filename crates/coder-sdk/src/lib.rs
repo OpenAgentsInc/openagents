@@ -13,7 +13,9 @@
 //! backends build on this crate elsewhere.
 
 pub mod admission;
+pub mod bridge;
 pub mod claude;
+pub mod command;
 pub mod compose;
 pub mod decide;
 pub mod decision;

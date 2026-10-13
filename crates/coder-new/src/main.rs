@@ -71,6 +71,13 @@ fn run() -> io::Result<()> {
         coder_new::floors::hook_main();
         return Ok(());
     }
+    // The hook bridge a harness with only command hooks runs (#11500).
+    if args
+        .first()
+        .is_some_and(|command| command == coder_new::floors::BRIDGE_COMMAND)
+    {
+        std::process::exit(coder_new::floors::bridge_main(&args[1..]));
+    }
     // Coder's tools over MCP stdio, for a harness that takes MCP (#11501).
     if args
         .first()
