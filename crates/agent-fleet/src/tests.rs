@@ -281,3 +281,16 @@ fn pause_choices_show_on_an_ended_agent_until_it_resumes() {
     assert!(row.to_json(0).get("choices").is_none());
     again.finish(Outcome::Done("ok".into()));
 }
+
+#[test]
+fn a_lists_key_is_shared_by_clones_and_never_reused() {
+    let first: Registry<String> = Registry::default();
+    let key = first.key();
+    assert_eq!(first.clone().key(), key);
+    drop(first);
+    // A new list may land at the old one's address; its key still differs,
+    // so it never receives the old list's background-shell notices.
+    for _ in 0..64 {
+        assert_ne!(Registry::<String>::default().key(), key);
+    }
+}

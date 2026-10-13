@@ -345,20 +345,25 @@ impl<E> Inner<E> {
 /// The agent list and its state machine. Cloning shares it.
 pub struct Registry<E> {
     inner: Arc<Mutex<Inner<E>>>,
+    /// This list's own number, never reused in the process (see `key`).
+    id: usize,
 }
 
 impl<E> Clone for Registry<E> {
     fn clone(&self) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
+            id: self.id,
         }
     }
 }
 
 impl<E> Default for Registry<E> {
     fn default() -> Self {
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
         Self {
             inner: Arc::new(Mutex::new(Inner::default())),
+            id: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         }
     }
 }
@@ -403,11 +408,14 @@ pub fn valid_name(name: &str) -> bool {
 
 impl<E> Registry<E> {
     /// A number that is the same for every clone of this list and
-    /// differs between lists, so work started for one chat (a background
+    /// differs between lists, never reused by a later list, so work started for one chat (a background
     /// shell, #11177) reports back to the chat that owns this list.
     #[must_use]
     pub fn key(&self) -> usize {
-        Arc::as_ptr(&self.inner).cast::<()>() as usize
+        // A counter, not the list's address: a dropped chat's address is
+        // reused by the next one, which then received the old chat's
+        // background-shell notices.
+        self.id
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner<E>> {
