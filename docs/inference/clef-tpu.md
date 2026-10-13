@@ -146,10 +146,20 @@ restored from the prefix snapshot, in 0.19 s against 1.23 s fresh.
 `tpu=http://10.146.0.2:18096`, and the firewall rule `clef-tpu-from-gateway`
 plus the network tag `clef-tpu` let the gateway subnets and IAP reach it.
 The TPU pool is never part of the default order until P5's shadow passes.
-The code is on `main` (f979439d20) and takes effect with the next
-openagents-stack (gateway sidecar) deploy (`scripts/deploy/web.sh stage`,
-then `promote --stack`, then `shift`). Until that deploy, the live gateway
-ignores the `tpu` value and answers in its default order.
+Live on openagents.com since 2026-10-13 05:21 UTC: revision
+`coder-web-80f11ebd7b-20261013051852` (gateway image `openagents-stack:312421833e`;
+staging smoke 92/0, candidate 51/0, production 59/0). Rollback:
+`scripts/deploy/web.sh rollback coder-web-19a2dcd41e-20261012224256`.
+
+```sh
+curl -s https://openagents.com/api/v1/systemone -H 'content-type: application/json' -H 'X-Decision-Order: tpu' \
+  -d '{"model":"clef-flash","state":{"ticket":"Checkout returns a 500 for every card payment."},"questions":{"urgent":{"type":"noul","instructions":"Is this urgent?"}}}'
+# X-Decision-Backend: tpu, psionic.backend "tpu"
+```
+
+Five calls after the shift: all answered by the TPU, 0.26–0.33 s end to end
+from this Mac (Tokyo round trip included), same answers as the GPU pool on
+the sample ticket (urgent 0.969, team `technical`).
 
 ### TPU machines we hold
 
