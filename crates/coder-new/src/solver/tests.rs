@@ -621,6 +621,7 @@ async fn a_devin_hand_runs_the_recorded_turn_through_acp() {
         briefed: Default::default(),
         events_file: "coder-0-events.jsonl".into(),
         baseline: None,
+        follow: None,
     };
     let work = agent::run(session, dir.path(), dir.path(), &mut transcript).await;
     assert_eq!(work.error, None);
@@ -697,6 +698,7 @@ async fn a_devin_hand_without_a_binary_fails_at_start() {
         briefed: Default::default(),
         events_file: "coder-0-events.jsonl".into(),
         baseline: None,
+        follow: None,
     };
     let work = agent::run(session, dir.path(), dir.path(), &mut transcript).await;
     let error = work.error.unwrap_or_default();
@@ -736,6 +738,7 @@ async fn a_devin_hand_refuses_a_model_mismatch() {
         briefed: Default::default(),
         events_file: "coder-0-events.jsonl".into(),
         baseline: None,
+        follow: None,
     };
     let work = agent::run(session, dir.path(), dir.path(), &mut transcript).await;
     let error = work.error.unwrap_or_default();
@@ -1009,4 +1012,188 @@ fn queue_verdict_rides_in_the_summary_shape() {
     let entry = super::queue::judge(7, "x", None, &[], &["run-1".into()], 2);
     assert_eq!(entry.verdict, "in_flight");
     assert_eq!(entry.json()["why"], "unlanded run run-1");
+}
+
+/// #11505 (1): the Coder's checks come from the crates the change touches,
+/// read again at each `run_check`, a crate created mid-round included.
+#[tokio::test]
+async fn the_coders_checks_follow_the_crates_the_change_touches() {
+    use crate::issue_run::agent::{Follow, checks_now};
+    use crate::issue_run::decide::{Briefing, Check};
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let git = |args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .args(args)
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{args:?}");
+        String::from_utf8_lossy(&out.stdout).trim().to_owned()
+    };
+    let krate = |name: &str| {
+        std::fs::create_dir_all(root.join(format!("crates/{name}/src"))).unwrap();
+        std::fs::write(
+            root.join(format!("crates/{name}/Cargo.toml")),
+            format!("[package]\nname = \"{name}\"\n"),
+        )
+        .unwrap();
+        std::fs::write(root.join(format!("crates/{name}/src/lib.rs")), "").unwrap();
+    };
+    git(&["init", "-q"]);
+    krate("planned");
+    krate("contract");
+    git(&["add", "."]);
+    git(&[
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-qm",
+        "base",
+    ]);
+    let base = git(&["rev-parse", "HEAD"]);
+    // The issue's file plan names `planned`; the change goes elsewhere.
+    let check = |id: &str| Check {
+        id: id.into(),
+        argv: vec!["cargo".into()],
+        filter: false,
+        what: String::new(),
+        required: false,
+    };
+    let briefing = Briefing {
+        checks: vec![check("check:planned"), check("test:planned")],
+        ..Default::default()
+    };
+    let follow = Follow {
+        base: base.clone(),
+        compile_only: true,
+    };
+    let ids = |checks: Vec<Check>| checks.into_iter().map(|c| c.id).collect::<Vec<_>>();
+    let start = super::hands::compile_checks(&briefing);
+    assert_eq!(
+        ids(checks_now(&start, root, Some(&follow)).await),
+        ["check:planned"]
+    );
+    // Mid-round: an edit to an existing crate and a brand-new crate.
+    std::fs::write(root.join("crates/contract/src/lib.rs"), "pub fn f() {}\n").unwrap();
+    krate("fresh");
+    let now = ids(checks_now(&start, root, Some(&follow)).await);
+    assert_eq!(now, ["check:planned", "check:contract", "check:fresh"]);
+    // The Tester's follow offers the touched crates' tests too.
+    let tester = Follow {
+        base,
+        compile_only: false,
+    };
+    let all = ids(checks_now(&briefing.checks, root, Some(&tester)).await);
+    for id in ["test:contract", "test:fresh", "check:fresh"] {
+        assert!(all.iter().any(|have| have == id), "{id} in {all:?}");
+    }
+    // A later round starts with the earlier rounds' crates already listed.
+    let changed = crate::issue_run::setup::change_checks(root, &tester.base).await;
+    assert_eq!(
+        ids(super::hands::coder_checks(&briefing, changed)),
+        ["check:planned", "check:contract", "check:fresh"]
+    );
+}
+
+/// #11505 (2): a change longer than the prompt's budget keeps every file;
+/// in #11495's run the plain cut dropped `route-contract/src/recipe.rs`,
+/// which began at character 64,282 of a 66,328-character change.
+#[test]
+fn a_long_change_reaches_the_tester_with_every_file() {
+    use super::hands::{bounded_diff, so_far_text};
+    let file = |path: &str, lines: usize| {
+        let mut text = format!(
+            "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -0,0 +1,{lines} @@\n"
+        );
+        for n in 0..lines {
+            text.push_str(&format!("+line {n} of {path}\n"));
+        }
+        text
+    };
+    let diff = format!(
+        "{}{}{}",
+        file("crates/coder-sdk/src/compose.rs", 2000),
+        file("crates/coder-sdk/src/lib.rs", 3),
+        file("crates/route-contract/src/recipe.rs", 40)
+    );
+    assert!(diff.find("route-contract").unwrap() > 60_000);
+    let shown = bounded_diff(&diff, 60_000);
+    assert!(shown.chars().count() <= 60_200, "{}", shown.len());
+    for path in [
+        "crates/coder-sdk/src/compose.rs",
+        "crates/coder-sdk/src/lib.rs",
+        "crates/route-contract/src/recipe.rs",
+    ] {
+        assert!(
+            shown.contains(&format!("diff --git a/{path} b/{path}")),
+            "{path}"
+        );
+    }
+    // The short files arrive whole; the long one says it was cut.
+    assert!(shown.contains("+line 39 of crates/route-contract/src/recipe.rs"));
+    assert!(shown.contains("+line 2 of crates/coder-sdk/src/lib.rs"));
+    assert!(shown.contains("more lines of this file cut short"));
+    // A change within the budget is untouched, and the Coder's "so far"
+    // section keeps every file the same way.
+    let small = file("a.rs", 3);
+    assert_eq!(bounded_diff(&small, 60_000), small);
+    assert!(so_far_text(&diff).contains("crates/route-contract/src/recipe.rs"));
+}
+
+/// #11505 (2): the baseline checkout never builds into the run's own build
+/// folder, where its older `route-contract` passed for the working copy's.
+#[test]
+fn the_baseline_builds_apart_from_the_run() {
+    use crate::issue_run::agent::target_dir;
+    use std::path::PathBuf;
+    let home = Some("/home/me".into());
+    let run = target_dir(None, home.clone(), false).unwrap();
+    let baseline = target_dir(None, home, true).unwrap();
+    assert_ne!(run, baseline);
+    assert_eq!(baseline.parent(), run.parent());
+    assert!(baseline.ends_with("target-baseline"));
+    // The person's own folder stays theirs for the run; the baseline sits
+    // beside it.
+    assert_eq!(target_dir(Some("/t/mine".into()), None, false), None);
+    assert_eq!(
+        target_dir(Some("/t/mine".into()), None, true),
+        Some(PathBuf::from("/t/mine-baseline"))
+    );
+}
+
+/// #11505 (3): the run's reply states the outcome and the final checks,
+/// not the last Coder's message from an earlier point in the run.
+#[test]
+fn the_reply_states_the_final_checks_and_outcome() {
+    use super::final_reply;
+    use crate::issue_run::verdict::{Outcome, Status};
+    let checks = vec![
+        ("check:coder-sdk".to_owned(), true),
+        ("test:coder-sdk".to_owned(), true),
+    ];
+    let passed = Outcome {
+        status: Status::Passed,
+        reason: None,
+    };
+    assert_eq!(
+        final_reply(&passed, &checks, 1),
+        "The change passed after 2 rounds.\nPassed: check:coder-sdk, test:coder-sdk."
+    );
+    let failed = Outcome::stopped(Status::Failed, "Required check failed: test:coder-sdk");
+    let checks = vec![
+        ("check:coder-sdk".to_owned(), true),
+        ("test:coder-sdk".to_owned(), false),
+    ];
+    let reply = final_reply(&failed, &checks, 0);
+    assert!(reply.starts_with("The change failed after 1 round. Required check failed"));
+    assert!(reply.contains("\nFailed: test:coder-sdk."));
+    assert!(reply.contains("\nPassed: check:coder-sdk."));
+    let gated = Outcome::stopped(Status::AlreadyDone, "Main already has a commit");
+    assert_eq!(
+        final_reply(&gated, &[], 0),
+        "The run ended: already done. Main already has a commit. No final check ran."
+    );
 }

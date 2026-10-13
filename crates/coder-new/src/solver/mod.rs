@@ -572,6 +572,7 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
         briefing: None,
         turns: Vec::new(),
         checks: Vec::new(),
+        required: None,
         rounds: 0,
         decisions: decisions_value(
             options.inner.kind_decider(),
@@ -711,6 +712,7 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
         let changed = setup::change_checks(&base.worktree, &base.base).await;
         let mut required = required.clone();
         merge_change_checks(&mut checked.checks, &mut required, changed);
+        end.required = Some(required.clone());
         let outputs = issue_run::agent::final_check_outputs(&base, &checked, &[], transcript).await;
         let errors = hands::failing_output(&outputs);
         end.checks = outputs
@@ -777,10 +779,10 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
                 hands::Verdict::Briefer(text)
             }
             None => {
-                let tester = hands::test(
-                    options, &base, &briefing, &errors, round, folder, transcript,
-                )
-                .await;
+                // The Tester may rerun any check the harness ran: those the
+                // change's crates call for, not only the briefing's.
+                let tester =
+                    hands::test(options, &base, &checked, &errors, round, folder, transcript).await;
                 let verdict = hands::Verdict::parse(tester.verdict.as_deref().unwrap_or_default());
                 end.turns.push(tester);
                 verdict
@@ -912,6 +914,9 @@ struct End<'a> {
     briefing: Option<Briefing>,
     turns: Vec<Turn>,
     checks: Vec<(String, bool)>,
+    /// The required checks of the last round's harness run: the briefing's
+    /// plus every crate the change touched (#11505). `None` before any.
+    required: Option<Vec<String>>,
     rounds: usize,
     /// The decision door that judged the briefing, as `--decisions` named
     /// it: one name, or `{"kind": door, "relevance": door}` when mixed.
@@ -987,6 +992,14 @@ impl End<'_> {
             "merge": if delivery.status.is_empty() { "none" } else { delivery.status },
         });
         with_hands_cost(&mut summary, &self.turns);
+        if let Some(required) = &self.required {
+            summary["required_checks"] = json!(required);
+        }
+        // The reply states where the run ended and the harness's final
+        // checks; the last Coder's own message, written before those checks
+        // ran, may be rounds old (#11505), so it is kept beside it.
+        summary["coder_reply"] = summary["reply"].take();
+        summary["reply"] = json!(final_reply(&outcome, &self.checks, self.rounds));
         if self.base.is_some() && self.briefing.is_some() {
             let diff = self
                 .base
@@ -1030,6 +1043,52 @@ impl End<'_> {
             folder.join("events.jsonl").display()
         ));
     }
+}
+
+/// The run's last word: its outcome and the harness's final checks, in
+/// plain words. It replaces the last Coder's message, which in #11495's run
+/// asked for checks the harness had already passed.
+#[must_use]
+pub fn final_reply(outcome: &Outcome, checks: &[(String, bool)], rounds: usize) -> String {
+    let mut reply = match outcome.status {
+        Status::Passed => "The change passed".to_owned(),
+        Status::Failed => "The change failed".to_owned(),
+        Status::Unchecked => "The change is unchecked".to_owned(),
+        other => format!("The run ended: {}", other.as_str().replace('_', " ")),
+    };
+    if !checks.is_empty() {
+        reply.push_str(&format!(
+            " after {} round{}",
+            rounds + 1,
+            if rounds == 0 { "" } else { "s" }
+        ));
+    }
+    reply.push('.');
+    if let Some(reason) = &outcome.reason {
+        reply.push_str(&format!(" {}", reason.trim()));
+        if !reply.ends_with('.') {
+            reply.push('.');
+        }
+    }
+    let ids = |ok: bool| -> Vec<&str> {
+        checks
+            .iter()
+            .filter(|(_, passed)| *passed == ok)
+            .map(|(id, _)| id.as_str())
+            .collect()
+    };
+    let (passed, failed) = (ids(true), ids(false));
+    if checks.is_empty() {
+        reply.push_str(" No final check ran.");
+    } else {
+        if !failed.is_empty() {
+            reply.push_str(&format!("\nFailed: {}.", failed.join(", ")));
+        }
+        if !passed.is_empty() {
+            reply.push_str(&format!("\nPassed: {}.", passed.join(", ")));
+        }
+    }
+    reply
 }
 
 /// Adds the checks the change itself calls for to `checks` and their ids to

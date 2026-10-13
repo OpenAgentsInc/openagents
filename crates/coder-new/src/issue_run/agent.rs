@@ -605,6 +605,51 @@ pub struct Session {
     /// the change's doing, so `run_check` doesn't fail on it. Only the
     /// Claude engine consumes it.
     pub baseline: Option<Baseline>,
+    /// When set, `run_check` also offers the checks the change calls for at
+    /// the moment of each call: every Rust package the working copy touches
+    /// since the base, new packages included (#11505). The checks above stay
+    /// offered too. Only the Claude engine consumes it.
+    pub follow: Option<Follow>,
+}
+
+/// How a session's `run_check` follows the change as it grows.
+#[derive(Clone, Debug)]
+pub struct Follow {
+    /// The commit the change is measured from.
+    pub base: String,
+    /// Only compile checks (`check:`, `wasm:`): the Coder compiles as it
+    /// works and leaves the tests to the harness and the Tester.
+    pub compile_only: bool,
+}
+
+/// A compile check: `check:<package>`, or `wasm:<package>` for a browser
+/// build's wasm32 half.
+#[must_use]
+pub fn is_compile(check: &Check) -> bool {
+    check.id.starts_with("check:") || check.id.starts_with("wasm:")
+}
+
+/// The checks `run_check` offers right now: `checks`, plus, when the
+/// session follows the change, the checks the change in `root` since the
+/// base calls for, read again at every call so a crate the session created
+/// a minute ago is already checkable.
+pub async fn checks_now(checks: &[Check], root: &Path, follow: Option<&Follow>) -> Vec<Check> {
+    let mut list = checks.to_vec();
+    if let Some(follow) = follow {
+        let changed = super::setup::change_checks(root, &follow.base).await;
+        with_changed(&mut list, changed, follow.compile_only);
+    }
+    list
+}
+
+/// Adds the `changed` checks `list` lacks (only compile ones when
+/// `compile_only`), keeping `list`'s order first.
+pub fn with_changed(list: &mut Vec<Check>, changed: Vec<Check>, compile_only: bool) {
+    for check in changed {
+        if (!compile_only || is_compile(&check)) && !list.iter().any(|have| have.id == check.id) {
+            list.push(check);
+        }
+    }
 }
 
 /// The commit a run's tests are compared against, and a checkout to run
@@ -706,7 +751,14 @@ pub async fn preexisting_failures(
         .args(args)
         .current_dir(worktree)
         .stdin(std::process::Stdio::null());
-    shared_target(&mut command);
+    // Never the run's own build folder: see [`target_dir`].
+    if let Some(target) = target_dir(
+        std::env::var_os("CARGO_TARGET_DIR"),
+        std::env::var_os("HOME"),
+        true,
+    ) {
+        command.env("CARGO_TARGET_DIR", target);
+    }
     let out = command.output().await.ok()?;
     let text = format!(
         "{}{}",
@@ -784,17 +836,45 @@ Already failing at the base commit before this change, not yours to fix: {}. The
 
 /// Runs share one build folder, unless the person set their own.
 fn shared_target(command: &mut tokio::process::Command) {
-    if std::env::var_os("CARGO_TARGET_DIR").is_none()
-        && let Some(home) = std::env::var_os("HOME")
-    {
-        command.env(
-            "CARGO_TARGET_DIR",
-            std::path::Path::new(&home)
-                .join(".openagents")
-                .join(crate::home::DIR)
-                .join("target"),
-        );
+    if let Some(target) = target_dir(
+        std::env::var_os("CARGO_TARGET_DIR"),
+        std::env::var_os("HOME"),
+        false,
+    ) {
+        command.env("CARGO_TARGET_DIR", target);
     }
+}
+
+/// The build folder a check runs with, from the person's `CARGO_TARGET_DIR`
+/// (`user`) and `HOME`; `None` leaves the person's own setting alone.
+///
+/// The baseline checkout builds in a sibling folder (`<target>-baseline`),
+/// never the run's. Cargo names a workspace crate's outputs by its path
+/// inside the workspace, not by the checkout's own path, and calls them
+/// fresh when they are newer than the sources. So a baseline build of
+/// `route-contract` landing after the Coder's edit to it was taken as the
+/// working copy's own, and `coder-sdk`'s tests then failed to find the
+/// function the edit added (#11505).
+#[must_use]
+pub fn target_dir(
+    user: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+    baseline: bool,
+) -> Option<PathBuf> {
+    let shared = match user {
+        Some(_) if !baseline => return None,
+        Some(user) => PathBuf::from(user),
+        None => Path::new(&home?)
+            .join(".openagents")
+            .join(crate::home::DIR)
+            .join("target"),
+    };
+    if !baseline {
+        return Some(shared);
+    }
+    let mut name = shared.file_name()?.to_os_string();
+    name.push("-baseline");
+    Some(shared.with_file_name(name))
 }
 
 /// Free space below which a finished run sweeps the shared build folder.
@@ -802,31 +882,30 @@ const SWEEP_BELOW_BYTES: u64 = 60 * 1024 * 1024 * 1024;
 /// Build outputs untouched this long are swept.
 const SWEEP_AGE: std::time::Duration = std::time::Duration::from_secs(2 * 60 * 60);
 
-/// Sweeps stale outputs from the shared build folder when the disk is low.
-/// Every run builds its workspace crates again (their build hashes include
-/// the worktree's path), so each run leaves ~20 GB in the folder that no
-/// later run reuses; three runs took the Mac from 45 GB free to 6 GB.
-/// Outputs older than [`SWEEP_AGE`] go; cargo rebuilds any it still needs.
-/// A build folder the person chose (`CARGO_TARGET_DIR`) is never touched.
+/// Sweeps stale outputs from the shared build folder (and the baseline's
+/// beside it) when the disk is low. Every run builds its workspace crates
+/// again (a fresh checkout's sources are newer than any earlier output), so
+/// each run leaves ~20 GB in the folder that no later run reuses; three
+/// runs took the Mac from 45 GB free to 6 GB. Outputs older than
+/// [`SWEEP_AGE`] go; cargo rebuilds any it still needs. A build folder the
+/// person chose (`CARGO_TARGET_DIR`) is never touched.
 pub async fn sweep_shared_target() {
     if std::env::var_os("CARGO_TARGET_DIR").is_some() {
         return;
     }
-    let Some(home) = std::env::var_os("HOME") else {
-        return;
-    };
-    let target = std::path::Path::new(&home)
-        .join(".openagents")
-        .join(crate::home::DIR)
-        .join("target");
-    if !target.is_dir()
-        || free_bytes(&target)
-            .await
-            .is_none_or(|free| free >= SWEEP_BELOW_BYTES)
-    {
-        return;
+    for baseline in [false, true] {
+        let Some(target) = target_dir(None, std::env::var_os("HOME"), baseline) else {
+            return;
+        };
+        if !target.is_dir()
+            || free_bytes(&target)
+                .await
+                .is_none_or(|free| free >= SWEEP_BELOW_BYTES)
+        {
+            continue;
+        }
+        let _ = tokio::task::spawn_blocking(move || sweep(&target, SWEEP_AGE)).await;
     }
-    let _ = tokio::task::spawn_blocking(move || sweep(&target, SWEEP_AGE)).await;
 }
 
 /// The free bytes on the disk holding `path`, from `df`.
@@ -914,6 +993,7 @@ impl Session {
             briefed: briefing.files.iter().cloned().collect(),
             events_file: "agent-events.jsonl".into(),
             baseline: None,
+            follow: None,
         }
     }
 
@@ -923,7 +1003,7 @@ impl Session {
         match &self.engine {
             Engine::Claude { tools, server } => {
                 let mut names = tools.clone();
-                if !self.checks.is_empty() {
+                if !self.checks.is_empty() || self.follow.is_some() {
                     names.push("run_check".into());
                 }
                 if let Some(server) = server {
@@ -954,37 +1034,56 @@ pub async fn work(
 }
 
 /// The `run_check` tool server over `checks`, and the verdicts it records.
+/// With `follow`, each call also offers the checks the change calls for at
+/// that moment ([`checks_now`]).
 fn checks_server(
     checks: Arc<Vec<Check>>,
     root: PathBuf,
     baseline: Option<Baseline>,
+    follow: Option<Follow>,
 ) -> (SdkMcpServer, Arc<Mutex<Vec<(String, bool)>>>) {
     let verdicts: Arc<Mutex<Vec<(String, bool)>>> = Arc::default();
+    let listed = checks
+        .iter()
+        .map(|c| format!("{} ({})", c.id, c.what))
+        .collect::<Vec<_>>()
+        .join("; ");
+    let (description, check_field) = match &follow {
+        None => (
+            format!("Run one of the briefing's checks against your working copy. Checks: {listed}"),
+            json!({"type": "string", "enum": checks.iter().map(|c| c.id.clone()).collect::<Vec<_>>()}),
+        ),
+        Some(follow) => (
+            format!(
+                "Run a check against your working copy. Checks now: {listed}. Every Rust package your change touches also has `check:<package>`{}, a new package included, as soon as a file in it changes; an unknown name answers with the list.",
+                if follow.compile_only {
+                    ""
+                } else {
+                    " and `test:<package>`"
+                }
+            ),
+            json!({"type": "string", "description": "the check's id, e.g. `check:<package>`"}),
+        ),
+    };
     let server = {
         let verdicts = verdicts.clone();
         SdkMcpServer::new("checks", "1.0.0").tool(
             "run_check",
-            format!(
-                "Run one of the briefing's checks against your working copy. Checks: {}",
-                checks
-                    .iter()
-                    .map(|c| format!("{} ({})", c.id, c.what))
-                    .collect::<Vec<_>>()
-                    .join("; ")
-            ),
+            description,
             json!({
                 "type": "object",
                 "properties": {
-                    "check": {"type": "string", "enum": checks.iter().map(|c| c.id.clone()).collect::<Vec<_>>()},
+                    "check": check_field,
                     "filter": {"type": "string", "description": "test-name filter words (test checks only)"}
                 },
                 "required": ["check"]
             }),
             move |args| {
                 let (checks, root, verdicts) = (checks.clone(), root.clone(), verdicts.clone());
-                let baseline = baseline.clone();
+                let (baseline, follow) = (baseline.clone(), follow.clone());
                 async move {
                     let id = args["check"].as_str().unwrap_or_default().to_owned();
+                    let checks = checks_now(&checks, &root, follow.as_ref()).await;
                     let (text, ok) = run_check_against(
                         &checks,
                         &root,
@@ -1035,9 +1134,13 @@ pub async fn run(
         .permission_mode(PermissionMode::Default)
         .no_session_persistence();
     let mut verdicts = None;
-    if !checks.is_empty() {
-        let (check_server, seen) =
-            checks_server(checks.clone(), root.clone(), session.baseline.clone());
+    if !checks.is_empty() || session.follow.is_some() {
+        let (check_server, seen) = checks_server(
+            checks.clone(),
+            root.clone(),
+            session.baseline.clone(),
+            session.follow.clone(),
+        );
         allowed.extend(check_server.allowed_tool_names());
         query_options = query_options.sdk_mcp_server(check_server);
         verdicts = Some(seen);

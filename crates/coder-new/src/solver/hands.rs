@@ -256,6 +256,7 @@ pub async fn intake(options: &Options, folder: &Path, transcript: &mut Transcrip
             briefed: Default::default(),
             events_file: "intaker-events.jsonl".into(),
             baseline: None,
+            follow: None,
         },
         Engine::Devin => {
             // An ACP session cannot reach the in-process `environment` and
@@ -279,6 +280,7 @@ pub async fn intake(options: &Options, folder: &Path, transcript: &mut Transcrip
                 briefed: Default::default(),
                 events_file: "intaker-events.jsonl".into(),
                 baseline: None,
+                follow: None,
             }
         }
     };
@@ -434,6 +436,7 @@ pub async fn brief(
         briefed: briefing.files.iter().cloned().collect(),
         events_file: format!("briefer-{round}-events.jsonl"),
         baseline: None,
+        follow: None,
     };
     let turn = turn(
         Hand::Briefer,
@@ -484,15 +487,22 @@ pub async fn code(
         prompt.push_str(notes);
     }
     prompt.push_str(&so_far(base, round));
+    // The compile checks follow the change, not the issue's file plan: every
+    // crate the earlier rounds touched, and (on the Claude engine, read again
+    // at each `run_check`) every crate this round touches, new ones too.
+    let checks = coder_checks(
+        briefing,
+        setup::change_checks(&base.worktree, &base.base).await,
+    );
     match options.engine {
         Engine::Claude => prompt.push_str(
-            "\n\nYou code: change the files, and reply with what you changed. You have no shell, but `run_check` compiles the changed crates (`check:` entries, and `wasm:` for a browser build's wasm32 half); run it after your edits and fix what fails before you finish. The Tester runs the full checks and tests after you.",
+            "\n\nYou code: change the files, and reply with what you changed. You have no shell, but `run_check` compiles a crate (`check:<package>`, and `wasm:<package>` for a browser build's wasm32 half). Every crate your change touches has its `check:`, a crate you create included, as soon as a file in it changes. After your edits, run `check:` for each crate you changed and fix what fails before you finish. The Tester runs the full checks and tests after you.",
         ),
         Engine::Devin => {
             prompt.push_str(
-                "\n\nYou code: change the files, and reply with what you changed. After your edits, run the compile checks in the working copy yourself and fix what fails before you finish:",
+                "\n\nYou code: change the files, and reply with what you changed. After your edits, run the compile checks in the working copy yourself, plus `cargo check -p <package> --tests` for any other crate you change or create, and fix what fails before you finish:",
             );
-            prompt.push_str(&check_lines(&compile_checks(briefing)));
+            prompt.push_str(&check_lines(&checks));
             prompt.push_str(
                 "\nThe harness runs the full checks and tests after you; its results decide the run.",
             );
@@ -510,7 +520,7 @@ pub async fn code(
             },
             Engine::Devin => agent::Engine::Acp(agent::AcpOptions::devin(model, true)),
         },
-        checks: compile_checks(briefing),
+        checks,
         system: briefing.system.clone(),
         prompt,
         briefed: briefing.files.iter().cloned().collect(),
@@ -519,6 +529,10 @@ pub async fn code(
             Engine::Claude => Some(Baseline::of(base)),
             Engine::Devin => None,
         },
+        follow: Some(agent::Follow {
+            base: base.base.clone(),
+            compile_only: true,
+        }),
     };
     turn(
         Hand::Coder,
@@ -553,13 +567,74 @@ pub fn so_far_text(diff: &str) -> String {
         return "\n\n# The change so far\n\nThe earlier rounds left no change in the working copy."
             .into();
     }
-    let mut shown: String = diff.chars().take(SO_FAR_MAX).collect();
-    if shown.len() < diff.len() {
-        shown.push_str("\n[diff cut short]");
-    }
+    let shown = bounded_diff(diff, SO_FAR_MAX);
     format!(
         "\n\n# The change so far\n\nThis is the earlier rounds' own change against the base (it is not in the base; the issue is not already fixed because of it). Build on it or correct it:\n\n```diff\n{shown}\n```"
     )
+}
+
+/// The most diff the Tester's prompt carries.
+const TESTER_DIFF_MAX: usize = 60_000;
+
+/// `diff` in at most about `max` characters with every file still in it.
+/// A plain cut at `max` dropped the files that sort last: in #11495's run
+/// `crates/route-contract/src/recipe.rs` began at character 64,282 of the
+/// change, so the Tester never saw it and reported the file "missing from
+/// last round's change set" (#11505). Each file keeps its `diff --git`
+/// header; the budget is shared so short files show whole and long ones are
+/// cut at a line, with a note of how many lines were left out.
+#[must_use]
+pub fn bounded_diff(diff: &str, max: usize) -> String {
+    if diff.chars().count() <= max {
+        return diff.to_owned();
+    }
+    let mut sections: Vec<&str> = Vec::new();
+    let mut start = 0;
+    for (at, _) in diff.match_indices("diff --git ") {
+        if at > start && (at == 0 || diff.as_bytes()[at - 1] == b'\n') {
+            sections.push(&diff[start..at]);
+            start = at;
+        }
+    }
+    sections.push(&diff[start..]);
+    // Short sections first take what they need; the rest share what is left.
+    let sizes: Vec<usize> = sections.iter().map(|s| s.chars().count()).collect();
+    let mut order: Vec<usize> = (0..sections.len()).collect();
+    order.sort_by_key(|&index| sizes[index]);
+    let mut allowed = vec![0; sections.len()];
+    let (mut budget, mut left) = (max, sections.len());
+    for index in order {
+        let share = budget / left.max(1);
+        allowed[index] = sizes[index].min(share);
+        budget -= allowed[index];
+        left -= 1;
+    }
+    let mut out = String::new();
+    for (section, allowed) in sections.iter().zip(allowed) {
+        let lines: Vec<&str> = section.split_inclusive('\n').collect();
+        let mut used = 0;
+        let mut kept = 0;
+        for (i, line) in lines.iter().enumerate() {
+            let size = line.chars().count();
+            if i > 0 && used + size > allowed {
+                break;
+            }
+            out.push_str(line);
+            used += size;
+            kept += 1;
+        }
+        if kept < lines.len() {
+            if !out.ends_with('\n') {
+                out.push('\n');
+            }
+            let cut = lines.len() - kept;
+            out.push_str(&format!(
+                "[{cut} more line{} of this file cut short]\n",
+                if cut == 1 { "" } else { "s" }
+            ));
+        }
+    }
+    out
 }
 
 /// The most lines of one failing check's output a hand-back carries.
@@ -615,13 +690,23 @@ pub fn environment_fault(outputs: &[(String, bool, String)]) -> Option<String> {
 /// The briefing's compile checks (`check:`, e.g. `cargo check -p`), the
 /// only checks the Coder may run: it compiles as it works, and leaves the
 /// tests to the Tester.
-pub fn compile_checks(briefing: &Briefing) -> Vec<crate::issue_run::decide::Check> {
+pub fn compile_checks(briefing: &Briefing) -> Vec<Check> {
     briefing
         .checks
         .iter()
-        .filter(|check| check.id.starts_with("check:") || check.id.starts_with("wasm:"))
+        .filter(|check| agent::is_compile(check))
         .cloned()
         .collect()
+}
+
+/// The Coder's compile checks for a round: the briefing's, then one for
+/// every crate the change so far touches (`changed`, from
+/// [`setup::change_checks`]) that the briefing missed (#11505).
+#[must_use]
+pub fn coder_checks(briefing: &Briefing, changed: Vec<Check>) -> Vec<Check> {
+    let mut checks = compile_checks(briefing);
+    agent::with_changed(&mut checks, changed, true);
+    checks
 }
 
 /// The Tester: read-only file tools and `run_check`, told what failed.
@@ -634,20 +719,22 @@ pub async fn test(
     folder: &Path,
     transcript: &mut Transcript,
 ) -> Turn {
-    let diff = setup::working_diff(&base.worktree, &base.base);
-    let diff = diff.chars().take(60_000).collect::<String>();
+    let diff = bounded_diff(
+        &setup::working_diff(&base.worktree, &base.base),
+        TESTER_DIFF_MAX,
+    );
     let (system, prompt) = match options.engine {
         Engine::Claude => (
             TESTER.to_owned(),
             format!(
-                "Issue #{}: {}\n\nThe Coder's change:\n\n```diff\n{}\n```\n\nThe harness ran the required checks. What failed:{}\n\nGive your verdict.",
+                "Issue #{}: {}\n\nThe Coder's change (every changed file is here; a long file's diff is cut short and says so):\n\n```diff\n{}\n```\n\nThe harness ran the required checks. What failed:{}\n\nGive your verdict.",
                 base.issue, base.title, diff, failures
             ),
         ),
         Engine::Devin => (
             TESTER_ACP.to_owned(),
             format!(
-                "Issue #{}: {}\n\nThe Coder's change:\n\n```diff\n{}\n```\n\nThe harness ran the required checks. What failed:{}\n\nRerun a check in the working copy when you need more of its output:{}\n\nGive your verdict.",
+                "Issue #{}: {}\n\nThe Coder's change (every changed file is here; a long file's diff is cut short and says so):\n\n```diff\n{}\n```\n\nThe harness ran the required checks. What failed:{}\n\nRerun a check in the working copy when you need more of its output:{}\n\nGive your verdict.",
                 base.issue,
                 base.title,
                 diff,
@@ -679,6 +766,10 @@ pub async fn test(
             Engine::Claude => Some(Baseline::of(base)),
             Engine::Devin => None,
         },
+        follow: Some(agent::Follow {
+            base: base.base.clone(),
+            compile_only: false,
+        }),
     };
     turn(
         Hand::Tester,
