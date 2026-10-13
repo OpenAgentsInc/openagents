@@ -743,8 +743,8 @@ impl App {
                         .is_some_and(|short| short.to_lowercase() == wanted)
             });
             self.notice = Some(match picked {
-                Some((id, name, _)) => match claude::choose(id, claude::choice().effort) {
-                    Ok(()) => format!("claude now runs {name}."),
+                Some((id, _, _)) => match claude::choose(id, claude::choice().effort) {
+                    Ok(()) => self.claude_model_switched(id),
                     Err(error) => error,
                 },
                 None => {
@@ -1757,6 +1757,21 @@ impl App {
         });
     }
 
+    /// After the person picks `model` for claude in /models (#11480): a
+    /// pin's model no longer holds this chat's Claude Code turns, so the
+    /// next message runs on the pick, and the words saying so.
+    fn claude_model_switched(&mut self, model: &str) -> String {
+        if self.live.runs_on == Some(harness_plugin::Harness::ClaudeCode) {
+            self.live.pinned_model = None;
+        }
+        let name = claude::name(model);
+        if self.live.claude_session.is_some() {
+            format!("Your next message runs on {name}, in this same chat.")
+        } else {
+            format!("claude now runs {name}.")
+        }
+    }
+
     /// The chat shows a claude turn under way: one the person started, or
     /// one Claude Code started itself when a background job it left running
     /// came back. Returns false while the chat is busy with something else.
@@ -2576,6 +2591,14 @@ impl App {
                     self.open_plugins();
                     return true;
                 }
+                // Ctrl+N starts a new chat in place; the last one stays in
+                // /resume (#11480).
+                if key.modifiers == KeyModifiers::CONTROL
+                    && matches!(key.code, KeyCode::Char('n' | 'N'))
+                {
+                    self.new_chat();
+                    return true;
+                }
                 // Ctrl+O switches the transcript between compact and verbose
                 // wherever the person is, including over an open panel. The
                 // change is plain on screen, so it needs no notice.
@@ -2605,7 +2628,10 @@ impl App {
                         models::Action::Close => self.model_picker = None,
                         models::Action::Save(model, options) if model.plugin == claude::PICKER => {
                             match claude::choose(&model.id, options.reasoning) {
-                                Ok(()) => self.model_picker = None,
+                                Ok(()) => {
+                                    self.model_picker = None;
+                                    self.notice = Some(self.claude_model_switched(&model.id));
+                                }
                                 Err(error) => {
                                     if let Some(picker) = &mut self.model_picker {
                                         picker.error = Some(error);
@@ -3728,6 +3754,59 @@ mod claude_tests {
         }
         let mut app = typed(Harness::CoderLoop, "/review");
         assert!(!app.claude_slash());
+    }
+
+    /// #11480: a pick in /models takes this chat's next Claude Code
+    /// message, a pin's model included, and says so in plain words.
+    #[test]
+    fn a_claude_model_pick_takes_the_next_message_over_a_pin() {
+        let mut app = typed(Harness::ClaudeCode, "");
+        app.live.pinned_model = Some(claude::MODEL.into());
+        app.live.claude_session = Some(live::ClaudeSession {
+            id: "5b0c1d2e".into(),
+            users: 1,
+        });
+        let said = app.claude_model_switched("claude-opus-5-5");
+        assert_eq!(app.live.pinned_model, None);
+        assert_eq!(
+            said,
+            "Your next message runs on Opus 5.5, in this same chat."
+        );
+
+        // A chat on another harness keeps its pin.
+        let mut app = typed(Harness::CoderLoop, "");
+        app.live.pinned_model = Some("x-ai/grok-4.7".into());
+        assert_eq!(
+            app.claude_model_switched("claude-sonnet-5-5"),
+            "claude now runs Sonnet 5.5."
+        );
+        assert_eq!(app.live.pinned_model.as_deref(), Some("x-ai/grok-4.7"));
+    }
+
+    /// #11480: Ctrl+N empties the chat in place, same checkout; busy work
+    /// must stop first.
+    #[test]
+    fn ctrl_n_starts_a_new_chat_in_place() {
+        let ctrl_n = || {
+            Event::Key(crossterm::event::KeyEvent::new(
+                KeyCode::Char('n'),
+                KeyModifiers::CONTROL,
+            ))
+        };
+        let mut app = typed(Harness::ClaudeCode, "half a thought");
+        app.cwd = Some(std::path::PathBuf::from("/tmp/repo"));
+        app.live.entries.push(live::Entry::User("old".into()));
+        app.live.busy = true;
+        assert!(app.handle(ctrl_n()));
+        assert_eq!(app.live.entries.len(), 1, "busy work is not dropped");
+
+        app.live.busy = false;
+        assert!(app.handle(ctrl_n()));
+        assert!(app.live.entries.is_empty());
+        assert!(app.draft.text.is_empty());
+        assert_eq!(app.live.runs_on, None, "the new chat is routed anew");
+        assert_eq!(app.cwd.as_deref(), Some(std::path::Path::new("/tmp/repo")));
+        assert!(app.notice.as_deref().unwrap().contains("/resume"));
     }
 
     #[test]

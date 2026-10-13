@@ -811,7 +811,8 @@ Inside Coder, type / to see every command:
   /resume                  Reopen a saved chat.
   /export [path]           Save this chat to a file.
   /plugins                 Turn plugins on and add keys (also Ctrl+P, or Cmd+P on macOS).
-  Esc stops a reply. Ctrl+C quits.
+  Esc stops a reply. Ctrl+N starts a new chat (the last one stays in /resume).
+  Ctrl+C quits.
   Cmd+A selects everything in the input (Cmd+C copies, Cmd+X cuts) where the
   terminal passes Cmd keys on. Rex, Ghostty, iTerm2 and Terminal keep Cmd+A for
   their own Select All: use Ctrl+Shift+A there. Ctrl+A and Ctrl+E move to the

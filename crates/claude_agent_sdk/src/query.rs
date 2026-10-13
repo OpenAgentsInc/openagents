@@ -174,18 +174,12 @@ impl ControlHandlers {
 pub struct Query {
     /// The process transport.
     transport: Arc<Mutex<ProcessTransport>>,
-    /// Pending control requests waiting for responses.
-    pending_requests: PendingRequests,
-    /// Request ID counter.
-    request_counter: AtomicU64,
     /// Channel to receive messages.
     message_rx: mpsc::Receiver<Result<SdkMessage>>,
     /// Session ID (available after first message).
     session_id: Option<String>,
     /// Payload from the `initialize` handshake, if it completed.
     initialization: Option<Value>,
-    /// How long each control request may wait for a response.
-    control_timeout: Duration,
     /// Writes user messages to stdin; shared with [`QueryInput`] handles.
     input: QueryInput,
     /// Streaming input: a `result` ends a turn, not the stream.
@@ -204,6 +198,12 @@ pub struct QueryInput {
     session_id: Arc<std::sync::Mutex<String>>,
     /// Send messages with `client_composed: true`.
     verbatim_prompts: bool,
+    /// Control requests waiting for responses, shared with the reader task.
+    pending_requests: PendingRequests,
+    /// Request ID counter, shared by every handle.
+    request_counter: Arc<AtomicU64>,
+    /// How long each control request may wait for a response.
+    control_timeout: Duration,
 }
 
 impl QueryInput {
@@ -248,6 +248,50 @@ impl QueryInput {
     /// Whether [`QueryInput::end_input`] closed stdin.
     pub async fn is_input_closed(&self) -> bool {
         self.transport.lock().await.is_input_closed()
+    }
+
+    /// Change the model (TS `setModel`) while another task reads the
+    /// stream. `None` returns to the default model. The CLI applies it from
+    /// its next model call on, the session and its history kept.
+    pub async fn set_model(&self, model: Option<String>) -> Result<()> {
+        self.send_control_request(ControlRequestData::SetModel(SetModelRequest { model }))
+            .await
+            .map(|_| ())
+    }
+
+    /// Send a control request and wait for response.
+    async fn send_control_request(&self, request: ControlRequestData) -> Result<Value> {
+        let request_id = format!(
+            "sdk-{}",
+            self.request_counter.fetch_add(1, Ordering::SeqCst)
+        );
+
+        let (tx, rx) = oneshot::channel();
+        self.pending_requests
+            .lock()
+            .await
+            .insert(request_id.clone(), tx);
+
+        let control_req = SdkControlRequest {
+            msg_type: ControlRequestType::ControlRequest,
+            request_id: request_id.clone(),
+            request,
+        };
+
+        {
+            let mut transport = self.transport.lock().await;
+            transport
+                .send(&StdinMessage::ControlRequest(control_req))
+                .await?;
+        }
+
+        match tokio::time::timeout(self.control_timeout, rx).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) | Err(_) => {
+                self.pending_requests.lock().await.remove(&request_id);
+                Err(Error::ControlTimeout)
+            }
+        }
     }
 }
 
@@ -335,15 +379,15 @@ impl Query {
             transport: transport.clone(),
             session_id: Arc::new(std::sync::Mutex::new(String::new())),
             verbatim_prompts: options.verbatim_prompts,
+            pending_requests,
+            request_counter: Arc::new(AtomicU64::new(0)),
+            control_timeout: options.control_timeout_or_default(),
         };
         let mut query = Self {
             transport,
-            pending_requests,
-            request_counter: AtomicU64::new(0),
             message_rx,
             session_id: None,
             initialization: None,
-            control_timeout: options.control_timeout_or_default(),
             input,
             streaming,
             completed: false,
@@ -488,37 +532,7 @@ impl Query {
 
     /// Send a control request and wait for response.
     async fn send_control_request(&self, request: ControlRequestData) -> Result<Value> {
-        let request_id = format!(
-            "sdk-{}",
-            self.request_counter.fetch_add(1, Ordering::SeqCst)
-        );
-
-        let (tx, rx) = oneshot::channel();
-        self.pending_requests
-            .lock()
-            .await
-            .insert(request_id.clone(), tx);
-
-        let control_req = SdkControlRequest {
-            msg_type: ControlRequestType::ControlRequest,
-            request_id: request_id.clone(),
-            request,
-        };
-
-        {
-            let mut transport = self.transport.lock().await;
-            transport
-                .send(&StdinMessage::ControlRequest(control_req))
-                .await?;
-        }
-
-        match tokio::time::timeout(self.control_timeout, rx).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(_)) | Err(_) => {
-                self.pending_requests.lock().await.remove(&request_id);
-                Err(Error::ControlTimeout)
-            }
-        }
+        self.input.send_control_request(request).await
     }
 
     /// Send a control request whose response carries nothing.

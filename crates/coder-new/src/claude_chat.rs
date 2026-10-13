@@ -45,7 +45,12 @@ pub enum Event {
 
 /// What the terminal asks of the process thread.
 enum Command {
-    Say { text: String, next: bool },
+    Say {
+        text: String,
+        next: bool,
+    },
+    /// Run the session on this model from the next model call on (#11480).
+    Model(String),
     Close,
 }
 
@@ -90,6 +95,9 @@ pub struct Chat {
     pub asks: crate::claude_ask::Asks,
     /// The key of the briefing the process last read (#11473).
     pub briefing: Option<String>,
+    /// The model the process runs: the one it started on, or the one
+    /// [`Chat::set_model`] last switched it to (#11480).
+    pub model: String,
     exited: bool,
 }
 
@@ -97,7 +105,7 @@ impl Chat {
     /// Starts the process and sends it the chat's first message: `newest`
     /// alone when it continues `resume`, otherwise `seed`, the pasted
     /// conversation, which is also what a session Claude Code lost falls
-    /// back to.
+    /// back to. It runs on `model`, else the person's pick in /models.
     #[must_use]
     pub fn start(
         cwd: PathBuf,
@@ -114,9 +122,10 @@ impl Chat {
         let reading = Arc::new(Mutex::new(Reading::default()));
         let asks = crate::claude_ask::Asks::default();
         let key = briefing.as_ref().map(crate::context::Briefing::key);
+        let model = model.unwrap_or_else(|| claude::choice().model);
         let thread = Thread {
             briefing,
-            model,
+            model: Some(model.clone()),
             asks: asks.clone(),
             cwd: cwd.clone(),
             tools: tools.clone(),
@@ -138,7 +147,18 @@ impl Chat {
             session: resume,
             asks,
             briefing: key,
+            model,
             exited: false,
+        }
+    }
+
+    /// Switches the running process to `model`, its session and history
+    /// kept: Claude Code's own model switch, applied before any message sent
+    /// after it (#11480).
+    pub fn set_model(&mut self, model: &str) {
+        if self.model != model {
+            let _ = self.commands.send(Command::Model(model.to_owned()));
+            self.model = model.to_owned();
         }
     }
 
@@ -304,6 +324,7 @@ impl Thread {
                             }
                             current.send_message(message).await
                         }
+                        Command::Model(model) => current.set_model(Some(model)).await,
                         Command::Close => current.end_input().await,
                     };
                 }
@@ -330,7 +351,7 @@ impl Thread {
                 Some(id) => {
                     let resume = claude::Resume {
                         id,
-                        note: claude::note(&tools),
+                        note: claude::note(&tools, model.as_deref().unwrap_or(claude::MODEL)),
                     };
                     match start(
                         &cwd,
@@ -549,6 +570,47 @@ mod tests {
             usage.and_then(|usage| usage.five_hour).is_some(),
             "the 5-hour window"
         );
+    }
+
+    /// #11480: a model switched mid-chat runs the very next turn, in the
+    /// same process and session, and the model names itself. Run by hand:
+    /// `cargo test -p coder-new --lib a_live_chat_switches_model -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "needs a Claude Code login"]
+    fn a_live_chat_switches_model_mid_chat() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = "Reply with just OK.";
+        let mut chat = Chat::start(
+            dir.path().to_owned(),
+            crate::claude_tools::Tools::default(),
+            None,
+            first.into(),
+            first.into(),
+            None,
+            Some(claude::MODEL.into()),
+        );
+        let reply = finish_turn(&mut chat, 1).unwrap();
+        println!("1: {} on {}", reply.text, reply.model);
+        assert_eq!(reply.model, claude::MODEL);
+        let session = chat.session.clone();
+
+        let turn = chat.turn();
+        chat.set_model("claude-sonnet-5-5");
+        chat.say(
+            &claude::with_switch(
+                "claude-sonnet-5-5",
+                "Which model are you running on? One line.",
+            ),
+            false,
+        );
+        let reply = finish_turn(&mut chat, turn).unwrap();
+        println!("2: {} on {}", reply.text, reply.model);
+        assert_eq!(
+            reply.model, "claude-sonnet-5-5",
+            "the turn ran on the new model"
+        );
+        assert!(reply.text.contains("Sonnet"), "{}", reply.text);
+        assert_eq!(chat.session, session, "the same session");
     }
 
     #[test]

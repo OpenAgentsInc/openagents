@@ -13,8 +13,9 @@
 pub fn prompt(model: &str) -> String {
     let which = if crate::models::pinned(model) {
         format!(
-            "the person picked {} for this chat, so name that model",
-            crate::models::label(model)
+            "the person picked {} for this chat, so name that model; when a later note says \
+             they switched models, name the newest one",
+            crate::claude::name(model)
         )
     } else {
         "OpenAgents picks the model for each turn (the auto setting), so say that and \

@@ -204,6 +204,23 @@ pub fn choose(model: &str, effort: Option<String>) -> Result<(), String> {
     Ok(())
 }
 
+/// The model a chat turn runs on: a pin's `model` (#11475), else the
+/// person's current pick in /models.
+#[must_use]
+pub fn turn_model(pinned: Option<String>) -> String {
+    pinned.unwrap_or_else(|| choice().model)
+}
+
+/// What a person reads for `model`: its name in /models ("Opus 5.5"), or
+/// the id's own short form for a model the mode does not list.
+#[must_use]
+pub fn name(model: &str) -> String {
+    MODELS.iter().find(|(id, _, _)| *id == model).map_or_else(
+        || crate::models::label(model),
+        |(_, name, _)| (*name).to_owned(),
+    )
+}
+
 /// Whether /models offers `model` in this mode.
 fn offered(model: &str) -> bool {
     MODELS.iter().any(|(id, _, _)| *id == model)
@@ -252,17 +269,21 @@ pub fn allows(tool: &str) -> bool {
 /// conversation, within [`TASK_LIMIT`].
 #[must_use]
 pub fn task(messages: &[Message]) -> String {
-    task_with(messages, &crate::claude_tools::Tools::default())
+    task_with(
+        messages,
+        &crate::claude_tools::Tools::default(),
+        &choice().model,
+    )
 }
 
 /// [`task`], telling the model about Coder's own `tools`
-/// ([`crate::claude_tools`]).
+/// ([`crate::claude_tools`]), for a turn on `model`.
 #[must_use]
-pub fn task_with(messages: &[Message], tools: &crate::claude_tools::Tools) -> String {
+pub fn task_with(messages: &[Message], tools: &crate::claude_tools::Tools, model: &str) -> String {
     let tools = crate::claude_tools::instructions(tools);
     let prefix = format!(
         "{}\n{tools}The conversation:\n",
-        crate::identity::prompt(&choice().model)
+        crate::identity::prompt(model)
     );
     let allowance = TASK_LIMIT.saturating_sub(prefix.len());
     let mut conversation = crate::live::local_conversation(messages, allowance);
@@ -458,11 +479,11 @@ pub fn kept(id: &str) -> bool {
         .any(|project| project.path().join(&file).is_file())
 }
 
-/// Coder's identity note for a claude chat, with what it is told about
-/// Coder's own `tools`.
-pub(crate) fn note(tools: &crate::claude_tools::Tools) -> String {
+/// Coder's identity note for a claude chat on `model`, with what it is
+/// told about Coder's own `tools`.
+pub(crate) fn note(tools: &crate::claude_tools::Tools, model: &str) -> String {
     let tools = crate::claude_tools::instructions(tools);
-    format!("{}\n{tools}", crate::identity::prompt(&choice().model))
+    format!("{}\n{tools}", crate::identity::prompt(model))
 }
 
 /// A chat's Claude Code process on streaming input, ready for its first
@@ -1059,6 +1080,12 @@ pub(crate) async fn read_turn(
                     stream.record_context(query.session_id(), &reply.model, &success.model_usage);
                 }
                 let mut done = finish(result)?;
+                // The model that wrote this turn's reply. A long-lived
+                // session's usage counts every model it ran, so after a
+                // switch it still lists the first one (#11480).
+                if !reply.model.is_empty() {
+                    done.model.clone_from(&reply.model);
+                }
                 done.milliseconds = elapsed_ms(started);
                 done.first_text_ms = first_text_ms;
                 return Ok(done);
@@ -1163,6 +1190,18 @@ pub fn with_briefing(briefing: &crate::context::Briefing, message: &str) -> Stri
     format!(
         "<briefing>\nFor this next piece of work, follow this briefing in place of the one you started with.\n\n{}\n</briefing>\n\n{message}",
         briefing.render(false).trim_end()
+    )
+}
+
+/// `message` led by a note that the person switched the chat to `model`
+/// (#11480). The session's opening note named the model it started on, and
+/// a resumed session keeps that note, so the switch is told with the
+/// message the new model first answers.
+#[must_use]
+pub fn with_switch(model: &str, message: &str) -> String {
+    let name = name(model);
+    format!(
+        "<model-switch>\nThe person switched this chat to {name}. From this message on you run on {name}: when asked which model runs you, name {name}.\n</model-switch>\n\n{message}"
     )
 }
 
@@ -1310,6 +1349,26 @@ fn first_model(usage: &std::collections::HashMap<String, claude_agent_sdk::Model
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #11480: a switch is told with the message the new model answers,
+    /// by name, and a pin outranks the pick.
+    #[test]
+    fn a_switch_names_the_new_model_with_the_message() {
+        let text = with_switch("claude-opus-5-5", "which model are you?");
+        assert!(text.contains("switched this chat to Opus 5.5"), "{text}");
+        assert!(text.ends_with("\n\nwhich model are you?"), "{text}");
+        assert_eq!(
+            turn_model(Some("claude-sonnet-5-5".into())),
+            "claude-sonnet-5-5"
+        );
+        assert_eq!(name("claude-fable-5-1"), "Fable 5.1");
+        let note = crate::identity::prompt("claude-opus-5-5");
+        assert!(
+            note.contains("the person picked Opus 5.5 for this chat"),
+            "{note}"
+        );
+        assert!(note.contains("name the newest one"), "{note}");
+    }
 
     #[test]
     fn a_narrow_turn_runs_haiku_5_5_and_only_the_basic_file_tools() {

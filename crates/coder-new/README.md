@@ -230,7 +230,9 @@ Type a draft, move with Left/Right or Home/End, and edit with Backspace/Delete.
 Alt+Enter adds a newline. Enter sends a live message or appends a demo message.
 Bracketed paste
 inserts text without sending it. Trackpad scrolling and PageUp/PageDown scroll the conversation;
-Ctrl+C quits. Ctrl+O switches each tool call between one compact row (its name,
+Ctrl+C quits. Ctrl+N starts a new chat in place, in the same terminal and
+checkout; the last chat stays in `/resume`. A model picked in `/models` runs
+from the chat's next message on, in the same chat. Ctrl+O switches each tool call between one compact row (its name,
 the path it works on, and its other parameters, the default, with no blank row
 between calls) and the verbose block that adds its parameters and result under
 the call. Demo tools

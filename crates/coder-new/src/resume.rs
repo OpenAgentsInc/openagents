@@ -295,6 +295,51 @@ impl App {
         true
     }
 
+    /// Ctrl+N (#11480): a new, empty chat in place, in the same terminal and
+    /// checkout. The current chat is saved first and stays in /resume; the
+    /// new one is saved under its own id once it has a message.
+    pub fn new_chat(&mut self) -> bool {
+        if self.live.busy
+            || self.checking_key
+            || self.checking_jev
+            || self.brainstorm_job.is_some()
+            || self.request.is_some()
+            || self.delegations.iter().any(|child| child.running)
+        {
+            return self
+                .resume_error("Stop the current work with Esc before starting a new chat.".into());
+        }
+        if !self.persist_session(true) {
+            return false;
+        }
+        let fresh = App::default();
+        self.drop_route();
+        self.set_mode(Mode::Live);
+        self.cancel_request();
+        self.select_agent(None);
+        self.live = fresh.live;
+        self.delegations = fresh.delegations;
+        self.draft = Draft::default();
+        self.composer = Default::default();
+        self.main_composer = Default::default();
+        self.composer_history.reset();
+        self.main_draft = Draft::default();
+        self.scroll = u16::MAX;
+        self.main_scroll = u16::MAX;
+        self.resume_picker = None;
+        self.model_picker = None;
+        self.screen = Screen::Conversation;
+        self.slash_hidden = false;
+        self.slash_selected = 0;
+        self.history.active = None;
+        self.history.following = None;
+        self.history.dirty = false;
+        self.history.last_attempt = None;
+        self.history.save_failed = false;
+        self.notice = Some("New chat. The last one is in /resume.".into());
+        true
+    }
+
     /// Whether the conversation `id` is saved on this computer.
     pub(crate) fn saved_here(&self, id: &str) -> bool {
         self.history

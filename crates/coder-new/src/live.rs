@@ -390,7 +390,8 @@ pub enum Work {
         session: Option<String>,
         /// The chat's briefing for this piece of work (#11473).
         briefing: Option<Box<crate::context::Briefing>>,
-        /// The model a pin names (#11475), for a process that starts now.
+        /// The model a pin names (#11475); `None` runs the person's pick
+        /// in /models, read for every turn.
         model: Option<String>,
     },
     /// A turn of solver's conversational Intaker: Haiku with a read-only
@@ -656,12 +657,16 @@ impl Background {
             .last()
             .map(|message| message.content.clone())
             .unwrap_or_default();
+        // The model this turn runs on, read now rather than when the
+        // process started, so a switch in /models takes the next turn
+        // (#11480).
+        let model = crate::claude::turn_model(model);
         let running = self.claude.as_ref().is_some_and(|chat| {
             !chat.exited() && chat.cwd == cwd && chat.tools == *tools && chat.session == session
         });
         if !running {
             self.close_claude();
-            let seed = crate::claude::task_with(&messages, &tools);
+            let seed = crate::claude::task_with(&messages, &tools, &model);
             self.claude = Some(crate::claude_chat::Chat::start(
                 cwd,
                 *tools,
@@ -669,7 +674,7 @@ impl Background {
                 newest,
                 seed,
                 briefing.map(|briefing| *briefing),
-                model,
+                Some(model),
             ));
         } else if let Some(chat) = &mut self.claude {
             // A new piece of work in a running process: its briefing goes
@@ -682,6 +687,14 @@ impl Background {
                     crate::claude::with_briefing(&briefing, &newest)
                 }
                 None => newest,
+            };
+            // A model switched since the last message: the process switches
+            // before reading this one, which carries the news (#11480).
+            let newest = if chat.model == model {
+                newest
+            } else {
+                chat.set_model(&model);
+                crate::claude::with_switch(&model, &newest)
             };
             chat.say(&newest, self.claude_turn.is_some());
             // The session has read this message too.
