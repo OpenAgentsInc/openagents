@@ -1259,6 +1259,8 @@ impl ClefDecisionLane {
         let mut waited = 0.0;
         let mut inputs = HeadInputs::default();
         let mut batch_stats = None::<(usize, usize, usize)>;
+        // host input preparation and the worker's reply hop (batched lane)
+        let mut handoff = (0.0, 0.0, 0.0);
         let hit = cached.is_some();
         let result = match cached {
             Some(logits) => LogitResult {
@@ -1283,12 +1285,18 @@ impl ClefDecisionLane {
                             batch.chunks,
                             batch.max_cohort,
                             batch.prefill_chunk,
+                            (
+                                batch.inputs_seconds,
+                                batch.reply_seconds,
+                                batch.setup_seconds,
+                            ),
                         )
                     })
                 });
                 let result = if let Some(batched) = batched {
-                    let (result, queue_seconds, chunks, max_cohort, prefill_chunk) = batched?;
+                    let (result, queue_seconds, chunks, max_cohort, prefill_chunk, hop) = batched?;
                     waited = queue_seconds;
+                    handoff = hop;
                     batch_stats = Some((chunks, max_cohort, prefill_chunk));
                     result
                 } else {
@@ -1332,7 +1340,9 @@ impl ClefDecisionLane {
             );
         }
         let logits = result.logits;
+        let answer_began = Instant::now();
         let mut answer = self.answer(&request, &record, &logits, began);
+        let answer_seconds = answer_began.elapsed().as_secs_f64();
         answer["usage"]["cached_input_tokens"] = json!(result.cached_input_tokens);
         if let Some((chunks, max_cohort, prefill_chunk)) = batch_stats {
             set_batch_metadata(&mut answer, chunks, max_cohort, prefill_chunk);
@@ -1342,12 +1352,27 @@ impl ClefDecisionLane {
             // from transport; a cached answer ran no prefill or head
             let (prefill, head) = (result.prefill_seconds, result.head_seconds);
             let ms = |seconds: f64| (seconds * 1e4).round() / 10.0;
+            let total = began.elapsed().as_secs_f64();
+            let (inputs, reply, setup) = handoff;
             answer["psionic"]["timing"] = json!({
                 "encode_ms": ms(encoded_seconds),
+                // the batched lane's host inputs, built before it queues
+                "inputs_ms": ms(inputs),
                 "queue_ms": ms(waited),
                 "prefill_ms": ms(prefill),
+                // of which the batched session's buffer setup
+                "setup_ms": ms(setup),
                 "head_ms": ms(head),
-                "total_ms": ms(began.elapsed().as_secs_f64()),
+                // the worker's reply reaching this thread, and the answer body
+                "reply_ms": ms(reply),
+                "answer_ms": ms(answer_seconds),
+                // what no phase above covers (#11479)
+                "other_ms": ms(
+                    (total - encoded_seconds - inputs - waited - prefill - head - reply
+                        - answer_seconds)
+                        .max(0.0)
+                ),
+                "total_ms": ms(total),
                 "cached": hit,
                 // prompt tokens restored from a prefix snapshot, not prefilled
                 "restored_tokens": result.cached_input_tokens,

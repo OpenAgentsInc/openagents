@@ -43,11 +43,17 @@ pub(crate) struct CudaSession {
     prepared: Option<PreparedInputs>,
 }
 
-/// Host inputs of one prompt: embedding rows `[tokens, hidden]` and the
-/// rotary table `[tokens, rotary]`.
+/// Host inputs of one prompt: embedding rows `[tokens, hidden]` (or, when
+/// the device gathers the rows, only the checked token ids as i32 bit
+/// patterns, one per token) and the rotary table `[tokens, rotary]`.
 pub(crate) struct PreparedInputs {
     embedded: Vec<f32>,
     table: Vec<f32>,
+}
+
+/// Floats per token of a prompt's [`PreparedInputs::embedded`].
+fn input_width(device_vocab: Option<usize>, hidden: usize) -> usize {
+    if device_vocab.is_some() { 1 } else { hidden }
 }
 
 /// Prompts whose rows take more host memory than this are decoded per chunk
@@ -142,12 +148,30 @@ impl Drop for ActiveHead<'_> {
     }
 }
 
-fn embed_rows(
+/// A chunk's embedding inputs: the token ids for the device gather when the
+/// trunk has a device table (#11479: the batched lane decoded every row on
+/// the host before, 8-10 ms per production request outside every reported
+/// phase), else the rows decoded from the host table.
+fn embed_inputs(
     cpu: &CpuGgufQwen35TextGenerationService,
     tokens: &[TokenId],
     hidden: usize,
+    device_vocab: Option<usize>,
 ) -> Result<Vec<f32>, String> {
     let model = &cpu.model;
+    if let Some(vocab) = device_vocab {
+        let limit = vocab.min(model.descriptor.config.vocab_size);
+        return tokens
+            .iter()
+            .map(|token| {
+                let index = token.as_u32() as usize;
+                if index >= limit {
+                    return Err(format!("token {index} is outside the vocabulary"));
+                }
+                Ok(f32::from_bits(token.as_u32()))
+            })
+            .collect();
+    }
     let mut embedded = vec![0.0f32; tokens.len() * hidden];
     embedded
         .par_chunks_mut(hidden)
@@ -172,12 +196,13 @@ impl ClefCudaTrunk {
         tokens: &[TokenId],
     ) -> Result<Option<PreparedInputs>, String> {
         let dims = self.dims;
-        if tokens.len().saturating_mul(dims.hidden + dims.rotary) * 4 > MAX_PREPARED_BYTES {
+        let width = input_width(self.device_vocab, dims.hidden);
+        if tokens.len().saturating_mul(width + dims.rotary) * 4 > MAX_PREPARED_BYTES {
             return Ok(None);
         }
         let rope = rope_table_params(&cpu.model);
         Ok(Some(PreparedInputs {
-            embedded: embed_rows(cpu, tokens, dims.hidden)?,
+            embedded: embed_inputs(cpu, tokens, dims.hidden, self.device_vocab)?,
             table: rope.table(0, tokens.len(), dims.rotary),
         }))
     }
@@ -272,8 +297,9 @@ impl ClefCudaTrunk {
         prepared: Option<PreparedInputs>,
     ) -> Result<CudaSession, String> {
         let length = tokens.len();
+        let width = input_width(self.device_vocab, self.dims.hidden);
         if prepared.as_ref().is_some_and(|inputs| {
-            inputs.embedded.len() != length * self.dims.hidden
+            inputs.embedded.len() != length * width
                 || inputs.table.len() != length * self.dims.rotary
         }) {
             return Err(String::from("prepared inputs do not match the prompt"));
@@ -417,25 +443,34 @@ impl ClefCudaTrunk {
                 .ok_or("cohort token count overflow")?;
         }
         let rope = rope_table_params(&cpu.model);
+        let width = input_width(self.device_vocab, dims.hidden);
         for (session, count) in sessions.iter_mut() {
             let (first, n) = (session.first, *count);
             let built;
             let (embedded, table) = match &session.prepared {
                 Some(inputs) => (
-                    &inputs.embedded[first * dims.hidden..(first + n) * dims.hidden],
+                    &inputs.embedded[first * width..(first + n) * width],
                     &inputs.table[first * dims.rotary..(first + n) * dims.rotary],
                 ),
                 None => {
                     built = (
-                        embed_rows(cpu, &session.tokens[first..first + n], dims.hidden)?,
+                        embed_inputs(
+                            cpu,
+                            &session.tokens[first..first + n],
+                            dims.hidden,
+                            self.device_vocab,
+                        )?,
                         rope.table(first, n, dims.rotary),
                     );
                     (built.0.as_slice(), built.1.as_slice())
                 }
             };
-            session
-                .scratch
-                .x
+            let destination = if self.device_vocab.is_some() {
+                &mut session.scratch.ids
+            } else {
+                &mut session.scratch.x
+            };
+            destination
                 .write_bytes_at_offset(0, f32_bytes(embedded))
                 .map_err(err)?;
             session
@@ -454,6 +489,20 @@ impl ClefCudaTrunk {
         }
         let row_bytes = dims.hidden * 4;
         let mut submission = state.backend.begin_submission().map_err(err)?;
+        if let Some((table, vocab)) = state.token_table.as_ref() {
+            for (session, count) in sessions.iter() {
+                submission
+                    .clef_embed_q4_k(
+                        table,
+                        &session.scratch.ids,
+                        &session.scratch.x,
+                        *count,
+                        dims.hidden,
+                        *vocab,
+                    )
+                    .map_err(err)?;
+            }
+        }
         for (index, layer) in state.layers.iter().enumerate() {
             if sessions.len() == 1 {
                 let (session, count) = &sessions[0];

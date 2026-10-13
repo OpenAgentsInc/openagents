@@ -29,10 +29,11 @@
 //!   and only the span sums and the last row come back. The head's memory
 //!   attention reads the device rows ([`ClefCudaTrunk::attend_memory`]).
 //!
-//! `output` stays on the host. `token_embd` stays there too, except that on
-//! sm_90 a Q4_K table is also uploaded and the chunk's rows are gathered on
-//! the device (#11444; `PSIONIC_CLEF_DEVICE_EMBED=0` keeps the host gather):
-//! a chunk then uploads its token ids instead of its f32 rows.
+//! `output` stays on the host. `token_embd` stays there too, except that a
+//! Q4_K table is also uploaded and the chunk's rows are gathered on the
+//! device (#11444, every arch and the batched lane since #11479;
+//! `PSIONIC_CLEF_DEVICE_EMBED=0` keeps the host gather): a chunk then uploads
+//! its token ids instead of its f32 rows.
 
 use std::sync::Mutex;
 
@@ -340,6 +341,9 @@ pub struct ClefCudaTrunk {
     compute_16f: bool,
     device_name: String,
     memory_admission: serde_json::Value,
+    /// The vocabulary of the device token table when chunks gather their
+    /// rows on the device (read without the device lock).
+    device_vocab: Option<usize>,
 }
 
 impl std::fmt::Debug for ClefCudaTrunk {
@@ -649,8 +653,8 @@ impl ClefCudaTrunk {
             let buffer = upload_f32(&mut backend, values)?;
             head_matrices.insert(values.as_ptr() as usize, (buffer, *rows, *columns));
         }
-        // a Q4_K token table gathered on the device (sm_90 only: about 0.6-0.7
-        // GB more device memory than the host gather)
+        // a Q4_K token table gathered on the device (about 0.6-0.7 GB more
+        // device memory than the host gather)
         let token_table = match &model.token_embedding.kind {
             HostMatrixKind::Quantized(table)
                 if knobs().device_embed
@@ -667,6 +671,15 @@ impl ClefCudaTrunk {
             .as_ref()
             .map_or(0, |(buffer, _)| buffer.byte_len() as u64);
         let (prefix_budget, prefix_explicit) = prefix::capacity(memory.total_bytes)?;
+        let device_vocab = token_table.as_ref().map(|(_, vocab)| *vocab);
+        eprintln!(
+            "clef cuda: token rows gathered on the {}",
+            if device_vocab.is_some() {
+                "device"
+            } else {
+                "host"
+            }
+        );
         let state = DeviceState {
             token_table,
             output_norm: upload_f32(&mut backend, &model.output_norm)?,
@@ -700,6 +713,7 @@ impl ClefCudaTrunk {
             backend,
         };
         Ok(Self {
+            device_vocab,
             device: Mutex::new(state),
             dims,
             compute_16f,
@@ -2524,8 +2538,9 @@ fn knobs() -> Knobs {
             // measured slower (the epilogue's gate loads stall the persistent
             // GEMM), so opt-in only
             silu_fused: std::env::var("PSIONIC_CLEF_SILU_FUSED").is_ok_and(|v| v == "1"),
-            device_embed: std::env::var("PSIONIC_CLEF_DEVICE_EMBED").map_or(true, |v| v != "0")
-                && clef_prefill::clef_hopper_supported(),
+            // every arch since #11479 (the A100 has the memory: about 0.6-0.7
+            // GB per model); the batched lane gathers on the device too
+            device_embed: std::env::var("PSIONIC_CLEF_DEVICE_EMBED").map_or(true, |v| v != "0"),
             hopper_exact: std::env::var("PSIONIC_CLEF_HOPPER").is_ok_and(|v| v == "exact"),
             segment: std::env::var("PSIONIC_CLEF_SEGMENT")
                 .ok()

@@ -290,6 +290,14 @@ impl Config {
 pub(super) struct BatchResult {
     pub result: LogitResult,
     pub queue_seconds: f64,
+    /// Host input preparation on the request's thread, before it queued.
+    pub inputs_seconds: f64,
+    /// From the worker's reply to the request's thread receiving it.
+    pub reply_seconds: f64,
+    /// The session's device setup (buffers, prefix restore), inside
+    /// `prefill_seconds`.
+    pub setup_seconds: f64,
+    sent: Instant,
     pub prefill_chunk: usize,
     pub chunks: usize,
     pub max_cohort: usize,
@@ -315,6 +323,7 @@ struct Session {
     job: Job,
     device: Option<BatchSession>,
     prefill_seconds: f64,
+    setup_seconds: f64,
     chunks: usize,
     max_cohort: usize,
 }
@@ -379,6 +388,7 @@ impl Dispatcher {
     ) -> Result<BatchResult, ClefRefusal> {
         // Decode the prompt's rows here, in parallel with the GPU work of
         // the active requests, instead of on the worker between chunks.
+        let inputs_began = Instant::now();
         let prepared = match &*self.trunk {
             DeviceTrunk::Cuda(trunk) => {
                 let tokens: Vec<TokenId> = record.input_ids.iter().map(|&id| TokenId(id)).collect();
@@ -389,6 +399,7 @@ impl Dispatcher {
             #[cfg(target_os = "macos")]
             DeviceTrunk::Metal(_) => None,
         };
+        let inputs_seconds = inputs_began.elapsed().as_secs_f64();
         let (reply, receiver) = mpsc::channel();
         let ticket = Ticket {
             reply: receiver,
@@ -412,10 +423,13 @@ impl Dispatcher {
                 ClefRefusal::internal("the decision worker stopped")
             }
         })?;
-        ticket
+        let mut result = ticket
             .reply
             .recv()
-            .map_err(|_| ClefRefusal::internal("the decision worker stopped"))?
+            .map_err(|_| ClefRefusal::internal("the decision worker stopped"))??;
+        result.reply_seconds = result.sent.elapsed().as_secs_f64();
+        result.inputs_seconds = inputs_seconds;
+        Ok(result)
     }
 }
 
@@ -562,10 +576,12 @@ fn execute(
             let boundaries = session.boundaries();
             let chunk = session.chunk_tokens();
             let cancelled = Arc::clone(&job.cancelled);
+            let setup = began.elapsed().as_secs_f64();
             let state = Session {
                 job,
                 device: Some(session),
-                prefill_seconds: began.elapsed().as_secs_f64(),
+                prefill_seconds: setup,
+                setup_seconds: setup,
                 chunks: 0,
                 max_cohort: 0,
             };
@@ -693,6 +709,10 @@ fn finish(
             - state.prefill_seconds
             - head_seconds)
             .max(0.0),
+        inputs_seconds: 0.0,
+        reply_seconds: 0.0,
+        setup_seconds: state.setup_seconds,
+        sent: Instant::now(),
         prefill_chunk,
         chunks: state.chunks,
         max_cohort: state.max_cohort,
