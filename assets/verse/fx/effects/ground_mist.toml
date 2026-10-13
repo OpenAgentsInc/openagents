@@ -1,0 +1,27 @@
+# Mist lying over a courtyard's cobbles at night: broad soft puffs that
+# creep and swell low over the ground, with a faint glow of their own so
+# a bright light behind them turns them luminous. Runs until stopped;
+# start it with `Spawn::scaled` for a wider bank.
+description = "Broad, slow, glowing mist creeping low over the ground."
+
+[[emitter]]
+name = "bank"
+sheet = "smoke"
+animate = "life"
+blend = "alpha"
+light = "emit"
+luminance = 0.2
+rate = 6.0
+life = [7.0, 10.0]
+shape = "disc"
+radius = 6.0
+speed = [0.05, 0.2]
+radial = [0.05, 0.15]
+gravity = 0.01
+drag = 0.1
+size = [1.2, 2.0]
+scale = [[0.0, 0.6], [0.5, 1.2], [1.0, 1.5]]
+color = [0.75, 0.85, 1.0]
+alpha = [[0.0, 0.0], [0.3, 0.22], [0.7, 0.16], [1.0, 0.0]]
+spin = [-0.08, 0.08]
+priority = 2

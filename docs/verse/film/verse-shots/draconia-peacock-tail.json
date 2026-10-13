@@ -1,0 +1,51 @@
+{
+  "name": "draconia-peacock-tail",
+  "notes": "Draconia peacock P3 (reference 114.5-118.0, internal study only): out of the white, a fast pull back from her face to the wide; she rises and stands centred, a silhouette before the guardian's fanned tail of about 100 feathers, ruined walls and fires at the edges, mist on the cobbles, embers. 28 mm hold, then a slight ease back.",
+  "scene": {
+    "kind": "peacock",
+    "part": "tail",
+    "rise": 0.0
+  },
+  "duration": 3.5,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [0.0, 1.52, 0.75],
+        "target": [0.0, 1.5, 0.0],
+        "focal_mm": 40,
+        "ease": "out"
+      },
+      {
+        "t": 0.45,
+        "eye": [0.0, 0.95, 5.7],
+        "target": [0.0, 2.0, -1.0],
+        "focal_mm": 28,
+        "ease": "linear"
+      },
+      {
+        "t": 1.6,
+        "eye": [0.0, 0.95, 5.75],
+        "target": [0.0, 2.0, -1.0],
+        "focal_mm": 28,
+        "ease": "in_out"
+      },
+      {
+        "t": 3.5,
+        "eye": [0.0, 0.97, 5.95],
+        "target": [0.0, 2.0, -1.0],
+        "focal_mm": 28
+      }
+    ],
+    "shake": {
+      "amplitude": 0.001,
+      "position": 0.006,
+      "frequency": 0.4,
+      "seed": 13
+    }
+  }
+}

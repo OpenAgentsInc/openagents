@@ -1,0 +1,23 @@
+# Embers drifting up through the night air over a burning courtyard:
+# tiny orange sparks that rise, flutter, and wink out. Runs until
+# stopped; scale it for a wider field.
+description = "Tiny orange embers rising and fluttering in the night air."
+
+[[emitter]]
+name = "embers"
+sheet = "sparks"
+frames = [0, 0]
+luminance = 60.0
+rate = 30.0
+life = [2.0, 4.0]
+shape = "disc"
+radius = 7.0
+speed = [0.3, 0.9]
+gravity = 0.25
+drag = 0.6
+wander = 1.2
+size = [0.012, 0.024]
+stretch = 0.04
+color = [[0.0, [1.0, 0.7, 0.3]], [1.0, [1.0, 0.35, 0.08]]]
+alpha = [[0.0, 0.0], [0.15, 1.0], [0.8, 0.8], [1.0, 0.0]]
+priority = 3

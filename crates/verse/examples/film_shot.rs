@@ -8,9 +8,10 @@
 //! many sub-frames each frame averages; see `docs/verse/film/verse-shots/`.
 //! The scenes are the ritual chamber's cold open (`ritual`), the great
 //! crypt (`crypt`), the Meteor Showcase (`meteor`), the druid's Grove
-//! (`grove`), the Lagrange 1 station (`lagrange`), and the Grid (`grid`),
+//! (`grove`), the Lagrange 1 station (`lagrange`), the Grid (`grid`),
 //! the OpenAgents app's bare world drawn from its pinned engine pack as the
-//! apps draw it, with its Everglade portal standing.
+//! apps draw it, with its Everglade portal standing, and the Draconia
+//! peacock guardian (`peacock`, `docs/verse/draconia/shots.md`).
 //!
 //! Each output frame is the mean of `subframes` renders spread over the
 //! shutter (`shutter`, the fraction of the frame interval it is open, 0.5
@@ -30,6 +31,9 @@
 //!
 //! Run it with `VERSE_QUALITY=high` for the high tier; the world scenes
 //! keep temporal anti-aliasing on unless `VERSE_TAA=0`.
+
+#[path = "film/peacock.rs"]
+mod peacock;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -193,6 +197,16 @@ enum SceneSpec {
         #[serde(default)]
         bob: Option<Bob>,
     },
+    /// The Draconia peacock guardian: the feathers of light in the void
+    /// (`part` `feathers`, flashing white at `flash_at`), or Draconia
+    /// before the fanned tail (`tail`), rising from a crouch at `rise`.
+    Peacock {
+        part: peacock::Part,
+        #[serde(default)]
+        flash_at: Option<f32>,
+        #[serde(default)]
+        rise: f32,
+    },
 }
 
 /// A walking eye's motion on top of the rig.
@@ -292,6 +306,13 @@ enum Stage {
         ui: verse::ui::UiBatch,
         /// Keeps the zone cache that stands the Everglade portal.
         _cache: tempfile::TempDir,
+    },
+    /// The Draconia peacock guardian, drawn by the shared physical
+    /// renderer on its own stage.
+    Peacock {
+        renderer: Box<verse::render::Offscreen>,
+        set: Box<peacock::Set>,
+        ui: verse::ui::UiBatch,
     },
     /// The ritual chamber or the great crypt, drawn by the imported
     /// renderer.
@@ -518,6 +539,31 @@ impl Stage {
                 }
                 Self::world(runtime, w, h, false, shot.hide_guides)
             }
+            SceneSpec::Peacock {
+                part,
+                flash_at,
+                rise,
+            } => {
+                let pack = if *part == peacock::Part::Tail {
+                    Some(load_everglade()?)
+                } else {
+                    None
+                };
+                let set = peacock::Set::new(*part, *flash_at, *rise, pack.as_ref())?;
+                let renderer = verse::render::Offscreen::new(
+                    w,
+                    h,
+                    &peacock::Set::world(*part),
+                    &verse::ui::Atlas::new(16.0),
+                    zones::atmosphere(zones::ZoneId::Plaza),
+                )?;
+                eprintln!("quality tier: {}", renderer.quality().tier.name());
+                Ok(Self::Peacock {
+                    renderer: Box::new(renderer),
+                    set: Box::new(set),
+                    ui: verse::ui::UiBatch::default(),
+                })
+            }
         }
     }
 
@@ -571,6 +617,7 @@ impl Stage {
                     runtime.tick_unoccupied(dt / steps as f32);
                 }
             }
+            Self::Peacock { set, .. } => set.advance(dt, t),
             Self::Imported { scene, .. } => match scene {
                 Imported::Ritual { game, start, .. } => game.time = (*start + t).max(0.0),
                 Imported::Crypt { fight, walk } => {
@@ -669,6 +716,11 @@ impl Stage {
                 let dynamic = verse::grid_frame::dynamic(runtime, &[], &[]);
                 let lighting = verse::grid_frame::lighting(&runtime.atmosphere());
                 renderer.draw(View { view_proj, eye }, &dynamic, ui, &lighting)
+            }
+            Self::Peacock { renderer, set, ui } => {
+                let (view_proj, eye) =
+                    camera_rig::lens_view_projection(&camera, aspect, shot.near, shot.far, lens);
+                renderer.render(View { view_proj, eye }, &set.frame(), ui)
             }
             Self::Imported {
                 renderer,

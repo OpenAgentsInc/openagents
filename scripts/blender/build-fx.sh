@@ -5,7 +5,7 @@
 # Usage: scripts/blender/build-fx.sh [SHEET...]
 #
 # With no arguments it renders every sheet; otherwise only the named ones
-# (fireball, smoke, sparks, butterfly, arcane). BLENDER names the Blender binary (default: the
+# (fireball, smoke, sparks, butterfly, arcane, feather). BLENDER names the Blender binary (default: the
 # macOS app bundle's). FX_SAMPLES lowers the Cycles samples for a quick
 # draft (default 64). FX_PREVIEW names a directory that receives each sheet
 # composited over a dark field, alpha-blended and added side by side.
@@ -20,13 +20,14 @@ out="$repo/assets/verse/fx"
 blender=${BLENDER:-/Applications/Blender.app/Contents/MacOS/Blender}
 
 if [ "$#" -eq 0 ]; then
-  set -- fireball smoke sparks butterfly arcane
+  set -- fireball smoke sparks butterfly arcane feather
 fi
 mkdir -p "$out"
 for sheet in "$@"; do
   case "$sheet" in
     fireball | smoke | butterfly) cell=128 ;;
     sparks | arcane) cell=256 ;;
+    feather) cell=512 ;;
     *)
       echo "unknown sheet: $sheet" >&2
       exit 2

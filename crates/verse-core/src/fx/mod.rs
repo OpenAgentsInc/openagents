@@ -18,6 +18,7 @@
 //!   EFFECT OUT_DIR` renders an effect over time into a contact sheet.
 
 pub mod def;
+pub mod feathers;
 pub mod library;
 pub mod motes;
 pub use verse_pbr::fx::{sheet, sprite};

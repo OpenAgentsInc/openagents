@@ -1,0 +1,44 @@
+{
+  "name": "draconia-peacock-feathers",
+  "notes": "Draconia peacock P1+P2 (reference 113.0-114.5, internal study only): feathers of light turning in a starry void, the camera pushing in to the hero eyespot, which blows out to white at 1.3 s. Not yet: the reference's rainbow fringe on the brightest edges, and its denser, finer barbs.",
+  "scene": {
+    "kind": "peacock",
+    "part": "feathers",
+    "flash_at": 1.3
+  },
+  "duration": 1.5,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [-1.4, -0.6, 8.5],
+        "target": [0.25, 0.9, -6.0],
+        "focal_mm": 45,
+        "ease": "in_out"
+      },
+      {
+        "t": 1.3,
+        "eye": [0.36, 1.17, 1.2],
+        "target": [0.4, 1.2, -6.0],
+        "focal_mm": 55,
+        "ease": "linear"
+      },
+      {
+        "t": 1.5,
+        "eye": [0.38, 1.19, -0.6],
+        "target": [0.4, 1.2, -6.0],
+        "focal_mm": 60
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 11
+    }
+  }
+}

@@ -1,0 +1,53 @@
+# A conjured guardian's light breaking out: a blinding white-blue bloom
+# that swells past the frame and fades, a ring of light thrown outward,
+# and a burst of glints. Every emitter fires once. The Draconia peacock
+# shot starts it on the hero eyespot; a wand's light spell can too.
+description = "A blinding white-blue bloom, a ring of light, and glints."
+
+[[emitter]]
+name = "bloom"
+sheet = "feather"
+frames = [1, 1]
+animate = "random"
+luminance = 900.0
+burst = 1
+life = [0.45, 0.45]
+size = [3.0, 3.0]
+scale = [[0.0, 0.3], [0.3, 4.0], [1.0, 7.0]]
+color = [[0.0, [1.0, 1.0, 1.0]], [1.0, [0.7, 0.85, 1.0]]]
+alpha = [[0.0, 1.0], [0.5, 0.8], [1.0, 0.0]]
+rotate = false
+priority = 9
+
+[[emitter]]
+name = "ring"
+sheet = "sparks"
+frames = [2, 2]
+animate = "random"
+luminance = 160.0
+burst = 1
+life = [0.5, 0.5]
+size = [1.0, 1.0]
+scale = [[0.0, 0.4], [1.0, 9.0]]
+color = [0.8, 0.9, 1.0]
+alpha = [[0.0, 1.0], [0.6, 0.5], [1.0, 0.0]]
+priority = 8
+
+[[emitter]]
+name = "glints"
+sheet = "arcane"
+frames = [2, 2]
+animate = "random"
+luminance = 120.0
+burst = 40
+life = [0.4, 0.8]
+shape = "sphere"
+radius = 0.6
+spread = 180.0
+speed = [3.0, 8.0]
+drag = 2.0
+size = [0.08, 0.2]
+rotate = false
+color = [0.85, 0.92, 1.0]
+alpha = [[0.0, 1.0], [0.7, 0.7], [1.0, 0.0]]
+priority = 7

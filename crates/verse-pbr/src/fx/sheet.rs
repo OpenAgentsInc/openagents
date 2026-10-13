@@ -23,7 +23,7 @@ pub struct Sheet {
 pub const SIZE: u32 = 512;
 
 /// The sheets, in texture-array layer order.
-pub static SHEETS: [Sheet; 5] = [
+pub static SHEETS: [Sheet; 6] = [
     Sheet {
         name: "fireball",
         columns: 4,
@@ -58,6 +58,16 @@ pub static SHEETS: [Sheet; 5] = [
         rows: 2,
         frames: 4,
         png: include_bytes!("../../../../assets/verse/fx/arcane.png"),
+    },
+    // One column of two 512 x 256 cells: a feather of light lying along
+    // the long axis (eyespot at the left, for a sprite laid along its
+    // tail and three times as long as wide), and a soft round dot.
+    Sheet {
+        name: "feather",
+        columns: 1,
+        rows: 2,
+        frames: 2,
+        png: include_bytes!("../../../../assets/verse/fx/feather.png"),
     },
 ];
 
