@@ -105,3 +105,24 @@ mod tests {
         assert!(font_face_inline().contains("url(\"data:font/woff2;base64,d09GMg"));
     }
 }
+
+/// The characters the Verse glyph atlas carries (`verse-gfx`'s `ui`), here
+/// so code that only filters text for it (`verse-net`'s feed) needs no
+/// graphics stack.
+pub mod atlas {
+    /// The first and last printable ASCII characters.
+    pub const FIRST: u32 = 32;
+    /// See [`FIRST`].
+    pub const LAST: u32 = 126;
+    /// Characters outside printable ASCII that the atlas also carries.
+    pub const EXTRA: [char; 4] = ['·', '—', '…', '•'];
+    /// Latin-1 letters and punctuation, for accented names and notes.
+    pub const LATIN1: std::ops::RangeInclusive<u32> = 0xA1..=0xFF;
+
+    /// True when the atlas can draw `c`.
+    #[must_use]
+    pub fn drawable(c: char) -> bool {
+        let n = c as u32;
+        (FIRST..=LAST).contains(&n) || LATIN1.contains(&n) || EXTRA.contains(&c)
+    }
+}

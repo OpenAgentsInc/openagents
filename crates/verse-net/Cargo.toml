@@ -19,7 +19,7 @@ nostr = { path = "../nostr" }
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-verse-gfx = { path = "../verse-gfx" }
+paper-mono = { path = "../paper-mono" }
 # `Instant` from `performance.now()` in a browser, where `std::time::Instant`
 # has no clock; the standard types elsewhere.
 web-time = "1.1.0"

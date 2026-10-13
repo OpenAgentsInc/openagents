@@ -382,10 +382,11 @@ fn plan(home: &Path, name: &str, args: &Args) -> Result<(Vec<Value>, Option<Acti
         }
     };
     let key_profile = args.option("key").unwrap_or(name);
-    let identity = match verse::identity::load_or_create(&verse::identity::home(), key_profile) {
-        Ok(identity) if identity.signer.pubkey() == profile.agent => identity,
-        Ok(identity) => {
-            checks.push(refusal(
+    let identity =
+        match verse_net::identity::load_or_create(&verse_net::identity::home(), key_profile) {
+            Ok(identity) if identity.signer.pubkey() == profile.agent => identity,
+            Ok(identity) => {
+                checks.push(refusal(
                 "custody-adapter",
                 format!(
                     "key profile `{key_profile}` holds {}…, not the agent {}… (pass --key PROFILE)",
@@ -393,13 +394,13 @@ fn plan(home: &Path, name: &str, args: &Args) -> Result<(Vec<Value>, Option<Acti
                     &profile.agent[..8]
                 ),
             ));
-            return Ok((checks, None));
-        }
-        Err(e) => {
-            checks.push(refusal("custody-adapter", e));
-            return Ok((checks, None));
-        }
-    };
+                return Ok((checks, None));
+            }
+            Err(e) => {
+                checks.push(refusal("custody-adapter", e));
+                return Ok((checks, None));
+            }
+        };
     checks.push(json!({ "check": "custody-adapter", "ok": true, "adapter": LOCAL_CUSTODY_ADAPTER, "key_profile": identity.profile }));
     checks.push(json!({ "check": "policy-store", "ok": true, "why": "no-spend, no guardian: the admitted profile's null treasury and guardian policy are the whole policy" }));
     let budget = match Budget::parse(args) {
@@ -438,7 +439,7 @@ fn plan(home: &Path, name: &str, args: &Args) -> Result<(Vec<Value>, Option<Acti
     let activation = Activation {
         v: ACTIVATION_VERSION.to_owned(),
         requires: Vec::new(),
-        activation: verse::identity::random_hex(16),
+        activation: verse_net::identity::random_hex(16),
         agent: profile.agent.clone(),
         profile: admission.0.profile,
         admission: admission.1,
@@ -453,7 +454,7 @@ fn plan(home: &Path, name: &str, args: &Args) -> Result<(Vec<Value>, Option<Acti
         world: args
             .option("world")
             .map(str::to_owned)
-            .unwrap_or_else(|| verse::session::WORLD.to_owned()),
+            .unwrap_or_else(|| verse_net::PLAZA_WORLD.to_owned()),
         entity: "avatar".to_owned(),
         display_name,
         pid: None,
@@ -596,7 +597,7 @@ fn lifecycle(paths: &Paths, activation: &Activation, key_profile: &str) -> Resul
     if admission.profile.digest != activation.profile.digest {
         return Err("the admitted profile is not the one this activation bound".into());
     }
-    let identity = verse::identity::load_or_create(&verse::identity::home(), key_profile)?;
+    let identity = verse_net::identity::load_or_create(&verse_net::identity::home(), key_profile)?;
     if identity.signer.pubkey() != profile.agent {
         return Err("the key profile no longer holds the agent key".into());
     }
@@ -618,7 +619,7 @@ fn lifecycle(paths: &Paths, activation: &Activation, key_profile: &str) -> Resul
             break "budget";
         }
         let now = crate::relay::unix_now();
-        let state = verse::mv::State {
+        let state = verse_net::mv::State {
             v: 1,
             id: activation.entity.clone(),
             role: "agent".to_owned(),
@@ -632,7 +633,7 @@ fn lifecycle(paths: &Paths, activation: &Activation, key_profile: &str) -> Resul
             b: None,
             look: None,
         };
-        let event = verse::mv::state_event(&identity.signer, &activation.world, &state, now);
+        let event = verse_net::mv::state_event(&identity.signer, &activation.world, &state, now);
         let published = client.publish(event, RELAY_WAIT)?;
         if !published.accepted {
             let _ = checkpoint(
@@ -657,7 +658,7 @@ fn lifecycle(paths: &Paths, activation: &Activation, key_profile: &str) -> Resul
         std::thread::sleep(tick);
     };
     let now = crate::relay::unix_now();
-    let offline = verse::mv::State {
+    let offline = verse_net::mv::State {
         v: 1,
         id: activation.entity.clone(),
         role: "agent".to_owned(),
@@ -672,7 +673,7 @@ fn lifecycle(paths: &Paths, activation: &Activation, key_profile: &str) -> Resul
         look: None,
     };
     let _ = client.publish(
-        verse::mv::state_event(&identity.signer, &activation.world, &offline, now),
+        verse_net::mv::state_event(&identity.signer, &activation.world, &offline, now),
         RELAY_WAIT,
     );
     client.close();
@@ -696,7 +697,7 @@ fn checkpoint(
     revision: u64,
     previous: &Option<String>,
     record: Value,
-    state: &verse::mv::State,
+    state: &verse_net::mv::State,
 ) -> Result<String, String> {
     let body = Checkpoint {
         v: CHECKPOINT_VERSION.to_owned(),
@@ -921,7 +922,7 @@ mod tests {
     #[test]
     fn stop_and_checkpoints_use_the_name_paths() {
         let home =
-            std::env::temp_dir().join(format!("sov-host-{}", verse::identity::random_hex(4)));
+            std::env::temp_dir().join(format!("sov-host-{}", verse_net::identity::random_hex(4)));
         std::fs::create_dir_all(&home).unwrap();
         let paths = Paths::for_name(&home, "luna");
         assert!(paths.stop.ends_with("luna.stop"));

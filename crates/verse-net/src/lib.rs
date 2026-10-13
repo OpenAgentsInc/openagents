@@ -12,3 +12,14 @@ pub mod mv;
 pub mod net;
 #[cfg(feature = "xp")]
 pub mod xp;
+
+/// The plaza world's NIP-MV identifier.
+pub const PLAZA_WORLD: &str = "verse-plaza";
+/// The world of the OpenAgents app's bare plaza. It is a separate coordinate
+/// space from [`PLAZA_WORLD`]: the bare world has none of the plaza's
+/// buildings or collision, so its positions are not valid plaza positions
+/// (NIP-MV requires a distinct world identifier for each separately loaded
+/// coordinate space).
+pub const BARE_WORLD: &str = "verse-bare";
+/// Public plaza relay used by unconfigured Coder mobile installs.
+pub const PUBLIC_RELAY: &str = "wss://relay.openagents.com";

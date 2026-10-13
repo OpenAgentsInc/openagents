@@ -236,7 +236,7 @@ pub fn home() -> PathBuf {
     if let Some(dir) = std::env::var_os("SOV_HOME") {
         return PathBuf::from(dir);
     }
-    verse::identity::home()
+    verse_net::identity::home()
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."))

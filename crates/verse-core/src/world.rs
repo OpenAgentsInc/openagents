@@ -15,14 +15,9 @@ pub struct World {
     pub blockers: Vec<Footprint>,
 }
 
-/// The plaza world's NIP-MV identifier.
-pub const PLAZA_WORLD: &str = "verse-plaza";
-/// The world of the OpenAgents app's bare plaza. It is a separate coordinate
-/// space from [`PLAZA_WORLD`]: the bare world has none of the plaza's
-/// buildings or collision, so its positions are not valid plaza positions
-/// (NIP-MV requires a distinct world identifier for each separately loaded
-/// coordinate space).
-pub const BARE_WORLD: &str = "verse-bare";
+/// The plaza world's NIP-MV identifier, and the app's bare plaza (in
+/// `verse-net`, so a client without the engine can name them).
+pub use verse_net::{BARE_WORLD, PLAZA_WORLD};
 
 /// Half the width of the walkable square, in meters.
 pub const HALF: f32 = 264.0;

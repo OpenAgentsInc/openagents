@@ -39,7 +39,7 @@ use crate::net::{In, Link, Out};
 /// The world this client joins, and the OpenAgents app's bare plaza.
 pub use verse_core::world::{BARE_WORLD, PLAZA_WORLD as WORLD};
 /// Public plaza relay used by unconfigured Coder mobile installs.
-pub const PUBLIC_RELAY: &str = "wss://relay.openagents.com";
+pub use verse_net::PUBLIC_RELAY;
 /// The relay used when none is named.
 pub const DEFAULT_RELAY: &str = "ws://127.0.0.1:7447";
 /// Radius of the spawn disc around the plaza center, in meters.

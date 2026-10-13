@@ -123,7 +123,7 @@ fn now() -> u64 {
 
 pub fn store_dir(flag: Option<&str>) -> PathBuf {
     flag.map(PathBuf::from).unwrap_or_else(|| {
-        verse::identity::home()
+        verse_net::identity::home()
             .parent()
             .map(std::path::Path::to_path_buf)
             .unwrap_or_else(|| PathBuf::from("."))

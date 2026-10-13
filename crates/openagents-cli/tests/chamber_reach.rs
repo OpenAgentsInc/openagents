@@ -8,6 +8,7 @@
 //! adventurer, grants a second `world` without a role, and grants a third
 //! only `observe`. The first two join with `openagents chamber` over the
 //! channel and read the world; the third is refused at the handshake.
+#![cfg(feature = "verse")]
 #![cfg(unix)]
 
 use std::io::{BufRead, BufReader};

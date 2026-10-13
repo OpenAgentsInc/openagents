@@ -418,7 +418,7 @@ fn run(group: Group, output: &Output, words: &[String]) -> u8 {
                 if !authors.is_empty() {
                     let result = client.subscribe(
                         vec![json!({
-                            "kinds": [verse::mv::STATE_KIND], "authors": authors,
+                            "kinds": [verse_net::mv::STATE_KIND], "authors": authors,
                             "since": now.saturating_sub(RECENT_SECONDS), "until": now,
                         })],
                         false,
@@ -476,7 +476,7 @@ const RECENT_SECONDS: u64 = 7 * 24 * 60 * 60;
 fn last_seen(events: &[Event], now: u64) -> BTreeMap<String, u64> {
     let mut seen = BTreeMap::new();
     for event in events {
-        if event.kind != verse::mv::STATE_KIND
+        if event.kind != verse_net::mv::STATE_KIND
             || event.created_at > now
             || event.created_at < now.saturating_sub(RECENT_SECONDS)
             || event.is_expired(now)
@@ -486,7 +486,8 @@ fn last_seen(events: &[Event], now: u64) -> BTreeMap<String, u64> {
         let Some(world) = event.tag_values("w").next() else {
             continue;
         };
-        if let Ok(verse::mv::Received::State { state, .. }) = verse::mv::decode(event, world)
+        if let Ok(verse_net::mv::Received::State { state, .. }) =
+            verse_net::mv::decode(event, world)
             && matches!(state.role.as_str(), "avatar" | "agent")
         {
             seen.entry(event.pubkey.clone())
@@ -1121,7 +1122,7 @@ mod tests {
     }
 
     fn presence(signer: &RelaySigner, time: u64, role: &str) -> Event {
-        let state = verse::mv::State {
+        let state = verse_net::mv::State {
             v: 1,
             id: "avatar".into(),
             role: role.into(),
@@ -1135,7 +1136,7 @@ mod tests {
             b: None,
             look: None,
         };
-        verse::mv::state_event(signer, "test-world", &state, time)
+        verse_net::mv::state_event(signer, "test-world", &state, time)
     }
 
     #[test]

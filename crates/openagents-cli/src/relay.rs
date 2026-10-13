@@ -2,14 +2,14 @@
 //! with the caller's signer, run subscriptions to their end-of-stored-events
 //! marker, publish and wait for `OK`, or follow live events until a deadline.
 //!
-//! Built on [`verse::net::Link`], the bounded worker the Verse client uses,
+//! Built on [`verse_net::net::Link`], the bounded worker the Verse client uses,
 //! so every command shares its wire limits and reconnect policy.
 
 use std::time::{Duration, Instant};
 
 use nostr::domain::{Event, RelaySigner, Tag};
 use serde_json::{Value, json};
-use verse::net::{In, Link, Out};
+use verse_net::net::{In, Link, Out};
 
 use crate::{Args, Output};
 #[cfg(test)]
@@ -225,7 +225,7 @@ pub fn summary(value: &Value) -> String {
 pub fn relay_url(flag: Option<&str>) -> String {
     flag.map(str::to_owned)
         .or_else(|| std::env::var("OPENAGENTS_RELAY").ok())
-        .unwrap_or_else(|| verse::session::PUBLIC_RELAY.to_owned())
+        .unwrap_or_else(|| verse_net::PUBLIC_RELAY.to_owned())
 }
 
 /// The signer for a Verse profile, creating its key on first use.
@@ -234,23 +234,24 @@ pub fn signer_for(profile: Option<&str>) -> Result<RelaySigner, String> {
 }
 
 /// The identity for a Verse profile, creating its key on first use.
-pub fn identity_for(profile: Option<&str>) -> Result<verse::identity::Identity, String> {
+pub fn identity_for(profile: Option<&str>) -> Result<verse_net::identity::Identity, String> {
     let profile = profile
         .map(str::to_owned)
         .or_else(|| std::env::var("OPENAGENTS_PROFILE").ok())
         .unwrap_or_else(|| "default".to_owned());
-    verse::identity::load_or_create(&verse::identity::home(), &profile)
+    verse_net::identity::load_or_create(&verse_net::identity::home(), &profile)
 }
 
 /// The identity a read-only command signs relay AUTH with: the profile's
 /// key when one exists, else a temporary key that is never saved, so
 /// reading creates no identity on disk (#10320).
-pub fn reader_identity_for(profile: Option<&str>) -> Result<verse::identity::Identity, String> {
+#[cfg_attr(not(feature = "verse"), allow(dead_code))]
+pub fn reader_identity_for(profile: Option<&str>) -> Result<verse_net::identity::Identity, String> {
     let profile = profile
         .map(str::to_owned)
         .or_else(|| std::env::var("OPENAGENTS_PROFILE").ok())
         .unwrap_or_else(|| "default".to_owned());
-    verse::identity::load_or_ephemeral(&verse::identity::home(), &profile)
+    verse_net::identity::load_or_ephemeral(&verse_net::identity::home(), &profile)
 }
 
 pub fn unix_now() -> u64 {
@@ -528,6 +529,7 @@ impl Client {
     }
 
     /// Publish without waiting for acknowledgment.
+    #[cfg_attr(not(feature = "verse"), allow(dead_code))]
     pub fn send(&mut self, event: Event) -> bool {
         self.link.send(Out::Publish(event))
     }

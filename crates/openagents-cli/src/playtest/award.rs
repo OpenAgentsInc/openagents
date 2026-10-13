@@ -8,7 +8,7 @@
 //! published awards from the relay, then builds and checks the award with
 //! [`playtest::award`]. Without `--publish` it prints the award; with it,
 //! it publishes it. Every path first refuses unless the key is the
-//! playtest referee this build trusts (`verse::xp::PLAYTEST_REFEREE`),
+//! playtest referee this build trusts (`verse_net::xp::PLAYTEST_REFEREE`),
 //! which is unset until the owner creates the key.
 
 use std::path::{Path, PathBuf};
@@ -143,7 +143,7 @@ fn referee_key(args: &Args) -> Result<RelaySigner, Failure> {
 
 pub fn run(home: &Path, args: &Args) -> Result<Value, Failure> {
     // The production path is off until the owner creates the key.
-    if verse::xp::PLAYTEST_REFEREE.is_none() {
+    if verse_net::xp::PLAYTEST_REFEREE.is_none() {
         return Err(Failure::Failed(award::NO_REFEREE.into()));
     }
     let number = |name: &str| {
@@ -198,7 +198,7 @@ pub fn run(home: &Path, args: &Args) -> Result<Value, Failure> {
         home,
         &request,
         &signer,
-        verse::xp::PLAYTEST_REFEREE,
+        verse_net::xp::PLAYTEST_REFEREE,
         &mut fetch,
     );
     let (signed, key) = match result {

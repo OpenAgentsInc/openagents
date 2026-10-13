@@ -8,6 +8,12 @@ rust-version.workspace = true
 publish.workspace = true
 description = "The openagents command: one program that reaches every OpenAgents surface an agent needs, over Nostr."
 
+[features]
+# The Verse commands. On for release builds; Coder's dev build
+# (`--no-default-features`) leaves them out so it never compiles the engine.
+default = ["verse"]
+verse = ["dep:verse", "dep:verse-engine", "dep:verse-world", "dep:verse-lagrange", "dep:verse-film"]
+
 [[bin]]
 name = "openagents"
 path = "src/main.rs"
@@ -112,16 +118,20 @@ tempfile = "3"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 # `openagents pay serve --routes FILE`.
 toml = "0.9"
-verse = { path = "../verse", default-features = false, features = ["xp-host", "remote-chamber", "studio-host"] }
-verse-engine = { path = "../verse-engine" }
-verse-world = { path = "../verse-world", features = ["service-net", "service-reach", "studio"] }
+# The Verse commands (`verse`, `xp`, `zone`, `chamber`, `film`) behind the
+# `verse` feature; the identity, relay link, NIP-MV and XP pieces every other
+# command shares come from `verse-net`, which has no graphics stack.
+verse = { path = "../verse", default-features = false, features = ["xp-host", "remote-chamber", "studio-host"], optional = true }
+verse-net = { path = "../verse-net", features = ["xp"] }
+verse-engine = { path = "../verse-engine", optional = true }
+verse-world = { path = "../verse-world", features = ["service-net", "service-reach", "studio"], optional = true }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
-verse-lagrange = { path = "../verse-lagrange" }
+verse-lagrange = { path = "../verse-lagrange", optional = true }
 # `openagents verse town`: Everglade's townsfolk definitions and roster.
 townsfolk = { path = "../townsfolk" }
 town-clock = { path = "../town-clock" }
-verse-film = { path = "../verse-film", features = ["gpu", "layers"] }
+verse-film = { path = "../verse-film", features = ["gpu", "layers"], optional = true }
 world-tree = { path = "../world-tree" }
 
 # `openagents ssh` runs the system ssh through Unix process groups, and

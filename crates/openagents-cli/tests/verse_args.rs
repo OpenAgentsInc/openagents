@@ -1,4 +1,5 @@
 //! Regression checks through the CLI, with isolated identities and a local relay.
+#![cfg(feature = "verse")]
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use std::io::Write;

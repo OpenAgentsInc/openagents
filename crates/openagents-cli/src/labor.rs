@@ -216,7 +216,7 @@ pub fn home() -> PathBuf {
     if let Some(dir) = std::env::var_os("LABOR_HOME") {
         return PathBuf::from(dir);
     }
-    verse::identity::home()
+    verse_net::identity::home()
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."))
@@ -270,7 +270,7 @@ fn open_store(dir: &Path, setup: Setup, secret: &secp256k1::SecretKey) -> Result
 /// Admit `file` as the book `name` and open its journal.
 fn offer(
     output: &Output,
-    identity: &verse::identity::Identity,
+    identity: &verse_net::identity::Identity,
     name: &str,
     file: &str,
     relay: Option<&str>,

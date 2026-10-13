@@ -42,7 +42,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                         "profile": identity.profile,
                         "pubkey": identity.signer.pubkey(),
                         "created": identity.created,
-                        "path": verse::identity::home()
+                        "path": verse_net::identity::home()
                             .join(format!("{}.key", identity.profile))
                             .display()
                             .to_string(),
@@ -65,13 +65,13 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             Err(message) => output.fail("key", &message),
         },
         "list" => {
-            let home = verse::identity::home();
+            let home = verse_net::identity::home();
             let mut profiles = Vec::new();
             if let Ok(entries) = std::fs::read_dir(&home) {
                 for entry in entries.flatten() {
                     let name = entry.file_name().to_string_lossy().into_owned();
                     if let Some(profile) = name.strip_suffix(".key") {
-                        let pubkey = verse::identity::load_or_create(&home, profile)
+                        let pubkey = verse_net::identity::load_or_create(&home, profile)
                             .map(|identity| identity.signer.pubkey().to_owned())
                             .unwrap_or_default();
                         profiles.push(json!({ "profile": profile, "pubkey": pubkey }));

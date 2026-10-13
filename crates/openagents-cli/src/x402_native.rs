@@ -102,7 +102,7 @@ impl Party {
             &recipient,
             purchase,
             now,
-            verse::identity::random_bytes(),
+            verse_net::identity::random_bytes(),
         )
         .map_err(|error| error.to_string())
     }
@@ -1145,7 +1145,7 @@ pub fn buy(output: &Output, words: &[String]) -> u8 {
     };
     let capability_id = capability["id"].as_str().unwrap_or_default().to_owned();
     let now = unix_now();
-    let purchase: String = verse::identity::random_bytes::<32>()
+    let purchase: String = verse_net::identity::random_bytes::<32>()
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect();

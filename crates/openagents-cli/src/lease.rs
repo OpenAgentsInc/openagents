@@ -902,8 +902,15 @@ fn run_disk_janitor(home: &std::path::Path) {
     let Some(janitor) = disk_janitor(home, std::env::var_os("OPENAGENTS_DISK_JANITOR")) else {
         return;
     };
-    eprintln!("openagents lease: running the disk janitor ({})", janitor.display());
-    if let Err(error) = Command::new("/bin/bash").arg(&janitor).arg("--now").status() {
+    eprintln!(
+        "openagents lease: running the disk janitor ({})",
+        janitor.display()
+    );
+    if let Err(error) = Command::new("/bin/bash")
+        .arg(&janitor)
+        .arg("--now")
+        .status()
+    {
         eprintln!("openagents lease: the disk janitor did not run: {error}");
     }
 }
@@ -1051,7 +1058,10 @@ mod tests {
         let other = home.path().join("elsewhere");
         assert_eq!(disk_janitor(home.path(), Some(other.clone().into())), None);
         std::fs::copy(&janitor, &other).unwrap();
-        assert_eq!(disk_janitor(home.path(), Some(other.clone().into())), Some(other));
+        assert_eq!(
+            disk_janitor(home.path(), Some(other.clone().into())),
+            Some(other)
+        );
     }
 
     fn words(text: &[&str]) -> Vec<String> {

@@ -28,6 +28,7 @@ mod brainstorm_pilot;
 mod browser;
 mod capacity;
 mod catalog;
+#[cfg(feature = "verse")]
 mod chamber;
 mod chat;
 mod cloud;
@@ -44,6 +45,7 @@ mod ext_defaults;
 mod ext_eval;
 mod ext_eval_init;
 mod ext_run;
+#[cfg(feature = "verse")]
 mod film;
 mod github_verbs;
 mod gym;
@@ -99,6 +101,7 @@ mod projects;
 mod provider_key;
 #[cfg(unix)]
 mod pylon_wallet;
+#[cfg(feature = "verse")]
 mod quest;
 mod reach;
 mod relay;
@@ -123,9 +126,13 @@ mod terminal;
 #[cfg(test)]
 mod tree;
 mod vault;
+#[cfg(feature = "verse")]
 mod verse_terminal;
+#[cfg(feature = "verse")]
 mod verse_town;
+#[cfg(feature = "verse")]
 mod verse_town_rumor;
+#[cfg(feature = "verse")]
 mod walkers;
 #[cfg(unix)]
 mod wallet;
@@ -133,6 +140,7 @@ mod wallet;
 mod workflow_template;
 #[cfg(unix)]
 mod worktree;
+#[cfg(feature = "verse")]
 mod world;
 #[cfg(unix)]
 mod x402;
@@ -144,6 +152,7 @@ mod x402_node;
 mod x402_phone;
 #[cfg(unix)]
 mod x402_spark;
+#[cfg(feature = "verse")]
 mod zone;
 
 pub use argv::Args;
@@ -412,7 +421,16 @@ fn main() -> ExitCode {
         "sales" => sales::run(&output, &rest),
         "customer" => customer::run(&output, &rest),
         "scratch" => scratch::run(&output, &rest),
+        #[cfg(feature = "verse")]
         "film" => film::run(&output, &rest),
+        #[cfg(not(feature = "verse"))]
+        "film" | "verse" | "xp" | "zone" | "chamber" => {
+            eprintln!(
+                "openagents: this build has no Verse commands (built without the `verse` feature); \
+                 the released CLI has them: curl -fsSL https://openagents.com/cli/install.sh | sh"
+            );
+            2
+        }
         "browser" => browser::run(&output, &rest),
         "capacity" => capacity::run(&output, &rest),
         "artifact" | "artifacts" => artifact::run(&output, &rest),
@@ -421,14 +439,19 @@ fn main() -> ExitCode {
         "computer" | "computers" => computer::run(&output, &rest),
         #[cfg(unix)]
         "connect" => connect::run(&output, &rest),
+        #[cfg(feature = "verse")]
         "verse" => world::run(&output, &rest),
         // `openagents xp …` is `openagents verse xp …`.
+        #[cfg(feature = "verse")]
         "xp" if rest.first().is_some_and(|word| word == "--help") => {
             println!("{}", world::xp_usage());
             0
         }
+        #[cfg(feature = "verse")]
         "xp" => world::run_xp(&output, &rest),
+        #[cfg(feature = "verse")]
         "zone" => zone::run(&output, &rest),
+        #[cfg(feature = "verse")]
         "chamber" => chamber::run(&output, &rest),
         "study" => study::run(&output, &rest),
         "session" | "sessions" => session::run(&output, &rest),
@@ -704,7 +727,7 @@ fn doctor(output: &Output) -> u8 {
     let home = std::env::var_os("HOME").map_or_else(|| Path::new(".").to_path_buf(), Into::into);
     let openagents = home.join(".openagents");
     let entries = [
-        ("verse_keys", ::verse::identity::home()),
+        ("verse_keys", ::verse_net::identity::home()),
         ("coder_access", openagents.join("coder-access")),
         ("host_root", openagents.join("host")),
         ("computers", computer::store_dir(None)),
@@ -715,11 +738,8 @@ fn doctor(output: &Output) -> u8 {
     ];
     let mut report = serde_json::Map::new();
     report.insert("version".into(), version_line().into());
-    report.insert(
-        "default_relay".into(),
-        ::verse::session::PUBLIC_RELAY.into(),
-    );
-    report.insert("world".into(), ::verse::session::WORLD.into());
+    report.insert("default_relay".into(), ::verse_net::PUBLIC_RELAY.into());
+    report.insert("world".into(), ::verse_net::PLAZA_WORLD.into());
     let mut paths = serde_json::Map::new();
     for (name, path) in entries {
         paths.insert(

@@ -2,14 +2,14 @@
 //! events (`nips/openagents/NIP-XP.md`) exactly as the desktop client reads
 //! them: quests (`30193`), awards (`3193`), revocations (`3194`), and
 //! achievement labels (`1985`), derived under the reader's trust list by
-//! [`verse::xp::snapshot`]. Trust management writes only the local trust list.
+//! [`verse_net::xp::snapshot`]. Trust management writes only the local trust list.
 
 use std::collections::BTreeMap;
 
 use nostr::domain::Event;
 use nostr::xp as kinds;
 use serde_json::{Value, json};
-use verse::xp::{QuestRow, Snapshot, level_of, load_trust, missing, my_keys, snapshot};
+use verse_net::xp::{QuestRow, Snapshot, level_of, load_trust, missing, my_keys, snapshot};
 
 use crate::relay::{Client, DEFAULT_WAIT, relay_url, unix_now};
 use crate::{Args, Output, out};
@@ -75,7 +75,7 @@ pub fn read(args: &Args) -> Result<Reading, String> {
 /// name.
 fn read_under(
     relay: &str,
-    trust: &verse::xp::XpTrust,
+    trust: &verse_net::xp::XpTrust,
     signer: &nostr::domain::RelaySigner,
 ) -> Result<Snapshot, String> {
     let trust = trust.clone();
@@ -194,12 +194,12 @@ pub fn verify_card(output: &Output, args: &Args) -> Result<u8, String> {
     let event = load_card(source, explicit.as_deref(), &identity.signer)?;
     let card = kinds::parse_card(&event).map_err(|e| format!("not a valid trainer card: {e}"))?;
     let relay = explicit.unwrap_or_else(|| card.relays[0].clone());
-    let trust = verse::xp::XpTrust {
+    let trust = verse_net::xp::XpTrust {
         referees: card.referees.iter().cloned().collect(),
         runners: card.runners.iter().cloned().collect(),
     };
     let snapshot = read_under(&relay, &trust, &identity.signer)?;
-    let check = verse::xp::check_card(&card, &event.pubkey, &snapshot);
+    let check = verse_net::xp::check_card(&card, &event.pubkey, &snapshot);
     let matches = check.differences.is_empty();
     output.emit(
         &json!({
@@ -323,7 +323,7 @@ pub fn trust(output: &Output, args: &Args) -> Result<u8, String> {
         "add" | "remove" if words.len() == 2 => {
             let path = xp_ledger_path()?;
             let own = knowledge::xp::referee_key_file().and_then(|p| knowledge::xp::own_pubkey(&p));
-            verse::xp::edit_trust_at(&path, own.as_deref(), &words[1], action == "add")?
+            verse_net::xp::edit_trust_at(&path, own.as_deref(), &words[1], action == "add")?
         }
         _ => return Err("use openagents verse trust list | add KEY | remove KEY".into()),
     };
@@ -332,12 +332,12 @@ pub fn trust(output: &Output, args: &Args) -> Result<u8, String> {
         |value| {
             let keys = value["referees"].as_array().unwrap();
             if keys.is_empty() {
-                verse::xp::no_referees_message()
+                verse_net::xp::no_referees_message()
             } else {
                 keys.iter()
                     .filter_map(Value::as_str)
                     .map(|key| {
-                        if key == verse::xp::OPENAGENTS_REFEREE {
+                        if key == verse_net::xp::OPENAGENTS_REFEREE {
                             format!("{key}  OpenAgents (trusted by default)")
                         } else {
                             key.to_owned()
@@ -408,7 +408,7 @@ fn render_quests(value: &Value) -> String {
 
 fn quest_footer(value: &Value, mut text: String) -> String {
     if value["referees"].as_u64() == Some(0) {
-        text.push_str(&format!("\n{}", verse::xp::no_referees_message()));
+        text.push_str(&format!("\n{}", verse_net::xp::no_referees_message()));
     }
     text
 }
@@ -435,9 +435,9 @@ fn ledger_value(snapshot: &Snapshot, keys: &[String]) -> Value {
     json!({
         "keys": keys,
         "xp": total,
-        "curve": verse::xp::CURVE,
+        "curve": verse_net::xp::CURVE,
         "level": level,
-        "next_level_at": verse::xp::xp_to_reach(level + 1),
+        "next_level_at": verse_net::xp::xp_to_reach(level + 1),
         "titles": snapshot.titles_of(keys),
         "per_key": keys.iter().map(|key| json!({
             "pubkey": key,
@@ -517,7 +517,7 @@ pub fn board(output: &Output, args: &Args) -> Result<u8, String> {
             "refused": snapshot.refused,
             "conflicts": snapshot.conflicts,
             "me": ledger_value(snapshot, &reading.mine),
-            "curve": verse::xp::CURVE,
+            "curve": verse_net::xp::CURVE,
             "standings": standings.iter().map(|(key, xp)| json!({
                 "pubkey": key,
                 "xp": xp,
@@ -598,7 +598,7 @@ mod tests {
         assert_eq!(value["xp"], 0);
         assert_eq!(value["level"], 1);
         assert_eq!(value["curve"], "trainer-curve-v1");
-        assert_eq!(value["next_level_at"], verse::xp::xp_to_reach(2));
+        assert_eq!(value["next_level_at"], verse_net::xp::xp_to_reach(2));
     }
 }
 
@@ -629,7 +629,7 @@ mod trust_output_tests {
     #[test]
     fn quest_list_and_board_quest_table_offer_an_action_after_rows() {
         let mut value = json!({"referees": 0, "quests": []});
-        let message = verse::xp::no_referees_message();
+        let message = verse_net::xp::no_referees_message();
         assert_eq!(render_quests(&value), format!("no quests\n{message}"));
         value["quests"] =
             json!([{"address": "example@1", "title": "Example quest", "trusted": false}]);
