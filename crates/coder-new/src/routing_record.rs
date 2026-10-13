@@ -118,6 +118,9 @@ pub struct Inputs {
     /// briefing of its piece of work. `None` when no briefing was chosen.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context: Option<crate::context::Trace>,
+    /// The dispatch plan this turn is a part of (#11474).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<PlanPart>,
 }
 
 /// What made the choice.
@@ -137,6 +140,11 @@ pub enum Rule {
     /// ([`crate::router`]); for a follow-up judged a continuation, it chose
     /// to stay.
     Router,
+    /// A checkpoint moved the work here from another harness, with a
+    /// briefing ([`crate::escalate`], #11474).
+    Escalated,
+    /// A checkpoint tried the work again on the same harness.
+    Retried,
     /// The router asked System One and had no answer in time, so the fixed
     /// rule picked: a follow-up stays on its harness, a new chat takes the
     /// first admitted candidate. Also: the chosen harness failed and this
@@ -200,6 +208,44 @@ pub enum Line {
     /// (#11461). Written when that message is sent, after the earlier
     /// turn's outcome, so it is its own line.
     Redone(RedoneLine),
+    /// A checkpoint's escalation call (#11474): after the turn `id` ended
+    /// with failed checks, an error, a limit or a stall, or was redone.
+    Escalated(EscalatedLine),
+}
+
+/// An escalation call as written.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct EscalatedLine {
+    /// The turn whose end (or redo) was the checkpoint.
+    pub id: String,
+    pub at_ms: u64,
+    pub chat: Option<String>,
+    pub from: Harness,
+    /// Where the work went; `None` when it stayed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<Harness>,
+    pub checkpoint: crate::escalate::Checkpoint,
+    /// `stay`, `retry` or `move`.
+    pub action: String,
+    pub question_set: String,
+    pub policy: String,
+    pub step: String,
+    #[serde(default)]
+    pub probabilities: Vec<Probability>,
+    /// How long System One took, or how long the checkpoint waited.
+    pub ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub missing: Option<String>,
+}
+
+/// Where a turn sits in a dispatch plan (#11474).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlanPart {
+    /// The plan's id, shared by its parts.
+    pub plan: String,
+    /// The part's number, from one, and how many parts there are.
+    pub part: u32,
+    pub parts: u32,
 }
 
 /// Why a turn counts as redone.
@@ -497,6 +543,11 @@ impl Recorder {
         let _ = self.append(at_ms, &line);
     }
 
+    /// Writes an escalation call.
+    pub fn escalated(&self, line: EscalatedLine) {
+        let _ = self.append(line.at_ms, &Line::Escalated(line));
+    }
+
     /// Writes the outcome of `open`.
     pub fn ended(&self, open: &Open, outcome: Outcome) {
         let at_ms = atif::now_ms();
@@ -770,6 +821,10 @@ fn of(by: &mut BTreeMap<String, HarnessSummary>, harness: Harness) -> &mut Harne
 impl crate::App {
     /// The recorder for this chat: a test thread's folder, or, for a real
     /// chat ([`crate::App::routing_records`]), this computer's.
+    pub(crate) fn routing_recorder(&self) -> Option<Recorder> {
+        self.recorder()
+    }
+
     fn recorder(&self) -> Option<Recorder> {
         if cfg!(test) || self.routing_records {
             recorder()
@@ -840,6 +895,7 @@ impl crate::App {
                 probabilities,
                 router,
                 context,
+                plan: self.plan_part(),
             },
             harness,
             rule,
@@ -937,6 +993,7 @@ mod tests {
                 }],
                 router: None,
                 context: None,
+                plan: None,
             },
             harness,
             rule: Rule::FirstAdmitted,
@@ -1193,14 +1250,14 @@ mod tests {
             .iter()
             .filter_map(|line| match line {
                 Line::Chose(chose) => Some(chose),
-                Line::Ended(_) | Line::Redone(_) => None,
+                _ => None,
             })
             .collect();
         let ended: Vec<&EndedLine> = lines
             .iter()
             .filter_map(|line| match line {
                 Line::Ended(ended) => Some(ended),
-                Line::Chose(_) | Line::Redone(_) => None,
+                _ => None,
             })
             .collect();
         assert_eq!(lines.len(), 6, "{lines:?}");

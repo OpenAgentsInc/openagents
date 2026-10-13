@@ -732,6 +732,10 @@ pub struct Pending {
     /// Whether a selection was considered after the route's answer, so a
     /// follow-up starts at most one.
     pub context_considered: bool,
+    /// A redo's checkpoint call, asked instead of the route (#11474).
+    pub escalation: Option<crate::escalate::Pending>,
+    /// Whether a list-shaped message is several pieces of work (#11474).
+    pub dispatch: Option<crate::dispatch::Asking>,
     pub started: Instant,
     pub situation: Situation,
     /// The chat the message was sent in: the answer lands there or

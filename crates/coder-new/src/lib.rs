@@ -34,7 +34,9 @@ mod copy_guard_tests;
 pub mod credentials;
 mod delegation_events;
 mod demo;
+pub mod dispatch;
 pub mod engine_update;
+pub mod escalate;
 pub mod file_tools;
 pub mod fleet;
 mod fleet_app;
@@ -296,6 +298,16 @@ pub struct App {
     /// How the next turn's briefing was chosen, for the routing record
     /// (#11473).
     pub(crate) routing_context: Option<context::Trace>,
+    /// A checkpoint waiting for System One's call (#11474).
+    pub(crate) pending_escalation: Option<escalate::Pending>,
+    /// The chat's dispatch plan for a multi-part ask, while it runs
+    /// (#11474).
+    pub(crate) plan: Option<dispatch::Plan>,
+    /// The next message is a new piece of work whatever the chat holds: a
+    /// plan's part.
+    pub(crate) fresh_work: bool,
+    /// A plan's part is being sent.
+    pub(crate) sending_part: bool,
 }
 
 #[derive(Default)]
@@ -1156,7 +1168,13 @@ impl App {
                         }
                     }
                 }
+                let failed = error.clone();
                 self.record_end(None, model, error);
+                // A turn that ended with failed checks, an error, a limit or
+                // a stall is a checkpoint (#11474).
+                self.checkpoint_turn(failed.as_deref());
+                // A plan's part ended: the next part, or the report.
+                self.advance_plan(failed.as_deref());
                 self.scroll_main_to_end();
             }
             _ => {}
@@ -1775,6 +1793,12 @@ impl App {
             && self.selected_agent.is_none()
             && (!self.draft.text.trim().is_empty() || !self.composer.images.is_empty())
         {
+            // The person's own message ends a checkpoint still waiting
+            // for its call: they went on (#11474).
+            if !self.route_settled && !self.sending_part {
+                self.pending_escalation = None;
+                self.plan = None;
+            }
             // A message sent while another waits for its route queues
             // behind it; a routing point waits for System One (#11460).
             if self.pending_route.is_some() {

@@ -68,6 +68,13 @@ pub struct Chat {
     /// work, chosen at its routing point (#11473); `None` loads what each
     /// harness loaded before.
     pub briefing: Option<crate::context::Briefing>,
+    /// Which of the person's messages started the current piece of work,
+    /// counting from zero (#11474).
+    pub work_started: usize,
+    /// The current piece of work was tried again at a checkpoint.
+    pub retried: bool,
+    /// The current piece of work moved harness at a checkpoint.
+    pub moved: bool,
 }
 
 /// A Claude Code session a chat holds, and how far into the chat it reaches.
@@ -598,6 +605,7 @@ impl Background {
         app.poll_shells();
         app.poll_long_session();
         app.poll_route();
+        app.poll_escalation();
         app.process_prompt_queue();
     }
 

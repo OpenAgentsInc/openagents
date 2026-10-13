@@ -694,7 +694,7 @@ const CLAUDE_RAIL: &str = "Claude";
 
 /// "Claude" and, in parentheses, the model Claude Code runs, as /models
 /// names it.
-fn claude_rail_label() -> String {
+pub(crate) fn claude_rail_label() -> String {
     let model = crate::claude::choice().model;
     let name = crate::claude::MODELS
         .iter()

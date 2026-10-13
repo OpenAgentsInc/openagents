@@ -175,6 +175,17 @@ fn claude_five_hour(now: u64) -> Option<u8> {
         .map(|window| window.used_percent)
 }
 
+/// The share of the Claude plan's five-hour window used now, as Claude Code
+/// last reported it.
+pub(crate) fn claude_five_hour_now() -> Option<u8> {
+    claude_five_hour(atif::now_ms() / 1000)
+}
+
+/// Whether a Claude plan window Claude Code reported is at its limit now.
+pub(crate) fn claude_at_limit_now() -> bool {
+    claude_at_limit(atif::now_ms() / 1000)
+}
+
 /// Who pays when `harness` runs under `facts`.
 #[must_use]
 pub fn payer(harness: Harness, facts: &Facts) -> Payer {
@@ -330,9 +341,14 @@ impl App {
         {
             return false;
         }
+        if self.ask_redo() {
+            return true;
+        }
         let facts = Facts::read(self);
         let candidates = candidates(&facts);
-        let first = self.live.user_count() == 0;
+        // A chat's first message, or a plan's part: a new piece of work
+        // whatever the chat holds.
+        let first = self.live.user_count() == 0 || self.fresh_work;
         // Only a person's chat chooses a briefing: the terminal and `coder
         // chat`, never an App a helper or an integration test builds.
         let context_on = crate::context::enabled() && (cfg!(test) || self.routing_records);
@@ -341,20 +357,98 @@ impl App {
         let library = (context_on && first)
             .then(|| crate::context::library(&self.context_cwd()))
             .flatten();
-        if !route && library.is_none() {
+        let plan_shaped =
+            self.dispatch_asks(first) && crate::dispatch::parts(&self.draft.text).is_some();
+        if !route && library.is_none() && !plan_shaped {
             return false;
         }
-        let situation = self.situation(&facts, &candidates);
+        let mut situation = self.situation(&facts, &candidates);
+        if self.fresh_work {
+            situation.current = None;
+        }
         let earlier = crate::router::earlier(&self.live.entries);
         let receiver =
             route.then(|| crate::router::ask(&earlier, &self.draft.text, situation.follow_up()));
         let context =
             library.map(|library| crate::context::ask(library, &earlier, &self.draft.text));
+        let dispatch = self
+            .dispatch_asks(first)
+            .then(|| crate::dispatch::ask(&earlier, &self.draft.text))
+            .flatten();
         self.pending_route = Some(crate::router::Pending {
             receiver,
             answer: None,
             context,
             context_considered: first,
+            escalation: None,
+            dispatch,
+            started: std::time::Instant::now(),
+            situation,
+            session: self.session_id().map(str::to_owned),
+            draft: std::mem::take(&mut self.draft),
+            composer: std::mem::take(&mut self.composer),
+        });
+        true
+    }
+
+    /// A message that asks for the same thing as the chat's last turn is a
+    /// checkpoint (#11474): it waits for the escalation call instead of a
+    /// route, and a move hands the work over with a briefing.
+    fn ask_redo(&mut self) -> bool {
+        let Some(current) = self.live.runs_on else {
+            return false;
+        };
+        let same = self.last_routed.as_ref().is_some_and(|last| {
+            !last.prompt.trim().is_empty() && last.prompt.trim() == self.draft.text.trim()
+        });
+        if !same
+            || self.live.moved
+            || !crate::escalate::enabled()
+            || !(cfg!(test) || self.routing_records)
+        {
+            return false;
+        }
+        let facts = Facts::read(self);
+        let candidates = candidates(&facts);
+        if crate::escalate::stronger(current, &candidates.admitted).is_none() {
+            return false;
+        }
+        let situation = self.situation(&facts, &candidates);
+        let entries = &self.live.entries;
+        let evidence = crate::escalate::evidence(crate::escalate::last_turn(entries));
+        let task = self.draft.text.clone();
+        let earlier = crate::router::earlier(entries);
+        let receiver = crate::escalate::ask(crate::escalate::state(
+            &earlier,
+            &task,
+            &crate::escalate::harness_words(self, current),
+            crate::escalate::Checkpoint::Redo,
+            &evidence,
+        ));
+        let escalation = crate::escalate::Pending {
+            receiver: Some(receiver),
+            answer: None,
+            started: std::time::Instant::now(),
+            checkpoint: crate::escalate::Checkpoint::Redo,
+            situation: crate::escalate::Situation {
+                current,
+                admitted: candidates.admitted.clone(),
+                claude_five_hour: situation.claude_five_hour,
+                retried: self.live.retried,
+                moved: self.live.moved,
+            },
+            task,
+            evidence,
+            turn: self.last_routed.as_ref().map(|last| last.id.clone()),
+            session: self.session_id().map(str::to_owned),
+        };
+        self.pending_route = Some(crate::router::Pending {
+            receiver: None,
+            answer: None,
+            context: None,
+            context_considered: true,
+            escalation: Some(escalation),
+            dispatch: None,
             started: std::time::Instant::now(),
             situation,
             session: self.session_id().map(str::to_owned),
@@ -387,11 +481,25 @@ impl App {
                 .then(|| crate::context::library(&self.context_cwd()))
                 .flatten();
         let earlier = crate::router::earlier(&self.live.entries);
+        let dispatch = (new_work && self.dispatch_asks(true))
+            .then(|| crate::dispatch::ask(&earlier, &latest))
+            .flatten();
         let Some(pending) = self.pending_route.as_mut() else {
             return;
         };
         pending.context_considered = true;
         pending.context = library.map(|library| crate::context::ask(library, &earlier, &latest));
+        pending.dispatch = dispatch;
+    }
+
+    /// Whether a routing point for new work asks if the message is several
+    /// pieces of work: a person's chat, no plan under way.
+    fn dispatch_asks(&self, new_work: bool) -> bool {
+        new_work
+            && self.plan.is_none()
+            && !self.sending_part
+            && crate::dispatch::enabled()
+            && (cfg!(test) || self.routing_records)
     }
 
     /// Whether a message waits for System One's judgment.
@@ -419,6 +527,22 @@ impl App {
         {
             return;
         }
+        if self
+            .pending_route
+            .as_mut()
+            .and_then(|pending| pending.escalation.as_mut())
+            .is_some_and(|escalation| !escalation.settled())
+        {
+            return;
+        }
+        if self
+            .pending_route
+            .as_mut()
+            .and_then(|pending| pending.dispatch.as_mut())
+            .is_some_and(|asking| !asking.settled())
+        {
+            return;
+        }
         self.finish_route();
     }
 
@@ -434,6 +558,20 @@ impl App {
             .pending_route
             .as_mut()
             .and_then(|pending| pending.context.as_mut())
+        {
+            asking.settle();
+        }
+        if let Some(escalation) = self
+            .pending_route
+            .as_mut()
+            .and_then(|pending| pending.escalation.as_mut())
+        {
+            escalation.settle();
+        }
+        if let Some(asking) = self
+            .pending_route
+            .as_mut()
+            .and_then(|pending| pending.dispatch.as_mut())
         {
             asking.settle();
         }
@@ -490,9 +628,29 @@ impl App {
             self.cancel_route();
             return;
         }
-        let Some(pending) = self.pending_route.take() else {
+        let Some(mut pending) = self.pending_route.take() else {
             return;
         };
+        // A list-shaped ask System One judged several pieces of work runs
+        // as a plan, each part routed on its own (#11474).
+        if let Some(plan) = pending
+            .dispatch
+            .take()
+            .and_then(crate::dispatch::Asking::plan)
+        {
+            self.start_plan(pending.draft.text, plan);
+            return;
+        }
+        // A new piece of work starts here: its first message, a plan's
+        // part, or a follow-up the router judged new (#11474).
+        if pending.situation.current.is_none() || pending.new_work() {
+            self.live.work_started = self.live.user_count();
+            self.live.retried = false;
+            self.live.moved = false;
+        }
+        if let Some(escalation) = pending.escalation.take() {
+            pending.draft = self.redo_call(&escalation, pending.draft);
+        }
         if pending.receiver.is_some() {
             self.routed = Some(crate::router::decide(
                 pending
@@ -525,6 +683,45 @@ impl App {
             self.draft.text.push('\n');
             self.draft.text.push_str(&typed.text);
             self.draft.cursor = self.draft.text.len();
+        }
+    }
+
+    /// Acts on a redo's checkpoint call: a move sends the briefing in place
+    /// of the repeated message, on the stronger harness.
+    fn redo_call(
+        &mut self,
+        escalation: &crate::escalate::Pending,
+        draft: crate::Draft,
+    ) -> crate::Draft {
+        let (decision, probabilities, ms, missing) = escalation.decide();
+        self.record_escalation(escalation, decision, probabilities.clone(), ms, missing);
+        let crate::escalate::Call::To(to) = decision.call else {
+            return draft;
+        };
+        self.live.moved = true;
+        let text = crate::escalate::handoff(
+            &crate::escalate::harness_words(self, to),
+            &crate::escalate::harness_words(self, escalation.situation.current),
+            escalation.checkpoint,
+            &escalation.task,
+            &escalation.evidence,
+        );
+        self.live.runs_on = Some(to);
+        self.routing_rule = Some(crate::routing_record::Rule::Escalated);
+        self.routing_router = Some((
+            probabilities,
+            crate::router::Trace {
+                question_set: crate::escalate::QUESTION_SET.into(),
+                policy: crate::escalate::POLICY.into(),
+                step: Some(decision.step.name()),
+                follow_up: true,
+                ms,
+                missing: None,
+            },
+        ));
+        crate::Draft {
+            cursor: text.len(),
+            text,
         }
     }
 

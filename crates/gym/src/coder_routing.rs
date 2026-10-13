@@ -31,6 +31,21 @@
 //! mean seconds + fail_usd × (1 − success rate), the offline accounting in
 //! `docs/optimization/coder-components.md`.
 //!
+//! **Escalation (#11474).** Coder moves work to a stronger harness only at
+//! a checkpoint: the loop goes first, and when its turn ends with failed
+//! checks the work moves to Claude Code with a briefing. On each task the
+//! loop failed at least once, the report prices that against Claude Code
+//! alone with the runtime objective of `docs/optimization/coder-components.md`:
+//! J_runtime = E[c₀ + λ·w₀] + Pr(R)·E[c_F + λ·w_F | R] + fail_usd × Pr(final
+//! failure). It assumes the checkpoint catches every failure of the loop and
+//! that Claude Code after a handoff does as well as Claude Code alone, which
+//! these trials can't show; so it also gives the break-even false-accept
+//! rate, the share of the loop's failures the checkpoint may miss before
+//! Claude Code alone is better. From the routing records it counts the
+//! checkpoints, the moves and retries, how often the harness that took the
+//! work over succeeded, and the false accepts the records can see: turns
+//! the checkpoint let stand that the person then redid.
+//!
 //! **Promotion gate.** A router policy version becomes the default only when
 //! its mean regret on held-out tasks is below the fixed rule's, and the
 //! recorded real turns, where there are enough of them, do not show it
@@ -516,6 +531,114 @@ pub fn gate(policy: &str, tasks: &[TaskRow], classes: &[ClassRow]) -> Gate {
     }
 }
 
+/// Loop-then-escalate against the fallback alone on one task.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EscalationRow {
+    pub task: String,
+    /// The share of the loop's trials that failed: how often the work moves.
+    pub moves: f64,
+    pub loop_then: f64,
+    pub fallback_alone: f64,
+    /// The share of the loop's failures the checkpoint may miss before the
+    /// fallback alone is better; `None` when the fallback alone is already
+    /// better, or missing them costs nothing more.
+    pub break_even_false_accepts: Option<f64>,
+}
+
+/// The escalation replay on every task the loop failed at least once.
+#[must_use]
+pub fn escalation(tasks: &[TaskRow], params: &Params) -> Vec<EscalationRow> {
+    tasks
+        .iter()
+        .filter_map(|row| {
+            let first = row.harnesses.get("coder-loop")?;
+            let fallback = row.harnesses.get(FIXED_RULE)?;
+            if first.trials == 0 || fallback.trials == 0 || first.passes == first.trials {
+                return None;
+            }
+            let lambda = params.usd_per_second;
+            let c0 = first.cost? + lambda * first.seconds?;
+            let cf = fallback.cost? + lambda * fallback.seconds?;
+            let q = 1.0 - first.passes as f64 / first.trials as f64;
+            let pf = fallback.passes as f64 / fallback.trials as f64;
+            let loop_then = c0 + q * cf + params.fail_usd * q * (1.0 - pf);
+            let fallback_alone = cf + params.fail_usd * (1.0 - pf);
+            // Each missed failure saves the fallback's cost and keeps the
+            // loop's failure: J grows by q × (fail_usd × pf − cf) per unit.
+            let slope = q * (params.fail_usd * pf - cf);
+            let break_even_false_accepts = (slope > 0.0 && loop_then < fallback_alone)
+                .then(|| ((fallback_alone - loop_then) / slope).clamp(0.0, 1.0));
+            Some(EscalationRow {
+                task: row.task.clone(),
+                moves: q,
+                loop_then,
+                fallback_alone,
+                break_even_false_accepts,
+            })
+        })
+        .collect()
+}
+
+/// What the routing records show about checkpoints.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Escalations {
+    /// Checkpoint calls by checkpoint (`failed-checks`, `error`, …).
+    pub checkpoints: BTreeMap<String, usize>,
+    /// Calls by action (`stay`, `retry`, `move`).
+    pub actions: BTreeMap<String, usize>,
+    /// Moves and retries whose next turn ended, and how many of those
+    /// succeeded.
+    pub followed: usize,
+    pub followed_succeeded: usize,
+    /// Turns the checkpoint let stand (ended done, checks not failed) that
+    /// the person redid.
+    pub false_accepts: usize,
+    /// Turns the checkpoint let stand.
+    pub accepted: usize,
+}
+
+/// The escalation lines in `dir`, against the turns they followed.
+#[must_use]
+pub fn read_escalations(dir: &Path, turns: &[Turn]) -> Escalations {
+    let mut out = Escalations::default();
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "jsonl"))
+        .collect();
+    files.sort();
+    for file in files {
+        let Ok(text) = std::fs::read_to_string(&file) else {
+            continue;
+        };
+        for value in text
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter(|value| value["type"] == "escalated")
+        {
+            *out.checkpoints
+                .entry(value["checkpoint"].as_str().unwrap_or("?").to_owned())
+                .or_default() += 1;
+            *out.actions
+                .entry(value["action"].as_str().unwrap_or("?").to_owned())
+                .or_default() += 1;
+        }
+    }
+    for turn in turns.iter().filter(|turn| turn.ended.is_some()) {
+        if matches!(turn.rule.as_str(), "escalated" | "retried") {
+            out.followed += 1;
+            out.followed_succeeded += usize::from(turn.succeeded());
+        }
+        if turn.ended.as_deref() == Some("done") && turn.checks_passed != Some(false) {
+            out.accepted += 1;
+            out.false_accepts += usize::from(turn.redone);
+        }
+    }
+    out
+}
+
 /// The whole report.
 #[derive(Clone, Debug)]
 pub struct Report {
@@ -527,6 +650,8 @@ pub struct Report {
     pub skipped: usize,
     pub classes: Vec<ClassRow>,
     pub gate: Gate,
+    pub escalation: Vec<EscalationRow>,
+    pub escalations: Escalations,
 }
 
 /// Builds the report from a matrix, the picks, and a records folder.
@@ -536,6 +661,10 @@ pub fn report(matrix: &Matrix, picks: Picks, records: Option<&Path>) -> Report {
     let (turns, skipped) = records.map(read_turns).unwrap_or_default();
     let classes = classes(&turns, &matrix.params);
     let gate = gate(&picks.policy, &tasks, &classes);
+    let escalation = escalation(&tasks, &matrix.params);
+    let escalations = records
+        .map(|dir| read_escalations(dir, &turns))
+        .unwrap_or_default();
     Report {
         params: matrix.params,
         picks,
@@ -545,6 +674,8 @@ pub fn report(matrix: &Matrix, picks: Picks, records: Option<&Path>) -> Report {
         skipped,
         classes,
         gate,
+        escalation,
+        escalations,
     }
 }
 
@@ -605,6 +736,26 @@ impl Report {
                     "harnesses": class.harnesses.iter().map(|(name, g)| (name.clone(), group_json(g))).collect::<serde_json::Map<_, _>>(),
                 })).collect::<Vec<_>>(),
             },
+            "escalation": {
+                "objective": "J_runtime = E[c0 + λ·w0] + Pr(R)·E[c_F + λ·w_F | R] + fail_usd × Pr(final failure); the loop first, Claude Code at the checkpoint; a perfect trigger and a handoff as good as Claude Code alone",
+                "tasks": self.escalation.iter().map(|row| json!({
+                    "task": row.task,
+                    "moves": row.moves,
+                    "loop_then_claude_code_usd": row.loop_then,
+                    "claude_code_alone_usd": row.fallback_alone,
+                    "break_even_false_accepts": row.break_even_false_accepts,
+                })).collect::<Vec<_>>(),
+                "summary": self.escalation_summary(),
+                "recorded": {
+                    "checkpoints": self.escalations.checkpoints,
+                    "actions": self.escalations.actions,
+                    "followed": self.escalations.followed,
+                    "followed_succeeded": self.escalations.followed_succeeded,
+                    "accepted": self.escalations.accepted,
+                    "false_accepts": self.escalations.false_accepts,
+                    "unnecessary_moves": "not measured: it needs the same work run without the move",
+                },
+            },
             "gate": {
                 "policy": self.gate.policy,
                 "rule": format!("a policy becomes the default only when its mean held-out regret is below the fixed rule's and recorded turns with at least {MIN_TURNS} turns per side do not show it worse"),
@@ -617,6 +768,44 @@ impl Report {
                 "reason": self.gate.reason,
             },
         })
+    }
+
+    /// The escalation result in one plain sentence.
+    #[must_use]
+    pub fn escalation_summary(&self) -> String {
+        let rows = &self.escalation;
+        if rows.is_empty() {
+            return "No task has both harnesses measured with a loop failure, so loop-then-escalate is not priced.".to_owned();
+        }
+        let wins = rows
+            .iter()
+            .filter(|row| row.loop_then < row.fallback_alone)
+            .count();
+        let mean =
+            |f: fn(&EscalationRow) -> f64| rows.iter().map(f).sum::<f64>() / rows.len() as f64;
+        let (then, alone) = (mean(|row| row.loop_then), mean(|row| row.fallback_alone));
+        let floor = rows
+            .iter()
+            .filter_map(|row| row.break_even_false_accepts)
+            .fold(f64::INFINITY, f64::min);
+        format!(
+            "On the {} tasks the loop failed at least once, loop-then-Claude-Code {} Claude Code alone on J_runtime: mean ${then:.4} against ${alone:.4}, lower on {wins} of {}. This assumes the checkpoint catches every failure and that Claude Code after a handoff does as well as alone, which these trials don't measure{}.",
+            rows.len(),
+            if then < alone {
+                "beats"
+            } else {
+                "does not beat"
+            },
+            rows.len(),
+            if floor.is_finite() {
+                format!(
+                    "; it stays ahead on every task where it wins while the checkpoint misses fewer than {:.0}% of the loop's failures",
+                    floor * 100.0
+                )
+            } else {
+                String::new()
+            }
+        )
     }
 
     #[must_use]
@@ -712,6 +901,48 @@ impl Report {
                 ));
             }
         }
+        lines.push(String::new());
+        lines.push(
+            "Escalation at checkpoints: the loop first, Claude Code when its checks fail"
+                .to_owned(),
+        );
+        lines.push(format!(
+            "  {:<24} {:>7} {:>14} {:>14} {:>12}",
+            "task", "moves", "J loop→cc", "J cc alone", "break-even"
+        ));
+        for row in &self.escalation {
+            lines.push(format!(
+                "  {:<24} {:>6.0}% {:>14} {:>14} {:>12}",
+                row.task,
+                row.moves * 100.0,
+                j(Some(row.loop_then)),
+                j(Some(row.fallback_alone)),
+                row.break_even_false_accepts
+                    .map_or("—".to_owned(), |a| format!("{:.0}% missed", a * 100.0))
+            ));
+        }
+        lines.push(format!("  {}", self.escalation_summary()));
+        let e = &self.escalations;
+        lines.push(format!(
+            "  Recorded: {} checkpoint calls{}; {} moves or retries ended, {} succeeded; {} of {} accepted turns redone (false accepts); unnecessary moves not measured.",
+            e.actions.values().sum::<usize>(),
+            if e.actions.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " ({})",
+                    e.actions
+                        .iter()
+                        .map(|(action, n)| format!("{n} {action}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            },
+            e.followed,
+            e.followed_succeeded,
+            e.false_accepts,
+            e.accepted,
+        ));
         lines.push(String::new());
         lines.push(format!(
             "Promotion gate · {}: {} ({}). Held-out mean regret: router {}, fixed rule {}. Recorded classes with {MIN_TURNS}+ turns on both sides: {}.",
@@ -908,6 +1139,70 @@ mod tests {
         assert_eq!((claude.checked, claude.checks_passed), (2, 1));
         assert_eq!(repo.router.turns, 1);
         assert_eq!(repo.oracle.as_deref(), Some("claude-code"));
+    }
+
+    /// The loop fails the hard task: moving it to Claude Code at the
+    /// checkpoint costs the loop's try plus Claude Code's, and still beats
+    /// Claude Code alone only when the loop's try is cheap enough.
+    #[test]
+    fn loop_then_escalate_is_priced_on_the_tasks_the_loop_fails() {
+        let mut attempts = Vec::new();
+        for reward in [1.0, 0.0, 0.0] {
+            attempts.push(attempt("mixed", "loop", reward, 0.01, 10_000));
+            attempts.push(attempt("mixed", "cc", 1.0, 0.5, 60_000));
+        }
+        for _ in 0..3 {
+            attempts.push(attempt("easy", "loop", 1.0, 0.01, 10_000));
+            attempts.push(attempt("easy", "cc", 1.0, 0.5, 60_000));
+        }
+        let matrix = Matrix::from_records(
+            &Records {
+                attempts,
+                ..Records::default()
+            },
+            Params::default(),
+            None,
+        );
+        let rows = tasks(
+            &matrix,
+            &picks(&[("mixed", "claude-code"), ("easy", "coder-loop")]),
+        );
+        let replay = escalation(&rows, &Params::default());
+        assert_eq!(replay.len(), 1, "only the task the loop failed");
+        let row = &replay[0];
+        assert!((row.moves - 2.0 / 3.0).abs() < 1e-9);
+        // 0.01 + 1 s of λ, then two thirds of Claude Code's 0.5 + 6 s.
+        let cf = 0.5 + 0.0001 * 60.0;
+        let expected = 0.01 + 0.0001 * 10.0 + (2.0 / 3.0) * cf;
+        assert!((row.loop_then - expected).abs() < 1e-9, "{}", row.loop_then);
+        assert!((row.fallback_alone - cf).abs() < 1e-9);
+        assert!(row.loop_then < row.fallback_alone);
+        let a = row.break_even_false_accepts.unwrap();
+        assert!(a > 0.0 && a < 1.0, "{a}");
+    }
+
+    #[test]
+    fn recorded_escalations_count_moves_their_success_and_false_accepts() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            &[
+                chose("a", Some("c1"), "coder-loop", "router", "repo_change"),
+                ended("a", "done", 0.001, 4_000, Some(false)),
+                json!({"type": "escalated", "id": "a", "checkpoint": "failed-checks", "action": "move"}),
+                chose("b", Some("c1"), "claude-code", "escalated", "repo_change"),
+                ended("b", "done", 0.1, 30_000, Some(true)),
+                chose("c", Some("c2"), "coder-loop", "router", "answer"),
+                ended("c", "done", 0.001, 2_000, None),
+                json!({"type": "redone", "id": "c", "why": "same-message"}),
+            ],
+        );
+        let (turns, _) = read_turns(dir.path());
+        let found = read_escalations(dir.path(), &turns);
+        assert_eq!(found.checkpoints["failed-checks"], 1);
+        assert_eq!(found.actions["move"], 1);
+        assert_eq!((found.followed, found.followed_succeeded), (1, 1));
+        assert_eq!((found.accepted, found.false_accepts), (2, 1));
     }
 
     /// The checked-in picks read, and every task names a chat harness.

@@ -462,7 +462,7 @@ fn a_held_message_runs_where_the_router_sends_it_and_is_recorded() {
         .into_iter()
         .filter_map(|line| match line {
             crate::routing_record::Line::Chose(chose) => Some(chose),
-            crate::routing_record::Line::Ended(_) | crate::routing_record::Line::Redone(_) => None,
+            _ => None,
         })
         .collect();
     let _ = std::fs::remove_dir_all(&dir);

@@ -61,3 +61,27 @@ sends to the cheaper Coder loop, and this task set has none. The next policy
 version's headroom is repository work the loop passes reliably. It needs
 held-out tasks beyond these eight before it can be tuned, because tuning on
 them would use up their held-out status.
+
+## Escalation at checkpoints (#11474)
+
+Coder moves work to another harness only at a checkpoint: a turn that ended
+with failed checks, an error, a usage limit or a stall, or a message asking
+for the same thing again. System One (`escalate-v1`) judges whether to stop,
+try again or move, and `escalate-policy-v1` decides. `gym coder routing`
+prices the loop first, with Claude Code taking over when its checks fail,
+on the three tasks the loop failed at least once:
+
+| Task | Moves | J, loop then Claude Code | J, Claude Code alone |
+| --- | ---: | ---: | ---: |
+| `cancel-async-tasks` | 33% | $0.0679 | $0.1885 |
+| `headless-terminal` | 33% | $0.0569 | $0.1505 |
+| `log-summary-date-ranges` | 100% | $0.1009 | $0.0965 |
+
+Loop-then-escalate wins on two of the three (mean $0.0752 against $0.1452).
+It loses on `log-summary-date-ranges`, where the loop always fails and its
+attempt is added cost. The replay assumes the checkpoint catches every
+failure and that Claude Code after a handoff does as well as alone; neither
+is measured here. On the tasks where it wins, it stays ahead while the
+checkpoint misses fewer than 33% of the loop's failures. The recorded
+escalation lines will show the real trigger's false accepts and the
+fallback's success as they accumulate.
