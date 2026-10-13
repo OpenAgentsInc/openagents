@@ -7,8 +7,10 @@
 //! example after `scripts/kb-relay.sh`:
 //!
 //! ```sh
-//! VERSE_TEST_RELAY=ws://127.0.0.1:7490 cargo test -p openagents-cli --test verify_card
+//! VERSE_TEST_RELAY=ws://127.0.0.1:7490 cargo test -p openagents-cli --features verse --test verify_card
 //! ```
+
+#![cfg(feature = "verse")]
 
 use std::collections::BTreeSet;
 use std::process::Command;
