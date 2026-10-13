@@ -1663,6 +1663,14 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn background_commands_run_through_the_loops_hooks() {
+        // The approval gate is process-wide: a parallel test that installs
+        // one (crew_tool_free_scope_..., the bundled runtime's gate tests)
+        // turns background shells off (`shells::available`) and holds
+        // commands for a person, so this test waits for the gate's lock
+        // as they do. Without it the test failed in full parallel runs.
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let directory = tempfile::tempdir().unwrap();
         let worktree = directory.path().canonicalize().unwrap();
         std::fs::write(worktree.join(".env"), "KEY=x\n").unwrap();
