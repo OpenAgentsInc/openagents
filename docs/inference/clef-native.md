@@ -1445,6 +1445,38 @@ calls and 111 synchronous copies leave about 4.6 ms of GPU gaps per request
 (Flash 0.76k: 7.1 ms idle in a 38 ms span). A device-resident head, as on
 Metal (M3 Round 3), is the next fixed-cost step.
 
+### Round 10 (2026-10-13): FP8 fails its correctness gate, stays off (#11445)
+
+Before writing an FP8 kernel, the numerics were gated with a simulation:
+`PSIONIC_CLEF_FP8_SIM=1` runs every trunk projection through the dequantize
++ cuBLAS path with f32 accumulation, after rounding both operands to E4M3
+with one scale per 128 k of a row (`fake_e4m3_rows_kernel`; amax to 448).
+That is the finest scaling an FP8 GEMM would use (DeepSeek-V3's 1x128
+tiles) with exact products and f32 sums, so a real FP8 kernel can do no
+better. Attention and the DeltaNet scan stay f16/f32. The control is the
+same path without the rounding (`PSIONIC_CLEF_HOPPER=0`, f32 accumulation).
+
+`e2e.py compare` on the 40 e2e requests (104 questions), each against the
+default Hopper f16 lane on the same H100:
+
+| | top answers | max \|Δp\| | p99 \|Δp\| | gate |
+| --- | ---: | ---: | ---: | --- |
+| Flash, control | 100 % | 0.0014 | 0.0008 | |
+| **Flash, FP8** | **98.1 %** | **0.063** | 0.055 | fails (≥ 99 %, ≤ 0.02) |
+| 27B, control | 99.0 % | 0.015 | 0.004 | (the known 0.495/0.505 tie) |
+| **27B, FP8** | **97.1 %** | **0.174** | 0.084 | fails |
+
+Flash's two disagreements are near ties. Its |Δp| is still three times the
+gate, and 27B's p99 alone is four times the gate. Clef's answers are
+probabilities read against calibrated thresholds, and E4M3 activations move
+them too far. The product gates (lab AUC, router ECE) were not run, because
+the first gate already fails.
+
+**Decision: no FP8 mode.** The simulation knob stays as a measurement tool.
+That leaves 1.5x at 4k and 16k in f16 out of reach (Round 9): the GEMMs are
+about 70 % of a prefill at 65–74 % of the f16 peak. Raw rows:
+`gs://openagentsgemini-decision-throughput/clef-11446/out/wip-fp8sim/`.
+
 ## M3 status (closed 2026-10-13)
 
 The [October 10 Mac performance audit](../audits/2026-10-10-clef-mac-performance/README.md)

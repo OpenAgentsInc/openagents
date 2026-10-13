@@ -82,9 +82,9 @@ host and port.
 
 ## The pool and how a decision picks a machine
 
-The policy is deliberately simple and measurable; we revisit it once
-#11441's CUDA batching lands (today Psionic answers one request at a time
-per model and refuses with `503 busy` past 8 queued).
+The policy is deliberately simple and measurable. Since 2026-10-13 each
+machine serves two requests per model together (#11441's CUDA batching,
+`clef-batch-requests=2`) and still refuses with `503 busy` past 8 queued.
 
 1. **Fewest in flight.** A decision goes to the backend with the fewest of
    the gateway's decisions in flight on it; a tie goes to the one listed
@@ -228,27 +228,60 @@ which the pool sends its decisions to the other machine. Pinning `clef-bundle` k
 later `bin/latest` from changing the VM on its next restart; remove the key
 to follow `bin/latest`. Roll back by setting the previous tag.
 
-**Batching (#11441).** `startup.sh` in this repo reads two optional
-metadata keys: `clef-batch-requests` (2–4) puts
-`PSIONIC_CLEF_BATCH_REQUESTS` in both units, and `clef-max-queue` sets
-`--decision-max-queue` (default 8); a unit that changed restarts. That
-version is **not uploaded yet** (the copy in GCS is the one before it), so
-today both machines serve one request at a time. To turn it on: `sh
-deploy/clef-decisions/provision.sh upload`, then per machine
-`add-metadata ... --metadata clef-batch-requests=2` and rerun the startup
-script as above.
+**Batching (#11441).** `startup.sh` reads two optional metadata keys:
+`clef-batch-requests` (2–4) puts `PSIONIC_CLEF_BATCH_REQUESTS` in both
+units, and `clef-max-queue` sets `--decision-max-queue` (default 8); a unit
+that changed restarts. Both machines run with `clef-batch-requests=2`.
 
-**Status 2026-10-12 (upgrade staged, not applied).** Bundles built from
-`9f2a916688` (Hopper GEMM #11443 and CUDA batching #11441) with
-`cloudbuild-psionic.yaml` (`_ARCH=80` for the A100):
-`bin/9f2a916688-sm80/` and `bin/9f2a916688/` (sm_90; `bin/latest` was not
-moved). The A100 still pins `661e02d3ed-sm80`; the H100 still follows
-`bin/latest` (`42334c876b`). Before-numbers taken the same day: the
-current engines match the CPU-lane goldens on all 40 e2e requests (top
-answers 100 %, p99 |Δp| 0.0017 H100, 0.0021 A100); one call, server time:
-Flash 50 ms H100 / 89 ms A100, 27B 136 / 196 ms; 16 at once through
-production: Flash median 193–231 ms H100, 286–329 ms A100, 27B 572–732 /
-838–916 ms, 0 errors.
+**Prefix reuse (#11442).** On the H100 the sm_90 build reuses prefixes by
+default (exact; a 32nd of the device, at most 2 GiB per service; clef-native.md
+Round 9). Responses report `usage.cached_input_tokens`. The A100's sm_80
+build keeps it off.
+
+**Status 2026-10-13 (applied).**
+
+| Machine | `clef-bundle` | Batching | Prefix reuse |
+| --- | --- | --- | --- |
+| `clef-decisions-a100` | `23f44c8ad5-sm80` | 2 | off |
+| `clef-decisions-h100` | `15aac3e386` | 2 | on (2 GiB) |
+
+- e2e (40 requests, 104 questions) after the swap:
+  - A100: Flash vs the CPU-lane goldens 100 %, max |Δp| 0.0049; both models
+    identical to the A100's previous bundle.
+  - H100: Flash vs the goldens 100 %, max |Δp| 0.0010 (0.0022 before).
+    27B vs the old `42334c876b` build 98.1 %, max 0.022: two near ties
+    (0.492/0.508 and a three-way 0.345/0.346). That is the old build's
+    f16 drift; the Hopper path agrees with the f32 reference (#11443).
+- A burst direct to each machine returns `psionic.batch.max_requests` 2.
+- Prefix reuse on the H100 (`15aac3e386`): the same 1.9k-token state with a
+  new question restores 1,872 tokens (Flash 102 → 35 ms, 27B 271 → 60 ms
+  server time). The cache fills to its budget and evicts least recently
+  used.
+- The chat worker runs release `9f2a916688` without `OPENAGENTS_DECISIONS=pylon`
+  (env backup `/etc/coder-worker/coder-worker-chat.env.before-9f2a916688`).
+  Its journal shows `judge answered by door clef`.
+
+Production, 16 `clef-flash` and 16 `clef` calls at once (one predicate on a
+short unique input). The figures are the median `openagents.latency_ms` per
+machine. 0 errors in every round.
+
+| | Flash H100 | Flash A100 | 27B H100 | 27B A100 |
+| --- | ---: | ---: | ---: | ---: |
+| before (serial engines) | 866 ms | 1,260 ms | 867 ms | 1,266 ms |
+| A100 upgraded | 774–854 ms | 825–869 ms | 774–837 ms | 1,272–1,389 ms |
+| both upgraded | 230–330 ms | 842–916 ms | 338–343 ms | 1,304–1,438 ms |
+
+Rollback, one machine at a time:
+- A100: `add-metadata clef-bundle=661e02d3ed-sm80`, `remove-metadata --keys
+  clef-batch-requests`, then rerun the startup script.
+- H100: `add-metadata clef-bundle=42334c876b` (or `remove-metadata --keys
+  clef-bundle` for `bin/latest`), `remove-metadata --keys clef-batch-requests`,
+  then rerun the startup script.
+- Chat worker: `sudo ln -sfn /opt/coder-worker/releases/6818ae7d7d
+  /opt/coder-worker/chat && sudo cp -p
+  /etc/coder-worker/coder-worker-chat.env.before-9f2a916688
+  /etc/coder-worker/coder-worker-chat.env && sudo systemctl restart
+  coder-worker-chat`.
 
 Changing `startup.sh` or `restarter.sh`: edit them here, then
 `sh deploy/clef-decisions/provision.sh upload`. A change to the VM's shape
