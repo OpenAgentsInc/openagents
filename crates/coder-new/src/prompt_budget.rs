@@ -371,6 +371,7 @@ mod tests {
             briefing: None,
             gateway_model: None,
             cheap: None,
+            no_harness: None,
         }
     }
 
