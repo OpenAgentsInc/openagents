@@ -280,6 +280,8 @@ class Tui:
             check=True,
             env={k: v for k, v in os.environ.items() if not k.startswith("TMUX")},
         )
+        # A copy a run makes (an export's path) never reaches a clipboard.
+        subprocess.run(["tmux", "-L", SOCKET, "set-option", "-g", "set-clipboard", "off"], capture_output=True)
 
     def screen(self) -> str:
         p = subprocess.run(["tmux", "-L", SOCKET, "capture-pane", "-p", "-t", self.name], capture_output=True, text=True)
@@ -774,8 +776,15 @@ class Run:
                     self.save("models-turn.txt", p1["screen"])
                 self.models_check("models-turn", p1, rail(tui.screen()))
                 other = [i for i in p1.get("items", []) if not i["current"]]
-                if p1.get("opened") and other and not p1["items"][-1]["current"]:
-                    self.facts["picked_mid_chat"] = p1["items"][-1]
+                if p1.get("opened") and other:
+                    # The walk left the highlight on the last row; go back
+                    # to the first other model (a chat model, not the last
+                    # oddity in a long catalog).
+                    idx = p1["items"].index(other[0])
+                    for _ in range(len(p1["items"]) - 1 - idx):
+                        tui.keys("Up")
+                        time.sleep(0.1)
+                    self.facts["picked_mid_chat"] = other[0]
                     tui.keys("Enter")
                     # A second step (the reasoning level) keeps its default.
                     for _ in range(3):
@@ -989,6 +998,12 @@ class Run:
             if model and not (norm(strip_params(model).split("/")[-1]) in norm(disp) or norm(disp) in norm(strip_params(model))):
                 if not (self.exp.get("display") and norm(self.exp["display"]) == norm(disp)):
                     problems.append(f"`{disp}` but `{model}` ran")
+        # The rail in the new chat, before the first message, named the
+        # same model that then ran (a stale cached model is a lie).
+        dn = (r0 or {}).get("display", "")
+        if dn and model and not (norm(strip_params(model).split("/")[-1]) in norm(dn) or norm(dn) in norm(strip_params(model))):
+            if not (self.exp.get("display") and norm(self.exp["display"]) == norm(dn)):
+                problems.append(f"the new chat's rail said `{dn}`, then `{model}` ran")
         if problems:
             self.fail("rail", "; ".join(problems))
         else:
@@ -1321,11 +1336,17 @@ def plugins_run(coder, root, path, evidence) -> dict:
         tui.stop()
 
 
-CLAIMS_REPO = re.compile(
-    r"(need|require|requires|needs|must (have|pick|choose|connect))[^.?!]{0,50}\b(repo|repository|GitHub repo)",
-    re.I,
-)
-NEGATED = re.compile(r"(don.t|do not|doesn.t|does not|no|not|without)[^.?!]{0,30}(need|require)[^.?!]{0,50}repo", re.I)
+REPO = re.compile(r"\b(repo|repository|repositories)\b", re.I)
+NEEDS = re.compile(r"\b(need|needs|needed|require|requires|required|must|created from|made from)\b", re.I)
+NEGATED = re.compile(r"(don.t|do not|doesn.t|does not|no|not|without|optional|optionally|if you like|later)[^.?!\n]{0,40}\b(repo|repository)|\b(repo|repository)[^.?!\n]{0,40}(optional|isn.t (needed|required)|is not (needed|required)|later|if you (like|want))", re.I)
+
+
+def claims_repo_required(answer: str) -> bool:
+    """Whether a reply says a project needs a repository: it names what
+    is needed and a repository is among it, never as optional."""
+    if NEGATED.search(answer):
+        return False
+    return bool(REPO.search(answer) and NEEDS.search(answer))
 
 
 def projects_run(coder, root, path, signin, evidence, turn_timeout) -> dict:
@@ -1345,10 +1366,10 @@ def projects_run(coder, root, path, signin, evidence, turn_timeout) -> dict:
             out["projects-chat"] = ["fail", "Coder's screen never came up"]
         else:
             t = r.send(tui, "can you make a new project, what do you need", 1)
-            ans = " ".join(answers(t["final"]))
+            ans = " ".join(a for a in answers(t["final"]) if not a.startswith("mcp__"))
             if not t["ended"] or not ans:
                 out["projects-chat"] = ["fail", f"no answer in {t['secs']}s"]
-            elif CLAIMS_REPO.search(ans) and not NEGATED.search(ans):
+            elif claims_repo_required(ans):
                 out["projects-chat"] = ["fail", f"claims a repository is required: “{ans[:160]}”"]
             else:
                 out["projects-chat"] = ["pass", f"“{ans[:120]}”"]
