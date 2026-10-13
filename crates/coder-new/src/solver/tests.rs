@@ -727,7 +727,7 @@ async fn a_hands_asks_meet_the_floors_and_the_worktree_guard() {
         })
         .unwrap();
     blocks[prompt_block].splice(0..0, asks);
-    let program = acp_client::replay::script(agent_dir.path(), &blocks);
+    let program = acp_client::replay::script_answered(agent_dir.path(), &blocks);
     let (_feed, mut transcript) = crate::issue_run::channel(None);
     let session = agent::Session {
         title: "Coder".into(),

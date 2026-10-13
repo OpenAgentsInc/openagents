@@ -83,6 +83,92 @@ done
     path
 }
 
+/// [`script`], but the stand-in waits for the client's answer to each request
+/// it makes (up to 2 s a line) before going on, as a real agent does. Use it
+/// when a test checks the answers to requests that end a turn: without the
+/// wait, the turn's closing reply can end the session before the client's
+/// last answer is logged. The
+/// script writes its arguments to `dir/arguments`, one a line, and appends
+/// each line it reads to `dir/received.jsonl`.
+///
+/// # Panics
+/// The directory cannot be written.
+#[cfg(unix)]
+#[must_use]
+pub fn script_answered(dir: &Path, blocks: &[Vec<Value>]) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    // Each block is cut after every request the agent makes of the client
+    // (a frame with a method and an id): the script writes up to it, then
+    // waits for the client's answer before going on, as a real agent does.
+    // Without the wait a block's closing reply could end the turn before
+    // the client's answer to the last request reached the script.
+    for (index, block) in blocks.iter().enumerate() {
+        let mut part = 1;
+        let mut text = String::new();
+        for frame in block {
+            text.push_str(&format!("{frame}\n"));
+            if frame.get("method").is_some()
+                && let Some(id) = frame.get("id")
+            {
+                std::fs::write(dir.join(format!("{}.{part}.jsonl", index + 1)), &text)
+                    .expect("block");
+                std::fs::write(
+                    dir.join(format!("{}.{part}.await", index + 1)),
+                    id.to_string(),
+                )
+                .expect("block");
+                text.clear();
+                part += 1;
+            }
+        }
+        std::fs::write(dir.join(format!("{}.{part}.jsonl", index + 1)), text).expect("block");
+    }
+    let path = dir.join("agent.sh");
+    let script = format!(
+        r#"#!/bin/sh
+dir='{dir}'
+n=0
+printf '%s\n' "$@" > "$dir/arguments"
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> "$dir/received.jsonl"
+  case "$line" in
+    *'"method":"session/cancel"'*)
+      printf '{{"jsonrpc":"2.0","id":%s,"result":{{"stopReason":"cancelled"}}}}\n' "$n"
+      ;;
+    *'"method":'*)
+      case "$line" in
+        *'"id":'*)
+          n=$((n+1))
+          k=1
+          while [ -f "$dir/$n.$k.jsonl" ]; do
+            cat "$dir/$n.$k.jsonl"
+            if [ -f "$dir/$n.$k.await" ]; then
+              want=$(cat "$dir/$n.$k.await")
+              # At most 2 s per line: a request the client never answers
+              # (or answers in another shape) must not stall the turn.
+              while IFS= read -r -t 2 reply; do
+                printf '%s\n' "$reply" >> "$dir/received.jsonl"
+                case "$reply" in
+                  *'"method":'*) ;;
+                  *"\"id\":$want,"*|*"\"id\":$want}}"*) break ;;
+                esac
+              done
+            fi
+            k=$((k+1))
+          done
+          ;;
+      esac
+      ;;
+  esac
+done
+"#,
+        dir = dir.display()
+    );
+    std::fs::write(&path, script).expect("script");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("mode");
+    path
+}
+
 /// The arguments the stand-in in `dir` was started with.
 #[must_use]
 pub fn arguments(dir: &Path) -> Vec<String> {
