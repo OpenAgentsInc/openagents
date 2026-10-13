@@ -343,10 +343,13 @@ async function edit(n){const t=prompt('Edit note at '+clock(n.t),n.text);if(t===
 async function del(id){await api('/api/notes?video='+enc(video)+'&id='+id,{method:'DELETE'});review=await api('/api/review?video='+enc(video));render()}
 $('savenote').onclick=saveNote;$('cancelnote').onclick=closeNote;$('pick').onchange=e=>open(e.target.value);$('reload').onclick=()=>loadVideos(video);
 $('notetext').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();saveNote()}if(e.key==='Escape'){e.preventDefault();closeNote()}};
-document.addEventListener('keydown',e=>{if(e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT'||e.metaKey||e.ctrlKey)return;const step=e.shiftKey?5:1;
+// Keys are ours even when the player has focus: Chrome's own player also toggles on Space, which undid ours.
+v.addEventListener('focus',()=>v.blur());
+window.addEventListener('keyup',e=>{if(e.code==='Space'&&e.target.tagName!=='TEXTAREA'){e.preventDefault();e.stopPropagation()}},true);
+window.addEventListener('keydown',e=>{if(e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT'||e.metaKey||e.ctrlKey)return;const step=e.shiftKey?5:1;if(['Space','ArrowLeft','ArrowRight'].includes(e.code)||e.target===v)e.stopPropagation();
  if(e.code==='Space'){e.preventDefault();v.paused?v.play():v.pause()}else if(e.key==='ArrowRight'){e.preventDefault();seek(v.currentTime+step)}else if(e.key==='ArrowLeft'){e.preventDefault();seek(v.currentTime-step)}
  else if(e.key==='.'){v.pause();seek(v.currentTime+1/30)}else if(e.key===','){v.pause();seek(v.currentTime-1/30)}else if(e.key==='n'||e.key==='N'){e.preventDefault();startNote()}
- else if(e.key===']'){const n=review.notes.find(x=>x.t>v.currentTime+0.05);if(n)seek(n.t)}else if(e.key==='['){const n=[...review.notes].reverse().find(x=>x.t<v.currentTime-0.05);if(n)seek(n.t)}});
+ else if(e.key===']'){const n=review.notes.find(x=>x.t>v.currentTime+0.05);if(n)seek(n.t)}else if(e.key==='['){const n=[...review.notes].reverse().find(x=>x.t<v.currentTime-0.05);if(n)seek(n.t)}},true);
 v.addEventListener('loadedmetadata',render);loadVideos();tick();
 </script>"""
 
