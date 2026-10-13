@@ -948,6 +948,7 @@ fn exact_queue_snapshots_fence_edits_and_lost_replies_never_renew() {
             &STEERING,
             &always,
             now,
+            LEASE,
         )
     };
     let (_, initial, _, _) = read(&phone, NOW).unwrap();
@@ -963,6 +964,7 @@ fn exact_queue_snapshots_fence_edits_and_lost_replies_never_renew() {
             &STEERING,
             &always,
             now,
+            LEASE,
         )
     };
     let (leased, after_lease, _, _) = edit("2", &phone, &QueueEdit::Lease, &initial, NOW).unwrap();
@@ -1009,6 +1011,7 @@ fn an_unsealed_queue_request_remains_unknown_without_another_effect() {
         &STEERING,
         &always,
         NOW,
+        LEASE,
     )
     .unwrap();
     edit_queue_at_revision(
@@ -1022,6 +1025,7 @@ fn an_unsealed_queue_request_remains_unknown_without_another_effect() {
         &STEERING,
         &always,
         NOW,
+        LEASE,
     )
     .unwrap();
     let mut journal = read(&dir).unwrap();
@@ -1039,7 +1043,8 @@ fn an_unsealed_queue_request_remains_unknown_without_another_effect() {
             Some(&initial),
             &STEERING,
             &always,
-            NOW + 10
+            NOW + 10,
+            LEASE,
         ),
         Err(Error::ReopenRequired)
     ));

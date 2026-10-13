@@ -992,11 +992,16 @@ fn a_reworded_question_set_is_drift_the_inventory_reports() {
     let machine = machine();
     let root = machine.path();
 
-    // The repository's own registry has five known entries: v1 of the
-    // independence wording is retained for comparability, and the three
+    // The repository's own registry has fifteen known entries: v1 of the
+    // independence wording is retained for comparability; the three
     // departure sets, the expectation-support set, and the
-    // method-conformance set are asked by Coder One, which compiles them in. No Coder site binds any of them — an
-    // honest `UnboundSet`, not drift.
+    // method-conformance set are asked by Coder One, which compiles them
+    // in; the agent-request, agent-steer, insight-share, insight-support,
+    // memory-importance, react-or-continue, and world-place sets by the
+    // workshop agent; the interview-answer set by `coder interview`; and
+    // the rumor-repeat set by `openagents verse town rumor propose`. No
+    // Coder site binds any of them — an honest `UnboundSet`, not drift
+    // (the same list as the `sites` unit test's).
     let inventory = Sites::inventory(root);
     let unbound = |set: &str| Problem::UnboundSet {
         set: set.to_string(),
@@ -1004,12 +1009,21 @@ fn a_reworded_question_set_is_drift_the_inventory_reports() {
     assert_eq!(
         inventory.problems(),
         vec![
+            unbound("openagents.agent-request.v1"),
+            unbound("openagents.agent-steer.v1"),
             unbound("openagents.departure-docstring.v1"),
             unbound("openagents.departure-rationale.v1"),
             unbound("openagents.departure-standard-method.v1"),
             unbound("openagents.expectation-support.v1"),
             unbound("openagents.independence.v1"),
+            unbound("openagents.insight-share.v1"),
+            unbound("openagents.insight-support.v1"),
+            unbound("openagents.interview-answer.v1"),
+            unbound("openagents.memory-importance.v1"),
             unbound("openagents.method-conformance.v1"),
+            unbound("openagents.react-or-continue.v1"),
+            unbound("openagents.rumor-repeat.v1"),
+            unbound("openagents.world-place.v1"),
         ],
         "the registry's standing problems: {:?}",
         inventory.problems()

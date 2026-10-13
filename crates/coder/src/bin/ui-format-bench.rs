@@ -9,8 +9,11 @@
 //! something, and the whole reply.
 //!
 //! ```sh
-//! scripts/ui-format-bench.sh --model google/gemini-3.8-flash --model zai/glm-5.3-flash
+//! scripts/ui-format-bench.sh --model ID --model ID
 //! ```
+//!
+//! The ids of the models Coder answers with are written once, in
+//! [`coder::generate::Lane::model`]; pass those to compare our lanes.
 //!
 //! | Flag | Effect |
 //! | --- | --- |

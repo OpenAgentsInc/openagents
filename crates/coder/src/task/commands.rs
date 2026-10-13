@@ -767,6 +767,7 @@ pub fn edit_queue(
         steering,
         standing,
         now,
+        LEASE,
         None,
     )
 }
@@ -780,6 +781,7 @@ fn edit_queue_inner(
     steering: &Steering,
     standing: &dyn Fn(&Sender) -> bool,
     now: u64,
+    lease: u64,
     guard: Option<&super::TaskWriteGuard>,
 ) -> Result<(QueueState, Vec<Continued>), Error> {
     journal.leases.retain(|lease| lease.expires_at > now);
@@ -820,7 +822,7 @@ fn edit_queue_inner(
             journal.leases.push(Lease {
                 task: task.into(),
                 device: sender.device.clone(),
-                expires_at: now + LEASE,
+                expires_at: now + lease,
             });
             true
         }
@@ -943,6 +945,7 @@ pub fn edit_queue_at_revision(
     steering: &Steering,
     standing: &dyn Fn(&Sender) -> bool,
     now: u64,
+    lease: u64,
 ) -> Result<
     (
         coder_host::access::protocol::TaskQueue,
@@ -1027,6 +1030,7 @@ pub fn edit_queue_at_revision(
         steering,
         standing,
         now,
+        lease,
         Some(&guard),
     )?;
     let changed = before.revision != state.task.revision;

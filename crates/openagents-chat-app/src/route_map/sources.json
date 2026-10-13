@@ -1678,10 +1678,10 @@
         "near_misses": 9
       },
       "general": {
-        "rows": 95,
+        "rows": 98,
         "held_out": 20,
-        "tune": 75,
-        "near_misses": 32
+        "tune": 78,
+        "near_misses": 35
       },
       "gym.news": {
         "rows": 27,
@@ -3641,6 +3641,21 @@
       "workflows": [
         "action-items"
       ],
+      "skills": [],
+      "knowledge": [],
+      "tests": []
+    },
+    {
+      "dir": "crates/plugin-hook-guard",
+      "slug": "hook-guard",
+      "name": "Hook guard",
+      "summary": "Guards an agent's commands as it works: no force pushes, a reminder after commands, a dry run for deploys, and a check on risky commands.",
+      "publisher": null,
+      "version": "0.1.0",
+      "wasm": [
+        "plugin-hook-guard"
+      ],
+      "workflows": [],
       "skills": [],
       "knowledge": [],
       "tests": []

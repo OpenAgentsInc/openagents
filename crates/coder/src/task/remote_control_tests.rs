@@ -70,24 +70,46 @@ async fn connect(
     .unwrap()
 }
 
-async fn queue(
+/// One host call, made again while the host answers `unavailable`. The
+/// host's own sweep (`Tasks::tick`, run whenever the task store changes)
+/// evaluates held commands under the same journal and task locks, and a
+/// starved runtime can hold them past the store's lock wait; the host then
+/// refuses the call as `unavailable`, the transient refusal a device
+/// retries (#11565). Any other answer is the call's.
+async fn call(link: &Link, op: Operation, what: &str) -> coder_host::Result<Outcome> {
+    let deadline = tokio::time::Instant::now() + CALL_BOUND;
+    loop {
+        let answered = tokio::time::timeout_at(deadline, link.call(op.clone()))
+            .await
+            .unwrap_or_else(|_| panic!("{what} must finish"));
+        match answered {
+            Err(coder_host::Error::Access(error))
+                if error.code == Code::Unavailable && tokio::time::Instant::now() < deadline =>
+            {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            other => return other,
+        }
+    }
+}
+
+async fn try_queue(
     link: &Link,
     task: &str,
     edit: QueueEdit,
     digest: Option<String>,
-) -> (TaskQueue, String) {
-    let outcome = tokio::time::timeout(
-        CALL_BOUND,
-        link.call(Operation::QueueTaskAtRevision {
+) -> coder_host::Result<(TaskQueue, String)> {
+    let outcome = call(
+        link,
+        Operation::QueueTaskAtRevision {
             task: task.into(),
             revision: 1,
             edit,
             queue_digest: digest,
-        }),
+        },
+        "queue admission",
     )
-    .await
-    .expect("queue admission must finish")
-    .unwrap();
+    .await?;
     let Outcome::QueueAtRevision {
         queue,
         queue_digest,
@@ -96,7 +118,16 @@ async fn queue(
     else {
         panic!("native queue required")
     };
-    (queue, queue_digest)
+    Ok((queue, queue_digest))
+}
+
+async fn queue(
+    link: &Link,
+    task: &str,
+    edit: QueueEdit,
+    digest: Option<String>,
+) -> (TaskQueue, String) {
+    try_queue(link, task, edit, digest).await.unwrap()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -108,7 +139,13 @@ async fn two_principal_queue_reorder_and_release_keep_current_admission() {
     let workspaces = BTreeMap::from([("checkout".into(), checkout)]);
     let inbox = Arc::new(
         Inbox::new(root.join("tasks"), workspaces.clone())
-            .with_settings(root.join("unused-settings")),
+            .with_settings(root.join("unused-settings"))
+            // The test is about admission, not lease expiry: a full
+            // `cargo test -p coder --lib` run can starve this runtime
+            // past the 60-second lease between the lease and the reorder
+            // or the release, and a lapsed lease changes the queue digest,
+            // which the host then refuses as stale (#11565).
+            .with_queue_lease(3_600),
     );
     let task = "a".repeat(64);
     inbox
@@ -157,15 +194,15 @@ async fn two_principal_queue_reorder_and_release_keep_current_admission() {
             issued_at: coder_host::unix_time().unwrap(),
         };
         assert!(matches!(
-            tokio::time::timeout(
-                CALL_BOUND,
-                link.call(Operation::CommandTaskAtRevision {
+            call(
+                link,
+                Operation::CommandTaskAtRevision {
                     command,
                     revision: 1
-                })
+                },
+                "mixed-device admission",
             )
             .await
-            .expect("mixed-device admission must finish")
             .unwrap(),
             Outcome::Dispatched { .. }
         ));
@@ -213,8 +250,23 @@ async fn two_principal_queue_reorder_and_release_keep_current_admission() {
     authority
         .revoke(&second_device, coder_host::unix_time().unwrap())
         .unwrap();
-    let (_, digest) = queue(&first, &task, QueueEdit::List {}, None).await;
-    let (current, _) = queue(&first, &task, QueueEdit::Lease {}, Some(digest)).await;
+    // The host's sweep rechecks standing too, and may drop the revoked
+    // device's message between the read and the lease: the queue the read
+    // named is then gone, the lease refuses as stale, and the device reads
+    // again. Either way the lease is decided on the revocation.
+    let mut current = None;
+    for _ in 0..3 {
+        let (_, digest) = queue(&first, &task, QueueEdit::List {}, None).await;
+        match try_queue(&first, &task, QueueEdit::Lease {}, Some(digest)).await {
+            Ok((leased, _)) => {
+                current = Some(leased);
+                break;
+            }
+            Err(coder_host::Error::Access(error)) if error.code == Code::Stale => {}
+            Err(error) => panic!("the lease after the revocation: {error}"),
+        }
+    }
+    let current = current.expect("the lease is granted on a current read");
     assert_eq!(
         current.items.len(),
         1,

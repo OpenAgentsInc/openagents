@@ -5060,34 +5060,112 @@ mod tests {
     /// request the router splits off (#11193), each with only the answers
     /// to the questions it asked.
     fn judge(delay: Duration, answers: Value) -> Arc<jev::Client> {
+        let url = judge_server(delay, answers, "jev-test");
+        Arc::new(jev::Client::new(jev::Config::local(url, "jev-test")).unwrap())
+    }
+
+    /// The loopback judge behind [`judge`], answering as `model`: each
+    /// request gets the answers to the questions it asked. A turn is
+    /// staged when this process's environment says so
+    /// ([`router::judge::staged_on`], the default with a Clef-first judge,
+    /// #11297), so the judge answers either shape: the main request's
+    /// coarse `route_hint` as surely as `route`, and the second request's
+    /// `route` and `answer` over the options it was asked with (the hint's
+    /// shortlist). The judge reaches its judgment after `delay`: the main
+    /// request and its sides take that long, and a staged turn's second
+    /// request, which only follows the hint, answers at once.
+    fn judge_server(delay: Duration, answers: Value, model: &'static str) -> String {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
+        let hinted = Arc::new(std::sync::atomic::AtomicBool::new(false));
         std::thread::spawn(move || {
-            for _ in 0..1 + router::judge::SIDE.len() {
+            // The main request, its sides, a staged turn's second request,
+            // and the questions asked after the main one.
+            let requests = 2 + router::judge::SIDE.len() + router::judge::AFTER_MAIN.len();
+            for _ in 0..requests {
                 let Ok((stream, _)) = listener.accept() else {
                     return;
                 };
-                let answers = answers.clone();
+                let (answers, hinted) = (answers.clone(), hinted.clone());
                 std::thread::spawn(move || {
-                    answer_with(stream, delay, "application/json", |request| {
+                    answer_with(stream, Duration::ZERO, "application/json", |request| {
                         let asked = serde_json::from_slice::<Value>(request)
                             .ok()
                             .and_then(|request| request["questions"].as_object().cloned())
                             .unwrap_or_default();
-                        let mut answered = serde_json::Map::new();
-                        if let Some(all) = answers.as_object() {
-                            for (id, answer) in all {
-                                if asked.is_empty() || asked.contains_key(id) {
-                                    answered.insert(id.clone(), answer.clone());
-                                }
-                            }
+                        let hint = asked.contains_key(router::judge::ROUTE_HINT);
+                        let second = !hint
+                            && asked.contains_key("route")
+                            && hinted.load(std::sync::atomic::Ordering::SeqCst);
+                        if !second {
+                            std::thread::sleep(delay);
                         }
-                        json!({ "model": "jev-test", "answers": answered }).to_string()
+                        if hint {
+                            hinted.store(true, std::sync::atomic::Ordering::SeqCst);
+                        }
+                        let answered = answer_asked(&asked, &answers);
+                        json!({ "model": model, "answers": answered }).to_string()
                     });
                 });
             }
         });
-        Arc::new(jev::Client::new(jev::Config::local(url, "jev-test")).unwrap())
+        url
+    }
+
+    /// The answers in `answers` to the questions `asked`, each choice over
+    /// the options it was asked with ([`judge_server`]).
+    fn answer_asked(
+        asked: &serde_json::Map<String, Value>,
+        answers: &Value,
+    ) -> serde_json::Map<String, Value> {
+        let mut answered = serde_json::Map::new();
+        let Some(all) = answers.as_object() else {
+            return answered;
+        };
+        for (id, answer) in all {
+            if asked.is_empty() || asked.contains_key(id) {
+                answered.insert(id.clone(), answer.clone());
+            }
+        }
+        if asked.contains_key(router::judge::ROUTE_HINT)
+            && let Some(route) = all.get("route")
+        {
+            answered.insert(router::judge::ROUTE_HINT.into(), route.clone());
+        }
+        for (id, answer) in &mut answered {
+            let Some(options) = asked
+                .get(id)
+                .and_then(|question| question["criteria"].as_object())
+            else {
+                continue;
+            };
+            let Some(probabilities) = answer["probabilities"].as_object() else {
+                continue;
+            };
+            if options.len() == probabilities.len()
+                && options
+                    .keys()
+                    .all(|option| probabilities.contains_key(option))
+            {
+                continue;
+            }
+            // Cut to the asked options; the mass of the dropped ones goes
+            // to the choice, so the answer stays as sure as it was.
+            let choice = answer["choice"].as_str().unwrap_or("none").to_string();
+            let mut cut: serde_json::Map<String, Value> = options
+                .keys()
+                .map(|option| {
+                    let p = probabilities.get(option).and_then(Value::as_f64);
+                    (option.clone(), json!(p.unwrap_or(0.0)))
+                })
+                .collect();
+            let kept: f64 = cut.values().filter_map(Value::as_f64).sum();
+            if let Some(p) = cut.get_mut(&choice) {
+                *p = json!(p.as_f64().unwrap_or(0.0) + (1.0 - kept));
+            }
+            answer["probabilities"] = Value::Object(cut);
+        }
+        answered
     }
 
     /// A choice answer that is sure of `choice`.
@@ -5937,11 +6015,7 @@ mod tests {
     #[tokio::test]
     async fn a_fallback_doors_judgment_names_that_door() {
         let answers = routed("work.dispatch", "dispatch.stem", 0.9, "none");
-        let gateway = serve_once(
-            Duration::ZERO,
-            "application/json",
-            json!({ "model": "typesafe-ai/jev", "answers": answers }).to_string(),
-        );
+        let gateway = judge_server(Duration::ZERO, answers, "typesafe-ai/jev");
         // A port nothing listens on: TypeSafe does not answer.
         let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let typesafe = format!("http://{}", closed.local_addr().unwrap());

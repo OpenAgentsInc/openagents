@@ -55,6 +55,10 @@ pub struct Inbox {
     agents: Option<Arc<super::agent_host::Agents>>,
     cloud: Option<Arc<dyn coder_host::cloud::Cloud>>,
     projects: Option<Arc<dyn coder_host::projects::Projects>>,
+    /// How long a device's queue edit lease lasts without renewal, in
+    /// seconds: [`super::commands::LEASE`] unless a test sets it
+    /// ([`Inbox::with_queue_lease`]).
+    queue_lease: u64,
 }
 
 /// The most engine preferences an inbox holds for creates not yet made.
@@ -88,7 +92,18 @@ impl Inbox {
             agents: None,
             cloud: None,
             projects: None,
+            queue_lease: super::commands::LEASE,
         }
+    }
+
+    /// The same inbox with queue edit leases that last `seconds` without
+    /// renewal. A test that is about admission, not lease expiry, sets a
+    /// long one, so a starved test runtime cannot let the lease lapse
+    /// between two of its calls and change the queue under it.
+    #[must_use]
+    pub fn with_queue_lease(mut self, seconds: u64) -> Self {
+        self.queue_lease = seconds;
+        self
     }
 
     /// Answer `studio.agent.*` for the workshop agents under `agents`'s
@@ -845,6 +860,7 @@ impl Tasks for Inbox {
             &super::adapter::STEERING,
             &admitted,
             super::autostart::unix_now(),
+            self.queue_lease,
         )
         .map_err(|error| match error {
             Error::NotFound => Code::Forbidden,
