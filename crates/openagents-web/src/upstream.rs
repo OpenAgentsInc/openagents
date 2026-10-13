@@ -119,7 +119,7 @@ const OWNED_EXACT: [&str; 70] = [
 /// `/coder/memory`), so a shipped app still calling them is served here
 /// and its `Bearer sess_...` never reaches the upstream. Current apps ask
 /// the `/v1` paths first (#11158).
-const OWNED_PREFIXES: [&str; 27] = [
+const OWNED_PREFIXES: [&str; 28] = [
     "/auth/",
     // The docs' figures (crate::DOCS_FIGURES).
     "/static/docs/",
@@ -139,6 +139,8 @@ const OWNED_PREFIXES: [&str; 27] = [
     "/att/",
     "/pilot/",
     "/chat/",
+    // A shared chat's page (`crate::pages::chat::share`).
+    "/share/",
     "/composer/",
     "/components/",
     "/ui/screens",

@@ -951,7 +951,7 @@ fn stored(error: &Error) -> Response {
 }
 
 /// The site's address, for the links an answer carries.
-fn origin(app: &App, headers: &HeaderMap) -> String {
+pub(crate) fn origin(app: &App, headers: &HeaderMap) -> String {
     if let Some(service) = app.config.cloud.as_deref() {
         return service.origin().trim_end_matches('/').to_owned();
     }

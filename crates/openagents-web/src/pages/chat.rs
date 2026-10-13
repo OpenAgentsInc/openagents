@@ -61,6 +61,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(approval::routes())
         .merge(computer::routes())
         .merge(to_coder::routes())
+        .merge(share::routes())
         .layer(DefaultBodyLimit::max(64 * 1024))
 }
 
@@ -848,6 +849,7 @@ async fn show_page(app: &App, headers: &HeaderMap, id: &str, notice: Option<&Not
     let chips = crate::suggestions::reply_chips(&app, chat).await;
     let offer = work::offer(&app, &headers, chat).await;
     let links = work::links(&app, &headers).await;
+    let shared = share::offered(&app, chat).await;
     // A move in place keeps the list it has (`chat_html::main_only`).
     let sidebar = if crate::chat_html::main_only(&headers) {
         None
@@ -856,7 +858,7 @@ async fn show_page(app: &App, headers: &HeaderMap, id: &str, notice: Option<&Not
     };
     let parts = Parts {
         breadcrumb: work::breadcrumb(chat, offer.as_ref()),
-        actions: Some(work::actions(chat, offer.as_ref(), false)),
+        actions: Some(work::actions(chat, offer.as_ref(), shared, false)),
         sidebar,
         thread: content(chat, None, chips, links),
         dock: composer_with(
@@ -937,9 +939,10 @@ async fn show_terminal(
     } else {
         Some(chat_list(app, &chat.owner, Some(id.as_str()), false, false).await)
     };
+    let shared = share::offered(app, chat).await;
     let parts = Parts {
         breadcrumb: Breadcrumb::new(chat.title.clone()),
-        actions: None,
+        actions: shared.map(|shared| share::button(id, shared, false)),
         sidebar,
         thread: content(chat, None, html! {}, links),
         dock,
@@ -1064,7 +1067,8 @@ async fn workspace(State(app): State<App>, headers: HeaderMap, Path(id): Path<St
     let chips = crate::suggestions::reply_chips(&app, chat).await;
     let offer = work::offer(&app, &headers, chat).await;
     let links = work::links(&app, &headers).await;
-    let body = html! { title {(chat.title) " · OpenAgents"} (work::breadcrumb(chat, offer.as_ref()).swap_oob(true)) (work::actions(chat, offer.as_ref(), true)) (content(chat,None,chips,links)) (ticket(&app,chat,true)) (row) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
+    let shared = share::offered(&app, chat).await;
+    let body = html! { title {(chat.title) " · OpenAgents"} (work::breadcrumb(chat, offer.as_ref()).swap_oob(true)) (work::actions(chat, offer.as_ref(), shared, true)) (content(chat,None,chips,links)) (ticket(&app,chat,true)) (row) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
     let mut response = crate::chat_html::protect(body.into_response());
     response.headers_mut().insert(
         "HX-Push-Url",
@@ -1192,6 +1196,10 @@ async fn delete(
     }
     if let Some(request_id) = stale {
         let _ = app.config.chat_store.release(&owner, &request_id).await;
+    }
+    // Its link stops too (it would answer 404 anyway: the chat is gone).
+    if let Err(error) = share::stop(&app.config.chat_store, &owner, &id).await {
+        eprintln!("openagents-web: chat share: {error}");
     }
     crate::chat_html::protect(Redirect::to("/").into_response())
 }
@@ -2398,6 +2406,21 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
     }
 }
 
+/// A shared chat's messages for anyone with its link
+/// ([`share::shared_page`]): every message's words in the same thread
+/// view, read-only. Nothing of the owner's is drawn: no files sent with a
+/// message (they stay behind the owner's sign-in), no task rows, plugin
+/// cards, agents, or buttons, and no live updates.
+pub(crate) fn shared_messages(chat: &Conversation) -> Markup {
+    html! {
+        @for (index, message) in chat.messages.iter().enumerate() {
+            @if !message.text.trim().is_empty() {
+                (turn(message, index, &[], None, false, false))
+            }
+        }
+    }
+}
+
 async fn transcript(
     State(app): State<App>,
     headers: HeaderMap,
@@ -2865,6 +2888,8 @@ pub(crate) mod continued;
 pub(crate) mod delete_all;
 #[path = "chat_live.rs"]
 mod live;
+#[path = "chat_share.rs"]
+pub(crate) mod share;
 #[path = "chat_to_coder.rs"]
 mod to_coder;
 #[path = "chat_work.rs"]

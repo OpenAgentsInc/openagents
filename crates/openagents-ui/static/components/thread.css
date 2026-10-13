@@ -215,3 +215,34 @@ a.oa-task-row:focus-visible {
   min-width: 12rem;
   gap: calc(var(--spacing) * 2);
 }
+
+/* A chat's header actions (Share, Run Claude Code) sit in the header's
+   own row of actions. */
+#chat-actions,
+#chat-share {
+  display: contents;
+}
+
+/* The share step (dialog or page): the link on its own line. */
+.oa-share-link {
+  margin: calc(var(--spacing) * 3) 0 0;
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  font-size: var(--font-text-sm-size);
+  overflow-wrap: anywhere;
+}
+.oa-share-link a {
+  color: var(--color-text);
+}
+.oa-share-note {
+  color: var(--color-text-secondary);
+}
+#chat-share-panel .oa-dialog-footer {
+  margin-top: calc(var(--spacing) * 4);
+}
+
+/* A shared chat's page: the title and the mark home, nothing else. */
+.oa-share-mark {
+  font-size: var(--font-text-sm-size);
+}

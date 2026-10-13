@@ -60,6 +60,17 @@ pub(super) fn screens() -> Vec<Screen> {
             ],
         },
         Screen {
+            id: "chat-shared",
+            title: "Shared chat",
+            group: Group::Page,
+            routes: &["/share/{token}"],
+            states: vec![state(
+                "shared",
+                "Read by anyone with the link",
+                shared_answer,
+            )],
+        },
+        Screen {
             id: "chat-work",
             title: "Chat running on a computer",
             group: Group::Page,
@@ -454,12 +465,16 @@ fn dock(chat: &Conversation, row: Option<Markup>, notice: Option<&Notice>) -> Ma
 fn thread(headers: &HeaderMap, chat: &Conversation, sidebar: Vec<Conversation>) -> Response {
     let parts = Parts {
         breadcrumb: chat::work::breadcrumb(chat, None),
-        actions: Some(chat::work::actions(chat, None, false)),
+        actions: Some(chat::work::actions(chat, None, Some(false), false)),
         sidebar: Some(list(&sidebar, Some(&chat.id), "")),
         thread: chat::content(chat, None, html! {}, true),
         dock: dock(chat, None, None),
     };
     chat::chat_page(headers, chat, parts)
+}
+
+fn shared_answer(headers: &HeaderMap) -> Response {
+    chat::share::shared_page(headers, &code_chat(), None)
 }
 
 fn thread_answer(headers: &HeaderMap) -> Response {

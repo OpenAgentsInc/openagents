@@ -34,7 +34,7 @@ pub(crate) fn routes() -> Router<App> {
     Router::new().route(AVATAR, get(avatar))
 }
 
-/// Pictures already fetched from GitHub, by picture address.
+/// Pictures already fetched from GitHub, by size and picture address.
 fn pictures() -> &'static Mutex<HashMap<String, (String, Vec<u8>)>> {
     static PICTURES: OnceLock<Mutex<HashMap<String, (String, Vec<u8>)>>> = OnceLock::new();
     PICTURES.get_or_init(Default::default)
@@ -51,21 +51,8 @@ async fn avatar(State(app): State<App>, headers: HeaderMap) -> Response {
     let Some(url) = viewer.avatar_url else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let kept = pictures().lock().ok().and_then(|p| p.get(&url).cloned());
-    let (kind, bytes) = match kept {
-        Some(found) => found,
-        None => match fetch_picture(&url).await {
-            Some(found) => {
-                if let Ok(mut kept) = pictures().lock() {
-                    if kept.len() > 1024 {
-                        kept.clear();
-                    }
-                    kept.insert(url, found.clone());
-                }
-                found
-            }
-            None => return StatusCode::NOT_FOUND.into_response(),
-        },
+    let Some((kind, bytes)) = picture(&url, 64).await else {
+        return StatusCode::NOT_FOUND.into_response();
     };
     let mut response = bytes.into_response();
     let headers = response.headers_mut();
@@ -83,14 +70,32 @@ async fn avatar(State(app): State<App>, headers: HeaderMap) -> Response {
     response
 }
 
-async fn fetch_picture(url: &str) -> Option<(String, Vec<u8>)> {
+/// A GitHub profile picture at `size` pixels and its type, fetched once
+/// and kept (only from GitHub's avatar host): the account button's, and
+/// a shared chat's card ([`crate::pages::chat::share`]).
+pub(crate) async fn picture(url: &str, size: u32) -> Option<(String, Vec<u8>)> {
+    let key = format!("{size}:{url}");
+    if let Some(found) = pictures().lock().ok().and_then(|p| p.get(&key).cloned()) {
+        return Some(found);
+    }
+    let found = fetch_picture(url, size).await?;
+    if let Ok(mut kept) = pictures().lock() {
+        if kept.len() > 1024 {
+            kept.clear();
+        }
+        kept.insert(key, found.clone());
+    }
+    Some(found)
+}
+
+async fn fetch_picture(url: &str, size: u32) -> Option<(String, Vec<u8>)> {
     if !url.starts_with("https://avatars.githubusercontent.com/") {
         return None;
     }
     let sized = if url.contains('?') {
-        format!("{url}&s=64")
+        format!("{url}&s={size}")
     } else {
-        format!("{url}?s=64")
+        format!("{url}?s={size}")
     };
     let response = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))

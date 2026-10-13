@@ -126,6 +126,24 @@ pub(crate) async fn load(store: &Store, owner: &str) -> Result<Option<(Record, S
     Ok(Some((record, generation)))
 }
 
+/// The account's Nostr key as an npub, when its vault has a Nostr key
+/// slot (the key the person unlocks with; only its public half is here).
+pub(crate) async fn npub(store: &Store, owner: &str) -> Option<String> {
+    let (record, _) = load(store, owner).await.ok()??;
+    record.slots.iter().find_map(|slot| {
+        if slot.method != Method::Nostr {
+            return None;
+        }
+        let hex = slot.params.get("pubkey")?.as_str()?;
+        let bytes: Vec<u8> = (0..hex.len())
+            .step_by(2)
+            .map(|at| u8::from_str_radix(hex.get(at..at + 2)?, 16).ok())
+            .collect::<Option<_>>()?;
+        let key: [u8; 32] = bytes.try_into().ok()?;
+        Some(nostr::nip19::encode_npub(&key))
+    })
+}
+
 async fn save(
     store: &Store,
     owner: &str,

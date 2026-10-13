@@ -859,5 +859,6 @@ async fn the_composer_reads_github_as_the_person_and_keeps_branch_lists() {
 
 mod api;
 mod app;
+mod chat_share;
 mod composer_row;
 mod files;

@@ -196,11 +196,21 @@ pub(crate) fn breadcrumb(chat: &Conversation, offer: Option<&Offer>) -> Breadcru
     }
 }
 
-/// The header's chat actions: Run Claude Code when it can start. `oob`
-/// replaces the page's copy when another chat opens in place.
-pub(crate) fn actions(chat: &Conversation, offer: Option<&Offer>, oob: bool) -> Markup {
+/// The header's chat actions: Share (`shared`: whether the chat is
+/// shared; `None` hides it, [`super::share::offered`]), and Run Claude
+/// Code when it can start. `oob` replaces the page's copy when another
+/// chat opens in place.
+pub(crate) fn actions(
+    chat: &Conversation,
+    offer: Option<&Offer>,
+    shared: Option<bool>,
+    oob: bool,
+) -> Markup {
     html! {
         span #chat-actions hx-swap-oob=[oob.then_some("outerHTML")] {
+            @if let Some(shared) = shared {
+                (super::share::button(&chat.id, shared, false))
+            }
             @if offer.is_some_and(|offer| offer.runnable) {
                 (ButtonLink::new("Run Claude Code", format!("/chat/{}/claude", chat.id))
                     .color(Color::Secondary)
@@ -1279,7 +1289,7 @@ mod tests {
                 .into_string()
                 .contains("href")
         );
-        let on = actions(&chat, Some(&offer), false).into_string();
+        let on = actions(&chat, Some(&offer), None, false).into_string();
         assert!(
             on.contains(&format!(r#"href="/chat/{}/claude""#, chat.id)),
             "{on}"
@@ -1290,6 +1300,7 @@ mod tests {
                 runnable: false,
                 ..offer
             }),
+            None,
             true,
         )
         .into_string();

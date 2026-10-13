@@ -348,6 +348,22 @@ pub(crate) async fn summary(app: &App, account: &str, project: &str) -> Result<S
     })
 }
 
+/// The project's protection as its settings keep it: `standard` unless
+/// set. A chat in an `only_me` project is never shared
+/// ([`crate::pages::chat::share`]).
+pub(crate) async fn protection(
+    store: &Store,
+    owner: &str,
+    project: &str,
+) -> Result<Protection, Error> {
+    let Ok(key) = project_key(owner, project, "settings.json") else {
+        return Ok(Protection::Standard);
+    };
+    Ok(read_json::<Settings>(store, &key)
+        .await?
+        .map_or(Protection::Standard, |(settings, _)| settings.protection))
+}
+
 /// Forget everything a removed project held here. Vault files stay in the
 /// person's vault (their index still names them), only the project's
 /// record of them goes.

@@ -107,6 +107,14 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     ("/ui/*", "this gallery"),
     ("/components*", "the components catalog for apps"),
     ("/account/avatar", "an image"),
+    (
+        "/share/{token}/card/{file}",
+        "a shared chat's preview picture",
+    ),
+    (
+        "/chat/{id}/share",
+        "the share step: a dialog over the chat (its no-script page shows the same words)",
+    ),
     ("/auth/github", "goes to GitHub"),
     ("/auth/github/install", "goes to GitHub"),
     ("/auth/github/reconnect", "goes to GitHub"),

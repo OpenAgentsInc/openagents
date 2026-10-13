@@ -46,6 +46,12 @@ image = { version = "0.25.10", default-features = false, features = ["png", "jpe
 jev = { path = "../jev" }
 inference = { path = "../inference" }
 libc = "0.2"
+# An account's npub on a shared chat's preview picture (NIP-19).
+nostr = { path = "../nostr" }
+# A shared chat's preview picture, drawn from SVG with the Geist fonts
+# (static/fonts/geist, OFL) and measured to wrap its lines.
+resvg = { version = "0.48.1", default-features = false, features = ["text"] }
+ttf-parser = "0.25"
 # Mac jobs: the recipes and what a linked Mac reports (#11223).
 mac-jobs = { path = "../mac-jobs" }
 maud = { version = "=0.27.0", features = ["axum"] }
@@ -89,7 +95,6 @@ retail-service = { path = "../retail-service" }
 coder-project = { path = "../coder-project" }
 coder-pty = { path = "../coder-pty", default-features = false }
 coder-scheduler = { path = "../coder-scheduler" }
-nostr = { path = "../nostr" }
 oa-auth = { path = "../oa-auth", features = ["fake", "local"] }
 tenancy = { path = "../tenancy" }
 tempfile = "3"

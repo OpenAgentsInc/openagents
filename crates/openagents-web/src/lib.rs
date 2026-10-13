@@ -692,6 +692,7 @@ async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
         || path.starts_with("/v1/traces/");
     let chat = path == "/chat"
         || path.starts_with("/chat/")
+        || path.starts_with("/share/")
         || path == "/ask"
         || path.starts_with("/composer/");
     let public = hosts.public.contains(&host) || hosts.studio.contains(&host);
