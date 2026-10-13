@@ -62,6 +62,7 @@ SwiftUI, Android, terminal, and web integration under
 | [thesis](thesis.md) | The determinism thesis: why deterministic contracts plus a cheap model should beat model-driven harnesses, and what would prove it wrong |
 | [thoughts-on-a-typesafe-coding-agent](thoughts-on-a-typesafe-coding-agent.md) | [public] thoughts on a typesafe coding agent |
 | [typesafe-agent-analysis](typesafe-agent-analysis.md) | A TypeSafe-native Coder |
+| [system-one-hooks](system-one-hooks.md) | System One hooks: decisions inside a constrained Claude |
 | [typesafe-agent-protocol-addendum](typesafe-agent-protocol-addendum.md) | Complete proposal coverage: Nostr specifications and host/client implementation responsibilities |
 | [typesafe-agent-roadmap](typesafe-agent-roadmap.md) | Roadmap for a TypeSafe-native Coder |
 | [typesafe-product-suite](typesafe-product-suite.md) | Complete TypeSafe proposal applied to Coder's interfaces, execution locations, context, tools, and measured delivery |
