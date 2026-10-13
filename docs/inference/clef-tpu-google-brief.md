@@ -22,7 +22,8 @@ state at 4k-token prompts, batch 8 or more.
 | --- | --- | ---: | ---: | ---: | ---: |
 | **v6e (Trillium)** | **Clef-Flash 9B, int8** | 1 | **37,600** | **$0.0043** | **$0.020** |
 | v6e | Clef-Flash 9B, bf16 | 1 | 25,900 | $0.0063 | $0.029 |
-| v6e | Clef 27B | 4 | 5,360 | $0.029 | $0.14 |
+| v6e | Clef 27B, int8 | 4 | 6,400 | $0.025 | $0.12 |
+| v6e | Clef 27B, bf16 | 4 | 5,360 | $0.029 | $0.14 |
 | v5p | Clef-Flash 9B | 1 | 19,700 | $0.013 | $0.059 |
 | v5p | Clef 27B | 1 | 6,230 | $0.042 | $0.19 |
 | v5e | Clef-Flash 9B | 8 | 4,000 | $0.025 | $0.083 |
@@ -48,13 +49,13 @@ Clef-Flash at $0.038 and Clef 27B at $0.24.
 
 **What more chips unlock.** One billion tokens a day is 11,600 tokens/s.
 At a realistic 50 % utilization, from the measured rates (Flash int8
-37,600/chip; 27B bf16 TP 4 5,360/chip):
+37,600/chip; 27B int8 TP 4 6,400/chip):
 
 | Daily volume | Clef-Flash: v6e chips | Clef 27B: v6e chips |
 | --- | ---: | ---: |
-| 1 B tokens | 1 | 4–5 |
-| 10 B tokens | 6–7 | ~43 |
-| 50 B tokens | ~31 | ~216 |
+| 1 B tokens | 1 | 4 |
+| 10 B tokens | 6–7 | ~36 |
+| 50 B tokens | ~31 | ~181 |
 
 ## 2. What blocked us
 
@@ -99,7 +100,7 @@ campaign. Between 23:20 on 2026-10-12 and 01:30 UTC on 2026-10-13 (EIDs in
 1. **v6e capacity we can count on in US regions:** a reservation (or a
    spot-capacity commitment) of **32 v6e chips** (four v6e-8 hosts) in
    us-central1 or us-east1 now, with a path to **128 chips**. 32 chips at
-   50 % busy serve about 50 B Clef-Flash tokens a day (int8), or about 7 B
+   50 % busy serve about 50 B Clef-Flash tokens a day (int8), or about 9 B
    Clef 27B tokens.
 2. **On-demand v6e access in us-central1-b and us-east1-d** (today:
    "permission denied for accelerator type v6e-1").
