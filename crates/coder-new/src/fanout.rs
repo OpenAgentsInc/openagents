@@ -891,6 +891,7 @@ pub fn record_line(run: &Run, summary: &Summary, started_ms: u64) -> FanoutLine 
             .collect(),
         checks_passed: (!summary.checks.is_empty())
             .then(|| summary.checks.iter().all(|check| check.passed)),
+        pin: (run.to != "auto").then(|| run.to.clone()),
         ms: at_ms.saturating_sub(started_ms),
     }
 }
@@ -915,6 +916,10 @@ pub struct FanoutLine {
     pub outcomes: Vec<PartLine>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checks_passed: Option<bool>,
+    /// The harness or agent the chat was pinned to, which every part ran
+    /// on (#11544); absent when Auto chose each part's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pin: Option<String>,
     pub ms: u64,
 }
 
@@ -1016,10 +1021,16 @@ impl crate::App {
         can_fan_out(&self.context_cwd())
     }
 
-    /// The harness and model each part runs on: the chat's pin, else
-    /// `delegate`'s `auto`.
-    fn fanout_target(&self) -> (String, Option<String>) {
+    /// The harness and model each part runs on: the chat's pin (a
+    /// harness, or the ACP agent picked with Shift+Tab), else `delegate`'s
+    /// `auto`. A pinned chat's parts never go anywhere else (#11544).
+    pub(crate) fn fanout_target(&self) -> (String, Option<String>) {
         use crate::harness_plugin::Harness;
+        if self.live.pinned
+            && let Some(agent) = &self.live.agent
+        {
+            return (agent.clone(), None);
+        }
         let pinned = self.live.runs_on.filter(|_| self.live.pinned);
         let to = match pinned {
             Some(Harness::ClaudeCode) => crate::delegate_host::CLAUDE,

@@ -449,19 +449,23 @@ impl App {
     /// (#11473). A chat's first message also asks for its briefing
     /// ([`crate::context`]) at the same time; a follow-up asks for one only
     /// once the router judged it new work. Pins, commands, and messages
-    /// sent while a turn runs are not routing points. Returns whether it
-    /// took the message.
+    /// sent while a turn runs are not routing points; a pinned chat's
+    /// list-shaped message still asks whether it is several pieces of work
+    /// ([`App::ask_pinned_parts`]). Returns whether it took the message.
     pub(crate) fn ask_router(&mut self) -> bool {
         if self.routed.is_some()
             || self.route_settled
             || self.pending_route.is_some()
             || self.live.busy
             || self.request.is_some()
-            || self.routing_rule == Some(crate::routing_record::Rule::Pin)
-            || (self.live.pinned && self.live.runs_on.is_some())
             || self.draft.text.trim_start().starts_with('/')
         {
             return false;
+        }
+        if self.routing_rule == Some(crate::routing_record::Rule::Pin)
+            || (self.live.pinned && (self.live.runs_on.is_some() || self.live.agent.is_some()))
+        {
+            return self.ask_pinned_parts();
         }
         if self.ask_redo() {
             return true;
@@ -504,6 +508,42 @@ impl App {
             context_considered: first,
             escalation: None,
             dispatch,
+            started: std::time::Instant::now(),
+            situation,
+            session: self.session_id().map(str::to_owned),
+            draft: std::mem::take(&mut self.draft),
+            composer: std::mem::take(&mut self.composer),
+        });
+        true
+    }
+
+    /// A pinned chat is never routed, but a list-shaped message in it
+    /// still asks System One whether it is several pieces of work and
+    /// which part needs which (#11544). The answer runs as a plan or a
+    /// fan-out with every part on the pin ([`App::fanout_target`]); no
+    /// part moves to another harness. A plan's part keeps the pin's rule
+    /// in its routing record. Returns whether it took the message.
+    fn ask_pinned_parts(&mut self) -> bool {
+        if self.sending_part && self.plan.is_some() {
+            self.routing_rule = Some(crate::routing_record::Rule::Pin);
+        }
+        if !self.dispatch_asks(true) || crate::dispatch::parts(&self.draft.text).is_none() {
+            return false;
+        }
+        let earlier = crate::router::earlier(&self.live.entries);
+        let Some(dispatch) = crate::dispatch::ask(&earlier, &self.draft.text) else {
+            return false;
+        };
+        let facts = Facts::read(self);
+        let candidates = candidates(&facts);
+        let situation = self.situation(&facts, &candidates);
+        self.pending_route = Some(crate::router::Pending {
+            receiver: None,
+            answer: None,
+            context: None,
+            context_considered: true,
+            escalation: None,
+            dispatch: Some(dispatch),
             started: std::time::Instant::now(),
             situation,
             session: self.session_id().map(str::to_owned),

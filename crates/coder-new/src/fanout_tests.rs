@@ -557,3 +557,99 @@ fn a_multi_part_ask_with_independent_parts_fans_out() {
     );
     assert!(planned, "a chain keeps the plan");
 }
+
+/// A chat pinned with Shift+Tab is never routed, but a list-shaped ask in
+/// it still asks System One about its parts (#11544): independent parts fan
+/// out, a chain runs as a plan, and every part runs on the pin.
+#[test]
+fn a_pinned_chat_still_splits_a_multi_part_ask_and_keeps_every_part_on_the_pin() {
+    use crate::harness_pick::Pick;
+    use crate::harness_plugin::Harness;
+    let fixture = fixture("pinned", Duration::from_millis(10));
+    // Auto would pick Claude Code; the pin is OpenCode.
+    crate::harness_plugin::sign_in_claude(true);
+    crate::opencode_chat::install_for_test(true);
+    crate::dispatch::set_test_judge(Some(Some(0.9)));
+    set_test_needs(Some(vec![(3, 1)]));
+    let pinned = |text: &str| {
+        let mut app = crate::App::default();
+        app.set_mode(crate::Mode::Live);
+        app.cwd = Some(fixture.repo.clone());
+        app.next_pick = Some(Pick::Harness(Harness::OpenCode));
+        app.draft.text = text.into();
+        app.submit_live();
+        let routed = app
+            .pending_route
+            .as_ref()
+            .map(|pending| pending.receiver.is_some());
+        app.poll_route();
+        (app, routed)
+    };
+    let (app, routed) =
+        pinned("1. Add a --verbose flag\n2. Fix the typo in README\n3. Test the flag");
+    let fanned = match app.request.as_ref().map(|request| &request.kind) {
+        Some(crate::live::Work::Fanout { run }) => Some((run.to.clone(), run.graph.edges())),
+        _ => None,
+    };
+    // A chain runs one part at a time, each on the pin.
+    set_test_needs(Some(vec![(2, 1), (3, 2)]));
+    let (mut chained, _) = pinned("1. Add a flag\n2. Document the flag\n3. Test the flag");
+    let first = (
+        chained.plan.as_ref().map(|plan| plan.at),
+        chained.live.runs_on,
+    );
+    chained.live.busy = false;
+    chained.request = None;
+    chained.advance_plan(None);
+    let second = (
+        chained.plan.as_ref().map(|plan| plan.at),
+        chained.live.runs_on,
+    );
+    // Prose in a pinned chat is not held: it goes straight to the pin.
+    let (prose, prose_routed) = pinned("Fix the bug in main.rs and add a test.");
+    set_test_needs(None);
+    crate::dispatch::set_test_judge(None);
+    crate::opencode_chat::install_for_test(false);
+    crate::harness_plugin::sign_in_claude(false);
+    let _ = std::fs::remove_dir_all(&fixture.root);
+    assert_eq!(routed, Some(false), "only the parts question, no route");
+    assert_eq!(
+        fanned,
+        Some((crate::delegate_host::OPENCODE.to_owned(), vec![(3, 1)]))
+    );
+    assert!(app.live.pinned);
+    assert_eq!(first, (Some(0), Some(Harness::OpenCode)));
+    assert_eq!(second, (Some(1), Some(Harness::OpenCode)));
+    assert!(chained.live.pinned);
+    assert_eq!(prose_routed, None);
+    assert_eq!(prose.live.runs_on, Some(Harness::OpenCode));
+}
+
+/// A pinned fan-out runs each part on the pin, and its record names it.
+#[test]
+fn a_pinned_fanout_runs_every_part_on_the_pin_and_records_it() {
+    let fixture = fixture("pinned-record", Duration::from_millis(10));
+    let mut run = run_for(
+        &fixture.repo,
+        &["write a.txt alpha", "write b.txt beta"],
+        &[],
+        2,
+    );
+    run.to = crate::delegate_host::OPENCODE.into();
+    let (summary, _) = go(&fixture, &run);
+    let line = record_line(&run, &summary, 0);
+    let unpinned = record_line(&run_for(&fixture.repo, &["a", "b"], &[], 2), &summary, 0);
+    let _ = std::fs::remove_dir_all(&fixture.root);
+    assert_eq!(line.pin.as_deref(), Some(crate::delegate_host::OPENCODE));
+    assert_eq!(
+        line.outcomes
+            .iter()
+            .map(|part| (part.state, part.harness.clone()))
+            .collect::<Vec<_>>(),
+        [
+            (State::Merged, Some("opencode".to_owned())),
+            (State::Merged, Some("opencode".to_owned()))
+        ]
+    );
+    assert_eq!(unpinned.pin, None);
+}

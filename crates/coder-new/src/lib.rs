@@ -2169,6 +2169,11 @@ impl App {
             // A Shift+Tab pick holds from this message on (#11524).
             self.apply_pick();
             if let Some(agent) = self.picked_agent() {
+                // A list-shaped message may still run as parts, each on
+                // this agent (#11544).
+                if self.ask_router() {
+                    return;
+                }
                 self.submit_agent(agent);
                 return;
             }

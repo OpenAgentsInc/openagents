@@ -114,6 +114,9 @@ agent in its own worktree; one that needs another's result waits for it
 and starts from its changes. Each part gets a row under the input while
 it works.
 
+In a chat you pinned with Shift+Tab, the list still splits, and every
+part runs on the harness or agent you picked.
+
 When they finish, their changes come back to your folder together, the
 checks they ran are run once on the result, and one report lists how
 each part went. Coder never overwrites anything: if two parts (or you)
