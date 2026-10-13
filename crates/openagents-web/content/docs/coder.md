@@ -101,6 +101,7 @@ puts the files back as they were before it.
 
 | Guide | What it covers |
 | --- | --- |
+| [How Coder works](/docs/coder-how-it-works) | Quick decisions in front of the big model, one chat in front of every agent, and the steps that wait for you. |
 | [Use Coder in the terminal](/docs/coder-terminal) | The screen, keys, commands, chats, memory, and attachments. |
 | [Choose who answers](/docs/coder-agents) | Auto, `Shift+Tab`, models, preferences, handing work to other agents, and background agents. |
 | [Coder's plugins](/docs/coder-plugins) | What each built-in plugin does, and how to set up keys. |
@@ -114,4 +115,4 @@ with your system, Coder's version (from the version command above), and
 what you saw. Leave out keys and
 private code.
 
-Next: [Use Coder in the terminal](/docs/coder-terminal).
+Next: [How Coder works](/docs/coder-how-it-works).

@@ -28,7 +28,7 @@ pub(crate) const TERMS: &str = include_str!("../../content/legal/terms.md");
 pub(crate) const PRIVACY: &str = include_str!("../../content/legal/privacy.md");
 
 /// The docs, by slug, in reading order.
-pub(crate) const DOCS: [(&str, &str); 40] = [
+pub(crate) const DOCS: [(&str, &str); 41] = [
     (
         "what-is-openagents",
         include_str!("../../content/docs/what-is-openagents.md"),
@@ -45,6 +45,12 @@ pub(crate) const DOCS: [(&str, &str); 40] = [
         include_str!("../../content/docs/privacy-and-security.md"),
     ),
     ("coder", include_str!("../../content/docs/coder.md")),
+    // Its four figures are SVG in the launch film's look, written by
+    // `scripts/docs/coder-figures.py` and served from `/static/docs/`.
+    (
+        "coder-how-it-works",
+        include_str!("../../content/docs/coder-how-it-works.md"),
+    ),
     (
         "coder-terminal",
         include_str!("../../content/docs/coder-terminal.md"),

@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" width="640" height="420" role="img" aria-labelledby="title desc">
+<title id="title">Another harness: every step goes through the big model</title>
+<desc id="desc">Three messages on the left each run straight into one large glowing circle labeled the big model. A thin ring around it holds only the model's own commands: Bash, Read, Edit, Write, Grep, and Web. Every command's result goes back into the model. Below: $4.00 per accepted fix and a 284 second median.</desc>
+<defs><radialGradient id="core"><stop offset="0" stop-color="#fff"/><stop offset=".7" stop-color="rgb(240,242,250)"/><stop offset="1" stop-color="rgb(210,214,228)"/></radialGradient><radialGradient id="halo"><stop offset="0" stop-color="rgb(236,240,255)" stop-opacity=".55"/><stop offset=".45" stop-color="rgb(236,240,255)" stop-opacity=".12"/><stop offset="1" stop-color="rgb(236,240,255)" stop-opacity="0"/></radialGradient><radialGradient id="goldhalo"><stop offset="0" stop-color="rgb(255,206,84)" stop-opacity=".5"/><stop offset="1" stop-color="rgb(255,206,84)" stop-opacity="0"/></radialGradient><radialGradient id="vignette" cx=".62" cy=".5" r=".75"><stop offset="0" stop-color="#141414"/><stop offset="1" stop-color="#0a0a0a"/></radialGradient><filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.4"/></filter></defs>
+<style>text{font-family:ui-sans-serif,-apple-system,system-ui,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;letter-spacing:-.01em}.mono{font-family:ui-monospace,"SFMono-Regular","SF Mono",Menlo,Monaco,Consolas,"Liberation Mono",monospace;letter-spacing:0}.t1{fill:#ededed}.t2{fill:#818181}.t3{fill:#656565}.ink{fill:#0a0a0a}.ink2{fill:#3a3a3a}.gold{fill:rgb(255,206,84)}@keyframes breathe{0%,100%{opacity:.45}50%{opacity:.7}}.breathe{animation:breathe 7.0s ease-in-out infinite}@keyframes k1{0%,2.86%{stroke-dashoffset:16}18.57%,100%{stroke-dashoffset:-185.5}}@keyframes k2{0%,17.14%{opacity:0}20.36%{opacity:1}30.00%,100%{opacity:0}}@keyframes k3{0%,20.00%{stroke-dashoffset:10}27.86%,100%{stroke-dashoffset:-69.0}}@keyframes k4{0%,27.86%{stroke-dashoffset:10}35.71%,100%{stroke-dashoffset:-69.0}}@keyframes k5{0%,34.29%{stroke-dashoffset:16}50.00%,100%{stroke-dashoffset:-173.3}}@keyframes k6{0%,48.57%{opacity:0}51.79%{opacity:1}61.43%,100%{opacity:0}}@keyframes k7{0%,51.43%{stroke-dashoffset:10}59.29%,100%{stroke-dashoffset:-69.0}}@keyframes k8{0%,59.29%{stroke-dashoffset:10}67.14%,100%{stroke-dashoffset:-69.0}}@keyframes k9{0%,65.71%{stroke-dashoffset:16}81.43%,100%{stroke-dashoffset:-172.4}}@keyframes k10{0%,80.00%{opacity:0}83.21%{opacity:1}92.86%,100%{opacity:0}}@keyframes k11{0%,82.86%{stroke-dashoffset:10}90.71%,100%{stroke-dashoffset:-69.0}}@keyframes k12{0%,90.71%{stroke-dashoffset:10}98.57%,100%{stroke-dashoffset:-69.0}}@media (prefers-reduced-motion:reduce){.light{display:none}.breathe{animation:none}}</style>
+<rect width="640" height="420" fill="url(#vignette)"/>
+<circle cx="440.0" cy="210.0" r="92" fill="none" stroke="#fff" stroke-opacity="0.22" stroke-width="1.0"/>
+<circle cx="440.0" cy="210.0" r="98" fill="none" stroke="#fff" stroke-opacity="0.08" stroke-width="1.0"/>
+<path d="M492.0,180.0 L519.7,164.0" fill="none" stroke="#fff" stroke-opacity="0.25" stroke-width="1.0"/>
+<path d="M492.0,240.0 L519.7,256.0" fill="none" stroke="#fff" stroke-opacity="0.25" stroke-width="1.0"/>
+<path d="M440.0,270.0 L440.0,302.0" fill="none" stroke="#fff" stroke-opacity="0.25" stroke-width="1.0"/>
+<path d="M388.0,240.0 L360.3,256.0" fill="none" stroke="#fff" stroke-opacity="0.25" stroke-width="1.0"/>
+<path d="M388.0,180.0 L360.3,164.0" fill="none" stroke="#fff" stroke-opacity="0.25" stroke-width="1.0"/>
+<path d="M440.0,150.0 L440.0,118.0" fill="none" stroke="#fff" stroke-opacity="0.25" stroke-width="1.0"/>
+<path d="M210.0,150.0 Q298.1,177.9 380.7,219.4" fill="none" stroke="#fff" stroke-opacity="0.13" stroke-width="1.0"/>
+<path d="M210.0,182.0 Q295.0,196.0 380.0,210.0" fill="none" stroke="#fff" stroke-opacity="0.13" stroke-width="1.0"/>
+<path d="M210.0,214.0 Q295.9,214.1 380.7,200.6" fill="none" stroke="#fff" stroke-opacity="0.08" stroke-width="1.0"/>
+<circle cx="206.0" cy="150.0" r="2.6" fill="rgb(235,235,235)" fill-opacity="1.0"/>
+<circle cx="206.0" cy="182.0" r="2.6" fill="rgb(235,235,235)" fill-opacity="1.0"/>
+<circle cx="206.0" cy="214.0" r="2.6" fill="rgb(150,150,150)" fill-opacity="1.0"/>
+<circle cx="519.7" cy="164.0" r="5" fill="rgb(225,225,225)" fill-opacity="1.0"/>
+<circle cx="519.7" cy="256.0" r="5" fill="rgb(225,225,225)" fill-opacity="1.0"/>
+<circle cx="440.0" cy="302.0" r="5" fill="rgb(225,225,225)" fill-opacity="1.0"/>
+<circle cx="360.3" cy="256.0" r="5" fill="rgb(225,225,225)" fill-opacity="1.0"/>
+<circle cx="360.3" cy="164.0" r="5" fill="rgb(225,225,225)" fill-opacity="1.0"/>
+<circle cx="440.0" cy="118.0" r="5" fill="rgb(225,225,225)" fill-opacity="1.0"/>
+<circle cx="440" cy="210" r="117.6" fill="url(#halo)" opacity="0.55" class="breathe"/>
+<circle cx="440" cy="210" r="63" fill="none" stroke="#fff" stroke-opacity="0.25"/>
+<circle cx="440" cy="210" r="56" fill="url(#core)" opacity="1.0"/>
+<text x="28.0" y="46.0" font-size="20" text-anchor="start" class="t1">Another harness: every step</text>
+<text x="28.0" y="72.0" font-size="20" text-anchor="start" class="t1">goes through the big model.</text>
+<text x="28.0" y="154.5" font-size="14" text-anchor="start" class="t1">Fix the flaky parser test</text>
+<text x="28.0" y="186.5" font-size="14" text-anchor="start" class="t1">Find where the config loads</text>
+<text x="28.0" y="218.5" font-size="14" text-anchor="start" class="t2">What does this crate do?</text>
+<text x="28.0" y="318.0" font-size="11" text-anchor="start" class="t3">cost per accepted fix</text>
+<text x="188.0" y="318.0" font-size="11" text-anchor="start" class="t3">median time</text>
+<text x="28.0" y="350.0" font-size="28" text-anchor="start" class="t1 mono">$4.00</text>
+<text x="188.0" y="350.0" font-size="28" text-anchor="start" class="t1 mono">284 s</text>
+<text x="538.7" y="157.5" font-size="13" text-anchor="start" class="t2">Read</text>
+<text x="538.7" y="271.5" font-size="13" text-anchor="start" class="t2">Edit</text>
+<text x="440.0" y="328.5" font-size="13" text-anchor="middle" class="t2">Write</text>
+<text x="341.3" y="271.5" font-size="13" text-anchor="end" class="t2">Grep</text>
+<text x="341.3" y="157.5" font-size="13" text-anchor="end" class="t2">Web</text>
+<text x="440.0" y="100.5" font-size="13" text-anchor="middle" class="t2">Bash</text>
+<text x="440.0" y="209.0" font-size="23.52" text-anchor="middle" font-weight="500" class="ink">System 2</text>
+<text x="440.0" y="231.3" font-size="15.120000000000001" text-anchor="middle" class="ink2">the big model</text>
+<path class="light" d="M210.0,150.0 Q298.1,177.9 380.7,219.4" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:16 240;stroke-dashoffset:16;animation:k1 7.0s linear infinite"/>
+<path class="light" d="M210.0,150.0 Q298.1,177.9 380.7,219.4" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:16 240;stroke-dashoffset:16;animation:k1 7.0s linear infinite"/>
+<circle class="light" cx="440.0" cy="210.0" r="58" fill="none" stroke="rgb(236,240,255)" stroke-width="1.4" style="opacity:0;animation:k2 7.0s ease-out infinite"/>
+<circle class="light" cx="440.0" cy="210.0" r="127.6" fill="url(#halo)" style="opacity:0;animation:k2 7.0s ease-out infinite"/>
+<path class="light" d="M490.2,181.0 L519.7,164.0 L490.2,181.0" fill="none" stroke="rgb(236,240,255)" stroke-width="5.2" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:10 118;stroke-dashoffset:10;animation:k3 7.0s linear infinite"/>
+<path class="light" d="M490.2,181.0 L519.7,164.0 L490.2,181.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.3" stroke-linecap="round" style="stroke-dasharray:10 118;stroke-dashoffset:10;animation:k3 7.0s linear infinite"/>
+<path class="light" d="M440.0,268.0 L440.0,302.0 L440.0,268.0" fill="none" stroke="rgb(236,240,255)" stroke-width="5.2" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:10 118;stroke-dashoffset:10;animation:k4 7.0s linear infinite"/>
+<path class="light" d="M440.0,268.0 L440.0,302.0 L440.0,268.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.3" stroke-linecap="round" style="stroke-dasharray:10 118;stroke-dashoffset:10;animation:k4 7.0s linear infinite"/>
+<path class="light" d="M210.0,182.0 Q295.0,196.0 380.0,210.0" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:16 228;stroke-dashoffset:16;animation:k5 7.0s linear infinite"/>
+<path class="light" d="M210.0,182.0 Q295.0,196.0 380.0,210.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:16 228;stroke-dashoffset:16;animation:k5 7.0s linear infinite"/>
+<circle class="light" cx="440.0" cy="210.0" r="58" fill="none" stroke="rgb(236,240,255)" stroke-width="1.4" style="opacity:0;animation:k6 7.0s ease-out infinite"/>
+<circle class="light" cx="440.0" cy="210.0" r="127.6" fill="url(#halo)" style="opacity:0;animation:k6 7.0s ease-out infinite"/>
+<path class="light" d="M440.0,152.0 L440.0,118.0 L440.0,152.0" fill="none" stroke="rgb(236,240,255)" stroke-width="5.2" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:10 118;stroke-dashoffset:10;animation:k7 7.0s linear infinite"/>
+<path class="light" d="M440.0,152.0 L440.0,118.0 L440.0,152.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.3" stroke-linecap="round" style="stroke-dasharray:10 118;stroke-dashoffset:10;animation:k7 7.0s linear infinite"/>
+<path class="light" d="M490.2,239.0 L519.7,256.0 L490.2,239.0" fill="none" stroke="rgb(236,240,255)" stroke-width="5.2" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:10 118;stroke-dashoffset:10;animation:k8 7.0s linear infinite"/>
+<path class="light" d="M490.2,239.0 L519.7,256.0 L490.2,239.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.3" stroke-linecap="round" style="stroke-dasharray:10 118;stroke-dashoffset:10;animation:k8 7.0s linear infinite"/>
+<path class="light" d="M210.0,214.0 Q295.9,214.1 380.7,200.6" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:16 227;stroke-dashoffset:16;animation:k9 7.0s linear infinite"/>
+<path class="light" d="M210.0,214.0 Q295.9,214.1 380.7,200.6" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:16 227;stroke-dashoffset:16;animation:k9 7.0s linear infinite"/>
+<circle class="light" cx="440.0" cy="210.0" r="58" fill="none" stroke="rgb(236,240,255)" stroke-width="1.4" style="opacity:0;animation:k10 7.0s ease-out infinite"/>
+<circle class="light" cx="440.0" cy="210.0" r="127.6" fill="url(#halo)" style="opacity:0;animation:k10 7.0s ease-out infinite"/>
+<path class="light" d="M389.8,181.0 L360.3,164.0 L389.8,181.0" fill="none" stroke="rgb(236,240,255)" stroke-width="5.2" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:10 118;stroke-dashoffset:10;animation:k11 7.0s linear infinite"/>
+<path class="light" d="M389.8,181.0 L360.3,164.0 L389.8,181.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.3" stroke-linecap="round" style="stroke-dasharray:10 118;stroke-dashoffset:10;animation:k11 7.0s linear infinite"/>
+<path class="light" d="M490.2,181.0 L519.7,164.0 L490.2,181.0" fill="none" stroke="rgb(236,240,255)" stroke-width="5.2" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:10 118;stroke-dashoffset:10;animation:k12 7.0s linear infinite"/>
+<path class="light" d="M490.2,181.0 L519.7,164.0 L490.2,181.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.3" stroke-linecap="round" style="stroke-dasharray:10 118;stroke-dashoffset:10;animation:k12 7.0s linear infinite"/>
+<rect x=".5" y=".5" width="639" height="419" fill="none" stroke="#fff" stroke-opacity=".08"/>
+</svg>

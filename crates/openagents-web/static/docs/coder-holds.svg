@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" width="640" height="420" role="img" aria-labelledby="title desc">
+<title id="title">Hard-to-undo steps wait for you</title>
+<desc id="desc">From Coder on the left, everyday work runs straight through to its places: read, edit, run tests, and push. Five other paths stop at a hold before they arrive: a deploy, a merge, a secret, a payment (drawn in gold), and a DNS change. Each one waits for you to answer Y to allow it or N to deny it.</desc>
+<defs><radialGradient id="core"><stop offset="0" stop-color="#fff"/><stop offset=".7" stop-color="rgb(240,242,250)"/><stop offset="1" stop-color="rgb(210,214,228)"/></radialGradient><radialGradient id="halo"><stop offset="0" stop-color="rgb(236,240,255)" stop-opacity=".55"/><stop offset=".45" stop-color="rgb(236,240,255)" stop-opacity=".12"/><stop offset="1" stop-color="rgb(236,240,255)" stop-opacity="0"/></radialGradient><radialGradient id="goldhalo"><stop offset="0" stop-color="rgb(255,206,84)" stop-opacity=".5"/><stop offset="1" stop-color="rgb(255,206,84)" stop-opacity="0"/></radialGradient><radialGradient id="vignette" cx=".62" cy=".5" r=".75"><stop offset="0" stop-color="#141414"/><stop offset="1" stop-color="#0a0a0a"/></radialGradient><filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.4"/></filter></defs>
+<style>text{font-family:ui-sans-serif,-apple-system,system-ui,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;letter-spacing:-.01em}.mono{font-family:ui-monospace,"SFMono-Regular","SF Mono",Menlo,Monaco,Consolas,"Liberation Mono",monospace;letter-spacing:0}.t1{fill:#ededed}.t2{fill:#818181}.t3{fill:#656565}.ink{fill:#0a0a0a}.ink2{fill:#3a3a3a}.gold{fill:rgb(255,206,84)}@keyframes breathe{0%,100%{opacity:.45}50%{opacity:.7}}.breathe{animation:breathe 7.0s ease-in-out infinite}@keyframes k1{0%,2.86%{stroke-dashoffset:14}15.71%,100%{stroke-dashoffset:-329.2}}@keyframes k2{0%,15.00%{opacity:0}17.14%{opacity:1}23.57%,100%{opacity:0}}@keyframes k3{0%,7.86%{stroke-dashoffset:14}20.71%,100%{stroke-dashoffset:-321.2}}@keyframes k4{0%,20.00%{opacity:0}22.14%{opacity:1}28.57%,100%{opacity:0}}@keyframes k5{0%,12.86%{stroke-dashoffset:14}25.71%,100%{stroke-dashoffset:-314.7}}@keyframes k6{0%,25.00%{opacity:0}27.14%{opacity:1}33.57%,100%{opacity:0}}@keyframes k7{0%,17.86%{stroke-dashoffset:14}30.71%,100%{stroke-dashoffset:-310.1}}@keyframes k8{0%,30.00%{opacity:0}32.14%{opacity:1}38.57%,100%{opacity:0}}@keyframes k9{0%,34.29%{stroke-dashoffset:14}47.86%,100%{stroke-dashoffset:-289.8}}@keyframes k10{0%,47.14%{opacity:0}58.57%{opacity:1}92.86%,100%{opacity:0}}@keyframes k11{0%,40.71%{stroke-dashoffset:14}54.29%,100%{stroke-dashoffset:-290.5}}@keyframes k12{0%,53.57%{opacity:0}65.00%{opacity:1}99.29%,100%{opacity:0}}@keyframes k13{0%,47.14%{stroke-dashoffset:14}60.71%,100%{stroke-dashoffset:-294.4}}@keyframes k14{0%,60.00%{opacity:0}71.43%{opacity:1}100.00%,100%{opacity:0}}@keyframes k15{0%,53.57%{stroke-dashoffset:14}67.14%,100%{stroke-dashoffset:-301.2}}@keyframes k16{0%,66.43%{opacity:0}77.86%{opacity:1}100.00%,100%{opacity:0}}@keyframes k17{0%,60.00%{stroke-dashoffset:14}73.57%,100%{stroke-dashoffset:-310.8}}@keyframes k18{0%,72.86%{opacity:0}84.29%{opacity:1}100.00%,100%{opacity:0}}@media (prefers-reduced-motion:reduce){.light{display:none}.breathe{animation:none}}</style>
+<rect width="640" height="420" fill="url(#vignette)"/>
+<path d="M160.0,232.0 Q302.4,147.7 464.0,112.0" fill="none" stroke="#fff" stroke-opacity="0.16" stroke-width="1.0"/>
+<path d="M160.0,232.0 Q304.3,159.7 464.0,136.0" fill="none" stroke="#fff" stroke-opacity="0.16" stroke-width="1.0"/>
+<path d="M160.0,232.0 Q306.2,171.7 464.0,160.0" fill="none" stroke="#fff" stroke-opacity="0.16" stroke-width="1.0"/>
+<path d="M160.0,232.0 Q308.2,183.7 464.0,184.0" fill="none" stroke="#fff" stroke-opacity="0.16" stroke-width="1.0"/>
+<path d="M160.0,244.0 Q304.5,257.3 448.0,236.0" fill="none" stroke="#fff" stroke-opacity="0.16" stroke-width="1.0"/>
+<path d="M458.0,236.0 L512.0,236.0" fill="none" stroke="#fff" stroke-opacity="0.35" stroke-width="1.0" stroke-dasharray="2 4"/>
+<path d="M160.0,244.0 Q302.7,272.3 448.0,266.0" fill="none" stroke="#fff" stroke-opacity="0.16" stroke-width="1.0"/>
+<path d="M458.0,266.0 L512.0,266.0" fill="none" stroke="#fff" stroke-opacity="0.35" stroke-width="1.0" stroke-dasharray="2 4"/>
+<path d="M160.0,244.0 Q300.9,287.3 448.0,296.0" fill="none" stroke="#fff" stroke-opacity="0.16" stroke-width="1.0"/>
+<path d="M458.0,296.0 L512.0,296.0" fill="none" stroke="#fff" stroke-opacity="0.35" stroke-width="1.0" stroke-dasharray="2 4"/>
+<path d="M160.0,244.0 Q299.1,302.3 448.0,326.0" fill="none" stroke="#fff" stroke-opacity="0.16" stroke-width="1.0"/>
+<path d="M458.0,326.0 L512.0,326.0" fill="none" stroke="#fff" stroke-opacity="0.35" stroke-width="1.0" stroke-dasharray="2 4"/>
+<path d="M160.0,244.0 Q297.3,317.3 448.0,356.0" fill="none" stroke="#fff" stroke-opacity="0.16" stroke-width="1.0"/>
+<path d="M458.0,356.0 L512.0,356.0" fill="none" stroke="#fff" stroke-opacity="0.35" stroke-width="1.0" stroke-dasharray="2 4"/>
+<circle cx="128" cy="238" r="63.0" fill="url(#halo)" opacity="0.55" class="breathe"/>
+<circle cx="128" cy="238" r="37" fill="none" stroke="#fff" stroke-opacity="0.25"/>
+<circle cx="128" cy="238" r="30" fill="url(#core)" opacity="1.0"/>
+<circle cx="470.0" cy="112.0" r="4.5" fill="rgb(220,220,220)" fill-opacity="1.0"/>
+<circle cx="470.0" cy="136.0" r="4.5" fill="rgb(220,220,220)" fill-opacity="1.0"/>
+<circle cx="470.0" cy="160.0" r="4.5" fill="rgb(220,220,220)" fill-opacity="1.0"/>
+<circle cx="470.0" cy="184.0" r="4.5" fill="rgb(220,220,220)" fill-opacity="1.0"/>
+<line x1="452" y1="228" x2="452" y2="244" stroke="#ededed" stroke-width="1.6" stroke-linecap="round" stroke-opacity="0.85"/>
+<circle cx="520.0" cy="236.0" r="4.5" fill="rgb(150,150,150)" fill-opacity="1.0"/>
+<line x1="452" y1="258" x2="452" y2="274" stroke="#ededed" stroke-width="1.6" stroke-linecap="round" stroke-opacity="0.85"/>
+<circle cx="520.0" cy="266.0" r="4.5" fill="rgb(150,150,150)" fill-opacity="1.0"/>
+<line x1="452" y1="288" x2="452" y2="304" stroke="#ededed" stroke-width="1.6" stroke-linecap="round" stroke-opacity="0.85"/>
+<circle cx="520.0" cy="296.0" r="4.5" fill="rgb(150,150,150)" fill-opacity="1.0"/>
+<line x1="452" y1="318" x2="452" y2="334" stroke="rgb(255,206,84)" stroke-width="1.6" stroke-linecap="round" stroke-opacity="0.85"/>
+<circle cx="520.0" cy="326.0" r="4.5" fill="rgb(150,150,150)" fill-opacity="1.0"/>
+<line x1="452" y1="348" x2="452" y2="364" stroke="#ededed" stroke-width="1.6" stroke-linecap="round" stroke-opacity="0.85"/>
+<circle cx="520.0" cy="356.0" r="4.5" fill="rgb(150,150,150)" fill-opacity="1.0"/>
+<text x="28.0" y="46.0" font-size="20" text-anchor="start" class="t1">Hard-to-undo steps</text>
+<text x="28.0" y="72.0" font-size="20" text-anchor="start" class="t1">wait for you.</text>
+<text x="128.0" y="242.5" font-size="12.6" text-anchor="middle" font-weight="500" class="ink">Coder</text>
+<text x="368.0" y="92.0" font-size="11" text-anchor="start" class="t3">goes ahead</text>
+<text x="368.0" y="212.0" font-size="11" text-anchor="start" class="t3">waits for you</text>
+<text x="484.0" y="116.5" font-size="13" text-anchor="start" class="t2">read</text>
+<path class="light" d="M160.0,232.0 Q302.4,147.7 464.0,112.0" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:14 382;stroke-dashoffset:14;animation:k1 7.0s linear infinite"/>
+<path class="light" d="M160.0,232.0 Q302.4,147.7 464.0,112.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:14 382;stroke-dashoffset:14;animation:k1 7.0s linear infinite"/>
+<circle class="light" cx="470.0" cy="112.0" r="6" fill="none" stroke="rgb(236,240,255)" stroke-width="1.4" style="opacity:0;animation:k2 7.0s ease-out infinite"/>
+<circle class="light" cx="470.0" cy="112.0" r="13.2" fill="url(#halo)" style="opacity:0;animation:k2 7.0s ease-out infinite"/>
+<text x="484.0" y="140.5" font-size="13" text-anchor="start" class="t2">edit</text>
+<path class="light" d="M160.0,232.0 Q304.3,159.7 464.0,136.0" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:14 374;stroke-dashoffset:14;animation:k3 7.0s linear infinite"/>
+<path class="light" d="M160.0,232.0 Q304.3,159.7 464.0,136.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:14 374;stroke-dashoffset:14;animation:k3 7.0s linear infinite"/>
+<circle class="light" cx="470.0" cy="136.0" r="6" fill="none" stroke="rgb(236,240,255)" stroke-width="1.4" style="opacity:0;animation:k4 7.0s ease-out infinite"/>
+<circle class="light" cx="470.0" cy="136.0" r="13.2" fill="url(#halo)" style="opacity:0;animation:k4 7.0s ease-out infinite"/>
+<text x="484.0" y="164.5" font-size="13" text-anchor="start" class="t2">run tests</text>
+<path class="light" d="M160.0,232.0 Q306.2,171.7 464.0,160.0" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:14 368;stroke-dashoffset:14;animation:k5 7.0s linear infinite"/>
+<path class="light" d="M160.0,232.0 Q306.2,171.7 464.0,160.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:14 368;stroke-dashoffset:14;animation:k5 7.0s linear infinite"/>
+<circle class="light" cx="470.0" cy="160.0" r="6" fill="none" stroke="rgb(236,240,255)" stroke-width="1.4" style="opacity:0;animation:k6 7.0s ease-out infinite"/>
+<circle class="light" cx="470.0" cy="160.0" r="13.2" fill="url(#halo)" style="opacity:0;animation:k6 7.0s ease-out infinite"/>
+<text x="484.0" y="188.5" font-size="13" text-anchor="start" class="t2">push</text>
+<path class="light" d="M160.0,232.0 Q308.2,183.7 464.0,184.0" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:14 363;stroke-dashoffset:14;animation:k7 7.0s linear infinite"/>
+<path class="light" d="M160.0,232.0 Q308.2,183.7 464.0,184.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:14 363;stroke-dashoffset:14;animation:k7 7.0s linear infinite"/>
+<circle class="light" cx="470.0" cy="184.0" r="6" fill="none" stroke="rgb(236,240,255)" stroke-width="1.4" style="opacity:0;animation:k8 7.0s ease-out infinite"/>
+<circle class="light" cx="470.0" cy="184.0" r="13.2" fill="url(#halo)" style="opacity:0;animation:k8 7.0s ease-out infinite"/>
+<text x="534.0" y="240.5" font-size="13" text-anchor="start" class="t1">deploy</text>
+<path class="light" d="M160.0,244.0 Q304.5,257.3 448.0,236.0" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:14 343;stroke-dashoffset:14;animation:k9 7.0s linear infinite"/>
+<path class="light" d="M160.0,244.0 Q304.5,257.3 448.0,236.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:14 343;stroke-dashoffset:14;animation:k9 7.0s linear infinite"/>
+<circle class="light" cx="452.0" cy="236.0" r="7" fill="none" stroke="rgb(236,240,255)" stroke-width="1.4" style="opacity:0;animation:k10 7.0s ease-out infinite"/>
+<circle class="light" cx="452.0" cy="236.0" r="15.4" fill="url(#halo)" style="opacity:0;animation:k10 7.0s ease-out infinite"/>
+<text x="534.0" y="270.5" font-size="13" text-anchor="start" class="t1">merge</text>
+<path class="light" d="M160.0,244.0 Q302.7,272.3 448.0,266.0" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:14 344;stroke-dashoffset:14;animation:k11 7.0s linear infinite"/>
+<path class="light" d="M160.0,244.0 Q302.7,272.3 448.0,266.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:14 344;stroke-dashoffset:14;animation:k11 7.0s linear infinite"/>
+<circle class="light" cx="452.0" cy="266.0" r="7" fill="none" stroke="rgb(236,240,255)" stroke-width="1.4" style="opacity:0;animation:k12 7.0s ease-out infinite"/>
+<circle class="light" cx="452.0" cy="266.0" r="15.4" fill="url(#halo)" style="opacity:0;animation:k12 7.0s ease-out infinite"/>
+<text x="534.0" y="300.5" font-size="13" text-anchor="start" class="t1">secrets</text>
+<path class="light" d="M160.0,244.0 Q300.9,287.3 448.0,296.0" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:14 347;stroke-dashoffset:14;animation:k13 7.0s linear infinite"/>
+<path class="light" d="M160.0,244.0 Q300.9,287.3 448.0,296.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:14 347;stroke-dashoffset:14;animation:k13 7.0s linear infinite"/>
+<circle class="light" cx="452.0" cy="296.0" r="7" fill="none" stroke="rgb(236,240,255)" stroke-width="1.4" style="opacity:0;animation:k14 7.0s ease-out infinite"/>
+<circle class="light" cx="452.0" cy="296.0" r="15.4" fill="url(#halo)" style="opacity:0;animation:k14 7.0s ease-out infinite"/>
+<text x="534.0" y="330.5" font-size="13" text-anchor="start" class="gold">payment</text>
+<path class="light" d="M160.0,244.0 Q299.1,302.3 448.0,326.0" fill="none" stroke="rgb(255,206,84)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:14 354;stroke-dashoffset:14;animation:k15 7.0s linear infinite"/>
+<path class="light" d="M160.0,244.0 Q299.1,302.3 448.0,326.0" fill="none" stroke="rgb(255,206,84)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:14 354;stroke-dashoffset:14;animation:k15 7.0s linear infinite"/>
+<circle class="light" cx="452.0" cy="326.0" r="7" fill="none" stroke="rgb(255,206,84)" stroke-width="1.4" style="opacity:0;animation:k16 7.0s ease-out infinite"/>
+<circle class="light" cx="452.0" cy="326.0" r="15.4" fill="url(#halo)" style="opacity:0;animation:k16 7.0s ease-out infinite"/>
+<text x="534.0" y="360.5" font-size="13" text-anchor="start" class="t1">DNS</text>
+<path class="light" d="M160.0,244.0 Q297.3,317.3 448.0,356.0" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:14 364;stroke-dashoffset:14;animation:k17 7.0s linear infinite"/>
+<path class="light" d="M160.0,244.0 Q297.3,317.3 448.0,356.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:14 364;stroke-dashoffset:14;animation:k17 7.0s linear infinite"/>
+<circle class="light" cx="452.0" cy="356.0" r="7" fill="none" stroke="rgb(236,240,255)" stroke-width="1.4" style="opacity:0;animation:k18 7.0s ease-out infinite"/>
+<circle class="light" cx="452.0" cy="356.0" r="15.4" fill="url(#halo)" style="opacity:0;animation:k18 7.0s ease-out infinite"/>
+<rect x="28.5" y="322.5" width="24" height="24" rx="4" fill="#141414" stroke="#fff" stroke-opacity="0.28"/>
+<text x="40.5" y="339.0" font-size="12.5" text-anchor="middle" class="t1 mono">Y</text>
+<text x="62.0" y="339.0" font-size="12.5" text-anchor="start" class="t2">allow, this once</text>
+<rect x="28.5" y="354.5" width="24" height="24" rx="4" fill="#141414" stroke="#fff" stroke-opacity="0.28"/>
+<text x="40.5" y="371.0" font-size="12.5" text-anchor="middle" class="t1 mono">N</text>
+<text x="62.0" y="371.0" font-size="12.5" text-anchor="start" class="t2">deny</text>
+<rect x=".5" y=".5" width="639" height="419" fill="none" stroke="#fff" stroke-opacity=".08"/>
+</svg>

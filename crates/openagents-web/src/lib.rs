@@ -498,6 +498,7 @@ pub fn router(config: Config) -> Router {
         .route(theme::ALPINE_PATH, get(theme::alpine))
         .route(theme::TOGGLE_PATH, axum::routing::post(theme::toggle))
         .route("/static/verse-grid.jpg", get(verse_grid))
+        .route("/static/docs/{name}", get(docs_figure))
         .route("/static/chat.js", get(chat_script))
         .route("/static/flow.js", get(flow_script))
         .route("/static/everglade.js", get(everglade_script))
@@ -850,6 +851,47 @@ async fn verse_grid() -> Response {
             (header::CACHE_CONTROL, "public, max-age=86400"),
         ],
         &include_bytes!("../static/verse-grid.jpg")[..],
+    )
+        .into_response()
+}
+
+/// The figures the docs draw, by file name: static SVG written by
+/// `scripts/docs/coder-figures.py` in the launch film's look.
+pub(crate) const DOCS_FIGURES: [(&str, &str); 4] = [
+    (
+        "coder-harness.svg",
+        include_str!("../static/docs/coder-harness.svg"),
+    ),
+    (
+        "coder-system-1.svg",
+        include_str!("../static/docs/coder-system-1.svg"),
+    ),
+    (
+        "coder-agents.svg",
+        include_str!("../static/docs/coder-agents.svg"),
+    ),
+    (
+        "coder-holds.svg",
+        include_str!("../static/docs/coder-holds.svg"),
+    ),
+];
+
+/// The policy for a docs figure: its own inline style (the light's CSS
+/// animation) and nothing else, no scripts and no outside files.
+const FIGURE_POLICY: &str = "default-src 'none'; style-src 'unsafe-inline'";
+
+/// A docs figure (`/static/docs/{name}`), or the not-found page.
+async fn docs_figure(axum::extract::Path(name): axum::extract::Path<String>) -> Response {
+    let Some((_, svg)) = DOCS_FIGURES.iter().find(|(file, _)| *file == name) else {
+        return not_found_page();
+    };
+    (
+        [
+            (header::CONTENT_TYPE, "image/svg+xml"),
+            (header::CACHE_CONTROL, "public, max-age=86400"),
+            (header::CONTENT_SECURITY_POLICY, FIGURE_POLICY),
+        ],
+        *svg,
     )
         .into_response()
 }

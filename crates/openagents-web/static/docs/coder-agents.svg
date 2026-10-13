@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" width="640" height="420" role="img" aria-labelledby="title desc">
+<title id="title">One Coder in front of every agent</title>
+<desc id="desc">Coder sits at the center as a bright node inside a ring marked Auto. Around it are the agents it can hand a chat to: Claude Code, Codex, OpenCode, Grok Build, Devin, and Cursor. A light steps from one agent to the next, as Shift+Tab does: Auto, then Claude Code, Codex, OpenCode, and the others found on your computer.</desc>
+<defs><radialGradient id="core"><stop offset="0" stop-color="#fff"/><stop offset=".7" stop-color="rgb(240,242,250)"/><stop offset="1" stop-color="rgb(210,214,228)"/></radialGradient><radialGradient id="halo"><stop offset="0" stop-color="rgb(236,240,255)" stop-opacity=".55"/><stop offset=".45" stop-color="rgb(236,240,255)" stop-opacity=".12"/><stop offset="1" stop-color="rgb(236,240,255)" stop-opacity="0"/></radialGradient><radialGradient id="goldhalo"><stop offset="0" stop-color="rgb(255,206,84)" stop-opacity=".5"/><stop offset="1" stop-color="rgb(255,206,84)" stop-opacity="0"/></radialGradient><radialGradient id="vignette" cx=".62" cy=".5" r=".75"><stop offset="0" stop-color="#141414"/><stop offset="1" stop-color="#0a0a0a"/></radialGradient><filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.4"/></filter></defs>
+<style>text{font-family:ui-sans-serif,-apple-system,system-ui,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;letter-spacing:-.01em}.mono{font-family:ui-monospace,"SFMono-Regular","SF Mono",Menlo,Monaco,Consolas,"Liberation Mono",monospace;letter-spacing:0}.t1{fill:#ededed}.t2{fill:#818181}.t3{fill:#656565}.ink{fill:#0a0a0a}.ink2{fill:#3a3a3a}.gold{fill:rgb(255,206,84)}@keyframes breathe{0%,100%{opacity:.45}50%{opacity:.7}}.breathe{animation:breathe 7.0s ease-in-out infinite}@keyframes k1{0%,0.00%{stroke-dashoffset:12}6.43%,100%{stroke-dashoffset:-133.7}}@keyframes k2{0%,6.43%{stroke-dashoffset:12}12.14%,100%{stroke-dashoffset:-75.0}}@keyframes k3{0%,11.43%{opacity:0}15.18%{opacity:1}26.43%,100%{opacity:0}}@keyframes k4{0%,16.67%{stroke-dashoffset:12}23.10%,100%{stroke-dashoffset:-133.7}}@keyframes k5{0%,23.10%{stroke-dashoffset:12}28.81%,100%{stroke-dashoffset:-75.0}}@keyframes k6{0%,28.10%{opacity:0}31.85%{opacity:1}43.10%,100%{opacity:0}}@keyframes k7{0%,33.33%{stroke-dashoffset:12}39.76%,100%{stroke-dashoffset:-133.7}}@keyframes k8{0%,39.76%{stroke-dashoffset:12}45.48%,100%{stroke-dashoffset:-75.0}}@keyframes k9{0%,44.76%{opacity:0}48.51%{opacity:1}59.76%,100%{opacity:0}}@keyframes k10{0%,50.00%{stroke-dashoffset:12}56.43%,100%{stroke-dashoffset:-133.7}}@keyframes k11{0%,56.43%{stroke-dashoffset:12}62.14%,100%{stroke-dashoffset:-75.0}}@keyframes k12{0%,61.43%{opacity:0}65.18%{opacity:1}76.43%,100%{opacity:0}}@keyframes k13{0%,66.67%{stroke-dashoffset:12}73.10%,100%{stroke-dashoffset:-133.7}}@keyframes k14{0%,73.10%{stroke-dashoffset:12}78.81%,100%{stroke-dashoffset:-75.0}}@keyframes k15{0%,78.10%{opacity:0}81.85%{opacity:1}93.10%,100%{opacity:0}}@keyframes k16{0%,83.33%{stroke-dashoffset:12}89.76%,100%{stroke-dashoffset:-133.7}}@keyframes k17{0%,89.76%{stroke-dashoffset:12}95.48%,100%{stroke-dashoffset:-75.0}}@keyframes k18{0%,94.76%{opacity:0}98.51%{opacity:1}100.00%,100%{opacity:0}}@media (prefers-reduced-motion:reduce){.light{display:none}.breathe{animation:none}}</style>
+<rect width="640" height="420" fill="url(#vignette)"/>
+<circle cx="408.0" cy="206.0" r="62" fill="none" stroke="#fff" stroke-opacity="0.5" stroke-width="1.3"/>
+<circle cx="408.0" cy="206.0" r="140" fill="none" stroke="#fff" stroke-opacity="0.07" stroke-width="1.0" stroke-dasharray="1 5"/>
+<path d="M226.0,146.0 Q288.6,168.9 344.0,206.0" fill="none" stroke="#fff" stroke-opacity="0.15" stroke-width="1.0"/>
+<path d="M439.0,147.7 L473.7,82.4" fill="none" stroke="#fff" stroke-opacity="0.2" stroke-width="1.0"/>
+<path d="M468.3,179.2 L535.9,149.1" fill="none" stroke="#fff" stroke-opacity="0.2" stroke-width="1.0"/>
+<path d="M472.0,222.0 L543.8,239.9" fill="none" stroke="#fff" stroke-opacity="0.2" stroke-width="1.0"/>
+<path d="M448.6,258.0 L494.2,316.3" fill="none" stroke="#fff" stroke-opacity="0.2" stroke-width="1.0"/>
+<path d="M405.7,272.0 L403.1,345.9" fill="none" stroke="#fff" stroke-opacity="0.2" stroke-width="1.0"/>
+<path d="M363.8,255.0 L314.3,310.0" fill="none" stroke="#fff" stroke-opacity="0.2" stroke-width="1.0"/>
+<circle cx="222.0" cy="146.0" r="2.6" fill="rgb(235,235,235)" fill-opacity="1.0"/>
+<circle cx="408" cy="206" r="71.4" fill="url(#halo)" opacity="0.55" class="breathe"/>
+<circle cx="408" cy="206" r="41" fill="none" stroke="#fff" stroke-opacity="0.25"/>
+<circle cx="408" cy="206" r="34" fill="url(#core)" opacity="1.0"/>
+<circle cx="473.7" cy="82.4" r="10.0" fill="none" stroke="#fff" stroke-opacity="0.22" stroke-width="1"/>
+<circle cx="473.7" cy="82.4" r="6.5" fill="rgb(215,215,215)" fill-opacity="1.0"/>
+<circle cx="535.9" cy="149.1" r="10.0" fill="none" stroke="#fff" stroke-opacity="0.22" stroke-width="1"/>
+<circle cx="535.9" cy="149.1" r="6.5" fill="rgb(215,215,215)" fill-opacity="1.0"/>
+<circle cx="543.8" cy="239.9" r="10.0" fill="none" stroke="#fff" stroke-opacity="0.22" stroke-width="1"/>
+<circle cx="543.8" cy="239.9" r="6.5" fill="rgb(215,215,215)" fill-opacity="1.0"/>
+<circle cx="494.2" cy="316.3" r="10.0" fill="none" stroke="#fff" stroke-opacity="0.22" stroke-width="1"/>
+<circle cx="494.2" cy="316.3" r="6.5" fill="rgb(215,215,215)" fill-opacity="1.0"/>
+<circle cx="403.1" cy="345.9" r="10.0" fill="none" stroke="#fff" stroke-opacity="0.22" stroke-width="1"/>
+<circle cx="403.1" cy="345.9" r="6.5" fill="rgb(215,215,215)" fill-opacity="1.0"/>
+<circle cx="314.3" cy="310.0" r="10.0" fill="none" stroke="#fff" stroke-opacity="0.22" stroke-width="1"/>
+<circle cx="314.3" cy="310.0" r="6.5" fill="rgb(215,215,215)" fill-opacity="1.0"/>
+<text x="28.0" y="46.0" font-size="20" text-anchor="start" class="t1">One Coder in front</text>
+<text x="28.0" y="72.0" font-size="20" text-anchor="start" class="t1">of every agent.</text>
+<text x="28.0" y="128.0" font-size="11" text-anchor="start" class="t3">Your message</text>
+<text x="28.0" y="150.0" font-size="13" text-anchor="start" class="t1">Add tests for the login page</text>
+<rect x="28.5" y="322.5" width="86" height="28" rx="5" fill="#141414" stroke="#fff" stroke-opacity="0.28"/>
+<text x="71.5" y="341.0" font-size="12.5" text-anchor="middle" class="t1 mono">Shift+Tab</text>
+<text x="126.0" y="341.0" font-size="12" text-anchor="start" class="t2">chooses who answers</text>
+<text x="28.0" y="374.0" font-size="12" text-anchor="start" class="t3">Auto → Claude Code → Codex →</text>
+<text x="28.0" y="392.0" font-size="12" text-anchor="start" class="t3">OpenCode → the others here</text>
+<rect x="386.0" y="134.0" width="44" height="20" rx="10" fill="#0a0a0a" stroke="#fff" stroke-opacity="0.45"/>
+<text x="408.0" y="148.2" font-size="11.5" text-anchor="middle" class="t1">Auto</text>
+<text x="408.0" y="211.1" font-size="14.28" text-anchor="middle" font-weight="500" class="ink">Coder</text>
+<text x="482.2" y="71.0" font-size="13" text-anchor="start" class="t1">Claude Code</text>
+<path class="light" d="M226.0,146.0 Q288.6,168.9 344.0,206.0" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:12 185;stroke-dashoffset:12;animation:k1 7.0s linear infinite"/>
+<path class="light" d="M226.0,146.0 Q288.6,168.9 344.0,206.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:12 185;stroke-dashoffset:12;animation:k1 7.0s linear infinite"/>
+<path class="light" d="M439.0,147.7 L473.7,82.4" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:12 126;stroke-dashoffset:12;animation:k2 7.0s linear infinite"/>
+<path class="light" d="M439.0,147.7 L473.7,82.4" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:12 126;stroke-dashoffset:12;animation:k2 7.0s linear infinite"/>
+<circle class="light" cx="473.7" cy="82.4" r="9" fill="none" stroke="rgb(236,240,255)" stroke-width="1.4" style="opacity:0;animation:k3 7.0s ease-out infinite"/>
+<circle class="light" cx="473.7" cy="82.4" r="19.8" fill="url(#halo)" style="opacity:0;animation:k3 7.0s ease-out infinite"/>
+<text x="552.3" y="146.2" font-size="13" text-anchor="start" class="t1">Codex</text>
+<path class="light" d="M226.0,146.0 Q288.6,168.9 344.0,206.0" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:12 185;stroke-dashoffset:12;animation:k4 7.0s linear infinite"/>
+<path class="light" d="M226.0,146.0 Q288.6,168.9 344.0,206.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:12 185;stroke-dashoffset:12;animation:k4 7.0s linear infinite"/>
+<path class="light" d="M468.3,179.2 L535.9,149.1" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:12 126;stroke-dashoffset:12;animation:k5 7.0s linear infinite"/>
+<path class="light" d="M468.3,179.2 L535.9,149.1" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:12 126;stroke-dashoffset:12;animation:k5 7.0s linear infinite"/>
+<circle class="light" cx="535.9" cy="149.1" r="9" fill="none" stroke="rgb(236,240,255)" stroke-width="1.4" style="opacity:0;animation:k6 7.0s ease-out infinite"/>
+<circle class="light" cx="535.9" cy="149.1" r="19.8" fill="url(#halo)" style="opacity:0;animation:k6 7.0s ease-out infinite"/>
+<text x="561.3" y="248.7" font-size="13" text-anchor="start" class="t1">OpenCode</text>
+<path class="light" d="M226.0,146.0 Q288.6,168.9 344.0,206.0" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:12 185;stroke-dashoffset:12;animation:k7 7.0s linear infinite"/>
+<path class="light" d="M226.0,146.0 Q288.6,168.9 344.0,206.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:12 185;stroke-dashoffset:12;animation:k7 7.0s linear infinite"/>
+<path class="light" d="M472.0,222.0 L543.8,239.9" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:12 126;stroke-dashoffset:12;animation:k8 7.0s linear infinite"/>
+<path class="light" d="M472.0,222.0 L543.8,239.9" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:12 126;stroke-dashoffset:12;animation:k8 7.0s linear infinite"/>
+<circle class="light" cx="543.8" cy="239.9" r="9" fill="none" stroke="rgb(236,240,255)" stroke-width="1.4" style="opacity:0;animation:k9 7.0s ease-out infinite"/>
+<circle class="light" cx="543.8" cy="239.9" r="19.8" fill="url(#halo)" style="opacity:0;animation:k9 7.0s ease-out infinite"/>
+<text x="494.2" y="342.3" font-size="13" text-anchor="middle" class="t1">Grok Build</text>
+<path class="light" d="M226.0,146.0 Q288.6,168.9 344.0,206.0" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:12 185;stroke-dashoffset:12;animation:k10 7.0s linear infinite"/>
+<path class="light" d="M226.0,146.0 Q288.6,168.9 344.0,206.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:12 185;stroke-dashoffset:12;animation:k10 7.0s linear infinite"/>
+<path class="light" d="M448.6,258.0 L494.2,316.3" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:12 126;stroke-dashoffset:12;animation:k11 7.0s linear infinite"/>
+<path class="light" d="M448.6,258.0 L494.2,316.3" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:12 126;stroke-dashoffset:12;animation:k11 7.0s linear infinite"/>
+<circle class="light" cx="494.2" cy="316.3" r="9" fill="none" stroke="rgb(236,240,255)" stroke-width="1.4" style="opacity:0;animation:k12 7.0s ease-out infinite"/>
+<circle class="light" cx="494.2" cy="316.3" r="19.8" fill="url(#halo)" style="opacity:0;animation:k12 7.0s ease-out infinite"/>
+<text x="403.1" y="371.9" font-size="13" text-anchor="middle" class="t1">Devin</text>
+<path class="light" d="M226.0,146.0 Q288.6,168.9 344.0,206.0" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:12 185;stroke-dashoffset:12;animation:k13 7.0s linear infinite"/>
+<path class="light" d="M226.0,146.0 Q288.6,168.9 344.0,206.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:12 185;stroke-dashoffset:12;animation:k13 7.0s linear infinite"/>
+<path class="light" d="M405.7,272.0 L403.1,345.9" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:12 126;stroke-dashoffset:12;animation:k14 7.0s linear infinite"/>
+<path class="light" d="M405.7,272.0 L403.1,345.9" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:12 126;stroke-dashoffset:12;animation:k14 7.0s linear infinite"/>
+<circle class="light" cx="403.1" cy="345.9" r="9" fill="none" stroke="rgb(236,240,255)" stroke-width="1.4" style="opacity:0;animation:k15 7.0s ease-out infinite"/>
+<circle class="light" cx="403.1" cy="345.9" r="19.8" fill="url(#halo)" style="opacity:0;animation:k15 7.0s ease-out infinite"/>
+<text x="314.3" y="336.0" font-size="13" text-anchor="middle" class="t1">Cursor</text>
+<path class="light" d="M226.0,146.0 Q288.6,168.9 344.0,206.0" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:12 185;stroke-dashoffset:12;animation:k16 7.0s linear infinite"/>
+<path class="light" d="M226.0,146.0 Q288.6,168.9 344.0,206.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:12 185;stroke-dashoffset:12;animation:k16 7.0s linear infinite"/>
+<path class="light" d="M363.8,255.0 L314.3,310.0" fill="none" stroke="rgb(236,240,255)" stroke-width="6.4" stroke-linecap="round" stroke-opacity="0.35" filter="url(#soft)" style="stroke-dasharray:12 126;stroke-dashoffset:12;animation:k17 7.0s linear infinite"/>
+<path class="light" d="M363.8,255.0 L314.3,310.0" fill="none" stroke="rgb(236,240,255)" stroke-width="1.6" stroke-linecap="round" style="stroke-dasharray:12 126;stroke-dashoffset:12;animation:k17 7.0s linear infinite"/>
+<circle class="light" cx="314.3" cy="310.0" r="9" fill="none" stroke="rgb(236,240,255)" stroke-width="1.4" style="opacity:0;animation:k18 7.0s ease-out infinite"/>
+<circle class="light" cx="314.3" cy="310.0" r="19.8" fill="url(#halo)" style="opacity:0;animation:k18 7.0s ease-out infinite"/>
+<rect x=".5" y=".5" width="639" height="419" fill="none" stroke="#fff" stroke-opacity=".08"/>
+</svg>

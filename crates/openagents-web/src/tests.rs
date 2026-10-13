@@ -748,6 +748,41 @@ async fn the_homepage_links_one_download_page_and_starts_a_chat() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers[header::CONTENT_TYPE], "image/jpeg");
     assert!(image.starts_with(&[0xff, 0xd8, 0xff]), "a JPEG");
+    // "How Coder works" draws its four figures, each served as SVG with
+    // only its own style, and no guide names a figure the site lacks.
+    let (status, how) = get(site.clone(), "/docs/coder-how-it-works").await;
+    assert_eq!(status, StatusCode::OK);
+    for (file, _) in crate::DOCS_FIGURES {
+        assert!(
+            how.contains(&format!("<img src=\"/static/docs/{file}\" alt=\"")),
+            "{file}"
+        );
+        let (status, headers, svg) = get_bytes(site.clone(), &format!("/static/docs/{file}")).await;
+        assert_eq!(status, StatusCode::OK, "{file}");
+        assert_eq!(headers[header::CONTENT_TYPE], "image/svg+xml");
+        assert!(
+            headers[header::CONTENT_SECURITY_POLICY]
+                .to_str()
+                .unwrap()
+                .starts_with("default-src 'none'")
+        );
+        assert!(
+            svg.starts_with(b"<svg ") && !svg.windows(7).any(|w| w == b"<script"),
+            "{file}"
+        );
+    }
+    for (slug, source) in crate::pages::content::DOCS {
+        for (at, _) in source.match_indices("](/static/docs/") {
+            let rest = &source[at + "](/static/docs/".len()..];
+            let file = &rest[..rest.find(')').unwrap()];
+            assert!(
+                crate::DOCS_FIGURES.iter().any(|(f, _)| *f == file),
+                "{slug}: {file}"
+            );
+        }
+    }
+    let (status, _, _) = get_bytes(site.clone(), "/static/docs/nope.svg").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
     let (status, headers, script) = get_with(site, "/static/chat-start.js", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
@@ -2429,6 +2464,7 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
         "/static/flow.js",
         "/static/everglade.js",
         "/static/verse-grid.jpg",
+        "/static/docs/coder-harness.svg",
         "/favicon.svg",
         "/favicon.ico",
         "/app",
