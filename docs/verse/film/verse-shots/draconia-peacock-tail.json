@@ -1,10 +1,11 @@
 {
   "name": "draconia-peacock-tail",
-  "notes": "Draconia peacock P3 (reference 114.5-118.0, internal study only): out of the white, a quick pull back from a medium-wide silhouette to the wide (the face close-up is cut until a proper one exists); she rises and stands centred, a silhouette before the guardian's fanned tail of about 100 feathers, ruined walls and fires at the edges, mist on the cobbles, embers. 28 mm hold, then a slight ease back.",
+  "notes": "Draconia peacock P3 (reference 114.5-118.0, internal study only): out of the white, a quick pull back from a medium-wide silhouette to the wide (the face close-up is cut until a proper one exists); she rises and stands centred, a silhouette before the guardian's fanned tail of about 100 feathers, ruined walls and fires at the edges, mist on the cobbles, embers. 28 mm hold, then a slight ease back. Draconia is the face work's skinned build (long loose hair), playing her baked rise with an upward gust; it isn't committed, so the shot needs that file (parity.md, Current asset for scenes).",
   "scene": {
     "kind": "peacock",
     "part": "tail",
-    "rise": 0.4
+    "rise": 0.4,
+    "draconia": "~/work/film-out/draconia/build-long/draconia-long.glare.glb"
   },
   "duration": 3.5,
   "width": 1920,

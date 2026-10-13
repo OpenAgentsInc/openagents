@@ -56,6 +56,9 @@ pub struct Set {
     alice: Option<(Beast, Arc<TexturedScene>, Vec<usize>)>,
     /// Her vertices this frame.
     posed: Vec<verse::pbr::textured::TexturedVertex>,
+    /// Whether she is the face work's Draconia, who plays her own baked
+    /// rise, rather than Alice recolored.
+    real: bool,
     /// Her crouch's vertices, which she rises from.
     crouch: Vec<verse::pbr::textured::TexturedVertex>,
     stars: Vec<(Vec3, f32, f32)>,
@@ -92,12 +95,14 @@ impl Set {
         part: Part,
         flash_at: Option<f32>,
         rise: f32,
-        pack: Option<&ZonePack>,
+        pack: Option<&mut ZonePack>,
+        her: Option<&std::path::Path>,
     ) -> Result<Self, String> {
         let mut fx = Particles::new(0xD2AC);
         let mut lamps = Vec::new();
         let mut alice = None;
         let mut crouch = Vec::new();
+        let mut real = false;
         let mut stars = Vec::new();
         match part {
             Part::Feathers => {
@@ -111,38 +116,50 @@ impl Set {
             }
             Part::Tail => {
                 let pack = pack.ok_or("the tail needs the Everglade pack for Alice")?;
-                let form = pack
-                    .form("npc/alice")
-                    .ok_or("the pack carries no npc/alice")?;
-                let beast = Beast::new(pack, form)?;
-                let mut scene = beast.figure().scene.as_ref().clone();
-                draconia(&mut scene);
-                // Alice's staff, slung across her back and up past her
-                // head, is no part of Draconia: its vertices (found in the
-                // bind pose, behind the shoulder blades and out to her
-                // left) collapse to a point every frame.
-                let staff: Vec<usize> = beast
-                    .figure()
-                    .vertices
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, v)| v.pos[2] < -0.12 && v.pos[0] > 0.1 && v.pos[1] > 1.1)
-                    .map(|(i, _)| i)
-                    .collect();
-                // A second rig holds the crouch, so neither rig blends
-                // between clips it switches each frame.
-                let mut low = Beast::new(pack, form)?;
-                low.pose_clip(
-                    Vec3::new(0.0, -0.1, 0.0),
-                    0.0,
-                    1.0,
-                    "swing",
-                    0.4,
-                    false,
-                    0.0,
-                );
-                crouch = low.vertices().to_vec();
-                alice = Some((beast, Arc::new(scene), staff));
+                // The face work's skinned Draconia when the shot names her
+                // build, with her baked rise; Alice recolored otherwise.
+                if let Some(glb) = her {
+                    let form = crate::draconia::form(pack, glb, 0.05)?;
+                    let beast = Beast::new(pack, &form)?;
+                    let scene = beast.figure().scene.clone();
+                    alice = Some((beast, scene, Vec::new()));
+                    real = true;
+                }
+                let pack: &ZonePack = pack;
+                if !real {
+                    let form = pack
+                        .form("npc/alice")
+                        .ok_or("the pack carries no npc/alice")?;
+                    let beast = Beast::new(pack, form)?;
+                    let mut scene = beast.figure().scene.as_ref().clone();
+                    draconia(&mut scene);
+                    // Alice's staff, slung across her back and up past her
+                    // head, is no part of Draconia: its vertices (found in the
+                    // bind pose, behind the shoulder blades and out to her
+                    // left) collapse to a point every frame.
+                    let staff: Vec<usize> = beast
+                        .figure()
+                        .vertices
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, v)| v.pos[2] < -0.12 && v.pos[0] > 0.1 && v.pos[1] > 1.1)
+                        .map(|(i, _)| i)
+                        .collect();
+                    // A second rig holds the crouch, so neither rig blends
+                    // between clips it switches each frame.
+                    let mut low = Beast::new(pack, form)?;
+                    low.pose_clip(
+                        Vec3::new(0.0, -0.1, 0.0),
+                        0.0,
+                        1.0,
+                        "swing",
+                        0.4,
+                        false,
+                        0.0,
+                    );
+                    crouch = low.vertices().to_vec();
+                    alice = Some((beast, Arc::new(scene), staff));
+                }
                 fx.start("ground_mist", Spawn::at(Vec3::new(0.0, 0.0, 0.5)));
                 fx.start(
                     "ground_mist",
@@ -190,6 +207,7 @@ impl Set {
             alice,
             posed: Vec::new(),
             crouch,
+            real,
             stars,
             lamps,
         };
@@ -224,6 +242,13 @@ impl Set {
             // sunk a little) and rises into her idle over `RISE` seconds
             // before `rise`: the two poses' vertices blend, since the pack
             // has no crouch-to-stand clip.
+            if self.real {
+                // Her own rise: the hair thrown up by the gust and
+                // settling, then held.
+                beast.pose_clip(Vec3::ZERO, 0.0, 1.0, "rise", t, false, dt);
+                self.posed = beast.vertices().to_vec();
+                return;
+            }
             const RISE: f32 = 0.25;
             beast.pose_clip(
                 Vec3::ZERO,

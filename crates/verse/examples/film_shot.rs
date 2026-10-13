@@ -34,6 +34,8 @@
 
 #[path = "film/courtyard.rs"]
 mod courtyard;
+#[path = "film/draconia.rs"]
+mod draconia;
 #[path = "film/night.rs"]
 mod night;
 #[path = "film/peacock.rs"]
@@ -214,6 +216,10 @@ enum SceneSpec {
         flash_at: Option<f32>,
         #[serde(default)]
         rise: f32,
+        /// The face work's skinned Draconia build (a glb, `~/` allowed),
+        /// in place of Alice recolored.
+        #[serde(default)]
+        draconia: Option<String>,
     },
 }
 
@@ -595,13 +601,16 @@ impl Stage {
                 part,
                 flash_at,
                 rise,
+                draconia: her,
             } => {
-                let pack = if *part == peacock::Part::Tail {
+                let mut pack = if *part == peacock::Part::Tail {
                     Some(load_everglade()?)
                 } else {
                     None
                 };
-                let set = peacock::Set::new(*part, *flash_at, *rise, pack.as_ref())?;
+                let her = her.as_deref().map(draconia::path);
+                let set =
+                    peacock::Set::new(*part, *flash_at, *rise, pack.as_mut(), her.as_deref())?;
                 let renderer = verse::render::Offscreen::new(
                     w,
                     h,

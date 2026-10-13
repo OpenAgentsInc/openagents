@@ -677,6 +677,23 @@ shot.
   - the faces;
   - the spiders are smooth and glossy, not hairy;
   - the garden's ruined arches behind them;
-  - switching every Draconia shot to the MetaHuman asset once
-    "Current asset for scenes" lists it. It lists only the round-1 static
-    bust so far.
+  - switching every Draconia shot to the face work's skinned build: under
+    way, starting with the peacock tail shot.
+
+### Peacock v14, 2026-10-13
+
+- **The switch:** P3 now draws the face work's skinned Draconia
+  (`~/work/film-out/draconia/build-long/draconia-long.glare.glb`). It's added
+  to the pack in memory by `crates/verse/examples/film/draconia.rs` (as
+  `draconia_form.rs` does). She plays her own baked `rise`: an upward gust
+  0.05 s in throws her long hair up, and it settles over the shot. The shot
+  file names the build in `scene.draconia`; without it the scene falls back
+  to Alice recolored. The eyes close-up (peacock-open v1) stays cut in at
+  114.5 s.
+- **Gaps, for review against v13:**
+  - Her silhouette reads boxy: the robe is a straight block, the legs look
+    short, and her feet sit a little above the cobbles.
+  - The gust piles her hair into a clump above her head rather than the
+    reference's long streaming fan.
+  - Both come from the asset and its baked clip (the face work's), not the
+    scene.
