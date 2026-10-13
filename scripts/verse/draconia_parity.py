@@ -30,7 +30,13 @@ def font(size):
 
 def fit(path):
     im = Image.open(path).convert("RGB")
-    # Cover W x H, centred.
+    # Cover W x H, centred; a wider frame (21:9) is letterboxed whole.
+    if im.width / im.height > W / H * 1.15:
+        s = W / im.width
+        im = im.resize((W, round(im.height * s)), Image.LANCZOS)
+        out = Image.new("RGB", (W, H), (0, 0, 0))
+        out.paste(im, (0, (H - im.height) // 2))
+        return out
     s = max(W / im.width, H / im.height)
     im = im.resize((round(im.width * s), round(im.height * s)), Image.LANCZOS)
     x = (im.width - W) // 2

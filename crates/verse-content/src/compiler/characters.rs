@@ -1282,6 +1282,40 @@ pub fn alice(
     contrapposto(&mut model, ALICE_CONTRAPPOSTO)?;
     Ok(model)
 }
+/// A film character built on the Universal rig outside the packs, such as
+/// Draconia (`scripts/blender/draconia.py`): imports `path` with `options`
+/// (film close-ups keep 4096-pixel maps), measures her height at the
+/// crown, and gives her every Universal clip and state binding, as Alice
+/// has. Extra joints (Draconia's hair chains, `hair_<chain>_<link>`) stay
+/// at rest in those clips; `verse_engine::hair_chains::bake` adds their
+/// motion.
+///
+/// # Errors
+///
+/// Returns a message when the file can't be imported or has no `Head`.
+pub fn film_character(
+    pack: &mut Pack,
+    dir: &Path,
+    path: &Path,
+    universal_root: &Path,
+    options: ImportOptions,
+) -> Result<Model, String> {
+    let mut model = import_with(pack, dir, path, options)?;
+    let head = model
+        .skin
+        .as_ref()
+        .and_then(|skin| skin.names.iter().position(|n| n == "Head"))
+        .ok_or("The film character has no Head joint")? as u32;
+    model.height = model
+        .surfaces
+        .iter()
+        .flat_map(|s| s.vertices.iter())
+        .filter(|v| (0..4).any(|k| v.joints[k] == head && v.weights[k] > 0.5))
+        .map(|v| v.position[2])
+        .fold(0., f32::max);
+    animations(&mut model, &universal_root.join("animations.glb"))?;
+    Ok(model)
+}
 /// How far Alice's upper arms turn out from her sides in every clip,
 /// radians: her coat flares over her hips, and the Universal clips hang a
 /// slimmer figure's arms, which would sink her hands into it.

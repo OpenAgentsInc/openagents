@@ -18,6 +18,7 @@
 //! add the previous digest to `EVERGLADE_PACK_HISTORY`.
 
 pub mod compile;
+pub mod film;
 pub mod format;
 pub mod kit;
 pub mod kit_bake;

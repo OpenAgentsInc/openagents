@@ -136,6 +136,10 @@ fn read_states<'de, D: serde::Deserializer<'de>>(
     }
     deserializer.deserialize_map(States)
 }
+/// The most vertices a pack's models may carry together: room for a film
+/// character's groom (Draconia's long hair is about 3 M) beside a scene.
+pub const MAX_PACK_VERTICES: usize = 6_000_000;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Model {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -257,7 +261,7 @@ impl Pack {
             for surface in &model.surfaces {
                 surface.material.validate(self.textures.len())?;
                 vertices += surface.vertices.len();
-                if vertices > 2_000_000
+                if vertices > MAX_PACK_VERTICES
                     || surface.texture >= self.textures.len()
                     || surface.blend > 3
                     || surface.tint.iter().any(|v| !v.is_finite())

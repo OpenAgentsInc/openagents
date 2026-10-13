@@ -29,6 +29,14 @@ import os
 import bpy
 import numpy as np
 
+# Soot and blood for the battle shots (`draconia.py --battle`).
+BATTLE = False
+# `natural` (ash brown, the parity reference) or `pale` (platinum, thinner:
+# the battle and peacock look); `draconia.py --brows`.
+BROWS = "natural"
+# The expression being built: a glare adds furrow creases between the brows.
+EXPRESSION = "neutral"
+
 # ------------------------------------------------------------------ noise ---
 
 
@@ -208,7 +216,11 @@ def paint_skin(skin, marks, size, out):
     base = np.array([0.63, 0.48, 0.42], np.float32)
     mott = fbm(P, 0.03, 4, seed=1) - 0.5
     mott2 = fbm(P, 0.006, 3, seed=2) - 0.5
-    col = base[None, :] * (1 + 0.10 * mott[:, None] + 0.05 * mott2[:, None])
+    mott3 = fbm(P, 0.0035, 3, seed=3) - 0.5
+    col = base[None, :] * (1 + 0.14 * mott[:, None] + 0.08 * mott2[:, None] + 0.06 * mott3[:, None])
+    # Blotchy warmth at a few millimetres: skin is never one tone.
+    blotch = np.clip((fbm(P, 0.005, 3, seed=6) - 0.5) * 2.5, 0, 1)
+    col = mix(col, col * np.array([1.04, 0.93, 0.92], np.float32), blotch * 0.35)
     # Warm vs cool zones: the neck and temples cooler and paler.
     cool = smooth(-0.07, -0.12, Z)
     col = mix(col, col * np.array([0.97, 0.97, 1.0], np.float32), cool * 0.5)
@@ -223,7 +235,7 @@ def paint_skin(skin, marks, size, out):
         + 0.75 * gauss(P, nose_tip, (0.012, 0.03, 0.012))
         + 0.35 * gauss(P, mid + np.array([0, -0.025, -0.02], np.float32), (0.009, 0.03, 0.02))
         + 0.30 * gauss(P, mouth + np.array([0, 0, -0.035], np.float32), (0.018, 0.03, 0.012))
-        + 0.25 * (gauss(P, el + np.array([0, -0.005, 0.006], np.float32), (0.014, 0.02, 0.006)) + gauss(P, er + np.array([0, -0.005, 0.006], np.float32), (0.014, 0.02, 0.006)))
+        + 0.10 * (gauss(P, el + np.array([0, -0.005, 0.006], np.float32), (0.014, 0.02, 0.006)) + gauss(P, er + np.array([0, -0.005, 0.006], np.float32), (0.014, 0.02, 0.006)))
         + 0.6 * smooth(0.06, 0.075, np.abs(X)) * smooth(0.04, -0.02, np.abs(Z + 0.02))  # ears
     )
     red = np.clip(red * capill, 0, 1) * 0.4
@@ -231,10 +243,19 @@ def paint_skin(skin, marks, size, out):
 
     # Under-eye: a faint blue-purple, slightly darker.
     under = sum(gauss(P, e + np.array([0, -0.004, -0.012], np.float32), (0.013, 0.02, 0.006)) for e in (el, er))
-    col = mix(col, col * np.array([0.86, 0.80, 0.86], np.float32), np.clip(under, 0, 1) * 0.6)
+    col = mix(col, col * np.array([0.92, 0.89, 0.92], np.float32), np.clip(under, 0, 1) * 0.5)
     # Eyelid crease and lid: slightly darker, warmer.
     lid = sum(gauss(P, e + np.array([0, 0.0, 0.009], np.float32), (0.013, 0.02, 0.004)) for e in (el, er))
-    col = mix(col, col * np.array([0.88, 0.78, 0.75], np.float32), np.clip(lid, 0, 1) * 0.5)
+    col = mix(col, col * np.array([0.94, 0.92, 0.92], np.float32), np.clip(lid, 0, 1) * 0.35)
+
+    # The upper lash line: a dark, soft band where the lashes root, thicker
+    # toward the outer corner.
+    for e, sign in ((el, 1.0), (er, -1.0)):
+        dx = P[:, 0] - e[0]
+        outer = np.clip(dx * sign / 0.016, 0, 1)
+        lid_z = e[2] + 0.0042 * np.sqrt(np.clip(1 - (dx / 0.0155) ** 2, 0, 1)) - 0.0012
+        band = np.exp(-(((P[:, 2] - lid_z) / (0.0006 + 0.0006 * outer)) ** 2)) * (np.abs(dx) < 0.017) * (P[:, 1] < e[1])
+        col = mix(col, np.array([0.03, 0.022, 0.018], np.float32)[None, :], np.clip(band, 0, 1) * 0.6)
 
     # Lips: an analytic Cupid's bow and lower lip in the face plane.
     mx = (P[:, 0] - mouth[0]) / 0.026  # half mouth width 26 mm
@@ -264,7 +285,7 @@ def paint_skin(skin, marks, size, out):
     radius = 0.18 + 0.25 * ((ident * 7.13) % 1.0)
     frk = np.where(alive, smooth(radius, radius * 0.45, d), 0.0) * (0.35 + 0.5 * ((ident * 3.71) % 1.0))
     frk_c = np.array([0.40, 0.24, 0.15], np.float32)
-    col = mix(col, frk_c * (col.mean(1, keepdims=True) / 0.45), np.clip(frk, 0, 1) * 0.9)
+    col = mix(col, frk_c * (col.mean(1, keepdims=True) / 0.45), np.clip(frk, 0, 1) * 0.6)
 
     # Brows: strands from the head (inner) rising then lying along the arch,
     # medium ash brown, darker than the hair.
@@ -277,25 +298,54 @@ def paint_skin(skin, marks, size, out):
             continue
         Q = P[sel]
         acc = np.zeros(len(sel), np.float32)
-        for _ in range(360):
+        fill = np.zeros(len(sel), np.float32)
+        for _ in range(950):
             s = rng.uniform(0, 1)
             # The brow's arch: from the inner head, peaking at 2/3, tapering.
             bx = inner[0] + sign * 0.044 * s
             bz = inner[2] + 0.009 * math.sin(min(s / 0.68, 1.0) * math.pi / 2) - 0.010 * max(s - 0.68, 0) / 0.32 * 0.7
-            thick = 0.0042 * (1 - 0.65 * s) + 0.0012
+            thick = (0.0062 * (1 - 0.6 * s) + 0.0016) * (0.6 if BROWS == "pale" else 1.0)
             bz += rng.uniform(-0.5, 0.5) * thick
             ang = math.radians(70 - 60 * min(s / 0.5, 1)) if s < 0.5 else math.radians(10 - 25 * (s - 0.5))
-            length = 0.006 * rng.uniform(0.7, 1.2)
+            length = 0.0075 * rng.uniform(0.7, 1.2)
             dx, dz = sign * math.cos(ang), math.sin(ang)
             ax, az = bx - dx * length * 0.5, bz - dz * length * 0.5
             vx, vz = Q[:, 0] - ax, Q[:, 2] - az
             t = np.clip((vx * dx + vz * dz) / length, 0, 1)
             dist = np.sqrt((vx - t * dx * length) ** 2 + (vz - t * dz * length) ** 2)
-            w = 0.00009 * (1.2 - t)
+            w = 0.00011 * (1.2 - t)
+            fill = np.maximum(fill, np.exp(-((Q[:, 0] - bx) ** 2 + (Q[:, 2] - bz) ** 2) / (2 * (thick * 0.6) ** 2)) * 0.5)
             acc = np.maximum(acc, smooth(w * 1.8, w * 0.5, dist) * rng.uniform(0.55, 1.0))
-        brow[sel] = np.maximum(brow[sel], acc)
-    brow_c = np.array([0.105, 0.075, 0.055], np.float32)
-    col = mix(col, brow_c, np.clip(brow, 0, 1) * 0.85)
+        # A soft fill under the strands: skin seen through a full brow.
+        brow[sel] = np.maximum(brow[sel], np.maximum(acc, fill * 0.55))
+    brow_c = np.array([0.30, 0.26, 0.19], np.float32) if BROWS == "pale" else np.array([0.085, 0.063, 0.046], np.float32)
+    col = mix(col, brow_c, np.clip(brow, 0, 1) * (0.55 if BROWS == "pale" else 0.72))
+
+    # Battle decals (character.md): soot smudged over the cheeks and jaw,
+    # and a thin line of blood from the corner of the mouth.
+    blood = np.zeros(len(P), np.float32)
+    if BATTLE:
+        smudge = fbm(P, 0.012, 4, seed=71)
+        grain = fbm(P, 0.0015, 3, seed=72)
+        zone = np.clip(
+            0.9 * gauss(P, cheek_l + np.array([0.012, 0.0, -0.02], np.float32), (0.02, 0.04, 0.025))
+            + 0.6 * gauss(P, cheek_r + np.array([-0.01, 0.0, -0.03], np.float32), (0.018, 0.04, 0.02))
+            + 0.7 * gauss(P, mouth + np.array([0.025, 0.0, -0.03], np.float32), (0.025, 0.04, 0.015))
+            + 0.3 * gauss(P, mid + np.array([0.0, 0.0, 0.05], np.float32), (0.04, 0.05, 0.02)),
+            0,
+            1,
+        )
+        soot = np.clip((smudge - 0.42) * 3.0, 0, 1) * zone * (0.6 + 0.6 * grain)
+        col = mix(col, np.array([0.06, 0.05, 0.045], np.float32)[None, :], np.clip(soot, 0, 0.85))
+        # Blood: from her right mouth corner, down and a little out.
+        c0 = mouth + np.array([-0.0235, -0.002, -0.001], np.float32)
+        for k in range(24):
+            t = k / 23
+            c = c0 + np.array([-0.003 * t, 0.002 * t, -0.024 * t], np.float32)
+            w = 0.0007 * (1 - 0.5 * t) + (0.0006 if k == 23 else 0.0)
+            d = np.sqrt((P[:, 0] - c[0]) ** 2 + (P[:, 2] - c[2]) ** 2)
+            blood = np.maximum(blood, smooth(w, w * 0.4, d) * (np.abs(P[:, 1] - c[1]) < 0.02))
+        col = mix(col, np.array([0.22, 0.012, 0.01], np.float32)[None, :], blood * 0.92)
 
     # ---- height: pores, lines, lip lines -> normal map
     pore_d, pore_id = cells(P, 0.00034, seed=31)
@@ -314,13 +364,22 @@ def paint_skin(skin, marks, size, out):
     for e in (el, er):
         dz = P[:, 2] - (e[2] - 0.0115 - 0.12 * (P[:, 0] - e[0]) ** 2 / 0.01)
         height -= 0.6 * np.exp(-(dz / 0.0009) ** 2) * gauss(P, e + np.array([0, 0, -0.011], np.float32), (0.012, 0.03, 0.01))
-    height *= 0.00006  # metres: pores ~0.05 mm deep
-    rough = 0.58 + 0.05 * (fbm(P, 0.01, 2, seed=51) - 0.5)
+    # Glare: vertical furrows between the brows (the corrugator's creases)
+    # and a horizontal one over the nose bridge.
+    if EXPRESSION == "furrowed":
+        for xo in (-0.0045, 0.0045):
+            dz = P[:, 2] - (mid[2] + 0.012)
+            dx = P[:, 0] - (mid[0] + xo)
+            height -= 2.2 * np.exp(-(dx / 0.0007) ** 2) * np.exp(-(dz / 0.009) ** 2) * front
+        height -= 1.2 * np.exp(-((P[:, 2] - (mid[2] + 0.002)) / 0.0008) ** 2) * np.exp(-((P[:, 0] - mid[0]) / 0.006) ** 2) * front
+    height *= 0.00009  # metres: pores ~0.08 mm deep
+    rough = 0.58 + 0.12 * (fbm(P, 0.006, 3, seed=51) - 0.5)
     tzone = np.clip(gauss(P, mid + np.array([0, -0.02, 0.045], np.float32), (0.03, 0.05, 0.03)) + gauss(P, nose_tip, (0.012, 0.04, 0.03)), 0, 1)
     rough = rough - 0.09 * tzone - 0.04 * gauss(P, cheek_l, (0.02, 0.03, 0.02)) - 0.04 * gauss(P, cheek_r, (0.02, 0.03, 0.02))
     rough = rough + 0.12 * np.clip(-pores, 0, 1)
     rough = rough * (1 - lips) + 0.42 * lips
     rough = np.where(brow > 0.3, 0.6, rough)
+    rough = rough * (1 - blood) + 0.18 * blood
 
     def unpack(values, fill):
         img = np.full((size, size) + values.shape[1:], fill, np.float32)
@@ -387,17 +446,22 @@ def paint_eye(size, out):
     v = 0.5 - (yy + 0.5) / n
     r = np.sqrt(u * u + v * v)
     a = np.arctan2(v, u)
-    R_IRIS, R_PUPIL = 0.0826, 0.0225
+    R_IRIS, R_PUPIL = 0.0826, 0.0205
     t = np.clip((r - R_PUPIL) / (R_IRIS - R_PUPIL), 0, 1)  # 0 pupil edge, 1 limbus
     P = np.stack([np.cos(a) * 3, np.sin(a) * 3, r * 40], axis=-1).reshape(-1, 3).astype(np.float32)
     # Radial fibres: noise stretched along the radius.
-    fib = value_noise(np.stack([np.cos(a) * 60, np.sin(a) * 60, r * 6], -1).reshape(-1, 3).astype(np.float32), 1.0, seed=3).reshape(n, n)
-    fib2 = value_noise(np.stack([np.cos(a) * 140, np.sin(a) * 140, r * 12], -1).reshape(-1, 3).astype(np.float32), 1.0, seed=4).reshape(n, n)
+    # Radial fibres: noise stretched along the radius at several angular
+    # scales, so they read as fine, irregular stroma, not clock ticks.
+    def radial(freq, rf, seed):
+        return value_noise(np.stack([np.cos(a) * freq, np.sin(a) * freq, r * rf], -1).reshape(-1, 3).astype(np.float32), 1.0, seed=seed).reshape(n, n)
+
+    fib = 0.5 * radial(90, 18, 3) + 0.3 * radial(220, 40, 13) + 0.2 * radial(40, 8, 23)
+    fib2 = 0.6 * radial(160, 30, 4) + 0.4 * radial(330, 60, 14)
     crypt = fbm(P * 2, 1.0, 3, seed=5).reshape(n, n)
     # Grey-green: a stroma of pale sage over a darker blue-grey base.
     deep = np.array([0.075, 0.105, 0.095], np.float32)
-    stroma = np.array([0.24, 0.31, 0.25], np.float32)
-    pale = np.array([0.36, 0.42, 0.35], np.float32)
+    stroma = np.array([0.20, 0.34, 0.24], np.float32)
+    pale = np.array([0.33, 0.48, 0.34], np.float32)
     k = np.clip(0.35 + 0.55 * fib + 0.35 * (fib2 - 0.5), 0, 1)
     iris = deep * (1 - k[..., None]) + stroma * k[..., None]
     iris = iris + (pale - stroma) * np.clip(fib2 - 0.62, 0, 1)[..., None] * 1.5
@@ -430,11 +494,31 @@ def paint_eye(size, out):
     col = pupil * (1 - soft[..., None]) + col * soft[..., None]
     img = np.concatenate([to_srgb(col), np.ones((n, n, 1), np.float32)], axis=2)
     rough = np.where(r < R_IRIS, 0.5, 0.18).astype(np.float32)
-    orm = np.stack([np.ones((n, n), np.float32), rough, np.zeros((n, n), np.float32), np.ones((n, n), np.float32)], 2)
+    orm = np.stack([socket_occlusion(u, v), rough, np.zeros((n, n), np.float32), np.ones((n, n), np.float32)], 2)
+    # The cornea's map, in its own UV (the limbus is the unit circle's
+    # half): the same lid shadow, wet roughness.
+    m = 256
+    cy, cx = np.mgrid[0:m, 0:m].astype(np.float32)
+    cu = ((cx + 0.5) / m - 0.5) * 2 * R_IRIS
+    cv = (0.5 - (cy + 0.5) / m) * 2 * R_IRIS
+    corm = np.stack([socket_occlusion(cu, cv), np.full((m, m), 0.08, np.float32), np.zeros((m, m), np.float32), np.ones((m, m), np.float32)], 2)
     return {
         "base": save("draconia_eye_base", img, out),
         "orm": save("draconia_eye_orm", orm, out, "Non-Color"),
+        "cornea_orm": save("draconia_cornea_orm", corm, out, "Non-Color"),
     }
+
+
+def socket_occlusion(u, v):
+    """The socket's shadow on the eye in its UV (offsets from the front
+    pole; +v up): the upper lid's shadow over the top of the iris, the
+    recessed corners, a little under the lower lid. MetaHuman draws this
+    with an eye-occlusion shell; a fixed eye can carry it in a map."""
+    up = smooth(0.012, 0.085, v)
+    corner = smooth(0.11, 0.24, np.abs(u))
+    low = smooth(-0.075, -0.14, v)
+    ao = (1 - 0.55 * up) * (1 - 0.45 * corner) * (1 - 0.3 * low)
+    return ao.astype(np.float32)
 
 
 def paint(skin, eyes, marks, tex, out):

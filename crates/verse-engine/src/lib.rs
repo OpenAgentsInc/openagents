@@ -12,6 +12,7 @@ pub mod camera_rig;
 pub mod core;
 pub mod director;
 pub mod environment;
+pub mod hair_chains;
 pub mod inventory;
 pub mod lighting;
 #[cfg(feature = "asset-io")]

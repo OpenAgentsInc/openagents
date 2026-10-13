@@ -48,7 +48,7 @@ def _hairline_el(az):
     """The hairline's elevation (radians) at azimuth az (0 front, +-pi
     back), seen from the head centre."""
     a = abs(az)
-    pts = [(0.0, 0.62), (0.35, 0.56), (0.75, 0.30), (1.05, 0.22), (1.35, 0.30), (1.6, 0.05), (2.0, -0.45), (2.6, -0.62), (math.pi, -0.66)]
+    pts = [(0.0, 0.56), (0.35, 0.51), (0.75, 0.30), (1.05, 0.22), (1.35, 0.30), (1.6, 0.05), (2.0, -0.45), (2.6, -0.62), (math.pi, -0.66)]
     for (a0, e0), (a1, e1) in zip(pts, pts[1:]):
         if a <= a1:
             t = (a - a0) / (a1 - a0)
@@ -95,8 +95,9 @@ class Ribbons:
         self.bm = bmesh.new()
         self.uv = self.bm.loops.layers.uv.new("UVMap")
         self.count = 0
+        self.skin = []  # per vertex: [(joint, weight), ...]
 
-    def add(self, pts, normals, width, variant, taper=0.6, free=None):
+    def add(self, pts, normals, width, variant, taper=0.6, free=None, skin=None):
         """A ribbon along `pts`; its width lies across the strand and the
         given surface normals (or faces `free` where there is no surface)."""
         n = len(pts)
@@ -120,6 +121,8 @@ class Ribbons:
             w = width * (1 - taper * t * t) * 0.5
             a = self.bm.verts.new(pts[i] - side * w)
             b = self.bm.verts.new(pts[i] + side * w)
+            ws = skin(i, t) if skin else [("Head", 1.0)]
+            self.skin += [ws, ws]
             if prev:
                 pa, pb, pt = prev
                 f = self.bm.faces.new([pa, pb, b, a])
@@ -134,7 +137,32 @@ class Ribbons:
         self.bm.free()
         obj = bpy.data.objects.new(name, me)
         bpy.context.collection.objects.link(obj)
+        groups = {}
+        for i, ws in enumerate(self.skin):
+            for j, w in ws:
+                if j not in groups:
+                    groups[j] = obj.vertex_groups.new(name=j)
+                groups[j].add([i], w, "REPLACE")
         return obj
+
+
+def chain_skin(links, t0=0.0):
+    """Weights along a chain of joints `links` for a strand vertex at
+    fraction t of its length: link k sits at fraction t0 + (1 - t0) k / n;
+    a vertex before t0 rides the head."""
+
+    def f(i, t):
+        if t <= t0:
+            return [("Head", 1.0)]
+        n = len(links)
+        x = (t - t0) / max(1 - t0, 1e-6) * n
+        k = min(int(x), n - 1)
+        frac = min(x - k, 1.0)
+        if k + 1 < n:
+            return [(links[k], 1 - frac), (links[k + 1], frac)]
+        return [(links[k], 1.0)]
+
+    return f
 
 
 def _noise3(rng):
@@ -150,7 +178,10 @@ def _noise3(rng):
     return f
 
 
-def grow(skin, marks, seed=7):
+def grow(skin, marks, seed=7, style="updo"):
+    """The hair objects and its extra joints [(name, parent, position)]."""
+    if style == "long":
+        return grow_long(skin, marks, seed)
     rng = random.Random(seed)
     nrng = np.random.default_rng(seed)
     centre, lo, hi, eye_z = _head_frame(skin, marks)
@@ -247,7 +278,7 @@ def grow(skin, marks, seed=7):
     # Locks leave the hairline at the temples (azimuth 0.45-1.25 rad from
     # the front), never the middle of the forehead, so they fall beside the
     # face rather than across it.
-    front_roots = [(r, n) for (r, n) in _sample_surface(me, scalp, 8000, rng) if 0.45 < abs(_angles(r, centre)[0]) < 1.25 and _angles(r, centre)[1] < _hairline_el(_angles(r, centre)[0]) + 0.16]
+    front_roots = [(r, n) for (r, n) in _sample_surface(me, scalp, 8000, rng) if 0.7 < abs(_angles(r, centre)[0]) < 1.35 and _angles(r, centre)[1] < _hairline_el(_angles(r, centre)[0]) + 0.16]
     rng.shuffle(front_roots)
     clumps = []
     for side in (1, -1):
@@ -257,8 +288,11 @@ def grow(skin, marks, seed=7):
                 break
             root, rn = cands[k * 7 % len(cands)]
             clumps.append((root, rn, side))
-    for root, rn, side in clumps:
+    joints = []
+    for c, (root, rn, side) in enumerate(clumps):
         length = rng.uniform(0.11, 0.21)
+        links = [f"hair_{c}_{k}" for k in range(5)]
+        chain_made = False
         sway = rng.uniform(0.6, 1.4)
         phase = rng.uniform(0, 6.28)
         n_hairs = rng.randint(10, 26)
@@ -273,7 +307,7 @@ def grow(skin, marks, seed=7):
                 t = k / max(n_seg - 1, 1)
                 loc, nrm = surface(p)
                 # Lift off the head; fall down and slightly out from the cheek.
-                d = Vector((side * (0.45 - 0.3 * t), 0.05, -1.0))
+                d = Vector((side * (0.6 - 0.35 * t), 0.12, -1.0))
                 wave = Vector((side, -0.4, 0)) * math.sin(phase + t * 9 * sway) * 0.5
                 p = p + (d.normalized() + wave * 0.6) * seg
                 loc, nrm = surface(p)
@@ -281,7 +315,14 @@ def grow(skin, marks, seed=7):
                     p = loc + nrm * (0.003 + 0.004 * t)
                 pts.append(p + off * t * 1.5)
                 nrms.append(None)
-            locks.add(pts, None, rng.uniform(0.00025, 0.0006), rng.randrange(VARIANTS), taper=0.8, free=Vector((0, -1, 0)))
+            if not chain_made and len(pts) > 5:
+                # The clump's first hair is its guide: five links along it.
+                chain_made = True
+                L = len(pts)
+                for k, name in enumerate(links):
+                    at = pts[min(int(k / 5 * (L - 1)), L - 1)]
+                    joints.append((name, "Head" if k == 0 else links[k - 1], at.copy()))
+            locks.add(pts, None, rng.uniform(0.00025, 0.0006), rng.randrange(VARIANTS), taper=0.8, free=Vector((0, -1, 0)), skin=chain_skin(links) if chain_made else None)
     # Wisps at the temples and hairline: short curls of a few hairs.
     for k in range(140):
         root, rn = front_roots[k % len(front_roots)]
@@ -341,8 +382,207 @@ def grow(skin, marks, seed=7):
         o.data.materials.append(mat)
         for p in o.data.polygons:
             p.use_smooth = True
-    print("HAIR ribbons", body.count, locks.count, fly.count)
-    return objs
+    print("HAIR ribbons", body.count, locks.count, fly.count, "joints", len(joints))
+    return objs, joints
+
+
+def grow_long(skin, marks, seed=7, guides=18, links=6):
+    """Waist-length, loose, straight platinum hair with a centre part and a
+    slight wave at the ends (the battle and peacock look in
+    docs/verse/draconia/character.md), on joint chains.
+
+    The hair is combed from the part down over the scalp to a release ring
+    around the head (from the temples round the back, about ear level),
+    then falls free. `guides` chains of `links` joints hang from the ring
+    around the head, each a guide curve that drapes over the shoulders and
+    back to the waist; every strand follows the two guides beside it,
+    weighted by azimuth, so wind on the chains moves the whole fall."""
+    rng = random.Random(seed)
+    centre, lo, hi, eye_z = _head_frame(skin, marks)
+    me = skin.data
+    bvh = BVHTree.FromObject(skin, bpy.context.evaluated_depsgraph_get())
+    scalp = _scalp_faces(skin, centre)
+    waist_z = centre.z - 0.62
+
+    def surface(p):
+        loc, nrm, _, _ = bvh.find_nearest(p)
+        return loc, nrm
+
+    # Guides: azimuths from one temple round the back to the other.
+    azs = [(-1.25 + 2.5 * g / (guides - 1)) for g in range(guides)]
+    azs = [math.copysign(abs(a) + 0.0, a) for a in azs]
+    ring_el = -0.15
+    guide_pts, joints = [], []
+    for g, az in enumerate(azs):
+        # Seen from the head centre: az 0 at the back here (she faces -Y),
+        # so the ring runs from her right temple round the back.
+        a = math.pi - az * 1.1 if az >= 0 else -math.pi - az * 1.1
+        d = Vector((math.sin(a), -math.cos(a), 0)).normalized()
+        start = centre + d * 0.11 + Vector((0, 0, -0.02))
+        loc, nrm = surface(start)
+        p = loc + nrm * 0.012
+        pts = [p.copy()]
+        out = Vector((d.x, d.y, 0)).normalized()
+        end = waist_z + rng.uniform(-0.03, 0.03)
+        for _ in range(400):
+            if p.z <= end:
+                break
+            # Fall, held off the head by its skin while beside it, then off
+            # the shoulders and back by a body capsule (the skin mesh stops
+            # at the collar, so it can't hold the fall below the neck).
+            p = p + Vector((0, 0, -0.012)) + out * 0.0012
+            if p.z > centre.z - 0.11:
+                loc, nrm = surface(p)
+                if (p - loc).dot(nrm) < 0.012:
+                    p = loc + nrm * 0.012
+                    p.z = min(p.z, pts[-1].z - 0.004)
+            # Over the shoulders and back: keep outside a body capsule.
+            r_xy = Vector((p.x, p.y - 0.01, 0))
+            body_r = 0.09 if p.z > centre.z - 0.17 else 0.15
+            if p.z < centre.z - 0.17 and r_xy.length < body_r:
+                p.xy = (r_xy.normalized() * body_r).xy + Vector((0, 0.01))
+            pts.append(p.copy())
+        guide_pts.append(pts)
+        names = [f"hair_{g}_{k}" for k in range(links)]
+        for k, name in enumerate(names):
+            at = pts[min(int(k / links * (len(pts) - 1)), len(pts) - 1)]
+            joints.append((name, "Head" if k == 0 else names[k - 1], at.copy()))
+
+    hair = Ribbons()
+    roots = _sample_surface(me, scalp, 8000, rng)
+    # Extra roots along the front hairline and temples, so no scalp shows.
+    edge = [f for f in scalp if _angles(me.polygons[f].center, centre)[1] < _hairline_el(_angles(me.polygons[f].center, centre)[0]) + 0.18 and abs(_angles(me.polygons[f].center, centre)[0]) < 1.6]
+    roots += _sample_surface(me, edge, 2500, rng)
+    for root, rn in roots:
+        az, el = _angles(root, centre)
+        # Which guides: the strand's azimuth, folded to the ring's range.
+        back_az = math.atan2(root.x, root.y - centre.y)  # 0 straight back
+        x = (back_az / 1.1 + 1.25) / 2.5 * (guides - 1)
+        x = min(max(x, 0.0), guides - 1.0001)
+        g0 = int(x)
+        f = x - g0
+        g1 = min(g0 + 1, guides - 1)
+        # Comb from the root down over the scalp to the ring point.
+        target = guide_pts[g0][0].lerp(guide_pts[g1][0], f)
+        pts = []
+        p = root.copy()
+        layer = rng.random()
+        # Volume over the crown and temples: outer layers stand off.
+        lift = 0.0015 + 0.011 * layer**1.3
+        for k in range(40):
+            loc, nrm = surface(p)
+            to = target - loc
+            if to.length < 0.009:
+                break
+            d = to - nrm * to.dot(nrm)
+            d.normalize()
+            pts.append(loc + nrm * (0.0006 + lift * min(1.0, k / 4)))
+            p = loc + d * 0.007
+        n_scalp = len(pts)
+        # Then the fall: between the two guides, with a per-strand offset
+        # and a slight wave toward the ends.
+        off = Vector((rng.gauss(0, 0.01), rng.gauss(0, 0.01), 0)) * (0.4 + layer)
+        phase = rng.uniform(0, 6.28)
+        A, B = guide_pts[g0], guide_pts[g1]
+        n = min(len(A), len(B))
+        length_frac = rng.uniform(0.82, 1.0)
+        for k in range(int(n * length_frac)):
+            t = k / max(n - 1, 1)
+            q = A[k].lerp(B[k], f) + off * (0.3 + t) + Vector((math.sin(phase + t * 14) * 0.006 * t * t, 0, 0))
+            pts.append(q)
+        if len(pts) < 3:
+            continue
+        t0 = n_scalp / len(pts)
+        la = [f"hair_{g0}_{k}" for k in range(links)]
+        lb = [f"hair_{g1}_{k}" for k in range(links)]
+        fa, fb = chain_skin(la, t0), chain_skin(lb, t0)
+
+        def skin_fn(i, t, fa=fa, fb=fb, f=f):
+            out = {}
+            for j, w in fa(i, t):
+                out[j] = out.get(j, 0) + w * (1 - f)
+            for j, w in fb(i, t):
+                out[j] = out.get(j, 0) + w * f
+            return sorted(out.items(), key=lambda kv: -kv[1])[:4]
+
+        hair.add(pts, None, rng.uniform(0.002, 0.0038) * (1.2 - 0.4 * layer), rng.randrange(VARIANTS), taper=0.6, free=Vector((0, -1, 0)), skin=skin_fn)
+    # Strands across her forehead and between her eyes: a few clumps from
+    # the front hairline beside the part, over the brow, hanging in front
+    # of the face to the nose, each on a chain of its own.
+    front = [(r, n) for (r, n) in _sample_surface(me, scalp, 6000, rng) if abs(_angles(r, centre)[0]) < 0.6 and _angles(r, centre)[1] < _hairline_el(_angles(r, centre)[0]) + 0.2]
+    nose_z = marks.nose_tip.z if hasattr(marks, "nose_tip") else eye_z - 0.04
+    g = guides
+    for c in range(26):
+        if not front:
+            break
+        root, rn = front[(c * 37) % len(front)]
+        # A side-swept fringe: most clumps sweep across the forehead toward
+        # her left and stop at the brows; two fall between the eyes to the
+        # nose. They ride the head (no chain): a fringe holds its shape.
+        to_nose = c in (3, 11)
+        stop_z = nose_z + 0.01 if to_nose else eye_z + 0.012 + rng.uniform(-0.004, 0.01)
+        lean = (rng.uniform(-0.2, 0.2) if to_nose else rng.uniform(0.6, 1.1))
+        for h in range(rng.randint(12, 20)):
+            off = Vector((rng.gauss(0, 0.003), 0, 0))
+            p = root + off
+            pts = []
+            for k in range(70):
+                p = p + Vector((lean * 0.0025, -0.0012, -0.0035))
+                loc, nrm = surface(p)
+                clear = (0.0025 + 0.004 * (h % 3) / 2) if p.z > eye_z + 0.012 else 0.01
+                if (p - loc).dot(nrm) < clear:
+                    p = loc + nrm * clear
+                pts.append(p.copy())
+                if p.z < stop_z:
+                    break
+            hair.add(pts, None, rng.uniform(0.0008, 0.0018) if not to_nose else rng.uniform(0.0003, 0.0007), rng.randrange(VARIANTS), taper=0.7, free=Vector((0, -1, 0)))
+    # Hair framing the temples: locks from the temple hairline falling in
+    # front of the ear tops to the jaw, riding the head so they hold.
+    temples = [(r, n) for (r, n) in _sample_surface(me, scalp, 6000, rng) if 0.8 < abs(_angles(r, centre)[0]) < 1.5 and _angles(r, centre)[1] < _hairline_el(_angles(r, centre)[0]) + 0.25]
+    for c in range(16):
+        if not temples:
+            break
+        root, rn = temples[(c * 53) % len(temples)]
+        side = 1.0 if root.x > 0 else -1.0
+        for h in range(rng.randint(10, 18)):
+            off = Vector((0, rng.gauss(0, 0.004), rng.gauss(0, 0.002)))
+            p = root + off
+            pts = []
+            stop = eye_z - rng.uniform(0.03, 0.09)
+            for k in range(60):
+                p = p + Vector((side * 0.0006, 0.0006, -0.004))
+                loc, nrm = surface(p)
+                clear = 0.003 + 0.002 * (h % 3)
+                if (p - loc).dot(nrm) < clear:
+                    p = loc + nrm * clear
+                pts.append(p.copy())
+                if p.z < stop:
+                    break
+            hair.add(pts, None, rng.uniform(0.0008, 0.0016), rng.randrange(VARIANTS), taper=0.75, free=Vector((side, 0, 0)))
+    # The cap under it.
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    keep = {f for f in scalp if _angles(me.polygons[f].center, centre)[1] > _hairline_el(_angles(me.polygons[f].center, centre)[0]) + 0.07}
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.index not in keep], context="FACES")
+    for v in bm.verts:
+        v.co += v.normal * 0.0012
+    cap_me = bpy.data.meshes.new("hair_cap")
+    bm.to_mesh(cap_me)
+    bm.free()
+    cap = bpy.data.objects.new("hair_cap", cap_me)
+    bpy.context.collection.objects.link(cap)
+    cap_mat = bpy.data.materials.new("draconia_hair_cap")
+    cap_mat.use_nodes = True
+    cap_mat.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.42, 0.37, 0.27, 1)
+    cap_mat.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = 0.9
+    cap_mat["verse_shading"] = "standard"
+    cap.data.materials.append(cap_mat)
+    body = hair.object("hair_long")
+    body.data.materials.append(hair_material(paint_strips(1024, 2048)))
+    for p in body.data.polygons:
+        p.use_smooth = True
+    print("HAIR long ribbons", hair.count, "joints", len(joints))
+    return [cap, body], joints
 
 
 def paint_strips(w, h):

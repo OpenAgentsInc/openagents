@@ -63,6 +63,10 @@ def _shell(body, name, offset, keep, smooth_iters=6, subdiv=1):
     bm.free()
     obj = bpy.data.objects.new(name, me)
     bpy.context.collection.objects.link(obj)
+    # The shell keeps the body's skin weights vertex for vertex (the deform
+    # layer came across with the faces); name the groups to match.
+    for g in body.vertex_groups:
+        obj.vertex_groups.new(name=g.name)
     if subdiv:
         mod = obj.modifiers.new("s", "SUBSURF")
         mod.levels = subdiv

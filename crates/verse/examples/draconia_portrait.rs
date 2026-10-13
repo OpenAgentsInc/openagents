@@ -5,7 +5,9 @@
 //! Usage: draconia_portrait OUT.png [--model PATH.glb] [--set PATH.glb]
 //! [--shot closeup|eyes|medium|wide|three|side|back] [--size WxH]
 //! [--subframes N] [--fstop F] [--yaw DEGREES] [--turntable FRAMES]
-//! [--light key|ref] [--exposure X]
+//! [--light key|ref] [--exposure X] [--head YAW,PITCH] [--wind X,Y,Z]
+//! [--video --seconds S] [--time T] [--stiffness K] [--gust T] [--gaze]
+//! [--push SHARE] [--shot peacock_open] [--light peacock]
 //!
 //! The model and set default to `~/work/film-out/draconia/build/`
 //! (`draconia.neutral.glb`, `draconia_set.glb`, built by
@@ -55,9 +57,15 @@ fn world(v: &serde_json::Value) -> Vec3 {
     Vec3::new(-f(0), f(2), f(1))
 }
 
-fn shot(name: &str, marks: &serde_json::Value) -> Result<Shot, String> {
-    let el = world(&marks["eye_l"]);
-    let er = world(&marks["eye_r"]);
+/// A shot aimed at her landmarks; `posed` carries a rest-pose head point to
+/// where the playing clip holds it.
+fn shot(
+    name: &str,
+    marks: &serde_json::Value,
+    posed: &dyn Fn(Vec3) -> Vec3,
+) -> Result<Shot, String> {
+    let el = posed(world(&marks["eye_l"]));
+    let er = posed(world(&marks["eye_r"]));
     let eyes = (el + er) * 0.5;
     let face = eyes + Vec3::new(0.0, -0.035, 0.0);
     let chest = world(&marks["chest"]);
@@ -84,6 +92,15 @@ fn shot(name: &str, marks: &serde_json::Value) -> Result<Shot, String> {
             target: (eyes * 0.6 + chest * 0.4) + Vec3::new(-0.08, -0.02, 0.0),
             focal_mm: 50.0,
             fstop: 2.4,
+        },
+        // The peacock guardian's opening (P3, ~114.5 s of the Draconia
+        // film): an extreme close-up from the brows to the upper lip, ear to
+        // ear, the head lowered and the eyes glaring up into the lens.
+        "peacock_open" => Shot {
+            eye: eyes + Vec3::new(0.0, -0.004, -0.41),
+            target: eyes + Vec3::new(0.0, -0.006, 0.0),
+            focal_mm: 100.0,
+            fstop: 5.6,
         },
         "wide" => Shot {
             eye: Vec3::new(0.9, 1.5, -3.6),
@@ -131,6 +148,61 @@ fn lighting(face: Vec3, kind: &str) -> Lighting {
             }
         };
     match kind {
+        // The peacock's flash: a white core blazing behind her (the
+        // backdrop) and rimming her hair, a soft front key from just above
+        // the lens and a fill from below, the face fully readable.
+        // The peacock's flash: a white core blazing behind and below her,
+        // so the light comes up from the front-below (the lower face
+        // brightest, the brow and forehead falling darker under the hair),
+        // rims of blue-white on her hair, and a catchlight near the lens.
+        "peacock" => {
+            soft(
+                &mut lights,
+                face + Vec3::new(0.0, -0.35, -0.75),
+                Vec3::new(1.0, 0.98, 0.96),
+                3.0,
+                0.3,
+                3,
+            );
+            soft(
+                &mut lights,
+                face + Vec3::new(0.0, 0.5, -0.9),
+                Vec3::new(0.85, 0.9, 1.0),
+                0.45,
+                0.4,
+                3,
+            );
+            lights.push(Light {
+                position: face + Vec3::new(-0.06, 0.03, -0.55),
+                color: Vec3::new(1.0, 1.0, 1.0),
+                intensity: 0.5,
+                range: 4.0,
+            });
+            soft(
+                &mut lights,
+                face + Vec3::new(0.0, 0.5, 0.6),
+                Vec3::new(0.85, 0.92, 1.0),
+                2.5,
+                0.6,
+                6,
+            );
+            soft(
+                &mut lights,
+                face + Vec3::new(-0.5, 0.1, 0.5),
+                Vec3::new(0.8, 0.9, 1.0),
+                1.2,
+                0.3,
+                3,
+            );
+            soft(
+                &mut lights,
+                face + Vec3::new(0.5, 0.1, 0.5),
+                Vec3::new(0.8, 0.9, 1.0),
+                1.2,
+                0.3,
+                3,
+            );
+        }
         "key" => {
             soft(
                 &mut lights,
@@ -191,7 +263,7 @@ fn lighting(face: Vec3, kind: &str) -> Lighting {
                     lights.push(Light {
                         position: Vec3::new(-x + 0.4, y + 0.1, 2.1),
                         color: Vec3::new(0.3, 0.95, 0.82),
-                        intensity: 0.12,
+                        intensity: 0.06,
                         range: 3.0,
                     });
                 }
@@ -199,7 +271,7 @@ fn lighting(face: Vec3, kind: &str) -> Lighting {
         }
     }
     Lighting {
-        ambient: Vec3::new(0.006, 0.012, 0.012),
+        ambient: Vec3::new(0.003, 0.007, 0.007),
         exposure: 1.0,
         fog: Vec3::new(0.01, 0.02, 0.02),
         density: 0.0,
@@ -241,6 +313,20 @@ struct Args {
     turntable: usize,
     light: String,
     exposure: f32,
+    /// Head turn (yaw, pitch) in degrees.
+    head: [f32; 2],
+    wind: Vec3,
+    seconds: f32,
+    time: f32,
+    video: bool,
+    /// The hair chains' spring stiffness (1/s²): an updo's locks are held
+    /// (70), loose long hair swings (25).
+    stiffness: f32,
+    gust: Option<f32>,
+    /// Aim the eyes at the lens.
+    gaze: bool,
+    /// The share of the camera's distance it pushes in over a video.
+    push: f32,
 }
 
 fn args() -> Result<Args, String> {
@@ -260,6 +346,17 @@ fn args() -> Result<Args, String> {
         turntable: 0,
         light: "ref".into(),
         exposure: 0.6,
+        // The reference's head turns about 15 degrees to camera left,
+        // chin a little down.
+        head: [-15.0, 8.0],
+        wind: Vec3::new(0.25, 0.0, 0.1),
+        seconds: 4.0,
+        time: 1.0,
+        video: false,
+        stiffness: 70.0,
+        gust: None,
+        gaze: false,
+        push: 0.0,
     };
     while let Some(flag) = it.next() {
         let mut value = || it.next().ok_or(format!("{flag} takes a value"));
@@ -282,13 +379,142 @@ fn args() -> Result<Args, String> {
             "--turntable" => a.turntable = value()?.parse().map_err(|_| "bad frames")?,
             "--light" => a.light = value()?,
             "--exposure" => a.exposure = value()?.parse().map_err(|_| "bad exposure")?,
+            "--head" => {
+                let v = value()?;
+                let (y, p) = v.split_once(',').ok_or("--head is YAW,PITCH")?;
+                a.head = [
+                    y.parse().map_err(|_| "bad yaw")?,
+                    p.parse().map_err(|_| "bad pitch")?,
+                ];
+            }
+            "--wind" => {
+                let v: Vec<f32> = value()?.split(',').filter_map(|x| x.parse().ok()).collect();
+                if v.len() != 3 {
+                    return Err("--wind is X,Y,Z m/s".into());
+                }
+                a.wind = Vec3::new(v[0], v[1], v[2]);
+            }
+            "--seconds" => a.seconds = value()?.parse().map_err(|_| "bad seconds")?,
+            "--time" => a.time = value()?.parse().map_err(|_| "bad time")?,
+            "--video" => a.video = true,
+            "--stiffness" => a.stiffness = value()?.parse().map_err(|_| "bad stiffness")?,
+            "--gust" => a.gust = Some(value()?.parse().map_err(|_| "bad gust")?),
+            "--gaze" => a.gaze = true,
+            "--push" => a.push = value()?.parse().map_err(|_| "bad push")?,
             other => return Err(format!("Unknown argument {other}")),
         }
     }
     Ok(a)
 }
 
-fn pack(dir: &Path, model: &Path, set: Option<&Path>) -> Result<Pack, String> {
+/// The shot `a.shot`, aimed at her head where the portrait clip holds it
+/// at `a.time`.
+fn frame(
+    model: &verse_engine::assets::Model,
+    marks: &serde_json::Value,
+    a: &Args,
+) -> Result<Shot, String> {
+    let placed = Mat4::from_quat(Quat::from_rotation_y(a.yaw.to_radians()))
+        * verse::imported::chamber::basis();
+    let head = model
+        .skin
+        .as_ref()
+        .and_then(|s| s.names.iter().position(|n| n == "Head"))
+        .ok_or("no Head")?;
+    let clip = if model.clips.iter().any(|c| c.id == PORTRAIT_CLIP) {
+        PORTRAIT_CLIP
+    } else {
+        PORTRAIT_CLIP - 1
+    };
+    let pose = verse_engine::animation::pose(model, clip, a.time);
+    let posed = |w: Vec3| {
+        placed.transform_point3(pose[head].transform_point3(placed.inverse().transform_point3(w)))
+    };
+    shot(&a.shot, marks, &posed)
+}
+
+/// The clip the portraits play: the Universal idle with her head turned,
+/// plus the hair's motion in the wind.
+const PORTRAIT_CLIP: u16 = 900;
+
+/// Turns the head (and a third of it the neck) by `yaw` and `pitch`
+/// radians in world terms, on every key of `clip`, as a new clip `id`.
+fn turn_head(
+    model: &mut verse_engine::assets::Model,
+    clip: u16,
+    id: u16,
+    yaw: f32,
+    pitch: f32,
+) -> Result<(), String> {
+    let skin = model.skin.as_ref().ok_or("no skin")?;
+    let names = skin.names.clone();
+    let rest = skin.rest.clone();
+    let mut globals = vec![Mat4::IDENTITY; model.bones.len()];
+    for (i, b) in model.bones.iter().enumerate() {
+        let r = rest[i];
+        let l = Mat4::from_scale_rotation_translation(
+            r.scale.into(),
+            Quat::from_array(r.rotation),
+            r.translation.into(),
+        );
+        globals[i] = if b.parent >= 0 {
+            globals[b.parent as usize] * l
+        } else {
+            l
+        };
+    }
+    let mut out = model
+        .clips
+        .iter()
+        .find(|c| c.id == clip)
+        .ok_or("no source clip")?
+        .clone();
+    out.id = id;
+    // Skeleton space is glTF's: +Y up, she faces +Z; camera-left is her
+    // right, -X... a positive yaw turns her face toward +X.
+    for (joint, share) in [("neck_01", 0.35f32), ("Head", 0.65)] {
+        let j = names
+            .iter()
+            .position(|n| n == joint)
+            .ok_or("no head joint")?;
+        let parent = model.bones[j].parent;
+        let p = if parent >= 0 {
+            globals[parent as usize].to_scale_rotation_translation().1
+        } else {
+            Quat::IDENTITY
+        };
+        let e = Quat::from_rotation_y(yaw * share) * Quat::from_rotation_x(pitch * share);
+        let fix = p.inverse() * e * p;
+        let keys = match out.bones.iter_mut().find(|k| k.bone == j) {
+            Some(k) => k,
+            None => {
+                out.bones.push(verse_engine::assets::BoneKeys {
+                    bone: j,
+                    translation: vec![],
+                    rotation: vec![(0.0, rest[j].rotation)],
+                    scale: vec![],
+                });
+                out.bones.last_mut().unwrap()
+            }
+        };
+        if keys.rotation.is_empty() {
+            keys.rotation.push((0.0, rest[j].rotation));
+        }
+        for k in &mut keys.rotation {
+            k.1 = (fix * Quat::from_array(k.1)).normalize().to_array();
+        }
+    }
+    model.clips.retain(|c| c.id != id);
+    model.clips.push(out);
+    Ok(())
+}
+
+fn pack(
+    dir: &Path,
+    model: &Path,
+    set: Option<&Path>,
+    a: &Args,
+) -> Result<(Pack, verse_engine::assets::Model), String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let mut pack = Pack {
         inventory: None,
@@ -303,21 +529,103 @@ fn pack(dir: &Path, model: &Path, set: Option<&Path>) -> Result<Pack, String> {
     let options = characters::ImportOptions {
         max_texture_edge: 4096,
     };
-    let draconia = characters::import_with(&mut pack, dir, model, options)?;
-    pack.models.insert("draconia".into(), draconia);
+    let universal =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/verse/characters/quaternius");
+    let mut draconia = characters::film_character(&mut pack, dir, model, &universal, options)?;
+    turn_head(
+        &mut draconia,
+        0,
+        PORTRAIT_CLIP - 1,
+        a.head[0].to_radians(),
+        a.head[1].to_radians(),
+    )?;
+    if !verse_engine::hair_chains::chains(&draconia).is_empty() {
+        let spheres = verse_engine::hair_chains::humanoid_spheres(&draconia);
+        let wind = a.wind;
+        let gust = a.gust;
+        let clip = verse_engine::hair_chains::bake(
+            &draconia,
+            PORTRAIT_CLIP - 1,
+            PORTRAIT_CLIP,
+            a.seconds.max(2.0),
+            30.0,
+            2.0,
+            // An updo's locks are held: stiffer than loose hair.
+            verse_engine::hair_chains::Spring {
+                stiffness: a.stiffness,
+                ..Default::default()
+            },
+            &spheres,
+            |t| {
+                // An upward blast from `--gust T` seconds: peaks 0.25 s
+                // later and fades over 1.15 s (the peacock's flash).
+                let k = gust.map_or(0.0, |g| {
+                    let u = t - g;
+                    if u < 0.0 {
+                        0.0
+                    } else if u < 0.25 {
+                        u / 0.25
+                    } else {
+                        (1.0 - (u - 0.25) / 1.15).max(0.0)
+                    }
+                });
+                verse_engine::hair_chains::Wind {
+                    velocity: wind + Vec3::new(0.0, 14.0, -8.0) * k,
+                    gust: 0.6,
+                    gust_rate: 0.3,
+                    turbulence: 0.25 + wind.length() * 0.15 + 1.5 * k,
+                    outward: 6.0 * k,
+                    center: Vec3::ZERO,
+                }
+            },
+        )?;
+        draconia.clips.push(clip);
+    } else {
+        let mut c = draconia
+            .clips
+            .iter()
+            .find(|c| c.id == PORTRAIT_CLIP - 1)
+            .unwrap()
+            .clone();
+        c.id = PORTRAIT_CLIP;
+        draconia.clips.push(c);
+    }
+    if a.gaze {
+        // Lock the eyes on the lens: the shot is framed on the posed head,
+        // then the eye joints aim at the camera in skeleton space.
+        let marks = landmarks(model)?;
+        let s = frame(&draconia, &marks, a)?;
+        let placed = Mat4::from_quat(Quat::from_rotation_y(a.yaw.to_radians()))
+            * verse::imported::chamber::basis();
+        let skin = draconia.skin.as_ref().ok_or("no skin")?;
+        let to_skeleton = (placed * Mat4::from_cols_array(&skin.basis)).inverse();
+        let eyes: Vec<usize> = ["eye_l", "eye_r"]
+            .iter()
+            .filter_map(|n| skin.names.iter().position(|m| m == n))
+            .collect();
+        verse_engine::hair_chains::aim(
+            &mut draconia,
+            PORTRAIT_CLIP,
+            &eyes,
+            to_skeleton.transform_point3(s.eye),
+            30.0,
+            0.8,
+        )?;
+    }
+    pack.models.insert("draconia".into(), draconia.clone());
     if let Some(set) = set {
         let room = characters::import_with(&mut pack, dir, set, options)?;
         pack.models.insert("draconia-set".into(), room);
     }
     pack.validate()?;
-    Ok(pack)
+    Ok((pack, draconia))
 }
 
 fn main() -> Result<(), String> {
     let a = args()?;
     let marks = landmarks(&a.model)?;
     let dir = std::env::temp_dir().join(format!("verse-draconia-portrait-{}", std::process::id()));
-    let pack = pack(&dir, &a.model, a.set.as_deref())?;
+    let (pack, model) = pack(&dir, &a.model, a.set.as_deref(), &a)?;
     let atlas = original::atlas()?;
     // A film character is far past a game pack's budgets: a million
     // triangles of JSON and 4K maps. The loader's limits allow up to 1 GiB.
@@ -330,27 +638,43 @@ fn main() -> Result<(), String> {
     };
     let prepared = verse_engine::loading::Prepared::load(pack, &dir, budget)?;
     let mut renderer = Renderer::from_prepared(prepared, a.width, a.height, &atlas, &[])?;
-    let mut s = shot(&a.shot, &marks)?;
+    let base = verse::imported::chamber::basis();
+    let placed = Mat4::from_quat(Quat::from_rotation_y(a.yaw.to_radians())) * base;
+    let head = model
+        .skin
+        .as_ref()
+        .and_then(|s| s.names.iter().position(|n| n == "Head"))
+        .ok_or("no Head")?;
+    let pose = verse_engine::animation::pose(&model, PORTRAIT_CLIP, a.time);
+    let posed = |w: Vec3| {
+        placed.transform_point3(pose[head].transform_point3(placed.inverse().transform_point3(w)))
+    };
+    let mut s = frame(&model, &marks, &a)?;
     if let Some(f) = a.fstop {
         s.fstop = f;
     }
-    let face = (world(&marks["eye_l"]) + world(&marks["eye_r"])) * 0.5;
-    let base = verse::imported::chamber::basis();
-    let instance = |model: &str, yaw: f32| Instance {
+    let face = posed((world(&marks["eye_l"]) + world(&marks["eye_r"])) * 0.5);
+    let instance = |model: &str, yaw: f32, time: f32| Instance {
         mount: None,
         actor: None,
         model: model.into(),
         transform: Mat4::from_quat(Quat::from_rotation_y(yaw)) * base,
-        animation: 0.into(),
-        time: 0.0,
+        animation: PORTRAIT_CLIP.into(),
+        time,
         animation_epoch: None,
         emission: Vec3::ONE,
     };
     let ui = UiBatch::default();
     let aspect = a.width as f32 / a.height as f32;
     let fov_y = 2.0 * (12.0 / s.focal_mm).atan();
-    let frames = a.turntable.max(1);
-    let mut encoder = if a.turntable > 0 {
+    let frames = if a.turntable > 0 {
+        a.turntable
+    } else if a.video {
+        (a.seconds * 24.0).round() as usize
+    } else {
+        1
+    };
+    let mut encoder = if frames > 1 {
         Some(
             std::process::Command::new("ffmpeg")
                 .args([
@@ -386,19 +710,34 @@ fn main() -> Result<(), String> {
         None
     };
     for frame in 0..frames {
-        let yaw = a.yaw.to_radians() + frame as f32 / frames as f32 * std::f32::consts::TAU;
-        let mut instances = vec![instance("draconia", yaw)];
+        let spin = if a.turntable > 0 {
+            frame as f32 / frames as f32 * std::f32::consts::TAU
+        } else {
+            0.0
+        };
+        let yaw = a.yaw.to_radians() + spin;
+        let time = a.time + if a.video { frame as f32 / 24.0 } else { 0.0 };
+        let mut instances = vec![instance("draconia", yaw, time)];
         if a.set.is_some() {
-            instances.push(instance("draconia-set", 0.0));
+            instances.push(instance("draconia-set", 0.0, 0.0));
         }
         let mut acc = vec![0.0f32; (a.width * a.height * 3) as usize];
         let n = a.subframes.max(1);
+        let u = if frames > 1 {
+            frame as f32 / (frames - 1) as f32
+        } else {
+            0.0
+        };
+        let ease = u * u * (3.0 - 2.0 * u);
+        let eye_at = s.eye + (s.target - s.eye) * a.push * ease;
         for k in 0..n {
             let camera = CameraSample {
-                eye: s.eye,
+                eye: eye_at,
                 target: s.target,
                 fov_y,
-                focus: (s.target - s.eye).length(),
+                // The landmarks are the eyeballs' centres; focus on the
+                // corneas, 12 mm nearer the lens.
+                focus: (s.target - eye_at).length() - 0.012,
                 aperture: s.focal_mm / 1000.0 / (2.0 * s.fstop),
             };
             let (view_proj, eye) =

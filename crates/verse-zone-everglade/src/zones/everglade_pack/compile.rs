@@ -1142,7 +1142,7 @@ impl Builder<'_> {
 /// Drops each key that linear interpolation between the kept keys around it
 /// reproduces within [`KEY_TOLERANCE`], keeping the first and last keys.
 /// A channel that never changes keeps one key.
-fn reduce_keys<const N: usize>(keys: &[(f32, [f32; N])]) -> Vec<(f32, [f32; N])> {
+pub(crate) fn reduce_keys<const N: usize>(keys: &[(f32, [f32; N])]) -> Vec<(f32, [f32; N])> {
     let Some((&first, rest)) = keys.split_first() else {
         return Vec::new();
     };
@@ -1213,7 +1213,7 @@ fn tidy(primitive: &mut Primitive) {
 }
 
 /// Merges identical vertices of one primitive and renumbers its indices.
-fn weld(primitive: &mut SkinnedPrimitive) {
+pub(crate) fn weld(primitive: &mut SkinnedPrimitive) {
     type Key = ([u32; 3], [u8; 3], [u32; 2], [u8; 4], [u8; 4]);
     let key = |v: &SkinnedVertex| -> Key {
         (
@@ -1242,7 +1242,7 @@ fn weld(primitive: &mut SkinnedPrimitive) {
 
 /// Quantizes four skin weights to 255ths that sum to 255, giving any
 /// rounding remainder to the heaviest.
-fn unit_weights(weights: [f32; 4]) -> [u8; 4] {
+pub(crate) fn unit_weights(weights: [f32; 4]) -> [u8; 4] {
     let clean = weights.map(|w| if w.is_finite() { w.max(0.0) } else { 0.0 });
     let total: f32 = clean.iter().sum();
     if total <= 0.0 {

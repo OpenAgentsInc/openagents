@@ -74,7 +74,7 @@ def build():
     wood = mat("wood_dark", (0.035, 0.022, 0.014, 1), rough=0.6)
     wood2 = mat("wood_shelf", (0.06, 0.04, 0.026, 1), rough=0.65)
     glass = mat("jar_glass", (0.5, 0.6, 0.58, 1), rough=0.08)
-    liquids = [mat(f"jar_liquid_{k}", (0.1, 0.4, 0.35, 1), rough=0.3, emit=(0.25 + 0.05 * k, 0.95, 0.8 - 0.05 * k, 1), strength=0.22 + 0.1 * k) for k in range(3)]
+    liquids = [mat(f"jar_liquid_{k}", (0.1, 0.4, 0.35, 1), rough=0.3, emit=(0.25 + 0.05 * k, 0.95, 0.8 - 0.05 * k, 1), strength=0.12 + 0.06 * k) for k in range(3)]
     murk = mat("jar_specimen", (0.05, 0.04, 0.025, 1), rough=0.7)
     lid = mat("jar_lid", (0.08, 0.07, 0.06, 1), rough=0.4, metal=0.6)
     paper = mat("paper", (0.55, 0.5, 0.4, 1), rough=0.9)
@@ -144,11 +144,27 @@ def build():
     return objs
 
 
+def glow():
+    """The peacock guardian's core as a backdrop: a large disc of white-blue
+    light behind her, brightest at the centre, with a darker blue ring
+    round it (concentric discs, so no texture is needed)."""
+    objs = []
+    for k, (r, col) in enumerate([(3.0, (0.35, 0.45, 0.75, 1)), (2.0, (0.7, 0.8, 1.0, 1)), (1.2, (0.95, 0.97, 1.0, 1)), (0.6, (1.0, 1.0, 1.0, 1))]):
+        m = mat(f"glow_{k}", col, emit=col, strength=1.0)
+        bpy.ops.mesh.primitive_circle_add(radius=r, vertices=96, fill_type="NGON", location=(0, 2.5 - 0.01 * k, 1.5), rotation=(math.pi / 2, 0, 0))
+        o = bpy.context.object
+        o.data.materials.append(m)
+        objs.append(o)
+    return objs
+
+
 def main():
     argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
-    out = argv[0] if argv else OUT
+    glow_only = "--glow" in argv
+    argv = [a for a in argv if a != "--glow"]
+    out = argv[0] if argv else (OUT if not glow_only else OUT.replace("draconia_set", "draconia_glow"))
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    objs = build()
+    objs = glow() if glow_only else build()
     # One mesh (one glTF node), its materials as primitives: Verse's
     # importer takes at most 256 nodes.
     for o in objs:

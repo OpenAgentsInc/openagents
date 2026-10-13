@@ -12,21 +12,44 @@ stills in `~/work/film-out/draconia/parity/ref/`). Review artifacts live in
 
 ## Current asset for scenes
 
-- **Round 1 (2026-10-13): `~/work/film-out/draconia/build/draconia.neutral.glb`**
-  (built locally, not committed: 1.6 M triangles, 4K maps; rebuild with the
-  commands under [Build and render](#build-and-render)). Load it as
-  `crates/verse/examples/draconia_portrait.rs` does:
-  `characters::import_with(&mut pack, dir, path, ImportOptions { max_texture_edge: 4096 })`,
-  then `verse_engine::loading::Prepared::load` with a raised `Budget` (the
-  manifest is ~400 MB of JSON) and `Renderer::from_prepared`; place it with
-  `chamber::basis()`. `draconia.landmarks.json` beside it gives her eye,
-  mouth and chest points for aiming cameras. Her materials carry the
-  character shading models, so any scene on the imported renderer gets her
-  skin, eyes, hair and cloth shading.
-- **Limits for scene work today:** she is a static posed mesh (arms down),
-  not yet skinned to the Universal rig, and her hair has no joint chains
-  yet, so it can't blow in wind. Joint-chain hair (spring chains driven by
-  a wind field) is the next round's first item.
+Built locally by `scripts/blender/draconia.py` (not committed: 1.5-2.3 M
+triangles, 4K maps); rebuild with the commands under
+[Build and render](#build-and-render). Every build is skinned on the
+Universal rig (her own proportions, the Universal joint orientations), so
+every Universal clip plays on her, and it carries extra joints: `eye_l`,
+`eye_r` (gaze) and hair chains `hair_<chain>_<link>`.
+
+| Asset (round 2, 2026-10-13) | Path | What |
+| --- | --- | --- |
+| Long, loose, waist-length hair, glare, gold hoops (peacock look) | `~/work/film-out/draconia/build-long/draconia-long.glare.glb` | `--hair long --earrings --expr glare`; 18 hanging chains plus fringe and temple locks on the head |
+| Long hair, battle decals, lips parted (D1 shot 1) | `~/work/film-out/draconia/build-battle/draconia-long.parted.glb` | `--hair long --earrings --battle --expr parted` |
+| The parity updo (the classroom reference) | `~/work/film-out/draconia/build-updo/draconia.neutral.glb` | Updo; temple locks on chains |
+
+**Through the zone renderer (`Beast`, the peacock scene):** see
+`crates/verse/examples/draconia_form.rs`, which does exactly this:
+
+```rust
+let mut draconia = characters::film_character(&mut engine, &dir, &glb,
+    &root.join("assets/verse/characters/quaternius"),
+    characters::ImportOptions { max_texture_edge: 1024 })?;
+let spheres = hair_chains::humanoid_spheres(&draconia);
+let rise = hair_chains::bake(&draconia, 0, 901, 2.0, 30.0, 2.0,
+    Spring { stiffness: 25.0, ..Default::default() }, &spheres, rising_gust(0.2))?;
+draconia.clips.push(rise);
+let form = everglade_pack::film::add_character(&mut zone, &engine, &dir, &draconia,
+    "film/draconia", &clips /* PLAYER_CLIPS + ("rise", 901) */, 1024)?;
+let beast = Beast::new(&zone, &form)?; // then beast.pose_clip(.., "rise", t, ..)
+```
+
+`rising_gust` (in that example) is an upward, outward and backward blast
+that peaks 0.25 s after it starts and fades over 1.15 s. The zone renderer
+draws base colour only.
+
+**Through the imported renderer (film close-ups):** see
+`crates/verse/examples/draconia_portrait.rs`: `characters::film_character`
+with 4096-pixel maps, `Prepared::load` with a raised `Budget`, then
+`Renderer::from_prepared`; `hair_chains::bake` for the wind and
+`hair_chains::aim` to lock the eyes on a lens.
 
 ## Current state vs reference
 
@@ -137,6 +160,46 @@ python3 scripts/verse/draconia_parity.py sbs REF.jpg OUT.png "Verse round N" SBS
 - **Next gap.** Hair: joint chains for scenes (the peacock scene needs
   them), then real volume and a messy updo silhouette; then the eyes
   (lids, caruncle, tear line, sclera shading).
+
+### Round 2, 2026-10-13: a rig, hair that moves, and the peacock-open close-up
+
+- **Gap.** Round 1's Draconia was a static mesh: no clips, no hair motion,
+  no gaze; the peacock scene couldn't use her. Then (the owner's priority)
+  her face in the peacock opening's eye close-up.
+- **What changed.**
+  - **Rig** (`scripts/blender/draconia_rig.py`): her limbs turn to the
+    Universal rest directions; the CC0 skeleton's 163 bones map onto the
+    Universal 65; the glb's skin keeps the Universal joints' orientations
+    at her own joint positions, plus `eye_l`/`eye_r` and hair chains.
+    Clothes keep the body's own weights vertex for vertex.
+  - **Hair chains** (`crates/verse-engine/src/hair_chains.rs`): Verlet
+    spring chains with gravity, wind (gusts, turbulence, an outward blast),
+    link lengths and body spheres, baked into clips; `aim` locks eye
+    joints on a target. Tested.
+  - **Zone-pack forms** (`everglade_pack::film::add_character`): a film
+    character added to a loaded zone pack in memory for `Beast`.
+  - **Long hair** (`--hair long`): waist-length on 18 chains, a
+    side-swept fringe and temple locks; earrings (`--earrings`); a glare
+    and a parted expression; soot and blood (`--battle`); pale brows
+    (`--brows pale`).
+  - **Eyes**: eye joints and gaze; socket occlusion in the eye's map
+    (lid shadow, recessed corners) applied to its direct light; a tear
+    line and caruncles; heavier lashes with outer wings; a finite-size
+    catchlight on the cornea.
+  - **Brows**: hair strands over paint; the paint and strands are made on
+    the neutral face, so expressions carry them.
+  - **Face**: a narrower face and nose, heavier lids, a shorter forehead.
+  - **Portrait renderer**: head turn, gaze, push-in video, peacock and
+    low-key lighting, the `peacock_open` shot, focus on the corneas.
+- **Artifacts.** `~/work/film-out/draconia/parity/round-02/sbs-*.png`;
+  peacock-open v1-v3 in `~/work/film-out/draconia/parity/peacock-open/`
+  and `~/Downloads/draconia-face-peacock-open-v{1,2,3}.{png,mp4}`.
+- **Honest state.** The owner judged v2's heavy glare "horrible" and v1
+  "good enough"; v3 returns to v1's expression. Hair still reads
+  translucent and thin at the temples; skin still reads smooth and CG.
+- **Next.** A full-face portrait every round (neutral, slight smile,
+  speaking) for the mouth; opaque, shadowing hair; ash-blond brows; gold
+  that reads as gold.
 
 ## Peacock scene
 

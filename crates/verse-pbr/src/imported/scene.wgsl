@@ -155,8 +155,17 @@ fn cloth_light(n:vec3<f32>,view:vec3<f32>,l:vec3<f32>,albedo:vec3<f32>,nv:f32,sh
  let sheen=tint*material.shading.y*0.12*d*vis*nlc;
  return (diffuse+sheen*3.14159265)*shadow;
 }
-fn cornea_light(n:vec3<f32>,view:vec3<f32>,l:vec3<f32>,roughness:f32,nv:f32,shadow:f32)->vec3<f32>{
- return reflectance(n,view,l,vec3(0.0),vec3(0.025),roughness,nv)*shadow;
+// The tear film mirrors each light as a source of finite size (a 15 cm
+// soft box at the light's place), so the eye shows a catchlight shape, not
+// a pin-prick: a disc where the mirrored view ray meets the source.
+fn cornea_light(n:vec3<f32>,view:vec3<f32>,l:vec3<f32>,distance:f32,roughness:f32,nv:f32,shadow:f32)->vec3<f32>{
+ let r=reflect(-view,n);
+ let size=atan(0.075/max(distance,0.05));
+ let c=dot(r,l);
+ let disc=smoothstep(cos(size*1.25+roughness*0.3),cos(size*0.8),c);
+ let fresnel=0.025+0.975*pow(1.0-nv,5.0);
+ let glint=disc*fresnel/(3.14159265*max(size*size,0.0004))*1.6;
+ return (reflectance(n,view,l,vec3(0.0),vec3(0.025),roughness,nv)*0.25+vec3(glint))*shadow;
 }
 fn stochastic(p:vec2<f32>,seed:f32)->f32{
  let q=fract(p*vec2(0.1031,0.1030)+vec2(seed*0.7548776662,seed*0.56984029));
@@ -309,11 +318,15 @@ fn portal(v:Out,t:f32,x_axis:vec3<f32>,z_axis:vec3<f32>,center:vec3<f32>)->vec4<
   var reflected=vec3(0.0);
   switch model {
    case 1u:{reflected=skin_light(n,soft,view_direction,direction,diffuse_color,roughness,nv,shadow);}
-   case 3u:{reflected=cornea_light(n,view_direction,direction,roughness,nv,shadow);}
+   case 3u:{reflected=cornea_light(n,view_direction,direction,d,roughness,nv,shadow);}
    case 4u:{reflected=hair_light(strand,geometric,view_direction,direction,diffuse_color,roughness,shadow);}
    case 5u:{reflected=cloth_light(n,view_direction,direction,diffuse_color,nv,shadow);}
    default:{reflected=reflectance(n,view_direction,direction,diffuse_color,f0,roughness,nv)*shadow;}
   }
+  // The eye sits in its socket: the occlusion map's lid shadow dims the
+  // eyeball's and the cornea's direct light too, not only the ambient.
+  if model==2u {reflected*=ao;}
+  if model==3u {reflected*=sqrt(ao);}
   lit+=reflected*radiance.rgb*radiance.w*falloff;
  }
  emission+=select(vec3(0.0),albedo*0.7,material.params.x>0.5);
