@@ -99,17 +99,46 @@ def save(video: Path, review: dict) -> None:
     (folder / "notes.md").write_text("\n".join(lines))
 
 
-def grab(video: Path, t: float, folder: Path) -> tuple[str, str]:
+def frame_names(t: float, nid: str) -> tuple[str, str]:
+    name = f"{t:08.3f}-{nid}"
+    return f"frames/{name}.png", f"frames/{name}-strip.png"
+
+
+def grab(video: Path, t: float, folder: Path, nid: str) -> None:
     frames = folder / "frames"
     frames.mkdir(parents=True, exist_ok=True)
-    name = f"{t:08.3f}"
+    name = f"{t:08.3f}-{nid}"
     frame, strip = frames / f"{name}.png", frames / f"{name}-strip.png"
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{t:.3f}", "-i", str(video),
                     "-frames:v", "1", str(frame)], check=False)
     start = max(0.0, t - 1.0)
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{start:.3f}", "-t", "2", "-i", str(video),
                     "-vf", "fps=4,scale=480:-1,tile=8x1", "-frames:v", "1", str(strip)], check=False)
-    return f"frames/{frame.name}", f"frames/{strip.name}"
+
+
+def repair() -> None:
+    """Give every note its own frame files (older notes shared them by time) and remake missing ones."""
+    for path in REVIEWS.glob("*/notes.json"):
+        review = json.loads(path.read_text())
+        video = Path(review["video"])
+        if not allowed(video):
+            continue
+        changed = False
+        for n in review["notes"]:
+            frame, strip = frame_names(n["t"], n["id"])
+            if (n.get("frame"), n.get("strip")) != (frame, strip):
+                n["frame"], n["strip"] = frame, strip
+                changed = True
+            if not (path.parent / frame).exists() or not (path.parent / strip).exists():
+                grab(video, n["t"], path.parent, n["id"])
+        if changed:
+            with LOCK:
+                fresh = load(video)
+                byid = {n["id"]: n for n in review["notes"]}
+                for n in fresh["notes"]:
+                    if n["id"] in byid:
+                        n["frame"], n["strip"] = byid[n["id"]]["frame"], byid[n["id"]]["strip"]
+                save(video, fresh)
 
 
 def videos() -> list[dict]:
@@ -224,13 +253,16 @@ class Handler(BaseHTTPRequestHandler):
         if not allowed(v):
             return self.send(404, {"error": "no such video"})
         t = max(0.0, float(b.get("t", 0)))
+        nid = uuid.uuid4().hex[:8]
+        frame, strip = frame_names(t, nid)
+        note = {"id": nid, "t": round(t, 3), "text": str(b.get("text", "")).strip(),
+                "created": time.strftime("%Y-%m-%dT%H:%M:%S"), "frame": frame, "strip": strip}
         with LOCK:
             review = load(v)
-            frame, strip = grab(v, t, review_dir(v))
-            note = {"id": uuid.uuid4().hex[:8], "t": round(t, 3), "text": str(b.get("text", "")).strip(),
-                    "created": time.strftime("%Y-%m-%dT%H:%M:%S"), "frame": frame, "strip": strip}
             review["notes"].append(note)
             save(v, review)
+        # The note is saved now; its frames follow in the background (a few seconds on long files).
+        threading.Thread(target=grab, args=(v, t, review_dir(v), nid), daemon=True).start()
         self.send(200, note)
 
     def do_PATCH(self):
@@ -330,15 +362,20 @@ function render(){const L=$('list');L.innerHTML='';$('count').textContent=`Notes
  const bar=$('bar');bar.querySelectorAll('.mk').forEach(e=>e.remove());const D=v.duration||review.duration||1;
  for(const n of review.notes){const m=document.createElement('div');m.className='mk';m.style.left=(n.t/D*100)+'%';m.title=clock(n.t)+' '+n.text;m.onclick=e=>{e.stopPropagation();seek(n.t)};bar.appendChild(m);
   const d=document.createElement('div');d.className='note';d.innerHTML=`<span class=t>${clock(n.t)}</span><div class=txt></div><img loading=lazy src="/files/${n.frame}?video=${enc(video)}"><div class=act><button data-a=edit>Edit</button><button data-a=del>Delete</button></div>`;
-  d.querySelector('.txt').textContent=n.text;d.onclick=e=>{const a=e.target.dataset.a;if(a==='del'){if(confirm('Delete this note?'))del(n.id);return}if(a==='edit'){edit(n);return}seek(n.t)};L.appendChild(d)}}
+  d.querySelector('.txt').textContent=n.text;retryImg(d.querySelector('img'));d.onclick=e=>{const a=e.target.dataset.a;if(a==='del'){if(confirm('Delete this note?'))del(n.id);return}if(a==='edit'){edit(n);return}seek(n.t)};L.appendChild(d)}}
 function seek(t){v.currentTime=Math.max(0,Math.min(t,v.duration||t))}
 function tick(){const D=v.duration||1;$('prog').style.width=(v.currentTime/D*100)+'%';$('cur').style.left=(v.currentTime/D*100)+'%';$('time').textContent=clock(v.currentTime);$('dur').textContent=clock(D).replace(/\.\d+$/,'');requestAnimationFrame(tick)}
 $('bar').onclick=e=>{const r=$('bar').getBoundingClientRect();seek((e.clientX-r.left)/r.width*(v.duration||0))};
 function startNote(){wasPlaying=!v.paused;v.pause();noteT=v.currentTime;$('noteat').textContent=clock(noteT);$('notebox').style.display='block';$('notetext').value='';$('notetext').focus()}
 function closeNote(){$('notebox').style.display='none';v.focus?.()}
-async function saveNote(){const text=$('notetext').value.trim();if(!text){closeNote();return}
- $('savenote').disabled=true;await api('/api/notes',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({video,t:noteT,text})});$('savenote').disabled=false;
- review=await api('/api/review?video='+enc(video));render();closeNote();if($('resume').checked&&wasPlaying)v.play()}
+let saving=false;
+async function saveNote(){const text=$('notetext').value.trim();if(!text){closeNote();return}if(saving)return;saving=true;
+ $('savenote').disabled=true;$('savenote').textContent='Saving…';
+ try{const r=await fetch('/api/notes',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({video,t:noteT,text})});if(!r.ok)throw new Error(r.status);
+  review=await api('/api/review?video='+enc(video));render();closeNote();if($('resume').checked&&wasPlaying)v.play()}
+ catch(e){alert('Could not save the note ('+e.message+'). Your text is still in the box.')}
+ finally{saving=false;$('savenote').disabled=false;$('savenote').textContent='Save note'}}
+function retryImg(img){let n=0;img.onerror=()=>{if(n++<20)setTimeout(()=>{img.src=img.src.split('&r=')[0]+'&r='+n},1000)}}
 async function edit(n){const t=prompt('Edit note at '+clock(n.t),n.text);if(t===null)return;await api('/api/notes',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({video,id:n.id,text:t})});review=await api('/api/review?video='+enc(video));render()}
 async function del(id){await api('/api/notes?video='+enc(video)+'&id='+id,{method:'DELETE'});review=await api('/api/review?video='+enc(video));render()}
 $('savenote').onclick=saveNote;$('cancelnote').onclick=closeNote;$('pick').onchange=e=>open(e.target.value);$('reload').onclick=()=>loadVideos(video);
@@ -364,6 +401,7 @@ def main():
         DEFAULT = Path(a.video).expanduser().resolve()
     REVIEWS.mkdir(parents=True, exist_ok=True)
     (REVIEWS / "README.md").write_text(AGENT_README)
+    threading.Thread(target=repair, daemon=True).start()
     server = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
     print(f"Film review on http://127.0.0.1:{a.port}/  (notes in {REVIEWS})", flush=True)
     server.serve_forever()
