@@ -175,6 +175,8 @@ lever.
 
 ## Status
 
+**Idea 4 is started** (#11489, `crates/coder-new/src/gate.rs`, lever `Gate`): a `PreToolUse` hook after the floors that can only add a deny. First question: `Bash` runs a script in the cwd the session never read or wrote and that is not a README-listed `scripts/` entrypoint; then one Decisions predicate, deny at p >= 0.95 (1 - 1/20 from written costs). A failed call does nothing; decisions log to `~/.openagents/decisions/gate.jsonl` (`CODER_GATE_LOG`). More questions are still to add.
+
 **Idea 1 is built** (#11486, `crates/squeeze`).
 
 **What it does.** A `PreToolUse` hook on `Bash` rewrites only the noisy segments of a command (build, test and lint programs from a declared table), so `cd x && cargo test` keeps its `cd` in the agent's shell. It leaves alone:

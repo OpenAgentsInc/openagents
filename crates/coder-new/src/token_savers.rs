@@ -22,13 +22,22 @@ pub enum Lever {
     /// #11486: a noisy build, test, or lint command's output is trimmed to
     /// the lines that decide the next step before the agent reads it.
     Squeeze,
+    /// #11489: a script the session never read is held for a read when the
+    /// decision rates running it unread as risky.
+    Gate,
 }
 
 /// Every lever, with the sentence the Plugins screen shows for it.
-pub const LEVERS: &[(Lever, &str)] = &[(
-    Lever::Squeeze,
-    "Long build and test output is trimmed to its errors before the agent reads it; the full output is saved to a file.",
-)];
+pub const LEVERS: &[(Lever, &str)] = &[
+    (
+        Lever::Squeeze,
+        "Long build and test output is trimmed to its errors before the agent reads it; the full output is saved to a file.",
+    ),
+    (
+        Lever::Gate,
+        "A script the agent has not read is held for a read first when running it blind looks risky.",
+    ),
+];
 
 /// Unset, off, or on.
 static STATE: AtomicU8 = AtomicU8::new(UNSET);
@@ -72,6 +81,9 @@ fn install_if(mut options: QueryOptions, lever: Lever, on: bool) -> QueryOptions
                     squeeze::claude_hook(squeeze::invoker(&this, &[squeeze::CODER_SUBCOMMAND])),
                 );
             }
+        }
+        Lever::Gate => {
+            options = options.hook(HookEvent::PreToolUse, crate::gate::claude_hook());
         }
     }
     options

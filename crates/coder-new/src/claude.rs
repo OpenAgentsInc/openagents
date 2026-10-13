@@ -750,6 +750,8 @@ pub(crate) fn turn_options(
     // small. It rewrites the command only; the floors above still decide.
     if matches!(access, Access::Full) {
         options = crate::token_savers::install(options, crate::token_savers::Lever::Squeeze);
+        // The gate (#11489) runs after the floors and can only add a deny.
+        options = crate::token_savers::install(options, crate::token_savers::Lever::Gate);
     }
     options.env_remove = REMOVED_ENV.iter().map(|name| (*name).to_owned()).collect();
     (options, allowed)

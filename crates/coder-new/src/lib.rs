@@ -41,6 +41,7 @@ pub mod file_tools;
 pub mod fleet;
 mod fleet_app;
 pub mod floors;
+pub mod gate;
 mod git_guard;
 pub mod github_tool;
 pub mod harness;
