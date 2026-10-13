@@ -204,7 +204,7 @@ pub fn tool_lines(call: &ToolCall, phase: u8, width: u16) -> Vec<Line<'static>> 
             .flatten()
             .filter(|line| line.tag == diff::ChangeTag::Delete)
             .count();
-        lines.push(edit_summary("Updated", call.input, added, removed, width));
+        lines[0].spans.extend(edit_counts(added, removed));
         lines.extend(t::noir_lines(diff::lines(
             call.output,
             call.input,
@@ -241,23 +241,19 @@ pub fn tool_lines(call: &ToolCall, phase: u8, width: u16) -> Vec<Line<'static>> 
 }
 
 /// The cells before an edit's diff rows, so their numbers sit under the
-/// summary's text.
+/// header's text.
 const DIFF_LEAD: usize = 3;
 
-/// An edit's summary under its header: `⎿  Updated <path> (+N -M)`.
-fn edit_summary(verb: &str, path: &str, added: usize, removed: usize, width: u16) -> Line<'static> {
-    let counts = format!(" (+{added} -{removed})");
-    let room = width.saturating_sub(6 + verb.len() as u16 + counts.len() as u16);
-    Line::from(vec![
-        styled("  ⎿  ", t::GRAY_DIM),
-        styled(format!("{verb} "), t::TEXT_SECONDARY),
-        styled(truncate(path, room), t::TEXT_SECONDARY),
+/// A finished edit's counts after its header path: ` (+N -M)`. The header
+/// carries them, so no summary row repeats the path under it.
+fn edit_counts(added: usize, removed: usize) -> Vec<Span<'static>> {
+    vec![
         styled(" (", t::TEXT_SECONDARY),
         styled(format!("+{added}"), t::DIFF_INSERT_FG),
         styled(" ", t::TEXT_SECONDARY),
         styled(format!("-{removed}"), t::DIFF_DELETE_FG),
         styled(")", t::TEXT_SECONDARY),
-    ])
+    ]
 }
 
 /// A built-in file tool's transcript rows (#11168): the tool and its path or
@@ -397,8 +393,7 @@ fn file_tool_layout(
             } else {
                 let added = number("added").unwrap_or(0) as usize;
                 let removed = number("removed").unwrap_or(0) as usize;
-                let verb = if name == "Write" { "Wrote" } else { "Updated" };
-                lines.push(edit_summary(verb, &path, added, removed, width));
+                lines[0].spans.extend(edit_counts(added, removed));
                 let first = lines.len();
                 lines.extend(t::noir_lines(diff::lines(
                     &diff,

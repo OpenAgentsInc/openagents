@@ -874,14 +874,16 @@ fn edit_calls_draw_marked_rows_on_bands_from_the_number_to_the_edge() {
             for line in lines.iter().skip(1) {
                 assert!(line.width() <= usize::from(width));
             }
+            let header: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+            assert!(header.contains(" (+"), "{header}");
             let height = lines.len() as u16;
             let buffer = draw(lines, width);
-            assert!(row_text(&buffer, 1).contains("⎿  Updated"));
+            assert!(!row_text(&buffer, 1).contains("Updated"));
             for (band, marker) in [(theme::DIFF_DELETE_BG, "-"), (theme::DIFF_INSERT_BG, "+")] {
                 let mut foregrounds = Vec::new();
                 let mut changed_rows = 0;
                 let mut marked_rows = 0;
-                for y in 2..height {
+                for y in 1..height {
                     let Some(start) = (0..width).find(|x| buffer[(*x, y)].bg == band) else {
                         continue;
                     };
@@ -945,8 +947,7 @@ fn an_edit_draws_like_claude_code_numbers_markers_bands_and_changed_words() {
     assert_eq!(
         rows,
         [
-            "● Edit src/read.rs",
-            "  ⎿  Updated src/read.rs (+1 -1)",
+            "● Edit src/read.rs (+1 -1)",
             "     1   fn a() {}",
             "     2",
             "     3 - /// Reads a file inside the workspace.",
@@ -956,8 +957,8 @@ fn an_edit_draws_like_claude_code_numbers_markers_bands_and_changed_words() {
     );
     // The removed and added rows: band from the number to the right edge.
     for (y, band, word) in [
-        (4u16, theme::DIFF_DELETE_BG, theme::DIFF_DELETE_WORD),
-        (5, theme::DIFF_INSERT_BG, theme::DIFF_INSERT_WORD),
+        (3u16, theme::DIFF_DELETE_BG, theme::DIFF_DELETE_WORD),
+        (4, theme::DIFF_INSERT_BG, theme::DIFF_INSERT_WORD),
     ] {
         let number = (0..width)
             .find(|x| buffer[(*x, y)].symbol() == "3")
@@ -973,7 +974,7 @@ fn an_edit_draws_like_claude_code_numbers_markers_bands_and_changed_words() {
             .collect();
         assert_eq!(
             words,
-            if y == 4 {
+            if y == 3 {
                 "inside the workspace"
             } else {
                 "on this computer"
@@ -982,12 +983,12 @@ fn an_edit_draws_like_claude_code_numbers_markers_bands_and_changed_words() {
     }
     // Context rows carry no band.
     for x in 0..width {
-        assert_eq!(buffer[(x, 2)].bg, theme::BG_BASE);
-        assert_eq!(buffer[(x, 6)].bg, theme::BG_BASE);
+        assert_eq!(buffer[(x, 1)].bg, theme::BG_BASE);
+        assert_eq!(buffer[(x, 5)].bg, theme::BG_BASE);
     }
-    // The summary's counts are colored.
-    let plus = rows[1][..rows[1].find("+1").unwrap()].chars().count() as u16;
-    assert_eq!(buffer[(plus, 1)].fg, theme::DIFF_INSERT_FG);
+    // The header's counts are colored.
+    let plus = rows[0][..rows[0].find("+1").unwrap()].chars().count() as u16;
+    assert_eq!(buffer[(plus, 0)].fg, theme::DIFF_INSERT_FG);
 }
 
 #[test]

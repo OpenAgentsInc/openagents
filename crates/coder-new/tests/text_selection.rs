@@ -131,7 +131,7 @@ fn a_drag_copies_text_without_marks_gutters_or_diff_columns() {
     let mut app = chat();
     let buffer = render(&mut app, 60, 60);
     let user = row_of(&buffer, "❯ Why");
-    let summary = row_of(&buffer, "  ⎿  Updated");
+    let summary = row_of(&buffer, "● Edit src/read.rs (+1 -1)");
     let last_diff = row_of(&buffer, "     4   fn read");
     // From the middle of the question to the end of the diff, dragged
     // bottom to top.
@@ -143,8 +143,7 @@ fn a_drag_copies_text_without_marks_gutters_or_diff_columns() {
              Run cargo test -p coder-new\n\
              running 415 tests\n\
              test result: ok. 415 passed\n\n\
-             Edit src/read.rs\n\
-             Updated src/read.rs (+1 -1)\n\
+             Edit src/read.rs (+1 -1)\n\
              fn a() {}\n\
              \n\
              /// Reads a file inside the workspace.\n\

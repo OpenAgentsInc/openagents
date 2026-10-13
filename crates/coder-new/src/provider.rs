@@ -3225,8 +3225,8 @@ mod tests {
                     + "\n"
             })
             .collect();
-        assert!(drawn.contains("Edit greet.rs\n"), "{drawn}");
-        assert!(drawn.contains("Updated greet.rs (+1 -1)"), "{drawn}");
+        assert!(drawn.contains("Edit greet.rs (+1 -1)\n"), "{drawn}");
+        assert!(!drawn.contains("Updated"), "{drawn}");
         assert!(drawn.contains("hello, world"), "{drawn}");
         assert!(drawn.contains("\"hello\""), "{drawn}");
     }
