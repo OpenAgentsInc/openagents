@@ -211,6 +211,8 @@ pub async fn version(
         .current_dir(cwd)
         .env_clear()
         .envs(environment.iter().map(|(name, value)| (name, value)))
+        // Never Cursor's sign-in page (#11549).
+        .envs(crate::process::NON_INTERACTIVE)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
@@ -282,6 +284,8 @@ pub async fn update(program: &Path, environment: &[(String, String)], cwd: &Path
         .current_dir(cwd)
         .env_clear()
         .envs(environment.iter().map(|(name, value)| (name, value)))
+        // Never Cursor's sign-in page (#11549).
+        .envs(crate::process::NON_INTERACTIVE)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -304,6 +308,8 @@ pub async fn update(program: &Path, environment: &[(String, String)], cwd: &Path
         .current_dir(cwd)
         .env_clear()
         .envs(environment.iter().map(|(name, value)| (name, value)))
+        // Never Cursor's sign-in page (#11549).
+        .envs(crate::process::NON_INTERACTIVE)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())

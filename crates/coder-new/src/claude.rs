@@ -133,8 +133,27 @@ impl Default for Choice {
 }
 
 /// The pick, and where it is saved once Coder's settings have loaded.
+#[cfg_attr(test, allow(dead_code))]
 static CHOICE: std::sync::Mutex<(Option<Choice>, Option<PathBuf>)> =
     std::sync::Mutex::new((None, None));
+
+type Held = std::sync::Mutex<(Option<Choice>, Option<PathBuf>)>;
+
+/// Where the pick is held: one per process, and one per test thread in a
+/// unit test, so tests that reopen chats on other models never race.
+fn held() -> &'static Held {
+    #[cfg(test)]
+    {
+        thread_local! {
+            static TEST: &'static Held = Box::leak(Box::new(std::sync::Mutex::new((None, None))));
+        }
+        TEST.with(|held| *held)
+    }
+    #[cfg(not(test))]
+    {
+        &CHOICE
+    }
+}
 
 #[derive(serde::Deserialize, serde::Serialize)]
 struct ChoiceFile {
@@ -147,7 +166,7 @@ struct ChoiceFile {
 /// The model and effort the next claude turn runs.
 #[must_use]
 pub fn choice() -> Choice {
-    CHOICE
+    held()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .0
@@ -158,10 +177,19 @@ pub fn choice() -> Choice {
 /// A new chat starts on the default model, not an earlier chat's pick
 /// (#11556); the saved pick stays on disk.
 pub fn reset_choice() {
-    CHOICE
+    held()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .0 = None;
+}
+
+/// A reopened chat goes on with the model it ran on (#11563): `choice`
+/// holds for this run, and the person's saved pick on disk stays.
+pub fn hold(choice: Choice) {
+    held()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .0 = Some(choice);
 }
 
 /// Reads the saved pick under `root`, Coder's settings folder. A missing
@@ -178,7 +206,7 @@ pub fn load_choice(root: &Path) {
                 .effort
                 .filter(|effort| EFFORTS.contains(&effort.as_str())),
         });
-    *CHOICE
+    *held()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner) = (saved, Some(path));
 }
@@ -193,7 +221,7 @@ pub fn choose(model: &str, effort: Option<String>) -> Result<(), String> {
         return Err(format!("claude does not offer {model}."));
     }
     let effort = effort.filter(|effort| EFFORTS.contains(&effort.as_str()));
-    let mut held = CHOICE
+    let mut held = held()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(path) = &held.1 {
@@ -231,7 +259,7 @@ pub fn name(model: &str) -> String {
 }
 
 /// Whether /models offers `model` in this mode.
-fn offered(model: &str) -> bool {
+pub(crate) fn offered(model: &str) -> bool {
     MODELS.iter().any(|(id, _, _)| *id == model)
 }
 
@@ -1941,7 +1969,7 @@ mod tests {
         .unwrap();
         load_choice(dir.path());
         assert_eq!(choice(), Choice::default());
-        *CHOICE
+        *held()
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = (None, None);
     }

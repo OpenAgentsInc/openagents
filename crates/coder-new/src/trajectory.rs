@@ -207,6 +207,14 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
     if let Some(agent) = &chat.agent {
         result["extra"]["agent"] = json!(agent);
     }
+    // The model and payer the chat runs on, and its path (#11563), so a
+    // reopened chat continues on them.
+    if let Some(ran) = &chat.ran {
+        result["extra"]["ran"] = serde_json::to_value(ran).unwrap_or_default();
+        if chat.cheap {
+            result["extra"]["cheap"] = json!(true);
+        }
+    }
     // Context management (#11286): the peak the model read, whether old
     // outputs were stubbed, and how many summaries were written.
     if chat.peak_context_tokens > 0 {
@@ -446,6 +454,17 @@ pub fn main_document(app: &App, cwd: &Path) -> Value {
         }
     };
     let mut result = document(&app.live, &id, &model, cwd);
+    // The model and payer the chat's first answer ran on (#11563), also
+    // for a save that didn't keep them on the chat yet.
+    if app.live.ran.is_none()
+        && app.live.answered()
+        && let Some(ran) = app.chat_ran()
+    {
+        result["extra"]["ran"] = serde_json::to_value(ran).unwrap_or_default();
+        if app.live.cheap {
+            result["extra"]["cheap"] = json!(true);
+        }
+    }
     // A delegation this run did not time (a reopened chat) takes the
     // child's own elapsed time.
     for step in result["steps"].as_array_mut().into_iter().flatten() {
@@ -769,6 +788,11 @@ pub fn from_document(value: &Value) -> Result<Chat, String> {
         .pointer("/extra/agent")
         .and_then(Value::as_str)
         .map(str::to_owned);
+    chat.ran = value
+        .pointer("/extra/ran")
+        .and_then(|ran| serde_json::from_value(ran.clone()).ok());
+    chat.cheap =
+        chat.ran.is_some() && value.pointer("/extra/cheap").and_then(Value::as_bool) == Some(true);
     Ok(chat)
 }
 

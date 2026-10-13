@@ -80,7 +80,10 @@ impl ProcessTransport {
             .args(&args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit()); // Let stderr pass through for debugging
+            .stderr(Stdio::inherit()) // Let stderr pass through for debugging
+            // Claude Code never opens a browser or a login page on its own:
+            // a missing sign-in is said instead (#11549, owner 2026-10-13).
+            .envs([("BROWSER", "true"), ("NO_OPEN_BROWSER", "1")]);
 
         if let Some(cwd) = cwd {
             cmd.current_dir(cwd);

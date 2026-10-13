@@ -106,6 +106,15 @@ pub fn reset_choice() {
         .0 = None;
 }
 
+/// A reopened chat goes on with the model it ran on (#11563): `choice`
+/// holds for this run, and the person's saved pick on disk stays.
+pub fn hold(choice: Choice) {
+    CHOICE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .0 = Some(choice);
+}
+
 /// Reads the saved pick under `root`, Coder's settings folder.
 pub fn load_choice(root: &Path) {
     let path = root.join(CHOICE_FILE);

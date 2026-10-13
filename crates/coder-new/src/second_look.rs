@@ -389,6 +389,7 @@ fn on_haiku(text: &str) -> Result<Reviewed, String> {
     let started = Instant::now();
     let mut child = std::process::Command::new(&agent.program)
         .current_dir(empty.path())
+        .envs(acp_client::process::NON_INTERACTIVE)
         .args([
             "-p",
             "--model",

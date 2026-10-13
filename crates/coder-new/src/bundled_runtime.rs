@@ -1471,7 +1471,9 @@ async fn codex_cli(
         return result;
     }
     let mut command = std::process::Command::new(program);
-    command.args(["exec", "--json", "--skip-git-repo-check"]);
+    command
+        .args(["exec", "--json", "--skip-git-repo-check"])
+        .envs(acp_client::process::NON_INTERACTIVE);
     let variable = |name| std::env::var(name).ok().filter(|value| !value.is_empty());
     let model = next_codex_model().or_else(|| variable("CODER_CODEX_MODEL"));
     let reasoning = variable("CODER_CODEX_REASONING");

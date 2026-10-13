@@ -2275,6 +2275,13 @@ impl App {
             }
             // A Shift+Tab pick holds from this message on (#11524).
             self.apply_pick();
+            // A chat goes on only on the harness, agent and payer it ran
+            // on: one that isn't here says so, and the message stays in
+            // the input (#11563).
+            if let Some(why) = self.chat_cant_go_on() {
+                self.rail_notice(why, RAIL_NOTICE_TTL);
+                return;
+            }
             if let Some(agent) = self.picked_agent() {
                 // A list-shaped message may still run as parts, each on
                 // this agent (#11544).

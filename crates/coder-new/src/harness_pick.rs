@@ -813,6 +813,14 @@ impl crate::App {
         }
         self.pick_refreshes_seen = finished;
         if !options(&local(self)).contains(&current) {
+            // A chat that answered stays on its agent: the rail says it
+            // can't go on, and nothing moves it (#11563).
+            if self.live.answered() {
+                if let Some(why) = self.chat_cant_go_on() {
+                    self.rail_notice(why, crate::RAIL_NOTICE_TTL);
+                }
+                return;
+            }
             self.rail_notice(
                 format!(
                     "{} isn't available here any more, so this chat is back on Auto.",

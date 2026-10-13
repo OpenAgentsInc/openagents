@@ -235,6 +235,9 @@ impl Codex {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
+            // Codex never opens a browser or a login page on its own
+            // (#11549, owner 2026-10-13).
+            .envs([("BROWSER", "true"), ("NO_OPEN_BROWSER", "1")])
             .kill_on_drop(true);
         #[cfg(unix)]
         command.process_group(0);

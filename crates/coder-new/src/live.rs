@@ -106,6 +106,24 @@ pub struct Chat {
     /// The checkout's changed files as the running turn began, and where
     /// its message sits in `entries`.
     pub(crate) turn_start: Option<crate::rewind::Start>,
+    /// The model and payer this chat runs on, from its first answer on
+    /// (#11563): saved with the chat, so a reopened chat continues on them.
+    pub ran: Option<Ran>,
+}
+
+/// The model a chat's first answer ran on and who paid for it (#11563).
+/// With [`Chat::runs_on`] or [`Chat::agent`] it is the chat's lock: a
+/// reopened chat goes on there, never on the default model.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Ran {
+    /// The harness's or agent's own model id ("claude-opus-5-5",
+    /// "gpt-6.1-sol", "opencode/big-pickle"), or `auto` for the Coder
+    /// loop's gateway pick.
+    pub model: String,
+    /// The effort it ran at, when the harness takes one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    pub payer: crate::harness_plugin::Payer,
 }
 
 /// A Claude Code session a chat holds, and how far into the chat it reaches.

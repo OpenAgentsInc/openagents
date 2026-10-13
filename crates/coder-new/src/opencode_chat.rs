@@ -151,6 +151,14 @@ pub fn reset_choice() {
         .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(None);
 }
 
+/// A reopened chat goes on with the model it ran on (#11563): `model`
+/// holds for this run, and the saved pick on disk stays.
+pub fn hold(model: &str) {
+    *PICK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Some(model.to_owned()));
+}
+
 fn saved_choice() -> Option<String> {
     if let Some(pick) = PICK
         .lock()

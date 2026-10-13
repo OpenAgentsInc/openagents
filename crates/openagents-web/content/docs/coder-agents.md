@@ -74,7 +74,10 @@ right, including one you just picked with `Shift+Tab`. Pick a model before
 the chat's first message; the chat then keeps it. After that, `/models`
 shows the chat's model, and another pick says "Start a new chat (Ctrl+N)
 to use another model". Each new chat starts on its agent's default
-model. If
+model. A chat you reopen with `/resume`, or continue from your phone or
+the web, goes on with the agent, model, and payment it ran on. If that
+agent isn't on this computer any more, the line under the input says so
+and the chat doesn't move to another one. If
 `/models` says to sign in, run `/login`, or turn on OpenRouter BYOK in
 `/plugins` ([how](/docs/coder-plugins)).
 

@@ -2303,7 +2303,10 @@ impl Cli {
             .env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1")
             // Bytecode the delegate's test runs leave behind is not part of
             // the change, and in issue mode the host would commit it.
-            .env("PYTHONDONTWRITEBYTECODE", "1");
+            .env("PYTHONDONTWRITEBYTECODE", "1")
+            // A delegate never opens a browser or a login page on its own
+            // (#11549, owner 2026-10-13).
+            .envs([("BROWSER", "true"), ("NO_OPEN_BROWSER", "1")]);
         let (mark, value) = self.agent.engine_mark();
         command.env(mark, value);
         if let Some(hooks) = &self.hooks {

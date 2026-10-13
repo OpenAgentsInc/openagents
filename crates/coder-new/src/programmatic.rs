@@ -1124,6 +1124,8 @@ pub(crate) fn chat(
     if lease.exists()? {
         let document = lease.read()?;
         trajectory::restore_app(app, &document)?;
+        // The chat goes on with the model and payer it ran on (#11563).
+        app.hold_chat_ran();
         saved_document = Some(document);
     }
     // A pin holds for this turn and the chat's follow-ups, also those sent
@@ -1219,6 +1221,8 @@ pub(crate) fn chat(
                 .live
                 .notice
                 .clone()
+                // A chat that can't go on here says why (#11563).
+                .or_else(|| app.rail_notice_text().map(str::to_owned))
                 .unwrap_or("The chat could not start.".into())
                 .into());
         }

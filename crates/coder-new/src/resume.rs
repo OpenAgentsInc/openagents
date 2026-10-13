@@ -145,6 +145,7 @@ impl App {
         if !self.ensure_session() {
             return false;
         }
+        self.keep_chat_ran();
         let cwd = self.cwd.as_deref().unwrap_or(std::path::Path::new("."));
         let mut document = trajectory::main_document(self, cwd);
         document["extra"]["updated_ms"] = json!(atif::now_ms());
@@ -267,6 +268,8 @@ impl App {
             self.live.turns = crate::rewind::read(&path, &self.live);
         }
         self.delegations = restored.delegations;
+        self.unasked_noted.clear();
+        self.hold_chat_ran();
         self.draft = Draft::default();
         self.composer = Default::default();
         self.main_composer = Default::default();
@@ -422,6 +425,8 @@ impl App {
         self.history.dirty = false;
         self.history.last_attempt = None;
         self.history.save_failed = false;
+        // A new chat starts on default models (#11556).
+        self.reset_model_picks();
         true
     }
 
@@ -548,6 +553,7 @@ impl App {
         // The reopened chat's own pin shows (#11524).
         self.next_pick = None;
         self.delegations = restored.delegations;
+        self.hold_chat_ran();
         // A follower at the end watches the delegation running now, such as
         // an agent's Codex child chat, and the main chat otherwise.
         if at_end {
@@ -620,6 +626,192 @@ impl App {
     }
 }
 
+/// What a chat whose harness, agent or payer can't go on here says on the
+/// rail, after the reason (#11563).
+pub const START_NEW: &str = "Start a new chat (Ctrl+N) to use another one.";
+
+impl App {
+    /// The model and payer this chat's next turn runs on (#11563): its
+    /// harness's or agent's model as picked (or its default), the effort,
+    /// and who pays. `None` before the chat has a harness.
+    #[must_use]
+    pub(crate) fn chat_ran(&self) -> Option<crate::live::Ran> {
+        use crate::harness_plugin::{Harness, Payer};
+        use crate::live::Ran;
+        if let Some(agent) = &self.live.agent {
+            return Some(Ran {
+                model: crate::agent_models::turn_model(agent)?,
+                effort: None,
+                payer: Payer::AgentLogin,
+            });
+        }
+        let pinned = self.live.pinned_model.clone();
+        Some(match self.live.runs_on? {
+            Harness::ClaudeCode => Ran {
+                model: crate::claude::turn_model(pinned),
+                effort: crate::claude::choice().effort,
+                payer: Payer::ClaudePlan,
+            },
+            Harness::Codex => Ran {
+                model: crate::codex::turn_model(pinned),
+                effort: crate::codex::choice().effort,
+                payer: Payer::ChatGptLogin,
+            },
+            Harness::OpenCode => Ran {
+                model: self.live.opencode_session.as_ref().map_or_else(
+                    || crate::opencode_chat::model(pinned),
+                    |session| session.model.clone(),
+                ),
+                effort: None,
+                payer: Payer::OpenCode,
+            },
+            Harness::CoderLoop if self.plugins.enabled && self.plugins.key_configured => Ran {
+                model: pinned.unwrap_or_else(|| self.plugins.model.clone()),
+                effort: self.plugins.options.reasoning.clone(),
+                payer: Payer::OpenRouterKey,
+            },
+            Harness::CoderLoop => Ran {
+                model: self
+                    .gateway_model
+                    .clone()
+                    .unwrap_or_else(|| crate::models::AUTO.to_owned()),
+                effort: None,
+                payer: Payer::GatewayCredits,
+            },
+        })
+    }
+
+    /// Keeps the model and payer the chat's first answer ran on with the
+    /// chat (#11563), so it is saved and a reopened chat goes on there.
+    pub(crate) fn keep_chat_ran(&mut self) {
+        if self.live.ran.is_none() && self.live.answered() {
+            self.live.ran = self.chat_ran();
+        }
+    }
+
+    /// A reopened chat goes on with the harness, model and payer it ran on
+    /// (#11563): /resume, a chat continued from the phone or the web, a
+    /// followed chat taken over, `coder chat --session`. Another chat's
+    /// /models pick never carries into one whose model is known, and the
+    /// rail shows the chat's model.
+    /// A chat whose harness can't go on here says so on the rail.
+    pub(crate) fn hold_chat_ran(&mut self) {
+        use crate::harness_plugin::{Harness, Payer};
+        // A chat saved before #11563 names its model on its replies.
+        if self.live.ran.is_none() && self.live.answered() {
+            let replied = self
+                .live
+                .entries
+                .iter()
+                .rev()
+                .find_map(|entry| match entry {
+                    crate::live::Entry::Assistant {
+                        model: Some(model), ..
+                    } => Some(model.trim_start_matches("codex:").to_owned()),
+                    _ => None,
+                });
+            let kept = match (self.live.agent.as_ref(), self.live.runs_on, replied) {
+                (None, Some(Harness::ClaudeCode), Some(model))
+                    if crate::claude::offered(&model) =>
+                {
+                    Some((model, Payer::ClaudePlan))
+                }
+                (None, Some(Harness::Codex), Some(model)) if crate::codex::offered(&model) => {
+                    Some((model, Payer::ChatGptLogin))
+                }
+                _ => None,
+            };
+            self.live.ran = kept.map(|(model, payer)| crate::live::Ran {
+                model,
+                effort: None,
+                payer,
+            });
+        }
+        if let Some(ran) = self.live.ran.clone() {
+            // Another chat's /models pick never carries in.
+            self.reset_model_picks();
+            match (self.live.agent.clone(), self.live.runs_on) {
+                (Some(agent), _) => crate::agent_models::hold(&agent, &ran.model),
+                (None, Some(Harness::ClaudeCode)) => crate::claude::hold(crate::claude::Choice {
+                    model: ran.model,
+                    effort: ran.effort,
+                }),
+                (None, Some(Harness::Codex)) => crate::codex::hold(crate::codex::Choice {
+                    model: ran.model,
+                    effort: ran.effort,
+                }),
+                (None, Some(Harness::OpenCode)) => crate::opencode_chat::hold(&ran.model),
+                (None, Some(Harness::CoderLoop)) if crate::models::pinned(&ran.model) => {
+                    if ran.payer == Payer::OpenRouterKey {
+                        self.plugins.model = ran.model;
+                        self.plugins.options.reasoning = ran.effort;
+                    } else {
+                        self.gateway_model = Some(ran.model);
+                    }
+                }
+                _ => {}
+            }
+        }
+        if let Some(why) = self.chat_cant_go_on() {
+            self.rail_notice(why, crate::RAIL_NOTICE_TTL);
+        }
+    }
+
+    /// Why this chat can't take its next turn here, in the rail's words,
+    /// when the harness, agent or payer it ran on isn't available
+    /// (#11563): a chat never moves to another one silently.
+    #[must_use]
+    pub(crate) fn chat_cant_go_on(&self) -> Option<String> {
+        use crate::harness_plugin::{Exclusion, Harness, Payer};
+        if !self.live.answered() {
+            return None;
+        }
+        if let Some(id) = &self.live.agent {
+            let here = self.plugins.bundled.acp
+                && self
+                    .plugins
+                    .bundled
+                    .acp_registered()
+                    .iter()
+                    .any(|agent| agent.id == *id);
+            if here {
+                return None;
+            }
+            let name = crate::harness_pick::name(&self.current_pick());
+            return Some(format!(
+                "{name} isn't installed here, so this chat can't go on. {START_NEW}"
+            ));
+        }
+        let harness = self.live.runs_on?;
+        let name = crate::harness_pick::name(&crate::harness_pick::Pick::Harness(harness));
+        if harness == Harness::CoderLoop {
+            let keyed = self.plugins.enabled && self.plugins.key_configured;
+            return match self.live.ran.as_ref().map(|ran| ran.payer) {
+                Some(Payer::OpenRouterKey) if !keyed => Some(format!(
+                    "This chat paid with your OpenRouter key, which isn't on here. {START_NEW}"
+                )),
+                Some(Payer::GatewayCredits) if keyed => Some(format!(
+                    "This chat paid with OpenAgents credits, and your OpenRouter key is on now. {START_NEW}"
+                )),
+                _ => None,
+            };
+        }
+        let facts = crate::harness_plugin::Facts::read(self);
+        match crate::harness_plugin::exclusion(harness, &facts) {
+            Some(Exclusion::NotInstalled) => Some(format!(
+                "{name} isn't installed here, so this chat can't go on. {START_NEW}"
+            )),
+            Some(Exclusion::NotSignedIn) => Some(format!(
+                "{name} isn't signed in here, so this chat can't go on. {START_NEW}"
+            )),
+            Some(Exclusion::PluginOff) => Some(format!(
+                "{name} is off in /plugins, so this chat can't go on. {START_NEW}"
+            )),
+            _ => None,
+        }
+    }
+}
+
 /// The delegation a saved chat records as running, if one is: the last
 /// `delegate` call, when it is still marked running.
 fn running_delegation(document: &serde_json::Value) -> Option<String> {
@@ -664,5 +856,193 @@ mod follow_tests {
         let done = json!({"steps":[call("s-delegate-1", true), call("s-delegate-2", false)]});
         assert_eq!(running_delegation(&done), None);
         assert_eq!(running_delegation(&json!({"steps":[]})), None);
+    }
+}
+
+#[cfg(test)]
+mod ran_tests {
+    use crate::harness_plugin::{Harness, Payer};
+    use crate::live::{Entry, Ran};
+    use crate::{App, Mode, sessions};
+
+    /// What the screen shows, as one string.
+    fn shown(app: &mut App) -> String {
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(120, 20)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::render(frame, app))
+            .unwrap();
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect()
+    }
+
+    /// An answered chat on `harness`, saved under `id` in `store`.
+    fn saved(store: &sessions::Store, id: &str, harness: Harness, ran: Ran) {
+        let mut chat = crate::live::Chat {
+            runs_on: Some(harness),
+            pinned: true,
+            ran: Some(ran),
+            ..Default::default()
+        };
+        chat.entries.push(Entry::User("Fix it".into()));
+        chat.entries.push(Entry::Assistant {
+            text: "Fixed.".into(),
+            model: None,
+            elapsed_ms: None,
+        });
+        let document = crate::trajectory::document(&chat, id, "m", std::path::Path::new("/w"));
+        store.save(id, &document).unwrap();
+    }
+
+    /// A chat that ran on Sonnet 5.5 is saved with its model and payer;
+    /// reopened after a new chat went back to the default, its next turn
+    /// runs on Sonnet 5.5 and the rail says so (#11563).
+    #[test]
+    fn a_resumed_chat_goes_on_with_the_model_it_ran_on() {
+        const SONNET: &str = "claude-sonnet-5-5";
+        let dir = tempfile::tempdir().unwrap();
+        let store = sessions::Store::under(dir.path());
+        crate::harness_plugin::sign_in_claude(true);
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.plugins.bundled.claude = true;
+        app.attach_session_store(store.clone());
+
+        // The chat's first answer ran on the model picked in /models.
+        crate::claude::hold(crate::claude::Choice {
+            model: SONNET.into(),
+            effort: Some("high".into()),
+        });
+        app.live.runs_on = Some(Harness::ClaudeCode);
+        app.live.pinned = true;
+        app.live.entries.push(Entry::User("Fix it".into()));
+        app.live.entries.push(Entry::Assistant {
+            text: "Fixed.".into(),
+            model: Some(SONNET.into()),
+            elapsed_ms: None,
+        });
+        app.history.dirty = true;
+        assert!(app.persist_session(true));
+        let id = app.session_id().unwrap().to_owned();
+        let document = store.read(&id).unwrap();
+        assert_eq!(document["extra"]["ran"]["model"], SONNET);
+        assert_eq!(document["extra"]["ran"]["effort"], "high");
+        assert_eq!(document["extra"]["ran"]["payer"], "claude-plan");
+
+        // A new chat starts on the default model.
+        assert!(app.new_chat());
+        assert_eq!(crate::claude::choice().model, crate::claude::MODEL);
+
+        // Reopened, the chat is on Sonnet 5.5 again, on the rail too.
+        assert!(app.resume(Some(&id)));
+        assert_eq!(
+            app.live.ran,
+            Some(Ran {
+                model: SONNET.into(),
+                effort: Some("high".into()),
+                payer: Payer::ClaudePlan,
+            })
+        );
+        assert_eq!(crate::claude::choice().model, SONNET);
+        let screen = shown(&mut app);
+        assert!(screen.contains("Claude (Sonnet 5.5)"), "{screen}");
+
+        // Its next turn runs there.
+        app.draft.text = "now the tests".into();
+        app.submit_live();
+        match app.request.as_ref().map(|request| &request.kind) {
+            Some(crate::live::Work::Claude { model, .. }) => {
+                assert_eq!(crate::claude::turn_model(model.clone()), SONNET);
+            }
+            _ => panic!("a Claude Code turn"),
+        }
+        assert_eq!(crate::claude::choice().effort.as_deref(), Some("high"));
+        app.cancel_request();
+        app.reset_model_picks();
+        crate::harness_plugin::sign_in_claude(false);
+    }
+
+    /// A reopened chat whose harness isn't installed here any more says so
+    /// on the rail and keeps the message: it never moves to another
+    /// harness (#11563).
+    #[test]
+    fn a_resumed_chat_whose_harness_is_gone_says_so_and_stays() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = sessions::Store::under(dir.path());
+        saved(
+            &store,
+            "s-opencode",
+            Harness::OpenCode,
+            Ran {
+                model: "opencode/big-pickle".into(),
+                effort: None,
+                payer: Payer::OpenCode,
+            },
+        );
+        crate::opencode_chat::install_for_test(false);
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.plugins.bundled.opencode = true;
+        app.attach_session_store(store);
+        assert!(app.resume(Some("s-opencode")));
+        let gone = "OpenCode isn't installed here, so this chat can't go on.";
+        assert!(app.rail_notice_text().unwrap().starts_with(gone));
+        let screen = shown(&mut app);
+        assert!(screen.contains(gone), "{screen}");
+
+        app.draft.text = "go on".into();
+        app.submit_live();
+        assert!(app.request.is_none(), "no turn starts");
+        assert_eq!(app.draft.text, "go on", "the message stays in the input");
+        assert_eq!(app.live.runs_on, Some(Harness::OpenCode));
+        assert!(app.rail_notice_text().unwrap().ends_with(super::START_NEW));
+        app.reset_model_picks();
+    }
+
+    /// A chat on an ACP agent that isn't here any more says so too, and
+    /// stays on that agent instead of going back to Auto.
+    #[test]
+    fn a_resumed_chat_whose_agent_is_gone_stays_on_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = sessions::Store::under(dir.path());
+        let mut chat = crate::live::Chat {
+            agent: Some("devin-cli".into()),
+            pinned: true,
+            ran: Some(Ran {
+                model: "swe-2-medium".into(),
+                effort: None,
+                payer: Payer::AgentLogin,
+            }),
+            ..Default::default()
+        };
+        chat.entries.push(Entry::User("Fix it".into()));
+        chat.entries.push(Entry::Assistant {
+            text: "Fixed.".into(),
+            model: None,
+            elapsed_ms: None,
+        });
+        let document =
+            crate::trajectory::document(&chat, "s-devin", "m", std::path::Path::new("/w"));
+        store.save("s-devin", &document).unwrap();
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.attach_session_store(store);
+        assert!(app.resume(Some("s-devin")));
+        assert!(
+            app.rail_notice_text()
+                .unwrap()
+                .contains("isn't installed here, so this chat can't go on.")
+        );
+        app.draft.text = "go on".into();
+        app.submit_live();
+        assert!(app.request.is_none());
+        assert_eq!(app.live.agent.as_deref(), Some("devin-cli"));
+        assert_eq!(app.next_pick, None, "never back on Auto");
+        app.reset_model_picks();
     }
 }

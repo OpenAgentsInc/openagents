@@ -379,6 +379,14 @@ pub fn reset_choices() {
     }
 }
 
+/// A reopened chat goes on with the model it ran on (#11563): `model`
+/// holds for `agent` in this run, and the saved picks on disk stay.
+pub fn hold(agent: &str, model: &str) {
+    picks()
+        .get_or_insert_with(BTreeMap::new)
+        .insert(agent.to_owned(), model.to_owned());
+}
+
 /// Forgets a test's pick.
 #[cfg(test)]
 pub fn forget(agent: &str) {

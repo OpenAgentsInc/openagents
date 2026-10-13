@@ -206,6 +206,7 @@ pub async fn ask(
         .map_err(|error| format!("The request did not encode: {error}"))?;
     let questions = body.get("questions").cloned().unwrap_or(Value::Null);
     let mut child = tokio::process::Command::new(program)
+        .envs(acp_client::process::NON_INTERACTIVE)
         .args([
             "-p",
             "--model",
