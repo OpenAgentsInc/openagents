@@ -1048,7 +1048,7 @@ fn run_rows(
                 " {}",
                 truncate(&command.replace(['\n', '\r'], " "), width.saturating_sub(7))
             ),
-            t::GRAY,
+            t::TEXT_SECONDARY,
         ),
     ])];
     let mut copy = vec![RowCopy::lead(2)];
@@ -1086,7 +1086,7 @@ fn run_rows(
                     "{RESULT_INDENT}{}",
                     truncate(&status, width.saturating_sub(5))
                 ),
-                t::GRAY,
+                t::TEXT_SECONDARY,
             )));
             copy.push(RowCopy::lead(result_lead));
         }
@@ -1101,7 +1101,7 @@ fn run_rows(
             for row in text.lines() {
                 let ranges = coder_terminal::wrap_rows(row, inner);
                 if ranges.is_empty() {
-                    lines.push(Line::from(span(RESULT_INDENT, t::GRAY_BRIGHT)));
+                    lines.push(Line::from(span(RESULT_INDENT, t::TEXT_SECONDARY)));
                     copy.push(RowCopy::lead(result_lead));
                     continue;
                 }
@@ -1116,7 +1116,7 @@ fn run_rows(
                     // screen shows a five-row window over these rows.
                     lines.push(Line::from(span(
                         format!("{RESULT_INDENT}{}", &row[range]),
-                        t::GRAY_BRIGHT,
+                        t::TEXT_SECONDARY,
                     )));
                 }
             }
@@ -1235,7 +1235,7 @@ fn entry_rows(
         let params = crate::tools::compact_params(input, room);
         if !params.is_empty() {
             spans.push(span(" ", t::GRAY_DIM));
-            spans.push(span(params, t::GRAY_BRIGHT));
+            spans.push(span(params, t::TEXT_SECONDARY));
         }
         lines.push(Line::from(spans));
         fill_copy(&lines, &mut copy);
@@ -1432,7 +1432,7 @@ fn entry_rows(
                 );
             lines.push(Line::from(vec![
                 span("  ⎿  ", t::GRAY_DIM),
-                span(detail, t::GRAY_BRIGHT),
+                span(detail, t::TEXT_SECONDARY),
             ]));
         }
     }

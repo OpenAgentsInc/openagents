@@ -150,7 +150,7 @@ pub fn parameter_lines(value: &serde_json::Value, width: u16) -> Vec<Line<'stati
             Line::from(vec![
                 styled("  │  ", t::GRAY_DIM),
                 styled(label, t::TEXT_SECONDARY),
-                styled(truncate(value, available), t::GRAY_BRIGHT),
+                styled(truncate(value, available), t::TEXT_SECONDARY),
             ])
             .style(Style::default().bg(t::BG_DARK)),
         );
@@ -161,7 +161,7 @@ pub fn parameter_lines(value: &serde_json::Value, width: u16) -> Vec<Line<'stati
                 styled("  │  ", t::GRAY_DIM),
                 styled(
                     truncate(&format!("… {omitted} more fields"), width.saturating_sub(5)),
-                    t::GRAY,
+                    t::TEXT_SECONDARY,
                 ),
             ])
             .style(Style::default().bg(t::BG_DARK)),
@@ -220,7 +220,7 @@ pub fn tool_lines(call: &ToolCall, phase: u8, width: u16) -> Vec<Line<'static>> 
         ToolState::Running => lines.push(Line::from(vec![
             styled("  ⎿  ", t::GRAY_DIM),
             styled("Running", accent),
-            styled(format!(" · {}", call.output), t::GRAY_BRIGHT),
+            styled(format!(" · {}", call.output), t::TEXT_SECONDARY),
         ])),
         ToolState::Failed => lines.push(Line::from(vec![
             styled("  ⎿  ", t::GRAY_DIM),
@@ -232,7 +232,7 @@ pub fn tool_lines(call: &ToolCall, phase: u8, width: u16) -> Vec<Line<'static>> 
                 let prefix = if index == 0 { "  ⎿  " } else { "     " };
                 lines.push(Line::from(vec![
                     styled(prefix, t::GRAY_DIM),
-                    styled(output, t::GRAY_BRIGHT),
+                    styled(output, t::TEXT_SECONDARY),
                 ]));
             }
         }
@@ -250,13 +250,13 @@ fn edit_summary(verb: &str, path: &str, added: usize, removed: usize, width: u16
     let room = width.saturating_sub(6 + verb.len() as u16 + counts.len() as u16);
     Line::from(vec![
         styled("  ⎿  ", t::GRAY_DIM),
-        styled(format!("{verb} "), t::GRAY_BRIGHT),
+        styled(format!("{verb} "), t::TEXT_SECONDARY),
         styled(truncate(path, room), t::TEXT_SECONDARY),
-        styled(" (", t::GRAY_BRIGHT),
+        styled(" (", t::TEXT_SECONDARY),
         styled(format!("+{added}"), t::DIFF_INSERT_FG),
-        styled(" ", t::GRAY_BRIGHT),
+        styled(" ", t::TEXT_SECONDARY),
         styled(format!("-{removed}"), t::DIFF_DELETE_FG),
-        styled(")", t::GRAY_BRIGHT),
+        styled(")", t::TEXT_SECONDARY),
     ])
 }
 
@@ -393,7 +393,7 @@ fn file_tool_layout(
         "Edit" | "Write" => {
             let diff = text("diff");
             if diff.is_empty() {
-                lines.push(detail("No changes".into(), t::GRAY_BRIGHT));
+                lines.push(detail("No changes".into(), t::TEXT_SECONDARY));
             } else {
                 let added = number("added").unwrap_or(0) as usize;
                 let removed = number("removed").unwrap_or(0) as usize;
@@ -421,7 +421,7 @@ fn file_tool_layout(
                         styled(" ".repeat(DIFF_LEAD + 2), t::GRAY_DIM),
                         styled(
                             format!("… {more} more {}", if more == 1 { "line" } else { "lines" }),
-                            t::GRAY,
+                            t::TEXT_SECONDARY,
                         ),
                     ]));
                 }
@@ -436,7 +436,7 @@ fn file_tool_layout(
                 } else {
                     format!("{total} lines")
                 },
-                t::GRAY_BRIGHT,
+                t::TEXT_SECONDARY,
             ));
         }
         _ => {
@@ -458,19 +458,19 @@ fn file_tool_layout(
                     format!("{count} {}", if count == 1 { "file" } else { "files" }),
                 )
             };
-            lines.push(detail(summary, t::GRAY_BRIGHT));
+            lines.push(detail(summary, t::TEXT_SECONDARY));
             if number("count").unwrap_or(0) > 0 {
                 let rows: Vec<&str> = body.lines().collect();
                 for row in rows.iter().take(5) {
                     lines.push(Line::from(vec![
                         styled("     ", t::GRAY_DIM),
-                        styled(truncate(row, width.saturating_sub(5)), t::GRAY),
+                        styled(truncate(row, width.saturating_sub(5)), t::TEXT_SECONDARY),
                     ]));
                 }
                 if rows.len() > 5 {
                     lines.push(Line::from(vec![
                         styled("     ", t::GRAY_DIM),
-                        styled(format!("… {} more", rows.len() - 5), t::GRAY_DIM),
+                        styled(format!("… {} more", rows.len() - 5), t::TEXT_SECONDARY),
                     ]));
                 }
             }
@@ -501,14 +501,14 @@ pub fn plugin_lines(call: &PluginCall, phase: u8) -> Vec<Line<'static>> {
     if !call.input.is_empty() {
         header
             .spans
-            .push(styled(format!(" · {}", call.input), t::GRAY_BRIGHT));
+            .push(styled(format!(" · {}", call.input), t::TEXT_SECONDARY));
     }
     let mut result = vec![styled("  ⎿  ", t::GRAY_DIM)];
     match call.state {
-        ToolState::Complete => result.push(styled(call.output, t::GRAY_BRIGHT)),
+        ToolState::Complete => result.push(styled(call.output, t::TEXT_SECONDARY)),
         ToolState::Running => result.extend([
             styled("Running", t::GRAY),
-            styled(format!(" · {}", call.output), t::GRAY_BRIGHT),
+            styled(format!(" · {}", call.output), t::TEXT_SECONDARY),
         ]),
         ToolState::Failed => result.extend([
             styled("Failed", t::TOOL_FAILED),
@@ -544,7 +544,10 @@ pub fn delegation_lines(agent: &DemoAgent, phase: u8, width: u16) -> Vec<Line<'s
             styled(" · ", t::GRAY_DIM),
         ]);
     }
-    detail.extend([styled("Running", t::GRAY), styled(tokens, t::GRAY_BRIGHT)]);
+    detail.extend([
+        styled("Running", t::GRAY),
+        styled(tokens, t::TEXT_SECONDARY),
+    ]);
     vec![Line::from(header), Line::from(detail)]
 }
 
