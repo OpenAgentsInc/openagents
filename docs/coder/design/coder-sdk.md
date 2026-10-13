@@ -3,10 +3,13 @@
 2026-10-13. Specification, not built. What the Coder SDK is, what it takes
 from the Claude Agent SDK, how hooks work on any harness, and what else
 plugs in: the Decisions API, plugins, policy, tools, and the records that
-let us calibrate. The proposed issue set is at the end.
+let us calibrate. The issue set is at the end.
 
 Related: [system-one-hooks.md](system-one-hooks.md) (the hook ideas this
-SDK carries to every harness), #11451 (harness plugins and routing),
+SDK carries to every harness), the
+[agentic execution router](../../api/2026-10-02-agentic-execution-router.md)
+(the authority, admission and payment rules the SDK must keep inside a
+session), #11451 (harness plugins and routing),
 `crates/coder-new/src/harness_plugin.rs` and `route_contract::harness`
 (the harness declarations), `crates/coder-new/src/floors.rs` (one policy
 on every harness, #11475).
@@ -201,6 +204,90 @@ invocation receipt that can be replayed (`crates/plugin`,
   hook helps (the plugin's own test set, run with and without it).
 - Plugin hooks tighten by default. A plugin that wants to rewrite input
   shows that in its listing and the person turns it on.
+- A plugin's hooks are off until the person turns the plugin on, the same
+  rule the router keeps for a plugin's standing rules (router doc 13.9).
+
+## Rules from the agentic execution router
+
+The router decides what runs, where, for whom and at what price, before a
+session starts. The SDK is where those decisions are kept *inside* the
+session, step by step. Its rules carry over:
+
+1. **Four authorities stay separate** (router section 4): observation,
+   execution, disclosure and spending. A hook answer can narrow any of
+   them and widen none. Installing a plugin, a hook's probability, or
+   text in a tool result never grants one.
+2. **A hook is a disclosure.** A decision hook sends part of the session
+   (a command, an output chunk) to a decision model; a plugin hook sends
+   the event to a guest. Each hook declares what it sends and to whom, and
+   the SDK checks that against the session's admitted disclosure before
+   registering it. A hook the admission doesn't cover is not registered,
+   and that is recorded.
+3. **The hook set is part of the admission.** The registered hooks, their
+   question-set and policy versions, and their pinned models are digested
+   into the route's adapter digest, beside the delegate recipe
+   (`route_contract::recipe`). A continuation keeps that set; adding a hook
+   that discloses more or spends is a new admission, not a quiet change.
+4. **The recipe is the box.** The delegate recipe's per-engine row (briefing,
+   knowledge, effort, lean tools, system prompt, cache, frozen checks) is
+   what the SDK applies at session start, so one table describes every
+   harness's box.
+5. **Untrusted content stays untrusted** (router section 9). Tool output,
+   plugin output and model text a hook reads can't change the admitted
+   recipients or grants. Context a hook adds is labeled with its source.
+6. **Fallback and escalation are new admissions** (router section 5). A
+   hook that ends a session to escalate hands the router a checkpoint; the
+   stronger harness runs only if it fits the same grant, disclosure and
+   payer, or a new offer is confirmed. A fallback never switches the payer
+   to OpenAgents when the person chose their own keys (13.6).
+7. **Engines don't start engines** (13.2). `SubagentStart` lets the host
+   see and gate the harness's own subagents; fan-out across harnesses is a
+   dispatch plan the host runs, never something a hook or an engine starts.
+8. **Uncertain effects are never replayed** (router section 6). A session
+   a hook ended mid-command resumes from the task's recorded disposition;
+   the SDK never re-runs a command to find out what happened.
+9. **Calibrate, don't guess** (router section 5). Thresholds are frozen
+   with their question-set version, tuned on one split and promoted on a
+   held-out one, against the raw-delegation baseline, one lever at a time
+   (`route_contract::qualify`, the briefed-ab set). A hook becomes a
+   default only after that.
+10. **The route record shows the hooks.** Each firing that changed
+    something (a denial, a rewrite, added context, a blocked stop, a
+    spend) appears in the route view (`route_contract::view`) in plain
+    words, and its cost is recorded with the run's.
+
+## Paid plugins (later)
+
+Not built now, and not part of the issue set. The SDK is the right home
+for it, so the hook points and records should leave room.
+
+Some plugins will charge: an author-declared fee per call or per run, paid
+in full after settlement (router section 8). Inside a session, the moment
+to decide whether to use one is a hook moment: at session start, when a
+step could use a capability the person hasn't paid for, or at a
+checkpoint. At that moment the host would:
+
+1. **List the candidates** in code: installed or installable plugins that
+   fit the step, free ones included, each with its declared fee and author.
+2. **Check what the person set**: their budget preferences (per task, per
+   day, auto-approve under an amount, never for a category) and the current
+   balance in their wallet. Only limits the person configured; none by
+   default.
+3. **Judge value**: a decision on whether the paid plugin is worth its fee
+   here, against the free alternatives and the cost of finishing without it
+   (the router's effective-cost objective).
+4. **Act by rule**: under a standing budget, reserve and use it; otherwise
+   make an offer, an immutable proposal with an expiry, a price and the
+   effects, that the person confirms; or go on without it.
+
+What has to hold: spending is its own authority, so a probability ranks
+value but never authorizes a spend; a reservation is durable before the
+call, so parallel steps can't overspend a balance or a budget; a changed
+price or recipient is a new offer; and settlement, the author's fee and any
+unused hold are recorded per call in the route record. The pieces exist
+elsewhere (the x402 `ExecutionFront`, the payments ledger, Spark wallet
+balance, offers in the route contract); the SDK would call them from a
+`Spend` hook point, never reimplement them.
 
 ## Everything else the SDK should hold
 
@@ -254,33 +341,20 @@ invocation receipt that can be replayed (`crates/plugin`,
 - Does the router read hook tiers as an exclusion only, or also as a cost
   (a harness that only emulates the monitor costs more to finish)?
 
-## Proposed issues
+## Issues
 
-Draft for review; not filed yet.
+Tracked on project 22.
 
-1. **Coder SDK crate: events, outcome, composition, tiers.** The normalized
-   event and `HookOutcome` types, the registry with matchers and timeouts,
-   the composition rules, the per-backend tier table in the capability
-   matrix, and the scripted backend for tests.
-2. **Claude backend, and today's hooks through it.** Map the SDK's events
-   onto `claude_agent_sdk::HookEvent` and its permission callback; move the
-   floors, squeeze and worktree-gate hooks onto the SDK with no change in
-   behavior.
-3. **Coder loop backend.** Fire the same events from the native loop; the
-   loop's tool gate (`floors::hold`) becomes the floors hook.
-4. **Decision hooks.** The declared kind: rule first, Decisions API, pinned
-   model, deadline, fallback, async monitoring, costs beside thresholds,
-   writing to the decision log (#11492). Then re-point #11487–#11491 as
-   decision hooks on the SDK.
-5. **Plugin hooks.** A hooks part in the plugin package; the normalized
-   event as the Wasm packet, `HookOutcome` as the reply, tighten-only
-   authority with an opt-in for rewrites, receipts per firing.
-6. **Command hooks and the hook bridge.** One hook binary that serves
-   Claude- and Codex-style command hooks from the in-process registry, plus
-   project and personal hook files.
-7. **One Coder tools MCP server for every harness**, including `verify`,
-   `finish` and `decide`.
+| # | Work | Issue |
+|---|---|---|
+| 1 | Coder SDK crate: events, outcome, composition, tiers, scripted backend; hook set in the adapter digest | [#11495](https://github.com/OpenAgentsInc/openagents/issues/11495) |
+| 2 | Claude backend, with the floors, squeeze and worktree gate moved onto it | [#11496](https://github.com/OpenAgentsInc/openagents/issues/11496) |
+| 3 | Coder loop backend | [#11497](https://github.com/OpenAgentsInc/openagents/issues/11497) |
+| 4 | Decision hooks, with the disclosure check; then #11487–#11491 on them | [#11498](https://github.com/OpenAgentsInc/openagents/issues/11498) |
+| 5 | Plugin hooks | [#11499](https://github.com/OpenAgentsInc/openagents/issues/11499) |
+| 6 | Command hooks and the hook bridge | [#11500](https://github.com/OpenAgentsInc/openagents/issues/11500) |
+| 7 | One Coder tools MCP server for every harness | [#11501](https://github.com/OpenAgentsInc/openagents/issues/11501) |
 
-Deferred, filed when the harness is back in use: a Codex backend on
-app-server (#11493 described its permission half), and an ACP backend at the
-emulated tier.
+Deferred, filed when needed: a Codex backend on app-server (#11493
+described its permission half), an ACP backend at the emulated tier, and
+paid plugins.
