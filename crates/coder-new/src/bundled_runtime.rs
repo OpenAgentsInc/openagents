@@ -424,6 +424,14 @@ pub(crate) async fn cli_at(
         .chain(arguments.iter().map(|argument| shell_word(argument)))
         .collect::<Vec<_>>()
         .join(" ");
+    crate::floors::hold(
+        "Coder",
+        "openagents_cli",
+        &json!({ "arguments": arguments }),
+        cwd,
+        cancel,
+    )
+    .await?;
     if let crate::approval::Verdict::Refused(why) = crate::approval::check(&shown) {
         return Err(why);
     }
@@ -1188,6 +1196,11 @@ async fn codex_cli(
     }
     if briefed {
         command.args(["-c", "project_doc_max_bytes=0"]);
+    }
+    // The floors' hook (#11475): a production deploy, a merge, a secret or
+    // a payment is held for the person.
+    if let Ok(this) = std::env::current_exe() {
+        command.args(crate::floors::codex_args(&this));
     }
     command
         .args(["-c", "approval_policy=\"never\"", "-"])
@@ -1958,6 +1971,25 @@ struct Checkout<'a> {
 impl Env for Checkout<'_> {
     async fn run(&self, script: &str, deadline: Duration) -> CommandResult {
         let started = Instant::now();
+        // The floors hold a production deploy, a merge, a secret or a
+        // payment for the person (#11475).
+        if let Err(why) = crate::floors::hold(
+            "Coder",
+            "Run",
+            &serde_json::json!({ "command": script }),
+            &self.directory,
+            &self.cancel,
+        )
+        .await
+        {
+            return CommandResult {
+                command: redact_text(script, self.redaction_keys),
+                exit: None,
+                timed_out: false,
+                seconds: started.elapsed().as_secs_f64(),
+                output: why,
+            };
+        }
         // An agent-driven chat asks before anything that is not read-only.
         if let crate::approval::Verdict::Refused(why) = crate::approval::check(script) {
             return CommandResult {
@@ -2555,6 +2587,60 @@ mod tests {
         assert!(native.validate().is_err());
     }
 
+    /// Codex launches as the permission table says, with the floors' hook
+    /// (#11475): a drift in either fails here.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn codex_launches_as_the_permission_table_says_with_the_floors_hook() {
+        use std::os::unix::fs::PermissionsExt;
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("codex");
+        std::fs::write(
+            &program,
+            r#"#!/bin/sh
+printf '%s\n' "$@" > args
+cat > /dev/null
+printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}'
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut native = agent(program);
+        native.id = "codex".into();
+        native.name = "Codex".into();
+        native.transport = AgentTransport::CodexCli;
+        let _ = acp(
+            &native,
+            "Fix the test.",
+            dir.path(),
+            None,
+            &Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+        )
+        .await;
+        let args: Vec<String> = std::fs::read_to_string(dir.path().join("args"))
+            .unwrap()
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        let row = crate::floors::row(crate::harness_plugin::Harness::Codex);
+        assert_eq!(row.permission, crate::floors::PERMISSION);
+        for flag in row.native {
+            assert!(args.iter().any(|arg| arg == flag), "{flag} in {args:?}");
+        }
+        let this = std::env::current_exe().unwrap();
+        for hook in crate::floors::codex_args(&this) {
+            assert!(args.contains(&hook), "{hook} in {args:?}");
+        }
+        assert!(
+            args.iter().any(|arg| arg.starts_with("hooks.PreToolUse=")
+                && arg.contains(crate::floors::HOOK_COMMAND))
+        );
+    }
+
     /// Codex reads the chat's briefing ahead of its task, with its own
     /// `AGENTS.md` reading off (#11473); without one it reads its own.
     #[tokio::test]
@@ -2735,7 +2821,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         assert_eq!(result["sandbox"], "workspace-write");
         let args = std::fs::read_to_string(dir.path().join("args")).unwrap();
         assert!(args.contains("--sandbox\nworkspace-write\n"));
-        assert!(!args.contains("bypass"));
+        assert!(!args.contains("--dangerously-bypass-approvals"));
 
         std::fs::write(
             &program,
@@ -3719,6 +3805,9 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
     async fn microcoder_redacts_command_and_file_observations_before_the_next_generation() {
         use microcoder_loop::models::{Ask, Basis, Generated, NextAction};
         const MARKER: &str = "fixture-saved-provider-credential";
+        // This test is about redaction: the floor that holds a secret read
+        // for the person is tested in `floors`.
+        crate::floors::open_for_test(true);
         struct Fixture(std::sync::atomic::AtomicUsize);
         impl Generate for Fixture {
             async fn generate(&self, _system: &str, prompt: &str) -> Generated {

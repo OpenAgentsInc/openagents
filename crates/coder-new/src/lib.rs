@@ -40,6 +40,7 @@ pub mod escalate;
 pub mod file_tools;
 pub mod fleet;
 mod fleet_app;
+pub mod floors;
 mod git_guard;
 pub mod github_tool;
 pub mod harness;
@@ -321,10 +322,24 @@ impl App {
     fn clear_disclosure(&mut self) {
         if let Some(desk) = self.disclosure_desk.take() {
             desk.close();
+            crate::floors::install_desk(None);
         }
         self.disclosure_event = None;
         self.disclosure_scroll = 0;
         self.disclosure_seen = false;
+    }
+
+    /// Opens the approval card a floor asks on for this turn, when a
+    /// person is at the terminal to answer it (#11475).
+    fn open_floor_desk(&mut self) {
+        if !self.interactive_disclosures {
+            return;
+        }
+        let desk = self
+            .disclosure_desk
+            .get_or_insert_with(approval::Desk::new)
+            .clone();
+        crate::floors::install_desk(Some(desk));
     }
 
     pub(crate) fn poll_disclosure(&mut self) {
@@ -1679,6 +1694,8 @@ impl App {
         if !midturn {
             self.begin_claude_turn();
             self.record_choice(harness_plugin::Harness::ClaudeCode, images, chars);
+            // A floor asks the person on the approval card (#11475).
+            self.open_floor_desk();
         }
         self.request = Some(live::Request {
             id: self.request_id,
@@ -1689,6 +1706,7 @@ impl App {
                 tools: Box::new(crate::claude_tools::Tools::new(self.agent_execution())),
                 session,
                 briefing: self.live.briefing.clone().map(Box::new),
+                model: self.live.pinned_model.clone(),
             },
         });
     }
@@ -1798,6 +1816,10 @@ impl App {
             if !self.route_settled && !self.sending_part {
                 self.pending_escalation = None;
                 self.plan = None;
+            }
+            // Never means never (#11475).
+            if !self.route_settled && self.pending_route.is_none() && self.honor_never() {
+                return;
             }
             // A message sent while another waits for its route queues
             // behind it; a routing point waits for System One (#11460).
@@ -1912,11 +1934,19 @@ impl App {
             execution.disclosure_desk = Some(desk.clone());
             self.disclosure_desk = Some(desk);
         }
+        // A floor asks the person on the approval card (#11475).
+        self.open_floor_desk();
         // A model the person chose keeps its own path (#11132); `auto`
         // routes across every connected door.
-        let kind = if key.is_some() && models::pinned(&self.plugins.model) {
+        // A pin's model (#11475), else the person's choice in /models.
+        let model = self
+            .live
+            .pinned_model
+            .clone()
+            .unwrap_or_else(|| self.plugins.model.clone());
+        let kind = if key.is_some() && models::pinned(&model) {
             live::Work::Chat {
-                model: self.plugins.model.clone(),
+                model,
                 options: self.plugins.options.clone(),
                 messages: self.live.messages(),
                 execution,

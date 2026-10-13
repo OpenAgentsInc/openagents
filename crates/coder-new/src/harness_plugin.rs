@@ -186,6 +186,11 @@ pub(crate) fn claude_at_limit_now() -> bool {
     claude_at_limit(atif::now_ms() / 1000)
 }
 
+/// What the person reads when every engine that could run here is one
+/// they said never to use.
+pub const NEVER_LEFT: &str =
+    "You've said never to use every agent that can run here. Change that in /preferences.";
+
 /// Who pays when `harness` runs under `facts`.
 #[must_use]
 pub fn payer(harness: Harness, facts: &Facts) -> Payer {
@@ -273,6 +278,13 @@ impl App {
     pub fn route_turn(&mut self) -> Harness {
         if let Some(routed) = self.routed.take() {
             self.live.runs_on = Some(routed.harness);
+            // A pin's model holds until another routing call, a follow-up
+            // that continues keeps it.
+            if routed.rule == crate::routing_record::Rule::Pin {
+                self.live.pinned_model = routed.model;
+            } else if routed.trace.step.as_deref() != Some("continue") {
+                self.live.pinned_model = None;
+            }
             self.routing_rule = Some(routed.rule);
             self.routing_router = Some((routed.probabilities, routed.trace));
             return routed.harness;
@@ -280,7 +292,21 @@ impl App {
         if let Some(harness) = self.live.runs_on {
             return harness;
         }
-        let harness = fixed_rule(&candidates(&Facts::read(self)));
+        // A pin for every kind of work decides a new chat's harness even
+        // with no router (#11475).
+        let found = candidates(&Facts::read(self));
+        let pin = self
+            .pins()
+            .into_iter()
+            .rev()
+            .find(|pin| pin.kind.is_none() && found.admitted.contains(&pin.harness));
+        if let Some(pin) = pin {
+            self.live.runs_on = Some(pin.harness);
+            self.live.pinned_model = pin.model;
+            self.routing_rule = Some(crate::routing_record::Rule::Pin);
+            return pin.harness;
+        }
+        let harness = fixed_rule(&found);
         self.live.runs_on = Some(harness);
         // A chat with earlier turns lost its harness (its plugin went off)
         // and is routed again (#11454).
@@ -290,6 +316,47 @@ impl App {
             crate::routing_record::Rule::FirstAdmitted
         });
         harness
+    }
+
+    /// The person's pins that apply in this chat's repository (#11475).
+    pub(crate) fn pins(&self) -> Vec<crate::routing_preferences::Pin> {
+        let cwd = self.context_cwd();
+        let Some(path) = self.plugins.execution_settings(cwd.clone()).routing else {
+            return Vec::new();
+        };
+        crate::routing_preferences::RoutingPreferences::load(&path)
+            .map(|preferences| {
+                preferences.pins_in(crate::routing_preferences::repo_name(&cwd).as_deref())
+            })
+            .unwrap_or_default()
+    }
+
+    /// A harness the person said never to use is never started (#11475):
+    /// a chat on one moves to another at its next message, and with none
+    /// left the message is refused and stays in the input. Returns whether
+    /// it was refused.
+    pub(crate) fn honor_never(&mut self) -> bool {
+        let facts = Facts::read(self);
+        let candidates = candidates(&facts);
+        let never = |why: &Exclusion| {
+            matches!(
+                why,
+                Exclusion::PersonSaidNever | Exclusion::PersonSaidNeverWithModel
+            )
+        };
+        if let Some(current) = self.live.runs_on
+            && candidates
+                .excluded
+                .iter()
+                .any(|(harness, why)| *harness == current && never(why))
+        {
+            self.live.runs_on = None;
+        }
+        if candidates.admitted.is_empty() && candidates.excluded.iter().any(|(_, why)| never(why)) {
+            self.live.notice = Some(NEVER_LEFT.into());
+            return true;
+        }
+        false
     }
 
     /// What router v0's policy reads besides System One's judgment.
@@ -316,6 +383,7 @@ impl App {
             current: self.live.runs_on,
             claude_five_hour,
             time_weight: self.preferences.time_weight(),
+            pins: self.pins(),
         }
     }
 

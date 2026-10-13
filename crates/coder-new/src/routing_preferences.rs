@@ -58,6 +58,28 @@ const READ_ERROR: &str =
     "Cannot read your routing preferences. Fix or remove the file; it was not changed.";
 const WRITE_ERROR: &str = "Cannot save your routing preferences. The file was not changed.";
 
+/// The repository `cwd` is in, by its folder's name (the main checkout's
+/// for a worktree), for pins that apply in one repository.
+#[must_use]
+pub fn repo_name(cwd: &Path) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(cwd)
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()
+        .filter(|output| output.status.success())?;
+    let common = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+    let top = if common.file_name().is_some_and(|name| name == ".git") {
+        common.parent()?.to_path_buf()
+    } else {
+        common
+    };
+    top.file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+}
+
 /// Where the routing preferences live under Coder's settings folder `root`.
 #[must_use]
 pub fn path(root: &Path) -> PathBuf {
@@ -156,6 +178,56 @@ pub struct NeverPair {
     pub model: String,
 }
 
+/// A pin (#11475): this harness, and with `model` that model, for the
+/// person's work, in one repository (`repo`, its folder's name) or one kind
+/// of work (`kind`), or both, or everywhere. A pin decides ahead of the
+/// router's own steps and records as `Rule::Pin`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Pin {
+    pub harness: Harness,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<crate::router::Kind>,
+    /// The person's words that asked for it.
+    pub said: String,
+    pub at: String,
+}
+
+impl Pin {
+    /// Whether the pin applies in `repo`.
+    #[must_use]
+    pub fn applies_in(&self, repo: Option<&str>) -> bool {
+        self.repo.is_none() || self.repo.as_deref() == repo
+    }
+
+    /// The pin in plain words, for the preferences screen.
+    #[must_use]
+    pub fn words(&self) -> String {
+        let agent = match &self.model {
+            Some(model) => format!("{} ({model})", self.harness.declaration().name),
+            None => self.harness.declaration().name.to_owned(),
+        };
+        let kind = self.kind.map(|kind| match kind {
+            crate::router::Kind::Answer => "questions and answers",
+            crate::router::Kind::RepoChange => "changes to code",
+            crate::router::Kind::IssueToPr => "issues to pull requests",
+            crate::router::Kind::Research => "research",
+        });
+        let place = self
+            .repo
+            .as_ref()
+            .map_or_else(|| "everywhere".to_owned(), |repo| format!("in {repo}"));
+        match kind {
+            Some(kind) => format!("Always {agent} for {kind}, {place}"),
+            None => format!("Always {agent}, {place}"),
+        }
+    }
+}
+
 /// Who made a change.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -197,6 +269,8 @@ struct Front {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     never: Vec<NeverPair>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pin: Vec<Pin>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     change: Vec<Change>,
 }
 
@@ -205,6 +279,8 @@ struct Front {
 pub struct RoutingPreferences {
     pub stances: PerHarness<Stance>,
     pub never: Vec<NeverPair>,
+    /// The person's pins (#11475).
+    pub pins: Vec<Pin>,
     pub changes: Vec<Change>,
     /// The Markdown after the settings: the person's notes, and any the
     /// model added for them.
@@ -216,6 +292,7 @@ impl Default for RoutingPreferences {
         Self {
             stances: PerHarness::default(),
             never: Vec::new(),
+            pins: Vec::new(),
             changes: Vec::new(),
             notes: NOTES.to_owned(),
         }
@@ -239,6 +316,17 @@ struct Request {
     note: Option<String>,
     #[serde(default)]
     undo: bool,
+    /// Pin the harness (with `model`) here (#11475).
+    #[serde(default)]
+    pin: bool,
+    /// Remove the pins on the harness.
+    #[serde(default)]
+    unpin: bool,
+    /// The pin applies only in this repository.
+    #[serde(default)]
+    this_repo: bool,
+    #[serde(default)]
+    kind: Option<crate::router::Kind>,
 }
 
 impl RoutingPreferences {
@@ -269,12 +357,20 @@ impl RoutingPreferences {
             .or(notes.strip_prefix('\n'))
             .unwrap_or(notes);
         let front: Front = toml::from_str(front).map_err(|_| READ_ERROR.to_owned())?;
-        if front.version != VERSION || front.never.iter().any(|pair| !valid_model(&pair.model)) {
+        if front.version != VERSION
+            || front.never.iter().any(|pair| !valid_model(&pair.model))
+            || front.pin.iter().any(|pin| {
+                pin.model
+                    .as_deref()
+                    .is_some_and(|model| !valid_model(model))
+            })
+        {
             return Err(READ_ERROR.into());
         }
         Ok(Self {
             stances: front.harness,
             never: front.never,
+            pins: front.pin,
             changes: front.change,
             notes: notes.to_owned(),
         })
@@ -287,6 +383,7 @@ impl RoutingPreferences {
             version: VERSION,
             harness: self.stances,
             never: self.never.clone(),
+            pin: self.pins.clone(),
             change: self.changes.clone(),
         };
         let front = toml::to_string(&front).unwrap_or_else(|_| format!("version = {VERSION}\n"));
@@ -484,7 +581,50 @@ impl RoutingPreferences {
                 pair.model
             )
         }));
+        lines.extend(self.pins.iter().map(Pin::words));
         lines
+    }
+
+    /// The pins that apply in `repo`.
+    #[must_use]
+    pub fn pins_in(&self, repo: Option<&str>) -> Vec<Pin> {
+        self.pins
+            .iter()
+            .filter(|pin| pin.applies_in(repo))
+            .cloned()
+            .collect()
+    }
+
+    /// Adds a pin, replacing one for the same place and kind.
+    ///
+    /// # Errors
+    /// A model name must be one word, and a never pair cannot be pinned.
+    pub fn pin(&mut self, pin: Pin) -> Result<&Pin, String> {
+        if let Some(model) = &pin.model {
+            if !valid_model(model) {
+                return Err("Name the model exactly, as one word.".into());
+            }
+            if self.never_with(pin.harness, model) {
+                return Err("You said never to use that model there; allow it again first.".into());
+            }
+        }
+        if self.stances.get(pin.harness) == Stance::Never {
+            return Err("You said never to use that engine; allow it again first.".into());
+        }
+        self.pins
+            .retain(|old| !(old.repo == pin.repo && old.kind == pin.kind));
+        self.pins.push(pin);
+        Ok(self.pins.last().expect("just pushed"))
+    }
+
+    /// Removes the pins on `harness` (in `repo` when given). Returns how
+    /// many went.
+    pub fn unpin(&mut self, harness: Harness, repo: Option<&str>) -> usize {
+        let before = self.pins.len();
+        self.pins.retain(|pin| {
+            !(pin.harness == harness && (repo.is_none() || pin.repo.as_deref() == repo))
+        });
+        before - self.pins.len()
     }
 }
 
@@ -517,7 +657,7 @@ impl Leaning {
 #[must_use]
 pub fn definition() -> Value {
     json!({"type":"function","function":{"name":TOOL,
-        "description":"Change which engines Coder uses for the person's turns, when the person asks to use one more, less, never, or as usual again, or never to run a certain model on one. The engines: claude-code is Claude Code on this computer's Claude plan; coder-loop is Coder's own loop on OpenAgents; codex is Codex on this computer's ChatGPT login. Stances: prefer (try it first), avoid (try it after the others), never (never use it), neutral (no preference). With a model, only never or neutral apply, to that exact model on that engine. Set undo to reverse the most recent change instead. Always pass the person's own words in said. The change is saved in the person's routing preferences file and applies from the next turn.",
+        "description":"Change which engines Coder uses for the person's turns, when the person asks to use one more, less, never, or as usual again, or never to run a certain model on one, or to always use one (a pin: set pin, with this_repo for this repository only, kind for one kind of work, and model for one model; unpin removes it). The engines: claude-code is Claude Code on this computer's Claude plan; coder-loop is Coder's own loop on OpenAgents; codex is Codex on this computer's ChatGPT login. Stances: prefer (try it first), avoid (try it after the others), never (never use it), neutral (no preference). With a model, only never or neutral apply, to that exact model on that engine. Set undo to reverse the most recent change instead. Always pass the person's own words in said. The change is saved in the person's routing preferences file and applies from the next turn.",
         "parameters":{"type":"object","additionalProperties":false,"required":["said"],"properties":{
             "harness":{"type":"string","enum":["claude-code","coder-loop","codex"]},
             "stance":{"type":"string","enum":["prefer","neutral","avoid","never"]},
@@ -525,17 +665,30 @@ pub fn definition() -> Value {
             "said":{"type":"string","minLength":1,"maxLength":500,"description":"The person's words that asked for this."},
             "reason":{"type":"string","maxLength":500},
             "note":{"type":"string","maxLength":500,"description":"A preference that is not one of the stances, kept in the notes, such as cheaper engines for small tasks."},
-            "undo":{"type":"boolean"}}}}})
+            "undo":{"type":"boolean"},
+            "pin":{"type":"boolean","description":"Always use this harness (and model) for the person's work."},
+            "unpin":{"type":"boolean","description":"Remove the pins on this harness."},
+            "this_repo":{"type":"boolean","description":"The pin applies only in the current repository."},
+            "kind":{"type":"string","enum":["answer","repo_change","issue_to_pr","research"],"description":"The pin applies only to this kind of work."}}}}})
 }
 
 /// What the model is told while the tool is offered.
-pub const INSTRUCTIONS: &str = "When the person tells you to use an engine more, less, never, or as usual again, or never to run a model on an engine, call routing_preference with their words; it changes which engine takes later turns.\n";
+pub const INSTRUCTIONS: &str = "When the person tells you to use an engine more, less, never, or as usual again, never to run a model on an engine, or always to use one (here, or for a kind of work), call routing_preference with their words; it changes which engine takes later turns.\n";
 
 /// Runs one call of [`TOOL`] against the file at `path`.
 ///
 /// # Errors
 /// The arguments are invalid, or the file cannot be read or saved.
 pub fn execute(path: &Path, arguments: Value) -> Result<Value, String> {
+    execute_in(path, arguments, None)
+}
+
+/// [`execute`] in the repository named `repo` (its folder's name), which a
+/// pin for this repository applies to.
+///
+/// # Errors
+/// As [`execute`].
+pub fn execute_in(path: &Path, arguments: Value, repo: Option<&str>) -> Result<Value, String> {
     let request: Request = serde_json::from_value(arguments).map_err(|_| {
         "Pass said, and either undo, or a harness with a stance (and a model for a pair)."
             .to_owned()
@@ -544,6 +697,40 @@ pub fn execute(path: &Path, arguments: Value) -> Result<Value, String> {
         return Err("Pass the person's words in said.".into());
     }
     let mut preferences = RoutingPreferences::load(path)?;
+    if request.pin || request.unpin {
+        let harness = request.harness.ok_or("Pass the harness to pin.")?;
+        let repo = if request.this_repo {
+            Some(
+                repo.ok_or("This folder is not in a repository.")?
+                    .to_owned(),
+            )
+        } else {
+            None
+        };
+        let pinned = if request.pin {
+            Some(
+                preferences
+                    .pin(Pin {
+                        harness,
+                        model: request.model.clone(),
+                        repo,
+                        kind: request.kind,
+                        said: request.said.trim().to_owned(),
+                        at: atif::iso(atif::now_ms()),
+                    })?
+                    .words(),
+            )
+        } else {
+            preferences.unpin(harness, repo.as_deref());
+            None
+        };
+        preferences.save(path)?;
+        return Ok(json!({
+            "saved": path.display().to_string(),
+            "pinned": pinned,
+            "now": preferences.summary(),
+        }));
+    }
     let change = if request.undo {
         Some(preferences.undo(Who::Model, &request.said)?.clone())
     } else {

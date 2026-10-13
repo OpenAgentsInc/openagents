@@ -400,7 +400,13 @@ impl ExecutionSettings {
                 .routing
                 .as_deref()
                 .ok_or_else(|| "Routing preferences are off here.".to_string())
-                .and_then(|path| crate::routing_preferences::execute(path, arguments)),
+                .and_then(|path| {
+                    crate::routing_preferences::execute_in(
+                        path,
+                        arguments,
+                        crate::routing_preferences::repo_name(&self.cwd).as_deref(),
+                    )
+                }),
             crate::workflow::TOOL if self.shell => {
                 crate::workflow::execute(arguments, &self.cwd, provider, cancel).await
             }
@@ -419,6 +425,7 @@ impl ExecutionSettings {
                     .await
             }
             name if crate::file_tools::is_tool(name) && self.shell => {
+                crate::floors::hold("Coder", name, &arguments, &self.cwd, cancel).await?;
                 if let Some(boundary) = &self.boundary
                     && let Some(path) = arguments["path"].as_str()
                     && let Some(refusal) = boundary.file_refusal(name, path, &self.cwd)

@@ -75,6 +75,8 @@ pub struct Chat {
     pub retried: bool,
     /// The current piece of work moved harness at a checkpoint.
     pub moved: bool,
+    /// The model a pin names for this chat's turns on its harness (#11475).
+    pub pinned_model: Option<String>,
 }
 
 /// A Claude Code session a chat holds, and how far into the chat it reaches.
@@ -388,6 +390,8 @@ pub enum Work {
         session: Option<String>,
         /// The chat's briefing for this piece of work (#11473).
         briefing: Option<Box<crate::context::Briefing>>,
+        /// The model a pin names (#11475), for a process that starts now.
+        model: Option<String>,
     },
     /// A turn of solver's conversational Intaker: Haiku with a read-only
     /// `gh`, helping the person find or pick the issue to solve.
@@ -643,6 +647,7 @@ impl Background {
             tools,
             session,
             briefing,
+            model,
         } = request.kind
         else {
             return;
@@ -664,6 +669,7 @@ impl Background {
                 newest,
                 seed,
                 briefing.map(|briefing| *briefing),
+                model,
             ));
         } else if let Some(chat) = &mut self.claude {
             // A new piece of work in a running process: its briefing goes

@@ -485,6 +485,7 @@ pub(crate) async fn open(
     resume: Option<Resume>,
     asks: crate::claude_ask::Asks,
     briefing: Option<&crate::context::Briefing>,
+    model: Option<&str>,
 ) -> Result<Opened, String> {
     if !crate::approval::tools_allowed() {
         return Err("This host refuses every tool, so claude cannot work here.".into());
@@ -495,7 +496,11 @@ pub(crate) async fn open(
         Some(server) => (Some(server), Some(Delegations { receiver, stop })),
         None => (None, None),
     };
-    let (options, _) = turn_options(cwd, Access::Full, server);
+    let (mut options, _) = turn_options(cwd, Access::Full, server);
+    // A pin's model (#11475), else the person's pick in /models.
+    if let Some(model) = model {
+        options = options.model(model);
+    }
     let options = briefed(with_session(options, resume), briefing);
     let query = claude_agent_sdk::Query::streaming(options, Some(full_handler(asks)))
         .await
@@ -647,7 +652,7 @@ pub async fn run_with_solver(
 
 /// What one turn may do.
 #[derive(Clone, Copy)]
-enum Access<'a> {
+pub(crate) enum Access<'a> {
     /// The mode's own turns: Claude Code's whole default toolset, every
     /// call approved, the person's and the repository's settings loaded, on
     /// the person's pick ([`choice`]).
@@ -670,7 +675,7 @@ const ASKS_PERSON: &str = "AskUserQuestion";
 /// there could read or write any path. `--tools` alone narrows the offered
 /// tools without pre-approving them, so every call still comes to the
 /// handler, which is what holds the checkout boundary.
-fn turn_options(
+pub(crate) fn turn_options(
     cwd: &Path,
     access: Access<'_>,
     server: Option<claude_agent_sdk::SdkMcpServer>,
@@ -712,6 +717,13 @@ fn turn_options(
         allowed.extend(server.allowed_tool_names());
         options = options.sdk_mcp_server(server);
     }
+    // The floors' hook (#11475): under bypass Claude Code never asks, so
+    // Coder holds a production deploy, a merge, a secret or a payment for
+    // the person before the tool runs.
+    options = options.hook(
+        claude_agent_sdk::HookEvent::PreToolUse,
+        crate::floors::claude_hook(cwd.to_owned()),
+    );
     options.env_remove = REMOVED_ENV.iter().map(|name| (*name).to_owned()).collect();
     (options, allowed)
 }

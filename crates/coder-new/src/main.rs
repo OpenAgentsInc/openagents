@@ -63,6 +63,14 @@ fn run() -> io::Result<()> {
     {
         return account_command(command, &args[1..]);
     }
+    // The floors' hook a Codex run calls (#11475).
+    if args
+        .first()
+        .is_some_and(|command| command == coder_new::floors::HOOK_COMMAND)
+    {
+        coder_new::floors::hook_main();
+        return Ok(());
+    }
     if args.first().is_some_and(|command| command == "trace") {
         return trace_command(&args[1..]);
     }

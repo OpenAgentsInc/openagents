@@ -106,6 +106,7 @@ impl Chat {
         newest: String,
         seed: String,
         briefing: Option<crate::context::Briefing>,
+        model: Option<String>,
     ) -> Self {
         let (commands, receiver) = tokio::sync::mpsc::unbounded_channel();
         let (sender, events) = mpsc::channel();
@@ -115,6 +116,7 @@ impl Chat {
         let key = briefing.as_ref().map(crate::context::Briefing::key);
         let thread = Thread {
             briefing,
+            model,
             asks: asks.clone(),
             cwd: cwd.clone(),
             tools: tools.clone(),
@@ -242,6 +244,7 @@ struct Thread {
     reading: Arc<Mutex<Reading>>,
     asks: crate::claude_ask::Asks,
     briefing: Option<crate::context::Briefing>,
+    model: Option<String>,
 }
 
 impl Thread {
@@ -266,6 +269,7 @@ impl Thread {
     async fn serve(self) {
         let Thread {
             briefing,
+            model,
             cwd,
             tools,
             resume,
@@ -336,17 +340,40 @@ impl Thread {
                         &input,
                         &asks,
                         briefing.as_ref(),
+                        model.as_deref(),
                     )
                     .await
                     {
                         Ok(opened) => Ok(opened),
                         Err(_) => {
                             unconfirmed = false;
-                            start(&cwd, &tools, None, &seed, &input, &asks, briefing.as_ref()).await
+                            start(
+                                &cwd,
+                                &tools,
+                                None,
+                                &seed,
+                                &input,
+                                &asks,
+                                briefing.as_ref(),
+                                model.as_deref(),
+                            )
+                            .await
                         }
                     }
                 }
-                None => start(&cwd, &tools, None, &seed, &input, &asks, briefing.as_ref()).await,
+                None => {
+                    start(
+                        &cwd,
+                        &tools,
+                        None,
+                        &seed,
+                        &input,
+                        &asks,
+                        briefing.as_ref(),
+                        model.as_deref(),
+                    )
+                    .await
+                }
             };
             let mut opened = match opened {
                 Ok(opened) => opened,
@@ -383,8 +410,17 @@ impl Thread {
                 if unconfirmed {
                     unconfirmed = false;
                     if !named && ended && result.is_err() && !cancel.load(Ordering::Relaxed) {
-                        match start(&cwd, &tools, None, &seed, &input, &asks, briefing.as_ref())
-                            .await
+                        match start(
+                            &cwd,
+                            &tools,
+                            None,
+                            &seed,
+                            &input,
+                            &asks,
+                            briefing.as_ref(),
+                            model.as_deref(),
+                        )
+                        .await
                         {
                             Ok(fresh) => {
                                 opened = fresh;
@@ -443,8 +479,9 @@ async fn start(
     input: &Mutex<Option<QueryInput>>,
     asks: &crate::claude_ask::Asks,
     briefing: Option<&crate::context::Briefing>,
+    model: Option<&str>,
 ) -> Result<claude::Opened, String> {
-    let opened = claude::open(cwd, tools, resume, asks.clone(), briefing).await?;
+    let opened = claude::open(cwd, tools, resume, asks.clone(), briefing, model).await?;
     // Routing records carry the version each turn ran on (#11454).
     crate::routing_record::note_version(
         crate::harness_plugin::Harness::ClaudeCode,
@@ -502,6 +539,7 @@ mod tests {
             "Reply with just OK.".into(),
             "Reply with just OK.".into(),
             None,
+            None,
         );
         finish_turn(&mut chat, 1).unwrap();
         std::thread::sleep(std::time::Duration::from_secs(15));
@@ -524,6 +562,7 @@ mod tests {
             None,
             first.into(),
             first.into(),
+            None,
             None,
         );
         let reply = finish_turn(&mut chat, 1).unwrap();
@@ -567,6 +606,7 @@ mod tests {
             "What word did I ask you to remember? One word.".into(),
             "Reply with just LOST.".into(),
             None,
+            None,
         );
         let reply = finish_turn(&mut chat, 1).unwrap();
         println!("5: {}", reply.text);
@@ -584,6 +624,7 @@ mod tests {
             Some("00000000-0000-4000-8000-000000000000".into()),
             "Reply with just RESUMED.".into(),
             "Reply with just FRESH.".into(),
+            None,
             None,
         );
         let reply = finish_turn(&mut chat, 1).unwrap();

@@ -378,6 +378,11 @@ fn main() -> ExitCode {
     }
     let code = match command.as_str() {
         "coder" => coder_new::programmatic::run(&rest, json),
+        // The floors' hook a Codex run under Coder calls (#11475).
+        coder_new::floors::HOOK_COMMAND => {
+            coder_new::floors::hook_main();
+            0
+        }
         "help" | "--help" | "-h" => {
             println!("{USAGE}");
             0

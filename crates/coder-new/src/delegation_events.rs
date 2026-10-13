@@ -333,6 +333,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":11,"output_token
     #[tokio::test]
     #[cfg(unix)]
     async fn redirected_cli_delegation_creates_a_live_rail_and_retained_child_chat() {
+        // Another test's approval gate would refuse the command.
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = tempfile::tempdir().unwrap();
         let cli = fixture(root.path());
         let mut app = App::default();
@@ -421,6 +425,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":11,"output_token
     #[tokio::test]
     #[cfg(unix)]
     async fn structured_cli_delegation_uses_the_same_child_event_stream() {
+        // Another test's approval gate would refuse the command.
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = tempfile::tempdir().unwrap();
         let cli = fixture(root.path());
         let mut events = Vec::new();

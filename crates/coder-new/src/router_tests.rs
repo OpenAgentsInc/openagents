@@ -93,6 +93,7 @@ fn situation_of(row: &Row) -> Situation {
             shape.cost.unwrap_or(3),
             shape.speed.unwrap_or(3),
         ),
+        pins: Vec::new(),
     }
 }
 
@@ -276,6 +277,7 @@ fn two_admitted(current: Option<Harness>) -> Situation {
         current,
         claude_five_hour: None,
         time_weight: crate::preferences::BALANCED_TIME_WEIGHT,
+        pins: Vec::new(),
     }
 }
 

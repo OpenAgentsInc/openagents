@@ -88,6 +88,14 @@ impl Default for Preferences {
     }
 }
 
+#[cfg(test)]
+impl Plugins {
+    /// Keeps this test's settings under `root`.
+    pub(crate) fn use_store(&mut self, root: impl Into<std::path::PathBuf>) {
+        self.store = Some(Store::under(root));
+    }
+}
+
 impl Default for Plugins {
     fn default() -> Self {
         Self {

@@ -378,6 +378,9 @@ pub struct Situation {
     pub claude_five_hour: Option<u8>,
     /// λ, dollars per minute of waiting ([`crate::preferences::time_weight`]).
     pub time_weight: f64,
+    /// The person's pins that apply here and name an admitted harness
+    /// (#11475), in the order they were made.
+    pub pins: Vec<crate::routing_preferences::Pin>,
 }
 
 impl Situation {
@@ -429,6 +432,9 @@ pub enum Step {
     /// A follow-up judged a continuation stays on the chat's harness, so
     /// its session and prompt cache carry on (owner decision 1).
     Continue,
+    /// The person pinned a harness here, or for this kind of work
+    /// (#11475).
+    Pinned,
     /// The request needs the person's own Claude Code setup.
     OwnTools,
     /// The person's routing preferences put one admitted harness ahead.
@@ -466,6 +472,30 @@ pub struct Decision {
     pub step: Step,
 }
 
+impl Situation {
+    /// The pin that applies to work of `kind` (or, with `None`, the pins
+    /// for every kind): a pin for this kind before one for every kind, the
+    /// latest first.
+    #[must_use]
+    pub fn pin(&self, kind: Option<Kind>) -> Option<&crate::routing_preferences::Pin> {
+        let admitted = |pin: &&crate::routing_preferences::Pin| self.has(pin.harness);
+        kind.and_then(|kind| {
+            self.pins
+                .iter()
+                .rev()
+                .filter(admitted)
+                .find(|pin| pin.kind == Some(kind))
+        })
+        .or_else(|| {
+            self.pins
+                .iter()
+                .rev()
+                .filter(admitted)
+                .find(|pin| pin.kind.is_none())
+        })
+    }
+}
+
 /// `route-policy-v1`: the first step that applies picks.
 #[must_use]
 pub fn policy(judgment: &Judgment, situation: &Situation) -> Decision {
@@ -485,6 +515,9 @@ pub fn policy(judgment: &Judgment, situation: &Situation) -> Decision {
         && judgment.new_work == Some(false)
     {
         return pick(current, Step::Continue);
+    }
+    if let Some(pin) = situation.pin(Some(judgment.kind)) {
+        return pick(pin.harness, Step::Pinned);
     }
     if judgment.own_tools && situation.has(Harness::ClaudeCode) {
         return pick(Harness::ClaudeCode, Step::OwnTools);
@@ -536,6 +569,7 @@ pub fn fallback(situation: &Situation) -> Harness {
     situation
         .current
         .filter(|current| situation.has(*current))
+        .or_else(|| situation.pin(None).map(|pin| pin.harness))
         .or_else(|| situation.admitted.first().copied())
         .unwrap_or(Harness::CoderLoop)
 }
@@ -573,6 +607,8 @@ pub struct Trace {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Routed {
     pub harness: Harness,
+    /// The model a pin names for the turn.
+    pub model: Option<String>,
     pub rule: crate::routing_record::Rule,
     pub probabilities: Vec<Probability>,
     pub trace: Trace,
@@ -601,31 +637,47 @@ pub fn decide(answer: Result<Answered, String>, situation: &Situation, waited: D
             if let Some(judgment) = answered.recorded.judgment() {
                 let decision = policy(&judgment, situation);
                 trace.step = Some(decision.step.name());
+                let pinned = decision.step == Step::Pinned;
                 return Routed {
                     harness: decision.harness,
-                    rule: Rule::Router,
+                    model: pinned
+                        .then(|| situation.pin(Some(judgment.kind)))
+                        .flatten()
+                        .and_then(|pin| pin.model.clone()),
+                    rule: if pinned { Rule::Pin } else { Rule::Router },
                     probabilities,
                     trace,
                 };
             }
             trace.missing =
                 Some("An answer named an option this question set does not have.".into());
-            Routed {
-                harness: fallback(situation),
-                rule: Rule::Fallback,
-                probabilities,
-                trace,
-            }
+            fell_back(situation, probabilities, trace)
         }
         Err(why) => {
             trace.missing = Some(crate::routing_record::scrub(&why));
-            Routed {
-                harness: fallback(situation),
-                rule: Rule::Fallback,
-                probabilities: Vec::new(),
-                trace,
-            }
+            fell_back(situation, Vec::new(), trace)
         }
+    }
+}
+
+/// The fallback's call: a kindless pin when one decides, else the fixed
+/// rule.
+fn fell_back(situation: &Situation, probabilities: Vec<Probability>, trace: Trace) -> Routed {
+    use crate::routing_record::Rule;
+    let harness = fallback(situation);
+    let pin = situation
+        .pin(None)
+        .filter(|pin| pin.harness == harness && situation.current != Some(harness));
+    Routed {
+        harness,
+        model: pin.and_then(|pin| pin.model.clone()),
+        rule: if pin.is_some() {
+            Rule::Pin
+        } else {
+            Rule::Fallback
+        },
+        probabilities,
+        trace,
     }
 }
 
