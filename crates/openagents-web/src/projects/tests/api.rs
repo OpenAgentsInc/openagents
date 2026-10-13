@@ -312,7 +312,10 @@ async fn an_app_starts_a_chat_inside_its_own_project() {
     assert_eq!(body["id"], id);
     let owner = account_owner_of(&world, "octo-local");
     let saved = world.store.load(&owner, id).await.unwrap().unwrap();
-    assert_eq!(saved.conversation.project.as_deref(), Some(project.as_str()));
+    assert_eq!(
+        saved.conversation.project.as_deref(),
+        Some(project.as_str())
+    );
     let (status, body) = me
         .json(
             &world,
@@ -339,7 +342,14 @@ async fn an_app_starts_a_chat_inside_its_own_project() {
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
     let their_owner = account_owner_of(&world, "quiet-local");
-    assert!(world.store.load(&their_owner, theirs).await.unwrap().is_none());
+    assert!(
+        world
+            .store
+            .load(&their_owner, theirs)
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     // A reply carries no project.
     let (status, _) = me

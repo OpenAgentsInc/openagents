@@ -25,7 +25,14 @@ const POLL: Duration = Duration::from_millis(700);
 
 /// The options and switches that pick a thread on this computer, which a
 /// chat started in a project doesn't have.
-const LOCAL_ONLY: &[&str] = &["thread", "scratch", "local", "socket", "no-run", "run-coder"];
+const LOCAL_ONLY: &[&str] = &[
+    "thread",
+    "scratch",
+    "local",
+    "socket",
+    "no-run",
+    "run-coder",
+];
 
 /// `chat send --project`.
 pub(super) fn send(output: &Output, args: &Args, project: &str) -> Result<u8, Failure> {
@@ -104,7 +111,10 @@ fn follow(output: &Output, site: &Site, id: &str, timeout: Duration) -> Result<u
         )
         .map_err(failed)?;
         let reply = reply(&thread);
-        if let Some(more) = reply.strip_prefix(printed.as_str()).filter(|more| !more.is_empty()) {
+        if let Some(more) = reply
+            .strip_prefix(printed.as_str())
+            .filter(|more| !more.is_empty())
+        {
             event(
                 output,
                 json!({"event": "partial", "thread": id, "text": reply, "delta": more}),
@@ -117,7 +127,8 @@ fn follow(output: &Output, site: &Site, id: &str, timeout: Duration) -> Result<u
         }
         if thread["thread"]["working"] != true {
             if reply.is_empty() {
-                let message = "OpenAgents didn't answer; open the chat on openagents.com to try again";
+                let message =
+                    "OpenAgents didn't answer; open the chat on openagents.com to try again";
                 event(
                     output,
                     json!({"event": "failure", "thread": id, "message": message, "stopped": false}),
@@ -176,7 +187,8 @@ mod tests {
 
     #[test]
     fn the_reply_is_the_last_message_when_it_is_openagents() {
-        let asked = json!({"thread": {"working": true}, "messages": [{"role": "user", "text": "Hi"}]});
+        let asked =
+            json!({"thread": {"working": true}, "messages": [{"role": "user", "text": "Hi"}]});
         assert_eq!(reply(&asked), "");
         let answering = json!({"messages": [
             {"role": "user", "text": "Hi"},
