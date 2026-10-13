@@ -25,7 +25,7 @@ use std::sync::{Arc, Mutex};
 
 use psionic_backend_metal::clef_attention::{ClefAttentionPlan, ClefMetalAttention};
 use psionic_backend_metal::clef_delta::{ClefDeltaPlan, ClefMetalDelta};
-use psionic_backend_metal::clef_gemm::ClefMetalGemm;
+use psionic_backend_metal::clef_gemm::{ClefMetalGemm, ClefMetalQ4Gemm};
 use psionic_backend_metal::clef_prefill::{
     ClefMetal, ClefMetalBatch, ClefMetalBuffer, ClefMetalWeightFormat,
 };
@@ -518,6 +518,7 @@ impl ClefMetalTrunk {
             }
         };
         weight_upload.validate(ffn_weights)?;
+        q4_gemm()?;
         let device_name = metal.device_name().to_string();
         let model = &cpu.model;
         let config = &model.descriptor.config;
@@ -1843,9 +1844,10 @@ fn linear_with_workspace(
     if skips().0 {
         return Ok(());
     }
-    if weight.format == Some(ClefMetalWeightFormat::Q4K) && q4_direct() {
-        // Read the Q4_K bytes in the GEMM itself: no f16 copy (#11196).
-        return batch.gemm_q4k(
+    if let (Some(ClefMetalWeightFormat::Q4K), Some(kernel)) = (weight.format, q4_gemm()?) {
+        // Read the Q4_K bytes in the GEMM itself: no f16 copy (#11196, #11481).
+        return batch.gemm_q4k_with(
+            kernel,
             x16,
             0,
             &weight.buffer,
@@ -1883,16 +1885,23 @@ fn linear_with_workspace(
     )
 }
 
-/// Whether Q4_K feed-forward weights kept packed (`q4k-on-demand`) feed the
-/// direct Q4_K GEMM instead of an f16 conversion
-/// (`PSIONIC_CLEF_METAL_Q4_GEMM=direct`; opt-in, #11196). The product's
-/// rounding differs from the f16 path, so it is checked against a logit
-/// bound, not bit for bit.
-fn q4_direct() -> bool {
-    static DIRECT: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *DIRECT.get_or_init(|| {
-        std::env::var("PSIONIC_CLEF_METAL_Q4_GEMM").is_ok_and(|value| value == "direct")
-    })
+/// The GEMM that reads Q4_K feed-forward weights kept packed
+/// (`q4k-on-demand`) directly instead of converting them to f16:
+/// `PSIONIC_CLEF_METAL_Q4_GEMM=direct` (#11196) or `stationary` (#11481);
+/// unset converts. Opt-in: the product's rounding differs from the f16 path,
+/// so it is checked against a logit bound, not bit for bit.
+fn q4_gemm() -> Result<Option<ClefMetalQ4Gemm>, String> {
+    static KERNEL: std::sync::OnceLock<Result<Option<ClefMetalQ4Gemm>, String>> =
+        std::sync::OnceLock::new();
+    KERNEL
+        .get_or_init(|| match std::env::var("PSIONIC_CLEF_METAL_Q4_GEMM") {
+            Ok(value) => value.parse::<ClefMetalQ4Gemm>().map(Some),
+            Err(std::env::VarError::NotPresent) => Ok(None),
+            Err(std::env::VarError::NotUnicode(_)) => Err(String::from(
+                "PSIONIC_CLEF_METAL_Q4_GEMM must be valid text",
+            )),
+        })
+        .clone()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2178,7 +2187,7 @@ fn convert_ffn_weights<'a>(
     if weights.iter().all(|weight| weight.format.is_none()) {
         return Ok(None);
     }
-    if q4_direct()
+    if q4_gemm()?.is_some()
         && weights
             .iter()
             .all(|weight| matches!(weight.format, None | Some(ClefMetalWeightFormat::Q4K)))

@@ -301,6 +301,127 @@ kernel void clef_gemm_q4k_accumulate(device const half *x [[buffer(0)]], device 
     clef_gemm_q4k_impl<true>(x, wq, out, nmk, tgid, tid, wt);
 }
 
+// ---- weight-stationary Q4_K projections (opt-in, #11481) ----
+//
+// The kernel above decodes a weight slab for every 64-token tile, so each
+// weight byte is read and decoded n / 64 times per GEMM. Here a threadgroup of
+// eight SIMD groups owns 256 tokens x 64 weight rows: each 64-wide k slab of
+// its weight rows is decoded once into threadgroup f16 and used by all 256
+// token rows before the next slab, so weight reads and decode work fall by 4x.
+// The slab is double buffered: one barrier per slab separates a buffer's
+// decode from its last use two slabs earlier. Each weight value is decoded
+// exactly as clef_dequant_q4_k does (f32 fma, then f16); accumulation is f32
+// in registers and the reduction runs in 64-wide steps, so results differ from
+// clef_gemm in rounding only.
+
+// Values 0..31 (low nibbles, scale 2j) or 32..63 (high nibbles, scale 2j+1)
+// of the 64-value group j of one Q4_K super-block.
+inline void clef_q4k_half(device const uchar *b, uint j, bool high, threadgroup half *dst) {
+    const float d = float(as_type<half>(ushort(ushort(b[0]) | (ushort(b[1]) << 8))));
+    const float dmin = float(as_type<half>(ushort(ushort(b[2]) | (ushort(b[3]) << 8))));
+    device const uchar *scales = b + 4;
+    const uint is = 2 * j + (high ? 1 : 0);
+    uchar sc, mn;
+    if (is < 4) {
+        sc = scales[is] & 63;
+        mn = scales[is + 4] & 63;
+    } else {
+        sc = (scales[is + 4] & 0xF) | ((scales[is - 4] >> 6) << 4);
+        mn = (scales[is + 4] >> 4) | ((scales[is] >> 6) << 4);
+    }
+    const float4 a = float4(d * float(sc)), c = float4(-(dmin * float(mn)));
+    device const uchar4 *q = (device const uchar4 *)(b + 16 + 32 * j);
+    for (uint v = 0; v < 8; ++v) {
+        const uint4 bytes = uint4(q[v]);
+        const uint4 nib = high ? (bytes >> 4) : (bytes & 0xF);
+        *(threadgroup half4 *)(dst + 4 * v) = half4(fma(a, float4(nib), c));
+    }
+}
+
+constant uint kQ4WsTokens = 256;
+constant uint kQ4WsRows = 64;
+constant uint kQ4WsSlab = 64;
+constant uint kQ4WsThreads = 256; // eight SIMD groups
+
+template <bool ACCUMULATE>
+inline void clef_gemm_q4k_ws_impl(device const half *x, device const uchar *wq, device float *out, uint3 nmk,
+                                  uint2 tgid, uint tid, threadgroup half *wt) {
+    const uint n = nmk.x, m = nmk.y, k = nmk.z;
+    const uint token_base = tgid.y * kQ4WsTokens;
+    const uint output_base = tgid.x * kQ4WsRows;
+    if (token_base >= n || output_base >= m || k % 256 != 0) {
+        return;
+    }
+    const uint rows = min(kQ4WsRows, m - output_base);
+    const uint blocks_per_row = k / 256;
+    constexpr auto desc = matmul2d_descriptor(int(kQ4WsTokens), int(kQ4WsRows), int(kQ4WsSlab), false, true,
+                                              false, matmul2d_descriptor::mode::multiply_accumulate);
+    matmul2d<desc, execution_simdgroups<8>> op;
+    tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline> wtile0(
+        wt, dextents<int32_t, 2>(int(kQ4WsSlab), int(rows)), array<int32_t, 2>{1, int(kQ4WsSlab)});
+    tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline> wtile1(
+        wt + kQ4WsRows * kQ4WsSlab, dextents<int32_t, 2>(int(kQ4WsSlab), int(rows)),
+        array<int32_t, 2>{1, int(kQ4WsSlab)});
+    tensor<device half, dextents<int32_t, 2>, tensor_inline> tx(
+        (device half *)x, dextents<int32_t, 2>(int(k), int(n)));
+    tensor<device float, dextents<int32_t, 2>, tensor_inline> to(out, dextents<int32_t, 2>(int(m), int(n)));
+    auto so = to.slice(int(output_base), int(token_base));
+    auto first = tx.slice(0, int(token_base));
+    auto acc = op.template get_destination_cooperative_tensor<decltype(first), decltype(wtile0), float>();
+    if (ACCUMULATE) {
+        acc.load(so);
+    } else {
+        for (uint16_t i = 0; i < acc.get_capacity(); ++i) {
+            if (acc.is_valid_element(i)) {
+                acc[i] = 0.0f;
+            }
+        }
+    }
+    // A slab is 64 rows x two 32-value halves: threads 0..127 decode one half
+    // each (row tid / 2, half tid % 2); the rest only run the tensor op.
+    const uint my_row = tid / 2;
+    const uint my_half = tid % 2;
+    uint buffer = 0;
+    for (uint kc = 0; kc < k; kc += kQ4WsSlab) {
+        if (tid < kQ4WsRows * 2) {
+            threadgroup half *dst = wt + buffer * (kQ4WsRows * kQ4WsSlab) + my_row * kQ4WsSlab + my_half * 32;
+            if (my_row < rows) {
+                device const uchar *block = wq + (ulong(output_base + my_row) * blocks_per_row + kc / 256) * 144;
+                clef_q4k_half(block, (kc % 256) / 64, my_half == 1, dst);
+            } else {
+                for (uint v = 0; v < 8; ++v) {
+                    *(threadgroup half4 *)(dst + 4 * v) = half4(0);
+                }
+            }
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        auto xs = tx.slice(int(kc), int(token_base));
+        if (buffer == 0) {
+            op.run(xs, wtile0, acc);
+        } else {
+            op.run(xs, wtile1, acc);
+        }
+        buffer ^= 1;
+    }
+    acc.store(so);
+}
+
+kernel void clef_gemm_q4k_ws(device const half *x [[buffer(0)]], device const uchar *wq [[buffer(1)]],
+                             device float *out [[buffer(2)]], constant uint3 &nmk [[buffer(3)]],
+                             uint2 tgid [[threadgroup_position_in_grid]],
+                             uint tid [[thread_index_in_threadgroup]]) {
+    threadgroup half wt[2 * kQ4WsRows * kQ4WsSlab];
+    clef_gemm_q4k_ws_impl<false>(x, wq, out, nmk, tgid, tid, wt);
+}
+
+kernel void clef_gemm_q4k_ws_accumulate(device const half *x [[buffer(0)]], device const uchar *wq [[buffer(1)]],
+                                        device float *out [[buffer(2)]], constant uint3 &nmk [[buffer(3)]],
+                                        uint2 tgid [[threadgroup_position_in_grid]],
+                                        uint tid [[thread_index_in_threadgroup]]) {
+    threadgroup half wt[2 * kQ4WsRows * kQ4WsSlab];
+    clef_gemm_q4k_ws_impl<true>(x, wq, out, nmk, tgid, tid, wt);
+}
+
 // f32 x f32 -> f32 for the head's dense products, the same tiling.
 kernel void clef_gemm_f32(device const float *x [[buffer(0)]], device const float *w [[buffer(1)]],
                           device float *out [[buffer(2)]], constant uint3 &nmk [[buffer(3)]],

@@ -29,6 +29,57 @@ impl FromStr for ClefMetalGemm {
     }
 }
 
+/// Kernel for projections read straight from Q4_K weight bytes.
+///
+/// `Direct` decodes each weight slab once per 64-token tile (#11196).
+/// `Stationary` decodes it once per 256-token tile and uses it for every
+/// token row of that tile, cutting weight reads and decode work by 4x (#11481).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ClefMetalQ4Gemm {
+    /// 64 tokens x 64 weight rows, four SIMD groups.
+    #[default]
+    Direct,
+    /// 256 tokens x 64 weight rows, eight SIMD groups.
+    Stationary,
+}
+
+impl ClefMetalQ4Gemm {
+    /// Both kernels, for comparisons.
+    pub const ALL: [Self; 2] = [Self::Direct, Self::Stationary];
+
+    /// `(tokens, weight rows, threads)` covered by one threadgroup.
+    pub fn tile(self) -> (usize, usize, usize) {
+        match self {
+            Self::Direct => (64, 64, 128),
+            Self::Stationary => (256, 64, 256),
+        }
+    }
+
+    /// The Metal kernel, including its residual-accumulation variant.
+    pub fn kernel(self, accumulate: bool) -> &'static str {
+        match (self, accumulate) {
+            (Self::Direct, false) => "clef_gemm_q4k",
+            (Self::Direct, true) => "clef_gemm_q4k_accumulate",
+            (Self::Stationary, false) => "clef_gemm_q4k_ws",
+            (Self::Stationary, true) => "clef_gemm_q4k_ws_accumulate",
+        }
+    }
+}
+
+impl FromStr for ClefMetalQ4Gemm {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "direct" => Ok(Self::Direct),
+            "stationary" => Ok(Self::Stationary),
+            _ => Err(String::from(
+                "clef metal Q4 GEMM must be direct or stationary",
+            )),
+        }
+    }
+}
+
 /// Checked buffers and dispatch dimensions for `out[n,m] (+)= x[n,k] W[m,k]^T`.
 ///
 /// Input and weight values are f16; output values are f32. Token tiles always

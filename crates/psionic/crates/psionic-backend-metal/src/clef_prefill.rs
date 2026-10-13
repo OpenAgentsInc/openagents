@@ -18,7 +18,7 @@ use metal::{
 use objc::{msg_send, sel, sel_impl};
 
 use crate::clef_attention::{CLEF_FUSED_THREADS, ClefAttentionPlan, ClefMetalAttention};
-use crate::clef_gemm::{CLEF_GEMM_THREADS, ClefGemmPlan, ClefMetalGemm};
+use crate::clef_gemm::{CLEF_GEMM_THREADS, ClefGemmPlan, ClefMetalGemm, ClefMetalQ4Gemm};
 
 const SOURCE: &str = concat!(
     include_str!("kernels/clef_prefill.metal"),
@@ -236,6 +236,8 @@ const KERNELS: &[&str] = &[
     "clef_gemm_accumulate",
     "clef_gemm_q4k",
     "clef_gemm_q4k_accumulate",
+    "clef_gemm_q4k_ws",
+    "clef_gemm_q4k_ws_accumulate",
     "clef_gemm_f32",
     "clef_gemm_f32_nn",
     "clef_rms_norm_to_f16",
@@ -710,6 +712,36 @@ impl ClefMetalBatch<'_> {
         k: usize,
         accumulate: bool,
     ) -> Result<(), String> {
+        self.gemm_q4k_with(
+            ClefMetalQ4Gemm::Direct,
+            x16,
+            x_offset,
+            wq,
+            out,
+            out_offset,
+            n,
+            m,
+            k,
+            accumulate,
+        )
+    }
+
+    /// [`Self::gemm_q4k`] with an explicit kernel; the weight-stationary
+    /// kernel decodes each weight slab once for 256 tokens (#11481).
+    #[allow(clippy::too_many_arguments)]
+    pub fn gemm_q4k_with(
+        &self,
+        kernel: ClefMetalQ4Gemm,
+        x16: &ClefMetalBuffer,
+        x_offset: usize,
+        wq: &ClefMetalBuffer,
+        out: &ClefMetalBuffer,
+        out_offset: usize,
+        n: usize,
+        m: usize,
+        k: usize,
+        accumulate: bool,
+    ) -> Result<(), String> {
         if n == 0 || m == 0 {
             return Ok(());
         }
@@ -740,17 +772,17 @@ impl ClefMetalBatch<'_> {
         x16.check(input_offset, input_bytes, "q4k gemm x")?;
         wq.check(0, weight_bytes, "q4k gemm w")?;
         out.check(output_offset, output_bytes, "q4k gemm out")?;
-        self.pipeline(if accumulate {
-            "clef_gemm_q4k_accumulate"
-        } else {
-            "clef_gemm_q4k"
-        })?;
+        self.pipeline(kernel.kernel(accumulate))?;
         self.bind(0, x16, input_offset);
         self.bind(1, wq, 0);
         self.bind(2, out, output_offset);
         let nmk = [n as u32, m as u32, k as u32, 0];
         self.bytes(3, &nmk);
-        self.groups(size(m.div_ceil(64), n.div_ceil(64), 1), size(128, 1, 1));
+        let (tokens, rows, threads) = kernel.tile();
+        self.groups(
+            size(m.div_ceil(rows), n.div_ceil(tokens), 1),
+            size(threads, 1, 1),
+        );
         Ok(())
     }
 

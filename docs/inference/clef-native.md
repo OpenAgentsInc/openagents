@@ -2402,6 +2402,91 @@ default path still fails the all-top check.
   what the governor responds to. That is
   [#11481](https://github.com/OpenAgentsInc/openagents/issues/11481).
 
+### Weight-stationary Q4_K GEMM (#11481, 2026-10-13)
+
+`clef_gemm_q4k_ws` in `kernels/clef_prefill.metal`, selected with
+`PSIONIC_CLEF_METAL_FFN_WEIGHTS=q4k-on-demand PSIONIC_CLEF_METAL_Q4_GEMM=stationary`.
+A threadgroup of eight SIMD groups owns 256 tokens x 64 weight rows. Each
+64-wide k slab of its rows is decoded once into threadgroup f16 (double
+buffered, one barrier per slab) and used by all 256 token rows, so weight
+reads and decode work are 4x lower than the direct kernel's 64-token tiles.
+Each weight value is decoded the same way as `clef_dequant_q4_k`. Evidence,
+including the explored kernel variants as a patch, is in
+`gs://openagents-bench-artifacts/clef/m3-m4-2026-10-11/11481-2026-10-13/`.
+
+**Result: it loses under sustained load, so it stays opt-in.** The default is
+still resident f16.
+
+- **Correctness.** The synthetic check against decode-then-GEMM passes within
+  1e-4 relative (`clef_q4k_direct_gemm_matches_decode_then_gemm`, now also
+  300 x 200 x 1280 for multi-tile edges). On the same-Q4 27B check it gives
+  104/104, max |Δp| 0.002644, the same as the direct kernel; resident f16
+  stays at 103/104 (`text-029`).
+- **Synthetic sustained probe** (`clef_q4k_sustained_alternation`: eight
+  distinct 17408 x 5120 weights, 2,048 tokens, alternating 12–20 s windows,
+  macmon). The new kernel draws less RAM power (2.9–3.7 W against f16's
+  4.2–4.7 W) and gets 8–14 % more clock. But it does about 26.5 TF per GHz
+  against f16's 35–36, so it sustains 20–24 TF against f16's 24–27.5
+  (0.83–0.88x). The direct kernel sustains 21 TF (0.77x).
+- **Where the per-clock loss comes from.** Variants of the same 256 x 64 tile,
+  in the same alternation: no per-slab work at all 34–36 TF/GHz (equal to
+  f16), a barrier per slab 30.7, a barrier plus the Q4_K byte loads 28–29,
+  and the full decode 25–26.5. So about 10 % is the barrier, 8 % the loads and
+  12 % the decode. Prefetching the next slab's bytes into registers, 128- and
+  512-token tiles, 128 x 128 tiles, 128-wide slabs, padded threadgroup rows,
+  and a producer/consumer split (four SIMD groups decode the next slab while
+  four run the tensor op) all stayed at 21–27 TF/GHz.
+- **27B at ~16k, sustained, on AC** (`d16ws-1`, 04:54–05:18 UTC, battery 80 %
+  and not charging, machine load 15–25 from other agents). Two
+  opposite-order rounds, 4 measured requests per engine per round, zero
+  cached tokens on every reply:
+
+  | Engine | Median | GPU clock | GPU power | RAM power |
+  | --- | --- | --- | --- | --- |
+  | Native, resident f16 | 40.64 s | 703–704 MHz | 14.6–14.8 W | 5.5–5.9 W |
+  | Native, weight-stationary Q4_K | 44.96 s | 746–752 MHz | 15.4–15.9 W | 4.8–5.3 W |
+  | Reset Ollama `clef` | 32.08 s | 924–937 MHz | 25.3–25.8 W | 4.3–4.6 W |
+
+  Paired f16/stationary time is 0.91: the stationary kernel is 9 % slower.
+  Paired Ollama/native time is 0.79 for f16 and 0.72 for the stationary
+  kernel. In #11477 the direct Q4_K kernel was 14–17 % slower than f16, so
+  the stationary kernel recovers about a third of that gap, and it moves RAM
+  power about 0.6 W toward Ollama's, but it gains only 6 % clock.
+- **Paired 1k/4k/16k:** (`b27ws-2`, 05:25–06:03 UTC, on AC, battery 80 %
+  and not charging, machine load 20–70 from other agents' builds). Two
+  opposite-order rounds, 5 measured requests per engine per round:
+
+  | | ~1k | ~4k | ~16k |
+  | --- | --- | --- | --- |
+  | Native f16, round 1 | 2.939 s (675 MHz) | 9.463 s (699 MHz) | 41.58 s (701 MHz) |
+  | Native stationary Q4_K, round 1 | 3.314 s (726 MHz) | 11.18 s (745 MHz) | 46.97 s (733 MHz) |
+  | Reset Ollama, round 1 | 2.601 s (777 MHz) | 8.283 s (879 MHz) | 32.61 s (916 MHz) |
+  | Native f16, round 2 | 2.598 s (709 MHz) | 9.221 s (714 MHz) | 38.15 s (719 MHz) |
+  | Native stationary Q4_K, round 2 | 3.125 s (750 MHz) | 10.78 s (784 MHz) | 44.73 s (754 MHz) |
+  | Reset Ollama, round 2 | 2.129 s (921 MHz) | 7.522 s (910 MHz) | 31.58 s (938 MHz) |
+  | Paired f16/stationary time | 0.84 | 0.85 | 0.88 |
+  | **Paired Ollama/native time, f16** | **0.87** | **0.86** | **0.79** |
+  | **Paired Ollama/native time, stationary** | **0.73** | **0.72** | **0.71** |
+
+  The M4 target (≥ 1.5x Ollama at every length) is not met by either path.
+  Native never got its unthrottled clock in this run (675–719 MHz even at
+  1k, against 1.1–1.5 GHz in #11477's first rounds), so these are the
+  capped-clock numbers throughout.
+
+**What this says about the cap.** Cutting the FFN weight traffic by 4x, and
+the bytes per weight by 3.5x, moved RAM power by about 0.6 W and the clock by
+about 6 %. Ollama still gets 924–937 MHz at 25 W GPU power while native gets
+about 700 MHz at 15 W. So DRAM traffic alone does not explain the gap; the
+governor gives Ollama's work a higher power budget for reasons this study did
+not isolate.
+
+**Remaining idea, not opened as an issue.** MPP's `matmul2d` takes 4-bit
+right operands natively (`half x uint4b_format -> float`). Repacking Q4_K at
+load into nibble planes with separate per-32 scales and mins, and applying
+them to K=32 partial products in the cooperative destination, would remove
+the threadgroup decode and the per-slab barrier, which are the measured
+20–30 % per-clock loss.
+
 ### Metal controls and memory
 
 These settings are read when the model loads. Invalid enabled settings stop
@@ -2418,6 +2503,7 @@ batching.
 | `PSIONIC_CLEF_METAL_HEAD` | `staged` | `fused-fields` runs the four field layers in one GPU submission. It supports at most 64 questions, adds 294,912 bytes of model vectors for the current Flash/27B heads, and adds up to 2,883,584 bytes of request scratch. This scratch is included in batch reservations. |
 | `PSIONIC_CLEF_CUDA_HEAD` | `device` | `staged` runs the CUDA head step by step (about 25 round trips) instead of in one submission (Round 11). Both give the same answers. |
 | `PSIONIC_CLEF_METAL_FFN_WEIGHTS` | `resident-f16` | `q4k-on-demand` keeps Q4_K feed-forward weights packed and converts one projection at a time into reusable f16 scratch. Other formats retain the resident path. The conversion slot is 96 MiB for Flash and 170 MiB for 27B, with a 256 MiB limit. |
+| `PSIONIC_CLEF_METAL_Q4_GEMM` | unset | With `q4k-on-demand`, `direct` (#11196) or `stationary` (#11481) reads the packed Q4_K feed-forward weights in the GEMM instead of converting them; any other value stops loading. Both are slower than resident f16 on the M5 Max. |
 | `PSIONIC_CLEF_METAL_WEIGHT_UPLOAD` | `mapped-copy` | `positional` reads packed matrices through the original open file into the existing upload buffer, avoiding bulk reads from mapped pages. It requires `resident-f16` and a memory-mapped source; conversion and inference arithmetic stay unchanged. The 27B text and image checks pass within the 52 GiB process cap at chunk size 512; this does not establish latency acceptance. |
 | `PSIONIC_CLEF_PREFIX_CACHE_BYTES` | `0` (CUDA sm_90: a 32nd of the device, at most 2 GiB) | Metal: enables one exact prefix snapshot when nonzero; maximum 536,870,912 bytes, including its token key. CUDA: an LRU of snapshots within the budget (at most 32 GiB and a quarter of the device); on by default where reuse is exact (Round 9), `0` turns it off. |
 | `PSIONIC_CLEF_BATCH_REQUESTS` | `1` | `1` keeps serial execution; `2`–`4` enables the batch worker (Metal or CUDA) and bounds active requests. |
