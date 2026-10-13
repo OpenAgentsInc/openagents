@@ -27,6 +27,31 @@ def _gather(table, ids):
     return table[ids].astype(jnp.float32)
 
 
+# one dispatch each instead of a few dozen eager ops per request
+_fresh_state = jax.jit(M.init_state, static_argnums=(0, 1))
+
+
+@functools.partial(jax.jit, static_argnames=("Pc",))
+def _take_snapshot(state, Pc):
+    """Copies of the state (prefill donates its state buffers), K/V cut at Pc."""
+    return [{n: (v[:Pc] if n in ("k", "v") else v + 0.0) for n, v in st.items()} for st in state]
+
+
+@functools.partial(jax.jit, static_argnames=("cfg", "cache"))
+def _restore(snap, cfg, cache):
+    out = []
+    for s0, st in zip(snap, M.init_state(cfg, cache)):
+        if "k" in st:
+            out.append({n: jax.lax.dynamic_update_slice(st[n], s0[n], (0, 0, 0)) for n in ("k", "v")})
+        else:
+            out.append({n: v + 0.0 for n, v in s0.items()})
+    return out
+
+
+def _cat(rows):
+    return jnp.concatenate(rows, 0) if len(rows) > 1 else rows[0]
+
+
 @functools.partial(jax.jit, static_argnames=("Tb",))
 def _assemble(prefix_rows, rest, P, Tb):
     """Rows [Tb, d]: the prefix's rows, then the rest's rows from position P on."""
@@ -99,10 +124,11 @@ class Runner:
             sizes.append(next((t for t in cls.TAIL_CHUNKS if rest <= t <= C), C))
         return sizes
 
-    def _segment(self, state, ids_dev, start, end, C):
+    def _segment(self, state, ids_dev, start, end, C, snap_at=None):
         """Prefills positions start..end (end exclusive) from `state` in the
-        chunks of `plan`; returns (state, rows [sum of the chunks, d])."""
-        rows = []
+        chunks of `plan`; returns (state, rows [sum of the chunks, d], snap).
+        With `snap_at` (a chunk boundary), snap = (state copy, rows) there."""
+        rows, snap = [], None
         c0 = start
         for size in self.plan(end - start, C):
             x = _gather(self.embed_dev, jax.lax.dynamic_slice_in_dim(ids_dev, c0, size))
@@ -110,7 +136,9 @@ class Runner:
                                        precision=self.precision, scan=self.scan)
             rows.append(h)
             c0 += size
-        return state, (jnp.concatenate(rows, 0) if len(rows) > 1 else rows[0])
+            if c0 == snap_at:
+                snap = (_take_snapshot(state, snap_at - start), _cat(rows))
+        return state, _cat(rows), snap
 
     def warm_prefill(self):
         """Compiles one chunk of every size the plans use at every cache bucket."""
@@ -123,55 +151,52 @@ class Runner:
 
     def hidden_rows(self, ids, chunk=None, prefix_tokens=0):
         """Final-normed backbone rows [T_pad, d] (device); rows past len(ids)
-        are padding. With `prefix_tokens` P (the door's exact prompt prefix:
-        system text and state), the backbone state and rows at P are kept
-        (LRU, `prefix_budget` bytes) and a later prompt with the same first
-        P tokens restarts from them. Returns (rows, restored tokens)."""
+        are padding. Returns (rows, restored tokens).
+
+        Prefix reuse: `prefix_tokens` P is the door's exact prompt prefix
+        (system text and state). A miss runs the prompt in its normal chunks
+        and keeps a snapshot (state, K/V, rows; LRU, `prefix_budget` bytes)
+        at the last chunk boundary P' <= P, so it costs no extra chunk. A
+        later prompt sharing the first P' tokens restarts there."""
         T = len(ids)
         C = chunk or self.chunk or self.auto_chunk(T)
         P = prefix_tokens if self.prefix_budget and 512 <= prefix_tokens < T else 0
-        Pc = sum(self.plan(P, C))
-        Tp = P + sum(self.plan(T - P, C)) if P else sum(self.plan(T, C))
-        need = max(Tp, Pc)
-        cache = next((b for b in self.cache_buckets if b >= need), -(-need // 2048) * 2048)
+        hit = key = None
+        if P:
+            # snapshots sit at multiples of the chunk that took them
+            for Pp in sorted({P // c * c for c in {C, 512, 768}}, reverse=True):
+                if Pp < 512:
+                    continue
+                k = (hashlib.sha256(np.asarray(ids[:Pp], np.int64).tobytes()).digest(), Pp, self.precision)
+                if k in self._prefixes:
+                    hit, key = Pp, k
+                    break
+        start = hit or 0
+        Tp = start + sum(self.plan(T - start, C))
+        cache = next((b for b in self.cache_buckets if b >= Tp), -(-Tp // 2048) * 2048)
         # every array shape below depends on (C, cache bucket, chunk counts),
         # never on T or P themselves: a fresh prefix length must not compile
         ids_p = np.zeros(cache + C, np.int64)
         ids_p[:T] = ids
         ids_dev = jnp.asarray(ids_p, jnp.int32)
-        if not P:
-            _, rows = self._segment(M.init_state(self.cfg, cache), ids_dev, 0, T, C)
-            return rows, 0
-        key = (hashlib.sha256(np.asarray(ids[:P], np.int64).tobytes()).digest(), C, self.precision)
-        hit = self._prefixes.get(key)
-        if hit is not None:
+        if hit:
             self._prefixes.move_to_end(key)
-            snap, prefix_rows = hit
-            state = []
-            for s0, st in zip(snap, M.init_state(self.cfg, cache)):
-                if "k" in st:
-                    st = {n: jax.lax.dynamic_update_slice(st[n], s0[n], (0, 0, 0)) for n in ("k", "v")}
-                else:
-                    # copies: prefill donates its state buffers
-                    st = {n: jnp.array(v, copy=True) for n, v in s0.items()}
-                state.append(st)
-            restored = P
-        else:
-            # rows and K/V up to the chunk boundary Pc; the rows past P are pads
-            # (zero) and the K/V past P are overwritten by the rest of the prompt
-            state, prefix_rows = self._segment(M.init_state(self.cfg, cache), ids_dev, 0, P, C)
-            snap = [{n: (v[:Pc] if "k" in st else jnp.array(v, copy=True)) for n, v in st.items()} for st in state]
-            size = sum(int(np.prod(v.shape)) * v.dtype.itemsize for st in snap for v in st.values())
-            size += int(np.prod(prefix_rows.shape)) * 4
-            self._prefixes[key] = (snap, prefix_rows)
-            self._prefix_bytes[key] = size
+            snap, prefix_rows = self._prefixes[key]
+            _, rest, _ = self._segment(_restore(snap, self.cfg, cache), ids_dev, hit, T, C)
+            Tb = _bucket(hit + rest.shape[0], self.HEAD_MIN_TOKENS)
+            return _assemble(prefix_rows, rest, jnp.int32(hit), Tb), hit
+        snap_at = min(P // C, (T - 1) // C) * C if P else 0
+        _, rows, snap = self._segment(_fresh_state(self.cfg, cache), ids_dev, 0, T, C,
+                                      snap_at=snap_at if snap_at >= 512 else None)
+        if snap is not None:
+            key = (hashlib.sha256(np.asarray(ids[:snap_at], np.int64).tobytes()).digest(), snap_at, self.precision)
+            size = sum(int(np.prod(v.shape)) * v.dtype.itemsize for st in snap[0] for v in st.values())
+            self._prefixes[key] = snap
+            self._prefix_bytes[key] = size + int(np.prod(snap[1].shape)) * 4
             while sum(self._prefix_bytes.values()) > self.prefix_budget and len(self._prefixes) > 1:
                 old, _ = self._prefixes.popitem(last=False)
                 self._prefix_bytes.pop(old, None)
-            restored = 0
-        _, rest = self._segment(state, ids_dev, P, T, C)
-        Tb = _bucket(P + rest.shape[0], self.HEAD_MIN_TOKENS)
-        return _assemble(prefix_rows, rest, jnp.int32(P), Tb), restored
+        return rows, 0
 
     # (questions, options) buckets the head compiles for, and its token
     # buckets (powers of two from 2048): 4 x 4 programs, all warmed at start
