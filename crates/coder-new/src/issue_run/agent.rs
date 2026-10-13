@@ -18,15 +18,15 @@
 
 use std::{
     collections::{BTreeSet, HashMap},
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
     sync::{Arc, Mutex, PoisonError},
     time::{Duration, Instant},
 };
 
-use acp_client::{PermissionAnswer, PermissionRequest, StopReason, Update};
+use acp_client::{PermissionRequest, StopReason, Update};
 use claude_agent_sdk::{
-    PermissionMode, PermissionResult, QueryOptions, SdkMcpServer, SdkMessage, SystemPromptConfig,
-    ToolResult, ToolsConfig,
+    PermissionMode, QueryOptions, SdkMcpServer, SdkMessage, SystemPromptConfig, ToolResult,
+    ToolsConfig,
 };
 use futures::StreamExt;
 use serde_json::{Value, json};
@@ -42,8 +42,6 @@ use crate::live::Entry;
 const REMOVED_ENV: [&str; 2] = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"];
 /// The built-in tools the agent has.
 const TOOLS: [&str; 5] = ["Read", "Edit", "Write", "Grep", "Glob"];
-/// The file tools whose paths must stay inside the worktree.
-const FILE_TOOLS: [&str; 6] = ["Read", "Edit", "MultiEdit", "Write", "Glob", "Grep"];
 /// The longest check output the agent reads.
 const CHECK_LIMIT: usize = 7000;
 
@@ -72,76 +70,9 @@ fn lock<T>(shared: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     shared.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// `path` made absolute against `root` and normalized lexically.
-fn resolve(root: &Path, path: &str) -> PathBuf {
-    let joined = if Path::new(path).is_absolute() {
-        PathBuf::from(path)
-    } else {
-        root.join(path)
-    };
-    let mut out = PathBuf::new();
-    for part in joined.components() {
-        match part {
-            Component::ParentDir => {
-                out.pop();
-            }
-            Component::CurDir => {}
-            other => out.push(other.as_os_str()),
-        }
-    }
-    out
-}
-
-/// The worktree-relative path a tool input names: `Some(None)` when it
-/// names none, `None` when the path leaves the worktree.
-#[must_use]
-pub fn inside(root: &Path, input: &Value) -> Option<Option<String>> {
-    let Some(path) = ["file_path", "path", "notebook_path"]
-        .iter()
-        .find_map(|key| input[*key].as_str())
-    else {
-        return Some(None);
-    };
-    let resolved = resolve(root, path);
-    let relative = resolved.strip_prefix(root).ok()?;
-    Some(Some(relative.to_string_lossy().into_owned()))
-}
-
-/// `path` as an absolute, resolved name: relative to `base`, `.` and `..`
-/// taken lexically, and the longest part that exists resolved through its
-/// symbolic links, so `/tmp` and `/private/tmp` compare equal. Carried
-/// over from `crates/microcoder`'s Devin boundary and reimplemented here.
-#[must_use]
-pub fn resolved(base: &Path, path: &str) -> PathBuf {
-    let mut lexical = PathBuf::new();
-    for component in base.join(path).components() {
-        match component {
-            Component::ParentDir => {
-                lexical.pop();
-            }
-            Component::CurDir => {}
-            other => lexical.push(other),
-        }
-    }
-    let mut existing = lexical.as_path();
-    let mut rest = Vec::new();
-    loop {
-        if let Ok(real) = existing.canonicalize() {
-            let mut out = real;
-            for part in rest.iter().rev() {
-                out.push(part);
-            }
-            return out;
-        }
-        match (existing.parent(), existing.file_name()) {
-            (Some(parent), Some(name)) => {
-                rest.push(name.to_owned());
-                existing = parent;
-            }
-            _ => return lexical,
-        }
-    }
-}
+/// The worktree-relative path a tool input names, read lexically (the
+/// Coder SDK's one copy, [`coder_sdk::worktree`]).
+pub use coder_sdk::worktree::{relative as inside, resolved};
 
 /// The checks' argv with a test filter's words appended.
 #[must_use]
@@ -1273,34 +1204,34 @@ pub async fn run_gated(
         query_options = query_options.sdk_mcp_server(check_server);
         verdicts = Some(seen);
     }
-    // Token savers (#11494): no done without an observation (#11487).
+    if let Some(server) = server {
+        allowed.extend(server.allowed_tool_names());
+        query_options = query_options.sdk_mcp_server(server);
+    }
+    // The session's hooks, on the Coder SDK (#11509): the shared-checkout
+    // fence, the floors, the worktree guard over the offered tools, the
+    // squeezer and the Stop gate (Token savers levers, #11486, #11487), the
+    // plugins' hooks and the monitor, composed by one runner.
     let last_text: Arc<Mutex<String>> = Arc::default();
-    let mut gate = None;
     let finals: Vec<Check> = checks.iter().filter(|c| harness_runs(c)).cloned().collect();
-    if gated && !finals.is_empty() {
-        let built = Arc::new(stop_gate(
+    let gate = (gated && !finals.is_empty() && crate::token_savers::enabled()).then(|| {
+        Arc::new(stop_gate(
             Arc::new(finals),
             root.clone(),
             session.baseline.clone(),
             last_text.clone(),
             briefed_agent::stop_gate::decisions(),
             folder,
-        ));
-        let (options, on) = crate::token_savers::install_stop_gate(query_options, built.clone());
-        query_options = options;
-        gate = on.then_some(built);
-    }
-    if let Some(server) = server {
-        allowed.extend(server.allowed_tool_names());
-        query_options = query_options.sdk_mcp_server(server);
-    }
-    // Token savers (#11494): once the session has Bash, its noisy commands
-    // run through the squeezer (#11486). The full output is a file outside
-    // the worktree, which the agent reads with Bash.
-    if tools.iter().any(|tool| tool == "Bash") {
-        query_options =
-            crate::token_savers::install(query_options, crate::token_savers::Lever::Squeeze);
-    }
+        ))
+    });
+    let backend = crate::sdk_hooks::task_claude(
+        &root,
+        crate::sdk_hooks::Task {
+            guard: coder_sdk::worktree::Guard::new(&root).offering(allowed.clone()),
+            stop_gate: gate.clone().map(|gate| (gate, session.timeout)),
+        },
+    );
+    query_options = backend.install(query_options, coder_sdk::claude::PreTool::Permission);
     query_options.tools = Some(ToolsConfig::Names(tools));
     query_options.allowed_tools = Some(allowed.clone());
     query_options.system_prompt = Some(SystemPromptConfig::Custom(session.system.clone()));
@@ -1323,26 +1254,7 @@ pub async fn run_gated(
 
     let briefed = session.briefed;
     let misses: Arc<Mutex<Vec<String>>> = Arc::default();
-    let handler = {
-        let (root, allowed) = (root.clone(), allowed.clone());
-        claude_agent_sdk::permission_handler(move |request| {
-            let named = allowed.iter().any(|name| *name == request.tool_name);
-            let decision = if FILE_TOOLS.contains(&request.tool_name.as_str()) {
-                if named && inside(&root, &request.input).is_some() {
-                    PermissionResult::allow(request.input.clone())
-                } else {
-                    PermissionResult::deny(
-                        "That path is outside the task's worktree. Work only inside the worktree.",
-                    )
-                }
-            } else if named {
-                PermissionResult::allow(request.input.clone())
-            } else {
-                PermissionResult::deny("That tool is not available in this task.")
-            };
-            async move { Ok::<_, claude_agent_sdk::Error>(decision) }
-        })
-    };
+    let handler = backend.permission_handler();
 
     let started = Instant::now();
     let mut work = Work::default();
@@ -1634,51 +1546,6 @@ pub fn acp_output(name: &str, input: &Value, text: &str, status: &str) -> Value 
     }
 }
 
-/// The answer to a `session/request_permission` for a hand held to `root`:
-/// when `writes` is false, every writing tool (`edit`, `delete`, `move`)
-/// is refused with the agent's own `reject` option; when it is true, only
-/// a written path that resolves outside `root` is refused. Everything else
-/// is allowed once, so the agent asks again for its next call. A command's
-/// writes carry no paths — `devin --sandbox` bounds those. Carried over
-/// from `crates/microcoder`'s `Answering::Contained` and reimplemented
-/// here.
-#[must_use]
-pub fn boundary_answer(
-    request: &PermissionRequest,
-    root: &Path,
-    writes: bool,
-) -> (PermissionAnswer, Option<String>) {
-    let pick = |option: Option<&str>| {
-        option.map_or(PermissionAnswer::Cancelled, |option| {
-            PermissionAnswer::Selected(option.to_owned())
-        })
-    };
-    if request.tool_call.writes() {
-        if !writes {
-            return (
-                pick(request.reject()),
-                Some("this hand may not change files".to_owned()),
-            );
-        }
-        if let Some(path) = request
-            .tool_call
-            .written_paths()
-            .into_iter()
-            .map(|path| resolved(root, &path))
-            .find(|path| !path.starts_with(root))
-        {
-            return (
-                pick(request.reject()),
-                Some(format!(
-                    "a write to {} would leave the worktree",
-                    path.display()
-                )),
-            );
-        }
-    }
-    (pick(request.allow_once()), None)
-}
-
 /// How long a cancelled ACP prompt gets to end as `cancelled`.
 const ACP_CANCEL_GRACE: Duration = Duration::from_secs(10);
 /// How long the agent gets to exit before its group is killed.
@@ -1733,7 +1600,10 @@ struct AcpHandler<'a> {
     transcript: &'a mut Transcript,
     root: PathBuf,
     briefed: BTreeSet<String>,
-    writes: bool,
+    /// The session's hooks, which answer every ask (#11509).
+    hooks: coder_sdk::Hooks,
+    /// What the hooks refused, each as the agent should read it.
+    refusals: Arc<Mutex<Vec<String>>>,
     model: String,
     started: Instant,
     events: String,
@@ -1746,7 +1616,6 @@ struct AcpHandler<'a> {
     input_tokens: u64,
     output_tokens: u64,
     cost_usd: Option<f64>,
-    refused: Option<String>,
 }
 
 impl AcpHandler<'_> {
@@ -1903,26 +1772,33 @@ impl acp_client::Handler for AcpHandler<'_> {
         self.record(json!({"kind": "notification", "method": method, "params": params}));
     }
 
-    fn permission(&mut self, request: &PermissionRequest) -> PermissionAnswer {
-        let (answer, why) = boundary_answer(request, &self.root, self.writes);
+    /// Every ask is answered by the session's hooks (#11509): the fence,
+    /// the floors, the worktree guard and the rest, as on Claude Code.
+    fn permission_later(
+        &mut self,
+        request: &PermissionRequest,
+    ) -> Option<acp_client::PendingAnswer> {
+        let call = coder_sdk::acp::call(request, None, &self.root);
         self.record(json!({
             "kind": "permission",
             "tool_kind": request.tool_call.kind,
             "title": request.tool_call.title,
-            "refused": why,
         }));
-        if let Some(why) = why {
-            if self.refused.is_none() {
+        let (hooks, refusals) = (self.hooks.clone(), self.refusals.clone());
+        let request = request.clone();
+        Some(Box::pin(async move {
+            let applied = hooks.fire(call).await;
+            if let Some(reason) = coder_sdk::acp::refusal(&applied) {
                 let tool = request
                     .tool_call
                     .title
                     .clone()
                     .or_else(|| request.tool_call.kind.clone())
                     .unwrap_or_else(|| "a tool".to_owned());
-                self.refused = Some(format!("{tool}: {why}"));
+                lock(&refusals).push(format!("{tool}: {reason}"));
             }
-        }
-        answer
+            coder_sdk::acp::answer(&applied.permission, &request)
+        }))
     }
 }
 
@@ -1966,12 +1842,49 @@ pub async fn run_acp(
         work.error = Some(why);
         return work;
     };
+    // The session's hooks (#11509): the same as any ACP agent's in Coder
+    // (the fence, the floors, the plugins' hooks, the monitor), the
+    // worktree guard over what the hand may change, and Devin's own hooks
+    // running Coder's bridge before every tool.
+    let mut guard = coder_sdk::worktree::Guard::new(&root);
+    if !acp.writes {
+        guard = guard.read_only();
+    }
+    let (hooks, _refused) = crate::sdk_hooks::task_acp(
+        &root,
+        crate::sdk_hooks::Task {
+            guard,
+            stop_gate: None,
+        },
+        "devin-cli",
+        "Devin",
+        &transcript.cancel,
+    );
+    let (mut arguments, mut environment) = (acp.arguments, acp.environment);
+    let agent = crate::bundled_runtime::AcpAgent {
+        id: "devin-cli".into(),
+        name: "Devin".into(),
+        program: program.clone(),
+        transport: crate::bundled_runtime::AgentTransport::default(),
+        arguments: Vec::new(),
+        mode: None,
+        enabled: true,
+    };
+    let _gate =
+        match crate::bundled_runtime::acp_gate(&agent, &hooks, &mut arguments, &mut environment) {
+            Ok(gate) => gate,
+            Err(why) => {
+                transcript.finish(card_index, card, json!({"error": why.clone()}));
+                work.error = Some(why);
+                return work;
+            }
+        };
     let opening = acp_client::session::Opening {
         spec: acp_client::process::Spec {
             program,
-            arguments: acp.arguments,
+            arguments,
             cwd: root.clone(),
-            environment: acp.environment,
+            environment,
         },
         resume: None,
         meta: acp.meta,
@@ -2023,7 +1936,8 @@ pub async fn run_acp(
         transcript,
         root,
         briefed: session.briefed,
-        writes: acp.writes,
+        hooks,
+        refusals: Arc::default(),
         model: reported.unwrap_or_else(|| session.model.clone()),
         started,
         events: String::new(),
@@ -2035,7 +1949,6 @@ pub async fn run_acp(
         input_tokens: 0,
         output_tokens: 0,
         cost_usd: None,
-        refused: None,
     };
     let reported_model = handler.model.clone();
     handler.record(json!({
@@ -2060,7 +1973,7 @@ pub async fn run_acp(
     work.cost_usd = handler.cost_usd;
     work.reply = (!handler.reply.trim().is_empty()).then(|| std::mem::take(&mut handler.reply));
     let events = std::mem::take(&mut handler.events);
-    let refused = handler.refused.take();
+    let refused = lock(&handler.refusals).first().cloned();
     let group_clear = acp_session.close(ACP_STOP_GRACE).await;
     let _ = std::fs::write(folder.join(&session.events_file), events);
     if let Some(refused) = refused {

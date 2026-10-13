@@ -187,6 +187,75 @@ pub fn acp(
     (hooks, refused)
 }
 
+/// What a task session (an issue run's agent, a Solver hand) adds to the
+/// session's hooks (#11509): the worktree guard over the tools it was
+/// offered, and the Stop gate (#11487), a Token savers lever, with the
+/// session's time as its timeout.
+pub struct Task {
+    pub guard: coder_sdk::worktree::Guard,
+    pub stop_gate: Option<(Arc<briefed_agent::stop_gate::StopGate>, std::time::Duration)>,
+}
+
+/// A task session's registry (#11509): the same built-ins as a chat's
+/// ([`registry`]: the shared-checkout fence, the floors, on Claude Code
+/// the squeezer when the Token savers plugin is on, the plugins' hooks),
+/// the worktree guard, the Stop gate when the Token savers plugin is on,
+/// and the System One monitor when its switch is.
+#[must_use]
+pub fn task_registry(cwd: &Path, task: Task, claude: bool) -> Registry {
+    let mut registry = registry(cwd, claude);
+    let _ = registry.register(task.guard.hook());
+    if let Some((gate, timeout)) = task.stop_gate
+        && crate::token_savers::enabled()
+    {
+        let _ = registry.register(gate.sdk_hook(timeout));
+    }
+    let harness = if claude { Harness::Task } else { Harness::Acp };
+    system_one(&mut registry, cwd, harness);
+    registry
+}
+
+/// A task session on Claude Code (#11509): [`task_registry`] on the Claude
+/// backend, the floors' asks answered on the approval card where someone
+/// can answer and held where nobody can.
+#[must_use]
+pub fn task_claude(cwd: &Path, task: Task) -> coder_sdk::claude::Claude {
+    coder_sdk::claude::Claude::new(task_registry(cwd, task, true), Budget::default())
+        .expect("every hook event is native on Claude Code")
+        .asking(crate::floors::asker(
+            cwd.to_owned(),
+            || "Coder".to_owned(),
+            None,
+        ))
+}
+
+/// A task session on an ACP agent (#11509), `agent` by its ID and `name`
+/// as the card shows it: [`task_registry`] without the squeezer (the agent
+/// runs the command it asked about), answering the agent's asks. Also the
+/// hooks the agent can't keep before a tool ([`coder_sdk::acp::hooks`]).
+#[must_use]
+pub fn task_acp(
+    cwd: &Path,
+    task: Task,
+    agent: &str,
+    name: &str,
+    cancel: &Arc<AtomicBool>,
+) -> (coder_sdk::Hooks, Vec<coder_sdk::Refused>) {
+    let (hooks, refused) = coder_sdk::acp::hooks(
+        task_registry(cwd, task, false),
+        Budget::default(),
+        agent,
+        name,
+    );
+    let label = name.to_owned();
+    let hooks = hooks.asking(crate::floors::asker(
+        cwd.to_owned(),
+        move || label.clone(),
+        Some(Arc::clone(cancel)),
+    ));
+    (hooks, refused)
+}
+
 /// The hooks an ACP agent can't keep before a tool, as the person reads
 /// them: what Coder can't do there, and that the steps it asks about are
 /// still checked. `None` when it keeps them all.
@@ -229,6 +298,9 @@ pub enum Harness {
     Codex,
     /// An ACP agent (#11508).
     Acp,
+    /// A task session: an issue run's agent or a Solver hand (#11509). The
+    /// monitor runs; the chat's router doesn't, since nothing routes.
+    Task,
 }
 
 /// How a System One hook runs until its A/B arm has measured it: off,
@@ -300,7 +372,7 @@ pub fn system_one_with(
         hooks.push(coder_sdk::DecisionHook {
             shadow: monitor == Mode::Shadow,
             ..coder_sdk::system_one::monitor::hook(
-                harness == Harness::ClaudeCode,
+                matches!(harness, Harness::ClaudeCode | Harness::Task),
                 Some(probe(cwd)),
                 decider.clone(),
                 recorder.clone(),
@@ -359,33 +431,7 @@ fn probe(cwd: &Path) -> coder_sdk::system_one::monitor::Probe {
 /// its plain name, so `mcp__coder__openagents_cli` is `openagents_cli`.
 #[must_use]
 pub fn held_floors(cwd: std::path::PathBuf) -> coder_sdk::Hook {
-    let server = format!("mcp__{}__", crate::claude_tools::SERVER);
-    coder_sdk::Hook::floor(
-        "floors",
-        coder_sdk::Event::PreToolUse,
-        coder_sdk::Permission::ask("Coder could not check this step."),
-        move |call: &coder_sdk::Call| {
-            let tool = call.tool.as_deref().unwrap_or_default();
-            let plain = tool.strip_prefix(&server).unwrap_or(tool);
-            let Some(floor) = crate::floors::classify(plain, &call.input) else {
-                return Ok(coder_sdk::HookOutcome::none());
-            };
-            Ok(match crate::floors::rule(&cwd, floor.ability) {
-                crate::risk_policy::Rule::Allow => coder_sdk::HookOutcome::none(),
-                crate::risk_policy::Rule::Deny => {
-                    coder_sdk::HookOutcome::deny(&crate::floors::refused(&floor))
-                }
-                crate::risk_policy::Rule::Ask => {
-                    coder_sdk::HookOutcome::deny(&crate::floors::held(&floor))
-                }
-            })
-        },
-    )
-    .pinned(coder_sdk::Versions {
-        question_set: None,
-        policy: Some(crate::floors::FLOORS_POLICY.to_owned()),
-        model: None,
-    })
+    coder_sdk::floors::hook(crate::floors::rules(cwd), coder_sdk::floors::Asking::Hold)
 }
 
 /// The hooks a Codex run gets on its command tier (#11500): the floors
@@ -699,6 +745,71 @@ mod tests {
         assert_eq!(
             coder_sdk::bridge::answer(&mut runner, opencode, &call("ls")),
             None
+        );
+    }
+
+    /// An issue run's Claude session (and a Solver hand's) composes the
+    /// chat's built-ins with the worktree guard (#11509): a scripted
+    /// session's merge is held, a write outside the worktree and a tool the
+    /// session wasn't offered are refused, an edit inside runs.
+    #[tokio::test]
+    async fn a_task_session_on_claude_code_meets_the_floors_and_the_guard() {
+        let _lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::floors::install_desk(None);
+        let repo = tempfile::tempdir().unwrap();
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .arg(repo.path())
+            .status()
+            .unwrap();
+        let root = repo.path().canonicalize().unwrap();
+        let backend = task_claude(
+            &root,
+            Task {
+                guard: coder_sdk::worktree::Guard::new(&root).offering(vec![
+                    "Read".into(),
+                    "Edit".into(),
+                    "Bash".into(),
+                ]),
+                stop_gate: None,
+            },
+        );
+        let ids: Vec<String> = backend
+            .registry()
+            .hooks()
+            .map(|hook| hook.id.clone())
+            .collect();
+        for id in ["worktree-fence", "floors", "worktree"] {
+            assert!(ids.iter().any(|seen| seen == id), "{ids:?}");
+        }
+        let fire = |tool: &str, input: Value| {
+            backend.fire(coder_sdk::Call::tool(
+                coder_sdk::Event::PreToolUse,
+                tool,
+                input,
+            ))
+        };
+        let merge = fire("Bash", json!({"command": "gh pr merge 5 --squash"})).await;
+        assert!(
+            matches!(&merge.permission, coder_sdk::Permission::Deny { reason } if reason.starts_with("Held for the person")),
+            "{merge:?}"
+        );
+        let outside = fire("Edit", json!({"file_path": "/etc/hosts"})).await;
+        assert_eq!(
+            outside.permission,
+            coder_sdk::Permission::deny(coder_sdk::worktree::OUTSIDE)
+        );
+        let other = fire("WebFetch", json!({"url": "https://example.com"})).await;
+        assert_eq!(
+            other.permission,
+            coder_sdk::Permission::deny(coder_sdk::worktree::NOT_OFFERED)
+        );
+        let inside = fire("Edit", json!({"file_path": "src/lib.rs"})).await;
+        assert!(
+            !matches!(inside.permission, coder_sdk::Permission::Deny { .. }),
+            "{inside:?}"
         );
     }
 

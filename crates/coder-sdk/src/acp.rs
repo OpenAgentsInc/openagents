@@ -206,6 +206,13 @@ pub fn call(request: &PermissionRequest, seen: Option<&Value>, cwd: &std::path::
             claude_tool(&named, &raw)
         }
     };
+    let mut input = input;
+    // Every path a writing tool names (a move names two), for the
+    // worktree guard ([`crate::worktree`]).
+    let written = tool.written_paths();
+    if !written.is_empty() && input.is_object() {
+        input[crate::worktree::WRITTEN_PATHS] = json!(written);
+    }
     Call::tool(Event::PreToolUse, &name, input)
 }
 

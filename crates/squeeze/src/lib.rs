@@ -41,7 +41,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde_json::{Value, json};
 
 /// The `coder` subcommand that runs the squeezer.
-pub const CODER_SUBCOMMAND: &str = "coder-squeeze";
+pub const CODER_SUBCOMMAND: &str = coder_sdk::floors::SQUEEZE_SUBCOMMAND;
 /// Output at or under this many lines passes unchanged.
 pub const PASS_LINES: usize = 150;
 /// Lines always kept from the start.

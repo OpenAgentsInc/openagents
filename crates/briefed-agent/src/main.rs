@@ -46,15 +46,15 @@ mod tools;
 mod verify;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use briefed_agent::stop_gate;
 use claude_agent_sdk::{
-    EffortLevel, McpServerConfig, PermissionMode, PermissionResult, QueryOptions, SdkMessage,
-    SystemPromptConfig, ToolsConfig,
+    EffortLevel, McpServerConfig, PermissionMode, QueryOptions, SdkMessage, SystemPromptConfig,
+    ToolsConfig,
 };
 use futures::StreamExt;
 use serde_json::{Value, json};
@@ -64,8 +64,6 @@ mod opencode;
 
 /// Credentials the CLI must not inherit, so it uses the Claude Code login.
 const REMOVED_ENV: [&str; 2] = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"];
-/// The file tools whose paths must stay inside the worktree.
-const FILE_TOOLS: [&str; 6] = ["Read", "Edit", "MultiEdit", "Write", "Glob", "Grep"];
 /// The default built-in tools.
 const DEFAULT_TOOLS: [&str; 5] = ["Read", "Edit", "Write", "Grep", "Glob"];
 
@@ -106,59 +104,100 @@ fn strings(value: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// `path` made absolute against `root` and normalized lexically.
-fn resolve(root: &Path, path: &str) -> PathBuf {
-    let joined = if Path::new(path).is_absolute() {
-        PathBuf::from(path)
-    } else {
-        root.join(path)
-    };
-    let mut out = PathBuf::new();
-    for part in joined.components() {
-        match part {
-            Component::ParentDir => {
-                out.pop();
-            }
-            Component::CurDir => {}
-            other => out.push(other.as_os_str()),
-        }
-    }
-    out
+/// What a session's hooks are composed from.
+struct Setup<'a> {
+    config: &'a Value,
+    worktree: &'a Path,
+    tools: &'a [String],
+    allowed: &'a [String],
+    summary_path: &'a str,
+    finished: &'a Arc<AtomicBool>,
+    last_text: &'a Shared<String>,
+    timeout: Duration,
 }
 
-/// The worktree-relative path of a tool input's path, or `None` when it
-/// lies outside the worktree. A file tool without a path works in the
-/// worktree.
-fn inside(root: &Path, input: &Value) -> Option<Option<String>> {
-    let path = ["file_path", "path", "notebook_path"]
-        .iter()
-        .find_map(|key| input[*key].as_str());
-    let Some(path) = path else {
-        return Some(None);
-    };
-    let resolved = resolve(root, path);
-    let relative = resolved.strip_prefix(root).ok()?;
-    if !really_inside(root, &resolved) {
-        return None;
-    }
-    Some(Some(relative.to_string_lossy().into_owned()))
+/// A session's hooks: the registry, the variables the squeezer reads, and
+/// the Stop gate when it is on.
+struct Composed {
+    registry: coder_sdk::Registry,
+    env: HashMap<String, String>,
+    gate: Option<Arc<stop_gate::StopGate>>,
 }
 
-/// Whether the longest existing ancestor of `path` (the path itself when it
-/// exists) still lies inside `root` once symlinks are followed. A link that
-/// exists but leads nowhere is not inside.
-fn really_inside(root: &Path, path: &Path) -> bool {
-    let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
-    let mut existing = path;
-    while existing.symlink_metadata().is_err() {
-        match existing.parent() {
-            Some(parent) => existing = parent,
-            None => return false,
-        }
+/// The briefed agent's hooks on the Coder SDK (#11509): the worktree guard
+/// (the offered tools, file paths inside the worktree, and a squeezed
+/// command's full output readable), the floors held for the person, since
+/// nobody answers a bench run from inside, and with their config switches
+/// the squeezer (#11486) and the Stop gate (#11487).
+fn compose(setup: &Setup<'_>) -> Result<Composed, String> {
+    let config = setup.config;
+    let mut registry = coder_sdk::Registry::new();
+    let mut env = HashMap::new();
+    let mut guard =
+        coder_sdk::worktree::Guard::new(setup.worktree).offering(setup.allowed.to_vec());
+    registry.register(coder_sdk::floors::held_hook())?;
+
+    // System One hook 1 (#11486): noisy Bash output squeezed.
+    if config["squeeze"].as_bool() == Some(true)
+        && setup.tools.iter().any(|tool| tool == "Bash")
+        && let Ok(this) = std::env::current_exe()
+    {
+        let dir = config["squeeze_dir"].as_str().map_or_else(
+            || {
+                Path::new(setup.summary_path)
+                    .parent()
+                    .unwrap_or(Path::new("."))
+                    .join("squeeze")
+            },
+            PathBuf::from,
+        );
+        std::fs::create_dir_all(&dir).map_err(|error| format!("{}: {error}", dir.display()))?;
+        let dir = dir.canonicalize().unwrap_or(dir);
+        env.insert(squeeze::DIR_VAR.to_owned(), dir.display().to_string());
+        env.insert(
+            squeeze::LOG_VAR.to_owned(),
+            dir.join("decisions.jsonl").display().to_string(),
+        );
+        registry.register(squeeze::sdk_hook(squeeze::invoker(&this, &["--squeeze"])))?;
+        // A squeezed command's full output may be read.
+        guard = guard.reading(dir);
     }
-    existing
-        .canonicalize()
-        .is_ok_and(|real| real.starts_with(&root))
+    registry.register(guard.hook())?;
+
+    // System One hook 2 (#11487): no done without an observation.
+    let mut gate = None;
+    if config["stop_gate"].as_bool() == Some(true)
+        && let Some(verify) = verify::Verify::from_config(setup.worktree, config)
+    {
+        let verify = Arc::new(verify);
+        let (for_check, for_tree) = (verify.clone(), verify);
+        let check: stop_gate::Check = Arc::new(move || {
+            let verify = for_check.clone();
+            Box::pin(async move { verify.final_check().await })
+        });
+        let tree: stop_gate::Tree = Arc::new(move || {
+            let verify = for_tree.clone();
+            Box::pin(async move { verify.tree().await })
+        });
+        let log = Path::new(setup.summary_path)
+            .parent()
+            .map(|dir| dir.join("stop_gate.jsonl"));
+        let built = Arc::new(stop_gate::StopGate::new(
+            setup.finished.clone(),
+            setup.last_text.clone(),
+            stop_gate::decisions(),
+            check,
+            tree,
+            log,
+        ));
+        registry.register(built.clone().sdk_hook(setup.timeout))?;
+        gate = Some(built);
+    }
+    Ok(Composed {
+        registry,
+        env,
+        gate,
+    })
 }
 
 #[derive(Default)]
@@ -281,89 +320,55 @@ async fn run() -> Result<(), String> {
         .map(|&name| name.to_owned())
         .collect();
 
-    // System One hook 1 (#11486): noisy Bash output squeezed.
-    let mut spill: Option<PathBuf> = None;
-    if config["squeeze"].as_bool() == Some(true)
-        && tools.iter().any(|tool| tool == "Bash")
-        && let Ok(this) = std::env::current_exe()
-    {
-        let dir = config["squeeze_dir"].as_str().map_or_else(
-            || {
-                Path::new(&summary_path)
-                    .parent()
-                    .unwrap_or(Path::new("."))
-                    .join("squeeze")
-            },
-            PathBuf::from,
-        );
-        std::fs::create_dir_all(&dir).map_err(|error| format!("{}: {error}", dir.display()))?;
-        let dir = dir.canonicalize().unwrap_or(dir);
-        let env = options.env.get_or_insert_with(HashMap::new);
-        env.insert(squeeze::DIR_VAR.to_owned(), dir.display().to_string());
-        env.insert(
-            squeeze::LOG_VAR.to_owned(),
-            dir.join("decisions.jsonl").display().to_string(),
-        );
-        // Through the Coder SDK's Claude backend (#11496).
-        let mut registry = coder_sdk::Registry::new();
-        registry.register(squeeze::sdk_hook(squeeze::invoker(&this, &["--squeeze"])))?;
-        options = coder_sdk::claude::Claude::new(registry, coder_sdk::Budget::default())
-            .map_err(|refused| format!("{refused:?}"))?
-            .install(options, coder_sdk::claude::PreTool::Hook);
-        spill = Some(dir);
-    }
-
-    // System One hook 2 (#11487): no done without an observation.
+    // The session's hooks, one registry on the Coder SDK's Claude backend
+    // (#11509): the worktree guard, the floors, the squeezer and the Stop
+    // gate, composed by the SDK's rules.
     let last_text: Shared<String> = Arc::default();
-    let mut gate: Option<Arc<stop_gate::StopGate>> = None;
-    if config["stop_gate"].as_bool() == Some(true)
-        && let Some(verify) = verify::Verify::from_config(&worktree, &config)
-    {
-        let verify = Arc::new(verify);
-        let (for_check, for_tree) = (verify.clone(), verify);
-        let check: stop_gate::Check = Arc::new(move || {
-            let verify = for_check.clone();
-            Box::pin(async move { verify.final_check().await })
-        });
-        let tree: stop_gate::Tree = Arc::new(move || {
-            let verify = for_tree.clone();
-            Box::pin(async move { verify.tree().await })
-        });
-        let log = Path::new(&summary_path)
-            .parent()
-            .map(|dir| dir.join("stop_gate.jsonl"));
-        let built = Arc::new(stop_gate::StopGate::new(
-            finished.clone(),
-            last_text.clone(),
-            stop_gate::decisions(),
-            check,
-            tree,
-            log,
-        ));
-        options = options.hook(claude_agent_sdk::HookEvent::Stop, built.clone().hook());
-        gate = Some(built);
+    let composed = compose(&Setup {
+        config: &config,
+        worktree: &worktree,
+        tools: &tools,
+        allowed: &allowed,
+        summary_path: &summary_path,
+        finished: &finished,
+        last_text: &last_text,
+        timeout,
+    })?;
+    if !composed.env.is_empty() {
+        options
+            .env
+            .get_or_insert_with(HashMap::new)
+            .extend(composed.env.clone());
     }
+    let backend = coder_sdk::claude::Claude::new(composed.registry, coder_sdk::Budget::default())
+        .map_err(|refused| format!("{refused:?}"))?;
+    options = backend.install(options, coder_sdk::claude::PreTool::Permission);
+    let gate = composed.gate;
 
     let ledger: Shared<Ledger> = Arc::default();
     let handler = {
         let ledger = ledger.clone();
-        let root = worktree.clone();
-        let allowed = allowed.clone();
-        let spill = spill.clone();
+        let backend = backend.clone();
         claude_agent_sdk::permission_handler(move |request| {
-            // A squeezed command's full output may be read.
-            let full_output = spill.as_ref().is_some_and(|dir| {
-                request.tool_name == "Read"
-                    && request.input["file_path"]
-                        .as_str()
-                        .is_some_and(|path| resolve(dir, path).starts_with(dir))
-            });
-            let decision = if full_output {
-                PermissionResult::allow(request.input.clone())
-            } else {
-                decide(&root, &allowed, &ledger, &request.tool_name, &request.input)
-            };
-            async move { Ok::<_, claude_agent_sdk::Error>(decision) }
+            let (ledger, backend) = (ledger.clone(), backend.clone());
+            async move {
+                let applied = backend
+                    .fire(coder_sdk::Call::tool(
+                        coder_sdk::Event::PreToolUse,
+                        &request.tool_name,
+                        request.input.clone(),
+                    ))
+                    .await;
+                if let coder_sdk::Permission::Deny { reason } = &applied.permission {
+                    lock(&ledger).denied.push(json!({
+                        "tool": request.tool_name,
+                        "input": request.input,
+                        "why": reason,
+                        "by": applied.decided_by,
+                    }));
+                }
+                Ok::<_, claude_agent_sdk::Error>(coder_sdk::claude::permission_result(&applied))
+            }
         })
     };
 
@@ -474,38 +479,6 @@ fn last_text_of(message: &Value) -> Option<String> {
     (!text.is_empty()).then(|| text.join("\n"))
 }
 
-/// Allows a file tool inside the worktree and the config's tools; denies
-/// the rest and records it.
-fn decide(
-    root: &Path,
-    allowed: &[String],
-    ledger: &Shared<Ledger>,
-    tool: &str,
-    input: &Value,
-) -> PermissionResult {
-    let named = allowed
-        .iter()
-        .any(|name| tool == name || tool.starts_with(&format!("{name}__")));
-    if FILE_TOOLS.contains(&tool) {
-        if named && inside(root, input).is_some() {
-            return PermissionResult::allow(input.clone());
-        }
-        lock(ledger)
-            .denied
-            .push(json!({"tool": tool, "input": input, "why": "outside the worktree"}));
-        return PermissionResult::deny(
-            "That path is outside the task's worktree. Work only inside the worktree.",
-        );
-    }
-    if named {
-        return PermissionResult::allow(input.clone());
-    }
-    lock(ledger)
-        .denied
-        .push(json!({"tool": tool, "input": input, "why": "not in the tool set"}));
-    PermissionResult::deny("That tool is not available in this task.")
-}
-
 /// Counts an assistant message's tool calls and the files they read and
 /// write; a read or edit of a file the briefing did not list is a miss,
 /// but writing a file that does not exist yet is not.
@@ -525,7 +498,7 @@ fn observe(root: &Path, briefed: &BTreeSet<String>, ledger: &Shared<Ledger>, mes
         {
             ledger.check_runs += 1;
         }
-        let Some(Some(relative)) = inside(root, input) else {
+        let Some(Some(relative)) = coder_sdk::worktree::relative(root, input) else {
             continue;
         };
         match name.as_str() {
@@ -558,40 +531,65 @@ fn observe(root: &Path, briefed: &BTreeSet<String>, ledger: &Shared<Ledger>, mes
 }
 
 #[cfg(test)]
-mod path_tests {
+mod compose_tests {
     use super::*;
 
+    /// The briefed agent's session, composed as `run` composes it, replays
+    /// a scripted session: the floors hold a merge, the guard refuses a
+    /// path through a symbolic link out of the worktree and a tool the
+    /// session wasn't offered, and an edit inside runs.
     #[cfg(unix)]
     #[test]
-    fn a_symlinked_directory_pointing_outside_is_denied() {
+    fn a_scripted_session_meets_the_floors_and_the_worktree_guard() {
         let worktree = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
         std::fs::write(outside.path().join("secret"), "s").unwrap();
         let root = worktree.path().canonicalize().unwrap();
         std::os::unix::fs::symlink(outside.path(), root.join("link")).unwrap();
-        let path = root.join("link/secret");
-        let input = json!({"file_path": path.to_string_lossy()});
-        assert_eq!(inside(&root, &input), None);
-        let new = json!({"file_path": "link/new/file.rs"});
-        assert_eq!(inside(&root, &new), None);
-
-        let ledger: Shared<Ledger> = Arc::default();
-        let allowed = vec!["Read".to_owned()];
-        let result = decide(&root, &allowed, &ledger, "Read", &input);
-        assert!(!matches!(result, PermissionResult::Allow { .. }));
-        assert_eq!(lock(&ledger).denied.len(), 1);
-    }
-
-    #[test]
-    fn a_new_file_inside_is_allowed() {
-        let worktree = tempfile::tempdir().unwrap();
-        let root = worktree.path().canonicalize().unwrap();
-        std::fs::create_dir(root.join("src")).unwrap();
-        let input = json!({"file_path": "src/new/deeper/file.rs"});
-        assert_eq!(
-            inside(&root, &input),
-            Some(Some("src/new/deeper/file.rs".to_owned()))
+        let tools: Vec<String> = ["Read", "Edit", "Bash"].map(str::to_owned).to_vec();
+        let composed = compose(&Setup {
+            config: &json!({}),
+            worktree: &root,
+            tools: &tools,
+            allowed: &tools,
+            summary_path: &root.join("summary.json").display().to_string(),
+            finished: &Arc::default(),
+            last_text: &Arc::default(),
+            timeout: Duration::from_secs(60),
+        })
+        .unwrap();
+        let step =
+            |tool: &str, input: Value| json!({"event": "PreToolUse", "tool": tool, "input": input});
+        let recorded = json!({
+            "schema": coder_sdk::RECORDED_SESSION_SCHEMA,
+            "events": [
+                step("Bash", json!({"command": "gh pr merge 5 --squash"})),
+                step("Read", json!({"file_path": root.join("link/secret").display().to_string()})),
+                step("Write", json!({"file_path": "a.rs"})),
+                step("Edit", json!({"file_path": "src/lib.rs"})),
+            ],
+        });
+        let session = coder_sdk::ScriptedSession::from_json(&recorded.to_string()).unwrap();
+        let mut runner = coder_sdk::Runner::new(composed.registry, coder_sdk::Budget::default());
+        let replay = session.replay(&mut runner).unwrap();
+        let permissions: Vec<_> = replay
+            .applied
+            .iter()
+            .map(|a| a.permission.clone())
+            .collect();
+        assert!(
+            matches!(&permissions[0], coder_sdk::Permission::Deny { reason } if reason.starts_with("Held for the person")),
+            "{permissions:?}"
         );
+        assert_eq!(
+            permissions[1],
+            coder_sdk::Permission::deny(coder_sdk::worktree::OUTSIDE)
+        );
+        assert_eq!(
+            permissions[2],
+            coder_sdk::Permission::deny(coder_sdk::worktree::NOT_OFFERED)
+        );
+        assert_eq!(permissions[3], coder_sdk::Permission::NoOpinion);
     }
 }
 

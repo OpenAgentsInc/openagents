@@ -330,7 +330,7 @@ impl Observed {
 
 /// `path` relative to `worktree`, or `None` when it is outside.
 fn relative(worktree: &Path, path: &str) -> Option<String> {
-    let resolved = crate::resolve(worktree, path);
+    let resolved = coder_sdk::worktree::resolve(worktree, path);
     let relative = resolved.strip_prefix(worktree).ok()?;
     Some(relative.to_string_lossy().into_owned())
 }

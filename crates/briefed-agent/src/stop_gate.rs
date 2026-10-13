@@ -217,26 +217,33 @@ impl StopGate {
         }
     }
 
-    /// The `Stop` hook over this gate.
+    /// The gate as the session's `Stop` hook on the Coder SDK (#11509), so
+    /// it composes with the floors and the rest of the session's hooks and
+    /// runs on whichever backend takes the session: a stop the checks don't
+    /// pass is blocked with the verdict. The final checks may take long, so
+    /// the hook's timeout is the session's (`timeout`); a gate that fails
+    /// or runs out of it lets the stop through.
     #[must_use]
-    pub fn hook(self: Arc<Self>) -> claude_agent_sdk::HookMatcher {
-        let hook = claude_agent_sdk::hook_fn(move |_input: Value, _tool_use_id| {
-            let gate = self.clone();
-            async move {
-                Ok(match gate.decide().await {
-                    Outcome::Allow(_) => {
-                        claude_agent_sdk::SyncHookJSONOutput::continue_execution().into()
+    pub fn sdk_hook(self: Arc<Self>, timeout: Duration) -> coder_sdk::Hook {
+        coder_sdk::Hook::new(
+            "stop-gate",
+            coder_sdk::Event::Stop,
+            coder_sdk::Source::BuiltIn,
+            move |_call: &coder_sdk::Call| {
+                let gate = self.clone();
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(|error| error.to_string())?;
+                Ok(match runtime.block_on(gate.decide()) {
+                    Outcome::Allow(_) => coder_sdk::HookOutcome::none(),
+                    Outcome::Block(reason) => {
+                        coder_sdk::HookOutcome::stopping(coder_sdk::Stop::Block { reason })
                     }
-                    Outcome::Block(reason) => claude_agent_sdk::SyncHookJSONOutput {
-                        decision: Some("block".to_owned()),
-                        reason: Some(reason),
-                        ..claude_agent_sdk::SyncHookJSONOutput::default()
-                    }
-                    .into(),
                 })
-            }
-        });
-        claude_agent_sdk::HookMatcher::new(None, hook)
+            },
+        )
+        .timeout(timeout)
     }
 }
 
@@ -411,16 +418,14 @@ mod tests {
         assert_eq!(f.checks.load(Ordering::SeqCst), 1);
     }
 
-    #[tokio::test]
-    async fn the_hook_blocks_with_a_reason() {
+    #[test]
+    fn the_hook_blocks_with_a_reason() {
         let f = fixture(said(Claim::Done, 0.97), "compile_error");
-        let hook = Arc::new(f.gate).hook();
-        let out = hook.hooks[0]
-            .call(json!({"hook_event_name": "Stop"}), None)
-            .await
-            .unwrap();
-        let value = serde_json::to_value(&out).unwrap();
-        assert_eq!(value["decision"], "block");
-        assert!(value["reason"].as_str().unwrap().contains("compile_error"));
+        let hook = Arc::new(f.gate).sdk_hook(Duration::from_secs(30));
+        let out = (hook.run)(&coder_sdk::Call::new(coder_sdk::Event::Stop, json!({}))).unwrap();
+        let coder_sdk::Stop::Block { reason } = out.stop else {
+            panic!("{out:?}");
+        };
+        assert!(reason.contains("compile_error"));
     }
 }

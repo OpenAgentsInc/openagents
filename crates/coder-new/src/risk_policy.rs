@@ -38,17 +38,17 @@ pub const APPROVALS_VAR: &str = "OPENAGENTS_APPROVALS_FILE";
 /// A deploy of the website to staging.
 pub const DEPLOY_STAGING: &str = "deploy.staging";
 /// A deploy of the website to production.
-pub const DEPLOY_PRODUCTION: &str = "deploy.production";
+pub const DEPLOY_PRODUCTION: &str = coder_sdk::floors::DEPLOY_PRODUCTION;
 /// A review posted on a pull request.
 pub const PR_REVIEW: &str = "pr.review";
 /// A pull request merged.
-pub const PR_MERGE: &str = "pr.merge";
+pub const PR_MERGE: &str = coder_sdk::floors::PR_MERGE;
 /// A DNS record changed.
-pub const DNS: &str = "dns";
+pub const DNS: &str = coder_sdk::floors::DNS;
 /// A secret created, changed, or read out.
-pub const SECRETS: &str = "secrets";
+pub const SECRETS: &str = coder_sdk::floors::SECRETS;
 /// Money sent.
-pub const PAYMENTS: &str = "payments";
+pub const PAYMENTS: &str = coder_sdk::floors::PAYMENTS;
 /// A linked Mac sends a build outside: a TestFlight upload, or App Store
 /// Connect's validation (#11223, `mac_jobs::UPLOAD_ABILITY`).
 pub const MAC_UPLOAD: &str = "mac.upload";

@@ -477,7 +477,8 @@ pub fn mcp_server(
 }
 
 /// The tool server's name: its tool is `mcp__coder__solver` to the engine.
-pub const MCP_SERVER: &str = "coder";
+/// The same server name the floors strip ([`coder_sdk::floors::SERVER`]).
+pub const MCP_SERVER: &str = coder_sdk::floors::SERVER;
 
 /// Whether `name` is the solver tool as a claude turn's engine names it.
 #[must_use]

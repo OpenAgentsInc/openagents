@@ -24,6 +24,7 @@ pub mod decision;
 pub mod delegation;
 pub mod digest;
 pub mod events;
+pub mod floors;
 pub mod hooks;
 pub mod opencode;
 pub mod outcome;
@@ -32,6 +33,7 @@ pub mod registry;
 pub mod scripted;
 pub mod system_one;
 pub mod tools;
+pub mod worktree;
 
 pub use admission::{Admission, DisclosureRefused};
 pub use coder_delegate::session::{HookBackend, HookTier, acp_backend, hook_tier, hook_tiers};

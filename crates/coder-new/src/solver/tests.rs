@@ -649,9 +649,12 @@ async fn a_devin_hand_runs_the_recorded_turn_through_acp() {
     assert!(entries.iter().any(|entry| matches!(entry,
         crate::live::Entry::Assistant { text, .. } if text.contains("hello.txt"))));
     // The process got --sandbox, `acp --model`, and `accept-edits`.
+    // Devin's own hooks run Coder's bridge (#11509): `--config` first.
+    let arguments = acp_client::replay::arguments(agent_dir.path());
+    assert_eq!(arguments[0], "--config");
     assert_eq!(
-        acp_client::replay::arguments(agent_dir.path()),
-        vec!["--sandbox", "acp", "--model", "swe-2-high"]
+        arguments[2..],
+        ["--sandbox", "acp", "--model", "swe-2-high"]
     );
     let sent = acp_client::replay::received(agent_dir.path());
     assert_eq!(sent[1]["method"], "session/new");
@@ -669,6 +672,117 @@ async fn a_devin_hand_runs_the_recorded_turn_through_acp() {
     let events = std::fs::read_to_string(dir.path().join("coder-0-events.jsonl")).unwrap();
     assert!(events.contains("\"tool_call\""), "{events}");
     assert!(events.contains("\"usage\""), "{events}");
+}
+
+/// A Solver hand (and so an issue run's agent) starts its session through
+/// the Coder SDK (#11509): the recorded Devin turn, with asks injected
+/// ahead of its prompt's reply, runs through `agent::run`, and the
+/// session's hooks answer each ask. The floors hold a merge for the
+/// person, the worktree guard refuses a write outside the worktree, and a
+/// write inside runs.
+#[tokio::test]
+#[cfg(unix)]
+async fn a_hands_asks_meet_the_floors_and_the_worktree_guard() {
+    use crate::issue_run::agent::{self, AcpOptions};
+    let _lock = crate::approval::test_lock()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    crate::floors::install_desk(None);
+    let dir = tempfile::tempdir().unwrap();
+    let agent_dir = tempfile::tempdir().unwrap();
+    let mut blocks = acp_client::replay::blocks(acp_client::replay::DEVIN_TURN);
+    let ask = |id: u64, kind: &str, title: &str, raw: serde_json::Value| {
+        serde_json::json!({"jsonrpc": "2.0", "id": id, "method": "session/request_permission", "params": {
+            "sessionId": "s", "toolCall": {"toolCallId": format!("ask-{id}"), "kind": kind, "title": title, "rawInput": raw},
+            "options": [{"optionId": "allow", "kind": "allow_once", "name": "Allow"},
+                        {"optionId": "reject", "kind": "reject_once", "name": "Reject"}]}})
+    };
+    let inside = dir.path().join("notes.md").display().to_string();
+    let asks = vec![
+        ask(
+            901,
+            "execute",
+            "gh pr merge 5 --squash",
+            serde_json::json!({"command": "gh pr merge 5 --squash"}),
+        ),
+        ask(
+            902,
+            "edit",
+            "Edit /etc/hosts",
+            serde_json::json!({"file_path": "/etc/hosts"}),
+        ),
+        ask(
+            903,
+            "edit",
+            "Edit notes.md",
+            serde_json::json!({"file_path": inside}),
+        ),
+    ];
+    let prompt_block = blocks
+        .iter()
+        .position(|block| {
+            block
+                .last()
+                .is_some_and(|frame| frame["result"]["stopReason"].is_string())
+        })
+        .unwrap();
+    blocks[prompt_block].splice(0..0, asks);
+    let program = acp_client::replay::script(agent_dir.path(), &blocks);
+    let (_feed, mut transcript) = crate::issue_run::channel(None);
+    let session = agent::Session {
+        title: "Coder".into(),
+        detail: "Changes the working copy".into(),
+        model: "swe-2-high".into(),
+        timeout: std::time::Duration::from_secs(30),
+        engine: agent::Engine::Acp(AcpOptions {
+            program: Some(program),
+            arguments: vec![
+                "--sandbox".into(),
+                "acp".into(),
+                "--model".into(),
+                "swe-2-high".into(),
+            ],
+            mode: Some("accept-edits".into()),
+            meta: None,
+            environment: vec![("PATH".into(), "/bin:/usr/bin".into())],
+            writes: true,
+        }),
+        checks: Vec::new(),
+        system: String::new(),
+        prompt: "Create hello.txt, then run ls.".into(),
+        briefed: Default::default(),
+        events_file: "coder-0-events.jsonl".into(),
+        baseline: None,
+        follow: None,
+    };
+    let work = agent::run(session, dir.path(), dir.path(), &mut transcript).await;
+    assert_eq!(work.error, None);
+    let answers: std::collections::BTreeMap<u64, String> =
+        acp_client::replay::received(agent_dir.path())
+            .into_iter()
+            .filter_map(|line| {
+                let id = line["id"].as_u64().filter(|id| *id > 900)?;
+                Some((
+                    id,
+                    line["result"]["outcome"]["optionId"].as_str()?.to_owned(),
+                ))
+            })
+            .collect();
+    assert_eq!(
+        answers.get(&901).map(String::as_str),
+        Some("reject"),
+        "{answers:?}"
+    );
+    assert_eq!(
+        answers.get(&902).map(String::as_str),
+        Some("reject"),
+        "{answers:?}"
+    );
+    assert_eq!(
+        answers.get(&903).map(String::as_str),
+        Some("allow"),
+        "{answers:?}"
+    );
 }
 
 /// A Devin hand whose binary is missing surfaces the start error instead

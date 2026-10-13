@@ -1102,7 +1102,7 @@ pub async fn acp_briefed(
 /// (#11508): the socket the bridge asks, and the folder holding the plugin
 /// or configuration that names the bridge.
 #[derive(Default)]
-struct AcpGate {
+pub(crate) struct AcpGate {
     _host: Option<coder_sdk::bridge::Host>,
     _files: Option<tempfile::TempDir>,
 }
@@ -1119,7 +1119,7 @@ const ACP_HOOK_TIMEOUT: u64 = 600;
 /// # Errors
 /// The bridge, its socket or its files can't be set up: the agent would
 /// run unchecked, so it doesn't run.
-fn acp_gate(
+pub(crate) fn acp_gate(
     agent: &AcpAgent,
     hooks: &coder_sdk::Hooks,
     arguments: &mut Vec<String>,
