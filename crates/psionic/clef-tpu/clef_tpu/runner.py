@@ -8,6 +8,7 @@ Rust door; this worker only runs the model.
 
 from __future__ import annotations
 
+import collections
 import hashlib
 import math
 import time
@@ -36,17 +37,22 @@ def _bucket(n, least):
 
 
 class Runner:
-    def __init__(self, path: str, *, chunk=0, precision="bf16", scan="jax", cache_buckets=(2048, 4096, 8192, 16384)):
+    def __init__(self, path: str, *, chunk=0, prefix_budget=0, precision="bf16", scan="jax", cache_buckets=(2048, 4096, 8192, 16384)):
         self.path = Path(path)
         self.cfg = M.Config.load(self.path)
         t = time.time()
-        self.params, self.embed, self.lm_head = M.load_backbone(self.path, self.cfg)
+        self.params, self.embed, self.lm_head = M.load_backbone(
+            self.path, self.cfg, quant="int8" if precision == "int8" else None)
         # the embedding table on the device (2 GB bf16): a 16k prompt's rows
         # would otherwise cross from the host as 268 MB of f32
         self.embed_dev = jnp.asarray(self.embed, jnp.bfloat16)
         self.head_cfg, self.head = M.load_head(self.path)
         self.load_seconds = time.time() - t
         self.chunk = chunk
+        # prefix snapshots on the device (bytes); 0 turns prefix reuse off
+        self.prefix_budget = prefix_budget
+        self._prefixes = collections.OrderedDict()
+        self._prefix_bytes = {}
         self.precision = precision
         self.scan = scan
         self.cache_buckets = cache_buckets
@@ -68,24 +74,64 @@ class Runner:
         pad = lambda c: -(-T // c) * c - T
         return 768 if pad(768) <= pad(512) else 512
 
-    def hidden_rows(self, ids, chunk=None):
-        """Final-normed backbone rows [T_pad, d] (device), T_pad = chunks * C."""
-        C = chunk or self.chunk or self.auto_chunk(len(ids))
-        T = len(ids)
-        n_chunks = -(-T // C)
-        Tp = n_chunks * C
-        cache = next((b for b in self.cache_buckets if b >= Tp), -(-Tp // 2048) * 2048)
-        state = M.init_state(self.cfg, cache)
-        ids_p = np.zeros(Tp, np.int64)
-        ids_p[:T] = ids
-        ids_dev = jnp.asarray(ids_p, jnp.int32)
+    def _segment(self, state, ids_dev, start, end, C):
+        """Prefills positions start..end (end exclusive) in chunks of C from
+        `state`; returns (state, rows [ceil((end-start)/C)*C, d])."""
         rows = []
-        for c in range(n_chunks):
-            x = _gather(self.embed_dev, jax.lax.dynamic_slice_in_dim(ids_dev, c * C, C))
-            state, h = M.prefill_chunk(self.cfg, self.params, state, x, jnp.int32(c * C), jnp.int32(T),
+        for c0 in range(start, end, C):
+            x = _gather(self.embed_dev, jax.lax.dynamic_slice_in_dim(ids_dev, c0, C))
+            state, h = M.prefill_chunk(self.cfg, self.params, state, x, jnp.int32(c0), jnp.int32(end),
                                        precision=self.precision, scan=self.scan)
             rows.append(h)
-        return jnp.concatenate(rows, 0) if len(rows) > 1 else rows[0]
+        return state, (jnp.concatenate(rows, 0) if len(rows) > 1 else rows[0])
+
+    def hidden_rows(self, ids, chunk=None, prefix_tokens=0):
+        """Final-normed backbone rows [T_pad, d] (device); rows past len(ids)
+        are padding. With `prefix_tokens` P (the door's exact prompt prefix:
+        system text and state), the backbone state and rows at P are kept
+        (LRU, `prefix_budget` bytes) and a later prompt with the same first
+        P tokens restarts from them. Returns (rows, restored tokens)."""
+        T = len(ids)
+        C = chunk or self.chunk or self.auto_chunk(T)
+        P = prefix_tokens if self.prefix_budget and 512 <= prefix_tokens < T else 0
+        n_rest = -(-(T - P) // C)
+        Tp = P + n_rest * C
+        need = max(Tp, -(-P // C) * C)
+        cache = next((b for b in self.cache_buckets if b >= need), -(-need // 2048) * 2048)
+        ids_p = np.zeros(need + C, np.int64)
+        ids_p[:T] = ids
+        ids_dev = jnp.asarray(ids_p, jnp.int32)
+        if not P:
+            _, rows = self._segment(M.init_state(self.cfg, cache), ids_dev, 0, T, C)
+            return rows, 0
+        key = (hashlib.sha256(np.asarray(ids[:P], np.int64).tobytes()).digest(), C, self.precision)
+        hit = self._prefixes.get(key)
+        if hit is not None:
+            self._prefixes.move_to_end(key)
+            snap, prefix_rows = hit
+            state = []
+            for s0, st in zip(snap, M.init_state(self.cfg, cache)):
+                if "k" in st:
+                    st = {n: jax.lax.dynamic_update_slice(st[n], s0[n], (0, 0, 0)) for n in ("k", "v")}
+                else:
+                    # copies: prefill donates its state buffers
+                    st = {n: jnp.array(v, copy=True) for n, v in s0.items()}
+                state.append(st)
+            restored = P
+        else:
+            state, rows = self._segment(M.init_state(self.cfg, cache), ids_dev, 0, P, C)
+            prefix_rows = rows[:P]
+            snap = [{n: (v[:P] if "k" in st else jnp.array(v, copy=True)) for n, v in st.items()} for st in state]
+            size = sum(int(np.prod(v.shape)) * v.dtype.itemsize for st in snap for v in st.values())
+            size += int(np.prod(prefix_rows.shape)) * 4
+            self._prefixes[key] = (snap, prefix_rows)
+            self._prefix_bytes[key] = size
+            while sum(self._prefix_bytes.values()) > self.prefix_budget and len(self._prefixes) > 1:
+                old, _ = self._prefixes.popitem(last=False)
+                self._prefix_bytes.pop(old, None)
+            restored = 0
+        _, rest = self._segment(state, ids_dev, P, T, C)
+        return jnp.concatenate([prefix_rows, rest], 0), restored
 
     HEAD_SHAPES = ((8, 32), (8, 64), (16, 64), (16, 128), (32, 128), (32, 256), (64, 256), (64, 512))
 
@@ -106,10 +152,10 @@ class Runner:
                 jax.block_until_ready(out)
             Tb *= 2
 
-    def logits(self, ids, questions, chunk=None):
+    def logits(self, ids, questions, chunk=None, prefix_tokens=0):
         """questions: [{"type": int, "question_span": [a,b], "option_spans": [[a,b],...]}]."""
         T = len(ids)
-        H = self.hidden_rows(ids, chunk)
+        H, self.last_restored = self.hidden_rows(ids, chunk, prefix_tokens)
         Tp = H.shape[0]
         Tb = _bucket(Tp, 512)
         if Tb != Tp:

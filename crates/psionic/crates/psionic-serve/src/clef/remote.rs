@@ -45,12 +45,13 @@ impl RemoteTrunk {
     }
 
     /// Per-question logits in prompt option order, with the worker's
-    /// prefill and head seconds. `chunk` 0 takes the worker's default.
+    /// prefill and head seconds and the prompt tokens it restored from a
+    /// prefix snapshot. `chunk` 0 takes the worker's default.
     pub fn logits(
         &self,
         record: &EncodedRecord,
         chunk: usize,
-    ) -> Result<(Vec<Vec<f32>>, f64, f64), String> {
+    ) -> Result<(Vec<Vec<f32>>, f64, f64, usize), String> {
         let questions: Vec<Value> = record
             .questions
             .iter()
@@ -62,7 +63,10 @@ impl RemoteTrunk {
                 })
             })
             .collect();
-        let body = json!({"input_ids": record.input_ids, "questions": questions, "chunk": chunk});
+        // the exact prompt prefix (system text and state): the worker keeps
+        // its backbone state there and restarts from it on a repeat
+        let body = json!({"input_ids": record.input_ids, "questions": questions, "chunk": chunk,
+                          "prefix_tokens": if record.media.is_none() { record.prefix_tokens } else { 0 }});
         let reply: Value = self
             .client
             .post(format!("{}/v1/logits", self.url))
@@ -73,7 +77,13 @@ impl RemoteTrunk {
             .map_err(|error| format!("decision worker: {error}"))?;
         let logits = parse_logits(&reply, record)?;
         let seconds = |key: &str| reply[key].as_f64().unwrap_or(0.0);
-        Ok((logits, seconds("prefill_seconds"), seconds("head_seconds")))
+        let restored = reply["cached_tokens"].as_u64().unwrap_or(0) as usize;
+        Ok((
+            logits,
+            seconds("prefill_seconds"),
+            seconds("head_seconds"),
+            restored,
+        ))
     }
 }
 

@@ -33,7 +33,7 @@ def main():
         ts, tp = [], []
         for _ in range(a.reps):
             t = time.perf_counter()
-            H = r.hidden_rows(ids)
+            H, _ = r.hidden_rows(ids)
             jax.block_until_ready(H)
             tp.append(time.perf_counter() - t)
             t = time.perf_counter()

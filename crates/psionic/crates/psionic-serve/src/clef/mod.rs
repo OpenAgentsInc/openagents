@@ -1000,7 +1000,7 @@ impl ClefDecisionLane {
                     "image inputs are not supported on this decision worker",
                 ));
             }
-            let (logits, prefill_seconds, head_seconds) = remote
+            let (logits, prefill_seconds, head_seconds, restored) = remote
                 .logits(
                     record,
                     if chunk == self.prefill_chunk() {
@@ -1012,7 +1012,7 @@ impl ClefDecisionLane {
                 .map_err(ClefRefusal::internal)?;
             return Ok(LogitResult {
                 logits,
-                cached_input_tokens: 0,
+                cached_input_tokens: restored,
                 prefill_seconds,
                 head_seconds,
             });

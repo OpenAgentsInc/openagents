@@ -63,7 +63,28 @@ def ns_inverse(A, C):
     return S
 
 
-SOLVE = "ns"
+# how (I + L) X = R is solved: "block" (Newton-Schulz inverses of BLOCK-wide
+# diagonal blocks, then block forward substitution: stable and matmul-only),
+# "tri" (XLA's triangular solve: stable, slower), or "ns" (the whole inverse by
+# Newton-Schulz: fastest, but on near-parallel keys the 64-wide inverse has
+# entries near 2^62 and the delta state diverges over a long prompt)
+SOLVE = os.environ.get("CLEF_TPU_SOLVE", "block")
+BLOCK = int(os.environ.get("CLEF_TPU_SOLVE_BLOCK", "16"))
+
+
+def block_solve(A, R, C, b):
+    """(I + L) X = R for unit lower-triangular A = I + L, without forming
+    the full inverse: invert each b-wide diagonal block, then substitute
+    block by block (C/b sequential matmul steps)."""
+    n = C // b
+    X = []
+    for i in range(n):
+        Ri = R[..., i * b:(i + 1) * b, :]
+        for j in range(i):
+            Ri = Ri - jnp.matmul(A[..., i * b:(i + 1) * b, j * b:(j + 1) * b], X[j], precision=_HP)
+        Tii = ns_inverse(A[..., i * b:(i + 1) * b, i * b:(i + 1) * b], b)
+        X.append(jnp.matmul(Tii, Ri, precision=_HP))
+    return jnp.concatenate(X, -2)
 # the delta rule's own chunk inside a prefill chunk (CLEF_TPU_SUBCHUNK). 128 overflows on
 # real decays (NaN answers); 64 is the reference chunk.
 SUBCHUNK = int(os.environ.get("CLEF_TPU_SUBCHUNK", "64"))
@@ -93,7 +114,9 @@ def prep(q, k, v, g, beta, C):
     # precision (and overflow) on real keys with decays near 1.
     rhs = jnp.concatenate([vb, kb * jnp.exp(gc)[..., None]], -1)
     A_ut = Lm + jnp.eye(C, dtype=Lm.dtype)
-    if SOLVE == "ns":
+    if SOLVE == "block":
+        sol = block_solve(A_ut, rhs, C, min(BLOCK, C))
+    elif SOLVE == "ns":
         sol = jnp.matmul(ns_inverse(A_ut, C), rhs, precision=PREP)
     else:
         sol = jax.lax.linalg.triangular_solve(A_ut, rhs, left_side=True, lower=True, unit_diagonal=True)

@@ -29,41 +29,87 @@ bf16 by up to 0.053 (one near-tie flip), against a target of 1e-3. A
 server runs one fixed chunk (2048) and repeats are deterministic, so
 answers are unaffected; prefix reuse (P3) needs the gate closed first.
 
-**P2 passed: about 20.5k tokens/s per v6e chip.** Batch 1, fresh prompts,
-median of 5 runs; request time includes the head:
+**P2: about 20k tokens/s per v6e chip.** Batch 1, fresh prompts, median
+of 5 runs, with the stable solver described below. Request time includes
+the head:
 
 | Prompt tokens | Prefill chunk | Prefill tok/s | Request tok/s | Request |
 | ---: | ---: | ---: | ---: | ---: |
-| 1,000 | 512 | 18,393 | 18,112 | 55 ms |
-| 1,536 | 768 | 20,943 | 20,624 | 74 ms |
-| 4,096 | 512 | 21,114 | 20,859 | 196 ms |
-| 8,192 | 512 | 21,129 | 20,919 | 392 ms |
-| 16,384 | 512 | 20,543 | 20,368 | 804 ms |
+| 1,536 | 768 | 20,134 | 19,789 | 78 ms |
+| 4,096 | 512 | 20,757 | 20,517 | 200 ms |
+| 16,384 | 512 | 20,185 | 20,016 | 819 ms |
 
-At 20.4k tok/s a v6e serves Clef-Flash for $0.0079 per million tokens on
-spot ($0.016 at 50 % use) and $0.037 on-demand, against measured spot
-costs of $0.11 on our H100 and $0.072 on our A100, and Jev's $0.042.
-Correctness after the speed work is still 104/104 (median |Δp| 0.0004).
+At 20k tok/s a v6e serves Clef-Flash for $0.0081 per million tokens on
+spot ($0.016 at 50 % use) and $0.0375 on-demand. Measured spot costs on our
+GPUs are $0.11 (H100) and $0.072 (A100); Jev sells at $0.042. Against the
+HF f32 reference the e2e set gives 103/104 top answers (one near tie),
+median |Δp| 0.0005.
 
-How P2 got from 10.7k to 20.5k tok/s:
+How P2 got from 10.7k to 20k tok/s:
 
-- A Newton-Schulz inverse for the UT transform, as in tpu-inference's GDN
-  solver: every step at HIGHEST precision, which is required (lower
-  precision or one step fewer gives NaN answers).
+- A matmul-only solve for the UT transform.
 - Block-causal online-softmax attention.
 - A prefill chunk of 512, or 768 when that pads less.
 - The embedding table on the device.
 - The cumulative decay computed as a matmul.
+- No `split` copies.
+
+The UT solve must stay stable. Inverting the whole 64-wide matrix by
+Newton-Schulz (as in tpu-inference's GDN solver) is 2.6× faster than
+XLA's triangular solve. On near-parallel keys, though, that inverse has
+entries near 2^62, and the delta state diverged to NaN on random prompts
+longer than about 1.5k tokens. The e2e set (all prompts ≤ 1,100 tokens)
+missed this. The worker now inverts 16-wide diagonal blocks by
+Newton-Schulz and substitutes block by block (`CLEF_TPU_SOLVE=block`). On
+adversarial keys that is as accurate as the triangular solve, at under
+half its cost.
 
 What did not help:
 
-- Cross-request batching: prefill is already compute-bound.
+- Cross-request batching (vmap over 2 to 8 requests): prefill is already
+  compute-bound.
 - A Pallas scan: no faster than `lax.scan`.
 - Delta sub-chunks other than 64.
+- Any matmul inside the inverse below HIGHEST precision.
 
-The door's latency on the e2e set is 44 ms median and 78 ms p90.
-Compiled programs persist in `~/.cache/clef-tpu-jax`, so a warm restart
-is up in 50 s.
+**P3 (not passed).** Its gate is ≥ 1.6× P2 with the e2e gates still
+holding.
+
+- *int8 (w8a8):* per-channel int8 weights and per-row dynamic int8
+  activations, int8 × int8 on the MXU. Measured on the e2e set against
+  the reference:
+
+  | int8 projections | Top answer | median \|Δp\| | 1.5k / 16k tok/s |
+  | --- | ---: | ---: | ---: |
+  | all | 84.6 % | 0.021 | — |
+  | gate_up, in_qkv, in_z, qkv | 88.5 % | 0.017 | 23.1k / 24.8k |
+  | gate_up, down | 94.2 % | 0.013 | 21.0k / 23.4k |
+  | gate_up | 95.2 % | 0.010 | 20.6k / 22.3k |
+
+  None meets the ≥ 97 % accuracy gate, and the fastest is 1.2×, not
+  1.6×. Naive per-row activation quantization loses too much on this
+  model. The next step is calibrated activation scales (SmoothQuant-style
+  migration) or per-group int8, judged by the same gate.
+- *Cross-request batching:* no throughput gain (above).
+- *Prefix reuse:* works and is exact. The worker snapshots the backbone
+  state, K/V and final rows at the door's prefix boundary (system text
+  plus state) and restarts from them. A restored run is bitwise identical
+  to the run that took the snapshot, and within 0.001–0.003 in logits of
+  an unsplit run (chunk-boundary numerics). On a repeated state:
+
+  | Prompt / repeated prefix | Fresh | Restored | Speedup |
+  | --- | ---: | ---: | ---: |
+  | 1,800 / 1,200 | 103 ms | 64 ms | 1.6× |
+  | 4,096 / 3,500 | 200 ms | 69 ms | 2.9× |
+  | 8,192 / 7,600 | 401 ms | 77 ms | 5.2× |
+  | 16,000 / 15,000 | 818 ms | 76 ms | 10.7× |
+
+  The door forwards `prefix_tokens` and reports the restored tokens as
+  `usage.cached_input_tokens`. The worker keeps up to 4 GB of snapshots
+  on the device, least recently used first out (`--prefix-budget`).
+
+Chunk invariance (gate 5) is still above 1e-3: up to 0.036 in logits
+across chunks 2048, 512 and 64, with no argmax flips.
 
 | Measured on the v6e-1, earlier P1 code (plain JAX, batch 1) | Value |
 | --- | --- |
@@ -76,11 +122,11 @@ is up in 50 s.
 - `clef_tpu/model.py`: the Qwen3.5 backbone with chunked prefill, carrying
   the DeltaNet state, conv tail and K/V cache, plus the joint head on padded
   buckets.
-- `clef_tpu/delta.py`: the chunked gated delta rule, its UT transform done
-  as a triangular solve, with a JAX or Pallas scan.
+- `clef_tpu/delta.py`: the chunked gated delta rule, with a blocked
+  Newton-Schulz UT solve and a JAX or Pallas scan.
 - `clef_tpu/server.py`: the localhost worker.
 - `bench/`: the P0 bench, the e2e harness, `p2.py` (tokens/s by prompt
-  length), `p2_batch.py` and `layer_profile.py`.
+  length), `p2_batch.py`, `layer_profile.py` and `prefix_check.py`.
 - `scripts/vm.sh`: create and drive TPU VMs.
 - `scripts/install-units.sh`: installs the systemd units `clef-tpu-worker`
   and `clef-tpu-door`.
@@ -90,11 +136,20 @@ http://127.0.0.1:8091` (`clef/remote.rs`). It parses, encodes, admits and
 answers, and puts the worker's identity in `psionic.worker` (`backend: "tpu"`,
 `artifact_family: "bf16-safetensors"`, artifact and head digests).
 
+**Live check through the door (2026-10-13 05:10 UTC).** The 40 e2e
+requests give 103/104 top answers, 46 ms median latency and 84 ms p90. A
+repeated 8.4k-token state answered a second question with 8,369 tokens
+restored from the prefix snapshot, in 0.19 s against 1.23 s fresh.
+
 **Gateway.** `X-Decision-Order: tpu` asks only the pool
 `clef_models["clef-flash-tpu"]`. The launcher's default for that pool is
 `tpu=http://10.146.0.2:18096`, and the firewall rule `clef-tpu-from-gateway`
 plus the network tag `clef-tpu` let the gateway subnets and IAP reach it.
 The TPU pool is never part of the default order until P5's shadow passes.
+The code is on `main` (f979439d20) and takes effect with the next
+openagents-stack (gateway sidecar) deploy (`scripts/deploy/web.sh stage`,
+then `promote --stack`, then `shift`). Until that deploy, the live gateway
+ignores the `tpu` value and answers in its default order.
 
 ### TPU machines we hold
 
@@ -103,12 +158,42 @@ every machine here so none is orphaned.
 
 | Name | Zone | Type | $/h | Purpose |
 | --- | --- | --- | ---: | --- |
-| `p6-asia-northeast1-b` | asia-northeast1-b | v6e-1, on-demand | 2.70 | Clef-Flash BF16 lane: `clef-tpu-worker` + `clef-tpu-door` on :18096 (internal 10.146.0.2); P1 → P2 benchmarks |
+| `p6-asia-northeast1-b` | asia-northeast1-b | v6e-1, on-demand | 2.70 | Clef-Flash BF16 lane: `clef-tpu-worker` + `clef-tpu-door` on :18096 (internal 10.146.0.2, tag `clef-tpu`); permanent |
+
+Not held: a queued on-demand v6e-4 request (`clef-qr-v6e4`, for 27B in
+BF16) was withdrawn when this work stopped. The data agent's
+`cd-v6e1-ane1b-d` is recorded in its own brief.
 
 Capacity on 2026-10-12: no v6e anywhere in the US, spot or on-demand. The
 one spot v6e-1 we got (us-east1-d) was preempted within 5 minutes. The
 automation account creates TPU VMs only with
 `--service-account oa-mvp-automation@…`, and us-east4-a has a v6e quota of 0.
+
+### Remaining work (not started)
+
+- **P3 int8.** Calibrated activation scales (SmoothQuant-style migration
+  of activation outliers into the weights) or per-group int8, judged by
+  the e2e gate (≥ 97 % top answer). Naive w8a8 reached at most 95 % at
+  1.2×.
+- **Chunk invariance (gate 5).** Find where 0.02–0.04 in logits enters
+  across prefill chunk sizes (bf16 rounding of activations at different
+  tilings, or K/V stored in bf16) and close it to 1e-3.
+- **P4 Clef 27B.** Needs a v6e-4 (BF16, tensor parallel over 4 chips; none
+  was available in any zone on 2026-10-12/13) or a working int8 (above)
+  to fit a v6e-1.
+- **P5 production pool member.** Deploy the gateway with the `tpu` order.
+  Run a 24 h shadow beside the H100 and A100 with ≥ 99 % top-answer
+  agreement on live traffic. Add a spot restarter. Then decide whether
+  the TPU joins the default `clef-flash` pool.
+- **Run time in Rust (path D).** Export the JAX graph to StableHLO and run
+  it from the Rust door through PJRT, retiring the Python sidecar.
+- **Speed.**
+  - A Pallas kernel fusing the delta rule's prep and scan; the delta rule
+    is about 15 % of prefill.
+  - The head in one dispatch with the last chunk.
+  - Fewer head compile buckets: the first cold start warms 48 head shapes
+    in 19 minutes; afterwards the persistent cache brings a restart up in
+    under 4 minutes.
 
 ## Why look at TPUs
 

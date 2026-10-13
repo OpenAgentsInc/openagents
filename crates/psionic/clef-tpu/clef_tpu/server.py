@@ -37,13 +37,16 @@ def main():
     ap.add_argument("--chunk", type=int, default=0, help="prefill chunk; 0 picks 512 or 768 per prompt")
     ap.add_argument("--precision", default="bf16")
     ap.add_argument("--scan", default="jax")
+    ap.add_argument("--prefix-budget", type=float, default=4.0,
+                    help="GB of device memory for prefix snapshots (0 turns prefix reuse off)")
     ap.add_argument("--warm", default="500,1500,2300,3500,6000,7500,15000", help="prompt lengths to compile before serving")
     a = ap.parse_args()
     # compiled programs persist across restarts (each new shape compiles once, 10-40 s)
     import jax
     jax.config.update("jax_compilation_cache_dir", str(Path.home() / ".cache" / "clef-tpu-jax"))
     jax.config.update("jax_persistent_cache_min_compile_time_secs", 1.0)
-    runner = Runner(a.model, chunk=a.chunk, precision=a.precision, scan=a.scan)
+    runner = Runner(a.model, chunk=a.chunk, precision=a.precision, scan=a.scan,
+                    prefix_budget=int(a.prefix_budget * 2**30))
     identity = dict(runner.identity(), artifact_digest=artifact_digest(Path(a.model)),
                     artifact_family="bf16-safetensors", model=Path(a.model).name)
     t = time.time()
@@ -78,9 +81,11 @@ def main():
                 chunk = req.get("chunk") or a.chunk
                 with lock:
                     t = time.time()
-                    logits = runner.logits(ids, qs, chunk=chunk)
+                    logits = runner.logits(ids, qs, chunk=chunk, prefix_tokens=int(req.get("prefix_tokens") or 0))
                     dt = time.time() - t
-                self._send(200, {"logits": logits, "prefill_seconds": dt, "head_seconds": 0.0})
+                    restored = runner.last_restored
+                self._send(200, {"logits": logits, "prefill_seconds": dt, "head_seconds": 0.0,
+                                 "cached_tokens": restored})
             except Exception as e:  # the door maps this to an internal error
                 self._send(500, {"error": f"{type(e).__name__}: {e}"})
 

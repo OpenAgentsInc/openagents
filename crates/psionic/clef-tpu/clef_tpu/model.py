@@ -14,6 +14,7 @@ norms, the delta rule and the head stay in f32.
 from __future__ import annotations
 
 import functools
+import os
 import json
 import math
 from dataclasses import dataclass
@@ -83,8 +84,18 @@ def _open_all(path: Path):
                 yield name, h
 
 
-def load_backbone(path: Path, cfg: Config):
-    """Returns (device params, host embed table, host lm_head table)."""
+def quantize_int8(w):
+    """Per-output-channel symmetric int8 of a [in, out] weight: (q int8, scale f32 [out])."""
+    w = np.asarray(w, np.float32)
+    scale = np.maximum(np.abs(w).max(0), 1e-12) / 127.0
+    q = np.clip(np.rint(w / scale), -127, 127).astype(np.int8)
+    return {"q": jnp.asarray(q), "s": jnp.asarray(scale, jnp.float32)}
+
+
+def load_backbone(path: Path, cfg: Config, quant: str | None = None):
+    """Returns (device params, host embed table, host lm_head table).
+    `quant="int8"` stores the layer projections as per-channel int8 (our own
+    int8 artifact, built from the BF16 release at load)."""
     import ml_dtypes  # noqa: F401  (bf16 numpy dtype for safetensors)
     from safetensors import safe_open
 
@@ -100,7 +111,14 @@ def load_backbone(path: Path, cfg: Config):
         with safe_open(str(path / f), framework="numpy") as h:
             return h.get_tensor(name)
 
-    dev = lambda a: jnp.asarray(a, jnp.bfloat16)
+    bf = lambda a: jnp.asarray(a, jnp.bfloat16)
+    # which projections go int8 (CLEF_TPU_INT8: comma-separated names; the
+    # ones fed by a normed hidden row have the fewest activation outliers)
+    int8_names = set(os.environ.get("CLEF_TPU_INT8", "gate_up,in_qkv,in_z,qkv").split(","))
+    def dev(a, name=None):
+        if quant == "int8" and name in int8_names:
+            return quantize_int8(a)
+        return bf(a)
     devf = lambda a: jnp.asarray(np.asarray(a, np.float32))
     layers = []
     for i in range(cfg.layers):
@@ -109,29 +127,29 @@ def load_backbone(path: Path, cfg: Config):
             "in_norm": devf(get(p + "input_layernorm.weight")),
             "post_norm": devf(get(p + "post_attention_layernorm.weight")),
             # gate|up fused [d, 2F] (one wide matmul runs faster than two), down [F, d]
-            "gate_up": dev(np.concatenate([get(p + "mlp.gate_proj.weight"), get(p + "mlp.up_proj.weight")], 0).T),
-            "down": dev(get(p + "mlp.down_proj.weight").T),
+            "gate_up": dev(np.concatenate([get(p + "mlp.gate_proj.weight"), get(p + "mlp.up_proj.weight")], 0).T, "gate_up"),
+            "down": dev(get(p + "mlp.down_proj.weight").T, "down"),
         }
         if cfg.layer_types[i] == "linear_attention":
             a = p + "linear_attn."
             L.update({
-                "in_qkv": dev(get(a + "in_proj_qkv.weight").T),
-                "in_z": dev(get(a + "in_proj_z.weight").T),
-                "in_ba": dev(np.concatenate([get(a + "in_proj_b.weight"), get(a + "in_proj_a.weight")], 0).T),
+                "in_qkv": dev(get(a + "in_proj_qkv.weight").T, "in_qkv"),
+                "in_z": dev(get(a + "in_proj_z.weight").T, "in_z"),
+                "in_ba": dev(np.concatenate([get(a + "in_proj_b.weight"), get(a + "in_proj_a.weight")], 0).T, "in_ba"),
                 "conv": devf(get(a + "conv1d.weight")[:, 0, :]),      # [conv_dim, K]
                 "dt_bias": devf(get(a + "dt_bias")),
                 "A_log": devf(get(a + "A_log")),
                 "gnorm": devf(get(a + "norm.weight")),
-                "out": dev(get(a + "out_proj.weight").T),
+                "out": dev(get(a + "out_proj.weight").T, "out"),
             })
         else:
             a = p + "self_attn."
             L.update({
                 "qkv": dev(np.concatenate([get(a + "q_proj.weight"), get(a + "k_proj.weight"),
-                                           get(a + "v_proj.weight")], 0).T),
+                                           get(a + "v_proj.weight")], 0).T, "qkv"),
                 "q_norm": devf(get(a + "q_norm.weight")),
                 "k_norm": devf(get(a + "k_norm.weight")),
-                "o": dev(get(a + "o_proj.weight").T),
+                "o": dev(get(a + "o_proj.weight").T, "o"),
             })
         layers.append(L)
     params = {"layers": layers, "norm": devf(get(prefix + "norm.weight"))}
@@ -148,6 +166,12 @@ def rms(x, w, eps):
 
 
 def mm(x, w, precision):
+    if isinstance(w, dict):
+        # w8a8: activations quantized per row on the fly, int8 x int8 -> int32 on the MXU
+        ax = jnp.maximum(jnp.max(jnp.abs(x), -1, keepdims=True), 1e-12) / 127.0
+        xq = jnp.clip(jnp.round(x / ax), -127, 127).astype(jnp.int8)
+        y = jnp.dot(xq, w["q"], preferred_element_type=jnp.int32)
+        return y.astype(jnp.float32) * ax * w["s"][None, :]
     if precision == "f32":
         return jnp.dot(x, w.astype(jnp.float32), precision=jax.lax.Precision.HIGHEST)
     return jnp.dot(x.astype(jnp.bfloat16), w, preferred_element_type=jnp.float32)
@@ -185,7 +209,10 @@ def init_state(cfg: Config, cache_len: int, batch: int = 1):
     return st
 
 
-def deltanet(cfg, L, st, x, precision, scan):
+def deltanet(cfg, L, st, x, precision, scan, real=None):
+    """`real` [C, 1] marks the prompt's rows; pad rows leave the delta state
+    and the conv tail untouched, so a state snapshot at a prefix boundary is
+    the same as stopping there."""
     C = x.shape[0]
     Hk, Hv, dk, dv = cfg.lin_k_heads, cfg.lin_v_heads, cfg.lin_k_dim, cfg.lin_v_dim
     kd, vd = Hk * dk, Hv * dv
@@ -198,13 +225,20 @@ def deltanet(cfg, L, st, x, precision, scan):
     w = L["conv"]                                                   # [conv_dim, K]
     conv = sum(full[j: j + C] * w[:, j][None, :] for j in range(K))
     conv = jax.nn.silu(conv)
-    new_conv = full[C:]
+    if real is None:
+        new_conv = full[C:]
+    else:
+        n_real = jnp.sum(real.astype(jnp.int32))
+        new_conv = jax.lax.dynamic_slice_in_dim(full, n_real, K - 1, 0)
     q, k, v = jnp.split(conv, [kd, 2 * kd], -1)
     q = q.reshape(C, Hk, dk)
     k = k.reshape(C, Hk, dk)
     v = v.reshape(C, Hv, dv)
     beta = jax.nn.sigmoid(b)                                        # [C, Hv]
     g = -jnp.exp(L["A_log"]) * jax.nn.softplus(a + L["dt_bias"])   # [C, Hv]
+    if real is not None:
+        beta = jnp.where(real, beta, 0.0)
+        g = jnp.where(real, g, 0.0)
     rep = Hv // Hk
     q = jnp.repeat(q, rep, axis=1)
     k = jnp.repeat(k, rep, axis=1)
@@ -299,7 +333,7 @@ def prefill_chunk(cfg: Config, params, state, x, pos0, n_valid, *, precision="bf
     for i, L in enumerate(params["layers"]):
         h = rms(x, L["in_norm"], cfg.eps)
         if cfg.layer_types[i] == "linear_attention":
-            y, s = deltanet(cfg, L, state[i], h, precision, scan)
+            y, s = deltanet(cfg, L, state[i], h, precision, scan, real)
         else:
             y, s = attention(cfg, L, state[i], h, pos0, cos, sin, precision)
         new_state.append(s)
