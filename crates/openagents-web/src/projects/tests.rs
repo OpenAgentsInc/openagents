@@ -385,6 +385,7 @@ fn chat(id: &str, owner: &str, title: &str, project: Option<&str>) -> Conversati
         tasks: Vec::new(),
         opened_unix: None,
         branch: None,
+        filed: false,
     }
 }
 

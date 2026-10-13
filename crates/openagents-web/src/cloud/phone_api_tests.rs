@@ -64,6 +64,7 @@ fn web_chat(owner: &str, id: &str) -> Conversation {
         tasks: Vec::new(),
         opened_unix: None,
         branch: None,
+        filed: false,
     }
 }
 

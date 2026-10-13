@@ -97,6 +97,7 @@ impl Fixture {
                 tasks: Vec::new(),
                 opened_unix: None,
                 branch: None,
+                filed: false,
             })
             .await
             .unwrap()
@@ -513,6 +514,7 @@ fn sidebar_rows_show_the_repository_and_a_plain_status() {
         tasks: Vec::new(),
         opened_unix: None,
         branch: None,
+        filed: false,
     };
     assert_eq!(line_two(&chat, true), None);
     assert_eq!(row_status(&chat), None);
@@ -733,6 +735,7 @@ fn pinned_chats_keep_pin_order_and_archived_chats_leave_the_list() {
         tasks: Vec::new(),
         opened_unix: None,
         branch: None,
+        filed: false,
     };
     let mut first = chat(CHAT, "First pinned");
     first.pinned_unix = Some(5);
@@ -1169,6 +1172,7 @@ async fn a_coder_chat_opens_read_only_with_its_computer() {
         tasks: Vec::new(),
         opened_unix: None,
         branch: None,
+        filed: false,
     };
     assert_eq!(line_two(&chat, true).as_deref(), Some("Terminal · Studio"));
     assert_eq!(row_status(&chat), None);
@@ -1245,6 +1249,7 @@ async fn a_coder_chat_takes_a_reply_while_its_computer_is_online() {
             role: "user".into(),
             text: "Fix the build".into(),
         }],
+        repository: None,
     };
     crate::coder_sync::save(&store, OWNER, "coder-new-1", &upload)
         .await
@@ -1406,6 +1411,7 @@ fn an_answered_reply_carries_its_served_tier_route_and_answer() {
         tasks: Vec::new(),
         opened_unix: None,
         branch: None,
+        filed: false,
     };
     let html = messages(&chat, None, false).into_string();
     assert!(html.contains(r#"data-oa-reply="1""#), "{html}");
@@ -1477,6 +1483,7 @@ fn a_reply_another_provider_answered_says_so() {
         tasks: Vec::new(),
         opened_unix: None,
         branch: None,
+        filed: false,
     };
     let html = messages(&chat, None, false).into_string();
     let line = "OpenRouter turned the request down, so z-ai/glm-5.3-flash answered instead.";
@@ -1542,6 +1549,7 @@ fn a_streaming_reply_never_shows_half_written_markdown() {
         tasks: Vec::new(),
         opened_unix: None,
         branch: None,
+        filed: false,
     };
     for (cut, hidden) in [
         ("## Steps\n\n1. Run **cargo bu", "**"),
@@ -1781,6 +1789,7 @@ async fn a_second_new_chat_send_waits_for_the_first_to_save_it() {
                 tasks: Vec::new(),
                 opened_unix: None,
                 branch: None,
+                filed: false,
             })
             .await
             .unwrap();
@@ -2013,6 +2022,7 @@ async fn work_in_a_chat_goes_to_coder_on_an_online_computer() {
         tasks: Vec::new(),
         opened_unix: None,
         branch: None,
+        filed: false,
     };
 
     // No computer online: the answer stays, as for a visitor.
@@ -2113,6 +2123,7 @@ fn the_newest_answer_has_the_run_in_coder_slot() {
         tasks: Vec::new(),
         opened_unix: None,
         branch: None,
+        filed: false,
     };
     let slot = format!("/chat/{CHAT}/to-coder");
     assert!(messages(&chat, None, false).into_string().contains(&slot));

@@ -102,6 +102,12 @@ pub struct Settings {
     /// Sessions never sent again: deleted on the website while open here.
     #[serde(default)]
     pub kept_here: BTreeSet<String>,
+    /// The Coder folder sync was turned on in (#11541). A `sync.json`
+    /// copied into another folder (a test's `--state`, a scratch HOME)
+    /// reads as off there, so only a folder that turned sync on itself
+    /// sends chats to the account.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
 }
 
 impl Settings {
@@ -123,8 +129,11 @@ impl Settings {
                 ));
             }
         };
-        match serde_json::from_str(&text) {
-            Ok(settings) => Ok(settings),
+        match serde_json::from_str::<Self>(&text) {
+            Ok(mut settings) => {
+                settings.owned_by(dir);
+                Ok(settings)
+            }
             Err(e) => {
                 let aside = move_aside(&file);
                 Err(format!(
@@ -144,9 +153,28 @@ impl Settings {
         Self::load_checked(dir).unwrap_or_default()
     }
 
+    /// Sync stays on only in the folder that turned it on (#11541): on with
+    /// another folder named, it reads as off here. A file from before the
+    /// folder was kept counts as this folder's only in the person's own
+    /// Coder folder (`$HOME/.openagents/coder`), which then keeps its name.
+    fn owned_by(&mut self, dir: &Path) {
+        let here = folder_name(dir);
+        match &self.folder {
+            Some(folder) if *folder == here => {}
+            Some(_) => self.on = false,
+            None if self.on && home_coder_dir(dir) => self.folder = Some(here),
+            None => self.on = false,
+        }
+    }
+
     /// Keep the settings in `dir/sync.json`, readable only by this user.
+    /// With sync on, the file names `dir` as the folder that turned it on.
     pub fn store(&self, dir: &Path) -> Result<(), String> {
-        let mut bytes = serde_json::to_vec_pretty(self).map_err(|e| e.to_string())?;
+        let mut kept = self.clone();
+        if kept.on {
+            kept.folder = Some(folder_name(dir));
+        }
+        let mut bytes = serde_json::to_vec_pretty(&kept).map_err(|e| e.to_string())?;
         bytes.push(b'\n');
         write_private(&dir.join(FILE), &bytes)
     }
@@ -202,6 +230,27 @@ impl Settings {
             && !self.kept_here.contains(session)
             && self.sent.get(session).is_none_or(|sent| sent != digest)
     }
+}
+
+/// `dir` as the settings name it: its full path, links resolved.
+fn folder_name(dir: &Path) -> String {
+    std::fs::canonicalize(dir)
+        .unwrap_or_else(|_| dir.to_path_buf())
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// Whether `dir` is the person's own Coder folder,
+/// `$HOME/.openagents/coder` (or its earlier name, `coder-new`).
+fn home_coder_dir(dir: &Path) -> bool {
+    let Some(home) = std::env::var_os("HOME").filter(|home| !home.is_empty()) else {
+        return false;
+    };
+    let root = Path::new(&home).join(".openagents");
+    let here = folder_name(dir);
+    ["coder", "coder-new"]
+        .iter()
+        .any(|name| folder_name(&root.join(name)) == here)
 }
 
 /// Move a corrupt settings file aside so the next save starts clean and the
@@ -263,6 +312,20 @@ pub struct Upload {
     pub digest: String,
     /// How many messages were left out by the secret screen.
     pub left_out: usize,
+}
+
+impl Upload {
+    /// The chat's GitHub repository (`owner/name`, from the git remote of
+    /// the folder it ran in), so the website files it under the person's
+    /// project for that repository (#11541). Not part of [`Self::digest`]:
+    /// naming the repository alone doesn't send a chat again.
+    #[must_use]
+    pub fn in_repository(mut self, repository: Option<&str>) -> Self {
+        if let (Some(repository), Some(body)) = (repository, self.body.as_object_mut()) {
+            body.insert("repository".into(), json!(line(repository, 200)));
+        }
+        self
+    }
 }
 
 /// The upload for a saved Coder chat (its ATIF document).
@@ -541,14 +604,38 @@ fn session_path(session: &str) -> Option<String> {
     .then(|| format!("{SYNCED}/{session}"))
 }
 
-/// Send one chat.
+/// The website refused an upload naming its repository (one from before
+/// #11541 takes only `{computer, title, messages}`): later uploads in
+/// this process leave it out.
+static NO_REPOSITORY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Send one chat. A website that doesn't take the chat's repository yet
+/// gets the chat without it.
 pub async fn put(http: &reqwest::Client, saved: &Saved, session: &str, upload: &Upload) -> Answer {
+    use std::sync::atomic::Ordering;
     let Some(path) = session_path(session) else {
         return Answer::Refused("That isn't a Coder session id.".into());
     };
-    call_v1(http, saved, reqwest::Method::PUT, &path, Some(&upload.body))
-        .await
-        .0
+    let named = upload.body.get("repository").is_some();
+    let mut body = upload.body.clone();
+    if named && NO_REPOSITORY.load(Ordering::Relaxed) {
+        body.as_object_mut().map(|body| body.remove("repository"));
+    }
+    let (answer, answered) = call_v1(http, saved, reqwest::Method::PUT, &path, Some(&body)).await;
+    if body.get("repository").is_some()
+        && matches!(answer, Answer::Refused(_))
+        && answered["error"]["code"] == "invalid"
+        && answered["error"]["message"]
+            .as_str()
+            .is_some_and(|words| words.starts_with("Send {computer"))
+    {
+        NO_REPOSITORY.store(true, Ordering::Relaxed);
+        body.as_object_mut().map(|body| body.remove("repository"));
+        return call_v1(http, saved, reqwest::Method::PUT, &path, Some(&body))
+            .await
+            .0;
+    }
+    answer
 }
 
 /// Say whether Coder is replying in this chat.

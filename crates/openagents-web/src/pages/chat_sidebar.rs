@@ -775,10 +775,12 @@ async fn move_chat(
         }
     };
     let result = update(&app, &owner, &id, |chat| {
-        if chat.project == project {
+        if chat.project == project && chat.filed {
             return false;
         }
+        // The person's choice: sync no longer files it (#11541).
         chat.project.clone_from(&project);
+        chat.filed = true;
         true
     })
     .await;

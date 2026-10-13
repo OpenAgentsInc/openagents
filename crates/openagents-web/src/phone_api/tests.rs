@@ -251,6 +251,7 @@ async fn threads_list_web_terminal_and_phone_chats_with_their_lines() {
             role: "user".into(),
             text: "Hi".into(),
         }],
+        repository: None,
     };
     let Saved::Saved { .. } = save(&store, &owner(), "s1", &upload("Studio"))
         .await
@@ -352,6 +353,7 @@ async fn coder_chats_pass_the_former_two_hundred_cap_and_page_out() {
                 role: "user".into(),
                 text: "Hi".into(),
             }],
+            repository: None,
         };
         let saved = save(&store, &owner(), &format!("s{n:04}"), &upload)
             .await

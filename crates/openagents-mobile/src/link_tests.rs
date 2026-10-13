@@ -299,8 +299,11 @@ fn a_session_for_another_site_is_forgotten() {
     assert!(packet.forget);
 }
 
+/// #11541: the account's chats in one list, pinned first, then newest
+/// first, as the website lists them; each names its project and where it
+/// lives.
 #[test]
-fn chats_list_web_and_terminal_chats_by_computer() {
+fn chats_list_every_chat_newest_first_with_its_project() {
     let mut f = fixture();
     f.site.answer(
         "GET /v1/threads",
@@ -310,15 +313,29 @@ fn chats_list_web_and_terminal_chats_by_computer() {
                 {"id": "w1", "title": "Plan the launch", "surface": "web", "updated_unix": 10,
                  "can_reply": true},
                 {"id": "t1", "title": "Fix the build", "surface": "terminal", "computer": "Studio",
-                 "session": "s1", "updated_unix": 20, "online": true, "can_reply": true},
+                 "session": "s1", "updated_unix": 20, "online": true, "can_reply": true,
+                 "project": "prj_0123456789abcdef"},
+                {"id": "t2", "title": "Old notes", "surface": "terminal", "computer": "Laptop",
+                 "session": "s2", "updated_unix": 15},
                 {"id": "p1", "title": "Mine", "surface": "phone", "computer": "Pixel Test",
                  "updated_unix": 30},
+                {"id": "w2", "title": "Pinned plan", "surface": "web", "updated_unix": 5,
+                 "pinned": true},
             ],
-            "computers": [{"name": "Studio", "online": true, "sync": "all"}],
+            "computers": [
+                {"name": "Studio", "online": true, "sync": "all"},
+                {"name": "Laptop", "online": false, "sync": "all"},
+            ],
         }),
     );
+    f.site.answer(
+        "GET /v1/projects",
+        200,
+        json!({"data": [{"id": "prj_0123456789abcdef", "object": "project", "name": "openagents",
+                         "repository": "OpenAgentsInc/openagents"}], "next": null}),
+    );
     signed(&mut f);
-    until(|| f.link.lock().threads_read);
+    until(|| f.link.lock().threads_read && !f.link.lock().projects.is_empty());
     let packet = f.link.packet();
     let drawer: Vec<(String, String)> = packet
         .drawer
@@ -329,7 +346,12 @@ fn chats_list_web_and_terminal_chats_by_computer() {
     assert_eq!(
         drawer,
         vec![
-            ("Fix the build".into(), "Terminal · Studio".into()),
+            ("Pinned plan".into(), "openagents.com".into()),
+            (
+                "Fix the build".into(),
+                "openagents · Terminal · Studio".into()
+            ),
+            ("Old notes".into(), "Terminal · Laptop".into()),
             ("Plan the launch".into(), "openagents.com".into()),
         ]
     );
@@ -339,11 +361,18 @@ fn chats_list_web_and_terminal_chats_by_computer() {
     });
     let mut words = vec![];
     texts(f.link.packet().view.as_ref().unwrap(), &mut words);
-    assert!(
-        words.iter().any(|w| w == "Terminal · Studio · Online"),
+    let rows: Vec<&String> = words.iter().filter(|w| w.contains('\n')).collect();
+    assert_eq!(
+        rows,
+        [
+            "Pinned plan\nopenagents.com",
+            "Mine\nPhone · Pixel Test",
+            "Fix the build\nopenagents · Terminal · Studio",
+            "Old notes\nTerminal · Laptop · Offline",
+            "Plan the launch\nopenagents.com",
+        ],
         "{words:?}"
     );
-    assert!(words.iter().any(|w| w == "openagents.com"), "{words:?}");
 }
 
 #[test]
@@ -1503,7 +1532,9 @@ fn chats_list_pages_older_chats_in_on_request() {
     let mut words = vec![];
     texts(f.link.packet().view.as_ref().unwrap(), &mut words);
     // Every fetched chat shows, not only the newest 120, and older ones are offered.
-    assert!(words.iter().any(|w| w == "Chat 199"), "{words:?}");
+    let titled =
+        |words: &[String], title: &str| words.iter().any(|w| w.lines().next() == Some(title));
+    assert!(titled(&words, "Chat 199"), "{words:?}");
     assert!(words.iter().any(|w| w == "Show older chats"), "{words:?}");
 
     f.link.tap(Intent::MoreThreads);
@@ -1516,7 +1547,7 @@ fn chats_list_pages_older_chats_in_on_request() {
     );
     let mut words = vec![];
     texts(f.link.packet().view.as_ref().unwrap(), &mut words);
-    assert!(words.iter().any(|w| w == "Chat 249"), "{words:?}");
+    assert!(titled(&words, "Chat 249"), "{words:?}");
     assert!(!words.iter().any(|w| w == "Show older chats"), "{words:?}");
 }
 

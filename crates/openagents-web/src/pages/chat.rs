@@ -399,6 +399,7 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         tasks: Vec::new(),
         opened_unix: None,
         branch: picked.branch.clone(),
+        filed: false,
     };
     let loaded = match app.config.chat_store.create(&record).await {
         Ok(v) => v,
@@ -546,6 +547,7 @@ pub(crate) fn first_record(
         tasks: Vec::new(),
         opened_unix: None,
         branch: None,
+        filed: false,
     }
 }
 
@@ -696,6 +698,7 @@ async fn start_claude(
         tasks: Vec::new(),
         opened_unix: None,
         branch: picked.branch.clone(),
+        filed: false,
     };
     if let (Some(environment), Some(task)) = (environment, task.clone()) {
         work::record(&mut record, environment, task);

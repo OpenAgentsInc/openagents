@@ -53,6 +53,12 @@ pub(crate) struct Conversation {
     /// have none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
+    /// The chat's project was settled (#11541): sync filed the synced chat
+    /// under the project for its repository
+    /// (`crate::coder_sync::file_in_project`), or the person moved it.
+    /// From then on only the person moves it. Older records have none.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub filed: bool,
     /// A chat synced from Coder in a terminal (#11046): read-only on the
     /// web. Web chats have none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -197,6 +203,10 @@ pub(crate) const CAPTURE_MEDIA: [&str; 4] = [
     "text/plain; charset=utf-8",
     "application/octet-stream",
 ];
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
 
 fn is_zero(n: &usize) -> bool {
     *n == 0
@@ -2890,6 +2900,7 @@ mod tests {
             tasks: Vec::new(),
             opened_unix: None,
             branch: None,
+            filed: false,
         }
     }
 

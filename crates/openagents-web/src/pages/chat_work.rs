@@ -1089,6 +1089,7 @@ mod tests {
             tasks: Vec::new(),
             opened_unix: None,
             branch: None,
+            filed: false,
         }
     }
 

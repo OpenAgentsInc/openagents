@@ -44,6 +44,11 @@ pub(crate) const USAGE: &str = "usage: openagents projects COMMAND [--account-di
               keeps them for your account. only_me: each file is locked on
               your computer before it's sent, and only your devices can open
               it (set up once with openagents vault setup).
+  move CHAT PROJECT
+              Move a chat into a project. CHAT is its id, a unique id
+              prefix, or its title; PROJECT its name, repository, or id.
+  move CHAT --none
+              Take a chat out of its project.
   remove PROJECT [--detach-threads]
               Remove a project. With chats in it, --detach-threads keeps them,
               outside any project.
@@ -74,6 +79,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("read", Effect::ReadOnly),
     Declared::computer("add", Effect::Publishes),
     Declared::computer("edit", Effect::Publishes),
+    Declared::computer("move", Effect::Publishes),
     Declared::computer("remove", Effect::Publishes),
     Declared::computer("files list", Effect::ReadOnly),
     Declared::computer("files add", Effect::Publishes),
@@ -96,7 +102,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             0
         };
     }
-    let args = match Args::parse(words, &["detach-threads"]) {
+    let args = match Args::parse(words, &["detach-threads", "none"]) {
         Ok(args) => args,
         Err(message) => return output.usage("projects", &message, USAGE),
     };
@@ -128,6 +134,8 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "read" => (&["account-dir"], 1, 2),
         "add" => (&["account-dir", "protection"], 1, 1),
         "edit" => (&["account-dir", "protection"], 1, 1),
+        "move" if args.switch("none") => (&["account-dir", "none"], 1, 1),
+        "move" => (&["account-dir"], 2, 2),
         "remove" => (&["account-dir", "detach-threads"], 1, 1),
         "files list" => (&["account-dir"], 1, 1),
         "files add" => (&["account-dir", "protection"], 2, usize::MAX),
@@ -148,6 +156,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             (0, 0) => "no arguments".to_owned(),
             (1, 1) => "one argument".to_owned(),
             (1, 2) => "a project and at most one chat".to_owned(),
+            (2, 2) if command == "move" => "a chat and a project, or a chat and --none".to_owned(),
             (2, 2) => "a project and a file".to_owned(),
             _ => "a project and one or more files".to_owned(),
         };
@@ -217,6 +226,11 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                         format!("openagents.com keeps {name}'s new files for your account now.")
                     }
                 });
+            }),
+        "move" => projects
+            .move_chat(target, rest.get(1).map(String::as_str))
+            .map(|moved| {
+                output.emit(&moved, moved_text);
             }),
         "remove" => {
             projects
@@ -422,6 +436,31 @@ impl Projects<'_> {
                 .json(&json!({"repository": repository}))
                 .send(),
         )
+    }
+
+    /// Move the chat `chat` names into the project `target` names, or out
+    /// of any project (`None`), with `PATCH /v1/threads/{id}`.
+    fn move_chat(&self, chat: &str, target: Option<&str>) -> Result<Value, String> {
+        let project = target.map(|target| self.find(target)).transpose()?;
+        let thread = crate::account_threads::find(self.0, chat)?;
+        let thread_id = safe(thread["id"].as_str().unwrap_or_default())?.to_owned();
+        let site = self.0;
+        let moved = self
+            .send(
+                site.http
+                    .patch(site.url(&format!("/v1/threads/{thread_id}")))
+                    .json(&json!({"project": project.as_ref().map(id).transpose()?})),
+            )
+            .map_err(|message| {
+                // A website from before #11541 has no move yet.
+                if message.contains("answered 405") {
+                    "openagents.com can't move chats yet; it will once its next update is out."
+                        .to_owned()
+                } else {
+                    message
+                }
+            })?;
+        Ok(json!({"thread": moved, "project": project}))
     }
 
     fn remove(&self, target: &str, detach: bool) -> Result<(Value, Value), String> {
@@ -974,6 +1013,14 @@ fn list_text(listed: &Value) -> String {
 }
 
 /// `projects read`: each chat's title, then its messages.
+fn moved_text(moved: &Value) -> String {
+    let title = moved["thread"]["title"].as_str().unwrap_or("The chat");
+    match moved["project"]["name"].as_str() {
+        Some(name) => format!("Moved {title} to {name}."),
+        None => format!("Took {title} out of its project."),
+    }
+}
+
 fn read_text(read: &Value) -> String {
     let threads = read["threads"].as_array().cloned().unwrap_or_default();
     let mut out = format!(
@@ -1063,6 +1110,14 @@ mod tests {
                 .unwrap_err()
                 .contains("openagents projects list")
         );
+    }
+
+    #[test]
+    fn a_move_says_where_the_chat_went() {
+        let into = json!({"thread": {"title": "Taxes"}, "project": projects()[0]});
+        assert_eq!(moved_text(&into), "Moved Taxes to finances.");
+        let out = json!({"thread": {"title": "Taxes"}, "project": null});
+        assert_eq!(moved_text(&out), "Took Taxes out of its project.");
     }
 
     #[test]

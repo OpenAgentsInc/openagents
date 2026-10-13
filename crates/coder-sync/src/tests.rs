@@ -94,7 +94,15 @@ fn settings_are_off_by_default_private_and_remember_what_was_sent() {
     settings.kept_here.insert("s2".into());
     assert!(!settings.sends("s2", "d1"));
     settings.store(dir.path()).unwrap();
-    assert_eq!(Settings::load(dir.path()), settings);
+    let loaded = Settings::load(dir.path());
+    assert_eq!(loaded.folder, Some(folder_name(dir.path())));
+    assert_eq!(
+        loaded,
+        Settings {
+            folder: loaded.folder.clone(),
+            ..settings
+        }
+    );
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -595,4 +603,88 @@ fn a_stale_window_does_not_undo_another_windows_sync_off() {
     b.merge_choice(dir.path());
     b.store(dir.path()).unwrap();
     assert!(Settings::load(dir.path()).on);
+}
+
+/// #11541: a `sync.json` copied into another folder (a test's `--state`)
+/// never turns sync on there; only the folder that turned it on sends.
+#[test]
+fn sync_on_stays_with_the_folder_that_turned_it_on() {
+    let mine = tempfile::tempdir().unwrap();
+    let copy = tempfile::tempdir().unwrap();
+    let mut settings = Settings::default();
+    settings.store_choice(mine.path(), true).unwrap();
+    assert!(Settings::load(mine.path()).on);
+    std::fs::copy(mine.path().join(FILE), copy.path().join(FILE)).unwrap();
+    let copied = Settings::load(copy.path());
+    assert!(!copied.on && !copied.sends("s1", "d1"));
+    // The copy's folder may still turn sync on for itself.
+    let mut own = copied.clone();
+    own.store_choice(copy.path(), true).unwrap();
+    assert!(Settings::load(copy.path()).on);
+    // A file from before the folder was kept, outside the person's own
+    // Coder folder, is off too.
+    let legacy = tempfile::tempdir().unwrap();
+    std::fs::write(legacy.path().join(FILE), br#"{"on": true, "chosen": true}"#).unwrap();
+    assert!(!Settings::load(legacy.path()).on);
+    assert!(Settings::load(legacy.path()).chosen);
+}
+
+/// #11541: the chat's repository goes with the upload but doesn't change
+/// its digest, and a website that refuses it gets the chat without it.
+#[test]
+fn the_repository_goes_with_a_chat_and_an_older_site_gets_it_without() {
+    let doc = document(json!([{"step_id": 1, "source": "user", "message": "Hello"}]));
+    let plain = upload(&doc, "Studio", &Screen::shapes());
+    let named = plain
+        .clone()
+        .in_repository(Some("OpenAgentsInc/openagents"));
+    assert_eq!(named.digest, plain.digest);
+    assert_eq!(named.body["repository"], "OpenAgentsInc/openagents");
+    assert_eq!(plain.clone().in_repository(None), plain);
+
+    let bodies = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let seen = bodies.clone();
+    let (ready, address) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async move {
+            // A website from before #11541: `{computer, title, messages}` only.
+            let router = Router::new().route(
+                "/v1/threads/synced/{session}",
+                put(move |Json(body): Json<Value>| async move {
+                    seen.lock().unwrap().push(body.clone());
+                    if body.get("repository").is_some() {
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            Json(json!({"error": {"code": "invalid", "message": "Send {computer, title, messages}."}})),
+                        );
+                    }
+                    (StatusCode::OK, Json(json!({"chat": "c", "changed": true})))
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            ready.send(listener.local_addr().unwrap()).unwrap();
+            axum::serve(listener, router).await.unwrap();
+        });
+    });
+    let origin = format!("http://{}", address.recv().unwrap());
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let http = client().unwrap();
+    let answer = runtime.block_on(super::put(&http, &saved(&origin), "s1", &named));
+    assert_eq!(answer, Answer::Done);
+    // Later uploads in this process leave it out at once.
+    let again = runtime.block_on(super::put(&http, &saved(&origin), "s2", &named));
+    assert_eq!(again, Answer::Done);
+    let bodies = bodies.lock().unwrap();
+    let named_count = bodies
+        .iter()
+        .filter(|b| b.get("repository").is_some())
+        .count();
+    assert_eq!((bodies.len(), named_count), (3, 1), "{bodies:?}");
 }

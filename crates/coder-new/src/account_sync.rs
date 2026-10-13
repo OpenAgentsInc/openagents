@@ -180,6 +180,7 @@ pub fn upload_saved_now(dir: &Path, document: &Value) {
     let Some(saved) = signed_in(dir) else {
         return;
     };
+    let upload = upload.in_repository(chat_repository(document).as_deref());
     let sent = coder_sync::send_now(&saved, vec![(session.to_owned(), upload)]);
     if sent.is_empty() {
         return;
@@ -188,6 +189,28 @@ pub fn upload_saved_now(dir: &Path, document: &Value) {
         settings.sent.insert(session, digest);
     }
     let _ = settings.store(dir);
+}
+
+/// The GitHub repository (`owner/name`) of the folder a saved chat ran in
+/// (its `extra.repository`), from that checkout's git remote, so the
+/// website files the chat under the person's project for it (#11541).
+/// `None` for a folder that is gone or has no GitHub remote. Each folder
+/// is asked once per process.
+pub(crate) fn chat_repository(document: &Value) -> Option<String> {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static KNOWN: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new();
+    let folder = document.pointer("/extra/repository")?.as_str()?;
+    let known = KNOWN.get_or_init(Default::default);
+    if let Some(found) = known.lock().ok()?.get(folder) {
+        return found.clone();
+    }
+    let path = Path::new(folder);
+    let found = (path.is_absolute() && path.is_dir())
+        .then(|| crate::issue_run::github_repo(path))
+        .flatten();
+    known.lock().ok()?.insert(folder.to_owned(), found.clone());
+    found
 }
 
 /// The account's session for a background agent's chat: its parent chat's
@@ -299,12 +322,14 @@ pub(crate) fn unsent(
         };
         let upload = coder_sync::upload(&document, computer, screen);
         if settings.sends(&summary.id, &upload.digest) {
+            let upload = upload.in_repository(chat_repository(&document).as_deref());
             uploads.push((summary.id, upload));
         }
     }
     for (session, document) in agent_chats(dir) {
         let upload = coder_sync::upload(&document, computer, screen);
         if settings.sends(&session, &upload.digest) {
+            let upload = upload.in_repository(chat_repository(&document).as_deref());
             uploads.push((session, upload));
         }
     }
@@ -604,6 +629,7 @@ impl App {
         }
         let upload = coder_sync::upload(document, &sync.computer, &sync.screen);
         if sync.settings.sends(session, &upload.digest) {
+            let upload = upload.in_repository(chat_repository(document).as_deref());
             worker.send(Job::Upload {
                 session: session.to_owned(),
                 upload,
@@ -1452,5 +1478,35 @@ mod tests {
             sync_now(dir.path()).unwrap_err(),
             "Sign in first with coder login."
         );
+    }
+
+    /// #11541: a chat names the GitHub repository of the folder it ran in,
+    /// from that checkout's remote; a folder without one names none.
+    #[test]
+    fn a_chat_names_its_folders_github_repository() {
+        let repo = tempfile::tempdir().unwrap();
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(repo.path())
+                .output()
+                .unwrap()
+        };
+        git(&["init", "-q"]);
+        git(&["remote", "add", "origin", "git@github.com:Acme/App.git"]);
+        let at = |folder: &Path| serde_json::json!({"extra": {"repository": folder.display().to_string()}});
+        assert_eq!(
+            chat_repository(&at(repo.path())).as_deref(),
+            Some("Acme/App")
+        );
+        let plain = tempfile::tempdir().unwrap();
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(plain.path())
+            .output()
+            .unwrap();
+        assert_eq!(chat_repository(&at(plain.path())), None);
+        assert_eq!(chat_repository(&at(&plain.path().join("gone"))), None);
+        assert_eq!(chat_repository(&serde_json::json!({"extra": {}})), None);
     }
 }

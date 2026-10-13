@@ -7471,6 +7471,56 @@
           }
         },
         {
+          "name": "move",
+          "leaf": {
+            "path": [
+              "projects",
+              "move"
+            ],
+            "usage": [
+              "move CHAT PROJECT",
+              "move CHAT --none"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "move"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "CHAT"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PROJECT"
+                  }
+                ]
+              },
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "move"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "CHAT"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "none"
+                  }
+                ]
+              }
+            ],
+            "summary": "Move a chat into a project. CHAT is its id, a unique id prefix, or its title; PROJECT its name, repository, or id.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "remove",
           "leaf": {
             "path": [
@@ -7752,6 +7802,12 @@
             "standard",
             "only_me"
           ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "none",
           "optional": true,
           "repeated": true
         },

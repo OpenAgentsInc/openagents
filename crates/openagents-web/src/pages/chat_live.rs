@@ -582,6 +582,7 @@ mod tests {
             pinned_unix: None,
             archived_unix: None,
             terminal: None,
+            filed: false,
         }
     }
 

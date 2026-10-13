@@ -353,6 +353,8 @@ pub struct Thread {
     pub online: bool,
     pub can_reply: bool,
     pub pinned: bool,
+    /// The project (`prj_…`) the chat is filed under (#11541).
+    pub project: Option<String>,
 }
 
 /// A computer (or phone) on the account.
@@ -925,6 +927,9 @@ pub struct State {
     pub threads_wanted: usize,
     /// The website has older chats than the list holds.
     pub threads_more: bool,
+    /// The account's projects, id and name (`GET /v1/projects`), to name
+    /// the project a chat is filed under (#11541).
+    pub projects: BTreeMap<String, String>,
     pub agents: Vec<Agents>,
     pub agents_read: bool,
     pub screen: Screen,
@@ -1527,6 +1532,7 @@ impl Link {
             state.forget = true;
             state.sign_in = SignIn::Idle;
             state.threads.clear();
+            state.projects.clear();
             state.computers.clear();
             state.agents.clear();
             state.threads_read = false;
@@ -2701,6 +2707,34 @@ impl Poller {
         }
     }
 
+    /// The account's projects by id, their names (`GET /v1/projects`);
+    /// `None` when they couldn't be read now.
+    async fn projects(&self, origin: &str, token: &str) -> Option<BTreeMap<String, String>> {
+        let reply = self
+            .http
+            .call(
+                "GET",
+                format!("{origin}/v1/projects?limit=200"),
+                Some(token.to_owned()),
+                None,
+            )
+            .await
+            .ok()
+            .filter(|reply| reply.status == 200)?;
+        Some(
+            reply.body["data"]
+                .as_array()?
+                .iter()
+                .filter_map(|project| {
+                    Some((
+                        project["id"].as_str()?.to_owned(),
+                        project["name"].as_str()?.to_owned(),
+                    ))
+                })
+                .collect(),
+        )
+    }
+
     async fn run(self) {
         tokio::spawn(self.clone().watch());
         loop {
@@ -2860,6 +2894,23 @@ impl Poller {
             }
             Err(401) => signed_out = true,
             Err(_) => failed = true,
+        }
+        // Name the projects the chats are filed under, read again when a
+        // chat names one the list doesn't know (#11541).
+        let unknown = {
+            let state = lock(&self.state);
+            state
+                .threads
+                .iter()
+                .filter_map(|t| t.project.as_ref())
+                .any(|id| !state.projects.contains_key(id))
+        };
+        if unknown && let Some(projects) = self.projects(&origin, &token).await {
+            let mut state = lock(&self.state);
+            if state.projects != projects {
+                state.projects = projects;
+                state.changed();
+            }
         }
         if let Some(id) = open {
             match self
@@ -3076,6 +3127,7 @@ impl Poller {
             state.session = None;
             state.forget = true;
             state.threads.clear();
+            state.projects.clear();
             state.agents.clear();
             state.memory.clear();
             state.memory_read = false;
@@ -3195,9 +3247,23 @@ fn drawer_rows(state: &State) -> Vec<DrawerRow> {
             } else {
                 t.title.clone()
             },
-            detail: place(t),
+            detail: detail(state, t),
         })
         .collect()
+}
+
+/// A chat's row's second line: its project, when it is filed under one
+/// (#11541), then where it lives.
+pub(crate) fn detail(state: &State, thread: &Thread) -> String {
+    let place = place(thread);
+    match thread
+        .project
+        .as_ref()
+        .and_then(|id| state.projects.get(id))
+    {
+        Some(project) => format!("{project} · {place}"),
+        None => place,
+    }
 }
 
 /// Where a chat lives, as its row's second line.

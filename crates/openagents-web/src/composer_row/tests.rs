@@ -301,6 +301,7 @@ fn a_chat_row_keeps_its_project_branch_and_claude_code() {
         }],
         opened_unix: None,
         branch: Some("fix-login".into()),
+        filed: false,
     };
     let wanted = wanted_for(&chat);
     assert_eq!(wanted.project, APP);

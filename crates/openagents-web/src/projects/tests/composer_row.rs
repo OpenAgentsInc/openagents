@@ -390,6 +390,7 @@ async fn the_newest_answer_offers_to_run_the_message_in_coder() {
             tasks: Vec::new(),
             opened_unix: None,
             branch: None,
+            filed: false,
         })
         .await
         .unwrap();

@@ -73,7 +73,10 @@ const LEFT_OUT: &str = "(Left out: this looked like it held a password or key.)"
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route("/v1/threads", get(threads).post(start))
-        .route("/v1/threads/{id}", get(thread))
+        .route(
+            "/v1/threads/{id}",
+            get(thread).patch(crate::projects::api::move_thread),
+        )
         .route(
             "/v1/threads/{id}/messages",
             get(crate::projects::api::messages).post(reply),
@@ -141,6 +144,8 @@ fn row(chat: &Conversation, computers: &Computers) -> Value {
         "online": online_now,
         "can_reply": can_reply,
         "pinned": chat.pinned_unix.is_some(),
+        // The project it is filed under (#11541), for the apps to name.
+        "project": chat.project,
     })
 }
 

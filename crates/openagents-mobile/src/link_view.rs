@@ -4,7 +4,7 @@
 //! prompts. Rust Native views the hosts draw as they draw the Computers
 //! screens.
 
-use crate::account_link::{Agents, Item, MessageFile, Open, Screen, SignIn, State, Thread, place};
+use crate::account_link::{Agents, Item, MessageFile, Open, Screen, SignIn, State, Thread, detail};
 use openagents_chat::basic_coder::Turn;
 use openagents_chat_app::projection::{Appearance, Projection, Reply};
 use rust_native::style::{Color, Space, Style, TextWeight};
@@ -231,8 +231,8 @@ fn choice_card(state: &State) -> Node<Intent> {
     card("link-choice", lines)
 }
 
-/// The account's chats: web chats, then each computer's terminal chats,
-/// then phones'.
+/// The account's chats, pinned first, then newest first, with **Show older
+/// chats** while the website has more.
 fn chats(state: &State) -> Node<Intent> {
     let mut children = vec![bar(
         "link-chats-header",
@@ -265,66 +265,30 @@ fn chats(state: &State) -> Node<Intent> {
         ));
         return page(children);
     }
-    let mut groups: Vec<(String, Vec<&Thread>)> = vec![];
+    // One list, pinned first, then newest first, as openagents.com lists
+    // them (#11541); each row names its project and where it lives.
     let mut order: Vec<&Thread> = state.threads.iter().collect();
     order.sort_by_key(|t| std::cmp::Reverse((t.pinned, t.updated_unix)));
     for thread in order {
-        let group = match (thread.surface.as_str(), thread.computer.as_deref()) {
-            ("terminal", Some(computer)) => format!("Terminal · {computer}"),
-            ("phone", Some(computer)) => format!("Phone · {computer}"),
-            _ => "openagents.com".to_owned(),
+        let mut label = if thread.title.trim().is_empty() {
+            "New chat".to_owned()
+        } else {
+            thread.title.clone()
         };
-        match groups.iter_mut().find(|(name, _)| *name == group) {
-            Some((_, rows)) => rows.push(thread),
-            None => groups.push((group, vec![thread])),
+        label.push('\n');
+        if thread.working {
+            label.push_str("Working…");
+        } else {
+            label.push_str(&row_detail(state, thread));
         }
-    }
-    // The web's chats first, then computers by their newest chat.
-    groups.sort_by_key(|(name, _)| name != "openagents.com");
-    for (index, (name, rows)) in groups.into_iter().enumerate() {
-        let online = rows
-            .first()
-            .and_then(|t| t.computer.as_deref())
-            .and_then(|computer| {
-                state
-                    .computers
-                    .iter()
-                    .find(|c| c.name == computer)
-                    .map(|c| c.online)
-            });
-        let title = match online {
-            Some(true) if name.starts_with("Terminal") => format!("{name} · Online"),
-            Some(false) if name.starts_with("Terminal") => format!("{name} · Offline"),
-            _ => name,
-        };
-        children.push(text(
-            &format!("link-group-{index}"),
-            &title,
-            TextRole::Status,
-            quiet(),
-            true,
+        children.push(button(
+            &format!("link-thread-{}", thread.id),
+            &label,
+            None,
+            Intent::Open {
+                id: thread.id.clone(),
+            },
         ));
-        for thread in rows {
-            let mut label = if thread.title.trim().is_empty() {
-                "New chat".to_owned()
-            } else {
-                thread.title.clone()
-            };
-            if thread.working {
-                label.push_str("\nWorking…");
-            } else if let Some(line) = thread.line.as_ref().filter(|_| thread.surface == "web") {
-                label.push('\n');
-                label.push_str(line);
-            }
-            children.push(button(
-                &format!("link-thread-{}", thread.id),
-                &label,
-                None,
-                Intent::Open {
-                    id: thread.id.clone(),
-                },
-            ));
-        }
     }
     if state.threads_more {
         children.push(button(
@@ -335,6 +299,22 @@ fn chats(state: &State) -> Node<Intent> {
         ));
     }
     page(children)
+}
+
+/// A chat row's second line: its project, then where it lives, and for a
+/// computer's chat whether that computer is offline.
+fn row_detail(state: &State, thread: &Thread) -> String {
+    let mut line = detail(state, thread);
+    let offline = thread.surface == "terminal"
+        && thread
+            .computer
+            .as_deref()
+            .and_then(|name| state.computers.iter().find(|c| c.name == name))
+            .is_some_and(|c| !c.online);
+    if offline {
+        line.push_str(" · Offline");
+    }
+    line
 }
 
 /// One chat: its messages, and a reply box when it takes replies.
@@ -350,7 +330,7 @@ fn chat(state: &State, open: &Open, composer: u64, limit: usize, cut_at: usize) 
                 "Chat".into()
             }
         });
-    let where_ = thread.map(place);
+    let where_ = thread.map(|thread| detail(state, thread));
     let mut children = vec![bar(
         "link-chat-header",
         Lead::of(state.from_list),

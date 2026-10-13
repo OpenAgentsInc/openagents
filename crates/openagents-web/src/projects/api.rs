@@ -18,6 +18,7 @@
 //! | `PATCH /v1/projects/{id}` `{protection}` | The default for new files: `standard` or `only_me` ([`super::files`]) |
 //! | `DELETE /v1/projects/{id}` | `{id, object: "project.deleted"}`; `409 project_has_threads` while threads are in it, unless `?detach_threads=true` (the threads stay, outside any project) |
 //! | `GET /v1/threads?project=ID\|name:NAME\|none` | `{data: [Thread], next}`, by last activity, oldest first (`?limit`, `?after`) |
+//! | `PATCH /v1/threads/{id}` `{project}` | Move the thread into a project (its id or `name:NAME`), or out of any (`null`): `Thread`. Sync then leaves it where the person put it (#11541) |
 //! | `GET /v1/threads/{id}/messages` | `{data: [Message], next}`, oldest first (`?limit`, `?after`) |
 //!
 //! `Project` is `{id, object: "project", name, instructions, repository,
@@ -561,6 +562,74 @@ pub(crate) async fn threads_in(
         Ok(body) => answer(StatusCode::OK, body),
         Err(response) => response,
     }
+}
+
+/// `PATCH /v1/threads/{id}` `{project}` (#11541): move the thread into one
+/// of the caller's projects (its id, or `name:NAME`), or out of any
+/// project (`null`). The person's move: sync no longer files the thread
+/// ([`Conversation::filed`]). Answers the `Thread`.
+pub(crate) async fn move_thread(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    body: Result<axum::Json<Value>, JsonRejection>,
+) -> Response {
+    let (service, token, account) = match caller(&app, &headers).await {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let reference = match body.as_ref().map(|body| body.get("project")) {
+        Ok(Some(Value::Null)) => None,
+        Ok(Some(Value::String(reference))) => Some(reference.trim().to_owned()),
+        _ => {
+            return refused(
+                StatusCode::BAD_REQUEST,
+                "invalid_request",
+                "Send {\"project\": ID} to move the chat into a project, or {\"project\": null} to take it out.",
+            );
+        }
+    };
+    let project = match reference {
+        None => None,
+        Some(reference) => {
+            let status = match status(service, &token).await {
+                Ok(status) => status,
+                Err(response) => return response,
+            };
+            match named(&status.projects, &reference) {
+                Ok(project) => Some(project.id.clone()),
+                Err(response) => return response,
+            }
+        }
+    };
+    let owner = account_owner(&account);
+    let store = &app.config.chat_store;
+    for _ in 0..3 {
+        let loaded = match store.load(&owner, &id).await {
+            Ok(Some(loaded)) if !loaded.conversation.deleted() => loaded,
+            Ok(_) | Err(Error::Invalid(_)) => {
+                return refused(StatusCode::NOT_FOUND, "not_found", "No such chat.");
+            }
+            Err(error) => return stored(&error),
+        };
+        let current = &loaded.conversation;
+        if current.project == project && current.filed {
+            return answer(StatusCode::OK, thread_object(current));
+        }
+        let mut moved = current.clone();
+        if moved.project != project {
+            moved.branch = None;
+        }
+        moved.project.clone_from(&project);
+        moved.filed = true;
+        moved.revision += 1;
+        match store.compare_and_swap(&loaded, &moved).await {
+            Ok(_) => return answer(StatusCode::OK, thread_object(&moved)),
+            Err(Error::Conflict) => continue,
+            Err(error) => return stored(&error),
+        }
+    }
+    stored(&Error::Conflict)
 }
 
 /// `GET /v1/threads/{id}/messages`: the thread's messages, oldest first.

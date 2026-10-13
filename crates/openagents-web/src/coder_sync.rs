@@ -4,7 +4,7 @@
 //!
 //! | Route | What |
 //! | --- | --- |
-//! | `PUT /v1/threads/synced/{session}` `{computer, title, messages}` | Save the chat's messages. `200 {chat, changed}`; `410 deleted` when it was deleted on the website; `413 full` or `too_large`; `422 secret` |
+//! | `PUT /v1/threads/synced/{session}` `{computer, title, messages, repository?}` | Save the chat's messages; with `repository` (`owner/name`, #11541) a chat in no project files under the person's project for that repository ([`file_in_project`]). `200 {chat, changed}`; `410 deleted` when it was deleted on the website; `413 full` or `too_large`; `422 secret` |
 //! | `POST /v1/threads/synced/{session}/status` `{working}` | Coder is replying (or not). `200`, `404 unknown`, `410 deleted` |
 //! | `DELETE /v1/threads/synced/{session}` | Deleted in Coder: remove it here. `200 {deleted}` |
 //! | `GET /v1/threads/synced` | `{sessions: [{session, deleted}]}`, so Coder learns of chats deleted on the website |
@@ -119,6 +119,11 @@ pub(crate) struct Upload {
     pub computer: String,
     pub title: String,
     pub messages: Vec<WireMessage>,
+    /// The GitHub repository (`owner/name`) of the folder the chat ran in,
+    /// from its git remote (#11541): the chat files under the person's
+    /// project for that repository ([`file_in_project`]).
+    #[serde(default)]
+    pub repository: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -294,6 +299,7 @@ pub(crate) async fn save(
                 tasks: Vec::new(),
                 opened_unix: None,
                 branch: None,
+                filed: false,
             };
             match store.create(&chat).await {
                 Ok(_) => {
@@ -347,6 +353,79 @@ pub(crate) async fn save(
         }
     }
     Err(Error::Conflict)
+}
+
+/// Put a synced chat in the person's project whose repository is
+/// `repository` (#11541): the chat's own GitHub repository, as Coder read
+/// it from the git remote of the chat's folder. The match is on the typed
+/// `owner/name` (GitHub treats it without regard to case), never on a
+/// name. Only a chat that is in no project and was never filed (by this or
+/// by the person moving it, [`Conversation::filed`]) moves, so a person's
+/// move stays. The chat's time doesn't change. Returns whether it moved.
+pub(crate) async fn file_in_project(
+    store: &Store,
+    owner: &str,
+    session: &str,
+    repository: &str,
+    projects: &[(String, String)],
+) -> Result<bool, Error> {
+    let Some((project, _)) = projects
+        .iter()
+        .find(|(_, repo)| repo.eq_ignore_ascii_case(repository))
+    else {
+        return Ok(false);
+    };
+    let id = chat_id(owner, session);
+    for _ in 0..4 {
+        let Some(loaded) = store.load(owner, &id).await? else {
+            return Ok(false);
+        };
+        let current = &loaded.conversation;
+        if current.project.is_some()
+            || current.filed
+            || current.deleted()
+            || current.terminal.is_none()
+        {
+            return Ok(false);
+        }
+        let mut next = current.clone();
+        next.project = Some(project.clone());
+        next.filed = true;
+        next.revision += 1;
+        match store.compare_and_swap(&loaded, &next).await {
+            Ok(_) => return Ok(true),
+            Err(Error::Conflict) => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(Error::Conflict)
+}
+
+/// The caller's projects as `(id, repository)`, read with their own
+/// sign-in and kept for a minute per sign-in, so a run of uploads asks
+/// the account once. `None` when they can't be read now.
+async fn projects_of(app: &App, headers: &HeaderMap) -> Option<Vec<(String, String)>> {
+    type Kept = HashMap<[u8; 32], (Vec<(String, String)>, Instant)>;
+    static KEPT: OnceLock<Mutex<Kept>> = OnceLock::new();
+    const FOR: Duration = Duration::from_secs(60);
+    let (service, token, _) = crate::projects::api::caller(app, headers).await.ok()?;
+    let key: [u8; 32] = Sha256::digest(token.as_bytes()).into();
+    let kept = KEPT.get_or_init(Default::default);
+    if let Some((projects, at)) = kept.lock().ok()?.get(&key)
+        && at.elapsed() < FOR
+    {
+        return Some(projects.clone());
+    }
+    let status = service.github_status_as(&token).await.ok()?;
+    let projects: Vec<(String, String)> = status
+        .projects
+        .into_iter()
+        .map(|project| (project.id, project.repository))
+        .collect();
+    let mut kept = kept.lock().ok()?;
+    kept.retain(|_, (_, at)| at.elapsed() < FOR);
+    kept.insert(key, (projects.clone(), Instant::now()));
+    Some(projects)
 }
 
 /// Coder's transcript, then the messages added on the website by runs on
@@ -964,6 +1043,7 @@ pub(crate) async fn start_from_web(
             tasks: Vec::new(),
             opened_unix: None,
             branch: None,
+            filed: false,
         };
         match store.create(&chat).await {
             Ok(_) | Err(Error::Conflict) => {}
@@ -1328,7 +1408,22 @@ async fn upload(
             "Send {computer, title, messages}.",
         );
     };
-    respond(save(&app.config.chat_store, &owner, &session, &upload).await)
+    let saved = save(&app.config.chat_store, &owner, &session, &upload).await;
+    if let (Ok(Saved::Saved { .. }), Some(repository)) = (&saved, &upload.repository)
+        && oa_auth::repos::full_name(repository)
+        && let Some(projects) = projects_of(&app, &headers).await
+        && let Err(error) = file_in_project(
+            &app.config.chat_store,
+            &owner,
+            &session,
+            repository,
+            &projects,
+        )
+        .await
+    {
+        eprintln!("openagents-web: coder sync: filing a chat: {error}");
+    }
+    respond(saved)
 }
 
 #[derive(Deserialize)]
@@ -1575,7 +1670,113 @@ mod tests {
                     text: (*text).into(),
                 })
                 .collect(),
+            repository: None,
         }
+    }
+
+    /// #11541: a synced chat files under the project whose repository is
+    /// the chat's own, matched on the typed `owner/name` only, without
+    /// changing its time; once filed or moved by the person, sync leaves it.
+    #[tokio::test]
+    async fn a_synced_chat_files_under_its_repositorys_project_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::local(dir.path().to_path_buf());
+        let projects = vec![
+            ("prj_00000000000000aa".to_owned(), "Acme/site".to_owned()),
+            (
+                "prj_00000000000000bb".to_owned(),
+                "OpenAgentsInc/openagents".to_owned(),
+            ),
+        ];
+        let first = upload("Fix the build", &[("user", "Fix it")]);
+        let Saved::Saved { chat, .. } = save(&store, &owner(), "s1", &first).await.unwrap() else {
+            panic!("not saved");
+        };
+        let before = store
+            .load(&owner(), &chat)
+            .await
+            .unwrap()
+            .unwrap()
+            .conversation;
+        // A name alone matches nothing: only the repository does.
+        for other in [
+            "openagents",
+            "Other/openagents",
+            "OpenAgentsInc/openagents-site",
+        ] {
+            assert!(
+                !file_in_project(&store, &owner(), "s1", other, &projects)
+                    .await
+                    .unwrap()
+            );
+        }
+        assert!(
+            file_in_project(
+                &store,
+                &owner(),
+                "s1",
+                "openagentsinc/OpenAgents",
+                &projects
+            )
+            .await
+            .unwrap()
+        );
+        let filed = store
+            .load(&owner(), &chat)
+            .await
+            .unwrap()
+            .unwrap()
+            .conversation;
+        assert_eq!(filed.project.as_deref(), Some("prj_00000000000000bb"));
+        assert!(filed.filed);
+        assert_eq!(filed.updated_unix, before.updated_unix);
+        // Run again: nothing changes.
+        assert!(
+            !file_in_project(
+                &store,
+                &owner(),
+                "s1",
+                "OpenAgentsInc/openagents",
+                &projects
+            )
+            .await
+            .unwrap()
+        );
+        // The person moves it out of every project: sync leaves it there.
+        let loaded = store.load(&owner(), &chat).await.unwrap().unwrap();
+        let mut moved = loaded.conversation.clone();
+        moved.project = None;
+        moved.revision += 1;
+        store.compare_and_swap(&loaded, &moved).await.unwrap();
+        assert!(
+            !file_in_project(
+                &store,
+                &owner(),
+                "s1",
+                "OpenAgentsInc/openagents",
+                &projects
+            )
+            .await
+            .unwrap()
+        );
+        // A chat that isn't there yet, or a web chat, isn't filed.
+        assert!(
+            !file_in_project(&store, &owner(), "s2", "Acme/site", &projects)
+                .await
+                .unwrap()
+        );
+        // The upload's repository is optional, so an older Coder's upload reads.
+        let older: Upload = serde_json::from_value(json!({
+            "computer": "Studio", "title": "t", "messages": []
+        }))
+        .unwrap();
+        assert_eq!(older.repository, None);
+        let named: Upload = serde_json::from_value(json!({
+            "computer": "Studio", "title": "t", "messages": [],
+            "repository": "Acme/site"
+        }))
+        .unwrap();
+        assert_eq!(named.repository.as_deref(), Some("Acme/site"));
     }
 
     #[test]

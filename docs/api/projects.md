@@ -68,6 +68,7 @@ from the code, this is how it works today:
 | `GET /v1/threads?project=ID\|name:NAME\|none` | `{data: [Thread], next}`, by last activity, oldest first, `?limit`, `?after` |
 | `GET /v1/threads/{id}/messages` | `{data: [Message], next}`, oldest first; each message's `content` is one `text` block |
 | `POST /v1/threads` `{"request_id": UUID, "text", "project": ID\|"name:NAME"}` | `201 {id, answering: true}`: a new chat inside the project, answered by OpenAgents with the project's repository, as starting a chat in a project on the website does ([#11542](https://github.com/OpenAgentsInc/openagents/issues/11542)). `404 not_found` when the project isn't yours. Read the reply with `GET /v1/threads/{id}` |
+| `PATCH /v1/threads/{id}` `{"project": ID \| "name:NAME" \| null}` | Move the chat into one of your projects, or out of any (`null`): the Thread. Coder's sync files a synced chat under the project whose repository is the chat's own GitHub repository (from its folder's git remote) until the person moves it; after a move it stays put (#11541) |
 | `PATCH /v1/projects/{id}` `{"protection": "standard"\|"only_me"}` | The Project, with `protection`. `sealed` answers `400 not_available`; name, instructions, and repository can't change yet |
 | `POST /v1/files?purpose=project&filename=NAME`, the file's bytes as the body | `201` File: `{id: "file_…", object: "file", filename, mime_type, size_bytes, sha256, created_at, stored_as: "original", project}`. 10 MB at most. Not multipart |
 | `GET /v1/files/{id}`, `GET /v1/files/{id}/content`, `DELETE /v1/files/{id}` | The File; its bytes (`Content-Disposition`, `Digest: sha-256=…`); `{id, object: "file.deleted"}` |
@@ -422,6 +423,7 @@ repository, or its id:
 openagents projects list | show PROJECT | threads PROJECT
 openagents projects add OWNER/REPO [--protection standard|only_me]
 openagents projects edit PROJECT --protection standard|only_me
+openagents projects move CHAT PROJECT | move CHAT --none
 openagents projects remove PROJECT [--detach-threads]
 openagents projects files list PROJECT
 openagents projects files add PROJECT PATH... [--protection standard|only_me]

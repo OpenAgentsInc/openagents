@@ -30,7 +30,8 @@ the terminal or on the website. Change it any time:
 | `/sync delete` | Remove this computer's chats from your account. |
 | `coder sync` | Send every chat here now, background agents' chats included (sync must be on). |
 
-Sync is off until you choose it. Messages that look like they hold a
+Sync is off until you choose it. A Coder run with its own folder
+(`--state DIR`) doesn't sync until you turn sync on for that folder. Messages that look like they hold a
 password or key are never sent. Deleting a synced chat in one place
 deletes it in the other.
 
@@ -49,6 +50,18 @@ To start a new chat inside one of your projects on openagents.com from
 the terminal, ask Coder ("make a new chat in my finances project") or run
 `openagents chat send "MESSAGE" --project finances`. It's an
 openagents.com chat, so it shows in that project on the website and phone.
+
+A chat Coder ran in a checkout of a GitHub repository goes under your
+project for that repository (Projects in the sidebar, and on your phone).
+Move a chat to another project, or out of one, from its menu on the
+website or from the terminal:
+
+| Command | Does |
+| --- | --- |
+| `openagents projects move CHAT PROJECT` | Move a chat into a project. CHAT is its id, the start of its id, or its title; PROJECT its name, repository, or id. |
+| `openagents projects move CHAT --none` | Take a chat out of its project. |
+
+A chat you moved stays where you put it.
 
 With sync on, prompts you set up with `/schedule` also show on your
 account, where you can pause or delete them.

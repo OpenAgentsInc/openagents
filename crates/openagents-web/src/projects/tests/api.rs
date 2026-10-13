@@ -362,3 +362,134 @@ async fn an_app_starts_a_chat_inside_its_own_project() {
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
+
+/// #11541: a synced Coder chat files under the project for its repository,
+/// and the sign-in token moves a chat into a project or out of it with
+/// `PATCH /v1/threads/{id}`; a moved chat stays where the person put it.
+#[tokio::test]
+async fn synced_chats_file_under_their_repository_and_move_with_the_token() {
+    let world = world().await;
+    let mut browser = Browser::default();
+    browser.sign_in(&world, "octo-local").await;
+    connect_public(&mut browser, &world, "octo-local").await;
+    let me = Api::of(&browser);
+    let (status, body) = me
+        .json(
+            &world,
+            "POST",
+            "/v1/projects",
+            json!({"repository": "octo-local/hello-world"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let id = body["id"].as_str().unwrap().to_owned();
+
+    // Coder syncs a chat run in a checkout of that repository.
+    let upload = |repository: &str| {
+        json!({"computer": "Studio", "title": "Fix the build",
+               "messages": [{"role": "user", "text": "Fix it"}],
+               "repository": repository})
+    };
+    let (status, body) = me
+        .json(
+            &world,
+            "PUT",
+            "/v1/threads/synced/s-filed",
+            upload("Octo-Local/Hello-World"),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let chat = body["chat"].as_str().unwrap().to_owned();
+    let (_, listed) = me
+        .json(
+            &world,
+            "GET",
+            "/v1/threads?project=name:hello-world",
+            Value::Null,
+        )
+        .await;
+    assert_eq!(listed["data"][0]["id"], chat.as_str(), "{listed}");
+    // Another repository, or none, files nowhere.
+    let (_, body) = me
+        .json(
+            &world,
+            "PUT",
+            "/v1/threads/synced/s-other",
+            upload("octo-local/other"),
+        )
+        .await;
+    let other = body["chat"].as_str().unwrap().to_owned();
+    let (_, loose) = me
+        .json(&world, "GET", "/v1/threads?project=none", Value::Null)
+        .await;
+    assert_eq!(loose["data"][0]["id"], other.as_str(), "{loose}");
+
+    // The person takes the filed chat out; the next sync leaves it out.
+    let (status, body) = me
+        .json(
+            &world,
+            "PATCH",
+            &format!("/v1/threads/{chat}"),
+            json!({"project": null}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["project"], Value::Null);
+    let mut more = upload("octo-local/hello-world");
+    more["messages"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"role": "assistant", "text": "Done."}));
+    let (status, _) = me
+        .json(&world, "PUT", "/v1/threads/synced/s-filed", more)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, listed) = me
+        .json(
+            &world,
+            "GET",
+            "/v1/threads?project=name:hello-world",
+            Value::Null,
+        )
+        .await;
+    assert_eq!(listed["data"], json!([]), "{listed}");
+
+    // Moved in by name, then by id.
+    for reference in ["name:hello-world".to_owned(), id.clone()] {
+        let (status, body) = me
+            .json(
+                &world,
+                "PATCH",
+                &format!("/v1/threads/{other}"),
+                json!({"project": reference}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["project"], id.as_str());
+    }
+    // Not a project of mine, a bad body, or another account's token.
+    let (status, _) = me
+        .json(
+            &world,
+            "PATCH",
+            &format!("/v1/threads/{other}"),
+            json!({"project": "prj_0000000000000000"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = me
+        .json(&world, "PATCH", &format!("/v1/threads/{other}"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let mut stranger = Browser::default();
+    stranger.sign_in(&world, "quiet-local").await;
+    let (status, _) = Api::of(&stranger)
+        .json(
+            &world,
+            "PATCH",
+            &format!("/v1/threads/{other}"),
+            json!({"project": null}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
