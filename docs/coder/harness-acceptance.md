@@ -89,8 +89,9 @@ and the report says so.
   `scripts/coder/install-local.sh --to coder|coderrc --from DIR`. The script
   uses a passing report for that exact build, or runs the gate first, and it
   refuses to install on a failure. `--skip-acceptance "REASON"` overrides the
-  gate and logs the reason next to the install. Never copy binaries into
-  `~/.openagents/bin` or `~/.openagents/coderrc` by hand.
+  gate and logs the reason next to the install. The owner's `coderrc`
+  shell function installs a finished build through this script. Never copy
+  binaries into `~/.openagents/bin` or `~/.openagents/coderrc` by hand.
 
 ## Not covered
 
