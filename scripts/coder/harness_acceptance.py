@@ -1571,6 +1571,7 @@ def write_report(out: Path, build: str, coder: str, rows: list[dict], exp: dict,
         "checks": CHECKS,
         "expectations": {k: {kk: vv for kk, vv in v.items() if kk not in ("catalog", "names")} for k, v in exp.items()},
         "harnesses": rows,
+        "missing_beside_coder": [n for n in ("openagents", "microcoder") if not os.access(Path(coder).parent / n, os.X_OK)],
         **extra,
         "passed": fails == 0,
     }
@@ -1579,7 +1580,8 @@ def write_report(out: Path, build: str, coder: str, rows: list[dict], exp: dict,
     lines = [
         f"# Coder harness acceptance: {build}",
         "",
-        f"`{coder}`, {doc['at']}. {'PASSED' if fails == 0 else f'FAILED: {fails} failing checks'} ({passes} passing).",
+        f"`{coder}`, {doc['at']}. {'PASSED' if fails == 0 else f'FAILED: {fails} failing checks'} ({passes} passing)."
+        + (f" Not beside it: {', '.join(doc['missing_beside_coder'])}." if doc["missing_beside_coder"] else ""),
         "",
         "| check | " + " | ".join(r["harness"] for r in rows) + " |",
         "|---|" + "---|" * len(rows),
@@ -1653,6 +1655,11 @@ def main() -> int:
     path = owner_path()
     root = Path(tempfile.mkdtemp(prefix="hacc.", dir="/tmp"))
     say(f"build {build}; isolated homes under {root}; report in {out}")
+    # Coder's turns call the openagents and microcoder beside it, as an
+    # install has them; a lone binary tests less than ships.
+    missing = [n for n in ("openagents", "microcoder") if not os.access(Path(coder).parent / n, os.X_OK)]
+    if missing:
+        say(f"warning: no {' or '.join(missing)} beside {coder}; tools that call them fail as on a broken install")
 
     signin = ""
     kf = Path(a.signin_key_file).expanduser()
