@@ -428,12 +428,17 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
 /// GitHub connection. `id` is the request id the app made, which names the
 /// chat too, so a resend is the same chat; files added under it before
 /// the send (`POST /v1/threads/{id}/files`) go with the first message.
+/// With `project` (one of the person's projects, and their GitHub token
+/// when they have one) the chat starts inside it and its answer reads the
+/// project's repository, as a chat started in a project on the web
+/// (#11542).
 pub(crate) async fn start_from_app(
     app: &App,
     owner: &str,
     id: &str,
     text: String,
     files: Vec<crate::chat_files::FileRef>,
+    project: Option<(oa_auth::repos::Project, Option<String>)>,
 ) -> AppSent {
     if text.trim().is_empty() || text.chars().count() > 4_000 || !valid_id(id) {
         return AppSent::Invalid;
@@ -472,10 +477,14 @@ pub(crate) async fn start_from_app(
             return AppSent::Unavailable;
         }
     }
-    let record = first_record(owner, id, text, digest, files);
+    let mut record = first_record(owner, id, text, digest, files);
+    let repo = project.map(|(project, token)| {
+        record.project = Some(project.id.clone());
+        repo_read_with(app, token, &project, None)
+    });
     match store.create(&record).await {
         Ok(loaded) => {
-            spawn_answer(app.clone(), loaded, admitted_at, None);
+            spawn_answer(app.clone(), loaded, admitted_at, repo);
             AppSent::Answering
         }
         Err(Error::Conflict) => AppSent::Answering,
@@ -1720,11 +1729,22 @@ async fn repo_read(
         Some(service) => service.github_token(headers).await.ok(),
         None => None,
     };
+    Some(repo_read_with(app, token, project, branch))
+}
+
+/// How to read `project`'s repository at `branch` (its default branch when
+/// none) with the GitHub `token`, if any.
+pub(crate) fn repo_read_with(
+    app: &App,
+    token: Option<String>,
+    project: &oa_auth::repos::Project,
+    branch: Option<&str>,
+) -> crate::repo_snapshot::RepoRead {
     let base = app.config.github.as_ref().map_or_else(
         || "https://api.github.com".to_string(),
         |github| github.endpoints.api_url.trim_end_matches('/').to_string(),
     );
-    Some(crate::repo_snapshot::RepoRead {
+    crate::repo_snapshot::RepoRead {
         base,
         token,
         repository: project.repository.clone(),
@@ -1733,7 +1753,7 @@ async fn repo_read(
             .unwrap_or(&project.default_branch)
             .to_string(),
         private: project.private,
-    })
+    }
 }
 
 async fn answer(

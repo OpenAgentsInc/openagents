@@ -9,6 +9,7 @@
 //! | --- | --- |
 //! | `GET /v1/threads` | `{threads: [Row], computers: [Computer]}`: the account's chats (web, terminal, phone), not archived, pinned first, then newest |
 //! | `GET /v1/threads/{id}` | `{thread: Row, messages: [{role, text}], earlier, waiting}`: the newest [`SHOWN_MESSAGES`] messages |
+//! | `POST /v1/threads` `{request_id, text, files?, project?}` | Start a chat answered by OpenAgents (`201 {id, answering}`); `project` (its id or `name:NAME`, #11542) starts it inside one of the person's projects, as starting a chat in a project on the web does (`404 not_found` when it isn't theirs) |
 //! | `POST /v1/threads/{id}/messages` `{request_id, text, files?}` | Reply. A terminal chat queues it for Coder on its computer (`202 {queued}`); a web chat is answered here (`202 {answering}`), with the files added below (`files`: their ids, up to four); a phone chat refuses (`409 phone`) |
 //! | `POST /v1/threads/{id}/files?name=` (the file's bytes) | Add an image, PDF, or text file to a web chat for the next reply (`201 {id, name, kind, size, url}`; #11174, [`crate::chat_files`]) |
 //! | `GET`/`DELETE /v1/threads/{id}/files/{file}` | A file of the chat; remove one not sent yet (`204`) |
@@ -303,6 +304,10 @@ struct Reply {
     /// Files added with `POST /v1/threads/{id}/files`, by id.
     #[serde(default)]
     files: Vec<String>,
+    /// Starting a chat only: the project it starts in, its id or
+    /// `name:NAME` (#11542).
+    #[serde(default)]
+    project: Option<String>,
 }
 
 /// A request id: a UUID the app made for this send, so a resend is
@@ -323,7 +328,7 @@ async fn reply(
     };
     let Some(sent) = serde_json::from_slice::<Reply>(&body)
         .ok()
-        .filter(|sent| valid_request(&sent.request_id))
+        .filter(|sent| valid_request(&sent.request_id) && sent.project.is_none())
     else {
         return refused(
             StatusCode::BAD_REQUEST,
@@ -413,8 +418,10 @@ async fn reply(
 /// answered by OpenAgents, as the website's composer does, so an app's
 /// first message can carry photos and files. The request id names the
 /// chat; files go under it first (`POST /v1/threads/{request_id}/files`).
-/// Answers `201 {id, answering: true}`, or `200` when the same send
-/// already made the chat.
+/// `project` (its id or `name:NAME`) starts the chat inside one of the
+/// person's projects (#11542), its answer reading the project's
+/// repository as the web's does. Answers `201 {id, answering: true}`, or
+/// `200` when the same send already made the chat.
 async fn start(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Response {
     let owner = match coder_sync::owner(&app, &headers).await {
         Ok(owner) => owner,
@@ -445,6 +452,13 @@ async fn start(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respo
             "This looks like it holds a password or key, so it wasn't sent.",
         );
     }
+    let project = match sent.project.as_deref() {
+        None => None,
+        Some(reference) => match project_of(&app, &headers, reference).await {
+            Ok(found) => Some(found),
+            Err(response) => return response,
+        },
+    };
     let store = &app.config.chat_store;
     let id = sent.request_id.clone();
     let existed = matches!(store.load(&owner, &id).await, Ok(Some(_)));
@@ -452,7 +466,7 @@ async fn start(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respo
         Ok(files) => files,
         Err(message) => return refused(StatusCode::BAD_REQUEST, "files", message),
     };
-    match start_from_app(&app, &owner, &id, text.to_owned(), files).await {
+    match start_from_app(&app, &owner, &id, text.to_owned(), files, project).await {
         AppSent::Answering => answer(
             if existed {
                 StatusCode::OK
@@ -474,6 +488,20 @@ async fn start(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respo
             "Try again later.",
         ),
     }
+}
+
+/// The caller's project `reference` names (its id or `name:NAME`), and
+/// their GitHub token for reading its repository when they have one.
+async fn project_of(
+    app: &App,
+    headers: &HeaderMap,
+    reference: &str,
+) -> Result<(oa_auth::repos::Project, Option<String>), Response> {
+    let (service, token, _) = crate::projects::api::caller(app, headers).await?;
+    let status = crate::projects::api::status(service, &token).await?;
+    let project = crate::projects::api::named(&status.projects, reference)?.clone();
+    let github = service.github_token_as(&token).await.ok();
+    Ok((project, github))
 }
 
 #[derive(Deserialize)]

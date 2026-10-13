@@ -149,6 +149,20 @@ impl CloudSession {
             .ok_or(RepoCallError::Session(SessionError::Unavailable))
     }
 
+    /// [`Self::github_token`] under a signed-in app's own token, so a chat
+    /// an app starts in a project reads its repository as the web's does
+    /// (#11542).
+    pub(crate) async fn github_token_as(&self, token: &str) -> Result<String> {
+        let body = self
+            .account_call_as(token, Method::POST, "/v1/account/github/token", None, None)
+            .await?;
+        body["token"]
+            .as_str()
+            .filter(|token| !token.is_empty() && token.len() <= 1024)
+            .map(str::to_string)
+            .ok_or(RepoCallError::Session(SessionError::Unavailable))
+    }
+
     /// A credential-broker ticket (`oa_auth::repos::broker`) that lets one
     /// machine fetch and push `repository` (one of the person's projects)
     /// for `seconds`. Only the ticket; never a GitHub token.

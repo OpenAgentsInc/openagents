@@ -276,3 +276,79 @@ async fn the_sign_in_token_reads_and_changes_its_own_projects_only() {
     assert_eq!(chats.len(), 3);
     assert!(chats.iter().all(|chat| chat.project.is_none()));
 }
+
+/// `POST /v1/threads {project}` (#11542): an app starts a chat inside one
+/// of the person's projects, as starting a chat in a project on the web
+/// does; another account's project, or an unknown one, is refused and
+/// starts nothing; a reply can't move a chat.
+#[tokio::test]
+async fn an_app_starts_a_chat_inside_its_own_project() {
+    let world = world().await;
+    let mut browser = Browser::default();
+    browser.sign_in(&world, "octo-local").await;
+    connect_public(&mut browser, &world, "octo-local").await;
+    let me = Api::of(&browser);
+    let (status, body) = me
+        .json(
+            &world,
+            "POST",
+            "/v1/projects",
+            json!({"repository": "octo-local/hello-world"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let project = body["id"].as_str().unwrap().to_owned();
+
+    let id = "55555555-5555-4555-8555-555555555555";
+    let (status, body) = me
+        .json(
+            &world,
+            "POST",
+            "/v1/threads",
+            json!({"request_id": id, "text": "Testing. Hello.", "project": "name:hello-world"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["id"], id);
+    let owner = account_owner_of(&world, "octo-local");
+    let saved = world.store.load(&owner, id).await.unwrap().unwrap();
+    assert_eq!(saved.conversation.project.as_deref(), Some(project.as_str()));
+    let (status, body) = me
+        .json(
+            &world,
+            "GET",
+            &format!("/v1/threads?project={project}"),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["data"][0]["id"], id);
+
+    // Someone else's project, by id: not theirs, and no chat.
+    let mut other = Browser::default();
+    other.sign_in(&world, "quiet-local").await;
+    let them = Api::of(&other);
+    let theirs = "66666666-6666-4666-8666-666666666666";
+    let (status, body) = them
+        .json(
+            &world,
+            "POST",
+            "/v1/threads",
+            json!({"request_id": theirs, "text": "Hello", "project": project}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    let their_owner = account_owner_of(&world, "quiet-local");
+    assert!(world.store.load(&their_owner, theirs).await.unwrap().is_none());
+
+    // A reply carries no project.
+    let (status, _) = me
+        .json(
+            &world,
+            "POST",
+            &format!("/v1/threads/{id}/messages"),
+            json!({"request_id": "77777777-7777-4777-8777-777777777777", "text": "Hi", "project": project}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
