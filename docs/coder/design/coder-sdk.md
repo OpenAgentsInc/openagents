@@ -486,7 +486,9 @@ is `coder_sdk::delegation`; Coder's host is
   Coder loop, any local agent) leaves the server's `tools/list` bytes, the
   Codex `dynamicTools` bytes and the server's instructions identical
   (`delegate_host` tests). Other plugins (Solver, cloud, GitHub) still add
-  their own tools.
+  their own tools; turning Claude Code off also takes Solver away and
+  narrows `routing_preference` (#11516, #11518), while `delegate` stays
+  the same bytes.
 - Nothing is added to the parent's system prompt for delegation; the old
   line about background agents now names `delegate`.
 - The child's answer is a `Report`: outcome, a summary clipped to 800

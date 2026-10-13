@@ -109,7 +109,6 @@ async fn toggling_a_harness_plugin_leaves_the_tool_list_alone() {
     let toggles: Vec<(&str, Box<dyn Fn(&mut ExecutionSettings)>)> = vec![
         ("Coder loop off", Box::new(|e| e.microcoder = false)),
         ("local agents off", Box::new(|e| e.acp = false)),
-        ("Claude Code off", Box::new(|e| e.claude = false)),
         ("OpenCode off", Box::new(|e| e.agents[1].enabled = false)),
         (
             "an agent installed",
@@ -126,6 +125,26 @@ async fn toggling_a_harness_plugin_leaves_the_tool_list_alone() {
             "{toggle}"
         );
     }
+    // Claude Code off also takes Solver away and narrows the routing
+    // preference tool (#11516, #11518): those are their own plugins' tools,
+    // not delegation's. `delegate` itself stays the same bytes.
+    let mut claude_off = on.clone();
+    claude_off.claude = false;
+    let (events, _) = tokio::sync::mpsc::unbounded_channel();
+    let delegate = |execution: ExecutionSettings| {
+        crate::claude_tools::tool_server(
+            &crate::claude_tools::Tools::new(execution),
+            CLAUDE,
+            events.clone(),
+            Arc::new(AtomicBool::new(false)),
+        )
+        .unwrap()
+        .tools()
+        .iter()
+        .find(|tool| tool.name == "delegate")
+        .map(|tool| (tool.description.clone(), tool.schema.to_string()))
+    };
+    assert_eq!(delegate(claude_off), delegate(on.clone()));
     let names = crate::claude_tools::names(&on);
     assert!(names.iter().any(|name| name == "delegate"), "{names:?}");
     for gone in ["agent", "acp_subagent", "microcoder"] {
