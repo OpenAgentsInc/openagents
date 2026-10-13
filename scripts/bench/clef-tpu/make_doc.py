@@ -62,10 +62,31 @@ for vd in vmdirs:
         try: setup = json.load(open(os.path.join(vd, "setup.json"))).get("setup_seconds")
         except Exception: setup = None
     cold.append(f"| {vm} | {vm.split('-')[1]} | {att.get(vm, '—')} | {setup if setup is not None else '—'} | {'; '.join(starts) or '—'} | {', '.join(first) or '—'} |")
+# queued resources: filed -> provisioning -> VM READY -> preempted (per incarnation)
+qrt = ["| queued resource | zone | filed (UTC) | wait to PROVISIONING | READY | VM lifetime until preemption | outcome |", "| --- | --- | --- | ---: | --- | ---: | --- |"]
+import datetime as dt
+def T(x): return dt.datetime.strptime(x[:19], "%Y-%m-%dT%H:%M:%S")
+filed = []
+for l in open(os.path.join(ops, "queued.jsonl")):
+    d = json.loads(l)
+    if d.get("rc") == 0: filed.append(d)
+evs = [json.loads(l) for l in open(os.path.join(ops, "states.jsonl"))]
+for i, f in enumerate(filed):
+    t0 = T(f["ts"]); nxt = [g for g in filed[i + 1:] if g["qr"] == f["qr"]]
+    t1 = T(nxt[0]["ts"]) if nxt else dt.datetime(2100, 1, 1)
+    mine = [e for e in evs if e["name"] == f["qr"] and t0 <= T(e["ts"]) < t1]
+    prov = next((e for e in mine if e["kind"] == "qr" and e["state"] == "PROVISIONING"), None)
+    ready = next((e for e in mine if e["kind"] == "vm" and e["state"] == "READY"), None)
+    gone = next((e for e in mine if (e["kind"] == "vm" and e["state"] in ("PREEMPTED", "DELETING")) or (e["kind"] == "qr" and e["state"] in ("SUSPENDING", "SUSPENDED"))), None)
+    failed = next((e for e in mine if e["kind"] == "qr" and e["state"] == "FAILED"), None)
+    w = f"{(T(prov['ts']) - t0).total_seconds() / 60:.0f} min" if prov else "—"
+    life = f"{(T(gone['ts']) - T(ready['ts'])).total_seconds() / 60:.0f} min" if ready and gone and T(gone["ts"]) >= T(ready["ts"]) else "—"
+    res = "failed" if failed else ("preempted" if gone and ready else ("suspended before READY" if gone else ("held" if ready else ("waiting" if any(e["kind"] == "qr" for e in mine) else "refused at filing"))))
+    qrt.append(f"| {f['qr']} | {f['zone']} | {f['ts'][11:16]} | {w} | {ready['ts'][11:16] if ready else '—'} | {life} | {res} |")
 body = open(header).read()
 body += "\n" + summ + "\n## Spend and machines (this campaign)\n\n" + spend + "\n## Capacity log\n\nEvery create attempt from this campaign (and the coordinator's on-demand probe just before it). " \
         "`resourceName` rows are duplicate-name retries of an attempt already in flight.\n\n" + "\n".join(cap) + \
-        "\n\n## Cold start\n\nCreate call = the `gcloud ... create` call until the VM is READY (successful attempts only). Setup = uv + Python 3.12 venv + SGL-JAX + CPU torch on the stock image. Engine start = SGL-JAX `Engine()` (weights, dummy or real, plus precompiling the token buckets). Real-weight loads are the `auto` rows.\n\n" + "\n".join(cold) + \
+        "\n\n## Queued resources\n\nEach row is one filing (a preempted or failed spot request is deleted and filed again under the same name).\n\n" + "\n".join(qrt) + "\n\n## Cold start\n\nCreate call = the `gcloud ... create` call until the VM is READY (successful attempts only). Setup = uv + Python 3.12 venv + SGL-JAX + CPU torch on the stock image. Engine start = SGL-JAX `Engine()` (weights, dummy or real, plus precompiling the token buckets). Real-weight loads are the `auto` rows.\n\n" + "\n".join(cold) + \
         "\n\n## Lifecycle events (watcher, 30 s poll)\n\n" + "\n".join(ev) + "\n"
 open(out, "w").write(body)
 print("wrote", out, len(body))

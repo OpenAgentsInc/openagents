@@ -35,20 +35,26 @@ synced JSON; the headline section is written by hand.
   TP 8 is ~4,000 tok/s per chip ($0.025/M spot), 27B on v5p-8 TP 4 is
   ~4,200 per chip ($0.062/M spot).
 - **The silicon is not the limit.** bf16 matmuls at Clef's exact projection
-  shapes run at 98 % of peak on v5e (193 of 197 TFLOPS) and v5p (423 of
-  459); int8 W8A8 doubles that (v5e 386 TOPS with static scales, 290–370
-  with dynamic per-token activation quantization). The projection-time
-  model says Flash's matmuls alone allow ~14k tok/s on a v5e chip in bf16
-  and ~24k in dynamic int8; what SGL-JAX reaches end to end is the gap to
-  close (TP 8 on a 9B model is communication-bound).
-- **The Gated DeltaNet scan is cheap.** gdn/v3 does ~2.6M tokens/s per
-  layer for Flash heads on v5e (~9–10 µs per token over all 24 GDN layers),
-  1.9M/s for 27B heads; the pure-JAX chunked version is 8–14× slower. Error
-  vs the token-step f32 reference: 5–6e-3 relative (bf16 compute inside).
-  A **bf16 state pool across prefill chunks adds 1.3–2.8e-3 relative
-  drift**; an f32 pool adds none, and the state is small, so keep it f32.
-- **Splash attention** at head_dim 256 reaches 151 TFLOPS on v5e (77 %) at
-  32k; attention is ~1.8 µs/token per layer at 32k on v5e.
+  shapes run at 98 % of peak on v5e (193 of 197 TFLOPS), ~92 % on v5p and
+  v6e (~840 of 918); int8 W8A8 with static scales ~1,700 TOPS on v6e (93 %),
+  1,000–1,500 with dynamic per-token activation quantization. Summing the
+  measured matmuls over every layer, Flash's projections alone allow
+  ~60k tokens/s on one v6e chip in bf16 and ~85k in dynamic int8 (8k-token
+  batches); SGL-JAX reaches 25.9k and 37.6k end to end, 43–44 % of that.
+  The rest (attention, GDN, norms, gating, scheduler, padding) is where an
+  owned worker can win. fp8 has no MXU path on v5e/v6e/v5p (emulated: slower
+  than bf16).
+- **The Gated DeltaNet scan is cheap.** gdn/v3 runs ~4M tokens/s per layer
+  for Flash heads on v6e (~6 µs per token over all 24 GDN layers; v5e
+  ~9–10 µs, 27B heads 1.9M/s per layer on v5e); the pure-JAX chunked version
+  is 7–14× slower. Error vs the token-step f32 reference: 5–6e-3 relative
+  (bf16 compute inside). A **bf16 state pool across prefill chunks adds
+  1.3–2.8e-3 relative drift** (smaller chunks, more drift); an f32 pool adds
+  none and the state is small, so keep it f32.
+- **Splash attention** at head_dim 256, GQA 16/4 and 24/4: 396 TFLOPS on v6e
+  at 32k (43 %), 345 on v5p (75 %), 151 on v5e (77 %); about 1 µs per token
+  per layer at 32k on v6e. Pallas `flash_attention` (KV repeated) and XLA
+  are 5–15× slower at these shapes.
 - **SGL-JAX's stock int8 configs fail on Qwen3.5** (they quantize the
   vision tower, whose 1152-wide layers break its sharding);
   `text_int8_w8a8.yaml` (skip `visual`) is the fix being measured.
@@ -1065,20 +1071,20 @@ State-pool dtype over chunked prefill (v6e, `cd-v6e1-ane1b-d/gdn-state-long-v6e-
 | VM | zone | type | mode | $/h | hours | $ so far | last state |
 | --- | --- | --- | --- | ---: | ---: | ---: | --- |
 | cd-v5e8-ue1c-s | us-east1-c | v5litepod-8 | spot | 2.87 | 1.06 | 3.05 | DELETING |
-| cd-v5e8-ue1c-s2 | us-east1-c | v5litepod-8 | spot | 2.87 | 1.94 | 5.59 | READY (held) |
+| cd-v5e8-ue1c-s2 | us-east1-c | v5litepod-8 | spot | 2.87 | 1.97 | 5.65 | READY (held) |
 | cd-v5e8-us1a-s | us-south1-a | v5litepod-8 | spot | 6.33 | 0.02 | 0.11 | DELETING |
 | cd-v5e8-uw1c-s | us-west1-c | v5litepod-8 | spot | 2.87 | 1.08 | 3.11 | DELETING |
 | cd-v5e8-uw4a-s | us-west4-a | v5litepod-8 | spot | 4.15 | 0.98 | 4.05 | DELETING |
 | cd-v5p8-ew4b-s | europe-west4-b | v5p-8 | spot | 4.72 | 0.72 | 3.39 | DELETING |
-| cd-v5p8-ue5a-s | us-east5-a | v5p-8 | spot | 3.44 | 3.14 | 10.82 | READY (held) |
-| cd-v6e1-ane1b-d | asia-northeast1-b | v6e-1 | on-demand | 3.24 | 2.06 | 6.67 | READY (held) |
+| cd-v5p8-ue5a-s | us-east5-a | v5p-8 | spot | 3.44 | 3.17 | 10.89 | READY (held) |
+| cd-v6e1-ane1b-d | asia-northeast1-b | v6e-1 | on-demand | 3.24 | 2.08 | 6.74 | READY (held) |
 | cd-v6e1-ew4a-s | europe-west4-a | v6e-1 | spot | 1.78 | 0.81 | 1.44 | DELETING |
 | cd-v6e1-uc1b-s | us-central1-b | v6e-1 | spot | 0.58 | 0.18 | 0.10 | DELETING |
 | cq-v6e4-uc1b-s | us-central1-b | v6e-4 | spot | 2.34 | 0.14 | 0.33 | DELETING |
 | cq-v6e4-ue1d-s | us-east1-d | v6e-4 | spot | 2.34 | 0.37 | 0.87 | DELETING |
 | cq-v6e8-ue1d-s | us-east1-d | v6e-8 | spot | 4.67 | 0.46 | 2.15 | DELETING |
 
-Total so far $41.69; current burn $9.56/h = $229/day (this campaign only)
+Total so far $41.90; current burn $9.56/h = $229/day (this campaign only)
 
 ## Capacity log
 
@@ -1213,6 +1219,65 @@ Totals: v5e-1 on-demand: 3 created / 4 failed; v5litepod-8 spot: 6 created / 0 f
 | 2026-10-13 03:37 | us-south1-c | v6e-8 | spot | gcloud feedback To check gcloud for common problems, please  |  |
 | 2026-10-13 00:25 | us-west1-c | v6e-8 | spot | insufficient capacity | 0x7dedf9197c1c4805 |
 | 2026-10-13 02:04 | us-west1-c | v6e-8 | spot | insufficient capacity | 0x61f7faec4a5aca2 |
+
+## Queued resources
+
+Each row is one filing (a preempted or failed spot request is deleted and filed again under the same name).
+
+| queued resource | zone | filed (UTC) | wait to PROVISIONING | READY | VM lifetime until preemption | outcome |
+| --- | --- | --- | ---: | --- | ---: | --- |
+| cq-v6e8-ue1d-s | us-east1-d | 00:30 | 29 min | 01:02 | 14 min | preempted |
+| cq-v6e8-uc1a-s | us-central1-a | 00:30 | — | — | — | waiting |
+| cq-v6e8-uc1c-s | us-central1-c | 00:30 | — | — | — | refused at filing |
+| cq-v6e8-us1a-s | us-south1-a | 00:30 | — | — | — | refused at filing |
+| cq-v6e8-uw1c-s | us-west1-c | 00:30 | — | — | — | refused at filing |
+| cq-v6e8-ew4a-s | europe-west4-a | 00:30 | 2 min | — | — | failed |
+| cq-v6e4-uc1a-s | us-central1-a | 01:14 | — | — | — | waiting |
+| cq-v6e4-uc1b-s | us-central1-b | 01:14 | 40 min | 01:56 | 8 min | preempted |
+| cq-v6e4-uc1c-s | us-central1-c | 01:14 | — | — | — | refused at filing |
+| cq-v6e4-us1a-s | us-south1-a | 01:14 | — | — | — | refused at filing |
+| cq-v6e4-us1c-s | us-south1-c | 01:14 | 1 min | — | — | failed |
+| cq-v6e4-uw1c-s | us-west1-c | 01:14 | — | — | — | refused at filing |
+| cq-v6e4-ew4a-s | europe-west4-a | 01:14 | 3 min | — | — | failed |
+| cq-v6e8-uc1b-s | us-central1-b | 01:15 | — | — | — | waiting |
+| cq-v6e8-uc1c-s | us-central1-c | 01:15 | — | — | — | refused at filing |
+| cq-v6e8-us1c-s | us-south1-c | 01:15 | 0 min | — | — | failed |
+| cq-v6e8-ue1d-s | us-east1-d | 01:20 | 29 min | 02:10 | 13 min | preempted |
+| cq-v6e8-us1c-s | us-south1-c | 01:20 | 1 min | — | — | failed |
+| cq-v6e4-ue1d-s | us-east1-d | 01:20 | 23 min | 01:45 | 11 min | preempted |
+| cq-v6e8-ase1b-s | asia-southeast1-b | 01:28 | 1 min | — | — | failed |
+| cq-v6e4-ase1b-s | asia-southeast1-b | 01:28 | 1 min | — | — | failed |
+| cq-v6e4-ue1d-s | us-east1-d | 02:09 | 17 min | 02:28 | 3 min | preempted |
+| cq-v6e8-us1c-s | us-south1-c | 02:09 | 1 min | — | — | failed |
+| cq-v6e8-ase1b-s | asia-southeast1-b | 02:10 | 1 min | — | — | failed |
+| cq-v6e4-uc1b-s | us-central1-b | 02:10 | — | — | — | waiting |
+| cq-v6e4-ase1b-s | asia-southeast1-b | 02:11 | 1 min | — | — | failed |
+| cq-v6e8-us1c-s | us-south1-c | 02:14 | 1 min | — | — | failed |
+| cq-v6e8-us1c-s | us-south1-c | 02:17 | 0 min | — | — | failed |
+| cq-v6e8-us1c-s | us-south1-c | 02:20 | 0 min | — | — | failed |
+| cq-v6e8-us1c-s | us-south1-c | 02:23 | 0 min | — | — | failed |
+| cq-v6e8-ue1d-s | us-east1-d | 02:28 | — | — | — | waiting |
+| cq-v6e8-us1c-s | us-south1-c | 02:28 | 0 min | — | — | failed |
+| cq-v6e8-us1c-s | us-south1-c | 02:31 | 0 min | — | — | failed |
+| cq-v6e8-us1c-s | us-south1-c | 02:34 | 1 min | — | — | failed |
+| cq-v6e4-ue1d-s | us-east1-d | 02:38 | 10 min | 02:51 | 7 min | preempted |
+| cq-v6e8-us1c-s | us-south1-c | 02:38 | 1 min | — | — | failed |
+| cq-v6e8-us1c-s | us-south1-c | 02:41 | 1 min | — | — | failed |
+| cq-v6e8-ase1b-s | asia-southeast1-b | 02:45 | 0 min | — | — | failed |
+| cq-v6e4-ase1b-s | asia-southeast1-b | 02:45 | 1 min | — | — | failed |
+| cq-v6e8-us1c-s | us-south1-c | 02:45 | 1 min | — | — | failed |
+| cq-v6e8-us1c-s | us-south1-c | 02:48 | 0 min | — | — | failed |
+| cq-v6e8-us1c-s | us-south1-c | 02:51 | 1 min | — | — | suspended before READY |
+| cq-v6e8-us1c-s | us-south1-c | 02:54 | 1 min | — | — | failed |
+| cq-v6e8-us1c-s | us-south1-c | 02:57 | 1 min | — | — | failed |
+| cq-v6e8-us1c-s | us-south1-c | 03:00 | 1 min | — | — | failed |
+| cq-v6e4-ue1d-s | us-east1-d | 03:04 | — | — | — | waiting |
+| cq-v6e8-us1c-s | us-south1-c | 03:04 | 1 min | — | — | failed |
+| cq-v6e8-us1c-s | us-south1-c | 03:07 | 0 min | — | — | failed |
+| cq-v6e8-us1c-s | us-south1-c | 03:10 | 0 min | — | — | failed |
+| cq-v6e8-us1c-s | us-south1-c | 03:13 | 1 min | — | — | failed |
+| cq-v6e8-ase1b-s | asia-southeast1-b | 03:39 | — | — | — | waiting |
+| cq-v6e4-ase1b-s | asia-southeast1-b | 03:39 | — | — | — | refused at filing |
 
 ## Cold start
 
@@ -1428,3 +1493,4 @@ Create call = the `gcloud ... create` call until the VM is READY (successful att
 | 2026-10-13 03:37:50 | cq-v6e8-ase1b-s | asia-southeast1-b | queued | FAILED |
 | 2026-10-13 03:37:51 | cq-v6e4-ase1b-s | asia-southeast1-b | queued | FAILED |
 | 2026-10-13 03:37:51 | cq-v6e8-us1c-s | us-south1-c | queued | FAILED |
+| 2026-10-13 03:39:29 | cq-v6e8-ase1b-s | asia-southeast1-b | queued | WAITING_FOR_RESOURCES |

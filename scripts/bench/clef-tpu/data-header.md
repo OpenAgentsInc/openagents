@@ -35,20 +35,26 @@ synced JSON; the headline section is written by hand.
   TP 8 is ~4,000 tok/s per chip ($0.025/M spot), 27B on v5p-8 TP 4 is
   ~4,200 per chip ($0.062/M spot).
 - **The silicon is not the limit.** bf16 matmuls at Clef's exact projection
-  shapes run at 98 % of peak on v5e (193 of 197 TFLOPS) and v5p (423 of
-  459); int8 W8A8 doubles that (v5e 386 TOPS with static scales, 290–370
-  with dynamic per-token activation quantization). The projection-time
-  model says Flash's matmuls alone allow ~14k tok/s on a v5e chip in bf16
-  and ~24k in dynamic int8; what SGL-JAX reaches end to end is the gap to
-  close (TP 8 on a 9B model is communication-bound).
-- **The Gated DeltaNet scan is cheap.** gdn/v3 does ~2.6M tokens/s per
-  layer for Flash heads on v5e (~9–10 µs per token over all 24 GDN layers),
-  1.9M/s for 27B heads; the pure-JAX chunked version is 8–14× slower. Error
-  vs the token-step f32 reference: 5–6e-3 relative (bf16 compute inside).
-  A **bf16 state pool across prefill chunks adds 1.3–2.8e-3 relative
-  drift**; an f32 pool adds none, and the state is small, so keep it f32.
-- **Splash attention** at head_dim 256 reaches 151 TFLOPS on v5e (77 %) at
-  32k; attention is ~1.8 µs/token per layer at 32k on v5e.
+  shapes run at 98 % of peak on v5e (193 of 197 TFLOPS), ~92 % on v5p and
+  v6e (~840 of 918); int8 W8A8 with static scales ~1,700 TOPS on v6e (93 %),
+  1,000–1,500 with dynamic per-token activation quantization. Summing the
+  measured matmuls over every layer, Flash's projections alone allow
+  ~60k tokens/s on one v6e chip in bf16 and ~85k in dynamic int8 (8k-token
+  batches); SGL-JAX reaches 25.9k and 37.6k end to end, 43–44 % of that.
+  The rest (attention, GDN, norms, gating, scheduler, padding) is where an
+  owned worker can win. fp8 has no MXU path on v5e/v6e/v5p (emulated: slower
+  than bf16).
+- **The Gated DeltaNet scan is cheap.** gdn/v3 runs ~4M tokens/s per layer
+  for Flash heads on v6e (~6 µs per token over all 24 GDN layers; v5e
+  ~9–10 µs, 27B heads 1.9M/s per layer on v5e); the pure-JAX chunked version
+  is 7–14× slower. Error vs the token-step f32 reference: 5–6e-3 relative
+  (bf16 compute inside). A **bf16 state pool across prefill chunks adds
+  1.3–2.8e-3 relative drift** (smaller chunks, more drift); an f32 pool adds
+  none and the state is small, so keep it f32.
+- **Splash attention** at head_dim 256, GQA 16/4 and 24/4: 396 TFLOPS on v6e
+  at 32k (43 %), 345 on v5p (75 %), 151 on v5e (77 %); about 1 µs per token
+  per layer at 32k on v6e. Pallas `flash_attention` (KV repeated) and XLA
+  are 5–15× slower at these shapes.
 - **SGL-JAX's stock int8 configs fail on Qwen3.5** (they quantize the
   vision tower, whose 1152-wide layers break its sharding);
   `text_int8_w8a8.yaml` (skip `visual`) is the fix being measured.

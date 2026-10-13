@@ -9,6 +9,11 @@ while true; do
     --format="value(name.basename(),name.segment(3),state.state,tpu.nodeSpec[0].node.acceleratorType)" 2>/dev/null |
   while read n z st t; do
     case $st in SUSPENDED|FAILED) ;; *) continue;; esac
+    # us-south1-c fails every filing within a minute with "an internal error has occurred"; stop after 20
+    if [ "$st" = FAILED ] && [ "$(grep -c "\"qr\":\"$n\".*FAILED" "$LOGDIR/requeue.jsonl" 2>/dev/null)" -ge 20 ]; then
+      gcloud compute tpus queued-resources delete "$n" --zone "$z" --project openagentsgemini --force --quiet >/dev/null 2>&1
+      echo "{\"ts\":\"$(date -u +%FT%TZ)\",\"qr\":\"$n\",\"zone\":\"$z\",\"was\":\"$st\",\"action\":\"give up\"}" >> "$LOGDIR/requeue.jsonl"; continue
+    fi
     gcloud compute tpus queued-resources delete "$n" --zone "$z" --project openagentsgemini --force --quiet >/dev/null 2>&1
     echo "{\"ts\":\"$(date -u +%FT%TZ)\",\"qr\":\"$n\",\"zone\":\"$z\",\"was\":\"$st\",\"action\":\"$( [[ $z == us-* || $z == asia-southeast1-* ]] && echo refile || echo drop)\"}" >> "$LOGDIR/requeue.jsonl"
     [[ $z == us-* || $z == asia-southeast1-* ]] && CLEF_TPU_LOGDIR=$LOGDIR "$HERE/queue.sh" "$t" spot "$z" >/dev/null 2>&1
