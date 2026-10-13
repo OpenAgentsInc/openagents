@@ -304,6 +304,7 @@ pub async fn run_command(
     let boundary = command_boundary(&directory, false)?;
     let sink = RefCell::new(emit);
     let checkout = Checkout {
+        asked: std::sync::Mutex::default(),
         hooks: Some(crate::sdk_hooks::coder_loop(&directory, cancel)),
         directory,
         boundary,
@@ -313,10 +314,16 @@ pub async fn run_command(
     };
     // The same hooks as a loop command: the floors hold a production
     // deploy, a merge, a secret or a payment for the person (#11475, #11497).
-    let ran = microcoder_loop::hooks::run(&checkout, script, Duration::from_secs(120), true)
-        .await
-        .result;
-    Ok(json!({"exit":ran.exit,"output":ran.output,"timed_out":ran.timed_out,"seconds":ran.seconds}))
+    let hooked =
+        microcoder_loop::hooks::run(&checkout, script, Duration::from_secs(120), true).await;
+    let ran = hooked.result;
+    let mut output = json!({"exit":ran.exit,"output":ran.output,"timed_out":ran.timed_out,"seconds":ran.seconds});
+    // What the hooks added (a folder's instructions, #11520) reaches the
+    // model with the result, as Claude Code's additionalContext does.
+    if !hooked.context.is_empty() {
+        output["context"] = json!(hooked.context.join("\n\n"));
+    }
+    Ok(output)
 }
 
 /// `word` as a shell word, quoted only when it needs quoting.
@@ -2174,6 +2181,7 @@ async fn run_microcoder_with<G: Generate>(
     };
     let sink = RefCell::new(emit);
     let environment = Checkout {
+        asked: std::sync::Mutex::default(),
         hooks: Some(crate::sdk_hooks::coder_loop(&directory, cancel)),
         directory: directory.clone(),
         boundary,
@@ -2384,11 +2392,22 @@ struct Checkout<'a> {
     cancel: Arc<AtomicBool>,
     redaction_keys: &'a [ApiKey],
     events: Option<&'a dyn crate::delegation_events::Sink>,
+    /// The command the agent asked to run, as its `PreToolUse` carried it:
+    /// when a hook rewrote what runs (the squeezer, #11520), the result and
+    /// the progress still name the agent's own command, so they stay on its
+    /// row and in its words.
+    asked: std::sync::Mutex<Option<String>>,
 }
 
 impl Env for Checkout<'_> {
     async fn run(&self, script: &str, deadline: Duration) -> CommandResult {
         let started = Instant::now();
+        let shown = self
+            .asked
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+            .unwrap_or_else(|| script.to_owned());
         // The floors are a hook the loop fires before this (#11497).
         // An agent-driven chat asks before anything that is not read-only.
         if let crate::approval::Verdict::Refused(why) = crate::approval::check(script) {
@@ -2447,7 +2466,7 @@ impl Env for Checkout<'_> {
                 &self.cancel,
                 bridge.as_mut().zip(self.events),
                 self.redaction_keys,
-                self.events.map(|sink| (sink, script)),
+                self.events.map(|sink| (sink, shown.as_str())),
             )
             .await
         }
@@ -2472,7 +2491,7 @@ impl Env for Checkout<'_> {
             Err(error) => (error, None, false),
         };
         CommandResult {
-            command: redact_text(script, self.redaction_keys),
+            command: redact_text(&shown, self.redaction_keys),
             exit,
             timed_out,
             seconds: started.elapsed().as_secs_f64(),
@@ -2503,6 +2522,14 @@ impl Env for Checkout<'_> {
     }
 
     async fn hook(&self, call: coder_sdk::Call) -> coder_sdk::Applied {
+        if call.event == coder_sdk::Event::PreToolUse
+            && let Some(command) = call.input["command"].as_str()
+        {
+            *self
+                .asked
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(command.to_owned());
+        }
         match &self.hooks {
             Some(hooks) => hooks.fire(call).await,
             None => coder_sdk::Applied::unchanged(&call),
@@ -2796,6 +2823,7 @@ mod tests {
             "full access"
         );
         let environment = Checkout {
+            asked: std::sync::Mutex::default(),
             hooks: None,
             directory: cwd.clone(),
             boundary: command_boundary(&cwd, false).unwrap(),
@@ -2877,6 +2905,7 @@ mod tests {
         }
         let _reset = Reset;
         let environment = Checkout {
+            asked: std::sync::Mutex::default(),
             hooks: None,
             directory,
             boundary: Some(boundary),
@@ -4292,6 +4321,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         let keys = vec![ApiKey::new(MARKER)];
         let cancel = Arc::new(AtomicBool::new(false));
         let environment = Checkout {
+            asked: std::sync::Mutex::default(),
             hooks: None,
             directory,
             boundary: Some(boundary),

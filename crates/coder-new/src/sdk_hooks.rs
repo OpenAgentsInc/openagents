@@ -53,7 +53,7 @@ pub fn claude(cwd: &Path, full: bool) -> coder_sdk::claude::Claude {
 /// run is cancelled.
 #[must_use]
 pub fn coder_loop(cwd: &Path, cancel: &Arc<AtomicBool>) -> coder_sdk::Hooks {
-    let mut registry = registry(cwd, false);
+    let mut registry = coder_loop_registry(cwd, crate::token_savers::enabled());
     system_one(&mut registry, cwd, Harness::CoderLoop);
     coder_sdk::Hooks::new(
         registry,
@@ -66,6 +66,33 @@ pub fn coder_loop(cwd: &Path, cancel: &Arc<AtomicBool>) -> coder_sdk::Hooks {
         || "Coder".to_owned(),
         Some(Arc::clone(cancel)),
     ))
+}
+
+/// The Coder loop's registry in `cwd`: [`registry`], and with Token savers
+/// `on` its levers too (#11520): the squeezer rewrites a noisy `Run` the
+/// same way it rewrites Claude Code's Bash, and the gate and conditional
+/// context keep one session per folder across commands.
+fn coder_loop_registry(cwd: &Path, on: bool) -> Registry {
+    let mut registry = registry(cwd, false);
+    if on {
+        let session = coder_loop_session(cwd);
+        for hook in crate::token_savers::coder_loop_hooks() {
+            let _ = registry.register(hook);
+        }
+        let _ = registry.register(crate::gate::sdk_hook(session.clone()));
+        for hook in crate::context_hook::sdk_hooks(cwd.to_owned(), session) {
+            let _ = registry.register(hook);
+        }
+    }
+    registry
+}
+
+/// The token savers' session for the Coder loop in `cwd`: one per folder
+/// in this process, so what the gate and the conditional context saw
+/// carries from one command to the next (#11520).
+#[must_use]
+pub fn coder_loop_session(cwd: &Path) -> String {
+    format!("coder-loop-{}-{}", std::process::id(), cwd.display())
 }
 
 /// Codex on app-server (#11510): the fence and the floors, the token
@@ -429,6 +456,48 @@ pub fn codex_host(cwd: &Path) -> Option<coder_sdk::bridge::Host> {
 
 #[cfg(test)]
 mod tests {
+
+    #[tokio::test]
+    async fn the_loop_squeezes_a_noisy_run_as_claude_code_squeezes_bash() {
+        // #11520: the same rewrite on both harnesses, and none with Token
+        // savers off.
+        let dir = tempfile::tempdir().unwrap();
+        let cwd = dir.path();
+        let command = "cargo test -p coder-new";
+        let fire = |registry: Registry, tool: &str| {
+            let hooks = coder_sdk::Hooks::new(
+                registry,
+                Budget::default(),
+                coder_sdk::HookBackend::CoderLoop,
+            )
+            .unwrap();
+            let call = coder_sdk::Call::tool(
+                coder_sdk::Event::PreToolUse,
+                tool,
+                serde_json::json!({"command": command}),
+            );
+            async move { hooks.fire(call).await.input["command"].clone() }
+        };
+        let on_loop = fire(super::coder_loop_registry(cwd, true), "Run").await;
+        let mut claude = Registry::new();
+        for hook in crate::token_savers::sdk_hooks() {
+            claude.register(hook).unwrap();
+        }
+        let on_claude = fire(claude, "Bash").await;
+        assert_ne!(on_loop, serde_json::json!(command), "{on_loop}");
+        assert!(on_loop.as_str().unwrap().contains("squeeze"), "{on_loop}");
+        assert_eq!(on_loop, on_claude);
+        let off = fire(super::coder_loop_registry(cwd, false), "Run").await;
+        assert_eq!(off, serde_json::json!(command));
+        let ids: Vec<String> = super::coder_loop_registry(cwd, true)
+            .hooks()
+            .map(|hook| hook.id.clone())
+            .collect();
+        for id in ["squeeze", "gate", "context"] {
+            assert!(ids.iter().any(|hook| hook == id), "{id} in {ids:?}");
+        }
+    }
+
     use serde_json::{Value, json};
 
     use super::*;

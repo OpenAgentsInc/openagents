@@ -351,7 +351,7 @@ pub fn sdk_hook(session: String) -> coder_sdk::Hook {
                             }
                         }
                     }
-                    "Bash" => {
+                    "Bash" | "Run" => {
                         for action in call.input["commandActions"]
                             .as_array()
                             .into_iter()
@@ -382,8 +382,24 @@ pub fn sdk_hook(session: String) -> coder_sdk::Hook {
             )
         },
     )
-    .matching("Bash|apply_patch")
+    // `Run` is the Coder loop's shell (#11520).
+    .matching("Bash|Run|apply_patch")
     .timeout(TIMEOUT + Duration::from_secs(1))
+}
+
+/// Notes that `session` read `path` with a file tool that fires no hook
+/// (the Coder loop's Read), so the gate knows the script was read
+/// (#11520).
+pub fn note_read(session: &str, cwd: &Path, path: &str) {
+    let mut all = touched()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    note_touch(
+        all.entry(session.to_owned()).or_default(),
+        "Read",
+        &json!({"file_path": path}),
+        cwd,
+    );
 }
 
 #[cfg(test)]

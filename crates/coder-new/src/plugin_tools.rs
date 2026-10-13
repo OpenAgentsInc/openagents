@@ -469,7 +469,8 @@ impl ExecutionSettings {
                 {
                     return Err(refusal);
                 }
-                crate::file_tools::execute_with_checks(
+                let path = arguments["path"].as_str().map(str::to_owned);
+                let mut output = crate::file_tools::execute_with_checks(
                     name,
                     arguments,
                     &self.cwd,
@@ -479,7 +480,23 @@ impl ExecutionSettings {
                     self.boundary
                         .as_ref()
                         .map(|boundary| boundary.shared.as_path()),
-                )
+                )?;
+                // Token savers on the loop (#11520): a Read counts as read
+                // for the gate, and the first touch of a folder adds its own
+                // instructions when they matter.
+                if let Some(path) = path.filter(|_| crate::token_savers::enabled()) {
+                    let session = crate::sdk_hooks::coder_loop_session(&self.cwd);
+                    if name == "Read" {
+                        crate::gate::note_read(&session, &self.cwd, &path);
+                    }
+                    if let Some(text) =
+                        crate::context_hook::coder_loop_touch(&session, &self.cwd, &path)
+                        && let Some(object) = output.as_object_mut()
+                    {
+                        object.insert("context".into(), json!(text));
+                    }
+                }
+                Ok(output)
             }
             name if crate::connection_tools::is_tool(name) && self.connections.is_some() => {
                 let account = self

@@ -1245,7 +1245,7 @@ pub async fn run_gated(
         return run_acp(session, worktree, folder, transcript).await;
     }
     if matches!(session.engine, Engine::Coder { .. }) {
-        return run_coder(session, worktree, folder, transcript).await;
+        return run_coder(session, worktree, folder, transcript, gated).await;
     }
     let root = worktree
         .canonicalize()
@@ -2172,6 +2172,7 @@ pub async fn run_coder(
     worktree: &Path,
     folder: &Path,
     transcript: &mut Transcript,
+    gated: bool,
 ) -> Work {
     use std::sync::atomic::{AtomicBool, Ordering};
     let root = worktree
@@ -2223,7 +2224,7 @@ pub async fn run_coder(
         prompt.truncate(cut);
         prompt.push_str("\n\n[The rest of this prompt was cut to fit.]");
     }
-    let mut messages = Vec::new();
+    let mut messages: Vec<openrouter::Message> = Vec::new();
     if !session.system.trim().is_empty() {
         messages.push(openrouter::Message {
             role: "system".into(),
@@ -2239,90 +2240,150 @@ pub async fn run_coder(
         .push_str(&json!({"type": "prompt", "model": session.model, "prompt": prompt}).to_string());
     events.push('\n');
 
+    // The Stop gate (#11487) on the Coder loop (#11520): a stop is checked
+    // against the final checks, as on Claude Code, and a blocked stop is
+    // the next turn's message.
+    let last_text: Arc<Mutex<String>> = Arc::default();
+    let finals: Vec<Check> = session
+        .checks
+        .iter()
+        .filter(|c| harness_runs(c))
+        .cloned()
+        .collect();
+    let gate = (gated && !finals.is_empty() && crate::token_savers::enabled()).then(|| {
+        Arc::new(stop_gate(
+            Arc::new(finals),
+            root.clone(),
+            session.baseline.clone(),
+            last_text.clone(),
+            briefed_agent::stop_gate::decisions(),
+            folder,
+        ))
+    });
     // The hand's stop: the run's own, or its time running out.
     let stop = Arc::new(AtomicBool::new(false));
-    let watcher = {
-        let (stop, run_stop, timeout) = (stop.clone(), transcript.cancel.clone(), session.timeout);
-        async move {
-            while !run_stop.load(Ordering::Relaxed) && started.elapsed() <= timeout {
-                tokio::time::sleep(Duration::from_millis(200)).await;
-            }
-            stop.store(true, Ordering::Relaxed);
-            std::future::pending::<()>().await;
-        }
-    };
     let model_seen: Arc<Mutex<Option<String>>> = Arc::default();
     let briefed = session.briefed;
     let mut opened: BTreeSet<String> = BTreeSet::new();
     let mut misses = Vec::new();
     let mut running: Vec<(usize, String, Value)> = Vec::new();
-    let result = {
-        let mut on_text = |_: &str| {};
-        let mut on_model = {
-            let model_seen = model_seen.clone();
-            move |model: &str| *lock(&model_seen) = Some(model.to_owned())
-        };
-        let mut on_event = |event: crate::bundled_runtime::RuntimeEvent| {
-            let crate::bundled_runtime::RuntimeEvent::Tool {
-                name,
-                input,
-                output,
-                running: still,
-            } = event
-            else {
-                return;
-            };
-            events.push_str(&json!({"type": "tool", "t_ms": started.elapsed().as_millis() as u64, "name": name, "input": input, "output": output, "running": still}).to_string());
-            events.push('\n');
-            if name == "Read"
-                && let Some(Some(path)) = inside(&root, &input)
-                && !briefed.contains(&path)
-                && opened.insert(path.clone())
-            {
-                misses.push(path);
-            }
-            let entry = Entry::Tool {
-                name: name.clone(),
-                input: input.clone(),
-                output,
-                running: still,
-            };
-            // A running call's progress and its end update its own entry.
-            match running
-                .iter()
-                .rposition(|(_, open, open_input)| *open == name && *open_input == input)
-            {
-                Some(at) => {
-                    transcript.set(running[at].0, entry);
-                    if !still {
-                        running.remove(at);
-                    }
+    let mut sent_back = 0;
+    let mut earlier = (0, 0);
+    let result = loop {
+        let watcher = {
+            let (stop, run_stop, timeout) =
+                (stop.clone(), transcript.cancel.clone(), session.timeout);
+            async move {
+                while !run_stop.load(Ordering::Relaxed) && started.elapsed() <= timeout {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
                 }
-                None => {
-                    let index = transcript.push(entry);
-                    if still {
-                        running.push((index, name, input));
-                    }
-                }
+                stop.store(true, Ordering::Relaxed);
+                std::future::pending::<()>().await;
             }
         };
-        let options = crate::models::GenerationOptions::default();
-        // The turn's state lives on the heap: a solver hand runs on a plain
-        // thread's stack, which a debug build's turn would overflow.
-        let turn = Box::pin(provider.chat_with_plugins(
-            crate::models::GATEWAY_AUTO,
-            &options,
-            messages,
-            &execution,
-            &mut on_text,
-            &mut on_model,
-            &mut on_event,
-            &stop,
-        ));
-        tokio::select! {
-            result = turn => result,
-            () = watcher => unreachable!("the watcher never finishes"),
+        let result = {
+            let mut on_text = |_: &str| {};
+            let mut on_model = {
+                let model_seen = model_seen.clone();
+                move |model: &str| *lock(&model_seen) = Some(model.to_owned())
+            };
+            let mut on_event = |event: crate::bundled_runtime::RuntimeEvent| {
+                let crate::bundled_runtime::RuntimeEvent::Tool {
+                    name,
+                    input,
+                    output,
+                    running: still,
+                } = event
+                else {
+                    return;
+                };
+                events.push_str(&json!({"type": "tool", "t_ms": started.elapsed().as_millis() as u64, "name": name, "input": input, "output": output, "running": still}).to_string());
+                events.push('\n');
+                if name == "Read"
+                    && let Some(Some(path)) = inside(&root, &input)
+                    && !briefed.contains(&path)
+                    && opened.insert(path.clone())
+                {
+                    misses.push(path);
+                }
+                let entry = Entry::Tool {
+                    name: name.clone(),
+                    input: input.clone(),
+                    output,
+                    running: still,
+                };
+                // A running call's progress and its end update its own entry.
+                match running
+                    .iter()
+                    .rposition(|(_, open, open_input)| *open == name && *open_input == input)
+                {
+                    Some(at) => {
+                        transcript.set(running[at].0, entry);
+                        if !still {
+                            running.remove(at);
+                        }
+                    }
+                    None => {
+                        let index = transcript.push(entry);
+                        if still {
+                            running.push((index, name, input));
+                        }
+                    }
+                }
+            };
+            let options = crate::models::GenerationOptions::default();
+            // The turn's state lives on the heap: a solver hand runs on a plain
+            // thread's stack, which a debug build's turn would overflow.
+            let turn = Box::pin(provider.chat_with_plugins(
+                crate::models::GATEWAY_AUTO,
+                &options,
+                messages.clone(),
+                &execution,
+                &mut on_text,
+                &mut on_model,
+                &mut on_event,
+                &stop,
+            ));
+            tokio::select! {
+                result = turn => result,
+                () = watcher => unreachable!("the watcher never finishes"),
+            }
+        };
+        let (Ok(reply), Some(gate)) = (&result, &gate) else {
+            break result;
+        };
+        if sent_back >= STOP_GATE_ROUNDS || stop.load(Ordering::Relaxed) {
+            break result;
         }
+        reply.text.trim().clone_into(&mut lock(&last_text));
+        let briefed_agent::stop_gate::Outcome::Block(reason) = gate.decide().await else {
+            break result;
+        };
+        // Sent back: the stop's words stay in the transcript, and the gate's
+        // verdict is the next turn's message.
+        sent_back += 1;
+        earlier.0 += reply.usage.prompt_tokens;
+        earlier.1 += reply.usage.completion_tokens;
+        if !reply.text.trim().is_empty() {
+            transcript.push(Entry::Assistant {
+                text: reply.text.trim().to_owned(),
+                model: Some(reply.model.clone()).filter(|model| !model.is_empty()),
+                elapsed_ms: Some(started.elapsed().as_millis() as u64),
+            });
+            messages.push(openrouter::Message {
+                role: "assistant".into(),
+                content: reply.text.trim().to_owned(),
+            });
+        }
+        transcript.notice(
+            "The agent stopped before the final checks pass; it was sent back with their verdict.",
+        );
+        events.push_str(&json!({"type": "stop_gate", "t_ms": started.elapsed().as_millis() as u64, "reason": reason}).to_string());
+        events.push('\n');
+        messages.push(openrouter::Message {
+            role: "user".into(),
+            content: reason,
+        });
     };
     for (index, name, input) in running {
         transcript.set(
@@ -2352,10 +2413,12 @@ pub async fn run_coder(
             }
             events.push_str(&json!({"type": "result", "t_ms": t_ms, "model": model, "tokens": reply.usage.total_tokens, "cost": reply.usage.cost}).to_string());
             events.push('\n');
-            work.input_tokens =
-                (reply.usage.prompt_tokens > 0).then_some(reply.usage.prompt_tokens);
-            work.output_tokens =
-                (reply.usage.completion_tokens > 0).then_some(reply.usage.completion_tokens);
+            let (input, output) = (
+                earlier.0 + reply.usage.prompt_tokens,
+                earlier.1 + reply.usage.completion_tokens,
+            );
+            work.input_tokens = (input > 0).then_some(input);
+            work.output_tokens = (output > 0).then_some(output);
             work.cost_usd = reply.usage.cost;
         }
         Err(why) => {
@@ -2371,8 +2434,13 @@ pub async fn run_coder(
     let _ = std::fs::write(folder.join(&session.events_file), events);
     work.wall_ms = t_ms;
     work.misses = misses;
+    work.stop_gate = gate.map(|gate| lock(&gate.tally).clone());
     work
 }
+
+/// How many times the Stop gate sends a Coder-loop session back before
+/// its last stop stands.
+const STOP_GATE_ROUNDS: usize = 3;
 
 /// [`final_checks`] with each check's output, so a hand-back can carry the
 /// real errors. A check in `passed` already passed on this same working copy

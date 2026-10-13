@@ -423,6 +423,20 @@ fn cut(text: &str, chars: usize) -> String {
 }
 
 /// One `PostToolUse` call: the `hookSpecificOutput` to return, if any.
+/// The Coder loop's first touch of `path` with a file tool (#11520): the
+/// folder's own instructions, when they matter for the task, to add to the
+/// tool's result. Its turn-start briefing already read the root's.
+#[must_use]
+pub fn coder_loop_touch(session: &str, cwd: &Path, path: &str) -> Option<String> {
+    with_session(session, |s| s.no_claude_md = true);
+    let input = json!({
+        "session_id": session, "cwd": cwd,
+        "tool_name": "Read", "tool_input": {"file_path": path},
+    });
+    on_tool(&input, cwd, &squeeze::Decisions)
+        .and_then(|specific| specific["additionalContext"].as_str().map(str::to_owned))
+}
+
 pub fn on_tool(input: &Value, cwd: &Path, judge: &dyn Judge) -> Option<Value> {
     if std::env::var("CODER_CONTEXT").is_ok_and(|v| v.trim().eq_ignore_ascii_case("off")) {
         return None;

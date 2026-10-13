@@ -99,6 +99,38 @@ pub fn sdk_hooks() -> Vec<coder_sdk::Hook> {
     }
 }
 
+/// The squeezer for the Coder loop (#11520): the same rewrite as on Claude
+/// Code's Bash, for the loop's `Run`, when the plugin is on.
+#[must_use]
+pub fn coder_loop_hooks() -> Vec<coder_sdk::Hook> {
+    if !enabled() {
+        return Vec::new();
+    }
+    let Some(this) = std::env::current_exe().ok() else {
+        return Vec::new();
+    };
+    let invoker = squeeze::invoker(&this, &[squeeze::CODER_SUBCOMMAND]);
+    vec![coder_loop_squeeze(invoker)]
+}
+
+/// The Coder loop's squeeze hook over `invoker`: the loop's `Run` read as
+/// the Bash call the squeezer knows.
+fn coder_loop_squeeze(invoker: String) -> coder_sdk::Hook {
+    coder_sdk::Hook::new(
+        "squeeze",
+        coder_sdk::Event::PreToolUse,
+        coder_sdk::Source::BuiltIn,
+        move |call: &coder_sdk::Call| {
+            let input = serde_json::json!({"tool_name": "Bash", "tool_input": call.input});
+            Ok(match squeeze::hook_output(&input, &invoker) {
+                Some(specific) => coder_sdk::HookOutcome::rewrite(specific["updatedInput"].clone()),
+                None => coder_sdk::HookOutcome::none(),
+            })
+        },
+    )
+    .matching("Run")
+}
+
 fn squeeze_hook() -> Option<coder_sdk::Hook> {
     Some(squeeze::sdk_hook(invoker()?))
 }
@@ -185,9 +217,10 @@ fn install_stop_gate_if(
 }
 
 /// The Plugins screen's description.
-pub const DESCRIPTION: &str = "Shortcuts that cut what the agent reads and pays for. Long build and \
-     test output is trimmed to its errors before the agent reads it, with the full output saved \
-     to a file. Turn off to send everything through unchanged.";
+pub const DESCRIPTION: &str = "Shortcuts that cut what the agent reads and pays for. On Claude Code \
+     and Coder's own loop, long build and test output is trimmed to its errors before the agent \
+     reads it, with the full output saved to a file. Turn off to send everything through \
+     unchanged.";
 
 #[cfg(test)]
 mod tests {
