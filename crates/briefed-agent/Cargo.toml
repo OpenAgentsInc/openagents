@@ -13,7 +13,8 @@ path = "src/main.rs"
 [dependencies]
 claude_agent_sdk = { path = "../claude_agent_sdk" }
 squeeze = { path = "../squeeze" }
-# Sessions start through the Coder SDK's Claude backend (#11496).
+# Sessions start through the Coder SDK's Claude backend (#11496); its
+# tools are the SDK's one tool server, in process and over stdio (#11501).
 coder-sdk = { path = "../coder-sdk" }
 jev = { path = "../jev" }
 hook-log = { path = "../hook-log" }

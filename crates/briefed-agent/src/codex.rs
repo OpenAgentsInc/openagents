@@ -19,7 +19,6 @@
 //! has the shape `main.rs` writes, plus `"engine": "codex"`.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::{BufRead, Write};
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::atomic::AtomicBool;
@@ -354,30 +353,17 @@ pub fn tally_from_log(path: &str) -> Tally {
 }
 
 /// `briefed-agent --serve CONFIG.json`: the briefing's check tools as an
-/// MCP server over stdio, for an engine that cannot host them in-process.
+/// MCP server over stdio, for an engine that cannot host them in-process:
+/// the Coder SDK's one tool server, served on stdio.
 pub async fn serve(config: &Value) -> Result<(), String> {
     let worktree = std::path::PathBuf::from(crate::text(config, "worktree")?);
     let worktree = worktree.canonicalize().unwrap_or(worktree);
     let custom = crate::strings(&config["custom"]);
     let finished = Arc::new(AtomicBool::new(false));
     let tally: Arc<Mutex<Tally>> = Arc::default();
-    let server = crate::tools::server(&worktree, config, &custom, finished, tally)
+    let server = crate::tools::tool_server(&worktree, config, &custom, finished, tally)
         .ok_or("the config names no check tools to serve")?;
-    let stdin = std::io::stdin();
-    let mut stdout = std::io::stdout();
-    for line in stdin.lock().lines() {
-        let Ok(line) = line else { break };
-        if line.trim().is_empty() {
-            continue;
-        }
-        let Ok(message) = serde_json::from_str::<Value>(&line) else {
-            continue;
-        };
-        let reply = server.handle_message(&message).await;
-        writeln!(stdout, "{reply}").map_err(|error| error.to_string())?;
-        stdout.flush().map_err(|error| error.to_string())?;
-    }
-    Ok(())
+    coder_sdk::serve_stdio(&server).await
 }
 
 #[cfg(test)]

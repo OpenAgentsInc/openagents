@@ -306,7 +306,18 @@ balance, offers in the route contract); the SDK would call them from a
    delivered at session start or at the tail.
 6. **Tools.** One MCP server of Coder tools (`claude_tools.rs` today)
    offered to every harness that takes MCP, including `verify` and
-   `finish` from the briefed agent and a `decide` tool.
+   `finish` from the briefed agent and a `decide` tool. Built (#11501):
+   `coder_sdk::ToolServer` is declared once and reaches Claude Code in
+   process (`in_process`) and every other harness over MCP stdio
+   (`serve`). Coder chat's tools (`claude_tools::tool_server`, and `coder
+   coder-tools-mcp [--decide]` on stdio) and the briefed agent's `oa`
+   server (`verify`, `finish`, the lean tools; `--serve` on stdio) are
+   built on it. `decide` (`coder_sdk::decide`) asks `openagents/decide`
+   and is offered only when the session's `Admission` covers what it
+   sends, the same check as decision hooks; each answer is a hook-log
+   line. A gated server runs each call through the session's
+   `PreToolUse`/`PostToolUse` hooks; Claude Code's in-process server is
+   left ungated because Claude Code fires its own hooks on MCP tools.
 7. **Human in the loop.** Ask outcomes, elicitation and user dialogs go to
    one approval surface (studio, chat, phone); an answer resumes the
    session with **Allow once** keyed by the request's digest.

@@ -22,7 +22,7 @@ route-contract = { path = "../route-contract" }
 agent-fleet = { path = "../agent-fleet" }
 coder-lease = { path = "../coder-lease" }
 coder-delegate = { path = "../coder-delegate" }
-# One host layer in front of every harness: hooks, outcomes, backends (#11495-#11498).
+# One host layer in front of every harness: hooks, outcomes, backends, the one Coder tool server (#11495-#11501).
 coder-sdk = { path = "../coder-sdk" }
 coder-engine-status = { path = "../coder-engine-status" }
 secret-screen = { path = "../secret-screen" }

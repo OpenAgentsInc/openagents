@@ -38,7 +38,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use claude_agent_sdk::{SdkMcpTool, ToolResult};
+use claude_agent_sdk::ToolResult;
+use coder_sdk::Tool;
 use serde_json::{Value, json};
 use tokio::process::Command;
 
@@ -215,8 +216,8 @@ impl Verify {
     }
 
     /// The `verify` tool for the in-process MCP server.
-    pub fn tool(verify: Arc<Self>) -> SdkMcpTool {
-        SdkMcpTool::new(
+    pub fn tool(verify: Arc<Self>) -> Tool {
+        Tool::new(
             "verify",
             "Run this issue's checks on your working copy: the touched crates' tests (pass \
              `tests`, space-separated test-name filters, to run fewer) and fmt, and the checks \

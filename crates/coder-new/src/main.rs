@@ -71,6 +71,13 @@ fn run() -> io::Result<()> {
         coder_new::floors::hook_main();
         return Ok(());
     }
+    // Coder's tools over MCP stdio, for a harness that takes MCP (#11501).
+    if args
+        .first()
+        .is_some_and(|command| command == coder_new::claude_tools::STDIO_COMMAND)
+    {
+        std::process::exit(coder_new::claude_tools::stdio_main(&args[1..]));
+    }
     // The squeezer a Claude Code session's Bash runs a noisy command
     // through (#11486).
     if args

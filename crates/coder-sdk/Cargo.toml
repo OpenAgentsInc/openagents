@@ -11,14 +11,20 @@ description = "Coder's harness-independent hook layer: normalized events, hook o
 coder-delegate = { path = "../coder-delegate" }
 # The adapter digest the hook set joins (`route_contract::recipe`).
 route-contract = { path = "../route-contract" }
-# The Claude Code backend (#11496).
+# The Claude Code backend (#11496), and the tool server's MCP shapes and
+# its in-process form (#11501).
 claude_agent_sdk = { path = "../claude_agent_sdk" }
-tokio = { version = "1", features = ["rt"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# The `decide` tool asks the Decisions API, and records through hook-log.
+jev = { path = "../jev" }
+hook-log = { path = "../hook-log" }
+futures = "0.3"
+tokio = { version = "1", features = ["rt", "io-util", "io-std", "sync", "macros"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt", "macros"] }
+tempfile = "3"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "io-util"] }
 
 [lints]
 workspace = true

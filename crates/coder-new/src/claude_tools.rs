@@ -181,6 +181,18 @@ pub fn server(
     events: tokio::sync::mpsc::UnboundedSender<RuntimeEvent>,
     stop: Arc<AtomicBool>,
 ) -> Option<claude_agent_sdk::SdkMcpServer> {
+    tool_server(tools, events, stop).map(|server| server.in_process())
+}
+
+/// Coder's tools as the one tool server the SDK offers every harness that
+/// takes MCP (#11501): in process for Claude Code ([`server`]), over stdio
+/// for the others ([`stdio_main`]).
+#[must_use]
+pub fn tool_server(
+    tools: &Tools,
+    events: tokio::sync::mpsc::UnboundedSender<RuntimeEvent>,
+    stop: Arc<AtomicBool>,
+) -> Option<coder_sdk::ToolServer> {
     let execution = delegation_only(tools.execution.clone()?);
     let tools = execution.defs();
     // Coder's tool calls hold values that stay on one thread, so each call
@@ -189,7 +201,7 @@ pub fn server(
     if tools.is_empty() {
         return None;
     }
-    let mut server = claude_agent_sdk::SdkMcpServer::new(SERVER, "1.0.0").timeout_ms(TIMEOUT_MS);
+    let mut server = coder_sdk::ToolServer::new(SERVER, "1.0.0").timeout_ms(TIMEOUT_MS);
     if tools
         .iter()
         .any(|tool| tool["function"]["name"] == crate::solver_plugin::TOOL)
@@ -201,10 +213,7 @@ pub fn server(
         let Some(name) = function["name"].as_str().map(str::to_owned) else {
             continue;
         };
-        let description = function["description"]
-            .as_str()
-            .unwrap_or_default()
-            .to_owned();
+        let description = function["description"].as_str().unwrap_or_default();
         let schema = function
             .get("parameters")
             .cloned()
@@ -219,43 +228,146 @@ pub fn server(
             name.as_str(),
             crate::solver_plugin::TOOL | "solver_swarm" | "agent" | "agent_list"
         );
-        let tool =
-            claude_agent_sdk::SdkMcpTool::new(name, description, schema, move |input: Value| {
-                let execution = execution.clone();
-                let events = events.clone();
-                let stop = stop.clone();
-                let name = tool_name.clone();
-                async move {
-                    let execution = execution
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .clone();
-                    let (answer, result) = tokio::sync::oneshot::channel();
-                    std::thread::spawn(move || {
-                        let outcome = match tokio::runtime::Builder::new_current_thread()
-                            .enable_all()
-                            .build()
-                        {
-                            Ok(runtime) => {
-                                runtime.block_on(call(&execution, &name, input, &events, &stop))
-                            }
-                            Err(error) => Err(format!("Coder's tool could not start: {error}")),
-                        };
-                        let _ = answer.send(outcome);
-                    });
-                    let result = result
-                        .await
-                        .unwrap_or_else(|_| Err("Coder's tool stopped without an answer.".into()));
-                    Ok(match result {
-                        Ok(value) => claude_agent_sdk::ToolResult::text(value.to_string()),
-                        Err(error) => claude_agent_sdk::ToolResult::error(error),
-                    })
-                }
-            })
-            .always_load(always);
-        server = server.add_tool(tool);
+        let tool = coder_sdk::Tool::new(&name, description, schema, move |input: Value| {
+            let execution = execution.clone();
+            let events = events.clone();
+            let stop = stop.clone();
+            let name = tool_name.clone();
+            async move {
+                let execution = execution
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clone();
+                let (answer, result) = tokio::sync::oneshot::channel();
+                std::thread::spawn(move || {
+                    let outcome = match tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                    {
+                        Ok(runtime) => {
+                            runtime.block_on(call(&execution, &name, input, &events, &stop))
+                        }
+                        Err(error) => Err(format!("Coder's tool could not start: {error}")),
+                    };
+                    let _ = answer.send(outcome);
+                });
+                let result = result
+                    .await
+                    .unwrap_or_else(|_| Err("Coder's tool stopped without an answer.".into()));
+                Ok(match result {
+                    Ok(value) => claude_agent_sdk::ToolResult::text(value.to_string()),
+                    Err(error) => claude_agent_sdk::ToolResult::error(error),
+                })
+            }
+        })
+        .always_load(always);
+        server = server.add(tool);
     }
     Some(server)
+}
+
+/// The subcommand that serves Coder's tools over stdio: `coder
+/// coder-tools-mcp [--decide] [--cwd DIR]`.
+pub const STDIO_COMMAND: &str = "coder-tools-mcp";
+
+/// The floors as a hook on this server's calls, for a harness whose own
+/// hooks don't reach MCP tools: each call is judged by its plain name
+/// (`openagents_cli`), as a live chat's tool gate judges it. Nobody can
+/// answer from inside the harness, so an ask holds the call.
+#[must_use]
+pub fn floors_hook(cwd: std::path::PathBuf) -> coder_sdk::Hook {
+    coder_sdk::Hook::floor(
+        "floors",
+        coder_sdk::Event::PreToolUse,
+        coder_sdk::Permission::ask("confirm this step"),
+        move |call: &coder_sdk::Call| {
+            let tool = call.tool.as_deref().unwrap_or_default();
+            let plain = tool
+                .strip_prefix(&format!("mcp__{SERVER}__"))
+                .unwrap_or(tool);
+            let Some(floor) = crate::floors::classify(plain, &call.input) else {
+                return Ok(coder_sdk::HookOutcome::none());
+            };
+            Ok(match crate::floors::rule(&cwd, floor.ability) {
+                crate::risk_policy::Rule::Allow => coder_sdk::HookOutcome::none(),
+                crate::risk_policy::Rule::Deny => {
+                    coder_sdk::HookOutcome::deny(&crate::floors::refused(&floor))
+                }
+                crate::risk_policy::Rule::Ask => {
+                    coder_sdk::HookOutcome::deny(&crate::floors::held(&floor))
+                }
+            })
+        },
+    )
+}
+
+/// `coder coder-tools-mcp`: the person's Coder tools (the plugins they
+/// turned on) over MCP stdio for a harness that takes MCP, gated by the
+/// floors, with `decide` when `--decide` admits sending to the Decisions
+/// API. Returns the exit code.
+pub fn stdio_main(args: &[String]) -> i32 {
+    let mut decide = false;
+    let mut cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let mut rest = args.iter();
+    while let Some(arg) = rest.next() {
+        match arg.as_str() {
+            "--decide" => decide = true,
+            "--cwd" => {
+                if let Some(dir) = rest.next() {
+                    cwd = std::path::PathBuf::from(dir);
+                }
+            }
+            other => {
+                eprintln!("Unknown option {other}. Use --decide or --cwd DIR.");
+                return 2;
+            }
+        }
+    }
+    let mut app = crate::App::default();
+    app.cwd = Some(cwd.clone());
+    if let Some(store) = crate::home::data_dir()
+        && let Err(error) = app.load_plugin_settings(crate::plugin_store::Store::under(&store))
+    {
+        eprintln!("{error}");
+    }
+    let admission = if decide {
+        coder_sdk::Admission::none().admitting(coder_sdk::decide::disclosure())
+    } else {
+        coder_sdk::Admission::none()
+    };
+    let runtime = match tokio::runtime::Runtime::new() {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            eprintln!("Coder's tools could not start: {error}");
+            return 1;
+        }
+    };
+    let execution = app.agent_execution();
+    runtime.block_on(async move {
+        let (events, _drawn) = tokio::sync::mpsc::unbounded_channel();
+        let stop = Arc::new(AtomicBool::new(false));
+        let mut server = tool_server(&Tools::new(execution), events, stop)
+            .unwrap_or_else(|| coder_sdk::ToolServer::new(SERVER, "1.0.0"));
+        match coder_sdk::decide::tool(&admission, Arc::new(coder_sdk::decide::Api)) {
+            Ok(tool) => server = server.add(tool),
+            Err(refused) if decide => eprintln!("{}", refused.message),
+            Err(_) => {}
+        }
+        let mut registry = coder_sdk::Registry::new();
+        if let Err(error) = registry.register(floors_hook(cwd)) {
+            eprintln!("{error}");
+            return 1;
+        }
+        let runner = coder_sdk::Runner::new(registry, coder_sdk::Budget::default());
+        let server = server.gated(Arc::new(std::sync::Mutex::new(runner)));
+        match coder_sdk::serve_stdio(&server).await {
+            Ok(()) => 0,
+            Err(error) => {
+                eprintln!("{error}");
+                1
+            }
+        }
+    })
 }
 
 /// Runs one call through the live chat's tool path, drawing it as a

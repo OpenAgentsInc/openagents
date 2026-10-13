@@ -21,6 +21,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use claude_agent_sdk::{SdkMcpServer, ToolResult};
+use coder_sdk::{Tool, ToolServer};
 use serde_json::{Value, json};
 use tokio::process::Command;
 
@@ -313,7 +314,7 @@ impl Related {
     }
 }
 
-/// Builds the `oa` server with `verify` and the tools the config names.
+/// The `oa` server in process, for the Claude session.
 pub fn server(
     root: &Path,
     config: &Value,
@@ -321,22 +322,37 @@ pub fn server(
     finished: Arc<AtomicBool>,
     tally: Arc<Mutex<Tally>>,
 ) -> Option<SdkMcpServer> {
+    tool_server(root, config, names, finished, tally).map(|server| server.in_process())
+}
+
+/// Builds the `oa` server with `verify` and the tools the config names, on
+/// the Coder SDK's one tool server (#11501): in process for Claude Code
+/// ([`server`]), over stdio for Codex and OpenCode (`--serve`). `decide`
+/// is offered when the config names it and its `admitted` disclosures let
+/// it send to the Decisions API.
+pub fn tool_server(
+    root: &Path,
+    config: &Value,
+    names: &[String],
+    finished: Arc<AtomicBool>,
+    tally: Arc<Mutex<Tally>>,
+) -> Option<ToolServer> {
     let has = |name: &str| names.iter().any(|n| n == name);
     let verify = Verify::from_config(root, config).map(|mut verify| {
         verify.tally = tally;
         Arc::new(verify)
     });
-    let mut server = SdkMcpServer::new("oa", "1.0.0").timeout_ms(1_800_000);
+    let mut server = ToolServer::new("oa", "1.0.0").timeout_ms(1_800_000);
     let mut any = false;
     if has("verify")
         && let Some(verify) = verify.clone()
     {
-        server = server.add_tool(Verify::tool(verify));
+        server = server.add(Verify::tool(verify));
         any = true;
     }
     if has("outline") {
         let root = root.to_path_buf();
-        server = server.tool(
+        server = server.add(Tool::new(
             "outline",
             "A file's items (fn, struct, enum, impl, mod, trait, const) with line numbers, no bodies.",
             json!({"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}),
@@ -349,12 +365,12 @@ pub fn server(
                     )))
                 }
             },
-        );
+        ));
         any = true;
     }
     if has("read_symbol") {
         let root = root.to_path_buf();
-        server = server.tool(
+        server = server.add(Tool::new(
             "read_symbol",
             "One item of a file (`name` or `Type::method`) with its doc comment, and nothing else.",
             json!({"type": "object", "properties": {
@@ -372,7 +388,7 @@ pub fn server(
                     )))
                 }
             },
-        );
+        ));
         any = true;
     }
     if has("related")
@@ -383,7 +399,7 @@ pub fn server(
             repo: PathBuf::from(block["repo"].as_str().unwrap_or(".")),
             rev: block["rev"].as_str().unwrap_or("HEAD").to_owned(),
         });
-        server = server.tool(
+        server = server.add(Tool::new(
             "related",
             "What else goes with a file or symbol: files changed together with it in history, \
              files that use the symbol, and its tests. Give `path` or `symbol`.",
@@ -401,14 +417,14 @@ pub fn server(
                     Ok(ToolResult::text(value.to_string()))
                 }
             },
-        );
+        ));
         any = true;
     }
     if has("finish")
         && let Some(verify) = verify
     {
         let summary_path = config["finish_path"].as_str().map(PathBuf::from);
-        server = server.tool(
+        server = server.add(Tool::new(
             "finish",
             "Say you are done. Runs the final checks (compile, every test your change adds, fmt), \
              never a cached result: on a pass the run ends and your summary becomes the pull \
@@ -442,8 +458,21 @@ pub fn server(
                     }
                 }
             },
-        );
+        ));
         any = true;
+    }
+    if has("decide") {
+        let admission: coder_sdk::Admission =
+            serde_json::from_value(json!({"disclosures": config["admitted"].clone()}))
+                .unwrap_or_default();
+        match coder_sdk::decide::tool(&admission, Arc::new(coder_sdk::decide::Api)) {
+            Ok(tool) => {
+                server = server.add(tool);
+                any = true;
+            }
+            // Recorded on the run's log; the tool is not offered.
+            Err(refused) => eprintln!("{}", refused.message),
+        }
     }
     any.then_some(server)
 }
