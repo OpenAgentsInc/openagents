@@ -526,6 +526,11 @@ impl Verify {
         verdict
     }
 
+    /// The candidate's git tree, when git can name it.
+    pub async fn tree(&self) -> Option<String> {
+        self.candidate().await.map(|(tree, _)| tree)
+    }
+
     /// `finish`: the declared final plan, never cached and never the
     /// agent's filter. Every test the candidate adds must run and pass.
     pub async fn final_check(&self) -> Value {

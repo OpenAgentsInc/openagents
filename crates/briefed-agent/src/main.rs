@@ -25,6 +25,11 @@
 //!   the run's `squeeze` directory (`squeeze_dir`), which `Read` may open,
 //!   and each decision to its `decisions.jsonl`.
 //!
+//! - **Stop gate** (#11487): with `stop_gate: true`, an agent that ends
+//!   its turn without `finish` passing is sent back with the final checks'
+//!   verdict, unless it says it is blocked or asks a question
+//!   (`stop_gate.rs`); decisions go to the run's `stop_gate.jsonl`.
+//!
 //! Other engines run the same briefing and checks behind the same summary
 //! (#11308): `engine: "codex"` (Codex CLI, `codex.rs`), `engine:
 //! "opencode"` and `engine: "gemini"` (OpenCode, Gemini on Vertex through
@@ -37,6 +42,7 @@
 //! the summary (which includes how the `verify` calls went: calls,
 //! failures, whether one passed, and the last status).
 
+mod stop_gate;
 mod tools;
 mod verify;
 
@@ -305,6 +311,37 @@ async fn run() -> Result<(), String> {
         spill = Some(dir);
     }
 
+    // System One hook 2 (#11487): no done without an observation.
+    let last_text: Shared<String> = Arc::default();
+    let mut gate: Option<Arc<stop_gate::StopGate>> = None;
+    if config["stop_gate"].as_bool() == Some(true)
+        && let Some(verify) = verify::Verify::from_config(&worktree, &config)
+    {
+        let verify = Arc::new(verify);
+        let (for_check, for_tree) = (verify.clone(), verify);
+        let check: stop_gate::Check = Arc::new(move || {
+            let verify = for_check.clone();
+            Box::pin(async move { verify.final_check().await })
+        });
+        let tree: stop_gate::Tree = Arc::new(move || {
+            let verify = for_tree.clone();
+            Box::pin(async move { verify.tree().await })
+        });
+        let log = Path::new(&summary_path)
+            .parent()
+            .map(|dir| dir.join("stop_gate.jsonl"));
+        let built = Arc::new(stop_gate::StopGate::new(
+            finished.clone(),
+            last_text.clone(),
+            stop_gate::decisions(),
+            check,
+            tree,
+            log,
+        ));
+        options = options.hook(claude_agent_sdk::HookEvent::Stop, built.clone().hook());
+        gate = Some(built);
+    }
+
     let ledger: Shared<Ledger> = Arc::default();
     let handler = {
         let ledger = ledger.clone();
@@ -359,6 +396,9 @@ async fn run() -> Result<(), String> {
         match message {
             SdkMessage::Assistant(assistant) => {
                 observe(&worktree, &briefed, &ledger, &assistant.message);
+                if let Some(text) = last_text_of(&assistant.message) {
+                    *lock(&last_text) = text;
+                }
                 events.push_str(
                     &json!({"type": "assistant", "t_ms": elapsed_ms, "message": assistant.message})
                         .to_string(),
@@ -411,6 +451,7 @@ async fn run() -> Result<(), String> {
         "check_runs": ledger.check_runs,
         "verify": lock(&tally).to_json(),
         "finished": finished.load(Ordering::SeqCst),
+        "stop_gate": gate.map(|gate| gate.tally.lock().map(|t| t.clone()).unwrap_or_default()),
     });
     std::fs::write(
         &summary_path,
@@ -418,6 +459,17 @@ async fn run() -> Result<(), String> {
     )
     .map_err(|error| format!("{summary_path}: {error}"))?;
     Ok(())
+}
+
+/// The text of an assistant message, when it has any.
+fn last_text_of(message: &Value) -> Option<String> {
+    let text: Vec<&str> = message["content"]
+        .as_array()?
+        .iter()
+        .filter(|block| block["type"].as_str() == Some("text"))
+        .filter_map(|block| block["text"].as_str())
+        .collect();
+    (!text.is_empty()).then(|| text.join("\n"))
 }
 
 /// Allows a file tool inside the worktree and the config's tools; denies

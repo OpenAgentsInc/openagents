@@ -211,6 +211,32 @@ The hook answers with `updatedInput` only. It never gives a permission decision,
 
 In a live Claude Sonnet session, the briefed agent ran plain `cargo test` and saw the 58-line squeezed output. It named both failures with the right values, in 2 turns. The A/B lever is `squeeze` on the briefed-ab set once Bash is in the briefed agent's tools. Codex is not wired yet; its command hook needs `updatedInput` support checked first.
 
+**Idea 2 is built for the bench's briefed agent** (#11487,
+`crates/briefed-agent/src/stop_gate.rs`, `"stop_gate": true`).
+
+**What happens when the agent stops without `finish` passing:**
+
+1. If the agent already stopped once on this exact candidate after being
+   sent back, the gate lets it stop.
+2. Otherwise, one Decisions API choice reads its last message as done,
+   blocked, question or other.
+3. A blocker or a question at p ≥ 0.9 stops without running the checks.
+   That threshold comes from written costs: an unverified "done" costs
+   about ten times a check run.
+4. Anything else runs `finish`'s final checks. A pass stops; a failure
+   sends the agent back with the verdict as the reason.
+
+Each decision is logged as a `hook-log` line in the run's
+`stop_gate.jsonl`.
+
+**Live result, 2026-10-13.** On a one-line bug, Sonnet fixed it and
+stopped. The gate (Clef, 147 ms) sent it back with `no_tests`; the agent
+added a test, the checks passed, and the run ended, in 5 turns.
+
+**Next steps:** wire it into the product issue-run session as a Token
+savers lever, and run the A/B arm with prompt wording about verification
+removed.
+
 ## Constraints
 
 - **Latency.** A decision takes about 0.2 to 0.6 s. On every one of ~23
