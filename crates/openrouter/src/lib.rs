@@ -1048,11 +1048,19 @@ impl ToolCalls {
             if !fragment.is_object() {
                 return Err(tool_decode("a streamed tool call was not an object"));
             }
-            let index = fragment["index"]
-                .as_u64()
-                .and_then(|index| usize::try_from(index).ok())
-                .filter(|index| *index < TOOL_CALL_LIMIT)
-                .ok_or_else(|| tool_decode("a streamed tool call had an invalid index"))?;
+            // Gemini's OpenAI-compatible endpoint sends each call whole,
+            // with its id and no index: it takes the next index.
+            let whole = fragment.get("index").is_none_or(Value::is_null)
+                && fragment["id"].as_str().is_some_and(|id| !id.is_empty());
+            let index = if whole {
+                Some(self.calls.len())
+            } else {
+                fragment["index"]
+                    .as_u64()
+                    .and_then(|index| usize::try_from(index).ok())
+            }
+            .filter(|index| *index < TOOL_CALL_LIMIT)
+            .ok_or_else(|| tool_decode("a streamed tool call had an invalid index"))?;
             if let Some(kind) = fragment.get("type")
                 && !kind.is_null()
                 && kind.as_str() != Some("function")
@@ -1594,6 +1602,16 @@ impl Client {
                 excerpt: excerpt(&reader.reply.text, 400),
             });
         }
+        // Gemini ends a reply that calls tools with `stop`.
+        if self.config.dialect == Dialect::Gemini
+            && reader.reply.finish_reason.as_deref() == Some("stop")
+            && reader
+                .tools
+                .as_ref()
+                .is_some_and(|tools| !tools.calls.is_empty())
+        {
+            reader.reply.finish_reason = Some("tool_calls".to_owned());
+        }
         let calls = reader
             .tools
             .map(|tools| match tool_mode {
@@ -1933,6 +1951,32 @@ mod tests {
         assert_eq!(
             wire["messages"][2]["tool_calls"][0]["extra_content"]["google"]["thought_signature"],
             "sig"
+        );
+    }
+
+    /// Gemini sends parallel calls whole, each with an id and no index.
+    #[test]
+    fn whole_calls_without_an_index_take_the_next_one() {
+        let mut calls = ToolCalls::default();
+        for (id, path) in [("call_1", "a.py"), ("call_2", "b.py")] {
+            calls
+                .push(&serde_json::json!([{"id": id, "type": "function",
+                    "function": {"name": "Read", "arguments": format!("{{\"path\":\"{path}\"}}")}}]))
+                .unwrap();
+        }
+        let calls = calls.finish(Some("tool_calls")).unwrap();
+        assert_eq!(
+            calls
+                .iter()
+                .map(|call| call.id.as_str())
+                .collect::<Vec<_>>(),
+            ["call_1", "call_2"]
+        );
+        let mut broken = ToolCalls::default();
+        assert!(
+            broken
+                .push(&serde_json::json!([{"function": {"arguments": "{}"}}]))
+                .is_err()
         );
     }
 

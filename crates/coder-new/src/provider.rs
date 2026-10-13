@@ -1827,9 +1827,9 @@ mod tests {
         std::fs::write(dir.path().join("notes.txt"), "argon fixture line\n").unwrap();
         let call = format!(
             "data: {}\n\ndata: [DONE]\n\n",
-            json!({"model":"gemini-4-argon","choices":[{"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_1","type":"function",
+            json!({"model":"gemini-4-argon","choices":[{"delta":{"role":"assistant","tool_calls":[{"id":"call_1","type":"function",
                 "extra_content":{"google":{"thought_signature":"ElkKVwFixture=="}},
-                "function":{"name":"Read","arguments":json!({"path":"notes.txt"}).to_string()}}]},"finish_reason":"tool_calls"}],
+                "function":{"name":"Read","arguments":json!({"path":"notes.txt"}).to_string()}}]},"finish_reason":"stop"}],
                 "usage":{"prompt_tokens":91,"completion_tokens":22,"total_tokens":113}})
         );
         let answer = format!(
