@@ -131,28 +131,31 @@ pub fn fine(
     let t0 = tangent(0.0);
     let n0 = plane.cross(t0).normalize_or(Vec3::X);
     // The egg: longer along the shaft, wider toward the tip.
-    let (a, b) = (eye * 0.58, eye * 0.5);
+    let (a, b) = (eye * 0.72, eye * 0.46);
     let egg: Vec<Vec3> = (0..=40)
         .map(|i| {
             let th = i as f32 / 40.0 * std::f32::consts::TAU;
             eyespot_at - t0 * (a * th.cos()) + n0 * (b * th.sin() * (1.0 + 0.16 * th.cos()))
         })
         .collect();
-    ribbons.push(glow_line(&egg, eye * 0.1, luminance));
-    let sprites = vec![
-        // The flat fill under the rim, and its soft glow.
-        {
-            let (rect, layer) = from_sheet(DISC);
-            Sprite {
-                rect_a: rect,
-                rect_b: rect,
-                layer,
-                priority: 8,
-                ..dot(eyespot_at, (a + b) * 0.5, luminance.map(|c| c * 0.36), 1.0)
-            }
-        },
-        dot(eyespot_at, b * 3.0, luminance.map(|c| c * 0.05), 1.0),
-    ];
+    // The rim, and a wider, fainter rim round it that blooms outward.
+    ribbons.push(glow_line(&egg, eye * 0.08, luminance));
+    ribbons.push(glow_line(&egg, eye * 0.3, luminance.map(|c| c * 0.16)));
+    let (rect, layer) = from_sheet(DISC);
+    let disc = |at: Vec3, half: f32, gain: f32| Sprite {
+        rect_a: rect,
+        rect_b: rect,
+        layer,
+        priority: 8,
+        ..dot(at, half, luminance.map(|c| c * gain), 1.0)
+    };
+    // The fill: overlapping soft discs along the shaft make an oval that
+    // fills to the rim, brightest toward it, and a wide soft glow.
+    let mut sprites: Vec<Sprite> = [-0.36_f32, -0.18, 0.0, 0.18, 0.36]
+        .iter()
+        .map(|&k| disc(eyespot_at - t0 * (a * k), b * 1.0, 0.1))
+        .collect();
+    sprites.push(dot(eyespot_at, b * 3.0, luminance.map(|c| c * 0.07), 1.0));
     // The shaft, from the egg's foot to the quill.
     let length = eyespot_at.distance(quill).max(1e-3);
     let start = (a / length).min(0.5);
@@ -161,7 +164,7 @@ pub fn fine(
         .collect();
     ribbons.push(glow_line(&shaft, eye * 0.03, luminance.map(|c| c * 0.9)));
     // Barbs from the shaft, swept toward the tip, longest round the eye.
-    let barb = luminance.map(|c| c * 0.4);
+    let barb = luminance.map(|c| c * 0.3);
     let per_side = 100;
     for side in [-1.0_f32, 1.0] {
         for i in 0..per_side {
@@ -174,7 +177,7 @@ pub fn fine(
             let sweep = 0.55 + 0.25 * hash(i + 77);
             let dir = (n * sweep.cos() - t * sweep.sin()).normalize_or(n);
             let end = p + dir * reach - t * reach * 0.12;
-            let mut line = glow_line(&[p, end], eye * 0.006, barb);
+            let mut line = glow_line(&[p, end], eye * 0.011, barb);
             if let Some(last) = line.points.last_mut() {
                 last.color = [0.0; 3];
             }
@@ -188,7 +191,7 @@ pub fn fine(
         let dir = (-t0 * phi.cos() + n0 * phi.sin()).normalize_or(-t0);
         let from = eyespot_at + dir * (a.max(b) * 1.05);
         let to = from + dir * eye * (0.35 + 0.35 * hash(i + 4242));
-        let mut line = glow_line(&[from, to], eye * 0.006, barb);
+        let mut line = glow_line(&[from, to], eye * 0.011, barb);
         if let Some(last) = line.points.last_mut() {
             last.color = [0.0; 3];
         }
@@ -385,13 +388,15 @@ impl Fan {
             for i in 0..n {
                 // Rows interleave, so inner eyespots sit between outer ones.
                 let u = (i as f32 + 0.5 + 0.5 * (row % 2) as f32) / (n as f32 + 0.5);
-                let theta = -self.droop + span * u;
+                // A little irregularity, as a real fan has.
+                let jitter = |k: f32| ((row as f32 * 31.7 + i as f32 * 12.9898) * k).sin();
+                let theta = -self.droop + span * u + span / n as f32 * 0.22 * jitter(1.0);
                 let theta =
                     std::f32::consts::FRAC_PI_2 + (theta - std::f32::consts::FRAC_PI_2) * open;
                 let dir = self.right * theta.cos() + self.up * theta.sin();
                 let seed = (row as u32 * 131 + i * 17) as f32;
                 let shimmer = 0.85 + 0.15 * (self.time * 1.7 + seed).sin();
-                let eye = self.center + dir * r * (0.35 + 0.65 * open);
+                let eye = self.center + dir * r * (1.0 + 0.04 * jitter(2.3)) * (0.35 + 0.65 * open);
                 let lum = self.luminance.map(|c| c * shimmer * (1.0 - 0.2 * k));
                 let vane = self.vane.clamp(0.0, 1.0);
                 let mut quill = feather(
@@ -407,11 +412,12 @@ impl Fan {
                 quill.tail += quill.tail.normalize_or_zero() * 2.0 * quill.half * (1.0 - slim);
                 quill.half *= slim;
                 out.push(quill);
-                // A round eyespot, burning brighter than its vane.
-                out.push(eyespot(
+                // A soft glow on the eyespot, burning brighter than its vane.
+                out.push(dot(
                     eye,
-                    length * 0.14 * slim,
-                    lum.map(|c| c * (1.0 - vane) * 1.6),
+                    length * 0.07 * slim,
+                    lum.map(|c| c * (1.0 - vane) * 2.0),
+                    1.0,
                 ));
             }
         }

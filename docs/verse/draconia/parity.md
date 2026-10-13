@@ -275,3 +275,26 @@ top), and `~/Downloads/draconia-peacock-progress.png` (one row per version).
   - her hair and outfit (the face agent's Draconia);
   - P1's rim and fill leave a thin dark band between them;
   - the reference haze between feathers is denser.
+
+### v8, 2026-10-13
+
+- **Gaps fixed (v7 overshot toward flat vector graphics):**
+  - P1's eyes are elongated ovals tilted along the shaft. A bright rim has a
+    wider faint rim blooming round it, the fill is soft overlapping discs
+    with no dark outline, and the barbs are softer, glowier strokes. The
+    rainbow is a faint fringe, and a blue nebula of soft clouds sits behind
+    the stars.
+  - P3's eyes are smaller ovals pointing out along each shaft, from the
+    feather sheet's own egg, with a small glow cap instead of a coin. The
+    vanes show (0.4 of the light), and the fan has a little irregularity in
+    angle and radius. Cloudy light (smoke-sheet sprites, additive) fills the
+    gaps. Five rings of 100 feathers droop to the ground at the sides.
+  - The guardian's neck is a thick S-curved stroke of light rising from a
+    breast just above her head, with a head, beak and five-point crest. (A
+    `glow_line`'s bright core is about a fifth of its half width.)
+  - Bloom is wider: 0.3 on P1, 0.42 on P3.
+- **Still open, from the v8 side-by-side at 0.6 s:**
+  - the reference's P1 barbs are long curved strokes flowing along the
+    feather toward the tip, not straight ones crossing it;
+  - its shaft and rim are much thicker and blown out;
+  - its sky is a lighter blue nebula; ours is still dark.

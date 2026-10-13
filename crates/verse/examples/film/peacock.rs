@@ -40,7 +40,7 @@ pub const HERO: Vec3 = Vec3::new(0.4, 1.2, -6.0);
 
 /// The center the guardian's tail fans from, behind Draconia.
 const TAIL_CENTER: Vec3 = Vec3::new(0.0, 0.9, -1.8);
-const TAIL_RADIUS: f32 = 7.6;
+const TAIL_RADIUS: f32 = 8.0;
 
 /// The void's color and the courtyard's night.
 const VOID: [f32; 3] = [0.004, 0.008, 0.022];
@@ -310,12 +310,12 @@ impl Set {
                         // Leaning back, so the fan reads wider than tall.
                         up: Vec3::new(0.0, 0.78, -0.62),
                         radius: TAIL_RADIUS,
-                        rows: 6,
-                        feathers: 130,
-                        droop: 0.16,
-                        luminance: [3.0, 3.4, 4.1],
-                        vane: 0.22,
-                        slim: 0.55,
+                        rows: 5,
+                        feathers: 100,
+                        droop: 0.3,
+                        luminance: [3.6, 4.0, 4.8],
+                        vane: 0.4,
+                        slim: 0.62,
                         open,
                         time: t,
                     }
@@ -323,9 +323,9 @@ impl Set {
                 );
                 // The core of light behind her.
                 sprites.push(feathers::dot(
-                    TAIL_CENTER + Vec3::new(0.0, 0.5, 0.3),
-                    2.8,
-                    [6.0, 6.6, 7.5],
+                    TAIL_CENTER + Vec3::new(0.0, 0.1, 0.3),
+                    2.0,
+                    [3.6, 4.0, 4.6],
                     1.0,
                 ));
                 sprites.push(feathers::dot(
@@ -338,11 +338,11 @@ impl Set {
                 // tail's center just above her head.
                 let lum = [2.2, 2.5, 3.0];
                 for (i, (x, y, r)) in [
-                    (0.0, 2.4, 0.7),
-                    (-0.3, 2.75, 0.55),
-                    (0.3, 2.75, 0.55),
-                    (0.0, 3.05, 0.5),
-                    (0.0, 2.15, 0.6),
+                    (0.0, 2.1, 0.55),
+                    (-0.22, 2.35, 0.42),
+                    (0.22, 2.35, 0.42),
+                    (0.0, 2.55, 0.38),
+                    (0.0, 1.95, 0.45),
                 ]
                 .into_iter()
                 .enumerate()
@@ -354,23 +354,65 @@ impl Set {
                         1.0,
                     ));
                 }
-                let neck: Vec<Vec3> = (0..=10)
+                // An S-curved neck, thick at the breast and thin at the
+                // head, the head turned to her right with a fanned crest.
+                let bright = lum.map(|c| c * 2.2);
+                let neck: Vec<Vec3> = (0..=14)
                     .map(|i| {
-                        let u = i as f32 / 10.0;
-                        Vec3::new(0.12 * (u * 3.0).sin(), 3.05 + 1.0 * u, -0.98)
+                        let u = i as f32 / 14.0;
+                        Vec3::new(
+                            -0.28 * (u * std::f32::consts::PI).sin() * u + 0.1 * u,
+                            2.5 + 1.1 * u,
+                            -0.95,
+                        )
                     })
                     .collect();
-                let head = *neck.last().unwrap_or(&Vec3::ZERO) + Vec3::new(0.06, 0.06, 0.0);
-                mesh.ribbons.push(feathers::glow_line(&neck, 0.17, lum));
-                sprites.push(feathers::dot(head, 0.32, lum.map(|c| c * 1.2), 1.0));
-                for k in [-1.0_f32, 0.0, 1.0] {
-                    let tip = head + Vec3::new(0.1 * k, 0.32, 0.0);
+                // A stroke's bright core is about a fifth of its half width.
+                for (k, w) in [(0usize, 1.1_f32), (5, 0.8), (10, 0.55)] {
+                    mesh.ribbons
+                        .push(feathers::glow_line(&neck[k..], w, bright.map(|c| c * 0.6)));
+                }
+                let head = *neck.last().unwrap_or(&Vec3::ZERO) + Vec3::new(-0.1, 0.05, 0.0);
+                sprites.push(feathers::dot(head, 0.34, bright, 1.0));
+                mesh.ribbons.push(feathers::glow_line(
+                    &[head, head + Vec3::new(-0.24, -0.04, 0.0)],
+                    0.035,
+                    bright,
+                ));
+                for k in 0..5 {
+                    let a = 1.2 + 0.18 * k as f32;
+                    let tip = head + Vec3::new(a.cos() * 0.4, a.sin() * 0.4, 0.0);
                     mesh.ribbons.push(feathers::glow_line(
                         &[head, tip],
                         0.012,
-                        lum.map(|c| c * 0.8),
+                        bright.map(|c| c * 0.5),
                     ));
-                    sprites.push(feathers::dot(tip, 0.06, lum.map(|c| c * 1.4), 1.0));
+                    sprites.push(feathers::dot(tip, 0.07, bright, 1.0));
+                }
+                // Cloudy light filling the fan between its feathers.
+                for i in 0..24u32 {
+                    let a = std::f32::consts::PI * hash(i * 7 + 1);
+                    let rr = TAIL_RADIUS * (0.3 + 0.65 * hash(i * 7 + 2));
+                    let at = TAIL_CENTER
+                        + Vec3::new(
+                            a.cos() * rr,
+                            a.sin() * rr * 0.78,
+                            -a.sin() * rr * 0.62 - 0.3,
+                        );
+                    let (rect, layer) = (
+                        verse::fx::sheet::find("smoke")
+                            .map(|s| s.rect(4 + i % 10))
+                            .unwrap_or_default(),
+                        verse::fx::sheet::layer("smoke").unwrap_or_default(),
+                    );
+                    sprites.push(verse::fx::Sprite {
+                        rect_a: rect,
+                        rect_b: rect,
+                        layer,
+                        angle: hash(i * 7 + 3) * 6.28,
+                        priority: 3,
+                        ..feathers::dot(at, 1.6 + 1.4 * hash(i * 7 + 4), [0.07, 0.1, 0.2], 1.0)
+                    });
                 }
                 // The core's pool of light on the cobbles behind her.
                 sprites.push(verse::fx::Sprite {
@@ -458,8 +500,30 @@ impl Set {
             0.8,
             2.0,
             2.9,
-            0.05,
+            0.025,
         ));
+        // A blue nebula: soft clouds of light far behind.
+        for i in 0..18u32 {
+            let at = Vec3::new(
+                (hash(i * 5 + 300) * 2.0 - 1.0) * 45.0,
+                (hash(i * 5 + 301) * 2.0 - 1.0) * 22.0 + 2.0,
+                -55.0,
+            );
+            let (rect, layer) = (
+                verse::fx::sheet::find("smoke")
+                    .map(|s| s.rect(5 + i % 9))
+                    .unwrap_or_default(),
+                verse::fx::sheet::layer("smoke").unwrap_or_default(),
+            );
+            sprites.push(Sprite {
+                rect_a: rect,
+                rect_b: rect,
+                layer,
+                angle: hash(i * 5 + 302) * 6.28,
+                priority: 2,
+                ..feathers::dot(at, 12.0 + 10.0 * hash(i * 5 + 303), [0.05, 0.09, 0.2], 1.0)
+            });
+        }
         // A faint blue haze where the feathers gather.
         sprites.push(feathers::dot(
             Vec3::new(0.0, -6.0, -20.0),
@@ -475,8 +539,8 @@ impl Set {
         neon.fog_end = 900.0;
         neon.vignette = 0.3;
         neon.bloom = match self.part {
-            Part::Feathers => 0.2,
-            Part::Tail => 0.3,
+            Part::Feathers => 0.3,
+            Part::Tail => 0.42,
         };
         neon.grade.exposure = self.flash(t);
         neon.grade.saturation = 0.92;
