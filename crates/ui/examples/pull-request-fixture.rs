@@ -1,10 +1,16 @@
-//! Native visual QA for the pull request board and detail. Renders the
+//! Native visual QA for the pull request board and its side pane. Renders the
 //! production Shell offscreen (never activated) against a real engine and the
 //! local `gh`, whose calls are delayed on demand so loading states can be
 //! captured.
 //!
 //!   cargo run -p zeron-ui --example pull-request-fixture \
 //!     --features pull-request-fixture -- <output-dir> [owner/repo] [number]
+//!
+//! On Linux, run it on its own X display with a window manager; xdotool and
+//! ImageMagick's `import` capture the window:
+//!
+//!   Xvfb :99 -screen 0 1400x900x24 & DISPLAY=:99 openbox &
+//!   WAYLAND_DISPLAY= DISPLAY=:99 cargo run …
 use gpui::{AppContext, AsyncApp, Bounds, WindowBounds, WindowOptions, px, size};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use zeron_ui::*;
@@ -21,12 +27,43 @@ fn capture(
     directory: &std::path::Path,
     name: &str,
 ) -> anyhow::Result<()> {
-    window.update(cx, |_, w, cx| {
+    let path = directory.join(format!("{name}.png"));
+    #[cfg(not(target_os = "linux"))]
+    return window.update(cx, |_, w, cx| {
         w.draw(cx).clear();
-        w.render_to_image()?
-            .save(directory.join(format!("{name}.png")))?;
+        w.render_to_image()?.save(&path)?;
         Ok(())
-    })?
+    })?;
+    // No readback on Linux: capture the window from its X display (run under
+    // a dedicated `Xvfb` with a window manager, like the browser fixture).
+    #[cfg(target_os = "linux")]
+    {
+        // The frame loop can be idle: present the current scene first.
+        window.update(cx, |_, w, cx| {
+            w.refresh();
+            w.draw(cx).clear();
+        })?;
+        std::thread::sleep(Duration::from_millis(100));
+        let windows = std::process::Command::new("xdotool")
+            .args([
+                "search",
+                "--onlyvisible",
+                "--pid",
+                &std::process::id().to_string(),
+            ])
+            .output()?;
+        let id = String::from_utf8(windows.stdout)?
+            .lines()
+            .next()
+            .map(str::to_owned)
+            .ok_or_else(|| anyhow::anyhow!("fixture window not visible"))?;
+        let status = std::process::Command::new("import")
+            .args(["-window", &id])
+            .arg(&path)
+            .status()?;
+        anyhow::ensure!(status.success(), "screenshot capture failed");
+        Ok(())
+    }
 }
 
 fn port() -> u16 {
@@ -210,6 +247,15 @@ fn main() -> anyhow::Result<()> {
                     let detail = window
                         .update(cx, |s, _, _| s.fixture_pull_request_detail())?
                         .ok_or_else(|| anyhow::anyhow!("detail did not open"))?;
+                    // The pane at its narrowest beside the board.
+                    window.update(cx, |s, _, cx| s.fixture_pull_request_pane_width(360.0, cx))?;
+                    pause(cx, 500).await;
+                    shot(cx, "05b-summary-pane-360")?;
+                    detail.update(cx, |d, cx| d.fixture_select_tab(2, cx));
+                    pause(cx, 500).await;
+                    shot(cx, "05c-activity-pane-360")?;
+                    detail.update(cx, |d, cx| d.fixture_select_tab(0, cx));
+                    window.update(cx, |s, _, cx| s.fixture_pull_request_pane_width(640.0, cx))?;
                     detail.update(cx, |d, cx| d.fixture_select_tab(1, cx));
                     pause(cx, 700).await;
                     shot(cx, "06-code-loading")?;
@@ -219,6 +265,11 @@ fn main() -> anyhow::Result<()> {
                     detail.update(cx, |d, cx| d.fixture_select_file(6, cx));
                     pause(cx, 500).await;
                     shot(cx, "08-code-jump")?;
+                    // Expanded, the pane covers the board for code review.
+                    window.update(cx, |s, _, cx| s.fixture_toggle_pull_request_pane_expand(cx))?;
+                    pause(cx, 500).await;
+                    shot(cx, "08b-code-expanded")?;
+                    window.update(cx, |s, _, cx| s.fixture_toggle_pull_request_pane_expand(cx))?;
                     window.update(cx, |_, w, _| w.resize(size(px(760.), px(848.))))?;
                     pause(cx, 600).await;
                     shot(cx, "09-code-760")?;

@@ -17,6 +17,8 @@ pub(crate) fn bar(
     let phase = crate::motion::staggered_phase(delta, index, 0.08);
     div()
         .w(width.into())
+        // A fixed-width bar never overflows a narrow pane.
+        .max_w_full()
         .h(px(height))
         .flex_none()
         .rounded(px(height / 2.0))

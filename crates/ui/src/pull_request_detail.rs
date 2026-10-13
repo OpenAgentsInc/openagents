@@ -72,6 +72,39 @@ fn failure_reason(error: &zeron_rpc::RpcError) -> &'static str {
     }
 }
 
+/// The canonical `https://github.com/owner/repo/pull/N` a link points into,
+/// e.g. from its Files tab or a review comment; `None` for anything else.
+pub(crate) fn pull_request_link(url: &str) -> Option<String> {
+    let url = url::Url::parse(url).ok()?;
+    if url.scheme() != "https"
+        || url.host_str() != Some("github.com")
+        || url.port().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return None;
+    }
+    let mut segments = url.path_segments()?;
+    let (owner, repository) = (segments.next()?, segments.next()?);
+    let number = (segments.next()? == "pull")
+        .then(|| segments.next())
+        .flatten()?
+        .parse::<u64>()
+        .ok()
+        .filter(|number| *number > 0)?;
+    if owner.is_empty() || repository.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "https://github.com/{owner}/{repository}/pull/{number}"
+    ))
+}
+
+/// Whether pull requests open in Zeron's own view, per Settings.
+pub(crate) fn opens_natively(cx: &App) -> bool {
+    settings::current(cx).pull_request_destination != PullRequestDestination::External
+}
+
 pub fn open(url: &str, window: &mut Window, cx: &mut App) {
     open_on_device(url, None, window, cx);
 }
@@ -131,6 +164,14 @@ const NAV_CLEARANCE: f32 = 16.0 + NAV_HEIGHT + 16.0;
 /// The pill's outer height: segment, its inset and the tray's padding on
 /// both sides, and the composer-style 1px edge.
 const NAV_HEIGHT: f32 = NAV_SEGMENT_HEIGHT + 2.0 * (NAV_SEGMENT_INSET + NAV_PADDING) + 2.0;
+/// Below this page width (a side pane at its narrowest) the content column
+/// tightens its gutters.
+const NARROW_PAGE: f32 = 480.0;
+/// Below this page width the section navigation shows glyphs and counts
+/// only; the labels no longer fit three equal segments.
+const COMPACT_NAV_PAGE: f32 = 440.0;
+/// The content column's gutter on narrow pages.
+const NARROW_PAD_X: f32 = 16.0;
 
 /// What a patch row stands for in the review stream.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -371,6 +412,8 @@ pub struct PullRequestDetailPage {
     selection_prefix: String,
     cache: Rc<RefCell<PullRequestCache>>,
     preview: Option<ChangeRequestListItem>,
+    /// A newly observed board revision, deferred while reading or posting.
+    board_refresh_owed: bool,
     error: Option<String>,
     loading: bool,
     fetched: Option<Instant>,
@@ -399,6 +442,8 @@ pub struct PullRequestDetailPage {
     file_query: String,
     files_expanded: bool,
     code_pane_width: Option<f32>,
+    /// The page's own width, measured after layout (a frame late).
+    page_width: Option<f32>,
     scroll: widgets::PageScroll,
     comment_input: Entity<crate::composer::ComposerInput>,
     comment_subscription: Option<Subscription>,
@@ -444,6 +489,7 @@ impl PullRequestDetailPage {
             selection_prefix: format!("pr-detail-{}-", cx.entity_id().as_u64()),
             cache,
             preview,
+            board_refresh_owed: false,
             error: None,
             loading: false,
             fetched: None,
@@ -452,7 +498,11 @@ impl PullRequestDetailPage {
             copy_reset: None,
             copied_link: false,
             diff: None,
-            review: CodeReview::default(),
+            // Open on the layout last chosen here or in the Changes pane.
+            review: CodeReview {
+                split: settings::current(cx).diff_split,
+                ..CodeReview::default()
+            },
             diff_error: None,
             diff_refresh_owed: false,
             tab: Tab::Summary,
@@ -476,6 +526,7 @@ impl PullRequestDetailPage {
             file_query: String::new(),
             files_expanded: false,
             code_pane_width: None,
+            page_width: None,
             scroll: widgets::PageScroll::default(),
             comment_input: cx.new(|cx| {
                 crate::composer::ComposerInput::with_context(
@@ -590,25 +641,34 @@ impl PullRequestDetailPage {
         page
     }
 
-    pub(crate) fn titlebar(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let theme = Theme::of(cx).clone();
-        let url = self.url.clone();
-        let copy_url = self.url.clone();
-        let identity = self
-            .detail
+    /// The pull request's number and title, from the details or else the
+    /// board's preview row.
+    pub(crate) fn identity(&self) -> (Option<u64>, String) {
+        self.detail
             .as_ref()
             .map(|detail| (detail.number, detail.title.clone()))
             .or_else(|| {
                 self.preview
                     .as_ref()
                     .map(|item| (item.number, item.title.clone()))
-            });
-        let (title, number) = identity.map_or_else(
-            || ("Pull request".to_owned(), None),
-            |(number, title)| (title, Some(number)),
-        );
-        // The session header's shape: glyph and title. A plain header; Back
-        // returns to the board.
+            })
+            .map_or_else(
+                || (None, "Pull request".to_owned()),
+                |(number, title)| (Some(number), title),
+            )
+    }
+
+    /// The details are loading, e.g. for the tab's working indicator.
+    pub(crate) fn is_loading(&self) -> bool {
+        self.loading
+    }
+
+    /// The pane's toolbar row: glyph, title and the pull request's actions.
+    pub(crate) fn toolbar(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = Theme::of(cx).clone();
+        let url = self.url.clone();
+        let copy_url = self.url.clone();
+        let (number, title) = self.identity();
         div()
             .w_full()
             .min_w_0()
@@ -617,8 +677,8 @@ impl PullRequestDetailPage {
             .gap(px(4.0))
             .child(
                 div()
-                    .id("pr-detail-title")
-                    .debug_selector(|| "pr-detail-title".into())
+                    .id("pr-toolbar-title")
+                    .debug_selector(|| "pr-toolbar-title".into())
                     .role(gpui::Role::Heading)
                     .aria_label(match number {
                         Some(number) => format!("Pull request {number}: {title}"),
@@ -692,8 +752,61 @@ impl PullRequestDetailPage {
             .into_any_element()
     }
 
+    /// Reconcile already-loaded board data when this tab becomes active.
+    /// Observe each head once: a stale board or a failed refresh must not
+    /// turn tab switching into repeated network requests.
+    pub(crate) fn update_board_preview(
+        &mut self,
+        preview: ChangeRequestListItem,
+        cx: &mut Context<Self>,
+    ) {
+        if preview.url != self.url
+            || !zeron_proto::change_request_assessment::valid_head_oid(&preview.head_ref_oid)
+        {
+            return;
+        }
+        let changed = self
+            .preview
+            .as_ref()
+            .is_none_or(|old| old.head_ref_oid != preview.head_ref_oid);
+        self.preview = Some(preview);
+        if changed {
+            self.board_refresh_owed = true;
+            self.refresh_from_board(cx);
+        }
+    }
+
+    /// Drain a deferred revision after a read or comment finishes. The read
+    /// may already have caught up, in which case no extra request is needed.
+    fn refresh_from_board(&mut self, cx: &mut Context<Self>) -> bool {
+        if !self.board_refresh_owed || self.loading || self.submission.is_some() {
+            return false;
+        }
+        self.board_refresh_owed = false;
+        let Some(head) = self
+            .preview
+            .as_ref()
+            .map(|preview| preview.head_ref_oid.clone())
+        else {
+            return false;
+        };
+        if self
+            .detail
+            .as_ref()
+            .is_some_and(|detail| detail.head_ref_oid == head)
+        {
+            return false;
+        }
+        self.refresh_with_head(Some(head), cx);
+        true
+    }
+
     /// Reload the details, and the diff now or on the next Code visit.
     fn refresh(&mut self, cx: &mut Context<Self>) {
+        self.refresh_with_head(None, cx);
+    }
+
+    fn refresh_with_head(&mut self, head: Option<String>, cx: &mut Context<Self>) {
         if self.loading || self.submission.is_some() {
             return;
         }
@@ -713,7 +826,14 @@ impl PullRequestDetailPage {
                 .borrow_mut()
                 .put(self.target.clone(), self.url.clone(), snapshot);
         }
-        self.load(true, cx);
+        let mut params = self.params(true);
+        if let Some(head) = head {
+            // A new board revision must not join an older in-flight engine
+            // read; the detail response supplies its matching base revision.
+            params["headRefOid"] = head.into();
+            params.as_object_mut().unwrap().remove("baseRefOid");
+        }
+        self.load_with_params(params, cx);
     }
 
     fn params(&self, refresh: bool) -> serde_json::Value {
@@ -742,6 +862,10 @@ impl PullRequestDetailPage {
     }
 
     fn load(&mut self, refresh: bool, cx: &mut Context<Self>) {
+        self.load_with_params(self.params(refresh), cx);
+    }
+
+    fn load_with_params(&mut self, params: serde_json::Value, cx: &mut Context<Self>) {
         if self.submission.is_some() && self.detail.is_some() {
             return;
         }
@@ -751,7 +875,6 @@ impl PullRequestDetailPage {
         };
         self.loading = true;
         self.error = None;
-        let params = self.params(refresh);
         self.task = Some(cx.spawn(async move |this, cx| {
             let result = engine.client().call(methods::GET_CHANGE_REQUEST, params).await
                 .map_err(|error| format!("Couldn’t load this pull request. {}", failure_reason(&error)))
@@ -767,6 +890,7 @@ impl PullRequestDetailPage {
             }).await;
             let _ = this.update(cx, |page, cx| {
                 page.loading = false;
+                let loaded = result.is_ok();
                 match result {
                     Ok(mut snapshot) => {
                         if let Some(preview) = &page.preview
@@ -791,11 +915,15 @@ impl PullRequestDetailPage {
                         page.activity_bodies = snapshot.activity.clone();
                         page.detail = Some(snapshot.detail.clone());
                         page.cache.borrow_mut().put(page.target.clone(), page.url.clone(), snapshot);
-                        if page.tab == Tab::Code && page.diff.is_none() {
-                            page.load_diff(false, cx);
-                        }
                     }
                     Err(error) => page.error = Some(error),
+                }
+                if !page.refresh_from_board(cx)
+                    && loaded
+                    && page.tab == Tab::Code
+                    && page.diff.is_none()
+                {
+                    page.load_diff(false, cx);
                 }
                 cx.notify();
             });
@@ -891,6 +1019,9 @@ impl PullRequestDetailPage {
     /// the window is narrower than that.
     fn navigation(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let slots = TABS.len() as f32;
+        let compact = self
+            .page_width
+            .is_some_and(|width| width < COMPACT_NAV_PAGE);
         let position = self.tab_slide.value_at(Instant::now());
         let thumb = div()
             .debug_selector(|| "pr-detail-nav-thumb".into())
@@ -945,7 +1076,7 @@ impl PullRequestDetailPage {
                     .child(
                         div()
                             .h(px(NAV_SEGMENT_HEIGHT))
-                            .px(px(14.0))
+                            .px(px(if compact { 10.0 } else { 14.0 }))
                             .rounded_full()
                             .flex()
                             .items_center()
@@ -976,7 +1107,9 @@ impl PullRequestDetailPage {
                                     .items_baseline()
                                     .gap(px(6.0))
                                     .line_height(crate::typography::ui_rems(16.0))
-                                    .child(div().min_w_0().truncate().child(label))
+                                    .when(!compact, |el| {
+                                        el.child(div().min_w_0().truncate().child(label))
+                                    })
                                     .children(count.map(|count| {
                                         div()
                                             .flex_none()
@@ -988,6 +1121,9 @@ impl PullRequestDetailPage {
                             ),
                     )
                     .rounded_full()
+                    .when(compact, |el| {
+                        el.tooltip(crate::settings::widgets::text_tooltip(label))
+                    })
                     .on_click(cx.listener(move |page, _, _, cx| page.select_tab(tab, cx)))
                     .on_key_down(cx.listener(
                         move |page, event: &gpui::KeyDownEvent, window, cx| {
@@ -1484,6 +1620,7 @@ impl Render for PullRequestDetailPage {
             window.focus(&focus, cx);
         }
         let theme = Theme::of(cx).clone();
+        let narrow = self.page_width.is_some_and(|width| width < NARROW_PAGE);
         let empty_activity = self.tab == Tab::Activity
             && self
                 .detail
@@ -1494,6 +1631,7 @@ impl Render for PullRequestDetailPage {
                 .id("pr-content-column")
                 .debug_selector(|| "pr-content-column".into())
                 .max_w(px(760.0))
+                .when(narrow, |el| el.px(px(NARROW_PAD_X)))
                 .when(empty_activity, |el| el.min_h_full())
                 .when(self.tab == Tab::Code, |el| {
                     el.max_w_full().px(px(24.0)).h_full().min_h_0()
@@ -2207,15 +2345,36 @@ impl Render for PullRequestDetailPage {
             window.request_animation_frame();
         }
         let composer = (self.tab == Tab::Activity).then(|| self.comment_composer(&theme, cx));
+        // The pane sizes the page; layouts that depend on it read last
+        // frame's width, like the Code tab's file tree.
+        let measure = {
+            let page = cx.weak_entity();
+            gpui::canvas(
+                move |bounds, window, cx| {
+                    let width = f32::from(bounds.size.width);
+                    window.defer(cx, move |_, cx| {
+                        let _ = page.update(cx, |page, cx| {
+                            if page.page_width.is_none_or(|old| (old - width).abs() > 0.5) {
+                                page.page_width = Some(width);
+                                cx.notify();
+                            }
+                        });
+                    });
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .inset_0()
+        };
         let mut root = div()
             .size_full()
             .relative()
+            .child(measure)
             .on_action(cx.listener(|page, action: &OpenPrImage, window, cx| {
                 page.open_image(&action.0, window, cx)
             }))
             .flex()
             .flex_col()
-            .pt(px(Theme::TITLEBAR_HEIGHT))
             // Paint before Markdown registers this frame's text geometry.
             .child(crate::markdown::render::selection_frame_reset_for(
                 cx.entity_id().as_u64(),
@@ -2595,6 +2754,236 @@ mod tests {
         assert_eq!(rpc.completed(), 2);
     }
 
+    fn board_preview(head: &str) -> ChangeRequestListItem {
+        ChangeRequestListItem {
+            head_ref_oid: head.into(),
+            provider: "github".into(),
+            repository: "a/b".into(),
+            author: Default::default(),
+            ci: Default::default(),
+            viewer_did_author: None,
+            viewer_review_requested: None,
+            number: 1,
+            title: "Updated".into(),
+            url: "https://github.com/a/b/pull/1".into(),
+            state: zeron_proto::ChangeRequestState::Open,
+            is_draft: false,
+            review_decision: Default::default(),
+            additions: 1,
+            deletions: 1,
+            mergeability: zeron_proto::ChangeRequestMergeability::Unknown,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    #[gpui::test]
+    fn pull_request_board_updates_live_tabs_once_and_keeps_drafts(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let runtime = fixture::runtime();
+        let _guard = runtime.enter();
+        fixture::init(cx);
+        let rpc = ScriptedRpc::new(|method, params| async move {
+            assert_eq!(params["refresh"], true);
+            match method.as_str() {
+                methods::GET_CHANGE_REQUEST => {
+                    assert_eq!(params["headRefOid"], "b".repeat(40));
+                    assert!(params.get("baseRefOid").is_none());
+                    // GitHub can already be ahead of the board's snapshot.
+                    zeron_rpc::RpcReply::value(&ChangeRequestDetail {
+                        head_ref_oid: "c".repeat(40),
+                        base_ref_oid: "d".repeat(40),
+                        ..Default::default()
+                    })
+                }
+                methods::GET_CHANGE_REQUEST_DIFF => {
+                    assert_eq!(params["headRefOid"], "c".repeat(40));
+                    assert_eq!(params["baseRefOid"], "d".repeat(40));
+                    zeron_rpc::RpcReply::value(&"new patch")
+                }
+                _ => panic!("unexpected RPC"),
+            }
+        });
+        let cache = Rc::new(RefCell::new(PullRequestCache::default()));
+        let url = "https://github.com/a/b/pull/1";
+        let mut cached = snapshot("Before push");
+        cached.detail.head_ref_oid = "a".repeat(40);
+        cached.diff = Some(ParsedDiff::new("old patch".into()));
+        cache.borrow_mut().put(None, url.into(), cached);
+        let (page, cx) = cx.add_window_view(|window, cx| {
+            PullRequestDetailPage::new(
+                fixture::state(cx, Some(rpc.client())),
+                url.into(),
+                None,
+                cache.clone(),
+                None,
+                window,
+                cx,
+            )
+        });
+        page.update(cx, |page, cx| {
+            page.comment_input
+                .update(cx, |input, cx| input.set_text("Keep my draft", cx));
+            page.select_tab(Tab::Activity, cx);
+            page.update_board_preview(board_preview(&"a".repeat(40)), cx);
+            page.update_board_preview(board_preview(""), cx);
+            assert!(!page.loading);
+            page.update_board_preview(board_preview(&"b".repeat(40)), cx);
+            assert!(page.loading && page.diff.is_none());
+            // Repeated activation while loading must not start more reads.
+            page.update_board_preview(board_preview(&"b".repeat(40)), cx);
+        });
+        rpc.settle(cx, &runtime, |cx| page.read_with(cx, |page, _| !page.loading));
+        assert_eq!(rpc.completed(), 1, "the diff waits for Code");
+        page.update(cx, |page, cx| {
+            assert!(page.tab == Tab::Activity);
+            assert_eq!(page.comment_input.read(cx).text(), "Keep my draft");
+            assert_eq!(page.detail.as_ref().unwrap().head_ref_oid, "c".repeat(40));
+            for _ in 0..3 {
+                page.update_board_preview(board_preview(&"b".repeat(40)), cx);
+                assert!(
+                    !page.loading,
+                    "the older board must not trigger a refresh loop"
+                );
+            }
+            page.select_tab(Tab::Code, cx);
+        });
+        rpc.settle(cx, &runtime, |cx| page.read_with(cx, |page, _| page.diff.is_some()));
+        page.read_with(cx, |page, cx| {
+            assert_eq!(page.diff.as_ref().unwrap().patch, "new patch");
+            assert_eq!(page.comment_input.read(cx).text(), "Keep my draft");
+        });
+        assert_eq!(rpc.completed(), 2);
+    }
+
+    #[gpui::test]
+    fn pull_request_board_revision_during_a_read_is_not_lost(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let runtime = fixture::runtime();
+        let _guard = runtime.enter();
+        fixture::init(cx);
+        let release = Arc::new(tokio::sync::Notify::new());
+        let reads = Arc::new(AtomicUsize::new(0));
+        let rpc = ScriptedRpc::new({
+            let release = release.clone();
+            let reads = reads.clone();
+            move |method, params| {
+                let release = release.clone();
+                let reads = reads.clone();
+                async move {
+                    assert_eq!(method, methods::GET_CHANGE_REQUEST);
+                    let call = reads.fetch_add(1, Ordering::SeqCst);
+                    let head = if call == 0 {
+                        release.notified().await;
+                        "b".repeat(40)
+                    } else {
+                        assert_eq!(call, 1, "only the newest deferred revision is read");
+                        assert_eq!(params["headRefOid"], "c".repeat(40));
+                        "c".repeat(40)
+                    };
+                    zeron_rpc::RpcReply::value(&ChangeRequestDetail {
+                        head_ref_oid: head,
+                        ..Default::default()
+                    })
+                }
+            }
+        });
+        let cache = Rc::new(RefCell::new(PullRequestCache::default()));
+        let url = "https://github.com/a/b/pull/1";
+        let mut cached = snapshot("Before push");
+        cached.detail.head_ref_oid = "a".repeat(40);
+        cache.borrow_mut().put(None, url.into(), cached);
+        let (page, cx) = cx.add_window_view(|window, cx| {
+            PullRequestDetailPage::new(
+                fixture::state(cx, Some(rpc.client())),
+                url.into(),
+                None,
+                cache.clone(),
+                None,
+                window,
+                cx,
+            )
+        });
+        page.update(cx, |page, cx| {
+            page.update_board_preview(board_preview(&"b".repeat(40)), cx);
+        });
+        rpc.settle(cx, &runtime, |_| reads.load(Ordering::SeqCst) == 1);
+        page.update(cx, |page, cx| {
+            page.update_board_preview(board_preview(&"c".repeat(40)), cx);
+            assert!(page.loading && page.board_refresh_owed);
+        });
+        release.notify_one();
+        rpc.settle(cx, &runtime, |cx| {
+            page.read_with(cx, |page, _| {
+                !page.loading && page.detail.as_ref().unwrap().head_ref_oid == "c".repeat(40)
+            })
+        });
+        assert_eq!(rpc.completed(), 2);
+    }
+
+    #[gpui::test]
+    fn pull_request_board_refresh_waits_for_comment_and_does_not_retry_errors(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let runtime = fixture::runtime();
+        let _guard = runtime.enter();
+        fixture::init(cx);
+        let rpc = ScriptedRpc::new(|method, params| async move {
+            assert_eq!(method, methods::GET_CHANGE_REQUEST);
+            assert_eq!(params["headRefOid"], "b".repeat(40));
+            Err(zeron_rpc::RpcError::Failed("offline".into()))
+        });
+        let cache = Rc::new(RefCell::new(PullRequestCache::default()));
+        let url = "https://github.com/a/b/pull/1";
+        let mut cached = snapshot("Before push");
+        cached.detail.head_ref_oid = "a".repeat(40);
+        cache.borrow_mut().put(None, url.into(), cached);
+        let (page, cx) = cx.add_window_view(|window, cx| {
+            PullRequestDetailPage::new(
+                fixture::state(cx, Some(rpc.client())),
+                url.into(),
+                None,
+                cache.clone(),
+                None,
+                window,
+                cx,
+            )
+        });
+        let submission = page.update(cx, |page, cx| {
+            page.comment_input
+                .update(cx, |input, cx| input.set_text("Unsent comment", cx));
+            let submission = cx.new(|_| CommentSubmission {
+                body: "Unsent comment".into(),
+                result: None,
+            });
+            page.observe_submission(submission.clone(), cx);
+            page.update_board_preview(board_preview(&"b".repeat(40)), cx);
+            assert!(!page.loading && page.board_refresh_owed);
+            submission
+        });
+        assert_eq!(rpc.completed(), 0);
+        submission.update(cx, |submission, cx| {
+            submission.result = Some(Err("Comment failed".into()));
+            cx.notify();
+        });
+        rpc.settle(cx, &runtime, |cx| {
+            page.read_with(cx, |page, _| page.error.is_some() && !page.loading)
+        });
+        page.update(cx, |page, cx| {
+            assert!(page.submission.is_none());
+            assert_eq!(page.comment_input.read(cx).text(), "Unsent comment");
+            assert_eq!(page.comment_error.as_deref(), Some("Comment failed"));
+            for _ in 0..3 {
+                page.update_board_preview(board_preview(&"b".repeat(40)), cx);
+                assert!(!page.loading);
+            }
+        });
+        assert_eq!(rpc.completed(), 1);
+    }
+
     #[gpui::test]
     fn pull_request_refresh_discards_pending_diff_in_either_response_order(
         cx: &mut gpui::TestAppContext,
@@ -2934,6 +3323,57 @@ mod tests {
                 .filter(|row| row.kind != crate::changes::LineKind::Meta)
                 .all(|row| !row.spans.is_empty())
         );
+    }
+
+    #[test]
+    fn pull_request_links_resolve_to_their_pull_request() {
+        for link in [
+            "https://github.com/a/b/pull/12",
+            "https://github.com/a/b/pull/12/files",
+            "https://github.com/a/b/pull/12#discussion_r1",
+            "https://github.com/a/b/pull/12/?tab=checks",
+        ] {
+            assert_eq!(
+                pull_request_link(link).as_deref(),
+                Some("https://github.com/a/b/pull/12"),
+                "{link}"
+            );
+        }
+        for link in [
+            "http://github.com/a/b/pull/12",
+            "https://gitlab.com/a/b/pull/12",
+            "https://github.com/a/b/issues/12",
+            "https://github.com/a/b/pull/0",
+            "https://github.com/a/b/pull/x",
+            "https://github.com/a/b",
+            "https://user@github.com/a/b/pull/12",
+            "https://github.com:8443/a/b/pull/12",
+        ] {
+            assert_eq!(pull_request_link(link), None, "{link}");
+        }
+    }
+
+    #[gpui::test]
+    fn pull_request_code_opens_on_the_saved_split_preference(cx: &mut gpui::TestAppContext) {
+        let mut saved = settings::UiSettings::default();
+        saved.diff_split = true;
+        let _settings = fixture::settings(cx, saved);
+        let (host, cx) = cx.add_window_view(|window, cx| DetailHost::new(window, cx, true));
+        let page = host.read_with(cx, |host, _| host.page.clone());
+        page.update(cx, |page, cx| {
+            assert!(page.review.split);
+            let patch =
+                "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -1 +1 @@\n-old\n+new\n";
+            page.install_diff(ParsedDiff::new(patch.into()), cx);
+            page.select_tab(Tab::Code, cx);
+            assert!(
+                page.review
+                    .stream
+                    .iter()
+                    .any(|row| matches!(row, code::StreamRow::Pair(..))),
+                "the first visit renders split rows"
+            );
+        });
     }
 
     #[gpui::test]
@@ -3407,25 +3847,52 @@ mod tests {
 
     impl Render for DetailHost {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-            let header = self.page.update(cx, |page, cx| page.titlebar(cx));
+            // The pull request pane's shape: the toolbar row, then the page.
+            let header = self.page.update(cx, |page, cx| page.toolbar(cx));
+            let theme = Theme::of(cx).clone();
             div()
                 .size_full()
-                .relative()
+                .flex()
+                .flex_col()
                 .on_action(cx.listener(|host, _: &ClosePullRequest, _, cx| {
                     host.returned = true;
                     cx.notify();
                 }))
-                .child(self.page.clone())
-                .child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .w_full()
-                        .h(px(Theme::TITLEBAR_HEIGHT))
-                        .flex()
-                        .items_center()
-                        .child(header),
+                .child(crate::surface_chrome::toolbar(&theme).child(header))
+                .child(div().flex_1().min_h_0().child(self.page.clone()))
+        }
+    }
+
+    #[gpui::test]
+    fn pull_request_detail_fits_a_side_pane(cx: &mut gpui::TestAppContext) {
+        fixture::init(cx);
+        let (host, cx) = cx.add_window_view(|window, cx| DetailHost::new(window, cx, true));
+        let page = host.read_with(cx, |host, _| host.page.clone());
+        for (width, compact) in [(360.0, true), (460.0, false)] {
+            cx.simulate_resize(gpui::size(px(width), px(800.0)));
+            // The page reads its width a frame late.
+            for _ in 0..2 {
+                cx.run_until_parked();
+                cx.update(|window, cx| window.draw(cx).clear());
+            }
+            let column = cx.debug_bounds("pr-content-column").unwrap();
+            let card = cx.debug_bounds("pr-detail-title").unwrap();
+            assert!(
+                card.left() - column.left() <= px(NARROW_PAD_X + 8.5),
+                "the column keeps a narrow gutter at {width}: {column:?} {card:?}"
+            );
+            page.read_with(cx, |page, _| {
+                assert_eq!(
+                    page.page_width.is_some_and(|w| w < COMPACT_NAV_PAGE),
+                    compact
                 )
+            });
+            let nav = cx.debug_bounds("pr-detail-nav").unwrap();
+            assert!(nav.left() >= px(0.0) && nav.right() <= px(width));
+            for selector in ["pr-summary", "pr-code", "pr-activity"] {
+                let segment = cx.debug_bounds(selector).unwrap();
+                assert!(nav.left() <= segment.left() && segment.right() <= nav.right());
+            }
         }
     }
 
@@ -3441,13 +3908,21 @@ mod tests {
             cx.simulate_resize(gpui::size(px(width), px(800.0)));
             cx.run_until_parked();
             let mut previous_right = px(0.0);
-            for selector in ["pr-detail-title", "pr-detail-refresh", "pr-copy-url", "pr-external"] {
+            for selector in [
+                "pr-toolbar-title",
+                "pr-detail-refresh",
+                "pr-copy-url",
+                "pr-external",
+            ] {
                 let bounds = cx.debug_bounds(selector).unwrap();
                 assert!(
                     bounds.left() >= previous_right && bounds.right() <= px(width),
                     "{selector}: {bounds:?}"
                 );
-                assert!(bounds.top() >= px(0.0) && bounds.bottom() <= px(Theme::TITLEBAR_HEIGHT));
+                assert!(
+                    bounds.top() >= px(0.0) && bounds.bottom() <= px(Theme::TITLEBAR_HEIGHT),
+                    "{selector} at {width}: {bounds:?}"
+                );
                 previous_right = bounds.right();
             }
             let nav = cx.debug_bounds("pr-detail-nav").unwrap();
@@ -3624,8 +4099,14 @@ mod tests {
             );
             let mine = cx.debug_bounds("pr-message-0").unwrap();
             let other = cx.debug_bounds("pr-message-1").unwrap();
-            assert_eq!(composer.left(), column.left() + px(40.0));
-            assert_eq!(composer.right(), column.right() - px(40.0));
+            // The column's gutter: narrow below 480px.
+            let gutter = px(if width < NARROW_PAGE {
+                NARROW_PAD_X
+            } else {
+                40.0
+            });
+            assert_eq!(composer.left(), column.left() + gutter);
+            assert_eq!(composer.right(), column.right() - gutter);
             assert_eq!(nav.center().x, composer.center().x);
             assert_eq!(
                 nav.top() - composer.bottom(),

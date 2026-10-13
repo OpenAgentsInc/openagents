@@ -92,7 +92,9 @@ impl Shell {
         if self.navigation_overlay_open(cx) {
             return;
         }
-        if matches!(self.route, Route::Chat)
+        if self.pull_request_pane_open() && self.navigation_focus.in_right(window, cx) {
+            self.cycle_pull_request_tabs(forward, window, cx);
+        } else if matches!(self.route, Route::Chat)
             && self.right_pane_open(cx)
             && self.navigation_focus.in_right(window, cx)
         {
@@ -123,6 +125,7 @@ impl Shell {
             || self.rename_space_dialog.is_some()
             || self.discard_working_tree.is_some()
             || self.chat_menu.get().is_some()
+            || self.pull_request_pane.menu.get().is_some()
             || self.space_menu.get().is_some()
             || self.user_menu.get().is_some()
             || self.spaces_menu.get().is_some()

@@ -447,7 +447,7 @@ impl Shell {
                 let to = self.files_settled_width(cx);
                 self.transition_files(before.files, before.files_content, to);
             }
-            PaneResizeKind::Right | PaneResizeKind::Terminal => {}
+            PaneResizeKind::Right | PaneResizeKind::Terminal | PaneResizeKind::PullRequests => {}
         }
         self.right_edge_bounce = None;
         self.resplit_panels(before, None, cx);

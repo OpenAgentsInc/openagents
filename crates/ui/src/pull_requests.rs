@@ -27,6 +27,10 @@ use crate::theme::Theme;
 const PR_PAGE_MAX_WIDTH: f32 = 760.0;
 const PR_PAGE_HORIZONTAL_PADDING: f32 = 40.0;
 const PR_TABLE_ROW_HEIGHT: f32 = 64.0;
+/// Below this content width (the board beside an open pull request pane)
+/// rows drop what the pane's detail already shows: the commit, the Draft
+/// label the glyph carries, and the diff stats.
+const PR_TIGHT_ROW_WIDTH: f32 = 420.0;
 const PR_SCROLL_FADE_BAND: f32 = 24.0;
 /// A stored first page younger than this is shown as is; an older one is
 /// shown and refreshed from GitHub behind it.
@@ -1394,6 +1398,18 @@ impl PullRequestsPage {
                         // The trailing button sits one card inset from the
                         // edge, like the row's own text.
                         .pr(px(popover::CARD_INSET + 2.0))
+                        // Enter is unbound in a "PaletteSearch" input and
+                        // bubbles here: it opens the typed repository, like
+                        // the Open button.
+                        .on_key_down(cx.listener(|page, event: &gpui::KeyDownEvent, _, cx| {
+                            if event.keystroke.key == "enter"
+                                && !event.keystroke.modifiers.modified()
+                            {
+                                cx.stop_propagation();
+                                page.return_focus = Some(page.repository_focus.clone());
+                                page.select_repository(cx);
+                            }
+                        }))
                         .child(
                             div()
                                 .min_w_0()
@@ -2778,6 +2794,8 @@ impl PullRequestsPage {
                     .child(render_table_row(
                         item,
                         layout,
+                        self.content_width
+                            .is_some_and(|width| width < PR_TIGHT_ROW_WIDTH),
                         self.sort.field,
                         first,
                         last,
@@ -2942,6 +2960,7 @@ pub(crate) fn table_row_shell(
 fn render_table_row(
     item: &ChangeRequestListItem,
     layout: PullRequestTableLayout,
+    tight: bool,
     sort_field: PullRequestSortField,
     first: bool,
     last: bool,
@@ -3001,21 +3020,21 @@ fn render_table_row(
             ))
     };
     if layout == PullRequestTableLayout::Narrow {
-        row.child(render_pr_identity(item, theme))
+        row.child(render_pr_identity(item, tight, theme))
             .child(
                 div()
                     .pl(px(22.0))
                     .flex()
                     .items_center()
                     .gap(px(Theme::SPACE_SM))
-                    .child(render_diff_stats(item, theme))
+                    .when(!tight, |el| el.child(render_diff_stats(item, theme)))
                     .child(div().flex_1())
                     .child(updated())
                     .child(star),
             )
             .into_any_element()
     } else {
-        row.child(render_pr_identity(item, theme))
+        row.child(render_pr_identity(item, false, theme))
             .child(
                 div()
                     .w(px(112.0))
@@ -3051,9 +3070,8 @@ fn status_description(item: &ChangeRequestListItem) -> String {
     labels.join(" · ")
 }
 
-fn render_pr_identity(item: &ChangeRequestListItem, theme: &Theme) -> AnyElement {
-    let title = SharedString::from(single_line(&item.title));
-    let full_title = title.clone();
+/// The row's status line. Tight rows leave Draft to the glyph.
+fn row_status(item: &ChangeRequestListItem, tight: bool) -> String {
     let assessment = Facts::from_item(item).assess();
     let mut labels: Vec<_> = assessment
         .blockers
@@ -3061,7 +3079,7 @@ fn render_pr_identity(item: &ChangeRequestListItem, theme: &Theme) -> AnyElement
         .filter(|blocker| **blocker != Blocker::FailingCi)
         .map(|blocker| blocker.label())
         .collect();
-    if item.is_draft {
+    if item.is_draft && !tight {
         labels.insert(0, "Draft");
     }
     if item.review_decision == ChangeRequestReviewDecision::Approved {
@@ -3076,7 +3094,28 @@ fn render_pr_identity(item: &ChangeRequestListItem, theme: &Theme) -> AnyElement
             })
             .map(|reason| reason.label()),
     );
-    let status = labels.join(" · ");
+    labels.join(" · ")
+}
+
+/// The CI state, then the head commit unless the row is tight (its tooltip
+/// keeps the full commit either way).
+fn row_ci_label(item: &ChangeRequestListItem, tight: bool) -> String {
+    if tight || item.head_ref_oid.is_empty() {
+        item.ci.state.label().to_owned()
+    } else {
+        format!(
+            "{} · {}",
+            item.ci.state.label(),
+            item.head_ref_oid.chars().take(7).collect::<String>()
+        )
+    }
+}
+
+fn render_pr_identity(item: &ChangeRequestListItem, tight: bool, theme: &Theme) -> AnyElement {
+    let title = SharedString::from(single_line(&item.title));
+    let full_title = title.clone();
+    let assessment = Facts::from_item(item).assess();
+    let status = row_status(item, tight);
     let tone = if item.mergeability == ChangeRequestMergeability::Conflicting {
         theme.danger_muted
     } else if item.review_decision == ChangeRequestReviewDecision::ChangesRequested {
@@ -3188,18 +3227,7 @@ fn render_pr_identity(item: &ChangeRequestListItem, theme: &Theme) -> AnyElement
                                     .map_or("No action suggested", |action| action.label())
                             )
                         )))
-                        .child(format!(
-                            "{}{}",
-                            item.ci.state.label(),
-                            if item.head_ref_oid.is_empty() {
-                                String::new()
-                            } else {
-                                format!(
-                                    " · {}",
-                                    item.head_ref_oid.chars().take(7).collect::<String>()
-                                )
-                            }
-                        )),
+                        .child(row_ci_label(item, tight)),
                 )
                 .when(!status.is_empty(), |el| {
                     el.child(
@@ -3225,6 +3253,7 @@ fn render_diff_stats(item: &ChangeRequestListItem, theme: &Theme) -> AnyElement 
             "pull-request-diff-{}",
             pull_request_key(item)
         )))
+        .debug_selector(|| "pull-request-diff".to_string())
         .flex()
         .items_center()
         .gap(px(8.0))
@@ -3639,6 +3668,7 @@ mod tests {
             div().w_full().child(render_table_row(
                 &self.item,
                 table_layout(width),
+                width < PR_TIGHT_ROW_WIDTH,
                 PullRequestSortField::Updated,
                 true,
                 true,
@@ -3969,6 +3999,42 @@ mod tests {
                 Some("saved/repo")
             );
             assert_eq!(restored.last_pull_request_device.as_deref(), Some("remote"));
+        });
+    }
+
+    #[gpui::test]
+    fn enter_opens_the_typed_repository(cx: &mut gpui::TestAppContext) {
+        use gpui::AppContext;
+        fixture::init(cx);
+        let (page, cx) = cx.add_window_view(|_, cx| {
+            let state = cx.new(|_| AppState::new());
+            PullRequestsPage::new(state, cx)
+        });
+        page.update(cx, |page, _| {
+            // A cached board, so opening it needs no engine.
+            page.snapshots.push((
+                (None, "acme/zeron".into(), ChangeRequestFilter::Authored),
+                vec![pull_request("acme/zeron", 10, 1, 1, 1)],
+                Instant::now(),
+                Paging::default(),
+            ));
+        });
+        cx.simulate_resize(gpui::size(px(900.0), px(700.0)));
+        cx.run_until_parked();
+        let trigger = cx.debug_bounds("pr-repository").unwrap();
+        cx.simulate_click(trigger.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        page.update(cx, |page, cx| {
+            assert!(page.repository_menu.is_open());
+            page.repository_input
+                .update(cx, |input, cx| input.set_text("acme/zeron", cx));
+        });
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        page.read_with(cx, |page, _| {
+            assert_eq!(page.repository.as_deref(), Some("acme/zeron"));
+            assert!(!page.repository_menu.is_open());
+            assert_eq!(page.items[0].number, 10);
         });
     }
 
@@ -4590,6 +4656,30 @@ mod tests {
                 assert_eq!(page.load_state, PullRequestsLoadState::Ready);
             }
         });
+    }
+
+    #[gpui::test]
+    fn tight_rows_leave_the_commit_draft_and_diff_to_the_detail(cx: &mut gpui::TestAppContext) {
+        fixture::init(cx);
+        let mut item = pull_request("owner/repo", 475, 139, 1, 1);
+        item.is_draft = true;
+        item.mergeability = ChangeRequestMergeability::Conflicting;
+        item.head_ref_oid = "f613364aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into();
+        assert!(row_ci_label(&item, false).ends_with(" · f613364"));
+        assert!(!row_ci_label(&item, true).contains("f613364"));
+        assert!(row_status(&item, false).starts_with("Draft · "));
+        assert!(!row_status(&item, true).contains("Draft"));
+        assert!(row_status(&item, true).contains("Merge conflicts"));
+        let (_, cx) = cx.add_window_view(|_, _| RowLayoutFixture { item });
+        for (width, diff) in [(360.0, false), (600.0, true)] {
+            cx.simulate_resize(gpui::size(px(width), px(480.0)));
+            cx.run_until_parked();
+            assert_eq!(
+                cx.debug_bounds("pull-request-diff").is_some(),
+                diff,
+                "diff stats at {width}"
+            );
+        }
     }
 
     #[gpui::test]
