@@ -1736,6 +1736,7 @@ pub async fn microcoder_local(
     task: &str,
     cwd: &Path,
     read_only: bool,
+    claude: bool,
     jev: Option<jev::Client>,
     redaction_keys: &[ApiKey],
     cancel: &Arc<AtomicBool>,
@@ -1745,13 +1746,22 @@ pub async fn microcoder_local(
     // Tests never resolve this computer's real logins or write to its home.
     #[cfg(test)]
     {
-        let _ = (cwd, read_only, jev, redaction_keys, cancel, emit);
+        let _ = (cwd, read_only, claude, jev, redaction_keys, cancel, emit);
         return Err("The local model logins are unavailable in tests.".into());
     }
     #[cfg(not(test))]
     {
         let session = format!("coder-new-{}", std::process::id());
-        let generator = coder::local_chain::local_generator(&session, None, None)?;
+        // The Claude Code plugin off: its login is left out, and the loop's
+        // commands get `CLAUDE_BIN=/dev/null`, so `claude` never starts
+        // (#11516).
+        let generator = coder::local_chain::local_generator_for(&session, None, None, claude)?;
+        if !claude {
+            let mut vars = child_env();
+            vars.retain(|(name, _)| name != "CLAUDE_BIN");
+            vars.push(("CLAUDE_BIN".into(), "/dev/null".into()));
+            set_child_env(vars);
+        }
         let mut result = run_microcoder_with(
             task,
             cwd,

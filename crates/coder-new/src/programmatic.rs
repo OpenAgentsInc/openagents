@@ -618,7 +618,15 @@ fn plugins(app: &mut App, args: &[String], context: &Context) -> Result<Value, E
     match args[0].as_str() {
         "enable" | "disable" if args.len() == 2 => {
             let enabled = args[0] == "enable";
-            if app.plugins.enabled_for(definition.id) != enabled {
+            // Claude Code reads as off without a sign-in, but turning it off
+            // still has to be saved, so it stays off after signing in
+            // (#11516).
+            let current = if definition.id == crate::claude::PLUGIN {
+                app.plugins.bundled.claude
+            } else {
+                app.plugins.enabled_for(definition.id)
+            };
+            if current != enabled {
                 app.plugins.selected = DEFINITIONS
                     .iter()
                     .position(|row| row.id == definition.id)

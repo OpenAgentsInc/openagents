@@ -88,14 +88,18 @@ pub fn engines(execution: &ExecutionSettings) -> Vec<String> {
             .agents
             .iter()
             .filter(|agent| agent.enabled && agent.validate().is_ok())
+            // With the Claude Code plugin off, no agent runs Claude Code
+            // (#11516).
+            .filter(|agent| execution.claude || !runs_claude(&agent.id))
             .map(|agent| agent.id.clone())
             .collect()
     } else {
         Vec::new()
     };
-    // Claude Code in print mode, when this computer has it and no agent
-    // with its id is configured.
+    // Claude Code in print mode, when this computer has it, its plugin is
+    // on, and no agent with its id is configured.
     if execution.acp
+        && execution.claude
         && !cfg!(test)
         && !execution
             .agents
@@ -109,6 +113,13 @@ pub fn engines(execution: &ExecutionSettings) -> Vec<String> {
         engines.push("microcoder".into());
     }
     engines
+}
+
+/// Whether a background agent's engine is Claude Code: the installed
+/// agent or Claude Code in print mode.
+#[must_use]
+pub fn runs_claude(engine: &str) -> bool {
+    engine == "claude-code" || engine == crate::bundled_runtime::claude_print::ID
 }
 
 /// The four tools the model drives agents with, when an engine is
@@ -354,6 +365,12 @@ pub fn engine_call(
         } else {
             Err("The Coder loop plugin is turned off. Turn it on in /plugins.".into())
         };
+    }
+    if !execution.claude && runs_claude(engine) {
+        return Err(format!(
+            "Claude Code is off in /plugins; turn it on to run an agent on it. Choose one of: {}.",
+            engines(execution).join(", ")
+        ));
     }
     let configured = execution
         .agents

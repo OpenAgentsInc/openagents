@@ -466,8 +466,9 @@ impl BundledSettings {
             "acp-subagents" => &mut value.acp,
             crate::solver_plugin::PLUGIN => &mut value.solver,
             crate::comms::PLUGIN => &mut value.comms,
-            // It cannot turn on without a Claude Code sign-in.
-            crate::claude::PLUGIN if !crate::claude::available() => return false,
+            // It cannot turn on without a Claude Code sign-in; it can always
+            // turn off (#11516).
+            crate::claude::PLUGIN if !value.claude && !crate::claude::available() => return false,
             crate::claude::PLUGIN => &mut value.claude,
             crate::codex::PLUGIN if !crate::codex::available() => return false,
             crate::codex::PLUGIN => &mut value.codex,

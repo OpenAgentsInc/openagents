@@ -25,6 +25,10 @@ pub struct ExecutionSettings {
     pub microcoder: bool,
     pub cli: bool,
     pub acp: bool,
+    /// The Claude Code plugin is on (#11516). Off, nothing in this chat
+    /// starts Claude Code or uses its login: not `auto`'s local lane, not a
+    /// background agent, not Solver.
+    pub claude: bool,
     /// The Solver plugin: an issue handed to a four-hand run that ends in
     /// a pull request ([`crate::solver_plugin`]).
     pub solver: bool,
@@ -282,7 +286,7 @@ impl ExecutionSettings {
             guidance.push_str(crate::connection_tools::INSTRUCTIONS);
         }
         if self.registered(ToolBinding::Microcoder) {
-            guidance.push_str("The Microcoder plugin runs the existing local coding loop. Delegate concrete work with a complete task and relevant constraints; its commands have full filesystem and network access unless the host explicitly installs an approval policy. It uses the selected OpenRouter model when this chat has that provider, otherwise the existing Codex or Claude Code login. Jev judgments are used only when the Jev plugin is enabled and configured.\n");
+            guidance.push_str(&format!("The Microcoder plugin runs the existing local coding loop. Delegate concrete work with a complete task and relevant constraints; its commands have full filesystem and network access unless the host explicitly installs an approval policy. It uses the selected OpenRouter model when this chat has that provider, otherwise {}. Jev judgments are used only when the Jev plugin is enabled and configured.\n", if self.claude { "the existing Codex or Claude Code login" } else { "the existing Codex login or the OpenAgents gateway; Claude Code is off in /plugins" }));
         }
         if self.registered(ToolBinding::AcpSubagent) {
             let agents: Vec<String> = self
@@ -592,6 +596,7 @@ impl ExecutionSettings {
                 // that computer holds (BYO-03), unless an agent of that id
                 // is configured.
                 let builtin = (args.agent == bundled_runtime::claude_print::ID
+                    && self.claude
                     && !self.agents.iter().any(|agent| agent.id == args.agent))
                 .then(bundled_runtime::claude_print::agent)
                 .flatten();
@@ -704,6 +709,7 @@ impl ExecutionSettings {
                             &args.task,
                             &self.cwd,
                             args.read_only,
+                            self.claude,
                             judge,
                             &keys,
                             cancel,
@@ -907,6 +913,7 @@ mod tests {
             microcoder: false,
             cli: false,
             acp: false,
+            claude: true,
             solver: false,
             comms: false,
             swarm: false,

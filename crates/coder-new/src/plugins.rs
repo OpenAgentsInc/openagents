@@ -466,6 +466,7 @@ impl Plugins {
             microcoder: self.bundled.microcoder,
             cli: self.bundled.cli,
             acp: self.bundled.acp,
+            claude: self.bundled.claude,
             solver: self.bundled.solver,
             comms: self.bundled.comms,
             swarm: self.bundled.swarm,
@@ -479,7 +480,14 @@ impl Plugins {
                 .into_iter()
                 .chain(self.bundled.jev_key())
                 .collect(),
-            agents: self.bundled.acp_registered(),
+            // With the Claude Code plugin off, the installed Claude Code
+            // agent is not offered either (#11516).
+            agents: self
+                .bundled
+                .acp_registered()
+                .into_iter()
+                .filter(|agent| self.bundled.claude || !crate::fleet::runs_claude(&agent.id))
+                .collect(),
             cwd,
             boundary: None,
             instructions: None,

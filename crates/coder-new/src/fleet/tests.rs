@@ -665,3 +665,50 @@ fi
         OPENAGENTS_ENGINE
     );
 }
+
+#[test]
+fn with_the_claude_plugin_off_no_background_agent_runs_claude() {
+    // #11516: Claude Code installed and signed in, its plugin off.
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    for name in ["claude", "goose"] {
+        let path = dir.path().join(name);
+        std::fs::write(&path, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let path = dir.path().as_os_str().to_owned();
+    let mut plugins = crate::plugins::Plugins::default();
+    plugins.bundled.acp = true;
+    plugins
+        .bundled
+        .discover_acp(&|name| (name == "PATH").then(|| path.clone()));
+    crate::harness_plugin::sign_in_claude(true);
+    let on = plugins.execution_settings(dir.path().into());
+    assert!(on.claude);
+    assert!(engines(&on).iter().any(|engine| engine == "claude-code"));
+
+    plugins.bundled.claude = false;
+    let off = plugins.execution_settings(dir.path().into());
+    assert!(!off.claude);
+    let offered = engines(&off);
+    assert!(
+        !offered.iter().any(|engine| runs_claude(engine)),
+        "{offered:?}"
+    );
+    assert!(
+        offered.iter().any(|engine| engine == "goose"),
+        "{offered:?}"
+    );
+    assert!(!off.agents.iter().any(|agent| runs_claude(&agent.id)));
+    for engine in ["claude-code", "claude"] {
+        let refused = engine_call(&off, engine, "x").unwrap_err();
+        assert!(
+            refused.starts_with("Claude Code is off in /plugins"),
+            "{refused}"
+        );
+    }
+    // The model is offered no Claude agent either.
+    let defs = crate::bundled_runtime::acp_tool_definition(&off.agents).unwrap();
+    assert!(!defs.to_string().contains("claude-code"), "{defs}");
+    crate::harness_plugin::sign_in_claude(false);
+}

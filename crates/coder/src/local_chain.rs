@@ -280,6 +280,22 @@ pub fn local_generator(
     model: Option<String>,
     effort: Option<String>,
 ) -> Result<LocalGenerator, String> {
+    local_generator_for(session, model, effort, true)
+}
+
+/// [`local_generator`], leaving out the Claude Code login when `claude` is
+/// false: the person turned the Claude Code plugin off, so its login is
+/// never used (#11516).
+///
+/// # Errors
+///
+/// No login is available here and the gateway is off or unreachable.
+pub fn local_generator_for(
+    session: &str,
+    model: Option<String>,
+    effort: Option<String>,
+    claude: bool,
+) -> Result<LocalGenerator, String> {
     use codex_transport::codex::{CodexTransport, Login};
     local_generator_in(book().as_deref(), |providers| {
         if let Some(path) = Login::default_path() {
@@ -300,7 +316,9 @@ pub fn local_generator(
                 })));
             }
         }
-        if let Ok(generator) =
+        if !claude {
+            // The Claude Code plugin is off.
+        } else if let Ok(generator) =
             microcoder_loop::claude::ClaudeGenerator::from_env(microcoder_loop::MODEL, None)
         {
             providers.push(LocalProvider::Claude(ClaudeLane::new(generator)));

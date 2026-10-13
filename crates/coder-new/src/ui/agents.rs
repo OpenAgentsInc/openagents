@@ -17,22 +17,24 @@ pub(crate) fn lines(app: &App, width: u16) -> Vec<Line<'static>> {
     let rows = app.fleet.list();
     let selected = app.agents_panel.map_or(0, |panel| panel.selected);
     let now = agent_fleet::now_ms();
-    let mut lines = vec![
-        Line::from(Span::styled(
-            format!(
-                "Agents · {} running · {} in all",
-                rows.iter()
-                    .filter(|row| row.status == agent_fleet::Status::Running)
-                    .count(),
-                rows.len()
-            ),
-            Style::default()
-                .fg(t::TEXT_PRIMARY)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(span(crate::claude_plan::panel_line(), t::GRAY)),
-        Line::default(),
-    ];
+    let mut lines = vec![Line::from(Span::styled(
+        format!(
+            "Agents · {} running · {} in all",
+            rows.iter()
+                .filter(|row| row.status == agent_fleet::Status::Running)
+                .count(),
+            rows.len()
+        ),
+        Style::default()
+            .fg(t::TEXT_PRIMARY)
+            .add_modifier(Modifier::BOLD),
+    ))];
+    // The Claude plan's run limit only means something while Claude Code is
+    // on (#11516).
+    if app.plugins.bundled.claude {
+        lines.push(Line::from(span(crate::claude_plan::panel_line(), t::GRAY)));
+    }
+    lines.push(Line::default());
     if rows.is_empty() {
         lines.push(Line::from(span(
             "No background agents yet. Ask for work in parallel, or type /agent ENGINE TASK.",

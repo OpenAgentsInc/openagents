@@ -382,7 +382,7 @@ impl App {
         let chosen = rows.get(panel.selected).cloned();
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') => self.agents_panel = None,
-            KeyCode::Char('+' | '=' | '-') => {
+            KeyCode::Char('+' | '=' | '-') if self.plugins.bundled.claude => {
                 let n = crate::claude_plan::limit();
                 let n = if key.code == KeyCode::Char('-') {
                     n.saturating_sub(1)

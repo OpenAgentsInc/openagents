@@ -103,7 +103,7 @@ struct Offered {
 
 /// The agents installed here: Codex and Claude Code, each on the sign-in
 /// it already holds.
-fn installed() -> Vec<Offered> {
+fn installed(claude: bool) -> Vec<Offered> {
     let mut offered = Vec::new();
     let found = crate::acp_discovery::discover(&|name| std::env::var_os(name));
     if let Some(codex) = found
@@ -116,7 +116,9 @@ fn installed() -> Vec<Offered> {
             runner: codex,
         });
     }
-    if let Some(claude) = bundled_runtime::claude_print::agent() {
+    // With the Claude Code plugin off, its account is not offered
+    // (#11516).
+    if let Some(claude) = claude.then(bundled_runtime::claude_print::agent).flatten() {
         offered.push(Offered {
             id: "claude-code",
             agent: Agent::ClaudeCode,
@@ -138,11 +140,19 @@ struct Load {
 pub(crate) struct Host {
     stop: Arc<AtomicBool>,
     events: mpsc::Receiver<Event>,
+    /// Whether the Claude Code account is offered: the plugin was on when
+    /// this started. A change starts a new host.
+    pub(crate) claude: bool,
 }
 
 impl Host {
     /// Start taking runs as `saved`, for `computer`, run in `cwd`.
-    pub(crate) fn start(saved: Saved, computer: String, cwd: Option<PathBuf>) -> Self {
+    pub(crate) fn start(
+        saved: Saved,
+        computer: String,
+        cwd: Option<PathBuf>,
+        claude: bool,
+    ) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let (outbox, events) = mpsc::channel();
         if !off() {
@@ -151,10 +161,14 @@ impl Host {
                 let cwd = cwd
                     .or_else(|| std::env::current_dir().ok())
                     .unwrap_or_else(|| PathBuf::from("."));
-                serve(&saved, &computer, &cwd, &stop, &outbox);
+                serve(&saved, &computer, &cwd, claude, &stop, &outbox);
             });
         }
-        Self { stop, events }
+        Self {
+            stop,
+            events,
+            claude,
+        }
     }
 
     /// What happened since the last call.
@@ -199,10 +213,11 @@ fn serve(
     saved: &Saved,
     computer: &str,
     cwd: &std::path::Path,
+    claude: bool,
     stop: &Arc<AtomicBool>,
     outbox: &mpsc::Sender<Event>,
 ) {
-    let offered = installed();
+    let offered = installed(claude);
     if offered.is_empty() {
         return;
     }

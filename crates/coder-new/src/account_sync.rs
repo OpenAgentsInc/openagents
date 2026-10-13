@@ -620,6 +620,7 @@ impl App {
         let open = self.session_id().map(str::to_owned);
         let account_dir = self.account_dir.clone();
         let cwd = self.cwd.clone();
+        let claude = self.plugins.bundled.claude;
         let asked = self
             .sync
             .as_mut()
@@ -643,7 +644,14 @@ impl App {
         }
         // Coding runs for the account's own API key (#11080): taken while
         // this computer checks in.
-        if !sync.listening {
+        if !sync.listening
+            || sync
+                .own_runs
+                .as_ref()
+                .is_some_and(|host| host.claude != claude)
+        {
+            // Off, or the Claude Code plugin changed: the next tick starts
+            // a host that offers the right accounts.
             sync.own_runs = None;
         } else if sync.own_runs.is_none()
             && let Some(saved) = account_dir.as_deref().and_then(signed_in)
@@ -652,6 +660,7 @@ impl App {
                 saved,
                 sync.computer.clone(),
                 cwd,
+                claude,
             ));
         }
         let own_events = sync
