@@ -876,7 +876,11 @@ mod tests {
     #[tokio::test]
     async fn crew_tool_free_scope_refuses_reads_commands_and_delegation_before_dispatch() {
         let dir = tempfile::tempdir().unwrap();
-        let _gate_lock = crate::approval::test_lock().lock().unwrap();
+        // Another test failing while it held the gate lock must not fail
+        // this one too.
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         crate::approval::install(Some(crate::approval::Gate {
             desk: crate::approval::Desk::tool_free(),
             cancel: Arc::new(AtomicBool::new(false)),
@@ -1120,7 +1124,12 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(events.len(), 4);
+        // An agent that doesn't ask before every step opens with the
+        // notice of the checks Coder can't keep on it (#11508).
+        assert_eq!(events.len(), 5);
+        assert!(matches!(&events[0], RuntimeEvent::Text(text)
+            if text.starts_with("Fixture ACP doesn't ask before every step")));
+        let events = &events[1..];
         assert!(matches!(&events[0], RuntimeEvent::Model(model) if model == "fixture/[redacted]"));
         for event in &events[1..3] {
             assert!(matches!(event, RuntimeEvent::Tool {name, input, ..}
