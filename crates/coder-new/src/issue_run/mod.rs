@@ -199,7 +199,8 @@ at the issue's base and never pushes unless you pass --open-pr.
 
 Options:
   --repo PATH        The repository checkout to read (default: this directory).
-  --github OWNER/R   The GitHub repository of the issue (default: OpenAgentsInc/openagents).
+  --github OWNER/R   The GitHub repository of the issue (default: the repository's GitHub
+                     remote, origin first).
   --fix SHA          A closed issue's fix commit (default: the newest commit naming #N).
   --decider WHO      auto, gateway, jev, clef, haiku-arm, subq (SubQ Snap, SUBQ_API_KEY), or off
                      (default: auto: our hosted Clef on openagents.com, keyless, then Jev
@@ -254,7 +255,7 @@ impl Options {
         let mut options = Self {
             issue: 0,
             repo: std::env::current_dir().map_err(|_| "Cannot read this directory.".to_owned())?,
-            github: "OpenAgentsInc/openagents".into(),
+            github: String::new(),
             open_pr: false,
             plain: false,
             snapshot: None,
@@ -274,6 +275,7 @@ impl Options {
                 .and_then(crate::connection_tools::signed_in),
         };
         let mut model_given = false;
+        let mut github_given = false;
         let mut args = args.iter();
         while let Some(arg) = args.next() {
             let mut value = |name: &str| {
@@ -283,7 +285,10 @@ impl Options {
             };
             match arg.as_str() {
                 "--repo" => options.repo = PathBuf::from(value("--repo")?),
-                "--github" => options.github = value("--github")?,
+                "--github" => {
+                    options.github = value("--github")?;
+                    github_given = true;
+                }
                 "--fix" => options.fix = Some(value("--fix")?),
                 "--decider" => options.set_deciders(&value("--decider")?)?,
                 "--files" => {
@@ -353,8 +358,91 @@ impl Options {
             (None, Some(_)) => {}
             (None, None) => return Err("Name an issue number: coder issue-run N.".into()),
         }
+        // A bare number is an issue of the repository being worked in
+        // (#11536): its GitHub remote, never a fixed default. A replay
+        // needs none.
+        if !github_given {
+            match github_repo(&options.repo) {
+                Some(github) => options.github = github,
+                None if options.replay.is_some() => {}
+                None => return Err(no_github_remote(options.issue)),
+            }
+        }
         Ok(options)
     }
+}
+
+/// The one-line question when a bare issue number is given in a folder
+/// with no GitHub remote (#11536).
+#[must_use]
+pub fn no_github_remote(issue: u64) -> String {
+    format!(
+        "This folder has no GitHub remote, so which repository is issue #{issue} in? Name it as owner/repo#{issue}."
+    )
+}
+
+/// The GitHub repository (`owner/repo`) of the checkout at `repo`: its
+/// `origin` when that is on GitHub, otherwise the first other remote that
+/// is. `None` when it has no GitHub remote or is not a checkout.
+#[must_use]
+pub fn github_repo(repo: &Path) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["config", "--get-regexp", r"^remote\..*\.url$"])
+        .current_dir(repo)
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()
+        .filter(|output| output.status.success())?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    let remotes: Vec<(&str, String)> = text
+        .lines()
+        .filter_map(|line| {
+            let (key, url) = line.split_once(' ')?;
+            let name = key.strip_prefix("remote.")?.strip_suffix(".url")?;
+            Some((name, github_slug(url)?))
+        })
+        .collect();
+    remotes
+        .iter()
+        .find(|(name, _)| *name == "origin")
+        .or_else(|| remotes.first())
+        .map(|(_, slug)| slug.clone())
+}
+
+/// `owner/repo` of a GitHub remote URL in any of its forms
+/// (`git@github.com:o/r.git`, `ssh://git@github.com/o/r`,
+/// `https://github.com/o/r.git`, `git://github.com/o/r`). `None` for a
+/// URL that is not on GitHub.
+#[must_use]
+pub fn github_slug(url: &str) -> Option<String> {
+    let url = url.trim();
+    let rest = if let Some((scheme, rest)) = url.split_once("://") {
+        if !matches!(scheme, "https" | "http" | "ssh" | "git" | "git+ssh") {
+            return None;
+        }
+        let rest = rest.rsplit_once('@').map_or(rest, |(_, host)| host);
+        let (host, path) = rest.split_once('/')?;
+        let host = host.split(':').next().unwrap_or(host);
+        if !host.eq_ignore_ascii_case("github.com") && !host.eq_ignore_ascii_case("www.github.com")
+        {
+            return None;
+        }
+        path
+    } else {
+        // scp-like: [user@]github.com:owner/repo
+        let (host, path) = url.split_once(':')?;
+        let host = host.rsplit_once('@').map_or(host, |(_, host)| host);
+        if !host.eq_ignore_ascii_case("github.com") {
+            return None;
+        }
+        path
+    };
+    let path = rest.trim_matches('/');
+    let path = path.strip_suffix(".git").unwrap_or(path);
+    let (owner, name) = path.split_once('/')?;
+    (!owner.is_empty() && !name.is_empty() && !name.contains('/'))
+        .then(|| format!("{owner}/{name}"))
 }
 
 /// The stack of a run's thread: a Coder-loop session's turn runs deep in a
@@ -983,4 +1071,4 @@ pub(crate) fn secret(name: &str, file: &str) -> Option<String> {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

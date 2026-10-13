@@ -29,7 +29,12 @@ fn a_swarm_hands_its_decision_model_to_every_solver() {
     let request = arguments(&json!({"issues": [11388], "decisions": "jev"})).unwrap();
     assert_eq!(request.decisions.as_deref(), Some("jev"));
     let cwd = std::env::temp_dir();
-    let solver = options(&request, &request.issues[0], &cwd).unwrap();
+    let solver = options(
+        &request,
+        &(Some("acme/app".into()), request.issues[0].1),
+        &cwd,
+    )
+    .unwrap();
     assert_eq!(solver.inner.kind_decider(), crate::issue_run::Decider::Jev);
     assert!(arguments(&json!({"issues": [1], "decisions": "auto"})).is_err());
     assert!(arguments(&json!({"issues": [1], "decisions": 3})).is_err());
@@ -220,6 +225,7 @@ async fn three_replayed_solvers_post_intents_detect_the_overlap_and_agree_an_ord
     for (index, issue) in request.issues.iter().enumerate() {
         let member = Member::channel_name(issue.1);
         channel.join(&member).unwrap();
+        let issue = &(Some("acme/app".into()), issue.1);
         let mut options = options(&request, issue, &std::env::temp_dir()).unwrap();
         options.inner.replay = Some(recording.clone());
         options.inner.speed = 50.0;

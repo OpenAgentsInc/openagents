@@ -48,16 +48,13 @@ use crate::live::Entry;
 /// The mode's name, in the rail and in the conversation.
 pub const LABEL: &str = "solver";
 
-/// The repository solver works in when the person names none.
-pub const DEFAULT_GITHUB: &str = "OpenAgentsInc/openagents";
-
 /// What the conversational Intaker is told before the conversation: help
 /// the person find or pick an issue with `gh`, then name it on its own line.
 const INTAKE_CHAT: &str = "You are the Intaker of solver, a four-hand coding run that takes one \
 GitHub issue to a pull request. Before the run starts, help the person choose the issue. You \
 can call `gh` with read-only issue and pull request commands (`issue list`, `issue view`, \
 `search issues`, `pr list`, `pr view`, with flags such as `--search`, `--label`, `--state`, \
-`--limit`, `--json`); the repository is {repo} unless the person names another. For a project \
+`--limit`, `--json`); {repo} For a project \
 board (a URL like github.com/orgs/OWNER/projects/N), read its cards with `project item-list N \
 --owner OWNER --format json --limit 200`; each card has the issue's number, title and the \
 board's Status, so pick from the cards whose Status isn't Done. Search and \
@@ -79,7 +76,7 @@ pub fn intake_task(messages: &[openrouter::Message], github: &str) -> String {
         "{}\n{}\nThe conversation:\n",
         crate::identity::prompt(crate::claude::MODEL),
         INTAKE_CHAT
-            .replace("{repo}", github)
+            .replace("{repo}", &repo_line(github))
             .replace("{today}", &days_ago(0))
             .replace("{since}", &days_ago(RECENT_DAYS))
             .replace("{days}", &RECENT_DAYS.to_string())
@@ -90,12 +87,31 @@ pub fn intake_task(messages: &[openrouter::Message], github: &str) -> String {
     )
 }
 
+/// What the Intaker is told about the repository: the chat folder's
+/// GitHub repository, or (`github` empty) that it has none, so the person
+/// is asked which one (#11536).
+fn repo_line(github: &str) -> String {
+    if github.is_empty() {
+        "this folder has no GitHub remote, so before searching ask in one line which repository \
+(owner/repo) the issue is in, and name it in every command."
+            .to_owned()
+    } else {
+        format!("the repository is {github} unless the person names another.")
+    }
+}
+
 /// [`intake_task`] for the Intaker on the Coder loop (#11518): its `gh`
-/// is the Run tool, read-only.
+/// is the Run tool, read-only. `github` is empty when the chat's folder
+/// has no GitHub remote.
 #[must_use]
 pub fn intake_task_coder(messages: &[openrouter::Message], github: &str) -> String {
+    let example = if github.is_empty() {
+        "OWNER/REPO"
+    } else {
+        github
+    };
     format!(
-        "{}\n\nCall `gh` through the Run tool (for example `gh issue list -R {github} --search ...`), with read-only commands only; this session cannot change anything.",
+        "{}\n\nCall `gh` through the Run tool (for example `gh issue list -R {example} --search ...`), with read-only commands only; this session cannot change anything.",
         intake_task(messages, github)
     )
 }
@@ -214,7 +230,10 @@ pub fn intake_chat_server(github: &str) -> claude_agent_sdk::SdkMcpServer {
                 let mut args = recent_only(args, &days_ago(RECENT_DAYS));
                 // Searches and project boards take no repository flag.
                 let unscoped = matches!(args.first().map(String::as_str), Some("search" | "project"));
-                if !unscoped && !args.iter().any(|a| a == "-R" || a == "--repo") {
+                if !unscoped
+                    && !github.is_empty()
+                    && !args.iter().any(|a| a == "-R" || a == "--repo")
+                {
                     args.push("-R".into());
                     args.push(github);
                 }
@@ -243,7 +262,8 @@ and the issue is open, the run opens a pull request.
 
 Options:
   --repo PATH           The repository checkout to read (default: this directory).
-  --github OWNER/R      The GitHub repository of the issue (default: OpenAgentsInc/openagents).
+  --github OWNER/R      The GitHub repository of the issue (default: the repository's
+                        GitHub remote, origin first; asked for when it has none).
   --engine NAME         The agent each hand runs on: claude (four Claude Code
                         sessions), opencode (four OpenCode sessions under
                         Coder's plugin), coder (four Coder-loop sessions on the

@@ -15,11 +15,16 @@ On the computer that runs it you need:
 
 ## From the chat
 
-Ask in plain words, naming the issue with its repository:
+Ask in plain words, naming the issue by its number:
 
 ```text
-Solve acme/web#42
+Solve #42
 ```
+
+A bare number is an issue of the repository your chat's folder is in
+(its GitHub remote, `origin` first). For an issue in another repository,
+name it: `Solve acme/web#42`. If the folder has no GitHub remote, Solver
+asks which repository.
 
 Add "without a pull request" to stop after the checks.
 
@@ -30,15 +35,16 @@ the cost. Stopping the chat stops the run.
 
 ## From the command line
 
-Run it in the project's checkout, naming the GitHub repository:
+Run it in the project's checkout with the issue number:
 
 ```sh
-coder solver 42 --github acme/web
+coder solver 42
 ```
 
 It opens a full-screen view of the run. Add `--plain` to print it as text
-instead. Without `--github`, Solver looks in the OpenAgents repository
-(`OpenAgentsInc/openagents`).
+instead. The issue is looked up in the checkout's GitHub repository (its
+`origin` remote, or another GitHub remote). Add `--github acme/web` for an
+issue in another repository, or when the checkout has no GitHub remote.
 
 ## How it works
 
@@ -60,7 +66,7 @@ Merging stays with you.
 
 | Option | Does |
 | --- | --- |
-| `--github OWNER/REPO` | The issue's repository. |
+| `--github OWNER/REPO` | The issue's repository (default: this checkout's GitHub remote). |
 | `--repo PATH` | The checkout to work from (default: this folder). |
 | `--engine NAME` | What the helpers run on: `claude`, `opencode`, `coder`, or `devin`. |
 | `--rounds N` | How many times the Tester may hand work back (default 2). |

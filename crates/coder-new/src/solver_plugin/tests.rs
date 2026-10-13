@@ -41,7 +41,7 @@ fn arguments_take_an_issue_in_each_form_and_nothing_else() {
     assert!(arguments(&json!({})).is_err());
     assert_eq!(
         task(&json!({"issue": "#12", "no_pr": true})).unwrap(),
-        "Solve OpenAgentsInc/openagents#12, without opening a pull request."
+        "Solve #12, without opening a pull request."
     );
     let options = options(
         &json!({"issue": "acme/app#7", "no_pr": true}),
@@ -52,6 +52,33 @@ fn arguments_take_an_issue_in_each_form_and_nothing_else() {
     assert_eq!(options.inner.github, "acme/app");
     assert_eq!(options.inner.repo, PathBuf::from("/w"));
     assert!(!options.inner.open_pr);
+}
+
+/// #11536: the tool's bare number is an issue of the chat folder's own
+/// repository; a folder with no GitHub remote gets a one-line question.
+#[test]
+fn a_bare_number_is_the_chat_folders_repository() {
+    let repo = crate::issue_run::tests::checkout(&[("origin", "git@github.com:acme/app.git")]);
+    let run = options(&json!({"issue": "#42"}), repo.path()).unwrap();
+    assert_eq!(run.inner.github, "acme/app");
+    assert_eq!(run.inner.repo, repo.path());
+
+    let bare = crate::issue_run::tests::checkout(&[]);
+    let why = options_error(&json!({"issue": 42}), bare.path());
+    assert_eq!(why, crate::issue_run::no_github_remote(42));
+
+    let named = options(&json!({"issue": "other/thing#42"}), bare.path()).unwrap();
+    assert_eq!(
+        (named.inner.github.as_str(), named.inner.issue),
+        ("other/thing", 42)
+    );
+}
+
+fn options_error(arguments: &Value, cwd: &Path) -> String {
+    match options(arguments, cwd) {
+        Ok(_) => panic!("expected an error"),
+        Err(why) => why,
+    }
 }
 
 #[test]
@@ -238,7 +265,7 @@ async fn a_delegation_plays_the_run_into_its_child_chat_and_result() {
 /// Stopping the chat stops the run and says so.
 #[tokio::test]
 async fn a_stopped_delegation_stops_the_run() {
-    let mut options = options(&json!({"issue": 11338}), Path::new("/")).unwrap();
+    let mut options = options(&json!({"issue": "acme/app#11338"}), Path::new("/")).unwrap();
     options.inner.replay = Some(recording());
     options.inner.speed = 0.01;
     let cancel = AtomicBool::new(true);

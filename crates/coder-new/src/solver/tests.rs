@@ -230,7 +230,7 @@ async fn live_intaker_finds_and_names_an_issue() {
     let messages = vec![openrouter::Message::user(
         "Pick an open issue from https://github.com/orgs/OpenAgentsInc/projects/22 that isn't Done. Just pick it.",
     )];
-    let prompt = super::intake_task(&messages, super::DEFAULT_GITHUB);
+    let prompt = super::intake_task(&messages, "OpenAgentsInc/openagents");
     let mut tools = Vec::new();
     let mut emit = |event: crate::bundled_runtime::RuntimeEvent| {
         if let crate::bundled_runtime::RuntimeEvent::Tool {
@@ -247,7 +247,7 @@ async fn live_intaker_finds_and_names_an_issue() {
         &prompt,
         std::path::Path::new("."),
         &["Read", "Grep", "Glob"],
-        Some(super::intake_chat_server(super::DEFAULT_GITHUB)),
+        Some(super::intake_chat_server("OpenAgentsInc/openagents")),
         &cancel,
         &mut emit,
     )

@@ -2089,6 +2089,9 @@ impl App {
         let cwd = self.cwd.clone().unwrap_or_else(|| {
             std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
         });
+        // The chat folder's own repository (#11536); empty when it has no
+        // GitHub remote, and the Intaker asks which one.
+        let github = issue_run::github_repo(&cwd).unwrap_or_default();
         self.live.finish_partial();
         self.live.entries.push(live::Entry::User(text));
         let messages = self.live.messages();
@@ -2106,20 +2109,28 @@ impl App {
             kind: live::Work::SolverIntake {
                 messages,
                 cwd,
-                github: solver::DEFAULT_GITHUB.into(),
+                github,
                 claude: self.plugins.enabled_for(crate::claude::PLUGIN),
                 account: self.connections(),
             },
         });
     }
 
-    /// Starts a solver run on `issue` (in `repo`, or the default one).
+    /// Starts a solver run on `issue` in `repo`, or without one in the
+    /// chat folder's own GitHub repository (#11536).
     fn start_solver(&mut self, repo: Option<String>, issue: u64) {
         if self.live.busy || self.issue_run.is_some() {
             self.notice = Some("A solver run is already working here.".into());
             return;
         }
-        let mut args = vec![issue.to_string()];
+        let cwd = self.cwd.clone().unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+        });
+        let mut args = vec![
+            issue.to_string(),
+            "--repo".into(),
+            cwd.display().to_string(),
+        ];
         if let Some(repo) = repo {
             args.push("--github".into());
             args.push(repo);

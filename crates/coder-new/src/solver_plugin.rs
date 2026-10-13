@@ -45,7 +45,7 @@ pub const REPLAY_ENV: &str = "CODER_SOLVER_REPLAY";
 /// delegation returns.
 const STOP_GRACE: Duration = Duration::from_secs(20);
 
-const DESCRIPTION: &str = "Hand one GitHub issue to Solver, which takes it to a pull request: it reads the issue, works out what the change should be, writes the code, runs the checks, and opens the pull request. Use it when the person asks to solve, fix, or implement an issue by its number. `issue` is N, #N, or owner/repo#N; without a repository it is OpenAgentsInc/openagents. Set `no_pr` to true to stop after the checks without opening a pull request. A run takes minutes. It returns the outcome, the pull request link, the cost, and the folder with the run's files.";
+const DESCRIPTION: &str = "Hand one GitHub issue to Solver, which takes it to a pull request: it reads the issue, works out what the change should be, writes the code, runs the checks, and opens the pull request. Use it when the person asks to solve, fix, or implement an issue by its number. `issue` is N, #N, or owner/repo#N; without a repository it is an issue of the repository the chat's folder is in (its GitHub remote); when that folder has none, ask the person which repository in one line. Set `no_pr` to true to stop after the checks without opening a pull request. A run takes minutes. It returns the outcome, the pull request link, the cost, and the folder with the run's files.";
 
 /// The tool's definition, in the chat-completions function shape.
 #[must_use]
@@ -107,7 +107,8 @@ pub fn arguments(arguments: &Value) -> Result<(Option<String>, u64, bool), Strin
 #[must_use]
 pub fn task(arguments: &Value) -> Option<String> {
     let (repo, issue, no_pr) = self::arguments(arguments).ok()?;
-    let repo = repo.unwrap_or_else(|| crate::solver::DEFAULT_GITHUB.into());
+    // A bare number is the chat folder's repository, resolved by the run.
+    let repo = repo.unwrap_or_default();
     Some(if no_pr {
         format!("Solve {repo}#{issue}, without opening a pull request.")
     } else {
@@ -115,10 +116,12 @@ pub fn task(arguments: &Value) -> Option<String> {
     })
 }
 
-/// The run's options for a call made in `cwd`.
+/// The run's options for a call made in `cwd`. A bare number is an issue
+/// of `cwd`'s GitHub repository (#11536).
 ///
 /// # Errors
-/// The arguments are invalid.
+/// The arguments are invalid, or a bare number was given in a folder with
+/// no GitHub remote (the error asks which repository).
 pub fn options(arguments: &Value, cwd: &Path) -> Result<crate::solver::Options, String> {
     let (repo, issue, no_pr) = self::arguments(arguments)?;
     let mut args = vec![

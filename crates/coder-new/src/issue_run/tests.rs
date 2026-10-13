@@ -953,3 +953,106 @@ async fn the_stop_gate_checks_a_done_claim_against_the_final_checks() {
     let log = std::fs::read_to_string(folder.path().join("stop_gate.jsonl")).unwrap();
     assert_eq!(log.lines().count(), 2);
 }
+
+/// A git checkout in a fresh folder with `remotes` (name, url).
+pub(crate) fn checkout(remotes: &[(&str, &str)]) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    let git = |args: &[&str]| {
+        let status = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir.path())
+            .output()
+            .unwrap()
+            .status;
+        assert!(status.success(), "git {args:?}");
+    };
+    git(&["init", "-q"]);
+    for (name, url) in remotes {
+        git(&["remote", "add", name, url]);
+    }
+    dir
+}
+
+#[test]
+fn github_remote_urls_read_in_every_form() {
+    for url in [
+        "git@github.com:acme/app.git",
+        "git@github.com:acme/app",
+        "ssh://git@github.com/acme/app.git",
+        "ssh://git@github.com:22/acme/app",
+        "https://github.com/acme/app.git",
+        "https://github.com/acme/app/",
+        "https://token@github.com/acme/app",
+        "http://github.com/acme/app",
+        "git://github.com/acme/app.git",
+    ] {
+        assert_eq!(github_slug(url).as_deref(), Some("acme/app"), "{url}");
+    }
+    for url in [
+        "git@gitlab.com:acme/app.git",
+        "https://gitlab.com/acme/app",
+        "/srv/git/app.git",
+        "file:///srv/git/app.git",
+        "https://github.com/acme",
+        "https://github.com/acme/app/extra",
+    ] {
+        assert_eq!(github_slug(url), None, "{url}");
+    }
+}
+
+#[test]
+fn a_checkout_names_its_github_repository_origin_first() {
+    let both = checkout(&[
+        ("fork", "https://github.com/someone/app.git"),
+        ("origin", "git@github.com:acme/app.git"),
+    ]);
+    assert_eq!(github_repo(both.path()).as_deref(), Some("acme/app"));
+    let elsewhere = checkout(&[
+        ("origin", "git@gitlab.com:acme/app.git"),
+        ("hub", "https://github.com/acme/mirror"),
+    ]);
+    assert_eq!(
+        github_repo(elsewhere.path()).as_deref(),
+        Some("acme/mirror")
+    );
+    assert_eq!(github_repo(checkout(&[]).path()), None);
+    assert_eq!(github_repo(tempfile::tempdir().unwrap().path()), None);
+}
+
+/// #11536: a bare number is the issue of the repository being worked in,
+/// never OpenAgentsInc/openagents.
+#[test]
+fn a_bare_number_uses_the_checkouts_own_repository() {
+    let repo = checkout(&[("origin", "https://github.com/acme/app.git")]);
+    let at = repo.path().display().to_string();
+    let options = Options::parse(&["42".into(), "--repo".into(), at.clone()]).unwrap();
+    assert_eq!((options.github.as_str(), options.issue), ("acme/app", 42));
+
+    // A folder with no GitHub remote asks which repository, in one line.
+    let bare = checkout(&[]);
+    let why = Options::parse(&[
+        "42".into(),
+        "--repo".into(),
+        bare.path().display().to_string(),
+    ])
+    .unwrap_err();
+    assert_eq!(why, no_github_remote(42));
+    assert!(
+        why.contains("owner/repo#42") && !why.contains('\n'),
+        "{why}"
+    );
+    assert!(!why.contains("OpenAgentsInc"));
+
+    // A named repository is used as given, remote or not.
+    for folder in [&at, &bare.path().display().to_string()] {
+        let named = Options::parse(&[
+            "42".into(),
+            "--repo".into(),
+            folder.clone(),
+            "--github".into(),
+            "other/thing".into(),
+        ])
+        .unwrap();
+        assert_eq!(named.github, "other/thing");
+    }
+}
