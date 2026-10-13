@@ -196,6 +196,56 @@ mod tests {
         assert!(app.request.is_none());
     }
 
+    fn space(app: &mut App) {
+        assert!(app.handle(Event::Key(KeyEvent::new(
+            KeyCode::Char(' '),
+            KeyModifiers::NONE
+        ))));
+    }
+
+    #[test]
+    fn space_turns_an_installed_plugin_on_and_off_as_the_cli_does() {
+        let home = tempfile::tempdir().unwrap();
+        let layout = Layout::new(home.path(), None).unwrap();
+        package(&layout, "disk-cleanup", "0.4.0");
+        let mut loader = Loader::new(layout.clone());
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.plugins.use_extensions(layout.clone());
+        app.open_plugins();
+        let start = Instant::now();
+        refresh(&mut loader, &mut app, start);
+        app.plugins.selected = crate::plugin_definition::DEFINITIONS.len();
+        let id = app.plugins.selected_definition().id.to_owned();
+        assert!(!app.plugins.enabled_for(&id));
+
+        space(&mut app);
+        assert!(app.plugins.enabled_for(&id));
+        assert_eq!(app.plugins.status_for(&id), "Enabled");
+        assert!(background::plugins::enabled(&layout).contains(&id));
+        assert!(
+            background::plugins::find(&layout, "disk-cleanup")
+                .unwrap()
+                .enabled
+        );
+
+        // A rescan keeps the new state; the next press turns it off.
+        refresh(&mut loader, &mut app, start + REFRESH_INTERVAL);
+        assert!(app.plugins.enabled_for(&id));
+        space(&mut app);
+        assert!(!app.plugins.enabled_for(&id));
+        assert_eq!(app.plugins.status_for(&id), "Disabled");
+        assert!(!background::plugins::enabled(&layout).contains(&id));
+        refresh(&mut loader, &mut app, start + REFRESH_INTERVAL * 2);
+        assert!(!app.plugins.enabled_for(&id));
+        assert!(app.plugins.installed_error.is_none());
+
+        // Turned on from the CLI, the list shows it on.
+        background::plugins::set_enabled(&layout, "disk-cleanup", true).unwrap();
+        refresh(&mut loader, &mut app, start + REFRESH_INTERVAL * 3);
+        assert!(app.plugins.enabled_for(&id));
+    }
+
     #[test]
     fn removing_an_inspected_package_returns_to_the_list_and_preserves_builtin_drafts() {
         let home = tempfile::tempdir().unwrap();

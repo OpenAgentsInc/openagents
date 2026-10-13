@@ -108,7 +108,13 @@ fn manager(frame: &mut Frame, area: Rect, app: &App) {
         let name = display_text(definition.name);
         let selected = index == p.selected.min(definition_count - 1);
         let enabled = p.enabled_for(definition.id);
-        let state = if enabled { "[ on  ]" } else { "[ off ]" };
+        // A row that cannot be switched here shows its state, not a switch.
+        let state = match (fixed_row(app, definition.id), enabled) {
+            (false, true) => "[ on  ]",
+            (false, false) => "[ off ]",
+            (true, true) => "on",
+            (true, false) => "off",
+        };
         let status = p.status_for(definition.id);
         let mut row = Line::from(vec![
             span(if selected { "❯ " } else { "  " }, t::ACCENT_MODEL),
@@ -153,7 +159,7 @@ fn manager(frame: &mut Frame, area: Rect, app: &App) {
             ]));
         }
     }
-    let hints = if selected_is_installed(app) {
+    let hints = if selected_is_installed(app) && fixed_row(app, p.selected_definition().id) {
         if area.width >= 44 {
             vec!["Up/Down Select · Enter Details · Esc Back"]
         } else if area.width >= 28 {
@@ -161,20 +167,30 @@ fn manager(frame: &mut Frame, area: Rect, app: &App) {
         } else {
             vec!["Up/Down Select", "Enter Details", "Esc Back"]
         }
-    } else if area.width >= 64 {
-        vec!["Up/Down Select · Space Turn on/off · Enter Configure · Esc Back"]
-    } else if area.width >= 28 {
-        vec![
-            "Up/Down Select · Space Turn on/off",
-            "Enter Configure · Esc Back",
-        ]
     } else {
-        vec![
-            "Up/Down Select",
-            "Space Turn on/off",
-            "Enter Configure",
-            "Esc Back",
-        ]
+        let enter = if selected_is_installed(app) {
+            "Enter Details"
+        } else {
+            "Enter Configure"
+        };
+        let (wide_hint, second) = if selected_is_installed(app) {
+            (
+                "Up/Down Select · Space Turn on/off · Enter Details · Esc Back",
+                "Enter Details · Esc Back",
+            )
+        } else {
+            (
+                "Up/Down Select · Space Turn on/off · Enter Configure · Esc Back",
+                "Enter Configure · Esc Back",
+            )
+        };
+        if area.width >= 64 {
+            vec![wide_hint]
+        } else if area.width >= 28 {
+            vec!["Up/Down Select · Space Turn on/off", second]
+        } else {
+            vec!["Up/Down Select", "Space Turn on/off", enter, "Esc Back"]
+        }
     };
     let list_height =
         (rows.len() as u16).min(area.height.saturating_sub(hints.len() as u16 + 1).max(1));
@@ -217,6 +233,42 @@ fn selected_is_installed(app: &App) -> bool {
     }
 }
 
+/// Whether `id` is an installed plugin this screen cannot turn on or off.
+fn fixed_row(app: &App, id: &str) -> bool {
+    #[cfg(unix)]
+    return app.plugins.installed().iter().any(|plugin| plugin.id == id)
+        && !app.plugins.installed_toggles();
+    #[cfg(not(unix))]
+    {
+        let _ = (app, id);
+        false
+    }
+}
+
+/// Who published an installed plugin, in words: "Local" for one installed
+/// from a folder here, otherwise a short npub.
+#[cfg(unix)]
+fn publisher(plugin: &background::plugins::Installed) -> String {
+    let key = plugin.id.split_once(':').map_or("", |(key, _)| key);
+    if key == background::plugins::LOCAL_KEY {
+        return "Local".into();
+    }
+    let bytes: Option<Vec<u8>> = (0..32)
+        .map(|index| {
+            key.get(index * 2..index * 2 + 2)
+                .and_then(|pair| u8::from_str_radix(pair, 16).ok())
+        })
+        .collect();
+    let Some(bytes) = bytes
+        .filter(|_| key.len() == 64)
+        .and_then(|bytes| <[u8; 32]>::try_from(bytes).ok())
+    else {
+        return "Unknown".into();
+    };
+    let npub = nostr::nip19::encode_npub(&bytes);
+    format!("{}…{}", &npub[..12], &npub[npub.len() - 4..])
+}
+
 fn display_text(text: &str) -> String {
     text.chars()
         .filter(|character| !character.is_control())
@@ -252,27 +304,37 @@ fn plugin_details(app: &App, width: u16) -> Vec<Line<'static>> {
     ];
     #[cfg(unix)]
     if let Some(plugin) = p.selected_installed() {
-        let id = display_text(&plugin.id);
+        let local = plugin.id.starts_with(background::plugins::LOCAL_KEY);
         lines.push(Line::default());
         lines.extend([
+            detail("Publisher", &publisher(plugin), width),
             detail("Version", &display_text(&plugin.version), width),
-            detail("Plugin ID", &id, width),
             detail(
-                "Location",
-                &display_text(&plugin.dir.to_string_lossy()),
+                "From",
+                if local {
+                    "A folder on this computer"
+                } else {
+                    "The plugin catalog"
+                },
                 width,
             ),
-            Line::default(),
-            Line::from(span("Manage this plugin with the CLI:", t::GRAY)),
-            Line::from(span(
-                format!("openagents plugin enable {id}"),
-                t::TEXT_SECONDARY,
-            )),
-            Line::from(span(
-                format!("openagents plugin disable {id}"),
-                t::TEXT_SECONDARY,
-            )),
         ]);
+        if !p.installed_toggles() {
+            lines.push(Line::default());
+            lines.push(Line::from(span(
+                "Can't turn this on or off here: Coder can't find its plugin folder.",
+                t::GRAY,
+            )));
+        }
+        if plugin.enabled
+            && let Some((_, note)) = p.installed_note.as_ref().filter(|(id, _)| *id == plugin.id)
+        {
+            lines.push(Line::default());
+            lines.push(Line::from(span(display_text(note), t::COMMAND)));
+        }
+        if let Some(error) = &p.installed_error {
+            lines.push(Line::from(span(display_text(error), t::DIFF_DELETE_FG)));
+        }
         return lines;
     }
     match definition.id {
@@ -392,7 +454,7 @@ fn plugin_info(frame: &mut Frame, area: Rect, app: &App) {
     let mut lines = plugin_details(app, area.width);
     lines.push(Line::default());
     lines.push(Line::from(span(
-        if selected_is_installed(app) {
+        if fixed_row(app, app.plugins.selected_definition().id) {
             "Esc Back"
         } else {
             "Esc Back · Turn on/off from the plugin list"
@@ -1083,22 +1145,37 @@ mod tests {
             .iter()
             .find(|row| row.contains("Installed 0"))
             .unwrap();
-        assert!(enabled.contains("[ on  ]"));
+        assert!(!enabled.contains("[ on  ]"));
         assert!(enabled.contains("Enabled"));
         let disabled = canvas
             .rows
             .iter()
             .find(|row| row.contains("Installed 1"))
             .unwrap();
-        assert!(disabled.contains("[ off ]"));
+        assert!(!disabled.contains("[ off ]"));
         assert!(disabled.contains("Disabled"));
 
+        // Without its plugin folder a row is no switch, and says why.
         select(&mut app, &installed(1).id);
         let text = draw(&app, 110, 36).rows.join("\n");
         assert!(text.contains("❯ Installed 1"));
         assert!(text.contains("Enter Details"));
         assert!(!text.contains("Space Turn on/off"));
         assert!(!text.contains("Enter Configure"));
+        assert!(text.contains("Can't turn this on or off here"));
+
+        let home = tempfile::tempdir().unwrap();
+        app.plugins
+            .use_extensions(background::Layout::new(home.path(), None).unwrap());
+        let text = draw(&app, 110, 36).rows.join("\n");
+        assert!(text.contains("Space Turn on/off · Enter Details"));
+        let row = draw(&app, 110, 36)
+            .rows
+            .into_iter()
+            .find(|row| row.contains("Installed 1"))
+            .unwrap();
+        assert!(row.contains("[ off ]"));
+        assert!(!text.contains("Can't turn this on or off here"));
     }
 
     #[cfg(unix)]
@@ -1115,7 +1192,7 @@ mod tests {
             let canvas = draw(&app, width, height);
             let text = canvas.rows.join("\n");
             assert!(text.contains("❯ Installed 23"), "{text}");
-            assert!(text.contains("[ off ]"), "{text}");
+            assert!(text.contains("off"), "{text}");
             assert!(text.contains("Enter Details"), "{text}");
             assert!(!canvas.cursor_visible);
         }
@@ -1123,7 +1200,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn installed_details_show_package_identity_and_cli_enablement_commands() {
+    fn installed_details_speak_plainly_without_keys_or_folders() {
         let plugin = installed(0);
         let mut app = App::default();
         app.set_mode(Mode::Live);
@@ -1136,12 +1213,23 @@ mod tests {
         assert!(canvas.rows[0].contains(&plugin.name));
         assert!(text.contains(&plugin.summary));
         assert!(text.contains(&plugin.version));
-        assert!(text.contains(&plugin.id));
-        assert!(text.contains(plugin.dir.to_str().unwrap()));
-        assert!(text.contains(&format!("openagents plugin enable {}", plugin.id)));
-        assert!(text.contains(&format!("openagents plugin disable {}", plugin.id)));
-        assert!(!text.contains("Turn on/off from the plugin list"));
+        assert!(text.contains("Publisher") && text.contains("Local"));
+        assert!(text.contains("A folder on this computer"));
+        assert!(!text.contains(background::plugins::LOCAL_KEY));
+        assert!(!text.contains(&"0".repeat(64)));
+        assert!(!text.contains("/fixture/extensions"));
+        assert!(!text.contains(&plugin.id));
         assert!(!canvas.cursor_visible);
+
+        // A published plugin names its publisher by a short npub.
+        let mut published = installed(2);
+        published.id = format!("{}:fixture-2", "0b".repeat(32));
+        app.plugins.replace_installed(vec![published.clone()]);
+        select(&mut app, &published.id);
+        let text = draw(&app, 160, 24).rows.join("\n");
+        assert!(text.contains("npub1"), "{text}");
+        assert!(text.contains("The plugin catalog"));
+        assert!(!text.contains(&"0b".repeat(32)));
     }
 
     #[cfg(unix)]

@@ -376,9 +376,11 @@ fn run() -> io::Result<()> {
         let mut background = Background::default();
         let mut catalog = coder_new::model_catalog::Loader::default();
         #[cfg(unix)]
-        let mut plugins = background::Layout::from_env()
-            .ok()
-            .map(coder_new::plugin_catalog::Loader::new);
+        let mut plugins = background::Layout::from_env().ok().map(|layout| {
+            // The list turns installed plugins on and off where the CLI does.
+            app.plugins.use_extensions(layout.clone());
+            coder_new::plugin_catalog::Loader::new(layout)
+        });
         let mut status_report = String::new();
         let mut tty_checked = Instant::now();
         loop {

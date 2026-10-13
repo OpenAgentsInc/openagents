@@ -14,6 +14,30 @@ use crate::{
 
 pub const ENDPOINT: &str = "https://openrouter.ai/api/v1";
 
+/// The short name `openagents plugin` accepts for `plugin`: its slug, when
+/// no other installed plugin shares it.
+#[cfg(unix)]
+pub fn short_name(
+    installed: &[background::plugins::Installed],
+    plugin: &background::plugins::Installed,
+) -> Option<String> {
+    (installed
+        .iter()
+        .filter(|other| other.slug == plugin.slug)
+        .count()
+        <= 1)
+        .then(|| plugin.slug.clone())
+}
+
+/// Whether a background rule of `plugin` still holds the pause it was
+/// packaged with: it runs only after the CLI shows its dry run.
+#[cfg(unix)]
+fn waits_for_preview(layout: &background::Layout, plugin: &background::plugins::Installed) -> bool {
+    plugin.background.iter().any(|id| {
+        background::store::load(layout, id).is_ok_and(|rule| rule.paused_until == Some(u64::MAX))
+    })
+}
+
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum SettingsFocus {
     #[default]
@@ -47,6 +71,15 @@ pub struct Plugins {
     pub(crate) catalog_revision: u64,
     #[cfg(unix)]
     installed: Vec<background::plugins::Installed>,
+    /// Where installed plugins live and are turned on or off: the same
+    /// folder and `enabled.json` `openagents plugin enable|disable` use.
+    /// `None` until the host supplies it, so tests never touch a home.
+    #[cfg(unix)]
+    extensions: Option<background::Layout>,
+    /// Why the last turn on or off of an installed plugin failed.
+    pub installed_error: Option<String>,
+    /// A plain note about an installed plugin just turned on (`(id, note)`).
+    pub installed_note: Option<(String, String)>,
     pub bundled: crate::bundled_settings::BundledSettings,
     pub enabled: bool,
     pub key_configured: bool,
@@ -103,6 +136,10 @@ impl Default for Plugins {
             catalog_revision: 0,
             #[cfg(unix)]
             installed: Vec::new(),
+            #[cfg(unix)]
+            extensions: None,
+            installed_error: None,
+            installed_note: None,
             bundled: crate::bundled_settings::BundledSettings::default(),
             enabled: false,
             key_configured: false,
@@ -386,6 +423,11 @@ impl Plugins {
     }
 
     #[cfg(unix)]
+    pub fn installed(&self) -> &[background::plugins::Installed] {
+        &self.installed
+    }
+
+    #[cfg(unix)]
     fn installed_for(&self, id: &str) -> Option<&background::plugins::Installed> {
         self.installed
             .iter()
@@ -435,10 +477,62 @@ impl Plugins {
         }
     }
 
+    /// Turn installed plugins on and off in `layout`'s extensions folder.
+    #[cfg(unix)]
+    pub fn use_extensions(&mut self, layout: background::Layout) {
+        self.extensions = Some(layout);
+    }
+
+    /// Whether the installed plugin rows can be turned on and off here.
+    #[cfg(unix)]
+    pub fn installed_toggles(&self) -> bool {
+        self.extensions.is_some()
+    }
+
+    /// Turn the selected installed plugin on or off the way
+    /// `openagents plugin enable|disable` does, so the CLI and this list
+    /// agree. The row changes at once; the next scan confirms it.
+    #[cfg(unix)]
+    fn toggle_installed(&mut self) -> bool {
+        let Some(plugin) = self.selected_installed().cloned() else {
+            return false;
+        };
+        let Some(layout) = self.extensions.clone() else {
+            self.installed_error =
+                Some("Coder can't find its plugin folder on this computer.".into());
+            return false;
+        };
+        let on = !plugin.enabled;
+        match background::plugins::set_enabled(&layout, &plugin.id, on) {
+            Ok(changed) => {
+                self.installed_error = None;
+                self.installed_note = (on && waits_for_preview(&layout, &changed)).then(|| {
+                    let note = match short_name(&self.installed, &changed) {
+                        Some(name) => format!(
+                            "It waits to run until you see what it would do: openagents plugin enable {name}"
+                        ),
+                        None => "It waits to run until you see what it would do with openagents plugin enable.".into(),
+                    };
+                    (changed.id.clone(), note)
+                });
+                if let Some(row) = self.installed.iter_mut().find(|row| row.id == changed.id) {
+                    *row = changed;
+                }
+                // Drop a scan begun before this change.
+                self.catalog_revision = self.catalog_revision.wrapping_add(1);
+                true
+            }
+            Err(error) => {
+                self.installed_error = Some(error);
+                false
+            }
+        }
+    }
+
     pub fn toggle_selected(&mut self) -> bool {
         #[cfg(unix)]
         if self.selected_installed().is_some() {
-            return false;
+            return self.toggle_installed();
         }
         let id = self.selected_definition().id.to_owned();
         let id = id.as_str();
