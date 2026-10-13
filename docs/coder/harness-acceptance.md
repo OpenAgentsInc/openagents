@@ -30,6 +30,13 @@ copied. Claude Code reads the login Keychain through a link, as
 `scripts/release/acceptance.sh` does. The gate never writes to
 `~/.openagents` or to a harness's own folders.
 
+Nothing the gate starts can open a browser or an interactive sign-in. Every
+process gets `BROWSER=true` and `NO_OPEN_BROWSER=1`. Cursor runs only when
+`cursor-agent status --format json` reports it signed in inside the isolated
+home; otherwise its row reads "skipped: no login available headless". Coder
+itself starts every harness and probe the same way
+(`acp_client::process::NON_INTERACTIVE`).
+
 For each harness, the gate opens a new chat, pins it with Shift+Tab and sends
 three tiny turns:
 
@@ -68,6 +75,7 @@ Other scenarios:
 | projects-chat | Coder's answer to "can you make a new project, what do you need" doesn't claim a repository is required. |
 | projects-live | `openagents projects list` reads the live account, read-only. This needs the gate sign-in key. |
 | projects-local | A local or test server takes the full flow: a project with just a name, a second project on a repository another project uses, and two repositories with a primary. Set `HACC_PROJECTS_ORIGIN` and `HACC_PROJECTS_TOKEN`. |
+| no-home | With `HOME` unset and only `USERPROFILE` set, as on Windows, a first message gets an answer and nothing says "HOME is not set". It reaches the gateway once the gate has its sign-in key. |
 | web-chat | A question in a local web chat (`scripts/dev/full-local.sh`, or `HACC_WEB_ORIGIN`) gets an answer with no "Run in Coder on …" button. The message makes exactly one thread, and the composer has no Chat/Code mode switch. |
 
 A harness that isn't installed shows as "not installed", and a check that

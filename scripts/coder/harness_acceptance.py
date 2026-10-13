@@ -270,11 +270,11 @@ def harness_env(home: Path, path: str, extra: dict | None = None) -> dict:
 class Tui:
     """One Coder TUI in a tmux pane on the gate's own tmux server."""
 
-    def __init__(self, name: str, coder: str, home: Path, state: Path, env: dict, cols=150, rows=56):
+    def __init__(self, name: str, coder: str, home: Path, state: Path, env: dict, cols=150, rows=56, unset=()):
         self.name = name
         self.home = home
         launcher = home / f"run-{name}.sh"
-        lines = ["#!/bin/sh"]
+        lines = ["#!/bin/sh"] + [f"unset {v}" for v in unset]
         lines += [f"export {k}={shlex.quote(v)}" for k, v in env.items() if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", k)]
         lines.append(
             f"exec {shlex.quote(coder)} --in {shlex.quote(str(home / 'proj'))} --state {shlex.quote(str(state))} 2>>{shlex.quote(str(home / ('stderr-' + name + '.log')))}"
@@ -1374,6 +1374,35 @@ def claims_repo_required(answer: str) -> bool:
     return bool(REPO.search(answer) and NEEDS.search(answer))
 
 
+def no_home_run(coder, root, path, signin, evidence, turn_timeout) -> dict:
+    """Windows' shape: HOME unset, only USERPROFILE set. A first message
+    must get an answer without "HOME is not set" (Windows rc.7)."""
+    spec = {"key": "no-home", "rail": ["Auto"], "bins": []}
+    r = Run(spec, coder, root, path, {}, signin, 0, turn_timeout, evidence)
+    env = harness_env(r.home, path)
+    r.login(env)
+    env.pop("HOME", None)
+    env["USERPROFILE"] = str(r.home)
+    tui = Tui("h-no-home", coder, r.home, r.state, env, unset=("HOME",))
+    try:
+        if not tui.wait(lambda s: rail(s) is not None, 40):
+            screen = tui.screen()
+            (r.ev / "startup.txt").write_text(screen)
+            return {"no-home": ["fail", "Coder's screen never came up: " + words(screen)[-160:]]}
+        t = r.send(tui, "what's 2+2?", 1)
+        err = (r.home / "stderr-h-no-home.log").read_text(errors="replace") if (r.home / "stderr-h-no-home.log").exists() else ""
+        text = "\n".join(t["frames"]) + err
+        ans = answers(t["final"])
+        if re.search(r"HOME is not set|\$HOME", text):
+            return {"no-home": ["fail", "“HOME is not set” with only USERPROFILE set"]}
+        if not t["ended"] or not ans:
+            return {"no-home": ["fail", f"no answer in {t['secs']}s with only USERPROFILE set: " + words(" ".join(transcript(t["final"])))[-160:]]}
+        lane = ((t["ended"] or {}).get("chose") or {}).get("harness")
+        return {"no-home": ["pass", f"“{ans[-1][:60]}” on {lane}" + ("" if signin else " (not signed in, so not the gateway)")]}
+    finally:
+        tui.stop()
+
+
 def projects_run(coder, root, path, signin, evidence, turn_timeout) -> dict:
     """Projects: Coder's answer to "can you make a new project, what do you
     need" claims no repository is required; the live account reads
@@ -1635,7 +1664,7 @@ def main() -> int:
     if a.list:
         for h in HARNESSES:
             print(h["key"])
-        print("billing\nplugins\nprojects\nweb")
+        print("billing\nplugins\nprojects\nno-home\nweb")
         return 0
     for tool in ("tmux", "git"):
         if not shutil.which(tool):
@@ -1728,6 +1757,12 @@ def main() -> int:
             scenarios.update(projects_run(coder, root, path, signin, evidence, a.turn_timeout))
         except Exception as e:
             scenarios["projects-chat"] = ["fail", f"gate error: {e!r}"]
+    if not only or "no-home" in only:
+        say("no-home: start")
+        try:
+            scenarios.update(no_home_run(coder, root, path, signin, evidence, a.turn_timeout))
+        except Exception as e:
+            scenarios["no-home"] = ["fail", f"gate error: {e!r}"]
     if not only or "web" in only:
         say("web: start")
         try:
