@@ -15,6 +15,9 @@ pub const AUTO_LABEL: &str = "coder";
 /// The OpenAgents inference gateway's own router, the first door of an
 /// `auto` turn when the person is signed in (docs/inference/providers.md).
 pub const GATEWAY_AUTO: &str = "openagents/auto";
+/// The gateway's quick router, on the signed-in account's free daily
+/// allowance like [`GATEWAY_AUTO`]: a cheap answer's model (#11537).
+pub const GATEWAY_FAST: &str = "openagents/fast";
 /// DeepSeek V4.1 Flash on the person's own OpenRouter key, a model /models
 /// offers.
 pub const OPENROUTER: &str = "deepseek/deepseek-v4.1-flash";

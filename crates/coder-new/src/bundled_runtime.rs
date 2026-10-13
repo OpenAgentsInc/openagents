@@ -1998,6 +1998,7 @@ pub async fn microcoder_local(
     cwd: &Path,
     read_only: bool,
     claude: bool,
+    cheap: bool,
     jev: Option<jev::Client>,
     redaction_keys: &[ApiKey],
     cancel: &Arc<AtomicBool>,
@@ -2007,7 +2008,16 @@ pub async fn microcoder_local(
     // Tests never resolve this computer's real logins or write to its home.
     #[cfg(test)]
     {
-        let _ = (cwd, read_only, claude, jev, redaction_keys, cancel, emit);
+        let _ = (
+            cwd,
+            read_only,
+            claude,
+            cheap,
+            jev,
+            redaction_keys,
+            cancel,
+            emit,
+        );
         return Err("The local model logins are unavailable in tests.".into());
     }
     #[cfg(not(test))]
@@ -2015,14 +2025,26 @@ pub async fn microcoder_local(
         let session = format!("coder-new-{}", std::process::id());
         // The Claude Code plugin off: its login is left out, and the loop's
         // commands get `CLAUDE_BIN=/dev/null`, so `claude` never starts
-        // (#11516).
-        let generator = coder::local_chain::local_generator_for(&session, None, None, claude)?;
+        // (#11516). A cheap answer runs each login's cheapest model
+        // (#11537).
+        let generator = coder::local_chain::local_generator_for(
+            &session,
+            cheap.then(|| crate::route::CHEAP_CODEX_MODEL.to_owned()),
+            None,
+            claude,
+            cheap.then(|| crate::route::CHEAP_CLAUDE_MODEL.to_owned()),
+        )?;
         if !claude {
             let mut vars = child_env();
             vars.retain(|(name, _)| name != "CLAUDE_BIN");
             vars.push(("CLAUDE_BIN".into(), "/dev/null".into()));
             set_child_env(vars);
         }
+        // What the Claude Code login's calls print, as it arrives: its
+        // thinking for the transcript and its plan windows for the rail
+        // (#11537).
+        let (lines, thoughts) = std::sync::mpsc::channel::<Value>();
+        generator.watch_claude(&claude_watcher(lines));
         let mut result = run_microcoder_with(
             task,
             cwd,
@@ -2032,6 +2054,7 @@ pub async fn microcoder_local(
             redaction_keys,
             cancel,
             emit,
+            Some(thoughts),
         )
         .await?;
         result["provider"] = json!(generator.provider());
@@ -2044,6 +2067,77 @@ pub async fn microcoder_local(
             result["refusals"] = json!(refusals);
         }
         Ok(result)
+    }
+}
+
+/// The watcher on the Claude Code login's calls: the plan's windows go
+/// to [`crate::claude_plan`] at once; thinking lines go to `lines`, for
+/// the loop to show as they stream ([`Thoughts`]).
+#[cfg_attr(test, allow(dead_code))]
+fn claude_watcher(lines: std::sync::mpsc::Sender<Value>) -> microcoder_loop::claude::Watcher {
+    let lines = std::sync::Mutex::new(lines);
+    Arc::new(move |line: &Value| match line["type"].as_str() {
+        Some("rate_limit_event") => {
+            crate::claude_plan::observe_rate_limit(
+                &line["rate_limit_info"],
+                coder_delegate::limit::now(),
+            );
+        }
+        Some("stream_event" | "assistant") => {
+            if let Ok(lines) = lines.lock() {
+                let _ = lines.send(line.clone());
+            }
+        }
+        _ => {}
+    })
+}
+
+/// The model's thinking from the Claude Code login's lines, as the
+/// Claude Code harness shows it (#11537): `Thinking` on the rail while a
+/// thinking block streams, and each finished block as a thinking entry.
+#[derive(Default)]
+pub(crate) struct Thoughts {
+    streaming: bool,
+}
+
+impl Thoughts {
+    /// What `line` shows.
+    pub(crate) fn read(&mut self, line: &Value) -> Vec<RuntimeEvent> {
+        let mut shown = Vec::new();
+        match line["type"].as_str() {
+            Some("stream_event") => {
+                let event = &line["event"];
+                let now = match event["type"].as_str() {
+                    Some("content_block_start") => event["content_block"]["type"] == "thinking",
+                    Some("content_block_delta") => {
+                        event["delta"]["type"] == "thinking_delta"
+                            || (self.streaming && event["delta"]["type"] == "signature_delta")
+                    }
+                    Some("content_block_stop" | "message_stop") => false,
+                    _ => self.streaming,
+                };
+                if now != self.streaming {
+                    self.streaming = now;
+                    shown.push(RuntimeEvent::Thinking(now));
+                }
+            }
+            Some("assistant") => {
+                for block in line["message"]["content"].as_array().into_iter().flatten() {
+                    if block["type"] == "thinking"
+                        && let Some(entry) = crate::claude_stream::thinking(block)
+                    {
+                        shown.push(entry);
+                    }
+                }
+            }
+            _ => {}
+        }
+        shown
+    }
+
+    /// The rail's `Thinking` stops with the call.
+    pub(crate) fn end(&mut self) -> Option<RuntimeEvent> {
+        std::mem::take(&mut self.streaming).then_some(RuntimeEvent::Thinking(false))
     }
 }
 
@@ -2074,6 +2168,7 @@ pub async fn microcoder_gateway(
         redaction_keys,
         cancel,
         emit,
+        None,
     )
     .await?;
     result["provider"] = json!(generator.provider());
@@ -2111,6 +2206,7 @@ pub async fn microcoder_openrouter(
         redaction_keys,
         cancel,
         emit,
+        None,
     )
     .await?;
     result["usage"] = json!({"cost": result["outcome"]["model_usd"]});
@@ -2137,6 +2233,7 @@ async fn run_microcoder<G: Generate>(
         redaction_keys,
         cancel,
         emit,
+        None,
     )
     .await
 }
@@ -2154,6 +2251,7 @@ async fn run_microcoder_with<G: Generate>(
     redaction_keys: &[ApiKey],
     cancel: &Arc<AtomicBool>,
     emit: &mut dyn FnMut(RuntimeEvent),
+    thoughts: Option<std::sync::mpsc::Receiver<Value>>,
 ) -> Result<Value, String> {
     if cancel.load(Ordering::Relaxed) {
         return Err("The coding task was canceled before it started.".into());
@@ -2201,6 +2299,13 @@ async fn run_microcoder_with<G: Generate>(
         repeated: Cell::new(0),
         previous_commands: RefCell::new(vec![]),
         bases: RefCell::new(vec![]),
+        thoughts: thoughts.map(|lines| {
+            (
+                lines,
+                RefCell::new(Thoughts::default()),
+                &sink as &dyn crate::delegation_events::Sink,
+            )
+        }),
     };
     let set = microcoder_loop::models::question_set();
     let route = microcoder_loop::models::route_set();
@@ -2268,6 +2373,31 @@ struct CancellableGenerator<'a, G> {
     previous_commands: RefCell<Vec<String>>,
     /// The cost basis of each kind every answered generation rested on.
     bases: RefCell<Vec<microcoder_loop::models::Basis>>,
+    /// The Claude Code login's lines as they arrive, what they show, and
+    /// where it goes (#11537).
+    thoughts: Option<(
+        std::sync::mpsc::Receiver<Value>,
+        RefCell<Thoughts>,
+        &'a dyn crate::delegation_events::Sink,
+    )>,
+}
+
+impl<G> CancellableGenerator<'_, G> {
+    /// Shows the thinking that arrived since the last look.
+    fn show_thoughts(&self, ended: bool) {
+        let Some((lines, thoughts, sink)) = &self.thoughts else {
+            return;
+        };
+        while let Ok(line) = lines.try_recv() {
+            for mut event in thoughts.borrow_mut().read(&line) {
+                event.redact(self.redaction_keys);
+                sink.emit(event);
+            }
+        }
+        if ended && let Some(event) = thoughts.borrow_mut().end() {
+            sink.emit(event);
+        }
+    }
 }
 
 impl<G: Generate> Generate for CancellableGenerator<'_, G> {
@@ -2284,13 +2414,14 @@ impl<G: Generate> Generate for CancellableGenerator<'_, G> {
                 }
                 self.generator.generate(&system, &prompt).await
             } => generated,
-            () = async { while !self.cancel.load(Ordering::Relaxed) { tokio::time::sleep(POLL).await; } } => microcoder_loop::models::Generated {
+            () = async { while !self.cancel.load(Ordering::Relaxed) { self.show_thoughts(false); tokio::time::sleep(POLL).await; } } => microcoder_loop::models::Generated {
                 action: Err("The user canceled this generation.".into()),
                 model: String::new(), prompt_tokens: 0, completion_tokens: 0, usd: None, known_usd: 0.0,
                 cost_unknown: Some("A generation was canceled after it may have reached the provider.".into()),
                 usd_upper: None, cost_basis: microcoder_loop::models::Basis::ListPrice, milliseconds: 0,
             },
         };
+        self.show_thoughts(true);
         match &generated.action {
             Ok(action) => {
                 self.failures.set(0);
@@ -2549,6 +2680,20 @@ impl Observer for MicrocoderEvents<'_> {
                     .saturating_add(generated.prompt_tokens)
                     .saturating_add(generated.completion_tokens);
                 self.emit.emit(RuntimeEvent::Tokens(self.tokens));
+                // Each call's own report, so the rail's context figure
+                // reads what the model was really sent (#11537). Its cost
+                // is the turn's to report.
+                if generated.prompt_tokens > 0 {
+                    self.emit.emit(RuntimeEvent::Usage(Box::new(RoundUsage {
+                        model: self.model.clone().unwrap_or_default(),
+                        prompt_tokens: generated.prompt_tokens,
+                        completion_tokens: generated.completion_tokens,
+                        reasoning_tokens: None,
+                        cost: None,
+                        milliseconds: generated.milliseconds,
+                        first_token_ms: None,
+                    })));
+                }
                 if let Ok(action) = &generated.action {
                     if !action.reply.is_empty() {
                         self.reply =
@@ -2634,6 +2779,50 @@ pub(crate) fn still_running(group_clear: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #11537: the Claude Code login's thinking shows as Claude Code's
+    /// own does: `Thinking` while a block streams, then the block as a
+    /// thinking entry; a signature delta keeps it on, the call's end stops
+    /// it.
+    #[test]
+    fn the_claude_logins_thinking_shows_as_claude_codes_does() {
+        let mut thoughts = Thoughts::default();
+        let event = |event: Value| json!({"type": "stream_event", "event": event});
+        let shown = thoughts.read(&event(json!({"type": "content_block_start",
+            "content_block": {"type": "thinking", "thinking": ""}})));
+        assert!(matches!(shown.as_slice(), [RuntimeEvent::Thinking(true)]));
+        assert!(
+            thoughts
+                .read(&event(json!({"type": "content_block_delta",
+            "delta": {"type": "thinking_delta", "thinking": "Look"}})))
+                .is_empty()
+        );
+        assert!(
+            thoughts
+                .read(&event(json!({"type": "content_block_delta",
+            "delta": {"type": "signature_delta", "signature": "s"}})))
+                .is_empty()
+        );
+        let shown = thoughts.read(&json!({"type": "assistant", "message": {"content": [
+            {"type": "thinking", "thinking": "Look first."}]}}));
+        match shown.as_slice() {
+            [RuntimeEvent::Tool { name, output, .. }] => {
+                assert_eq!(name, crate::claude_stream::THINKING);
+                assert_eq!(output["text"], "Look first.");
+            }
+            other => panic!("a thinking entry, not {other:?}"),
+        }
+        let shown = thoughts.read(&event(json!({"type": "content_block_start",
+            "content_block": {"type": "tool_use", "name": "StructuredOutput"}})));
+        assert!(matches!(shown.as_slice(), [RuntimeEvent::Thinking(false)]));
+        assert!(thoughts.end().is_none());
+        thoughts.read(&event(json!({"type": "content_block_start",
+            "content_block": {"type": "thinking"}})));
+        assert!(matches!(
+            thoughts.end(),
+            Some(RuntimeEvent::Thinking(false))
+        ));
+    }
     use crate::delegation_events::Sink;
 
     /// #11538: every child gets the `openagents` beside Coder first on
@@ -4148,6 +4337,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             &[],
             &Arc::new(AtomicBool::new(false)),
             &mut |_| {},
+            None,
         )
         .await
         .unwrap();
@@ -4207,6 +4397,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             repeated: Cell::new(0),
             previous_commands: RefCell::new(vec![]),
             bases: RefCell::new(vec![]),
+            thoughts: None,
         };
         let result = tokio::time::timeout(Duration::from_secs(1), generator.generate("", ""))
             .await

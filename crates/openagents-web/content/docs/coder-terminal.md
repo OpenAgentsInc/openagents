@@ -17,11 +17,15 @@ It works in any terminal, over SSH, and in tmux. Install it from [Download and i
 - **The input** sits at the bottom, between two lines, starting with `❯`.
 - **Top right of the input:** who answers this chat (`Auto`, or the
   agent you picked) and, once it has answered, the model, such as
-  `Auto · Claude (Haiku 5.5)`. Beside Claude Code and Codex it also shows
-  how much of your plan's usage windows you've used, such as
-  `5h 12% · week 15%`. On Coder's own loop it shows the chat's cost so
-  far and how much of the model's room for this chat is used. See
-  [Choose who answers](/docs/coder-agents).
+  `Auto → Claude (Haiku 5.5)` ("Auto picked Claude"; the chat can still
+  move). An agent you picked shows alone, such as `Claude (Haiku 5.5)`.
+  Whenever a turn uses your Claude or Codex plan, on any agent, it also
+  shows how much of that plan's usage windows you've used, such as
+  `5h 12% · week 15%`, or `Auto → Coder (Haiku 5.5) · Claude 5h 12% ·
+  week 15%` when Coder's own loop ran on your Claude plan. Otherwise
+  Coder's own loop shows the chat's cost so far. Once the model has
+  answered, it shows how much of the model's room for this chat is used.
+  See [Choose who answers](/docs/coder-agents).
 - **Bottom right of the input:** the folder Coder works in and its Git
   branch.
 - **Under the input:** one row for each agent this chat handed work to,

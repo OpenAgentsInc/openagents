@@ -90,6 +90,10 @@ pub const DEFAULT_ALIAS: &str = "opus";
 /// the binary.
 pub const ENDPOINT: &str = "https://api.anthropic.com";
 
+/// The thinking every call asks for: adaptive, its words summarized, as
+/// Claude Code's own chats ask.
+pub const THINKING: [&str; 4] = ["--thinking", "adaptive", "--thinking-display", "summarized"];
+
 /// The longest one call may take before the binary is killed.
 pub const TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
@@ -135,7 +139,14 @@ pub struct ClaudeGenerator {
     /// Whether a message marks its last block for caching; cleared when
     /// the API refuses the mark.
     mark: std::sync::atomic::AtomicBool,
+    /// Who reads every line the binary prints as it arrives, when someone
+    /// does ([`ClaudeGenerator::watch`]).
+    watcher: std::sync::Mutex<Option<Watcher>>,
 }
+
+/// A reader of every JSON line a call prints, as it arrives: the
+/// thinking deltas, the assistant messages, the rate limit events.
+pub type Watcher = std::sync::Arc<dyn Fn(&Value) + Send + Sync>;
 
 /// A started binary waiting for its prompt, and the system text it was
 /// started with.
@@ -166,6 +177,16 @@ impl ClaudeGenerator {
             images: Vec::new(),
             sent: std::sync::Mutex::new(None),
             mark: std::sync::atomic::AtomicBool::new(true),
+            watcher: std::sync::Mutex::new(None),
+        }
+    }
+
+    /// Hands `watcher` every JSON line later calls print, as it arrives,
+    /// so a host can show the model's thinking while it streams and read
+    /// the plan's rate limit windows.
+    pub fn watch(&self, watcher: Watcher) {
+        if let Ok(mut slot) = self.watcher.lock() {
+            *slot = Some(watcher);
         }
     }
 
@@ -262,6 +283,9 @@ impl ClaudeGenerator {
                 .clone()
                 .unwrap_or_else(|| DEFAULT_EFFORT.to_string()),
         );
+        // The model's thinking, summarized, as Claude Code's own chats ask
+        // for it, so a host can show it as it streams.
+        args.extend(THINKING.iter().map(|arg| (*arg).to_string()));
         if self.bypass_permissions {
             args.push("--permission-mode".to_string());
             args.push("bypassPermissions".to_string());
@@ -871,7 +895,9 @@ impl ClaudeGenerator {
         let Some(stdout) = child.stdout.take() else {
             return failed("claude's output was not captured".into(), None);
         };
-        let read = tokio::time::timeout(TIMEOUT, read_stream(stdout, partial)).await;
+        let watcher = self.watcher.lock().ok().and_then(|slot| slot.clone());
+        let read =
+            tokio::time::timeout(TIMEOUT, read_stream(stdout, partial, watcher.as_deref())).await;
         let stream = match read {
             Ok(stream) => stream,
             Err(_) => {
@@ -976,8 +1002,13 @@ struct Stream {
 }
 
 /// Reads the binary's stream until its `result` event or its end, handing
-/// `partial` the `StructuredOutput` tool's input as it streams.
-async fn read_stream(stdout: tokio::process::ChildStdout, partial: &mut dyn FnMut(&str)) -> Stream {
+/// `partial` the `StructuredOutput` tool's input as it streams and
+/// `watcher` every JSON line.
+async fn read_stream(
+    stdout: tokio::process::ChildStdout,
+    partial: &mut dyn FnMut(&str),
+    watcher: Option<&(dyn Fn(&Value) + Send + Sync)>,
+) -> Stream {
     use tokio::io::AsyncBufReadExt;
     let mut lines = tokio::io::BufReader::new(stdout).lines();
     let mut stream = Stream {
@@ -993,6 +1024,9 @@ async fn read_stream(stdout: tokio::process::ChildStdout, partial: &mut dyn FnMu
             .starts_with('{')
             .then(|| serde_json::from_str::<Value>(&line).ok())
             .flatten();
+        if let (Some(watcher), Some(value)) = (watcher, value.as_ref()) {
+            watcher(value);
+        }
         let kind = value.as_ref().and_then(|v| v["type"].as_str());
         if kind == Some("stream_event") {
             stream.events += 1;
@@ -1157,6 +1191,48 @@ mod tests {
         std::fs::write(&binary, format!("#!/bin/sh\n{script}")).unwrap();
         std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
         binary
+    }
+
+    /// A watcher reads the thinking as it streams, the assistant message
+    /// that holds it, and the rate limit event (#11537).
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_watcher_reads_the_thinking_as_it_streams() {
+        let dir = tempfile::tempdir().unwrap();
+        let binary = stand_in(
+            dir.path(),
+            r#"read line
+printf '%s\n' '{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}}'
+printf '%s\n' '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Look first."}}}'
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"Look first."}]}}'
+printf '%s\n' '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"five_hour","utilization":0.12}}'
+printf '%s\n' '{"type":"result","is_error":false,"result":"","structured_output":{"reply":"hi","ask":"none","rationale":"r","commands":[],"view":[],"freeze_tests":false,"expand":[],"finished":true},"total_cost_usd":0.001}'
+"#,
+        );
+        let generator = ClaudeGenerator::new("haiku".into(), None, binary);
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+        let kept = seen.clone();
+        generator.watch(std::sync::Arc::new(move |line: &Value| {
+            kept.lock().unwrap().push(line.clone());
+        }));
+        let invocation = generator.invoke("SYS", "hello").await;
+        assert_eq!(invocation.generated.action.unwrap().reply, "hi");
+        let seen = seen.lock().unwrap();
+        let kinds: Vec<&str> = seen
+            .iter()
+            .filter_map(|line| line["type"].as_str())
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                "stream_event",
+                "stream_event",
+                "assistant",
+                "rate_limit_event",
+                "result"
+            ]
+        );
+        assert_eq!(seen[1]["event"]["delta"]["thinking"], "Look first.");
     }
 
     #[tokio::test]
@@ -1422,6 +1498,9 @@ printf '%s\n' '{{"type":"result","is_error":false,"result":"","structured_output
         assert_eq!(at("--model"), Some("opus".into()));
         assert_eq!(at("--effort"), Some("xhigh".into()));
         assert_eq!(at("--system-prompt"), Some("SYS".into()));
+        // Thinking as Claude Code's own chats ask for it (#11537).
+        assert_eq!(at("--thinking"), Some("adaptive".into()));
+        assert_eq!(at("--thinking-display"), Some("summarized".into()));
         assert!(args.contains(&"--no-session-persistence".to_string()));
         let schema: Value = serde_json::from_str(&at("--json-schema").unwrap()).unwrap();
         assert_eq!(schema, next_action_schema());

@@ -174,6 +174,8 @@ pub struct Choice<'a> {
     pub agent: Option<Agent>,
     pub rule: Rule,
     pub payer: Payer,
+    /// The model Coder chose for the turn and why (#11537).
+    pub model: Option<ModelChoice>,
 }
 
 /// How a turn ended.
@@ -374,6 +376,54 @@ pub struct ChoseLine {
     pub agent: Option<Agent>,
     pub rule: Rule,
     pub payer: Payer,
+    /// The model the turn was sent to and why, when Coder chose it for
+    /// the turn (#11537: a cheap answer's cheap model).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelChoice>,
+}
+
+/// The model Coder chose for a turn, and why, in words.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelChoice {
+    pub model: String,
+    pub reason: String,
+}
+
+/// The model a cheap answer is sent to and why (#11537): the gateway's
+/// quick router on the free daily allowance while signed in, else the cheapest model on the
+/// login the Coder loop answers with, Codex's before Claude's.
+#[must_use]
+pub fn cheap_choice(
+    cheap: &crate::route::Cheap,
+    facts: &crate::harness_plugin::Facts,
+    signed_in: bool,
+) -> ModelChoice {
+    let choice = |model: &str, reason: &str| ModelChoice {
+        model: model.to_owned(),
+        reason: reason.to_owned(),
+    };
+    match &cheap.gateway_model {
+        Some(model) => choice(
+            model,
+            "A small answer: the OpenAgents gateway's quick router, on the free daily allowance.",
+        ),
+        None if signed_in => choice(
+            crate::models::GATEWAY_AUTO,
+            "A small answer: the OpenAgents gateway's own router, on the free daily allowance.",
+        ),
+        None if facts.codex.signed_in => choice(
+            crate::route::CHEAP_CODEX_MODEL,
+            "A small answer: the Codex plan's cheapest model.",
+        ),
+        None if facts.claude.signed_in && facts.claude_plugin_on => choice(
+            crate::route::CHEAP_CLAUDE_MODEL,
+            "A small answer: the Claude plan's cheapest model.",
+        ),
+        None => choice(
+            crate::route::CHEAP_CODEX_MODEL,
+            "A small answer: the cheapest model on this computer's logins.",
+        ),
+    }
 }
 
 /// An outcome as written.
@@ -578,6 +628,7 @@ impl Recorder {
             agent: choice.agent.as_ref().map(scrub_agent),
             rule: choice.rule,
             payer: choice.payer,
+            model: choice.model.clone(),
         });
         let _ = self.append(at_ms, &line);
         Open {
@@ -1044,6 +1095,10 @@ impl crate::App {
             },
             agent,
             rule,
+            model: (harness == Harness::CoderLoop)
+                .then(|| self.cheap_turn())
+                .flatten()
+                .map(|cheap| cheap_choice(&cheap, &facts, self.connections().is_some())),
         };
         let mut open = recorder.chose(&choice, self.live.tokens, self.live.cost_usd);
         open.entries_before = self.live.entries.len();
@@ -1143,6 +1198,7 @@ mod tests {
             agent: None,
             rule: Rule::FirstAdmitted,
             payer: Payer::ClaudePlan,
+            model: None,
         }
     }
 

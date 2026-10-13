@@ -35,7 +35,7 @@ fn working_spinner_rides_the_inputs_top_left_rail() {
         let rail = label(&rows[top]);
         assert!(rail.starts_with(&format!("{spinner} Working")), "{rail:?}");
         if width >= 80 {
-            assert!(rail.ends_with("Coder (auto)"), "{rail:?}");
+            assert!(rail.ends_with("Auto → Coder"), "{rail:?}");
         }
         // The transcript never repeats it, and no second spinner draws.
         let screen = rows.join("\n");
@@ -55,7 +55,7 @@ fn an_idle_input_rail_carries_no_working_label() {
         .position(|line| line.starts_with('┌'))
         .expect("the input's top rail");
     // What Auto routed this chat to (#11524).
-    assert_eq!(label(&rows[top]), "Auto · Coder (auto)");
+    assert_eq!(label(&rows[top]), "Auto → Coder");
     assert!(!rows.join("\n").contains("Working"));
 }
 

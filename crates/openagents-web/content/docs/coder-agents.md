@@ -20,8 +20,13 @@ at your message and picks who answers among the ones that are on and
 signed in here. With no other reason to choose, it tries Claude Code,
 then OpenCode, then its own loop. Follow-ups stay with the same agent.
 
-Once Auto has picked, the label says so, with the model:
-`Auto · Claude (Haiku 5.5)` or `Auto · Coder (auto)`.
+Once Auto has picked, the label says so, with the model once it is
+known: `Auto → Claude (Haiku 5.5)` or `Auto → Coder (Haiku 5.5)`. An agent
+you pinned with Shift+Tab shows alone, without Auto: `Claude (Haiku 5.5)`.
+A short question Auto sends to Coder's own loop runs on a cheap model:
+OpenAgents' quick model on your free daily allowance when you're signed
+in (`coder login`), else the cheapest model on your login (Haiku on the
+Claude plan), never Opus or Sonnet unless you chose them.
 
 You can also just ask in your message: "use Codex for this".
 

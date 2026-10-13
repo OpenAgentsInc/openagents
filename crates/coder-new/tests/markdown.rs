@@ -279,7 +279,7 @@ fn narrow_transcripts_keep_long_code_and_table_content_accessible_by_scrolling()
         assert!(text.contains("❯ draft"));
         assert_eq!(cursor.0, 8);
         // The rail names Coder's own loop "Coder", never its lowercase id
-        // (#11483), after Auto ("Auto · Coder (…", #11524).
+        // (#11483), after Auto ("Auto → Coder (…", #11524).
         assert!(
             rows(&buffer)
                 .iter()

@@ -91,6 +91,9 @@ pub struct ExecutionSettings {
     /// The gateway model the person picked in /models (#11526): the
     /// Coder loop's turns run on it through the gateway. `None` is `auto`.
     pub gateway_model: Option<String>,
+    /// A cheap answer (#11537): the turn runs on a cheap model, never Opus
+    /// or Sonnet. `None` for every other turn.
+    pub cheap: Option<crate::route::Cheap>,
 }
 
 #[derive(Clone)]
@@ -823,6 +826,7 @@ impl ExecutionSettings {
                             &self.cwd,
                             args.read_only,
                             self.claude,
+                            self.cheap.is_some(),
                             judge,
                             &keys,
                             cancel,
@@ -1054,6 +1058,7 @@ mod tests {
             routing: None,
             briefing: None,
             gateway_model: None,
+            cheap: None,
         }
     }
 

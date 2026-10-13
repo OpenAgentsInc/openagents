@@ -518,6 +518,7 @@ impl Plugins {
                 .map(|store| crate::routing_preferences::path(store.root())),
             briefing: None,
             gateway_model: None,
+            cheap: None,
         }
     }
 

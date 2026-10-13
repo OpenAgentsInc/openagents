@@ -323,9 +323,15 @@ impl App {
             self.live.pinned = false;
             // A pin's model holds until another routing call, a follow-up
             // that continues keeps it.
+            // A cheap answer runs on a cheap model, and a follow-up that
+            // continues it stays cheap (#11537).
+            let step = routed.trace.step.as_deref();
+            if step != Some("continue") {
+                self.live.cheap = step == Some(crate::router::CHEAP_ANSWER);
+            }
             if routed.rule == crate::routing_record::Rule::Pin {
                 self.live.pinned_model = routed.model;
-            } else if routed.trace.step.as_deref() != Some("continue") {
+            } else if step != Some("continue") {
                 self.live.pinned_model = None;
             }
             self.routing_rule = Some(routed.rule);
@@ -347,12 +353,14 @@ impl App {
             self.live.runs_on = Some(pin.harness);
             self.live.pinned = false;
             self.live.pinned_model = pin.model;
+            self.live.cheap = false;
             self.routing_rule = Some(crate::routing_record::Rule::Pin);
             return pin.harness;
         }
         let harness = fixed_rule(&found);
         self.live.runs_on = Some(harness);
         self.live.pinned = false;
+        self.live.cheap = false;
         // A chat with earlier turns lost its harness (its plugin went off)
         // and is routed again (#11454).
         self.routing_rule = Some(if self.live.user_count() > 0 {
@@ -828,6 +836,8 @@ impl App {
             &escalation.evidence,
         );
         self.live.runs_on = Some(to);
+        // A move to a stronger harness is no longer a cheap answer.
+        self.live.cheap = false;
         self.routing_rule = Some(crate::routing_record::Rule::Escalated);
         self.routing_router = Some((
             probabilities,

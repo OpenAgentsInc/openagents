@@ -950,6 +950,7 @@ impl Provider {
                 &execution.cwd,
                 false,
                 execution.claude,
+                execution.cheap.is_some(),
                 execution.jev_client().ok().flatten(),
                 &keys,
                 cancel,
@@ -1521,6 +1522,7 @@ mod tests {
             routing: None,
             briefing: None,
             gateway_model: None,
+            cheap: None,
         }
     }
 

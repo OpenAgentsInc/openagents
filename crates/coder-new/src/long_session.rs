@@ -120,11 +120,15 @@ impl State {
 }
 
 pub(crate) fn context_tokens_from_env() -> u64 {
+    context_tokens_override().unwrap_or(DEFAULT_CONTEXT_TOKENS)
+}
+
+/// The window `OPENAGENTS_CODER_CONTEXT_TOKENS` sets, when it does.
+fn context_tokens_override() -> Option<u64> {
     std::env::var("OPENAGENTS_CODER_CONTEXT_TOKENS")
         .ok()
         .and_then(|value| value.trim().parse::<u64>().ok())
         .filter(|tokens| *tokens >= 1_000)
-        .unwrap_or(DEFAULT_CONTEXT_TOKENS)
 }
 
 /// Whether an entry is a finished summary.
@@ -470,24 +474,62 @@ pub(crate) fn session_cost(app: &App) -> f64 {
     app.live.cost_usd + agents
 }
 
-/// How full the Coder loop's context is, as the rail shows it ("Context
-/// 12%"), the same estimate compaction reads; `None` on another harness or
-/// before the chat has said anything (#11519).
+/// How full the Coder loop's context is, as Claude Code's own figure
+/// reads ([`crate::claude_stream::context_line`]): the prompt tokens the
+/// latest model call reported, everything it was sent (system prompt and
+/// tool definitions included), over that model's context window
+/// ([`context_window`]). Nothing shows until a call has reported (#11537).
 pub(crate) fn context_line(app: &App) -> Option<String> {
     if !app.on_coder_loop() || app.live.entries.is_empty() {
         return None;
     }
-    let used = estimate_tokens(&app.live.messages())
-        + app
-            .live
-            .instructions
-            .as_ref()
-            .map_or(0, |instructions| instructions.len() as u64 / 4);
-    let limit = app.long_session.limit().max(1);
+    let (_, usage) = app
+        .live
+        .rounds
+        .iter()
+        .rev()
+        .find(|(_, usage)| usage.prompt_tokens > 0)?;
+    let window = context_window(app, &usage.model).max(1);
     Some(format!(
         "Context {}%",
-        (used.saturating_mul(100) / limit).min(100)
+        (usage.prompt_tokens.saturating_mul(100) / window).min(100)
     ))
+}
+
+/// The context window of `model`: `OPENAGENTS_CODER_CONTEXT_TOKENS` when
+/// set, else the chat's known window, else what the OpenAgents gateway's
+/// model list says for it, else [`DEFAULT_CONTEXT_TOKENS`] (Claude's).
+pub(crate) fn context_window(app: &App, model: &str) -> u64 {
+    if let Some(tokens) = context_tokens_override() {
+        return tokens;
+    }
+    if let Some(tokens) = app.long_session.context_tokens.filter(|tokens| *tokens > 0) {
+        return tokens;
+    }
+    gateway_window(app, model).unwrap_or(DEFAULT_CONTEXT_TOKENS)
+}
+
+/// The gateway's word on `model`'s window, read once per model.
+fn gateway_window(app: &App, model: &str) -> Option<u64> {
+    static KNOWN: std::sync::Mutex<Option<(String, Option<u64>)>> = std::sync::Mutex::new(None);
+    let mut known = KNOWN
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some((seen, window)) = known.as_ref()
+        && seen == model
+    {
+        return *window;
+    }
+    let window = app.connections().and_then(|account| {
+        let root = app.plugins.store_root()?;
+        let (_, rows) = crate::gateway_models::cached_in(root, &account)?;
+        rows.iter()
+            .find(|row| row.id == model)
+            .and_then(|row| row.context)
+            .map(u64::from)
+    });
+    *known = Some((model.to_owned(), window));
+    window
 }
 
 /// The status line's long-session words: a pause and the dollars spent.
@@ -821,6 +863,32 @@ mod tests {
         let mut app = App::default();
         app.set_mode(Mode::Live);
         app
+    }
+
+    /// #11537: the Coder loop's context figure is the latest call's
+    /// reported prompt over the model's window, and nothing before a call
+    /// reports, never a guessed 0%.
+    #[test]
+    fn the_context_figure_is_the_latest_calls_reported_prompt() {
+        let mut app = live_app();
+        app.live.entries.push(Entry::User("Who are you".into()));
+        assert_eq!(context_line(&app), None);
+        app.live.round(crate::bundled_runtime::RoundUsage {
+            model: "claude-haiku-5-5".into(),
+            prompt_tokens: 0,
+            ..Default::default()
+        });
+        assert_eq!(context_line(&app), None, "a call that reported nothing");
+        app.live.round(crate::bundled_runtime::RoundUsage {
+            model: "claude-haiku-5-5".into(),
+            prompt_tokens: 24_000,
+            completion_tokens: 300,
+            ..Default::default()
+        });
+        assert_eq!(context_line(&app).as_deref(), Some("Context 12%"));
+        // The chat's known window wins over the default.
+        app.long_session.context_tokens = Some(48_000);
+        assert_eq!(context_line(&app).as_deref(), Some("Context 50%"));
     }
 
     fn keyed(app: &mut App) {

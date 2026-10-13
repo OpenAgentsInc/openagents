@@ -27,6 +27,23 @@ impl Default for Favor {
     }
 }
 
+/// A cheap answer (#11537): the router judged the message a small answer
+/// that needs no repository, so the turn runs on a cheap model, never
+/// Opus or Sonnet: the gateway's quick router on the signed-in account's
+/// free daily allowance, else the cheapest model on the login that
+/// answers.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Cheap {
+    /// The gateway model the turn asks for, `None` while signed out.
+    pub gateway_model: Option<String>,
+}
+
+/// The Codex login's cheapest model, for a cheap answer.
+pub const CHEAP_CODEX_MODEL: &str = "gpt-6-luna";
+
+/// The Claude plan's cheapest model, for a cheap answer.
+pub const CHEAP_CLAUDE_MODEL: &str = crate::claude::MODEL;
+
 /// One door an auto turn may answer through.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Lane {
@@ -107,6 +124,10 @@ pub fn plan(execution: &ExecutionSettings, has_key: bool, favor: Favor) -> Plan 
             notes,
         };
     }
+    // A cheap answer tries the doors cheapest first, whatever the favor
+    // says: the gateway's free allowance, the logins' cheapest models,
+    // OpenCode's free model, OpenRouter's free router.
+    let cheap = execution.cheap.is_some();
     match &execution.connections {
         Some(account) if crate::provider::gateway_open(account) => lanes.push(Lane::Gateway),
         Some(_) => notes.push("the OpenAgents account can't answer right now".to_owned()),
@@ -131,7 +152,9 @@ pub fn plan(execution: &ExecutionSettings, has_key: bool, favor: Favor) -> Plan 
     }
     // Standing order is the push order; sort_by_key is stable, so equal
     // scores keep it.
-    lanes.sort_by_key(|lane| std::cmp::Reverse(lane.score(favor)));
+    if !cheap {
+        lanes.sort_by_key(|lane| std::cmp::Reverse(lane.score(favor)));
+    }
     Plan { lanes, notes }
 }
 
@@ -160,8 +183,10 @@ pub(crate) fn opencode_blocked() -> Option<microcoder_loop::capacity::Refusal> {
 /// intelligence leads, a fast one when speed leads, else the free router
 /// so the metered door is tried last and spends nothing.
 #[must_use]
-pub fn openrouter_model(favor: Favor) -> &'static str {
-    if favor.intelligence >= 4 && favor.cost < 4 {
+pub fn openrouter_model(favor: Favor, cheap: bool) -> &'static str {
+    if cheap {
+        crate::models::DEFAULT_MODEL
+    } else if favor.intelligence >= 4 && favor.cost < 4 {
         "anthropic/claude-fable-5.1"
     } else if favor.speed >= 4 && favor.cost < 4 {
         crate::models::OPENROUTER
@@ -294,6 +319,30 @@ mod tests {
         assert!(!plan(&settings, true, favor).lanes.contains(&Lane::Gateway));
     }
 
+    /// #11537: a cheap answer walks the doors cheapest first whatever the
+    /// favor says, the gateway's free allowance first while signed in, and a
+    /// metered key stays on the free router.
+    #[test]
+    fn a_cheap_answer_tries_the_free_allowance_first_whatever_the_favor() {
+        let mut settings = settings(&["opencode"]);
+        settings.cheap = Some(Cheap {
+            gateway_model: Some(crate::models::GATEWAY_FAST.into()),
+        });
+        let favor = Favor {
+            intelligence: 5,
+            ..BALANCED
+        };
+        assert_eq!(
+            plan(&settings, true, favor).lanes,
+            [Lane::Gateway, Lane::Local, Lane::OpenCode, Lane::OpenRouter]
+        );
+        assert_eq!(openrouter_model(favor, true), crate::models::DEFAULT_MODEL);
+        // Signed out, the logins' cheapest models answer first.
+        settings.connections = None;
+        assert_eq!(plan(&settings, true, favor).lanes[0], Lane::Local);
+        assert_eq!(CHEAP_CLAUDE_MODEL, "claude-haiku-5-5");
+    }
+
     #[test]
     fn doors_that_are_not_connected_are_never_in_the_order() {
         let mut settings = settings(&[]);
@@ -323,7 +372,7 @@ mod tests {
         };
         let plan = plan(&settings(&["opencode"]), true, favor);
         assert_eq!(plan.lanes[0], Lane::Local);
-        assert_eq!(openrouter_model(favor), "anthropic/claude-fable-5.1");
+        assert_eq!(openrouter_model(favor, false), "anthropic/claude-fable-5.1");
     }
 
     #[test]
@@ -333,11 +382,11 @@ mod tests {
             speed: 5,
             intelligence: 5,
         };
-        assert_eq!(openrouter_model(favor), crate::models::DEFAULT_MODEL);
+        assert_eq!(openrouter_model(favor, false), crate::models::DEFAULT_MODEL);
         let fast = Favor {
             speed: 5,
             ..BALANCED
         };
-        assert_eq!(openrouter_model(fast), crate::models::OPENROUTER);
+        assert_eq!(openrouter_model(fast, false), crate::models::OPENROUTER);
     }
 }

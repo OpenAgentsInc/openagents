@@ -738,11 +738,12 @@ fn repository_rail(app: &App) -> String {
 }
 
 /// What the input's top-right rule carries after the harness's name: the
-/// Claude plan's windows and how full the context is when Claude Code runs
-/// the chat ("Claude (Opus 5.5) · 5h 12% · week 15%"), else what the chat
-/// has cost, which is metered spend; the Claude plan is paid by the month
-/// rather than by the turn. Nothing of Claude's shows on another harness
-/// or before the first turn (#11483).
+/// windows of the plan that pays for the chat's turns, whichever harness
+/// runs them ("Claude (Opus 5.5) · 5h 12% · week 15%", "Coder (Haiku 5.5)
+/// · Claude 5h 12% · week 15%"), and how full the context is; else what
+/// the chat has cost, which is metered spend; a plan is paid by the month
+/// rather than by the turn. No plan shows before the first turn or where
+/// none pays (#11483, #11537).
 fn top_rail(app: &App) -> Option<String> {
     use crate::harness_pick::Pick;
     use crate::harness_plugin::Harness;
@@ -768,32 +769,52 @@ fn top_rail(app: &App) -> Option<String> {
             .and_then(|entry| entry.usage_now(now).map(str::to_owned))
     };
     let mut parts = Vec::new();
-    if shown == Some(Harness::ClaudeCode) {
-        if let Some(plan) =
-            crate::claude_plan::rail_text(now).or_else(|| cached_usage(Harness::ClaudeCode))
-        {
-            parts.push(plan);
+    // Whichever plan pays for the chat's turns shows its windows beside
+    // the harness's name (#11483, #11537): Claude's on Claude Code and on
+    // the Coder loop when the Claude plan answers it, Codex's the same
+    // way (#11510).
+    // The Coder loop's plan is read off the chat's own turns, so only
+    // while the chat runs there.
+    let paying = shown
+        .filter(|harness| *harness != Harness::CoderLoop || running)
+        .and_then(|harness| plan_paying(app, harness));
+    // Another harness's name says whose plan the windows are.
+    let whose = |name: &str, windows: String| {
+        if shown == Some(Harness::CoderLoop) {
+            format!("{name} {windows}")
+        } else {
+            windows
         }
-        if running
-            && let Some(context) = app
-                .live
-                .claude_session
-                .as_ref()
-                .and_then(|session| crate::claude_stream::context_line(&session.id))
-        {
-            parts.push(context);
+    };
+    match paying {
+        Some(PlanPaying::Claude) => {
+            if let Some(plan) =
+                crate::claude_plan::rail_text(now).or_else(|| cached_usage(Harness::ClaudeCode))
+            {
+                parts.push(whose(CLAUDE_RAIL, plan));
+            }
         }
+        Some(PlanPaying::Codex) => {
+            let windows = crate::codex::windows_text(now);
+            if !windows.is_empty() {
+                parts.push(whose("Codex", windows));
+            } else if let Some(windows) = cached_usage(Harness::Codex) {
+                parts.push(whose("Codex", windows));
+            }
+        }
+        None => {}
     }
-    // Codex's windows, the same way, only beside Codex (#11510).
-    if shown == Some(Harness::Codex) {
-        let windows = crate::codex::windows_text(now);
-        if !windows.is_empty() {
-            parts.push(windows);
-        } else if let Some(windows) = cached_usage(Harness::Codex) {
-            parts.push(windows);
-        }
+    if shown == Some(Harness::ClaudeCode)
+        && running
+        && let Some(context) = app
+            .live
+            .claude_session
+            .as_ref()
+            .and_then(|session| crate::claude_stream::context_line(&session.id))
+    {
+        parts.push(context);
     }
-    let metered = !matches!(shown, Some(Harness::ClaudeCode | Harness::Codex));
+    let metered = paying.is_none();
     let cost = crate::long_session::session_cost(app);
     if cost > 0.0 && metered && own {
         parts.push(agent_fleet::dollars(cost));
@@ -810,6 +831,10 @@ fn top_rail(app: &App) -> Option<String> {
 /// /models, else the model's own words capitalized
 /// (`google/gemini-3.8-flash` reads "Gemini 3.8 Flash").
 pub(crate) fn rail_model_name(model: &str) -> String {
+    // The Codex login's turns name their model `codex:<id>`.
+    if let Some(model) = model.strip_prefix("codex:") {
+        return crate::codex::name(model);
+    }
     if crate::claude::MODELS.iter().any(|(id, _, _)| *id == model) {
         return crate::claude::name(model);
     }
@@ -831,7 +856,7 @@ pub(crate) fn rail_model_name(model: &str) -> String {
 }
 
 /// The input's top-right rail (#11524): the harness pick, `Auto` until
-/// Auto has routed a turn and then what ran ("Auto · Claude (Opus 5.5)"),
+/// Auto has routed a turn and then what ran ("Auto → Claude (Opus 5.5)"),
 /// or the harness the person picked with Shift+Tab ("Codex (GPT-6.1-Sol)",
 /// "Devin"). `solver` while `coder solver` watches a run.
 fn rail_harness(app: &App) -> Option<String> {
@@ -851,7 +876,8 @@ fn rail_harness(app: &App) -> Option<String> {
                 .runs_on
                 .filter(|_| !app.live.pinned && app.live.agent.is_none());
             Some(match routed {
-                Some(harness) => format!("Auto · {}", harness_label(app, harness)),
+                // "Auto picked Claude": the chat can still move (#11537).
+                Some(harness) => format!("Auto → {}", harness_label(app, harness)),
                 None => "Auto".into(),
             })
         }
@@ -880,41 +906,11 @@ fn harness_label(app: &App, harness: crate::harness_plugin::Harness) -> String {
         .filter(|_| app.live.runs_on == Some(harness));
     match harness {
         Harness::ClaudeCode => claude_rail_label(),
-        Harness::CoderLoop => {
-            let keyed = app.plugins.enabled && app.plugins.key_configured;
-            let model = if keyed {
-                crate::models::label(&app.plugins.model)
-            } else {
-                "auto".into()
-            };
-            // A gateway model picked in /models while signed in (#11526).
-            let on_auto = model == crate::models::AUTO_LABEL || model == crate::models::AUTO;
-            let picked = (on_auto && app.account.is_some())
-                .then(|| app.gateway_model.clone())
-                .flatten();
-            // On auto, the model the last turn ran, as the transcript
-            // knows it (#11519).
-            let model = if let Some(picked) = picked {
-                rail_model_name(&picked)
-            } else if model == crate::models::AUTO_LABEL {
-                app.live
-                    .entries
-                    .iter()
-                    .rev()
-                    .find_map(|entry| match entry {
-                        crate::live::Entry::Assistant {
-                            model: Some(model), ..
-                        } if !model.is_empty() && crate::models::pinned(model) => {
-                            Some(rail_model_name(model))
-                        }
-                        _ => None,
-                    })
-                    .unwrap_or_else(|| "auto".into())
-            } else {
-                model
-            };
-            format!("{CODER_RAIL} ({model})")
-        }
+        Harness::CoderLoop => match coder_rail_model(app) {
+            Some(model) => format!("{CODER_RAIL} ({model})"),
+            // A model not known yet is left out until it is (#11537).
+            None => CODER_RAIL.into(),
+        },
         // "Codex (GPT-6.1-Sol)": the model the next turn runs (#11510).
         Harness::Codex => format!(
             "Codex ({})",
@@ -927,6 +923,75 @@ fn harness_label(app: &App, harness: crate::harness_plugin::Harness) -> String {
                 |session| session.model.clone(),
             );
             crate::opencode_chat::rail_label(&model)
+        }
+    }
+}
+
+/// The model the Coder loop's next turn runs, as the rail names it: the
+/// person's choice in /models, else (on auto) the gateway model picked
+/// while signed in (#11526), else the model the chat's latest turn ran
+/// (#11519), else `None` until one is known (#11537).
+fn coder_rail_model(app: &App) -> Option<String> {
+    let keyed = app.plugins.enabled && app.plugins.key_configured;
+    let chosen = keyed
+        .then(|| crate::models::label(&app.plugins.model))
+        .filter(|model| model != crate::models::AUTO_LABEL && model != crate::models::AUTO);
+    if chosen.is_some() {
+        return chosen;
+    }
+    if app.account.is_some()
+        && let Some(picked) = &app.gateway_model
+    {
+        return Some(rail_model_name(picked));
+    }
+    served_model(app).map(|model| rail_model_name(&model))
+}
+
+/// The model the chat's latest Coder loop turn ran, as the transcript
+/// knows it: the one answering now while a turn streams, else the latest
+/// reply's.
+fn served_model(app: &App) -> Option<String> {
+    let usable = |model: &str| !model.is_empty() && crate::models::pinned(model);
+    app.live
+        .partial_model
+        .clone()
+        .filter(|model| app.live.busy && usable(model))
+        .or_else(|| {
+            app.live.entries.iter().rev().find_map(|entry| match entry {
+                crate::live::Entry::Assistant {
+                    model: Some(model), ..
+                } if usable(model) => Some(model.clone()),
+                _ => None,
+            })
+        })
+}
+
+/// A subscription plan that pays for a turn, whose windows the rail shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PlanPaying {
+    Claude,
+    Codex,
+}
+
+/// The plan that pays for the turns of `harness` in this chat (#11537):
+/// Claude Code's are the Claude plan's and Codex's the Codex plan's; the
+/// Coder loop's are a plan's when its latest turn ran on this computer's
+/// Claude Code or Codex login.
+fn plan_paying(app: &App, harness: crate::harness_plugin::Harness) -> Option<PlanPaying> {
+    use crate::harness_plugin::Harness;
+    match harness {
+        Harness::ClaudeCode => Some(PlanPaying::Claude),
+        Harness::Codex => Some(PlanPaying::Codex),
+        Harness::OpenCode => None,
+        Harness::CoderLoop => {
+            let model = served_model(app)?;
+            if model.starts_with("codex:") {
+                Some(PlanPaying::Codex)
+            } else if model.starts_with("claude-") && !model.contains('/') {
+                Some(PlanPaying::Claude)
+            } else {
+                None
+            }
         }
     }
 }
@@ -2626,7 +2691,7 @@ mod export_notice_tests {
         }
         let text = rail(&mut app, 60);
         assert!(text.starts_with("┌─ History 100/100 "));
-        assert!(text.contains("Coder (auto)"));
+        assert!(text.contains("Coder") && !text.contains("(auto)"));
         app.composer_arrow(false);
         assert!(!rail(&mut app, 60).contains("History"));
         app.composer_arrow(true);
@@ -2662,9 +2727,15 @@ mod export_notice_tests {
         terminal.draw(|frame| render(frame, &mut app)).unwrap();
         let buffer = terminal.backend().buffer();
         let mut found = false;
-        let label = "Coder (auto)";
+        // No placeholder model before one is known (#11537).
+        assert!(!rows.iter().any(|row| row.contains("(auto)")));
+        let label = "Coder";
         let n = label.chars().count() as u16;
         for y in 0..20 {
+            // The input's rule, not the startup banner's name.
+            if buffer[(0, y)].symbol() != "┌" {
+                continue;
+            }
             for x in 0..60 - n {
                 let text: String = (x..x + n).map(|x| buffer[(x, y)].symbol()).collect();
                 if text == label {
@@ -2750,7 +2821,10 @@ mod export_notice_tests {
             assert_eq!(app.live.runs_on, Some(Harness::CoderLoop));
         }
         let shown = rail(&mut app);
-        assert!(shown.contains("Coder (auto)"), "{shown}");
+        assert!(
+            shown.contains("Coder") && !shown.contains("(auto)"),
+            "{shown}"
+        );
         assert!(!shown.contains("openrouter") && !shown.contains("claude"));
         // A model chosen in /models is named after the loop.
         app.plugins.model = crate::models::OPENROUTER.into();
@@ -2766,7 +2840,8 @@ mod export_notice_tests {
         });
         let shown = rail(&mut app);
         assert!(shown.contains("Coder (Gemini 3.8 Flash)"), "{shown}");
-        assert!(shown.contains("Context 0%"), "{shown}");
+        // No call has reported its tokens yet: no guessed figure (#11537).
+        assert!(!shown.contains("Context"), "{shown}");
         // #11526: a gateway model picked in /models, while signed in.
         app.gateway_model = Some("zai/glm-5.3-flash".into());
         assert!(rail(&mut app).contains("Coder (Gemini 3.8 Flash)"));
@@ -2881,20 +2956,79 @@ mod export_notice_tests {
             !shown.contains("coder") && !shown.contains("5h "),
             "{shown}"
         );
-        // Coder's own loop answers: still no Claude plan.
+        // Coder's own loop, its model not known yet: no placeholder and
+        // no Claude plan (#11537).
         app.live.runs_on = Some(Harness::CoderLoop);
         let shown = rail(&mut app);
         assert!(
-            shown.contains("Coder (auto)") && !shown.contains("5h "),
+            shown.contains("Auto → Coder") && !shown.contains("(auto)") && !shown.contains("5h "),
             "{shown}"
         );
+        // The Coder loop answered through a gateway model: still none.
+        app.live.entries.push(crate::live::Entry::Assistant {
+            elapsed_ms: None,
+            text: "I'm Coder.".into(),
+            model: Some("google/gemini-2.5-flash-lite".into()),
+        });
+        let shown = rail(&mut app);
+        assert!(
+            shown.contains("Coder (Gemini 2.5 Flash Lite)") && !shown.contains("5h "),
+            "{shown}"
+        );
+        // The Claude plan paid the Coder loop's turn: its windows follow
+        // the label, named as Claude's (#11537).
+        app.live.entries.push(crate::live::Entry::Assistant {
+            elapsed_ms: None,
+            text: "I'm Coder.".into(),
+            model: Some(crate::claude::MODEL.into()),
+        });
+        let shown = rail(&mut app);
+        let expected = format!("Coder (Haiku 5.5) · Claude {plan}");
+        assert!(shown.contains(&expected), "{shown}");
+        app.live.entries.clear();
         // Claude runs the chat: its windows follow its name.
         app.live.runs_on = Some(Harness::ClaudeCode);
         let shown = rail(&mut app);
         let expected = format!("{} · {plan}", claude_rail_label());
-        assert!(shown.contains(&expected), "{shown}");
+        // "Auto picked Claude" (#11537).
+        assert!(shown.contains(&format!("Auto → {expected}")), "{shown}");
         assert!(!repository_rail(&app).contains("5h "));
+        // Pinned, the chat names its harness alone, with no Auto.
+        app.live.pinned = true;
+        let shown = rail(&mut app);
+        assert!(
+            shown.contains(&expected) && !shown.contains("Auto"),
+            "{shown}"
+        );
+        app.live.pinned = false;
         crate::claude_plan::reset_for_test(1);
+    }
+
+    /// The plan that pays the Coder loop's turn is read off the model it
+    /// ran (#11537): the Codex login's `codex:` models are the Codex
+    /// plan's, Claude's bare ids the Claude plan's, a gateway or
+    /// OpenRouter model none.
+    #[test]
+    fn the_coder_loops_plan_is_the_login_that_answered() {
+        use crate::harness_plugin::Harness;
+        let mut app = App::default();
+        app.mode = Mode::Live;
+        app.live.runs_on = Some(Harness::CoderLoop);
+        let ran = |app: &mut App, model: &str| {
+            app.live.entries = vec![crate::live::Entry::Assistant {
+                elapsed_ms: None,
+                text: "hi".into(),
+                model: Some(model.into()),
+            }];
+            plan_paying(app, Harness::CoderLoop)
+        };
+        assert_eq!(plan_paying(&app, Harness::CoderLoop), None);
+        assert_eq!(ran(&mut app, "codex:gpt-6-luna"), Some(PlanPaying::Codex));
+        assert_eq!(ran(&mut app, "claude-opus-5-5"), Some(PlanPaying::Claude));
+        assert_eq!(ran(&mut app, "anthropic/claude-fable-5.1"), None);
+        assert_eq!(ran(&mut app, "google/gemini-2.5-flash-lite"), None);
+        assert_eq!(plan_paying(&app, Harness::Codex), Some(PlanPaying::Codex));
+        assert_eq!(rail_model_name("codex:gpt-6-luna"), "GPT-6-Luna");
     }
 
     /// A long warning or plan line gives way on a narrow input; the
@@ -3578,6 +3712,6 @@ mod repository_tests {
         assert!(!text.contains("$0.25"), "{text}");
         assert!(text.trim_end_matches(['─', '┘']).ends_with(' '), "{text}");
         let top: String = (0..80).map(|x| buffer[(x, row - 1)].symbol()).collect();
-        assert!(top.contains("Coder (auto) · $0.25"), "{top}");
+        assert!(top.contains("Auto → Coder · $0.25"), "{top}");
     }
 }

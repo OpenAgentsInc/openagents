@@ -89,6 +89,9 @@ pub struct Chat {
     pub moved: bool,
     /// The model a pin names for this chat's turns on its harness (#11475).
     pub pinned_model: Option<String>,
+    /// The router judged the current piece of work a cheap answer
+    /// (#11537): its Coder loop turns run on a cheap model.
+    pub cheap: bool,
     /// The ACP agent the person pinned this chat to with Shift+Tab
     /// (#11524), by its id: its turns run there instead of on a harness.
     pub agent: Option<String>,
@@ -1298,6 +1301,9 @@ fn run_with_provider(
             RuntimeEvent::Usage(usage) => {
                 let _ = sender.send(Update::Usage { id, usage: *usage });
             },
+            RuntimeEvent::Thinking(on) => {
+                let _ = sender.send(Update::Thinking { id, on });
+            },
             RuntimeEvent::Harness(run) => {
                 let _ = sender.send(Update::Harness { id, run: *run });
             },
@@ -1582,7 +1588,7 @@ async fn auto_route(
                 Ok(provider) => {
                     provider
                         .chat_with_plugins(
-                            crate::route::openrouter_model(favor),
+                            crate::route::openrouter_model(favor, execution.cheap.is_some()),
                             &options,
                             messages.clone(),
                             &execution,
@@ -1662,6 +1668,12 @@ async fn gateway_turn(
                 execution
                     .gateway_model
                     .as_deref()
+                    .or_else(|| {
+                        execution
+                            .cheap
+                            .as_ref()
+                            .and_then(|cheap| cheap.gateway_model.as_deref())
+                    })
                     .unwrap_or(crate::models::GATEWAY_AUTO),
                 &crate::models::GenerationOptions::default(),
                 messages.to_vec(),
@@ -1793,7 +1805,7 @@ async fn local_turn(
         let task = local_task(&messages, &execution)?;
         let client = execution.jev_client()?;
         let result = crate::bundled_runtime::microcoder_local(
-            &task, &execution.cwd, false, execution.claude, client, &execution.redaction_keys,
+            &task, &execution.cwd, false, execution.claude, execution.cheap.is_some(), client, &execution.redaction_keys,
             &cancel, &mut events,
         ).await?;
         let mut reply = Streamed {

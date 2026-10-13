@@ -257,7 +257,7 @@ fn a_copy_shows_copied_on_the_inputs_top_left_rail() {
     let rule = &after[usize::from(top)];
     assert!(rule.starts_with("┌─ Copied "), "{rule:?}");
     assert!(rule.trim_end().ends_with("─┐"), "{rule:?}");
-    assert!(rule.contains("Coder ("), "{rule:?}");
+    assert!(rule.contains("Coder"), "{rule:?}");
     // No row appears below the input for it, and the input keeps its height.
     assert_eq!(after.len(), before.len());
     assert!(after[usize::from(top) + 2].starts_with('└'));

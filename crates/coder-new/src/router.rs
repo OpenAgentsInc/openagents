@@ -423,6 +423,9 @@ impl Situation {
     }
 }
 
+/// [`Step::CheapAnswer`]'s name: the turn runs on a cheap model (#11537).
+pub const CHEAP_ANSWER: &str = "cheap-answer";
+
 /// The policy's steps, in the order it tries them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]

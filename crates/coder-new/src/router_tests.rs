@@ -283,6 +283,11 @@ fn two_admitted(current: Option<Harness>) -> Situation {
 }
 
 #[test]
+fn the_cheap_answer_step_has_the_name_the_turn_reads() {
+    assert_eq!(Step::CheapAnswer.name(), CHEAP_ANSWER);
+}
+
+#[test]
 fn an_answer_is_routed_and_every_probability_is_kept() {
     let routed = decide(
         Ok(Answered {
@@ -422,6 +427,15 @@ fn a_held_message_runs_where_the_router_sends_it_and_is_recorded() {
         app.draft.text, "next thought",
         "what was typed meanwhile stays"
     );
+    // A cheap answer runs the Coder loop on a cheap model, never the
+    // logins' strongest (#11537).
+    assert!(app.live.cheap);
+    match app.request.as_ref().map(|request| &request.kind) {
+        Some(crate::live::Work::Microcoder { execution, .. }) => {
+            assert_eq!(execution.cheap, Some(crate::route::Cheap::default()));
+        }
+        _ => panic!("a Coder loop turn"),
+    }
     finish(&mut app);
 
     // A follow-up judged new repository work moves to Claude Code, whose
@@ -437,6 +451,7 @@ fn a_held_message_runs_where_the_router_sends_it_and_is_recorded() {
     app.submit_live();
     app.poll_route();
     assert_eq!(app.live.runs_on, Some(Harness::ClaudeCode));
+    assert!(!app.live.cheap, "new work is not a cheap answer");
     match app.request.take().map(|request| request.kind) {
         Some(crate::live::Work::Claude {
             session, messages, ..
@@ -501,6 +516,16 @@ fn a_held_message_runs_where_the_router_sends_it_and_is_recorded() {
         ]
     );
     assert_eq!(chose[0].inputs.probabilities.len(), 12);
+    // The record names the cheap model and why (#11537); a signed-out
+    // test computer has no login, so the Codex plan's cheapest is named.
+    let named = chose[0].model.as_ref().expect("the cheap model is named");
+    assert_eq!(named.model, crate::route::CHEAP_CODEX_MODEL);
+    assert!(
+        named.reason.starts_with("A small answer"),
+        "{}",
+        named.reason
+    );
+    assert!(chose[1].model.is_none() && chose[2].model.is_none());
     assert_eq!(
         chose[1].inputs.probabilities.len(),
         11,

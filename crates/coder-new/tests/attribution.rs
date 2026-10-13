@@ -159,7 +159,7 @@ fn reply_keeps_its_actual_model_without_showing_it_in_the_transcript() {
     // On auto, the rail names the model the last turn ran as a person
     // reads it (#11519), after what Auto routed to (#11524).
     let rail = label(&rows(&buffer)[top_rule(&rows(&buffer)).unwrap()]).to_owned();
-    assert!(rail.starts_with("Auto · Coder (GPT 6 Luna)"), "{rail}");
+    assert!(rail.starts_with("Auto → Coder (GPT 6 Luna)"), "{rail}");
     app.plugins.model = "anthropic/claude-fable-5.1".into();
     let (buffer, _) = render(&mut app, 110, 36);
     assert!(
@@ -169,7 +169,7 @@ fn reply_keeps_its_actual_model_without_showing_it_in_the_transcript() {
     );
     let rail = label(&rows(&buffer)[top_rule(&rows(&buffer)).unwrap()]).to_owned();
     assert!(
-        rail.starts_with("Auto · Coder (claude-fable-5.1)"),
+        rail.starts_with("Auto → Coder (claude-fable-5.1)"),
         "{rail}"
     );
     assert!(!rows(&buffer).iter().any(|line| line.contains("anthropic/")));
@@ -305,7 +305,7 @@ fn long_attribution_does_not_overwrite_the_reply_or_the_draft_after_resize() {
     assert!(text.iter().any(|line| line.contains("❯ draft")));
     assert_eq!(cursor.0, 8);
     // Narrow, the rail keeps what ran and cuts the model's name short
-    // ("Auto · Coder (cla…", #11524); wide, it names the model whole.
+    // ("Auto → Coder (cla…", #11524); wide, it names the model whole.
     assert!(text[top_rule(&text).unwrap()].contains("Coder (cla"));
     assert!(!text.iter().any(|line| line.contains("anthropic/")));
     let text = rows(&render(&mut app, 80, 12).0);
@@ -349,7 +349,7 @@ fn input_rails_name_the_chosen_model_only_and_the_bottom_rule_names_the_reposito
     // What Auto routed to, and the model the person chose (#11524).
     assert_eq!(
         label(&text[top_rule(&text).unwrap()]),
-        "Auto · Coder (gpt-6-luna)"
+        "Auto → Coder (gpt-6-luna)"
     );
     app.apply_update(Update::Checked {
         id: app.request_id,

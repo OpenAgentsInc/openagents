@@ -65,6 +65,16 @@ impl LocalGenerator {
         self.providers.refused.borrow().clone()
     }
 
+    /// Hands `watcher` every line the Claude Code login's calls print, as
+    /// it arrives (#11537): the model's thinking and the plan's windows.
+    pub fn watch_claude(&self, watcher: &microcoder_loop::claude::Watcher) {
+        for provider in &self.providers.providers {
+            if let LocalProvider::Claude(lane) = provider {
+                lane.inner.watch(watcher.clone());
+            }
+        }
+    }
+
     /// Where each provider sends a prompt: `codex:<url>#<model>`,
     /// `claude:<binary>#<model>`, or `openagents:gateway`.
     #[must_use]
@@ -280,12 +290,13 @@ pub fn local_generator(
     model: Option<String>,
     effort: Option<String>,
 ) -> Result<LocalGenerator, String> {
-    local_generator_for(session, model, effort, true)
+    local_generator_for(session, model, effort, true, None)
 }
 
 /// [`local_generator`], leaving out the Claude Code login when `claude` is
 /// false: the person turned the Claude Code plugin off, so its login is
-/// never used (#11516).
+/// never used (#11516). `claude_model` names the Claude Code login's
+/// model (a cheap answer's Haiku, #11537); `None` keeps its default.
 ///
 /// # Errors
 ///
@@ -295,6 +306,7 @@ pub fn local_generator_for(
     model: Option<String>,
     effort: Option<String>,
     claude: bool,
+    claude_model: Option<String>,
 ) -> Result<LocalGenerator, String> {
     use codex_transport::codex::{CodexTransport, Login};
     local_generator_in(book().as_deref(), |providers| {
@@ -318,9 +330,10 @@ pub fn local_generator_for(
         }
         if !claude {
             // The Claude Code plugin is off.
-        } else if let Ok(generator) =
-            microcoder_loop::claude::ClaudeGenerator::from_env(microcoder_loop::MODEL, None)
-        {
+        } else if let Ok(generator) = microcoder_loop::claude::ClaudeGenerator::from_env(
+            claude_model.as_deref().unwrap_or(microcoder_loop::MODEL),
+            None,
+        ) {
             providers.push(LocalProvider::Claude(ClaudeLane::new(generator)));
         }
         if std::env::var("CODER_CLOUD").as_deref() != Ok("off") {

@@ -2314,6 +2314,9 @@ impl App {
             .pinned_model
             .clone()
             .unwrap_or_else(|| self.plugins.model.clone());
+        // A cheap answer runs on a cheap model unless the person chose
+        // one (#11537).
+        execution.cheap = self.cheap_turn();
         let kind = if key.is_some() && models::pinned(&model) {
             live::Work::Chat {
                 model,
@@ -2333,6 +2336,30 @@ impl App {
             key: key.unwrap_or_else(|| model_access::ApiKey::new("")),
             kind,
         });
+    }
+
+    /// The cheap model this Coder loop turn runs on when the router
+    /// judged its work a cheap answer (#11537) and nobody chose a model:
+    /// the gateway's quick router on the free allowance while signed in,
+    /// else each login's cheapest.
+    pub(crate) fn cheap_turn(&self) -> Option<crate::route::Cheap> {
+        if !self.live.cheap || self.live.pinned || self.live.pinned_model.is_some() {
+            return None;
+        }
+        let account = self.connections();
+        let chosen = models::pinned(&self.plugins.model)
+            || gateway_models::active(self.gateway_model.as_deref(), account.as_ref()).is_some();
+        if chosen {
+            return None;
+        }
+        // Signed in, the gateway's quick router answers on the account's
+        // free daily allowance; its named models, even ones it marks free,
+        // ask for credit from a signed-in account.
+        let gateway_model = account
+            .as_ref()
+            .filter(|account| gateway_models::reachable(account))
+            .map(|_| crate::models::GATEWAY_FAST.to_owned());
+        Some(crate::route::Cheap { gateway_model })
     }
 
     fn submit_delegation(&mut self, index: usize) {

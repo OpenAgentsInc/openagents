@@ -1077,7 +1077,10 @@ mod tests {
         assert_eq!(app.live.runs_on, Some(Harness::CoderLoop));
         // What Auto routed shows after its name.
         let shown = rail(&mut app);
-        assert!(shown.contains("Auto · Coder (auto)"), "{shown}");
+        assert!(
+            shown.contains("Auto → Coder") && !shown.contains("(auto)"),
+            "{shown}"
+        );
         crate::harness_plugin::sign_in_claude(false);
         crate::opencode_chat::install_for_test(false);
     }

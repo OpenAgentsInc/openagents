@@ -369,6 +369,7 @@ fn record_start(
         }),
         rule: Rule::Delegated,
         payer: crate::harness_plugin::Payer::AgentLogin,
+        model: None,
     };
     let open = routing.chose(&choice, 0, 0.0);
     Some((routing.clone(), open))
