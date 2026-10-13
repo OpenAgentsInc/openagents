@@ -1933,6 +1933,8 @@ impl App {
         self.scroll = u16::MAX;
         if !midturn {
             self.begin_claude_turn();
+            // The files the turn changes, for /rewind (#11515).
+            self.begin_turn_record();
             self.record_choice(harness_plugin::Harness::Codex, images, chars);
             // A floor asks the person on the approval card while Codex
             // waits (#11475).
@@ -1992,6 +1994,8 @@ impl App {
         self.history.dirty = true;
         self.scroll = u16::MAX;
         self.begin_claude_turn();
+        // The files the turn changes, for /rewind (#11515).
+        self.begin_turn_record();
         self.record_choice(harness_plugin::Harness::OpenCode, 0, chars);
         self.request = Some(live::Request {
             id: self.request_id,

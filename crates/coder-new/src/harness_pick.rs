@@ -682,6 +682,8 @@ impl crate::App {
         self.history.dirty = true;
         self.scroll = u16::MAX;
         self.begin_claude_turn();
+        // The files the turn changes, for /rewind (#11515).
+        self.begin_turn_record();
         // Its routing record names the agent (#11535).
         self.record_agent_choice(&agent.id, chars);
         self.request = Some(crate::live::Request {
