@@ -848,7 +848,9 @@ fn search_calls_total(steps: &[Step]) -> usize {
 /// the loop working as waste.
 fn waste(steps: &[Step]) -> Value {
     let mut groups: Vec<(String, u64, u64)> = Vec::new();
-    for call in tool_calls(steps) {
+    // A call without arguments (a thinking block, say) names nothing that
+    // could be the same work twice.
+    for call in tool_calls(steps).filter(|call| !call.arguments.is_null()) {
         let what = intent(&call.name, &call.arguments);
         match groups.iter_mut().find(|(name, _, _)| *name == what) {
             Some((_, times, milliseconds)) => {
@@ -866,6 +868,12 @@ fn waste(steps: &[Step]) -> Value {
             // The first execution was the work; the rest is what it cost to
             // do it again, at the average of what the group took.
             let each = milliseconds / times;
+            // A long call (a file's whole contents) reads by its start.
+            let what: String = if what.chars().count() > 200 {
+                what.chars().take(200).chain(std::iter::once('…')).collect()
+            } else {
+                what.clone()
+            };
             json!({
                 "what": what,
                 "executions": times,
@@ -889,14 +897,15 @@ fn waste(steps: &[Step]) -> Value {
 /// The identity used to group repeated calls.
 ///
 /// A shell call is the complete command and the directory it ran in: the
-/// same text in two checkouts is two different pieces of work. Anything
-/// else groups by its name.
+/// same text in two checkouts is two different pieces of work. Any other
+/// call is its name and all of its arguments, keys sorted, so two calls of
+/// one tool with different arguments are two pieces of work (#11506).
 #[must_use]
 pub fn intent(name: &str, arguments: &Value) -> String {
     let field = |key: &str| arguments.get(key).and_then(Value::as_str).unwrap_or("");
     match name {
         "shell" => format!("shell {}", json!([field("workdir"), field("command")])),
-        other => other.to_string(),
+        other => format!("{other} {}", canonical(arguments)),
     }
 }
 
@@ -1323,6 +1332,43 @@ mod tests {
         assert_eq!(waste["repeated_calls"], 1);
         assert_eq!(waste["repeated"][0]["executions"], 2);
         assert_eq!(waste["repeated"][0]["wasted_ms"], 12);
+    }
+
+    /// A repeat is the same tool with the same arguments: distinct
+    /// commands of one tool are not waste, and argument order does not
+    /// make two identical calls different (#11506).
+    #[test]
+    fn only_the_same_tool_with_the_same_arguments_repeats() {
+        let call = |id: &str, name: &str, arguments: Value| Call {
+            id: id.to_string(),
+            name: name.to_string(),
+            arguments,
+            output: "ok".to_string(),
+            outcome: Outcome::Completed,
+            milliseconds: 10,
+            purpose: None,
+            extra: Map::new(),
+        };
+        let steps = vec![
+            Step::called(call("c1", "Bash", json!({"command": "ls src"}))),
+            Step::called(call("c2", "Bash", json!({"command": "ls tests"}))),
+            Step::called(call("c3", "Bash", json!({"command": "git status"}))),
+            Step::called(call("c4", "Read", json!({"path": "a.rs", "limit": 5}))),
+            Step::called(call("c5", "Read", json!({"limit": 5, "path": "a.rs"}))),
+            Step::called(call("c6", "claude:thinking", Value::Null)),
+            Step::called(call("c7", "claude:thinking", Value::Null)),
+        ];
+        let waste = &document(&a_session(), &steps)["final_metrics"]["extra"]["waste"];
+        assert_eq!(waste["repeated_calls"], 1, "{waste}");
+        assert_eq!(waste["repeated"].as_array().unwrap().len(), 1);
+        assert!(
+            waste["repeated"][0]["what"]
+                .as_str()
+                .unwrap()
+                .starts_with("Read ")
+        );
+        assert_eq!(waste["repeated"][0]["executions"], 2);
+        assert_eq!(waste["wasted_ms"], 10);
     }
 
     #[test]

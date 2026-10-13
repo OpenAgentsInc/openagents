@@ -192,8 +192,10 @@ impl Chat {
         while self.stamps.len() < self.entries.len() {
             self.stamps.push(now);
         }
+        // A delegation is timed like a tool call: a foreground run to
+        // Solver lasts as long as Solver worked on it (#11506).
         for (index, entry) in self.entries.iter().enumerate() {
-            if let Entry::Tool { running, .. } = entry {
+            if let Entry::Tool { running, .. } | Entry::Delegation { running, .. } = entry {
                 if *running {
                     self.open_tools.insert(index);
                 } else if self.open_tools.remove(&index) {

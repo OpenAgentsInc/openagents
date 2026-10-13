@@ -576,6 +576,9 @@ struct Call {
     coder_name: String,
     coder_input: Value,
     sdk_input: Value,
+    /// When the call reached Coder: a Bash call's file changes count only
+    /// from then (`crate::shell_changes::Snapshot::changes_during`).
+    started: std::time::SystemTime,
 }
 
 /// Runs one claude turn to its end, emitting the reply's text, the model
@@ -1015,6 +1018,7 @@ pub(crate) async fn read_turn(
                                         coder_name,
                                         coder_input,
                                         sdk_input,
+                                        started: std::time::SystemTime::now(),
                                     },
                                 );
                             }
@@ -1078,9 +1082,13 @@ pub(crate) async fn read_turn(
                         before.refresh(&path);
                     }
                     if shell && let Some(before) = changed.take() {
-                        let (changes, now) = tokio::task::spawn_blocking(move || before.changes())
-                            .await
-                            .unwrap_or_default();
+                        // Only what changed while the command ran is its
+                        // work; the checkout is shared with other agents.
+                        let (from, to) = (call.started, std::time::SystemTime::now());
+                        let (changes, now) =
+                            tokio::task::spawn_blocking(move || before.changes_during(from, to))
+                                .await
+                                .unwrap_or_default();
                         changed = now;
                         for change in changes {
                             emit(stream.under(call.parent.as_deref(), change.event()));

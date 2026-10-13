@@ -98,7 +98,7 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
                     } else {
                         Outcome::Completed
                     },
-                    milliseconds: 0,
+                    milliseconds: chat.tool_ms.get(&index).copied().unwrap_or_default(),
                     purpose: Some(task.clone()),
                     extra,
                 })
@@ -419,6 +419,26 @@ pub fn main_document(app: &App, cwd: &Path) -> Value {
         }
     };
     let mut result = document(&app.live, &id, &model, cwd);
+    // A delegation this run did not time (a reopened chat) takes the
+    // child's own elapsed time.
+    for step in result["steps"].as_array_mut().into_iter().flatten() {
+        let Some(id) = step
+            .pointer("/tool_calls/0")
+            .filter(|call| call["function_name"] == "delegate")
+            .and_then(|call| call["tool_call_id"].as_str())
+        else {
+            continue;
+        };
+        let Some(child) = app.delegations.iter().find(|child| child.id == id) else {
+            continue;
+        };
+        if let Some(duration) = step.pointer_mut("/observation/results/0/extra/duration_ms")
+            && duration.as_u64() == Some(0)
+            && child.elapsed_seconds > 0
+        {
+            *duration = json!(child.elapsed_seconds.saturating_mul(1000));
+        }
+    }
     if !app.delegations.is_empty() {
         result["subagent_trajectories"] = json!(
             app.delegations
@@ -428,6 +448,15 @@ pub fn main_document(app: &App, cwd: &Path) -> Value {
                     result["extra"]["agent"] = json!(child.name);
                     result["extra"]["task"] = json!(child.task);
                     result["final_metrics"]["extra"]["wall_seconds"] = json!(child.elapsed_seconds);
+                    // Every step says which agent made it, so a step read
+                    // on its own is never taken for the chat's (#11506).
+                    for step in result["steps"].as_array_mut().into_iter().flatten() {
+                        if let Some(step) = step.as_object_mut() {
+                            let extra = step.entry("extra").or_insert_with(|| json!({}));
+                            extra["agent"] = json!(child.name);
+                            extra["delegation_id"] = json!(child.id);
+                        }
+                    }
                     if child.background {
                         result["extra"]["background"] = json!(true);
                         if let Some(row) = app.fleet.get(&child.id) {
@@ -968,6 +997,79 @@ mod tests {
         assert_eq!(selected["session_id"], "child");
         assert_eq!(selected["steps"][1]["model_name"], "model/actual:low");
         assert!(selected.get("subagent_trajectories").is_none());
+    }
+
+    /// A foreground delegation records how long it ran, and each step of
+    /// the delegated chat says which agent made it (#11506).
+    #[test]
+    fn a_delegation_keeps_its_duration_and_its_steps_their_agent() {
+        let mut app = App {
+            mode: crate::Mode::Live,
+            ..App::default()
+        };
+        app.live.entries.push(Entry::Delegation {
+            id: "solver-1".into(),
+            name: "Solver".into(),
+            task: "11495".into(),
+            running: true,
+            output: Value::Null,
+            progress: None,
+        });
+        app.live.stamp();
+        // Solver worked for 31 minutes.
+        app.live.stamps[0] -= 31 * 60 * 1000;
+        if let Entry::Delegation {
+            running, output, ..
+        } = &mut app.live.entries[0]
+        {
+            *running = false;
+            *output = json!({"reply": "Opened the PR"});
+        }
+        app.live.stamp();
+        app.delegations.push(crate::live::Delegation {
+            id: "solver-1".into(),
+            name: "Solver".into(),
+            task: "11495".into(),
+            chat: Chat {
+                entries: vec![
+                    Entry::User("11495".into()),
+                    Entry::Tool {
+                        name: "Bash".into(),
+                        input: json!({"command": "cargo test"}),
+                        output: json!({"output": "ok"}),
+                        running: false,
+                    },
+                ],
+                ..Chat::default()
+            },
+            elapsed_seconds: 1860,
+            started_at: 0,
+            running: false,
+            draft: crate::Draft::default(),
+            composer: Default::default(),
+            scroll: 0,
+            background: false,
+        });
+        let document = main_document(&app, Path::new("/workspace"));
+        let call = &document["steps"][0];
+        assert_eq!(call["tool_calls"][0]["function_name"], "delegate");
+        let milliseconds = call["observation"]["results"][0]["extra"]["duration_ms"]
+            .as_u64()
+            .unwrap();
+        assert!(milliseconds >= 31 * 60 * 1000, "{call}");
+        assert_eq!(call["tool_calls"][0]["extra"]["running"], false);
+        let child = &document["subagent_trajectories"][0];
+        for step in child["steps"].as_array().unwrap() {
+            assert_eq!(step["extra"]["agent"], "Solver", "{step}");
+            assert_eq!(step["extra"]["delegation_id"], "solver-1");
+        }
+        // A reopened chat, with no timing of its own, takes the child's.
+        app.live.tool_ms.clear();
+        let document = main_document(&app, Path::new("/workspace"));
+        assert_eq!(
+            document["steps"][0]["observation"]["results"][0]["extra"]["duration_ms"],
+            1_860_000
+        );
     }
 
     #[test]

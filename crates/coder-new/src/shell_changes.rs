@@ -6,10 +6,17 @@
 //! changed files; when a Bash call ends, [`Snapshot::changes`] compares the
 //! files now against it, and each file that moved shows as an Edit (or a
 //! Write, for a new file) with its diff.
+//!
+//! The checkout is shared: another agent, a person, or a `git pull` can
+//! change files while a command runs. A diff shows as the command's only
+//! when the file last changed while the command ran
+//! ([`Snapshot::changes_during`]); anything else moved without this chat
+//! and is not drawn as its edit (#11506).
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{Duration, SystemTime};
 
 use serde_json::{Value, json};
 
@@ -21,6 +28,10 @@ const MAX_PATHS: usize = 2_000;
 
 /// At most this many files show after one command.
 pub const MAX_SHOWN: usize = 20;
+
+/// How long before Coder saw a command's call the command may already
+/// have written: the call reaches Coder through a pipe after it started.
+const START_SLACK: Duration = Duration::from_millis(500);
 
 /// What a file held when a snapshot was taken.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -198,6 +209,34 @@ impl Snapshot {
     /// for the next command to compare against.
     #[must_use]
     pub fn changes(self) -> (Vec<Change>, Option<Self>) {
+        self.compare(None)
+    }
+
+    /// The files a command that ran from `from` to `to` changed since this
+    /// snapshot: only files last written in that window, so an edit another
+    /// agent made in the shared checkout before or after it is not the
+    /// command's. A file removed counts when its directory changed in the
+    /// window. The snapshot of now covers every file, so what was left out
+    /// does not show after the next command either.
+    #[must_use]
+    pub fn changes_during(self, from: SystemTime, to: SystemTime) -> (Vec<Change>, Option<Self>) {
+        self.compare(Some((from.checked_sub(START_SLACK).unwrap_or(from), to)))
+    }
+
+    /// When `path` (or, once removed, its nearest directory) last changed.
+    fn modified(&self, path: &str) -> Option<SystemTime> {
+        let mut at = self.root.join(path);
+        loop {
+            if let Ok(time) = std::fs::symlink_metadata(&at).and_then(|meta| meta.modified()) {
+                return Some(time);
+            }
+            if !at.pop() || !at.starts_with(&self.root) {
+                return None;
+            }
+        }
+    }
+
+    fn compare(self, window: Option<(SystemTime, SystemTime)>) -> (Vec<Change>, Option<Self>) {
         let Some(now) = Self::at(self.root.clone(), self.cwd.clone()) else {
             return (Vec::new(), None);
         };
@@ -206,6 +245,13 @@ impl Snapshot {
         for path in paths {
             if changes.len() == MAX_SHOWN {
                 break;
+            }
+            if let Some((from, to)) = window
+                && !self
+                    .modified(path)
+                    .is_some_and(|time| time >= from && time <= to)
+            {
+                continue;
             }
             let old = self.before(path);
             let new = match now.files.get(path) {
@@ -334,6 +380,37 @@ mod tests {
         let (changes, _) = before.changes();
         assert_eq!(changes.len(), 1);
         assert!(changes[0].diff.text.contains("+two\n"));
+    }
+
+    /// A file another agent wrote in the shared checkout before or after a
+    /// command ran is not drawn as the command's edit; one written while
+    /// it ran is, and neither shows again after the next command (#11506).
+    #[test]
+    fn only_files_written_while_the_command_ran_are_its_changes() {
+        let (_dir, root) = repo();
+        let before = Snapshot::take(&root).unwrap();
+        let set = |path: &str, at: SystemTime| {
+            let file = std::fs::File::options()
+                .write(true)
+                .open(root.join(path))
+                .unwrap();
+            file.set_modified(at).unwrap();
+        };
+        let start = SystemTime::now() + Duration::from_secs(60);
+        let end = start + Duration::from_secs(5);
+        // Another agent, a minute before the command started.
+        std::fs::write(root.join("dirty.rs"), "someone else\n").unwrap();
+        set("dirty.rs", start - Duration::from_secs(60));
+        // The command itself.
+        std::fs::write(root.join("src/a.rs"), "one\n2\nthree\n").unwrap();
+        set("src/a.rs", start + Duration::from_secs(1));
+        // Another agent, after the command ended.
+        std::fs::write(root.join("src/later.rs"), "later\n").unwrap();
+        set("src/later.rs", end + Duration::from_secs(30));
+        let (changes, after) = before.changes_during(start, end);
+        let paths: Vec<&str> = changes.iter().map(|c| c.path.as_str()).collect();
+        assert_eq!(paths, ["src/a.rs"]);
+        assert!(after.unwrap().changes().0.is_empty());
     }
 
     #[test]
