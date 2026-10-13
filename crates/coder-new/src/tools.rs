@@ -349,6 +349,8 @@ fn file_tool_layout(
     let (glyph, accent) = outcome_header(running, failed, phase);
     let subject = input
         .get("path")
+        .or_else(|| input.get("file_path"))
+        .or_else(|| input.get("filePath"))
         .filter(|_| !matches!(name, "Grep" | "Glob"))
         .or_else(|| input.get("pattern"))
         .and_then(serde_json::Value::as_str)
@@ -389,7 +391,12 @@ fn file_tool_layout(
         "Edit" | "Write" => {
             let diff = text("diff");
             if diff.is_empty() {
-                lines.push(detail("No changes".into(), t::TEXT_SECONDARY));
+                // Only Coder's own edit reports its diff; another harness's
+                // edit (OpenCode, Claude Code) says nothing about it, which
+                // is not the same as changing nothing.
+                if output.get("diff").is_some() {
+                    lines.push(detail("No changes".into(), t::TEXT_SECONDARY));
+                }
             } else {
                 let added = number("added").unwrap_or(0) as usize;
                 let removed = number("removed").unwrap_or(0) as usize;
