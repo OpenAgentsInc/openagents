@@ -27,8 +27,6 @@ pub fn origin() -> String {
     openagents_login::origin_from(|name| std::env::var(name).ok())
 }
 
-/// The signed-in account's name, when this folder holds a live token.
-#[must_use]
 /// Clears a sign-in key from this process's environment, so a test that
 /// expects no sign-in isn't signed in by the machine running it.
 #[cfg(test)]
@@ -43,6 +41,8 @@ pub(crate) fn without_env_sign_in() {
     }
 }
 
+/// The signed-in account's name, when this folder holds a live token.
+#[must_use]
 pub fn signed_in(dir: &Path) -> Option<String> {
     Saved::load(dir)
         .filter(|saved| !saved.expired(now()))

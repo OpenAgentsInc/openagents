@@ -2100,7 +2100,7 @@ mod tests {
     #[test]
     fn a_headless_chat_lists_and_picks_the_gateways_models() {
         use std::io::{Read as _, Write as _};
-        let _ = crate::account::without_env_sign_in();
+        crate::account::without_env_sign_in();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let origin = format!("http://{}", listener.local_addr().unwrap());
         let server = std::thread::spawn(move || {
