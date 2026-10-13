@@ -129,7 +129,7 @@ fn a_project_brings_its_default_branch_and_its_environment() {
     assert!(html.contains(r#"aria-label="Project: app""#), "{html}");
     assert!(html.contains(r#"aria-label="Branch: main""#), "{html}");
     assert!(
-        html.contains(r#"aria-label="Where it runs: Chat""#),
+        html.contains(r#"aria-label="Where it runs: Answer here""#),
         "{html}"
     );
     assert!(html.contains(&format!(r#"name="project" value="{APP}""#)));
@@ -156,7 +156,7 @@ fn claude_code_is_offered_only_for_the_project_with_the_environment() {
         .into_iter()
         .map(|(_, label)| label)
         .collect();
-    assert_eq!(labels, ["Chat", "Coder on studio-mac"]);
+    assert_eq!(labels, ["Answer here", "Coder on studio-mac"]);
     // No project: no Claude Code.
     let picked = choices.resolve(&wanted("", "", "claude:env-1"));
     assert_eq!(picked.target, Target::Chat);
@@ -177,7 +177,7 @@ fn coder_is_offered_while_a_computer_is_online() {
         html.contains(r#"aria-label="Where it runs: Coder on studio-mac""#),
         "{html}"
     );
-    // Offline: back to Chat. An account still sees Where it runs, whose
+    // Offline: back to answering here. An account still sees Where it runs, whose
     // panel says how to bring a computer online (#11319); a browser that
     // isn't an account, with nothing else, sees no selector.
     choices.computers.clear();
@@ -193,7 +193,7 @@ fn coder_is_offered_while_a_computer_is_online() {
     assert!(listed.contains("disabled"), "{listed}");
     let html = render(Some(&choices), &picked);
     assert!(
-        html.contains(r#"aria-label="Where it runs: Chat""#),
+        html.contains(r#"aria-label="Where it runs: Answer here""#),
         "{html}"
     );
     let panel = target_panel(&choices, &picked, &|_: &dyn Fn(&mut Picked), _: &str| {
@@ -208,6 +208,34 @@ fn coder_is_offered_while_a_computer_is_online() {
     choices.account = false;
     let html = render(Some(&choices), &picked);
     assert!(!html.contains("Where it runs"), "{html}");
+}
+
+/// An existing chat's row offers no Coder on a computer: picking it would
+/// move the chat to another one. Claude Code, which answers in the same
+/// chat, stays; with nothing else, there is no Where it runs at all.
+#[test]
+fn an_existing_chat_offers_no_coder_on_a_computer() {
+    let mut choices = choices();
+    choices.for_existing_chat();
+    let picked = choices.resolve(&wanted(APP, "", "coder:studio-mac"));
+    assert_eq!(picked.target, Target::Chat);
+    let labels: Vec<String> = choices
+        .targets(picked.project.as_ref())
+        .into_iter()
+        .map(|(_, label)| label)
+        .collect();
+    assert_eq!(labels, ["Answer here", "Claude Code in app v3"]);
+    let html = render(Some(&choices), &picked);
+    assert!(!html.contains("Coder on"), "{html}");
+    let picked = choices.resolve(&wanted("", "", ""));
+    let html = render(Some(&choices), &picked);
+    assert!(!html.contains("Where it runs"), "{html}");
+    for label in ["Chat", "Work", "Code"] {
+        assert!(
+            !html.contains(&format!("Where it runs: {label}\"")),
+            "{label}: {html}"
+        );
+    }
 }
 
 #[test]

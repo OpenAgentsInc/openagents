@@ -182,6 +182,8 @@ async fn a_chat_shares_by_link_reads_signed_out_and_stops() {
         "csrf",
         "<form",
         SHARED_CHAT,
+        "Run in Coder",
+        "to-coder",
     ] {
         assert!(!body.contains(absent), "{absent}: {body}");
     }

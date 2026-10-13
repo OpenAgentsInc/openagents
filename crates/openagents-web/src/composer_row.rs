@@ -10,19 +10,21 @@
 //! - **Branch**: a project is picked. That repository's branches, read from
 //!   GitHub as the person ([`crate::composer::branch_names`], kept); the
 //!   default branch is picked first.
-//! - **Where it runs**: signed in to an account, or more than Chat is
-//!   possible. **Chat** answers here.
+//! - **Where it runs**: signed in to an account, or more than answering
+//!   here is possible. **Answer here** ([`HERE`]) answers in this chat; it
+//!   is not a mode, the conversation is the same either way.
 //!   **Claude Code in {repository name} vN** when the picked project's repository
 //!   has a saved environment of the person's, Claude Code can run on this
 //!   server (a key), and the request may do agent work, like
 //!   `/environments` ([`crate::agent_work`], [`crate::pages::chat_work`]). **Coder on {computer}**
-//!   on any chat of the person's (#11319), when Coder with sync on checked
-//!   in from that computer lately ([`crate::coder_sync::online`], the same
-//!   test `/v1/agents` and the computers page use). A later message sent
-//!   to Coder moves the chat there, the messages so far with it. With no
-//!   computer online the panel says how to bring one online instead of
-//!   hiding the control. A chat that is already Coder's has its own reply
-//!   path and no **Where it runs**.
+//!   for a new chat (the home page, #11319), when Coder with sync on
+//!   checked in from that computer lately ([`crate::coder_sync::online`],
+//!   the same test `/v1/agents` and the computers page use); with no
+//!   computer online the panel says how to bring one online. A chat that
+//!   already exists is never moved to another chat: its row offers no
+//!   Coder on a computer ([`Choices::for_existing_chat`]), and a later
+//!   message sent for one anyway is refused ([`CODER_NEW_CHAT`]). A chat
+//!   that is already Coder's has its own reply path.
 //!
 //! Claude Code in an environment is offered even before the person has
 //! connected Claude (#11234), when this server keeps their own key
@@ -167,6 +169,15 @@ pub(crate) struct Choices {
     pub claude_keys: bool,
 }
 
+/// Where it runs when nothing else is picked: answered here, in this chat.
+/// Not a mode: the same conversation, answered on the website.
+pub(crate) const HERE: &str = "Answer here";
+
+/// Why a later message picked for Coder on a computer wasn't sent: the
+/// chat stays where it is (Coder on a computer starts a new chat).
+pub(crate) const CODER_NEW_CHAT: Refused =
+    "This chat stays here. To send work to Coder on your computer, start a new chat.";
+
 /// Why a message for Claude Code wasn't sent while Claude isn't connected
 /// yet; the message stays in the box (#11234).
 pub(crate) const CONNECT: Refused = "Claude Code needs Claude connected before it can run here. Sign in to Claude, or add your key in Settings, Claude, then send again: your message stays in the box.";
@@ -183,8 +194,10 @@ pub(crate) struct Picked {
 }
 
 impl Choices {
-    /// A Coder chat's messages go to its own computer: no Where it runs.
-    fn for_coder_chat(&mut self) {
+    /// A chat that already exists keeps its messages: Coder on a computer
+    /// is offered for a new chat only, so picking it never moves this chat
+    /// to another one, and a Coder chat's messages go to its own computer.
+    fn for_existing_chat(&mut self) {
         self.computers.clear();
         self.offline.clear();
         self.account = false;
@@ -209,7 +222,7 @@ impl Choices {
 
     /// Where a message can run with `project` picked, Chat first.
     pub(crate) fn targets(&self, project: Option<&Project>) -> Vec<(Target, String)> {
-        let mut targets = vec![(Target::Chat, "Chat".to_owned())];
+        let mut targets = vec![(Target::Chat, HERE.to_owned())];
         if let Some(env) = project.and_then(|project| self.environment(project)) {
             targets.push((Target::Claude(env.id.clone()), env.label()));
         }
@@ -475,7 +488,7 @@ pub(crate) fn row(
                         _ => targets
                             .iter()
                             .find(|(target, _)| *target == picked.target)
-                            .map_or_else(|| "Chat".to_owned(), |(_, label)| label.clone()),
+                            .map_or_else(|| HERE.to_owned(), |(_, label)| label.clone()),
                     };
                     (ComposerDropdown::new("Where it runs", label)
                         .icon(match picked.target {
@@ -594,10 +607,8 @@ pub(crate) async fn for_chat(
     oob: bool,
 ) -> Markup {
     let mut choices = choices(app, headers, &chat.owner).await;
-    if chat.terminal.is_some()
-        && let Some(choices) = &mut choices
-    {
-        choices.for_coder_chat();
+    if let Some(choices) = &mut choices {
+        choices.for_existing_chat();
     }
     let wanted = wanted_for(chat);
     let picked = choices.as_ref().map_or(
@@ -645,8 +656,8 @@ async fn reload(
     })
 }
 
-/// [`choices`] for the row of `chat` (none on the home page): a Coder
-/// chat's row has no Where it runs.
+/// [`choices`] for the row of `chat` (none on the home page): an existing
+/// chat's row offers no Coder on a computer ([`Choices::for_existing_chat`]).
 async fn choices_in(
     app: &App,
     headers: &HeaderMap,
@@ -654,12 +665,8 @@ async fn choices_in(
     chat: Option<&str>,
 ) -> Option<Choices> {
     let mut choices = choices(app, headers, owner).await?;
-    if let Some(id) = chat
-        && crate::chat_store::valid_id(id)
-        && let Ok(Some(loaded)) = app.config.chat_store.load(owner, id).await
-        && loaded.conversation.terminal.is_some()
-    {
-        choices.for_coder_chat();
+    if chat.is_some() {
+        choices.for_existing_chat();
     }
     Some(choices)
 }
@@ -812,7 +819,7 @@ fn target_panel(choices: &Choices, picked: &Picked, with: &With<'_>) -> Markup {
                     Some(match target {
                         Target::Chat => "Answers here. Nothing runs.",
                         Target::Claude(_) => "Runs on a fresh computer with this repository. Its answer shows in this chat.",
-                        Target::Coder(_) => "Coder answers on your computer, with its files and tools.",
+                        Target::Coder(_) => "Starts a new chat with Coder on your computer, with its files and tools.",
                     }),
                     *target == picked.target,
                 ))

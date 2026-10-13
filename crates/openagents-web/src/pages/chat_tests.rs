@@ -2036,12 +2036,11 @@ impl basic_coder::Door for WorkDoor {
     }
 }
 
-/// #11318: signed in with Coder online, "push a README" left on Chat is
-/// handed to Coder on that computer (the typed router read it as work on
-/// code), with the chat so far, instead of the download pitch; the answer
-/// here is told Coder is theirs. With no computer online the answer stays.
+/// Signed in with Coder online, "push a README" is answered in this same
+/// chat: the answer here is told Coder is theirs (#11318), but nothing
+/// starts a second chat for the message. Sending a message never forks.
 #[tokio::test]
-async fn work_in_a_chat_goes_to_coder_on_an_online_computer() {
+async fn work_in_a_chat_stays_in_the_chat_with_coder_online() {
     let directory = tempfile::tempdir().unwrap();
     let seen = Arc::new(Mutex::new(None));
     let mut config = crate::Config::development(directory.path().join("tasks"));
@@ -2122,7 +2121,8 @@ async fn work_in_a_chat_goes_to_coder_on_an_online_computer() {
         Some((false, basic_coder::INSTRUCTIONS_WEB))
     );
 
-    // Coder checked in from a computer: the message goes there.
+    // Coder checked in from a computer: the answer knows Coder is theirs,
+    // and the message stays in this chat.
     store
         .update_computers(&owner, |computers| {
             computers.seen.insert(
@@ -2133,6 +2133,7 @@ async fn work_in_a_chat_goes_to_coder_on_an_online_computer() {
         })
         .await
         .unwrap();
+    let before = store.list(&owner).await.unwrap().len();
     let loaded = store
         .create(&pending(NEXT, "Push a README to AtlantisPleb/finances"))
         .await
@@ -2148,47 +2149,44 @@ async fn work_in_a_chat_goes_to_coder_on_an_online_computer() {
         .unwrap()
         .unwrap()
         .conversation;
-    let session = crate::coder_sync::web_session(NEXT);
-    let id = crate::coder_sync::chat_id(&owner, &session);
-    let said = &chat.messages[3].text;
-    assert!(!said.contains("download"), "{said}");
-    assert!(
-        said.contains("Coder on Christopher’s MacBook Pro (2)"),
-        "{said}"
-    );
-    assert!(said.contains(&format!("/chat/{id}")), "{said}");
     assert!(chat.pending.is_none());
     assert_eq!(chat.requests[0].outcome, Outcome::Answered);
-    let moved = store.load(&owner, &id).await.unwrap().unwrap().conversation;
-    let terminal = moved.terminal.as_ref().unwrap();
-    assert_eq!(terminal.computer, "Christopher’s MacBook Pro (2)");
-    assert_eq!(
-        terminal.replies[0].text,
-        "Push a README to AtlantisPleb/finances"
+    let said = &chat.messages[3].text;
+    assert!(!said.contains("/chat/"), "{said}");
+    // No second chat: not the Coder chat a hand-off would have made, and
+    // nothing else beside the one just answered.
+    let session = crate::coder_sync::web_session(NEXT);
+    let forked = crate::coder_sync::chat_id(&owner, &session);
+    assert!(store.load(&owner, &forked).await.unwrap().is_none());
+    assert_eq!(store.list(&owner).await.unwrap().len(), before + 1);
+    assert!(
+        store
+            .computers(&owner)
+            .await
+            .unwrap()
+            .waiting
+            .get(&session)
+            .is_none()
     );
-    let carried: Vec<&str> = terminal.continued.iter().map(|m| m.text.as_str()).collect();
-    assert_eq!(carried, ["What is in AtlantisPleb/finances?", "A ledger."]);
-    assert_eq!(moved.messages.len(), 2);
 }
 
-/// #11318: under the newest answer of an account's chat that began here,
-/// the thread loads the Run in Coder offer; not for a visitor, a Coder
-/// chat, or while an answer is being written.
+/// No answer offers to run the message in Coder on a computer: the chat
+/// stays where it is, with no extra control under the answer.
 #[test]
-fn the_newest_answer_has_the_run_in_coder_slot() {
+fn no_answer_offers_run_in_coder() {
     let message = |role, text: &str| Message {
         role,
         text: text.into(),
         request_id: Some(CHAT.into()),
     };
-    let mut chat = Conversation {
+    let chat = Conversation {
         id: CHAT.into(),
         owner: crate::chat_store::account_owner("acct_11318_offer"),
         revision: 1,
-        title: "Finances".into(),
+        title: "Plugins".into(),
         messages: vec![
-            message(Role::User, "push a README to AtlantisPleb/finances"),
-            message(Role::Assistant, "Coder on your computer can do that."),
+            message(Role::User, "What are plugins?"),
+            message(Role::Assistant, "Plugins add tools to Coder."),
         ],
         pending: None,
         requests: Vec::new(),
@@ -2204,15 +2202,8 @@ fn the_newest_answer_has_the_run_in_coder_slot() {
         branch: None,
         filed: false,
     };
-    let slot = format!("/chat/{CHAT}/to-coder");
-    assert!(messages(&chat, None, false).into_string().contains(&slot));
-    chat.pending = Some(Pending {
-        request_id: CHAT.into(),
-        started_unix: 1,
-        job_id: None,
-    });
-    assert!(!messages(&chat, None, false).into_string().contains(&slot));
-    chat.pending = None;
-    chat.owner = OWNER.into();
-    assert!(!messages(&chat, None, false).into_string().contains(&slot));
+    let html = messages(&chat, None, false).into_string();
+    for absent in ["to-coder", "Run in Coder", "chat-to-coder"] {
+        assert!(!html.contains(absent), "{absent}: {html}");
+    }
 }

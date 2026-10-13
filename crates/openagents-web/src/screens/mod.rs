@@ -135,7 +135,6 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     ("/chat/{id}/workspace", "part of a chat page"),
     ("/chat/{id}/rename", "part of the chat list"),
     ("/chat/{id}/agents", "part of a chat page"),
-    ("/chat/{id}/to-coder", "part of a chat page"),
     ("/chat/{id}/work-offer/{index}", "part of a chat page"),
     ("/chat/{id}/messages/{index}/original", "a message as text"),
     ("/chat/{id}/files/{file}", "a file"),
