@@ -55,6 +55,59 @@ pub trait Env {
     }
 }
 
+/// A place that has no hooks of its own, with a session's Coder SDK hooks
+/// (#11527): its commands, reads, stops and steering are the place's own,
+/// and every event the loop fires runs `hooks` (the floors among them), an
+/// `Ask` answered as `hooks` answers it (held when nobody can).
+#[derive(Clone, Debug)]
+pub struct Hooked<E> {
+    pub env: E,
+    pub hooks: coder_sdk::Hooks,
+}
+
+impl<E: Env> Env for Hooked<E> {
+    fn run(
+        &self,
+        command: &str,
+        deadline: Duration,
+    ) -> impl std::future::Future<Output = CommandResult> {
+        self.env.run(command, deadline)
+    }
+
+    fn read(&self, path: &str) -> impl std::future::Future<Output = Option<String>> {
+        self.env.read(path)
+    }
+
+    fn stopped(&self) -> bool {
+        self.env.stopped()
+    }
+
+    fn steering(&self) -> Vec<String> {
+        self.env.steering()
+    }
+
+    fn hook(&self, call: coder_sdk::Call) -> impl std::future::Future<Output = coder_sdk::Applied> {
+        self.hooks.fire(call)
+    }
+}
+
+/// A session's hooks for the loop in `dir` that nobody answers from inside
+/// (#11527, #11529): the held floors and the worktree guard holding the
+/// session's writes to `dir`.
+#[must_use]
+pub fn held_hooks(dir: &std::path::Path, writes: bool) -> coder_sdk::Hooks {
+    let mut guard = coder_sdk::worktree::Guard::writes(dir);
+    if !writes {
+        guard = guard.read_only();
+    }
+    coder_sdk::Hooks::new(
+        coder_sdk::floors::held_registry(Some(guard)),
+        coder_sdk::Budget::default(),
+        coder_sdk::HookBackend::CoderLoop,
+    )
+    .expect("the floors and the guard fire natively on the Coder loop")
+}
+
 /// A local working directory.
 #[derive(Clone, Debug)]
 pub struct Local {

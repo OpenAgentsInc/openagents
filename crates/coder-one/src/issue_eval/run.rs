@@ -150,6 +150,7 @@ pub async fn run(options: Options) -> Result<Ran, String> {
         issues: false,
         issue: true,
         review: false,
+        hooks: None,
         extra: crate::terminal::Micro {
             script: options.script.as_ref().map(|(_, replies)| replies.clone()),
             policy: options

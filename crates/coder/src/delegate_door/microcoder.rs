@@ -600,7 +600,12 @@ pub async fn answer(turn: Turn, on: Rc<dyn Fn(Update)>) -> Delegated {
         );
     }
     let env = match microcoder_loop::env::Bounded::new(turn.workdir.clone(), !turn.read_only) {
-        Ok(env) => env,
+        // Every command meets the session's floors and worktree guard
+        // first (#11529), the issue flow's sessions among them.
+        Ok(env) => microcoder_loop::env::Hooked {
+            hooks: microcoder_loop::env::held_hooks(&turn.workdir, !turn.read_only),
+            env,
+        },
         Err(why) => {
             return failed(
                 GenerateError::Stream(format!("microcoder could not run: {why}")),
@@ -817,6 +822,7 @@ fn flow_request(turn: &Turn) -> terminal::Request {
         issues: turn.issues,
         issue: false,
         review: false,
+        hooks: None,
         extra: (),
     }
 }

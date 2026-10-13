@@ -118,6 +118,19 @@ pub fn held_hook() -> Hook {
     hook(Arc::new(|_| Rule::Ask), Asking::Hold)
 }
 
+/// The registry of a session nobody answers from inside (#11527, #11529):
+/// the held floors ([`held_hook`]) and, when given, the worktree `guard`.
+#[must_use]
+pub fn held_registry(guard: Option<crate::worktree::Guard>) -> crate::Registry {
+    let mut registry = crate::Registry::new();
+    // Two distinct built-in IDs: neither registration can fail.
+    let _ = registry.register(held_hook());
+    if let Some(guard) = guard {
+        let _ = registry.register(guard.hook());
+    }
+    registry
+}
+
 /// What the held floors answer alone, in a harness's hook output shape
 /// (Claude Code's and Codex's `PreToolUse` reply): the hook bridge's
 /// fallback when no host answers ([`crate::bridge::main`]).

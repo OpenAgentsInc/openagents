@@ -2995,6 +2995,7 @@ dependencies = [
  "coder-history",
  "coder-host",
  "coder-lease",
+ "coder-sdk",
  "coder-terminal",
  "coderbench",
  "codex-transport",

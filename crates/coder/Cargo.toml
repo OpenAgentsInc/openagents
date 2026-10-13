@@ -21,6 +21,8 @@ coder-host = { path = "../coder-host" }
 # Routing the agents' low-risk text jobs to the shared-compute pool.
 pylon = { path = "../pylon" }
 coder-delegate = { path = "../coder-delegate" }
+# A delegated session runs the Coder SDK's floors through its hook bridge (#11529).
+coder-sdk = { path = "../coder-sdk" }
 coder-lease = { path = "../coder-lease" }
 # OpenCode route models (`acp_client::opencode::Model`).
 acp-client = { path = "../acp-client" }

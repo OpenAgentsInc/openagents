@@ -148,6 +148,9 @@ pub struct Guard {
     pub writes: bool,
     /// Folders outside the worktree the session may also read.
     pub readable: Vec<PathBuf>,
+    /// Whether the session may read anywhere: only its writes are held to
+    /// the worktree ([`Guard::writes`]).
+    pub reads_anywhere: bool,
 }
 
 impl Guard {
@@ -159,6 +162,18 @@ impl Guard {
             tools: None,
             writes: true,
             readable: Vec::new(),
+            reads_anywhere: false,
+        }
+    }
+
+    /// A guard on `root` holding only writes to it (#11527): a session
+    /// with full access, whose reads go where it likes, still writes only
+    /// in its worktree through the file tools.
+    #[must_use]
+    pub fn writes(root: &Path) -> Self {
+        Guard {
+            reads_anywhere: true,
+            ..Guard::new(root)
         }
     }
 
@@ -211,18 +226,31 @@ impl Guard {
         if !FILE_TOOLS.contains(&tool) {
             return None;
         }
-        let Some(path) = PATH_FIELDS.iter().find_map(|key| input[*key].as_str()) else {
-            return None;
-        };
-        if contains(&self.root, path) {
-            return None;
+        let mut paths: Vec<&str> = PATH_FIELDS
+            .iter()
+            .filter_map(|key| input[*key].as_str())
+            .take(1)
+            .collect();
+        // A `Glob` pattern that leaves the worktree names where it reads.
+        if tool == "Glob"
+            && let Some(pattern) = input["pattern"].as_str()
+            && (pattern.starts_with('/') || pattern.starts_with('~') || pattern.contains(".."))
+        {
+            paths.push(pattern);
         }
-        let readable = tool == "Read"
-            && self
-                .readable
-                .iter()
-                .any(|dir| resolve(dir, path).starts_with(dir) || contains(dir, path));
-        (!readable).then_some(OUTSIDE)
+        let writing = WRITE_TOOLS.contains(&tool);
+        let refused = paths.into_iter().any(|path| {
+            if contains(&self.root, path) || (!writing && self.reads_anywhere) {
+                return false;
+            }
+            let readable = tool == "Read"
+                && self
+                    .readable
+                    .iter()
+                    .any(|dir| resolve(dir, path).starts_with(dir) || contains(dir, path));
+            !readable
+        });
+        refused.then_some(OUTSIDE)
     }
 
     /// The guard as a `PreToolUse` floor: a refused call is denied with
@@ -270,6 +298,31 @@ mod tests {
         assert_eq!(refused("Edit", "out/escaped.rs"), Some(OUTSIDE));
         assert_eq!(refused("Read", "~/.ssh/id_rsa"), Some(OUTSIDE));
         assert_eq!(guard.refusal("Grep", &json!({"pattern": "x"})), None);
+    }
+
+    #[test]
+    fn a_write_guard_reads_anywhere_and_holds_writes_and_glob_patterns() {
+        let dir = tempfile::tempdir().unwrap();
+        let writes = Guard::writes(dir.path());
+        assert_eq!(
+            writes.refusal("Read", &json!({"file_path": "/etc/hosts"})),
+            None
+        );
+        assert_eq!(writes.refusal("Glob", &json!({"pattern": "/etc/*"})), None);
+        assert_eq!(
+            writes.refusal("Write", &json!({"file_path": "/etc/hosts"})),
+            Some(OUTSIDE)
+        );
+        assert_eq!(writes.refusal("Edit", &json!({"file_path": "a.rs"})), None);
+        let strict = Guard::new(dir.path());
+        assert_eq!(
+            strict.refusal("Glob", &json!({"pattern": "../**/*.rs"})),
+            Some(OUTSIDE)
+        );
+        assert_eq!(
+            strict.refusal("Glob", &json!({"pattern": "src/**/*.rs"})),
+            None
+        );
     }
 
     #[test]

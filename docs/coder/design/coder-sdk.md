@@ -578,7 +578,7 @@ log through `hook-log`.
 | Solver hands (Intaker, Briefer, Coder, Tester) | `solver::hands` → the same `agent::run` | as issue runs | as issue runs; a read-only hand's guard refuses every write | as issue runs |
 | Briefed agent (bench, `openagents work`) | `briefed-agent` `run` → `compose` | Claude Code (Agent SDK); Codex `exec`; OpenCode `run` | Claude: one registry on the Claude backend: the worktree guard (offered tools, the squeeze folder readable), the floors held, squeeze, the Stop gate | Codex and OpenCode engines run no hooks (#11530); no shared-checkout fence (#11532) |
 | Coder One delegations | `coder_delegate::adapter::CliSession` from `coder_one` (issue mode `main.rs`, episodes `episode.rs`) | Claude Code `-p`, Codex `exec`, OpenCode `run` | `coder_one::hooks::install`: a bridge host with the floors held; `Cli::hooks` (`HookBridge`) puts the bridge in as Claude Code's `--settings` PreToolUse hook and Codex's `-c hooks.PreToolUse`; `coder-one coder-hook` is the bridge program, holding the floors alone when the host is gone | OpenCode `run` takes no command hooks (emulated) |
-| Coder Terminal turn and `crates/coder`'s issue flow | `coder_delegate::terminal::answer` | Claude Code, Codex | none | #11529 |
+| Coder Terminal turn and `crates/coder`'s issue flow | `coder_delegate::terminal::answer` (`delegate_door`), the issue flow's Microcoder turns (`delegate_door::microcoder::answer`) | Claude Code, Codex, the Coder loop | `coder::hooks`: a bridge host with the held floors and the worktree guard (writes held to the turn's folder, none on a read-only turn); `terminal::Request::hooks` puts the bridge in as the CLI's own `PreToolUse` hook, `coder coder-hook` (or `openagents coder-hook`) answering; the Microcoder loop fires the same registry (`microcoder_loop::env::Hooked`) (#11529) | none |
 | ACP Subagents, background agents, the `delegate` tool | `bundled_runtime::acp_briefed`, `delegate_host` (#11511) | ACP agents, Codex, Coder loop, Claude Code | `sdk_hooks::acp` / `codex` / `coder_loop`; delegation per #11511 | a Claude background agent runs `claude_print` (`claude -p`) with no hooks (#11528) |
 | Microcoder | `microcoder::repository` (claude_sdk seat, lean/Claude/Codex CLI sessions, Devin/OpenCode/Grok ACP turns), `microcoder_loop::run` | Claude Code, Codex, ACP agents, the loop | the `claude/sdk:` seat's worktree gate is one SDK floor; the loop fires every hook event | no floors anywhere; its own path checks and ACP answering; its environments register no hooks (#11527) |
 | Cloud runtime | `coder_cloud::drive` → `coder delegate <agent>` on the machine | as background agents | as background agents | Claude through `claude_print` (#11528) |
@@ -591,9 +591,13 @@ its real start path and shows a floor holding:
 `solver::tests::a_hands_asks_meet_the_floors_and_the_worktree_guard` (the
 recorded Devin turn with asks injected, through `agent::run`),
 `compose_tests::a_scripted_session_meets_the_floors_and_the_worktree_guard`
-(the briefed agent), and
+(the briefed agent),
 `hooks::tests::a_delegated_session_runs_the_floors_through_the_bridge`
-(Coder One, through `CliSession` on a stand-in Claude Code).
+(Coder One, through `CliSession` on a stand-in Claude Code),
+`delegate_door::tests::a_terminal_turn_runs_the_floors_through_the_hook_bridge`
+(the Terminal turn, through the delegate door on a stand-in Claude Code), and
+`delegate_door::tests::a_microcoder_turn_holds_a_floored_command_for_the_person`
+(a Microcoder turn, as the issue flow runs its sessions).
 
 ## Open questions
 

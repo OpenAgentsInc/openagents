@@ -939,6 +939,10 @@ impl DelegateDoor {
         };
         // A CLI resumes its session.
         let resume = self.session();
+        // The session runs the Coder SDK's floors and worktree guard
+        // through the hook bridge (#11529); the host lives as the turn does.
+        let bridge = crate::hooks::bridge(&self.workdir, read_only);
+        let (hooks, host) = bridge.map_or((None, None), |(hooks, host)| (Some(hooks), Some(host)));
         let request = terminal::Request {
             workdir: self.workdir.clone(),
             request: request.to_string(),
@@ -961,6 +965,7 @@ impl DelegateDoor {
             issues: false,
             issue: false,
             review: false,
+            hooks,
             extra: (),
         };
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<FromThread>();
@@ -980,6 +985,7 @@ impl DelegateDoor {
                         return;
                     }
                 };
+                let _host = host;
                 let progress = tx.clone();
                 let answer = runtime.block_on(terminal::answer(
                     &request,
@@ -1893,6 +1899,146 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
         assert_eq!(agent.transcript().len(), 4);
     }
 
+    /// A stand-in Claude Code that records the hook settings and the
+    /// host's socket it was started with, waits for the test to say `go`,
+    /// and answers.
+    const HOOKED: &str = r#"#!/bin/sh
+while [ $# -gt 0 ]; do
+  if [ "$1" = --settings ]; then printf '%s' "$2" > settings.json; fi
+  shift
+done
+printf '%s' "$CODER_HOOK_SOCKET" > socket
+cat > /dev/null
+n=0
+while [ ! -f go ] && [ $n -lt 400 ]; do sleep 0.05; n=$((n+1)); done
+echo '{"type":"system","subtype":"init","session_id":"s-1","model":"stand-in"}'
+echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"result":"done","session_id":"s-1","total_cost_usd":0.01,"usage":{"input_tokens":1,"output_tokens":1}}'
+"#;
+
+    /// #11529: the Coder Terminal turn's Claude Code session, started
+    /// through the delegate door, runs the Coder SDK's hook bridge before
+    /// every tool, and the host behind it holds a merge for the person and
+    /// keeps the session's writes in its folder.
+    #[tokio::test]
+    async fn a_terminal_turn_runs_the_floors_through_the_hook_bridge() {
+        let dir = tempfile::tempdir().unwrap();
+        let workdir = dir.path().join("work");
+        std::fs::create_dir_all(&workdir).unwrap();
+        if let Err(why) = boundary_available(&workdir) {
+            eprintln!("skipped: {why}");
+            return;
+        }
+        let binary =
+            coder_delegate::adapter::standin::install(&dir.path().join("bin"), "claude", HOOKED);
+        let target = Target {
+            binary: Some(binary),
+            ..target(Cli::ClaudeCode, true, Credential::CliLogin)
+        };
+        let door = DelegateDoor::new(target, None, workdir.clone(), None, String::new())
+            .writing_under(dir.path().join("artifacts"));
+        let mut agent = crate::agent::Agent::new(None, Door::Delegate(std::sync::Arc::new(door)));
+        let asked = async {
+            let socket = workdir.join("socket");
+            for _ in 0..400 {
+                if std::fs::read_to_string(&socket).is_ok_and(|text| !text.is_empty()) {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            let socket = PathBuf::from(std::fs::read_to_string(&socket).unwrap());
+            let ask = |input: serde_json::Value| {
+                coder_sdk::bridge::ask(
+                    &socket,
+                    coder_sdk::bridge::Format::Claude,
+                    &input,
+                    std::time::Duration::from_secs(10),
+                )
+                .unwrap()
+            };
+            let merge = ask(
+                serde_json::json!({"hook_event_name": "PreToolUse", "tool_name": "Bash",
+                "tool_input": {"command": "gh pr merge 5 --squash"}}),
+            )
+            .unwrap();
+            let outside = ask(
+                serde_json::json!({"hook_event_name": "PreToolUse", "tool_name": "Write",
+                "tool_input": {"file_path": "/etc/elsewhere", "content": "x"}}),
+            )
+            .unwrap();
+            let plain = ask(
+                serde_json::json!({"hook_event_name": "PreToolUse", "tool_name": "Bash",
+                "tool_input": {"command": "cargo test"}}),
+            );
+            std::fs::write(workdir.join("go"), "").unwrap();
+            (merge, outside, plain)
+        };
+        let ((turned, _, _), (merge, outside, plain)) = tokio::join!(
+            turn(&mut agent, crate::permit::Permit::executing(), "merge it"),
+            asked
+        );
+        assert_eq!(turned.text, "done");
+        let settings: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(workdir.join("settings.json")).unwrap())
+                .unwrap();
+        let command = settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap();
+        assert!(
+            command.ends_with(" coder-hook --format claude"),
+            "{command}"
+        );
+        assert_eq!(merge["hookSpecificOutput"]["permissionDecision"], "deny");
+        assert!(
+            merge["hookSpecificOutput"]["permissionDecisionReason"]
+                .as_str()
+                .unwrap()
+                .starts_with("Held for the person"),
+            "{merge}"
+        );
+        assert_eq!(
+            outside["hookSpecificOutput"]["permissionDecisionReason"],
+            coder_sdk::worktree::OUTSIDE
+        );
+        assert_eq!(plain, None);
+    }
+
+    /// #11529: a Microcoder turn (the issue flow's sessions are these) runs
+    /// each command through the session's floors: a merge is held, and the
+    /// turn goes on without it.
+    #[tokio::test]
+    async fn a_microcoder_turn_holds_a_floored_command_for_the_person() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = vec![(
+            Provider::Codex,
+            vec![
+                Ok(running("gh pr merge 5 --squash")),
+                Ok(finish("Left the merge to you.")),
+            ],
+        )];
+        let Some((door, _workdir)) =
+            microcoder_door(dir.path(), providers(true, false, false), script)
+        else {
+            return;
+        };
+        let mut agent =
+            crate::agent::Agent::new(None, Door::Delegate(std::sync::Arc::clone(&door)));
+        let (done, shell, _) = turn(
+            &mut agent,
+            crate::permit::Permit::executing(),
+            "merge the pull request",
+        )
+        .await;
+        assert_eq!(done.text, "Left the merge to you.");
+        let held = shell
+            .iter()
+            .find_map(|event| match event {
+                crate::shell::ShellEvent::Ran(outcome) => Some(outcome.output.clone()),
+                _ => None,
+            })
+            .expect("the merge's outcome");
+        assert!(held.starts_with("Held for the person"), "{held}");
+    }
+
     fn finish(reply: &str) -> NextAction {
         NextAction {
             rationale: "answer".to_string(),
@@ -2422,6 +2568,7 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
                 issues: false,
                 issue: true,
                 review: false,
+                hooks: None,
                 extra: (),
             },
             workdir: repo.clone(),
@@ -2493,6 +2640,7 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
             issues: true,
             issue: false,
             review: false,
+            hooks: None,
             extra: (),
         };
         let reference = coder_delegate::issue::Reference {

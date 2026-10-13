@@ -1079,6 +1079,7 @@ mod tests {
             issues: false,
             issue: false,
             review: false,
+            hooks: None,
             extra: Micro::default(),
         })
     }

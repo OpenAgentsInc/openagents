@@ -246,6 +246,10 @@ pub struct Request<X = ()> {
     /// one session over the diff and the code that uses what changed, which
     /// the request carries, with no survey.
     pub review: bool,
+    /// The host's hook bridge the CLI session runs before every tool
+    /// (#11529, [`crate::delegate::Cli::hooks`]): the session's registry,
+    /// the floors first, on the host's socket. `None` runs no hooks.
+    pub hooks: Option<crate::delegate::HookBridge>,
     /// What an engine that answers in this process reads besides these
     /// fields, such as Coder One's Microluna manifest and test script.
     /// `()` for a turn that only runs a CLI.
@@ -697,6 +701,8 @@ async fn answer_wrapped<X, E: Engine<X>>(
     if let Some(model) = &request.model {
         cli.model.clone_from(model);
     }
+    // The session runs the host's hooks, the floors first (#11529).
+    cli.hooks.clone_from(&request.hooks);
     // A signed-in Claude Code attaches the account's claude.ai connectors
     // partway through a session, and their tool lists alone are about
     // 115,000 tokens of prompt: on 2026-09-23 one two-command session cost
@@ -965,6 +971,7 @@ mod tests {
             issues: false,
             issue: false,
             review: false,
+            hooks: None,
             extra: (),
         })
     }

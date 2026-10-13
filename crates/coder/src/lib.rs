@@ -74,6 +74,7 @@ pub mod executor_door;
 pub mod first;
 pub mod generate;
 pub mod gym_kb;
+pub mod hooks;
 pub mod identity;
 pub mod local_chain;
 pub mod package;

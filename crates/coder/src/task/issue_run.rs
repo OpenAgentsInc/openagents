@@ -826,6 +826,7 @@ async fn asked_with(
         issues: true,
         issue: false,
         review: false,
+        hooks: None,
         extra: (),
     };
     let recorder = coder_delegate::record::Recorder::default();

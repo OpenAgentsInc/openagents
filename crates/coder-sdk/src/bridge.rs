@@ -282,6 +282,32 @@ impl Host {
     }
 }
 
+/// Starts a host answering from `registry` and installs the bridge
+/// (`program coder-hook`) as `cli`'s own `PreToolUse` hook (#11509): Claude
+/// Code's `--settings`, Codex's `-c hooks.PreToolUse`, and the host's socket
+/// in the session's environment. Keep the host while the session runs.
+/// `None`, with `cli` unchanged, when the socket can't be made.
+pub fn install(
+    cli: &mut coder_delegate::delegate::Cli,
+    registry: super::registry::Registry,
+    program: PathBuf,
+) -> Option<Host> {
+    let runner = Runner::new(registry, super::compose::Budget::default());
+    let host = Host::start(Arc::new(Mutex::new(runner))).ok()?;
+    cli.hooks = Some(hook_bridge(&host, program));
+    Some(host)
+}
+
+/// The bridge a delegated CLI runs for `host`: `program coder-hook`.
+#[must_use]
+pub fn hook_bridge(host: &Host, program: PathBuf) -> coder_delegate::delegate::HookBridge {
+    coder_delegate::delegate::HookBridge {
+        program,
+        args: vec![COMMAND.to_owned()],
+        socket: host.path().to_path_buf(),
+    }
+}
+
 impl Drop for Host {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::SeqCst);

@@ -7,9 +7,7 @@
 //!
 //! The bridge program is this binary's [`COMMAND`] subcommand ([`main`]).
 
-use std::sync::{Arc, Mutex};
-
-use coder_delegate::delegate::{Cli, HookBridge};
+use coder_delegate::delegate::Cli;
 
 /// The subcommand that runs the bridge: `coder-one coder-hook --format
 /// claude|codex`.
@@ -18,11 +16,7 @@ pub const COMMAND: &str = coder_sdk::bridge::COMMAND;
 /// A delegated session's hooks: the floors, held.
 #[must_use]
 pub fn registry() -> coder_sdk::Registry {
-    let mut registry = coder_sdk::Registry::new();
-    registry
-        .register(coder_sdk::floors::held_hook())
-        .expect("one hook registers");
-    registry
+    coder_sdk::floors::held_registry(None)
 }
 
 /// The host answering a delegated session's bridge, kept while it runs.
@@ -40,13 +34,7 @@ pub fn install(cli: &mut Cli) -> Option<Installed> {
 
 /// [`install`] with the bridge program named.
 pub fn install_with(cli: &mut Cli, program: std::path::PathBuf) -> Option<Installed> {
-    let runner = coder_sdk::Runner::new(registry(), coder_sdk::Budget::default());
-    let host = coder_sdk::bridge::Host::start(Arc::new(Mutex::new(runner))).ok()?;
-    cli.hooks = Some(HookBridge {
-        program,
-        args: vec![COMMAND.to_owned()],
-        socket: host.path().to_path_buf(),
-    });
+    let host = coder_sdk::bridge::install(cli, registry(), program)?;
     Some(Installed { _host: host })
 }
 
