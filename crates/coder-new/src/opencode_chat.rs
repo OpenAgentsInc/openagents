@@ -1,8 +1,8 @@
 //! OpenCode as a Coder harness (#11507), the way Claude Code is one
 //! (#11496): a chat routed to OpenCode runs each turn as `opencode run` in
 //! one OpenCode session that every later turn continues (`--session`), on
-//! OpenCode's free `opencode/big-pickle` or another model the person's
-//! OpenCode reaches.
+//! OpenCode's free `opencode/cat-jam-free` (Big Pickle if it is gone) or
+//! another model the person's OpenCode reaches.
 //!
 //! - **Order.** Claude Code first when it is on, signed in and has usage
 //!   left; OpenCode next when it is installed and its plugin is on; Coder's
@@ -48,8 +48,21 @@ use crate::bundled_runtime::{RoundUsage, RuntimeEvent};
 /// The plugin that turns the OpenCode harness on.
 pub const PLUGIN: &str = "opencode";
 
-/// OpenCode's free model, the harness's default.
+/// OpenCode's free model, the harness's default: Cat Jam, or Big Pickle
+/// when OpenCode no longer offers it ([`auto_model`]).
 pub const DEFAULT_MODEL: &str = coder::delegate_door::OPENCODE_AUTO_MODEL;
+
+/// The default model this computer's OpenCode offers: [`DEFAULT_MODEL`],
+/// or Big Pickle once OpenCode's catalog drops the stealth Cat Jam
+/// (#11547). A unit test never reads the computer's catalog.
+#[must_use]
+pub fn auto_model() -> &'static str {
+    if cfg!(test) {
+        DEFAULT_MODEL
+    } else {
+        coder::delegate_door::opencode_auto_model()
+    }
+}
 
 /// Where Coder keeps the person's OpenCode model pick, under its settings.
 const CHOICE_FILE: &str = "opencode-model.json";
@@ -104,7 +117,7 @@ struct ChoiceFile {
 
 /// The model the next OpenCode turn runs: a pin's, else the person's pick
 /// in /models, else `CODER_OPENCODE_MODEL`, else the default model in the
-/// person's OpenCode configuration, else [`DEFAULT_MODEL`].
+/// person's OpenCode configuration, else [`auto_model`].
 #[must_use]
 pub fn model(pinned: Option<String>) -> String {
     pinned
@@ -123,7 +136,7 @@ pub fn model(pinned: Option<String>) -> String {
                 acp_client::opencode::configured_model(&|name| std::env::var_os(name))
             }
         })
-        .unwrap_or_else(|| DEFAULT_MODEL.to_owned())
+        .unwrap_or_else(|| auto_model().to_owned())
 }
 
 fn saved_choice() -> Option<String> {
@@ -206,10 +219,16 @@ pub fn catalog() -> Vec<crate::models::Model> {
         .collect()
 }
 
-/// The rail's words for a chat on OpenCode: "OpenCode (opencode/big-pickle)".
+/// The rail's words for a chat on OpenCode: "OpenCode (Cat Jam)" for
+/// OpenCode Zen's free models, by name, else "OpenCode (provider/model)".
 #[must_use]
 pub fn rail_label(model: &str) -> String {
-    format!("OpenCode ({model})")
+    let name = match model {
+        "opencode/cat-jam-free" => "Cat Jam",
+        "opencode/big-pickle" => "Big Pickle",
+        other => other,
+    };
+    format!("OpenCode ({name})")
 }
 
 /// The note that opens an OpenCode session: who answers, and which model
@@ -678,6 +697,21 @@ mod tests {
         message
     }
 
+    /// #11547: the rail names OpenCode's free models honestly, by name.
+    #[test]
+    fn the_rail_names_opencode_free_models() {
+        assert_eq!(rail_label(DEFAULT_MODEL), "OpenCode (Cat Jam)");
+        assert_eq!(
+            rail_label(coder::delegate_door::OPENCODE_AUTO_FALLBACK),
+            "OpenCode (Big Pickle)"
+        );
+        assert_eq!(
+            rail_label("anthropic/claude-sonnet-5"),
+            "OpenCode (anthropic/claude-sonnet-5)"
+        );
+        assert_eq!(model(None), DEFAULT_MODEL);
+    }
+
     #[test]
     fn a_new_session_opens_with_the_identity_and_a_follow_up_sends_the_message() {
         let mut turn = Turn {
@@ -691,7 +725,7 @@ mod tests {
         };
         let first = turn.prompt();
         assert!(first.starts_with("You are Coder"));
-        assert!(first.contains("opencode/big-pickle"));
+        assert!(first.contains("opencode/cat-jam-free"));
         assert!(first.ends_with("What is in a.txt?"));
         turn.messages.push(message("assistant", "hello"));
         turn.messages.push(message("user", "Now change it."));

@@ -1788,7 +1788,8 @@ fn gemini_provider(key: model_access::ApiKey, base: &str) -> Result<Provider, St
 }
 
 /// `auto`'s OpenCode door: one `opencode acp` turn on the free
-/// `opencode/big-pickle` model, or the `provider/model` that
+/// `opencode/cat-jam-free` model (Big Pickle when OpenCode no longer offers
+/// it, or the turn says it is gone), or the `provider/model` that
 /// `CODER_OPENCODE_MODEL` names, in the engine's own database and
 /// permissions, as a delegated OpenCode turn runs (#11359). `model` is not
 /// named to `acp` — OpenCode takes it from the inline configuration the
@@ -1813,37 +1814,62 @@ async fn opencode_turn(
     let named = std::env::var(coder_delegate::delegate::OPENCODE_MODEL_VAR)
         .ok()
         .filter(|model| !model.trim().is_empty());
-    let model = acp_client::opencode::Model::parse(
-        named
-            .as_deref()
-            .map_or(coder::delegate_door::OPENCODE_AUTO_MODEL, str::trim),
-    )
-    .map_err(|why| format!("Coder's OpenCode model is invalid: {why}"))?;
+    // A named model runs alone; the automatic one falls back to Big Pickle
+    // when OpenCode says Cat Jam is gone (#11547).
+    let candidates: Vec<&str> = match named.as_deref() {
+        Some(named) => vec![named.trim()],
+        None => {
+            let auto = coder::delegate_door::opencode_auto_model();
+            if auto == coder::delegate_door::OPENCODE_AUTO_FALLBACK {
+                vec![auto]
+            } else {
+                vec![auto, coder::delegate_door::OPENCODE_AUTO_FALLBACK]
+            }
+        }
+    };
     let permission = if crate::approval::gated() {
         acp_client::opencode::Permission::Workspace
     } else {
         acp_client::opencode::Permission::Full
     };
+    let answered = AtomicBool::new(false);
     let mut events = |event: RuntimeEvent| match event {
-        RuntimeEvent::Text(text) => text_callback(&execution.redact_text(&text)),
+        RuntimeEvent::Text(text) => {
+            answered.store(true, Ordering::Relaxed);
+            text_callback(&execution.redact_text(&text));
+        }
         RuntimeEvent::Model(model) => model_callback(&model),
         event => event_callback(event),
     };
-    let prior = crate::bundled_runtime::child_env();
-    let mut vars = prior.clone();
-    vars.extend(
-        acp_client::opencode::environment(
-            &model,
-            permission,
-            std::path::Path::new("openagents-coder-engine.db"),
-        )
-        .into_iter()
-        .map(|(name, value)| (name.into(), value.into())),
-    );
-    crate::bundled_runtime::set_child_env(vars);
-    let result =
-        crate::bundled_runtime::acp(&agent, &task, &execution.cwd, None, cancel, &mut events).await;
-    crate::bundled_runtime::set_child_env(prior);
+    let mut result = Err("OpenCode has no model to run.".to_owned());
+    for (index, candidate) in candidates.iter().enumerate() {
+        let model = acp_client::opencode::Model::parse(candidate)
+            .map_err(|why| format!("Coder's OpenCode model is invalid: {why}"))?;
+        let prior = crate::bundled_runtime::child_env();
+        let mut vars = prior.clone();
+        vars.extend(
+            acp_client::opencode::environment(
+                &model,
+                permission,
+                std::path::Path::new("openagents-coder-engine.db"),
+            )
+            .into_iter()
+            .map(|(name, value)| (name.into(), value.into())),
+        );
+        crate::bundled_runtime::set_child_env(vars);
+        result =
+            crate::bundled_runtime::acp(&agent, &task, &execution.cwd, None, cancel, &mut events)
+                .await;
+        crate::bundled_runtime::set_child_env(prior);
+        let retry = index + 1 < candidates.len()
+            && !answered.load(Ordering::Relaxed)
+            && result
+                .as_ref()
+                .is_err_and(|error| coder_delegate::delegate::opencode_model_gone(error));
+        if !retry {
+            break;
+        }
+    }
     let result = result?;
     let mut reply = Streamed {
         text: result["reply"].as_str().unwrap_or_default().into(),

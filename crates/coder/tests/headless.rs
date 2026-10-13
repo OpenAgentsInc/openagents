@@ -769,7 +769,7 @@ fn auto_delegates_to_an_opencode_target_named_by_its_login() {
     let recording = atif::log::read(&trace).expect("the trace reads back");
     assert_eq!(recording.session.door, "delegate");
     assert_eq!(
-        recording.session.model, "opencode/opencode/big-pickle",
+        recording.session.model, "opencode/opencode/cat-jam-free",
         "an automatic OpenCode turn names the free OpenCode model"
     );
 }

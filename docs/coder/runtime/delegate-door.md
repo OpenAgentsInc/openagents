@@ -7,7 +7,8 @@ commands, and the commands run in the working directory. Microcoder runs
 in this process and generates through the first connected provider with
 capacity: GPT-6 Luna on the operator's Codex login, then Claude Code's
 login. When Microcoder has no provider to use, the executor is OpenCode
-(the free `opencode/big-pickle` model), then Claude Code, then Codex CLI,
+(the free `opencode/cat-jam-free` model, or `opencode/big-pickle` when
+OpenCode no longer offers it), then Claude Code, then Codex CLI,
 briefed with what Jev chose from the workspace. The Open Responses door,
 Gemini today, answers only when this machine has no delegation target.
 
@@ -153,7 +154,7 @@ with it. The terminal and `coder -p` choose through
 | `CODER_DELEGATE=off` | Never delegate. |
 | `CODER_DELEGATE_AGENT` | `microcoder`, `opencode`, `claude-code`, or `codex`: consider only that target. `microluna` names Microcoder, which replaced it. |
 | `CODER_DELEGATE_MODEL` | The target's model. For Microcoder it names the Codex model. Unset, Microcoder and Codex run `gpt-6-luna`, and Claude Code runs `claude-opus-5-5`. It never names the OpenCode model. |
-| `CODER_OPENCODE_MODEL` | The OpenCode turn's model, in OpenCode's `PROVIDER/MODEL` form. Unset, an automatic OpenCode turn runs the free `opencode/big-pickle`. |
+| `CODER_OPENCODE_MODEL` | The OpenCode turn's model, in OpenCode's `PROVIDER/MODEL` form. Unset, an automatic OpenCode turn runs the free `opencode/cat-jam-free`, or `opencode/big-pickle` when OpenCode no longer offers it ([A/B](../opencode-auto-model-ab.md)). |
 | `CODER_WORKER`, `CODER_EXECUTOR` | An explicit request for the relay or a local executor. It outranks `auto` and contradicts `always`. |
 
 Microcoder needs no binary of its own. The door only reads the Codex

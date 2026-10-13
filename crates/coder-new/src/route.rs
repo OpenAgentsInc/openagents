@@ -76,7 +76,7 @@ pub enum Lane {
     /// Claude Code login, then the OpenAgents cloud — through the local
     /// coding loop, strongest where a subscription is in date.
     Local,
-    /// An installed OpenCode agent's turn, on the free `big-pickle` model.
+    /// An installed OpenCode agent's turn, on the free `cat-jam-free` model.
     OpenCode,
     /// The person's OpenRouter key, on the model the favor favors
     /// ([`openrouter_model`]).

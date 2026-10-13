@@ -7,8 +7,9 @@ host with its own logins, in three ways:
 
 - **A terminal or `coder -p` turn**: the [delegate door](delegate-door.md)
   reaches OpenCode under `CODER_DELEGATE=auto` (after Microcoder) or
-  `CODER_DELEGATE_AGENT=opencode`, running the free `opencode/big-pickle`
-  model unless `CODER_OPENCODE_MODEL` names another.
+  `CODER_DELEGATE_AGENT=opencode`, running the free `opencode/cat-jam-free`
+  model (`opencode/big-pickle` when OpenCode no longer offers it;
+  [A/B](../opencode-auto-model-ab.md)) unless `CODER_OPENCODE_MODEL` names another.
 - **A repository turn on an `opencode` route**: `opencode acp`, OpenCode's
   Agent Client Protocol (ACP) server, takes the whole turn of an
   auto-started task, as `devin acp` does on a [Devin route](devin.md).

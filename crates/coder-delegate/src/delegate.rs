@@ -47,12 +47,80 @@ pub const DEFAULT_CODEX_MODEL: &str = "gpt-6.1-sol";
 pub const DEFAULT_OPENCODE_MODEL: &str = "";
 
 /// The model Coder's delegate door runs an automatic OpenCode turn on when
-/// the operator names none: OpenCode Zen's free `opencode/big-pickle`, so a
-/// delegated turn needs no third-party credit. `CODER_OPENCODE_MODEL` (or
-/// `CODER_DELEGATE_MODEL`) names another. Coder One keeps
-/// [`DEFAULT_OPENCODE_MODEL`] (empty), so its `--delegate-agent opencode`
-/// still runs OpenCode's configured model.
-pub const OPENCODE_AUTO_MODEL: &str = "opencode/big-pickle";
+/// the operator names none: OpenCode Zen's free `opencode/cat-jam-free`, so
+/// a delegated turn needs no third-party credit. It won the A/B against
+/// Big Pickle (#11547, `docs/coder/opencode-auto-model-ab.md`). It is a
+/// stealth model and may be withdrawn, so [`opencode_auto_model`] falls back
+/// to [`OPENCODE_AUTO_FALLBACK`] when OpenCode no longer offers it.
+/// `CODER_OPENCODE_MODEL` (or `CODER_DELEGATE_MODEL`) names another. Coder
+/// One keeps [`DEFAULT_OPENCODE_MODEL`] (empty), so its `--delegate-agent
+/// opencode` still runs OpenCode's configured model.
+pub const OPENCODE_AUTO_MODEL: &str = "opencode/cat-jam-free";
+
+/// The automatic OpenCode model when [`OPENCODE_AUTO_MODEL`] is
+/// unavailable: OpenCode Zen's free `opencode/big-pickle`.
+pub const OPENCODE_AUTO_FALLBACK: &str = "opencode/big-pickle";
+
+/// The automatic OpenCode model this computer's OpenCode offers:
+/// [`OPENCODE_AUTO_MODEL`], unless OpenCode's own model catalog (its
+/// models.dev cache, `$XDG_CACHE_HOME/opencode/models.json` or
+/// `~/.cache/opencode/models.json`, which OpenCode checks a model against
+/// before it runs one) no longer lists it; then [`OPENCODE_AUTO_FALLBACK`].
+/// With no catalog to read, the preferred model: a turn that then finds
+/// it gone falls back on [`opencode_model_gone`].
+#[must_use]
+pub fn opencode_auto_model(env: &impl Fn(&str) -> Option<String>) -> &'static str {
+    let cache = env("XDG_CACHE_HOME")
+        .filter(|dir| !dir.is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| env("HOME").map(|home| std::path::Path::new(&home).join(".cache")));
+    let catalog = cache.and_then(|dir| std::fs::read(dir.join("opencode/models.json")).ok());
+    opencode_auto_model_in(catalog.as_deref())
+}
+
+/// [`opencode_auto_model`] for a catalog already read: OpenCode's
+/// `models.json`, providers by id, each with its `models` by id.
+#[must_use]
+pub fn opencode_auto_model_in(catalog: Option<&[u8]>) -> &'static str {
+    let Some(catalog) = catalog.and_then(|bytes| serde_json::from_slice::<Value>(bytes).ok())
+    else {
+        return OPENCODE_AUTO_MODEL;
+    };
+    let Some((provider, model)) = OPENCODE_AUTO_MODEL.split_once('/') else {
+        return OPENCODE_AUTO_MODEL;
+    };
+    let Some(models) = catalog
+        .get(provider)
+        .and_then(|entry| entry.get("models"))
+        .and_then(Value::as_object)
+    else {
+        // A catalog without the provider at all is not one to judge by.
+        return OPENCODE_AUTO_MODEL;
+    };
+    if models.contains_key(model) {
+        OPENCODE_AUTO_MODEL
+    } else {
+        OPENCODE_AUTO_FALLBACK
+    }
+}
+
+/// Whether an OpenCode failure says the model it was asked for is gone:
+/// OpenCode's own `ProviderModelNotFoundError` ("Model not found: ..."),
+/// or the provider refusing the model (`model_unavailable`, "Model access
+/// is disabled", `model_not_found`). The automatic turn then runs again on
+/// [`OPENCODE_AUTO_FALLBACK`].
+#[must_use]
+pub fn opencode_model_gone(error: &str) -> bool {
+    [
+        "ProviderModelNotFoundError",
+        "Model not found",
+        "model_not_found",
+        "model_unavailable",
+        "Model access is disabled",
+    ]
+    .iter()
+    .any(|marker| error.contains(marker))
+}
 
 /// Which CLI runs the briefing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -4313,20 +4381,63 @@ pub mod tests {
         assert_eq!(auth.refusal, Some("not_logged_in"));
     }
 
+    /// #11547: Cat Jam is a stealth model; when OpenCode's catalog no
+    /// longer lists it, or a turn says it is gone, Big Pickle runs.
+    #[test]
+    fn the_opencode_auto_model_falls_back_when_cat_jam_is_gone() {
+        let listed = br#"{"opencode":{"models":{"cat-jam-free":{},"big-pickle":{}}}}"#;
+        assert_eq!(opencode_auto_model_in(Some(listed)), OPENCODE_AUTO_MODEL);
+        let withdrawn = br#"{"opencode":{"models":{"big-pickle":{}}}}"#;
+        assert_eq!(
+            opencode_auto_model_in(Some(withdrawn)),
+            OPENCODE_AUTO_FALLBACK
+        );
+        // Nothing to judge by: the preferred model, and the error decides.
+        assert_eq!(opencode_auto_model_in(None), OPENCODE_AUTO_MODEL);
+        assert_eq!(
+            opencode_auto_model_in(Some(b"not json")),
+            OPENCODE_AUTO_MODEL
+        );
+        assert_eq!(
+            opencode_auto_model_in(Some(br#"{"google":{"models":{}}}"#)),
+            OPENCODE_AUTO_MODEL
+        );
+        // Read from the cache OpenCode keeps under the home folder.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".cache/opencode")).unwrap();
+        std::fs::write(dir.path().join(".cache/opencode/models.json"), withdrawn).unwrap();
+        let home = dir.path().to_string_lossy().into_owned();
+        let env = |name: &str| (name == "HOME").then(|| home.clone());
+        assert_eq!(opencode_auto_model(&env), OPENCODE_AUTO_FALLBACK);
+        // OpenCode's own words for a model it no longer has.
+        assert!(opencode_model_gone(
+            "ProviderModelNotFoundError: Model not found: opencode/cat-jam-free."
+        ));
+        assert!(opencode_model_gone("Model access is disabled"));
+        assert!(!opencode_model_gone("Rate limit exceeded, retry later"));
+        // A provider refusal the stream types as `model_unavailable`.
+        let refused = Summary::parse_opencode(
+            include_str!("../fixtures/opencode/run-403.jsonl"),
+            OPENCODE_AUTO_MODEL,
+        );
+        assert!(opencode_model_gone(refused.refusal.unwrap()));
+    }
+
     #[test]
     fn opencode_is_chosen_by_name_and_found_with_its_login() {
         assert_eq!(Agent::parse("opencode"), Ok(Agent::OpenCode));
         // Coder One keeps OpenCode's configured model; Coder's delegate door
         // names the free OpenCode model for an automatic turn.
         assert_eq!(Agent::OpenCode.default_model(), "");
-        assert_eq!(OPENCODE_AUTO_MODEL, "opencode/big-pickle");
+        assert_eq!(OPENCODE_AUTO_MODEL, "opencode/cat-jam-free");
         assert_eq!(
             acp_client::opencode::Model::parse(OPENCODE_AUTO_MODEL),
             Ok(acp_client::opencode::Model {
                 provider: "opencode".into(),
-                model: "big-pickle".into(),
+                model: "cat-jam-free".into(),
             })
         );
+        assert!(acp_client::opencode::Model::parse(OPENCODE_AUTO_FALLBACK).is_ok());
         let dir = tempfile::tempdir().unwrap();
         let installed = dir.path().join(".opencode/bin");
         std::fs::create_dir_all(&installed).unwrap();

@@ -1001,7 +1001,7 @@ fn plan_paying(app: &App, harness: crate::harness_plugin::Harness) -> Option<Pla
     }
 }
 
-/// "OpenCode (opencode/big-pickle)": the model the chat's OpenCode session
+/// "OpenCode (Cat Jam)": the model the chat's OpenCode session
 /// last ran, else the one its next turn runs.
 pub(crate) fn opencode_rail_label(app: &App) -> String {
     let model = app.live.opencode_session.as_ref().map_or_else(

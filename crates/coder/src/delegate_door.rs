@@ -28,7 +28,7 @@
 //! - `CODER_DELEGATE=auto`, the default, delegates to Microcoder when a
 //!   provider it can use is connected and has capacity; Microcoder runs in
 //!   this process, so nothing needs installing. Otherwise it delegates to
-//!   an installed and authenticated OpenCode (the free `opencode/big-pickle`
+//!   an installed and authenticated OpenCode (the free `opencode/cat-jam-free`
 //!   model, unless `CODER_OPENCODE_MODEL` names another), then `claude`,
 //!   then `codex`, when its login has capacity, and falls back to the door
 //!   [`Door::from_env`] builds when none is available, saying why. When that
@@ -352,11 +352,22 @@ pub fn capacity_dir() -> Option<PathBuf> {
 }
 
 /// The model an automatic OpenCode turn runs unless the operator names
-/// another: OpenCode Zen's free `opencode/big-pickle`
-/// ([`coder_delegate::delegate::OPENCODE_AUTO_MODEL`]). `CODER_OPENCODE_MODEL`
-/// names another. `CODER_DELEGATE_MODEL` stays Microcoder's Codex model and
-/// never leaks into an OpenCode turn.
+/// another: OpenCode Zen's free `opencode/cat-jam-free`
+/// ([`coder_delegate::delegate::OPENCODE_AUTO_MODEL`]), or Big Pickle when
+/// OpenCode no longer offers it ([`opencode_auto_model`]).
+/// `CODER_OPENCODE_MODEL` names another. `CODER_DELEGATE_MODEL` stays
+/// Microcoder's Codex model and never leaks into an OpenCode turn.
 pub const OPENCODE_AUTO_MODEL: &str = coder_delegate::delegate::OPENCODE_AUTO_MODEL;
+
+/// The automatic OpenCode model when [`OPENCODE_AUTO_MODEL`] is gone.
+pub const OPENCODE_AUTO_FALLBACK: &str = coder_delegate::delegate::OPENCODE_AUTO_FALLBACK;
+
+/// The automatic OpenCode model this computer's OpenCode offers
+/// ([`coder_delegate::delegate::opencode_auto_model`]).
+#[must_use]
+pub fn opencode_auto_model() -> &'static str {
+    coder_delegate::delegate::opencode_auto_model(&env_value)
+}
 
 /// The targets this machine has, in the order `auto` prefers them:
 /// Microcoder, then OpenCode, then Claude Code, then Codex CLI. `model`
@@ -553,7 +564,7 @@ pub struct Settings {
     /// model, and an OpenCode turn only through `coder_delegate::resolve`.
     pub model: Option<String>,
     /// The model an OpenCode turn runs: `CODER_OPENCODE_MODEL` when set,
-    /// else the free [`OPENCODE_AUTO_MODEL`]. Kept apart from `model` so a
+    /// else the free [`opencode_auto_model`]. Kept apart from `model` so a
     /// Codex model named for Microcoder never leaks into OpenCode.
     pub opencode_model: String,
     /// The door the environment names explicitly, in a sentence.
@@ -574,7 +585,7 @@ impl Settings {
     pub fn read() -> Result<Self, String> {
         let model = env_value(MODEL_VAR);
         let opencode_model = env_value(coder_delegate::delegate::OPENCODE_MODEL_VAR)
-            .unwrap_or_else(|| OPENCODE_AUTO_MODEL.to_string());
+            .unwrap_or_else(|| opencode_auto_model().to_string());
         let book = capacity_dir().unwrap_or_else(std::env::temp_dir);
         Ok(Settings {
             mode: Mode::read(env_value(MODE_VAR).as_deref()),

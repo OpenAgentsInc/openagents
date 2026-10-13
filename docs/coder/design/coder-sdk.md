@@ -423,7 +423,7 @@ backend), not ACP.
 Built (#11507): OpenCode is also a Coder harness, the way Claude Code is
 one: a chat routed to it runs each turn as `opencode run` in one OpenCode
 session that later turns continue (`--session`), on OpenCode's free
-`opencode/big-pickle` or a model the person picks in /models from what
+`opencode/cat-jam-free` (Big Pickle when it is gone) or a model the person picks in /models from what
 their OpenCode reaches. The harness order is Claude Code (on, signed in,
 usage left), then OpenCode (installed, its plugin on), then Coder's own
 loop; a failed Claude Code turn judged to move falls back the same way
