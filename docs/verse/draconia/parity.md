@@ -697,3 +697,13 @@ shot.
     reference's long streaming fan.
   - Both come from the asset and its baked clip (the face work's), not the
     scene.
+
+### Peacock v15, 2026-10-13
+
+- **Reverted** to Alice recolored, the same as v13 (PSNR about 52 dB
+  against v13). In review, v14's skinned build read as a short, boxy blob
+  with no legs or skirt line. The loader (`film/draconia.rs`, the shot
+  file's `scene.draconia`) stays for later.
+- **The rule from here:** the other Draconia shots stay on the stand-in. When
+  this file lists the MetaHuman Draconia, it's tested in one shot first and
+  compared with the stand-in, and only switched if clearly better.
