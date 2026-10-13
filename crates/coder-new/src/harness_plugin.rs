@@ -173,6 +173,20 @@ fn claude_signed_in() -> bool {
     TEST_CLAUDE.with(std::cell::Cell::get)
 }
 
+/// Whether Claude Code may be offered for a pick (#11524), from cheap
+/// checks only: its program is on disk and no check this run found it
+/// signed out. The sign-in check itself runs `claude auth status`, so it
+/// waits for a refresh off the input's thread.
+#[cfg(not(test))]
+pub(crate) fn claude_present() -> bool {
+    crate::claude::known() != Some(false) && crate::bundled_runtime::claude_print::agent().is_some()
+}
+
+#[cfg(test)]
+pub(crate) fn claude_present() -> bool {
+    claude_signed_in()
+}
+
 /// Makes this test thread's computer hold a Claude Code login, or not.
 #[cfg(test)]
 pub(crate) fn sign_in_claude(signed_in: bool) {
@@ -556,7 +570,7 @@ impl App {
     }
 
     /// The folder a chat's briefing is chosen for.
-    fn context_cwd(&self) -> std::path::PathBuf {
+    pub(crate) fn context_cwd(&self) -> std::path::PathBuf {
         self.cwd.clone().unwrap_or_else(|| {
             std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
         })

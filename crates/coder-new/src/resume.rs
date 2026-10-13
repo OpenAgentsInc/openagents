@@ -255,6 +255,8 @@ impl App {
         self.cancel_request();
         self.select_agent(None);
         self.live = restored.live;
+        // The reopened chat's own pin shows (#11524).
+        self.next_pick = None;
         if let Ok(path) = store.path(&id) {
             self.live.turns = crate::rewind::read(&path, &self.live);
         }
@@ -323,6 +325,8 @@ impl App {
             return false;
         }
         let fresh = App::default();
+        // The new chat keeps the harness picked with Shift+Tab (#11524).
+        let pick = self.current_pick();
         self.drop_route();
         self.set_mode(Mode::Live);
         self.cancel_request();
@@ -347,6 +351,7 @@ impl App {
         self.history.dirty = false;
         self.history.last_attempt = None;
         self.history.save_failed = false;
+        self.next_pick = (pick != crate::harness_pick::Pick::Auto).then_some(pick);
         self.notice = Some("New chat. The last one is in /resume.".into());
         true
     }
@@ -530,6 +535,8 @@ impl App {
         }
         let at_end = self.history.following.as_ref().is_none_or(|f| f.stick);
         self.live = restored.live;
+        // The reopened chat's own pin shows (#11524).
+        self.next_pick = None;
         self.delegations = restored.delegations;
         // A follower at the end watches the delegation running now, such as
         // an agent's Codex child chat, and the main chat otherwise.

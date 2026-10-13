@@ -729,35 +729,63 @@ fn repository_rail(app: &App) -> String {
 /// rather than by the turn. Nothing of Claude's shows on another harness
 /// or before the first turn (#11483).
 fn top_rail(app: &App) -> Option<String> {
+    use crate::harness_pick::Pick;
+    use crate::harness_plugin::Harness;
+    let now = atif::now_ms() / 1000;
+    // The harness whose facts these are: the one picked, else the one
+    // Auto routed to (#11524).
+    let pick = app.current_pick();
+    let shown = match pick {
+        Pick::Harness(harness) => Some(harness),
+        Pick::Auto => app
+            .live
+            .runs_on
+            .filter(|_| !app.live.pinned && app.live.agent.is_none()),
+        Pick::Agent { .. } => None,
+    };
+    // The chat is on what the rail names, so its session's facts are its.
+    let running = shown.is_some() && shown == app.live.runs_on && app.live.agent.is_none();
+    // Before Auto routes anything, the chat's own cost and context still
+    // show; an agent's turns are not metered here.
+    let own = running || (pick == Pick::Auto && shown.is_none());
+    let cached_usage = |harness: Harness| {
+        crate::harness_pick::cached(&Pick::Harness(harness).key())
+            .and_then(|entry| entry.usage_now(now).map(str::to_owned))
+    };
     let mut parts = Vec::new();
-    if app.on_claude() {
-        if let Some(plan) = crate::claude_plan::rail_text(atif::now_ms() / 1000) {
+    if shown == Some(Harness::ClaudeCode) {
+        if let Some(plan) =
+            crate::claude_plan::rail_text(now).or_else(|| cached_usage(Harness::ClaudeCode))
+        {
             parts.push(plan);
         }
-        if let Some(context) = app
-            .live
-            .claude_session
-            .as_ref()
-            .and_then(|session| crate::claude_stream::context_line(&session.id))
+        if running
+            && let Some(context) = app
+                .live
+                .claude_session
+                .as_ref()
+                .and_then(|session| crate::claude_stream::context_line(&session.id))
         {
             parts.push(context);
         }
     }
-    // Codex's windows, the same way, only while Codex runs the chat
-    // (#11510).
-    if app.on_codex() {
-        let windows = crate::codex::windows_text(atif::now_ms() / 1000);
+    // Codex's windows, the same way, only beside Codex (#11510).
+    if shown == Some(Harness::Codex) {
+        let windows = crate::codex::windows_text(now);
         if !windows.is_empty() {
+            parts.push(windows);
+        } else if let Some(windows) = cached_usage(Harness::Codex) {
             parts.push(windows);
         }
     }
+    let metered = !matches!(shown, Some(Harness::ClaudeCode | Harness::Codex));
     let cost = crate::long_session::session_cost(app);
-    if cost > 0.0 && !app.on_claude() && !app.on_codex() {
+    if cost > 0.0 && metered && own {
         parts.push(agent_fleet::dollars(cost));
     }
     // How full the Coder loop's context is, as Claude's rail shows its
     // own (#11519).
-    if let Some(context) = crate::long_session::context_line(app) {
+    if own && let Some(context) = crate::long_session::context_line(app) {
         parts.push(context);
     }
     (!parts.is_empty()).then(|| parts.join(" · "))
@@ -787,26 +815,58 @@ pub(crate) fn rail_model_name(model: &str) -> String {
         .join(" ")
 }
 
-/// Which harness ran the chat, on the input's top-right rail: "Claude
-/// (Haiku 5.5)" or "Coder (auto)" (the model's own name when the person
-/// chose one in /models), `solver` while `coder solver` watches a run.
-/// Before a chat's first turn is routed it says only `coder`, the product,
-/// or the model the person chose. There is no mode to name (#11453).
+/// The input's top-right rail (#11524): the harness pick, `Auto` until
+/// Auto has routed a turn and then what ran ("Auto · Claude (Opus 5.5)"),
+/// or the harness the person picked with Shift+Tab ("Codex (GPT-6.1-Sol)",
+/// "Devin"). `solver` while `coder solver` watches a run.
 fn rail_harness(app: &App) -> Option<String> {
-    use crate::harness_plugin::Harness;
+    use crate::harness_pick::Pick;
     if app.mode == Mode::Solver {
         return Some(crate::solver::LABEL.into());
     }
     if app.mode != Mode::Live {
         return None;
     }
-    let keyed = app.plugins.enabled && app.plugins.key_configured;
-    // Before the chat's first turn nothing is routed and nothing is
-    // named: the rail never reads as a mode to pick (owner, 2026-10-12).
-    let harness = app.live.runs_on?;
+    match app.current_pick() {
+        Pick::Auto => {
+            // What Auto routed, once it has; a pin waiting to be lifted
+            // at the next message is not Auto's.
+            let routed = app
+                .live
+                .runs_on
+                .filter(|_| !app.live.pinned && app.live.agent.is_none());
+            Some(match routed {
+                Some(harness) => format!("Auto · {}", harness_label(app, harness)),
+                None => "Auto".into(),
+            })
+        }
+        Pick::Harness(harness) => Some(harness_label(app, harness)),
+        Pick::Agent { id, name } => {
+            let model = crate::harness_pick::cached(&format!("agent:{id}"))
+                .and_then(|entry| entry.model)
+                .filter(|model| !model.is_empty());
+            Some(match model {
+                Some(model) => format!("{name} ({})", rail_model_name(&model)),
+                None => name,
+            })
+        }
+    }
+}
+
+/// A harness's name and, in parentheses, the model its next turn runs:
+/// "Claude (Haiku 5.5)", "Coder (auto)", "Codex (GPT-6.1-Sol)".
+fn harness_label(app: &App, harness: crate::harness_plugin::Harness) -> String {
+    use crate::harness_plugin::Harness;
+    // A pin's model is the chat's harness's, not another one's.
+    let pinned_model = app
+        .live
+        .pinned_model
+        .clone()
+        .filter(|_| app.live.runs_on == Some(harness));
     match harness {
-        Harness::ClaudeCode => Some(claude_rail_label()),
+        Harness::ClaudeCode => claude_rail_label(),
         Harness::CoderLoop => {
+            let keyed = app.plugins.enabled && app.plugins.key_configured;
             let model = if keyed {
                 crate::models::label(&app.plugins.model)
             } else {
@@ -838,15 +898,21 @@ fn rail_harness(app: &App) -> Option<String> {
             } else {
                 model
             };
-            Some(format!("{CODER_RAIL} ({model})"))
+            format!("{CODER_RAIL} ({model})")
         }
         // "Codex (GPT-6.1-Sol)": the model the next turn runs (#11510).
-        Harness::Codex => Some(format!(
+        Harness::Codex => format!(
             "Codex ({})",
-            crate::codex::name(&crate::codex::turn_model(app.live.pinned_model.clone()))
-        )),
+            crate::codex::name(&crate::codex::turn_model(pinned_model))
+        ),
         // The model the chat's OpenCode session runs, named (#11507).
-        Harness::OpenCode => Some(opencode_rail_label(app)),
+        Harness::OpenCode => {
+            let model = app.live.opencode_session.as_ref().map_or_else(
+                || crate::opencode_chat::model(pinned_model),
+                |session| session.model.clone(),
+            );
+            crate::opencode_chat::rail_label(&model)
+        }
     }
 }
 

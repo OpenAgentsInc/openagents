@@ -411,6 +411,17 @@ pub fn available() -> bool {
     known
 }
 
+/// What [`available`] already found this run, without asking the
+/// computer or waiting for a check under way: `None` before it has.
+#[must_use]
+pub fn known() -> Option<bool> {
+    match AVAILABLE.try_lock() {
+        Ok(cache) => *cache,
+        Err(std::sync::TryLockError::Poisoned(cache)) => *cache.into_inner(),
+        Err(std::sync::TryLockError::WouldBlock) => None,
+    }
+}
+
 /// Forget the cached answer, so the next [`available`] asks the computer
 /// again.
 pub fn recheck() {

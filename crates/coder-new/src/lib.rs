@@ -50,6 +50,7 @@ pub mod gateway_models;
 use coder_sdk::git_guard;
 pub mod github_tool;
 pub mod harness;
+pub mod harness_pick;
 pub mod harness_plugin;
 pub mod home;
 pub mod identity;
@@ -304,6 +305,13 @@ pub struct App {
     /// What chose the next turn's harness, set where it is chosen; a turn
     /// with none set continues on the chat's harness.
     pub(crate) routing_rule: Option<routing_record::Rule>,
+    /// The harness the person picked with Shift+Tab (#11524) since the
+    /// chat's last turn; the chat's own pin otherwise.
+    pub(crate) next_pick: Option<harness_pick::Pick>,
+    /// When the highlighted pick's facts are refreshed.
+    pub(crate) pick_refresher: harness_pick::Refresher,
+    /// How many pick refreshes this App has seen finish.
+    pub(crate) pick_refreshes_seen: u64,
     /// What router v0 read for the next turn's choice: System One's
     /// probabilities and its trace, for the routing record (#11460).
     pub(crate) routing_router: Option<(Vec<routing_record::Probability>, router::Trace)>,
@@ -2136,6 +2144,12 @@ impl App {
                 self.pending_escalation = None;
                 self.plan = None;
             }
+            // A Shift+Tab pick holds from this message on (#11524).
+            self.apply_pick();
+            if let Some(agent) = self.picked_agent() {
+                self.submit_agent(agent);
+                return;
+            }
             // Never means never (#11475).
             if !self.route_settled && self.pending_route.is_none() && self.honor_never() {
                 return;
@@ -2591,6 +2605,7 @@ impl App {
         self.poll_login();
         self.poll_sync();
         self.plugins.bundled.engines.poll();
+        self.poll_pick();
         self.animation_frame = self.animation_frame.wrapping_add(1) % 8;
     }
 
@@ -3301,6 +3316,15 @@ impl App {
                         KeyCode::Esc | KeyCode::F(2) => self.screen = self.return_screen,
                         _ => {}
                     }
+                    return true;
+                }
+                // Shift+Tab steps the harness pick on the input's rail
+                // (#11524). It never sends and leaves the draft as it is.
+                if key.code == KeyCode::BackTab
+                    && self.mode == Mode::Live
+                    && self.selected_agent.is_none()
+                {
+                    self.cycle_pick();
                     return true;
                 }
                 if self.footer_focused && matches!(key.code, KeyCode::Up | KeyCode::Down) {

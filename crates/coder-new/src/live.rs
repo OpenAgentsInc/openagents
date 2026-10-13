@@ -89,6 +89,12 @@ pub struct Chat {
     pub moved: bool,
     /// The model a pin names for this chat's turns on its harness (#11475).
     pub pinned_model: Option<String>,
+    /// The ACP agent the person pinned this chat to with Shift+Tab
+    /// (#11524), by its id: its turns run there instead of on a harness.
+    pub agent: Option<String>,
+    /// The harness Auto had the chat on before a Shift+Tab pick, so going
+    /// back to Auto carries on there.
+    pub(crate) before_pin: Option<crate::harness_plugin::Harness>,
     /// The files each recent turn changed, newest last, so `/rewind` can
     /// undo them (#11515).
     pub(crate) turns: Vec<crate::shell_changes::TurnRecord>,
@@ -472,6 +478,15 @@ pub enum Work {
         briefing: Option<Box<crate::context::Briefing>>,
         /// The model a pin names; `None` runs the pick in /models.
         model: Option<String>,
+    },
+    /// A turn on an ACP agent the person picked with Shift+Tab (#11524):
+    /// one session for the turn, reading the conversation so far, every
+    /// step through Coder's checks ([`crate::bundled_runtime::acp_briefed`]).
+    Acp {
+        agent: crate::bundled_runtime::AcpAgent,
+        messages: Vec<Message>,
+        cwd: std::path::PathBuf,
+        briefing: Option<String>,
     },
     /// A turn of solver's conversational Intaker: Haiku with a read-only
     /// `gh`, helping the person find or pick the issue to solve.
@@ -1336,6 +1351,28 @@ fn run_with_provider(
                     };
                     let result = crate::opencode_chat::run(turn, &cancel, &mut events, &mut on_session).await;
                     Update::Finished { id, result }
+                }
+                Work::Acp { agent, messages, cwd, briefing } => {
+                    let task = crate::codex::seed(&messages);
+                    let mut events = |event: RuntimeEvent| match event {
+                        RuntimeEvent::Text(text) => text_callback(&text),
+                        RuntimeEvent::Model(model) => model_callback(&model),
+                        event => event_callback(event),
+                    };
+                    let result = crate::bundled_runtime::acp_briefed(&agent, &task, &cwd, None, false, briefing.as_deref(), &cancel, &mut events).await;
+                    // The model the agent named, for its pick on the rail next time.
+                    if let Some(model) = result.as_ref().ok().and_then(|value| value["model"].as_str()) {
+                        let now = atif::now_ms() / 1000;
+                        crate::harness_pick::remember(&format!("agent:{}", agent.id), |entry| {
+                            entry.model = Some(model.to_owned());
+                            entry.model_at = now;
+                        });
+                    }
+                    Update::Finished { id, result: result.map(|value| Streamed {
+                        text: value["reply"].as_str().unwrap_or_default().into(),
+                        model: value["model"].as_str().map_or_else(|| agent.name.clone(), str::to_owned),
+                        ..Streamed::default()
+                    }) }
                 }
                 Work::SolverIntake { messages, cwd, github, claude: false, account } => {
                     let result = match account.as_ref().map(Provider::gateway) {

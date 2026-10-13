@@ -244,10 +244,14 @@ fn run() -> io::Result<()> {
         return io::stdout().write_all(snapshot::svg(&mut app, 110, 36).as_bytes());
     }
     app.interactive_disclosures = true;
-    // The rail must name the right mode on the first frame, so the Claude
-    // account login is read once here, before the terminal starts
-    // (`--snapshot` renders without one, so it never asks).
-    let _ = coder_new::claude::available();
+    // The rail says Auto until a harness is picked or routed (#11524), so
+    // nothing waits on the Claude account login: it is read on a thread of
+    // its own, ready for the first turn's routing. The harness pick's
+    // facts load the same way (`--snapshot` renders without either).
+    std::thread::spawn(|| {
+        let _ = coder_new::claude::available();
+    });
+    coder_new::harness_pick::start(state.clone().or_else(coder_new::home::data_dir));
     let openagents_root = model_access::store::openagents_dir();
     let update = state
         .clone()

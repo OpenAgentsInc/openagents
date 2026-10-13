@@ -199,6 +199,10 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
             result["extra"]["pinned"] = json!(true);
         }
     }
+    // The ACP agent a Shift+Tab pick pinned the chat to (#11524).
+    if let Some(agent) = &chat.agent {
+        result["extra"]["agent"] = json!(agent);
+    }
     // Context management (#11286): the peak the model read, whether old
     // outputs were stubbed, and how many summaries were written.
     if chat.peak_context_tokens > 0 {
@@ -738,6 +742,10 @@ pub fn from_document(value: &Value) -> Result<Chat, String> {
         });
     chat.pinned = chat.runs_on.is_some()
         && value.pointer("/extra/pinned").and_then(Value::as_bool) == Some(true);
+    chat.agent = value
+        .pointer("/extra/agent")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
     Ok(chat)
 }
 
