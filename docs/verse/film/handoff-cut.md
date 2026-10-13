@@ -2,7 +2,13 @@
 
 Written 2026-10-12, when work paused at a capacity limit. Two companion notes cover the other parts: `handoff-footage.md` (recording) and `handoff-studio.md` (Blender device shots).
 
-## Where it stands
+## Cut 5 (2026-10-13)
+- `~/Downloads/openagents-v1-launch-cut5.mp4`, 30 s at 1080p, from `~/work/film-out/cut/cut5.json` and `score-cut5.wav` (`music.py --seconds 30 --cuts 5,8,12,15,17.5,20,23 --end 26`).
+- Owner direction: 30 s, action sooner, the title as an overlay on the opening scene. `scripts/film/title-overlay.py` writes the title (Geist "OpenAgents", Berkeley Mono Bold "CODER", "v1.0.0") with alpha over a soft darkening, no bars; `cut.py` composites it with a shot's `"over": {"src", "at"}`.
+- `suite-boot` + title (0–5) → `sync-terminal-web` 2–5 (5–8) → `sync-phone` 1–5 (8–12) → `sync-web-back` 3–6 (12–15) → `trio-wide` 1.5–4 (15–17.5) → `macbook-plugins` (17.5–20) → `macbook-harness` (20–23) → `macbook-tray` (23–26) → end card (26–30).
+- `macbook-rewind` is rendered and ready if a beat frees up.
+
+## Where it stood after cut 3
 - **Cut 3** (for owner review): `~/Downloads/openagents-v1-launch-cut3.mp4`, 45.5 s at 1080p, built from `~/work/film-out/cut/cut3.json` (`docs/verse/film/cut.json` with the studio shots pointed at `~/work/film-out/studio-1080/`) and the score `~/work/film-out/audio/score-cut3.wav` (`music.py --seconds 45.5 --cuts 10.5,18,25.5,32.5`).
   - Title over the Grid (0–4) → `suite-boot` (4–10.5) → `sync-terminal-web` (10.5–18) → `sync-phone` (18–25.5) → `sync-web-back` (25.5–32.5) → `trio-wide` (32.5–37.5) → end card (37.5–45.5).
   - Every shot has two or three devices on screen; the conversation runs terminal → web and phone → reply from the phone → reply from the web → the commit on all three.

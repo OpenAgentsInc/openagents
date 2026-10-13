@@ -9,7 +9,7 @@ land on a beat. Sections:
   last 8 s    an impact and a resolving chord under the end card
 Whooshes sit on the product cuts given by --cuts.
 
-Usage: scripts/film/music.py OUT.wav [--seconds 42] [--cuts 12,20,27]
+Usage: scripts/film/music.py OUT.wav [--seconds 42] [--cuts 12,20,27] [--end 34]
 Writes a 48 kHz stereo WAV. scripts/film/cut.py normalizes loudness when it
 mixes the film.
 """
@@ -143,9 +143,10 @@ def reverb(stereo, seconds=2.6, wet=0.28):
     return out
 
 
-def score(seconds):
+def score(seconds, end=None):
     tr = Track(seconds)
-    end = seconds - 8.0  # the end card's impact; the chord resolves under it
+    # The end card's impact; the chord resolves under it.
+    end = seconds - 8.0 if end is None else end
 
     # 0-2 s: a low drone swelling into a reverse riser; the title lands at 2 s.
     for f, pan in [(note("D2"), -0.3), (note("A2"), 0.3), (note("D3"), 0.0)]:
@@ -210,9 +211,10 @@ def main():
     ap.add_argument("out")
     ap.add_argument("--seconds", type=float, default=42.0)
     ap.add_argument("--cuts", default="12,20,27", help="seconds of the product cuts, comma-separated")
+    ap.add_argument("--end", type=float, help="when the end card starts (default: 8 s before the end)")
     args = ap.parse_args()
     CUTS.extend(float(c) for c in args.cuts.split(",") if c)
-    write_wav(args.out, score(args.seconds))
+    write_wav(args.out, score(args.seconds, args.end))
     print(args.out)
 
 

@@ -61,6 +61,12 @@ October 12, 2026, when work paused. The scripts live in
 | `iphone-approve` | `studio/iphone-approve.mp4` | footage-v2 `phone-app` (iOS app) | 4K final |
 | `grid-plate` | `studio/grid-plate.mp4` | none (the empty Grid) | 4K final, 14 s, for the title and end cards |
 
+Cut 5's feature beats (1080p in `studio-1080/`, footage-v8, each 4–4.5 s
+on a slow push toward the part of the screen that moves):
+`macbook-plugins` (upper-left: the list, the ACP page),
+`macbook-harness` (the input's right rail), `macbook-tray` (the input and
+the agent row under it), `macbook-rewind` (the whole screen; not in cut 5).
+
 ### Multi-device sync
 
 All five are rendered at 1080p from `sync-v2` into `~/work/film-out/studio-1080/`

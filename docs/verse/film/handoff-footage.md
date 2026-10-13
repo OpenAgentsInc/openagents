@@ -44,6 +44,33 @@ again on the same account. There is no desktop clip (see below).
 Earlier footage: `~/work/film-out/footage/`, `footage-v2/` (including
 `phone-app.mp4`, the app's Running screen), `footage-v3/`.
 
+## Feature takes for cut 5 (2026-10-13)
+
+`~/work/film-out/footage-v8/`, 3024×1964, recorded live from `coder-new`
+built at `e991114008`+ in `~/code/slugkit` (made afresh by
+`make-demo-repo.sh`) at `FILM_TERM_FONT=26`, so the text reads on a MacBook
+in a short beat:
+
+| File | Length | What |
+|---|---|---|
+| `terminal-plugins.mp4` | 12.6 s | `/plugins`, the selection moving down, the ACP Subagents page (seven agents found here), Esc (`coder-plugins.mjs`, `FILM_PLUGIN_DOWNS=4 FILM_PLUGIN_STEP=1.0`) |
+| `terminal-harness.mp4` | 13.1 s | Text in the input; Shift+Tab steps the rail Auto → Claude (Opus 5.5 · 5h · week) → Codex → OpenCode → Grok Build → Devin → Cursor → Oh My Pi → Auto. Nothing is sent |
+| `terminal-tray.mp4` | 14.9 s | The chat on OpenCode (free `opencode/big-pickle`), `/agent opencode Run the tests…`; the rail row shows the model and each step (`Bash · ls -la…`, `Bash · npm test 2>&1`) |
+| `terminal-rewind.mp4` | 22.6 s | A turn on OpenCode edits `src/slugify.js`; `/rewind` lists it with "1 file changed"; Enter restores it and puts the message back |
+
+`coder-features.mjs` (`FILM_TAKE=harness|tray|rewind`) runs them: real HOME,
+an isolated `--state` copy without `account.json`/`sync.json`,
+`OPENAGENTS_TASKS` under `FILM_WORK`, and `CODER_OPENCODE_MODEL` plus
+`OPENCODE_CONFIG_CONTENT` pinning OpenCode to its free model. A finished
+background agent's report starts a parent turn, so the tray take pins the
+chat to OpenCode first (an Auto chat would answer on Claude Code).
+
+Product fixes found while shooting: `a16d25c70f` (an ACP agent's step on
+the rail, not "bash · cwd: /Users/…"), `64e41eb7e0` (/rewind records
+OpenCode, Codex and agent turns), `e991114008` (another harness's edit no
+longer reads "No changes"), `ad8d018c87` (OpenCode's `filePath` reads as a
+path, home as `~`).
+
 ## Scripts (`scripts/film/footage/`)
 
 | Script | What |
@@ -57,6 +84,7 @@ Earlier footage: `~/work/film-out/footage/`, `footage-v2/` (including
 | `terminal.mjs`, `ptyrun.py`, `replay-terminal.mjs` | Real PTY sessions kept as asciicast (with their wall-clock start), rendered frame by frame in xterm.js with Paper Mono; `replayAt` renders at shared-clock times |
 | `coder-plugins.mjs` | `terminal-plugins.mp4`: Coder's Plugins screen browsed live (`/plugins`, the list, the ACP agents page, Esc) on the person's real installs, with an isolated `--state` copy of their settings and no account file, so nothing is changed or synced. Pacing is the recording's own (no waits shortened). Kept in `~/work/film-out/footage-v7/` |
 | `make-demo-repo.sh` | The slugkit repository with three failing tests |
+| `coder-plugins.mjs`, `coder-features.mjs` | Coder's Plugins screen; Shift+Tab, the agent tray, /rewind (cut 5) |
 
 The phone is driven by `bins/openagents-ios/host/UITests/FilmUITests.swift`
 (opt-in): `testRunningForTheFilm` and `testSyncForTheFilm`, the latter

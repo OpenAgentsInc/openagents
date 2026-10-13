@@ -18,6 +18,8 @@ ducked under it), and writes H.264 (plus a ProRes master with --master).
 In the cut list, paths starting with ~ expand. Each shot is one of:
   {"name", "src", "in", "dur", "xfade"?}  a clip, trimmed to [in, in+dur)
   {"name", "title": {...}, "dur", "xfade"?}  a title card drawn here
+A clip may carry `"over": {"src", "at"?}`: a clip with alpha (such as
+title-overlay.py's) composited on top of it from `at` seconds into the slot.
 `xfade` is the length of the crossfade into this shot, in seconds. Slots keep
 their place on the timeline: the outgoing shot runs past its slot to cover the
 crossfade.
@@ -192,6 +194,16 @@ def render_segment(shot, cut, w, h, out, allow_missing):
     vf = f"scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,pad={w}:{h}:-1:-1:black,fps={fps},setsar=1"
     if shot.get("speed"):
         vf = f"setpts=PTS/{shot['speed']}," + vf
+    over = shot.get("over")
+    if over:
+        # The overlay keeps its alpha; it starts `at` seconds into the slot.
+        at = over.get("at", 0.0)
+        graph = (f"[0:v]{vf}[base];[1:v]scale={w}:{h}:flags=lanczos,fps={fps},format=yuva444p,"
+                 f"setpts=PTS-STARTPTS+{at}/TB[top];[base][top]overlay=eof_action=pass:format=auto,format=yuv420p")
+        run(["ffmpeg", "-v", "error", "-y", "-ss", str(shot.get("in", 0.0)), "-i", str(src),
+             "-i", str(expand(over["src"])), "-t", str(length), "-filter_complex", graph, "-an",
+             "-c:v", "libx264", "-crf", "8", "-preset", "fast", "-pix_fmt", "yuv420p", str(out)])
+        return
     run(["ffmpeg", "-v", "error", "-y", "-ss", str(shot.get("in", 0.0)), "-i", str(src), "-t", str(length),
          "-vf", vf, "-an", "-c:v", "libx264", "-crf", "8", "-preset", "fast", "-pix_fmt", "yuv420p", str(out)])
 
@@ -226,6 +238,8 @@ def inspect(cut, cut_path, work, w, h, allow_missing):
         if not src.exists():
             (notes if allow_missing else problems).append(f"{name}: missing {src}")
             continue
+        if shot.get("over") and not expand(shot["over"]["src"]).exists():
+            problems.append(f"{name}: missing overlay {shot['over']['src']}")
         p = probe(src)
         need = shot.get("in", 0.0) + (shot["dur"] + shot["tail"]) * shot.get("speed", 1.0)
         if p["dur"] + 1e-3 < need:
