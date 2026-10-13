@@ -253,3 +253,25 @@ top), and `~/Downloads/draconia-peacock-progress.png` (one row per version).
     clip with an upward gust;
   - the reference tail is brighter and denser near the core;
   - the peacock's body reads small next to the reference's.
+
+### v7, 2026-10-13
+
+- **Gaps fixed:**
+  - P1 was soft and smeared. `feathers::fine` draws a feather as strokes of
+    light: an egg rim loop, a curved shaft, about 230 single-stroke barbs,
+    and a crown round the tip, over a flat disc fill. The close-up stays
+    crisp however near the push comes, at any resolution. The five feathers
+    lie flat to the camera, so their eggs draw true.
+  - The tail's eyespots were teardrops. The sheet is now four 512×128 cells
+    (feather, dot, a round eyespot with a dark pupil, a flat disc).
+    `feathers::eyespot` puts a round eye with a darker center on every
+    feather tip.
+  - P3 was grey and dim. The tail burns brighter (eyespots 3.0–4.1 cd/m²),
+    with bloom at 0.3, a brighter core, a blue haze filling the fan, and a
+    mid-blue night sky.
+  - The guardian's body and neck are larger. The fires' flames are shorter
+    tongues, no longer blocky.
+- **Still open:**
+  - her hair and outfit (the face agent's Draconia);
+  - P1's rim and fill leave a thin dark band between them;
+  - the reference haze between feathers is denser.

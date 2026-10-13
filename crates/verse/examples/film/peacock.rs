@@ -44,7 +44,7 @@ const TAIL_RADIUS: f32 = 7.6;
 
 /// The void's color and the courtyard's night.
 const VOID: [f32; 3] = [0.004, 0.008, 0.022];
-const NIGHT: [f32; 3] = [0.018, 0.045, 0.058];
+const NIGHT: [f32; 3] = [0.03, 0.075, 0.12];
 
 pub struct Set {
     part: Part,
@@ -101,7 +101,7 @@ impl Set {
         let mut stars = Vec::new();
         match part {
             Part::Feathers => {
-                for i in 0..420 {
+                for i in 0..160 {
                     let u = hash(i * 3) * 2.0 - 1.0;
                     let v = hash(i * 3 + 1) * 2.0 - 1.0;
                     let at = Vec3::new(u * 70.0, v * 34.0 + 2.0, -70.0 - hash(i * 3 + 2) * 20.0);
@@ -313,7 +313,7 @@ impl Set {
                         rows: 6,
                         feathers: 130,
                         droop: 0.16,
-                        luminance: [2.4, 2.75, 3.3],
+                        luminance: [3.0, 3.4, 4.1],
                         vane: 0.22,
                         slim: 0.55,
                         open,
@@ -325,7 +325,7 @@ impl Set {
                 sprites.push(feathers::dot(
                     TAIL_CENTER + Vec3::new(0.0, 0.5, 0.3),
                     2.8,
-                    [4.0, 4.4, 5.0],
+                    [6.0, 6.6, 7.5],
                     1.0,
                 ));
                 sprites.push(feathers::dot(
@@ -338,11 +338,11 @@ impl Set {
                 // tail's center just above her head.
                 let lum = [2.2, 2.5, 3.0];
                 for (i, (x, y, r)) in [
-                    (0.0, 2.35, 0.5),
-                    (-0.2, 2.6, 0.4),
-                    (0.2, 2.6, 0.4),
-                    (0.0, 2.85, 0.36),
-                    (0.0, 2.15, 0.42),
+                    (0.0, 2.4, 0.7),
+                    (-0.3, 2.75, 0.55),
+                    (0.3, 2.75, 0.55),
+                    (0.0, 3.05, 0.5),
+                    (0.0, 2.15, 0.6),
                 ]
                 .into_iter()
                 .enumerate()
@@ -357,12 +357,12 @@ impl Set {
                 let neck: Vec<Vec3> = (0..=10)
                     .map(|i| {
                         let u = i as f32 / 10.0;
-                        Vec3::new(0.1 * (u * 3.0).sin(), 2.85 + 0.85 * u, -0.98)
+                        Vec3::new(0.12 * (u * 3.0).sin(), 3.05 + 1.0 * u, -0.98)
                     })
                     .collect();
                 let head = *neck.last().unwrap_or(&Vec3::ZERO) + Vec3::new(0.06, 0.06, 0.0);
-                mesh.ribbons.push(feathers::glow_line(&neck, 0.11, lum));
-                sprites.push(feathers::dot(head, 0.22, lum.map(|c| c * 1.2), 1.0));
+                mesh.ribbons.push(feathers::glow_line(&neck, 0.17, lum));
+                sprites.push(feathers::dot(head, 0.32, lum.map(|c| c * 1.2), 1.0));
                 for k in [-1.0_f32, 0.0, 1.0] {
                     let tip = head + Vec3::new(0.1 * k, 0.32, 0.0);
                     mesh.ribbons.push(feathers::glow_line(
@@ -384,7 +384,7 @@ impl Set {
                     sprites.push(feathers::dot(
                         TAIL_CENTER + dir * TAIL_RADIUS * 0.62 - Vec3::Z * 0.4,
                         TAIL_RADIUS * 0.55,
-                        [0.04, 0.055, 0.09],
+                        [0.12, 0.2, 0.4],
                         1.0,
                     ));
                 }
@@ -429,13 +429,19 @@ impl Set {
             if i == 0 {
                 eye = HERO;
             }
+            // Each feather lies flat to the camera, its quill at its
+            // eyespot's depth, so its eyespot draws round.
+            let base = Vec3::new(base.x, base.y, eye.z);
             // Each shaft bows the same way, so the feathers sweep in arcs.
             let side = Vec3::new(-dir.y, dir.x, 0.0);
             let bend = (eye + base) * 0.5 + side * length * 0.3;
-            let lum = [1.35, 1.55, 1.9];
-            let (head, ribbons) = feathers::curved(eye, bend, base, length * 0.8, lum);
-            sprites.push(head);
-            ribbons_out.extend(ribbons);
+            let lum = [1.8, 2.05, 2.5];
+            // Each feather is strokes of light, sharp however close the
+            // push-in comes.
+            let (glows, strokes) =
+                feathers::fine(eye, bend, base, length * 0.16, lum, i as u32 + 1);
+            sprites.extend(glows);
+            ribbons_out.extend(strokes);
             sprites.push(feathers::dot(
                 eye,
                 length * 0.05,
@@ -452,7 +458,7 @@ impl Set {
             0.8,
             2.0,
             2.9,
-            0.08,
+            0.05,
         ));
         // A faint blue haze where the feathers gather.
         sprites.push(feathers::dot(
@@ -470,7 +476,7 @@ impl Set {
         neon.vignette = 0.3;
         neon.bloom = match self.part {
             Part::Feathers => 0.2,
-            Part::Tail => 0.22,
+            Part::Tail => 0.3,
         };
         neon.grade.exposure = self.flash(t);
         neon.grade.saturation = 0.92;

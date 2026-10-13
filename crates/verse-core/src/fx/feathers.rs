@@ -23,6 +23,10 @@ pub const ASPECT: f32 = 3.0;
 const FEATHER: u32 = 0;
 /// The sheet's frame holding the soft dot.
 const DOT: u32 = 1;
+/// The sheet's frame holding the round eyespot.
+const EYE: u32 = 2;
+/// The sheet's frame holding the flat disc.
+const DISC: u32 = 3;
 
 fn from_sheet(frame: u32) -> ([f32; 4], u32) {
     let sheet = sheet::find("feather").unwrap_or(&sheet::SHEETS[0]);
@@ -75,6 +79,123 @@ pub fn dot(at: Vec3, half: f32, luminance: [f32; 3], alpha: f32) -> Sprite {
         priority: 6,
         ..feather(at, Vec3::NEG_Y, half * 2.0 * ASPECT, luminance, alpha)
     }
+}
+
+/// A round eyespot of radius `half` m at `at`: a dark blue pupil, a pale
+/// fill, a thick white rim, and a soft halo.
+#[must_use]
+pub fn eyespot(at: Vec3, half: f32, luminance: [f32; 3]) -> Sprite {
+    let (rect, layer) = from_sheet(EYE);
+    Sprite {
+        rect_a: rect,
+        rect_b: rect,
+        layer,
+        priority: 8,
+        ..dot(at, half, luminance, 1.0)
+    }
+}
+
+/// A feather drawn as strokes of light rather than a sprite, so it stays
+/// sharp however close the camera comes: an egg-shaped eyespot (a rim
+/// loop round a pale fill), a curved shaft from it through `bend` to
+/// `quill`, and fine, sparse barbs swept toward the tip, every one its own
+/// thin ribbon. `eye` is the eyespot's width, m; `seed` varies the barbs.
+#[must_use]
+pub fn fine(
+    eyespot_at: Vec3,
+    bend: Vec3,
+    quill: Vec3,
+    eye: f32,
+    luminance: [f32; 3],
+    seed: u32,
+) -> (Vec<Sprite>, Vec<Ribbon>) {
+    let at = |u: f32| {
+        let v = 1.0 - u;
+        eyespot_at * (v * v) + bend * (2.0 * v * u) + quill * (u * u)
+    };
+    let tangent = |u: f32| {
+        ((bend - eyespot_at) * (2.0 * (1.0 - u)) + (quill - bend) * (2.0 * u))
+            .normalize_or(Vec3::NEG_Y)
+    };
+    let plane = (bend - eyespot_at)
+        .cross(quill - eyespot_at)
+        .normalize_or(Vec3::Z);
+    let hash = |i: u32| {
+        let mut x = i.wrapping_mul(0x9E37_79B9) ^ seed.wrapping_mul(0x85EB_CA6B);
+        x ^= x >> 15;
+        x = x.wrapping_mul(0x2C1B_3C6D);
+        x ^= x >> 13;
+        x as f32 / u32::MAX as f32
+    };
+    let mut ribbons = Vec::new();
+    let t0 = tangent(0.0);
+    let n0 = plane.cross(t0).normalize_or(Vec3::X);
+    // The egg: longer along the shaft, wider toward the tip.
+    let (a, b) = (eye * 0.58, eye * 0.5);
+    let egg: Vec<Vec3> = (0..=40)
+        .map(|i| {
+            let th = i as f32 / 40.0 * std::f32::consts::TAU;
+            eyespot_at - t0 * (a * th.cos()) + n0 * (b * th.sin() * (1.0 + 0.16 * th.cos()))
+        })
+        .collect();
+    ribbons.push(glow_line(&egg, eye * 0.1, luminance));
+    let sprites = vec![
+        // The flat fill under the rim, and its soft glow.
+        {
+            let (rect, layer) = from_sheet(DISC);
+            Sprite {
+                rect_a: rect,
+                rect_b: rect,
+                layer,
+                priority: 8,
+                ..dot(eyespot_at, (a + b) * 0.5, luminance.map(|c| c * 0.36), 1.0)
+            }
+        },
+        dot(eyespot_at, b * 3.0, luminance.map(|c| c * 0.05), 1.0),
+    ];
+    // The shaft, from the egg's foot to the quill.
+    let length = eyespot_at.distance(quill).max(1e-3);
+    let start = (a / length).min(0.5);
+    let shaft: Vec<Vec3> = (0..=24)
+        .map(|i| at(start + (1.0 - start) * i as f32 / 24.0))
+        .collect();
+    ribbons.push(glow_line(&shaft, eye * 0.03, luminance.map(|c| c * 0.9)));
+    // Barbs from the shaft, swept toward the tip, longest round the eye.
+    let barb = luminance.map(|c| c * 0.4);
+    let per_side = 100;
+    for side in [-1.0_f32, 1.0] {
+        for i in 0..per_side {
+            let k = (i as f32 + hash(i * 2 + side.max(0.0) as u32)) / per_side as f32;
+            let u = start * 0.3 + (0.92 - start * 0.3) * k;
+            let p = at(u);
+            let t = tangent(u);
+            let n = plane.cross(t).normalize_or(Vec3::X) * side;
+            let reach = eye * (0.25 + 1.5 * (1.0 - u).powf(2.0)) * (0.8 + 0.4 * hash(i + 999));
+            let sweep = 0.55 + 0.25 * hash(i + 77);
+            let dir = (n * sweep.cos() - t * sweep.sin()).normalize_or(n);
+            let end = p + dir * reach - t * reach * 0.12;
+            let mut line = glow_line(&[p, end], eye * 0.006, barb);
+            if let Some(last) = line.points.last_mut() {
+                last.color = [0.0; 3];
+            }
+            line.priority = 6;
+            ribbons.push(line);
+        }
+    }
+    // A crown of barbs round the tip, beyond the egg.
+    for i in 0..36 {
+        let phi = -1.35 + 2.7 * (i as f32 + 0.5) / 36.0;
+        let dir = (-t0 * phi.cos() + n0 * phi.sin()).normalize_or(-t0);
+        let from = eyespot_at + dir * (a.max(b) * 1.05);
+        let to = from + dir * eye * (0.35 + 0.35 * hash(i + 4242));
+        let mut line = glow_line(&[from, to], eye * 0.006, barb);
+        if let Some(last) = line.points.last_mut() {
+            last.color = [0.0; 3];
+        }
+        line.priority = 6;
+        ribbons.push(line);
+    }
+    (sprites, ribbons)
 }
 
 /// A long feather whose shaft curves: the head (the eyespot and the vane
@@ -286,12 +407,11 @@ impl Fan {
                 quill.tail += quill.tail.normalize_or_zero() * 2.0 * quill.half * (1.0 - slim);
                 quill.half *= slim;
                 out.push(quill);
-                // The eyespot burns brighter than its vane.
-                out.push(dot(
+                // A round eyespot, burning brighter than its vane.
+                out.push(eyespot(
                     eye,
-                    length * 0.13 * slim,
-                    lum.map(|c| c * (1.0 - vane) * 2.6),
-                    1.0,
+                    length * 0.14 * slim,
+                    lum.map(|c| c * (1.0 - vane) * 1.6),
                 ));
             }
         }

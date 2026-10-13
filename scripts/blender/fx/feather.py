@@ -1,4 +1,5 @@
-"""The `feather` sprite sheet: a feather made of light, and a soft dot.
+"""The `feather` sprite sheet: a feather made of light, a soft dot, and an
+eyespot.
 
 Painted directly in numpy (no Cycles render): the shapes are line art, so a
 render would add nothing but time. Run it through Blender like the other
@@ -6,7 +7,7 @@ sheets so it shares `common.write_png`:
 
     scripts/blender/build-fx.sh feather
 
-The sheet is one column of two 512 x 256 cells (`docs/verse/particles.md`):
+The sheet is one column of four 512 x 128 cells (`docs/verse/particles.md`):
 
 - **0, the feather.** Drawn lying along the cell's long axis, the eyespot at
   the left (the sprite's head) and the shaft running right toward the
@@ -16,9 +17,15 @@ The sheet is one column of two 512 x 256 cells (`docs/verse/particles.md`):
   with a soft halo, a bright shaft, and fine barbs swept toward the tip
   inside a teardrop vane. The guardian's tail and the drifting feathers of
   the Draconia peacock shot draw from it; a wand's light spell can too.
-- **1, a soft dot.** A round glow with a hot core, painted twice as wide as
-  tall in texels so it reads round on a square sprite: stars, bokeh, and
-  the halo round a bright point.
+- **1, a soft dot.** A round glow with a hot core, painted four times as
+  wide as tall in texels so it reads round on a square sprite: stars,
+  bokeh, the halo round a bright point, and (its middle column) the
+  profile of a stroke of light.
+- **2, an eyespot.** Round on a square sprite: a dark blue pupil, a pale
+  blue fill, a thick white rim, and a soft halo. A fanned tail draws one
+  on each feather's tip, so the eyes stay round however slim the feather.
+- **3, a disc.** A flat, soft-edged pale disc, a touch darker at its middle:
+  the fill under a stroked eyespot rim (`verse::fx::feathers::fine`).
 
 RGB is premultiplied linear color, sRGB-encoded; alpha is linear coverage.
 """
@@ -31,7 +38,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import args, write_png  # noqa: E402
 
-W, H = 512, 256
+W, H = 512, 128
 # The sprite's length over its width, which the painting assumes.
 ASPECT = 3.0
 
@@ -61,8 +68,8 @@ def splat(img, s, q, value, radius):
         if not okx.any() or not oky.any():
             continue
         dx = gx[okx] - cx
-        # A texel across is half a texel along in the sprite's world size.
-        dy = (gy[oky] - cy) * (2.0 * H / W) * (2.0 / ASPECT)
+        # A texel across, in texels along, at the sprite's world size.
+        dy = (gy[oky] - cy) * W / (ASPECT * H)
         k = np.exp(-(dy[:, None] ** 2 + dx[None, :] ** 2) / (2 * r * r))
         img[np.ix_(gy[oky], gx[okx])] += k[..., None] * v
 
@@ -149,9 +156,37 @@ def dot():
     return img, np.clip(v * 1.2, 0, 1)
 
 
+def eyespot():
+    ys, xs = np.mgrid[0:H, 0:W]
+    dx = (xs - (W - 1) / 2) / (W / 2)
+    dy = (ys - (H - 1) / 2) / (H / 2)
+    r = np.sqrt(dx * dx + dy * dy)
+    pupil = np.clip((0.24 - r) / 0.06, 0.0, 1.0)
+    fill = np.clip((0.5 - r) / 0.04, 0.0, 1.0)
+    rim = np.clip((r - 0.46) / 0.04, 0.0, 1.0) * np.clip((0.74 - r) / 0.05, 0.0, 1.0)
+    halo = np.exp(-np.maximum(r - 0.72, 0.0) ** 2 / (2 * 0.1**2)) * (r > 0.7)
+    img = fill[..., None] * np.array([0.7, 0.84, 1.0]) * 0.78
+    img = img * (1.0 - pupil[..., None]) + pupil[..., None] * np.array([0.3, 0.45, 0.85]) * 0.45
+    img += rim[..., None] * np.array([1.0, 1.0, 1.0])
+    img += halo[..., None] * np.array([0.45, 0.6, 0.9]) * 0.4
+    edge = np.clip((1.0 - np.maximum(np.abs(dx), np.abs(dy))) / 0.05, 0, 1)
+    img = np.clip(img, 0.0, 1.0) * edge[..., None]
+    return img, np.clip(img.max(axis=2) * 1.2, 0, 1)
+
+
+def disc():
+    ys, xs = np.mgrid[0:H, 0:W]
+    dx = (xs - (W - 1) / 2) / (W / 2)
+    dy = (ys - (H - 1) / 2) / (H / 2)
+    r = np.sqrt(dx * dx + dy * dy)
+    v = np.clip((0.92 - r) / 0.08, 0.0, 1.0) * (0.85 + 0.15 * np.clip(r / 0.8, 0, 1))
+    img = v[..., None] * np.array([0.72, 0.85, 1.0])
+    return img, np.clip(v, 0, 1)
+
+
 def main():
     out = args()[0] if args() else "feather.png"
-    cells = [feather(), dot()]
+    cells = [feather(), dot(), eyespot(), disc()]
     sheet = np.zeros((H * len(cells), W, 4), dtype=np.float64)
     for i, (rgb, alpha) in enumerate(cells):
         sheet[i * H : (i + 1) * H, :, :3] = srgb(rgb)

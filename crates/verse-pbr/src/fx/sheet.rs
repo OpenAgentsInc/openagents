@@ -59,14 +59,15 @@ pub static SHEETS: [Sheet; 6] = [
         frames: 4,
         png: include_bytes!("../../../../assets/verse/fx/arcane.png"),
     },
-    // One column of two 512 x 256 cells: a feather of light lying along
-    // the long axis (eyespot at the left, for a sprite laid along its
-    // tail and three times as long as wide), and a soft round dot.
+    // One column of four 512 x 128 cells: a feather of light lying along
+    // the long axis (eyespot at the left, for a sprite laid along its tail
+    // and three times as long as wide), a soft round dot, a round eyespot,
+    // and a flat disc.
     Sheet {
         name: "feather",
         columns: 1,
-        rows: 2,
-        frames: 2,
+        rows: 4,
+        frames: 4,
         png: include_bytes!("../../../../assets/verse/fx/feather.png"),
     },
 ];
