@@ -320,3 +320,22 @@ top), and `~/Downloads/draconia-peacock-progress.png` (one row per version).
   - the fan's eyes are greyer and less contrasty than the reference's white
     rings;
   - the core light shows the cobbles as a hard checker pattern.
+
+### v10, 2026-10-13
+
+- **Gaps fixed:**
+  - The guardian's neck now reads as a shape: a soft fill between two bright
+    edge strokes, curving up above her head to the head and crest. The core
+    is a horizontal band of light from her hips to her shoulders, so the neck
+    stands against the fan, not the glare.
+  - The fan's eyes are brighter (4.4–5.8 cd/m²), with vanes at 0.32 of that
+    and grade contrast at 1.35.
+  - The cobbles' checker is gone: the pool of light lies just above the
+    stones, not through them.
+  - The fire: one ragged cluster at the far left, as in the reference, and
+    fewer, dimmer embers. The ground mist is thinner, so it no longer fogs
+    the whole frame by the last second.
+- **Still open:**
+  - the reference's eyes are still crisper white rings;
+  - the core's band reads as four lobes;
+  - her hair and outfit.

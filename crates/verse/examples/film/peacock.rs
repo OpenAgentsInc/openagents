@@ -149,9 +149,10 @@ impl Set {
                     Spawn::at(Vec3::new(0.0, 0.0, -3.0)).scaled(1.3),
                 );
                 fx.start("night_embers", Spawn::at(Vec3::new(0.0, 0.3, 0.0)));
-                for at in [Vec3::new(-3.0, 0.1, 2.4), Vec3::new(-4.6, 0.3, 0.2)] {
+                // One ragged cluster at the far left, as in the reference.
+                for at in [Vec3::new(-3.15, 0.35, 2.3)] {
                     fx.start("ruin_fire", Spawn::at(at));
-                    if at.z > 1.0 {
+                    if at.z > 2.0 {
                         continue;
                     }
                     lamps.push(Lamp {
@@ -308,8 +309,8 @@ impl Set {
                         rows: 5,
                         feathers: 100,
                         droop: 0.3,
-                        luminance: [3.6, 4.0, 4.8],
-                        vane: 0.4,
+                        luminance: [4.4, 4.9, 5.8],
+                        vane: 0.32,
                         slim: 0.62,
                         open,
                         time: t,
@@ -317,12 +318,16 @@ impl Set {
                     .sprites(),
                 );
                 // The core of light behind her.
-                sprites.push(feathers::dot(
-                    TAIL_CENTER + Vec3::new(0.0, 0.4, 0.4),
-                    3.6,
-                    [3.6, 4.0, 4.6],
-                    1.0,
-                ));
+                // A band from her hips to her shoulders, so the guardian's
+                // neck above stands against the fan, not the glare.
+                for x in [-1.5_f32, -0.5, 0.5, 1.5] {
+                    sprites.push(feathers::dot(
+                        TAIL_CENTER + Vec3::new(x, 0.35, 0.4),
+                        1.9 - 0.25 * x.abs(),
+                        [2.6, 2.9, 3.4],
+                        1.0,
+                    ));
+                }
                 sprites.push(feathers::dot(
                     TAIL_CENTER + Vec3::new(0.0, 1.5, 0.2),
                     6.0,
@@ -363,9 +368,19 @@ impl Set {
                     })
                     .collect();
                 // A stroke's bright core is about a fifth of its half width.
-                for (k, w) in [(0usize, 1.1_f32), (5, 0.8), (10, 0.55)] {
+                // The neck as a soft fill between two bright edges, so it
+                // reads as a shape.
+                let side = |offset: f32| -> Vec<Vec3> {
+                    neck.iter()
+                        .enumerate()
+                        .map(|(i, p)| *p + Vec3::X * offset * (1.0 - 0.55 * i as f32 / 14.0))
+                        .collect()
+                };
+                mesh.ribbons
+                    .push(feathers::glow_line(&neck, 0.9, bright.map(|c| c * 0.35)));
+                for offset in [-0.16_f32, 0.16] {
                     mesh.ribbons
-                        .push(feathers::glow_line(&neck[k..], w, bright.map(|c| c * 0.6)));
+                        .push(feathers::glow_line(&side(offset), 0.12, bright));
                 }
                 let head = *neck.last().unwrap_or(&Vec3::ZERO) + Vec3::new(-0.1, 0.05, 0.0);
                 sprites.push(feathers::dot(head, 0.34, bright, 1.0));
@@ -412,7 +427,7 @@ impl Set {
                 // The core's pool of light on the cobbles behind her.
                 sprites.push(verse::fx::Sprite {
                     facing: verse::fx::Facing::Ground,
-                    ..feathers::dot(Vec3::new(0.0, 0.03, -0.2), 5.5, [0.9, 1.0, 1.25], 1.0)
+                    ..feathers::dot(Vec3::new(0.0, 0.07, -0.2), 5.5, [0.9, 1.0, 1.25], 1.0)
                 });
                 // A luminous haze filling the fan behind the feathers.
                 for i in 0..9 {
@@ -544,7 +559,7 @@ impl Set {
         };
         neon.grade.exposure = self.flash(t);
         neon.grade.saturation = 0.92;
-        neon.grade.contrast = 1.25;
+        neon.grade.contrast = 1.35;
         match self.part {
             Part::Feathers => {
                 neon.field = VOID;
