@@ -24,6 +24,12 @@ fn the_thread_opens_with_coders_identity_and_the_briefing() {
         std::path::Path::new("/repo"),
     );
     assert!(!plain.contains(crate::checkout_guard::INSTRUCTIONS.trim()));
+    // Token savers (on in a test): noisy commands run through the
+    // squeezer from the start (#11525).
+    assert!(
+        plain.contains(&format!("{} '<command>'", squeeze::CODER_SUBCOMMAND)),
+        "{plain}"
+    );
 }
 
 /// Waits for turn `turn` to end.

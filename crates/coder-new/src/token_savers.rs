@@ -100,11 +100,27 @@ pub fn sdk_hooks() -> Vec<coder_sdk::Hook> {
 }
 
 fn squeeze_hook() -> Option<coder_sdk::Hook> {
+    Some(squeeze::sdk_hook(invoker()?))
+}
+
+/// The squeezer's command line, through this binary.
+fn invoker() -> Option<String> {
     let this = std::env::current_exe().ok()?;
-    Some(squeeze::sdk_hook(squeeze::invoker(
-        &this,
-        &[squeeze::CODER_SUBCOMMAND],
-    )))
+    Some(squeeze::invoker(&this, &[squeeze::CODER_SUBCOMMAND]))
+}
+
+/// What a harness that runs commands as it asked them (Codex, #11525) is
+/// told up front, when the plugin is on: run noisy commands through the
+/// squeezer, so its hook needn't send one back.
+#[must_use]
+pub fn squeeze_instructions() -> Option<String> {
+    if !enabled() || squeeze::off() {
+        return None;
+    }
+    Some(format!(
+        "Run each build, test, or lint command (cargo test, cargo build, npm test, pytest, go test, make and the like) through Coder's squeezer, as `{} '<command>'`: it trims long output to the lines that decide your next step and names a file with the full output; read that file only for a line the trimmed output left out. Coder sends such a command back when it isn't run that way.\n",
+        invoker()?
+    ))
 }
 
 /// `options` with `lever`'s hooks when the plugin is on.

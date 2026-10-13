@@ -340,7 +340,8 @@ impl Codex {
     ///
     /// # Errors
     ///
-    /// Codex refused the thread, such as one it no longer has.
+    /// Codex refused the thread, such as one it no longer has, or the
+    /// thread can't call one of `open.tools` (it started without it).
     pub async fn open(
         &mut self,
         open: &Open,
@@ -410,6 +411,27 @@ impl Codex {
             .as_str()
             .ok_or("Codex opened no thread.")?
             .to_owned();
+        // Codex takes tools only when a thread starts and keeps them with
+        // the thread (#11525): a thread started without one of Coder's
+        // tools can never call it, so it is refused and the host starts a
+        // thread that has them.
+        if open.resume.is_some()
+            && let Some(tools) = &open.tools
+            && let Some(kept) = kept_tools(&result["thread"], &tools.name)
+        {
+            let missing: Vec<&str> = tools
+                .tools()
+                .iter()
+                .map(|tool| tool.name.as_str())
+                .filter(|name| !kept.iter().any(|kept| kept == name))
+                .collect();
+            if !missing.is_empty() {
+                return Err(format!(
+                    "Codex thread {thread} started without Coder's {} tool, and a thread keeps the tools it started with.",
+                    missing.join(", ")
+                ));
+            }
+        }
         if let Some(model) = result["model"].as_str() {
             self.model = Some(model.to_owned());
             emit(Output::Model(model.to_owned()));
@@ -844,17 +866,30 @@ impl Codex {
             }
             other => return (Err(format!("Coder doesn't take {other}.")), None),
         };
+        let asked = call.input["command"].clone();
         let applied = self.hooks.fire(call).await;
         emit(Output::Gated(Box::new(applied.clone())));
+        // Codex runs exactly the command it asked about, so a command a
+        // hook rewrote (the squeezer, #11525) is declined with the
+        // rewritten one for the agent to run instead.
+        let instead = applied.input["command"]
+            .as_str()
+            .filter(|command| !command.is_empty() && asked.as_str() != Some(*command))
+            .map(unwrap_display);
         let decision = match (&applied.permission, &applied.stop) {
             (Permission::Deny { .. }, Stop::End) => "cancel",
             (Permission::Deny { .. } | Permission::Ask { .. }, _) => "decline",
+            (Permission::Allow | Permission::NoOpinion, _) if instead.is_some() => "decline",
             (Permission::Allow | Permission::NoOpinion, _) => "accept",
         };
         let mut said = Vec::new();
         if let Permission::Deny { reason } | Permission::Ask { step: reason } = &applied.permission
         {
             said.push(reason.clone());
+        } else if let Some(instead) = instead {
+            said.push(format!(
+                "Coder runs that command another way: run exactly this instead, unchanged: {instead}"
+            ));
         }
         if let Some(context) = context_text(&applied.context) {
             said.push(context);
@@ -942,6 +977,31 @@ impl Codex {
         }
         tool_reply(!result.is_error, &text)
     }
+}
+
+/// The names of the tools in namespace `name` that the thread Codex
+/// reopened keeps, read from the first line of its rollout
+/// (`session_meta`, `dynamic_tools`): Codex restores them on resume. `None`
+/// when that can't be read, so the thread is taken as it is.
+fn kept_tools(thread: &Value, name: &str) -> Option<Vec<String>> {
+    let path = thread["path"].as_str()?;
+    let file = std::fs::File::open(path).ok()?;
+    let mut first = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(file), &mut first).ok()?;
+    let meta: Value = serde_json::from_str(&first).ok()?;
+    if meta["type"] != "session_meta" {
+        return None;
+    }
+    let specs = meta["payload"]["dynamic_tools"].as_array();
+    Some(
+        specs
+            .into_iter()
+            .flatten()
+            .filter(|spec| spec["type"] == "namespace" && spec["name"] == name)
+            .flat_map(|spec| spec["tools"].as_array().into_iter().flatten())
+            .filter_map(|tool| tool["name"].as_str().map(str::to_owned))
+            .collect(),
+    )
 }
 
 /// A dynamic tool's answer to Codex.

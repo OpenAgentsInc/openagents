@@ -73,8 +73,11 @@ pub fn coder_loop(cwd: &Path, cancel: &Arc<AtomicBool>) -> coder_sdk::Hooks {
 /// person's and the project's command hooks, the plugins' hooks and the
 /// System One monitor, composed by one runner that answers each of Codex's
 /// approval requests. A floor's ask goes to the approval card while Codex
-/// waits; with nobody to answer it is held. The squeezer is left out:
-/// Codex runs the command it asked about, so a rewrite can't reach it.
+/// waits; with nobody to answer it is held. The squeezer is in too
+/// (#11525): Codex runs the command it asked about, so a noisy one is
+/// declined with the squeezed command to run instead
+/// ([`coder_sdk::codex`]), and the developer instructions say to run it
+/// that way from the start ([`crate::codex_chat::instructions`]).
 #[must_use]
 pub fn codex(cwd: &Path) -> coder_sdk::Hooks {
     let session = format!(
@@ -82,7 +85,7 @@ pub fn codex(cwd: &Path) -> coder_sdk::Hooks {
         std::process::id(),
         SESSIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     );
-    let mut registry = registry(cwd, false);
+    let mut registry = registry(cwd, true);
     if crate::token_savers::enabled() {
         let _ = registry.register(crate::gate::sdk_hook(session.clone()));
         for hook in crate::context_hook::sdk_hooks(cwd.to_owned(), session) {

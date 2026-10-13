@@ -230,7 +230,8 @@ struct Thread {
 
 /// The developer instructions a chat's thread opens with: Coder's identity,
 /// what Codex is told about Coder's tools, the session worktree's rule when
-/// it has one, and the chat's briefing (#11473) in place of Codex's own
+/// it has one, how to run noisy commands when Token savers is on, and the
+/// chat's briefing (#11473) in place of Codex's own
 /// `AGENTS.md` reading.
 #[must_use]
 pub fn instructions(
@@ -251,6 +252,10 @@ pub fn instructions(
     if crate::checkout_guard::Boundary::around(cwd).is_some() {
         text.push('\n');
         text.push_str(crate::checkout_guard::INSTRUCTIONS);
+    }
+    if let Some(squeeze) = crate::token_savers::squeeze_instructions() {
+        text.push('\n');
+        text.push_str(&squeeze);
     }
     if let Some(briefing) = briefing {
         text.push('\n');

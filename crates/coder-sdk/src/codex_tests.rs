@@ -121,8 +121,12 @@ fn server(turns: Vec<Script>) -> (Codex, Arc<Mutex<Seen>>, tokio::task::JoinHand
                         send(&mut server_write, json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32600, "message": "no rollout found for thread id lost"}})).await;
                         continue;
                     }
+                    // A thread id that is a path names its rollout, as
+                    // Codex's answer does.
                     "thread/resume" => {
-                        json!({"thread": {"id": message["params"]["threadId"]}, "model": "gpt-6.1-sol"})
+                        let id = message["params"]["threadId"].clone();
+                        let path = id.as_str().filter(|id| id.starts_with('/'));
+                        json!({"thread": {"id": id, "path": path}, "model": "gpt-6.1-sol"})
                     }
                     "turn/start" => {
                         turn_count += 1;
@@ -691,4 +695,138 @@ async fn coder_tools_are_dynamic_tools_through_the_hooks() {
     assert_eq!(offered, [json!("agent"), json!("openagents_cli")]);
     let init = &seen.requests[0].1;
     assert_eq!(init["capabilities"]["experimentalApi"], true);
+}
+
+/// Coder's tools as one tool, `agent`, that records each call.
+fn agent_tool(ran: Arc<Mutex<Vec<Value>>>) -> ToolServer {
+    ToolServer::new("coder", "1.0.0").add(crate::tools::Tool::new(
+        "agent",
+        "Start a background agent.",
+        json!({"type": "object"}),
+        move |input: Value| {
+            let ran = ran.clone();
+            async move {
+                ran.lock().unwrap().push(input);
+                Ok(claude_agent_sdk::ToolResult::text("agent started"))
+            }
+        },
+    ))
+}
+
+/// A rollout whose `session_meta` keeps `tools` (Codex's own shape,
+/// codex-cli 0.162.1), or none.
+fn rollout(dir: &Path, name: &str, tools: Option<Value>) -> String {
+    let mut payload = json!({"id": name, "cwd": "/w"});
+    if let Some(tools) = tools {
+        payload["dynamic_tools"] = tools;
+    }
+    let path = dir.join(format!("{name}.jsonl"));
+    std::fs::write(
+        &path,
+        format!(
+            "{}\n{}\n",
+            json!({"timestamp": "t", "type": "session_meta", "payload": payload}),
+            json!({"timestamp": "t", "type": "event_msg", "payload": {}})
+        ),
+    )
+    .unwrap();
+    path.display().to_string()
+}
+
+/// A Codex thread reopened in a new process (#11525) keeps the tools it
+/// started with: one that kept Coder's tools can call them again on the
+/// new connection; one that started without them is refused, so the host
+/// starts a thread that has them.
+#[tokio::test]
+async fn a_reopened_thread_calls_coders_tools_or_is_refused_without_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let kept = rollout(
+        dir.path(),
+        "kept",
+        Some(
+            json!([{"type": "namespace", "name": "coder", "description": "Coder's own tools.",
+            "tools": [{"type": "function", "name": "agent", "description": "Start a background agent.",
+                "inputSchema": {"type": "object"}}]}]),
+        ),
+    );
+    let bare = rollout(dir.path(), "bare", None);
+    let call = json!({"jsonrpc": "2.0", "id": 0, "method": "item/tool/call", "params": {
+        "threadId": kept, "turnId": "turn-1", "callId": "c1", "namespace": "coder",
+        "tool": "agent", "arguments": {"task": "look"}}});
+    let mut turn = vec![call];
+    turn.extend(message("turn-1", "Started."));
+    turn.push(completed("turn-1", "completed"));
+    let (mut codex, _seen, _task) = server(vec![turn]);
+    let ran = Arc::new(Mutex::new(Vec::new()));
+    codex.initialize().await.unwrap();
+    let reopen = |thread: &str| Open {
+        cwd: "/w".into(),
+        resume: Some(thread.to_owned()),
+        tools: Some(agent_tool(ran.clone())),
+        ..Open::default()
+    };
+    let refused = codex.open(&reopen(&bare), &mut |_| {}).await.unwrap_err();
+    assert!(refused.contains("without Coder's agent tool"), "{refused}");
+    assert_eq!(codex.thread(), None);
+    codex.open(&reopen(&kept), &mut |_| {}).await.unwrap();
+    codex
+        .turn("Start an agent.", None, None, &mut |_| {})
+        .await
+        .unwrap();
+    assert_eq!(*ran.lock().unwrap(), [json!({"task": "look"})]);
+}
+
+/// A hook that rewrites a command (the squeezer, #11525) can't change what
+/// Codex runs, so the command is declined and the agent is told the
+/// rewritten one to run instead; that one runs.
+#[tokio::test]
+async fn a_rewritten_command_is_sent_back_to_run_as_rewritten() {
+    let turn = vec![
+        approval_for_command(0, "exec-1", "cargo test"),
+        approval_for_command(1, "exec-2", "sq cargo-test"),
+        completed("turn-1", "completed"),
+    ];
+    let (mut codex, seen, _task) = server(vec![turn]);
+    let mut registry = registry();
+    registry
+        .register(
+            Hook::new(
+                "squeeze",
+                Event::PreToolUse,
+                crate::registry::Source::BuiltIn,
+                |call: &Call| {
+                    let command =
+                        unwrap_display(call.input["command"].as_str().unwrap_or_default());
+                    Ok(if command.starts_with("sq ") {
+                        HookOutcome::none()
+                    } else {
+                        let mut input = call.input.clone();
+                        input["command"] = json!("sq cargo-test");
+                        HookOutcome::rewrite(input)
+                    })
+                },
+            )
+            .matching("Bash"),
+        )
+        .unwrap();
+    codex.hooks = hooks(registry, Budget::default()).unwrap();
+    open(&mut codex).await;
+    codex
+        .turn("Run the tests.", None, None, &mut |_| {})
+        .await
+        .unwrap();
+    let seen = seen.lock().unwrap();
+    assert_eq!(
+        seen.decisions,
+        [
+            ("exec-1".into(), json!("decline")),
+            ("exec-2".into(), json!("accept")),
+        ]
+    );
+    assert_eq!(seen.steered.len(), 1);
+    assert!(
+        seen.steered[0].ends_with("run exactly this instead, unchanged: sq cargo-test"),
+        "{}",
+        seen.steered[0]
+    );
 }

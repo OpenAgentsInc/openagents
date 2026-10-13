@@ -145,7 +145,14 @@ pub fn hook_output(input: &Value, invoker: &str) -> Option<Value> {
         return None;
     }
     let command = tool_input["command"].as_str()?;
-    let rewritten = shell::rewrite(command, invoker)?;
+    // Codex asks about a command in its shell's wrapper (`/bin/zsh -lc
+    // 'cargo test'`); the command inside is the one squeezed (#11525).
+    let rewritten = shell::rewrite(command, invoker).or_else(|| {
+        let inner = coder_sdk::codex::unwrap_display(command);
+        (inner != command)
+            .then(|| shell::rewrite(&inner, invoker))
+            .flatten()
+    })?;
     let mut updated = tool_input.clone();
     updated["command"] = Value::String(rewritten);
     Some(json!({"hookEventName": "PreToolUse", "updatedInput": updated}))

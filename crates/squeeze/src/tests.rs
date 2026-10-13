@@ -158,6 +158,12 @@ fn the_hook_rewrites_only_noisy_foreground_bash() {
     assert!(hook_output(&call("ls", false), "sq").is_none());
     let read = json!({"tool_name": "Read", "tool_input": {"file_path": "x"}});
     assert!(hook_output(&read, "sq").is_none());
+    // Codex's shell wrapper (#11525): the command inside is squeezed, and
+    // the squeezed one is never wrapped again.
+    let out = hook_output(&call("/bin/zsh -lc 'cargo test -p x'", false), "sq").unwrap();
+    assert_eq!(out["updatedInput"]["command"], "sq 'cargo test -p x'");
+    assert!(hook_output(&call("/bin/zsh -lc \"sq 'cargo test'\"", false), "sq").is_none());
+    assert!(hook_output(&call("/bin/zsh -lc 'git status'", false), "sq").is_none());
 }
 
 #[cfg(unix)]

@@ -235,7 +235,7 @@ The hook answers with `updatedInput` only. It never gives a permission decision,
 | 2 failures | 430 | 58 | Rule | No API call. |
 | 40 failures | 735 | 123 | Decision | Clef (`clef-flash`) rated 54 chunks in 854 ms. |
 
-In a live Claude Sonnet session, the briefed agent ran plain `cargo test` and saw the 58-line squeezed output. It named both failures with the right values, in 2 turns. The A/B lever is `squeeze` on the briefed-ab set once Bash is in the briefed agent's tools. Codex is not wired yet; its command hook needs `updatedInput` support checked first.
+In a live Claude Sonnet session, the briefed agent ran plain `cargo test` and saw the 58-line squeezed output. It named both failures with the right values, in 2 turns. The A/B lever is `squeeze` on the briefed-ab set once Bash is in the briefed agent's tools. On Codex (app-server, #11525) the developer instructions name the squeezer, and a bare noisy command is declined with the squeezed one to run instead; a live `make test` of 602 lines reached Codex as 57.
 
 **Idea 2 is built for the bench's briefed agent** (#11487,
 `crates/briefed-agent/src/stop_gate.rs`, `"stop_gate": true`).

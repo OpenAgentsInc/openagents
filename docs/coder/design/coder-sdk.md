@@ -383,8 +383,15 @@ the hooks in Claude Code's shapes (`Bash` with the command, `apply_patch`
 with the patch text), and the floors read through Codex's
 `/bin/zsh -lc '...'` wrapper. Coder's tools ride along as Codex dynamic
 tools in process, through the same hooks, so delegations reach the agent
-tray. The squeezer is not installed there: Codex runs the command it asked
-about, so a rewrite can't reach it. Coder chat runs Codex as a harness
+tray. Codex keeps a thread's dynamic tools from its start and restores
+them on `thread/resume` in a new process (it takes none on resume), so a
+reopened thread that lacks one of Coder's tools is refused and the chat
+starts a thread that has them, from the pasted conversation (#11525).
+Codex runs exactly the command it asked about, so a rewrite (the
+squeezer) declines the command and steers the rewritten one to run
+instead; the developer instructions tell Codex to run build, test, and
+lint commands through the squeezer from the start, which it does (a live
+`make test` came back as 57 lines of 602, #11525). Coder chat runs Codex as a harness
 (`coder_new::codex_chat`): one app-server per chat, follow-ups on the same
 thread, the briefing as developer instructions with `AGENTS.md` reading
 off, a /models list of Codex's models, its plan windows on the rail while
