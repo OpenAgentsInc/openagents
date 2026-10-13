@@ -34,11 +34,12 @@ pub const MAX_SHOWN: usize = 20;
 const START_SLACK: Duration = Duration::from_millis(500);
 
 /// What a file held when a snapshot was taken.
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum Content {
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", content = "text", rename_all = "snake_case")]
+pub(crate) enum Content {
     Absent,
     Text(String),
-    /// Too large, binary, or unreadable: never diffed.
+    /// Too large, binary, or unreadable: never diffed or restored.
     Opaque,
 }
 
@@ -288,6 +289,220 @@ impl Snapshot {
     }
 }
 
+/// What a file held at the end of a turn, kept only as a fingerprint: it is
+/// compared with the file later, never written back.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", content = "sha256", rename_all = "snake_case")]
+pub(crate) enum Mark {
+    Absent,
+    Text(String),
+    Opaque,
+}
+
+impl Mark {
+    pub(crate) fn of(content: &Content) -> Self {
+        match content {
+            Content::Absent => Self::Absent,
+            Content::Text(text) => {
+                use sha2::Digest;
+                Self::Text(format!("{:x}", sha2::Sha256::digest(text.as_bytes())))
+            }
+            Content::Opaque => Self::Opaque,
+        }
+    }
+}
+
+/// One file a turn changed: what it held before the turn, and what the
+/// turn left in it.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct FileRecord {
+    /// From the checkout's root.
+    pub path: String,
+    pub before: Content,
+    pub after: Mark,
+}
+
+impl FileRecord {
+    /// Whether `/rewind` can put the file back: a file too large, binary,
+    /// or unreadable on either side cannot be.
+    #[must_use]
+    pub(crate) fn restorable(&self) -> bool {
+        self.before != Content::Opaque && self.after != Mark::Opaque
+    }
+
+    /// The path joined to `root`, or `None` for one that would leave it.
+    fn under(&self, root: &Path) -> Option<PathBuf> {
+        let path = Path::new(&self.path);
+        path.components()
+            .all(|part| matches!(part, std::path::Component::Normal(_)))
+            .then(|| root.join(path))
+    }
+}
+
+/// The files one turn of the chat changed, kept so `/rewind` can undo it.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct TurnRecord {
+    /// Which of the person's messages started the turn, counting from zero.
+    pub message: usize,
+    pub root: PathBuf,
+    pub files: Vec<FileRecord>,
+    /// False when the checkout had too many changed files to look at them
+    /// all at the turn's end.
+    #[serde(default = "complete")]
+    pub complete: bool,
+}
+
+const fn complete() -> bool {
+    true
+}
+
+impl TurnRecord {
+    /// The files changed between `start`, taken as the turn began, and
+    /// now, for the turn the person's `message`th message started.
+    #[must_use]
+    pub(crate) fn finish(start: &Snapshot, message: usize) -> Self {
+        let root = &start.root;
+        let now = changed_paths(root);
+        let mut paths: BTreeSet<String> = start.files.keys().cloned().collect();
+        if let Some(now) = &now {
+            paths.extend(now.iter().cloned());
+        }
+        // A commit the turn made leaves its files clean.
+        let head = git(root, &["rev-parse", "--verify", "-q", "HEAD"])
+            .map(|out| String::from_utf8_lossy(&out).trim().to_owned());
+        if let (Some(old), Some(new)) = (&start.head, &head)
+            && old != new
+            && let Some(out) = git(root, &["diff", "--name-only", "-z", "--no-renames", old, new])
+        {
+            paths.extend(
+                out.split(|b| *b == 0)
+                    .filter(|field| !field.is_empty())
+                    .map(|field| String::from_utf8_lossy(field).into_owned()),
+            );
+        }
+        let mut files = Vec::new();
+        for path in paths {
+            if files.len() == MAX_PATHS {
+                break;
+            }
+            let before = start.before(&path);
+            let after = read(&root.join(&path));
+            let changed = if before == Content::Opaque && after == Content::Opaque {
+                // Neither side can be compared: the file was the turn's
+                // when it was clean before and is changed now.
+                !start.files.contains_key(&path)
+                    && now.as_ref().is_some_and(|now| now.contains(&path))
+            } else {
+                before != after
+            };
+            if changed {
+                files.push(FileRecord {
+                    path,
+                    before,
+                    after: Mark::of(&after),
+                });
+            }
+        }
+        Self {
+            message,
+            root: root.clone(),
+            files,
+            complete: now.is_some(),
+        }
+    }
+
+    /// The files of this turn `/rewind` cannot put back.
+    pub(crate) fn unrestorable(&self) -> impl Iterator<Item = &str> {
+        self.files
+            .iter()
+            .filter(|file| !file.restorable())
+            .map(|file| file.path.as_str())
+    }
+
+    /// How many bytes of earlier contents the record keeps.
+    #[must_use]
+    pub(crate) fn kept_bytes(&self) -> usize {
+        self.files
+            .iter()
+            .map(|file| match &file.before {
+                Content::Text(text) => text.len(),
+                _ => 0,
+            })
+            .sum()
+    }
+}
+
+/// What putting files back did, by checkout-relative path.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct Restored {
+    /// Back to what they held before the turn.
+    pub restored: Vec<String>,
+    /// Changed again after the turn, outside this chat: left alone.
+    pub skipped: Vec<String>,
+    /// Too large, binary, or unreadable: left alone.
+    pub unrestorable: Vec<String>,
+    /// Could not be written.
+    pub failed: Vec<String>,
+}
+
+impl Restored {
+    /// Puts back the files `record`'s turn changed. A file is written only
+    /// when it still holds what the turn left in it; one changed since is
+    /// skipped and never overwritten. Undo turns newest first.
+    pub(crate) fn undo(&mut self, record: &TurnRecord) {
+        fn note(list: &mut Vec<String>, path: &str) {
+            if !list.iter().any(|known| known == path) {
+                list.push(path.to_owned());
+            }
+        }
+        for file in &record.files {
+            let Some(at) = file.under(&record.root) else {
+                note(&mut self.failed, &file.path);
+                continue;
+            };
+            if !file.restorable() {
+                note(&mut self.unrestorable, &file.path);
+                continue;
+            }
+            let now = read(&at);
+            if now == file.before {
+                note(&mut self.restored, &file.path);
+                continue;
+            }
+            if Mark::of(&now) != file.after {
+                note(&mut self.skipped, &file.path);
+                continue;
+            }
+            let written = match &file.before {
+                Content::Absent => std::fs::remove_file(&at),
+                Content::Text(text) => at
+                    .parent()
+                    .map_or(Ok(()), std::fs::create_dir_all)
+                    .and_then(|()| std::fs::write(&at, text)),
+                Content::Opaque => continue,
+            };
+            match written {
+                Ok(()) => note(&mut self.restored, &file.path),
+                Err(_) => note(&mut self.failed, &file.path),
+            }
+        }
+    }
+
+    /// Settles a path an older turn put back but a newer one left alone:
+    /// it is not counted as restored.
+    pub(crate) fn settle(&mut self) {
+        let Self {
+            restored,
+            skipped,
+            unrestorable,
+            failed,
+        } = self;
+        restored.retain(|path| {
+            !skipped.contains(path) && !unrestorable.contains(path) && !failed.contains(path)
+        });
+    }
+}
+
 /// The path an Edit or Write call names, for [`Snapshot::refresh`].
 #[must_use]
 pub fn edited_path(input: &Value) -> Option<PathBuf> {
@@ -411,6 +626,88 @@ mod tests {
         let paths: Vec<&str> = changes.iter().map(|c| c.path.as_str()).collect();
         assert_eq!(paths, ["src/a.rs"]);
         assert!(after.unwrap().changes().0.is_empty());
+    }
+
+    fn undo(records: &[&TurnRecord]) -> Restored {
+        let mut done = Restored::default();
+        for record in records {
+            done.undo(record);
+        }
+        done.settle();
+        done
+    }
+
+    /// `/rewind` (#11515): a turn that edited, created and deleted files
+    /// is undone, including through a save and a later turn on the same file.
+    #[test]
+    fn a_rewound_turn_puts_back_an_edit_a_new_file_and_a_removal() {
+        let (_dir, root) = repo();
+        let start = Snapshot::take(&root).unwrap();
+        std::fs::write(root.join("src/a.rs"), "edited\n").unwrap();
+        std::fs::write(root.join("src/new.rs"), "fresh\n").unwrap();
+        std::fs::remove_file(root.join("dirty.rs")).unwrap();
+        let first = TurnRecord::finish(&start, 0);
+        let paths: Vec<&str> = first.files.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(paths, ["dirty.rs", "src/a.rs", "src/new.rs"]);
+        assert_eq!(first.unrestorable().count(), 0);
+        let value = serde_json::to_value(&first).unwrap();
+        let saved: TurnRecord = serde_json::from_value(value).unwrap();
+        assert_eq!(saved, first);
+        // A second turn edits the same file again.
+        let start = Snapshot::take(&root).unwrap();
+        std::fs::write(root.join("src/a.rs"), "edited twice\n").unwrap();
+        let second = TurnRecord::finish(&start, 1);
+        assert_eq!(second.files.len(), 1);
+
+        let done = undo(&[&second, &saved]);
+        assert_eq!(done.restored.len(), 3, "{done:?}");
+        assert!(done.skipped.is_empty() && done.failed.is_empty());
+        assert_eq!(
+            std::fs::read_to_string(root.join("src/a.rs")).unwrap(),
+            "one\ntwo\nthree\n"
+        );
+        assert!(!root.join("src/new.rs").exists());
+        assert_eq!(
+            std::fs::read_to_string(root.join("dirty.rs")).unwrap(),
+            "x\ny\n"
+        );
+    }
+
+    /// A file changed outside the chat after the turn is never overwritten.
+    #[test]
+    fn a_file_changed_after_the_turn_is_skipped_and_named() {
+        let (_dir, root) = repo();
+        let start = Snapshot::take(&root).unwrap();
+        std::fs::write(root.join("src/a.rs"), "turn\n").unwrap();
+        std::fs::write(root.join("dirty.rs"), "turn\n").unwrap();
+        let record = TurnRecord::finish(&start, 0);
+        std::fs::write(root.join("src/a.rs"), "someone else\n").unwrap();
+        let done = undo(&[&record]);
+        assert_eq!(done.skipped, ["src/a.rs"]);
+        assert_eq!(done.restored, ["dirty.rs"]);
+        assert_eq!(
+            std::fs::read_to_string(root.join("src/a.rs")).unwrap(),
+            "someone else\n"
+        );
+    }
+
+    /// A binary or oversized file the turn wrote cannot be put back, and
+    /// the record says so rather than claiming a clean undo.
+    #[test]
+    fn a_binary_or_oversized_file_is_named_as_not_restorable() {
+        let (_dir, root) = repo();
+        let start = Snapshot::take(&root).unwrap();
+        std::fs::write(root.join("src/logo.png"), [0u8, 1, 2]).unwrap();
+        std::fs::write(root.join("big.txt"), "x".repeat(MAX_BYTES as usize + 1)).unwrap();
+        std::fs::write(root.join("src/a.rs"), "edited\n").unwrap();
+        let record = TurnRecord::finish(&start, 0);
+        let unrestorable: Vec<&str> = record.unrestorable().collect();
+        assert_eq!(unrestorable, ["big.txt", "src/logo.png"]);
+        let done = undo(&[&record]);
+        assert_eq!(done.unrestorable, ["big.txt", "src/logo.png"]);
+        assert_eq!(done.restored, ["src/a.rs"]);
+        assert!(root.join("src/logo.png").exists());
+        assert!(root.join("big.txt").exists());
     }
 
     #[test]

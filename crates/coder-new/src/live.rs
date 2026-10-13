@@ -80,6 +80,14 @@ pub struct Chat {
     pub moved: bool,
     /// The model a pin names for this chat's turns on its harness (#11475).
     pub pinned_model: Option<String>,
+    /// The files each recent turn changed, newest last, so `/rewind` can
+    /// undo them (#11515).
+    pub(crate) turns: Vec<crate::shell_changes::TurnRecord>,
+    /// `turns` changed since the chat was last saved.
+    pub(crate) turns_changed: bool,
+    /// The checkout's changed files as the running turn began, and where
+    /// its message sits in `entries`.
+    pub(crate) turn_start: Option<crate::rewind::Start>,
 }
 
 /// A Claude Code session a chat holds, and how far into the chat it reaches.

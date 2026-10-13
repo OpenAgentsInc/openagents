@@ -20,6 +20,7 @@ pub enum Command {
     Models,
     Export,
     Resume,
+    Rewind,
     Brainstorm,
     Login,
     Logout,
@@ -43,6 +44,7 @@ pub const ALL: &[Command] = if crate::DEMO_AVAILABLE {
         Command::Models,
         Command::Export,
         Command::Resume,
+        Command::Rewind,
         Command::Brainstorm,
         Command::Login,
         Command::Logout,
@@ -63,6 +65,7 @@ pub const ALL: &[Command] = if crate::DEMO_AVAILABLE {
         Command::Models,
         Command::Export,
         Command::Resume,
+        Command::Rewind,
         Command::Brainstorm,
         Command::Login,
         Command::Logout,
@@ -90,6 +93,7 @@ impl Command {
             Self::Models => "models",
             Self::Export => "export",
             Self::Resume => "resume",
+            Self::Rewind => "rewind",
             Self::Brainstorm => "brainstorm",
             Self::Login => "login",
             Self::Logout => "logout",
@@ -115,6 +119,7 @@ impl Command {
             Self::Models => "Choose model and reasoning level",
             Self::Export => "Export this conversation as ATIF",
             Self::Resume => "Resume a saved conversation",
+            Self::Rewind => "Undo a turn's file changes and return to its prompt",
             Self::Brainstorm => "Explicit public profile or reputation lookup",
             Self::Login => "Sign in to your openagents.com account",
             Self::Logout => "Sign out of your openagents.com account",
@@ -156,7 +161,7 @@ pub fn help() -> String {
     if crate::DEMO_AVAILABLE {
         text.push_str("/demo  Toggle demo/live\n");
     }
-    text.push_str("/plugins  Manage plugins\n/appearance  Configure terminal appearance\n/preferences  Choose cost, speed, or intelligence\n/models  Choose a model for an enabled provider\n/export [path]  Save this conversation to a file (ATIF format)\n/resume [number|id]  Resume a saved conversation\n/login  Sign in to your openagents.com account\n/logout  Sign out of it\n/sync on|all|off|delete  Save chats to your account\n/memory [forget NAME]  Show or delete what Coder remembers\n/agents  Background agents: list, stop, message, resume\n/agent ENGINE TASK  Start a background agent in its own worktree\n/compact  Summarize the older chat so the model reads less\n/loop INTERVAL PROMPT  Repeat a prompt, for example /loop 5m check the deploy\n/loop [stop N|all]  List or stop loops\n/schedule WHEN PROMPT  Run a prompt on this computer, for example /schedule weekdays 09:00 triage new issues\n/schedule [remove ID]  List or remove scheduled prompts\n/shells [stop ID]  Background commands and monitors\n/help  Show commands\nTab  Complete a command\nEsc  Close suggestions or stop a reply\nCmd+A  Select all in the input where the terminal passes Cmd keys on (Rex, Ghostty, iTerm2 and Terminal keep Cmd+A for their own Select All: use Ctrl+Shift+A)\nDrag  Copy conversation text; double-click a word, triple-click a line\nCtrl+A / Ctrl+E  Start / end of the line\nCtrl+N  Start a new chat (the last one stays in /resume)\nCtrl+O  Show or hide each tool call's details\nCtrl+C  Quit");
+    text.push_str("/plugins  Manage plugins\n/appearance  Configure terminal appearance\n/preferences  Choose cost, speed, or intelligence\n/models  Choose a model for an enabled provider\n/export [path]  Save this conversation to a file (ATIF format)\n/resume [number|id]  Resume a saved conversation\n/rewind  Undo a turn's file changes and return to its prompt\n/login  Sign in to your openagents.com account\n/logout  Sign out of it\n/sync on|all|off|delete  Save chats to your account\n/memory [forget NAME]  Show or delete what Coder remembers\n/agents  Background agents: list, stop, message, resume\n/agent ENGINE TASK  Start a background agent in its own worktree\n/compact  Summarize the older chat so the model reads less\n/loop INTERVAL PROMPT  Repeat a prompt, for example /loop 5m check the deploy\n/loop [stop N|all]  List or stop loops\n/schedule WHEN PROMPT  Run a prompt on this computer, for example /schedule weekdays 09:00 triage new issues\n/schedule [remove ID]  List or remove scheduled prompts\n/shells [stop ID]  Background commands and monitors\n/help  Show commands\nTab  Complete a command\nEsc  Close suggestions or stop a reply\nCmd+A  Select all in the input where the terminal passes Cmd keys on (Rex, Ghostty, iTerm2 and Terminal keep Cmd+A for their own Select All: use Ctrl+Shift+A)\nDrag  Copy conversation text; double-click a word, triple-click a line\nCtrl+A / Ctrl+E  Start / end of the line\nCtrl+N  Start a new chat (the last one stays in /resume)\nCtrl+O  Show or hide each tool call's details\nCtrl+C  Quit");
     text.push_str("\n/brainstorm search <public query>  Search public profiles\n/brainstorm rank <hex-or-npub>  Look up a profile's influence score\nBrainstorm sends only what you type after the command to its website.");
     text
 }
@@ -238,6 +243,8 @@ mod tests {
             crate::DEMO_AVAILABLE
         );
         assert_eq!(matches("/plugins"), [Command::Plugins]);
+        assert_eq!(matches("/rew"), [Command::Rewind]);
+        assert!(help().contains("/rewind  Undo a turn's file changes"));
         assert!(matches("/unknown").is_empty());
         for text in ["", "demo", " /d", "/D", "/d ", "/demo on", "/usr/bin"] {
             assert!(matches(text).is_empty(), "{text:?}");

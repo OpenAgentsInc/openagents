@@ -9,7 +9,7 @@ token counts as the rail. Their magenta diamonds pulse while running commands
 show a rotating spinner. Each agent conversation has its own tool calls,
 arguments, results, and current activity.
 
-The [shared component and web catalog specification](../../docs/coder-new/rust-native/coder-components.md)
+The shared component and web catalog specification
 uses this crate's public presentation as the complete source inventory for the
 first Coder Cloud deliverable at `/components`. It requires shared Rust Native
 components, interactive fixtures, and exact full-screen web recreation; it does
@@ -151,8 +151,7 @@ detection. Live choices save immediately and persist across restarts. Agents
 turned off or no longer installed are excluded from chat's tools. Claude Code
 requires its installed ACP adapter. Codex uses its native CLI bridge when no
 ACP adapter is installed. The Cursor agent runs as `cursor-agent acp` with its
-own login or `CURSOR_API_KEY`
-([`docs/coder-new/runtime/cursor.md`](../../docs/coder-new/runtime/cursor.md)).
+own login or `CURSOR_API_KEY`.
 Chat delegates through
 `acp_subagent` using a registered ID; it cannot choose an executable.
 Coder starts tools and subagents with full filesystem and network access.
@@ -277,6 +276,17 @@ without rerunning recorded tools, then continues the same session. The current
 directory and plugin settings stay in effect. Stop active work before resuming.
 Streaming replies checkpoint every five seconds and save again when they end;
 typing and scrolling do not write session files. Demo conversations are not saved.
+
+Type `/rewind` to undo a turn. It lists your last 20 messages, each with the
+files its turn changed, including edits made through shell commands. Choosing
+one puts back the files that turn and every later turn changed (deleting files
+they created), cuts the chat to just before the message, and puts the message
+back in the input to edit and send again. A file changed outside Coder since
+the turn is left as it is and named. Files over 1 MB, binary files, and
+unreadable files cannot be put back; the list marks those turns as partly
+restorable and names the files. The files each turn changed are kept in a
+private file beside the saved chat (`<id>.atif.rewind.json`), never in the chat
+itself, so they are not sent to your account. Stop active work before rewinding.
 
 Signed in (`coder login`), `/sync on` also saves chats to your openagents.com
 account, where they show in the web sidebar, marked Terminal with this

@@ -150,6 +150,12 @@ impl App {
             Ok(()) => {
                 self.history.dirty = false;
                 self.history.save_failed = false;
+                // The files each turn changed stay beside the chat on this
+                // computer, for /rewind (#11515); they never leave it.
+                if std::mem::take(&mut self.live.turns_changed) {
+                    let session = self.history.active.as_ref().unwrap().path().to_owned();
+                    crate::rewind::write(&session, &self.live.turns);
+                }
                 self.sync_saved(&document);
                 if self
                     .notice
@@ -249,6 +255,9 @@ impl App {
         self.cancel_request();
         self.select_agent(None);
         self.live = restored.live;
+        if let Ok(path) = store.path(&id) {
+            self.live.turns = crate::rewind::read(&path, &self.live);
+        }
         self.delegations = restored.delegations;
         self.draft = Draft::default();
         self.composer = Default::default();
@@ -258,6 +267,7 @@ impl App {
         self.scroll = u16::MAX;
         self.main_scroll = u16::MAX;
         self.resume_picker = None;
+        self.rewind_picker = None;
         self.model_picker = None;
         self.screen = Screen::Conversation;
         self.slash_hidden = false;
@@ -327,6 +337,7 @@ impl App {
         self.scroll = u16::MAX;
         self.main_scroll = u16::MAX;
         self.resume_picker = None;
+        self.rewind_picker = None;
         self.model_picker = None;
         self.screen = Screen::Conversation;
         self.slash_hidden = false;
@@ -387,6 +398,7 @@ impl App {
         self.scroll = u16::MAX;
         self.main_scroll = u16::MAX;
         self.resume_picker = None;
+        self.rewind_picker = None;
         self.model_picker = None;
         self.screen = Screen::Conversation;
         self.slash_hidden = false;

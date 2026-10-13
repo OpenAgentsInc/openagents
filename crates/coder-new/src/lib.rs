@@ -75,6 +75,7 @@ pub mod programmatic;
 mod prompt_queue;
 pub mod provider;
 pub mod resume;
+pub mod rewind;
 pub mod risk_policy;
 mod route;
 pub mod router;
@@ -241,6 +242,11 @@ pub struct App {
     pub update_line: Option<String>,
     pub model_picker: Option<models::Picker>,
     pub resume_picker: Option<resume::Picker>,
+    /// The `/rewind` picker, while it is open (#11515).
+    pub rewind_picker: Option<rewind::Picker>,
+    /// Whether each turn keeps the files it changed for `/rewind`: set by
+    /// the terminal, never by an App a test or a helper builds.
+    pub rewind_records: bool,
     history: resume::History,
     pub(crate) active_options: models::GenerationOptions,
     pending_export_path: Option<std::path::PathBuf>,
@@ -709,12 +715,19 @@ impl App {
             || self.slash_hidden
             || self.model_picker.is_some()
             || self.resume_picker.is_some()
+            || self.rewind_picker.is_some()
             || self.screen != Screen::Conversation
         {
             return Vec::new();
         }
         slash::matches(&self.draft.text)
             .into_iter()
+            // A turn's files are kept in live chats only, and a chat
+            // without a message has nothing to rewind (#11515).
+            .filter(|command| {
+                *command != slash::Command::Rewind
+                    || (self.mode == Mode::Live && self.live.user_count() > 0)
+            })
             .filter(|command| {
                 *command != slash::Command::Models || self.plugins.enabled || self.on_claude()
             })
@@ -847,6 +860,8 @@ impl App {
         self.checking_key = false;
         self.checking_jev = false;
         if self.live.busy {
+            // A stopped turn's files can be undone too (#11515).
+            self.finish_turn_record();
             if !self.live.partial.is_empty() {
                 self.live.entries.push(live::Entry::Assistant {
                     elapsed_ms: self.live.reply_elapsed_ms(),
@@ -1142,6 +1157,8 @@ impl App {
                     }
                     return;
                 }
+                // The files the turn changed, for /rewind (#11515).
+                self.finish_turn_record();
                 // Coder's own loop waits for its agents within the turn: one
                 // still shown running when the turn ends never reported back,
                 // and would keep its chat working (#11462).
@@ -1285,6 +1302,17 @@ impl App {
             }
             return;
         }
+        // The chosen message comes back into the input after it clears.
+        if command == slash::Command::Rewind {
+            if self.rewind() {
+                self.draft = Draft::default();
+                self.composer = Default::default();
+                self.composer_history.reset();
+                self.slash_selected = 0;
+                self.slash_hidden = false;
+            }
+            return;
+        }
         self.draft = Draft::default();
         self.composer = Default::default();
         self.composer_history.reset();
@@ -1302,7 +1330,9 @@ impl App {
             slash::Command::Preferences => self.open_preferences(),
             slash::Command::Models => self.open_models(),
             slash::Command::Export => self.export(None),
-            slash::Command::Resume => unreachable!("Resume is handled before clearing the draft"),
+            slash::Command::Resume | slash::Command::Rewind => {
+                unreachable!("Resume and Rewind are handled before clearing the draft")
+            }
             slash::Command::Brainstorm => self.notice = Some(brainstorm::USAGE.into()),
             slash::Command::Help => self.notice = Some(slash::help()),
             slash::Command::Login => self.login(),
@@ -1800,6 +1830,7 @@ impl App {
         self.scroll = u16::MAX;
         if !midturn {
             self.begin_claude_turn();
+            self.begin_turn_record();
             self.record_choice(harness_plugin::Harness::ClaudeCode, images, chars);
             // A floor asks the person on the approval card (#11475).
             self.open_floor_desk();
@@ -2014,6 +2045,7 @@ impl App {
         self.live.pinned_missed = false;
         self.live.reply_started_at = Some(std::time::Instant::now());
         self.history.dirty = true;
+        self.begin_turn_record();
         self.record_choice(harness_plugin::Harness::CoderLoop, images, chars);
         self.active_options = if key.is_some() {
             self.plugins.options.clone()
@@ -2196,6 +2228,7 @@ impl App {
 
     pub fn open_appearance(&mut self) {
         self.resume_picker = None;
+        self.rewind_picker = None;
         self.model_picker = None;
         if self.screen != Screen::Appearance {
             self.appearance_return_screen = self.screen;
@@ -2205,6 +2238,7 @@ impl App {
 
     pub fn open_preferences(&mut self) {
         self.resume_picker = None;
+        self.rewind_picker = None;
         self.model_picker = None;
         if self.screen != Screen::Preferences {
             self.preferences_return_screen = self.screen;
@@ -2216,6 +2250,7 @@ impl App {
     pub fn open_plugins(&mut self) {
         self.plugins.catalog_revision = self.plugins.catalog_revision.wrapping_add(1);
         self.resume_picker = None;
+        self.rewind_picker = None;
         if !matches!(self.screen, Screen::Plugins | Screen::PluginSettings) {
             self.return_screen = self.screen;
         }
@@ -2496,6 +2531,7 @@ impl App {
             && self.screen == Screen::Conversation
             && self.model_picker.is_none()
             && self.resume_picker.is_none()
+            && self.rewind_picker.is_none()
             && self.agents_panel.is_none()
             && self.composer_click(&event)
         {
@@ -2505,6 +2541,7 @@ impl App {
             && self.screen == Screen::Conversation
             && self.model_picker.is_none()
             && self.resume_picker.is_none()
+            && self.rewind_picker.is_none()
             && self.agents_panel.is_none()
             && self.transcript_select(&event)
         {
@@ -2514,6 +2551,7 @@ impl App {
             && self.screen == Screen::Conversation
             && self.model_picker.is_none()
             && self.resume_picker.is_none()
+            && self.rewind_picker.is_none()
             && self.agents_panel.is_none()
         {
             if let Event::Mouse(mouse) = &event {
@@ -2556,7 +2594,8 @@ impl App {
             Event::Mouse(mouse)
                 if self.screen == Screen::Conversation
                     && self.model_picker.is_none()
-                    && self.resume_picker.is_none() =>
+                    && self.resume_picker.is_none()
+                    && self.rewind_picker.is_none() =>
             {
                 match mouse.kind {
                     MouseEventKind::ScrollUp => self.scroll_back(3),
@@ -2567,7 +2606,7 @@ impl App {
             Event::Paste(text) => {
                 self.footer_focused = false;
                 self.escape_at = None;
-                if self.resume_picker.is_some() {
+                if self.resume_picker.is_some() || self.rewind_picker.is_some() {
                     return true;
                 } else if let Some(picker) = &mut self.model_picker {
                     picker.paste(&text);
@@ -2679,6 +2718,16 @@ impl App {
                         resume::Action::Close => self.resume_picker = None,
                         resume::Action::Select(id) => {
                             self.resume(Some(&id));
+                        }
+                    }
+                    return true;
+                }
+                if let Some(picker) = &mut self.rewind_picker {
+                    match picker.handle(key) {
+                        rewind::Action::Continue => {}
+                        rewind::Action::Close => self.rewind_picker = None,
+                        rewind::Action::Select(message) => {
+                            self.rewind_to(message);
                         }
                     }
                     return true;
