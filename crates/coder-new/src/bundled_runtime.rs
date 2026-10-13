@@ -223,6 +223,10 @@ pub struct RoundUsage {
     pub cost: Option<f64>,
     pub milliseconds: u64,
     pub first_token_ms: Option<u64>,
+    /// Prompt tokens read from the provider's prompt cache (#11550).
+    pub cached_tokens: Option<u64>,
+    /// Prompt tokens written to the provider's prompt cache (#11550).
+    pub cache_write_tokens: Option<u64>,
 }
 
 impl RuntimeEvent {
@@ -2154,34 +2158,101 @@ pub async fn microcoder_local(
             vars.push(("CLAUDE_BIN".into(), "/dev/null".into()));
             set_child_env(vars);
         }
-        // What the Claude Code login's calls print, as it arrives: its
-        // thinking for the transcript and its plan windows for the rail
-        // (#11537).
-        let (lines, thoughts) = std::sync::mpsc::channel::<Value>();
-        generator.watch_claude(&claude_watcher(lines));
-        let mut result = run_microcoder_with(
+        microcoder_on(
+            &generator,
             task,
             cwd,
             read_only,
-            &generator,
             jev,
             redaction_keys,
             cancel,
             emit,
-            Some(thoughts),
         )
-        .await?;
-        result["provider"] = json!(generator.provider());
-        let fell_back_from = generator.fell_back_from();
-        if !fell_back_from.is_empty() {
-            result["fell_back_from"] = json!(fell_back_from);
-        }
-        let refusals = generator.refusals();
-        if !refusals.is_empty() {
-            result["refusals"] = json!(refusals);
-        }
-        Ok(result)
+        .await
     }
+}
+
+/// A model the person picked runs on their own plan (#11550): `login`'s
+/// login only, on `model`, never another login's model. `Err` before the
+/// loop starts when the login isn't here; a login out of capacity ends
+/// with `no_capacity`, for the caller to take the turn elsewhere.
+#[allow(clippy::too_many_arguments)]
+pub async fn microcoder_plan(
+    task: &str,
+    cwd: &Path,
+    login: coder::local_chain::PlanLogin,
+    model: &str,
+    effort: Option<String>,
+    jev: Option<jev::Client>,
+    redaction_keys: &[ApiKey],
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Value, String> {
+    validate_task(task)?;
+    #[cfg(test)]
+    {
+        let _ = (cwd, login, model, effort, jev, redaction_keys, cancel, emit);
+        return Err("The local model logins are unavailable in tests.".into());
+    }
+    #[cfg(not(test))]
+    {
+        let session = format!("coder-new-{}", std::process::id());
+        let generator = coder::local_chain::plan_generator_for(&session, login, model, effort)?;
+        microcoder_on(
+            &generator,
+            task,
+            cwd,
+            false,
+            jev,
+            redaction_keys,
+            cancel,
+            emit,
+        )
+        .await
+    }
+}
+
+/// The local loop on `generator`, with its provider, fallbacks and
+/// refusals in the result.
+#[cfg(not(test))]
+#[allow(clippy::too_many_arguments)]
+async fn microcoder_on(
+    generator: &coder::local_chain::LocalGenerator,
+    task: &str,
+    cwd: &Path,
+    read_only: bool,
+    jev: Option<jev::Client>,
+    redaction_keys: &[ApiKey],
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Value, String> {
+    // What the Claude Code login's calls print, as it arrives: its
+    // thinking for the transcript and its plan windows for the rail
+    // (#11537).
+    let (lines, thoughts) = std::sync::mpsc::channel::<Value>();
+    generator.watch_claude(&claude_watcher(lines));
+    let mut result = run_microcoder_with(
+        task,
+        cwd,
+        read_only,
+        generator,
+        jev,
+        redaction_keys,
+        cancel,
+        emit,
+        Some(thoughts),
+    )
+    .await?;
+    result["provider"] = json!(generator.provider());
+    let fell_back_from = generator.fell_back_from();
+    if !fell_back_from.is_empty() {
+        result["fell_back_from"] = json!(fell_back_from);
+    }
+    let refusals = generator.refusals();
+    if !refusals.is_empty() {
+        result["refusals"] = json!(refusals);
+    }
+    Ok(result)
 }
 
 /// The watcher on the Claude Code login's calls: the plan's windows go
@@ -2816,6 +2887,8 @@ impl Observer for MicrocoderEvents<'_> {
                         cost: None,
                         milliseconds: generated.milliseconds,
                         first_token_ms: None,
+                        cached_tokens: None,
+                        cache_write_tokens: None,
                     })));
                 }
                 if let Ok(action) = &generated.action {

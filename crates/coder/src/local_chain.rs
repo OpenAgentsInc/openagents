@@ -347,6 +347,62 @@ pub fn local_generator_for(
     })
 }
 
+/// The login a picked model runs on, on this computer's plan (#11550).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PlanLogin {
+    Codex,
+    Claude,
+}
+
+/// A generator on one login only, running `model`: a model the person
+/// picked runs on their plan when this computer has it (#11550), and is
+/// never swapped for another login's model. A login the capacity book
+/// holds out is left off, so the chain answers with its refusal.
+///
+/// # Errors
+///
+/// The login is not on this computer.
+pub fn plan_generator_for(
+    session: &str,
+    login: PlanLogin,
+    model: &str,
+    effort: Option<String>,
+) -> Result<LocalGenerator, String> {
+    use codex_transport::codex::{CodexTransport, Login};
+    let found = std::cell::Cell::new(false);
+    let generator = local_generator_in(book().as_deref(), |providers| match login {
+        PlanLogin::Codex => {
+            if let Some(path) = Login::default_path()
+                && let Ok(transport) = CodexTransport::new(path, session)
+            {
+                found.set(true);
+                providers.push(LocalProvider::Codex(Box::new(CodexGenerator {
+                    transport: Refusing::new(transport),
+                    model: model.to_owned(),
+                    effort: effort.clone().filter(|v| !v.is_empty()),
+                    cache_key: session.to_owned(),
+                    images: vec![],
+                })));
+            }
+        }
+        PlanLogin::Claude => {
+            if let Ok(generator) =
+                microcoder_loop::claude::ClaudeGenerator::from_env(model, effort.clone())
+            {
+                found.set(true);
+                providers.push(LocalProvider::Claude(ClaudeLane::new(generator)));
+            }
+        }
+    });
+    match generator {
+        Ok(generator) if found.get() => Ok(generator),
+        Ok(_) | Err(_) => Err(match login {
+            PlanLogin::Codex => "No Codex login is on this computer.".to_owned(),
+            PlanLogin::Claude => "No Claude Code login is on this computer.".to_owned(),
+        }),
+    }
+}
+
 /// `local_generator` with the capacity book's directory named, for a caller
 /// (or test) that keeps its own. `connect` appends the providers this
 /// computer can use; the ones the book says are out are left off and kept

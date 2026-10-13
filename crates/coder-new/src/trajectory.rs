@@ -267,6 +267,13 @@ fn with_round(mut step: Step, usage: &crate::bundled_runtime::RoundUsage) -> Ste
     if let Some(first) = usage.first_token_ms {
         call["first_token_ms"] = json!(first);
     }
+    // The prompt cache's reads and writes (#11550).
+    if let Some(cached) = usage.cached_tokens {
+        call["cached_tokens"] = json!(cached);
+    }
+    if let Some(written) = usage.cache_write_tokens {
+        call["cache_write_tokens"] = json!(written);
+    }
     let mut calls = step
         .extensions
         .remove("model_calls")

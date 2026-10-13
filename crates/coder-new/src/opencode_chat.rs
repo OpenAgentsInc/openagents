@@ -598,6 +598,8 @@ pub async fn run_with(
                                 cost,
                                 milliseconds: started.elapsed().as_millis() as u64,
                                 first_token_ms: reply.first_text_ms,
+                                cached_tokens: None,
+                                cache_write_tokens: None,
                             })));
                         }
                         Line::Error(message) => error = Some(message),

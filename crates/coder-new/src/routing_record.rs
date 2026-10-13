@@ -204,6 +204,8 @@ pub struct Outcome {
     pub redone: Option<bool>,
     /// The model that answered, when one did.
     pub model: Option<String>,
+    /// Who paid for the turn, read off the path it took (#11550).
+    pub payer: Option<Payer>,
     /// The error, unscrubbed; the record keeps only [`scrub`] of it.
     pub error: Option<String>,
 }
@@ -457,6 +459,10 @@ pub struct EndedLine {
     pub checks_passed: Option<bool>,
     pub redone: Option<bool>,
     pub model: Option<String>,
+    /// Who actually paid, agreeing with `model` (#11550). The choice's
+    /// payer is the expectation before the turn ran.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payer: Option<Payer>,
     /// The harness's runtime version, so drift after an upgrade shows.
     pub harness_version: Option<String>,
     /// A short scrubbed line from the error, when there was one.
@@ -704,6 +710,7 @@ impl Recorder {
             checks_passed: outcome.checks_passed,
             redone: outcome.redone,
             model: outcome.model.map(|model| scrub_model(&model)),
+            payer: outcome.payer,
             harness_version: version(open.harness),
             diagnostic: outcome.error.as_deref().map(scrub),
         });
@@ -1127,6 +1134,13 @@ impl crate::App {
         self.routing = Some(open);
     }
 
+    /// Whether the chat's Coder-loop turns go to the person's own
+    /// OpenRouter key (#11550): OpenRouter BYOK is on and the chat runs a
+    /// model picked from it, not a gateway model or Auto.
+    pub(crate) fn byok_turn(&self) -> bool {
+        self.plugins.enabled && self.live.pinned && self.gateway_model.is_none()
+    }
+
     /// Records how the open turn ended, with the chat's tokens and cost
     /// since it started.
     pub(crate) fn record_end(
@@ -1165,6 +1179,16 @@ impl crate::App {
                 Ended::Done
             }),
         });
+        // Who paid, off the model that answered (#11550): the person's
+        // own OpenRouter key when the chat's pick is one of its models.
+        let payer = model.as_deref().map(|model| {
+            crate::harness_plugin::paid_by(
+                open.harness,
+                open.agent.is_some(),
+                model,
+                self.byok_turn(),
+            )
+        });
         recorder.ended(
             &open,
             Outcome {
@@ -1173,6 +1197,7 @@ impl crate::App {
                 tokens: Some(self.live.tokens.saturating_sub(open.tokens_before)),
                 checks_passed,
                 model,
+                payer,
                 error,
                 ..Outcome::default()
             },
@@ -1467,7 +1492,8 @@ mod tests {
             &mut app,
             Ok(openrouter::Streamed {
                 text: "hi".into(),
-                model: "openagents/auto".into(),
+                // The cheap path ran it on the Codex plan (#11550).
+                model: "codex:gpt-6-luna".into(),
                 ..Default::default()
             }),
         );
@@ -1518,6 +1544,11 @@ mod tests {
         assert_eq!(chose[1].turn, 2);
         assert_eq!(ended[0].ended, Ended::Done);
         assert_eq!(ended[0].tokens, Some(42));
+        // The payer recorded at the end agrees with the model that ran,
+        // whatever the choice expected (#11550).
+        assert_eq!(chose[0].payer, Payer::GatewayCredits);
+        assert_eq!(ended[0].payer, Some(Payer::ChatGptLogin));
+        assert_eq!(ended[1].payer, None);
         assert_eq!(ended[1].ended, Ended::Limit);
         assert_eq!(ended[2].harness, Harness::ClaudeCode);
         assert_eq!(ended[2].ended, Ended::Error);

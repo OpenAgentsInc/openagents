@@ -501,6 +501,8 @@ impl Thread {
                                     cost: None,
                                     milliseconds: elapsed_ms(call_started),
                                     first_token_ms: first_text.take(),
+                                    cached_tokens: last["cachedInputTokens"].as_u64(),
+                                    cache_write_tokens: None,
                                 };
                                 call_started = std::time::Instant::now();
                                 used.prompt_tokens += round.prompt_tokens;

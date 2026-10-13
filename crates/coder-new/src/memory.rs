@@ -47,6 +47,14 @@ const BODY_LIMIT: usize = 8 * 1024;
 const SCOPE_LIMIT: usize = 200;
 /// The most nested instruction paths listed.
 const NESTED_LIMIT: usize = 40;
+/// The longest instruction file [`Memory::index`] shows whole.
+const INDEX_INLINE: usize = 1024;
+/// The most nested instruction paths [`Memory::index`] names.
+const INDEX_NESTED: usize = 8;
+/// The most of a note's description [`Memory::index`] shows.
+const INDEX_DESCRIPTION: usize = 110;
+/// The default budget for [`Memory::index`] on a Coder-loop turn.
+pub const INDEX_BUDGET: usize = 3 * 1024;
 /// The default budget for the whole context on a provider turn.
 pub const PROVIDER_BUDGET: usize = 160 * 1024;
 /// Of that, the most spent on memory notes (index lines always fit first).
@@ -739,6 +747,83 @@ impl Memory {
                 text.push('\n');
             }
             text.push_str(&memory);
+        }
+        text
+    }
+
+    /// The short context a Coder-loop turn opens with (#11550): which
+    /// instruction files apply, by path and size, and the notes' names and
+    /// one-line descriptions, within `budget` bytes. The model reads a file
+    /// or a note when a task needs it, so a plain question doesn't carry
+    /// every instruction file.
+    pub fn index(&self, budget: usize) -> String {
+        let files = self.instructions();
+        let nested = self.nested_instructions(&files);
+        let mut text = String::new();
+        if !files.is_empty() || !nested.is_empty() {
+            text.push_str("# Project instructions\n\nThese files apply here; nearer files win over farther ones, and the user's messages in this chat win over all. Read the ones that bear on a task before you change files, run builds, or commit; a question that needs none of them can be answered without reading them.\n");
+            // A short file is shown whole; a long one by path.
+            let mut inline = Vec::new();
+            for file in &files {
+                if file.text.len() <= INDEX_INLINE
+                    && text.len() + file.text.len() + 200 <= budget / 2
+                {
+                    inline.push(file);
+                    continue;
+                }
+                text.push_str(&format!(
+                    "- {} ({} KB)\n",
+                    file.path.display(),
+                    fs::metadata(&file.path)
+                        .map_or(file.text.len(), |meta| {
+                            usize::try_from(meta.len()).unwrap_or(usize::MAX)
+                        })
+                        .div_ceil(1024)
+                ));
+            }
+            for file in inline {
+                text.push_str(&format!(
+                    "\n## {}\n\n{}\n",
+                    file.path.display(),
+                    file.text.trim_end()
+                ));
+            }
+            if !nested.is_empty() {
+                let shown: Vec<String> = nested
+                    .iter()
+                    .take(INDEX_NESTED)
+                    .map(|path| self.checkout.join(path).display().to_string())
+                    .collect();
+                let more = nested.len().saturating_sub(INDEX_NESTED);
+                text.push_str(&format!(
+                    "Other directories have their own; read the one for a directory before changing files under it: {}{}\n",
+                    shown.join(", "),
+                    if more > 0 { format!(", and {more} more") } else { String::new() }
+                ));
+            }
+        }
+        let notes = self.all();
+        if !notes.is_empty() {
+            if !text.is_empty() {
+                text.push('\n');
+            }
+            text.push_str("# Memory\n\nNotes from earlier sessions: the user's standing context, which may be out of date. Load the memory tools to read one in full (recall NAME), or to save or forget one.\n");
+            let mut left = 0usize;
+            for (at, entry) in notes.iter().enumerate() {
+                let description: String =
+                    entry.description.chars().take(INDEX_DESCRIPTION).collect();
+                let line = format!("- {}: {}\n", entry.name, description);
+                if text.len() + line.len() > budget {
+                    left = notes.len() - at;
+                    break;
+                }
+                text.push_str(&line);
+            }
+            if left > 0 {
+                text.push_str(&format!(
+                    "- ({left} more; recall with no name lists them all)\n"
+                ));
+            }
         }
         text
     }

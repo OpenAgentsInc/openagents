@@ -65,6 +65,68 @@ pub const CHEAP_CODEX_MODEL: &str = "gpt-6-luna";
 /// The Claude plan's cheapest model, for a cheap answer.
 pub const CHEAP_CLAUDE_MODEL: &str = crate::claude::MODEL;
 
+/// A picked model this computer's own plan can run (#11550): the Claude
+/// plan for Anthropic's Claude models, the Codex plan for the Codex
+/// models, each by the login's own model id.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlanPick {
+    pub login: coder::local_chain::PlanLogin,
+    /// The login's id for the model, such as `claude-fable-5-1`.
+    pub model: String,
+    /// The effort the pick named after `:`, such as `high`.
+    pub effort: Option<String>,
+}
+
+/// Which plan runs `model` (an OpenRouter or gateway id such as
+/// `anthropic/claude-fable-5.1:high`), when `claude` (the Claude Code
+/// plugin is on and its login is here) or `codex` (the same for Codex)
+/// says that plan is on this computer. The order a picked Claude or Codex
+/// model is paid in is: the plan, then the person's own key, then gateway
+/// credit. The id is matched exactly against the logins' model lists.
+#[must_use]
+pub fn plan_pick(model: &str, claude: bool, codex: bool) -> Option<PlanPick> {
+    let (id, effort) = match model.split_once(':') {
+        Some((id, effort)) => (id, Some(effort.to_owned()).filter(|e| !e.is_empty())),
+        None => (model, None),
+    };
+    let (provider, name) = id.split_once('/')?;
+    let local = name.replace('.', "-");
+    match provider {
+        "anthropic" if claude => crate::claude::MODELS
+            .iter()
+            .any(|(known, _, _)| *known == local)
+            .then(|| PlanPick {
+                login: coder::local_chain::PlanLogin::Claude,
+                model: local,
+                effort,
+            }),
+        "openai" if codex => crate::codex::MODELS
+            .iter()
+            .any(|(known, _, _)| *known == name)
+            .then(|| PlanPick {
+                login: coder::local_chain::PlanLogin::Codex,
+                model: name.to_owned(),
+                effort,
+            }),
+        _ => None,
+    }
+}
+
+/// [`plan_pick`] for this chat: the plugin is on and its login is on this
+/// computer. Tests never ask the computer.
+#[must_use]
+pub fn chat_plan_pick(model: &str, execution: &ExecutionSettings) -> Option<PlanPick> {
+    if cfg!(test) {
+        return None;
+    }
+    let claude = execution.claude && crate::claude::available();
+    let codex = execution
+        .harness_off(crate::harness_plugin::Harness::Codex)
+        .is_none()
+        && crate::codex::available();
+    plan_pick(model, claude, codex)
+}
+
 /// One door an auto turn may answer through.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Lane {
@@ -311,6 +373,36 @@ pub fn refusal_clauses(refusals: &[serde_json::Value]) -> Vec<String> {
             format!("{login} is out until {reset}")
         })
         .collect()
+}
+
+#[cfg(test)]
+mod plan_pick_tests {
+    use super::*;
+    use coder::local_chain::PlanLogin;
+
+    /// #11550: a picked Claude model runs on the Claude plan when it is
+    /// here, by Claude Code's own id; a Codex model on the Codex plan;
+    /// anything else, or a plan that isn't here, stays on the key.
+    #[test]
+    fn a_picked_claude_or_codex_model_runs_on_its_plan() {
+        let pick = plan_pick("anthropic/claude-fable-5.1:high", true, false).unwrap();
+        assert_eq!(pick.login, PlanLogin::Claude);
+        assert_eq!(pick.model, "claude-fable-5-1");
+        assert_eq!(pick.effort.as_deref(), Some("high"));
+        assert_eq!(
+            plan_pick("anthropic/claude-opus-5.5", true, true)
+                .unwrap()
+                .model,
+            "claude-opus-5-5"
+        );
+        assert!(plan_pick("anthropic/claude-fable-5.1", false, true).is_none());
+        let codex = plan_pick(&format!("openai/{}", crate::codex::MODEL), false, true).unwrap();
+        assert_eq!(codex.login, PlanLogin::Codex);
+        assert!(plan_pick(&format!("openai/{}", crate::codex::MODEL), true, false).is_none());
+        assert!(plan_pick("google/gemini-3.8-flash", true, true).is_none());
+        assert!(plan_pick("anthropic/claude-unknown-9", true, true).is_none());
+        assert!(plan_pick("claude-fable-5-1", true, true).is_none());
+    }
 }
 
 #[cfg(test)]

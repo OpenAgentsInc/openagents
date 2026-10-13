@@ -682,17 +682,22 @@ async fn provider_dispatch_uses_host_refs_and_keeps_response_strings_as_bounded_
     let requests = server.join().unwrap();
     assert_eq!(requests.len(), 5);
     let tools = requests[0]["tools"].as_array().unwrap();
-    // Run, media (#11172), the five file tools (#11168), the two web
-    // tools (#11175), the plan tool (#11287), the workflow tool, and the
-    // solver swarm tool (#11346), the delegate tool (#11511), then
-    // Brainstorm's two.
-    assert_eq!(tools.len(), 15);
+    // Run, the five file tools (#11168), the plan tool (#11287), and
+    // load_tools, whose families hold media, web, workflow, the swarm,
+    // delegate and Brainstorm's two (#11550).
+    assert_eq!(tools.len(), 8);
     assert!(tools.iter().any(|tool| tool["function"]["name"] == "Run"));
-    assert!(
-        tools
-            .iter()
-            .any(|tool| tool["function"]["name"] == "workflow")
-    );
+    let load = tools
+        .iter()
+        .find(|tool| tool["function"]["name"] == crate::plugin_tools::LOAD_TOOLS)
+        .unwrap();
+    let families = &load["function"]["parameters"]["properties"]["families"]["items"]["enum"];
+    for family in ["openagents", "workflow", "agents", "web", "media"] {
+        assert!(
+            families.as_array().unwrap().iter().any(|id| id == family),
+            "{family}"
+        );
+    }
     assert!(
         tools
             .iter()

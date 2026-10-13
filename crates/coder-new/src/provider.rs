@@ -345,7 +345,9 @@ impl Provider {
             scoped.harness = Some(run);
         }
         let execution = &scoped;
-        let definitions = execution.defs();
+        // The core tools and `load_tools`; a family loads when the task
+        // needs it (#11550).
+        let mut toolset = crate::prompt_budget::Toolset::opening(execution);
         let mut request = ChatRequest::new(model, vec![]);
         if let Some(effort) = &options.reasoning {
             request = request.effort(effort);
@@ -353,48 +355,11 @@ impl Provider {
         if let Some(limit) = options.max_tokens {
             request = request.max_tokens(limit);
         }
-        // Coder's own identity first, whichever model answers (#11264).
-        // The /models menu it names is the one this chat has (#11519).
-        let menu = crate::identity::Menu::coder_loop(
-            execution.openrouter,
-            execution
-                .connections
-                .as_ref()
-                .is_some_and(crate::provider::gateway_open),
-            execution.claude,
-        );
-        let mut history =
-            vec![json!({"role":"system","content":crate::identity::prompt_with(menu, model)})];
-        if let Some(standing) = execution
-            .instructions
-            .as_deref()
-            .filter(|text| !text.trim().is_empty())
-        {
-            history.push(json!({"role":"system","content":standing}));
-        }
-        // The chat's briefing for this piece of work (#11473), or, when
-        // none was chosen, AGENTS.md/CLAUDE.md and saved memory, read fresh
-        // each turn (#11176).
-        let memory_tools = definitions
-            .iter()
-            .any(|tool| tool["function"]["name"] == "remember");
-        if let Some(context) = execution
-            .briefing
-            .as_ref()
-            .map(|briefing| briefing.render(memory_tools))
-            .or_else(|| {
-                execution
-                    .memory
-                    .as_ref()
-                    .map(|memory| memory.context(memory_tools, crate::memory::PROVIDER_BUDGET))
-            })
-            .filter(|text| !text.trim().is_empty())
-        {
-            history.push(json!({"role":"system","content":context}));
-        }
-        if !definitions.is_empty() {
-            history.push(json!({"role":"system","content":execution.instructions()}));
-        }
+        let mut history: Vec<Value> =
+            crate::prompt_budget::system_parts(execution, model, &toolset.definitions)
+                .into_iter()
+                .map(|(_, content)| json!({"role":"system","content":content}))
+                .collect();
         // Attachments (#11173): a vision model gets each noted image or PDF
         // itself; any other model reads the note lines and why.
         let vision = crate::models::accepts_images(model);
@@ -462,6 +427,11 @@ impl Provider {
             if let Some(plan) = &current_plan {
                 model_history.insert(1, plan.clone());
             }
+            // The prompt cache's breakpoints, where the provider needs them
+            // (#11550); the gateway caches on its side.
+            if !self.gateway {
+                crate::prompt_budget::mark_cache(&mut model_history, model);
+            }
             let mut first = true;
             let mut partial = String::new();
             // The model's reasoning, when the provider streams it, goes
@@ -495,14 +465,14 @@ impl Provider {
             };
             let result = tokio::select! {
                 result = async {
-                    if definitions.is_empty() {
+                    if toolset.definitions.is_empty() {
                         request.messages = model_history.iter().filter_map(|message| Some(Message {
                             role: message["role"].as_str()?.into(),
                             content: message["content"].as_str().or_else(|| message["content"][0]["text"].as_str())?.into(),
                         })).collect();
                         self.chat.stream_with_reasoning(&request, &mut sink, model_callback, &mut reasoning_sink).await.map(|reply| openrouter::ToolStreamed {reply, calls: vec![]})
                     } else {
-                        self.chat.stream_tools_for_repair_with_reasoning(&request, &model_history, &definitions, &mut sink, model_callback, &mut reasoning_sink).await
+                        self.chat.stream_tools_for_repair_with_reasoning(&request, &model_history, &toolset.definitions, &mut sink, model_callback, &mut reasoning_sink).await
                     }
                 } => result,
                 () = canceled(cancel) => return Err("The OpenRouter request was canceled; whether it was billed is unknown.".into()),
@@ -830,6 +800,11 @@ impl Provider {
                 };
                 let result = if has_credential {
                     Err("Keep API keys in plugin settings, outside tool arguments.".into())
+                } else if call.name == crate::plugin_tools::LOAD_TOOLS {
+                    match &arguments {
+                        Some(arguments) => toolset.load(execution, arguments),
+                        None => Err("load_tools takes {\"families\": [...]}.".into()),
+                    }
                 } else if let Some(arguments) = arguments {
                     execution
                         .execute(
@@ -1098,6 +1073,16 @@ fn round_usage(reply: &Streamed) -> crate::bundled_runtime::RoundUsage {
         cost: reply.usage.cost.filter(|cost| cost.is_finite()),
         milliseconds: reply.milliseconds,
         first_token_ms: reply.first_text_ms,
+        cached_tokens: reply
+            .usage
+            .prompt_tokens_details
+            .as_ref()
+            .and_then(|details| details.cached_tokens),
+        cache_write_tokens: reply
+            .usage
+            .prompt_tokens_details
+            .as_ref()
+            .and_then(|details| details.cache_write_tokens),
     }
 }
 
@@ -1345,6 +1330,22 @@ fn aggregate_usage(total: &mut openrouter::Usage, next: &openrouter::Usage, firs
         )
         .map(|(left, right)| openrouter::CompletionDetails {
             reasoning_tokens: Some(left.saturating_add(right)),
+        });
+    // The prompt cache's reads and writes add up across the turn's calls.
+    let add = |pick: fn(&openrouter::PromptDetails) -> Option<u64>| {
+        let left = total.prompt_tokens_details.as_ref().and_then(pick);
+        let right = next.prompt_tokens_details.as_ref().and_then(pick);
+        match (left, right) {
+            (None, None) => None,
+            (left, right) => Some(left.unwrap_or(0).saturating_add(right.unwrap_or(0))),
+        }
+    };
+    let cached = add(|details| details.cached_tokens);
+    let written = add(|details| details.cache_write_tokens);
+    total.prompt_tokens_details =
+        (cached.is_some() || written.is_some()).then_some(openrouter::PromptDetails {
+            cached_tokens: cached,
+            cache_write_tokens: written,
         });
 }
 

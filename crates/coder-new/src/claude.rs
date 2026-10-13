@@ -1424,6 +1424,7 @@ fn finish(result: SdkResultMessage) -> Result<Streamed, String> {
             total_tokens: prompt_tokens.saturating_add(completion_tokens),
             cost: (cost > 0.0).then_some(cost),
             completion_tokens_details: None,
+            prompt_tokens_details: None,
         },
         first_text_ms: None,
         milliseconds: 0,

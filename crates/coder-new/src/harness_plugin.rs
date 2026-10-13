@@ -245,6 +245,39 @@ pub fn payer(harness: Harness, facts: &Facts) -> Payer {
     }
 }
 
+/// Who actually paid for a turn that ran on `harness` and was answered by
+/// `model` (#11550), set when the turn ends so it always agrees with the
+/// model: the Coder loop's turn is the Codex plan's when a Codex model
+/// answered on this computer's login (`codex:` or a bare `gpt-` id), the
+/// Claude plan's for a bare `claude-` id, OpenCode's for `opencode/`, and
+/// otherwise the person's own OpenRouter key when `byok` says the turn
+/// went there, else gateway credit. `agent` turns are the agent's login's.
+#[must_use]
+pub fn paid_by(harness: Harness, agent: bool, model: &str, byok: bool) -> Payer {
+    if agent {
+        return Payer::AgentLogin;
+    }
+    match harness {
+        Harness::ClaudeCode => Payer::ClaudePlan,
+        Harness::Codex => Payer::ChatGptLogin,
+        Harness::OpenCode => Payer::OpenCode,
+        Harness::CoderLoop => {
+            let bare = !model.contains('/');
+            if model.starts_with("codex:") || (bare && model.starts_with("gpt-")) {
+                Payer::ChatGptLogin
+            } else if bare && model.starts_with("claude-") {
+                Payer::ClaudePlan
+            } else if model.starts_with("opencode/") {
+                Payer::OpenCode
+            } else if byok && !model.starts_with("openagents/") {
+                Payer::OpenRouterKey
+            } else {
+                Payer::GatewayCredits
+            }
+        }
+    }
+}
+
 /// Why `harness` is left out under `facts`, or `None` when it is a
 /// candidate.
 #[must_use]
@@ -1142,6 +1175,35 @@ mod tests {
         keyed.openrouter_key = true;
         assert_eq!(payer(Harness::CoderLoop, &keyed), Payer::OpenRouterKey);
         assert_eq!(payer(Harness::ClaudeCode, &keyed), Payer::ClaudePlan);
+    }
+
+    /// #11550: the payer an ended turn records is the one the model it ran
+    /// says paid: the Codex plan for a Codex login's model, the Claude plan
+    /// for Claude Code's, the person's key or gateway credit otherwise.
+    #[test]
+    fn the_payer_agrees_with_the_model_that_answered() {
+        let loop_paid = |model: &str, byok: bool| paid_by(Harness::CoderLoop, false, model, byok);
+        assert_eq!(loop_paid("codex:gpt-6-luna", true), Payer::ChatGptLogin);
+        assert_eq!(loop_paid("gpt-6.1-sol", true), Payer::ChatGptLogin);
+        assert_eq!(loop_paid("claude-fable-5-1", true), Payer::ClaudePlan);
+        assert_eq!(
+            loop_paid("anthropic/claude-fable-5.1", true),
+            Payer::OpenRouterKey
+        );
+        assert_eq!(
+            loop_paid("anthropic/claude-fable-5.1", false),
+            Payer::GatewayCredits
+        );
+        assert_eq!(loop_paid("openagents/fast", true), Payer::GatewayCredits);
+        assert_eq!(loop_paid("opencode/big-pickle", false), Payer::OpenCode);
+        assert_eq!(
+            paid_by(Harness::CoderLoop, true, "grok-4", false),
+            Payer::AgentLogin
+        );
+        assert_eq!(
+            paid_by(Harness::ClaudeCode, false, "anthropic/x", true),
+            Payer::ClaudePlan
+        );
     }
 
     #[test]

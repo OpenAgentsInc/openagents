@@ -815,6 +815,18 @@ fn top_rail(app: &App) -> Option<String> {
     {
         parts.push(context);
     }
+    // A turn the person's own OpenRouter key paid says so (#11550).
+    if paying.is_none()
+        && shown == Some(Harness::CoderLoop)
+        && running
+        && app.byok_turn()
+        && served_model(app).is_some_and(|model| {
+            crate::harness_plugin::paid_by(Harness::CoderLoop, false, &model, true)
+                == crate::harness_plugin::Payer::OpenRouterKey
+        })
+    {
+        parts.push(OPENROUTER_PAYER.to_owned());
+    }
     let metered = paying.is_none();
     let cost = crate::long_session::session_cost(app);
     if cost > 0.0 && metered && own {
@@ -1056,6 +1068,10 @@ pub(crate) fn opencode_rail_label(app: &App) -> String {
     );
     crate::opencode_chat::rail_label(&model)
 }
+
+/// What the rail says when the person's own OpenRouter key paid the
+/// Coder loop's turn (#11550).
+pub(crate) const OPENROUTER_PAYER: &str = "your OpenRouter key";
 
 /// The rail's word for Coder's own loop, which the rail colors as its own.
 const CODER_RAIL: &str = "Coder";

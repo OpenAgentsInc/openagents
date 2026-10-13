@@ -1466,6 +1466,8 @@ mod tests {
             cost: Some(cost),
             milliseconds: 1500,
             first_token_ms: Some(300),
+            cached_tokens: None,
+            cache_write_tokens: None,
         };
         app.apply_update(live::Update::Delta {
             id,

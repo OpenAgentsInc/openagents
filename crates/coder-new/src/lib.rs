@@ -85,6 +85,7 @@ pub mod plugin_tools;
 pub mod plugins;
 pub mod preferences;
 pub mod programmatic;
+pub mod prompt_budget;
 mod prompt_queue;
 pub mod provider;
 pub mod resume;

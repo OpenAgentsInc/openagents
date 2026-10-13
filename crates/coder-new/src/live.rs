@@ -1532,6 +1532,50 @@ fn run_with_provider(
                 Work::Chat { model, options, messages, execution } if !crate::models::pinned(&model) => {
                     auto_route(id, messages, execution, &request.key, options, &create, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
                 }
+                // A picked Claude or Codex model runs on this computer's plan
+                // first, then the person's own key (#11550).
+                Work::Chat { model, options, messages, execution } if crate::route::chat_plan_pick(&model, &execution).is_some() => {
+                    let mut plan = crate::route::chat_plan_pick(&model, &execution);
+                    if let Some(plan) = plan.as_mut().filter(|plan| plan.effort.is_none()) {
+                        plan.effort.clone_from(&options.reasoning);
+                    }
+                    let started = AtomicBool::new(false);
+                    let planned = {
+                        let mut text = |delta: &str| {
+                            if !delta.is_empty() {
+                                started.store(true, Ordering::Relaxed);
+                            }
+                            text_callback(delta);
+                        };
+                        let mut events = |event: RuntimeEvent| {
+                            if matches!(event, RuntimeEvent::Tool { .. } | RuntimeEvent::Delegation { .. }) {
+                                started.store(true, Ordering::Relaxed);
+                            }
+                            event_callback(event);
+                        };
+                        match local_turn(id, messages.clone(), execution.clone(), plan, &cancel, &mut text, &mut model_callback, &mut events).await {
+                            Update::Finished { result, .. } => result,
+                            _ => unreachable!(),
+                        }
+                    };
+                    match planned {
+                        Ok(reply) => Update::Finished { id, result: Ok(reply) },
+                        Err(error) if started.load(Ordering::Relaxed) || cancel.load(Ordering::Relaxed) => Update::Finished { id, result: Err(error) },
+                        // The plan couldn't take it before anything ran: the
+                        // person's own key does, on the same model.
+                        Err(_) => match create(openrouter::ApiKey::new(request.key.expose())) {
+                            Ok(provider) => Update::Finished {
+                                id,
+                                result: provider.chat_with_plugins(
+                                    &model, &options, messages, &execution,
+                                    &mut text_callback, &mut model_callback,
+                                    &mut event_callback, &cancel,
+                                ).await,
+                            },
+                            Err(error) => Update::Finished { id, result: Err(error) },
+                        },
+                    }
+                }
                 kind => {
                     let provider = match create(openrouter::ApiKey::new(request.key.expose())) {
                         Ok(provider) => provider,
@@ -1664,6 +1708,7 @@ async fn auto_route(
                     id,
                     messages.clone(),
                     execution.clone(),
+                    None,
                     cancel,
                     &mut text,
                     model_callback,
@@ -1949,6 +1994,7 @@ async fn local_turn(
     id: u64,
     messages: Vec<Message>,
     execution: ExecutionSettings,
+    plan: Option<crate::route::PlanPick>,
     cancel: &Arc<AtomicBool>,
     text_callback: &mut (dyn FnMut(&str) + Send),
     model_callback: &mut (dyn FnMut(&str) + Send),
@@ -1987,10 +2033,17 @@ async fn local_turn(
     let result = async {
         let task = local_task(&messages, &execution)?;
         let client = execution.jev_client()?;
-        let result = crate::bundled_runtime::microcoder_local(
-            &task, &execution.cwd, false, execution.claude, execution.cheap.is_some(), client, &execution.redaction_keys,
-            &cancel, &mut events,
-        ).await?;
+        // A picked Claude or Codex model on this computer's plan (#11550).
+        let result = match plan {
+            Some(plan) => crate::bundled_runtime::microcoder_plan(
+                &task, &execution.cwd, plan.login, &plan.model, plan.effort, client,
+                &execution.redaction_keys, &cancel, &mut events,
+            ).await?,
+            None => crate::bundled_runtime::microcoder_local(
+                &task, &execution.cwd, false, execution.claude, execution.cheap.is_some(), client, &execution.redaction_keys,
+                &cancel, &mut events,
+            ).await?,
+        };
         let mut reply = Streamed {
             text: execution.redact_text(result["reply"].as_str().unwrap_or_default()),
             model: result["model"].as_str().unwrap_or_default().into(),

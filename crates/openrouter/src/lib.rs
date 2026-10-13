@@ -423,6 +423,22 @@ pub struct Usage {
     pub cost: Option<f64>,
     #[serde(default)]
     pub completion_tokens_details: Option<CompletionDetails>,
+    /// The prompt's breakdown: what the provider's prompt cache read and
+    /// wrote, when it reports them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_details: Option<PromptDetails>,
+}
+
+/// The prompt's breakdown.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+pub struct PromptDetails {
+    /// Prompt tokens read from the cache.
+    #[serde(default)]
+    pub cached_tokens: Option<u64>,
+    /// Prompt tokens written to the cache (OpenRouter reports these for
+    /// providers that charge for writes, such as Anthropic).
+    #[serde(default)]
+    pub cache_write_tokens: Option<u64>,
 }
 
 /// The completion's breakdown.
