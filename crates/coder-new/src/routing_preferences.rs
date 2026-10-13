@@ -358,11 +358,11 @@ impl RoutingPreferences {
             .unwrap_or(notes);
         let front: Front = toml::from_str(front).map_err(|_| READ_ERROR.to_owned())?;
         if front.version != VERSION
-            || front.never.iter().any(|pair| !valid_model(&pair.model))
+            || front.never.iter().any(|pair| !well_formed(&pair.model))
             || front.pin.iter().any(|pin| {
                 pin.model
                     .as_deref()
-                    .is_some_and(|model| !valid_model(model))
+                    .is_some_and(|model| !well_formed(model))
             })
         {
             return Err(READ_ERROR.into());
@@ -473,7 +473,7 @@ impl RoutingPreferences {
     ) -> Result<&Change, String> {
         if let Some(model) = model {
             if !valid_model(model) {
-                return Err("Name the model exactly, as one word.".into());
+                return Err(unknown_model(model));
             }
             if !matches!(to, Stance::Never | Stance::Neutral) {
                 return Err(
@@ -602,7 +602,7 @@ impl RoutingPreferences {
     pub fn pin(&mut self, pin: Pin) -> Result<&Pin, String> {
         if let Some(model) = &pin.model {
             if !valid_model(model) {
-                return Err("Name the model exactly, as one word.".into());
+                return Err(unknown_model(model));
             }
             if self.never_with(pin.harness, model) {
                 return Err("You said never to use that model there; allow it again first.".into());
@@ -628,8 +628,46 @@ impl RoutingPreferences {
     }
 }
 
-fn valid_model(model: &str) -> bool {
+/// The model ids Coder offers (#11482): Claude Code's in /models, then
+/// the ones /models lists for Coder's own loop. A preference or pin names
+/// one of these; a made-up or retired id is refused before anything is
+/// written.
+#[must_use]
+pub fn catalog() -> Vec<&'static str> {
+    crate::claude::MODELS
+        .iter()
+        .map(|(id, _, _)| *id)
+        .chain(
+            crate::models::SHORTLIST
+                .iter()
+                .copied()
+                .filter(|id| *id != crate::models::DEFAULT_MODEL),
+        )
+        .collect()
+}
+
+/// A model the person wrote into the file themselves: one word. Only a
+/// new change is held to [`catalog`], so a file that names an older model
+/// still reads.
+fn well_formed(model: &str) -> bool {
     !model.is_empty() && model.len() <= 200 && !model.chars().any(char::is_whitespace)
+}
+
+fn valid_model(model: &str) -> bool {
+    catalog().contains(&model)
+}
+
+/// What a refused model id is told: the ids that exist.
+fn unknown_model(model: &str) -> String {
+    format!(
+        "Coder has no model {model}. The models are: {}.",
+        catalog().join(", ")
+    )
+}
+
+/// Whether `model` is one of Claude Code's models in /models.
+fn claude_model(model: &str) -> bool {
+    crate::claude::MODELS.iter().any(|(id, _, _)| *id == model)
 }
 
 /// What the candidate check reads from the routing preferences.
@@ -657,11 +695,11 @@ impl Leaning {
 #[must_use]
 pub fn definition() -> Value {
     json!({"type":"function","function":{"name":TOOL,
-        "description":"Change which engines Coder uses for the person's turns, when the person asks to use one more, less, never, or as usual again, or never to run a certain model on one, or to always use one (a pin: set pin, with this_repo for this repository only, kind for one kind of work, and model for one model; unpin removes it). The engines: claude-code is Claude Code on this computer's Claude plan; coder-loop is Coder's own loop on OpenAgents; codex is Codex on this computer's ChatGPT login. Stances: prefer (try it first), avoid (try it after the others), never (never use it), neutral (no preference). With a model, only never or neutral apply, to that exact model on that engine. Set undo to reverse the most recent change instead. Always pass the person's own words in said. The change is saved in the person's routing preferences file and applies from the next turn.",
+        "description":"Change which engines or models Coder uses for the person's turns. Call it only when the person asks to change that: to use an engine more, less, never, or as usual again; never to run a certain model on one; to always use one (a pin: set pin, with this_repo for this repository only, kind for one kind of work, and model for one model; unpin removes it); or to prefer a Claude model (harness claude-code, stance prefer, and the model: this sets the model Claude Code runs, the same as picking it in /models). Never call it for a question about how something works; answer the question instead. Asked how to use a model such as Opus, say in one line: type /models and pick it (Claude Code offers Haiku 5.5, Sonnet 5.5, Opus 5.5 and Fable 5.1). The engines: claude-code is Claude Code on this computer's Claude plan; coder-loop is Coder's own loop on OpenAgents; codex is Codex on this computer's ChatGPT login. Stances: prefer (try it first), avoid (try it after the others), never (never use it), neutral (no preference). With a model other than a Claude preference, only never or neutral apply, to that exact model on that engine. Set undo to reverse the most recent change instead. Always pass the person's own words in said. The change is saved and applies from the next turn; afterwards tell the person in one line what changed.",
         "parameters":{"type":"object","additionalProperties":false,"required":["said"],"properties":{
             "harness":{"type":"string","enum":["claude-code","coder-loop","codex"]},
             "stance":{"type":"string","enum":["prefer","neutral","avoid","never"]},
-            "model":{"type":"string","minLength":1,"maxLength":200,"description":"An exact model name, for a never or neutral on that model only."},
+            "model":{"type":"string","enum":catalog(),"description":"One of Coder's models: a Claude model to prefer on claude-code, or the exact model for a never, neutral, or pin."},
             "said":{"type":"string","minLength":1,"maxLength":500,"description":"The person's words that asked for this."},
             "reason":{"type":"string","maxLength":500},
             "note":{"type":"string","maxLength":500,"description":"A preference that is not one of the stances, kept in the notes, such as cheaper engines for small tasks."},
@@ -673,7 +711,7 @@ pub fn definition() -> Value {
 }
 
 /// What the model is told while the tool is offered.
-pub const INSTRUCTIONS: &str = "When the person tells you to use an engine more, less, never, or as usual again, never to run a model on an engine, or always to use one (here, or for a kind of work), call routing_preference with their words; it changes which engine takes later turns.\n";
+pub const INSTRUCTIONS: &str = "When the person tells you to use an engine more, less, never, or as usual again, never to run a model on an engine, always to use one (here, or for a kind of work), or to use a Claude model, call routing_preference with their words; it changes which engine or model takes later turns. A question about how something works is not such a request: answer it, and change nothing.\n";
 
 /// Runs one call of [`TOOL`] against the file at `path`.
 ///
@@ -730,6 +768,32 @@ pub fn execute_in(path: &Path, arguments: Value, repo: Option<&str>) -> Result<V
             "pinned": pinned,
             "now": preferences.summary(),
         }));
+    }
+    // "Prefer Opus" (#11482): the model Claude Code runs, the same pick
+    // /models makes, rather than a stance on the pair.
+    if let (Some(Harness::ClaudeCode), Some(Stance::Prefer), Some(model), false) = (
+        request.harness,
+        request.stance,
+        request.model.as_deref(),
+        request.undo,
+    ) {
+        if !claude_model(model) {
+            return Err(unknown_model(model));
+        }
+        crate::claude::choose(model, crate::claude::choice().effort)?;
+        return Ok(json!({
+            "model": model,
+            "now": format!(
+                "Claude Code runs {} from the next message.",
+                crate::claude::name(model)
+            ),
+        }));
+    }
+    if let (Some(Stance::Prefer), Some(model)) = (request.stance, request.model.as_deref()) {
+        return Err(format!(
+            "To run {} on Coder's own loop, the person picks it in /models.",
+            crate::models::label(model)
+        ));
     }
     let change = if request.undo {
         Some(preferences.undo(Who::Model, &request.said)?.clone())
@@ -853,12 +917,12 @@ mod tests {
         .unwrap();
         execute(
             &path,
-            json!({"harness":"coder-loop","stance":"never","model":"deepseek/deepseek-v4","said":"never send this to deepseek"}),
+            json!({"harness":"coder-loop","stance":"never","model":"deepseek/deepseek-v4.1-flash","said":"never send this to deepseek"}),
         )
         .unwrap();
         let saved = RoutingPreferences::load(&path).unwrap();
         assert_eq!(saved.stances.get(Harness::ClaudeCode), Stance::Avoid);
-        assert!(saved.never_with(Harness::CoderLoop, "deepseek/deepseek-v4"));
+        assert!(saved.never_with(Harness::CoderLoop, "deepseek/deepseek-v4.1-flash"));
         assert_eq!(saved.changes.len(), 2);
         assert_eq!(saved.changes[0].by, Who::Model);
         assert_eq!(saved.changes[0].said, "stop using Claude so much");
@@ -876,7 +940,7 @@ mod tests {
         .unwrap();
         execute(&path, json!({"undo":true,"said":"and Claude as usual"})).unwrap();
         let undone = RoutingPreferences::load(&path).unwrap();
-        assert!(!undone.never_with(Harness::CoderLoop, "deepseek/deepseek-v4"));
+        assert!(!undone.never_with(Harness::CoderLoop, "deepseek/deepseek-v4.1-flash"));
         assert_eq!(undone.stances.get(Harness::ClaudeCode), Stance::Neutral);
         assert_eq!(undone.changes.len(), 4);
         assert_eq!(undone.changes[2].undoes, Some(2));
@@ -949,7 +1013,7 @@ mod tests {
             .change(
                 Who::Person,
                 Harness::CoderLoop,
-                Some("deepseek/deepseek-v4"),
+                Some("deepseek/deepseek-v4.1-flash"),
                 Stance::Never,
                 "not deepseek",
                 None,
@@ -966,13 +1030,58 @@ mod tests {
                 .contains(&(Harness::ClaudeCode, Exclusion::PersonSaidNever))
         );
 
-        let found = candidates(&facts(preferences.leaning(on("deepseek/deepseek-v4"))));
+        let found = candidates(&facts(
+            preferences.leaning(on("deepseek/deepseek-v4.1-flash")),
+        ));
         assert!(found.admitted.is_empty());
         assert!(
             found
                 .excluded
                 .contains(&(Harness::CoderLoop, Exclusion::PersonSaidNeverWithModel))
         );
+    }
+
+    /// #11482: a made-up or retired model is refused before anything is
+    /// written, with the ids that exist; the schema lists only those; a
+    /// preferred model on Coder's own loop points to /models.
+    #[test]
+    fn only_coders_own_models_are_taken() {
+        let dir = temporary();
+        let file = path(dir.path());
+        let error = execute(
+            &file,
+            json!({"harness":"claude-code","stance":"prefer","model":"claude-3-opus-20240229","said":"i want opus"}),
+        )
+        .unwrap_err();
+        assert!(error.contains("no model claude-3-opus-20240229"), "{error}");
+        assert!(error.contains("claude-opus-5-5"), "{error}");
+        let error = execute(
+            &file,
+            json!({"harness":"coder-loop","stance":"never","model":"claude-3-opus-20240229","said":"never"}),
+        )
+        .unwrap_err();
+        assert!(error.contains("The models are:"), "{error}");
+        let error = execute(
+            &file,
+            json!({"harness":"coder-loop","stance":"prefer","model":"x-ai/grok-4.7","said":"prefer grok"}),
+        )
+        .unwrap_err();
+        assert!(error.contains("/models"), "{error}");
+        assert!(!file.exists(), "nothing was written");
+
+        let schema = definition();
+        let models = schema["function"]["parameters"]["properties"]["model"]["enum"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>();
+        assert_eq!(models, catalog());
+        assert!(models.contains(&"claude-opus-5-5"));
+        assert!(!models.contains(&crate::models::DEFAULT_MODEL));
+        let description = schema["function"]["description"].as_str().unwrap();
+        assert!(description.contains("Never call it for a question"));
+        assert!(description.contains("type /models and pick it"));
     }
 
     #[test]

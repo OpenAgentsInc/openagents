@@ -916,6 +916,24 @@ pub(crate) async fn read_turn(
                     emit(RuntimeEvent::Text(text));
                 }
             }
+            // A subagent's progress and end, background ones included,
+            // which settle after the call that started them returned
+            // (#11482).
+            Ok(SdkMessage::System(SdkSystemMessage::TaskProgress(progress))) => {
+                if let Some(id) = progress.tool_use_id.as_deref() {
+                    emit(stream.agent_progress(id, progress.usage.total_tokens));
+                }
+            }
+            Ok(SdkMessage::System(SdkSystemMessage::TaskNotification(settled))) => {
+                if let Some(id) = settled.tool_use_id.as_deref() {
+                    emit(stream.agent_settled(
+                        id,
+                        &settled.status,
+                        &settled.summary,
+                        settled.usage.as_ref().map_or(0, |usage| usage.total_tokens),
+                    ));
+                }
+            }
             Ok(SdkMessage::System(SdkSystemMessage::ApiRetry(retry))) => {
                 emit(crate::claude_stream::retry(&retry));
             }

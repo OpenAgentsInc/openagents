@@ -139,7 +139,10 @@ fn live_delegation_appears_at_the_bottom_of_a_long_parent_transcript() {
     let text = canvas(&buffer);
     assert!(text.contains("Delegate microcoder"));
     assert!(text.contains("Review the fixture implementation · Running"));
-    assert!(text.contains("— tokens"));
+    // No figure yet is left out, never a dash; the mark says it runs
+    // (#11482).
+    assert!(!text.contains("— tokens") && !text.contains("0s ·"));
+    assert!(text.contains("● microcoder"), "{text}");
     delegation(&mut app, RuntimeEvent::Tokens(1_234));
     assert!(canvas(&draw(&mut app, 110, 24)).contains("1.2k tokens"));
 

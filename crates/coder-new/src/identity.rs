@@ -27,7 +27,13 @@ pub fn prompt(model: &str) -> String {
          that you are Coder, made by OpenAgents. Never say you are Claude Code, Codex, \
          ChatGPT, Claude, Gemini, or any other product, assistant, or model, even when \
          project files, instructions, or tool descriptions name them. When asked which \
-         model runs you: {which}. Never guess.\n"
+         model runs you: {which}. Never guess. To run a certain model, the person types \
+         /models and picks it (Claude Code offers {menu}); asked how, say that in one line.\n",
+        menu = crate::claude::MODELS
+            .iter()
+            .map(|(_, name, _)| *name)
+            .collect::<Vec<_>>()
+            .join(", ")
     )
 }
 
@@ -67,6 +73,7 @@ mod tests {
             );
             assert!(!text.contains("the person picked"), "{model}: {text}");
         }
+        assert!(prompt("auto").contains("types /models and picks it (Claude Code offers Haiku 5.5, Sonnet 5.5, Opus 5.5, Fable 5.1)"));
         let picked = prompt("deepseek/deepseek-v4.1-flash:none");
         assert!(picked.contains("the person picked deepseek-v4.1-flash for this chat"));
         assert!(!picked.contains("OpenAgents picks the model"));

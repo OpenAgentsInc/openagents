@@ -167,6 +167,19 @@ impl Stream {
         result: Option<&Value>,
     ) -> Option<RuntimeEvent> {
         let spoke = self.agents.get(id)?.spoke;
+        // A background subagent's call returns as soon as it starts; it
+        // keeps running until Claude Code reports it settled (#11482).
+        if !failed && result.is_some_and(|result| result["status"] == "async_launched") {
+            return Some(self.under(
+                Some(id),
+                RuntimeEvent::Tool {
+                    name: AGENT_RUN.into(),
+                    input: Value::Null,
+                    output: Value::Null,
+                    running: true,
+                },
+            ));
+        }
         let mut output = if failed {
             json!({"error": reply})
         } else if spoke || reply.trim().is_empty() {
@@ -188,6 +201,42 @@ impl Stream {
                 running: false,
             },
         ))
+    }
+
+    /// A subagent's tokens so far, from Claude Code's progress report on
+    /// the call `id` that started it (#11482).
+    pub(crate) fn agent_progress(&mut self, id: &str, tokens: u64) -> RuntimeEvent {
+        self.under(Some(id), RuntimeEvent::Tokens(tokens))
+    }
+
+    /// A subagent settled, as Claude Code reports it for the call `id` that
+    /// started it: done, or stopped or failed with its `summary` (#11482).
+    pub(crate) fn agent_settled(
+        &mut self,
+        id: &str,
+        status: &str,
+        summary: &str,
+        tokens: u64,
+    ) -> RuntimeEvent {
+        let mut output = if status == "completed" {
+            json!({})
+        } else if summary.trim().is_empty() {
+            json!({"error": "The agent stopped before it finished."})
+        } else {
+            json!({"error": summary})
+        };
+        if tokens > 0 {
+            output["tokens"] = json!(tokens);
+        }
+        self.under(
+            Some(id),
+            RuntimeEvent::Tool {
+                name: AGENT_RUN.into(),
+                input: Value::Null,
+                output,
+                running: false,
+            },
+        )
     }
 
     /// `event` as it reaches the screen: in the subagent `parent`'s own
@@ -469,6 +518,39 @@ mod tests {
             event(json!({"type": "content_block_start", "content_block": {"type": "thinking"}}));
         sub.parent_tool_use_id = Some("t1".into());
         assert_eq!(stream.thinking(&sub), None);
+    }
+
+    #[test]
+    fn a_background_subagent_runs_until_claude_code_says_it_settled() {
+        let mut stream = Stream::default();
+        stream.start_agent(
+            "t1",
+            &json!({"subagent_type": "Plan", "description": "sketch"}),
+        );
+        let launched = stream
+            .end_agent(
+                "t1",
+                "Async agent launched successfully.",
+                false,
+                Some(&json!({"isAsync": true, "status": "async_launched"})),
+            )
+            .unwrap();
+        assert!(matches!(&launched, RuntimeEvent::Delegation { event, .. }
+            if matches!(event.as_ref(), RuntimeEvent::Tool { running: true, .. })));
+        // In a later turn the stream is new; the id carries the agent.
+        let mut later = Stream::default();
+        assert!(
+            matches!(later.agent_progress("t1", 14_180), RuntimeEvent::Delegation { id, event, .. }
+            if id == "t1" && matches!(event.as_ref(), RuntimeEvent::Tokens(14_180)))
+        );
+        let done = later.agent_settled("t1", "completed", "3 files", 15_000);
+        assert!(matches!(&done, RuntimeEvent::Delegation { event, .. }
+            if matches!(event.as_ref(), RuntimeEvent::Tool { running: false, output, .. }
+                if output["tokens"] == 15_000 && output.get("error").is_none())));
+        let failed = later.agent_settled("t2", "failed", "", 0);
+        assert!(matches!(&failed, RuntimeEvent::Delegation { event, .. }
+            if matches!(event.as_ref(), RuntimeEvent::Tool { output, .. }
+                if output["error"].is_string() && output.get("tokens").is_none())));
     }
 
     #[test]

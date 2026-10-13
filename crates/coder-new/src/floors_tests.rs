@@ -448,7 +448,11 @@ fn a_pin_is_honored_and_recorded_and_never_means_never() {
     let store = dir.path().join("store");
     let path = crate::routing_preferences::path(&store);
     let mut preferences = crate::routing_preferences::RoutingPreferences::default();
-    let mut everywhere = pin(Harness::CoderLoop, None, Some("deepseek/deepseek-v4"));
+    let mut everywhere = pin(
+        Harness::CoderLoop,
+        None,
+        Some("deepseek/deepseek-v4.1-flash"),
+    );
     everywhere.repo = None;
     preferences.pin(everywhere).unwrap();
     preferences.save(&path).unwrap();
@@ -463,7 +467,7 @@ fn a_pin_is_honored_and_recorded_and_never_means_never() {
     assert_eq!(app.live.runs_on, Some(Harness::CoderLoop));
     assert_eq!(
         app.live.pinned_model.as_deref(),
-        Some("deepseek/deepseek-v4")
+        Some("deepseek/deepseek-v4.1-flash")
     );
     app.live.busy = false;
     app.request = None;

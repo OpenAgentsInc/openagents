@@ -320,6 +320,7 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
                     std::borrow::Cow::Borrowed(agent.task),
                     agent.tokens.to_owned(),
                     agent.elapsed_seconds.saturating_add(app.elapsed_seconds),
+                    RailState::Running,
                 )
             })
             .collect()
@@ -340,11 +341,12 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
                         std::borrow::Cow::Borrowed(agent.name.as_str()),
                         std::borrow::Cow::Owned(task),
                         if row.tokens == 0 {
-                            "—".into()
+                            String::new()
                         } else {
                             token_count(row.tokens)
                         },
                         row.elapsed_seconds(agent_fleet::now_ms()),
+                        RailState::of(agent),
                     );
                 }
                 (
@@ -359,8 +361,10 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
                     } else {
                         std::borrow::Cow::Borrowed(agent.task.as_str())
                     },
+                    // A figure Coder does not have is left out, never
+                    // shown as a dash or 0s (#11482).
                     if agent.chat.tokens == 0 {
-                        "—".into()
+                        String::new()
                     } else {
                         token_count(agent.chat.tokens)
                     },
@@ -369,6 +373,7 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
                     } else {
                         agent.elapsed_seconds
                     },
+                    RailState::of(agent),
                 )
             })
             .collect()
@@ -390,7 +395,9 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
     let token_labels: Vec<_> = agents
         .iter()
         .map(|agent| {
-            if narrow {
+            if agent.2.is_empty() {
+                String::new()
+            } else if narrow {
                 format!("{:>count_width$}↓", agent.2)
             } else {
                 format!("{:>count_width$} tokens ↓", agent.2)
@@ -400,7 +407,15 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
     let timed_labels: Vec<_> = agents
         .iter()
         .zip(&token_labels)
-        .map(|(agent, tokens)| format!("{} · {tokens}", elapsed_time(agent.3)))
+        .map(|(agent, tokens)| {
+            // No time yet (an agent that just started, or one whose end
+            // came with none) is left out too.
+            match (agent.3, tokens.is_empty()) {
+                (0, _) => tokens.clone(),
+                (seconds, true) => elapsed_time(seconds),
+                (seconds, false) => format!("{} · {tokens}", elapsed_time(seconds)),
+            }
+        })
         .collect();
     let show_elapsed = usize::from(area.width)
         >= usize::from(name_width)
@@ -450,12 +465,13 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
             Constraint::Length(token_width),
         ])
         .areas(row);
+        // The mark says where the agent stands (#11482).
         let prefix = if active {
             "❯ "
         } else if narrow {
             "  "
         } else {
-            "○ "
+            agent.4.mark()
         };
         let name = Rect {
             width: name_width.min(activity.width),
@@ -493,6 +509,34 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
             Paragraph::new(span(suffix, t::GRAY)).right_aligned(),
             tokens,
         );
+    }
+}
+
+/// Where an agent on the rail stands.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RailState {
+    Running,
+    Done,
+    Failed,
+}
+
+impl RailState {
+    fn of(agent: &crate::live::Delegation) -> Self {
+        if agent.running {
+            Self::Running
+        } else if agent.chat.notice.is_some() {
+            Self::Failed
+        } else {
+            Self::Done
+        }
+    }
+
+    const fn mark(self) -> &'static str {
+        match self {
+            Self::Running => "● ",
+            Self::Done => "✓ ",
+            Self::Failed => "✗ ",
+        }
     }
 }
 
@@ -1232,7 +1276,12 @@ fn entry_rows(
         ];
         // The glyph, its space, the name's space, and the separator.
         let room = width.saturating_sub(name.width() as u16 + 3);
-        let params = crate::tools::compact_params(input, room);
+        // A failed call says why in words, not the fields it was sent
+        // (#11482); Ctrl+O still shows them.
+        let params = match output.get("error").and_then(serde_json::Value::as_str) {
+            Some(error) => truncate(error.lines().next().unwrap_or_default(), room),
+            None => crate::tools::compact_params(input, room),
+        };
         if !params.is_empty() {
             spans.push(span(" ", t::GRAY_DIM));
             spans.push(span(params, t::TEXT_SECONDARY));

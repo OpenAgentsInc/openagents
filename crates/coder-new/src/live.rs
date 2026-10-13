@@ -772,6 +772,31 @@ impl Background {
                 if turn <= self.claude_stopped {
                     return;
                 }
+                // A background subagent's progress or end, between turns
+                // or during another, goes to the agent it belongs to and
+                // opens no turn (#11482).
+                let event = match event {
+                    RuntimeEvent::Delegation {
+                        id: delegation,
+                        name,
+                        task,
+                        event,
+                    } => match app.apply_known_delegation(
+                        &delegation,
+                        name.clone(),
+                        task.clone(),
+                        *event,
+                    ) {
+                        Ok(()) => return,
+                        Err(event) => RuntimeEvent::Delegation {
+                            id: delegation,
+                            name,
+                            task,
+                            event: Box::new(event),
+                        },
+                    },
+                    event => event,
+                };
                 let id = match &mut self.claude_turn {
                     Some((id, on_screen)) => {
                         *on_screen = (*on_screen).max(turn);

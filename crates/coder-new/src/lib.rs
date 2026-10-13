@@ -409,6 +409,42 @@ impl App {
             self.main_scroll = u16::MAX;
         }
     }
+    /// The full id of a delegation an earlier turn opened for `delegation`
+    /// (`{request}:{delegation}`): a background Claude Code subagent
+    /// reports its progress and end in later turns (#11482). Claude Code's
+    /// call ids are unique; other providers reuse theirs between turns, so
+    /// only the claude chat looks up by them.
+    pub(crate) fn known_delegation(&self, delegation: &str) -> Option<String> {
+        self.delegations
+            .iter()
+            .find(|child| {
+                child
+                    .id
+                    .split_once(':')
+                    .is_some_and(|(_, rest)| rest == delegation)
+            })
+            .map(|child| child.id.clone())
+    }
+
+    /// An event of a delegation an earlier turn opened, applied without
+    /// opening a turn. Returns whether there was one.
+    pub(crate) fn apply_known_delegation(
+        &mut self,
+        delegation: &str,
+        name: String,
+        task: String,
+        event: bundled_runtime::RuntimeEvent,
+    ) -> Result<(), bundled_runtime::RuntimeEvent> {
+        match self.known_delegation(delegation) {
+            Some(known) => {
+                self.apply_delegation(known, name, task, event);
+                self.history.dirty = true;
+                Ok(())
+            }
+            None => Err(event),
+        }
+    }
+
     fn apply_delegation(
         &mut self,
         id: String,
@@ -480,10 +516,17 @@ impl App {
                 || tool == "remote_delegate"
                 || tool == solver_plugin::TOOL =>
             {
+                let was_running = child.running;
                 child.running = running;
                 child.chat.busy = running;
                 if !running {
-                    child.elapsed_seconds = self.elapsed_seconds.saturating_sub(child.started_at);
+                    // A second report of the same end (Claude Code's own
+                    // notice after the call's result, #11482) keeps the
+                    // time the first one took.
+                    if was_running {
+                        child.elapsed_seconds =
+                            self.elapsed_seconds.saturating_sub(child.started_at);
+                    }
                     if let Some(cost) = long_session::output_cost(&output) {
                         child.chat.cost_usd = cost;
                     }
@@ -3795,6 +3838,92 @@ mod claude_tests {
             "claude now runs Sonnet 5.5."
         );
         assert_eq!(app.live.pinned_model.as_deref(), Some("x-ai/grok-4.7"));
+    }
+
+    /// #11482: a background subagent opened in one turn stays running,
+    /// takes its tokens and end in a later turn without opening a new
+    /// agent, and keeps the time its first end took.
+    #[test]
+    fn a_background_agent_settles_in_a_later_turn() {
+        use bundled_runtime::RuntimeEvent;
+        let tool = |running: bool, output: serde_json::Value| RuntimeEvent::Tool {
+            name: "acp_subagent".into(),
+            input: serde_json::Value::Null,
+            output,
+            running,
+        };
+        let mut app = typed(Harness::ClaudeCode, "");
+        app.apply_delegation(
+            "6:t1".into(),
+            "Plan".into(),
+            "sketch".into(),
+            tool(true, serde_json::Value::Null),
+        );
+        // The launch result keeps it running.
+        app.apply_delegation(
+            "6:t1".into(),
+            "Plan".into(),
+            "sketch".into(),
+            tool(true, serde_json::Value::Null),
+        );
+        assert!(app.delegations[0].running);
+        assert!(
+            app.live
+                .entries
+                .iter()
+                .any(|entry| matches!(entry, live::Entry::Delegation { running: true, .. }))
+        );
+
+        app.elapsed_seconds = 40;
+        assert!(
+            app.apply_known_delegation(
+                "t1",
+                "Claude".into(),
+                String::new(),
+                RuntimeEvent::Tokens(14_180)
+            )
+            .is_ok()
+        );
+        assert_eq!(app.delegations.len(), 1, "no second agent");
+        assert_eq!(app.delegations[0].chat.tokens, 14_180);
+        assert!(
+            app.apply_known_delegation(
+                "t1",
+                "Claude".into(),
+                String::new(),
+                tool(false, serde_json::json!({"tokens": 15_000}))
+            )
+            .is_ok()
+        );
+        assert!(!app.delegations[0].running);
+        assert_eq!(app.delegations[0].elapsed_seconds, 40);
+        assert_eq!(app.delegations[0].chat.tokens, 15_000);
+        assert!(
+            app.live
+                .entries
+                .iter()
+                .any(|entry| matches!(entry, live::Entry::Delegation { running: false, .. }))
+        );
+        app.elapsed_seconds = 90;
+        app.apply_delegation(
+            "6:t1".into(),
+            "Plan".into(),
+            "sketch".into(),
+            tool(false, serde_json::json!({})),
+        );
+        assert_eq!(
+            app.delegations[0].elapsed_seconds, 40,
+            "a repeated end keeps its time"
+        );
+        assert!(
+            app.apply_known_delegation(
+                "t9",
+                "Claude".into(),
+                String::new(),
+                RuntimeEvent::Tokens(1)
+            )
+            .is_err()
+        );
     }
 
     /// #11480: Ctrl+N empties the chat in place, same checkout; busy work
