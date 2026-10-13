@@ -282,10 +282,10 @@ fn plugin_details(app: &App, width: u16) -> Vec<Line<'static>> {
                 detail("Recipient", &p.bundled.brainstorm.preferences.origin, width),
                 detail("Perspective", "Brainstorm house", width),
                 Line::from(span(
-                    "Explicit queries and public keys go to this recipient.",
+                    "Only what you type after /brainstorm goes to this website.",
                     t::GRAY,
                 )),
-                Line::from(span("Opening or enabling makes no service read.", t::GRAY)),
+                Line::from(span("Turning it on sends nothing.", t::GRAY)),
             ]);
         }
         _ => {}

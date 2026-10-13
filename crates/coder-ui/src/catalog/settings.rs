@@ -42,7 +42,7 @@ const PLUGINS: [Plugin; 8] = [
     Plugin {
         id: "jev",
         name: "Jev",
-        description: "Typed decisions through the Jev SDK. Connect TypeSafe or a compatible gateway.",
+        description: "Quick judgment calls while Coder works, like whether a step is done. Uses your TypeSafe key or a compatible service.",
         enabled: true,
     },
     Plugin {
@@ -60,7 +60,7 @@ const PLUGINS: [Plugin; 8] = [
     Plugin {
         id: "brainstorm",
         name: "Brainstorm",
-        description: "Explicit public profile and reputation lookups through the Brainstorm house perspective.",
+        description: "Looks up public profiles and how much influence they have, when you ask with /brainstorm.",
         enabled: false,
     },
     Plugin {
@@ -1411,7 +1411,7 @@ fn details(plugin: Plugin, state: &FixtureState) -> Vec<Node<CatalogIntent>> {
                 ("Recipient", get(state, "origin").into()),
                 ("Perspective", "Brainstorm house".into()),
             ]);
-            children.push(text("detail-brainstorm-help", "Explicit queries and public keys go to this recipient.\nOpening or enabling makes no service read.", GRAY));
+            children.push(text("detail-brainstorm-help", "Only what you type after /brainstorm goes to this website.\nTurning it on sends nothing.", GRAY));
         }
         _ => {}
     }

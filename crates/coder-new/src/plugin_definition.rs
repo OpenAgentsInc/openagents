@@ -92,7 +92,7 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
     PluginDefinition {
         id: "jev",
         name: "Jev",
-        description: "Typed decisions through the Jev SDK. Connect TypeSafe or a compatible gateway.",
+        description: "Quick judgment calls while Coder works, like whether a step is done. Uses your TypeSafe key or a compatible service.",
         default_enabled: true,
         tools: &[ToolBinding::Jev],
         model_provider: None,
@@ -119,7 +119,7 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
     PluginDefinition {
         id: crate::brainstorm::PLUGIN,
         name: "Brainstorm",
-        description: "Explicit public profile and reputation lookups through the Brainstorm house perspective.",
+        description: "Looks up public profiles and how much influence they have, when you ask with /brainstorm.",
         default_enabled: false,
         tools: &[ToolBinding::BrainstormSearch, ToolBinding::BrainstormRank],
         model_provider: None,
