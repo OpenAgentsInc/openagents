@@ -44,9 +44,6 @@ fn every_top_level_command_accepts_help() {
         "terminal",
         "task",
         "settings",
-        "verse",
-        "xp",
-        "zone",
         "sov",
         "eval",
         "gym",
@@ -67,6 +64,10 @@ fn every_top_level_command_accepts_help() {
     ];
     if cfg!(unix) {
         commands.extend(["connect", "service", "ssh", "labor", "wallet", "x402"]);
+    }
+    // The Verse commands exist only in a build with the `verse` feature.
+    if cfg!(feature = "verse") {
+        commands.extend(["verse", "xp", "zone"]);
     }
     for command in commands {
         for flag in ["--help", "-h", "help"] {
@@ -122,15 +123,11 @@ fn run(args: &[&str]) -> (Option<i32>, String, String) {
 
 #[test]
 fn help_group_prints_the_groups_own_help() {
-    for group in [
-        "chat",
-        "wallet",
-        "plugin",
-        "issue",
-        "xp",
-        "mcp",
-        "completions",
-    ] {
+    let mut groups = vec!["chat", "wallet", "plugin", "issue", "mcp", "completions"];
+    if cfg!(feature = "verse") {
+        groups.push("xp");
+    }
+    for group in groups {
         let (code, by_word, _) = run(&["help", group]);
         assert_eq!(code, Some(0), "help {group}");
         let (_, by_flag, _) = run(&[group, "--help"]);
@@ -146,6 +143,9 @@ fn each_group_prints_only_its_own_usage() {
     assert!(
         completions.contains("openagents completions SHELL") && !completions.contains("mcp serve")
     );
+    if !cfg!(feature = "verse") {
+        return;
+    }
     let (_, xp, _) = run(&["xp", "--help"]);
     assert!(xp.starts_with("usage: openagents xp"), "{xp}");
     assert!(

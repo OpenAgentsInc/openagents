@@ -9,9 +9,10 @@ publish.workspace = true
 description = "The openagents command: one program that reaches every OpenAgents surface an agent needs, over Nostr."
 
 [features]
-# The Verse commands. On for release builds; Coder's dev build
-# (`--no-default-features`) leaves them out so it never compiles the engine.
-default = ["verse"]
+# The Verse commands (`verse`, `xp`, `zone`, `chamber`, `film`), off by
+# default so Coder's terminal builds never compile the engine; a Verse
+# build asks for them with `--features verse`.
+default = []
 verse = ["dep:verse", "dep:verse-engine", "dep:verse-world", "dep:verse-lagrange", "dep:verse-film"]
 
 [[bin]]

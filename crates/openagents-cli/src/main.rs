@@ -158,7 +158,42 @@ mod zone;
 pub use argv::Args;
 pub use out::{EXIT_FAILURE, EXIT_USAGE, Output};
 
-pub const USAGE: &str = "usage: openagents [--json] COMMAND [ARGS]
+// The Verse commands' lines, only in a build with the `verse` feature.
+#[cfg(feature = "verse")]
+macro_rules! film_help {
+    () => {
+        "  film         Inspect and make a film take: a scene recorded once as uploads
+               and frames that any renderer draws (docs/verse/film.md).
+"
+    };
+}
+#[cfg(not(feature = "verse"))]
+macro_rules! film_help {
+    () => {
+        ""
+    };
+}
+#[cfg(feature = "verse")]
+macro_rules! verse_help {
+    () => {
+        "  verse        See who is around, listen, speak, move, gesture, drive owned
+               entities, and read quests, XP, and the board.
+  xp           This identity's XP and level (openagents verse xp), and
+               verify-card to re-derive a trainer card from the relays.
+  zone         Drive the Lagrange 1 construction zone.
+  chamber      Host or play the authoritative combat chamber.
+"
+    };
+}
+#[cfg(not(feature = "verse"))]
+macro_rules! verse_help {
+    () => {
+        ""
+    };
+}
+
+pub const USAGE: &str = concat!(
+    "usage: openagents [--json] COMMAND [ARGS]
 
 Pairing and computers (NIP-HOST, NIP-REACH):
   host         Run and administer the resident host on this machine.
@@ -190,9 +225,9 @@ Coder:
                quiet, the screen, the GPU), and list holders and waiters.
   sales        Inspect and update the host-private lead/account pipeline.
   customer     Bind gateway customers, credentials, and exact approved purchases.
-  film         Inspect and make a film take: a scene recorded once as uploads
-               and frames that any renderer draws (docs/verse/film.md).
-  scratch      Make and print this session's durable scratch directory, under
+",
+    film_help!(),
+    "  scratch      Make and print this session's durable scratch directory, under
                ~/.openagents/scratch, for files that must outlive a reboot.
   browser      Run a command beside a Chrome of its own: a fresh profile and
                debugging port, removed when the command ends.
@@ -230,13 +265,9 @@ Coder:
                answers about them from a model on this computer.
 
 Verse (NIP-MV):
-  verse        See who is around, listen, speak, move, gesture, drive owned
-               entities, and read quests, XP, and the board.
-  xp           This identity's XP and level (openagents verse xp), and
-               verify-card to re-derive a trainer card from the relays.
-  zone         Drive the Lagrange 1 construction zone.
-  chamber      Host or play the authoritative combat chamber.
-  sov          Sovereign agents under NIP-SOV: profile, spawn, status.
+",
+    verse_help!(),
+    "  sov          Sovereign agents under NIP-SOV: profile, spawn, status.
 
 Gym (NIP-EVAL):
   eval         Score doors against a suite, report a store, compare its sides.
@@ -290,7 +321,8 @@ shell history and `ps`: prefer `openagents settings provider-key set PROVIDER` o
 OPENAGENTS_OPENROUTER_KEY, OPENAGENTS_VERCEL_KEY, and OPENAGENTS_TYPESAFE_KEY.
 
 Run `openagents COMMAND --help` for each group's syntax.
-Exit codes: 0 success, 1 refused or failed, 64 invalid usage.";
+Exit codes: 0 success, 1 refused or failed, 64 invalid usage."
+);
 
 /// Windows sets no `HOME`, and this program and the crates it runs keep
 /// their files under it (`~/.openagents`, the chat home, the settings): it
@@ -426,8 +458,8 @@ fn main() -> ExitCode {
         #[cfg(not(feature = "verse"))]
         "film" | "verse" | "xp" | "zone" | "chamber" => {
             eprintln!(
-                "openagents: this build has no Verse commands (built without the `verse` feature); \
-                 the released CLI has them: curl -fsSL https://openagents.com/cli/install.sh | sh"
+                "openagents: this build has no Verse commands; build them in with \
+                 cargo build -p openagents-cli --features verse"
             );
             2
         }

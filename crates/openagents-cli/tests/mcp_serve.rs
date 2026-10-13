@@ -45,8 +45,12 @@ fn lists_groups_and_runs_version() {
         .iter()
         .map(|t| t["name"].as_str().unwrap())
         .collect();
-    for expected in ["verse", "zone", "sov", "computer", "version"] {
+    for expected in ["sov", "computer", "version"] {
         assert!(names.contains(&expected), "{names:?}");
+    }
+    // The Verse commands are served only by a build that has them.
+    for verse in ["verse", "zone"] {
+        assert_eq!(names.contains(&verse), cfg!(feature = "verse"), "{names:?}");
     }
     for never in [
         "host", "mcp", "wallet", "pay", "x402", "key", "ssh", "service",

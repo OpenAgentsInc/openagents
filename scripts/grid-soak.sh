@@ -69,7 +69,7 @@ for tool in initdb pg_ctl createdb cargo; do
 done
 
 cargo build -q --release --manifest-path "$root/Cargo.toml" \
-  -p nostr-relay --bin nostr-relay -p openagents-cli --bin openagents
+  -p nostr-relay --bin nostr-relay -p openagents-cli --bin openagents --features openagents-cli/verse
 cargo build -q --release --manifest-path "$root/Cargo.toml" -p verse --example grid_soak
 
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/grid-soak.XXXXXX")"
