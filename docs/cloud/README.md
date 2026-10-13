@@ -23,6 +23,10 @@ with the [Orbs research](../research/orbs.md), current native Cloud jobs, and th
 web composer. Its terms and implementation boundaries match the
 [glossary](../glossary.md#cloud-computers-and-repository-environments).
 
+[Solver in the cloud](solver-on-gcp.md) takes a GitHub issue from a web
+chat to a pull request on a Google Cloud box, in the solver container, with
+every hand on Gemini 4 Argon.
+
 Steps that only run on macOS (iOS builds, the release gate, TestFlight
 uploads, desktop captures) go to a Mac linked to the account:
 [Mac-only steps on a linked Mac](linked-mac.md).
