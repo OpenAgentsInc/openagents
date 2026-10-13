@@ -93,6 +93,15 @@ fn shot(
             focal_mm: 50.0,
             fstop: 2.4,
         },
+        // The owner's target frame (the photoreal reference at 0:54): a
+        // close full face, head turned a little to camera left, placed right
+        // of centre, the eyes a third down, crown to chin and collar.
+        "fullface" => Shot {
+            eye: face + Vec3::new(0.06, 0.0, -0.74),
+            target: eyes + Vec3::new(0.022, -0.048, 0.0),
+            focal_mm: 85.0,
+            fstop: 2.4,
+        },
         // The peacock guardian's opening (P3, ~114.5 s of the Draconia
         // film): an extreme close-up from the brows to the upper lip, ear to
         // ear, the head lowered and the eyes glaring up into the lens.
@@ -214,20 +223,21 @@ fn lighting(face: Vec3, kind: &str) -> Lighting {
             );
         }
         _ => {
-            // Key: a soft, slightly warm source high to camera left (her
-            // right), as the reference's face light.
+            // Key: a soft, warm source high to screen left (world -X: the
+            // camera looks along +Z, so +X is screen right), as the
+            // reference's face light.
             soft(
                 &mut lights,
-                face + Vec3::new(0.55, 0.45, -1.1),
-                Vec3::new(1.0, 0.94, 0.88),
-                1.5,
+                face + Vec3::new(-0.75, 0.45, -0.85),
+                Vec3::new(1.0, 0.93, 0.86),
+                1.6,
                 0.35,
                 6,
             );
-            // Fill: cool and dim from camera right.
+            // Fill: cool and dim from screen right.
             soft(
                 &mut lights,
-                face + Vec3::new(-0.9, 0.1, -1.0),
+                face + Vec3::new(0.9, 0.1, -1.0),
                 Vec3::new(0.62, 0.82, 0.86),
                 0.3,
                 0.4,
@@ -244,7 +254,7 @@ fn lighting(face: Vec3, kind: &str) -> Lighting {
             // glow.
             soft(
                 &mut lights,
-                face + Vec3::new(-0.7, 0.25, 0.9),
+                face + Vec3::new(0.7, 0.25, 0.9),
                 Vec3::new(0.35, 0.95, 0.85),
                 1.1,
                 0.3,
@@ -252,9 +262,9 @@ fn lighting(face: Vec3, kind: &str) -> Lighting {
             );
             soft(
                 &mut lights,
-                face + Vec3::new(0.75, 0.1, 0.9),
+                face + Vec3::new(-0.75, 0.1, 0.9),
                 Vec3::new(0.35, 0.95, 0.85),
-                0.8,
+                0.4,
                 0.3,
                 3,
             );
@@ -263,7 +273,7 @@ fn lighting(face: Vec3, kind: &str) -> Lighting {
                     lights.push(Light {
                         position: Vec3::new(-x + 0.4, y + 0.1, 2.1),
                         color: Vec3::new(0.3, 0.95, 0.82),
-                        intensity: 0.06,
+                        intensity: 0.025,
                         range: 3.0,
                     });
                 }
@@ -348,7 +358,7 @@ fn args() -> Result<Args, String> {
         exposure: 0.6,
         // The reference's head turns about 15 degrees to camera left,
         // chin a little down.
-        head: [-15.0, 8.0],
+        head: [12.0, 3.0],
         wind: Vec3::new(0.25, 0.0, 0.1),
         seconds: 4.0,
         time: 1.0,

@@ -201,6 +201,36 @@ python3 scripts/verse/draconia_parity.py sbs REF.jpg OUT.png "Verse round N" SBS
   speaking) for the mouth; opaque, shadowing hair; ash-blond brows; gold
   that reads as gold.
 
+### Round 3, 2026-10-13: the full face against the photoreal reference
+
+- **Direction.** The owner: compare only against the photoreal video, and
+  show the full face (mouth, smile, speaking) every round; the primary
+  target is the video at 0:54 (a gentle closed-mouth smile).
+- **What changed.**
+  - A `fullface` shot preset matching 0:54; the parity lighting's key moved
+    to screen left (it had been on the wrong side), teal rim screen right,
+    dimmer jars.
+  - Mouth: the lip colour follows the mesh's own lips (a `lipmask`
+    attribute from the CC0 lip-volume targets, baked to the texture);
+    rose-brown lips with a darker meeting line, moister and glossier with
+    fine lip lines; soft nasolabial folds; less pouty lips, a wider mouth;
+    a gentle closed-mouth smile with dimples.
+  - Skin: baked ambient occlusion in the skin's ORM, applied to direct
+    light too; paler, cooler, blotchier tone; less subsurface red; a
+    matter specular (0.3).
+  - Brows lighter ash brown; eyes a little more open; puffier updo with
+    more, wavier face-framing strands.
+- **Artifacts.** `~/Downloads/draconia-fullface-v3.png` (0:54 smile, 0:24
+  neutral, 0:29 speaking, 1:22 eyes, each against ours),
+  `~/Downloads/draconia-parity-round-03.png`, the progress sheet;
+  `~/work/film-out/draconia/parity/round-03/`.
+- **Honest state.** Still a CG mannequin next to the video. The speaking
+  mouth shows the CC0 teeth as a pale block; the smile reads as a smirk;
+  skin is smooth and orange-tinted; the updo's top is a fuzzy cloud.
+- **Next.** A mouth interior (cavity, teeth, gums), thinner lips and a
+  symmetric smile; skin texture and sheen; a softer, messier updo; a
+  darker, softer background.
+
 ## Peacock scene
 
 The peacock guardian (reference 113.0–118.0 s, [shots.md](shots.md)),

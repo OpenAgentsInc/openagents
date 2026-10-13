@@ -85,10 +85,10 @@ FACE = [
     # Heavier upper lids: the fold sits lower over the eye.
     ("eyes/l-eye-eyefold-down", 0.45),
     ("eyes/r-eye-eyefold-down", 0.45),
-    ("mouth/mouth-upperlip-volume-incr", 0.55),
-    ("mouth/mouth-lowerlip-volume-incr", 0.6),
+    ("mouth/mouth-upperlip-volume-incr", 0.3),
+    ("mouth/mouth-lowerlip-volume-incr", 0.4),
     ("mouth/mouth-cupidsbow-incr", 0.5),
-    ("mouth/mouth-scale-horiz-incr", 0.05),
+    ("mouth/mouth-scale-horiz-incr", 0.18),
     ("mouth/mouth-angles-down", 0.1),
     ("eyes/l-eye-scale-incr", 0.25),
     ("eyes/r-eye-scale-incr", 0.25),
@@ -100,8 +100,8 @@ FACE = [
     ("eyes/r-eye-push1-in", 0.1),
     ("neck/neck-scale-horiz-decr", 0.25),
     # Relaxed lids: the upper lid rests over the top of the iris.
-    ("expression/units/caucasian/eye-left-closure", 0.33),
-    ("expression/units/caucasian/eye-right-closure", 0.33),
+    ("expression/units/caucasian/eye-left-closure", 0.2),
+    ("expression/units/caucasian/eye-right-closure", 0.2),
 ]
 
 # Expressions: named weights over the CC0 expression units (FACS-like), the
@@ -109,7 +109,7 @@ FACE = [
 # (radians) for the teeth and tongue, which the units don't move.
 EXPRESSIONS = {
     "neutral": {},
-    "speak": {"mouth-open": 0.25, "mouth-parling": 0.2, "eyebrows-left-inner-up": 0.15, "eyebrows-right-inner-up": 0.15, "jaw": 0.06},
+    "speak": {"mouth-open": 0.2, "mouth-parling": 0.2, "eyebrows-left-inner-up": 0.15, "eyebrows-right-inner-up": 0.15, "jaw": 0.04},
     "surprise": {
         "mouth-open": 0.55,
         "eyebrows-left-up": 0.6,
@@ -140,7 +140,18 @@ EXPRESSIONS = {
         "nose-right-dilatation": 0.25,
         "mouth-compression": 0.2,
     },
-    "smile": {"mouth-corner-puller": 0.45, "mouth-elevation": 0.08, "eye-left-slit": 0.15, "eye-right-slit": 0.15},
+    # A gentle closed-mouth smile: corners drawn up and back, lips pressed
+    # a little, cheeks raised (the lower lids lift), dimples.
+    "smile": {
+        "mouth-corner-puller": 0.6,
+        "mouth-compression": 0.15,
+        "mouth-elevation": 0.05,
+        "eye-left-slit": 0.22,
+        "eye-right-slit": 0.22,
+        "mouth/mouth-dimples-in": 0.6,
+        "cheek/l-cheek-volume-incr": 0.2,
+        "cheek/r-cheek-volume-incr": 0.2,
+    },
 }
 
 SCALE = 0.1  # MakeHuman decimetres to metres
@@ -354,6 +365,22 @@ def keep_skin(base, rig, landmarks, shift):
         if hw > 0.02 or aw > 0.02 or min(zs) > collar_z:
             faces.append((vs, ts))
     return faces
+
+
+def lip_mask(obj, remap):
+    """The vermilion of the lips as a per-vertex attribute `lipmask`: how
+    far the CC0 lip-volume targets move each vertex, normalized, so the
+    lips' colour sits exactly on the lips' shape."""
+    reach = {}
+    for rel in ("mouth/mouth-upperlip-volume-incr", "mouth/mouth-lowerlip-volume-incr"):
+        for i, d in mh.read_target(rel):
+            m = (d[0] ** 2 + d[1] ** 2 + d[2] ** 2) ** 0.5
+            reach[i] = max(reach.get(i, 0.0), m)
+    top = max(reach.values()) if reach else 1.0
+    attr = obj.data.attributes.new("lipmask", "FLOAT_COLOR", "POINT")
+    for old, new in remap.items():
+        v = min(reach.get(old, 0.0) / top * 1.6, 1.0)
+        attr.data[new].color = (v, v, v, 1.0)
 
 
 def subdivide(obj, levels):
@@ -619,7 +646,7 @@ def brows(skin, marks, eyes, count=650, rest=None):
     bpy.context.collection.objects.link(o)
     import draconia_paint
 
-    col = (0.30, 0.26, 0.19, 1) if draconia_paint.BROWS == "pale" else (0.06, 0.045, 0.032, 1)
+    col = (0.30, 0.26, 0.19, 1) if draconia_paint.BROWS == "pale" else (0.12, 0.09, 0.065, 1)
     o.data.materials.append(material("draconia_brow", "hair", color=col, rough=0.5))
     return [o]
 
@@ -806,10 +833,13 @@ def patch_glb(path):
             pbr["baseColorFactor"] = [1, 1, 1, 1]
         if kind in ("eye", "cornea") and "metallicRoughnessTexture" in pbr:
             m["occlusionTexture"] = {"index": pbr["metallicRoughnessTexture"]["index"], "strength": 1.0}
+        if kind == "skin" and m.get("name") == "draconia_skin" and "metallicRoughnessTexture" in pbr:
+            # The skin's ORM carries baked occlusion in R.
+            m["occlusionTexture"] = {"index": pbr["metallicRoughnessTexture"]["index"], "strength": 1.0}
         if kind == "skin" and "verse_shading_params" not in ex and m.get("name") == "draconia_skin":
-            # Skin: full scattering, lobe mix 0.85, a matte 0.3 specular
+            # Skin: moderate scattering, lobe mix 0.85, a matte 0.3 specular
             # weight (an oily sheen, not wet plastic).
-            ex["verse_shading_params"] = [1.0, 0.85, 0.3, 0.0]
+            ex["verse_shading_params"] = [0.7, 0.85, 0.3, 0.0]
         if kind == "cloth" and "verse_sheen" in ex:
             ex["verse_shading_params"] = [ex.pop("verse_sheen"), ex.pop("verse_sheen_roughness", 0.5), 0, 0]
     body = json.dumps(doc, separators=(",", ":")).encode()
@@ -841,7 +871,8 @@ def build(expr, tex, out, skip_paint=False):
     body, _ = mesh_from_faces(base, "body_fit", body_faces, shift, weights=weights)
 
     skin_faces = keep_skin(base, rig, marks, shift)
-    skin, _ = mesh_from_faces(base, "skin", skin_faces, shift, weights=weights)
+    skin, skin_map = mesh_from_faces(base, "skin", skin_faces, shift, weights=weights)
+    lip_mask(skin, skin_map)
     unwrap(skin)
     subdivide(skin, 2)
     # The neutral face with this expression's UVs: skin maps are painted
@@ -911,7 +942,9 @@ def build(expr, tex, out, skip_paint=False):
 
     # Teeth and tongue from the CC0 helpers, for the open-mouth expressions.
     mouth = []
-    for g in ("helper-upper-teeth", "helper-lower-teeth", "helper-tongue"):
+    # (The CC0 tongue helper sits forward of the lips once the jaw opens;
+    # it is left out until the mouth has its own interior.)
+    for g in ("helper-upper-teeth", "helper-lower-teeth"):
         faces = [(vs, ts) for vs, ts, gg in base.faces if gg == g]
         o, _ = mesh_from_faces(base, g.replace("helper-", ""), faces, shift, weights=weights)
         subdivide(o, 1)
@@ -952,11 +985,12 @@ def build(expr, tex, out, skip_paint=False):
     lash_mat = material("draconia_lash", "hair", color=(0.035, 0.028, 0.022, 1), rough=0.45)
     for o in lash_objs:
         o.data.materials.append(lash_mat)
-    teeth_mat = material("draconia_teeth", "standard", color=(0.78, 0.74, 0.66, 1), rough=0.25)
+    teeth_mat = material("draconia_teeth", "standard", color=(0.70, 0.66, 0.58, 1), rough=0.3)
     tongue_mat = material("draconia_tongue", "skin", color=(0.55, 0.22, 0.22, 1), rough=0.35)
     mouth[0].data.materials.append(teeth_mat)
     mouth[1].data.materials.append(teeth_mat)
-    mouth[2].data.materials.append(tongue_mat)
+    if len(mouth) > 2:
+        mouth[2].data.materials.append(tongue_mat)
     for o in hair_objs + cloth_objs:
         pass  # their modules assign materials
     bpy.data.objects.remove(body)

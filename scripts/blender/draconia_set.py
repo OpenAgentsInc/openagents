@@ -74,7 +74,7 @@ def build():
     wood = mat("wood_dark", (0.035, 0.022, 0.014, 1), rough=0.6)
     wood2 = mat("wood_shelf", (0.06, 0.04, 0.026, 1), rough=0.65)
     glass = mat("jar_glass", (0.5, 0.6, 0.58, 1), rough=0.08)
-    liquids = [mat(f"jar_liquid_{k}", (0.1, 0.4, 0.35, 1), rough=0.3, emit=(0.25 + 0.05 * k, 0.95, 0.8 - 0.05 * k, 1), strength=0.12 + 0.06 * k) for k in range(3)]
+    liquids = [mat(f"jar_liquid_{k}", (0.1, 0.4, 0.35, 1), rough=0.3, emit=(0.25 + 0.05 * k, 0.95, 0.8 - 0.05 * k, 1), strength=0.05 + 0.03 * k) for k in range(3)]
     murk = mat("jar_specimen", (0.05, 0.04, 0.025, 1), rough=0.7)
     lid = mat("jar_lid", (0.08, 0.07, 0.06, 1), rough=0.4, metal=0.6)
     paper = mat("paper", (0.55, 0.5, 0.4, 1), rough=0.9)

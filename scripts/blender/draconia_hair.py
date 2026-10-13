@@ -216,8 +216,13 @@ def grow(skin, marks, seed=7, style="updo"):
             d.normalize()
             t = k / 60
             off = wander(p * 1.0) * mess * min(1.0, t * 1.5)
-            h = 0.0004 + lift * min(1.0, k * step / 0.03) ** 0.7 + max(0.0, off.dot(nrm)) * 0.004
-            q = loc + nrm * h + (off - nrm * off.dot(nrm)) * 0.003
+            # Loose, not slicked: the hair puffs out over the sides and the
+            # crown (most at mid-path, over the ears), and each strand
+            # waves along its own clump's offset.
+            along = min(1.0, k * step / max(dist + k * step, 1e-3))
+            puff = (0.006 + 0.012 * max(0.0, 1.0 - abs(loc.z - (centre.z - 0.01)) / 0.08)) * math.sin(math.pi * min(along * 1.4, 1.0))
+            h = 0.0004 + lift * min(1.0, k * step / 0.03) ** 0.7 + puff * (0.3 + 0.7 * mess / 1.8) + max(0.0, off.dot(nrm)) * 0.006
+            q = loc + nrm * h + (off - nrm * off.dot(nrm)) * 0.008
             pts.append(q)
             nrms.append(nrm)
             if dist < knot_r * 1.1:
@@ -283,20 +288,22 @@ def grow(skin, marks, seed=7, style="updo"):
     clumps = []
     for side in (1, -1):
         cands = [fr for fr in front_roots if fr[0].x * side > 0.012]
-        for k in range(9):
+        # Many loose locks: the reference's updo lets strands fall from the
+        # temples and the front hairline past the cheeks to the jaw.
+        for k in range(15):
             if not cands:
                 break
             root, rn = cands[k * 7 % len(cands)]
             clumps.append((root, rn, side))
     joints = []
     for c, (root, rn, side) in enumerate(clumps):
-        length = rng.uniform(0.11, 0.21)
+        length = rng.uniform(0.13, 0.26)
         links = [f"hair_{c}_{k}" for k in range(5)]
         chain_made = False
         sway = rng.uniform(0.6, 1.4)
         phase = rng.uniform(0, 6.28)
-        n_hairs = rng.randint(10, 26)
-        spread = rng.uniform(0.002, 0.006)
+        n_hairs = rng.randint(8, 18)
+        spread = rng.uniform(0.0015, 0.004)
         for h in range(n_hairs):
             off = Vector((rng.gauss(0, spread), rng.gauss(0, spread * 0.5), rng.gauss(0, spread * 0.5)))
             pts, nrms = [], []
@@ -308,7 +315,7 @@ def grow(skin, marks, seed=7, style="updo"):
                 loc, nrm = surface(p)
                 # Lift off the head; fall down and slightly out from the cheek.
                 d = Vector((side * (0.6 - 0.35 * t), 0.12, -1.0))
-                wave = Vector((side, -0.4, 0)) * math.sin(phase + t * 9 * sway) * 0.5
+                wave = Vector((side, -0.4, 0)) * math.sin(phase + t * 13 * sway) * 0.8
                 p = p + (d.normalized() + wave * 0.6) * seg
                 loc, nrm = surface(p)
                 if (p - loc).length < 0.003 + 0.004 * t or (p - loc).dot(nrm) < 0:
@@ -322,7 +329,7 @@ def grow(skin, marks, seed=7, style="updo"):
                 for k, name in enumerate(links):
                     at = pts[min(int(k / 5 * (L - 1)), L - 1)]
                     joints.append((name, "Head" if k == 0 else links[k - 1], at.copy()))
-            locks.add(pts, None, rng.uniform(0.00025, 0.0006), rng.randrange(VARIANTS), taper=0.8, free=Vector((0, -1, 0)), skin=chain_skin(links) if chain_made else None)
+            locks.add(pts, None, rng.uniform(0.0005, 0.0011), rng.randrange(VARIANTS), taper=0.75, free=Vector((0, -1, 0)), skin=chain_skin(links) if chain_made else None)
     # Wisps at the temples and hairline: short curls of a few hairs.
     for k in range(140):
         root, rn = front_roots[k % len(front_roots)]

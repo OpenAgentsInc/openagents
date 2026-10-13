@@ -4,6 +4,7 @@
     draconia_parity.py sbs REF.jpg OURS.png LABEL OUT.png
     draconia_parity.py row ROUND OUT_ROW.png SBS1.png [SBS2.png ...]
     draconia_parity.py sheet OUT.png ROW1.png [ROW2.png ...]
+    draconia_parity.py grid OUT.png LABEL REF1 OURS1 [REF2 OURS2 ...]
 
 `sbs` puts the reference still on the left ("reference") and our render on
 the right (LABEL, such as "Verse round 3"), each 1280x720. `row` makes one
@@ -91,12 +92,32 @@ def sheet(out, rows):
     print("wrote", out)
 
 
+def grid(out, text, pairs):
+    """Rows of reference | ours, each pair labelled; the full-face grid."""
+    rows = []
+    for ref, ours in zip(pairs[::2], pairs[1::2]):
+        a, b = fit(ref), fit(ours)
+        label(a, "reference")
+        label(b, text)
+        row = Image.new("RGB", (W * 2 + 8, H), (0, 0, 0))
+        row.paste(a, (0, 0))
+        row.paste(b, (W + 8, 0))
+        rows.append(row)
+    im = Image.new("RGB", (W * 2 + 8, len(rows) * (H + 8)), (0, 0, 0))
+    for k, r in enumerate(rows):
+        im.paste(r, (0, k * (H + 8)))
+    im.save(out)
+    print("wrote", out)
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1]
     if cmd == "sbs":
         sbs(*sys.argv[2:6])
     elif cmd == "row":
         row(sys.argv[2], sys.argv[3], sys.argv[4:])
+    elif cmd == "grid":
+        grid(sys.argv[2], sys.argv[3], sys.argv[4:])
     elif cmd == "sheet":
         sheet(sys.argv[2], sys.argv[3:])
     else:

@@ -326,6 +326,9 @@ fn portal(v:Out,t:f32,x_axis:vec3<f32>,z_axis:vec3<f32>,center:vec3<f32>)->vec4<
   // The eye sits in its socket: the occlusion map's lid shadow dims the
   // eyeball's and the cornea's direct light too, not only the ambient.
   if model==2u {reflected*=ao;}
+  // Skin: the baked occlusion stands in for the light its creases,
+  // sockets and hairline block (no other shadow is fine enough).
+  if model==1u {reflected*=mix(1.0,ao,0.7);}
   if model==3u {reflected*=sqrt(ao);}
   lit+=reflected*radiance.rgb*radiance.w*falloff;
  }

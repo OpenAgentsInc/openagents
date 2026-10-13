@@ -129,7 +129,13 @@ def _bake_attribute(obj, size, kind):
     tex = nt.nodes.new("ShaderNodeTexImage")
     tex.image = img
     nt.nodes.active = tex
-    nt.links.new(geo.outputs["Position" if kind == "position" else "Normal"], emit.inputs["Color"])
+    if kind in ("position", "normal"):
+        nt.links.new(geo.outputs["Position" if kind == "position" else "Normal"], emit.inputs["Color"])
+    else:
+        # A per-vertex attribute the build stored (such as `lipmask`).
+        attr = nt.nodes.new("ShaderNodeAttribute")
+        attr.attribute_name = kind
+        nt.links.new(attr.outputs["Color"], emit.inputs["Color"])
     nt.links.new(emit.outputs["Emission"], outn.inputs["Surface"])
     old = list(obj.data.materials)
     obj.data.materials.clear()
@@ -149,6 +155,45 @@ def _bake_attribute(obj, size, kind):
         obj.data.materials.append(m)
     bpy.data.images.remove(img)
     return px
+
+
+def _bake_ao(obj, size, distance=0.03):
+    """Ambient occlusion over the skin from everything around it (eyes,
+    lashes, hair, collar), Cycles, 64 samples: the creases, the eye
+    sockets, under the nose and the hairline darken."""
+    img = bpy.data.images.new("bake_ao", size, size, alpha=False, float_buffer=True)
+    mat = bpy.data.materials.new("bake_ao")
+    mat.use_nodes = True
+    tex = mat.node_tree.nodes.new("ShaderNodeTexImage")
+    tex.image = img
+    mat.node_tree.nodes.active = tex
+    old = list(obj.data.materials)
+    obj.data.materials.clear()
+    obj.data.materials.append(mat)
+    scene = bpy.context.scene
+    scene.render.engine = "CYCLES"
+    scene.cycles.samples = 64
+    world = scene.world or bpy.data.worlds.new("w")
+    scene.world = world
+    world.light_settings.distance = distance
+    # The posed skin and the rest copy coincide; only one may occlude.
+    hidden = [o for o in bpy.context.scene.objects if o is not obj and (o.name.startswith("skin") or o.name.startswith("body"))]
+    for o in hidden:
+        o.hide_render = True
+    for o in bpy.context.scene.objects:
+        o.select_set(False)
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.bake(type="AO", margin=6, use_clear=True)
+    for o in hidden:
+        o.hide_render = False
+    px = np.array(img.pixels[:], np.float32).reshape(size, size, 4)[::-1][:, :, 0]
+    obj.data.materials.clear()
+    for m in old:
+        obj.data.materials.append(m)
+    bpy.data.images.remove(img)
+    # Soften: skin scatters light into its creases.
+    return 0.35 + 0.65 * px
 
 
 def _uv_mask(obj, size):
@@ -213,7 +258,7 @@ def paint_skin(skin, marks, size, out):
     cheek_r = mid + np.array([-0.042, -0.01, -0.03], np.float32)
 
     # Base: fair skin, linear albedo; low-frequency mottling in hue/value.
-    base = np.array([0.63, 0.48, 0.42], np.float32)
+    base = np.array([0.66, 0.52, 0.47], np.float32)
     mott = fbm(P, 0.03, 4, seed=1) - 0.5
     mott2 = fbm(P, 0.006, 3, seed=2) - 0.5
     mott3 = fbm(P, 0.0035, 3, seed=3) - 0.5
@@ -238,7 +283,7 @@ def paint_skin(skin, marks, size, out):
         + 0.10 * (gauss(P, el + np.array([0, -0.005, 0.006], np.float32), (0.014, 0.02, 0.006)) + gauss(P, er + np.array([0, -0.005, 0.006], np.float32), (0.014, 0.02, 0.006)))
         + 0.6 * smooth(0.06, 0.075, np.abs(X)) * smooth(0.04, -0.02, np.abs(Z + 0.02))  # ears
     )
-    red = np.clip(red * capill, 0, 1) * 0.4
+    red = np.clip(red * capill, 0, 1) * 0.32
     col = mix(col, red_t[None, :] * (col.mean(1, keepdims=True) / 0.45), red)
 
     # Under-eye: a faint blue-purple, slightly darker.
@@ -266,8 +311,16 @@ def paint_skin(skin, marks, size, out):
     lip_in = (mz < upper_top) & (mz > lower_bot) & (np.abs(mx) < 1.0) & (np.abs(P[:, 1] - mouth[1]) < 0.012) & (front > 0.5)
     edge = np.minimum(upper_top - mz, mz - lower_bot)
     lips = np.where(lip_in, smooth(0.0, 0.0012, edge), 0.0) * smooth(1.0, 0.85, np.abs(mx))
-    lip_c = np.array([0.52, 0.28, 0.27], np.float32) * (1 + 0.08 * (fbm(P, 0.002, 2, seed=9)[:, None] - 0.5))
-    col = mix(col, lip_c, lips * 0.7)
+    if "lipmask" in skin.data.attributes:
+        # The vermilion from the mesh itself (the CC0 lip-volume targets'
+        # reach, stored by the build), so colour follows the lips' shape.
+        lm = _bake_attribute(skin, size, "lipmask")[:, :, 0][cover]
+        lips = smooth(0.35, 0.7, lm)
+    lip_c = np.array([0.42, 0.22, 0.20], np.float32) * (1 + 0.08 * (fbm(P, 0.002, 2, seed=9)[:, None] - 0.5))
+    # The lips' natural rose-brown, a little darker where they meet.
+    col = mix(col, lip_c, lips * 0.78)
+    meet = np.exp(-((P[:, 2] - mouth[2]) / 0.0008) ** 2) * (np.abs(mx) < 1.0) * front
+    col = mix(col, col * 0.55, np.clip(meet, 0, 1) * 0.6)
 
     # Freckles: jittered points (2.2 mm cells) kept where a mask over the
     # nose bridge and cheeks allows, each a soft tan disc of its own size
@@ -318,8 +371,8 @@ def paint_skin(skin, marks, size, out):
             acc = np.maximum(acc, smooth(w * 1.8, w * 0.5, dist) * rng.uniform(0.55, 1.0))
         # A soft fill under the strands: skin seen through a full brow.
         brow[sel] = np.maximum(brow[sel], np.maximum(acc, fill * 0.55))
-    brow_c = np.array([0.30, 0.26, 0.19], np.float32) if BROWS == "pale" else np.array([0.085, 0.063, 0.046], np.float32)
-    col = mix(col, brow_c, np.clip(brow, 0, 1) * (0.55 if BROWS == "pale" else 0.72))
+    brow_c = np.array([0.30, 0.26, 0.19], np.float32) if BROWS == "pale" else np.array([0.17, 0.13, 0.09], np.float32)
+    col = mix(col, brow_c, np.clip(brow, 0, 1) * (0.55 if BROWS == "pale" else 0.62))
 
     # Battle decals (character.md): soot smudged over the cheeks and jaw,
     # and a thin line of blood from the corner of the mouth.
@@ -372,12 +425,20 @@ def paint_skin(skin, marks, size, out):
             dx = P[:, 0] - (mid[0] + xo)
             height -= 2.2 * np.exp(-(dx / 0.0007) ** 2) * np.exp(-(dz / 0.009) ** 2) * front
         height -= 1.2 * np.exp(-((P[:, 2] - (mid[2] + 0.002)) / 0.0008) ** 2) * np.exp(-((P[:, 0] - mid[0]) / 0.006) ** 2) * front
+    # The nasolabial folds and the corners of the mouth: soft grooves.
+    for sgn in (1.0, -1.0):
+        nx = nose_tip[0] + sgn * 0.017
+        t = np.clip((nose_tip[2] - 0.005 - P[:, 2]) / 0.035, 0, 1)
+        line_x = nx + sgn * (0.008 * t)
+        fold = np.exp(-((P[:, 0] - line_x) / 0.0018) ** 2) * (t > 0) * (t < 1) * front
+        height -= 1.2 * fold
     height *= 0.00009  # metres: pores ~0.08 mm deep
     rough = 0.58 + 0.12 * (fbm(P, 0.006, 3, seed=51) - 0.5)
     tzone = np.clip(gauss(P, mid + np.array([0, -0.02, 0.045], np.float32), (0.03, 0.05, 0.03)) + gauss(P, nose_tip, (0.012, 0.04, 0.03)), 0, 1)
     rough = rough - 0.09 * tzone - 0.04 * gauss(P, cheek_l, (0.02, 0.03, 0.02)) - 0.04 * gauss(P, cheek_r, (0.02, 0.03, 0.02))
     rough = rough + 0.12 * np.clip(-pores, 0, 1)
-    rough = rough * (1 - lips) + 0.42 * lips
+    # Moist lips: glossier, varied by fine lip lines.
+    rough = rough * (1 - lips) + (0.34 + 0.12 * (fbm(P * np.array([1, 1, 0.2], np.float32), 0.0006, 2, seed=45) - 0.5)) * lips
     rough = np.where(brow > 0.3, 0.6, rough)
     rough = rough * (1 - blood) + 0.18 * blood
 
@@ -404,7 +465,9 @@ def paint_skin(skin, marks, size, out):
     nrm /= np.linalg.norm(nrm, axis=2, keepdims=True)
     nrm_img = np.concatenate([nrm * 0.5 + 0.5, np.ones((size, size, 1), np.float32)], axis=2)
     base_img = np.concatenate([to_srgb(col_img), np.ones((size, size, 1), np.float32)], axis=2)
-    orm_img = np.stack([np.ones((size, size), np.float32), np.clip(rough_img, 0.05, 1), np.zeros((size, size), np.float32), np.ones((size, size), np.float32)], axis=2)
+    ao_img = _bake_ao(skin, size)
+    (ao_img,) = _dilate([ao_img], ao_img > 0.0, 6)
+    orm_img = np.stack([np.clip(ao_img, 0.0, 1.0), np.clip(rough_img, 0.05, 1), np.zeros((size, size), np.float32), np.ones((size, size), np.float32)], axis=2)
     return {
         "base": save("draconia_skin_base", base_img, out),
         "normal": save("draconia_skin_normal", nrm_img, out, "Non-Color"),
