@@ -37,6 +37,7 @@
 use std::sync::Mutex;
 
 pub(crate) mod batching;
+mod head;
 mod load_admission;
 mod memory_admission;
 mod prefix;
@@ -250,6 +251,8 @@ struct DeviceState {
     /// Staging for the batched head calls: input, output and bias arenas
     /// with their capacities in floats.
     head_stage: Option<HeadStage>,
+    /// The whole head on the device ([`head`], #11446).
+    device_head: Option<head::DeviceHead>,
     /// The Q4_K token embedding table on the device and its row count.
     token_table: Option<(CudaBuffer, usize)>,
     weight_bytes: u64,
@@ -682,6 +685,7 @@ impl ClefCudaTrunk {
             head_io: None,
             projected_attention: None,
             head_stage: None,
+            device_head: None,
             weight_scratch,
             layers,
             scratch: None,

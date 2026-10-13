@@ -1903,6 +1903,292 @@ __global__ void __launch_bounds__(flash::kThreads, 2)
     }
 }
 
+// ---- the joint head on the device (#11446) ----
+//
+// The whole head after the trunk runs in one submission
+// (ClefCudaTrunk::head_device). These kernels are the pieces between its
+// cuBLAS products and follow the host head (clef/head.rs) step by step:
+// f32 dots in the host's eight-lane order, softmax with f64 exponentials,
+// LayerNorm and L2 statistics in f64, and products and sums rounded one at
+// a time (no fused multiply-add), so the sequential pieces round like the
+// host's.
+
+constexpr unsigned kFull = 0xffffffffu;
+
+__device__ __forceinline__ double warp_sum_f64(double value) {
+    for (int offset = kWarp / 2; offset > 0; offset >>= 1) {
+        value += __shfl_xor_sync(kFull, value, offset);
+    }
+    return value;
+}
+
+__device__ __forceinline__ double block_sum_f64(double value, double *scratch) {
+    const int lane = threadIdx.x % kWarp;
+    const int warp = threadIdx.x / kWarp;
+    value = warp_sum_f64(value);
+    __syncthreads();
+    if (lane == 0) {
+        scratch[warp] = value;
+    }
+    __syncthreads();
+    const int warps = (blockDim.x + kWarp - 1) / kWarp;
+    double total = 0.0;
+    for (int i = 0; i < warps; ++i) {
+        total += scratch[i];
+    }
+    return total;
+}
+
+// The host `dot` over n elements `term(i)` (already a rounded product):
+// eight lane sums in order, the lanes summed 0..7, then the tail. Called by
+// a whole warp; every lane gets the result.
+template <typename Term>
+__device__ __forceinline__ float head_dot8(Term term, int n) {
+    const int lane = threadIdx.x % kWarp;
+    const int chunks = n / 8;
+    float acc = 0.0f;
+    if (lane < 8) {
+        for (int c = 0; c < chunks; ++c) {
+            acc = __fadd_rn(acc, term(c * 8 + lane));
+        }
+    }
+    float total = 0.0f;
+    for (int i = 0; i < 8; ++i) {
+        total = __fadd_rn(total, __shfl_sync(kFull, acc, i));
+    }
+    float tail = 0.0f;
+    for (int i = chunks * 8; i < n; ++i) {
+        tail = __fadd_rn(tail, term(i));
+    }
+    return __fadd_rn(total, tail);
+}
+
+// The host `l2_normalize` scale of n elements `value(i)`: 1 / max(|v|, eps)
+// with |v| summed in f64. Called by a whole warp.
+template <typename Value>
+__device__ __forceinline__ float head_l2_scale(Value value, int n, float eps) {
+    const int lane = threadIdx.x % kWarp;
+    double sum = 0.0;
+    for (int i = lane; i < n; i += kWarp) {
+        const double v = static_cast<double>(value(i));
+        sum += v * v;
+    }
+    const float norm = static_cast<float>(sqrt(warp_sum_f64(sum)));
+    return __fdiv_rn(1.0f, fmaxf(norm, eps));
+}
+
+// The host softmax of `values[0..n)` in place (one thread).
+__device__ void head_softmax_serial(float *values, int n) {
+    float best = -INFINITY;
+    for (int i = 0; i < n; ++i) {
+        best = fmaxf(best, values[i]);
+    }
+    double total = 0.0;
+    for (int i = 0; i < n; ++i) {
+        total += exp(static_cast<double>(__fsub_rn(values[i], best)));
+    }
+    for (int i = 0; i < n; ++i) {
+        values[i] = static_cast<float>(exp(static_cast<double>(__fsub_rn(values[i], best))) / total);
+    }
+}
+
+__device__ __forceinline__ float head_gelu(float value) {
+    const double x = static_cast<double>(value);
+    return static_cast<float>(0.5 * x * (1.0 + erf(x / 1.4142135623730951)));
+}
+
+// out[r] = LayerNorm(x[r]) * w + b with the statistics in f64 (the host
+// head's `layer_norm`), one block per row.
+__global__ void head_layer_norm_kernel(const float *x, const float *w, const float *b, float *out, int d, float eps) {
+    __shared__ double scratch[32];
+    const float *row = x + static_cast<long long>(blockIdx.x) * d;
+    double sum = 0.0;
+    for (int i = threadIdx.x; i < d; i += blockDim.x) {
+        sum += static_cast<double>(row[i]);
+    }
+    const double mean = block_sum_f64(sum, scratch) / d;
+    double var = 0.0;
+    for (int i = threadIdx.x; i < d; i += blockDim.x) {
+        const double c = static_cast<double>(row[i]) - mean;
+        var = __dadd_rn(var, __dmul_rn(c, c));
+    }
+    const double inverse = 1.0 / sqrt(block_sum_f64(var, scratch) / d + static_cast<double>(eps));
+    float *dst = out + static_cast<long long>(blockIdx.x) * d;
+    for (int i = threadIdx.x; i < d; i += blockDim.x) {
+        const float v = static_cast<float>(__dmul_rn(static_cast<double>(row[i]) - mean, inverse));
+        dst[i] = __fadd_rn(__fmul_rn(v, w[i]), b[i]);
+    }
+}
+
+// x += y.
+__global__ void head_add_kernel(float *x, const float *y, long long count) {
+    const long long i = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
+    if (i < count) {
+        x[i] = __fadd_rn(x[i], y[i]);
+    }
+}
+
+// routed[o] = context[o] + lexical[o] + question[owner[o]] (each [., w]).
+__global__ void head_route_kernel(const float *context, const float *lexical, const float *question, const int *owner,
+                                  float *routed, int options, int w) {
+    const long long i = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
+    if (i >= static_cast<long long>(options) * w) {
+        return;
+    }
+    const int o = static_cast<int>(i / w);
+    const int c = static_cast<int>(i % w);
+    routed[i] = __fadd_rn(__fadd_rn(context[i], lexical[i]), question[static_cast<long long>(owner[o]) * w + c]);
+}
+
+// scores[o] = routed[o] . base[owner[o]] / sqrt(w), one warp per option.
+__global__ void head_route_scores_kernel(const float *routed, const float *base, const int *owner, float *scores,
+                                         int w) {
+    const int o = blockIdx.x;
+    const float *r = routed + static_cast<long long>(o) * w;
+    const float *f = base + static_cast<long long>(owner[o]) * w;
+    const float dot = head_dot8([&](int i) { return __fmul_rn(r[i], f[i]); }, w);
+    if (threadIdx.x == 0) {
+        scores[o] = __fdiv_rn(dot, sqrtf(static_cast<float>(w)));
+    }
+}
+
+// One block per question: the routing softmax over its options' scores
+// (meta [questions, 3]: first option, option count, question type), the
+// weighted option summary, its LayerNorm, and
+// fields[q] = base[q] + summary + global + type_embedding[type].
+// Dynamic shared memory: w floats.
+__global__ void head_fields_kernel(const float *routed, float *scores, const float *base, const float *global,
+                                   const float *types, const int *meta, const float *norm_w, const float *norm_b,
+                                   float *fields, int w, float eps) {
+    extern __shared__ float summary[];
+    __shared__ double scratch[32];
+    const int q = blockIdx.x;
+    const int first = meta[3 * q];
+    const int count = meta[3 * q + 1];
+    const int type = meta[3 * q + 2];
+    if (threadIdx.x == 0) {
+        head_softmax_serial(scores + first, count);
+    }
+    __syncthreads();
+    for (int c = threadIdx.x; c < w; c += blockDim.x) {
+        float acc = 0.0f;
+        for (int k = 0; k < count; ++k) {
+            acc = __fadd_rn(acc, __fmul_rn(scores[first + k], routed[static_cast<long long>(first + k) * w + c]));
+        }
+        summary[c] = acc;
+    }
+    __syncthreads();
+    double sum = 0.0;
+    for (int c = threadIdx.x; c < w; c += blockDim.x) {
+        sum += static_cast<double>(summary[c]);
+    }
+    const double mean = block_sum_f64(sum, scratch) / w;
+    double var = 0.0;
+    for (int c = threadIdx.x; c < w; c += blockDim.x) {
+        const double d = static_cast<double>(summary[c]) - mean;
+        var = __dadd_rn(var, __dmul_rn(d, d));
+    }
+    const double inverse = 1.0 / sqrt(block_sum_f64(var, scratch) / w + static_cast<double>(eps));
+    for (int c = threadIdx.x; c < w; c += blockDim.x) {
+        const float v = static_cast<float>(__dmul_rn(static_cast<double>(summary[c]) - mean, inverse));
+        const float s = __fadd_rn(__fmul_rn(v, norm_w[c]), norm_b[c]);
+        const long long at = static_cast<long long>(q) * w + c;
+        fields[at] = __fadd_rn(__fadd_rn(__fadd_rn(base[at], s), global[c]), types[static_cast<long long>(type) * w + c]);
+    }
+}
+
+// The field layers' self-attention over the `rows` questions, before the
+// output projection: one warp per (row, head); `scores` [rows, heads, rows].
+__global__ void head_self_attention_kernel(const float *q, const float *k, const float *v, float *scores,
+                                           float *context, int rows, int heads, int w, float scale) {
+    const int i = blockIdx.x / heads;
+    const int h = blockIdx.x % heads;
+    const int hd = w / heads;
+    const int lane = threadIdx.x % kWarp;
+    const float *query = q + static_cast<long long>(i) * w + h * hd;
+    float *row = scores + static_cast<long long>(blockIdx.x) * rows;
+    for (int j = 0; j < rows; ++j) {
+        const float *key = k + static_cast<long long>(j) * w + h * hd;
+        const float dot = head_dot8([&](int e) { return __fmul_rn(query[e], key[e]); }, hd);
+        if (lane == 0) {
+            row[j] = __fmul_rn(dot, scale);
+        }
+    }
+    __syncwarp();
+    if (lane == 0) {
+        head_softmax_serial(row, rows);
+    }
+    __syncwarp();
+    for (int e = h * hd + lane; e < (h + 1) * hd; e += kWarp) {
+        float acc = 0.0f;
+        for (int j = 0; j < rows; ++j) {
+            acc = __fadd_rn(acc, __fmul_rn(row[j], v[static_cast<long long>(j) * w + e]));
+        }
+        context[static_cast<long long>(i) * w + e] = acc;
+    }
+}
+
+// features[o] = [f, x, f * x, |f - x|] with f = fields[owner[o]] and
+// x = options[o].
+__global__ void head_features_kernel(const float *fields, const float *options, const int *owner, float *features,
+                                     int w) {
+    const int o = blockIdx.x;
+    const float *f = fields + static_cast<long long>(owner[o]) * w;
+    const float *x = options + static_cast<long long>(o) * w;
+    float *dst = features + static_cast<long long>(o) * 4 * w;
+    for (int c = threadIdx.x; c < w; c += blockDim.x) {
+        dst[c] = f[c];
+        dst[w + c] = x[c];
+        dst[2 * w + c] = __fmul_rn(f[c], x[c]);
+        dst[3 * w + c] = fabsf(__fsub_rn(f[c], x[c]));
+    }
+}
+
+// One warp per option: the host head's final logit
+//   prior_scale * unit(lexical[o]) . unit(question[q] + global)
+//   + gate * (joint_scale * unit(fields[q]) . unit(options[o])
+//             + sum_c gelu(hidden[o, c]) scorer_out[c] + scorer_out_bias)
+// for q = owner[o] (lexical, question and global d wide, the rest w wide).
+// Dynamic shared memory: w floats per block.
+__global__ void head_logits_kernel(const float *lexical, const float *questions, const float *global,
+                                   const int *owner, const float *fields, const float *options, const float *hidden,
+                                   const float *scorer_out, float *logits, int d, int w, float scorer_out_bias,
+                                   float prior_scale, float joint_scale, float gate) {
+    extern __shared__ float terms[];
+    const int o = blockIdx.x;
+    const int q = owner[o];
+    const int lane = threadIdx.x % kWarp;
+    const float *lex = lexical + static_cast<long long>(o) * d;
+    const float *question = questions + static_cast<long long>(q) * d;
+    const float *field = fields + static_cast<long long>(q) * w;
+    const float *option = options + static_cast<long long>(o) * w;
+    const float *h = hidden + static_cast<long long>(o) * w;
+    auto anchor = [&](int i) { return __fadd_rn(question[i], global[i]); };
+    const float anchor_scale = head_l2_scale(anchor, d, 1e-12f);
+    const float lexical_scale = head_l2_scale([&](int i) { return lex[i]; }, d, 1e-12f);
+    const float prior = __fmul_rn(
+        prior_scale,
+        head_dot8([&](int i) { return __fmul_rn(__fmul_rn(lex[i], lexical_scale), __fmul_rn(anchor(i), anchor_scale)); },
+                  d));
+    const float field_scale = head_l2_scale([&](int i) { return field[i]; }, w, 1e-8f);
+    const float option_scale = head_l2_scale([&](int i) { return option[i]; }, w, 1e-8f);
+    const float cosine = head_dot8(
+        [&](int i) { return __fmul_rn(__fmul_rn(field[i], field_scale), __fmul_rn(option[i], option_scale)); }, w);
+    for (int c = lane; c < w; c += kWarp) {
+        terms[c] = __fmul_rn(head_gelu(h[c]), scorer_out[c]);
+    }
+    __syncwarp();
+    if (lane == 0) {
+        float sum = 0.0f;
+        for (int c = 0; c < w; ++c) {
+            sum = __fadd_rn(sum, terms[c]);
+        }
+        const float residual = __fadd_rn(sum, scorer_out_bias);
+        const float joint = __fadd_rn(__fmul_rn(joint_scale, cosine), residual);
+        logits[o] = __fadd_rn(prior, __fmul_rn(gate, joint));
+    }
+}
+
 inline int blocks_for(long long count, int threads) {
     return static_cast<int>((count + threads - 1) / threads);
 }
@@ -2381,4 +2667,105 @@ extern "C" int psionic_clef_event_record(void *event, void *stream) {
 
 extern "C" int psionic_clef_stream_wait_event(void *stream, void *event) {
     return static_cast<int>(cudaStreamWaitEvent(STREAM, static_cast<cudaEvent_t>(event), 0));
+}
+
+// ---- the joint head on the device (#11446) ----
+
+extern "C" int psionic_clef_head_layer_norm(const void *x, const void *w, const void *b, void *out, int rows, int d,
+                                            float eps, void *stream) {
+    if (rows <= 0) {
+        return 0;
+    }
+    head_layer_norm_kernel<<<rows, 256, 0, STREAM>>>(static_cast<const float *>(x), static_cast<const float *>(w),
+                                                    static_cast<const float *>(b), static_cast<float *>(out), d, eps);
+    DONE;
+}
+
+extern "C" int psionic_clef_head_add(void *x, const void *y, long long count, void *stream) {
+    if (count <= 0) {
+        return 0;
+    }
+    head_add_kernel<<<blocks_for(count, 256), 256, 0, STREAM>>>(static_cast<float *>(x), static_cast<const float *>(y),
+                                                               count);
+    DONE;
+}
+
+extern "C" int psionic_clef_head_route(const void *context, const void *lexical, const void *question,
+                                       const void *owner, void *routed, int options, int w, void *stream) {
+    const long long count = static_cast<long long>(options) * w;
+    if (count <= 0) {
+        return 0;
+    }
+    head_route_kernel<<<blocks_for(count, 256), 256, 0, STREAM>>>(
+        static_cast<const float *>(context), static_cast<const float *>(lexical), static_cast<const float *>(question),
+        static_cast<const int *>(owner), static_cast<float *>(routed), options, w);
+    DONE;
+}
+
+extern "C" int psionic_clef_head_route_scores(const void *routed, const void *base, const void *owner, void *scores,
+                                              int options, int w, void *stream) {
+    if (options <= 0) {
+        return 0;
+    }
+    head_route_scores_kernel<<<options, kWarp, 0, STREAM>>>(static_cast<const float *>(routed),
+                                                           static_cast<const float *>(base),
+                                                           static_cast<const int *>(owner),
+                                                           static_cast<float *>(scores), w);
+    DONE;
+}
+
+extern "C" int psionic_clef_head_fields(const void *routed, void *scores, const void *base, const void *global,
+                                        const void *types, const void *meta, const void *norm_w, const void *norm_b,
+                                        void *fields, int questions, int w, float eps, void *stream) {
+    if (questions <= 0) {
+        return 0;
+    }
+    head_fields_kernel<<<questions, 256, static_cast<size_t>(w) * sizeof(float), STREAM>>>(
+        static_cast<const float *>(routed), static_cast<float *>(scores), static_cast<const float *>(base),
+        static_cast<const float *>(global), static_cast<const float *>(types), static_cast<const int *>(meta),
+        static_cast<const float *>(norm_w), static_cast<const float *>(norm_b), static_cast<float *>(fields), w, eps);
+    DONE;
+}
+
+extern "C" int psionic_clef_head_self_attention(const void *q, const void *k, const void *v, void *scores,
+                                                void *context, int rows, int heads, int w, float scale,
+                                                void *stream) {
+    if (rows <= 0) {
+        return 0;
+    }
+    if (heads <= 0 || w % heads != 0) {
+        return static_cast<int>(cudaErrorInvalidValue);
+    }
+    head_self_attention_kernel<<<rows * heads, kWarp, 0, STREAM>>>(
+        static_cast<const float *>(q), static_cast<const float *>(k), static_cast<const float *>(v),
+        static_cast<float *>(scores), static_cast<float *>(context), rows, heads, w, scale);
+    DONE;
+}
+
+extern "C" int psionic_clef_head_features(const void *fields, const void *options, const void *owner,
+                                          void *features, int count, int w, void *stream) {
+    if (count <= 0) {
+        return 0;
+    }
+    head_features_kernel<<<count, 256, 0, STREAM>>>(static_cast<const float *>(fields),
+                                                   static_cast<const float *>(options),
+                                                   static_cast<const int *>(owner), static_cast<float *>(features), w);
+    DONE;
+}
+
+extern "C" int psionic_clef_head_logits(const void *lexical, const void *questions, const void *global,
+                                        const void *owner, const void *fields, const void *options,
+                                        const void *hidden, const void *scorer_out, void *logits, int count, int d,
+                                        int w, float scorer_out_bias, float prior_scale, float joint_scale,
+                                        float gate, void *stream) {
+    if (count <= 0) {
+        return 0;
+    }
+    head_logits_kernel<<<count, kWarp, static_cast<size_t>(w) * sizeof(float), STREAM>>>(
+        static_cast<const float *>(lexical), static_cast<const float *>(questions),
+        static_cast<const float *>(global), static_cast<const int *>(owner), static_cast<const float *>(fields),
+        static_cast<const float *>(options), static_cast<const float *>(hidden),
+        static_cast<const float *>(scorer_out), static_cast<float *>(logits), d, w, scorer_out_bias, prior_scale,
+        joint_scale, gate);
+    DONE;
 }

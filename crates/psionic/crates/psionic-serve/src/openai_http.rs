@@ -22570,13 +22570,18 @@ mod tests {
             Some(String::from("hit"))
         );
         assert_eq!(
-            header_value(hit.headers(), "x-psionic-prefix-cache-reused-tokens"),
-            Some(String::from("1"))
-        );
-        assert_eq!(
             header_value(hit.headers(), "x-psionic-prefix-cache-refusal"),
             None
         );
+        // "hello" is a whole prefix of the seeded "hello world" prompt, so
+        // every prompt token is reused (the store keeps the prefix's logits).
+        let reused = header_value(hit.headers(), "x-psionic-prefix-cache-reused-tokens");
+        let hit_payload = tokio::runtime::Runtime::new()?.block_on(response_json(hit))?;
+        let prompt_tokens = hit_payload["usage"]["prompt_tokens"]
+            .as_u64()
+            .expect("prompt tokens");
+        assert!(prompt_tokens > 0);
+        assert_eq!(reused, Some(prompt_tokens.to_string()));
 
         let bypassed =
             tokio::runtime::Runtime::new()?.block_on(handle_generic_chat_completions(

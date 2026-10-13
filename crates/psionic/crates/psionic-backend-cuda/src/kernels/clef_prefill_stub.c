@@ -355,3 +355,121 @@ int psionic_clef_fake_e4m3_rows(void *x, int rows, int k, void *stream) {
     (void)stream;
     return 1;
 }
+
+/* The joint head on the device (#11446). */
+
+int psionic_clef_head_layer_norm(const void *x, const void *w, const void *b, void *out, int rows, int d, float eps,
+                                 void *stream) {
+    (void)x;
+    (void)w;
+    (void)b;
+    (void)out;
+    (void)rows;
+    (void)d;
+    (void)eps;
+    (void)stream;
+    return 1;
+}
+
+int psionic_clef_head_add(void *x, const void *y, long long count, void *stream) {
+    (void)x;
+    (void)y;
+    (void)count;
+    (void)stream;
+    return 1;
+}
+
+int psionic_clef_head_route(const void *context, const void *lexical, const void *question, const void *owner,
+                            void *routed, int options, int w, void *stream) {
+    (void)context;
+    (void)lexical;
+    (void)question;
+    (void)owner;
+    (void)routed;
+    (void)options;
+    (void)w;
+    (void)stream;
+    return 1;
+}
+
+int psionic_clef_head_route_scores(const void *routed, const void *base, const void *owner, void *scores, int options,
+                                   int w, void *stream) {
+    (void)routed;
+    (void)base;
+    (void)owner;
+    (void)scores;
+    (void)options;
+    (void)w;
+    (void)stream;
+    return 1;
+}
+
+int psionic_clef_head_fields(const void *routed, void *scores, const void *base, const void *global,
+                             const void *types, const void *meta, const void *norm_w, const void *norm_b,
+                             void *fields, int questions, int w, float eps, void *stream) {
+    (void)routed;
+    (void)scores;
+    (void)base;
+    (void)global;
+    (void)types;
+    (void)meta;
+    (void)norm_w;
+    (void)norm_b;
+    (void)fields;
+    (void)questions;
+    (void)w;
+    (void)eps;
+    (void)stream;
+    return 1;
+}
+
+int psionic_clef_head_self_attention(const void *q, const void *k, const void *v, void *scores, void *context,
+                                     int rows, int heads, int w, float scale, void *stream) {
+    (void)q;
+    (void)k;
+    (void)v;
+    (void)scores;
+    (void)context;
+    (void)rows;
+    (void)heads;
+    (void)w;
+    (void)scale;
+    (void)stream;
+    return 1;
+}
+
+int psionic_clef_head_features(const void *fields, const void *options, const void *owner, void *features,
+                               int count, int w, void *stream) {
+    (void)fields;
+    (void)options;
+    (void)owner;
+    (void)features;
+    (void)count;
+    (void)w;
+    (void)stream;
+    return 1;
+}
+
+int psionic_clef_head_logits(const void *lexical, const void *questions, const void *global, const void *owner,
+                             const void *fields, const void *options, const void *hidden, const void *scorer_out,
+                             void *logits, int count, int d, int w, float scorer_out_bias, float prior_scale,
+                             float joint_scale, float gate, void *stream) {
+    (void)lexical;
+    (void)questions;
+    (void)global;
+    (void)owner;
+    (void)fields;
+    (void)options;
+    (void)hidden;
+    (void)scorer_out;
+    (void)logits;
+    (void)count;
+    (void)d;
+    (void)w;
+    (void)scorer_out_bias;
+    (void)prior_scale;
+    (void)joint_scale;
+    (void)gate;
+    (void)stream;
+    return 1;
+}

@@ -262,6 +262,20 @@ impl DeviceTrunk {
         }
     }
 
+    /// The whole head on the device in one round trip; `None` on Metal or
+    /// with `PSIONIC_CLEF_CUDA_HEAD=staged`.
+    fn head_device(
+        &self,
+        weights: &ClefHeadWeights,
+        inputs: &head::DeviceHeadInputs<'_>,
+    ) -> Result<Option<Vec<f32>>, String> {
+        match self {
+            Self::Cuda(trunk) => trunk.head_device(weights, inputs),
+            #[cfg(target_os = "macos")]
+            Self::Metal(_) => Ok(None),
+        }
+    }
+
     fn head_field_layers(
         &self,
         weights: &ClefHeadWeights,
@@ -700,7 +714,10 @@ impl ClefDecisionLane {
                             limits.prefill_chunk
                         },
                     )
-                    .map(DeviceTrunk::Cuda)
+                    .and_then(|trunk| {
+                        trunk.prepare_device_head(&head)?;
+                        Ok(DeviceTrunk::Cuda(trunk))
+                    })
                 };
                 let name = if metal { "Metal" } else { "CUDA" };
                 match loaded {
@@ -1522,6 +1539,20 @@ impl<'a> DeviceMemory<'a> {
 }
 
 impl MemoryAttention for DeviceMemory<'_> {
+    fn whole_head(
+        &mut self,
+        weights: &ClefHeadWeights,
+        inputs: &head::DeviceHeadInputs<'_>,
+    ) -> Result<Option<Vec<f32>>, String> {
+        let began = Instant::now();
+        let result = self.trunk.head_device(weights, inputs)?;
+        if result.is_some() {
+            self.linear.0 += 1;
+            self.linear.1 += began.elapsed().as_secs_f64();
+        }
+        Ok(result)
+    }
+
     fn field_layers(
         &mut self,
         weights: &ClefHeadWeights,

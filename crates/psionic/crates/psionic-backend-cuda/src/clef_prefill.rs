@@ -53,6 +53,14 @@ unsafe extern "C" {
     fn psionic_clef_head_context(mixed: *const c_void, wv: *const c_void, bv: *const c_void, out: *mut c_void, n: i32, heads: i32, width: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_bias_act(x: *mut c_void, b: *const c_void, rows: i64, cols: i32, gelu: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_span_sums(rows: *const c_void, spans: *const c_void, sums: *mut c_void, span_count: i32, d: i32, first: i32, n: i32, stream: *mut c_void) -> i32;
+    fn psionic_clef_head_layer_norm(x: *const c_void, w: *const c_void, b: *const c_void, out: *mut c_void, rows: i32, d: i32, eps: f32, stream: *mut c_void) -> i32;
+    fn psionic_clef_head_add(x: *mut c_void, y: *const c_void, count: i64, stream: *mut c_void) -> i32;
+    fn psionic_clef_head_route(context: *const c_void, lexical: *const c_void, question: *const c_void, owner: *const c_void, routed: *mut c_void, options: i32, w: i32, stream: *mut c_void) -> i32;
+    fn psionic_clef_head_route_scores(routed: *const c_void, base: *const c_void, owner: *const c_void, scores: *mut c_void, options: i32, w: i32, stream: *mut c_void) -> i32;
+    fn psionic_clef_head_fields(routed: *const c_void, scores: *mut c_void, base: *const c_void, global: *const c_void, types: *const c_void, meta: *const c_void, norm_w: *const c_void, norm_b: *const c_void, fields: *mut c_void, questions: i32, w: i32, eps: f32, stream: *mut c_void) -> i32;
+    fn psionic_clef_head_self_attention(q: *const c_void, k: *const c_void, v: *const c_void, scores: *mut c_void, context: *mut c_void, rows: i32, heads: i32, w: i32, scale: f32, stream: *mut c_void) -> i32;
+    fn psionic_clef_head_features(fields: *const c_void, options: *const c_void, owner: *const c_void, features: *mut c_void, count: i32, w: i32, stream: *mut c_void) -> i32;
+    fn psionic_clef_head_logits(lexical: *const c_void, questions: *const c_void, global: *const c_void, owner: *const c_void, fields: *const c_void, options: *const c_void, hidden: *const c_void, scorer_out: *const c_void, logits: *mut c_void, count: i32, d: i32, w: i32, scorer_out_bias: f32, prior_scale: f32, joint_scale: f32, gate: f32, stream: *mut c_void) -> i32;
 }
 
 /// Where [`CudaSubmission::clef_delta_block`] also writes the state after
@@ -1440,5 +1448,297 @@ impl CudaSubmission {
         )?;
         self.encoded_operations += 1;
         Ok(())
+    }
+}
+
+/// The scalars of the head's final logit ([`CudaSubmission::clef_head_logits`]).
+#[derive(Clone, Copy, Debug)]
+pub struct ClefHeadScalars {
+    pub scorer_out_bias: f32,
+    pub prior_scale: f32,
+    pub joint_scale: f32,
+    pub gate: f32,
+}
+
+/// The joint head's pieces between its products, for running the whole head
+/// after the trunk in one submission (#11446). They follow the host head
+/// (`psionic-serve` `clef/head.rs`) step by step; `i32` operands (`owner`,
+/// `meta`) are f32 buffers holding the integers' bit patterns.
+impl CudaSubmission {
+    /// `out[r] = LayerNorm(x[r]) w + b` over `rows` rows of `d`, statistics in f64.
+    #[allow(clippy::too_many_arguments)]
+    pub fn clef_head_layer_norm(
+        &mut self,
+        x: ClefOperand<'_>,
+        w: ClefOperand<'_>,
+        b: ClefOperand<'_>,
+        out: ClefOperand<'_>,
+        rows: usize,
+        d: usize,
+        eps: f32,
+    ) -> Result<(), RuntimeError> {
+        let xp = x.ptr(rows * d, "head norm x")?;
+        let wp = w.ptr(d, "head norm w")?;
+        let bp = b.ptr(d, "head norm b")?;
+        let op = out.ptr(rows * d, "head norm out")?;
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe {
+            psionic_clef_head_layer_norm(
+                xp,
+                wp,
+                bp,
+                op,
+                int(rows, "rows")?,
+                int(d, "d")?,
+                eps,
+                stream,
+            )
+        };
+        self.clef_launch(code, "psionic_clef_head_layer_norm")
+    }
+
+    /// `x += y` over `count` f32.
+    pub fn clef_head_add(
+        &mut self,
+        x: ClefOperand<'_>,
+        y: ClefOperand<'_>,
+        count: usize,
+    ) -> Result<(), RuntimeError> {
+        let xp = x.ptr(count, "head add x")?;
+        let yp = y.ptr(count, "head add y")?;
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe { psionic_clef_head_add(xp, yp, count as i64, stream) };
+        self.clef_launch(code, "psionic_clef_head_add")
+    }
+
+    /// `routed[o] = context[o] + lexical[o] + question[owner[o]]`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn clef_head_route(
+        &mut self,
+        context: ClefOperand<'_>,
+        lexical: ClefOperand<'_>,
+        question: ClefOperand<'_>,
+        questions: usize,
+        owner: ClefOperand<'_>,
+        routed: ClefOperand<'_>,
+        options: usize,
+        w: usize,
+    ) -> Result<(), RuntimeError> {
+        let cp = context.ptr(options * w, "route context")?;
+        let lp = lexical.ptr(options * w, "route lexical")?;
+        let qp = question.ptr(questions * w, "route question")?;
+        let op = owner.ptr(options, "route owner")?;
+        let rp = routed.ptr(options * w, "route out")?;
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe {
+            psionic_clef_head_route(
+                cp,
+                lp,
+                qp,
+                op,
+                rp,
+                int(options, "options")?,
+                int(w, "w")?,
+                stream,
+            )
+        };
+        self.clef_launch(code, "psionic_clef_head_route")
+    }
+
+    /// `scores[o] = routed[o] . base[owner[o]] / sqrt(w)`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn clef_head_route_scores(
+        &mut self,
+        routed: ClefOperand<'_>,
+        base: ClefOperand<'_>,
+        questions: usize,
+        owner: ClefOperand<'_>,
+        scores: ClefOperand<'_>,
+        options: usize,
+        w: usize,
+    ) -> Result<(), RuntimeError> {
+        let rp = routed.ptr(options * w, "route scores routed")?;
+        let bp = base.ptr(questions * w, "route scores base")?;
+        let op = owner.ptr(options, "route scores owner")?;
+        let sp = scores.ptr(options, "route scores out")?;
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe {
+            psionic_clef_head_route_scores(
+                rp,
+                bp,
+                op,
+                sp,
+                int(options, "options")?,
+                int(w, "w")?,
+                stream,
+            )
+        };
+        self.clef_launch(code, "psionic_clef_head_route_scores")
+    }
+
+    /// Per question (`meta` `[questions, 3]`: first option, option count,
+    /// type): the routing softmax of its options' `scores` (in place), the
+    /// weighted summary of their `routed` rows, its LayerNorm, and
+    /// `fields[q] = base[q] + summary + global + types[type]`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn clef_head_fields(
+        &mut self,
+        routed: ClefOperand<'_>,
+        scores: ClefOperand<'_>,
+        options: usize,
+        base: ClefOperand<'_>,
+        global: ClefOperand<'_>,
+        types: ClefOperand<'_>,
+        type_count: usize,
+        meta: ClefOperand<'_>,
+        norm: (ClefOperand<'_>, ClefOperand<'_>),
+        fields: ClefOperand<'_>,
+        questions: usize,
+        w: usize,
+        eps: f32,
+    ) -> Result<(), RuntimeError> {
+        let rp = routed.ptr(options * w, "fields routed")?;
+        let sp = scores.ptr(options, "fields scores")?;
+        let bp = base.ptr(questions * w, "fields base")?;
+        let gp = global.ptr(w, "fields global")?;
+        let tp = types.ptr(type_count * w, "fields types")?;
+        let mp = meta.ptr(questions * 3, "fields meta")?;
+        let nw = norm.0.ptr(w, "fields norm w")?;
+        let nb = norm.1.ptr(w, "fields norm b")?;
+        let fp = fields.ptr(questions * w, "fields out")?;
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe {
+            psionic_clef_head_fields(
+                rp,
+                sp,
+                bp,
+                gp,
+                tp,
+                mp,
+                nw,
+                nb,
+                fp,
+                int(questions, "questions")?,
+                int(w, "w")?,
+                eps,
+                stream,
+            )
+        };
+        self.clef_launch(code, "psionic_clef_head_fields")
+    }
+
+    /// The field layers' self-attention of `rows` projected `q`, `k`, `v`
+    /// (`[rows, w]`, `heads` heads) before the output projection;
+    /// `scores` holds `rows * heads * rows`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn clef_head_self_attention(
+        &mut self,
+        q: ClefOperand<'_>,
+        k: ClefOperand<'_>,
+        v: ClefOperand<'_>,
+        scores: ClefOperand<'_>,
+        context: ClefOperand<'_>,
+        rows: usize,
+        heads: usize,
+        w: usize,
+        scale: f32,
+    ) -> Result<(), RuntimeError> {
+        let qp = q.ptr(rows * w, "self attention q")?;
+        let kp = k.ptr(rows * w, "self attention k")?;
+        let vp = v.ptr(rows * w, "self attention v")?;
+        let sp = scores.ptr(rows * heads * rows, "self attention scores")?;
+        let cp = context.ptr(rows * w, "self attention out")?;
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe {
+            psionic_clef_head_self_attention(
+                qp,
+                kp,
+                vp,
+                sp,
+                cp,
+                int(rows, "rows")?,
+                int(heads, "heads")?,
+                int(w, "w")?,
+                scale,
+                stream,
+            )
+        };
+        self.clef_launch(code, "psionic_clef_head_self_attention")
+    }
+
+    /// `features[o] = [f, x, f x, |f - x|]`, `f = fields[owner[o]]`, `x = options[o]`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn clef_head_features(
+        &mut self,
+        fields: ClefOperand<'_>,
+        questions: usize,
+        options: ClefOperand<'_>,
+        owner: ClefOperand<'_>,
+        features: ClefOperand<'_>,
+        count: usize,
+        w: usize,
+    ) -> Result<(), RuntimeError> {
+        let fp = fields.ptr(questions * w, "features fields")?;
+        let op = options.ptr(count * w, "features options")?;
+        let wp = owner.ptr(count, "features owner")?;
+        let xp = features.ptr(count * 4 * w, "features out")?;
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe {
+            psionic_clef_head_features(fp, op, wp, xp, int(count, "count")?, int(w, "w")?, stream)
+        };
+        self.clef_launch(code, "psionic_clef_head_features")
+    }
+
+    /// The final logit of each of `count` options (see the kernel).
+    #[allow(clippy::too_many_arguments)]
+    pub fn clef_head_logits(
+        &mut self,
+        lexical: ClefOperand<'_>,
+        questions: ClefOperand<'_>,
+        question_count: usize,
+        global: ClefOperand<'_>,
+        owner: ClefOperand<'_>,
+        fields: ClefOperand<'_>,
+        options: ClefOperand<'_>,
+        hidden: ClefOperand<'_>,
+        scorer_out: ClefOperand<'_>,
+        logits: ClefOperand<'_>,
+        count: usize,
+        d: usize,
+        w: usize,
+        scalars: ClefHeadScalars,
+    ) -> Result<(), RuntimeError> {
+        let lp = lexical.ptr(count * d, "logits lexical")?;
+        let qp = questions.ptr(question_count * d, "logits questions")?;
+        let gp = global.ptr(d, "logits global")?;
+        let wp = owner.ptr(count, "logits owner")?;
+        let fp = fields.ptr(question_count * w, "logits fields")?;
+        let op = options.ptr(count * w, "logits options")?;
+        let hp = hidden.ptr(count * w, "logits hidden")?;
+        let sp = scorer_out.ptr(w, "logits scorer_out")?;
+        let out = logits.ptr(count, "logits out")?;
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe {
+            psionic_clef_head_logits(
+                lp,
+                qp,
+                gp,
+                wp,
+                fp,
+                op,
+                hp,
+                sp,
+                out,
+                int(count, "count")?,
+                int(d, "d")?,
+                int(w, "w")?,
+                scalars.scorer_out_bias,
+                scalars.prior_scale,
+                scalars.joint_scale,
+                scalars.gate,
+                stream,
+            )
+        };
+        self.clef_launch(code, "psionic_clef_head_logits")
     }
 }

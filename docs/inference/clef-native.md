@@ -1477,6 +1477,77 @@ That leaves 1.5x at 4k and 16k in f16 out of reach (Round 9): the GEMMs are
 about 70 % of a prefill at 65–74 % of the f16 peak. Raw rows:
 `gs://openagentsgemini-decision-throughput/clef-11446/out/wip-fp8sim/`.
 
+### Round 11 (2026-10-13): the CUDA head in one round trip (#11446)
+
+Round 9 left the head as the last fixed cost: about 25 round trips per
+request (each product batch, memory-attention block and feed-forward
+uploaded its inputs and biases, waited and read back, with the LayerNorms,
+the field self-attention, the routing and the scorer on the host in
+between), about 4.6 ms of GPU idle per request.
+
+**What changed** (`qwen35/clef_cuda/head.rs`, the "joint head on the
+device" kernels in `clef_prefill.cu`):
+
+- At load the head's vectors (norms, biases, the type embedding, the scorer
+  output) are uploaded next to its matrices (about 300 KB).
+- A request uploads its pooled inputs once (question and option span means,
+  lexical means, the last row, which question owns each option), runs the
+  whole head in one submission and reads back one logit per option.
+- The new kernels (LayerNorm, residual add, option routing, field assembly,
+  field self-attention, scorer features, the final logit) follow the host
+  head step by step: dots in the host's eight-lane order, softmax with f64
+  exponentials, LayerNorm and L2 statistics in f64, products and sums
+  rounded one at a time (no fused multiply-add). The products stay on the
+  same cuBLAS calls as before.
+- On by default on CUDA; `PSIONIC_CLEF_CUDA_HEAD=staged` keeps the staged
+  head. Metal is unchanged. A request's head workspace is one arena grown to
+  the largest request seen (about 6 MB for 16 questions and 64 options on
+  27B), inside the existing 64 MB head reserve.
+
+One spot H100 (`wip-head3`, the same binary with the head on and off).
+Raw rows: `gs://openagentsgemini-decision-throughput/clef-11446/out/wip-head3/`.
+
+**Parity.** `e2e.py compare`, 40 requests, 104 questions:
+
+| | top answers | max \|Δp\| |
+| --- | ---: | ---: |
+| Flash, device head vs staged head | 100 % | **0** |
+| 27B, device head vs staged head | 100 % | **0** |
+| Flash, device head vs the CPU goldens | 100 % | 0.0010 (unchanged) |
+
+`cuda_prefix_check.py` passes on both models with max |Δlogit| 0 (reuse,
+LRU, eviction), and `cuda_batch_check.py` passes on both (two and four
+slots).
+
+**GPU idle per request** (Nsight, 0.8k tokens): Flash 8.2 → 3.7 ms in a
+47 → 43 ms span, 27B 10.6 → 4.9 ms. The head's kernels now run back to back
+(1–3 µs gaps); what is left is host work before the head (span means, about
+0.5 ms) and at the start of the prefill.
+
+**Latency** (`bench_latency.py`, fresh nonce, median of 9 (27B: 5), two
+interleaved rounds; client seconds; the server's head time in brackets):
+
+| | 0.8k | 1.1k | 3.9k | 15.5k |
+| --- | ---: | ---: | ---: | ---: |
+| Flash, staged | 0.0475 (6.1 ms) | 0.0575 (6.2 ms) | 0.161 (6.6 ms) | 0.634 (8.1 ms) |
+| **Flash, device** | **0.0440 (2.0 ms)** | **0.0538 (2.1 ms)** | **0.158 (2.5 ms)** | **0.631 (3.8 ms)** |
+| Flash change | −7.4 % | −6.4 % | −2.0 % | −0.4 % |
+| 27B, staged | 0.136 (6.5 ms) | 0.157 (6.8 ms) | 0.508 (7.1 ms) | 2.029 (8.4 ms) |
+| **27B, device** | **0.133 (2.2 ms)** | **0.154 (2.3 ms)** | **0.505 (2.9 ms)** | **2.024 (4.0 ms)** |
+| 27B change | −2.5 % | −2.0 % | −0.5 % | −0.3 % |
+
+The saving grows with the schema. With a 12-question schema on a 4k state
+(`cuda_prefix_check.py`, median client seconds):
+
+| | Flash, prefix hit | Flash, cold 5.5k | 27B, prefix hit | 27B, cold 5.5k |
+| --- | ---: | ---: | ---: | ---: |
+| staged | 0.092 | 0.232 | 0.245 | 0.707 |
+| device | **0.083** | **0.222** | **0.235** | **0.696** |
+| change | −10.5 % | −4.4 % | −4.2 % | −1.6 % |
+
+Cost of this round: about 40 minutes of one spot H100 (about $4) and three
+Cloud Builds.
+
 ## M3 status (closed 2026-10-13)
 
 The [October 10 Mac performance audit](../audits/2026-10-10-clef-mac-performance/README.md)
@@ -2170,6 +2241,7 @@ batching.
 | `PSIONIC_CLEF_METAL_GEMM` | `fixed-64` | `weight-shapes` selects the experimental projection tiles. |
 | `PSIONIC_CLEF_METAL_DELTA` | `sequential` | `block-tensorops` selects the experimental 32-token block recurrence. Additional scratch is `ceil(chunk / 32) × value_heads × 37,120` bytes, at most 256 MiB per scratch allocation. |
 | `PSIONIC_CLEF_METAL_HEAD` | `staged` | `fused-fields` runs the four field layers in one GPU submission. It supports at most 64 questions, adds 294,912 bytes of model vectors for the current Flash/27B heads, and adds up to 2,883,584 bytes of request scratch. This scratch is included in batch reservations. |
+| `PSIONIC_CLEF_CUDA_HEAD` | `device` | `staged` runs the CUDA head step by step (about 25 round trips) instead of in one submission (Round 11). Both give the same answers. |
 | `PSIONIC_CLEF_METAL_FFN_WEIGHTS` | `resident-f16` | `q4k-on-demand` keeps Q4_K feed-forward weights packed and converts one projection at a time into reusable f16 scratch. Other formats retain the resident path. The conversion slot is 96 MiB for Flash and 170 MiB for 27B, with a 256 MiB limit. |
 | `PSIONIC_CLEF_METAL_WEIGHT_UPLOAD` | `mapped-copy` | `positional` reads packed matrices through the original open file into the existing upload buffer, avoiding bulk reads from mapped pages. It requires `resident-f16` and a memory-mapped source; conversion and inference arithmetic stay unchanged. The 27B text and image checks pass within the 52 GiB process cap at chunk size 512; this does not establish latency acceptance. |
 | `PSIONIC_CLEF_PREFIX_CACHE_BYTES` | `0` (CUDA sm_90: a 32nd of the device, at most 2 GiB) | Metal: enables one exact prefix snapshot when nonzero; maximum 536,870,912 bytes, including its token key. CUDA: an LRU of snapshots within the budget (at most 32 GiB and a quarter of the device); on by default where reuse is exact (Round 9), `0` turns it off. |

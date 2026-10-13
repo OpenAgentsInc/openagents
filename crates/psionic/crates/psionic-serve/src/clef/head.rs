@@ -900,8 +900,36 @@ pub enum MemoryView {
     Raw,
 }
 
+/// A request's pooled head inputs, in the order [`run_head`] reads them, for
+/// a backend that runs the whole head itself ([`MemoryAttention::whole_head`]).
+pub struct DeviceHeadInputs<'a> {
+    /// `[questions, hidden]`: each question span's mean of `LN(H)`.
+    pub questions: &'a [f32],
+    /// `[options, hidden]`: each option span's mean of `LN(H)`.
+    pub context: &'a [f32],
+    /// `[options, hidden]`: each option's mean untied output row.
+    pub lexical: &'a [f32],
+    /// `[hidden]`: `LN(H)` of the last token.
+    pub global: &'a [f32],
+    /// The question of each option (options grouped by question, in order).
+    pub owner: &'a [usize],
+    /// Each question's type (its type embedding row).
+    pub question_types: &'a [usize],
+}
+
 /// Softmax-weighted memory rows for query-side vectors.
 pub trait MemoryAttention {
+    /// Runs the whole head after the pooled inputs on the device, returning
+    /// one logit per option (grouped by question). `None` (the default)
+    /// runs the head step by step through the methods below.
+    fn whole_head(
+        &mut self,
+        _weights: &ClefHeadWeights,
+        _inputs: &DeviceHeadInputs<'_>,
+    ) -> Result<Option<Vec<f32>>, String> {
+        Ok(None)
+    }
+
     /// Runs the complete field stack on the device when available. The default
     /// keeps the existing host normalization and attention path.
     fn field_layers(
@@ -1404,13 +1432,41 @@ pub fn run_head(
     }
     let n_options = owner.len();
     let flat = |rows: &[Vec<f32>]| rows.concat();
-
-    // R = W_oc c + W_ol l + W_oq q
     let (questions_flat, context_flat, lexical_flat) = (
         flat(&question_vectors),
         flat(&option_context),
         flat(&lexical),
     );
+    let question_types: Vec<usize> = record
+        .questions
+        .iter()
+        .map(|question| question.question_type)
+        .collect();
+    if let Some(flat_logits) = memory.whole_head(
+        weights,
+        &DeviceHeadInputs {
+            questions: &questions_flat,
+            context: &context_flat,
+            lexical: &lexical_flat,
+            global: &global,
+            owner: &owner,
+            question_types: &question_types,
+        },
+    )? {
+        if flat_logits.len() != n_options {
+            return Err(String::from("the device head returned an invalid shape"));
+        }
+        let mut logits = Vec::with_capacity(question_count);
+        let mut first = 0;
+        for question in &record.questions {
+            let count = question.option_spans.len();
+            logits.push(flat_logits[first..first + count].to_vec());
+            first += count;
+        }
+        return Ok(logits);
+    }
+
+    // R = W_oc c + W_ol l + W_oq q
     let mut projected = memory.linear_batch(&[
         (
             &weights.option_question_projection,
