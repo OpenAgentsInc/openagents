@@ -18,6 +18,16 @@ synced JSON; the headline section is written by hand.
   4k-token prompts, batch ≥ 4; 22.5k at 16k, 19.3k at 32k): **$0.0063/M on
   spot** (us-east1/us-central1 list $0.584/chip-h), $0.029/M on demand. Our
   spot H100 is $0.11/M, spot A100 $0.072/M; Jev sells at $0.042/M.
+- **int8 W8A8 (Qwix-style dynamic per-token activations, per-channel
+  weights, through SGL-JAX's quantizer with `text_int8_w8a8.yaml`) on one
+  v6e chip: 37.6k tokens/s at 4k × 8, 41.9k at 1k × 32, 30.0k at 16k, 25.1k
+  at 32k** — 1.33–1.45× bf16: **$0.0043/M spot, $0.020/M on demand**.
+  Weight-only int8: 28.3k at 4k × 8 (1.09×). Real `Qwen/Qwen3.5-9B` weights:
+  25.8k at 4k × 8, the same as dummy weights (25.9k); engine start with the
+  18 GB download from Hugging Face: 147 s. (`Cloudflare/clef-flash`'s own
+  safetensors fail SGL-JAX's loader: unexpected `evidence_layers.*` keys,
+  the joint head's tensors inside the model shards.) Int8 cannot be loaded
+  on a 16 GB v5e chip: SGL-JAX materializes bf16 weights before quantizing.
 - **Clef 27B on v6e-4** (TP 4, bf16): ~5,100–5,400 tokens/s per chip at
   1–4k prompts, ~$0.03/M spot, ~$0.14/M on demand (run cut short by a
   preemption; being re-measured).

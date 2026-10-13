@@ -18,6 +18,16 @@ synced JSON; the headline section is written by hand.
   4k-token prompts, batch ≥ 4; 22.5k at 16k, 19.3k at 32k): **$0.0063/M on
   spot** (us-east1/us-central1 list $0.584/chip-h), $0.029/M on demand. Our
   spot H100 is $0.11/M, spot A100 $0.072/M; Jev sells at $0.042/M.
+- **int8 W8A8 (Qwix-style dynamic per-token activations, per-channel
+  weights, through SGL-JAX's quantizer with `text_int8_w8a8.yaml`) on one
+  v6e chip: 37.6k tokens/s at 4k × 8, 41.9k at 1k × 32, 30.0k at 16k, 25.1k
+  at 32k** — 1.33–1.45× bf16: **$0.0043/M spot, $0.020/M on demand**.
+  Weight-only int8: 28.3k at 4k × 8 (1.09×). Real `Qwen/Qwen3.5-9B` weights:
+  25.8k at 4k × 8, the same as dummy weights (25.9k); engine start with the
+  18 GB download from Hugging Face: 147 s. (`Cloudflare/clef-flash`'s own
+  safetensors fail SGL-JAX's loader: unexpected `evidence_layers.*` keys,
+  the joint head's tensors inside the model shards.) Int8 cannot be loaded
+  on a 16 GB v5e chip: SGL-JAX materializes bf16 weights before quantizing.
 - **Clef 27B on v6e-4** (TP 4, bf16): ~5,100–5,400 tokens/s per chip at
   1–4k prompts, ~$0.03/M spot, ~$0.14/M on demand (run cut short by a
   preemption; being re-measured).
@@ -788,6 +798,47 @@ State-pool dtype over chunked prefill (v6e, `cd-v6e1-ane1b-d/gdn-state-long-v6e-
 | 32768 | 4 | 9.205 | 14,239 | 3,560 | 0.0726 | 0.3277 | 9.21 |
 | 32768 | 8 | 18.397 | 14,249 | 3,562 | 0.0725 | 0.3275 | 18.40 |
 
+**Cloudflare/clef-flash** on v6e TP 1, text_int8_w8a8, load dummy, chunk 8192 — engine start 156 s (`cd-v6e1-ane1b-d/prefill-Cloudflare_clef-flash-tp1-text_int8_w8a8-dummy-t1v-n-f2308cbd-w-0.json`)
+
+| input len | batch | steady s | tok/s | tok/s per chip | spot $/M | on-demand $/M | first (compile) s |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1024 | 1 | 0.041 | 24,960 | 24,960 | 0.0065 | 0.0300 | 0.07 |
+| 1024 | 2 | 0.062 | 32,940 | 32,940 | 0.0049 | 0.0228 | 0.06 |
+| 1024 | 4 | 0.111 | 36,996 | 36,996 | 0.0044 | 0.0203 | 0.11 |
+| 1024 | 8 | 0.207 | 39,610 | 39,610 | 0.0041 | 0.0189 | 0.21 |
+| 1024 | 16 | 0.397 | 41,225 | 41,225 | 0.0039 | 0.0182 | 0.40 |
+| 1024 | 32 | 0.782 | 41,920 | 41,920 | 0.0039 | 0.0179 | 0.78 |
+| 4096 | 1 | 0.122 | 33,532 | 33,532 | 0.0048 | 0.0224 | 0.12 |
+| 4096 | 2 | 0.229 | 35,759 | 35,759 | 0.0045 | 0.0210 | 0.23 |
+| 4096 | 4 | 0.443 | 36,985 | 36,985 | 0.0044 | 0.0203 | 0.44 |
+| 4096 | 8 | 0.872 | 37,566 | 37,566 | 0.0043 | 0.0200 | 0.87 |
+| 4096 | 16 | 1.735 | 37,776 | 37,776 | 0.0043 | 0.0199 | 1.74 |
+| 4096 | 32 | 3.460 | 37,882 | 37,882 | 0.0043 | 0.0198 | 3.46 |
+| 16384 | 1 | 0.556 | 29,455 | 29,455 | 0.0055 | 0.0255 | 0.56 |
+| 16384 | 2 | 1.099 | 29,813 | 29,813 | 0.0054 | 0.0252 | 1.10 |
+| 16384 | 4 | 2.188 | 29,952 | 29,952 | 0.0054 | 0.0250 | 2.19 |
+| 16384 | 8 | 4.366 | 30,023 | 30,023 | 0.0054 | 0.0250 | 4.37 |
+| 16384 | 16 | 8.724 | 30,049 | 30,049 | 0.0054 | 0.0250 | 8.73 |
+| 32768 | 1 | 1.306 | 25,084 | 25,084 | 0.0065 | 0.0299 | 1.31 |
+
+**Cloudflare/clef-flash** on v6e TP 1, text_int8_w8a8, load dummy, chunk 8192 — engine start 78 s (`cd-v6e1-ane1b-d/prefill-flash-tp1-int8w8a8-quick-t1v-n-f2308cbd-w-0.json`)
+
+| input len | batch | steady s | tok/s | tok/s per chip | spot $/M | on-demand $/M | first (compile) s |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 4096 | 8 | 0.872 | 37,560 | 37,560 | 0.0043 | 0.0200 | 0.87 |
+
+**Cloudflare/clef-flash** on v6e TP 1, text_int8, load dummy, chunk 8192 — engine start 68 s (`cd-v6e1-ane1b-d/prefill-flash-tp1-int8wo-quick-t1v-n-f2308cbd-w-0.json`)
+
+| input len | batch | steady s | tok/s | tok/s per chip | spot $/M | on-demand $/M | first (compile) s |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 4096 | 8 | 1.159 | 28,271 | 28,271 | 0.0057 | 0.0265 | 1.16 |
+
+**Qwen/Qwen3.5-9B** on v6e TP 1, bf16, load auto, chunk 8192 — engine start 147 s (`cd-v6e1-ane1b-d/prefill-qwen9b-tp1-bf16-realweights-t1v-n-f2308cbd-w-0.json`)
+
+| input len | batch | steady s | tok/s | tok/s per chip | spot $/M | on-demand $/M | first (compile) s |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 4096 | 8 | 1.270 | 25,807 | 25,807 | 0.0063 | 0.0291 | 1.27 |
+
 **Cloudflare/clef** on v6e TP 4, bf16, load dummy, chunk 8192 — engine start 427 s (`cq-v6e4-ue1d-s/prefill-Cloudflare_clef-tp4-bf16-dummy-t1v-n-fe2fcd07-w-0.json`)
 
 | input len | batch | steady s | tok/s | tok/s per chip | spot $/M | on-demand $/M | first (compile) s |
@@ -889,26 +940,26 @@ State-pool dtype over chunked prefill (v6e, `cd-v6e1-ane1b-d/gdn-state-long-v6e-
 | VM | zone | type | mode | $/h | hours | $ so far | last state |
 | --- | --- | --- | --- | ---: | ---: | ---: | --- |
 | cd-v5e8-ue1c-s | us-east1-c | v5litepod-8 | spot | 2.87 | 1.06 | 3.05 | DELETING |
-| cd-v5e8-ue1c-s2 | us-east1-c | v5litepod-8 | spot | 2.87 | 0.90 | 2.58 | READY (held) |
+| cd-v5e8-ue1c-s2 | us-east1-c | v5litepod-8 | spot | 2.87 | 1.07 | 3.08 | READY (held) |
 | cd-v5e8-us1a-s | us-south1-a | v5litepod-8 | spot | 6.33 | 0.02 | 0.11 | DELETING |
 | cd-v5e8-uw1c-s | us-west1-c | v5litepod-8 | spot | 2.87 | 1.08 | 3.11 | DELETING |
 | cd-v5e8-uw4a-s | us-west4-a | v5litepod-8 | spot | 4.15 | 0.98 | 4.05 | DELETING |
 | cd-v5p8-ew4b-s | europe-west4-b | v5p-8 | spot | 4.72 | 0.72 | 3.39 | DELETING |
-| cd-v5p8-ue5a-s | us-east5-a | v5p-8 | spot | 3.44 | 2.10 | 7.22 | READY (held) |
-| cd-v6e1-ane1b-d | asia-northeast1-b | v6e-1 | on-demand | 3.24 | 1.01 | 3.28 | READY (held) |
+| cd-v5p8-ue5a-s | us-east5-a | v5p-8 | spot | 3.44 | 2.27 | 7.82 | READY (held) |
+| cd-v6e1-ane1b-d | asia-northeast1-b | v6e-1 | on-demand | 3.24 | 1.19 | 3.85 | READY (held) |
 | cd-v6e1-ew4a-s | europe-west4-a | v6e-1 | spot | 1.78 | 0.81 | 1.44 | DELETING |
 | cd-v6e1-uc1b-s | us-central1-b | v6e-1 | spot | 0.58 | 0.18 | 0.10 | DELETING |
 | cq-v6e4-uc1b-s | us-central1-b | v6e-4 | spot | 2.34 | 0.14 | 0.33 | DELETING |
-| cq-v6e4-ue1d-s | us-east1-d | v6e-4 | spot | 2.34 | 0.22 | 0.52 | PREEMPTED |
+| cq-v6e4-ue1d-s | us-east1-d | v6e-4 | spot | 2.34 | 0.22 | 0.52 | DELETING |
 | cq-v6e8-ue1d-s | us-east1-d | v6e-8 | spot | 4.67 | 0.46 | 2.15 | DELETING |
 
-Total so far $31.34; current burn $9.56/h = $229/day (this campaign only)
+Total so far $33.01; current burn $9.56/h = $229/day (this campaign only)
 
 ## Capacity log
 
 Every create attempt from this campaign (and the coordinator's on-demand probe just before it). `resourceName` rows are duplicate-name retries of an attempt already in flight.
 
-Totals: v5e-1 on-demand: 3 created / 4 failed; v5litepod-8 spot: 6 created / 0 failed; v5p-8 spot: 2 created / 1 failed; v6e-1 on-demand: 2 created / 15 failed; v6e-1 spot: 2 created / 20 failed; v6e-4 on-demand: 0 created / 9 failed; v6e-4 spot: 0 created / 25 failed; v6e-8 spot: 0 created / 25 failed
+Totals: v5e-1 on-demand: 3 created / 4 failed; v5litepod-8 spot: 6 created / 0 failed; v5p-8 spot: 2 created / 1 failed; v6e-1 on-demand: 2 created / 15 failed; v6e-1 spot: 2 created / 20 failed; v6e-4 on-demand: 0 created / 9 failed; v6e-4 spot: 0 created / 26 failed; v6e-8 spot: 0 created / 27 failed
 
 | time (UTC) | zone | type | mode | result | EID |
 | --- | --- | --- | --- | --- | --- |
@@ -979,6 +1030,7 @@ Totals: v5e-1 on-demand: 3 created / 4 failed; v5litepod-8 spot: 6 created / 0 f
 | 2026-10-13 00:26 | southamerica-west1-a | v6e-4 | spot | no more capacity | 0x7ccc0fe62ba408c7 |
 | 2026-10-13 00:26 | us-central1-a | v6e-4 | spot | no more capacity | 0x129942a83f3e6326 |
 | 2026-10-13 01:28 | us-central1-a | v6e-4 | on-demand | insufficient capacity | 0x4795f544a937c738 |
+| 2026-10-13 02:44 | us-central1-a | v6e-4 | spot | no more capacity | 0x4a4dbab92805cd |
 | 2026-10-13 00:30 | us-central1-b | v6e-4 | spot | no more capacity | 0x90bbb80ce3da9993 |
 | 2026-10-13 01:18 | us-central1-b | v6e-4 | spot | no more capacity | 0xba72d3b4d501928e |
 | 2026-10-13 01:27 | us-central1-b | v6e-4 | spot | no more capacity | 0x60870da743bb4952 |
@@ -1010,6 +1062,7 @@ Totals: v5e-1 on-demand: 3 created / 4 failed; v5litepod-8 spot: 6 created / 0 f
 | 2026-10-13 00:26 | southamerica-west1-a | v6e-8 | spot | no more capacity | 0xcee766c01d399cd4 |
 | 2026-10-13 00:26 | us-central1-a | v6e-8 | spot | no more capacity | 0xa5d553b4f857c8ef |
 | 2026-10-13 01:44 | us-central1-a | v6e-8 | spot | no more capacity | 0x39081fed432a30d8 |
+| 2026-10-13 02:44 | us-central1-a | v6e-8 | spot | no more capacity | 0x238b9855dfd3fae2 |
 | 2026-10-13 00:30 | us-central1-b | v6e-8 | spot | no more capacity | 0x4f717a7aae9c7da |
 | 2026-10-13 01:22 | us-central1-b | v6e-8 | spot | no more capacity | 0xc97c74426f6d8ca6 |
 | 2026-10-13 01:27 | us-central1-b | v6e-8 | spot | no more capacity | 0x550c09353cd411e6 |
@@ -1018,6 +1071,7 @@ Totals: v5e-1 on-demand: 3 created / 4 failed; v5litepod-8 spot: 6 created / 0 f
 | 2026-10-13 02:34 | us-central1-b | v6e-8 | spot | no more capacity | 0x2cbf673da53aa833 |
 | 2026-10-13 00:25 | us-central1-c | v6e-8 | spot | insufficient capacity | 0x4785b6b60cd05e89 |
 | 2026-10-13 01:40 | us-central1-c | v6e-8 | spot | insufficient capacity | 0xa8a9c856da19fcae |
+| 2026-10-13 02:40 | us-central1-c | v6e-8 | spot | insufficient capacity | 0xc76d2c37b9bb4f5c |
 | 2026-10-13 00:26 | us-east1-d | v6e-8 | spot | no more capacity | 0x62280f5e64dd2b23 |
 | 2026-10-13 02:26 | us-east1-d | v6e-8 | spot | no more capacity | 0x5f49d834a2e37f77 |
 | 2026-10-13 00:25 | us-south1-a | v6e-8 | spot | insufficient capacity | 0x4898e62bec4754d |
@@ -1038,7 +1092,7 @@ Create call = the `gcloud ... create` call until the VM is READY (successful att
 | cd-v5e8-uw1c-s | v5e8 | — | 15 | Qwen3.5-9B/TP8/bf16/dummy: 211 | 219 |
 | cd-v5e8-uw4a-s | v5e8 | — | 23 | — | — |
 | cd-v5p8-ue5a-s | v5p8 | — | 17 | clef-flash/TP1/bf16/dummy: 221; clef/TP1/bf16/dummy: 289; clef/TP2/bf16/dummy: 328; clef/TP4/bf16/dummy: 364 | 228, 296, 335, 378 |
-| cd-v6e1-ane1b-d | v6e1 | 255 | 53 | — | — |
+| cd-v6e1-ane1b-d | v6e1 | 255 | 53 | clef-flash/TP1/text_int8_w8a8/dummy: 156; clef-flash/TP1/text_int8_w8a8/dummy: 78; clef-flash/TP1/text_int8/dummy: 68; Qwen3.5-9B/TP1/bf16/auto: 147 | 162, 84, 74, 154 |
 | cd-v6e1-ew4a-s | v6e1 | 314 | 19 | — | — |
 | cq-v6e4-uc1b-s | v6e4 | — | 77 | — | — |
 | cq-v6e4-ue1d-s | v6e4 | — | 40 | clef/TP4/bf16/dummy: 427 | 440 |
@@ -1177,3 +1231,22 @@ Create call = the `gcloud ... create` call until the VM is READY (successful att
 | 2026-10-13 02:34:26 | cq-v6e8-us1c-s | us-south1-c | queued | WAITING_FOR_RESOURCES |
 | 2026-10-13 02:34:58 | cq-v6e4-ue1d-s | us-east1-d | queued | SUSPENDED |
 | 2026-10-13 02:34:58 | cq-v6e8-us1c-s | us-south1-c | queued | PROVISIONING |
+| 2026-10-13 02:36:01 | cq-v6e8-us1c-s | us-south1-c | queued | SUSPENDING |
+| 2026-10-13 02:37:04 | cq-v6e8-us1c-s | us-south1-c | queued | FAILED |
+| 2026-10-13 02:37:35 | cq-v6e4-ue1d-s | us-east1-d | v6e-4 | DELETING |
+| 2026-10-13 02:39:10 | cq-v6e4-ue1d-s | us-east1-d | queued | WAITING_FOR_RESOURCES |
+| 2026-10-13 02:39:10 | cq-v6e8-us1c-s | us-south1-c | queued | WAITING_FOR_RESOURCES |
+| 2026-10-13 02:39:41 | cq-v6e8-us1c-s | us-south1-c | queued | PROVISIONING |
+| 2026-10-13 02:40:45 | cq-v6e8-us1c-s | us-south1-c | queued | SUSPENDING |
+| 2026-10-13 02:41:49 | cq-v6e8-us1c-s | us-south1-c | queued | FAILED |
+| 2026-10-13 02:42:21 | cq-v6e4-ase1b-s | asia-southeast1-b | queued | FAILED |
+| 2026-10-13 02:42:21 | cq-v6e8-us1c-s | us-south1-c | queued | WAITING_FOR_RESOURCES |
+| 2026-10-13 02:42:52 | cq-v6e8-us1c-s | us-south1-c | queued | PROVISIONING |
+| 2026-10-13 02:43:55 | cq-v6e8-ase1b-s | asia-southeast1-b | queued | FAILED |
+| 2026-10-13 02:43:56 | cq-v6e8-us1c-s | us-south1-c | queued | SUSPENDING |
+| 2026-10-13 02:44:59 | cq-v6e8-us1c-s | us-south1-c | queued | FAILED |
+| 2026-10-13 02:45:30 | cq-v6e8-ase1b-s | asia-southeast1-b | queued | PROVISIONING |
+| 2026-10-13 02:45:30 | cq-v6e4-ase1b-s | asia-southeast1-b | queued | WAITING_FOR_RESOURCES |
+| 2026-10-13 02:45:30 | cq-v6e8-us1c-s | us-south1-c | queued | WAITING_FOR_RESOURCES |
+| 2026-10-13 02:46:04 | cq-v6e4-ase1b-s | asia-southeast1-b | queued | PROVISIONING |
+| 2026-10-13 02:46:04 | cq-v6e8-us1c-s | us-south1-c | queued | PROVISIONING |

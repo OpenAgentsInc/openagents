@@ -20,7 +20,8 @@ state at 4k-token prompts, batch 8 or more.
 
 | Chip | Model | Chips | Tokens/s per chip | Spot $/M tokens | On-demand $/M |
 | --- | --- | ---: | ---: | ---: | ---: |
-| **v6e (Trillium)** | **Clef-Flash 9B** | 1 | **25,900** | **$0.0063** | **$0.029** |
+| **v6e (Trillium)** | **Clef-Flash 9B, int8** | 1 | **37,600** | **$0.0043** | **$0.020** |
+| v6e | Clef-Flash 9B, bf16 | 1 | 25,900 | $0.0063 | $0.029 |
 | v6e | Clef 27B | 4 | 5,360 | $0.029 | $0.14 |
 | v5p | Clef-Flash 9B | 1 | 19,700 | $0.013 | $0.059 |
 | v5p | Clef 27B | 1 | 6,230 | $0.042 | $0.19 |
@@ -31,27 +32,29 @@ What we pay or charge today, per million tokens: our spot H100 **$0.11**,
 spot A100 $0.072; TypeSafe's Jev sells at **$0.042**; Workers AI sells
 Clef-Flash at $0.038 and Clef 27B at $0.24.
 
-- **A spot v6e chip serves Clef-Flash at 1/17 of our H100 cost and 1/7 of
-  Jev's price.** Even on-demand v6e ($0.029/M) is under Jev. A 1-year
-  commitment ($1.89/chip-h) would be about $0.020/M; 3-year ($1.22) about
-  $0.013/M.
-- The chips run at their datasheet: bf16 matmuls at Clef's exact shapes hit
-  **98 % of peak** on v5e and v5p, and int8 (W8A8) doubles matmul
-  throughput, so int8 should cut these costs by another ~1.5–1.8x once the
-  stack quantizes the model (in progress).
+- **A spot v6e chip serves Clef-Flash at 1/25 of our H100 cost and 1/10 of
+  Jev's price** (int8). Even **on-demand v6e ($0.020/M) is half of Jev's
+  price**. A 1-year
+  commitment ($1.89/chip-h) would be about $0.014/M; 3-year ($1.22) about
+  $0.009/M (int8).
+- **int8 (W8A8) is 1.45x bf16 end to end** on v6e (37.6k vs 25.9k tokens/s
+  at 4k prompts; 41.9k at 1k × 32), and real Qwen3.5-9B weights run at the
+  same speed as our dummy-weight runs (25.8k vs 25.9k). The chips run at
+  their datasheet: bf16 matmuls at Clef's exact shapes hit 98 % of peak on
+  v5e and v5p, 85 % on v6e.
 - Google's own kernels cover our architecture: the Gated DeltaNet scan costs
   about 10 µs per token over all layers on v5e, under 10 % of the forward
   pass; splash attention runs at 77 % of peak.
 
-**What more chips unlock.** One billion Clef-Flash tokens a day is 11,600
-tokens/s, about half a v6e chip fully busy, or one chip at a realistic 50 %
-utilization. So:
+**What more chips unlock.** One billion tokens a day is 11,600 tokens/s.
+At a realistic 50 % utilization, from the measured rates (Flash int8
+37,600/chip; 27B bf16 TP 4 5,360/chip):
 
-| Daily volume | Clef-Flash (v6e chips at 50 % busy) | Clef 27B (v6e chips at 50 % busy) |
+| Daily volume | Clef-Flash: v6e chips | Clef 27B: v6e chips |
 | --- | ---: | ---: |
 | 1 B tokens | 1 | 4–5 |
-| 10 B tokens | 9 | ~43 |
-| 50 B tokens | 45 | ~215 |
+| 10 B tokens | 6–7 | ~43 |
+| 50 B tokens | ~31 | ~216 |
 
 ## 2. What blocked us
 
@@ -96,14 +99,14 @@ campaign. Between 23:20 on 2026-10-12 and 01:30 UTC on 2026-10-13 (EIDs in
 1. **v6e capacity we can count on in US regions:** a reservation (or a
    spot-capacity commitment) of **32 v6e chips** (four v6e-8 hosts) in
    us-central1 or us-east1 now, with a path to **128 chips**. 32 chips at
-   50 % busy serve about 35 B Clef-Flash tokens a day, or about 7–8 B
+   50 % busy serve about 50 B Clef-Flash tokens a day (int8), or about 7 B
    Clef 27B tokens.
 2. **On-demand v6e access in us-central1-b and us-east1-d** (today:
    "permission denied for accelerator type v6e-1").
 3. **Quota:** v6e spot in **us-east4** (64 chips; $0.243/chip-h makes Flash
    ~$0.003/M) and **Ironwood (TPU7x)**: 8 chips to measure, then more.
 4. **Commitment pricing:** a quote for 1-year and 3-year v6e commitments at
-   32–128 chips; at the 3-year list price Clef-Flash costs ~$0.013/M.
+   32–128 chips; at the 3-year list price Clef-Flash costs ~$0.009/M (int8).
 5. **Credits** to cover the bring-up and port (int8 calibration, our joint
    head on TPU): a few thousand dollars of TPU time.
 6. **A named TPU contact** for capacity and for the Pallas Gated DeltaNet
