@@ -129,9 +129,10 @@ fn bundled_plugins_are_selectable_and_default_on_with_router_off() {
         key(&mut app, KeyCode::Esc);
         key(&mut app, KeyCode::Down);
     }
-    // With Claude Code off, a new chat runs on Coder's own loop.
+    // With Claude Code and OpenCode off, a new chat runs on Coder's own loop.
     app.set_mode(Mode::Live);
     app.plugins.bundled.claude = false;
+    app.plugins.bundled.opencode = false;
     assert!(app.handle(Event::Paste("Explain this checkout.".into())));
     key(&mut app, KeyCode::Enter);
     let request = app.request.take().unwrap();

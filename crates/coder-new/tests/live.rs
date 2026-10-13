@@ -105,12 +105,14 @@ fn coder_loop_app() -> App {
     // app starts in the mode it always does.
     let start = app.mode;
     app.plugins.bundled.claude = false;
+    app.plugins.bundled.opencode = false;
     app.set_mode(if start == Mode::Live {
         Mode::Demo
     } else {
         Mode::Live
     });
     app.plugins.bundled.claude = false;
+    app.plugins.bundled.opencode = false;
     app.set_mode(start);
     app
 }

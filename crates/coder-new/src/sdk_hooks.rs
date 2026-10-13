@@ -384,6 +384,39 @@ pub fn codex_registry(cwd: &Path) -> (Registry, Vec<String>) {
     (registry, problems)
 }
 
+/// The hooks an OpenCode turn runs on its command tier (#11507): the
+/// session worktree's fence and the floors, held as on Codex since nobody
+/// can answer from inside OpenCode's tool call, then the person's and the
+/// project's command hooks and their plugins' hooks, composed by the SDK's
+/// rules. Also the problems reading the command hooks, if any.
+///
+/// Token savers' squeezer is left out: OpenCode keeps the rewritten
+/// command in the session, so the model reads `coder coder-squeeze 'make
+/// test'` instead of its own `make test`, and in the live run it ran the
+/// check again and again (five times for one fix).
+#[must_use]
+pub fn opencode_registry(cwd: &Path) -> (Registry, Vec<String>) {
+    let mut registry = Registry::new();
+    let hooks = [
+        crate::checkout_guard::sdk_hook(cwd.to_owned()),
+        held_floors(cwd.to_owned()),
+    ];
+    for hook in hooks {
+        let _ = registry.register(hook);
+    }
+    let (commands, mut problems) =
+        coder_sdk::command::load(cwd, coder_sdk::command::home().as_deref());
+    let session = std::env::var(hook_log::RUN_ID_VAR).unwrap_or_default();
+    problems.extend(coder_sdk::command::register(
+        &mut registry,
+        &commands,
+        cwd,
+        &session,
+    ));
+    crate::plugin_hooks::register(&mut registry);
+    (registry, problems)
+}
+
 /// The host a Codex run's hook bridge asks ([`coder_sdk::bridge`]):
 /// [`codex_registry`] on a socket, kept for the run. None when the socket
 /// can't be made; the bridge then falls back to the floors alone.
@@ -556,6 +589,48 @@ mod tests {
             "Cursor doesn't ask before every step, so Coder can't hold a deploy, a merge, a secret or a payment for you, or keep it out of the shared checkout before it acts. The steps it asks about are still checked."
         );
         assert_eq!(unkept("OpenCode", &[]), None);
+    }
+
+    /// An OpenCode turn's host (#11507): a floored command is held, a
+    /// command outside the floors runs, and the answer is in OpenCode's
+    /// terms.
+    #[test]
+    fn opencode_turns_get_the_floors_held() {
+        let _lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let repo = tempfile::tempdir().unwrap();
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .arg(repo.path())
+            .status()
+            .unwrap();
+        let (registry, problems) = opencode_registry(repo.path());
+        assert!(problems.is_empty(), "{problems:?}");
+        assert!(coder_sdk::check_backend(&registry, coder_sdk::HookBackend::OpenCode).is_ok());
+        let mut runner = coder_sdk::Runner::new(registry, Budget::default());
+        let call = |command: &str| {
+            json!({"tool": "bash", "sessionID": "ses_1", "callID": "c1",
+                "cwd": repo.path(), "args": {"command": command, "workdir": repo.path()}})
+        };
+        let opencode = coder_sdk::bridge::Format::OpenCode;
+        let held = coder_sdk::bridge::answer(
+            &mut runner,
+            opencode,
+            &call("gh pr merge 1 --squash; touch merged.txt"),
+        )
+        .expect("a merge is held");
+        assert!(
+            held["deny"]
+                .as_str()
+                .unwrap()
+                .starts_with("Held for the person: this would merge a pull request"),
+            "{held}"
+        );
+        assert_eq!(
+            coder_sdk::bridge::answer(&mut runner, opencode, &call("ls")),
+            None
+        );
     }
 
     /// With its switch on, the monitor is registered on both harnesses and

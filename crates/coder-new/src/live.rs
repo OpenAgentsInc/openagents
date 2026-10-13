@@ -65,6 +65,9 @@ pub struct Chat {
     pub claude_session: Option<ClaudeSession>,
     /// The Codex thread this chat's Codex turns continue (#11510).
     pub codex_session: Option<ClaudeSession>,
+    /// The OpenCode session this chat's OpenCode turns continue, and the
+    /// model it last ran (#11507).
+    pub opencode_session: Option<OpenCodeSession>,
     /// The harness plugin this chat's turns run on, once its first turn
     /// was routed ([`App::route_turn`](crate::App::route_turn)); follow-ups
     /// stay on it (#11453).
@@ -106,7 +109,28 @@ pub struct ClaudeSession {
     pub users: usize,
 }
 
+/// An OpenCode session a chat holds (#11507), as [`ClaudeSession`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OpenCodeSession {
+    pub id: String,
+    /// How many of the person's messages the session has read.
+    pub users: usize,
+    /// The model it last ran.
+    pub model: String,
+}
+
 impl Chat {
+    /// The OpenCode session the next OpenCode turn continues, and the
+    /// model it last ran: the one the chat holds, when it has read every
+    /// message the person sent before the newest.
+    #[must_use]
+    pub fn opencode_resume(&self) -> Option<(String, String)> {
+        self.opencode_session
+            .as_ref()
+            .filter(|session| session.users + 1 == self.user_count())
+            .map(|session| (session.id.clone(), session.model.clone()))
+    }
+
     /// How many of the person's messages the chat holds.
     #[must_use]
     pub fn user_count(&self) -> usize {
@@ -422,6 +446,19 @@ pub enum Work {
         /// in /models, read for every turn.
         model: Option<String>,
     },
+    /// An OpenCode turn (#11507): one `opencode run` in the chat's OpenCode
+    /// session ([`crate::opencode_chat`]), started for it when the chat has
+    /// none.
+    OpenCode {
+        messages: Vec<Message>,
+        cwd: std::path::PathBuf,
+        /// The session this turn continues and the model it last ran.
+        session: Option<(String, String)>,
+        briefing: Option<Box<crate::context::Briefing>>,
+        model: String,
+        /// Offer Coder's tools over MCP.
+        tools: bool,
+    },
     /// A Codex turn: the person's message to the chat's long-lived Codex
     /// process ([`crate::codex_chat`]), started for it when the chat has
     /// none (#11510).
@@ -514,6 +551,12 @@ pub enum Update {
         id: u64,
         model: String,
     },
+    /// The OpenCode session an OpenCode turn runs in (#11507).
+    OpenCodeSession {
+        id: u64,
+        session: String,
+        model: String,
+    },
     Finished {
         id: u64,
         result: Result<Streamed, String>,
@@ -533,6 +576,7 @@ impl Update {
             | Self::Harness { id, .. }
             | Self::Thinking { id, .. }
             | Self::Model { id, .. }
+            | Self::OpenCodeSession { id, .. }
             | Self::Finished { id, .. } => *id,
         }
     }
@@ -1277,6 +1321,22 @@ fn run_with_provider(
                 // ([`Background::claude_request`]), never on a worker.
                 Work::Claude { .. } => Update::Finished { id, result: Err("The claude chat has no process to run in.".into()) },
                 Work::Codex { .. } => Update::Finished { id, result: Err("The Codex chat has no process to run in.".into()) },
+                Work::OpenCode { messages, cwd, session, briefing, model, tools } => {
+                    let (session, last_model) = session.map_or((None, None), |(id, model)| (Some(id), Some(model)));
+                    let turn = crate::opencode_chat::Turn {
+                        messages, cwd, session, last_model, briefing: briefing.map(|briefing| *briefing), model: model.clone(), tools,
+                    };
+                    let mut events = |event: RuntimeEvent| match event {
+                        RuntimeEvent::Text(text) => text_callback(&text),
+                        RuntimeEvent::Model(model) => model_callback(&model),
+                        event => event_callback(event),
+                    };
+                    let mut on_session = |session: &str| {
+                        let _ = sender.send(Update::OpenCodeSession { id, session: session.to_owned(), model: model.clone() });
+                    };
+                    let result = crate::opencode_chat::run(turn, &cancel, &mut events, &mut on_session).await;
+                    Update::Finished { id, result }
+                }
                 Work::SolverIntake { messages, cwd, github, claude: false, account } => {
                     let result = match account.as_ref().map(Provider::gateway) {
                         None => Err("Solver's Intaker needs Claude Code or your OpenAgents sign-in: run coder login, or turn Claude Code on in /plugins.".to_owned()),

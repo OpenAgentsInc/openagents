@@ -1232,6 +1232,11 @@ mod tests {
                     claude: healthy,
                     codex_on: false,
                     codex: healthy,
+                    opencode_on: false,
+                    opencode: crate::harness_plugin::Health {
+                        signed_in: false,
+                        at_limit: false,
+                    },
                     openrouter_key: false,
                     leaning: crate::routing_preferences::Leaning::default(),
                 },

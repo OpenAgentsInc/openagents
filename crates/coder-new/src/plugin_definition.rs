@@ -199,6 +199,27 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
     },
 ];
 
+/// The OpenCode plugin (#11507). It is listed only on a computer with
+/// OpenCode installed ([`crate::plugins::Plugins::definitions`]), so
+/// nothing offers OpenCode where it can't run.
+pub const OPENCODE: PluginDefinition = PluginDefinition {
+    id: crate::opencode_chat::PLUGIN,
+    name: "OpenCode",
+    description: "OpenCode inside Coder on this computer: its free model or the models you set up in OpenCode, with Coder checking every step before it runs. When Claude Code is off, signed out, or out of usage, new chats run on it.",
+    default_enabled: true,
+    tools: &[],
+    model_provider: None,
+    composer_rails: &[],
+};
+
+/// The built-in plugins this computer lists: [`DEFINITIONS`], then
+/// [`OPENCODE`] where OpenCode is installed, in the Plugins screen's order.
+pub fn listed() -> impl Iterator<Item = &'static PluginDefinition> {
+    DEFINITIONS
+        .iter()
+        .chain(crate::opencode_chat::installed().then_some(&OPENCODE))
+}
+
 /// The built-in provider uses the same rail registration contract as provider plugins.
 pub const FALLBACK_PROVIDER: PluginDefinition = PluginDefinition {
     id: "openagents-gateway",

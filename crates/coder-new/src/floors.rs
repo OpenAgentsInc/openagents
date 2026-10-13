@@ -393,11 +393,19 @@ pub fn scripts(command: &str) -> Vec<String> {
 }
 
 /// The script a shell wrapper runs: `bash`, `sh`, `zsh`, `dash`, `ksh` or
-/// `fish` given `-c` (alone or in a cluster such as `-lc`), past the
-/// wrappers [`argv`] skips (`env`, `sudo`, assignments).
+/// `fish` given `-c` (alone or in a cluster such as `-lc`), or Coder's
+/// squeezer (`coder coder-squeeze SCRIPT`), past the wrappers [`argv`]
+/// skips (`env`, `sudo`, assignments).
 #[must_use]
 pub fn wrapped_script(words: &[String]) -> Option<String> {
     let (program, args) = argv(words)?;
+    // Coder's own squeezer runs its one argument as a script (#11486):
+    // `coder coder-squeeze 'gh pr merge 5'`. A harness that shows the
+    // model its rewritten commands (OpenCode, #11507) can see the model
+    // write one itself, so it is read through like a shell.
+    if args.first().map(String::as_str) == Some(squeeze::CODER_SUBCOMMAND) {
+        return args.get(1).cloned();
+    }
     if !matches!(
         program.as_str(),
         "bash" | "sh" | "zsh" | "dash" | "ksh" | "fish"

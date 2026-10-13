@@ -42,6 +42,9 @@ struct Preferences {
     /// The solver swarm (#11346); on unless turned off.
     #[serde(default = "on")]
     swarm: bool,
+    /// The OpenCode plugin (#11507); on unless turned off.
+    #[serde(default = "on")]
+    opencode: bool,
     /// Token savers (#11494); on unless turned off.
     #[serde(default = "on")]
     token_savers: bool,
@@ -71,6 +74,7 @@ impl Default for Preferences {
             claude: true,
             codex: true,
             swarm: true,
+            opencode: true,
             token_savers: true,
             jev_enabled: true,
             jev_model: jev::defaults::MODEL.into(),
@@ -212,6 +216,9 @@ pub struct BundledSettings {
     pub codex: bool,
     /// The solver swarm (#11346).
     pub swarm: bool,
+    /// The OpenCode plugin, which turns on the OpenCode harness when
+    /// OpenCode is installed (#11507).
+    pub opencode: bool,
     /// Token savers (#11494).
     pub token_savers: bool,
     pub jev_enabled: bool,
@@ -258,6 +265,7 @@ impl Default for BundledSettings {
             claude: true,
             codex: true,
             swarm: true,
+            opencode: true,
             token_savers: true,
             jev_enabled: true,
             acp_agents: Vec::new(),
@@ -300,6 +308,7 @@ impl BundledSettings {
             claude: self.claude,
             codex: self.codex,
             swarm: self.swarm,
+            opencode: self.opencode,
             token_savers: self.token_savers,
             jev_enabled: self.jev_enabled,
             jev_model: self.jev_model.clone(),
@@ -324,6 +333,7 @@ impl BundledSettings {
         self.claude = value.claude;
         self.codex = value.codex;
         self.swarm = value.swarm;
+        self.opencode = value.opencode;
         self.token_savers = value.token_savers;
         // The process-wide flag; a test leaves it to the default so tests
         // running alongside see the plugin on.
@@ -451,6 +461,8 @@ impl BundledSettings {
             // Only on a computer signed in to Codex.
             crate::codex::PLUGIN => self.codex && crate::codex::available(),
             crate::swarm::PLUGIN => self.swarm,
+            // Only on a computer with OpenCode installed.
+            crate::opencode_chat::PLUGIN => self.opencode && crate::opencode_chat::installed(),
             crate::token_savers::PLUGIN => self.token_savers,
             "jev" => self.jev_enabled,
             crate::brainstorm::PLUGIN => self.brainstorm.preferences.enabled,
@@ -475,6 +487,9 @@ impl BundledSettings {
             crate::codex::PLUGIN if !crate::codex::available() => return false,
             crate::codex::PLUGIN => &mut value.codex,
             crate::swarm::PLUGIN => &mut value.swarm,
+            // It cannot turn on where OpenCode isn't installed.
+            crate::opencode_chat::PLUGIN if !crate::opencode_chat::installed() => return false,
+            crate::opencode_chat::PLUGIN => &mut value.opencode,
             crate::token_savers::PLUGIN => &mut value.token_savers,
             "jev" => &mut value.jev_enabled,
             crate::brainstorm::PLUGIN => &mut value.brainstorm.enabled,

@@ -838,7 +838,19 @@ fn rail_harness(app: &App) -> Option<String> {
             "Codex ({})",
             crate::codex::name(&crate::codex::turn_model(app.live.pinned_model.clone()))
         )),
+        // The model the chat's OpenCode session runs, named (#11507).
+        Harness::OpenCode => Some(opencode_rail_label(app)),
     }
+}
+
+/// "OpenCode (opencode/big-pickle)": the model the chat's OpenCode session
+/// last ran, else the one its next turn runs.
+pub(crate) fn opencode_rail_label(app: &App) -> String {
+    let model = app.live.opencode_session.as_ref().map_or_else(
+        || crate::opencode_chat::model(app.live.pinned_model.clone()),
+        |session| session.model.clone(),
+    );
+    crate::opencode_chat::rail_label(&model)
 }
 
 /// The rail's word for Coder's own loop, which the rail colors as its own.

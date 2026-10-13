@@ -29,6 +29,7 @@ fn new_app(store: &Store, cwd: &Path) -> App {
     // These chats run on Coder's own loop, never this computer's Claude
     // Code login.
     app.plugins.bundled.claude = false;
+    app.plugins.bundled.opencode = false;
     app.cwd = Some(cwd.to_owned());
     app.attach_session_store(store.clone());
     app

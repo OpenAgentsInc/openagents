@@ -140,6 +140,8 @@ pub struct PerHarness<T> {
     #[serde(default, skip_serializing_if = "is_default")]
     pub claude_code: T,
     #[serde(default, skip_serializing_if = "is_default")]
+    pub opencode: T,
+    #[serde(default, skip_serializing_if = "is_default")]
     pub coder_loop: T,
     #[serde(default, skip_serializing_if = "is_default")]
     pub codex: T,
@@ -155,6 +157,7 @@ impl<T: Copy> PerHarness<T> {
     pub fn get(&self, harness: Harness) -> T {
         match harness {
             Harness::ClaudeCode => self.claude_code,
+            Harness::OpenCode => self.opencode,
             Harness::CoderLoop => self.coder_loop,
             Harness::Codex => self.codex,
         }
@@ -164,6 +167,7 @@ impl<T: Copy> PerHarness<T> {
     pub fn set(&mut self, harness: Harness, value: T) {
         match harness {
             Harness::ClaudeCode => self.claude_code = value,
+            Harness::OpenCode => self.opencode = value,
             Harness::CoderLoop => self.coder_loop = value,
             Harness::Codex => self.codex = value,
         }
@@ -552,7 +556,12 @@ impl RoutingPreferences {
     #[must_use]
     pub fn leaning(&self, model: impl Fn(Harness) -> Option<String>) -> Leaning {
         let mut never_with_model = PerHarness::<bool>::default();
-        for harness in [Harness::ClaudeCode, Harness::CoderLoop, Harness::Codex] {
+        for harness in [
+            Harness::ClaudeCode,
+            Harness::OpenCode,
+            Harness::CoderLoop,
+            Harness::Codex,
+        ] {
             if model(harness).is_some_and(|model| self.never_with(harness, &model)) {
                 never_with_model.set(harness, true);
             }
@@ -567,17 +576,22 @@ impl RoutingPreferences {
     /// preferences screen.
     #[must_use]
     pub fn summary(&self) -> Vec<String> {
-        let mut lines: Vec<String> = [Harness::ClaudeCode, Harness::CoderLoop, Harness::Codex]
-            .into_iter()
-            .filter(|harness| self.stances.get(*harness) != Stance::Neutral)
-            .map(|harness| {
-                format!(
-                    "{}: {}",
-                    harness.declaration().name,
-                    self.stances.get(harness).label()
-                )
-            })
-            .collect();
+        let mut lines: Vec<String> = [
+            Harness::ClaudeCode,
+            Harness::OpenCode,
+            Harness::CoderLoop,
+            Harness::Codex,
+        ]
+        .into_iter()
+        .filter(|harness| self.stances.get(*harness) != Stance::Neutral)
+        .map(|harness| {
+            format!(
+                "{}: {}",
+                harness.declaration().name,
+                self.stances.get(harness).label()
+            )
+        })
+        .collect();
         lines.extend(self.never.iter().map(|pair| {
             format!(
                 "{}: never use with {}",
@@ -647,6 +661,8 @@ pub fn catalog() -> Vec<&'static str> {
                 .copied()
                 .filter(|id| *id != crate::models::DEFAULT_MODEL),
         )
+        // OpenCode's free model (#11507).
+        .chain(std::iter::once(crate::opencode_chat::DEFAULT_MODEL))
         .collect()
 }
 
@@ -717,9 +733,9 @@ pub fn definition_for(claude: bool) -> Value {
 
 fn definition_text() -> Value {
     json!({"type":"function","function":{"name":TOOL,
-        "description":"Change which engines or models Coder uses for the person's turns. Call it only when the person asks to change that: to use an engine more, less, never, or as usual again; never to run a certain model on one; to always use one (a pin: set pin, with this_repo for this repository only, kind for one kind of work, and model for one model; unpin removes it); or to prefer a Claude model (harness claude-code, stance prefer, and the model: this sets the model Claude Code runs, the same as picking it in /models). Never call it for a question about how something works; answer the question instead. Asked how to use a model such as Opus, say in one line: type /models and pick it (Claude Code offers Haiku 5.5, Sonnet 5.5, Opus 5.5 and Fable 5.1). The engines: claude-code is Claude Code on this computer's Claude plan; coder-loop is Coder's own loop on OpenAgents; codex is Codex on this computer's ChatGPT login. Stances: prefer (try it first), avoid (try it after the others), never (never use it), neutral (no preference). With a model other than a Claude preference, only never or neutral apply, to that exact model on that engine. Set undo to reverse the most recent change instead. Always pass the person's own words in said. The change is saved and applies from the next turn; afterwards tell the person in one line what changed.",
+        "description":"Change which engines or models Coder uses for the person's turns. Call it only when the person asks to change that: to use an engine more, less, never, or as usual again; never to run a certain model on one; to always use one (a pin: set pin, with this_repo for this repository only, kind for one kind of work, and model for one model; unpin removes it); or to prefer a Claude model (harness claude-code, stance prefer, and the model: this sets the model Claude Code runs, the same as picking it in /models). Never call it for a question about how something works; answer the question instead. Asked how to use a model such as Opus, say in one line: type /models and pick it (Claude Code offers Haiku 5.5, Sonnet 5.5, Opus 5.5 and Fable 5.1). The engines: claude-code is Claude Code on this computer's Claude plan; coder-loop is Coder's own loop on OpenAgents; codex is Codex on this computer's ChatGPT login; opencode is OpenCode on this computer, on its free model or the person's own OpenCode models. Stances: prefer (try it first), avoid (try it after the others), never (never use it), neutral (no preference). With a model other than a Claude preference, only never or neutral apply, to that exact model on that engine. Set undo to reverse the most recent change instead. Always pass the person's own words in said. The change is saved and applies from the next turn; afterwards tell the person in one line what changed.",
         "parameters":{"type":"object","additionalProperties":false,"required":["said"],"properties":{
-            "harness":{"type":"string","enum":["claude-code","coder-loop","codex"]},
+            "harness":{"type":"string","enum":["claude-code","opencode","coder-loop","codex"]},
             "stance":{"type":"string","enum":["prefer","neutral","avoid","never"]},
             "model":{"type":"string","enum":catalog(),"description":"One of Coder's models: a Claude model to prefer on claude-code, or the exact model for a never, neutral, or pin."},
             "said":{"type":"string","minLength":1,"maxLength":500,"description":"The person's words that asked for this."},
@@ -942,6 +958,11 @@ mod tests {
             codex_on: false,
             codex: Health {
                 signed_in: true,
+                at_limit: false,
+            },
+            opencode_on: false,
+            opencode: crate::harness_plugin::Health {
+                signed_in: false,
                 at_limit: false,
             },
             openrouter_key: false,

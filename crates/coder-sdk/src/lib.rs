@@ -25,6 +25,7 @@ pub mod delegation;
 pub mod digest;
 pub mod events;
 pub mod hooks;
+pub mod opencode;
 pub mod outcome;
 pub mod plugin_hooks;
 pub mod registry;

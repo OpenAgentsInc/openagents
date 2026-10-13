@@ -186,6 +186,11 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
     if let Some(session) = &chat.codex_session {
         result["extra"]["codex_session"] = json!({"id": session.id, "users": session.users});
     }
+    // The OpenCode session the chat's OpenCode turns continue (#11507).
+    if let Some(session) = &chat.opencode_session {
+        result["extra"]["opencode_session"] =
+            json!({"id": session.id, "users": session.users, "model": session.model});
+    }
     // The harness plugin the chat runs on (#11453), so a reopened chat's
     // follow-ups stay on it.
     if let Some(harness) = chat.runs_on {
@@ -705,6 +710,22 @@ pub fn from_document(value: &Value) -> Result<Chat, String> {
                 .and_then(Value::as_u64)
                 .map_or(0, |users| users as usize),
         });
+    chat.opencode_session = value
+        .pointer("/extra/opencode_session/id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .map(|id| crate::live::OpenCodeSession {
+            id: id.to_owned(),
+            users: value
+                .pointer("/extra/opencode_session/users")
+                .and_then(Value::as_u64)
+                .map_or(0, |users| users as usize),
+            model: value
+                .pointer("/extra/opencode_session/model")
+                .and_then(Value::as_str)
+                .unwrap_or(crate::opencode_chat::DEFAULT_MODEL)
+                .to_owned(),
+        });
     // A chat saved before harness plugins ran on Claude Code when it holds
     // a Claude Code session.
     chat.runs_on = value
@@ -837,6 +858,26 @@ mod tests {
         let saved = super::document(&on_loop, "test", "auto", Path::new("/workspace"));
         assert_eq!(saved["extra"]["runs_on"], "coder-loop");
         assert_eq!(from_document(&saved).unwrap().runs_on, on_loop.runs_on);
+
+        // An OpenCode chat keeps its session and harness (#11507).
+        let mut on_opencode = Chat::default();
+        on_opencode.entries.push(Entry::User("fix it".into()));
+        on_opencode.runs_on = Some(crate::harness_plugin::Harness::OpenCode);
+        on_opencode.opencode_session = Some(crate::live::OpenCodeSession {
+            id: "ses_1".into(),
+            users: 1,
+            model: crate::opencode_chat::DEFAULT_MODEL.into(),
+        });
+        let saved = super::document(&on_opencode, "test", "auto", Path::new("/workspace"));
+        assert_eq!(saved["extra"]["runs_on"], "opencode");
+        let mut reopened = from_document(&saved).unwrap();
+        assert_eq!(reopened.opencode_session, on_opencode.opencode_session);
+        assert_eq!(reopened.runs_on, on_opencode.runs_on);
+        reopened.entries.push(Entry::User("and the docs".into()));
+        assert_eq!(
+            reopened.opencode_resume(),
+            Some(("ses_1".into(), crate::opencode_chat::DEFAULT_MODEL.into()))
+        );
 
         // The next message continues the session.
         restored.entries.push(Entry::User("now the docs".into()));

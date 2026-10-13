@@ -375,12 +375,13 @@ pub struct Situation {
 }
 
 /// The stronger harness for work `current` could not finish: from Coder's
-/// own loop, Claude Code, else Codex; from Codex, Claude Code (#11510).
+/// own loop or OpenCode, Claude Code, else Codex; from Codex, Claude Code
+/// (#11510, #11507).
 /// Claude Code has none above it.
 #[must_use]
 pub fn stronger(current: Harness, admitted: &[Harness]) -> Option<Harness> {
     let order: &[Harness] = match current {
-        Harness::CoderLoop => &[Harness::ClaudeCode, Harness::Codex],
+        Harness::CoderLoop | Harness::OpenCode => &[Harness::ClaudeCode, Harness::Codex],
         Harness::Codex => &[Harness::ClaudeCode],
         Harness::ClaudeCode => &[],
     };
@@ -388,6 +389,24 @@ pub fn stronger(current: Harness, admitted: &[Harness]) -> Option<Harness> {
         .iter()
         .copied()
         .find(|harness| admitted.contains(harness))
+}
+
+/// Where work goes when its harness itself failed (#11507): the next
+/// admitted harness in the fixed order after `current`, so a failed Claude
+/// Code turn falls back to OpenCode, then Coder's own loop.
+#[must_use]
+pub fn fallback(current: Harness, admitted: &[Harness]) -> Option<Harness> {
+    let declared = |harness: &Harness| {
+        crate::harness_plugin::DECLARATIONS
+            .iter()
+            .position(|declaration| declaration.harness == *harness)
+    };
+    let from = declared(&current)?;
+    admitted.iter().copied().find(|harness| {
+        *harness != current
+            && declared(harness).is_some_and(|at| at > from)
+            && harness.declaration().turn != crate::harness_plugin::Turn::NotYet
+    })
 }
 
 /// Any other admitted harness that takes chat turns, for a usage limit.
@@ -482,7 +501,11 @@ pub fn policy(judgment: Option<&Judgment>, checkpoint: Checkpoint, s: &Situation
         return decide(Call::Stay, Step::NeedsPerson);
     }
     match judgment.action {
-        Action::Move => match stronger(s.current, &s.admitted) {
+        Action::Move => match stronger(s.current, &s.admitted).or_else(|| {
+            (checkpoint == Checkpoint::Error)
+                .then(|| fallback(s.current, &s.admitted))
+                .flatten()
+        }) {
             Some(Harness::ClaudeCode)
                 if s.claude_five_hour
                     .is_some_and(|used| used >= crate::router::NEAR_LIMIT_PERCENT) =>
@@ -742,6 +765,7 @@ pub fn harness_words(app: &crate::App, harness: Harness) -> String {
             }
         }
         Harness::Codex => crate::codex::rail_label(),
+        Harness::OpenCode => crate::ui::opencode_rail_label(app),
     }
 }
 

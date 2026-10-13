@@ -237,6 +237,9 @@ fn shell_wrappers_are_read_through() {
         "env -i bash -c 'gh pr merge 5'",
         "bash -lc \"sh -c 'gh pr merge 5'\"",
         "ls && bash -c 'gh pr merge 5'",
+        // Coder's squeezer, written by a model that saw it (#11507).
+        "/x/coder coder-squeeze 'gh pr merge 5 --squash; touch merged.txt'",
+        "/x/openagents coder-squeeze 'bash -lc \"gh pr merge 5\"'",
     ] {
         assert_eq!(bash(command), Some(risk_policy::PR_MERGE), "{command}");
         assert_eq!(
@@ -560,6 +563,11 @@ fn a_pin_is_honored_and_recorded_and_never_means_never() {
             codex_on: false,
             codex: crate::harness_plugin::Health {
                 signed_in: true,
+                at_limit: false,
+            },
+            opencode_on: false,
+            opencode: crate::harness_plugin::Health {
+                signed_in: false,
                 at_limit: false,
             },
             openrouter_key: false,

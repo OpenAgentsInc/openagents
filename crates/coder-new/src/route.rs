@@ -126,7 +126,7 @@ pub fn plan(execution: &ExecutionSettings, has_key: bool, favor: Favor) -> Plan 
 /// delegate door, a repository run) already found it out — or `None`.
 /// Tests never read the book: it lives in the real home.
 #[cfg(not(test))]
-fn opencode_blocked() -> Option<microcoder_loop::capacity::Refusal> {
+pub(crate) fn opencode_blocked() -> Option<microcoder_loop::capacity::Refusal> {
     coder::delegate_door::capacity_dir()
         .map(|dir| microcoder_loop::capacity::Book::load(&dir))
         .and_then(|book| {
@@ -139,7 +139,7 @@ fn opencode_blocked() -> Option<microcoder_loop::capacity::Refusal> {
 }
 
 #[cfg(test)]
-fn opencode_blocked() -> Option<microcoder_loop::capacity::Refusal> {
+pub(crate) fn opencode_blocked() -> Option<microcoder_loop::capacity::Refusal> {
     None
 }
 

@@ -2,8 +2,8 @@
 //! same way so a router can choose among them (#11451, #11452).
 //!
 //! A harness is what runs a piece of work: Claude Code on this computer's
-//! Claude plan, Coder's own loop on the OpenAgents gateway, Codex on this
-//! computer's ChatGPT login. Each one declares where it runs, who pays,
+//! Claude plan, OpenCode on this computer (#11507), Coder's own loop on the
+//! OpenAgents gateway, Codex on this computer's ChatGPT login. Each one declares where it runs, who pays,
 //! what it can do, and a cheap health check. Solver and background agents
 //! are not harnesses: they are Coder tools any harness can call.
 //!
@@ -38,6 +38,10 @@ pub enum Payer {
     GatewayCredits,
     /// The person's own OpenRouter key.
     OpenRouterKey,
+    /// The person's OpenCode: its free models, or the providers they set
+    /// up in it (#11507).
+    #[serde(rename = "opencode")]
+    OpenCode,
 }
 
 /// Why a harness is not a candidate for this chat.
@@ -48,6 +52,8 @@ pub enum Exclusion {
     PluginOff,
     /// It needs a sign-in this computer doesn't hold.
     NotSignedIn,
+    /// It isn't installed on this computer.
+    NotInstalled,
     /// Its plan reported a window at its limit.
     AtPlanLimit,
     /// It runs on this computer, and the chat is somewhere else.
@@ -79,6 +85,11 @@ pub struct Facts {
     /// The Codex plugin is on here (#11510).
     pub codex_on: bool,
     pub codex: Health,
+    /// The OpenCode plugin is on (#11507).
+    pub opencode_on: bool,
+    /// OpenCode is installed here (`signed_in`), and whether its free
+    /// model is rate limited now (`at_limit`).
+    pub opencode: Health,
     /// The person's OpenRouter key is on and set; the Coder loop then pays
     /// with it rather than gateway credits.
     pub openrouter_key: bool,
@@ -121,11 +132,21 @@ impl Facts {
                 signed_in: app.plugins.bundled.codex && crate::codex::available(),
                 at_limit: crate::codex::at_limit(now),
             },
+            opencode_on: app.plugins.bundled.opencode,
+            // Whether it is installed is read only for a plugin that is on.
+            opencode: {
+                let installed = app.plugins.bundled.opencode && crate::opencode_chat::installed();
+                Health {
+                    signed_in: installed,
+                    at_limit: installed && crate::opencode_chat::rate_limited(),
+                }
+            },
             openrouter_key: app.plugins.enabled && app.plugins.key_configured,
             leaning: crate::routing_preferences::Leaning::read(
                 execution.routing.as_deref(),
                 |harness| match harness {
                     Harness::ClaudeCode => Some(crate::claude::choice().model),
+                    Harness::OpenCode => Some(crate::opencode_chat::model(None)),
                     Harness::CoderLoop => Some(app.plugins.model.clone()),
                     Harness::Codex => Some(crate::codex::choice().model),
                 },
@@ -196,6 +217,7 @@ pub fn payer(harness: Harness, facts: &Facts) -> Payer {
     match harness {
         Harness::ClaudeCode => Payer::ClaudePlan,
         Harness::Codex => Payer::ChatGptLogin,
+        Harness::OpenCode => Payer::OpenCode,
         Harness::CoderLoop if facts.openrouter_key => Payer::OpenRouterKey,
         Harness::CoderLoop => Payer::GatewayCredits,
     }
@@ -221,6 +243,9 @@ pub fn exclusion(harness: Harness, facts: &Facts) -> Option<Exclusion> {
         Harness::ClaudeCode if !facts.claude_plugin_on => Some(Exclusion::PluginOff),
         Harness::ClaudeCode if !facts.claude.signed_in => Some(Exclusion::NotSignedIn),
         Harness::ClaudeCode if facts.claude.at_limit => Some(Exclusion::AtPlanLimit),
+        Harness::OpenCode if !facts.opencode_on => Some(Exclusion::PluginOff),
+        Harness::OpenCode if !facts.opencode.signed_in => Some(Exclusion::NotInstalled),
+        Harness::OpenCode if facts.opencode.at_limit => Some(Exclusion::AtPlanLimit),
         Harness::Codex if !facts.codex_on => Some(Exclusion::PluginOff),
         Harness::Codex if !facts.codex.signed_in => Some(Exclusion::NotSignedIn),
         Harness::Codex if facts.codex.at_limit => Some(Exclusion::AtPlanLimit),
@@ -255,8 +280,9 @@ pub fn candidates(facts: &Facts) -> Candidates {
 }
 
 /// The selector when router v0 is off or has no answer: the first admitted
-/// candidate, which is Claude Code when its plugin is on and healthy, and
-/// otherwise the Coder loop, which is always there.
+/// candidate, which is Claude Code when its plugin is on and healthy, then
+/// OpenCode when it is installed and on (#11507), and otherwise the Coder
+/// loop, which is always there.
 #[must_use]
 pub fn fixed_rule(candidates: &Candidates) -> Harness {
     candidates
@@ -809,15 +835,21 @@ impl App {
         self.mode == Mode::Live && self.live.runs_on == Some(Harness::Codex)
     }
 
+    /// Whether this chat runs on OpenCode (#11507).
+    #[must_use]
+    pub fn on_opencode(&self) -> bool {
+        self.mode == Mode::Live && self.live.runs_on == Some(Harness::OpenCode)
+    }
+
     /// Whether this chat runs Coder's own loop: a live chat not on Claude
-    /// Code or Codex, including one whose first turn has not been routed
-    /// yet.
+    /// Code, OpenCode or Codex, including one whose first turn has not been
+    /// routed yet.
     #[must_use]
     pub fn on_coder_loop(&self) -> bool {
         self.mode == Mode::Live
             && !matches!(
                 self.live.runs_on,
-                Some(Harness::ClaudeCode | Harness::Codex)
+                Some(Harness::ClaudeCode | Harness::OpenCode | Harness::Codex)
             )
     }
 
@@ -860,6 +892,11 @@ mod tests {
                 signed_in: true,
                 at_limit: false,
             },
+            opencode_on: false,
+            opencode: crate::harness_plugin::Health {
+                signed_in: false,
+                at_limit: false,
+            },
             openrouter_key: false,
             leaning: crate::routing_preferences::Leaning::default(),
         }
@@ -875,13 +912,66 @@ mod tests {
 
     #[test]
     fn every_harness_is_declared_once() {
-        for harness in [Harness::ClaudeCode, Harness::CoderLoop, Harness::Codex] {
+        for harness in [
+            Harness::ClaudeCode,
+            Harness::OpenCode,
+            Harness::CoderLoop,
+            Harness::Codex,
+        ] {
             assert_eq!(
                 DECLARATIONS.iter().filter(|d| d.harness == harness).count(),
                 1
             );
             assert_eq!(harness.declaration().harness, harness);
         }
+    }
+
+    /// The harness order (#11507): Claude Code when it is on and signed in,
+    /// otherwise OpenCode when it is installed and on, otherwise Coder.
+    #[test]
+    fn opencode_comes_after_claude_code_and_before_the_coder_loop() {
+        let mut both = facts();
+        both.opencode_on = true;
+        both.opencode.signed_in = true;
+        assert_eq!(
+            candidates(&both).admitted,
+            [
+                Harness::ClaudeCode,
+                Harness::OpenCode,
+                Harness::CoderLoop,
+                Harness::Codex
+            ]
+        );
+        assert_eq!(fixed_rule(&candidates(&both)), Harness::ClaudeCode);
+        let mut claude_off = both;
+        claude_off.claude_plugin_on = false;
+        assert_eq!(fixed_rule(&candidates(&claude_off)), Harness::OpenCode);
+        let mut claude_spent = both;
+        claude_spent.claude.at_limit = true;
+        assert_eq!(fixed_rule(&candidates(&claude_spent)), Harness::OpenCode);
+        let mut missing = claude_off;
+        missing.opencode.signed_in = false;
+        assert_eq!(
+            exclusion(Harness::OpenCode, &missing),
+            Some(Exclusion::NotInstalled)
+        );
+        assert_eq!(fixed_rule(&candidates(&missing)), Harness::CoderLoop);
+        let mut off = claude_off;
+        off.opencode_on = false;
+        assert_eq!(
+            exclusion(Harness::OpenCode, &off),
+            Some(Exclusion::PluginOff)
+        );
+        let mut limited = claude_off;
+        limited.opencode.at_limit = true;
+        assert_eq!(fixed_rule(&candidates(&limited)), Harness::CoderLoop);
+        let mut phone = both;
+        phone.local = false;
+        assert_eq!(
+            exclusion(Harness::OpenCode, &phone),
+            Some(Exclusion::NotHere)
+        );
+        assert_eq!(payer(Harness::OpenCode, &both), Payer::OpenCode);
     }
 
     #[test]
@@ -891,7 +981,7 @@ mod tests {
             found.admitted,
             [Harness::ClaudeCode, Harness::CoderLoop, Harness::Codex]
         );
-        assert!(found.excluded.is_empty());
+        assert_eq!(found.excluded, [(Harness::OpenCode, Exclusion::PluginOff)]);
     }
 
     /// Codex is a bundled plugin that can be turned off, needs its sign-in,

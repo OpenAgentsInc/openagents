@@ -13,6 +13,27 @@ fn main() {
     if args.first().is_some_and(|a| a == squeeze::CODER_SUBCOMMAND) {
         std::process::exit(squeeze::main(&args[1..]));
     }
+    // The hooks and the tools server a harness under this runtime calls
+    // back (#11500, #11501, #11507).
+    if args
+        .first()
+        .is_some_and(|a| a == coder_new::floors::HOOK_COMMAND)
+    {
+        coder_new::floors::hook_main();
+        return;
+    }
+    if args
+        .first()
+        .is_some_and(|a| a == coder_new::floors::BRIDGE_COMMAND)
+    {
+        std::process::exit(coder_new::floors::bridge_main(&args[1..]));
+    }
+    if args
+        .first()
+        .is_some_and(|a| a == coder_new::claude_tools::STDIO_COMMAND)
+    {
+        std::process::exit(coder_new::claude_tools::stdio_main(&args[1..]));
+    }
     if args.first().is_some_and(|a| a == "--runtime-manifest") {
         println!(
             "{}",

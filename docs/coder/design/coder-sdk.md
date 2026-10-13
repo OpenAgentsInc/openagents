@@ -369,6 +369,7 @@ balance, offers in the route contract); the SDK would call them from a
 | Coder loop | `microcoder_loop::run` (`Env::hook`, `microcoder_loop::hooks`), used by Coder's live loop and Microcoder | native for SessionStart, UserPromptSubmit, Pre/PostToolUse, PostToolBatch, Stop, PostCompact, SessionEnd; none for the subagent, PreCompact and FileChanged events it never fires | built (#11497): the floors are the loop's hook (`sdk_hooks::coder_loop`); Microcoder's own places fire with no hooks yet |
 | Scripted | recorded sessions | native | first, for tests |
 | Codex | `codex app-server` (`coder_sdk::codex`); `exec` with command hooks as the fallback | app-server: native for SessionStart, UserPromptSubmit, PreToolUse (Codex asks before each command and patch under `approval_policy = "untrusted"`), Stop (a block starts the next turn on the same thread) and SessionEnd; emulated otherwise. exec: command (`PreToolUse`), emulated otherwise | built (#11510): approvals answered by the session's `PreToolUse` composition, an ask answered on the approval card while Codex waits, Coder's tools as dynamic tools in process |
+| OpenCode (harness) | `opencode run --format json --session` per turn (`coder_new::opencode_chat`), Coder's plugin `tool.execute.before` (`coder_sdk::opencode`) asking the hook bridge | command for `PreToolUse` (before every tool, built-in or MCP, with its exact arguments; a denial stops the tool, a rewrite replaces its arguments; an ask is held); emulated otherwise. A must-deny hook on any other event refuses the turn at start (`check_backend`) | built (#11507) |
 | ACP agents (OpenCode, Grok Build, Devin, Cursor, Amp, Goose, the rest) | `acp-client` (`coder_sdk::acp`) | per agent, from live runs: OpenCode asking before every tool is native for `PreToolUse`; Grok Build's plugin hooks and Devin's config hooks run the bridge, the command tier; Cursor and the rest stay emulated before a tool. Every agent: native for SessionStart, UserPromptSubmit, Stop and SessionEnd, which the host drives; emulated otherwise | built (#11508) |
 
 Built (#11510): Codex on `codex app-server` (`coder_sdk::codex`).
@@ -418,6 +419,32 @@ on 2026-10-13:
 
 Claude Code delegated from the plugin runs `claude -p` (the Claude Code
 backend), not ACP.
+
+Built (#11507): OpenCode is also a Coder harness, the way Claude Code is
+one: a chat routed to it runs each turn as `opencode run` in one OpenCode
+session that later turns continue (`--session`), on OpenCode's free
+`opencode/big-pickle` or a model the person picks in /models from what
+their OpenCode reaches. The harness order is Claude Code (on, signed in,
+usage left), then OpenCode (installed, its plugin on), then Coder's own
+loop; a failed Claude Code turn judged to move falls back the same way
+(`escalate::fallback`). It runs on OpenCode's own CLI and plugin rather
+than ACP: the plugin hook sees each tool's exact arguments (an ACP ask for
+a read names no file), so the fence and the floors read what will run.
+Coder writes its plugin into a configuration folder of its own
+(`OPENCODE_CONFIG_DIR`, the person's configuration still read) and passes
+the model, the permissions and Coder's tools (`coder coder-tools-mcp`)
+inline. Each turn's host (`sdk_hooks::opencode_registry`) has the fence,
+the floors held (nobody can answer from inside OpenCode's tool call), the
+command hooks and the plugin hooks. Token savers' squeezer is left out:
+OpenCode keeps a rewritten command in the session, and in the live run the
+model, reading `coder coder-squeeze 'make test'` for its own `make test`,
+ran the check five times for one fix and later wrote the wrapper itself;
+the floors now read through the squeezer like a shell (`floors::wrapped_script`).
+Seen live on 2026-10-13 (OpenCode 1.18.26, `opencode/big-pickle`, an
+isolated home): a question, an edit checked with `make test`, a follow-up
+in the same OpenCode session, `gh pr merge 1 --squash; touch merged.txt`
+held before it ran (no `merged.txt`), and with Claude Code signed out the
+chat routed to OpenCode, and with OpenCode off to Coder's loop.
 
 On an agent that can't be stopped before a tool, a hook that must deny
 there (the floors, the fence) is reported before the run, in plain words,

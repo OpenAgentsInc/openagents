@@ -63,6 +63,7 @@ fn app() -> App {
     let mut app = App::default();
     app.set_mode(Mode::Live);
     app.plugins.bundled.claude = false;
+    app.plugins.bundled.opencode = false;
     app.plugins.enabled = true;
     app.plugins.key_configured = true;
     app

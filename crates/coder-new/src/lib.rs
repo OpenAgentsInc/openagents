@@ -64,6 +64,7 @@ mod memory_sync;
 pub mod message_route;
 pub mod model_catalog;
 pub mod models;
+pub mod opencode_chat;
 pub mod ops_tool;
 mod own_runs;
 mod plan;
@@ -749,6 +750,7 @@ impl App {
                     || self.plugins.enabled
                     || self.on_claude()
                     || self.on_codex()
+                    || self.on_opencode()
             })
             // Saving chats to the account needs a sign-in (#11046).
             .filter(|command| *command != slash::Command::Sync || self.account.is_some())
@@ -1143,6 +1145,14 @@ impl App {
                 self.live.partial.push_str(&text);
                 self.scroll_main_to_end();
             }
+            live::Update::OpenCodeSession { session, model, .. } => {
+                self.live.opencode_session = Some(live::OpenCodeSession {
+                    id: session,
+                    users: self.live.user_count(),
+                    model,
+                });
+                self.history.dirty = true;
+            }
             live::Update::Model { model, .. } if self.live.busy => {
                 if model == provider::PINNED_MISSED {
                     self.live.pinned_missed = true;
@@ -1181,7 +1191,7 @@ impl App {
                 // Coder's own loop waits for its agents within the turn: one
                 // still shown running when the turn ends never reported back,
                 // and would keep its chat working (#11462).
-                if !self.on_claude() && !self.on_codex() {
+                if !self.on_claude() && !self.on_codex() && !self.on_opencode() {
                     for child in &mut self.delegations {
                         if child.running && !child.background {
                             child.running = false;
@@ -1929,6 +1939,61 @@ impl App {
         });
     }
 
+    /// The draft as the chat's next OpenCode turn (#11507): one `opencode
+    /// run` in the chat's OpenCode session ([`crate::opencode_chat`]), on
+    /// the pinned model or the person's OpenCode pick, with every tool
+    /// checked by Coder before it runs. A message sent while a turn runs
+    /// waits for it.
+    fn submit_opencode(&mut self) {
+        if self.draft.text.trim().is_empty() {
+            return;
+        }
+        if self.live.busy || self.checking_key || self.checking_jev {
+            self.queue_prompt();
+            return;
+        }
+        if !self.composer.images.is_empty() {
+            self.live.notice = Some(attachments::TEXT_ONLY_NOTICE.into());
+        }
+        self.record_prompt();
+        self.cancel_request();
+        let cwd = self.cwd.clone().unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+        });
+        let text = std::mem::take(&mut self.draft.text);
+        let chars = text.chars().count();
+        self.draft.cursor = 0;
+        self.composer = Default::default();
+        self.screen = Screen::Conversation;
+        self.live.finish_partial();
+        self.live.entries.push(live::Entry::User(text));
+        let messages = self.live.messages();
+        let session = self.live.opencode_resume();
+        // The briefing goes with a new piece of work, and with a new
+        // session's first message.
+        let new_work = self.live.work_started + 1 >= self.live.user_count();
+        let briefing = (session.is_none() || new_work)
+            .then(|| self.live.briefing.clone().map(Box::new))
+            .flatten();
+        let model = opencode_chat::model(self.live.pinned_model.clone());
+        self.history.dirty = true;
+        self.scroll = u16::MAX;
+        self.begin_claude_turn();
+        self.record_choice(harness_plugin::Harness::OpenCode, 0, chars);
+        self.request = Some(live::Request {
+            id: self.request_id,
+            key: model_access::ApiKey::new(""),
+            kind: live::Work::OpenCode {
+                messages,
+                cwd,
+                session,
+                briefing,
+                model,
+                tools: true,
+            },
+        });
+    }
+
     /// After the person picks `model` for Codex in /models: the next
     /// message runs on it, in this same chat and thread.
     fn codex_model_switched(&mut self, model: &str) -> String {
@@ -2086,6 +2151,10 @@ impl App {
                 }
                 harness_plugin::Harness::Codex => {
                     self.submit_codex();
+                    return;
+                }
+                harness_plugin::Harness::OpenCode => {
+                    self.submit_opencode();
                     return;
                 }
                 harness_plugin::Harness::CoderLoop => {}
@@ -2362,6 +2431,22 @@ impl App {
         self.resume_picker = None;
         // A Claude Code chat picks among Claude models on this computer's
         // login, with no OpenRouter key.
+        // An OpenCode chat picks among the models the person's OpenCode
+        // reaches (#11507).
+        if self.on_opencode() {
+            let current = self.live.opencode_session.as_ref().map_or_else(
+                || opencode_chat::model(self.live.pinned_model.clone()),
+                |session| session.model.clone(),
+            );
+            self.model_picker = Some(models::Picker::new(
+                opencode_chat::catalog(),
+                opencode_chat::PLUGIN,
+                &current,
+                models::GenerationOptions::default(),
+                false,
+            ));
+            return;
+        }
         if self.on_codex() {
             let picked = codex::choice();
             self.model_picker = Some(models::Picker::new(
@@ -2863,6 +2948,30 @@ impl App {
                                 }
                             }
                         }
+                        models::Action::Save(model, _) if model.plugin == opencode_chat::PLUGIN => {
+                            match opencode_chat::choose(&model.id) {
+                                Ok(()) => {
+                                    self.model_picker = None;
+                                    if self.live.runs_on == Some(harness_plugin::Harness::OpenCode)
+                                    {
+                                        self.live.pinned_model = None;
+                                    }
+                                    self.notice = Some(if self.live.opencode_session.is_some() {
+                                        format!(
+                                            "Your next message runs on {}, in this same chat.",
+                                            model.id
+                                        )
+                                    } else {
+                                        format!("OpenCode now runs {}.", model.id)
+                                    });
+                                }
+                                Err(error) => {
+                                    if let Some(picker) = &mut self.model_picker {
+                                        picker.error = Some(error);
+                                    }
+                                }
+                            }
+                        }
                         models::Action::Save(model, options) if model.plugin == codex::PICKER => {
                             match codex::choose(&model.id, options.reasoning) {
                                 Ok(()) => {
@@ -3096,6 +3205,13 @@ impl App {
                             // So does turning the Codex plugin off.
                             if self.on_codex()
                                 && !self.plugins.bundled.enabled(crate::codex::PLUGIN)
+                            {
+                                self.cancel_request();
+                                self.live.runs_on = None;
+                            }
+                            // And the OpenCode plugin (#11507).
+                            if self.on_opencode()
+                                && !self.plugins.bundled.enabled(crate::opencode_chat::PLUGIN)
                             {
                                 self.cancel_request();
                                 self.live.runs_on = None;

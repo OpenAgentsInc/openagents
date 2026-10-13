@@ -348,7 +348,12 @@ impl Plugins {
     }
 
     pub fn definitions(&self) -> impl Iterator<Item = PickerDefinition<'_>> {
-        let bundled = DEFINITIONS.iter().map(PickerDefinition::from);
+        // OpenCode's plugin follows the built-ins only where it is
+        // installed (#11507).
+        let bundled = DEFINITIONS.iter().map(PickerDefinition::from).chain(
+            crate::opencode_chat::installed()
+                .then(|| PickerDefinition::from(&crate::plugin_definition::OPENCODE)),
+        );
         #[cfg(unix)]
         let definitions =
             bundled.chain(self.installed.iter().filter(|_| self.live).map(|plugin| {
@@ -429,7 +434,8 @@ impl Plugins {
         if self.selected_installed().is_some() {
             return false;
         }
-        let id = DEFINITIONS[self.selected.min(DEFINITIONS.len() - 1)].id;
+        let id = self.selected_definition().id.to_owned();
+        let id = id.as_str();
         if id == OPENROUTER_PLUGIN {
             self.toggle_enabled()
         } else {

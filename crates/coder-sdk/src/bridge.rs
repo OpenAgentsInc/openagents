@@ -49,6 +49,9 @@ pub enum Format {
     /// inside the agent and a rewrite in Claude Code's shapes would not fit
     /// the agent's tool.
     Acp,
+    /// OpenCode as a Coder harness (#11507): the call Coder's OpenCode
+    /// plugin sends before a tool ([`crate::opencode`]).
+    OpenCode,
 }
 
 impl Format {
@@ -58,6 +61,7 @@ impl Format {
             "claude" => Some(Format::Claude),
             "codex" => Some(Format::Codex),
             "acp" => Some(Format::Acp),
+            "opencode" => Some(Format::OpenCode),
             _ => None,
         }
     }
@@ -68,6 +72,7 @@ impl Format {
             Format::Claude => "claude",
             Format::Codex => "codex",
             Format::Acp => "acp",
+            Format::OpenCode => "opencode",
         }
     }
 }
@@ -84,6 +89,11 @@ pub fn event_of(input: &Value) -> Option<Event> {
 /// The registry's answer to one hook input, in `format`; `None` lets the
 /// harness go on unchanged (the program prints nothing).
 pub fn answer(runner: &mut Runner, format: Format, input: &Value) -> Option<Value> {
+    if format == Format::OpenCode {
+        let claude = super::opencode::to_claude(input);
+        let output = answer(runner, Format::Codex, &claude);
+        return super::opencode::reply(input, output.as_ref());
+    }
     let event = event_of(input)?;
     let input = &normalized(format, input);
     let applied = runner.fire(&super::claude::call(event, input));
@@ -119,6 +129,7 @@ pub fn answer(runner: &mut Runner, format: Format, input: &Value) -> Option<Valu
                 .is_some_and(|o| !o.is_empty())
                 .then_some(output)
         }
+        Format::OpenCode => None,
     }
 }
 
@@ -341,6 +352,14 @@ pub fn run(
     {
         return reply;
     }
+    if format == Format::OpenCode {
+        // The fallback reads Claude Code's input; its answer is narrowed as
+        // for Codex (nobody can answer an ask) and read back.
+        let claude = super::opencode::to_claude(input);
+        let output = fallback(&claude)
+            .and_then(|output| codex(Event::PreToolUse, output, &claude["tool_input"]));
+        return super::opencode::reply(input, output.as_ref());
+    }
     fallback(&normalized(format, input))
 }
 
@@ -358,7 +377,7 @@ pub fn main(args: &[String], fallback: impl FnOnce(&Value) -> Option<Value>) -> 
             match Format::from_name(name) {
                 Some(named) => format = named,
                 None => {
-                    eprintln!("Unknown hook format {name}. Use claude, codex or acp.");
+                    eprintln!("Unknown hook format {name}. Use claude, codex, acp or opencode.");
                     return 0;
                 }
             }
@@ -532,6 +551,44 @@ mod tests {
             "coder-squeeze cargo test"
         );
         assert!(squeezed.get("continue").is_none());
+    }
+
+    fn opencode_bash(command: &str) -> Value {
+        json!({"tool": "bash", "sessionID": "ses_1", "callID": "c1", "cwd": "/work",
+            "args": {"command": command, "description": "run"}})
+    }
+
+    /// OpenCode's plugin call: a floor denies, an ask is held, a rewrite
+    /// comes back as OpenCode's arguments (#11507).
+    #[test]
+    fn opencode_format_replies_with_a_denial_or_arguments() {
+        let mut runner = runner();
+        assert_eq!(
+            answer(&mut runner, Format::OpenCode, &opencode_bash("ls")),
+            None
+        );
+        let deny = answer(&mut runner, Format::OpenCode, &opencode_bash("make deploy")).unwrap();
+        assert_eq!(
+            deny,
+            json!({"deny": "A production deploy is the person's."})
+        );
+        let held = answer(&mut runner, Format::OpenCode, &opencode_bash("git push")).unwrap();
+        assert!(
+            held["deny"]
+                .as_str()
+                .unwrap()
+                .starts_with("Held for the person: Pushing")
+        );
+        let squeezed = answer(&mut runner, Format::OpenCode, &opencode_bash("cargo test")).unwrap();
+        assert_eq!(squeezed["args"]["command"], "coder-squeeze cargo test");
+        // With no host the fallback reads Claude Code's input.
+        let fallback = run(Format::OpenCode, &opencode_bash("rm -rf /"), |input| {
+            assert_eq!(input["tool_name"], "Bash");
+            Some(json!({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                "permissionDecision": "deny", "permissionDecisionReason": "no"}}))
+        });
+        assert_eq!(fallback, Some(json!({"deny": "no"})));
+        assert_eq!(Format::from_name("opencode"), Some(Format::OpenCode));
     }
 
     #[test]

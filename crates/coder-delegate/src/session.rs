@@ -229,11 +229,16 @@ pub enum HookBackend {
     /// An ACP agent that runs Coder's hook program before every tool, and
     /// obeys it (#11508): Grok Build's plugin hooks, Devin's config hooks.
     AcpHooked,
+    /// OpenCode as a Coder harness (#11507): Coder's OpenCode plugin runs
+    /// before every tool (`tool.execute.before`) with the tool's exact
+    /// arguments and asks the hook bridge, so `PreToolUse` can deny or
+    /// rewrite; the rest is seen in the stream.
+    OpenCode,
 }
 
 impl HookBackend {
     /// Every backend, in the tier table's order.
-    pub const ALL: [HookBackend; 8] = [
+    pub const ALL: [HookBackend; 9] = [
         HookBackend::ClaudeCode,
         HookBackend::CoderLoop,
         HookBackend::Scripted,
@@ -242,6 +247,7 @@ impl HookBackend {
         HookBackend::Acp,
         HookBackend::AcpAsking,
         HookBackend::AcpHooked,
+        HookBackend::OpenCode,
     ];
 
     /// The backend's name for people.
@@ -254,6 +260,7 @@ impl HookBackend {
             HookBackend::Codex => "Codex",
             HookBackend::CodexAppServer => "Codex",
             HookBackend::Acp | HookBackend::AcpAsking | HookBackend::AcpHooked => "an ACP agent",
+            HookBackend::OpenCode => "OpenCode",
         }
     }
 }
@@ -316,7 +323,9 @@ pub fn hook_tier(backend: HookBackend, event: &str) -> HookTier {
         // prompt build, so those events never fire there.
         HookBackend::CoderLoop if CODER_LOOP_EVENTS.contains(&event) => HookTier::Native,
         HookBackend::CoderLoop => HookTier::None,
-        HookBackend::Codex if event == "PreToolUse" => HookTier::Command,
+        // OpenCode's plugin hook throws before the tool runs, which OpenCode
+        // reports as the tool's error and never runs it (#11507).
+        HookBackend::Codex | HookBackend::OpenCode if event == "PreToolUse" => HookTier::Command,
         // Verified live on 2026-10-13 (codex-cli 0.162.1): under
         // `approval_policy = "untrusted"` Codex asked before every command
         // and patch, `cat .env` included, and obeyed each answer. The host
@@ -341,7 +350,8 @@ pub fn hook_tier(backend: HookBackend, event: &str) -> HookTier {
         | HookBackend::CodexAppServer
         | HookBackend::Acp
         | HookBackend::AcpAsking
-        | HookBackend::AcpHooked => HookTier::Emulated,
+        | HookBackend::AcpHooked
+        | HookBackend::OpenCode => HookTier::Emulated,
     }
 }
 
@@ -1313,13 +1323,17 @@ mod tests {
             };
             assert_eq!(tier, want, "{event}");
         }
-        for (event, tier) in hook_tiers(HookBackend::Codex) {
-            let want = if event == "PreToolUse" {
-                HookTier::Command
-            } else {
-                HookTier::Emulated
-            };
-            assert_eq!(tier, want, "{event}");
+        // Codex `exec` and the OpenCode harness's plugin (#11507): the
+        // command tier before a tool, the rest seen in the stream.
+        for backend in [HookBackend::Codex, HookBackend::OpenCode] {
+            for (event, tier) in hook_tiers(backend) {
+                let want = if event == "PreToolUse" {
+                    HookTier::Command
+                } else {
+                    HookTier::Emulated
+                };
+                assert_eq!(tier, want, "{backend:?} {event}");
+            }
         }
         // ACP agents (#11508): the host's own events are native; before a
         // tool, only as far as the agent was verified to let the hooks act.

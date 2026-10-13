@@ -17,8 +17,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::{
-    App, Mode, bundled_runtime::RuntimeEvent, live, models, plugin_definition::DEFINITIONS,
-    plugins::SettingsFocus, sessions as local_sessions, trajectory,
+    App, Mode, bundled_runtime::RuntimeEvent, live, models, plugins::SettingsFocus,
+    sessions as local_sessions, trajectory,
 };
 
 macro_rules! command_usage {
@@ -594,7 +594,7 @@ fn active_model(app: &App) -> String {
 }
 
 fn plugin_list(app: &App) -> Value {
-    json!(DEFINITIONS.iter().map(|definition| json!({"id":definition.id,"name":definition.name,"description":definition.description,
+    json!(crate::plugin_definition::listed().map(|definition| json!({"id":definition.id,"name":definition.name,"description":definition.description,
         "enabled":app.plugins.enabled_for(definition.id),"status":app.plugins.status_for(definition.id),"default_enabled":definition.default_enabled})).collect::<Vec<_>>())
 }
 
@@ -623,7 +623,7 @@ fn plugins(app: &mut App, args: &[String], context: &Context) -> Result<Value, E
     }
     let Some(definition) = args
         .get(1)
-        .and_then(|id| DEFINITIONS.iter().find(|definition| definition.id == id))
+        .and_then(|id| crate::plugin_definition::listed().find(|definition| definition.id == id))
     else {
         return Err(usage("Choose a registered plugin ID."));
     };
@@ -639,8 +639,7 @@ fn plugins(app: &mut App, args: &[String], context: &Context) -> Result<Value, E
                 app.plugins.enabled_for(definition.id)
             };
             if current != enabled {
-                app.plugins.selected = DEFINITIONS
-                    .iter()
+                app.plugins.selected = crate::plugin_definition::listed()
                     .position(|row| row.id == definition.id)
                     .unwrap_or(0);
                 if !app.plugins.toggle_selected() {
@@ -830,8 +829,7 @@ fn configure(app: &mut App, id: &str, config: Configuration) -> Result<(), Error
     if let Some(enabled) = config.enabled
         && app.plugins.enabled_for(id) != enabled
     {
-        app.plugins.selected = DEFINITIONS
-            .iter()
+        app.plugins.selected = crate::plugin_definition::listed()
             .position(|definition| definition.id == id)
             .unwrap_or(0);
         if !app.plugins.toggle_selected() {

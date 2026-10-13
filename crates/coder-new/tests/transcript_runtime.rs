@@ -42,6 +42,7 @@ fn live_app() -> App {
     // These chats run on Coder's own loop, never this computer's Claude
     // Code login.
     app.plugins.bundled.claude = false;
+    app.plugins.bundled.opencode = false;
     // Most of these tests read a tool call's own rows, so they start in the
     // verbose view; the compact default has its own tests.
     app.view = ViewMode::Verbose;

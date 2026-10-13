@@ -429,6 +429,11 @@ fn main() -> ExitCode {
         coder_new::floors::BRIDGE_COMMAND => {
             u8::try_from(coder_new::floors::bridge_main(&rest).clamp(0, 255)).unwrap_or(1)
         }
+        // Coder's tools over MCP stdio, for a harness that takes MCP, such
+        // as OpenCode under Coder (#11501, #11507).
+        coder_new::claude_tools::STDIO_COMMAND => {
+            u8::try_from(coder_new::claude_tools::stdio_main(&rest).clamp(0, 255)).unwrap_or(1)
+        }
         // The squeezer a Claude Code session under Coder runs a noisy
         // command through (#11486).
         squeeze::CODER_SUBCOMMAND => u8::try_from(squeeze::main(&rest).clamp(0, 255)).unwrap_or(1),

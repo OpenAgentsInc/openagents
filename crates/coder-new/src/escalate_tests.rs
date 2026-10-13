@@ -200,6 +200,11 @@ fn facts() -> crate::harness_plugin::Facts {
         claude: health,
         codex_on: false,
         codex: health,
+        opencode_on: false,
+        opencode: crate::harness_plugin::Health {
+            signed_in: false,
+            at_limit: false,
+        },
         openrouter_key: false,
         leaning: crate::routing_preferences::Leaning::default(),
     }

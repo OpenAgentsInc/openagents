@@ -82,6 +82,7 @@ fn situation_of(row: &Row) -> Situation {
                         Harness::ClaudeCode => Payer::ClaudePlan,
                         Harness::Codex => Payer::ChatGptLogin,
                         Harness::CoderLoop => Payer::GatewayCredits,
+                        Harness::OpenCode => Payer::OpenCode,
                     },
                 )
             })
@@ -356,6 +357,11 @@ fn healthy_facts() -> crate::harness_plugin::Facts {
         claude: healthy,
         codex_on: false,
         codex: healthy,
+        opencode_on: false,
+        opencode: crate::harness_plugin::Health {
+            signed_in: false,
+            at_limit: false,
+        },
         openrouter_key: false,
         leaning: crate::routing_preferences::Leaning::default(),
     }

@@ -20,6 +20,11 @@ pub enum Harness {
     /// chat, every call approved, the person's settings loaded, Coder's
     /// tools over MCP.
     ClaudeCode,
+    /// OpenCode on this computer (#11507): its free `opencode/big-pickle`
+    /// model or another model the person's OpenCode reaches, one OpenCode
+    /// session per chat, every tool checked by Coder before it runs.
+    #[serde(rename = "opencode")]
+    OpenCode,
     /// Coder's own loop on the OpenAgents gateway, or on the person's
     /// OpenRouter key, with Coder's tools.
     CoderLoop,
@@ -78,8 +83,9 @@ pub struct Declaration {
     pub turn: Turn,
 }
 
-/// Every harness Coder knows, in the order a fixed rule prefers them.
-pub const DECLARATIONS: [Declaration; 3] = [
+/// Every harness Coder knows, in the order a fixed rule prefers them:
+/// Claude Code, then OpenCode, then Coder's own loop (#11507).
+pub const DECLARATIONS: [Declaration; 4] = [
     Declaration {
         harness: Harness::ClaudeCode,
         name: "Claude Code",
@@ -92,6 +98,20 @@ pub const DECLARATIONS: [Declaration; 3] = [
             Can::IssueToPullRequest,
             Can::BackgroundWork,
             Can::Images,
+        ],
+        turn: Turn::Session,
+    },
+    Declaration {
+        harness: Harness::OpenCode,
+        name: "OpenCode",
+        plugin: Some("opencode"),
+        place: Place::ThisComputer,
+        can: &[
+            Can::Answer,
+            Can::RepoEdits,
+            Can::Shell,
+            Can::IssueToPullRequest,
+            Can::BackgroundWork,
         ],
         turn: Turn::Session,
     },
@@ -137,13 +157,15 @@ impl Harness {
 
     /// The coding agent's word in a computer's presence (NIP-REACH engine
     /// flags) for a harness that runs on the person's computer: `claude`
-    /// or `codex`. `None` for the Coder loop, which every computer runs.
+    /// or `codex`. `None` for the Coder loop, which every computer runs,
+    /// and for OpenCode, which a chat reaches only on the computer it runs
+    /// on (a phone's turn on a linked computer's OpenCode is not built).
     #[must_use]
     pub fn engine(self) -> Option<&'static str> {
         match self {
             Self::ClaudeCode => Some("claude"),
             Self::Codex => Some("codex"),
-            Self::CoderLoop => None,
+            Self::CoderLoop | Self::OpenCode => None,
         }
     }
 
@@ -165,7 +187,12 @@ mod tests {
 
     #[test]
     fn every_harness_is_declared_once_and_engines_round_trip() {
-        for harness in [Harness::ClaudeCode, Harness::CoderLoop, Harness::Codex] {
+        for harness in [
+            Harness::ClaudeCode,
+            Harness::OpenCode,
+            Harness::CoderLoop,
+            Harness::Codex,
+        ] {
             assert_eq!(harness.declaration().harness, harness);
             if let Some(word) = harness.engine() {
                 assert_eq!(Harness::of_engine(word), Some(harness));
@@ -173,5 +200,25 @@ mod tests {
         }
         assert_eq!(Harness::of_engine("grok"), None);
         assert_eq!(Harness::of_engine("Claude"), None);
+        assert_eq!(Harness::of_engine("opencode"), None);
+        assert_eq!(
+            serde_json::to_value(Harness::OpenCode).unwrap(),
+            serde_json::json!("opencode")
+        );
+    }
+
+    /// The fixed rule's order (#11507): Claude Code, OpenCode, Coder.
+    #[test]
+    fn claude_code_comes_first_then_opencode_then_the_coder_loop() {
+        let order: Vec<Harness> = DECLARATIONS.iter().map(|d| d.harness).collect();
+        assert_eq!(
+            order,
+            [
+                Harness::ClaudeCode,
+                Harness::OpenCode,
+                Harness::CoderLoop,
+                Harness::Codex
+            ]
+        );
     }
 }
