@@ -31,6 +31,21 @@ synced JSON; the headline section is written by hand.
 - **Clef 27B on v6e-4** (TP 4, bf16): ~5,100–5,400 tokens/s per chip at
   1–4k prompts, ~$0.03/M spot, ~$0.14/M on demand (run cut short by a
   preemption; being re-measured).
+- **The smallest slice wins.** Per chip, SGL-JAX loses a lot to tensor
+  parallelism: 27B bf16 on v5p is 6.2k tok/s per chip at TP 1, 4.9k at TP 2,
+  4.2k at TP 4; 27B int8 on v5p 9.8k at TP 1, 6.9k at TP 2. **27B int8 on
+  one v5p chip: 9.8k tok/s, $0.024/M spot** — the cheapest 27B we measured.
+  Chunked-prefill size (4k / 8k / 16k) makes no difference. Weight-only
+  int8 gains 0 % (v5p) to 9 % (v6e); W8A8 is where the speed is.
+- **Cold start.** Real weights from Hugging Face: Qwen3.5-9B on v6e 147 s
+  from process start to a ready engine (18 GB), Qwen3.5-27B on v5p 473 s
+  (54 GB); both then run at dummy-weight speed. With a warm GCS compile
+  cache a 1-bucket engine is ready in 40–80 s. VM create → READY: 2–5 min
+  when capacity exists; our setup (venv + SGL-JAX) 40–140 s.
+- **Operational limits we hit:** pinning a 2- or 4-chip sub-slice of a
+  v5e-8 aborts libtpu (`SLICE_FAILURE_INIT_ERROR`) even alone (single-chip
+  pins and v6e/v5p sub-slices work); concurrent engines on one v5e-8 die
+  together when one fails.
 - **v5e / v5p are 3–10× worse per token** for this model: Flash on v5e-8
   TP 8 is ~4,000 tok/s per chip ($0.025/M spot), 27B on v5p-8 TP 4 is
   ~4,200 per chip ($0.062/M spot).
