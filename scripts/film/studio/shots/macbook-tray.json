@@ -1,0 +1,46 @@
+{
+  "extends": "macbook-chat.json",
+  "name": "macbook-tray",
+  "cut": "Cut 5 feature beat: a background OpenCode agent on the free model; its rail row shows each step it takes (Bash, npm test).",
+  "duration": 4.0,
+  "screen": {
+    "video": "~/work/film-out/footage-v8/terminal-tray.mp4",
+    "in": 10.0,
+    "brightness": 1.35
+  },
+  "camera": {
+    "ease": "inout",
+    "keys": [
+      {
+        "t": 0,
+        "orbit": [
+          -20,
+          14,
+          0.42
+        ],
+        "target": [
+          -0.03,
+          0.115,
+          0.04
+        ],
+        "lens": 50,
+        "fstop": 4.0
+      },
+      {
+        "t": 4.0,
+        "orbit": [
+          -12,
+          15,
+          0.36
+        ],
+        "target": [
+          -0.04,
+          0.115,
+          0.04
+        ],
+        "lens": 50,
+        "fstop": 4.5
+      }
+    ]
+  }
+}

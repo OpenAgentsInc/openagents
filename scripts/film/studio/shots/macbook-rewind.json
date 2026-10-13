@@ -1,0 +1,46 @@
+{
+  "extends": "macbook-chat.json",
+  "name": "macbook-rewind",
+  "cut": "Feature beat (not in cut 5): /rewind lists the turn with its file; Enter restores it and puts the message back.",
+  "duration": 4.5,
+  "screen": {
+    "video": "~/work/film-out/footage-v8/terminal-rewind.mp4",
+    "in": 16.6,
+    "brightness": 1.35
+  },
+  "camera": {
+    "ease": "inout",
+    "keys": [
+      {
+        "t": 0,
+        "orbit": [
+          -20,
+          19,
+          0.62
+        ],
+        "target": [
+          0,
+          0.142,
+          0.115
+        ],
+        "lens": 50,
+        "fstop": 5.6
+      },
+      {
+        "t": 4.5,
+        "orbit": [
+          -10,
+          20,
+          0.5
+        ],
+        "target": [
+          -0.03,
+          0.145,
+          0.12
+        ],
+        "lens": 50,
+        "fstop": 6.3
+      }
+    ]
+  }
+}

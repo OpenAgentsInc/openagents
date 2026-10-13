@@ -1,0 +1,46 @@
+{
+  "extends": "macbook-chat.json",
+  "name": "macbook-harness",
+  "cut": "Cut 5 feature beat: Shift+Tab steps the input's rail from Auto to Claude (model, plan windows), Codex, OpenCode.",
+  "duration": 4.5,
+  "screen": {
+    "video": "~/work/film-out/footage-v8/terminal-harness.mp4",
+    "in": 3.7,
+    "brightness": 1.35
+  },
+  "camera": {
+    "ease": "inout",
+    "keys": [
+      {
+        "t": 0,
+        "orbit": [
+          -10,
+          14,
+          0.48
+        ],
+        "target": [
+          0.0,
+          0.118,
+          0.045
+        ],
+        "lens": 50,
+        "fstop": 4.0
+      },
+      {
+        "t": 4.5,
+        "orbit": [
+          2,
+          15,
+          0.36
+        ],
+        "target": [
+          0.05,
+          0.118,
+          0.045
+        ],
+        "lens": 50,
+        "fstop": 4.5
+      }
+    ]
+  }
+}

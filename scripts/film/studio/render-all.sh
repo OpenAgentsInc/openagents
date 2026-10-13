@@ -19,6 +19,7 @@ blender=${BLENDER:-/Applications/Blender.app/Contents/MacOS/Blender}
 footage=${FOOTAGE:-$HOME/work/film-out/footage}
 footage2=${FOOTAGE2:-$HOME/work/film-out/footage-v2}
 footage3=${FOOTAGE3:-$HOME/work/film-out/footage-v3}  # newer takes win when present
+footage8=${FOOTAGE8:-$HOME/work/film-out/footage-v8}  # cut 5's feature takes (coder-features.mjs, coder-plugins.mjs)
 out=${OUT:-$HOME/work/film-out/studio}
 standin_dir=$out/standin
 preview=() standin=0 shots=()
@@ -38,6 +39,10 @@ clip_for() {
     macbook-terminal) echo terminal-coder ;;
     macbook-sync) echo web-sync ;;
     iphone-approve) echo phone-app ;;
+    macbook-plugins) echo terminal-plugins ;;
+    macbook-harness) echo terminal-harness ;;
+    macbook-tray) echo terminal-tray ;;
+    macbook-rewind) echo terminal-rewind ;;
     grid-plate) echo none ;;
     suite-boot|sync-terminal-web|sync-phone|sync-web-back|trio-wide) echo devices ;;
     *) echo "" ;;
@@ -81,7 +86,8 @@ for shot in "${shots[@]}"; do
       "${preview[@]}" 2>&1 | grep -E "^studio:|Error|Traceback" || status=1
     continue
   fi
-  video=$footage3/$clip.mp4
+  video=$footage8/$clip.mp4
+  [ -f "$video" ] || video=$footage3/$clip.mp4
   [ -f "$video" ] || video=$footage2/$clip.mp4
   [ -f "$video" ] || video=$footage/$clip.mp4
   # The phone shot was first recorded on the web as phone-approve.

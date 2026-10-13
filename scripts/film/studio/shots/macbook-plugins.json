@@ -1,0 +1,46 @@
+{
+  "extends": "macbook-chat.json",
+  "name": "macbook-plugins",
+  "cut": "Cut 5 feature beat: /plugins, the selection moving down the list, the ACP agents page with the seven agents found here.",
+  "duration": 4.0,
+  "screen": {
+    "video": "~/work/film-out/footage-v8/terminal-plugins.mp4",
+    "in": 6.5,
+    "brightness": 1.35
+  },
+  "camera": {
+    "ease": "inout",
+    "keys": [
+      {
+        "t": 0,
+        "orbit": [
+          -24,
+          18,
+          0.46
+        ],
+        "target": [
+          -0.06,
+          0.152,
+          0.14
+        ],
+        "lens": 50,
+        "fstop": 4.0
+      },
+      {
+        "t": 4.0,
+        "orbit": [
+          -16,
+          19,
+          0.4
+        ],
+        "target": [
+          -0.07,
+          0.155,
+          0.145
+        ],
+        "lens": 50,
+        "fstop": 4.5
+      }
+    ]
+  }
+}
