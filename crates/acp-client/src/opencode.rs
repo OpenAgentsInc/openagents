@@ -302,6 +302,29 @@ pub fn configured_model(variable: &dyn Fn(&str) -> Option<OsString>) -> Option<S
     })
 }
 
+/// The name the person's OpenCode configuration gives `key`
+/// (`provider/model`): `provider.<provider>.models.<model>.name`, as
+/// OpenCode's own picker shows it. Only names are read, never options.
+#[must_use]
+pub fn configured_name(variable: &dyn Fn(&str) -> Option<OsString>, key: &str) -> Option<String> {
+    let (provider, model) = key.split_once('/')?;
+    config_files(variable).into_iter().find_map(|path| {
+        let bytes = std::fs::read(&path).ok()?;
+        name_in(&bytes, provider, model)
+    })
+}
+
+/// [`configured_name`] in one configuration file's bytes.
+#[must_use]
+pub fn name_in(config: &[u8], provider: &str, model: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_slice(config).ok()?;
+    value["provider"][provider]["models"][model]["name"]
+        .as_str()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+}
+
 /// Whether OpenCode has any login here: a stored one in its `auth.json`, or
 /// a provider or default model in the owner's configuration. Names only,
 /// as [`login`] reads them.

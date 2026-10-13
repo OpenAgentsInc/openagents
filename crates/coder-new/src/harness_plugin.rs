@@ -514,6 +514,9 @@ impl App {
             || self.live.busy
             || self.request.is_some()
             || self.draft.text.trim_start().starts_with('/')
+            // A checkpoint already moved the work: the message the person
+            // sends next goes where it moved (#11568).
+            || self.routing_rule == Some(crate::routing_record::Rule::Escalated)
         {
             return false;
         }
@@ -910,8 +913,10 @@ impl App {
         }
     }
 
-    /// Acts on a redo's checkpoint call: a move sends the briefing in place
-    /// of the repeated message, on the stronger harness.
+    /// Acts on a redo's checkpoint call: a move sends the person's own
+    /// message, as they typed it, on the stronger harness. Coder never
+    /// replaces it with words they didn't write (owner, 2026-10-13); the
+    /// stronger harness reads the chat so far.
     fn redo_call(
         &mut self,
         escalation: &crate::escalate::Pending,
@@ -923,13 +928,6 @@ impl App {
             return draft;
         };
         self.live.moved = true;
-        let text = crate::escalate::handoff(
-            &crate::escalate::harness_words(self, to),
-            &crate::escalate::harness_words(self, escalation.situation.current),
-            escalation.checkpoint,
-            &escalation.task,
-            &escalation.evidence,
-        );
         self.live.runs_on = Some(to);
         // A move to a stronger harness is no longer a cheap answer.
         self.live.cheap = false;
@@ -945,11 +943,7 @@ impl App {
                 missing: None,
             },
         ));
-        crate::Draft {
-            cursor: text.len(),
-            text,
-            pastes: Vec::new(),
-        }
+        draft
     }
 
     /// Whether this chat runs on Claude Code.

@@ -277,6 +277,15 @@ fn listed() -> Option<Vec<Listed>> {
         .clone()
 }
 
+/// OpenCode's own name for `key` (`provider/id`), once its list is read.
+#[must_use]
+pub fn name(key: &str) -> Option<String> {
+    listed()?
+        .into_iter()
+        .find(|model| model.key() == key && model.name != key)
+        .map(|model| model.name)
+}
+
 /// Reads OpenCode's list now: `opencode models --verbose`, else the plain
 /// list. Never in a unit test.
 fn read() -> Vec<Listed> {

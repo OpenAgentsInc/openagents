@@ -207,14 +207,46 @@ pub fn catalog(current: &str) -> Vec<crate::models::Model> {
     crate::opencode_models::catalog(current)
 }
 
+/// A provider's error as words: a provider that answers with its own
+/// JSON (`{"message":"Update Required …","type":"cursor_error"}`) reads as
+/// its message, never the raw JSON.
+#[must_use]
+pub fn plain_error(message: &str) -> String {
+    let mut message = message.trim().to_owned();
+    for _ in 0..3 {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&message) else {
+            break;
+        };
+        let inner = value["message"]
+            .as_str()
+            .or_else(|| value["error"]["message"].as_str())
+            .or_else(|| value["error"].as_str());
+        match inner {
+            Some(inner) => message = inner.trim().to_owned(),
+            None => break,
+        }
+    }
+    message
+}
+
 /// The rail's words for a chat on OpenCode: "OpenCode (Cat Jam)" for
 /// OpenCode Zen's free models, by name, else "OpenCode (provider/model)".
 #[must_use]
 pub fn rail_label(model: &str) -> String {
     let name = match model {
-        "opencode/cat-jam-free" => "Cat Jam",
-        "opencode/big-pickle" => "Big Pickle",
-        other => other,
+        "opencode/cat-jam-free" => "Cat Jam".to_owned(),
+        "opencode/big-pickle" => "Big Pickle".to_owned(),
+        // OpenCode's own name for it, else its words: never a raw
+        // `provider/id` (owner, 2026-10-13).
+        other => crate::opencode_models::name(other)
+            .or_else(|| {
+                if cfg!(test) {
+                    None
+                } else {
+                    acp_client::opencode::configured_name(&|name| std::env::var_os(name), other)
+                }
+            })
+            .unwrap_or_else(|| crate::ui::rail_model_name(other)),
     };
     format!("OpenCode ({name})")
 }
@@ -438,7 +470,7 @@ pub fn read_line(line: &str) -> Vec<Line> {
                 .or_else(|| error["message"].as_str())
                 .or_else(|| error["name"].as_str())
                 .unwrap_or("OpenCode reported an error.");
-            lines.push(Line::Error(message.to_owned()));
+            lines.push(Line::Error(plain_error(message)));
         }
         _ => {}
     }
@@ -723,6 +755,18 @@ mod tests {
             r#"{"type":"error","sessionID":"ses_1","error":{"name":"APIError","data":{"message":"Rate limit exceeded"}}}"#,
         );
         assert_eq!(failed[1], Line::Error("Rate limit exceeded".into()));
+        // A provider that answers with its own JSON (Cursor's "Update
+        // Required", owner's gate 2026-10-13) reads as its message.
+        let cursor = read_line(
+            r#"{"type":"error","sessionID":"ses_1","error":{"name":"UnknownError","data":{"message":"{\"message\":\"Update Required Your version of Cursor is no longer supported. Please update to the latest version at cursor.com/downloads to continue.\",\"type\":\"cursor_error\",\"code\":\"cursor_stream_error\"}"}}}"#,
+        );
+        assert_eq!(
+            cursor[1],
+            Line::Error(
+                "Update Required Your version of Cursor is no longer supported. Please update to the latest version at cursor.com/downloads to continue.".into()
+            )
+        );
+        assert_eq!(plain_error("plain words"), "plain words");
     }
 
     fn message(role: &str, content: &str) -> Message {
@@ -741,7 +785,18 @@ mod tests {
         );
         assert_eq!(
             rail_label("anthropic/claude-sonnet-5"),
-            "OpenCode (anthropic/claude-sonnet-5)"
+            "OpenCode (Claude Sonnet 5)"
+        );
+        assert_eq!(rail_label("cursor/composer-2.5"), "OpenCode (Composer 2.5)");
+        // The person's opencode.json names its own provider's models.
+        assert_eq!(
+            acp_client::opencode::name_in(
+                br#"{"provider":{"cursor":{"options":{"apiKey":"x"},"models":{"composer-2.5":{"name":"Cursor 2.5"}}}}}"#,
+                "cursor",
+                "composer-2.5"
+            )
+            .as_deref(),
+            Some("Cursor 2.5")
         );
         assert_eq!(model(None), DEFAULT_MODEL);
     }

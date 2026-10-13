@@ -879,9 +879,14 @@ pub async fn acp_briefed(
         ("devin-cli", Some(model)) if model != acp_client::devin::DEFAULT_MODEL => {
             acp_client::devin::arguments(model)
         }
-        // Devin's account default is never what Coder runs: SWE-2 is
-        // (#11556).
-        ("devin-cli", _) => acp_client::devin::arguments(acp_client::devin::CODER_MODEL),
+        // Devin's account default is never what Coder asks for: the model
+        // the person configured for Devin is, else SWE-2 (#11556). Devin's
+        // server may still start on another model it allows; the rail
+        // names the one it reports.
+        ("devin-cli", _) => acp_client::devin::arguments(
+            &crate::agent_models::default_model(crate::agent_models::DEVIN)
+                .unwrap_or_else(|| acp_client::devin::CODER_MODEL.to_owned()),
+        ),
         // Grok Build runs the pick, else the default `grok models` names,
         // read before the session starts so it never opens on Grok's
         // built-in fallback model while its login refreshes (#11556).

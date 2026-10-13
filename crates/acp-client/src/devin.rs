@@ -126,6 +126,20 @@ pub fn config_path(variable: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBu
     Some(dir.join("devin").join("config.json"))
 }
 
+/// The model the person configured for Devin (`agent.model` in its
+/// `config.json`), when they set one.
+#[must_use]
+pub fn configured_model(config: &[u8]) -> Option<String> {
+    serde_json::from_slice::<Value>(config)
+        .ok()?
+        .get("agent")?
+        .get("model")?
+        .as_str()
+        .map(str::trim)
+        .filter(|model| !model.is_empty() && *model != DEFAULT_MODEL)
+        .map(str::to_owned)
+}
+
 /// The configuration a Coder session starts Devin with (`devin --config
 /// FILE acp`, #11508): the person's own (`person`, when it reads), with one
 /// more `PreToolUse` hook that runs `command` (Coder's hook bridge) before

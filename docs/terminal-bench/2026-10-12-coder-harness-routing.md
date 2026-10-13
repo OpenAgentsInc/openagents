@@ -67,7 +67,10 @@ them would use up their held-out status.
 Coder moves work to another harness only at a checkpoint: a turn that ended
 with failed checks, an error, a usage limit or a stall, or a message asking
 for the same thing again. System One (`escalate-v1`) judges whether to stop,
-try again or move, and `escalate-policy-v1` decides. `gym coder routing`
+try again or move, and `escalate-policy-v1` decides. Coder never sends a
+message the person didn't write (#11568): a retry is theirs to send, and a
+move puts the briefing for the stronger harness in the input, where they can
+send it or write their own. `gym coder routing`
 prices the loop first, with Claude Code taking over when its checks fail,
 on the three tasks the loop failed at least once:
 

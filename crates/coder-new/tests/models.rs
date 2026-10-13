@@ -31,8 +31,10 @@ fn text(app: &mut App, width: u16, height: u16) -> (String, bool) {
     (text, terminal.backend().cursor_visible())
 }
 
+/// Signed out with no key, /models still lists what runs here, with the
+/// sign-in as one extra line (owner, 2026-10-13), and never sends a chat.
 #[test]
-fn models_command_requires_an_enabled_provider_and_never_sends_a_chat() {
+fn models_command_lists_what_runs_here_signed_out_and_never_sends_a_chat() {
     let mut app = App::default();
     paste(&mut app, "/");
     assert!(!app.slash_hints().contains(&Command::Models));
@@ -40,14 +42,16 @@ fn models_command_requires_an_enabled_provider_and_never_sends_a_chat() {
     app.draft.cursor = 0;
     paste(&mut app, "/models");
     key(&mut app, KeyCode::Enter);
-    assert!(app.model_picker.is_none());
-    assert!(
-        app.notice
-            .as_deref()
-            .unwrap()
-            .contains("Sign in to OpenAgents or turn on OpenRouter BYOK")
+    let picker = app.model_picker.as_ref().expect("a picker, not a refusal");
+    let rows = picker.matching();
+    assert_eq!(rows[0].id, "auto");
+    assert_eq!(
+        picker.title.as_deref(),
+        Some(coder_new::SIGNED_OUT_MODELS_TITLE)
     );
+    assert!(app.notice.is_none());
     assert!(app.request.is_none());
+    app.model_picker = None;
     app.plugins.toggle_enabled();
     paste(&mut app, "/models");
     assert_eq!(app.slash_hints(), [Command::Models]);

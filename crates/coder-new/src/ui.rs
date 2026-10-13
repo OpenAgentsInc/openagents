@@ -936,22 +936,75 @@ fn rail_harness(app: &App) -> Option<String> {
             })
         }
         Pick::Harness(harness) => Some(harness_label(app, harness)),
-        Pick::Agent { id, name } => {
-            // The model the next turn runs: the pick in /models, else what
-            // the agent's session last reported, else Coder's default for
-            // it; in the agent's own words ("SWE-2 Medium", #11556).
-            let model = crate::agent_models::choice(&id)
-                .or_else(|| {
-                    crate::harness_pick::cached(&format!("agent:{id}"))
-                        .and_then(|entry| entry.model)
-                        .filter(|model| !model.is_empty())
-                })
-                .or_else(|| crate::agent_models::default_model(&id));
-            Some(match model {
-                Some(model) => format!("{name} ({})", crate::agent_models::display(&id, &model)),
-                None => name,
-            })
+        Pick::Agent { id, name } => Some(agent_rail_label(&id, &name)),
+    }
+}
+
+/// An ACP agent on the rail: its name and, in parentheses, the model its
+/// next turn runs, in the agent's own words ("Grok Build (Grok 4.7)",
+/// "Devin CLI (SWE-2 Medium)", #11556). That is the pick in /models, else
+/// the default its own CLI names (Grok's `grok models`, Oh My Pi's first
+/// chat model), never a model an earlier session reported, which may be
+/// stale; until the list is read the rail names none. Devin starts on the model its own server allows, so what its
+/// session last ran comes first there. A Clef model is never named: it
+/// can't chat, and Oh My Pi with nothing else reads "(no chat model)".
+pub(crate) fn agent_rail_label(id: &str, name: &str) -> String {
+    use crate::agent_models as agents;
+    agent_rail_from(
+        id,
+        name,
+        &AgentFacts {
+            choice: agents::choice(id),
+            listed: agents::listed(id).is_some(),
+            default: agents::default_model(id),
+            cached: crate::harness_pick::cached(&format!("agent:{id}"))
+                .and_then(|entry| entry.model),
+        },
+        |model| agents::display(id, model),
+    )
+}
+
+/// What the rail knows about an ACP agent's model.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct AgentFacts {
+    /// The person's pick in /models.
+    pub choice: Option<String>,
+    /// Whether the agent's own model list was read this run.
+    pub listed: bool,
+    /// The default Coder runs it on ([`crate::agent_models::default_model`]).
+    pub default: Option<String>,
+    /// The model its last session reported, from the harness facts.
+    pub cached: Option<String>,
+}
+
+/// [`agent_rail_label`] from its facts; `display` names a model.
+pub(crate) fn agent_rail_from(
+    id: &str,
+    name: &str,
+    facts: &AgentFacts,
+    display: impl Fn(&str) -> String,
+) -> String {
+    use crate::agent_models::{self as agents, is_clef};
+    let usable = |model: &Option<String>| {
+        model
+            .clone()
+            .filter(|model| !model.is_empty() && !is_clef(model))
+    };
+    let cached = usable(&facts.cached);
+    let model = usable(&facts.choice).or_else(|| {
+        if agents::lists_models(id) && id != agents::DEVIN {
+            // The list's default, once read. While it is read the rail
+            // names no model: a cached one may be stale (owner,
+            // 2026-10-13: the rail said Grok 4.6, then 4.7 ran).
+            usable(&facts.default)
+        } else {
+            cached.or_else(|| usable(&facts.default))
         }
+    });
+    match model {
+        Some(model) => format!("{name} ({})", display(&model)),
+        None if id == agents::OMP && facts.listed => format!("{name} (no chat model)"),
+        None => name.to_owned(),
     }
 }
 
@@ -4070,5 +4123,99 @@ mod account_copy_tests {
         assert_eq!(rows, expected);
         assert_eq!(rows[1].1, "OpenAgents CLI projects show finances");
         assert_eq!(rows[3].1, "Bash No such folder: missing");
+    }
+}
+
+#[cfg(test)]
+mod agent_rail_label_tests {
+    use super::{AgentFacts, agent_rail_from};
+
+    fn words(model: &str) -> String {
+        super::rail_model_name(model)
+    }
+
+    /// Grok Build's rail names the default `grok models` lists, not the
+    /// model an older session cached in the harness facts (owner,
+    /// 2026-10-13): Grok 4.7 runs, so the rail never says Grok 4.6.
+    #[test]
+    fn grok_names_its_listed_default_over_a_cached_model() {
+        let facts = AgentFacts {
+            listed: true,
+            default: Some("grok-4.7".into()),
+            cached: Some("grok-4.6".into()),
+            ..AgentFacts::default()
+        };
+        assert_eq!(
+            agent_rail_from("grok-build", "Grok Build", &facts, words),
+            "Grok Build (Grok 4.7)"
+        );
+        // Before `grok models` is read, no model rather than a stale one.
+        let reading = AgentFacts {
+            listed: false,
+            default: None,
+            ..facts.clone()
+        };
+        assert_eq!(
+            agent_rail_from("grok-build", "Grok Build", &reading, words),
+            "Grok Build"
+        );
+        // A pick in /models wins.
+        let picked = AgentFacts {
+            choice: Some("grok-4.5".into()),
+            ..facts
+        };
+        assert_eq!(
+            agent_rail_from("grok-build", "Grok Build", &picked, words),
+            "Grok Build (Grok 4.5)"
+        );
+    }
+
+    /// Oh My Pi with only Clef models never names one: it reads "(no chat
+    /// model)" once its list is read.
+    #[test]
+    fn oh_my_pi_without_a_chat_model_never_names_clef() {
+        let facts = AgentFacts {
+            listed: true,
+            default: None,
+            cached: Some("ollama/clef:latest".into()),
+            choice: Some("clef-flash:latest".into()),
+        };
+        let rail = agent_rail_from("oh-my-pi", "Oh My Pi", &facts, words);
+        assert_eq!(rail, "Oh My Pi (no chat model)");
+        assert!(!rail.to_lowercase().contains("clef"));
+        let reading = AgentFacts {
+            listed: false,
+            ..facts
+        };
+        assert_eq!(
+            agent_rail_from("oh-my-pi", "Oh My Pi", &reading, words),
+            "Oh My Pi"
+        );
+    }
+
+    /// Devin starts on the model its own server allows, so the model its
+    /// last session reported names the rail; the configured default only
+    /// before any session.
+    #[test]
+    fn devin_names_what_its_session_ran() {
+        let facts = AgentFacts {
+            listed: true,
+            default: Some("swe-2-high".into()),
+            cached: Some("swe-1-6-slow".into()),
+            ..AgentFacts::default()
+        };
+        let display = |model: &str| crate::agent_models::display("devin-cli", model);
+        assert_eq!(
+            agent_rail_from("devin-cli", "Devin CLI", &facts, display),
+            "Devin CLI (SWE-1.6 Slow)"
+        );
+        let fresh = AgentFacts {
+            cached: None,
+            ..facts
+        };
+        assert_eq!(
+            agent_rail_from("devin-cli", "Devin CLI", &fresh, display),
+            "Devin CLI (SWE-2 High)"
+        );
     }
 }

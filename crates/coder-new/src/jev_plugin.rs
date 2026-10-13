@@ -580,6 +580,7 @@ mod tests {
             briefing: None,
             gateway_model: None,
             cheap: None,
+            door: None,
             no_harness: None,
         };
         let client = settings.jev_client().unwrap().unwrap();
@@ -868,6 +869,7 @@ mod tests {
                 briefing: None,
                 gateway_model: None,
                 cheap: None,
+                door: None,
                 no_harness: None,
             };
             let result = if chat_tool {

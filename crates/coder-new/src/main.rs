@@ -283,6 +283,14 @@ fn run() -> io::Result<()> {
             app.reset_model_picks();
         }
     }
+    // Grok Build's, Devin's and Oh My Pi's model lists are read in the
+    // background too: the rail names the model a turn will run, from the
+    // agent's own CLI, not a fact cached by an earlier version.
+    for agent in app.plugins.bundled.acp_registered() {
+        if agent.enabled && coder_new::agent_models::lists_models(&agent.id) {
+            coder_new::agent_models::warm(&agent.id, &agent.program);
+        }
+    }
     // The desktop app's Agents panel lists this process's background
     // agents (#11180).
     if let Some(root) = &openagents_root {

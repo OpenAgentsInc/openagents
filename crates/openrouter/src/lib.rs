@@ -120,6 +120,19 @@ impl Dialect {
     /// `body` as this dialect's endpoint takes it.
     #[must_use]
     pub fn wire(self, mut body: Value) -> Value {
+        let Some(object) = body.as_object_mut() else {
+            return body;
+        };
+        // A stream asks for its usage the OpenAI way too: the OpenAgents
+        // gateway reports a streamed call's tokens only for
+        // `stream_options.include_usage`, not OpenRouter's `usage.include`
+        // (the harness gate, 2026-10-13: every Coder-loop call read 0).
+        if object.get("stream").and_then(Value::as_bool) == Some(true) {
+            object.insert(
+                "stream_options".into(),
+                serde_json::json!({"include_usage": true}),
+            );
+        }
         if self == Dialect::OpenRouter {
             return body;
         }
@@ -138,12 +151,6 @@ impl Dialect {
                 other => other,
             };
             object.insert("reasoning_effort".into(), Value::String(effort.into()));
-        }
-        if object.get("stream").and_then(Value::as_bool) == Some(true) {
-            object.insert(
-                "stream_options".into(),
-                serde_json::json!({"include_usage": true}),
-            );
         }
         if let Some(messages) = object.get_mut("messages").and_then(Value::as_array_mut) {
             for message in messages {
@@ -1935,7 +1942,15 @@ mod tests {
                 ]}
             ]
         });
-        assert_eq!(Dialect::OpenRouter.wire(body.clone()), body);
+        // OpenRouter's fields stay; a stream also asks for its usage the
+        // OpenAI way, which the OpenAgents gateway reads.
+        let openrouter = Dialect::OpenRouter.wire(body.clone());
+        assert_eq!(openrouter["usage"], body["usage"]);
+        assert_eq!(openrouter["provider"], body["provider"]);
+        assert_eq!(openrouter["stream_options"]["include_usage"], true);
+        let mut plain = openrouter.clone();
+        plain.as_object_mut().unwrap().remove("stream_options");
+        assert_eq!(plain, body);
         let wire = Dialect::Gemini.wire(body);
         assert!(wire.get("usage").is_none());
         assert!(wire.get("provider").is_none());

@@ -18,8 +18,9 @@
 //! admitted harness when there is one.
 //!
 //! A move carries a briefing ([`handoff`]): the task, what happened, the
-//! failing check and its output, and the files changed so far, as the next
-//! message. The transcript itself goes along the way a move to Claude Code
+//! failing check and its output, and the files changed so far. It waits in
+//! the input for the person to send: Coder never sends a message they
+//! didn't write (#11568), and a retry is theirs to send too. The transcript itself goes along the way a move to Claude Code
 //! already seeds it ([`crate::live::Chat::claude_resume`]). The person sees
 //! which agent took over in plain words. Each piece of work moves or retries
 //! at most once each, so a checkpoint never loops.
@@ -543,13 +544,20 @@ pub fn handoff(
     text
 }
 
-/// The message that tries the work again on the same harness.
+/// How long a checkpoint's notice stays on the rail.
+pub const RETRY_NOTICE_TTL: Duration = Duration::from_secs(12);
+
+/// What the rail says when the work could go again on the same harness.
+/// Coder never sends the retry itself: it isn't the person's message.
 #[must_use]
-pub fn retry(checkpoint: Checkpoint, evidence: &Evidence) -> String {
-    let mut text = format!("That did not work yet: {}.", checkpoint.words());
-    push_evidence(&mut text, evidence);
-    text.push_str("\n\nTry again: fix what went wrong, and check that it works.");
-    text
+pub fn retry_notice(checkpoint: Checkpoint) -> String {
+    let what = checkpoint.words();
+    let mut first = what.chars();
+    let what = first
+        .next()
+        .map(|c| c.to_uppercase().collect::<String>() + first.as_str())
+        .unwrap_or_default();
+    format!("{what}. Send a message to try again.")
 }
 
 fn push_evidence(text: &mut String, evidence: &Evidence) {
@@ -903,24 +911,28 @@ impl crate::App {
         let (decision, probabilities, ms, missing) = pending.decide();
         let from = pending.situation.current;
         self.record_escalation(&pending, decision, probabilities.clone(), ms, missing);
-        let message = match decision.call {
+        match decision.call {
             Call::Stay => {
                 // The work stays where it is; a plan goes on to its next
                 // part.
                 let error = matches!(pending.checkpoint, Checkpoint::Error | Checkpoint::Limit)
                     .then(|| pending.checkpoint.words());
                 self.advance_plan(error);
-                return;
             }
+            // Coder never sends a message the person didn't (owner,
+            // 2026-10-13): a retry is theirs to send.
             Call::Retry => {
                 self.live.retried = true;
-                self.routing_rule = Some(crate::routing_record::Rule::Retried);
-                retry(pending.checkpoint, &pending.evidence)
+                self.rail_notice(retry_notice(pending.checkpoint), RETRY_NOTICE_TTL);
             }
+            // A move puts the briefing in the input on the stronger
+            // harness, in plain sight; it goes only when the person
+            // sends it.
             Call::To(to) => {
                 self.live.moved = true;
+                let to_words = harness_words(self, to);
                 let text = handoff(
-                    &harness_words(self, to),
+                    &to_words,
                     &harness_words(self, from),
                     pending.checkpoint,
                     &pending.task,
@@ -928,35 +940,30 @@ impl crate::App {
                 );
                 self.live.runs_on = Some(to);
                 self.routing_rule = Some(crate::routing_record::Rule::Escalated);
-                text
+                self.routing_router = Some((
+                    probabilities,
+                    crate::router::Trace {
+                        question_set: QUESTION_SET.into(),
+                        policy: POLICY.into(),
+                        step: Some(decision.step.name()),
+                        follow_up: true,
+                        ms,
+                        missing: None,
+                    },
+                ));
+                if self.draft.text.trim().is_empty() {
+                    self.draft.cursor = text.len();
+                    self.draft.text = text;
+                }
+                self.rail_notice(
+                    format!(
+                        "{to_words} can take this over: {}. Its briefing is in the input; send it, or write your own.",
+                        pending.checkpoint.words()
+                    ),
+                    RETRY_NOTICE_TTL,
+                );
             }
-        };
-        self.routing_router = Some((
-            probabilities,
-            crate::router::Trace {
-                question_set: QUESTION_SET.into(),
-                policy: POLICY.into(),
-                step: Some(decision.step.name()),
-                follow_up: true,
-                ms,
-                missing: None,
-            },
-        ));
-        self.send_as_turn(message);
-    }
-
-    /// Sends `text` as the chat's next message on the harness already
-    /// chosen, keeping what the person was typing.
-    pub(crate) fn send_as_turn(&mut self, text: String) {
-        let typed = std::mem::take(&mut self.draft);
-        let typed_composer = std::mem::take(&mut self.composer);
-        self.draft.cursor = text.len();
-        self.draft.text = text;
-        self.route_settled = true;
-        self.submit_live();
-        self.route_settled = false;
-        self.draft = typed;
-        self.composer = typed_composer;
+        }
     }
 
     pub(crate) fn record_escalation(

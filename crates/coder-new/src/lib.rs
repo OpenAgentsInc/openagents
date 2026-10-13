@@ -145,6 +145,15 @@ pub const MODEL_LOCKED_HINT: &str = "Start a new chat (Ctrl+N) to use another mo
 /// first (#11556).
 pub const RAIL_NOTICE_TTL: std::time::Duration = std::time::Duration::from_secs(4);
 
+/// /models' title on Auto with no OpenAgents sign-in and no key: the
+/// sign-in is an extra line, never instead of the list.
+pub const SIGNED_OUT_MODELS_TITLE: &str =
+    "What runs here · Sign in with coder login for OpenAgents' models too";
+
+/// The plugin prefix of a row in the signed-out /models list: picking it
+/// runs the chat on that harness (`usable:codex`, `usable:agent:grok-build`).
+const USABLE_PICK: &str = "usable:";
+
 /// How long a finished delegation stays on the rail under the input.
 pub const RAIL_KEEP_SECONDS: u64 = 30;
 
@@ -1322,9 +1331,12 @@ impl App {
                         }
                     }
                 }
+                // A turn that failed still ran on the model it named at its
+                // start: the record says which (the harness gate read
+                // "auto" for OpenCode's refused Cursor model).
                 let (model, error) = match &result {
                     Ok(reply) => (Some(reply.model.clone()), None),
-                    Err(error) => (None, Some(error.clone())),
+                    Err(error) => (self.live.partial_model.clone(), Some(error.clone())),
                 };
                 for entry in &mut self.live.entries {
                     if let live::Entry::Tool {
@@ -1362,6 +1374,19 @@ impl App {
                                 text: reply.text,
                                 model,
                             });
+                        }
+                        // The chat's first Coder-loop answer fixes its door
+                        // (#11563), by who paid for it.
+                        if self.live.door.is_none()
+                            && self.live.runs_on == Some(harness_plugin::Harness::CoderLoop)
+                            && self.live.agent.is_none()
+                        {
+                            self.live.door = crate::route::door_of(harness_plugin::paid_by(
+                                harness_plugin::Harness::CoderLoop,
+                                false,
+                                &reply.model,
+                                self.byok_turn(),
+                            ));
                         }
                         self.live.partial.clear();
                         self.live.partial_model = None;
@@ -2444,6 +2469,9 @@ impl App {
         // A cheap answer runs on a cheap model unless the person chose
         // one (#11537).
         execution.cheap = self.cheap_turn();
+        // An Auto chat goes on through the door it answered through
+        // (#11563); a model the person picked keeps its own path.
+        execution.door = self.live.door;
         // No harness can run here (#11548): every call on the one model.
         execution.no_harness = self.no_harness_turn();
         self.no_harness_model = execution
@@ -2736,7 +2764,7 @@ impl App {
             self.rail_notice(format!("{name} picks its own model."), RAIL_NOTICE_TTL);
             return;
         }
-        if agent_models::listed(id).is_none()
+        if agent_models::listed(id).is_none_or(|models| models.is_empty())
             && let Some(agent) = self
                 .plugins
                 .bundled
@@ -2747,6 +2775,14 @@ impl App {
             let _ = agent_models::read(id, &agent.program);
         }
         let catalog = agent_models::catalog(id);
+        if catalog.is_empty() && agent_models::listed(id).is_some() {
+            // Oh My Pi read its list and nothing on it can chat.
+            self.rail_notice(
+                format!("{name} has no model here that can chat. Sign in to a provider in {name}, then try /models again."),
+                RAIL_NOTICE_TTL,
+            );
+            return;
+        }
         if catalog.is_empty() {
             self.rail_notice(
                 format!("{name} didn't list its models. Try /models again."),
@@ -2767,6 +2803,122 @@ impl App {
         );
     }
 
+    /// What /models lists on Auto with no OpenAgents sign-in and no key
+    /// (owner, 2026-10-13): Auto itself, each model on this computer's own
+    /// Claude and ChatGPT plans (picking one runs the chat on that
+    /// harness), OpenCode, and each agent that can take a turn.
+    fn usable_here(&self) -> Vec<models::Model> {
+        let row =
+            |plugin: String, id: &str, name: &str, description: &str, group: &str| models::Model {
+                plugin,
+                provider: group.to_owned(),
+                id: id.to_owned(),
+                name: name.to_owned(),
+                description: description.to_owned(),
+                context_length: None,
+                max_output_tokens: None,
+                efforts: Vec::new(),
+                default_effort: None,
+                supports_output_limit: false,
+                group: Some(group.to_owned()),
+            };
+        let here = harness_pick::local(self);
+        let mut rows = vec![row(
+            gateway_models::PICKER.to_owned(),
+            models::AUTO,
+            "Auto",
+            "Coder picks the agent and model for each message",
+            "Auto",
+        )];
+        let plan = |catalog: Vec<models::Model>, key: &str, group: &str| -> Vec<models::Model> {
+            catalog
+                .into_iter()
+                .map(|model| models::Model {
+                    plugin: format!("{USABLE_PICK}{key}"),
+                    group: Some(group.to_owned()),
+                    ..model
+                })
+                .collect()
+        };
+        if here.claude {
+            rows.extend(plan(
+                claude::catalog(),
+                "claude-code",
+                "Claude · your Claude plan",
+            ));
+        }
+        if here.codex {
+            rows.extend(plan(codex::catalog(), "codex", "Codex · your ChatGPT plan"));
+        }
+        if here.opencode {
+            rows.push(row(
+                format!("{USABLE_PICK}opencode"),
+                "opencode",
+                "OpenCode",
+                "OpenCode's own model",
+                "Harnesses",
+            ));
+        }
+        for (id, name) in &here.agents {
+            rows.push(row(
+                format!("{USABLE_PICK}agent:{id}"),
+                id,
+                name,
+                "Its own model",
+                "Harnesses",
+            ));
+        }
+        rows
+    }
+
+    /// A pick from [`Self::usable_here`]'s list: the chat's next message
+    /// runs on that harness, on the plan model picked.
+    fn pick_usable(&mut self, model: &models::Model, options: &models::GenerationOptions) {
+        let key = model.plugin.trim_start_matches(USABLE_PICK);
+        let (pick, chosen) = match key {
+            "claude-code" => (
+                harness_pick::Pick::Harness(harness_plugin::Harness::ClaudeCode),
+                claude::choose(&model.id, options.reasoning.clone()),
+            ),
+            "codex" => (
+                harness_pick::Pick::Harness(harness_plugin::Harness::Codex),
+                codex::choose(&model.id, options.reasoning.clone()),
+            ),
+            "opencode" => (
+                harness_pick::Pick::Harness(harness_plugin::Harness::OpenCode),
+                Ok(()),
+            ),
+            _ => (
+                harness_pick::Pick::Agent {
+                    id: key.trim_start_matches("agent:").to_owned(),
+                    name: model.name.clone(),
+                },
+                Ok(()),
+            ),
+        };
+        match chosen {
+            Ok(()) => {
+                self.model_picker = None;
+                self.note_unasked(&pick);
+                self.next_pick = Some(pick);
+                let what = match key {
+                    "claude-code" => format!("Claude ({})", model.name),
+                    "codex" => format!("Codex ({})", model.name),
+                    _ => model.name.clone(),
+                };
+                self.rail_notice(
+                    format!("Your next message runs on {what}."),
+                    RAIL_NOTICE_TTL,
+                );
+            }
+            Err(error) => {
+                if let Some(picker) = &mut self.model_picker {
+                    picker.error = Some(error);
+                }
+            }
+        }
+    }
+
     /// /models on the Coder loop, or on Auto's own loop under `title`.
     fn open_coder_models(&mut self, title: Option<&str>) {
         // The Coder loop: the OpenAgents gateway's models while this
@@ -2780,9 +2932,18 @@ impl App {
             .unwrap_or_default();
         let reachable = account.as_ref().is_some_and(gateway_models::reachable);
         if !self.plugins.enabled && !reachable {
-            self.notice = Some(
-                "Sign in to OpenAgents or turn on OpenRouter BYOK in /plugins to choose a model."
-                    .into(),
+            // Without a sign-in or a key, /models still lists what runs
+            // here: Auto, the models on this computer's own plans, and
+            // every other harness. The sign-in is one extra line.
+            self.model_picker = Some(
+                models::Picker::new(
+                    self.usable_here(),
+                    gateway_models::PICKER,
+                    models::AUTO,
+                    models::GenerationOptions::default(),
+                    false,
+                )
+                .styled(SIGNED_OUT_MODELS_TITLE, false),
             );
             return;
         }
@@ -3331,6 +3492,11 @@ impl App {
                                     }
                                 }
                             }
+                        }
+                        models::Action::Save(model, options)
+                            if model.plugin.starts_with(USABLE_PICK) =>
+                        {
+                            self.pick_usable(&model, &options);
                         }
                         models::Action::Save(model, _) if model.plugin.starts_with("agent:") => {
                             // An agent's own model (#11556): the next turn

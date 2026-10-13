@@ -92,6 +92,11 @@ pub struct Chat {
     /// The router judged the current piece of work a cheap answer
     /// (#11537): its Coder loop turns run on a cheap model.
     pub cheap: bool,
+    /// The door the chat's first Coder-loop answer came through (#11563):
+    /// later turns go only through it, so the chat keeps its model's
+    /// payer. When it can't answer, the turn says why instead of moving
+    /// to another payer.
+    pub(crate) door: Option<crate::route::Lane>,
     /// The ACP agent the person pinned this chat to with Shift+Tab
     /// (#11524), by its id: its turns run there instead of on a harness.
     pub agent: Option<String>,
@@ -262,7 +267,19 @@ impl Chat {
 
     /// Record one model call's usage against the entries it produces.
     pub fn round(&mut self, usage: crate::bundled_runtime::RoundUsage) {
-        self.rounds.push((self.entries.len(), usage));
+        // A call's usage that arrives after its reply was already written
+        // (a reply after thinking is written when the thinking ends)
+        // belongs to that reply, not to the next message.
+        let last = self.entries.len().checked_sub(1);
+        let index = match (last, self.entries.last()) {
+            (Some(last), Some(Entry::Assistant { .. }))
+                if self.partial.is_empty() && !self.rounds.iter().any(|(at, _)| *at == last) =>
+            {
+                last
+            }
+            _ => self.entries.len(),
+        };
+        self.rounds.push((index, usage));
     }
 
     /// Stamp entries that appeared since the last stamp, and time tool

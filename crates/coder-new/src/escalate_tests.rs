@@ -167,8 +167,10 @@ fn the_briefing_names_the_task_the_failing_check_and_the_files() {
     ));
     assert!(text.contains("The failing check: `cargo test -p demo`"));
     assert!(text.contains("Files changed so far: src/lib.rs."));
-    let again = retry(Checkpoint::FailedChecks, &found);
-    assert!(again.starts_with("That did not work yet: the checks still fail."));
+    assert_eq!(
+        retry_notice(Checkpoint::Error),
+        "The turn ended with an error. Send a message to try again."
+    );
     // A later passing run clears the failure.
     let mut fixed = failing_turn();
     fixed.push(tool(
@@ -309,6 +311,20 @@ fn failing_tests_on_the_coder_loop_move_to_claude_code_with_a_briefing() {
     app.poll_escalation();
     assert!(!app.escalation_pending());
     assert_eq!(app.live.runs_on, Some(Harness::ClaudeCode));
+    // Nothing goes without the person: the briefing waits in the input,
+    // and the rail says so.
+    assert!(app.request.is_none(), "Coder sent a message nobody wrote");
+    assert!(
+        app.draft
+            .text
+            .contains("is taking over from Coder: the checks still fail.")
+    );
+    assert!(
+        app.rail_notice_text()
+            .is_some_and(|notice| notice.contains("can take this over"))
+    );
+    app.submit_live();
+    app.poll_route();
     let Some(crate::live::Work::Claude {
         messages, session, ..
     }) = app.request.take().map(|request| request.kind)
@@ -390,6 +406,10 @@ fn a_usage_limit_moves_the_work_without_a_question() {
     );
     app.poll_escalation();
     assert_eq!(app.live.runs_on, Some(Harness::ClaudeCode));
+    assert!(app.request.is_none(), "Coder sent a message nobody wrote");
+    app.draft.text = "go on".into();
+    app.submit_live();
+    app.poll_route();
     assert!(matches!(
         app.request.as_ref().map(|request| &request.kind),
         Some(crate::live::Work::Claude { .. })
@@ -433,13 +453,14 @@ fn a_redo_moves_to_the_stronger_harness() {
     else {
         panic!("a Claude Code turn");
     };
-    assert!(
-        messages
-            .last()
-            .unwrap()
-            .content
-            .contains("is taking over from Coder: you asked for this again.")
+    // The person's own words go, never a briefing in their place.
+    assert_eq!(
+        messages.last().unwrap().content.trim(),
+        "explain why the build is slow"
     );
+    assert!(app.live.entries.iter().all(
+        |entry| !matches!(entry, crate::live::Entry::User(text) if text.contains("taking over"))
+    ));
     crate::router::set_test_judge(None);
     set_test_judge(None);
     crate::routing_record::record_to(None);
@@ -541,4 +562,52 @@ fn escalation_goes_to_and_from_codex() {
     assert_eq!(stronger(Codex, &[CoderLoop, Codex]), None);
     assert_eq!(stronger(ClaudeCode, &[ClaudeCode, CoderLoop, Codex]), None);
     assert_eq!(other(Codex, &[CoderLoop, Codex]), Some(CoderLoop));
+}
+
+/// A retry at a checkpoint is the person's to send: Coder adds no
+/// "That did not work yet… Try again" message as if they typed it
+/// (owner, 2026-10-13); the rail says what happened instead.
+#[test]
+fn a_retry_never_sends_a_message_the_person_did_not_write() {
+    let dir = record_dir("retry");
+    crate::harness_plugin::sign_in_claude(true);
+    crate::routing_record::record_to(Some((dir.clone(), facts())));
+    crate::router::set_test_judge(Some(Some(route(true, None))));
+    set_test_judge(Some(Some(Recorded {
+        action: map(&[("retry", 0.8), ("move", 0.1), ("continue", 0.1)]),
+        reason: map(&[
+            ("slip", 0.8),
+            ("beyond_agent", 0.1),
+            ("needs_person", 0.05),
+            ("outside", 0.05),
+        ]),
+    })));
+    let mut app = crate::App::default();
+    app.set_mode(crate::Mode::Live);
+    app.plugins.bundled.claude = true;
+    app.draft.text = "make the parser test pass".into();
+    app.submit_live();
+    app.poll_route();
+    end_turn(&mut app, failing_turn(), None);
+    let users_before = app.live.user_count();
+    app.poll_escalation();
+    crate::router::set_test_judge(None);
+    set_test_judge(None);
+    crate::routing_record::record_to(None);
+    crate::harness_plugin::sign_in_claude(false);
+    let moves = escalated(&dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(moves.len(), 1);
+    assert_eq!(moves[0].action, "retry");
+    assert!(app.request.is_none(), "Coder sent a message nobody wrote");
+    assert_eq!(app.live.user_count(), users_before);
+    assert!(app.live.entries.iter().all(|entry| !matches!(
+        entry,
+        crate::live::Entry::User(text) if text.contains("did not work yet")
+    )));
+    assert_eq!(
+        app.rail_notice_text(),
+        Some("The checks still fail. Send a message to try again.")
+    );
+    assert!(app.draft.text.is_empty());
 }

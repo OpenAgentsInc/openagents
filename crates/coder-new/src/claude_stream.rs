@@ -604,6 +604,81 @@ pub fn context_line(session: &str) -> Option<String> {
     })
 }
 
+/// Claude Code's model calls in one turn, for the export's `model_calls`
+/// (owner, 2026-10-13), as Codex and OpenCode report theirs: each API
+/// message of the main reply is one call, named by its model, with its
+/// usage and how long it took since the turn started or the tools before
+/// it returned.
+#[derive(Default)]
+pub(crate) struct ModelCalls {
+    id: Option<String>,
+    model: String,
+    usage: Value,
+    started: Option<std::time::Instant>,
+    first_token_ms: Option<u64>,
+}
+
+impl ModelCalls {
+    /// The turn started at `now`, unless a call already set its start.
+    pub(crate) fn mark(&mut self, now: std::time::Instant) {
+        if self.started.is_none() {
+            self.started = Some(now);
+        }
+    }
+
+    /// An assistant `message` of the main reply, at `now`: the call it
+    /// belongs to, and the call before it when that one ended.
+    pub(crate) fn see(
+        &mut self,
+        message: &Value,
+        now: std::time::Instant,
+    ) -> Option<crate::bundled_runtime::RoundUsage> {
+        let id = message["id"].as_str().filter(|id| !id.is_empty())?;
+        let ended = (self.id.as_deref() != Some(id))
+            .then(|| self.finish(now))
+            .flatten();
+        if self.id.is_none() {
+            self.id = Some(id.to_owned());
+            let started = *self.started.get_or_insert(now);
+            self.first_token_ms = Some(now.duration_since(started).as_millis() as u64);
+        }
+        if let Some(model) = message["model"].as_str().filter(|model| !model.is_empty()) {
+            model.clone_into(&mut self.model);
+        }
+        if message["usage"].is_object() {
+            self.usage = message["usage"].clone();
+        }
+        ended
+    }
+
+    /// The call running now, ended at `now`.
+    pub(crate) fn finish(
+        &mut self,
+        now: std::time::Instant,
+    ) -> Option<crate::bundled_runtime::RoundUsage> {
+        self.id.take()?;
+        let started = self.started.take().unwrap_or(now);
+        let usage = std::mem::take(&mut self.usage);
+        let field = |name: &str| usage[name].as_u64();
+        let cached = field("cache_read_input_tokens");
+        let written = field("cache_creation_input_tokens");
+        self.started = Some(now);
+        Some(crate::bundled_runtime::RoundUsage {
+            model: self.model.clone(),
+            prompt_tokens: field("input_tokens").unwrap_or(0)
+                + cached.unwrap_or(0)
+                + written.unwrap_or(0),
+            completion_tokens: field("output_tokens").unwrap_or(0),
+            reasoning_tokens: None,
+            cost: None,
+            milliseconds: (now.duration_since(started).as_millis() as u64).max(1),
+            first_token_ms: self.first_token_ms.take(),
+            cached_tokens: cached,
+            cache_write_tokens: written,
+        })
+    }
+}
+
 /// What a recorded stream's events leave in a transcript, as the terminal
 /// applies them, and the thinking pieces that arrived on the way.
 #[cfg(test)]
@@ -663,6 +738,46 @@ pub(crate) fn recorded(name: &str) -> Vec<Value> {
 
 #[cfg(test)]
 mod tests {
+    /// Each API message of Claude Code's reply is one model call with its
+    /// model, usage and a non-zero duration (owner's gate, 2026-10-13).
+    #[test]
+    fn each_api_message_is_one_model_call() {
+        use std::time::{Duration, Instant};
+        let start = Instant::now();
+        let mut calls = super::ModelCalls::default();
+        calls.mark(start);
+        let first = serde_json::json!({"id": "msg_1", "model": "claude-haiku-5-5",
+            "usage": {"input_tokens": 10, "cache_read_input_tokens": 100, "output_tokens": 5}});
+        assert!(
+            calls
+                .see(&first, start + Duration::from_millis(300))
+                .is_none()
+        );
+        // The same message again (another content block) is the same call.
+        assert!(
+            calls
+                .see(&first, start + Duration::from_millis(400))
+                .is_none()
+        );
+        let second = serde_json::json!({"id": "msg_2", "model": "claude-haiku-5-5",
+            "usage": {"input_tokens": 3, "output_tokens": 7}});
+        let ended = calls
+            .see(&second, start + Duration::from_millis(900))
+            .expect("the first call ended");
+        assert_eq!(ended.model, "claude-haiku-5-5");
+        assert_eq!(ended.prompt_tokens, 110);
+        assert_eq!(ended.completion_tokens, 5);
+        assert_eq!(ended.cached_tokens, Some(100));
+        assert_eq!(ended.milliseconds, 900);
+        assert_eq!(ended.first_token_ms, Some(300));
+        let last = calls
+            .finish(start + Duration::from_millis(1500))
+            .expect("the second call");
+        assert_eq!(last.completion_tokens, 7);
+        assert!(last.milliseconds > 0);
+        assert!(calls.finish(start + Duration::from_secs(2)).is_none());
+    }
+
     use super::*;
 
     /// #11552: Claude Code's thinking (stream-json, partial messages, as

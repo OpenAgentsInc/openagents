@@ -240,6 +240,14 @@ pub fn plan(execution: &ExecutionSettings, has_key: bool, favor: Favor) -> Plan 
             notes,
         };
     }
+    // A chat goes on through the door its first answer came through
+    // (#11563): the same payer, or the turn says why it can't.
+    if let Some(door) = execution.door {
+        return Plan {
+            lanes: vec![door],
+            notes,
+        };
+    }
     // A cheap answer tries the doors cheapest first, whatever the favor
     // says: the gateway's free allowance, the logins' cheapest models,
     // OpenCode's free model, OpenRouter's free router.
@@ -272,6 +280,20 @@ pub fn plan(execution: &ExecutionSettings, has_key: bool, favor: Favor) -> Plan 
         lanes.sort_by_key(|lane| std::cmp::Reverse(lane.score(favor)));
     }
     Plan { lanes, notes }
+}
+
+/// The door a Coder-loop answer paid by `payer` came through.
+#[must_use]
+pub fn door_of(payer: crate::harness_plugin::Payer) -> Option<Lane> {
+    use crate::harness_plugin::Payer;
+    match payer {
+        Payer::GatewayCredits => Some(Lane::Gateway),
+        Payer::ChatGptLogin | Payer::ClaudePlan => Some(Lane::Local),
+        Payer::OpenCode => Some(Lane::OpenCode),
+        Payer::OpenRouterKey => Some(Lane::OpenRouter),
+        Payer::GeminiKey => Some(Lane::GeminiKey),
+        _ => None,
+    }
 }
 
 /// The capacity book's live refusal for OpenCode, when another flow (a
@@ -447,6 +469,22 @@ mod tests {
             plan.lanes,
             [Lane::Gateway, Lane::Local, Lane::OpenCode, Lane::OpenRouter]
         );
+    }
+
+    /// #11563: a chat's later turns go only through the door its first
+    /// answer came through, so a used-up free allowance says so instead
+    /// of moving the chat to the person's ChatGPT plan (the harness gate,
+    /// 2026-10-13).
+    #[test]
+    fn a_chat_goes_on_through_the_door_it_answered_through() {
+        use crate::harness_plugin::Payer;
+        let mut settings = settings(&["opencode"]);
+        settings.door = door_of(Payer::GatewayCredits);
+        assert_eq!(plan(&settings, true, BALANCED).lanes, [Lane::Gateway]);
+        settings.door = door_of(Payer::ChatGptLogin);
+        assert_eq!(plan(&settings, true, BALANCED).lanes, [Lane::Local]);
+        assert_eq!(door_of(Payer::ClaudePlan), Some(Lane::Local));
+        assert_eq!(door_of(Payer::AgentLogin), None);
     }
 
     /// #11526: a gateway model picked in /models runs only on the

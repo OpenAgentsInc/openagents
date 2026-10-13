@@ -314,19 +314,53 @@ pub fn read(agent: &str, program: &Path) -> Option<Vec<AgentModel>> {
             .collect(),
         _ => parse_grok(&text),
     };
+    if agent == OMP && models.is_empty() {
+        // Read, and nothing here can chat: the rail says so.
+        LISTED
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(agent.to_owned(), Vec::new());
+    }
     keep(agent, models.clone());
     (!models.is_empty()).then_some(models)
 }
 
-/// [`read`] on a thread of its own, when the list isn't read yet.
+/// The agents whose list a thread is reading now.
+static WARMING: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// Whether `agent`'s list is being read on a thread now.
+#[must_use]
+pub fn warming(agent: &str) -> bool {
+    WARMING
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .iter()
+        .any(|known| known == agent)
+}
+
+/// [`read`] on a thread of its own, when the list isn't read yet and no
+/// thread reads it already.
 pub fn warm(agent: &str, program: &Path) {
     if !lists_models(agent) || listed(agent).is_some() || cfg!(test) {
         return;
+    }
+    {
+        let mut warming = WARMING
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if warming.iter().any(|known| known == agent) {
+            return;
+        }
+        warming.push(agent.to_owned());
     }
     let agent = agent.to_owned();
     let program = program.to_owned();
     std::thread::spawn(move || {
         let _ = read(&agent, &program);
+        WARMING
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .retain(|known| *known != agent);
     });
 }
 
@@ -396,11 +430,14 @@ pub fn forget(agent: &str) {
 }
 
 /// The model `agent` runs when the person picked none: Devin CLI's is
-/// Coder's SWE-2 default, Grok Build's the default its CLI names.
+/// the model the person configured for Devin (`agent.model`), else
+/// Coder's SWE-2 default; Grok Build's the default its CLI names.
 #[must_use]
 pub fn default_model(agent: &str) -> Option<String> {
     match agent {
-        DEVIN => Some(acp_client::devin::CODER_MODEL.to_owned()),
+        DEVIN => {
+            Some(devin_configured().unwrap_or_else(|| acp_client::devin::CODER_MODEL.to_owned()))
+        }
         GROK => listed(GROK)
             .and_then(|models| models.into_iter().find(|model| model.default))
             .map(|model| model.id),
@@ -410,6 +447,30 @@ pub fn default_model(agent: &str) -> Option<String> {
             .map(|model| model.id),
         _ => None,
     }
+}
+
+/// The model the person configured in Devin's own `config.json`. Never
+/// read in a unit test.
+#[cfg(not(test))]
+fn devin_configured() -> Option<String> {
+    let path = acp_client::devin::config_path(&|name| std::env::var_os(name))?;
+    acp_client::devin::configured_model(&std::fs::read(path).ok()?)
+}
+
+#[cfg(test)]
+fn devin_configured() -> Option<String> {
+    DEVIN_CONFIG.with(|config| config.borrow().clone())
+}
+
+#[cfg(test)]
+thread_local! {
+    static DEVIN_CONFIG: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// A unit test's configured Devin model.
+#[cfg(test)]
+pub fn set_devin_configured(model: Option<&str>) {
+    DEVIN_CONFIG.with(|config| *config.borrow_mut() = model.map(str::to_owned));
 }
 
 /// The model `agent`'s next turn runs: the pick, else [`default_model`].
@@ -582,6 +643,26 @@ Available models:
                 .iter()
                 .all(|model| model.plugin == "agent:devin-cli")
         );
+    }
+
+    /// Devin runs the model the person configured for it, else Coder's
+    /// SWE-2 Medium (owner, 2026-10-13).
+    #[test]
+    fn devin_runs_the_configured_model_else_swe_2_medium() {
+        forget(DEVIN);
+        set_devin_configured(Some("swe-2-high"));
+        assert_eq!(turn_model(DEVIN).as_deref(), Some("swe-2-high"));
+        set_devin_configured(None);
+        assert_eq!(turn_model(DEVIN).as_deref(), Some("swe-2-medium"));
+        assert_eq!(
+            acp_client::devin::configured_model(br#"{"agent":{"model":"swe-2-high"}}"#).as_deref(),
+            Some("swe-2-high")
+        );
+        assert_eq!(
+            acp_client::devin::configured_model(br#"{"agent":{}}"#),
+            None
+        );
+        assert_eq!(acp_client::devin::configured_model(b"not json"), None);
     }
 
     #[test]

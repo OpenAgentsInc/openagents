@@ -94,6 +94,9 @@ pub struct ExecutionSettings {
     /// A cheap answer (#11537): the turn runs on a cheap model, never Opus
     /// or Sonnet. `None` for every other turn.
     pub cheap: Option<crate::route::Cheap>,
+    /// The door this chat's earlier answers came through (#11563): the
+    /// turn goes only through it. `None` for a chat's first turn.
+    pub door: Option<crate::route::Lane>,
     /// No harness can run here (#11548): every call of the turn runs on
     /// the no-harness model (Gemini 4 Argon), through the gateway while
     /// signed in, then the person's own Gemini API key; never this
@@ -1269,6 +1272,7 @@ mod tests {
             briefing: None,
             gateway_model: None,
             cheap: None,
+            door: None,
             no_harness: None,
         }
     }

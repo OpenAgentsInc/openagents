@@ -926,6 +926,8 @@ pub(crate) async fn read_turn(
     let mut first_text_ms = None;
     let mut reported: Option<String> = None;
     let mut stream = crate::claude_stream::Stream::default();
+    // Each API message of the main reply, as the export's model calls.
+    let mut model_calls = crate::claude_stream::ModelCalls::default();
     // The checkout's changed files, so a Bash call that edits a file shows
     // its diff (`crate::shell_changes`).
     let mut changed: Option<crate::shell_changes::Snapshot> = None;
@@ -964,6 +966,7 @@ pub(crate) async fn read_turn(
             waiting = false;
             started = Instant::now();
         }
+        model_calls.mark(started);
         // The session id arrives with Claude Code's first message. It is
         // reported at once, so a turn stopped part way still leaves the chat
         // holding its session.
@@ -1041,6 +1044,9 @@ pub(crate) async fn read_turn(
                         emit(RuntimeEvent::Model(model.to_owned()));
                     }
                     stream.note_usage(&assistant.message);
+                    if let Some(call) = model_calls.see(&assistant.message, Instant::now()) {
+                        emit(RuntimeEvent::Usage(Box::new(call)));
+                    }
                 }
                 // Words that already arrived one by one are not shown again.
                 let streamed = parent.is_none() && stream.already_streamed(&assistant.message);
@@ -1123,6 +1129,10 @@ pub(crate) async fn read_turn(
                 }
             }
             Ok(SdkMessage::User(user)) => {
+                // Tools returned: the next call starts now.
+                if let Some(call) = model_calls.finish(Instant::now()) {
+                    emit(RuntimeEvent::Usage(Box::new(call)));
+                }
                 for block in user.message["content"]
                     .as_array()
                     .into_iter()
@@ -1195,6 +1205,9 @@ pub(crate) async fn read_turn(
                 for thought in stream.thoughts.end() {
                     emit(thought);
                 }
+                if let Some(call) = model_calls.finish(Instant::now()) {
+                    emit(RuntimeEvent::Usage(Box::new(call)));
+                }
                 if !keep {
                     let _ = query.kill().await;
                 }
@@ -1218,6 +1231,9 @@ pub(crate) async fn read_turn(
                 return Ok(done);
             }
             Ok(SdkMessage::Unknown { type_name, raw }) if type_name == "result" => {
+                if let Some(call) = model_calls.finish(Instant::now()) {
+                    emit(RuntimeEvent::Usage(Box::new(call)));
+                }
                 if !keep {
                     let _ = query.kill().await;
                 }
