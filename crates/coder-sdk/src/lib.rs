@@ -15,6 +15,7 @@
 pub mod acp;
 pub mod admission;
 pub mod bridge;
+pub mod checkout_guard;
 pub mod claude;
 pub mod codex;
 pub mod command;
@@ -25,6 +26,7 @@ pub mod delegation;
 pub mod digest;
 pub mod events;
 pub mod floors;
+pub mod git_guard;
 pub mod hooks;
 pub mod opencode;
 pub mod outcome;

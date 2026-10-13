@@ -119,13 +119,15 @@ pub fn held_hook() -> Hook {
 }
 
 /// The registry of a session nobody answers from inside (#11527, #11529):
-/// the held floors ([`held_hook`]) and, when given, the worktree `guard`.
+/// the held floors ([`held_hook`]) and, when given, the worktree `guard`
+/// with the shared-checkout fence on its root (#11532).
 #[must_use]
 pub fn held_registry(guard: Option<crate::worktree::Guard>) -> crate::Registry {
     let mut registry = crate::Registry::new();
-    // Two distinct built-in IDs: neither registration can fail.
+    // Distinct built-in IDs: no registration can fail.
     let _ = registry.register(held_hook());
     if let Some(guard) = guard {
+        let _ = registry.register(crate::checkout_guard::hook(guard.root.clone()));
         let _ = registry.register(guard.hook());
     }
     registry

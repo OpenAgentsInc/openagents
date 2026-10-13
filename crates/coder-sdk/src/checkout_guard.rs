@@ -4,10 +4,18 @@
 //! `chat/<session>`, and the checkout it was started from is read-only for
 //! it: Edit and Write refuse paths under it, and Run refuses commands that
 //! write there. Reads stay free.
+//!
+//! The fence lives in the Coder SDK (#11532) so every surface that starts a
+//! session registers the same one ([`hook`]): Coder chat, issue runs, the
+//! briefed agent and Coder One's delegations.
 
 use std::path::{Component, Path, PathBuf};
 
 use serde_json::Value;
+
+use crate::events::{Call, Event};
+use crate::outcome::{HookOutcome, Permission};
+use crate::registry::Hook;
 
 /// Guidance for a session that works in its own worktree.
 pub const INSTRUCTIONS: &str = "You work in your own git worktree on your own branch; the folder you were started from is another checkout that other sessions and the user may be editing, and it is read-only for you: Edit, Write and commands that write under it are refused. To land, commit on this branch and `git push origin HEAD:main`; if the push is rejected, `git fetch origin && git rebase origin/main` and push again. Never split hunks: this checkout has no one else's changes.\n";
@@ -498,20 +506,20 @@ pub fn tool_refusal(
 /// `cwd` is in ([`Boundary::around`]); with none, only [`crate::git_guard`]
 /// judges.
 #[must_use]
-pub fn sdk_hook(cwd: PathBuf) -> coder_sdk::Hook {
+pub fn hook(cwd: PathBuf) -> Hook {
     let boundary = Boundary::around(&cwd);
-    coder_sdk::Hook::floor(
+    Hook::floor(
         "worktree-fence",
-        coder_sdk::Event::PreToolUse,
-        coder_sdk::Permission::deny(
+        Event::PreToolUse,
+        Permission::deny(
             "Refused: Coder could not check whether this writes to the shared checkout. Work in your own worktree.",
         ),
-        move |call: &coder_sdk::Call| {
+        move |call: &Call| {
             let tool = call.tool.as_deref().unwrap_or_default();
             Ok(
                 match tool_refusal(boundary.as_ref(), tool, &call.input, &cwd) {
-                    Some(reason) => coder_sdk::HookOutcome::deny(&reason),
-                    None => coder_sdk::HookOutcome::none(),
+                    Some(reason) => HookOutcome::deny(&reason),
+                    None => HookOutcome::none(),
                 },
             )
         },

@@ -136,6 +136,10 @@ fn compose(setup: &Setup<'_>) -> Result<Composed, String> {
     let mut guard =
         coder_sdk::worktree::Guard::new(setup.worktree).offering(setup.allowed.to_vec());
     registry.register(coder_sdk::floors::held_hook())?;
+    // The shared-checkout fence (#11532): no git command that throws away
+    // uncommitted work, and no write to the checkout a Coder worktree came
+    // from.
+    registry.register(coder_sdk::checkout_guard::hook(setup.worktree.to_path_buf()))?;
 
     // System One hook 1 (#11486): noisy Bash output squeezed.
     if config["squeeze"].as_bool() == Some(true)
@@ -567,6 +571,7 @@ mod compose_tests {
                 step("Read", json!({"file_path": root.join("link/secret").display().to_string()})),
                 step("Write", json!({"file_path": "a.rs"})),
                 step("Edit", json!({"file_path": "src/lib.rs"})),
+                step("Bash", json!({"command": "git stash"})),
             ],
         });
         let session = coder_sdk::ScriptedSession::from_json(&recorded.to_string()).unwrap();
@@ -590,6 +595,11 @@ mod compose_tests {
             coder_sdk::Permission::deny(coder_sdk::worktree::NOT_OFFERED)
         );
         assert_eq!(permissions[3], coder_sdk::Permission::NoOpinion);
+        // The shared-checkout fence (#11532).
+        assert!(
+            matches!(&permissions[4], coder_sdk::Permission::Deny { reason } if reason.contains("git stash")),
+            "{permissions:?}"
+        );
     }
 }
 

@@ -11,7 +11,7 @@ pub mod attachments;
 pub mod brainstorm;
 pub mod bundled_runtime;
 pub mod bundled_settings;
-mod checkout_guard;
+use coder_sdk::checkout_guard;
 /// The mode that runs turns on this computer's Claude account login.
 pub mod claude;
 pub mod claude_ask;
@@ -47,7 +47,7 @@ mod fleet_app;
 pub mod floors;
 pub mod gate;
 pub mod gateway_models;
-mod git_guard;
+use coder_sdk::git_guard;
 pub mod github_tool;
 pub mod harness;
 pub mod harness_plugin;

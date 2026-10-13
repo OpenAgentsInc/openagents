@@ -16,7 +16,7 @@ use coder_sdk::{Budget, Registry};
 pub fn registry(cwd: &Path, full: bool) -> Registry {
     let mut registry = Registry::new();
     let mut hooks = vec![
-        crate::checkout_guard::sdk_hook(cwd.to_owned()),
+        crate::checkout_guard::hook(cwd.to_owned()),
         crate::floors::sdk_hook(cwd.to_owned()),
     ];
     if full {
@@ -471,7 +471,7 @@ pub fn codex_registry(cwd: &Path) -> (Registry, Vec<String>) {
 pub fn opencode_registry(cwd: &Path) -> (Registry, Vec<String>) {
     let mut registry = Registry::new();
     let hooks = [
-        crate::checkout_guard::sdk_hook(cwd.to_owned()),
+        crate::checkout_guard::hook(cwd.to_owned()),
         held_floors(cwd.to_owned()),
     ];
     for hook in hooks {
