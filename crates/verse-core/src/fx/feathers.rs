@@ -94,6 +94,10 @@ pub struct Fan {
     pub droop: f32,
     /// The eyespots' luminance, cd/m².
     pub luminance: [f32; 3],
+    /// The vanes' and shafts' share of that luminance, 0 to 1: lower keeps
+    /// a dense fan from washing into one sheet of light, so its eyespots
+    /// read as rows of bright points.
+    pub vane: f32,
     /// How far the fan has opened, 0 folded to 1 fully fanned.
     pub open: f32,
     /// Seconds, for a slow shimmer.
@@ -116,7 +120,10 @@ impl Fan {
             let k = row as f32 / rows as f32;
             let r = self.radius * (1.0 - 0.72 * k);
             let n = ((self.feathers as f32 * weight / total).round() as u32).max(3);
-            let length = r * 0.96;
+            // Outer feathers are no longer than about half the fan's radius, so
+            // their eyespots stay apart along the arc; inner ones reach the
+            // center.
+            let length = (r * 0.96).min(self.radius * 0.5);
             for i in 0..n {
                 // Rows interleave, so inner eyespots sit between outer ones.
                 let u = (i as f32 + 0.5 + 0.5 * (row % 2) as f32) / (n as f32 + 0.5);
@@ -128,8 +135,21 @@ impl Fan {
                 let shimmer = 0.85 + 0.15 * (self.time * 1.7 + seed).sin();
                 let eye = self.center + dir * r * (0.35 + 0.65 * open);
                 let lum = self.luminance.map(|c| c * shimmer * (1.0 - 0.2 * k));
-                out.push(feather(eye, -dir, length * (0.35 + 0.65 * open), lum, 1.0));
-                out.push(dot(eye, length * 0.06, lum.map(|c| c * 0.08), 1.0));
+                let vane = self.vane.clamp(0.0, 1.0);
+                out.push(feather(
+                    eye,
+                    -dir,
+                    length * (0.35 + 0.65 * open),
+                    lum.map(|c| c * vane),
+                    1.0,
+                ));
+                // The eyespot burns brighter than its vane.
+                out.push(dot(
+                    eye,
+                    length * 0.1,
+                    lum.map(|c| c * (1.0 - vane) * 3.0),
+                    1.0,
+                ));
             }
         }
         out
@@ -153,6 +173,7 @@ mod tests {
             feathers: 100,
             droop: 0.1,
             luminance: [4.0; 3],
+            vane: 0.5,
             open: 1.0,
             time: 0.0,
         };

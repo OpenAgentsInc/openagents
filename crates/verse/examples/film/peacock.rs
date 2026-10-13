@@ -253,10 +253,11 @@ impl Set {
                         // Leaning back, so the fan reads wider than tall.
                         up: Vec3::new(0.0, 0.78, -0.62),
                         radius: TAIL_RADIUS,
-                        rows: 8,
-                        feathers: 128,
+                        rows: 9,
+                        feathers: 175,
                         droop: 0.16,
-                        luminance: [1.45, 1.7, 2.15],
+                        luminance: [1.6, 1.85, 2.3],
+                        vane: 0.42,
                         open,
                         time: t,
                     }
@@ -275,6 +276,17 @@ impl Set {
                     [0.12, 0.16, 0.24],
                     1.0,
                 ));
+                // A luminous haze filling the fan behind the feathers.
+                for i in 0..9 {
+                    let theta = std::f32::consts::PI * (i as f32 + 0.5) / 9.0;
+                    let dir = Vec3::new(theta.cos(), theta.sin() * 0.78, -theta.sin() * 0.62);
+                    sprites.push(feathers::dot(
+                        TAIL_CENTER + dir * TAIL_RADIUS * 0.62 - Vec3::Z * 0.4,
+                        TAIL_RADIUS * 0.55,
+                        [0.1, 0.14, 0.22],
+                        1.0,
+                    ));
+                }
                 if let Some((beast, scene)) = &self.alice {
                     mesh.figure = Some(Figure {
                         scene: scene.clone(),

@@ -27,3 +27,16 @@ top), and `~/Downloads/draconia-peacock-progress.png` (one row per version).
   explorer outfit recolored (a staff on her back, no skirt or tights), standing
   from the start rather than rising from a crouch, with no hair lift; the face
   close-up at 1.5 s is our overexposed Alice, not the reference's eyes.
+
+### v2, 2026-10-13
+
+- **Gap fixed:** the tail washed into one white sheet. `feathers::Fan` now
+  caps outer feathers at half the fan's radius, so eyespots stay apart along
+  each arc, and takes a `vane` share: vanes and shafts burn at 0.42 of the
+  eyespots' light, with a bright point on every eyespot. The fan has 175
+  feathers in 9 rows over a faint haze.
+- **Now matches:** crisp rows of white eyespots on darker gaps, with shafts
+  converging on a white-hot core behind her silhouette, as in the reference.
+- **Still open:** curved P1 feathers and the rainbow fringe; the haze between
+  the reference's eyespots is brighter and bluer; her outfit, the rise from a
+  crouch, and the lifting hair.
