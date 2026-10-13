@@ -10,6 +10,9 @@ fn main() {
         );
         return;
     }
+    if args.first().is_some_and(|a| a == squeeze::CODER_SUBCOMMAND) {
+        std::process::exit(squeeze::main(&args[1..]));
+    }
     if args.first().is_some_and(|a| a == "--runtime-manifest") {
         println!(
             "{}",

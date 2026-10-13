@@ -2402,6 +2402,7 @@ dependencies = [
  "claude_agent_sdk",
  "futures",
  "serde_json",
+ "squeeze",
  "tempfile",
  "tokio",
 ]
@@ -3656,6 +3657,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "squeeze",
  "supervise",
  "tempfile",
  "tokio",
@@ -11010,6 +11012,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "squeeze",
  "supervise",
  "tempfile",
  "tenancy",
@@ -14790,6 +14793,17 @@ dependencies = [
  "nom 7.1.3",
  "serde",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "squeeze"
+version = "0.1.0"
+dependencies = [
+ "claude_agent_sdk",
+ "jev",
+ "serde_json",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]

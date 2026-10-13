@@ -130,6 +130,44 @@ decides when it can, the Decisions API only when the rule is unsure.
    steer followed). Without the join no threshold above can be calibrated
    (the calibration memo's open gap).
 
+## Status
+
+**Idea 1 is built** (#11486, `crates/squeeze`).
+
+**What it does.** A `PreToolUse` hook on `Bash` rewrites only the noisy segments of a command (build, test and lint programs from a declared table), so `cd x && cargo test` keeps its `cd` in the agent's shell. It leaves alone:
+
+- commands with pipes, redirections, subshells or command substitution;
+- background jobs.
+
+The hook answers with `updatedInput` only. It never gives a permission decision, so the floors and the session's own rules still decide whether the command runs. It works in default permission mode without auto-approving.
+
+**The squeezer.**
+- It runs the command in bash and keeps the exit status.
+- Output of up to 150 lines passes unchanged.
+- Longer output keeps 8 head lines, 40 tail lines, and up to 100 lines of middle chunks.
+- Chunks flagged by the rule are shown as their flagged lines with two lines of context, and no API call is made.
+- When too many or no chunks are flagged, one Decisions API call rates up to 64 chunks and keeps those at p ≥ 0.5.
+- A failed call falls back to the rule.
+- A failed squeeze shows the output unchanged.
+
+**Where it's installed:**
+- **Coder's Claude Code chat** (`coder-new`, full access), as the `coder-squeeze` subcommand of `coder`, `openagents` and `coder-cloud-runtime`.
+- **The briefed agent**, with `"squeeze": true` and `Bash` in `tools`. Full outputs go to the run's `squeeze/` directory, which `Read` may open, and decisions to `squeeze/decisions.jsonl`.
+
+**Settings:**
+- `CODER_SQUEEZE=off` turns it off.
+- `CODER_SQUEEZE_DIR` sets where full outputs are saved.
+- `CODER_SQUEEZE_LOG` sets the decision log (default `~/.openagents/decisions/squeeze.jsonl`).
+
+**Measured on 2026-10-13** with a 400-test crate:
+
+| Case | Lines in | Lines out | How | Notes |
+| --- | --- | --- | --- | --- |
+| 2 failures | 430 | 58 | Rule | No API call. |
+| 40 failures | 735 | 123 | Decision | Clef (`clef-flash`) rated 54 chunks in 854 ms. |
+
+In a live Claude Sonnet session, the briefed agent ran plain `cargo test` and saw the 58-line squeezed output. It named both failures with the right values, in 2 turns. The A/B lever is `squeeze` on the briefed-ab set once Bash is in the briefed agent's tools. Codex is not wired yet; its command hook needs `updatedInput` support checked first.
+
 ## Constraints
 
 - **Latency.** A decision takes about 0.2 to 0.6 s. On every one of ~23

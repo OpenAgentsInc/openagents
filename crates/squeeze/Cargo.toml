@@ -1,0 +1,19 @@
+[package]
+name = "squeeze"
+description = "System One hook 1 (#11486): rewrite a noisy shell command so its output enters an agent's history small, keeping the chunks a rule or the Decisions API says decide the next step"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+claude_agent_sdk = { path = "../claude_agent_sdk" }
+jev = { path = "../jev" }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "time"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

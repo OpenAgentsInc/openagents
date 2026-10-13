@@ -71,6 +71,14 @@ fn run() -> io::Result<()> {
         coder_new::floors::hook_main();
         return Ok(());
     }
+    // The squeezer a Claude Code session's Bash runs a noisy command
+    // through (#11486).
+    if args
+        .first()
+        .is_some_and(|command| command == squeeze::CODER_SUBCOMMAND)
+    {
+        std::process::exit(squeeze::main(&args[1..]));
+    }
     if args.first().is_some_and(|command| command == "trace") {
         return trace_command(&args[1..]);
     }

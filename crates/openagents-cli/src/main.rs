@@ -383,6 +383,9 @@ fn main() -> ExitCode {
             coder_new::floors::hook_main();
             0
         }
+        // The squeezer a Claude Code session under Coder runs a noisy
+        // command through (#11486).
+        squeeze::CODER_SUBCOMMAND => u8::try_from(squeeze::main(&rest).clamp(0, 255)).unwrap_or(1),
         "help" | "--help" | "-h" => {
             println!("{USAGE}");
             0

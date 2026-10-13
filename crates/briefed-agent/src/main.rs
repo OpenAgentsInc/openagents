@@ -19,6 +19,12 @@
 //!   config sets `inherit_api_key` (the person's own API key is the run's
 //!   credential).
 //!
+//! - **Squeeze** (#11486): with `squeeze: true` and `Bash` in `tools`, a
+//!   noisy build or test command runs through this binary's `--squeeze`
+//!   mode, so its output enters the history small; the full output goes to
+//!   the run's `squeeze` directory (`squeeze_dir`), which `Read` may open,
+//!   and each decision to its `decisions.jsonl`.
+//!
 //! Other engines run the same briefing and checks behind the same summary
 //! (#11308): `engine: "codex"` (Codex CLI, `codex.rs`), `engine:
 //! "opencode"` and `engine: "gemini"` (OpenCode, Gemini on Vertex through
@@ -161,6 +167,11 @@ struct Ledger {
 
 async fn run() -> Result<(), String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if let [flag, command] = args.as_slice()
+        && flag == "--squeeze"
+    {
+        std::process::exit(squeeze::main(std::slice::from_ref(command)));
+    }
     let (serve, path) = match args.as_slice() {
         [flag, path] if flag == "--serve" => (true, path.clone()),
         [path] => (false, path.clone()),
@@ -264,13 +275,55 @@ async fn run() -> Result<(), String> {
         .map(|&name| name.to_owned())
         .collect();
 
+    // System One hook 1 (#11486): noisy Bash output squeezed.
+    let mut spill: Option<PathBuf> = None;
+    if config["squeeze"].as_bool() == Some(true)
+        && tools.iter().any(|tool| tool == "Bash")
+        && let Ok(this) = std::env::current_exe()
+    {
+        let dir = config["squeeze_dir"].as_str().map_or_else(
+            || {
+                Path::new(&summary_path)
+                    .parent()
+                    .unwrap_or(Path::new("."))
+                    .join("squeeze")
+            },
+            PathBuf::from,
+        );
+        std::fs::create_dir_all(&dir).map_err(|error| format!("{}: {error}", dir.display()))?;
+        let dir = dir.canonicalize().unwrap_or(dir);
+        let env = options.env.get_or_insert_with(HashMap::new);
+        env.insert(squeeze::DIR_VAR.to_owned(), dir.display().to_string());
+        env.insert(
+            squeeze::LOG_VAR.to_owned(),
+            dir.join("decisions.jsonl").display().to_string(),
+        );
+        options = options.hook(
+            claude_agent_sdk::HookEvent::PreToolUse,
+            squeeze::claude_hook(squeeze::invoker(&this, &["--squeeze"])),
+        );
+        spill = Some(dir);
+    }
+
     let ledger: Shared<Ledger> = Arc::default();
     let handler = {
         let ledger = ledger.clone();
         let root = worktree.clone();
         let allowed = allowed.clone();
+        let spill = spill.clone();
         claude_agent_sdk::permission_handler(move |request| {
-            let decision = decide(&root, &allowed, &ledger, &request.tool_name, &request.input);
+            // A squeezed command's full output may be read.
+            let full_output = spill.as_ref().is_some_and(|dir| {
+                request.tool_name == "Read"
+                    && request.input["file_path"]
+                        .as_str()
+                        .is_some_and(|path| resolve(dir, path).starts_with(dir))
+            });
+            let decision = if full_output {
+                PermissionResult::allow(request.input.clone())
+            } else {
+                decide(&root, &allowed, &ledger, &request.tool_name, &request.input)
+            };
             async move { Ok::<_, claude_agent_sdk::Error>(decision) }
         })
     };
