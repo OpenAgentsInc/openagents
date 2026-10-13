@@ -16,7 +16,8 @@ million tokens**.
 
 Off-the-shelf open-source JAX stack (SGL-JAX, Google's Pallas kernels), no
 tuning yet. Prompts 1k–32k tokens, batches 1–32; numbers are the steady
-state at 4k-token prompts, batch 8 or more.
+state at 4k-token prompts, batch 8. int8 = int8 weights and activations
+(speed only; its accuracy on Clef is the next step).
 
 | Chip | Model | Chips | Tokens/s per chip | Spot $/M tokens | On-demand $/M |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -24,8 +25,9 @@ state at 4k-token prompts, batch 8 or more.
 | v6e | Clef-Flash 9B, bf16 | 1 | 25,900 | $0.0063 | $0.029 |
 | v6e | Clef 27B, int8 | 4 | 6,400 | $0.025 | $0.12 |
 | v6e | Clef 27B, bf16 | 4 | 5,360 | $0.029 | $0.14 |
-| v5p | Clef-Flash 9B | 1 | 19,700 | $0.013 | $0.059 |
-| v5p | Clef 27B | 1 | 6,230 | $0.042 | $0.19 |
+| v5p | Clef-Flash 9B, int8 | 1 | 29,200 | $0.0082 | $0.040 |
+| v5p | Clef 27B, int8 | 1 | 9,800 | $0.024 | $0.12 |
+| v5p | Clef 27B, bf16 | 1 | 6,230 | $0.038 | $0.19 |
 | v5e | Clef-Flash 9B | 8 | 4,000 | $0.025 | $0.083 |
 | v5e | Clef 27B | 8 | 1,370 | $0.073 | $0.24 |
 

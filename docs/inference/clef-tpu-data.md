@@ -1065,26 +1065,26 @@ State-pool dtype over chunked prefill (v6e, `cd-v6e1-ane1b-d/gdn-state-long-v6e-
 | VM | zone | type | mode | $/h | hours | $ so far | last state |
 | --- | --- | --- | --- | ---: | ---: | ---: | --- |
 | cd-v5e8-ue1c-s | us-east1-c | v5litepod-8 | spot | 2.87 | 1.06 | 3.05 | DELETING |
-| cd-v5e8-ue1c-s2 | us-east1-c | v5litepod-8 | spot | 2.87 | 1.35 | 3.89 | READY (held) |
+| cd-v5e8-ue1c-s2 | us-east1-c | v5litepod-8 | spot | 2.87 | 1.94 | 5.59 | READY (held) |
 | cd-v5e8-us1a-s | us-south1-a | v5litepod-8 | spot | 6.33 | 0.02 | 0.11 | DELETING |
 | cd-v5e8-uw1c-s | us-west1-c | v5litepod-8 | spot | 2.87 | 1.08 | 3.11 | DELETING |
 | cd-v5e8-uw4a-s | us-west4-a | v5litepod-8 | spot | 4.15 | 0.98 | 4.05 | DELETING |
 | cd-v5p8-ew4b-s | europe-west4-b | v5p-8 | spot | 4.72 | 0.72 | 3.39 | DELETING |
-| cd-v5p8-ue5a-s | us-east5-a | v5p-8 | spot | 3.44 | 2.55 | 8.78 | READY (held) |
-| cd-v6e1-ane1b-d | asia-northeast1-b | v6e-1 | on-demand | 3.24 | 1.47 | 4.75 | READY (held) |
+| cd-v5p8-ue5a-s | us-east5-a | v5p-8 | spot | 3.44 | 3.14 | 10.82 | READY (held) |
+| cd-v6e1-ane1b-d | asia-northeast1-b | v6e-1 | on-demand | 3.24 | 2.06 | 6.67 | READY (held) |
 | cd-v6e1-ew4a-s | europe-west4-a | v6e-1 | spot | 1.78 | 0.81 | 1.44 | DELETING |
 | cd-v6e1-uc1b-s | us-central1-b | v6e-1 | spot | 0.58 | 0.18 | 0.10 | DELETING |
 | cq-v6e4-uc1b-s | us-central1-b | v6e-4 | spot | 2.34 | 0.14 | 0.33 | DELETING |
 | cq-v6e4-ue1d-s | us-east1-d | v6e-4 | spot | 2.34 | 0.37 | 0.87 | DELETING |
 | cq-v6e8-ue1d-s | us-east1-d | v6e-8 | spot | 4.67 | 0.46 | 2.15 | DELETING |
 
-Total so far $36.03; current burn $9.56/h = $229/day (this campaign only)
+Total so far $41.69; current burn $9.56/h = $229/day (this campaign only)
 
 ## Capacity log
 
 Every create attempt from this campaign (and the coordinator's on-demand probe just before it). `resourceName` rows are duplicate-name retries of an attempt already in flight.
 
-Totals: v5e-1 on-demand: 3 created / 4 failed; v5litepod-8 spot: 6 created / 0 failed; v5p-8 spot: 2 created / 1 failed; v6e-1 on-demand: 2 created / 15 failed; v6e-1 spot: 2 created / 20 failed; v6e-4 on-demand: 0 created / 9 failed; v6e-4 spot: 0 created / 28 failed; v6e-8 spot: 0 created / 27 failed
+Totals: v5e-1 on-demand: 3 created / 4 failed; v5litepod-8 spot: 6 created / 0 failed; v5p-8 spot: 2 created / 1 failed; v6e-1 on-demand: 2 created / 15 failed; v6e-1 spot: 2 created / 21 failed; v6e-4 on-demand: 0 created / 9 failed; v6e-4 spot: 0 created / 32 failed; v6e-8 spot: 0 created / 28 failed
 
 | time (UTC) | zone | type | mode | result | EID |
 | --- | --- | --- | --- | --- | --- |
@@ -1122,6 +1122,7 @@ Totals: v5e-1 on-demand: 3 created / 4 failed; v5litepod-8 spot: 6 created / 0 f
 | 2026-10-13 00:33 | us-central1-b | v6e-1 | spot | created |  |
 | 2026-10-13 01:18 | us-central1-b | v6e-1 | spot | no more capacity | 0xc2ce47616016dee7 |
 | 2026-10-13 01:27 | us-central1-b | v6e-1 | spot | no more capacity | 0x1cd41da4442554ee |
+| 2026-10-13 03:37 | us-central1-b | v6e-1 | spot | gcloud feedback To check gcloud for common problems, please  |  |
 | 2026-10-13 00:25 | us-central1-c | v6e-1 | spot | insufficient capacity | 0xeb95f238611b12b2 |
 | 2026-10-13 01:30 | us-central1-c | v6e-1 | on-demand | insufficient capacity | 0xf1729f6a7534c61e |
 | 2026-10-12 23:2x | us-east1-d | v6e-1 | on-demand | permission denied (accelerator type) | 0x454746e6c3bafdd2 |
@@ -1150,6 +1151,7 @@ Totals: v5e-1 on-demand: 3 created / 4 failed; v5litepod-8 spot: 6 created / 0 f
 | 2026-10-13 00:26 | asia-southeast1-b | v6e-4 | spot | no more capacity | 0xd18fa4abeed27ccb |
 | 2026-10-13 01:29 | asia-southeast1-b | v6e-4 | on-demand | no more capacity | 0x89f9ccd3f2f3b718 |
 | 2026-10-13 01:32 | asia-southeast1-b | v6e-4 | spot | no more capacity | 0x6fc4f6e982312962 |
+| 2026-10-13 03:13 | asia-southeast1-b | v6e-4 | spot | no more capacity | 0x1dabe3de8db4a6d7 |
 | 2026-10-13 00:30 | europe-west4-a | v6e-4 | spot | no more capacity | 0x1913215561a09983 |
 | 2026-10-13 00:25 | southamerica-east1-c | v6e-4 | spot | insufficient capacity | 0xa3d2517ecef288ff |
 | 2026-10-13 00:26 | southamerica-west1-a | v6e-4 | spot | no more capacity | 0x7ccc0fe62ba408c7 |
@@ -1160,6 +1162,7 @@ Totals: v5e-1 on-demand: 3 created / 4 failed; v5litepod-8 spot: 6 created / 0 f
 | 2026-10-13 01:18 | us-central1-b | v6e-4 | spot | no more capacity | 0xba72d3b4d501928e |
 | 2026-10-13 01:27 | us-central1-b | v6e-4 | spot | no more capacity | 0x60870da743bb4952 |
 | 2026-10-13 01:42 | us-central1-b | v6e-4 | spot | no more capacity | 0x8db21e388068a77f |
+| 2026-10-13 03:37 | us-central1-b | v6e-4 | spot | gcloud feedback To check gcloud for common problems, please  |  |
 | 2026-10-13 00:25 | us-central1-c | v6e-4 | spot | insufficient capacity | 0xa082da3b508ef7fe |
 | 2026-10-13 01:28 | us-central1-c | v6e-4 | on-demand | insufficient capacity | 0x7d12727420f158d2 |
 | 2026-10-13 02:48 | us-central1-c | v6e-4 | spot | insufficient capacity | 0x8868b798cf02e6f6 |
@@ -1178,8 +1181,10 @@ Totals: v5e-1 on-demand: 3 created / 4 failed; v5litepod-8 spot: 6 created / 0 f
 | 2026-10-13 03:00 | us-south1-a | v6e-4 | spot | insufficient capacity | 0x84385a570f4d18f0 |
 | 2026-10-13 00:26 | us-south1-c | v6e-4 | spot | internal error |  |
 | 2026-10-13 01:28 | us-south1-c | v6e-4 | on-demand | insufficient capacity | 0x8ddc5d1fe9cac88c |
+| 2026-10-13 03:05 | us-south1-c | v6e-4 | spot | internal error |  |
 | 2026-10-13 00:25 | us-west1-c | v6e-4 | spot | insufficient capacity | 0xe22fba8967f13d3 |
 | 2026-10-13 01:28 | us-west1-c | v6e-4 | on-demand | insufficient capacity | 0x8a148483e2238be3 |
+| 2026-10-13 03:08 | us-west1-c | v6e-4 | spot | insufficient capacity | 0x62b9e62d4c4a7d55 |
 | 2026-10-13 00:25 | asia-east1-c | v6e-8 | spot | insufficient capacity | 0x2314cab1f487c8fb |
 | 2026-10-13 00:26 | asia-northeast1-b | v6e-8 | spot | no more capacity | 0xcbdd16acab379d9d |
 | 2026-10-13 00:26 | asia-south1-b | v6e-8 | spot | no more capacity | 0x7973d164ebfa9f04 |
@@ -1205,6 +1210,7 @@ Totals: v5e-1 on-demand: 3 created / 4 failed; v5litepod-8 spot: 6 created / 0 f
 | 2026-10-13 02:00 | us-south1-a | v6e-8 | spot | insufficient capacity | 0x8882c54571ac6527 |
 | 2026-10-13 00:26 | us-south1-c | v6e-8 | spot | internal error |  |
 | 2026-10-13 01:48 | us-south1-c | v6e-8 | spot | internal error |  |
+| 2026-10-13 03:37 | us-south1-c | v6e-8 | spot | gcloud feedback To check gcloud for common problems, please  |  |
 | 2026-10-13 00:25 | us-west1-c | v6e-8 | spot | insufficient capacity | 0x7dedf9197c1c4805 |
 | 2026-10-13 02:04 | us-west1-c | v6e-8 | spot | insufficient capacity | 0x61f7faec4a5aca2 |
 
@@ -1402,3 +1408,23 @@ Create call = the `gcloud ... create` call until the VM is READY (successful att
 | 2026-10-13 03:01:20 | cq-v6e4-ue1d-s | us-east1-d | queued | SUSPENDED |
 | 2026-10-13 03:01:20 | cq-v6e8-us1c-s | us-south1-c | queued | WAITING_FOR_RESOURCES |
 | 2026-10-13 03:01:51 | cq-v6e8-us1c-s | us-south1-c | queued | PROVISIONING |
+| 2026-10-13 03:02:54 | cq-v6e8-us1c-s | us-south1-c | queued | SUSPENDING |
+| 2026-10-13 03:03:58 | cq-v6e8-us1c-s | us-south1-c | queued | FAILED |
+| 2026-10-13 03:04:29 | cq-v6e4-ue1d-s | us-east1-d | queued | WAITING_FOR_RESOURCES |
+| 2026-10-13 03:04:29 | cq-v6e8-us1c-s | us-south1-c | queued | WAITING_FOR_RESOURCES |
+| 2026-10-13 03:05:01 | cq-v6e8-us1c-s | us-south1-c | queued | PROVISIONING |
+| 2026-10-13 03:06:04 | cq-v6e8-us1c-s | us-south1-c | queued | SUSPENDING |
+| 2026-10-13 03:07:08 | cq-v6e8-us1c-s | us-south1-c | queued | FAILED |
+| 2026-10-13 03:07:39 | cq-v6e8-us1c-s | us-south1-c | queued | PROVISIONING |
+| 2026-10-13 03:08:42 | cq-v6e8-us1c-s | us-south1-c | queued | SUSPENDING |
+| 2026-10-13 03:09:45 | cq-v6e8-us1c-s | us-south1-c | queued | FAILED |
+| 2026-10-13 03:10:17 | clef-qr-v6e4 | asia-northeast1-b | queued | WAITING_FOR_RESOURCES |
+| 2026-10-13 03:10:49 | cq-v6e8-us1c-s | us-south1-c | queued | PROVISIONING |
+| 2026-10-13 03:11:54 | cq-v6e8-us1c-s | us-south1-c | queued | SUSPENDING |
+| 2026-10-13 03:12:58 | cq-v6e8-us1c-s | us-south1-c | queued | FAILED |
+| 2026-10-13 03:13:30 | cq-v6e8-us1c-s | us-south1-c | queued | WAITING_FOR_RESOURCES |
+| 2026-10-13 03:14:02 | cq-v6e8-us1c-s | us-south1-c | queued | PROVISIONING |
+| 2026-10-13 03:15:07 | cq-v6e8-us1c-s | us-south1-c | queued | SUSPENDING |
+| 2026-10-13 03:37:50 | cq-v6e8-ase1b-s | asia-southeast1-b | queued | FAILED |
+| 2026-10-13 03:37:51 | cq-v6e4-ase1b-s | asia-southeast1-b | queued | FAILED |
+| 2026-10-13 03:37:51 | cq-v6e8-us1c-s | us-south1-c | queued | FAILED |
