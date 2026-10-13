@@ -490,6 +490,27 @@ pub fn opencode_registry(cwd: &Path) -> (Registry, Vec<String>) {
     (registry, problems)
 }
 
+/// A background Claude Code task (`claude -p`, #11528): the floors held,
+/// since nobody answers from inside a print run, the person's and the
+/// project's command hooks and the plugins' hooks ([`codex_registry`]),
+/// the session worktree's fence, the worktree guard holding the file
+/// tools' writes to `cwd`, and the squeezer when Token savers is on. One
+/// runner composes them; the session's hook bridge asks it.
+#[must_use]
+pub fn claude_print(cwd: &Path) -> Registry {
+    let (mut registry, _problems) = codex_registry(cwd);
+    let mut hooks = vec![
+        crate::checkout_guard::hook(cwd.to_owned()),
+        coder_sdk::worktree::Guard::writes(cwd).hook(),
+    ];
+    hooks.extend(crate::token_savers::sdk_hooks());
+    for hook in hooks {
+        // Built-in IDs are distinct.
+        let _ = registry.register(hook);
+    }
+    registry
+}
+
 /// The host a Codex run's hook bridge asks ([`coder_sdk::bridge`]):
 /// [`codex_registry`] on a socket, kept for the run. None when the socket
 /// can't be made; the bridge then falls back to the floors alone.

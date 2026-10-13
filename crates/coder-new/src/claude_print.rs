@@ -261,6 +261,24 @@ pub(super) async fn run(
     } else {
         command.args(["--permission-mode", "bypassPermissions"]);
     }
+    // The session's hooks before every tool (#11528): the bridge as Claude
+    // Code's own `PreToolUse` hook, asking this run's host; with no host,
+    // the bridge holds the floors alone.
+    let host = hook_host(cwd);
+    if let Ok(bridge_program) = super::bridge_program() {
+        let bridge = coder_delegate::delegate::HookBridge {
+            program: bridge_program,
+            args: vec![coder_sdk::bridge::COMMAND.to_owned()],
+            socket: host
+                .as_ref()
+                .map(|host| host.path().to_path_buf())
+                .unwrap_or_default(),
+        };
+        command.args(["--settings", &bridge.claude_settings()]);
+        if let Some(host) = &host {
+            command.env(coder_sdk::bridge::SOCKET_VAR, host.path());
+        }
+    }
     let (mark, value) = Agent::ClaudeCode.engine_mark();
     command.env(mark, value);
     let admitted = std::env::var("OA_CODER_CLOUD_CREDENTIAL_NAMES").unwrap_or_default();
@@ -337,6 +355,16 @@ pub(super) async fn run(
         coder_delegate::delegate::remember_engine_notice(ID, &report);
     }
     answer(&report, coder_delegate::limit::now(), &session)
+}
+
+/// The host a print run's hook bridge asks: the session's registry
+/// ([`crate::sdk_hooks::claude_print`]) on a socket, kept for the run.
+fn hook_host(cwd: &Path) -> Option<coder_sdk::bridge::Host> {
+    let runner = coder_sdk::Runner::new(
+        crate::sdk_hooks::claude_print(cwd),
+        coder_sdk::Budget::default(),
+    );
+    coder_sdk::bridge::Host::start(Arc::new(std::sync::Mutex::new(runner))).ok()
 }
 
 /// One line of the stream. `plan` is false on a turn that runs on the
@@ -555,6 +583,129 @@ mod tests {
         assert_eq!(
             coder_engine_status::Notice::from_text(SIGN_IN, 5),
             Some(coder_engine_status::Notice::LoginExpired { at: 5 })
+        );
+    }
+
+    /// #11528: a background Claude agent, started through `acp_briefed`
+    /// on a stand-in Claude Code, carries the hook bridge as its own
+    /// `PreToolUse` hook, and the run's host holds a merge for the person,
+    /// keeps a write in the task's folder, and squeezes a noisy test run.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_background_claude_task_runs_the_floors_through_the_hook_bridge() {
+        let _lock = crate::approval::test_lock().lock().unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let recorded = dir.path().join("recorded");
+        std::fs::create_dir_all(&recorded).unwrap();
+        let program = dir.path().join("claude");
+        std::fs::write(
+            &program,
+            format!(
+                r#"#!/bin/sh
+while [ $# -gt 0 ]; do
+  if [ "$1" = --settings ]; then printf '%s' "$2" > '{dir}/settings.json'; fi
+  shift
+done
+printf '%s' "$CODER_HOOK_SOCKET" > '{dir}/socket'
+cat > /dev/null
+n=0
+while [ ! -f '{dir}/go' ] && [ $n -lt 400 ]; do sleep 0.05; n=$((n+1)); done
+echo '{INIT}'
+echo '{{"type":"result","subtype":"success","is_error":false,"result":"done"}}'
+"#,
+                dir = recorded.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let agent = AcpAgent {
+            id: "claude-code".into(),
+            name: "Claude Code".into(),
+            program,
+            transport: AgentTransport::ClaudeCli,
+            arguments: vec![],
+            mode: None,
+            enabled: true,
+        };
+        let cancel = Arc::new(AtomicBool::new(false));
+        let work = dir.path().join("work");
+        std::fs::create_dir_all(&work).unwrap();
+        let mut quiet = |_: RuntimeEvent| {};
+        let run = super::super::acp_briefed(
+            &agent,
+            "merge the pull request",
+            &work,
+            None,
+            false,
+            None,
+            &cancel,
+            &mut quiet,
+        );
+        let asked = async {
+            let socket = recorded.join("socket");
+            for _ in 0..400 {
+                if std::fs::read_to_string(&socket).is_ok_and(|text| !text.is_empty()) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            let socket = PathBuf::from(std::fs::read_to_string(&socket).unwrap());
+            let ask = |input: Value| {
+                coder_sdk::bridge::ask(
+                    &socket,
+                    coder_sdk::bridge::Format::Claude,
+                    &input,
+                    Duration::from_secs(10),
+                )
+                .unwrap()
+            };
+            let bash = |command: &str| {
+                json!({"hook_event_name": "PreToolUse", "tool_name": "Bash",
+                    "tool_input": {"command": command}, "cwd": work})
+            };
+            let merge = ask(bash("gh pr merge 5 --squash")).unwrap();
+            let outside = ask(
+                json!({"hook_event_name": "PreToolUse", "tool_name": "Write",
+                "tool_input": {"file_path": "/etc/elsewhere", "content": "x"}, "cwd": work}),
+            )
+            .unwrap();
+            let squeezed = ask(bash("cargo test -p coder-new"));
+            std::fs::write(recorded.join("go"), "").unwrap();
+            (merge, outside, squeezed)
+        };
+        let (answer, (merge, outside, squeezed)) = tokio::join!(run, asked);
+        assert_eq!(answer.unwrap()["reply"], "done");
+        let settings: Value =
+            serde_json::from_str(&std::fs::read_to_string(recorded.join("settings.json")).unwrap())
+                .unwrap();
+        let command = settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap();
+        assert!(
+            command.ends_with(" coder-hook --format claude"),
+            "{command}"
+        );
+        assert_eq!(merge["hookSpecificOutput"]["permissionDecision"], "deny");
+        assert!(
+            merge["hookSpecificOutput"]["permissionDecisionReason"]
+                .as_str()
+                .unwrap()
+                .starts_with("Held for the person"),
+            "{merge}"
+        );
+        assert_eq!(
+            outside["hookSpecificOutput"]["permissionDecisionReason"],
+            coder_sdk::worktree::OUTSIDE
+        );
+        // Token savers is on in a test: the noisy run is squeezed.
+        let squeezed = squeezed.expect("the squeezer's rewrite");
+        assert!(
+            squeezed["hookSpecificOutput"]["updatedInput"]["command"]
+                .as_str()
+                .unwrap()
+                .contains(squeeze::CODER_SUBCOMMAND),
+            "{squeezed}"
         );
     }
 
