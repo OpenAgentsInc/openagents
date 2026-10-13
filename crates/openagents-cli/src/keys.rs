@@ -249,7 +249,7 @@ fn read_key_input() -> Result<String, String> {
 fn account_dir(dir: Option<&str>) -> PathBuf {
     dir.map_or_else(
         || {
-            std::env::var_os("HOME")
+            user_home::home_os()
                 .map(PathBuf::from)
                 .unwrap_or_default()
                 .join(".openagents")

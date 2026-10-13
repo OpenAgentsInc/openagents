@@ -285,7 +285,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                     .checks_dir
                     .clone()
                     .or_else(checks::cli::default_dir)
-                    .ok_or("no --checks-dir and no HOME")?;
+                    .ok_or("no --checks-dir and no user folder")?;
                 written = Some((write_checks(&dirs, &dir).await?, dir));
             }
             if flags.json {

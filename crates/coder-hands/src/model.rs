@@ -92,7 +92,7 @@ pub fn model_path(manifest: &Manifest) -> Result<PathBuf, String> {
     if let Ok(p) = std::env::var(MODEL_OVERRIDE) {
         return Ok(PathBuf::from(p));
     }
-    let home = std::env::var("HOME").map_err(|_| "HOME is unset".to_string())?;
+    let home = user_home::home_string().map_err(|_| user_home::NO_HOME.to_string())?;
     Ok(PathBuf::from(home)
         .join(".openagents/quest/models")
         .join(&manifest.file))

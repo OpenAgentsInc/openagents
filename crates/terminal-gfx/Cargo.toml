@@ -12,6 +12,7 @@ native = ["fonts", "dep:terminal-remote", "dep:terminal-control", "dep:winit", "
 fonts = ["dep:memmap2", "dep:swash"]
 
 [dependencies]
+user-home = { path = "../user-home" }
 terminal-remote = { path = "../terminal-remote", optional = true }
 serde = { version = "1", features = ["derive"] }
 terminal-control = { path = "../terminal-control", optional = true }

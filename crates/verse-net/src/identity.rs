@@ -76,7 +76,7 @@ pub fn home() -> PathBuf {
     if let Some(dir) = std::env::var_os("VERSE_HOME") {
         return PathBuf::from(dir);
     }
-    let base = std::env::var_os("HOME").map_or_else(|| PathBuf::from("."), PathBuf::from);
+    let base = user_home::home_os().map_or_else(|| PathBuf::from("."), PathBuf::from);
     base.join(".openagents").join("verse")
 }
 

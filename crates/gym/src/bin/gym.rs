@@ -543,7 +543,7 @@ fn open_doors(options: &Options) -> Result<Vec<(String, Client)>, String> {
         // TypeSafe key, else the OpenAgents hosted decision service.
         let env = |name: &str| std::env::var(name).ok();
         let resolved = jev_hosted::openagents_dir()
-            .ok_or_else(|| "HOME is not set".to_string())
+            .ok_or_else(|| user_home::NO_HOME.to_string())
             .and_then(|dir| {
                 jev_hosted::resolve(
                     &env,

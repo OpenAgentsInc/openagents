@@ -1243,9 +1243,9 @@ struct WorldAccess {
 impl WorldAccess {
     fn from_args(args: &Args) -> Result<Self, String> {
         let home = || {
-            std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .ok_or_else(|| "HOME is not set; pass --state and --root".to_owned())
+            user_home::home_os().map(PathBuf::from).ok_or_else(|| {
+                "Coder couldn't find your user folder; pass --state and --root".to_owned()
+            })
         };
         let state = match args.option("state") {
             Some(path) => PathBuf::from(path),
@@ -1672,7 +1672,7 @@ mod service {
         let Some(platform) = Platform::current() else {
             return output.fail("chamber service", "chamber service needs macOS or Linux");
         };
-        let home_dir = std::env::var_os("HOME")
+        let home_dir = user_home::home_os()
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."));
         let path = platform
@@ -1831,7 +1831,7 @@ mod service {
             None => std::env::current_exe().map_err(|error| format!("current binary: {error}"))?,
         };
         let words = host_words(args)?;
-        let log = std::env::var_os("HOME")
+        let log = user_home::home_os()
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."))
             .join(".openagents/chamber-host.log");

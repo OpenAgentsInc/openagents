@@ -605,7 +605,7 @@ fn prepare<X: Clone, W: Worker<X>>(
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_secs());
-    let runs = worker.runs().or_else(runs_dir).ok_or("HOME is not set")?;
+    let runs = worker.runs().or_else(runs_dir).ok_or(user_home::NO_HOME)?;
     let run_dir = runs.join(format!("{}-{number}-{stamp}", repository.replace('/', "-")));
     std::fs::create_dir_all(&run_dir)
         .map_err(|error| format!("cannot create {}: {error}", run_dir.display()))?;

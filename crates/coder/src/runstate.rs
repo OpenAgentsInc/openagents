@@ -101,7 +101,7 @@ fn resolve(switch: Option<&str>, dir: Option<std::ffi::OsString>) -> Option<Path
 /// The directory a run records to when nothing says otherwise:
 /// `~/.openagents/runstate`. `None` when the home directory is unknown.
 fn default_dir() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")?;
+    let home = user_home::home_os()?;
     if home.is_empty() {
         return None;
     }

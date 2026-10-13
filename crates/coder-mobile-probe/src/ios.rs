@@ -128,7 +128,7 @@ fn record(event: &str) {
 }
 
 fn record_value(value: serde_json::Value) {
-    let Some(home) = std::env::var_os("HOME") else {
+    let Some(home) = user_home::home_os() else {
         return;
     };
     let directory = std::path::PathBuf::from(home).join("Documents");

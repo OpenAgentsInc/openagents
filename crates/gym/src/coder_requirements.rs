@@ -400,7 +400,7 @@ impl Sources {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/terminal-bench");
         let mut sources = Sources {
             runs: crate::coder_components::default_runs_dir(),
-            jobs: std::env::var_os("HOME")
+            jobs: user_home::home_os()
                 .map(std::path::PathBuf::from)
                 .map(|home| home.join(".openagents/terminal-bench/jobs")),
             traces: Some(repo.join("traces")),

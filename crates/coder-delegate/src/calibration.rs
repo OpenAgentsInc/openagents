@@ -66,7 +66,7 @@ pub fn path() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("OPENAGENTS_CALIBRATION") {
         return (p != "off").then(|| PathBuf::from(p));
     }
-    std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".openagents/calibration/current.json"))
+    user_home::home_os().map(|h| PathBuf::from(h).join(".openagents/calibration/current.json"))
 }
 
 /// Read an adopted-settings file; anything unreadable adopts nothing.

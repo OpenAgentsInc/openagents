@@ -51,7 +51,7 @@ fn jev_modes(word: &str, recorded: &Recorded) -> Result<(JevMode, Option<JevMode
         "off" => Ok((JevMode::Off, None)),
         "recorded" => Ok((replay, None)),
         "live" => {
-            let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
+            let dir = crate::credentials::openagents_dir().ok_or(user_home::NO_HOME)?;
             let client = crate::credentials::jev_live(|name| std::env::var(name).ok(), &dir)?;
             Ok((JevMode::Live(client), Some(replay)))
         }
@@ -259,9 +259,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 return Err(format!("{verb} needs at least one TASK\n{USAGE}"));
             }
             let out = PathBuf::from(one("--out").ok_or(format!("{verb} needs --out"))?);
-            let home = std::env::var_os("HOME")
+            let home = user_home::home_os()
                 .map(PathBuf::from)
-                .ok_or("HOME is not set")?
+                .ok_or(user_home::NO_HOME)?
                 .join(".openagents/terminal-bench");
             let kinds = match one("--kinds") {
                 Some(list) => list

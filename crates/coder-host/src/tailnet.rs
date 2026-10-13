@@ -191,7 +191,7 @@ pub fn program() -> PathBuf {
 /// of them is kept beside its task ([`coder_history::delegate`]).
 #[must_use]
 pub fn default_sources() -> coder_history::Config {
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = user_home::home_os().map(PathBuf::from);
     coder_history::Config {
         coder: home
             .map(|home| home.join(".openagents/tasks"))

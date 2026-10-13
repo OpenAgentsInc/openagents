@@ -60,7 +60,7 @@ pub fn typesafe_key() -> Option<String> {
     {
         return Some(key.trim().to_owned());
     }
-    let home = std::env::var("HOME").ok()?;
+    let home = user_home::home_string().ok()?;
     let text = std::fs::read_to_string(format!("{home}/work/.secrets/typesafe.env")).ok()?;
     text.lines().find_map(|l| {
         let l = l.trim().strip_prefix("export ").unwrap_or(l.trim());

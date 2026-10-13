@@ -64,7 +64,7 @@ pub fn home() -> std::path::PathBuf {
     if let Some(dir) = std::env::var_os("OPENAGENTS_PYLON_HOME") {
         return dir.into();
     }
-    std::env::var_os("HOME")
+    user_home::home_os()
         .map_or_else(|| std::path::PathBuf::from("."), std::path::PathBuf::from)
         .join(".openagents")
         .join("compute")

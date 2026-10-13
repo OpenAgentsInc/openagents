@@ -507,7 +507,7 @@ their sizes, the variant digest, and Jev's section answers.
 /// match.
 pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, String> {
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/terminal-bench");
-    let mut jobs = std::env::var_os("HOME")
+    let mut jobs = user_home::home_os()
         .map(PathBuf::from)
         .map(|home| home.join(".openagents/terminal-bench/jobs"));
     let mut traces = Some(repo.join("traces"));

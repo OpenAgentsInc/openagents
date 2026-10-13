@@ -40,7 +40,7 @@ pub fn coder_path() -> Option<PathBuf> {
             return Some(candidate);
         }
     }
-    let home = std::env::var_os("HOME").map(PathBuf::from)?;
+    let home = user_home::home_os().map(PathBuf::from)?;
     let installed = home.join(".openagents/bin/coder");
     installed.exists().then_some(installed)
 }

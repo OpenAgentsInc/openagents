@@ -957,7 +957,7 @@ pub(crate) fn tool_path(current: Option<&str>) -> String {
         .filter(|part| !part.is_empty())
         .map(str::to_owned)
         .collect();
-    let home = std::env::var("HOME").unwrap_or_default();
+    let home = user_home::home_string().unwrap_or_default();
     for extra in [
         format!("{home}/.cargo/bin"),
         "/opt/homebrew/bin".to_owned(),

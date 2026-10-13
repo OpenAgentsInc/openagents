@@ -43,6 +43,7 @@ app = [
 ]
 
 [dependencies]
+user-home = { path = "../user-home" }
 tokio = { version = "1", features = ["rt-multi-thread", "time"] }
 # The release acceptance gate's phone-shaped client (`--acceptance`,
 # #10080): the phone's NIP-HOST service, already in the graph through

@@ -7,6 +7,7 @@ publish.workspace = true
 description = "Private same-user socket adapter for shared terminal control requests."
 
 [dependencies]
+user-home = { path = "../user-home" }
 terminal-core = { path = "../terminal-core" }
 serde_json = "1"
 

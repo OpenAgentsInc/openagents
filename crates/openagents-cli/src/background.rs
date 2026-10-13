@@ -168,7 +168,7 @@ enum Failure {
 }
 
 fn layout(args: &Args) -> Result<Layout, String> {
-    let home = std::env::var_os("HOME")
+    let home = user_home::home_os()
         .map(PathBuf::from)
         .filter(|home| home.is_absolute())
         .ok_or("HOME must be an absolute path")?;
@@ -321,9 +321,7 @@ impl HostServices {
     pub(crate) fn at(
         store: &std::path::Path,
     ) -> std::sync::Arc<dyn background::services::Services> {
-        let home = std::env::var_os("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_default();
+        let home = user_home::home_os().map(PathBuf::from).unwrap_or_default();
         std::sync::Arc::new(Self {
             store: store.to_owned(),
             home,
@@ -1185,7 +1183,7 @@ fn publish(output: &Output, layout: &Layout, id: &str, args: &Args) -> Result<()
 }
 
 fn home_layout() -> Result<Layout, String> {
-    let home = std::env::var_os("HOME")
+    let home = user_home::home_os()
         .map(PathBuf::from)
         .filter(|home| home.is_absolute())
         .ok_or("HOME must be an absolute path")?;

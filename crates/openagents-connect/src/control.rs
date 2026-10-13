@@ -35,7 +35,7 @@ pub const SOCKET_NAME: &str = "control.sock";
 /// needs is unset, or on another platform.
 #[must_use]
 pub fn socket_path() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = user_home::home_os().map(PathBuf::from);
     let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
     socket_path_for(std::env::consts::OS, home.as_deref(), runtime.as_deref())
 }

@@ -123,7 +123,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let features = kind == "verdict-features";
     let out = out.ok_or("report-audit needs --out")?;
     std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
-    let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
+    let dir = crate::credentials::openagents_dir().ok_or(user_home::NO_HOME)?;
     let mode = JevMode::Live(crate::credentials::jev_live(
         |name| std::env::var(name).ok(),
         &dir,

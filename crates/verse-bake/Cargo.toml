@@ -18,6 +18,7 @@ name = "verse-bake"
 path = "src/main.rs"
 
 [dependencies]
+user-home = { path = "../user-home" }
 bytemuck = { version = "1.25", features = ["derive"] }
 glam = "0.30.10"
 pollster = { version = "0.4", optional = true }

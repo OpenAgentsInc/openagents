@@ -299,7 +299,7 @@ pub fn coder(home: &Path, count: usize) -> std::io::Result<coder_history::Config
 
 /// This machine's Coder task transcripts only (`~/.openagents/tasks`).
 pub fn real_coder() -> Option<coder_history::Config> {
-    let home = PathBuf::from(std::env::var_os("HOME")?);
+    let home = PathBuf::from(user_home::home_os()?);
     let tasks = home.join(".openagents/tasks");
     tasks.is_dir().then(|| coder_history::Config {
         coder: Some(tasks),
@@ -311,7 +311,7 @@ pub fn real_coder() -> Option<coder_history::Config> {
 /// (`coder_host::tailnet::default_sources`): `~/.codex`, `~/.claude`,
 /// `~/.openagents/tasks`, and the OpenCode and Devin mirrors when present.
 pub fn real() -> Option<coder_history::Config> {
-    let home = PathBuf::from(std::env::var_os("HOME")?);
+    let home = PathBuf::from(user_home::home_os()?);
     let dir = |relative: &str| Some(home.join(relative)).filter(|p| p.is_dir());
     let config = coder_history::Config {
         codex: dir(".codex"),

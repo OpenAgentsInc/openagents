@@ -30,6 +30,7 @@ name = "verse-private"
 path = "src/bin/verse_private/main.rs"
 
 [dependencies]
+user-home = { path = "../user-home" }
 atif = { path = "../atif" }
 coder = { path = "../coder", optional = true }
 coder-access = { path = "../coder-access", default-features = false }

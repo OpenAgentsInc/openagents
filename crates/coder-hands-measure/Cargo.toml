@@ -21,6 +21,7 @@ name = "coder-hands-measure"
 path = "src/main.rs"
 
 [dependencies]
+user-home = { path = "../user-home" }
 # The rules, the window, the seam, and where the CoderOS camera daemon
 # keeps its sockets. The measurement reads them rather than a copy, so a
 # constant that moves is scored by replaying the runs already recorded.

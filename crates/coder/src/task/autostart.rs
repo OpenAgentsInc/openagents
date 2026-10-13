@@ -1044,7 +1044,7 @@ impl Launch for Process {
             .arg(store)
             .arg("--detach")
             .stdin(std::process::Stdio::null());
-        if let Some(home) = std::env::var_os("HOME") {
+        if let Some(home) = user_home::home_os() {
             command.env("HOME", home);
         }
         // The engine finds the Codex login where the readiness check did:
@@ -2545,8 +2545,9 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
     }
     let root = match take_one(&mut values, "--root")? {
         Some(root) => PathBuf::from(root),
-        None => PathBuf::from(std::env::var_os("HOME").ok_or("HOME is not set")?)
-            .join(".openagents/host"),
+        None => {
+            PathBuf::from(user_home::home_os().ok_or(user_home::NO_HOME)?).join(".openagents/host")
+        }
     };
     let now = unix_now();
     match command.as_str() {
@@ -2560,7 +2561,7 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
             }
             let store = match take_one(&mut values, "--store")? {
                 Some(store) => PathBuf::from(store),
-                None => PathBuf::from(std::env::var_os("HOME").ok_or("HOME is not set")?)
+                None => PathBuf::from(user_home::home_os().ok_or(user_home::NO_HOME)?)
                     .join(".openagents/tasks"),
             };
             let book = capacity::Book::load(&store);
@@ -2618,7 +2619,7 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
             let refresh = refresh || !fresh.is_empty();
             let store = match take_one(&mut values, "--store")? {
                 Some(store) => PathBuf::from(store),
-                None => PathBuf::from(std::env::var_os("HOME").ok_or("HOME is not set")?)
+                None => PathBuf::from(user_home::home_os().ok_or(user_home::NO_HOME)?)
                     .join(".openagents/tasks"),
             };
             let policy = Policy::load(&root)?;
@@ -2973,7 +2974,7 @@ const MICROCODER: &str = if cfg!(windows) {
 /// Names where it looked.
 pub fn default_controller() -> std::result::Result<PathBuf, String> {
     let exe = std::env::current_exe().ok().map(controller_executable_path);
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = user_home::home_os().map(PathBuf::from);
     controller_candidates(exe.as_deref(), home.as_deref())
         .into_iter()
         .find(|path| path.is_file())

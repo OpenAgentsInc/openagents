@@ -161,7 +161,7 @@ pub fn account() -> Account {
         std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
     Account {
         name: std::env::var_os("USERNAME").unwrap_or_default(),
-        home: std::env::var_os("HOME")
+        home: user_home::home_os()
             .or_else(|| std::env::var_os("USERPROFILE"))
             .map(PathBuf::from)
             .filter(|p| p.is_absolute())
@@ -199,7 +199,7 @@ pub fn account() -> Account {
             .filter(|v| !v.is_empty())
             .or(name)
             .unwrap_or_default(),
-        home: std::env::var_os("HOME")
+        home: user_home::home_os()
             .map(PathBuf::from)
             .filter(|p| p.is_absolute())
             .or(home)

@@ -256,12 +256,12 @@ impl Default for Workshop {
 pub fn checkout(text: &str) -> Result<String, String> {
     let text = text.trim();
     let path = match text.strip_prefix("~/") {
-        Some(rest) => std::env::var_os("HOME")
+        Some(rest) => user_home::home_os()
             .map(|home| PathBuf::from(home).join(rest))
             .unwrap_or_else(|| PathBuf::from(text)),
-        None if text == "~" => std::env::var_os("HOME").map_or_else(|| text.into(), PathBuf::from),
+        None if text == "~" => user_home::home_os().map_or_else(|| text.into(), PathBuf::from),
         None if Path::new(text).is_absolute() => PathBuf::from(text),
-        None => std::env::var_os("HOME").map_or_else(
+        None => user_home::home_os().map_or_else(
             || PathBuf::from(text),
             |home| PathBuf::from(home).join(text),
         ),

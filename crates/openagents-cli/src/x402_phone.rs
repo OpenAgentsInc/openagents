@@ -34,7 +34,7 @@ impl PhonePayer {
     /// The payer for this computer's host (`~/.openagents/coder-access`),
     /// naming `resource` on the approval sheet.
     pub(crate) fn local(resource: &str) -> Result<Self, String> {
-        let home = std::env::var_os("HOME").ok_or("HOME is not set")?;
+        let home = user_home::home_os().ok_or(user_home::NO_HOME)?;
         let state = std::path::PathBuf::from(home).join(".openagents/coder-access");
         let host = coder_access::host::Host::new(&state, coder_access::RelayPolicy::Production)
             .public_key()

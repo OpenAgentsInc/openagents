@@ -335,7 +335,7 @@ pub fn detect(jobs_root: &Path) -> Capabilities {
         .and_then(|probe| output("df", &["-Pk", probe], limit))
         .as_deref()
         .and_then(parse_df_available_gb);
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = user_home::home_os().map(PathBuf::from);
     let asc_key = asc_key_present(&|name| std::env::var(name).ok(), home.as_deref());
     let recipes = if macos.is_some() && xcode.is_some() {
         Recipe::ALL.to_vec()

@@ -58,7 +58,8 @@ pub fn record(options: &Options) -> Result<PathBuf, String> {
     let path = match &options.out {
         Some(path) => path.clone(),
         None => {
-            let home = std::env::var("HOME").map_err(|_| "HOME names no directory".to_string())?;
+            let home =
+                user_home::home_string().map_err(|_| "HOME names no directory".to_string())?;
             default_path(Path::new(&home), started)
         }
     };

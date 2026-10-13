@@ -49,7 +49,7 @@ pub fn tasks_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("MICROCODER_TASKS") {
         return PathBuf::from(dir);
     }
-    PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+    PathBuf::from(user_home::home_os().unwrap_or_default())
         .join(".openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks")
 }
 

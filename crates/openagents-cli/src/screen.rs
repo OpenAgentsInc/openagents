@@ -403,7 +403,7 @@ impl ProgramExtras {
                 ..Facts::default()
             };
         }
-        let home = std::env::var_os("HOME")
+        let home = user_home::home_os()
             .map(PathBuf::from)
             .filter(|home| home.is_absolute());
         let bundle_selected = home.as_ref().is_some_and(|home| {

@@ -16,7 +16,7 @@ pub fn runtime_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR").filter(|d| !d.is_empty()) {
         return PathBuf::from(dir).join("coderos-camera");
     }
-    let home = std::env::var_os("HOME").unwrap_or_else(|| "/tmp".into());
+    let home = user_home::home_os().unwrap_or_else(|| "/tmp".into());
     PathBuf::from(home).join(".openagents/camera")
 }
 

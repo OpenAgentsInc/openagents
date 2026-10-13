@@ -11,6 +11,7 @@ keywords = ["claude", "ai", "agent", "sdk", "anthropic"]
 categories = ["development-tools", "api-bindings"]
 
 [dependencies]
+user-home = { path = "../user-home" }
 tokio = { version = "1", features = ["process", "io-util", "sync", "rt-multi-thread", "macros", "time"] }
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }

@@ -60,7 +60,7 @@ impl Sources {
     /// The operator's jobs directory and this checkout's retained traces.
     #[must_use]
     pub fn standard() -> Self {
-        let home = std::env::var_os("HOME")
+        let home = user_home::home_os()
             .filter(|home| !home.is_empty())
             .map(PathBuf::from);
         let upstream = home

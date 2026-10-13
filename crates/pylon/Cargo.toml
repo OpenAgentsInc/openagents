@@ -16,6 +16,7 @@ broker = ["dep:pay-ledger"]
 fixture = ["dep:futures-util", "dep:tokio-tungstenite", "nostr/test-invoice"]
 
 [dependencies]
+user-home = { path = "../user-home" }
 coder-lease = { path = "../coder-lease" }
 futures-util = { version = "0.3", optional = true }
 tokio-tungstenite = { version = "0.30.0", optional = true }

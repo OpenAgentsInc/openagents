@@ -161,7 +161,7 @@ include!(concat!(env!("OUT_DIR"), "/bundled.rs"));
 pub fn default_dir() -> PathBuf {
     match std::env::var_os(DIR_VAR) {
         Some(dir) if !dir.is_empty() => PathBuf::from(dir),
-        _ => std::env::var_os("HOME")
+        _ => user_home::home_os()
             .map(|home| PathBuf::from(home).join(".openagents/knowledge/entries"))
             .unwrap_or_else(|| PathBuf::from(".openagents/knowledge/entries")),
     }
@@ -193,7 +193,7 @@ pub fn seed_bundled(dir: &Path) -> Result<(), String> {
 /// cached by digest.
 #[must_use]
 pub fn default_cache() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .map(|home| PathBuf::from(home).join(".openagents/knowledge/embeddings.json"))
 }
 

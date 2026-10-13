@@ -222,7 +222,7 @@ fn binary(engine: &str) -> Option<PathBuf> {
 fn codex_model() -> Option<String> {
     let home = std::env::var_os("CODEX_HOME")
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".codex")))?;
+        .or_else(|| user_home::home_os().map(|h| PathBuf::from(h).join(".codex")))?;
     let text = std::fs::read_to_string(home.join("config.toml")).ok()?;
     text.lines()
         .take_while(|line| !line.trim_start().starts_with('['))

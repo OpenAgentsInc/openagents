@@ -68,7 +68,7 @@ fn clip(text: &str) -> String {
 
 /// The host user's home.
 fn home() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
         .filter(|path| !path.as_os_str().is_empty())

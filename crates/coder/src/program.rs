@@ -923,7 +923,7 @@ pub fn search_with(repository: Option<&Path>, defaults: Option<&Path>) -> Vec<Pa
     if let Some(root) = repository {
         dirs.push(root.join("programs"));
     }
-    if let Some(home) = env::var_os("HOME").filter(|home| !home.is_empty()) {
+    if let Some(home) = user_home::home_os().filter(|home| !home.is_empty()) {
         dirs.push(PathBuf::from(home).join(".openagents").join("programs"));
     }
     if let Some(defaults) = defaults {

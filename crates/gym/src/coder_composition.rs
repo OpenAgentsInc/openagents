@@ -1289,7 +1289,7 @@ job, or trial contains it for detail; the newest is shown otherwise.
 /// Returns a message for an unknown option or a failed write.
 pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, String> {
     let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/terminal-bench");
-    let mut jobs = std::env::var_os("HOME")
+    let mut jobs = user_home::home_os()
         .map(PathBuf::from)
         .map(|home| home.join(".openagents/terminal-bench/jobs"));
     let mut traces = Some(repo.join("traces"));

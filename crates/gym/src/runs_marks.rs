@@ -58,7 +58,7 @@ pub const ANY_REASON: &str = "any_reason";
 /// Where the marks are kept: `~/.openagents/gym/marks`.
 #[must_use]
 pub fn default_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| PathBuf::from(home).join(".openagents/gym/marks"))
 }

@@ -15,6 +15,7 @@ name = "studio-acceptance"
 required-features = ["acceptance"]
 
 [dependencies]
+user-home = { path = "../user-home" }
 contribution-workbench = { path = "../contribution-workbench", features = ["host"], optional = true }
 coder-pty = { path = "../coder-pty", default-features = false, optional = true }
 workbench = { path = "../workbench", optional = true }

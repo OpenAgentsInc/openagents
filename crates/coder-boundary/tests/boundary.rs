@@ -588,7 +588,7 @@ mod enforced {
             return;
         }
         let boundary = Boundary::readonly().confining_reads().build().unwrap();
-        let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+        let Some(home) = user_home::home_os().map(PathBuf::from) else {
             return;
         };
         let Ok(home) = home.canonicalize() else {

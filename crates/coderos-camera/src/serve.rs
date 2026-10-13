@@ -212,7 +212,7 @@ impl Shared {
         let path = match path {
             Some(path) => PathBuf::from(path),
             None => {
-                let home = std::env::var_os("HOME")
+                let home = user_home::home_os()
                     .map(PathBuf::from)
                     .unwrap_or_else(|| PathBuf::from("/tmp"));
                 default_path(&home, crate::frame::now() as u64)

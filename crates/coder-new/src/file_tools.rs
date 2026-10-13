@@ -318,7 +318,7 @@ impl Workspace {
         }
         let home = path
             .strip_prefix("~/")
-            .zip(std::env::var_os("HOME"))
+            .zip(user_home::home_os())
             .map(|(rest, home)| PathBuf::from(home).join(rest));
         let path = home.as_deref().unwrap_or(Path::new(path));
         let joined = if path.is_absolute() {

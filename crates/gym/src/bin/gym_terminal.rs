@@ -133,7 +133,7 @@ Expert views:
   q              Leave.";
 
 fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
-    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    let home = user_home::home_os().map(std::path::PathBuf::from);
     let repo =
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../bench/terminal-bench");
     let mut jobs = home.map(|path| path.join(".openagents/terminal-bench/jobs"));

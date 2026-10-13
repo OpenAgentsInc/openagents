@@ -47,7 +47,7 @@ pub fn store_path() -> PathBuf {
     if let Some(named) = std::env::var_os(STORE_ENV).filter(|named| !named.is_empty()) {
         return PathBuf::from(named);
     }
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| {
             PathBuf::from(home)

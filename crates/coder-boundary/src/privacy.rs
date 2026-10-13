@@ -145,7 +145,7 @@ pub fn private_cache(path: &Path, home: &Path) -> bool {
 #[must_use]
 pub fn home() -> Option<PathBuf> {
     crate::toolchains::account_home()
-        .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
+        .or_else(|| user_home::home_os().map(PathBuf::from))
         .filter(|home| home.is_absolute())
         .map(|home| home.canonicalize().unwrap_or(home))
 }

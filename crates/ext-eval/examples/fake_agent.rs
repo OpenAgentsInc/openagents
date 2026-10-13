@@ -88,8 +88,8 @@ fn main() {
     let asks_for_a_map = prompt.to_ascii_lowercase().contains("repository")
         || prompt.to_ascii_lowercase().contains("callers");
     if !programs.is_empty() && programs != "none" && asks_for_a_map && jev_answers(&prompt) {
-        let dir =
-            PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".openagents/programs");
+        let dir = PathBuf::from(user_home::home_string().unwrap_or_default())
+            .join(".openagents/programs");
         let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
             .map(|entries| entries.filter_map(Result::ok).map(|e| e.path()).collect())
             .unwrap_or_default();

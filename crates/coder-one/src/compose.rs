@@ -2331,7 +2331,7 @@ impl Snapshot {
 /// Whether the host may empty `dir` and refill it: never the root, a
 /// top-level system directory, or the home directory.
 pub(crate) fn safe_to_replace(dir: &Path) -> bool {
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = user_home::home_os().map(PathBuf::from);
     dir.is_absolute()
         && dir.components().count() >= 2
         && home.as_deref() != Some(dir)

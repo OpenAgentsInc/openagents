@@ -256,11 +256,7 @@ fn native_binary(
 }
 
 fn home(variable: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
-    ["HOME", "USERPROFILE"].into_iter().find_map(|name| {
-        variable(name)
-            .map(PathBuf::from)
-            .filter(|path| path.is_absolute())
-    })
+    user_home::home_in(variable).filter(|path| path.is_absolute())
 }
 
 fn directories(variable: &dyn Fn(&str) -> Option<OsString>) -> Vec<PathBuf> {

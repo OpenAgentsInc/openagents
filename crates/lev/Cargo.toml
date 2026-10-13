@@ -11,6 +11,7 @@ publish.workspace = true
 serve = ["dep:axum", "dep:tokio", "dep:tower-http"]
 
 [dependencies]
+user-home = { path = "../user-home" }
 # The measurement side — the reliability table, the acceptance rules, the
 # suites, and the result store — is the Gym's. Lev answers the contract; it
 # does not score it, and the dependency runs one way and never back.

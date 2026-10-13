@@ -362,7 +362,7 @@ pub fn boundary(
     // directory is new: make it before naming it.
     let _ = std::fs::create_dir_all(artifacts);
     spec = spec.writable(artifacts);
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = user_home::home_os().map(PathBuf::from);
     // The CLIs keep their session state, settings, and caches here.
     let state = home.iter().flat_map(|home| {
         [

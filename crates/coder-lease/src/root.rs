@@ -20,10 +20,13 @@ pub fn root_from_env() -> Result<PathBuf, String> {
 pub fn root_from(env: &dyn Fn(&str) -> Option<std::ffi::OsString>) -> Result<PathBuf, String> {
     let root = if let Some(root) = env(ROOT_VAR) {
         PathBuf::from(root)
-    } else if let Some(home) = env("HOME") {
+    } else if let Some(home) = user_home::home_in(env) {
         PathBuf::from(home).join(".openagents/leases")
     } else {
-        return Err(format!("set HOME or {ROOT_VAR} to choose the lease root"));
+        return Err(format!(
+            "{} Or set {ROOT_VAR} to choose the lease root.",
+            user_home::NO_HOME
+        ));
     };
     refuse_real_home(&root);
     Ok(root)

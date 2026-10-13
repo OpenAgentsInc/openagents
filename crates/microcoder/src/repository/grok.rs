@@ -835,7 +835,7 @@ mod tests {
         let home = value("HOME");
         assert!(!home.is_empty());
         assert_eq!(value("GROK_HOME"), format!("{home}/.grok"));
-        assert_ne!(home, std::env::var("HOME").unwrap_or_default());
+        assert_ne!(home, user_home::home_string().unwrap_or_default());
         assert!(
             !std::path::Path::new(&home).exists(),
             "the scratch is removed"

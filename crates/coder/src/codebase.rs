@@ -73,7 +73,7 @@ pub const BUDGET: Duration = Duration::from_millis(4_000);
 /// The index's default place: `~/.cache/openagents/codebase-kb/codebase-kb.gz`.
 #[must_use]
 pub fn default_path() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| {
+    user_home::home_os().map(|home| {
         PathBuf::from(home)
             .join(".cache/openagents/codebase-kb")
             .join("codebase-kb.gz")
@@ -787,7 +787,7 @@ impl Seam {
     ///
     /// The reason the seam is not available.
     pub fn from_env(judge: std::sync::Arc<jev::Client>) -> Result<Self, String> {
-        let path = configured_path().ok_or("no HOME and no CODER_CODEBASE_KB")?;
+        let path = configured_path().ok_or("no user folder and no CODER_CODEBASE_KB")?;
         let index = Index::read(&path)?;
         let embedder = embedder_for(&index.model)?;
         let kb = Codebase::new(index, embedder)?;

@@ -58,7 +58,7 @@ change once a stage ran. Proposals are read from
 /// Where proposals are kept.
 #[must_use]
 pub fn default_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| PathBuf::from(home).join(".openagents/coder-one/proposals"))
 }
@@ -570,7 +570,7 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
         }
         index += 1;
     }
-    let dir = dir.ok_or("no --dir and no HOME to read proposals from")?;
+    let dir = dir.ok_or("no --dir and no user folder to read proposals from")?;
     let print = |out: &mut dyn std::io::Write, lines: Vec<String>| {
         for line in lines {
             writeln!(out, "{line}").map_err(|error| error.to_string())?;

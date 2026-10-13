@@ -560,7 +560,7 @@ fn live_series(task: &Task, options: &TuneOptions) -> Result<Series, (u8, String
 }
 
 fn default_tune_dir(task: &str) -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let home = user_home::home_string().unwrap_or_else(|_| ".".to_string());
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_secs());
@@ -786,7 +786,7 @@ fn report(task: &Task, run: &Observed, trace: &Path) -> u8 {
 /// A trace path no run has taken, under a directory that is not the
 /// repository being measured.
 fn fresh_trace(task: &str) -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let home = user_home::home_string().unwrap_or_else(|_| ".".to_string());
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_secs());

@@ -514,7 +514,7 @@ pub fn acp_environment() -> Vec<(String, String)> {
         environment.push((name, value.to_string_lossy().into_owned()));
     }
     if !environment.iter().any(|(key, _)| key == "CARGO_TARGET_DIR")
-        && let Some(home) = std::env::var_os("HOME")
+        && let Some(home) = user_home::home_os()
     {
         environment.push((
             "CARGO_TARGET_DIR".into(),
@@ -709,7 +709,7 @@ pub async fn preexisting_failures(
     // Never the run's own build folder: see [`target_dir`].
     if let Some(target) = target_dir(
         std::env::var_os("CARGO_TARGET_DIR"),
-        std::env::var_os("HOME"),
+        user_home::home_os(),
         true,
     ) {
         command.env("CARGO_TARGET_DIR", target);
@@ -793,7 +793,7 @@ Already failing at the base commit before this change, not yours to fix: {}. The
 fn shared_target(command: &mut tokio::process::Command) {
     if let Some(target) = target_dir(
         std::env::var_os("CARGO_TARGET_DIR"),
-        std::env::var_os("HOME"),
+        user_home::home_os(),
         false,
     ) {
         command.env("CARGO_TARGET_DIR", target);
@@ -849,7 +849,7 @@ pub async fn sweep_shared_target() {
         return;
     }
     for baseline in [false, true] {
-        let Some(target) = target_dir(None, std::env::var_os("HOME"), baseline) else {
+        let Some(target) = target_dir(None, user_home::home_os(), baseline) else {
             return;
         };
         if !target.is_dir()

@@ -243,7 +243,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         &std::fs::read_to_string(input.ok_or("Missing --input")?).map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
-    let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
+    let dir = crate::credentials::openagents_dir().ok_or(user_home::NO_HOME)?;
     let jev = JevMode::Live(crate::credentials::jev_live(
         |name| std::env::var(name).ok(),
         &dir,

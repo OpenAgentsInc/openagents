@@ -315,9 +315,9 @@ async fn main() -> ExitCode {
 /// (`USERPROFILE`) before anything reads it, then runs as elsewhere.
 #[cfg(windows)]
 fn main() -> ExitCode {
-    if std::env::var_os("HOME").is_none()
-        && let Some(profile) = std::env::var_os("USERPROFILE")
-    {
+    // `user_home` already answers without it; this is for the children
+    // (shells, Git, harness CLIs) that read `HOME` themselves.
+    if let Some(profile) = user_home::home_os() {
         // SAFETY: no other thread exists yet; the runtime starts below.
         unsafe { std::env::set_var("HOME", profile) };
     }
@@ -374,7 +374,7 @@ async fn start() -> ExitCode {
             .find(|pair| pair[0] == "--root")
             .map(|pair| std::path::PathBuf::from(&pair[1]))
             .or_else(|| {
-                std::env::var_os("HOME")
+                user_home::home_os()
                     .map(|home| std::path::PathBuf::from(home).join(".openagents/host"))
             });
         // The resident host hands admitted task operations to the durable

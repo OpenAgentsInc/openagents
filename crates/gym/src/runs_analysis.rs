@@ -2822,7 +2822,7 @@ fn anomalies(records: &Records, analysis: &Analysis) -> Vec<Anomaly> {
 /// checkout's.
 #[must_use]
 pub fn fable_manifest_path() -> PathBuf {
-    let cached = std::env::var_os("HOME")
+    let cached = user_home::home_os()
         .map(|home| PathBuf::from(home).join(".openagents/gym/public-replays/manifest.json"))
         .filter(|path| path.is_file());
     cached.unwrap_or_else(|| {
@@ -3000,7 +3000,7 @@ PATH reads another public-attempt manifest.";
 /// Where cached Jev answers are kept: `~/.openagents/gym/analysis`.
 #[must_use]
 pub fn default_cache_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| PathBuf::from(home).join(".openagents/gym/analysis"))
 }

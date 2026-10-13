@@ -482,7 +482,7 @@ fn route_record(
 fn append_record(record: &Value) {
     let dir = std::env::var_os("OPENAGENTS_CLOUD_HOME").map_or_else(
         || {
-            std::env::var_os("HOME")
+            user_home::home_os()
                 .map_or_else(|| std::path::PathBuf::from("."), std::path::PathBuf::from)
                 .join(".openagents/cloud")
         },

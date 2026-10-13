@@ -34,7 +34,7 @@ row per graded trial with the scenarios that failed.
 /// Where `coder-one checks recall` writes by default.
 #[must_use]
 pub fn default_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| PathBuf::from(home).join(".openagents/coder-one/checks-recall"))
 }
@@ -182,7 +182,7 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
         }
         index += 1;
     }
-    let dir = dir.ok_or("no --dir and no HOME")?;
+    let dir = dir.ok_or("no --dir and no user folder")?;
     let summary = load(&dir)?;
     if json_output {
         let mut value = json!({ "schema": VIEW_SCHEMA, "dir": dir, "summary": summary });

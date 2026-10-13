@@ -8,6 +8,7 @@ description = "Task manifests and recorded goldens for whole Coder episodes."
 publish.workspace = true
 
 [dependencies]
+user-home = { path = "../user-home" }
 atif = { path = "../atif" }
 # The shared manifest/trust/probe contract — preflight runs the same
 # validated manifests and the same host-owned approval Coder does.

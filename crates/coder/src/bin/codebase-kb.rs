@@ -96,7 +96,7 @@ async fn build_command(args: &[String]) -> Result<(), String> {
     let out = flag(args, "--out")
         .map(PathBuf::from)
         .or_else(codebase::default_path)
-        .ok_or("no --out and no HOME")?;
+        .ok_or("no --out and no user folder")?;
     let previous_path = flag(args, "--previous")
         .map(PathBuf::from)
         .unwrap_or_else(|| out.clone());

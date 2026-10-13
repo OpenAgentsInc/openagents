@@ -248,7 +248,7 @@ impl Memory {
         {
             return None;
         }
-        let home = std::env::var_os("HOME").map(PathBuf::from)?;
+        let home = user_home::home_os().map(PathBuf::from)?;
         let openagents = home.join(".openagents");
         let root = env("OPENAGENTS_MEMORY_DIR")
             .filter(|dir| !dir.trim().is_empty())

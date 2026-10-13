@@ -54,7 +54,7 @@ fn main() -> ExitCode {
 
 #[cfg(unix)]
 fn home() -> Result<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .map(PathBuf::from)
         .filter(|home| home.is_absolute())
         .ok_or_else(|| Error::Refused("HOME must be an absolute path".into()))

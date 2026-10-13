@@ -24,7 +24,7 @@ impl Reader {
         #[cfg(not(test))]
         let root = std::env::var_os("CODEX_HOME")
             .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex")));
+            .or_else(|| user_home::home_os().map(|home| PathBuf::from(home).join(".codex")));
         Self {
             root,
             file: None,

@@ -11,6 +11,7 @@ name = "eval-runner"
 path = "src/bin/eval-runner.rs"
 
 [dependencies]
+user-home = { path = "../user-home" }
 # The package resolver (`coder::package`) for catalog extensions, and the
 # relay connection and identity helpers (`coder::relay`).
 coder = { path = "../coder" }

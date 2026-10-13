@@ -7,6 +7,7 @@ publish.workspace = true
 description = "Typed jobs a linked Mac runs for the account (#11223): the recipes, their allowlisted arguments, the steps each runs, and what the Mac reports it can do."
 
 [dependencies]
+user-home = { path = "../user-home" }
 # The job as an actor (#11253): definitions only, no database driver.
 actors = { path = "../actors", default-features = false }
 secret-screen = { path = "../secret-screen" }

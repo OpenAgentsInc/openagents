@@ -716,9 +716,9 @@ fn link(output: &Output, args: &Args) -> Result<(Value, Render), Failure> {
             .ok_or_else(|| Failure::Usage("--wait takes 10 to 3600 seconds".into()))?,
         None => LINK_WAIT,
     };
-    let state = std::env::var_os("HOME")
+    let state = user_home::home_os()
         .map(std::path::PathBuf::from)
-        .ok_or_else(|| Failure::Plain("HOME is not set.".into()))?
+        .ok_or_else(|| Failure::Plain(user_home::NO_HOME.into()))?
         .join(".openagents/coder-access");
     let host_runs = coder_access::host::Host::new(&state, coder_access::RelayPolicy::Production)
         .public_key()

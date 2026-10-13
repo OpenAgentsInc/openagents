@@ -356,7 +356,7 @@ impl Store {
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("OPENAGENTS_SESSION_HOME").map(PathBuf::from))
             .unwrap_or_else(|| {
-                std::env::var_os("HOME")
+                user_home::home_os()
                     .map_or_else(|| PathBuf::from("."), PathBuf::from)
                     .join(".openagents")
                     .join("session-observer")

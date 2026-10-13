@@ -1024,7 +1024,7 @@ impl Rarity {
 /// Where the rankings are kept: `~/.openagents/gym/learning`.
 #[must_use]
 pub fn default_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| PathBuf::from(home).join(".openagents/gym/learning"))
 }
@@ -1267,7 +1267,7 @@ impl Judge {
             return Judge::Off("GYM_JEV=off turns Jev off".to_owned());
         }
         let Some(dir) = jev_hosted::openagents_dir() else {
-            return Judge::Off("no Jev: HOME is not set".to_owned());
+            return Judge::Off("no Jev: Coder couldn't find your user folder".to_owned());
         };
         let env = |name: &str| std::env::var(name).ok();
         match jev_hosted::resolve(

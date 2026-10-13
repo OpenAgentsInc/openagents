@@ -14,6 +14,7 @@ http = ["dep:reqwest"]
 keychain = ["dep:security-framework"]
 
 [dependencies]
+user-home = { path = "../user-home" }
 # Paper Mono, the one typeface, for the pages this crate renders.
 paper-mono = { path = "../paper-mono" }
 getrandom = "0.3"

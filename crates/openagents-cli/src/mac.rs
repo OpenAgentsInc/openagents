@@ -168,7 +168,7 @@ fn segment(text: &str) -> String {
 }
 
 fn default_root() -> PathBuf {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".openagents")
@@ -186,7 +186,7 @@ pub(crate) fn saved(dir: Option<&str>) -> Result<Saved, String> {
     }
     let dir = dir.map_or_else(
         || {
-            let root = std::env::var_os("HOME")
+            let root = user_home::home_os()
                 .map(PathBuf::from)
                 .unwrap_or_default()
                 .join(".openagents");

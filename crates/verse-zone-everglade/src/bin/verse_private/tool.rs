@@ -184,7 +184,7 @@ fn verse_home() -> Result<PathBuf, String> {
     if let Some(home) = std::env::var_os("VERSE_HOME") {
         return Ok(PathBuf::from(home));
     }
-    let home = std::env::var_os("HOME").ok_or("HOME is not set")?;
+    let home = user_home::home_os().ok_or(user_home::NO_HOME)?;
     Ok(PathBuf::from(home).join(".openagents").join("verse"))
 }
 

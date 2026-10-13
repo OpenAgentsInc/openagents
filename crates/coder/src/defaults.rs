@@ -43,7 +43,7 @@ pub const SKILLS_DIR: &str = "skills";
 pub fn directory() -> Option<PathBuf> {
     resolve(
         std::env::var(DIR_ENV).ok().as_deref(),
-        std::env::var_os("HOME").as_deref(),
+        user_home::home_os().as_deref(),
     )
 }
 

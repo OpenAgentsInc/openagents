@@ -504,7 +504,7 @@ pub fn checkout(path: &Path) -> Result<PathBuf, String> {
 /// The host's root on this computer, `~/.openagents/host`.
 #[must_use]
 pub fn host_root() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| PathBuf::from(home).join(".openagents/host"))
 }

@@ -12,6 +12,7 @@ default = []
 tui = ["dep:ratatui", "dep:crossterm", "dep:coder-terminal", "dep:supervise"]
 
 [dependencies]
+user-home = { path = "../user-home" }
 # Coder One's episode log is an ATIF session log; its recovering reader
 # keeps a valid prefix of a killed episode.
 atif = { path = "../atif" }

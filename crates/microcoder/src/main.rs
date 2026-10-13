@@ -282,7 +282,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
 /// `api_key` in `~/.openagents/jev.json`), else the hosted decision
 /// service, else why there is none.
 fn jev_client() -> Result<jev::Client, String> {
-    let dir = jev_hosted::openagents_dir().ok_or("no Jev: HOME is not set")?;
+    let dir = jev_hosted::openagents_dir().ok_or("no Jev: Coder couldn't find your user folder")?;
     let env = |name: &str| std::env::var(name).ok();
     jev_hosted::resolve(
         &env,
@@ -614,7 +614,7 @@ async fn go(options: Options) -> Result<u8, String> {
             .map_err(|e| format!("can't create new run {}: {e}", dir.display()))?;
         dir.clone()
     } else {
-        let runs = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+        let runs = std::path::PathBuf::from(user_home::home_os().unwrap_or_default())
             .join(".openagents/microcoder/runs");
         std::fs::create_dir_all(&runs)
             .map_err(|e| format!("can't make {}: {e}", runs.display()))?;
@@ -887,7 +887,7 @@ async fn repository_cli(arguments: &[String]) -> u8 {
         let path = grant.ok_or_else(|| Failure::run("repository requires --grant".into()))?;
         let store = store
             .or_else(|| {
-                std::env::var_os("HOME")
+                user_home::home_os()
                     .map(|home| std::path::PathBuf::from(home).join(".openagents/tasks"))
             })
             .ok_or_else(|| Failure::run("no task store path".into()))?;

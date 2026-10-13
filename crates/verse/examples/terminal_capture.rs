@@ -143,8 +143,8 @@ fn main() -> Result<(), String> {
             .unwrap_or(60_u64)
     });
     if let Some(seconds) = serve {
-        let socket =
-            verse::terminal::control::default_path().ok_or("No HOME: set VERSE_TERMINAL_SOCKET")?;
+        let socket = verse::terminal::control::default_path()
+            .ok_or("No user folder: set VERSE_TERMINAL_SOCKET")?;
         overlay.listen(&socket)?;
         eprintln!("serving {} for {seconds}s", socket.display());
     } else {

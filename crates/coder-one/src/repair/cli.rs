@@ -78,7 +78,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             let out = match out {
                 Some(out) => out,
                 None => study::default_dir()
-                    .ok_or("no --out and no HOME")?
+                    .ok_or("no --out and no user folder")?
                     .join(format!("study-{}", atif::now_ms())),
             };
             let options = Options {

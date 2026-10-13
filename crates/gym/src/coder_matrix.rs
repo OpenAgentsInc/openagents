@@ -645,7 +645,7 @@ impl Source {
         let repo =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/terminal-bench");
         let mut source = Self {
-            jobs: std::env::var_os("HOME")
+            jobs: user_home::home_os()
                 .map(std::path::PathBuf::from)
                 .map(|home| home.join(".openagents/terminal-bench/jobs")),
             traces: Some(repo.join("traces")),

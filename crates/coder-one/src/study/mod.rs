@@ -64,7 +64,7 @@ pub const NIP_OPT: &[(&str, &str)] = &[
 /// Where studies are recorded: `~/.openagents/coder-one/studies`.
 #[must_use]
 pub fn default_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents/coder-one/studies"))
+    user_home::home_os().map(|home| PathBuf::from(home).join(".openagents/coder-one/studies"))
 }
 
 /// Where a study may be retained in the checkout.

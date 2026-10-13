@@ -971,7 +971,7 @@ fn start_keychain_host(paths: &Paths, record: &mut Record) -> Result<Host, Strin
     if cfg!(test) || !cfg!(target_os = "macos") {
         return Err(KEYCHAIN_HOST_FAILED.into());
     }
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = user_home::home_os().map(PathBuf::from);
     for label in HOST_SERVICES {
         if start_service(label, home.as_deref()) && wait_for_socket(&paths.socket, SERVICE_WAIT) {
             return Ok(Host::Running);

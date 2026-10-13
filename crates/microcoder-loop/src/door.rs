@@ -94,7 +94,7 @@ impl DoorTransport {
             .ok()
             .filter(|v| !v.trim().is_empty())
             .or_else(|| {
-                let home = std::env::var_os("HOME")?;
+                let home = user_home::home_os()?;
                 std::fs::read_to_string(std::path::PathBuf::from(home).join(".openagents/bearer"))
                     .ok()
             })

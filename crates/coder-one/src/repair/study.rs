@@ -359,7 +359,7 @@ pub async fn run(options: &Options) -> Result<Value, String> {
 /// Where studies are written: `~/.openagents/coder-one/repair`.
 #[must_use]
 pub fn default_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| PathBuf::from(home).join(".openagents/coder-one/repair"))
 }

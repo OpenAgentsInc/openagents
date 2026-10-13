@@ -519,8 +519,9 @@ pub async fn run_with(
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .process_group(0);
+        .kill_on_drop(true);
+    #[cfg(unix)]
+    command.process_group(0);
     let started = std::time::Instant::now();
     let mut child = command
         .spawn()

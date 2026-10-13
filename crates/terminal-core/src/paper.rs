@@ -2538,7 +2538,7 @@ fn unix_now() -> u64 {
 }
 
 fn short_home(path: &str) -> String {
-    match std::env::var("HOME") {
+    match user_home::home_string() {
         Ok(home) if !home.is_empty() && path == home => "~".into(),
         Ok(home) if !home.is_empty() && path.starts_with(&format!("{home}/")) => {
             format!("~{}", &path[home.len()..])

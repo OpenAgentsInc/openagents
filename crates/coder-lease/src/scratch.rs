@@ -39,7 +39,7 @@ pub fn root_from(env: &dyn Fn(&str) -> Option<OsString>) -> Result<PathBuf, Stri
     } else {
         let leases = crate::root_from(&set).map_err(|_| {
             format!(
-                "set HOME, {SCRATCH_ROOT_VAR}, or {} to choose the scratch root",
+                "Coder couldn't find your user folder; set {SCRATCH_ROOT_VAR} or {} to choose the scratch root",
                 crate::ROOT_VAR
             )
         })?;

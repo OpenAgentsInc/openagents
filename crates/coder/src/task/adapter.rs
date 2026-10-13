@@ -1196,7 +1196,7 @@ impl Host {
         {
             variables.push(("PATH".into(), path));
         }
-        let home = std::env::var_os("HOME").map(PathBuf::from);
+        let home = user_home::home_os().map(PathBuf::from);
         for (name, default) in [("RUSTUP_HOME", ".rustup"), ("CARGO_HOME", ".cargo")] {
             if variables.iter().any(|(held, _)| held == name) {
                 continue;

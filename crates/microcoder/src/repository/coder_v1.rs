@@ -91,7 +91,7 @@ pub(crate) async fn turn(
         .iter()
         .find(|(key, _)| key == "HOME")
         .map(|(_, value)| PathBuf::from(value))
-        .or_else(|| std::env::var_os("HOME").map(PathBuf::from));
+        .or_else(|| user_home::home_os().map(PathBuf::from));
     let state = home.map_or_else(
         || host.store().join("coder"),
         |home| home.join(".openagents/coder"),

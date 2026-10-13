@@ -661,7 +661,7 @@ pub fn command(args: &[String]) -> Result<i32, String> {
         return Err(USAGE.to_string());
     }
     let (mut rows, summary) = measure(&roots, &exclude);
-    let home = std::env::var("HOME").unwrap_or_default();
+    let home = user_home::home_string().unwrap_or_default();
     let here = std::env::current_dir()
         .map(|dir| format!("{}/", dir.display()))
         .unwrap_or_default();

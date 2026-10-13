@@ -923,7 +923,7 @@ pub fn local_key(env: &dyn Fn(&str) -> Option<String>, dir: &Path) -> Option<(St
 /// `~/.openagents`, when the process has a home directory.
 #[must_use]
 pub fn openagents_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents"))
+    user_home::home_os().map(|home| PathBuf::from(home).join(".openagents"))
 }
 
 /// Why a hosted call got no answer, when the error says Jev is

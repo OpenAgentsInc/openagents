@@ -208,7 +208,7 @@ pub(crate) async fn turn(
         .iter()
         .find(|(key, _)| key == "HOME")
         .map(|(_, value)| PathBuf::from(value))
-        .or_else(|| std::env::var_os("HOME").map(PathBuf::from));
+        .or_else(|| user_home::home_os().map(PathBuf::from));
     let credential = (lean.credential)(home.as_deref());
     let policy = (lean.executor)(&route.model, &effort);
     let mut cli = coder_delegate::policy::executor(

@@ -202,7 +202,7 @@ pub fn binary(variable: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
     if let Some(named) = variable(BIN_VAR).filter(|value| !value.is_empty()) {
         return first_executable([PathBuf::from(named)]);
     }
-    let home = variable("HOME").map(PathBuf::from);
+    let home = user_home::home_in(variable);
     first_executable(
         on_path("opencode", variable("PATH").as_deref())
             .into_iter()
@@ -219,7 +219,7 @@ pub fn data_dir(variable: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> 
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .filter(|path| path.is_absolute())
-        .or_else(|| variable("HOME").map(|home| Path::new(&home).join(".local/share")))?;
+        .or_else(|| user_home::home_in(variable).map(|home| home.join(".local/share")))?;
     Some(data.join("opencode"))
 }
 
@@ -229,7 +229,7 @@ fn config_files(variable: &dyn Fn(&str) -> Option<OsString>) -> Vec<PathBuf> {
     let Some(dir) = variable("XDG_CONFIG_HOME")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
-        .or_else(|| variable("HOME").map(|home| Path::new(&home).join(".config")))
+        .or_else(|| user_home::home_in(variable).map(|home| home.join(".config")))
     else {
         return Vec::new();
     };

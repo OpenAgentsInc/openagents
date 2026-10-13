@@ -114,7 +114,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     }
     let out = out
         .or_else(super::default_dir)
-        .ok_or("no --out and no HOME to record under")?;
+        .ok_or("no --out and no user folder to record under")?;
     match positional.first().map(String::as_str) {
         Some("run") => {
             if positional.get(1).map(String::as_str) != Some(super::pack::COMPONENT) {

@@ -169,7 +169,7 @@ impl Store {
 /// runs and shows).
 #[cfg(test)]
 fn refuse_the_real_home(root: &Path) {
-    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+    let Some(home) = user_home::home_os().map(PathBuf::from) else {
         return;
     };
     let temporary = |path: &Path| {

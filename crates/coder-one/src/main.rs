@@ -508,7 +508,7 @@ impl Options {
 
 /// Reports where each credential resolves from. Makes no network call.
 fn doctor() -> Result<(), String> {
-    let dir = credentials::openagents_dir().ok_or("HOME is not set")?;
+    let dir = credentials::openagents_dir().ok_or(user_home::NO_HOME)?;
     let env = |name: &str| std::env::var(name).ok();
     let mut ok = true;
     for (label, found) in [
@@ -556,7 +556,7 @@ fn doctor() -> Result<(), String> {
 
 async fn solve(url: &str, options: Options) -> Result<(), String> {
     let started = Instant::now();
-    let dir = credentials::openagents_dir().ok_or("HOME is not set")?;
+    let dir = credentials::openagents_dir().ok_or(user_home::NO_HOME)?;
     let env = |name: &str| std::env::var(name).ok();
     let bearer = credentials::bearer(env, &dir)?;
     let jev = if options.jev {

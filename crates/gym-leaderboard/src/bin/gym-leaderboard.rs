@@ -188,7 +188,7 @@ impl Sign {
             _ => {
                 let path = match &self.key {
                     Some(path) => path.clone(),
-                    None => std::env::var_os("HOME")
+                    None => user_home::home_os()
                         .map(|h| PathBuf::from(h).join(".openagents/nostr/gym-publisher-key"))
                         .ok_or("no key: set GYM_PUBLISHER_SECRET or pass --key")?,
                 };

@@ -96,7 +96,7 @@ pub fn candidates(name: &str) -> Vec<PathBuf> {
     if let Some(path) = std::env::var_os("PATH") {
         dirs.extend(std::env::split_paths(&path));
     }
-    if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
+    if let Some(home) = user_home::home_os().or_else(|| std::env::var_os("USERPROFILE")) {
         dirs.push(PathBuf::from(home).join(".openagents/bin"));
     }
     let mut found: Vec<PathBuf> = Vec::new();
@@ -209,7 +209,7 @@ impl Local {
         // terminals nobody at the Mac would answer a prompt for.
         let home = home.map(Path::to_path_buf).unwrap_or_else(|| {
             std::env::var_os("ZDOTDIR")
-                .or_else(|| std::env::var_os("HOME"))
+                .or_else(|| user_home::home_os())
                 .map(PathBuf::from)
                 .unwrap_or_else(|| root.to_path_buf())
         });
@@ -648,7 +648,7 @@ pub fn isolated(root: &Path, shell: PathBuf) -> Sessions {
 }
 /// Shorten only the displayed path; exact proposal bindings retain the owner path.
 fn short_directory(path: String) -> String {
-    let home = std::env::var("HOME")
+    let home = user_home::home_string()
         .or_else(|_| std::env::var("USERPROFILE"))
         .ok()
         .filter(|h| !h.is_empty());
@@ -665,7 +665,7 @@ fn short_directory(path: String) -> String {
 
 /// The native profile directory, or this process's current directory.
 pub fn user_home() -> PathBuf {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
         .filter(|path| path.is_dir())

@@ -190,7 +190,7 @@ pub fn templates(dir: Option<&Path>) -> Result<Templates, String> {
 }
 
 fn home(rest: &str) -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|h| PathBuf::from(h).join(rest))
+    user_home::home_os().map(|h| PathBuf::from(h).join(rest))
 }
 
 /// `~/.openagents/nostr/coder-defaults-key`, the key `coder-defaults`
@@ -836,7 +836,7 @@ pub fn defaults_keygen(o: &XpOptions) -> Result<u8, String> {
         .key
         .clone()
         .or_else(defaults_key_file)
-        .ok_or("HOME isn't set, so there's no key file: pass --key")?;
+        .ok_or("Coder couldn't find your user folder, so there's no key file: pass --key")?;
     if key.exists() {
         let pubkey = knowledge::remote::own_pubkey(&key).unwrap_or_default();
         println!(

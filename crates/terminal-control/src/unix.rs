@@ -30,7 +30,7 @@ pub fn default_path() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os(SOCKET_ENV).filter(|p| !p.is_empty()) {
         return Some(PathBuf::from(path));
     }
-    let home = std::env::var_os("HOME").filter(|h| !h.is_empty())?;
+    let home = user_home::home_os().filter(|h| !h.is_empty())?;
     Some(
         PathBuf::from(home)
             .join(".openagents")

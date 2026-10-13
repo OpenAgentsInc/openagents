@@ -25,6 +25,7 @@ landmarker = ["dep:ort"]
 judge = ["dep:jev", "dep:jev-hosted", "dep:log", "dep:thiserror", "dep:tokio"]
 
 [dependencies]
+user-home = { path = "../user-home" }
 # The direction a swipe carries, which is the desk's own `Dir`, so a
 # gesture names a desk switch in the words the layout reads it in. The
 # crate has no dependencies of its own and runs on every platform.

@@ -187,9 +187,7 @@ fn claude_credentials_file(
     if let Some(dir) = variable("CLAUDE_CONFIG_DIR").filter(|dir| !dir.is_empty()) {
         return Some(PathBuf::from(dir).join(".credentials.json"));
     }
-    variable("HOME")
-        .filter(|home| !home.is_empty())
-        .map(|home| PathBuf::from(home).join(".claude/.credentials.json"))
+    user_home::home_in(variable).map(|home| home.join(".claude/.credentials.json"))
 }
 
 /// The `Claude Code-credentials` generic password for this account, read

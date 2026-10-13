@@ -48,7 +48,7 @@ fn rising_gust(start: f32) -> impl Fn(f32) -> Wind {
 fn main() -> Result<(), String> {
     let model_path = std::env::args().nth(1).map_or_else(
         || {
-            PathBuf::from(std::env::var("HOME").unwrap_or_default())
+            PathBuf::from(user_home::home_string().unwrap_or_default())
                 .join("work/film-out/draconia/build/draconia-long.neutral.glb")
         },
         PathBuf::from,

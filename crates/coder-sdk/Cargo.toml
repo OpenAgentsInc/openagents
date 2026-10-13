@@ -7,6 +7,7 @@ publish.workspace = true
 description = "Coder's harness-independent hook layer: normalized events, hook outcomes and how they combine, support tiers per backend, the hook set digest, and a scripted backend that replays a recorded session (docs/coder/design/coder-sdk.md)."
 
 [dependencies]
+user-home = { path = "../user-home" }
 # The `Session` capability matrix and its hook tiers.
 coder-delegate = { path = "../coder-delegate" }
 # The ACP backend's permission asks (#11508).

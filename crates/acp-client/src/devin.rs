@@ -77,7 +77,7 @@ pub fn binary(variable: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
     if let Some(named) = variable(BIN_VAR).filter(|value| !value.is_empty()) {
         return first_executable([PathBuf::from(named)]);
     }
-    let home = variable("HOME").map(PathBuf::from);
+    let home = user_home::home_in(variable);
     first_executable(
         on_path("devin", variable("PATH").as_deref())
             .into_iter()
@@ -91,7 +91,7 @@ pub fn credentials_path(variable: &dyn Fn(&str) -> Option<OsString>) -> Option<P
     let data = variable("XDG_DATA_HOME")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
-        .or_else(|| variable("HOME").map(|home| Path::new(&home).join(".local/share")))?;
+        .or_else(|| user_home::home_in(variable).map(|home| home.join(".local/share")))?;
     Some(data.join("devin/credentials.toml"))
 }
 
@@ -122,7 +122,7 @@ pub fn config_path(variable: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBu
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .filter(|path| path.is_absolute())
-        .or_else(|| variable("HOME").map(|home| Path::new(&home).join(".config")))?;
+        .or_else(|| user_home::home_in(variable).map(|home| home.join(".config")))?;
     Some(dir.join("devin").join("config.json"))
 }
 

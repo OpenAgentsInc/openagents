@@ -55,7 +55,7 @@ pub struct Sources {
 
 impl Default for Sources {
     fn default() -> Self {
-        let home = std::env::var_os("HOME")
+        let home = user_home::home_os()
             .filter(|home| !home.is_empty())
             .map(PathBuf::from);
         Sources {

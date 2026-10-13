@@ -596,7 +596,7 @@ pub fn read_whole(path: &Path) -> io::Result<Recording> {
 /// `~/.openagents/traces`. `None` when the home directory is unknown.
 #[must_use]
 pub fn default_dir() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")?;
+    let home = user_home::home_os()?;
     if home.is_empty() {
         return None;
     }

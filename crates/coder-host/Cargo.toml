@@ -35,6 +35,7 @@ host = [
 verse-assets = ["host", "dep:verse-private"]
 
 [dependencies]
+user-home = { path = "../user-home" }
 coder-host-wire = { path = "../coder-host-wire" }
 openagents-chat = { path = "../openagents-chat", optional = true }
 # Shared compute: `host share` and the pylon `serve` runs while it is on

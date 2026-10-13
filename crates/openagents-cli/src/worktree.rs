@@ -141,7 +141,7 @@ fn spare(name: &str) -> bool {
 
 fn ls(output: &Output, store: &Path, worktrees: &Path, sizes: bool) {
     let tasks = tasks(store);
-    let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from);
+    let home = user_home::home_os().map_or_else(|| PathBuf::from("/"), PathBuf::from);
     let now = paths::now();
     let mut found = Vec::new();
     if let Ok(entries) = std::fs::read_dir(worktrees) {

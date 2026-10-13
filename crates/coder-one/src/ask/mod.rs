@@ -389,11 +389,9 @@ pub async fn run(options: Options, progress: &Progress) -> Result<(Value, i32), 
     let started = Instant::now();
     let at = atif::now_ms();
     let id = format!("ask-{at}");
-    let root = options
-        .out
-        .clone()
-        .or_else(default_dir)
-        .ok_or("HOME is not set, so there's nowhere to record the ask; pass --out")?;
+    let root = options.out.clone().or_else(default_dir).ok_or(
+        "Coder couldn't find your user folder, so there's nowhere to record the ask; pass --out",
+    )?;
     let mut dir = root.join(&id);
     if let Err(error) = std::fs::create_dir_all(&dir) {
         // Run as a delegated executor, the ask sits inside the caller's own
@@ -434,7 +432,7 @@ pub async fn run(options: Options, progress: &Progress) -> Result<(Value, i32), 
     }
 
     // One boundary for every command the ask runs.
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = user_home::home_os().map(PathBuf::from);
     let mut spec = coder_boundary::Boundary::readonly().owned_scratch_under(&dir);
     for state in [
         home.as_ref().map(|home| home.join(".claude")),
@@ -501,7 +499,7 @@ pub async fn run(options: Options, progress: &Progress) -> Result<(Value, i32), 
         JevChoice::Off => JevMode::Off,
         JevChoice::Recorded(path) => JevMode::Recorded(Recorded::load(path)?),
         JevChoice::Live => {
-            let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
+            let dir = crate::credentials::openagents_dir().ok_or(user_home::NO_HOME)?;
             match crate::credentials::jev_live(|name| std::env::var(name).ok(), &dir) {
                 Ok(client) => JevMode::Live(client),
                 Err(why) => {
@@ -1479,7 +1477,7 @@ fn record_proposals(
         .clone()
         .or_else(crate::proposal::default_dir)
     else {
-        progress.line("proposals ▸ HOME isn't set, so the proposals aren't recorded");
+        progress.line("proposals ▸ no user folder, so the proposals aren't recorded");
         return Vec::new();
     };
     match crate::proposal::record_all(answer, &context, &root) {

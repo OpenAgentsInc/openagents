@@ -47,7 +47,7 @@ fn default_check() -> String {
 }
 
 fn resolve(path: &str) -> PathBuf {
-    match (path.strip_prefix("~/"), std::env::var_os("HOME")) {
+    match (path.strip_prefix("~/"), user_home::home_os()) {
         (Some(rest), Some(home)) => PathBuf::from(home).join(rest),
         _ if path.starts_with('/') => PathBuf::from(path),
         _ => PathBuf::from(env!("CARGO_MANIFEST_DIR"))

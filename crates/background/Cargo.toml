@@ -7,6 +7,7 @@ publish.workspace = true
 description = "Background processes: durable rules the host runs without a conversation, starting with the disk cleanup monitor (docs/background)."
 
 [dependencies]
+user-home = { path = "../user-home" }
 atif = { path = "../atif" }
 # The places macOS guards with a privacy prompt, which no walk enters.
 coder-boundary = { path = "../coder-boundary" }

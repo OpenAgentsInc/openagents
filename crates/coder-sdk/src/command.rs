@@ -389,7 +389,7 @@ fn reply(event: Event, source: &str, stdout: &str) -> HookOutcome {
 /// The person's home, for [`load`].
 #[must_use]
 pub fn home() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(PathBuf::from)
+    user_home::home_os().map(PathBuf::from)
 }
 
 #[cfg(test)]

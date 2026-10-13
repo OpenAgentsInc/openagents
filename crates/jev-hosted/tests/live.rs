@@ -6,7 +6,7 @@
 #[tokio::test]
 #[ignore = "reaches the deployed decision worker on wss://relay.openagents.com"]
 async fn live_hosted_decision_answers() {
-    let home = std::env::var_os("HOME").expect("HOME");
+    let home = user_home::home_os().expect("HOME");
     let dir = std::path::PathBuf::from(home).join(".openagents");
     let env = |name: &str| std::env::var(name).ok();
     assert!(
@@ -52,7 +52,7 @@ async fn live_hosted_decision_answers() {
 #[ignore = "reaches the deployed decision worker on wss://relay.openagents.com"]
 async fn live_hosted_structured_decision_answers() {
     use serde_json::json;
-    let home = std::env::var_os("HOME").expect("HOME");
+    let home = user_home::home_os().expect("HOME");
     let dir = std::path::PathBuf::from(home).join(".openagents");
     let env = |name: &str| std::env::var(name).ok();
     assert!(
@@ -176,7 +176,7 @@ fn assert_served_jev(response: &jev::SystemOneResponse) {
 #[tokio::test]
 #[ignore = "reaches the deployed decision worker on wss://relay.openagents.com"]
 async fn live_hosted_docs_examples_answer_under_the_alias() {
-    let home = std::env::var_os("HOME").expect("HOME");
+    let home = user_home::home_os().expect("HOME");
     let dir = std::path::PathBuf::from(home).join(".openagents");
     let env = |name: &str| std::env::var(name).ok();
     assert!(

@@ -351,7 +351,7 @@ pub(crate) fn check_executor_state(slug: &str, proof: &Proof, presence: Presence
     };
     let state = devin_state(
         std::env::var_os("XDG_DATA_HOME").as_deref(),
-        std::env::var_os("HOME").as_deref(),
+        user_home::home_os().as_deref(),
     );
     let failure = match state {
         Some(state) => match canonical_future(&state) {

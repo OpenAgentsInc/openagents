@@ -148,7 +148,7 @@ fn parse_run(words: &[String]) -> Result<Parsed, String> {
 }
 
 fn state_dir() -> PathBuf {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .map_or_else(|| PathBuf::from("."), PathBuf::from)
         .join(".openagents/boat")
 }

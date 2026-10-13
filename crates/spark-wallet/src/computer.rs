@@ -29,7 +29,7 @@ pub fn home() -> PathBuf {
     if let Some(home) = std::env::var_os(HOME_ENV) {
         return PathBuf::from(home);
     }
-    let user = std::env::var_os("HOME").map_or_else(|| PathBuf::from("."), PathBuf::from);
+    let user = user_home::home_os().map_or_else(|| PathBuf::from("."), PathBuf::from);
     user.join(".openagents").join("spark")
 }
 

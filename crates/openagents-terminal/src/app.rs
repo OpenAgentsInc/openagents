@@ -2020,7 +2020,7 @@ fn title() -> String {
 /// `path` with the home folder written `~`, as a shell prompt writes it:
 /// `/home/me/openagents` is `~/openagents`.
 pub fn home_relative(path: &str) -> String {
-    let home = std::env::var("HOME")
+    let home = user_home::home_string()
         .or_else(|_| std::env::var("USERPROFILE"))
         .unwrap_or_default();
     let home = home.trim_end_matches(['/', '\\']);

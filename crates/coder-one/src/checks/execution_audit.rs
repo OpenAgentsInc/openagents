@@ -203,7 +203,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let records = records.ok_or("execution-audit needs --records")?;
     let out = out.ok_or("execution-audit needs --out")?;
     std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
-    let home = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
+    let home = crate::credentials::openagents_dir().ok_or(user_home::NO_HOME)?;
     let mode = JevMode::Live(crate::credentials::jev_live(
         |name| std::env::var(name).ok(),
         &home,

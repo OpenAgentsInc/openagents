@@ -165,7 +165,7 @@ enum Source {
 }
 
 fn home() -> PathBuf {
-    std::env::var_os("HOME").map_or_else(PathBuf::new, PathBuf::from)
+    user_home::home_os().map_or_else(PathBuf::new, PathBuf::from)
 }
 
 /// The trace to send, from the arguments after `upload`.

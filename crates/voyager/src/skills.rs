@@ -116,7 +116,7 @@ impl SkillStore {
         if let Some(dir) = std::env::var_os("VOYAGER_SKILL_DIR") {
             return PathBuf::from(dir);
         }
-        let home = std::env::var_os("HOME")
+        let home = user_home::home_os()
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."));
         home.join(".openagents").join("voyager").join("skills")

@@ -69,7 +69,10 @@ fn run_with(output: &Output, words: &[String], identify: Identify, now: u64) -> 
         Err(message) => return output.usage("capacity", &message, USAGE),
     };
     let Some(store) = parsed.store.clone().or_else(capacity::default_dir) else {
-        return output.fail("capacity", "HOME is unset; give --store DIR");
+        return output.fail(
+            "capacity",
+            "Coder couldn't find your user folder; give --store DIR",
+        );
     };
     match command {
         "list" if parsed.provider.is_none() && parsed.reset.is_none() && !parsed.rate => {

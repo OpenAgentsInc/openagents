@@ -13,6 +13,7 @@ xp = ["dep:xp-ledger", "dep:reqwest"]
 test-support = []
 
 [dependencies]
+user-home = { path = "../user-home" }
 coder-ui = { path = "../coder-ui" }
 glam = "0.30.10"
 nostr = { path = "../nostr" }

@@ -167,7 +167,7 @@ impl Login {
     #[must_use]
     pub fn home() -> Option<PathBuf> {
         Login::home_override()
-            .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex")))
+            .or_else(|| user_home::home_os().map(|home| PathBuf::from(home).join(".codex")))
     }
 
     /// `$CODEX_HOME` as an absolute folder, when it is set and not empty.
@@ -219,7 +219,7 @@ impl Login {
     pub fn take_copy() -> Result<Login, LoginError> {
         let home = Login::home_override().ok_or(LoginError::NoPrivateHome)?;
         let real = |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-        if std::env::var_os("HOME")
+        if user_home::home_os()
             .is_some_and(|person| real(&PathBuf::from(person).join(".codex")) == real(&home))
         {
             return Err(LoginError::NoPrivateHome);

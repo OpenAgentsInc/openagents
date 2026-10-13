@@ -308,7 +308,7 @@ pub fn home() -> PathBuf {
     if let Some(path) = std::env::var_os("OPENAGENTS_WALLET_HOME") {
         return PathBuf::from(path);
     }
-    let base = std::env::var_os("HOME")
+    let base = user_home::home_os()
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
     base.join(".openagents").join("wallet")

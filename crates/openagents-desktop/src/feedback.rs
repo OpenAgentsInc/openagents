@@ -25,7 +25,7 @@ pub type Sender = std::sync::Arc<dyn Fn(Report) -> Result<String, String> + Send
 /// The live sender: this computer's world key, the triage key, the relay.
 pub fn live() -> Sender {
     std::sync::Arc::new(|report| {
-        let home = std::env::var_os("HOME")
+        let home = user_home::home_os()
             .or_else(|| std::env::var_os("USERPROFILE"))
             .map_or_else(|| PathBuf::from("/"), PathBuf::from);
         let triage = playtest::triage_key(std::env::var(playtest::TRIAGE_KEY_ENV).ok().as_deref());

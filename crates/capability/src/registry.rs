@@ -85,7 +85,7 @@ pub fn search(repository: Option<&Path>) -> Vec<SourceDir> {
     if let Some(root) = repository {
         dirs.push(SourceDir::repository(root.join("capabilities")));
     }
-    if let Some(home) = env::var_os("HOME").filter(|home| !home.is_empty()) {
+    if let Some(home) = user_home::home_os().filter(|home| !home.is_empty()) {
         dirs.push(SourceDir::operator(
             PathBuf::from(home).join(".openagents").join("capabilities"),
         ));
@@ -337,7 +337,7 @@ pub fn search_dirs() -> Vec<PathBuf> {
     if let Some(path) = env::var_os("PATH") {
         dirs.extend(env::split_paths(&path));
     }
-    if let Some(home) = env::var_os("HOME").filter(|home| !home.is_empty()) {
+    if let Some(home) = user_home::home_os().filter(|home| !home.is_empty()) {
         for dir in [".local/bin", "bin", ".cargo/bin", ".bun/bin"] {
             dirs.push(PathBuf::from(&home).join(dir));
         }

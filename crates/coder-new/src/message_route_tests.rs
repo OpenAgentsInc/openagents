@@ -384,7 +384,7 @@ fn live_decisions_route_a_model_question_a_follow_up_and_new_work() {
 #[test]
 #[ignore = "reads recorded chats and calls the Decisions API"]
 fn replay_recorded_chats() {
-    let home = PathBuf::from(std::env::var("HOME").unwrap());
+    let home = PathBuf::from(user_home::home_string().unwrap());
     let sessions = std::env::var("CODER_REPLAY_SESSIONS").map_or_else(
         |_| home.join(".openagents/coder-new/sessions"),
         PathBuf::from,

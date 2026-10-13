@@ -173,7 +173,7 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
 }
 
 fn home() -> PathBuf {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map_or_else(|| PathBuf::from("/"), PathBuf::from)
 }
@@ -184,9 +184,9 @@ fn main() -> ExitCode {
     // it, as `coder.exe` does: take the profile folder before any thread
     // starts, the same fallback `coder.exe`'s `main` makes.
     #[cfg(windows)]
-    if std::env::var_os("HOME").is_none()
-        && let Some(profile) = std::env::var_os("USERPROFILE")
-    {
+    // `user_home` already answers without it; this is for the children
+    // (shells, Git, harness CLIs) that read `HOME` themselves.
+    if let Some(profile) = user_home::home_os() {
         // SAFETY: no other thread exists yet.
         unsafe { std::env::set_var("HOME", profile) };
     }

@@ -347,7 +347,7 @@ const SYSTEM_DIRS: &[&str] = &["/opt/homebrew/bin", "/usr/local/bin"];
 /// once a process and only when nothing else has one.
 #[must_use]
 pub fn locate() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")
+    let home = user_home::home_os()
         .map(PathBuf::from)
         .filter(|home| home.is_absolute());
     let path = std::env::var_os("PATH");

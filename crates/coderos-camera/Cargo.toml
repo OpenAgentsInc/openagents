@@ -15,6 +15,7 @@ name = "coderos-camera"
 path = "src/main.rs"
 
 [dependencies]
+user-home = { path = "../user-home" }
 # The landmarker, the pinned model, and the line the hands socket carries.
 coder-hands = { path = "../coder-hands" }
 # The control socket speaks one JSON object a line, the way the desk

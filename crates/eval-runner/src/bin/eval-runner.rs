@@ -53,7 +53,7 @@ async fn main() -> ExitCode {
 fn pubkey() -> Result<ExitCode, String> {
     let path = std::env::var_os("EVAL_RUNNER_KEY_FILE").map_or_else(
         || {
-            std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+            std::path::PathBuf::from(user_home::home_os().unwrap_or_default())
                 .join(".openagents/nostr/eval-runner-key")
         },
         std::path::PathBuf::from,
@@ -160,7 +160,7 @@ fn usage(args: &[String]) -> Result<ExitCode, String> {
     let mut dir = std::env::var_os("EVAL_RUNNER_STATE")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
-            std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+            std::path::PathBuf::from(user_home::home_os().unwrap_or_default())
                 .join(".openagents/eval-runner")
         })
         .join("usage");

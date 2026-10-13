@@ -88,7 +88,7 @@ pub fn path() -> PathBuf {
     if let Some(file) = std::env::var_os(PATH_VAR).filter(|v| !v.is_empty()) {
         return PathBuf::from(file);
     }
-    std::env::var_os("HOME")
+    user_home::home_os()
         .map_or_else(|| PathBuf::from("."), PathBuf::from)
         .join(".openagents/settings.json")
 }
@@ -1052,7 +1052,7 @@ pub fn access() -> model_access::Access {
 
 fn expand_home(text: &str) -> PathBuf {
     match text.strip_prefix("~/") {
-        Some(rest) => std::env::var_os("HOME").map_or_else(
+        Some(rest) => user_home::home_os().map_or_else(
             || PathBuf::from(text),
             |home| PathBuf::from(home).join(rest),
         ),

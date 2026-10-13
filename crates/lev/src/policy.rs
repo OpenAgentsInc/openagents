@@ -931,7 +931,7 @@ fn expand(path: &str) -> PathBuf {
     let Some(rest) = path.strip_prefix("~/") else {
         return PathBuf::from(path);
     };
-    match std::env::var("HOME") {
+    match user_home::home_string() {
         Ok(home) if !home.is_empty() => PathBuf::from(home).join(rest),
         _ => PathBuf::from(path),
     }

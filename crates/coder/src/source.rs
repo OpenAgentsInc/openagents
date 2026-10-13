@@ -1269,7 +1269,7 @@ pub fn search(repository: Option<&Path>) -> Vec<PathBuf> {
     if let Some(root) = repository {
         dirs.push(root.join("sources"));
     }
-    if let Some(home) = env::var_os("HOME").filter(|home| !home.is_empty()) {
+    if let Some(home) = user_home::home_os().filter(|home| !home.is_empty()) {
         dirs.push(PathBuf::from(home).join(".openagents").join("sources"));
     }
     dirs

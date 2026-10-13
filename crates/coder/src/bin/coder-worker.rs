@@ -1476,7 +1476,7 @@ fn execution_admitted(options: &Options, caller: &str) -> bool {
 }
 
 fn execution_dir() -> Result<PathBuf, String> {
-    let home = env::var("HOME").map_err(|_| "HOME is unset".to_string())?;
+    let home = user_home::home_string().map_err(|_| user_home::NO_HOME.to_string())?;
     Ok(PathBuf::from(home).join(".openagents").join("execution"))
 }
 

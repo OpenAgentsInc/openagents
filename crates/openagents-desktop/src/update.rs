@@ -849,7 +849,7 @@ impl Updater {
     /// keys, this crate's version, and `~/Library/Caches/com.openagents.desktop/updates`.
     pub fn for_this_app() -> Result<Self, UpdateError> {
         let home =
-            std::env::var_os("HOME").ok_or_else(|| UpdateError::Io("HOME is not set".into()))?;
+            user_home::home_os().ok_or_else(|| UpdateError::Io(user_home::NO_HOME.into()))?;
         let cache = PathBuf::from(home)
             .join("Library/Caches")
             .join(BUNDLE_ID)
@@ -868,10 +868,10 @@ impl Updater {
     /// manifest, the compiled keys, this crate's version, and
     /// `$XDG_CACHE_HOME/com.openagents.desktop/updates`.
     pub fn for_linux(install: Install) -> Result<Self, UpdateError> {
-        let home = std::env::var_os("HOME")
+        let home = user_home::home_os()
             .map(PathBuf::from)
             .filter(|home| home.is_absolute())
-            .ok_or_else(|| UpdateError::Io("HOME is not set".into()))?;
+            .ok_or_else(|| UpdateError::Io(user_home::NO_HOME.into()))?;
         let cache = std::env::var_os("XDG_CACHE_HOME")
             .map(PathBuf::from)
             .filter(|dir| dir.is_absolute())

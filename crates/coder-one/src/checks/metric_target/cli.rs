@@ -53,7 +53,7 @@ pub(super) fn modes(word: &str, recorded: &Recorded) -> Result<(JevMode, Option<
         "off" => Ok((JevMode::Off, None)),
         "recorded" => Ok((replay, None)),
         "live" => {
-            let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
+            let dir = crate::credentials::openagents_dir().ok_or(user_home::NO_HOME)?;
             let client = crate::credentials::jev_live(|name| std::env::var(name).ok(), &dir)?;
             Ok((JevMode::Live(client), Some(replay)))
         }

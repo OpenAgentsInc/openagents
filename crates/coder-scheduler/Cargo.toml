@@ -7,6 +7,7 @@ description = "The deterministic backlog scheduler: a versioned task catalog, a 
 publish.workspace = true
 
 [dependencies]
+user-home = { path = "../user-home" }
 getrandom = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

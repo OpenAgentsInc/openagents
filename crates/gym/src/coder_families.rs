@@ -345,7 +345,7 @@ leaderboard row the policy names for it. Says whether the policy's rows agree.
 pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut policy = root.join("crates/coder-one/policies/tunable-v4.json");
-    let mut tasks = std::env::var_os("HOME")
+    let mut tasks = user_home::home_os()
         .map(PathBuf::from)
         .map(|home| home.join(".openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks"));
     let mut reference = crate::terminal_bench_reference::default_path();
@@ -369,7 +369,7 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
             other => return Err(format!("unknown option {other}\n\n{HELP}")),
         }
     }
-    let tasks = tasks.ok_or("no --tasks directory and no HOME")?;
+    let tasks = tasks.ok_or("no --tasks directory and no user folder")?;
     let text = std::fs::read_to_string(&policy)
         .map_err(|error| format!("{}: {error}", policy.display()))?;
     let manifest: Value =

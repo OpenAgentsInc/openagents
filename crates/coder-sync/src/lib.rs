@@ -245,7 +245,7 @@ fn folder_name(dir: &Path) -> String {
 /// Whether `dir` is the person's own Coder folder,
 /// `$HOME/.openagents/coder` (or its earlier name, `coder-new`).
 fn home_coder_dir(dir: &Path) -> bool {
-    let Some(home) = std::env::var_os("HOME").filter(|home| !home.is_empty()) else {
+    let Some(home) = user_home::home_os().filter(|home| !home.is_empty()) else {
         return false;
     };
     let root = Path::new(&home).join(".openagents");

@@ -114,7 +114,7 @@ fn brake<T: std::str::FromStr + PartialEq + Default>(name: &str) -> Result<Optio
 }
 
 fn home() -> PathBuf {
-    std::env::var_os("HOME").map_or_else(|| PathBuf::from("."), PathBuf::from)
+    user_home::home_os().map_or_else(|| PathBuf::from("."), PathBuf::from)
 }
 
 impl Config {

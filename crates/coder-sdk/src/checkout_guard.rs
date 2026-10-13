@@ -70,7 +70,7 @@ impl Boundary {
         }
         let home = path
             .strip_prefix("~/")
-            .zip(std::env::var_os("HOME"))
+            .zip(user_home::home_os())
             .map(|(rest, home)| PathBuf::from(home).join(rest));
         let joined = cwd.join(home.as_deref().unwrap_or_else(|| Path::new(path)));
         let normal = normalize(&joined);

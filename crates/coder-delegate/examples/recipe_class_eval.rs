@@ -11,7 +11,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = std::env::args()
         .nth(1)
         .ok_or("expected an NDJSON row set path")?;
-    let home = std::env::var("HOME")?;
+    let home = user_home::home_string()?;
     let resolved = credentials::jev(
         |name| std::env::var(name).ok(),
         &std::path::Path::new(&home).join(".openagents"),

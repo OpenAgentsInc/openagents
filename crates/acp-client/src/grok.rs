@@ -30,7 +30,7 @@ pub fn auth_path(variable: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf>
     if let Some(home) = variable(HOME_VAR).filter(|value| !value.is_empty()) {
         return Some(PathBuf::from(home).join("auth.json"));
     }
-    variable("HOME").map(|home| Path::new(&home).join(".grok/auth.json"))
+    user_home::home_in(variable).map(|home| home.join(".grok/auth.json"))
 }
 
 /// The Grok Build binary: `GROK_BIN`, else `grok` on `PATH`, else
@@ -41,7 +41,7 @@ pub fn binary(variable: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
     if let Some(named) = variable(BIN_VAR).filter(|value| !value.is_empty()) {
         return first_executable([PathBuf::from(named)]);
     }
-    let home = variable("HOME").map(PathBuf::from);
+    let home = user_home::home_in(variable);
     first_executable(
         on_path("grok", variable("PATH").as_deref())
             .into_iter()

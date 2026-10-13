@@ -260,13 +260,13 @@ fn codex_auth_path() -> Option<std::path::PathBuf> {
     if let Some(home) = variable("CODEX_HOME") {
         return Some(std::path::Path::new(&home).join("auth.json"));
     }
-    variable("HOME").map(|home| std::path::Path::new(&home).join(".codex/auth.json"))
+    user_home::home().map(|home| home.join(".codex/auth.json"))
 }
 
 /// This computer's Codex ChatGPT login as a cloud run carries it, base64:
 /// see [`access_only_login`]. Reads the file and never writes it.
 pub(super) fn codex_chatgpt_login() -> Result<(String, u64), String> {
-    let path = codex_auth_path().ok_or("HOME is not set")?;
+    let path = codex_auth_path().ok_or(user_home::NO_HOME)?;
     let text = std::fs::read_to_string(&path)
         .map_err(|_| "Codex isn't signed in on this computer (`codex login`)".to_owned())?;
     let now = SystemTime::now()
@@ -1209,7 +1209,7 @@ fn route_record(
 }
 
 fn append_record(record: &Value) {
-    let dir = std::env::var_os("HOME")
+    let dir = user_home::home_os()
         .map_or_else(|| std::path::PathBuf::from("."), std::path::PathBuf::from)
         .join(".openagents/boat");
     let _ = std::fs::create_dir_all(&dir);

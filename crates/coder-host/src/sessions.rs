@@ -105,7 +105,7 @@ pub struct Report {
 /// This user's home folder: `HOME`, or `USERPROFILE` on Windows.
 #[must_use]
 pub fn user_home() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .or_else(|| std::env::var_os("USERPROFILE"))
         .filter(|home| !home.is_empty())
         .map(PathBuf::from)

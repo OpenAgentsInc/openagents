@@ -272,7 +272,7 @@ fn minecraft_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("VOYAGER_MC_DIR") {
         return PathBuf::from(dir);
     }
-    let home = std::env::var_os("HOME")
+    let home = user_home::home_os()
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
     home.join(".openagents").join("voyager").join("minecraft")
@@ -289,7 +289,7 @@ fn relay_bin() -> PathBuf {
 
 /// `~/.openagents/voyager/runs`, where episodes leave their evidence.
 fn default_runs() -> PathBuf {
-    let home = std::env::var_os("HOME")
+    let home = user_home::home_os()
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
     home.join(".openagents").join("voyager").join("runs")

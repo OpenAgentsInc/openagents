@@ -279,7 +279,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         std::process::id(),
         atif::now_ms()
     ))?;
-    let home = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
+    let home = crate::credentials::openagents_dir().ok_or(user_home::NO_HOME)?;
     let mode = JevMode::Live(crate::credentials::jev_live(
         |name| std::env::var(name).ok(),
         &home,
@@ -479,7 +479,7 @@ pub async fn rejudge_command(args: &[String]) -> Result<i32, String> {
         return Err("Rejudgment already exists; choose a new output".into());
     }
     std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
-    let home = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
+    let home = crate::credentials::openagents_dir().ok_or(user_home::NO_HOME)?;
     let mode = JevMode::Live(crate::credentials::jev_live(
         |name| std::env::var(name).ok(),
         &home,

@@ -47,7 +47,7 @@ impl Layout {
     /// # Errors
     /// `HOME` is unset, relative, or unreadable.
     pub fn from_env() -> std::io::Result<Self> {
-        let home = std::env::var_os("HOME")
+        let home = user_home::home_os()
             .map(PathBuf::from)
             .filter(|home| home.is_absolute())
             .ok_or_else(|| std::io::Error::other("HOME must be an absolute path"))?;

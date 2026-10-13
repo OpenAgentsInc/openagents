@@ -242,10 +242,9 @@ relay"
 }
 
 fn referee_key(o: &XpOptions) -> Result<PathBuf, String> {
-    o.key
-        .clone()
-        .or_else(ledger_xp::referee_key_file)
-        .ok_or("HOME isn't set, so there's no key file: pass --key".to_string())
+    o.key.clone().or_else(ledger_xp::referee_key_file).ok_or(
+        "Coder couldn't find your user folder, so there's no key file: pass --key".to_string(),
+    )
 }
 
 /// The playtest referee key: `--key`, or the default file. It is never
@@ -255,7 +254,9 @@ fn playtest_key(o: &XpOptions) -> Result<PathBuf, String> {
         .key
         .clone()
         .or_else(ledger_xp::playtest_referee_key_file)
-        .ok_or("HOME isn't set, so there's no key file: pass --key".to_string())?;
+        .ok_or(
+            "Coder couldn't find your user folder, so there's no key file: pass --key".to_string(),
+        )?;
     if !key.exists() {
         return Err(format!(
             "there's no playtest referee key at {}; create it once with \
@@ -283,17 +284,15 @@ fn quest_key(o: &XpOptions) -> Result<PathBuf, String> {
 }
 
 fn defaults_key(o: &XpOptions) -> Result<PathBuf, String> {
-    o.key
-        .clone()
-        .or_else(eval::defaults_key_file)
-        .ok_or("HOME isn't set, so there's no key file: pass --key".to_string())
+    o.key.clone().or_else(eval::defaults_key_file).ok_or(
+        "Coder couldn't find your user folder, so there's no key file: pass --key".to_string(),
+    )
 }
 
 fn trainer_key(o: &XpOptions) -> Result<PathBuf, String> {
-    o.key
-        .clone()
-        .or_else(remote::key_file)
-        .ok_or("HOME isn't set, so there's no key file: pass --key".to_string())
+    o.key.clone().or_else(remote::key_file).ok_or(
+        "Coder couldn't find your user folder, so there's no key file: pass --key".to_string(),
+    )
 }
 
 /// The bytes of a run record: `path` itself, or `path/summary.json` for a
@@ -377,7 +376,8 @@ pub async fn main(args: &[String]) -> u8 {
             "adopt" => eval::adopt_command(&o, &defaults_key(&o)?).await,
             "defaults-keygen" => eval::defaults_keygen(&o),
             "ledger" => {
-                let key = remote::key_file().ok_or("HOME isn't set, so there's no key file")?;
+                let key = remote::key_file()
+                    .ok_or("Coder couldn't find your user folder, so there's no key file")?;
                 ledger(&o, &key, &trust_for(&o)?).await
             }
             "-h" | "--help" | "help" => Err(USAGE.to_string()),
@@ -751,7 +751,7 @@ pub fn playtest_keygen(o: &XpOptions) -> Result<u8, String> {
         .key
         .clone()
         .or_else(ledger_xp::playtest_referee_key_file)
-        .ok_or("HOME isn't set, so there's no key file: pass --key")?;
+        .ok_or("Coder couldn't find your user folder, so there's no key file: pass --key")?;
     if key.exists() {
         let pubkey = remote::own_pubkey(&key).unwrap_or_default();
         println!(

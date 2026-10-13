@@ -1495,7 +1495,7 @@ pub fn key(state: &Value) -> String {
 /// Where step answers are kept: `~/.openagents/gym/fingerprints`.
 #[must_use]
 pub fn default_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| PathBuf::from(home).join(".openagents/gym/fingerprints"))
 }

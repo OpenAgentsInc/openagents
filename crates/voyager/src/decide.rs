@@ -96,8 +96,9 @@ impl Door {
     /// directory must create.
     pub fn live(url: &str, model: &str, dir: impl AsRef<Path>) -> Result<Self> {
         std::fs::create_dir_all(dir.as_ref())?;
-        let home = jev_hosted::openagents_dir()
-            .ok_or_else(|| Error::decision("no Jev: HOME is not set".to_string()))?;
+        let home = jev_hosted::openagents_dir().ok_or_else(|| {
+            Error::decision("no Jev: Coder couldn't find your user folder".to_string())
+        })?;
         let env = |name: &str| std::env::var(name).ok();
         let resolved =
             jev_hosted::resolve(&env, &home, &jev_hosted::Door { url, model }, &|config| {

@@ -112,7 +112,8 @@ pub async fn run(arguments: impl IntoIterator<Item = String>) -> Result<()> {
     let directory = match args.value("--state") {
         Some(path) => PathBuf::from(path),
         None => PathBuf::from(
-            std::env::var_os("HOME").ok_or_else(|| bad("HOME is unavailable; supply --state"))?,
+            user_home::home_os()
+                .ok_or_else(|| bad("Coder couldn't find your user folder; supply --state"))?,
         )
         .join(".openagents/coder-connect"),
     };
@@ -128,7 +129,7 @@ pub async fn run(arguments: impl IntoIterator<Item = String>) -> Result<()> {
                 .value("--relay")
                 .unwrap_or_else(|| "wss://relay.openagents.com".into());
             policy.validate(&relay)?;
-            let home = std::env::var_os("HOME").map(PathBuf::from);
+            let home = user_home::home_os().map(PathBuf::from);
             let codex = args.value("--codex-root");
             let claude = args.value("--claude-root");
             let coder = args.value("--coder-root").map(PathBuf::from);

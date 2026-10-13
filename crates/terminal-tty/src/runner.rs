@@ -152,7 +152,7 @@ impl Drop for Helper {
 /// explicit request mark and Ctrl+G on an idle displayed proposal have effects.
 pub fn run(root: &Path, shell: &Path, helper: &Path) -> Result<i32, String> {
     let home = std::env::var_os("ZDOTDIR")
-        .or_else(|| std::env::var_os("HOME"))
+        .or_else(|| user_home::home_os())
         .map(PathBuf::from)
         .unwrap_or_else(|| root.into());
     let mut config = Config::new().workspace(WORKSPACE, root);

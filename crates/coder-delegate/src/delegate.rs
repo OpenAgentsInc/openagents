@@ -73,7 +73,7 @@ pub fn opencode_auto_model(env: &impl Fn(&str) -> Option<String>) -> &'static st
     let cache = env("XDG_CACHE_HOME")
         .filter(|dir| !dir.is_empty())
         .map(std::path::PathBuf::from)
-        .or_else(|| env("HOME").map(|home| std::path::Path::new(&home).join(".cache")));
+        .or_else(|| user_home::home_in(env).map(|home| home.join(".cache")));
     let catalog = cache.and_then(|dir| std::fs::read(dir.join("opencode/models.json")).ok());
     opencode_auto_model_in(catalog.as_deref())
 }
@@ -1811,7 +1811,7 @@ pub fn resolve(
     let found = binary(agent, &env);
     let credential = match agent {
         Agent::ClaudeCode => {
-            Credential::detect(&env, stored_login(env("HOME").as_deref().map(Path::new)))
+            Credential::detect(&env, stored_login(user_home::home_in(&env).as_deref()))
         }
         Agent::Codex => Credential::detect_codex(
             &env,
@@ -1862,7 +1862,7 @@ fn opencode_credential(env: &impl Fn(&str) -> Option<String>) -> Credential {
 pub fn codex_auth_file(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
     match env("CODEX_HOME").filter(|home| !home.trim().is_empty()) {
         Some(home) => Some(PathBuf::from(home).join("auth.json")),
-        None => Some(PathBuf::from(env("HOME")?).join(".codex").join("auth.json")),
+        None => Some(user_home::home_in(&env)?.join(".codex").join("auth.json")),
     }
 }
 
@@ -1904,7 +1904,7 @@ pub fn binary(agent: Agent, env: impl Fn(&str) -> Option<String>) -> Option<Path
             }
         }
     }
-    let home = PathBuf::from(env("HOME")?);
+    let home = user_home::home_in(&env)?;
     let local = home.join(".local").join("bin").join(&program);
     if agent == Agent::OpenCode && !local.is_file() {
         // OpenCode's installer puts it in `~/.opencode/bin`.

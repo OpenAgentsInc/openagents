@@ -23,7 +23,7 @@ pub const VIEW_SCHEMA: &str = "openagents.gym.coder-coverage.v1";
 /// Where recovered attempts' checks are written by default.
 #[must_use]
 pub fn default_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| PathBuf::from(home).join(".openagents/coder-one/checks"))
 }

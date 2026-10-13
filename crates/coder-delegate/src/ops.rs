@@ -336,7 +336,7 @@ impl Scope {
             .iter()
             .map(PathBuf::from)
             .collect();
-        if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        if let Some(home) = user_home::home_os().map(PathBuf::from) {
             for dir in [
                 ".ssh",
                 ".gnupg",

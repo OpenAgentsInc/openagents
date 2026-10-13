@@ -249,7 +249,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
 }
 
 fn default_root() -> PathBuf {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .map_or_else(|| PathBuf::from("."), PathBuf::from)
         .join(".openagents/host")
 }

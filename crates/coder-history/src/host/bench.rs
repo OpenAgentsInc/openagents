@@ -154,7 +154,7 @@ fn catalog_bench() {
         Some(root.join("catalog-index.json")),
     );
     if std::env::var_os("CODER_HISTORY_BENCH_REAL").is_some() {
-        let home = PathBuf::from(std::env::var_os("HOME").unwrap());
+        let home = PathBuf::from(user_home::home_os().unwrap());
         let real = || Config {
             codex: Some(home.join(".codex")),
             claude: Some(home.join(".claude")),

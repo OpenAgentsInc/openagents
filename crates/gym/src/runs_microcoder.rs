@@ -341,7 +341,7 @@ pub fn run_dirs(dir: &Path) -> Vec<PathBuf> {
 #[must_use]
 pub fn standard_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
-    if let Some(home) = std::env::var_os("HOME").filter(|home| !home.is_empty()) {
+    if let Some(home) = user_home::home_os().filter(|home| !home.is_empty()) {
         dirs.push(PathBuf::from(home).join(".openagents/microcoder/runs"));
     }
     let retained = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

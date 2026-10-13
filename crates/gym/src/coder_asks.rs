@@ -50,7 +50,7 @@ the mean time. --study ID prints one study's rows.";
 /// Where asks are recorded.
 #[must_use]
 pub fn default_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| PathBuf::from(home).join(".openagents/coder-one/asks"))
 }
@@ -76,7 +76,7 @@ pub fn load(dir: &Path) -> Vec<Value> {
 #[must_use]
 pub fn study_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
-    if let Some(home) = std::env::var_os("HOME").filter(|home| !home.is_empty()) {
+    if let Some(home) = user_home::home_os().filter(|home| !home.is_empty()) {
         dirs.push(PathBuf::from(home).join(".openagents/coder-one/ask-studies"));
     }
     dirs.push(
@@ -463,7 +463,7 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
         }
         return Ok(0);
     }
-    let dir = dir.ok_or("no --dir and no HOME")?;
+    let dir = dir.ok_or("no --dir and no user folder")?;
     let asks = load(&dir);
     if let Some(id) = id {
         let ask = if id == "latest" {

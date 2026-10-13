@@ -7,6 +7,7 @@ description = "The Agent Trajectory Interchange Format: a session as ordered ste
 publish.workspace = true
 
 [dependencies]
+user-home = { path = "../user-home" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 # A decision call records the digest of the state it read, and a digest

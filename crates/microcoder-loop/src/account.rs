@@ -79,7 +79,7 @@ pub fn identify_in(provider: Provider, env: Env) -> Option<String> {
 
 /// The file `provider`'s identity is read from.
 fn path(provider: Provider, env: Env) -> Option<PathBuf> {
-    let home = || env("HOME").filter(|h| !h.is_empty()).map(PathBuf::from);
+    let home = || user_home::home_in(env);
     let dir = |name: &str| env(name).filter(|v| !v.is_empty()).map(PathBuf::from);
     match provider {
         Provider::Claude => dir("CLAUDE_CONFIG_DIR")

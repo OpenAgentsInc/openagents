@@ -284,7 +284,8 @@ fn sign(identity: &Identity, parts: kb::Unsigned) -> Event {
 
 /// `~/.openagents/nostr/knowledge-key`.
 fn default_key() -> Result<PathBuf, String> {
-    remote::key_file().ok_or("HOME isn't set, so there's no key file".to_string())
+    remote::key_file()
+        .ok_or("Coder couldn't find your user folder, so there's no key file".to_string())
 }
 
 /// Runs `kb publish`, `kb sync`, or `kb publish-evidence` with `args`, the

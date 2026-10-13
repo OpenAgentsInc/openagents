@@ -89,7 +89,7 @@ impl SourceOptions {
     fn defaults() -> Self {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/terminal-bench");
         Self {
-            jobs: env::var_os("HOME")
+            jobs: user_home::home_os()
                 .map(PathBuf::from)
                 .map(|home| home.join(".openagents/terminal-bench/jobs")),
             traces: Some(repo.join("traces")),

@@ -7,6 +7,7 @@ description = "A filesystem write boundary around one command, and the snapshots
 publish.workspace = true
 
 [dependencies]
+user-home = { path = "../user-home" }
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
 tempfile = "3"

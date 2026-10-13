@@ -88,9 +88,7 @@ const ADMISSION_WAIT: u64 = 120;
 /// computer use by default.
 #[must_use]
 pub fn default_store() -> PathBuf {
-    background::task_store(
-        &std::env::var_os("HOME").map_or_else(|| PathBuf::from("."), PathBuf::from),
-    )
+    background::task_store(&user_home::home_os().map_or_else(|| PathBuf::from("."), PathBuf::from))
 }
 
 /// The engine that runs a turn: `$OPENAGENTS_CODER_CONTROLLER`, else the

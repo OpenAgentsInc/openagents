@@ -10,6 +10,7 @@ description = "Phase-by-phase benchmark of how fast the phone apps load chats: c
 name = "chat-load-bench"
 
 [dependencies]
+user-home = { path = "../user-home" }
 # The real client, host, relay transport, and direct transport the phone
 # and `coder host serve` run. Nothing here reimplements them.
 coder-connect = { path = "../coder-connect" }

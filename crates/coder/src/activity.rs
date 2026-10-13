@@ -125,7 +125,7 @@ pub fn directory() -> Option<PathBuf> {
     if let Some(named) = std::env::var_os(DIR_ENV).filter(|named| !named.is_empty()) {
         return Some(PathBuf::from(named));
     }
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| PathBuf::from(home).join(".openagents").join("activity"))
 }

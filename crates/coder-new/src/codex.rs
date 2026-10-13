@@ -258,7 +258,7 @@ pub fn listed() -> Vec<Listed> {
         std::env::var_os("CODEX_HOME")
             .filter(|dir| !dir.is_empty())
             .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex")))
+            .or_else(|| user_home::home_os().map(|home| PathBuf::from(home).join(".codex")))
             .and_then(|dir| std::fs::read_to_string(dir.join("models_cache.json")).ok())
             .map(|text| parse_models_cache(&text))
             .unwrap_or_default()
@@ -336,7 +336,7 @@ pub(crate) fn set_test_program(program: Option<PathBuf>) {
 pub fn home() -> Option<PathBuf> {
     std::env::var_os("CODEX_HOME")
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex")))
+        .or_else(|| user_home::home_os().map(|home| PathBuf::from(home).join(".codex")))
 }
 
 static AVAILABLE: Mutex<Option<bool>> = Mutex::new(None);

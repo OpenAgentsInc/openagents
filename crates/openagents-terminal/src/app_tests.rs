@@ -1284,7 +1284,7 @@ fn an_open_file_fills_the_screen_and_esc_closes_it() {
 
 #[test]
 fn the_project_is_written_from_the_home_folder() {
-    let home = std::env::var("HOME").unwrap();
+    let home = user_home::home_string().unwrap();
     assert_eq!(home_relative(&format!("{home}/openagents")), "~/openagents");
     assert_eq!(home_relative(&home), "~");
     assert_eq!(home_relative("/srv/repo"), "/srv/repo");

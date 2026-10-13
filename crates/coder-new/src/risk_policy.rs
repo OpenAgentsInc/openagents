@@ -205,7 +205,7 @@ pub fn approvals_path() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os(APPROVALS_VAR).filter(|path| !path.is_empty()) {
         return Some(PathBuf::from(path));
     }
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| {
             PathBuf::from(home)

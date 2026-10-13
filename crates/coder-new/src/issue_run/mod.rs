@@ -1059,7 +1059,7 @@ pub(crate) fn secret(name: &str, file: &str) -> Option<String> {
     {
         return Some(value.trim().to_owned());
     }
-    let home = std::env::var("HOME").ok()?;
+    let home = user_home::home_string().ok()?;
     let text = std::fs::read_to_string(Path::new(&home).join("work/.secrets").join(file)).ok()?;
     text.lines().find_map(|line| {
         let line = line.trim();

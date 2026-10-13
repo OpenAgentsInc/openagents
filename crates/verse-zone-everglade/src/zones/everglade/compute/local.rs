@@ -96,9 +96,9 @@ impl LocalSource {
     /// When neither `HOME` nor the lease root variable is set.
     pub fn from_env() -> Result<Self, String> {
         let leases = coder_lease::root_from_env()?;
-        let tasks = std::env::var_os("HOME")
+        let tasks = user_home::home_os()
             .map(|home| PathBuf::from(home).join(".openagents/tasks"))
-            .ok_or("set HOME to find the task store")?;
+            .ok_or("Coder couldn't find your user folder to find the task store in")?;
         let slots = coder_lease::Limits::from_env().map_or(1, |l| l.build);
         let class = class(Machine::detect(), unified_memory());
         Ok(Self::new(

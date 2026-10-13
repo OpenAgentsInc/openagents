@@ -7,6 +7,7 @@ publish.workspace = true
 description = "Durable remote Coder jobs and explicitly selected cloud execution."
 
 [dependencies]
+user-home = { path = "../user-home" }
 atif = { path = "../atif" }
 # The project's selected environment version a new job pins (ENV-06).
 coder-environment = { path = "../coder-environment" }

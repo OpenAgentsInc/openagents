@@ -73,7 +73,7 @@ pub fn coder_session_for(agent: &str) -> String {
 /// sessions too.
 #[must_use]
 pub fn default_state() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents/coder"))
+    user_home::home_os().map(|home| PathBuf::from(home).join(".openagents/coder"))
 }
 
 fn executable(path: &Path) -> bool {

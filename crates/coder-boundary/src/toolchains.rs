@@ -145,7 +145,7 @@ impl Host<'_> {
     pub fn this_computer() -> Host<'static> {
         Host {
             path: variable("PATH").unwrap_or_default(),
-            home: std::env::var_os("HOME")
+            home: user_home::home_os()
                 .filter(|home| !home.is_empty())
                 .map(PathBuf::from),
             account_home: account_home(),

@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 /// Grant installed Rust tools and prefetched registry sources, not the
 /// operator's Cargo credentials, configuration, workspaces, or histories.
 pub(crate) fn scope(dir: &Path) -> Result<microluna::seal::ReadScope, String> {
-    let home = std::env::var_os("HOME")
+    let home = user_home::home_os()
         .map(PathBuf::from)
-        .ok_or("HOME is not set")?;
+        .ok_or(user_home::NO_HOME)?;
     let cargo = std::env::var_os("CARGO_HOME").map_or_else(|| home.join(".cargo"), PathBuf::from);
     let rustup =
         std::env::var_os("RUSTUP_HOME").map_or_else(|| home.join(".rustup"), PathBuf::from);

@@ -216,7 +216,7 @@ impl Identity {
             return Self::from_text(&nsec, "CODER_NSEC");
         }
 
-        let home = env::var("HOME").map_err(|_| "HOME is not set".to_string())?;
+        let home = user_home::home_string().map_err(|_| user_home::NO_HOME.to_string())?;
         Self::load_from(&PathBuf::from(home).join(".openagents").join("nostr-secret"))
     }
 

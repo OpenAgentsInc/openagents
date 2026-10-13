@@ -267,8 +267,7 @@ pub fn load_config(path: Option<PathBuf>) -> Result<FileConfig, String> {
     let path = path
         .or_else(|| env("OPENAGENTS_CONFIG").map(PathBuf::from))
         .or_else(|| {
-            std::env::var_os("HOME")
-                .map(|home| PathBuf::from(home).join(".config/openagents/oak.json"))
+            user_home::home_os().map(|home| PathBuf::from(home).join(".config/openagents/oak.json"))
         });
     let Some(path) = path else {
         return Ok(FileConfig::default());

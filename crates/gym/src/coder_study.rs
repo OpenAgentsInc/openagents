@@ -40,7 +40,7 @@ impl Study {
 #[must_use]
 pub fn default_dirs() -> Vec<(PathBuf, &'static str)> {
     let mut dirs = Vec::new();
-    if let Some(home) = std::env::var_os("HOME") {
+    if let Some(home) = user_home::home_os() {
         dirs.push((
             PathBuf::from(home).join(".openagents/coder-one/studies"),
             "local",

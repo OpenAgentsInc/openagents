@@ -1330,7 +1330,7 @@ fn own_state(directory: &Path) -> bool {
     if directory == canonical(&super::local::default_store()) {
         return true;
     }
-    std::env::var_os("HOME")
+    user_home::home_os()
         .map(PathBuf::from)
         .is_some_and(|home| directory.starts_with(canonical(&home.join(".openagents"))))
 }

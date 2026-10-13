@@ -206,7 +206,7 @@ impl LocalLane {
             #[cfg(test)]
             assert_ne!(
                 Some(self.home.as_os_str()),
-                std::env::var_os("HOME").as_deref(),
+                user_home::home_os().as_deref(),
                 "saved-session tests must use an explicit temporary home"
             );
             let config = self

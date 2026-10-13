@@ -278,8 +278,7 @@ fn settings_file() -> Option<PathBuf> {
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .or_else(|| {
-            std::env::var_os("HOME")
-                .map(|home| PathBuf::from(home).join(".openagents/settings.json"))
+            user_home::home_os().map(|home| PathBuf::from(home).join(".openagents/settings.json"))
         })
 }
 

@@ -352,7 +352,8 @@ pub fn trust(output: &Output, args: &Args) -> Result<u8, String> {
 }
 
 fn xp_ledger_path() -> Result<std::path::PathBuf, String> {
-    knowledge::xp::trust_file().ok_or("HOME is required to manage referee trust".into())
+    knowledge::xp::trust_file()
+        .ok_or("Coder couldn't find your user folder to manage referee trust in".into())
 }
 
 fn referee_count(value: &Value) -> String {

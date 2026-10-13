@@ -51,7 +51,7 @@ pub struct Run {
 /// Where mini-task runs are recorded by default.
 #[must_use]
 pub fn default_runs_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| PathBuf::from(home).join(".openagents/coder-one/minitasks"))
 }
@@ -390,7 +390,7 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
         }
         index += 1;
     }
-    let dir = dir.ok_or("no --runs-dir and no HOME")?;
+    let dir = dir.ok_or("no --runs-dir and no user folder")?;
     let (mut runs, errors) = load(&dir);
     if let Some(task) = &task {
         runs.retain(|r| &r.task == task);

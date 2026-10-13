@@ -19,7 +19,7 @@ pub const SUMMARY_CHARS: usize = 600;
 /// Where Terminal-Bench 4's tasks are installed.
 #[must_use]
 pub fn default_corpora() -> Vec<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .map(|home| {
             vec![
                 PathBuf::from(home)

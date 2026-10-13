@@ -35,7 +35,7 @@ pub struct Segment {
 /// Folders a ggml model is usually kept in.
 pub(crate) fn model_folders() -> Vec<PathBuf> {
     let mut folders = Vec::new();
-    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+    if let Some(home) = user_home::home_os().map(PathBuf::from) {
         folders.extend([
             home.join(".cache/whisper.cpp"),
             home.join(".cache/whisper"),

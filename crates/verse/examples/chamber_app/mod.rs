@@ -1021,7 +1021,7 @@ pub fn run() -> Result<(), String> {
         }
         Some(PathBuf::from(inputs.remove(i)))
     } else {
-        std::env::var_os("HOME").map(PathBuf::from).map(|home| home.join("Downloads/Bestiary - Dungeon Monsters Kit[Standard]/Bestiary - Dungeon Monsters Kit[Standard]/Exports/GLB (Godot-Unreal)/Puglin.glb")).filter(|p| p.exists())
+        user_home::home_os().map(PathBuf::from).map(|home| home.join("Downloads/Bestiary - Dungeon Monsters Kit[Standard]/Bestiary - Dungeon Monsters Kit[Standard]/Exports/GLB (Godot-Unreal)/Puglin.glb")).filter(|p| p.exists())
     };
     let mut args = inputs.into_iter();
     let dir = std::env::temp_dir().join(format!("verse-original-ritual-{}", std::process::id()));

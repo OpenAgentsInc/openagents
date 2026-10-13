@@ -15,6 +15,7 @@ name = "coder-access"
 required-features = ["host"]
 
 [dependencies]
+user-home = { path = "../user-home" }
 base64 = "0.22"
 sha2 = "0.10"
 coder-connect = { path = "../coder-connect", default-features = false }

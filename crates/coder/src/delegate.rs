@@ -983,7 +983,7 @@ impl Delegator {
             scratch_under: std::env::temp_dir(),
             trust: TrustStore::from_environment(
                 std::env::var_os("XDG_DATA_HOME").as_deref(),
-                std::env::var_os("HOME").as_deref(),
+                user_home::home_os().as_deref(),
             ),
         }
     }
@@ -3424,7 +3424,7 @@ mod tests {
             return;
         }
         let dir = tempfile::tempdir().unwrap();
-        let home = std::env::var("HOME").unwrap_or_default();
+        let home = user_home::home_string().unwrap_or_default();
         let binary = stub(
             dir.path(),
             "env",

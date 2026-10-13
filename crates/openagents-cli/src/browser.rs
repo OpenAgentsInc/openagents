@@ -124,7 +124,7 @@ fn find_browser(given: Option<&Path>) -> Result<PathBuf, String> {
         ];
         for app in apps {
             candidates.push(Path::new("/Applications").join(app));
-            if let Some(home) = std::env::var_os("HOME") {
+            if let Some(home) = user_home::home_os() {
                 candidates.push(Path::new(&home).join("Applications").join(app));
             }
         }

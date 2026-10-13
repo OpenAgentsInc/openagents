@@ -873,7 +873,7 @@ pub fn command(args: &[String]) -> Result<i32, String> {
     };
     let out = out
         .or_else(super::default_dir)
-        .ok_or("no --out and no HOME to record under")?;
+        .ok_or("no --out and no user folder to record under")?;
     let options = Options {
         source,
         metric,

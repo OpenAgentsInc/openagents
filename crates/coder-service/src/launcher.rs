@@ -885,7 +885,7 @@ impl Launcher {
             .args(&self.config.host_args)
             .env_clear()
             .env("PATH", &self.config.search_path)
-            .env("HOME", std::env::var_os("HOME").unwrap_or_default())
+            .env("HOME", user_home::home_os().unwrap_or_default())
             .env("OPENAGENTS_HOST_READY_FILE", &ready)
             .env("OPENAGENTS_HOST_GENERATION", generation.to_string())
             .env("OPENAGENTS_HOST_GENERATION_ROOT", self.layout.root())

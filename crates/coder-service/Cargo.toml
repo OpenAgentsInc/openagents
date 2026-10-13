@@ -11,6 +11,7 @@ name = "coder-service"
 path = "src/main.rs"
 
 [dependencies]
+user-home = { path = "../user-home" }
 libc = "0.2"
 secp256k1 = "0.31.1"
 serde = { version = "1", features = ["derive"] }

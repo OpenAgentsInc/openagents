@@ -157,7 +157,7 @@ pub fn bounded_cli(
             .filter(|value| !value.is_empty())
     };
     let (binary, credential) = delegate::resolve(agent, env);
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = user_home::home_os().map(PathBuf::from);
     let mut spec = coder_boundary::Boundary::writing(work).writable(artifacts);
     // The CLI keeps its own session state and temporary files.
     for state_dir in [
@@ -719,7 +719,7 @@ pub async fn run(options: Options) -> Result<Ran, String> {
 /// Where mini-task runs are recorded: `~/.openagents/coder-one/minitasks`.
 #[must_use]
 pub fn default_runs_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| PathBuf::from(home).join(".openagents/coder-one/minitasks"))
 }

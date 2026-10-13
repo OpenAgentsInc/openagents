@@ -118,7 +118,7 @@ impl Options {
             .unwrap_or(&root)
             .to_path_buf();
         let mut options = Self {
-            jobs: env::var_os("HOME")
+            jobs: user_home::home_os()
                 .map(PathBuf::from)
                 .map(|home| home.join(".openagents/terminal-bench/jobs")),
             traces: Some(root.join("bench/terminal-bench/traces")),

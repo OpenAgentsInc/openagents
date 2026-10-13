@@ -210,7 +210,7 @@ fn words(arguments: &Arguments, cwd: &Path, captures: &Path) -> Result<Vec<Strin
 
 /// `path` as it would be read on this computer (`~/` is this user's home).
 fn here(path: &str) -> PathBuf {
-    match (path.strip_prefix("~/"), std::env::var_os("HOME")) {
+    match (path.strip_prefix("~/"), user_home::home_os()) {
         (Some(rest), Some(home)) => PathBuf::from(home).join(rest),
         _ => PathBuf::from(path),
     }

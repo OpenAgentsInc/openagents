@@ -51,9 +51,9 @@ pub(crate) fn start(tasks: &Path) {
         eprintln!("openagents host: background rules are off (OPENAGENTS_BACKGROUND=off)");
         return;
     }
-    let layout = match std::env::var_os("HOME")
+    let layout = match user_home::home_os()
         .map(std::path::PathBuf::from)
-        .ok_or_else(|| std::io::Error::other("HOME is not set"))
+        .ok_or_else(|| std::io::Error::other(user_home::NO_HOME))
         .and_then(|home| Layout::new(&home, Some(tasks.to_owned())))
     {
         Ok(layout) => layout,

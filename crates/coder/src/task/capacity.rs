@@ -22,7 +22,7 @@ use coder_delegate::limit::{self, Limit};
 /// `~/.openagents/tasks`, or `None` without a home.
 #[must_use]
 pub fn default_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| background::task_store(Path::new(&home)))
+    user_home::home_os().map(|home| background::task_store(Path::new(&home)))
 }
 
 /// The refusal a delegate's limit carries, for `provider`'s login. A limit

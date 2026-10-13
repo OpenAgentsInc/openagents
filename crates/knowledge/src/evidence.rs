@@ -36,13 +36,13 @@ pub use intake::{Cost, EntryPin, Identity, IntakeStatus, Run, StudyKind, read_ru
 /// `~/.openagents/microcoder/runs`.
 #[must_use]
 pub fn default_runs() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents/microcoder/runs"))
+    user_home::home_os().map(|home| PathBuf::from(home).join(".openagents/microcoder/runs"))
 }
 
 /// `~/.openagents/knowledge/evidence`.
 #[must_use]
 pub fn default_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents/knowledge/evidence"))
+    user_home::home_os().map(|home| PathBuf::from(home).join(".openagents/knowledge/evidence"))
 }
 
 pub use xp_ledger::entry::task_of;

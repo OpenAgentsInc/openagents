@@ -85,7 +85,7 @@ impl Attachment {
 /// Where sent attachments are kept: `~/.openagents/coder/attachments`.
 #[must_use]
 pub fn default_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| {
+    user_home::home_os().map(|home| {
         PathBuf::from(home)
             .join(".openagents")
             .join("coder")
@@ -243,7 +243,7 @@ pub fn dropped_paths(text: &str, cwd: &Path) -> Option<Vec<PathBuf>> {
             return None;
         }
         let path = if let Some(rest) = word.strip_prefix("~/") {
-            PathBuf::from(std::env::var_os("HOME")?).join(rest)
+            PathBuf::from(user_home::home_os()?).join(rest)
         } else {
             cwd.join(&word)
         };
@@ -282,9 +282,7 @@ pub fn mentioned_paths(prompt: &str, cwd: &Path) -> Vec<PathBuf> {
         .filter(|word| attachable_name(word))
         .map(|word| {
             word.strip_prefix("~/")
-                .and_then(|rest| {
-                    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(rest))
-                })
+                .and_then(|rest| user_home::home_os().map(|home| PathBuf::from(home).join(rest)))
                 .unwrap_or_else(|| cwd.join(word))
         })
         .filter(|path| path.is_file())

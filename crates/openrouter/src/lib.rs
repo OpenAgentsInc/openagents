@@ -217,7 +217,7 @@ impl Config {
 /// `~/.openagents/openrouter.json`.
 #[must_use]
 pub fn key_file() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents/openrouter.json"))
+    user_home::home_os().map(|home| PathBuf::from(home).join(".openagents/openrouter.json"))
 }
 
 /// One message.

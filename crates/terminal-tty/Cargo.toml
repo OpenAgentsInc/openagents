@@ -7,6 +7,7 @@ publish.workspace = true
 description = "Hook-only terminal requests and exact pending proposals without a graphical runtime."
 
 [dependencies]
+user-home = { path = "../user-home" }
 coder-pty = { path = "../coder-pty" }
 coder-vt = { path = "../coder-vt" }
 terminal-core = { path = "../terminal-core" }

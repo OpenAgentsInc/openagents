@@ -379,7 +379,7 @@ pub fn plan_usage() -> Option<coder_engine_status::PlanUsage> {
 /// ones that have reset by `now`. Claude Code's `get_usage` answer lands
 /// here at session start, so the 5h window shows before any event names it.
 fn book_usage(now: u64) -> Option<coder_engine_status::PlanUsage> {
-    let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("."), PathBuf::from);
+    let home = user_home::home_os().map_or_else(|| PathBuf::from("."), PathBuf::from);
     coder_engine_status::PlanUsage::read(&home, now)
 }
 

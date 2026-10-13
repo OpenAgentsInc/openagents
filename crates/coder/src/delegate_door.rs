@@ -348,7 +348,7 @@ impl Target {
 /// keep it.
 #[must_use]
 pub fn capacity_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents/tasks"))
+    user_home::home_os().map(|home| PathBuf::from(home).join(".openagents/tasks"))
 }
 
 /// The model an automatic OpenCode turn runs unless the operator names
@@ -916,7 +916,7 @@ impl DelegateDoor {
     /// Where one turn's briefing and stream are written.
     fn artifacts(&self, turn: usize) -> PathBuf {
         let base = self.artifacts.clone().unwrap_or_else(|| {
-            std::env::var_os("HOME")
+            user_home::home_os()
                 .map(|home| PathBuf::from(home).join(".openagents/coder/delegate"))
                 .unwrap_or_else(std::env::temp_dir)
         });

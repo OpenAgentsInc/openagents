@@ -784,7 +784,7 @@ fn measure_build(_slot: Option<&std::path::Path>) -> Option<coder_lease::DiskUse
 #[cfg(unix)]
 fn measure_build(slot: Option<&std::path::Path>) -> Option<coder_lease::DiskUse> {
     let worktree = linked_worktree();
-    let home = PathBuf::from(std::env::var_os("HOME")?);
+    let home = PathBuf::from(user_home::home_os()?);
     let mut paths: Vec<&std::path::Path> = Vec::new();
     paths.extend(slot);
     paths.extend(worktree.as_deref());
@@ -857,7 +857,7 @@ fn reclaim_slots(shortfall: u64) {
         "openagents lease: a build needs {} more free space; reclaiming the slots of ended sessions",
         bytes(shortfall)
     );
-    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+    let Some(home) = user_home::home_os().map(PathBuf::from) else {
         return;
     };
     let store = coder::task::local::default_store();

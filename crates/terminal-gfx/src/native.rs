@@ -102,7 +102,7 @@ impl Overlay {
         // The read-only auto-run opt-in lives beside the user's other
         // OpenAgents state; tests never read the real home.
         #[cfg(not(test))]
-        if let Some(home) = std::env::var_os("HOME") {
+        if let Some(home) = user_home::home_os() {
             core.smart.autorun = terminal_core::autorun::AutoRun::load(
                 std::path::Path::new(&home).join(AUTORUN_FILE),
             );

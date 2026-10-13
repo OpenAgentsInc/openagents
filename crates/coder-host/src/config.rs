@@ -215,9 +215,9 @@ impl EngineStatus {
     pub fn installed() -> Self {
         EngineStatus {
             program: coder_engine_status::claude::PROGRAM.into(),
-            notices: std::env::var_os("HOME")
+            notices: user_home::home_os()
                 .map(|home| coder_engine_status::claude::notice_dir(home.as_ref())),
-            usage_home: std::env::var_os("HOME").map(PathBuf::from),
+            usage_home: user_home::home_os().map(PathBuf::from),
         }
     }
 }

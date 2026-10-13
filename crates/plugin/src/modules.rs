@@ -157,7 +157,7 @@ fn disk_directory() -> Option<PathBuf> {
     if let Some(directory) = std::env::var_os("OPENAGENTS_PLUGIN_MODULE_CACHE") {
         return (directory != "off" && !directory.is_empty()).then(|| directory.into());
     }
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = user_home::home_os().map(PathBuf::from);
     let base = if cfg!(target_os = "macos") {
         home?.join("Library/Caches")
     } else if let Some(cache) = std::env::var_os("XDG_CACHE_HOME") {

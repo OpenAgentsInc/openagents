@@ -610,7 +610,7 @@ fn start_update(dir: &std::path::Path, app: &mut App) -> Option<coder_new::updat
 /// `coder update [--check | --rollback | --mode MODE | --channel NAME]` (#11128).
 fn update_command(rest: &[String]) -> io::Result<()> {
     let dir =
-        coder_new::home::data_dir().ok_or_else(|| io::Error::other("Set HOME to update Coder."))?;
+        coder_new::home::data_dir().ok_or_else(|| io::Error::other("Coder couldn't find your user folder, so it can't update itself. Set HOME (on Windows, USERPROFILE) to your user folder."))?;
     coder_new::update::command(rest, &dir, &mut io::stdout()).map_err(|message| {
         if message.starts_with("Unknown option") || message.starts_with("Choose") {
             io::Error::new(io::ErrorKind::InvalidInput, message)
@@ -664,7 +664,7 @@ fn account_command(command: &str, rest: &[String]) -> io::Result<()> {
     }
     let dir = state
         .or_else(|| coder_new::home::data_dir())
-        .ok_or_else(|| io::Error::other("Set HOME, or pass --state DIR."))?;
+        .ok_or_else(|| io::Error::other("Coder couldn't find your user folder. Set HOME (on Windows, USERPROFILE) to your user folder, or pass --state DIR."))?;
     let mut out = io::stdout();
     if key && pair.is_some() {
         return Err(usage());
@@ -734,7 +734,7 @@ fn trace_command(rest: &[String]) -> io::Result<()> {
     }
     let dir = dir
         .or_else(|| coder_new::home::data_dir())
-        .ok_or_else(|| io::Error::other("Set HOME, or pass --state DIR."))?;
+        .ok_or_else(|| io::Error::other("Coder couldn't find your user folder. Set HOME (on Windows, USERPROFILE) to your user folder, or pass --state DIR."))?;
     let cwd = std::env::current_dir()?;
     match coder_new::trace_upload::run(&args, &dir, &cwd) {
         Ok(outcome) => {
@@ -770,7 +770,7 @@ fn sync_command(rest: &[String]) -> io::Result<()> {
             ));
         }
     }
-    .ok_or_else(|| io::Error::other("Set HOME, or pass --state DIR."))?;
+    .ok_or_else(|| io::Error::other("Coder couldn't find your user folder. Set HOME (on Windows, USERPROFILE) to your user folder, or pass --state DIR."))?;
     match coder_new::account_sync::sync_now(&dir) {
         Ok(text) => {
             println!("{text}");
@@ -803,7 +803,7 @@ fn export_command(rest: &[String]) -> io::Result<()> {
     }
     let dir = dir
         .or_else(|| coder_new::home::data_dir())
-        .ok_or_else(|| io::Error::other("Set HOME, or pass --state DIR."))?;
+        .ok_or_else(|| io::Error::other("Coder couldn't find your user folder. Set HOME (on Windows, USERPROFILE) to your user folder, or pass --state DIR."))?;
     let cwd = std::env::current_dir()?;
     match coder_new::account_export::run(&args, &dir, &cwd) {
         Ok(outcome) => {

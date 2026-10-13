@@ -249,7 +249,7 @@ fn args() -> Result<Args, String> {
     let shot: Shot =
         serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
     shot.rig.validate()?;
-    let home = std::env::var_os("HOME").ok_or("HOME is not set")?;
+    let home = user_home::home_os().ok_or(user_home::NO_HOME)?;
     let mut args = Args {
         out: PathBuf::from(home)
             .join("work/film-out/verse")

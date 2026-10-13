@@ -236,14 +236,14 @@ fn capture_command(flags: &Flags) -> Result<i32, String> {
     let out = match &flags.out {
         Some(out) => out.clone(),
         None => crate::credentials::openagents_dir()
-            .ok_or("HOME is not set; name --out")?
+            .ok_or("Coder couldn't find your user folder; name --out")?
             .join("coder-one/prompts")
             .join(format!("capture-{}", atif::now_ms())),
     };
     std::fs::create_dir_all(&out)
         .map_err(|error| format!("cannot create {}: {error}", out.display()))?;
     let catalog = out.join("codex-catalog.json");
-    let codex_catalog = std::env::var_os("HOME")
+    let codex_catalog = user_home::home_os()
         .map(|home| PathBuf::from(home).join(".codex/models_cache.json"))
         .filter(|cache| cache.is_file())
         .and_then(|cache| capture::codex_catalog(&cache, &catalog).ok())

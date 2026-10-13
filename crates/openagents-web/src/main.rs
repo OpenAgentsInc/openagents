@@ -10,7 +10,7 @@ const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIREC
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let home = PathBuf::from(std::env::var_os("HOME").ok_or("HOME is unset")?);
+    let home = PathBuf::from(user_home::home_os().ok_or(user_home::NO_HOME)?);
     let mut config = openagents_web::Config::development(home.join(".openagents/tasks"));
     let mut listen: SocketAddr = "127.0.0.1:4300".parse()?;
     let mut chat_bucket = std::env::var("OPENAGENTS_WEB_CHAT_BUCKET").ok();

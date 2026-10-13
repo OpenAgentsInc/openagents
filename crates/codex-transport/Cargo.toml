@@ -7,6 +7,7 @@ description = "The operator's Codex login and the ChatGPT Codex Responses transp
 publish.workspace = true
 
 [dependencies]
+user-home = { path = "../user-home" }
 base64 = "0.22"
 libc = "0.2"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

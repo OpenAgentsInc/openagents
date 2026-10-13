@@ -103,7 +103,7 @@ fn studio_sim_refusal(
     let Some(tasks) = tasks else {
         return Some("--studio-sim needs --tasks DIR, the scratch host's task store".into());
     };
-    let own = std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents"));
+    let own = user_home::home_os().map(|home| PathBuf::from(home).join(".openagents"));
     let canonical = |path: &Path| path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     for (name, path) in [("--state", state), ("--root", root), ("--tasks", tasks)] {
         if own
@@ -412,9 +412,9 @@ fn verse_home(root: &Path) -> Option<PathBuf> {
 }
 
 fn home(relative: &str) -> Result<PathBuf> {
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .ok_or_else(|| Error::Config("HOME is not set; pass the directory explicitly".into()))?;
+    let home = user_home::home_os().map(PathBuf::from).ok_or_else(|| {
+        Error::Config("Coder couldn't find your user folder; pass the directory explicitly".into())
+    })?;
     // A unit test that reached the real home would write into the person's
     // host state; tests pass `--state`, `--root`, and `--tasks`, or set a
     // temporary HOME.
@@ -1244,10 +1244,10 @@ fn adopt_report(
     keys_dir: Option<PathBuf>,
 ) -> std::result::Result<serde_json::Value, String> {
     use coder_service::adopt::{self, Paths};
-    let home = std::env::var_os("HOME")
+    let home = user_home::home_os()
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
-        .ok_or_else(|| "HOME is not set".to_owned())?;
+        .ok_or_else(|| user_home::NO_HOME.to_owned())?;
     #[cfg_attr(not(unix), allow(unused_mut))]
     let mut paths = Paths::under(&home);
     #[cfg(unix)]

@@ -153,7 +153,7 @@ pub fn start(
     #[cfg(test)]
     assert!(
         home.canonicalize().ok()
-            != std::env::var_os("HOME")
+            != user_home::home_os()
                 .and_then(|real| std::path::Path::new(&real).canonicalize().ok()),
         "a test reached the real home; give it a temporary one"
     );
@@ -467,7 +467,7 @@ esac
     #[test]
     #[should_panic(expected = "a test reached the real home")]
     fn a_test_that_reaches_the_real_home_fails() {
-        let real = PathBuf::from(std::env::var_os("HOME").expect("HOME"));
+        let real = PathBuf::from(user_home::home_os().expect("HOME"));
         let _ = start(None, &real, &mut |_| Agent::NotRegistered);
     }
 }

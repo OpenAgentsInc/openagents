@@ -7,6 +7,7 @@ publish.workspace = true
 description = "The host resource broker: a file-backed table of exclusive and counted leases that every agent on a machine shares."
 
 [dependencies]
+user-home = { path = "../user-home" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

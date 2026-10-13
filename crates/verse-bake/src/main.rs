@@ -643,10 +643,7 @@ fn layered(
     );
     if matches!(options.source, Source::Everglade(_)) {
         let cache = std::env::var_os("VERSE_HOME").map_or_else(
-            || {
-                PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
-                    .join(".openagents/verse")
-            },
+            || PathBuf::from(user_home::home_os().unwrap_or_default()).join(".openagents/verse"),
             PathBuf::from,
         );
         private_write(

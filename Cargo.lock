@@ -137,6 +137,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "user-home",
  "windows-sys 0.61.2",
 ]
 
@@ -1394,6 +1395,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+ "user-home",
 ]
 
 [[package]]
@@ -1616,6 +1618,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+ "user-home",
 ]
 
 [[package]]
@@ -2712,6 +2715,7 @@ dependencies = [
  "supervise",
  "tempfile",
  "tokio",
+ "user-home",
 ]
 
 [[package]]
@@ -2825,6 +2829,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite 0.30.0",
+ "user-home",
 ]
 
 [[package]]
@@ -2931,6 +2936,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tracing",
+ "user-home",
  "which 8.0.6",
 ]
 
@@ -3047,6 +3053,7 @@ dependencies = [
  "tokio-rustls",
  "tokio-tungstenite 0.30.0",
  "toml",
+ "user-home",
  "wat",
  "webpki-roots 1.0.9",
  "world-tree",
@@ -3069,6 +3076,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite 0.30.0",
+ "user-home",
 ]
 
 [[package]]
@@ -3085,6 +3093,7 @@ dependencies = [
  "sha2 0.10.9",
  "supervise",
  "tempfile",
+ "user-home",
  "windows-sys 0.61.2",
 ]
 
@@ -3169,6 +3178,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "tokio",
+ "user-home",
 ]
 
 [[package]]
@@ -3269,6 +3279,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.30.0",
  "url",
+ "user-home",
 ]
 
 [[package]]
@@ -3313,6 +3324,7 @@ dependencies = [
  "supervise",
  "tempfile",
  "tokio",
+ "user-home",
 ]
 
 [[package]]
@@ -3338,6 +3350,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "user-home",
 ]
 
 [[package]]
@@ -3449,6 +3462,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "toml",
+ "user-home",
 ]
 
 [[package]]
@@ -3459,6 +3473,7 @@ dependencies = [
  "coder-wm",
  "serde",
  "serde_json",
+ "user-home",
 ]
 
 [[package]]
@@ -3471,6 +3486,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "user-home",
 ]
 
 [[package]]
@@ -3511,6 +3527,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite 0.30.0",
+ "user-home",
  "verse-private",
  "windows-sys 0.61.2",
 ]
@@ -3555,6 +3572,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "user-home",
 ]
 
 [[package]]
@@ -3607,6 +3625,7 @@ dependencies = [
  "objc2-foundation 0.2.2",
  "paper-mono",
  "serde_json",
+ "user-home",
 ]
 
 [[package]]
@@ -3671,6 +3690,7 @@ dependencies = [
  "toml",
  "unicode-segmentation",
  "unicode-width",
+ "user-home",
  "workflow-run",
 ]
 
@@ -3696,6 +3716,7 @@ dependencies = [
  "supervise",
  "tempfile",
  "tokio",
+ "user-home",
 ]
 
 [[package]]
@@ -3769,6 +3790,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+ "user-home",
 ]
 
 [[package]]
@@ -3787,6 +3809,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "user-home",
 ]
 
 [[package]]
@@ -3802,6 +3825,7 @@ dependencies = [
  "sha2 0.10.9",
  "supervise",
  "tempfile",
+ "user-home",
 ]
 
 [[package]]
@@ -3829,6 +3853,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "tokio",
+ "user-home",
 ]
 
 [[package]]
@@ -3909,6 +3934,7 @@ dependencies = [
  "serde_json",
  "supervise",
  "tempfile",
+ "user-home",
 ]
 
 [[package]]
@@ -3920,6 +3946,7 @@ dependencies = [
  "serde",
  "serde_json",
  "signal-hook",
+ "user-home",
  "v4l",
 ]
 
@@ -3945,6 +3972,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "user-home",
 ]
 
 [[package]]
@@ -5619,6 +5647,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite 0.30.0",
+ "user-home",
  "xp-ledger",
 ]
 
@@ -5703,6 +5732,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "toml",
+ "user-home",
 ]
 
 [[package]]
@@ -6934,6 +6964,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "tokio",
+ "user-home",
 ]
 
 [[package]]
@@ -6975,6 +7006,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite 0.30.0",
+ "user-home",
  "webpki-roots 1.0.9",
 ]
 
@@ -7243,6 +7275,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "user-home",
 ]
 
 [[package]]
@@ -8116,6 +8149,7 @@ dependencies = [
  "tokio-tungstenite 0.30.0",
  "tracing",
  "tracing-subscriber",
+ "user-home",
 ]
 
 [[package]]
@@ -8428,6 +8462,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tokio",
+ "user-home",
  "workbench",
  "xp-ledger",
 ]
@@ -8585,6 +8620,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tower-http",
+ "user-home",
 ]
 
 [[package]]
@@ -9091,6 +9127,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tokio",
+ "user-home",
 ]
 
 [[package]]
@@ -9330,6 +9367,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.30.0",
  "toml",
+ "user-home",
  "xp-ledger",
 ]
 
@@ -9356,6 +9394,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "tokio",
+ "user-home",
 ]
 
 [[package]]
@@ -9479,6 +9518,7 @@ dependencies = [
  "sha2 0.11.0",
  "tempfile",
  "tokio",
+ "user-home",
 ]
 
 [[package]]
@@ -10396,6 +10436,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "tokio",
+ "user-home",
 ]
 
 [[package]]
@@ -10947,6 +10988,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite 0.30.0",
+ "user-home",
  "uuid",
  "workbench",
 ]
@@ -11070,6 +11112,7 @@ dependencies = [
  "toml",
  "town-clock",
  "townsfolk",
+ "user-home",
  "uuid",
  "verse",
  "verse-engine",
@@ -11101,6 +11144,7 @@ dependencies = [
  "sha2 0.11.0",
  "tempfile",
  "tokio",
+ "user-home",
 ]
 
 [[package]]
@@ -11167,6 +11211,7 @@ dependencies = [
  "swash",
  "tempfile",
  "tokio",
+ "user-home",
  "uuid",
  "verse",
  "windows",
@@ -11204,6 +11249,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "url",
+ "user-home",
  "uuid",
 ]
 
@@ -11226,6 +11272,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "user-home",
 ]
 
 [[package]]
@@ -11251,6 +11298,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.20",
+ "user-home",
 ]
 
 [[package]]
@@ -11330,6 +11378,7 @@ dependencies = [
  "tower 0.5.3",
  "ttf-parser",
  "url",
+ "user-home",
  "workbench",
 ]
 
@@ -11358,6 +11407,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "user-home",
 ]
 
 [[package]]
@@ -12027,6 +12077,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "tempfile",
+ "user-home",
  "wasmtime",
  "wat",
 ]
@@ -12689,6 +12740,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite 0.30.0",
+ "user-home",
 ]
 
 [[package]]
@@ -15254,6 +15306,7 @@ dependencies = [
  "tempfile",
  "terminal-core",
  "tokio",
+ "user-home",
  "windows-sys 0.61.2",
 ]
 
@@ -15268,6 +15321,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+ "user-home",
  "web-time",
  "workbench",
 ]
@@ -15291,6 +15345,7 @@ dependencies = [
  "terminal-core",
  "terminal-remote",
  "unicode-width",
+ "user-home",
  "verse-gfx",
  "windows-sys 0.61.2",
  "winit",
@@ -15353,6 +15408,7 @@ dependencies = [
  "tempfile",
  "terminal-core",
  "tokio",
+ "user-home",
  "workbench",
 ]
 
@@ -15367,6 +15423,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "terminal-core",
+ "user-home",
 ]
 
 [[package]]
@@ -16710,6 +16767,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 
 [[package]]
+name = "user-home"
+version = "0.1.0"
+
+[[package]]
 name = "usvg"
 version = "0.48.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -16897,6 +16958,7 @@ dependencies = [
  "toml",
  "town-clock",
  "townsfolk",
+ "user-home",
  "verse-content",
  "verse-core",
  "verse-engine",
@@ -16934,6 +16996,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "user-home",
  "verse-pbr",
  "verse-zone-everglade",
  "wgpu",
@@ -17121,6 +17184,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite 0.30.0",
+ "user-home",
  "wasm-bindgen",
  "web-sys",
  "web-time",
@@ -17276,6 +17340,7 @@ dependencies = [
  "tokio",
  "town-clock",
  "townsfolk",
+ "user-home",
  "verse-content",
  "verse-core",
  "verse-engine",
@@ -17388,6 +17453,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "tungstenite 0.30.0",
+ "user-home",
 ]
 
 [[package]]
@@ -19216,6 +19282,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "user-home",
 ]
 
 [[package]]

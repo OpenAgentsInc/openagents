@@ -2,7 +2,7 @@ use super::*;
 
 /// This computer's library for `cwd`, as a real chat would read it.
 fn live_library(cwd: &Path) -> Library {
-    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap();
+    let home = user_home::home_os().map(PathBuf::from).unwrap();
     let memory = crate::memory::Memory::at(
         home.join(".openagents/memory"),
         Some(home.join(".openagents/AGENTS.md")),

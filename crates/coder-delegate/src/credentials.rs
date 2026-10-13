@@ -155,7 +155,7 @@ pub fn jev_live(env: impl Fn(&str) -> Option<String>, dir: &Path) -> Result<jev:
 
 /// `~/.openagents`, the directory both credential files live in.
 pub fn openagents_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents"))
+    user_home::home_os().map(|home| PathBuf::from(home).join(".openagents"))
 }
 
 fn from_env(env: &impl Fn(&str) -> Option<String>, name: &'static str) -> Option<Found> {

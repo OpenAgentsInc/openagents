@@ -65,7 +65,7 @@ pub trait Store {
 /// `~/.openagents`, when the process has a home directory.
 #[must_use]
 pub fn openagents_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents"))
+    user_home::home_os().map(|home| PathBuf::from(home).join(".openagents"))
 }
 
 /// Keys in 0600 files in a 0700 directory.

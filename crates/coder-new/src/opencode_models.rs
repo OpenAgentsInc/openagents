@@ -156,9 +156,7 @@ impl Preferences {
         let state = std::env::var_os("XDG_STATE_HOME")
             .filter(|dir| !dir.is_empty())
             .map(PathBuf::from)
-            .or_else(|| {
-                std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state"))
-            });
+            .or_else(|| user_home::home_os().map(|home| PathBuf::from(home).join(".local/state")));
         state
             .and_then(|dir| std::fs::read_to_string(dir.join("opencode/model.json")).ok())
             .map(|text| Self::parse(&text))

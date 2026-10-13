@@ -26,7 +26,7 @@ pub const CAPABILITIES: [&str; 5] = ["start", "observe", "stop", "resume", "stee
 /// Where `coder-one capabilities` writes the matrix.
 #[must_use]
 pub fn default_path() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| PathBuf::from(home).join(".openagents/coder-one/capabilities.json"))
 }
@@ -156,7 +156,7 @@ pub fn runbook_lines(path: Option<&Path>) -> Vec<String> {
         ],
         None => vec![
             "Executor capability matrix".to_owned(),
-            "  No HOME; write the matrix with `coder-one capabilities`.".to_owned(),
+            "  No user folder; write the matrix with `coder-one capabilities`.".to_owned(),
         ],
     }
 }
@@ -197,7 +197,7 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
         }
         index += 1;
     }
-    let path = path.ok_or("no --path and no HOME")?;
+    let path = path.ok_or("no --path and no user folder")?;
     let document = load(&path)?;
     if json_output {
         let value = json!({

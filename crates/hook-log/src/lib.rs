@@ -128,7 +128,7 @@ pub fn default_path(hook: &str) -> Option<PathBuf> {
     {
         return Some(PathBuf::from(dir).join(format!("{hook}.jsonl")));
     }
-    let home = std::env::var_os("HOME")?;
+    let home = user_home::home_os()?;
     Some(PathBuf::from(home).join(format!(".openagents/decisions/{hook}.jsonl")))
 }
 

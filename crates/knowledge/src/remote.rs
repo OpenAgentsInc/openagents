@@ -26,14 +26,13 @@ use crate::{Base, Entry, Status};
 /// `~/.openagents/knowledge/remote`.
 #[must_use]
 pub fn default_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents/knowledge/remote"))
+    user_home::home_os().map(|home| PathBuf::from(home).join(".openagents/knowledge/remote"))
 }
 
 /// `~/.openagents/knowledge/trust.json`.
 #[must_use]
 pub fn trust_file() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .map(|home| PathBuf::from(home).join(".openagents/knowledge/trust.json"))
+    user_home::home_os().map(|home| PathBuf::from(home).join(".openagents/knowledge/trust.json"))
 }
 
 pub use xp_ledger::{key_file, npub, own_pubkey, parse_key as parse_author};

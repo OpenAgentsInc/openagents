@@ -1394,10 +1394,10 @@ fn gym_path(given: Option<PathBuf>, name: &str) -> Result<PathBuf, String> {
     if let Some(path) = given {
         return Ok(path);
     }
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|h| !h.is_empty())
         .map(|home| PathBuf::from(home).join(".openagents/gym").join(name))
-        .ok_or_else(|| format!("HOME is unset; give the path to {name}"))
+        .ok_or_else(|| format!("Coder couldn't find your user folder; give the path to {name}"))
 }
 
 fn cli_inner(args: &[String]) -> Result<(), String> {

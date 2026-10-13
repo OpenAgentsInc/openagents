@@ -294,7 +294,7 @@ impl Ledger {
             .map(PathBuf::from)
             .filter(|path| path.is_absolute())
             .or_else(|| {
-                std::env::var_os("HOME")
+                user_home::home_os()
                     .map(PathBuf::from)
                     .filter(|path| path.is_absolute())
                     .map(|home| home.join(".local/share"))

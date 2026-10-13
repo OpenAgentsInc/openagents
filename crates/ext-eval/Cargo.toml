@@ -29,6 +29,7 @@ runner = [
 plugin = ["dep:plugin"]
 
 [dependencies]
+user-home = { path = "../user-home" }
 # Paper Mono, the one typeface, for the pages this crate renders.
 paper-mono = { path = "../paper-mono" }
 # The door proxy: the child reaches its pinned door only through a

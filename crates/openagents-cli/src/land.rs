@@ -546,7 +546,7 @@ fn instance() -> Option<Instance> {
 /// The marker the environment's idle stop reads: present with this
 /// process's id while an entry is being landed.
 fn busy_marker() -> PathBuf {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .map(PathBuf::from)
         .unwrap_or_default()
         .join(".openagents/land-queue/busy")

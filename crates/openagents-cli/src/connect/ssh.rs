@@ -368,10 +368,10 @@ fn public_key(text: &str) -> Result<String, Failure> {
 }
 
 fn home() -> Result<PathBuf, String> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(PathBuf::from)
-        .ok_or_else(|| "HOME is not set".to_owned())
+        .ok_or_else(|| user_home::NO_HOME.to_owned())
 }
 
 /// Expand a leading `~/` against `HOME`.

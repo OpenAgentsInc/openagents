@@ -84,7 +84,7 @@ pub fn default_records() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os("CODER_ROUTING_DIR").filter(|dir| !dir.is_empty()) {
         return Some(PathBuf::from(dir));
     }
-    std::env::var_os("HOME")
+    user_home::home_os()
         .map(PathBuf::from)
         .map(|home| home.join(".openagents/coder/routing"))
 }

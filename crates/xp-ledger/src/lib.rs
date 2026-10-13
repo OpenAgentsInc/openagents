@@ -39,7 +39,7 @@ use crate::entry::{Entry, task_of};
 /// with. It's created on first use with mode 0600.
 #[must_use]
 pub fn key_file() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents/nostr/knowledge-key"))
+    user_home::home_os().map(|home| PathBuf::from(home).join(".openagents/nostr/knowledge-key"))
 }
 
 /// The public key of the secret key in `path`, without creating one.
@@ -80,15 +80,14 @@ pub fn parse_key(text: &str) -> Option<String> {
 /// `~/.openagents/knowledge/xp-trust.json`.
 #[must_use]
 pub fn trust_file() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .map(|home| PathBuf::from(home).join(".openagents/knowledge/xp-trust.json"))
+    user_home::home_os().map(|home| PathBuf::from(home).join(".openagents/knowledge/xp-trust.json"))
 }
 
 /// `~/.openagents/nostr/referee-key`, the secret key quests, awards, and
 /// revocations are signed with. It's created on first use with mode 0600.
 #[must_use]
 pub fn referee_key_file() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents/nostr/referee-key"))
+    user_home::home_os().map(|home| PathBuf::from(home).join(".openagents/nostr/referee-key"))
 }
 
 /// `~/.openagents/nostr/playtest-referee-key`, the separate key that signs
@@ -96,7 +95,7 @@ pub fn referee_key_file() -> Option<PathBuf> {
 /// `microcoder xp playtest-keygen` makes it, once, on the owner's machine.
 #[must_use]
 pub fn playtest_referee_key_file() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .map(|home| PathBuf::from(home).join(".openagents/nostr/playtest-referee-key"))
 }
 

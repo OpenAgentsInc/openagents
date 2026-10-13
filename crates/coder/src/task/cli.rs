@@ -274,9 +274,14 @@ pub async fn run_with_json(arguments: &[String], json: bool) -> u8 {
     };
     let directory = match options.store {
         Some(path) => path,
-        None => match std::env::var_os("HOME").filter(|home| !home.is_empty()) {
+        None => match user_home::home_os().filter(|home| !home.is_empty()) {
             Some(home) => PathBuf::from(home).join(".openagents/tasks"),
-            None => return failure("configuration", "HOME is unset; give --store explicitly"),
+            None => {
+                return failure(
+                    "configuration",
+                    "Coder couldn't find your user folder; give --store explicitly",
+                );
+            }
         },
     };
     match &options.operation {

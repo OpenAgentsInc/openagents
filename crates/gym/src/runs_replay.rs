@@ -141,7 +141,7 @@ pub fn cache_dir() -> PathBuf {
     std::env::var_os("GYM_PUBLIC_REPLAYS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+            PathBuf::from(user_home::home_os().unwrap_or_default())
                 .join(".openagents/terminal-bench/public-replays")
         })
 }
@@ -194,7 +194,7 @@ pub fn sources(catalog: &Catalog) -> (Vec<Source>, Vec<Source>, Vec<String>) {
         .cloned()
         .map(|run| (run.id(), run))
         .collect();
-    let mirrored = PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+    let mirrored = PathBuf::from(user_home::home_os().unwrap_or_default())
         .join(".openagents/terminal-bench/replay-jobs");
     if mirrored.is_dir() {
         let mirror = Catalog::load(crate::runs::Sources {

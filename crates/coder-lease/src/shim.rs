@@ -123,7 +123,8 @@ pub fn dir_from(env: &dyn Fn(&str) -> Option<OsString>) -> Result<PathBuf, Strin
     if let Some(dir) = set(SHIMS_VAR) {
         return Ok(PathBuf::from(dir));
     }
-    let home = set("HOME").ok_or_else(|| format!("set HOME or {SHIMS_VAR}"))?;
+    let home = user_home::home_in(set)
+        .ok_or_else(|| format!("{} Or set {SHIMS_VAR}.", user_home::NO_HOME))?;
     Ok(PathBuf::from(home).join(".openagents/bin/lease-shims"))
 }
 

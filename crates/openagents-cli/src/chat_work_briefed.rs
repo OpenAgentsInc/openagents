@@ -61,9 +61,9 @@ pub(super) fn land_word(given: Option<&str>, policy_main: bool) -> Result<&'stat
 /// The engine's scripts, written once per build under
 /// `~/.openagents/work/engine/VERSION`; the driver's path.
 fn engine_dir() -> Result<PathBuf, String> {
-    let home = std::env::var_os("HOME")
+    let home = user_home::home_os()
         .map(PathBuf::from)
-        .ok_or("HOME is not set")?;
+        .ok_or(user_home::NO_HOME)?;
     engine_dir_in(&home)
 }
 
@@ -298,6 +298,7 @@ pub(super) fn work_here(
                 let mut command = Command::new("python3");
                 // Its own process group, so Stop ends the engine and the
                 // agent it runs.
+                #[cfg(unix)]
                 std::os::unix::process::CommandExt::process_group(&mut command, 0);
                 command
                     .arg(&driver)

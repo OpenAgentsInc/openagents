@@ -7,6 +7,7 @@ publish.workspace = true
 description = "Save Coder chats to the signed-in openagents.com account: the setting, the screened upload, and the background sender."
 
 [dependencies]
+user-home = { path = "../user-home" }
 atif = { path = "../atif" }
 mac-jobs = { path = "../mac-jobs" }
 openagents-login = { path = "../openagents-login" }

@@ -330,7 +330,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         );
     }
 
-    let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
+    let dir = crate::credentials::openagents_dir().ok_or(user_home::NO_HOME)?;
     let jev = JevMode::Live(crate::credentials::jev_live(
         |name| std::env::var(name).ok(),
         &dir,

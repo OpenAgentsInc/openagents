@@ -117,9 +117,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         })
     };
     let out = PathBuf::from(one("--out").ok_or("offline needs --out")?);
-    let home = std::env::var_os("HOME")
+    let home = user_home::home_os()
         .map(PathBuf::from)
-        .ok_or("HOME is not set")?
+        .ok_or(user_home::NO_HOME)?
         .join(".openagents/terminal-bench");
     let kinds = match one("--kinds") {
         Some(list) => list
@@ -179,7 +179,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             "off" => JevMode::Off,
             "recorded" => replay.clone(),
             "live" => {
-                let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
+                let dir = crate::credentials::openagents_dir().ok_or(user_home::NO_HOME)?;
                 JevMode::Live(crate::credentials::jev_live(
                     |name| std::env::var(name).ok(),
                     &dir,
@@ -297,7 +297,7 @@ async fn write_command(args: &[String]) -> Result<i32, String> {
             JevMode::Recorded(Recorded::load(Path::new(&path))?)
         }
         "live" => {
-            let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
+            let dir = crate::credentials::openagents_dir().ok_or(user_home::NO_HOME)?;
             JevMode::Live(crate::credentials::jev_live(
                 |name| std::env::var(name).ok(),
                 &dir,

@@ -1487,9 +1487,9 @@ pub fn command(args: &[String]) -> Result<i32, String> {
             let root = find_root(flags.root)?;
             let tasks = match flags.tasks {
                 Some(tasks) => tasks,
-                None => std::env::var_os("HOME")
+                None => user_home::home_os()
                     .map(|home| PathBuf::from(home).join(lexicon::DEFAULT_TASKS))
-                    .ok_or_else(|| "no HOME; pass --tasks".to_owned())?,
+                    .ok_or_else(|| "no user folder; pass --tasks".to_owned())?,
             };
             let doc = lexicon::build(&root, &tasks)?;
             let out = flags
@@ -1529,7 +1529,7 @@ pub fn command(args: &[String]) -> Result<i32, String> {
             let root = find_root(flags.root)?;
             let jobs = if flags.jobs.is_empty() {
                 let mut jobs = vec![root.join("bench/terminal-bench/traces")];
-                if let Some(home) = std::env::var_os("HOME") {
+                if let Some(home) = user_home::home_os() {
                     jobs.insert(
                         0,
                         PathBuf::from(home).join(".openagents/terminal-bench/jobs"),

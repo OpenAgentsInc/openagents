@@ -42,7 +42,7 @@ fn the_child_sees_nothing_of_the_operator() {
         std::env::set_var("CODER_DOOR_KEY", "operator-own-door-key");
         std::env::set_var("CODER_OPERATOR_SETTING", "1");
     }
-    let home = std::env::var("HOME").expect("a HOME");
+    let home = user_home::home_string().expect("a HOME");
     let canary =
         std::path::Path::new(&home).join(format!(".oa-eval-canary-{}", std::process::id()));
     std::fs::write(&canary, "operator secret canary").unwrap();

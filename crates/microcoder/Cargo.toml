@@ -13,6 +13,7 @@ name = "microcoder"
 path = "src/main.rs"
 
 [dependencies]
+user-home = { path = "../user-home" }
 acp-client = { path = "../acp-client" }
 coder-history = { path = "../coder-history", default-features = false, features = ["opencode", "devin"] }
 atif = { path = "../atif" }

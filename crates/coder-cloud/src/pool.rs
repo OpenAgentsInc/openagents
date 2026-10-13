@@ -53,7 +53,7 @@ fn home() -> PathBuf {
     if let Some(dir) = std::env::var_os("OPENAGENTS_CLOUD_HOME") {
         return PathBuf::from(dir);
     }
-    std::env::var_os("HOME")
+    user_home::home_os()
         .map_or_else(|| PathBuf::from("."), PathBuf::from)
         .join(".openagents/cloud")
 }

@@ -801,7 +801,7 @@ mod service {
         let Some(platform) = Platform::current() else {
             return output.fail("x402 node", "x402 node service needs macOS or Linux");
         };
-        let home_dir = std::env::var_os("HOME")
+        let home_dir = user_home::home_os()
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."));
         let path = platform

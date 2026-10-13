@@ -7,6 +7,7 @@ description = "The Coder agent: Classify routes, Generate answers, the terminal 
 publish.workspace = true
 
 [dependencies]
+user-home = { path = "../user-home" }
 atif = { path = "../atif" }
 # The machine-talk guard over the answer bank's copy (#11031).
 oa-copy = { path = "../oa-copy" }

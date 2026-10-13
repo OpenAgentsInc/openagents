@@ -341,7 +341,7 @@ struct Args {
 
 fn args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);
-    let build = PathBuf::from(std::env::var("HOME").map_err(|e| e.to_string())?)
+    let build = PathBuf::from(user_home::home_string().map_err(|e| e.to_string())?)
         .join("work/film-out/draconia/build");
     let mut a = Args {
         out: PathBuf::from(it.next().ok_or("Expected OUT.png")?),

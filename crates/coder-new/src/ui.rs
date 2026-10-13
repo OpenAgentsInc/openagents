@@ -346,7 +346,7 @@ fn agent_activity(chat: &crate::live::Chat) -> Option<String> {
                 .map(str::to_owned)
                 .unwrap_or_else(|| crate::tools::compact_params(&shown, 120));
             // The home folder as `~`, so a path shows what is inside it.
-            let what = match std::env::var("HOME") {
+            let what = match user_home::home_string() {
                 Ok(home) if home.len() > 1 => what.replace(&home, "~"),
                 _ => what,
             };
@@ -742,7 +742,7 @@ fn display_directory(path: &std::path::Path, home: Option<&std::path::Path>) -> 
 }
 
 fn repository_rail(app: &App) -> String {
-    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    let home = user_home::home_os().map(std::path::PathBuf::from);
     let directory = app
         .cwd
         .as_deref()

@@ -139,7 +139,7 @@ impl TerminalBench {
             arm: "coder-one-pack-luna".to_string(),
             artifact,
             artifact_sha256,
-            jobs: std::env::var_os("HOME")
+            jobs: user_home::home_os()
                 .map(|home| PathBuf::from(home).join(".openagents/terminal-bench/jobs"))
                 .unwrap_or_default(),
         }
@@ -213,7 +213,7 @@ pub fn ingest(job: &Path) -> Vec<Trial> {
 /// `path` with the home directory spelled `~`, which the harness expands,
 /// so a recorded command names no account.
 fn home_relative(path: &Path) -> String {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .and_then(|home| path.strip_prefix(home).ok().map(Path::to_path_buf))
         .map_or_else(
             || path.display().to_string(),

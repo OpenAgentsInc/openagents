@@ -188,7 +188,7 @@ impl ProcessTransport {
         }
 
         // Try common locations
-        let home = std::env::var("HOME").unwrap_or_default();
+        let home = user_home::home_string().unwrap_or_default();
         let possible_paths = [
             format!("{}/.claude/local/claude", home),
             "/usr/local/bin/claude".to_string(),

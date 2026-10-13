@@ -75,7 +75,7 @@ pub const RECOVERY_SCHEMA: &str = "openagents.coder-one.checks-recovery.v1";
 /// Where recovered checks are written by default.
 #[must_use]
 pub fn default_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| PathBuf::from(home).join(".openagents/coder-one/checks"))
 }
@@ -241,7 +241,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         }
         "recover" => {
             let traces = traces.ok_or("checks recover needs --traces DIR")?;
-            let out = out.or_else(default_dir).ok_or("no --out and no HOME")?;
+            let out = out
+                .or_else(default_dir)
+                .ok_or("no --out and no user folder")?;
             let summary = recover_and_check(&traces, &arm, &out).await?;
             if json_output {
                 println!(
@@ -286,9 +288,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 Some("fixtures") => super::replay::fixtures(),
                 Some(dir) => super::replay::load_jobs(Path::new(dir), &matching)?,
                 None => {
-                    let dir = std::env::var_os("HOME")
+                    let dir = user_home::home_os()
                         .map(|home| PathBuf::from(home).join(".openagents/terminal-bench/jobs"))
-                        .ok_or("no --jobs and no HOME")?;
+                        .ok_or("no --jobs and no user folder")?;
                     super::replay::load_jobs(&dir, &matching)?
                 }
             };
@@ -322,16 +324,18 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         "recall" => {
             let dir = match jobs.as_deref() {
                 Some(dir) => PathBuf::from(dir),
-                None => std::env::var_os("HOME")
+                None => user_home::home_os()
                     .map(|home| PathBuf::from(home).join(".openagents/terminal-bench/jobs"))
-                    .ok_or("no --jobs and no HOME")?,
+                    .ok_or("no --jobs and no user folder")?,
             };
             let matching = if matching == "tb4--coder-one-" {
                 "tb4--coder-one-tunable-v".to_string()
             } else {
                 matching
             };
-            let out = out.or_else(recall_dir).ok_or("no --out and no HOME")?;
+            let out = out
+                .or_else(recall_dir)
+                .ok_or("no --out and no user folder")?;
             let arms: Vec<String> = positional
                 .iter()
                 .filter(|p| super::labeled::arm_options(p).is_some())
@@ -412,7 +416,7 @@ async fn truth_command(
     }
     let out = out
         .or_else(truth::default_dir)
-        .ok_or("no --out and no HOME")?;
+        .ok_or("no --out and no user folder")?;
     std::fs::create_dir_all(&out).map_err(|e| format!("cannot create {}: {e}", out.display()))?;
     let rows = if let Some(path) = rows_file {
         truth::read_rows(&path)?
@@ -420,7 +424,7 @@ async fn truth_command(
         let jobs = match jobs {
             Some(dir) if dir == "none" => None,
             Some(dir) => Some(PathBuf::from(dir)),
-            None => std::env::var_os("HOME")
+            None => user_home::home_os()
                 .map(|home| PathBuf::from(home).join(".openagents/terminal-bench/jobs")),
         };
         let traces = traces.or_else(|| Some(PathBuf::from("bench/terminal-bench/traces")));
@@ -432,7 +436,7 @@ async fn truth_command(
         let mut recorded = crate::component::jev::Recorded::load(&recorded_path)?;
         let client = match jev_word.as_str() {
             "live" => {
-                let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
+                let dir = crate::credentials::openagents_dir().ok_or(user_home::NO_HOME)?;
                 Some(crate::credentials::jev_live(
                     |name| std::env::var(name).ok(),
                     &dir,
@@ -479,7 +483,7 @@ async fn truth_command(
 /// Where `checks recall` writes by default.
 #[must_use]
 pub fn recall_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| PathBuf::from(home).join(".openagents/coder-one/checks-recall"))
 }

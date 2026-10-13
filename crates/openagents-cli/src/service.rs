@@ -109,7 +109,7 @@ impl From<std::io::Error> for Failure {
 }
 
 fn home() -> Result<PathBuf, Failure> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .map(PathBuf::from)
         .filter(|home| home.is_absolute())
         .ok_or_else(|| Failure::Refused("HOME must be an absolute path".into()))

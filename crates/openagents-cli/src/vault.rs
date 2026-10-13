@@ -146,7 +146,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
 }
 
 fn home() -> PathBuf {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
 }

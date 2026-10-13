@@ -128,7 +128,7 @@ fn output(command: &mut std::process::Command) -> Result<std::process::Output, S
 
 /// Where a lane keeps what it reads between calls.
 fn home() -> Option<std::path::PathBuf> {
-    std::env::var_os("HOME").map(std::path::PathBuf::from)
+    user_home::home_os().map(std::path::PathBuf::from)
 }
 
 /// A lane that shells out to `openagents computer`, the owner's own

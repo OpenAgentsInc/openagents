@@ -7,6 +7,7 @@ description = "One way every Jev caller finds Jev: a local TypeSafe key, else Op
 publish.workspace = true
 
 [dependencies]
+user-home = { path = "../user-home" }
 atif = { path = "../atif" }
 jev = { path = "../jev" }
 # Who pays: the person's own keys under BYOK `mine` (#10176).

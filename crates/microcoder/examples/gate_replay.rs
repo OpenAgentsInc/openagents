@@ -19,7 +19,7 @@ use microcoder::state::{Action, State, Test};
 /// Jev through the one resolver every caller shares
 /// (`jev_hosted::resolve`): a local key, else the hosted service.
 fn jev_client() -> Result<jev::Client, String> {
-    let dir = jev_hosted::openagents_dir().ok_or("HOME is not set")?;
+    let dir = jev_hosted::openagents_dir().ok_or(user_home::NO_HOME)?;
     let env = |name: &str| std::env::var(name).ok();
     jev_hosted::resolve(
         &env,

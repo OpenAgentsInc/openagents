@@ -28,7 +28,7 @@ use verse_zone_everglade::zones::everglade_pack::compile::kit as compiled;
 use verse_zone_everglade::zones::everglade_pack::{ZonePack, kit};
 
 fn home() -> PathBuf {
-    PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+    PathBuf::from(user_home::home_os().unwrap_or_default())
 }
 
 fn private_write(path: &Path, bytes: &[u8]) -> Result<(), String> {

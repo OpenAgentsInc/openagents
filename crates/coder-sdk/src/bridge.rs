@@ -17,11 +17,14 @@
 //! with `updatedInput`, no `continue: false` before a tool).
 
 use std::io::{BufRead, BufReader, Read, Write};
+#[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
+#[cfg(not(unix))]
+use unsupported::{UnixListener, UnixStream};
 
 use serde_json::{Value, json};
 
@@ -418,6 +421,71 @@ pub fn main(args: &[String], fallback: impl FnOnce(&Value) -> Option<Value>) -> 
         let _ = writeln!(std::io::stdout(), "{reply}");
     }
     0
+}
+
+/// Windows has no Unix sockets in `std`: the host can't start, so a session
+/// runs without the bridge ([`install`] gives `None`), and the bridge
+/// program, finding no host, answers with its own rules.
+#[cfg(not(unix))]
+mod unsupported {
+    use std::io::{Error, ErrorKind, Read, Result, Write};
+    use std::path::Path;
+    use std::time::Duration;
+
+    fn refuse<T>() -> Result<T> {
+        Err(Error::new(
+            ErrorKind::Unsupported,
+            "the hook bridge needs a Unix socket, which this platform lacks",
+        ))
+    }
+
+    pub struct UnixListener;
+
+    impl UnixListener {
+        pub fn bind(_: &Path) -> Result<Self> {
+            refuse()
+        }
+
+        pub fn incoming(&self) -> std::iter::Empty<Result<UnixStream>> {
+            std::iter::empty()
+        }
+    }
+
+    pub enum UnixStream {}
+
+    impl UnixStream {
+        pub fn connect(_: &Path) -> Result<Self> {
+            refuse()
+        }
+
+        pub fn try_clone(&self) -> Result<Self> {
+            match *self {}
+        }
+
+        pub fn set_read_timeout(&self, _: Option<Duration>) -> Result<()> {
+            match *self {}
+        }
+
+        pub fn set_write_timeout(&self, _: Option<Duration>) -> Result<()> {
+            match *self {}
+        }
+    }
+
+    impl Read for UnixStream {
+        fn read(&mut self, _: &mut [u8]) -> Result<usize> {
+            match *self {}
+        }
+    }
+
+    impl Write for UnixStream {
+        fn write(&mut self, _: &[u8]) -> Result<usize> {
+            match *self {}
+        }
+
+        fn flush(&mut self) -> Result<()> {
+            match *self {}
+        }
+    }
 }
 
 #[cfg(test)]

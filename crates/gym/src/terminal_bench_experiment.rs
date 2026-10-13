@@ -729,8 +729,7 @@ pub fn default_dir() -> PathBuf {
     let state = std::env::var_os("TBENCH_STATE_DIR")
         .map(PathBuf::from)
         .or_else(|| {
-            std::env::var_os("HOME")
-                .map(|home| PathBuf::from(home).join(".openagents/terminal-bench"))
+            user_home::home_os().map(|home| PathBuf::from(home).join(".openagents/terminal-bench"))
         })
         .unwrap_or_else(|| PathBuf::from(".openagents/terminal-bench"));
     state.join("experiments")

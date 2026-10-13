@@ -268,7 +268,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             };
             let out = out
                 .or_else(default_runs_dir)
-                .ok_or("no --out and no HOME to record under")?;
+                .ok_or("no --out and no user folder to record under")?;
             let repair = match repair {
                 None => None,
                 Some(profile) => Some(super::run::Repair {

@@ -413,7 +413,7 @@ pub const MAX_SNAPSHOT_FILE: u64 = 8 << 20;
 /// outside the boundary.
 #[must_use]
 pub fn toolchains() -> Vec<PathBuf> {
-    let mut dirs: Vec<PathBuf> = std::env::var_os("HOME")
+    let mut dirs: Vec<PathBuf> = user_home::home_os()
         .map(PathBuf::from)
         .map(|home| {
             [".cargo", ".rustup"]

@@ -249,7 +249,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 ));
             }
             let jev = if args.jev == "live" {
-                let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
+                let dir = crate::credentials::openagents_dir().ok_or(user_home::NO_HOME)?;
                 Some(crate::credentials::jev_live(
                     |name| std::env::var(name).ok(),
                     &dir,
@@ -270,7 +270,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 .out
                 .clone()
                 .or_else(default_runs_dir)
-                .ok_or("no --out and no HOME")?;
+                .ok_or("no --out and no user folder")?;
             let ran = run(Options {
                 source: args.source()?,
                 target_dir: args.target_dir()?,

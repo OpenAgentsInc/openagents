@@ -344,7 +344,7 @@ pub fn binary(variable: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
     if let Some(named) = variable(BIN_VAR).filter(|value| !value.is_empty()) {
         return first_executable([PathBuf::from(named)]);
     }
-    let home = variable("HOME").map(PathBuf::from);
+    let home = user_home::home_in(variable);
     let path = variable("PATH");
     let local = |name: &str| home.as_ref().map(|home| home.join(".local/bin").join(name));
     if let Some(found) = first_executable(

@@ -266,7 +266,7 @@ fn options(args: &Args, check: bool) -> Result<Options, UsageError> {
 pub(crate) fn openagents_home() -> PathBuf {
     std::env::var_os("OPENAGENTS_HOME").map_or_else(
         || {
-            std::env::var_os("HOME")
+            user_home::home_os()
                 .map_or_else(|| PathBuf::from("."), PathBuf::from)
                 .join(".openagents")
         },

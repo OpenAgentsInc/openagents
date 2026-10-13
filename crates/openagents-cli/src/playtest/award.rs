@@ -127,7 +127,7 @@ pub fn sign(
 
 fn referee_key(args: &Args) -> Result<RelaySigner, Failure> {
     let path = args.option("referee-key").map(PathBuf::from).or_else(|| {
-        std::env::var_os("HOME")
+        user_home::home_os()
             .map(|home| PathBuf::from(home).join(".openagents/nostr/playtest-referee-key"))
     });
     let path = path.ok_or_else(|| usage("--referee-key PATH is required"))?;

@@ -266,7 +266,8 @@ impl JevDoor {
     ///
     /// Why there is no Jev, never a key.
     pub fn resolved(url: &str, key: Option<&str>, model: Option<String>) -> Result<Self, String> {
-        let dir = jev_hosted::openagents_dir().ok_or("no Jev: HOME is not set")?;
+        let dir =
+            jev_hosted::openagents_dir().ok_or("no Jev: Coder couldn't find your user folder")?;
         let env = |name: &str| {
             if name == jev::env::API_KEY
                 && let Some(key) = key

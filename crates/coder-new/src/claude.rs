@@ -499,7 +499,7 @@ pub(crate) struct Resume {
 pub fn kept(id: &str) -> bool {
     let root = std::env::var_os("CLAUDE_CONFIG_DIR")
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".claude")));
+        .or_else(|| user_home::home_os().map(|home| PathBuf::from(home).join(".claude")));
     let Some(projects) = root.map(|root| root.join("projects")) else {
         return false;
     };

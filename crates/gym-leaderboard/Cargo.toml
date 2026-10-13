@@ -18,6 +18,7 @@ client = ["dep:reqwest"]
 publish = ["generate", "dep:tokio", "dep:tokio-tungstenite", "dep:futures-util", "dep:rustls", "dep:webpki-roots"]
 
 [dependencies]
+user-home = { path = "../user-home" }
 # Digests use ATIF's rule (object keys sorted at every depth, then SHA-256),
 # so a board digest and a trace digest agree with the rest of the Gym.
 atif = { path = "../atif" }

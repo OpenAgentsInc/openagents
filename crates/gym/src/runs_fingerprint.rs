@@ -827,7 +827,9 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
             .dir
             .as_ref()
             .map(|dir| dir.join(MOVES_FILE))
-            .ok_or_else(|| "no fingerprint directory: HOME is not set".to_owned())?;
+            .ok_or_else(|| {
+                "no fingerprint directory: Coder couldn't find your user folder".to_owned()
+            })?;
         let value = crate::runs::read_json(&path).ok_or_else(|| {
             format!(
                 "no moves report at {}; run `gym runs moves` first",

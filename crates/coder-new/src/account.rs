@@ -241,7 +241,7 @@ impl crate::App {
     pub fn login(&mut self) {
         if self.account_dir.is_none() {
             self.notice = Some(
-                "Coder has no folder to keep your sign-in in. Set HOME or use --state.".into(),
+                "Coder couldn't find your user folder to keep your sign-in in. Set HOME (on Windows, USERPROFILE) to your user folder, or use --state DIR.".into(),
             );
             return;
         }

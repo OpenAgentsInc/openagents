@@ -108,7 +108,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     }
     let root = dir
         .or_else(super::default_dir)
-        .ok_or("no --dir and no HOME to read proposals from")?;
+        .ok_or("no --dir and no user folder to read proposals from")?;
     let [id] = positional.as_slice() else {
         return Err(format!("proposal {verb} needs one proposal ID\n{USAGE}"));
     };

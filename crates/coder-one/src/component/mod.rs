@@ -1445,7 +1445,7 @@ pub fn default_fixtures() -> PathBuf {
 /// Where component runs record themselves: `~/.openagents/coder-one/components`.
 #[must_use]
 pub fn default_runs_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| PathBuf::from(home).join(".openagents/coder-one/components"))
 }

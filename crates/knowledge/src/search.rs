@@ -297,7 +297,7 @@ pub const EMBEDDING_USD_PER_MILLION: f64 = 0.02;
 /// be readable by its owner only.
 #[must_use]
 pub fn openai_key_file() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents/openai.json"))
+    user_home::home_os().map(|home| PathBuf::from(home).join(".openagents/openai.json"))
 }
 
 /// Where embeddings come from.
@@ -375,7 +375,7 @@ fn openai_key() -> Result<String, String> {
     {
         return Ok(key);
     }
-    let path = openai_key_file().ok_or("no HOME to find ~/.openagents/openai.json in")?;
+    let path = openai_key_file().ok_or("no user folder to find ~/.openagents/openai.json in")?;
     key_from_file(&path)
 }
 

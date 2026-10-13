@@ -11,6 +11,7 @@ publish.workspace = true
 description = "OpenAgents Terminal: a full-screen chat with OpenAgents over the shared chat client, drawn with coder-terminal."
 
 [dependencies]
+user-home = { path = "../user-home" }
 # `/export` writes the thread as an ATIF trajectory and checks it first.
 atif = { path = "../atif" }
 # The file view highlights code as code blocks do: grok-build's syntect.

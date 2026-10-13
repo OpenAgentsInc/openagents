@@ -148,9 +148,14 @@ fn signing_key() -> Result<SecretKey> {
     SecretKey::from_str(text.trim()).map_err(|_| bad("invalid secret key"))
 }
 fn default_state() -> Result<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .map(|home| PathBuf::from(home).join(".openagents/coder-access"))
-        .ok_or_else(|| Error::new(Code::Unavailable, "HOME is not set; pass --state"))
+        .ok_or_else(|| {
+            Error::new(
+                Code::Unavailable,
+                "Coder couldn't find your user folder; pass --state",
+            )
+        })
 }
 
 async fn run() -> Result<()> {

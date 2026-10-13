@@ -7,6 +7,7 @@ description = "The Agent Client Protocol as Coder speaks it to a local coding ag
 publish.workspace = true
 
 [dependencies]
+user-home = { path = "../user-home" }
 coder-lease = { path = "../coder-lease" }
 # The one credential-name policy every env scrubber shares.
 secret-screen = { path = "../secret-screen" }

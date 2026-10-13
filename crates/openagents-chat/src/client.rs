@@ -3592,7 +3592,7 @@ pub fn home() -> PathBuf {
     if let Some(dir) = std::env::var_os("OPENAGENTS_CHAT_HOME") {
         return dir.into();
     }
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         // Windows has no `HOME`: the profile folder.
         .or_else(|| std::env::var_os("USERPROFILE"))

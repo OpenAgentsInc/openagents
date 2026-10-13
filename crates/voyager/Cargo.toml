@@ -7,6 +7,7 @@ description = "Open-ended agent episodes in a Minecraft world: a supervised loca
 publish.workspace = true
 
 [dependencies]
+user-home = { path = "../user-home" }
 atif = { path = "../atif" }
 jev = { path = "../jev", features = ["blocking"] }
 jev-hosted = { path = "../jev-hosted" }

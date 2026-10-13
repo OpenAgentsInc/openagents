@@ -1059,7 +1059,7 @@ fn devin_state_must_be_inside_the_approval() {
     }
     let case = std::env::var(CHILD).unwrap();
     let outside = tempfile::tempdir().unwrap();
-    let grant = PathBuf::from(std::env::var_os("HOME").unwrap()).join("grant");
+    let grant = PathBuf::from(user_home::home_os().unwrap()).join("grant");
     let adapter_path = adapter(outside.path(), "#!/bin/sh\necho stub 1.0.0\n");
     let binary = adapter_path.to_str().unwrap();
     let repository = repository(

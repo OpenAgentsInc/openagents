@@ -397,7 +397,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         );
         rows.push(row);
     }
-    let dir = out.ok_or("HOME is not set; pass --out")?.join(&study);
+    let dir = out
+        .ok_or("Coder couldn't find your user folder; pass --out")?
+        .join(&study);
     // A checkout's set is named from the checkout's root, so a retained
     // result names no home directory.
     let set_named = {

@@ -84,7 +84,7 @@ pub fn coder_path() -> Option<PathBuf> {
             return Some(candidate);
         }
     }
-    let home = std::env::var_os("HOME").map(PathBuf::from)?;
+    let home = user_home::home_os().map(PathBuf::from)?;
     let installed = home.join(".openagents/bin/coder");
     installed.exists().then_some(installed)
 }
@@ -231,7 +231,7 @@ impl LoginAgent {
 
     /// The agent for this user's environment.
     pub fn current() -> Option<LoginAgent> {
-        let home = std::env::var_os("HOME")
+        let home = user_home::home_os()
             .map(PathBuf::from)
             .filter(|home| home.is_absolute())?;
         let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from);
@@ -447,16 +447,16 @@ pub fn register_agent(keys: &Keys) -> Agent {
         return Agent::NotRegistered;
     }
     let Some(agent) = LoginAgent::current() else {
-        return Agent::Failed("HOME is not set".into());
+        return Agent::Failed(user_home::NO_HOME.into());
     };
     let mut command = HostCommand::for_install(appimage.as_deref(), &dir, keys);
     let mut staged = None;
     if appimage.is_none() && !installed(&dir) {
-        let Some(home) = std::env::var_os("HOME")
+        let Some(home) = user_home::home_os()
             .map(PathBuf::from)
             .filter(|home| home.is_absolute())
         else {
-            return Agent::Failed("HOME is not set".into());
+            return Agent::Failed(user_home::NO_HOME.into());
         };
         let root = home.join(STAGED);
         match stage(&dir, &root) {
@@ -785,7 +785,7 @@ mod notifications {
 /// [`Chosen::Unavailable`] when none of them opens. Blocks until the person
 /// answers, so the worker runs it on its own thread.
 pub fn choose_folder() -> Chosen {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
+    let home = user_home::home_string().unwrap_or_else(|_| "/".into());
     folder::choose(&mut SystemChoosers, &home)
 }
 

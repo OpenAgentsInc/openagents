@@ -95,7 +95,7 @@ pub fn database(home: &Path, xdg_data_home: Option<&Path>) -> PathBuf {
 /// The owner's Devin session store from this process's environment.
 #[must_use]
 pub fn default_database() -> Option<PathBuf> {
-    let home = PathBuf::from(std::env::var_os("HOME")?);
+    let home = PathBuf::from(user_home::home_os()?);
     let xdg = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from);
     Some(database(&home, xdg.as_deref()))
 }

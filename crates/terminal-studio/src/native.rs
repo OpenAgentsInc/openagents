@@ -25,7 +25,7 @@ fn studio_socket(home: Option<&Path>) -> Result<PathBuf, String> {
     let socket: Result<PathBuf, String> = match std::env::consts::OS {
         "macos" => home
             .map(Path::to_path_buf)
-            .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
+            .or_else(|| user_home::home_os().map(PathBuf::from))
             .map(|home| home.join("Library/Application Support/OpenAgents/control.sock"))
             .ok_or_else(|| "No home for the studio control socket.".into()),
         "linux" => std::env::var_os("XDG_RUNTIME_DIR")

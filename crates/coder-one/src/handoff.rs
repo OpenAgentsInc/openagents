@@ -1947,7 +1947,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             };
             let out = out
                 .or_else(crate::minitask::run::default_runs_dir)
-                .ok_or("no --out and no HOME to record under")?;
+                .ok_or("no --out and no user folder to record under")?;
             let ran = run(Options {
                 task,
                 policy,

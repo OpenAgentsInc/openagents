@@ -6,6 +6,7 @@ publish = false
 description = "The person's Spark wallet (Breez SDK), shared by the phone and computers."
 
 [dependencies]
+user-home = { path = "../user-home" }
 # Breez's Spark SDK without its SQLite store: the computers' workspace links
 # `ldk-node`'s `libsqlite3-sys` 0.28 and Breez's SQLite needs 0.30, which one
 # lock file cannot hold. Computers keep the SDK's records in `store` (a JSON

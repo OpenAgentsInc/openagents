@@ -20,6 +20,7 @@ mcp-http = [
 ]
 
 [dependencies]
+user-home = { path = "../user-home" }
 axum = { version = "0.8", optional = true }
 discovery = { path = "../discovery" }
 jev = { path = "../jev", features = ["blocking"] }

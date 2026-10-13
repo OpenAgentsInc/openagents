@@ -192,7 +192,7 @@ impl Deadlines {
 /// Where component runs record themselves by default.
 #[must_use]
 pub fn default_runs_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .filter(|home| !home.is_empty())
         .map(|home| PathBuf::from(home).join(".openagents/coder-one/components"))
 }
@@ -768,7 +768,7 @@ damaged passes, and repair cost per arm.";
 pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, String> {
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/terminal-bench");
     let mut runs = default_runs_dir();
-    let mut jobs = std::env::var_os("HOME")
+    let mut jobs = user_home::home_os()
         .map(PathBuf::from)
         .map(|home| home.join(".openagents/terminal-bench/jobs"));
     let mut traces = Some(repo.join("traces"));

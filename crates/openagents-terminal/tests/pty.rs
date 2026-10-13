@@ -931,7 +931,7 @@ fn live() {
     let question = std::env::var("OA_TERMINAL_LIVE_ASK")
         .unwrap_or_else(|_| "In two sentences, what is OpenAgents?".into());
     let home = tempfile::tempdir().unwrap();
-    let real = PathBuf::from(std::env::var("HOME").unwrap());
+    let real = PathBuf::from(user_home::home_string().unwrap());
     let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut command = Command::new("sh");
     command

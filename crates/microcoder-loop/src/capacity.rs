@@ -862,11 +862,11 @@ pub fn codex_api_key_only() -> bool {
 /// That refusal then ends the generation as any other error does.
 #[must_use]
 pub fn probe(provider: Provider) -> Connection {
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = user_home::home_os().map(PathBuf::from);
     match provider {
         Provider::Codex => {
             let Some(path) = codex_transport::codex::Login::default_path() else {
-                return Connection::Missing("HOME is not set".into());
+                return Connection::Missing(user_home::NO_HOME.into());
             };
             match codex_transport::codex::Login::load(&path) {
                 Ok(_) => Connection::Connected,
@@ -924,7 +924,7 @@ pub fn probe(provider: Provider) -> Connection {
                 );
             }
             let Some(home) = home else {
-                return Connection::Missing("HOME is not set".into());
+                return Connection::Missing(user_home::NO_HOME.into());
             };
             if claude_signed_in(&home) {
                 Connection::Connected

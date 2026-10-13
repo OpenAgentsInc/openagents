@@ -435,8 +435,8 @@ pub fn socket_home() -> Result<PathBuf, String> {
     if let Some(dir) = socket_dir() {
         return Ok(dir);
     }
-    let home = std::env::var_os("HOME")
-        .ok_or("neither XDG_RUNTIME_DIR nor HOME is set, so this session has no desk socket")?;
+    let home = user_home::home_os()
+        .ok_or("Coder couldn't find XDG_RUNTIME_DIR or your user folder, so this session has no desk socket")?;
     Ok(Path::new(&home).join(".openagents").join(HOME_DIR))
 }
 

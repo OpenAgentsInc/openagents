@@ -508,7 +508,7 @@ impl std::fmt::Debug for TerminalPane {
 /// The home folder: `HOME`, or `USERPROFILE` on Windows.
 #[must_use]
 pub fn home() -> Option<PathBuf> {
-    std::env::var_os("HOME")
+    user_home::home_os()
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
         .filter(|home| home.is_absolute())

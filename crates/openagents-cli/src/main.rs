@@ -331,9 +331,9 @@ Exit codes: 0 success, 1 refused or failed, 64 invalid usage."
 /// than the current folder.
 #[cfg(windows)]
 fn home_from_profile() {
-    if std::env::var_os("HOME").is_none_or(|home| home.is_empty())
-        && let Some(profile) = std::env::var_os("USERPROFILE")
-    {
+    // `user_home` already answers without it; this is for the children
+    // (shells, Git, harness CLIs) that read `HOME` themselves.
+    if let Some(profile) = user_home::home_os() {
         // SAFETY: the first thing `main` does, before any other thread
         // exists, so nothing reads the environment while it changes.
         unsafe { std::env::set_var("HOME", profile) };
@@ -660,8 +660,7 @@ async fn host(arguments: &[String]) -> u8 {
         .find(|pair| pair[0] == "--root")
         .map(|pair| std::path::PathBuf::from(&pair[1]))
         .or_else(|| {
-            std::env::var_os("HOME")
-                .map(|home| std::path::PathBuf::from(home).join(".openagents/host"))
+            user_home::home_os().map(|home| std::path::PathBuf::from(home).join(".openagents/host"))
         });
     // The packaged environment owners' providers (Boat, or the optional
     // dedicated GCE adapter), built before the
@@ -782,7 +781,7 @@ async fn pair(arguments: &[String]) -> u8 {
 /// The paths and identities every group reads, so a person can see what a
 /// command will use before it runs.
 fn doctor(output: &Output) -> u8 {
-    let home = std::env::var_os("HOME").map_or_else(|| Path::new(".").to_path_buf(), Into::into);
+    let home = user_home::home_os().map_or_else(|| Path::new(".").to_path_buf(), Into::into);
     let openagents = home.join(".openagents");
     let entries = [
         ("verse_keys", ::verse_net::identity::home()),

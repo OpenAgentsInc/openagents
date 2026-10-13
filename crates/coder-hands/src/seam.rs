@@ -230,7 +230,7 @@ struct Settings {
 /// The settings file, when the process has a home directory and the file
 /// parses. A file that is absent or malformed reads as no file.
 fn settings() -> Option<Settings> {
-    let home = std::env::var_os("HOME")?;
+    let home = user_home::home_os()?;
     let text = std::fs::read_to_string(std::path::Path::new(&home).join(SETTINGS)).ok()?;
     serde_json::from_str(&text).ok()
 }
