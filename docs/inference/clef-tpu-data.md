@@ -163,6 +163,42 @@ Backbone projection time per token (sum of the measured matmuls over all layers;
 | 27b | int8_w8a8_static | 59.9 µs | 55.3 µs | 54.9 µs | 56.5 µs | 18,210 |
 | 27b | int8_weight_only | 113.7 µs | 111.5 µs | 112.3 µs | 112.8 µs | 8,905 |
 
+**v6e** (TPU v6 lite, jax 0.11.1, asia-northeast1-b, `cd-v6e1-ane1b-d/matmul-v6e-t1v-n-f2308cbd-w-0.json`)
+
+| shape (K x N) | bf16 | fp8_e4m3 | int8_w8a8_dynamic | int8_w8a8_static | int8_weight_only |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 27b.attn_kv (5120 x 2048) | 827 | 457 | 600 | 1619 | 826 |
+| 27b.attn_o (6144 x 5120) | 753 | 540 | 1133 | 1732 | 803 |
+| 27b.attn_q_gate (5120 x 12288) | 845 | 610 | 1287 | 1667 | 846 |
+| 27b.gdn_out (6144 x 5120) | 753 | 540 | 1133 | 1731 | 803 |
+| 27b.gdn_qkv (5120 x 10240) | 844 | 611 | 1331 | 1714 | 845 |
+| 27b.gdn_z (5120 x 6144) | 839 | 461 | 1188 | 1702 | 842 |
+| 27b.mlp_down (17408 x 5120) | 741 | 632 | 988 | 1490 | 818 |
+| 27b.mlp_gate_up (5120 x 34816) | 849 | 463 | 1510 | 1752 | 848 |
+| flash.attn_kv (4096 x 2048) | 819 | 465 | 658 | 1581 | 826 |
+| flash.attn_o (4096 x 4096) | 837 | 469 | 942 | 1651 | 841 |
+| flash.attn_q_gate (4096 x 8192) | 847 | 472 | 1349 | 1694 | 849 |
+| flash.gdn_out (4096 x 4096) | 837 | 469 | 942 | 1653 | 841 |
+| flash.gdn_qkv (4096 x 8192) | 846 | 472 | 1347 | 1692 | 849 |
+| flash.gdn_z (4096 x 4096) | 837 | 469 | 942 | 1648 | 841 |
+| flash.mlp_down (12288 x 4096) | 752 | 646 | 992 | 1679 | 816 |
+| flash.mlp_gate_up (4096 x 24576) | 853 | 518 | 1363 | 1758 | 854 |
+
+Backbone projection time per token (sum of the measured matmuls over all layers; no attention/GDN core, norms, or overheads):
+
+| model | dtype | 512 | 2048 | 8192 | 32768 | tok/s at 8k |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| flash | bf16 | 24.9 µs | 17.1 µs | 16.8 µs | 19.2 µs | 59,583 |
+| flash | fp8_e4m3 | 26.4 µs | 25.8 µs | 26.3 µs | 23.7 µs | 38,082 |
+| flash | int8_w8a8_dynamic | 16.2 µs | 12.0 µs | 11.8 µs | 11.4 µs | 84,993 |
+| flash | int8_w8a8_static | 14.3 µs | 8.6 µs | 8.1 µs | 8.4 µs | 123,828 |
+| flash | int8_weight_only | 19.0 µs | 17.0 µs | 16.4 µs | 17.8 µs | 60,925 |
+| 27b | bf16 | 88.9 µs | 60.2 µs | 60.0 µs | 69.4 µs | 16,673 |
+| 27b | fp8_e4m3 | 106.4 µs | 110.3 µs | 93.6 µs | 78.0 µs | 10,679 |
+| 27b | int8_w8a8_dynamic | 50.2 µs | 38.8 µs | 38.7 µs | 38.4 µs | 25,870 |
+| 27b | int8_w8a8_static | 43.7 µs | 30.1 µs | 29.1 µs | 29.3 µs | 34,327 |
+| 27b | int8_weight_only | 70.6 µs | 60.4 µs | 58.2 µs | 62.9 µs | 17,182 |
+
 ## Gated DeltaNet (gdn/v3 fused Pallas kernel), one layer, one chip
 
 **v5e** (`cd-v5e8-uw4a-s/gdn-long-v5e-t1v-n-cd164882-w-0.json`)
@@ -253,6 +289,152 @@ Backbone projection time per token (sum of the measured matmuls over all layers;
 | 27b (16/48) | 16 x 2048 | f32 | 1,475,257 | 32.5 | 120,283 | — |
 | 27b (16/48) | 16 x 2048 | bf16 | 1,516,757 | 31.6 | — | — |
 | 27b (16/48) | 16 x 4096 | f32 | RESOURCE_EXHAUSTED: XLA:TPU compile permanent error. Ran out | — | — | — |
+| 27b (16/48) | 16 x 4096 | bf16 | RESOURCE_EXHAUSTED: XLA:TPU compile permanent error. Ran out | — | — | — |
+
+**v5p** (`cd-v5p8-ue5a-s/gdn-fast-v5p-t1v-n-b5341e88-w-0-chips0.json`)
+
+| config | batch x seq | state | fused tok/s | µs/token over all GDN layers | pure-JAX chunked tok/s | err vs token-step ref (mean rel / max abs) |
+| --- | --- | --- | ---: | ---: | ---: | --- |
+| flash (16/32) | 1 x 512 | f32 | 2,874,699 | 8.3 | 358,630 | 5.34e-03 / 2.4e-04 |
+| flash (16/32) | 1 x 512 | bf16 | 2,793,467 | 8.6 | — | 5.34e-03 / 2.4e-04 |
+| flash (16/32) | 1 x 1024 | f32 | 3,072,869 | 7.8 | 401,118 | 5.32e-03 / 2.4e-04 |
+| flash (16/32) | 1 x 1024 | bf16 | 3,120,639 | 7.7 | — | 5.32e-03 / 2.4e-04 |
+| flash (16/32) | 1 x 2048 | f32 | 3,274,013 | 7.3 | 432,402 | 5.31e-03 / 2.4e-04 |
+| flash (16/32) | 1 x 2048 | bf16 | 3,313,093 | 7.2 | — | 5.31e-03 / 2.4e-04 |
+| flash (16/32) | 1 x 4096 | f32 | 3,380,312 | 7.1 | 416,405 | 5.36e-03 / 2.4e-04 |
+| flash (16/32) | 1 x 4096 | bf16 | 3,413,858 | 7.0 | — | 5.36e-03 / 2.4e-04 |
+| flash (16/32) | 1 x 8192 | f32 | 3,436,920 | 7.0 | 428,487 | — |
+| flash (16/32) | 1 x 8192 | bf16 | 3,465,841 | 6.9 | — | — |
+| flash (16/32) | 1 x 16384 | f32 | 3,459,959 | 6.9 | 417,383 | — |
+| flash (16/32) | 1 x 16384 | bf16 | 3,484,642 | 6.9 | — | — |
+| flash (16/32) | 1 x 32768 | f32 | 2,369,706 | 10.1 | 431,943 | — |
+| flash (16/32) | 1 x 32768 | bf16 | 2,403,257 | 10.0 | — | — |
+| flash (16/32) | 4 x 512 | f32 | 3,124,123 | 7.7 | 408,687 | — |
+| flash (16/32) | 4 x 512 | bf16 | 3,160,354 | 7.6 | — | — |
+| flash (16/32) | 4 x 1024 | f32 | 3,298,389 | 7.3 | 400,308 | — |
+| flash (16/32) | 4 x 1024 | bf16 | 3,331,347 | 7.2 | — | — |
+| flash (16/32) | 4 x 2048 | f32 | 3,394,804 | 7.1 | 421,069 | — |
+| flash (16/32) | 4 x 2048 | bf16 | 3,423,821 | 7.0 | — | — |
+| flash (16/32) | 4 x 4096 | f32 | 3,427,588 | 7.0 | 418,394 | — |
+| flash (16/32) | 4 x 4096 | bf16 | 3,449,692 | 7.0 | — | — |
+| flash (16/32) | 4 x 8192 | f32 | 2,352,282 | 10.2 | 429,974 | — |
+| flash (16/32) | 4 x 8192 | bf16 | 2,345,080 | 10.2 | — | — |
+| flash (16/32) | 4 x 16384 | f32 | RESOURCE_EXHAUSTED: XLA:TPU compile permanent error. Ran out | — | 431,029 | — |
+| flash (16/32) | 4 x 16384 | bf16 | RESOURCE_EXHAUSTED: XLA:TPU compile permanent error. Ran out | — | — | — |
+| flash (16/32) | 16 x 512 | f32 | 3,266,426 | 7.3 | 386,679 | — |
+| flash (16/32) | 16 x 512 | bf16 | 3,311,028 | 7.2 | — | — |
+| flash (16/32) | 16 x 1024 | f32 | 3,357,092 | 7.1 | 398,274 | — |
+| flash (16/32) | 16 x 1024 | bf16 | 3,387,441 | 7.1 | — | — |
+| flash (16/32) | 16 x 2048 | f32 | 2,330,913 | 10.3 | 420,973 | — |
+| flash (16/32) | 16 x 2048 | bf16 | 2,343,550 | 10.2 | — | — |
+| flash (16/32) | 16 x 4096 | f32 | RESOURCE_EXHAUSTED: XLA:TPU compile permanent error. Ran out | — | 426,102 | — |
+| flash (16/32) | 16 x 4096 | bf16 | RESOURCE_EXHAUSTED: XLA:TPU compile permanent error. Ran out | — | — | — |
+| 27b (16/48) | 1 x 512 | f32 | 2,219,910 | 21.6 | 280,496 | 5.30e-03 / 2.4e-04 |
+| 27b (16/48) | 1 x 512 | bf16 | 2,248,505 | 21.3 | — | 5.30e-03 / 2.4e-04 |
+| 27b (16/48) | 1 x 1024 | f32 | 2,355,729 | 20.4 | 302,701 | 5.34e-03 / 2.4e-04 |
+| 27b (16/48) | 1 x 1024 | bf16 | 2,375,033 | 20.2 | — | 5.34e-03 / 2.4e-04 |
+| 27b (16/48) | 1 x 2048 | f32 | 2,485,832 | 19.3 | 321,565 | 5.33e-03 / 2.4e-04 |
+| 27b (16/48) | 1 x 2048 | bf16 | 2,494,255 | 19.2 | — | 5.33e-03 / 2.4e-04 |
+| 27b (16/48) | 1 x 4096 | f32 | 2,555,448 | 18.8 | 317,214 | 5.34e-03 / 3.1e-04 |
+| 27b (16/48) | 1 x 4096 | bf16 | 2,556,552 | 18.8 | — | 5.34e-03 / 3.1e-04 |
+| 27b (16/48) | 1 x 8192 | f32 | 2,590,736 | 18.5 | 288,320 | — |
+| 27b (16/48) | 1 x 8192 | bf16 | 2,589,491 | 18.5 | — | — |
+| 27b (16/48) | 1 x 16384 | f32 | 2,608,335 | 18.4 | 308,516 | — |
+| 27b (16/48) | 1 x 16384 | bf16 | 2,604,433 | 18.4 | — | — |
+| 27b (16/48) | 1 x 32768 | f32 | 1,950,440 | 24.6 | 316,611 | — |
+| 27b (16/48) | 1 x 32768 | bf16 | 1,941,030 | 24.7 | — | — |
+| 27b (16/48) | 4 x 512 | f32 | 2,493,146 | 19.3 | 296,184 | — |
+| 27b (16/48) | 4 x 512 | bf16 | 2,408,646 | 19.9 | — | — |
+| 27b (16/48) | 4 x 1024 | f32 | 2,506,174 | 19.2 | 301,329 | — |
+| 27b (16/48) | 4 x 1024 | bf16 | 2,511,976 | 19.1 | — | — |
+| 27b (16/48) | 4 x 2048 | f32 | 2,557,771 | 18.8 | 285,535 | — |
+| 27b (16/48) | 4 x 2048 | bf16 | 2,558,009 | 18.8 | — | — |
+| 27b (16/48) | 4 x 4096 | f32 | 2,587,495 | 18.6 | 310,915 | — |
+| 27b (16/48) | 4 x 4096 | bf16 | 2,585,847 | 18.6 | — | — |
+| 27b (16/48) | 4 x 8192 | f32 | 1,935,429 | 24.8 | 317,000 | — |
+| 27b (16/48) | 4 x 8192 | bf16 | 1,934,483 | 24.8 | — | — |
+| 27b (16/48) | 4 x 16384 | f32 | RESOURCE_EXHAUSTED: XLA:TPU compile permanent error. Ran out | — | 323,343 | — |
+| 27b (16/48) | 4 x 16384 | bf16 | RESOURCE_EXHAUSTED: XLA:TPU compile permanent error. Ran out | — | — | — |
+| 27b (16/48) | 16 x 512 | f32 | 2,458,782 | 19.5 | 263,368 | — |
+| 27b (16/48) | 16 x 512 | bf16 | 2,471,445 | 19.4 | — | — |
+| 27b (16/48) | 16 x 1024 | f32 | 2,534,886 | 18.9 | 295,486 | — |
+| 27b (16/48) | 16 x 1024 | bf16 | 2,539,070 | 18.9 | — | — |
+| 27b (16/48) | 16 x 2048 | f32 | 1,935,811 | 24.8 | 306,950 | — |
+| 27b (16/48) | 16 x 2048 | bf16 | 1,937,193 | 24.8 | — | — |
+| 27b (16/48) | 16 x 4096 | f32 | RESOURCE_EXHAUSTED: XLA:TPU compile permanent error. Ran out | — | 316,548 | — |
+| 27b (16/48) | 16 x 4096 | bf16 | RESOURCE_EXHAUSTED: XLA:TPU compile permanent error. Ran out | — | — | — |
+
+**v6e** (`cd-v6e1-ane1b-d/gdn-fast-v6e-t1v-n-f2308cbd-w-0.json`)
+
+| config | batch x seq | state | fused tok/s | µs/token over all GDN layers | pure-JAX chunked tok/s | err vs token-step ref (mean rel / max abs) |
+| --- | --- | --- | ---: | ---: | ---: | --- |
+| flash (16/32) | 1 x 512 | f32 | 4,222,104 | 5.7 | 533,905 | 5.34e-03 / 2.4e-04 |
+| flash (16/32) | 1 x 512 | bf16 | 3,863,683 | 6.2 | — | 5.34e-03 / 2.4e-04 |
+| flash (16/32) | 1 x 1024 | f32 | 4,023,610 | 6.0 | 544,307 | 5.32e-03 / 2.4e-04 |
+| flash (16/32) | 1 x 1024 | bf16 | 4,109,415 | 5.8 | — | 5.32e-03 / 2.4e-04 |
+| flash (16/32) | 1 x 2048 | f32 | 3,883,952 | 6.2 | 424,073 | 5.31e-03 / 2.4e-04 |
+| flash (16/32) | 1 x 2048 | bf16 | 3,895,579 | 6.2 | — | 5.31e-03 / 2.4e-04 |
+| flash (16/32) | 1 x 4096 | f32 | 3,947,846 | 6.1 | 376,692 | 5.36e-03 / 2.4e-04 |
+| flash (16/32) | 1 x 4096 | bf16 | 3,946,156 | 6.1 | — | 5.36e-03 / 2.4e-04 |
+| flash (16/32) | 1 x 8192 | f32 | 4,023,771 | 6.0 | 328,244 | — |
+| flash (16/32) | 1 x 8192 | bf16 | 4,023,106 | 6.0 | — | — |
+| flash (16/32) | 1 x 16384 | f32 | 4,035,637 | 5.9 | 310,507 | — |
+| flash (16/32) | 1 x 16384 | bf16 | 4,033,607 | 6.0 | — | — |
+| flash (16/32) | 1 x 32768 | f32 | 2,486,253 | 9.7 | 286,720 | — |
+| flash (16/32) | 1 x 32768 | bf16 | 2,502,390 | 9.6 | — | — |
+| flash (16/32) | 4 x 512 | f32 | 3,731,545 | 6.4 | 381,246 | — |
+| flash (16/32) | 4 x 512 | bf16 | 3,776,910 | 6.4 | — | — |
+| flash (16/32) | 4 x 1024 | f32 | 3,893,460 | 6.2 | 374,174 | — |
+| flash (16/32) | 4 x 1024 | bf16 | 3,907,951 | 6.1 | — | — |
+| flash (16/32) | 4 x 2048 | f32 | 3,986,262 | 6.0 | 325,968 | — |
+| flash (16/32) | 4 x 2048 | bf16 | 3,996,528 | 6.0 | — | — |
+| flash (16/32) | 4 x 4096 | f32 | 4,011,869 | 6.0 | 310,932 | — |
+| flash (16/32) | 4 x 4096 | bf16 | 4,016,890 | 6.0 | — | — |
+| flash (16/32) | 4 x 8192 | f32 | 2,501,621 | 9.6 | 288,144 | — |
+| flash (16/32) | 4 x 8192 | bf16 | 2,486,460 | 9.7 | — | — |
+| flash (16/32) | 4 x 16384 | f32 | RESOURCE_EXHAUSTED: XLA:TPU compile permanent error. Ran out | — | 286,918 | — |
+| flash (16/32) | 4 x 16384 | bf16 | RESOURCE_EXHAUSTED: XLA:TPU compile permanent error. Ran out | — | — | — |
+| flash (16/32) | 16 x 512 | f32 | 3,805,071 | 6.3 | 298,538 | — |
+| flash (16/32) | 16 x 512 | bf16 | 3,832,949 | 6.3 | — | — |
+| flash (16/32) | 16 x 1024 | f32 | 3,927,630 | 6.1 | 296,179 | — |
+| flash (16/32) | 16 x 1024 | bf16 | 3,929,042 | 6.1 | — | — |
+| flash (16/32) | 16 x 2048 | f32 | 2,584,286 | 9.3 | 285,791 | — |
+| flash (16/32) | 16 x 2048 | bf16 | 2,459,567 | 9.8 | — | — |
+| flash (16/32) | 16 x 4096 | f32 | RESOURCE_EXHAUSTED: XLA:TPU compile permanent error. Ran out | — | 285,348 | — |
+| flash (16/32) | 16 x 4096 | bf16 | RESOURCE_EXHAUSTED: XLA:TPU compile permanent error. Ran out | — | — | — |
+| 27b (16/48) | 1 x 512 | f32 | 3,330,911 | 14.4 | 353,180 | 5.30e-03 / 2.4e-04 |
+| 27b (16/48) | 1 x 512 | bf16 | 3,385,473 | 14.2 | — | 5.30e-03 / 2.4e-04 |
+| 27b (16/48) | 1 x 1024 | f32 | 2,948,382 | 16.3 | 326,521 | 5.34e-03 / 2.4e-04 |
+| 27b (16/48) | 1 x 1024 | bf16 | 2,988,736 | 16.1 | — | 5.34e-03 / 2.4e-04 |
+| 27b (16/48) | 1 x 2048 | f32 | 3,055,152 | 15.7 | 296,626 | 5.33e-03 / 2.4e-04 |
+| 27b (16/48) | 1 x 2048 | bf16 | 3,076,485 | 15.6 | — | 5.33e-03 / 2.4e-04 |
+| 27b (16/48) | 1 x 4096 | f32 | 3,138,902 | 15.3 | 269,413 | 5.34e-03 / 3.1e-04 |
+| 27b (16/48) | 1 x 4096 | bf16 | 3,153,501 | 15.2 | — | 5.34e-03 / 3.1e-04 |
+| 27b (16/48) | 1 x 8192 | f32 | 3,159,765 | 15.2 | 206,677 | — |
+| 27b (16/48) | 1 x 8192 | bf16 | 3,172,335 | 15.1 | — | — |
+| 27b (16/48) | 1 x 16384 | f32 | 3,167,447 | 15.2 | 194,867 | — |
+| 27b (16/48) | 1 x 16384 | bf16 | 3,183,292 | 15.1 | — | — |
+| 27b (16/48) | 1 x 32768 | f32 | 2,155,981 | 22.3 | 201,513 | — |
+| 27b (16/48) | 1 x 32768 | bf16 | 2,125,463 | 22.6 | — | — |
+| 27b (16/48) | 4 x 512 | f32 | 2,965,093 | 16.2 | 255,364 | — |
+| 27b (16/48) | 4 x 512 | bf16 | 2,993,700 | 16.0 | — | — |
+| 27b (16/48) | 4 x 1024 | f32 | 3,074,583 | 15.6 | 245,994 | — |
+| 27b (16/48) | 4 x 1024 | bf16 | 3,105,069 | 15.5 | — | — |
+| 27b (16/48) | 4 x 2048 | f32 | 3,129,626 | 15.3 | 203,654 | — |
+| 27b (16/48) | 4 x 2048 | bf16 | 3,149,360 | 15.2 | — | — |
+| 27b (16/48) | 4 x 4096 | f32 | 3,155,229 | 15.2 | 200,411 | — |
+| 27b (16/48) | 4 x 4096 | bf16 | 3,170,160 | 15.1 | — | — |
+| 27b (16/48) | 4 x 8192 | f32 | 2,095,532 | 22.9 | 203,476 | — |
+| 27b (16/48) | 4 x 8192 | bf16 | 2,082,687 | 23.0 | — | — |
+| 27b (16/48) | 4 x 16384 | f32 | RESOURCE_EXHAUSTED: XLA:TPU compile permanent error. Ran out | — | 200,555 | — |
+| 27b (16/48) | 4 x 16384 | bf16 | RESOURCE_EXHAUSTED: XLA:TPU compile permanent error. Ran out | — | — | — |
+| 27b (16/48) | 16 x 512 | f32 | 3,006,547 | 16.0 | 183,794 | — |
+| 27b (16/48) | 16 x 512 | bf16 | 3,031,620 | 15.8 | — | — |
+| 27b (16/48) | 16 x 1024 | f32 | 3,081,723 | 15.6 | 188,789 | — |
+| 27b (16/48) | 16 x 1024 | bf16 | 3,109,032 | 15.4 | — | — |
+| 27b (16/48) | 16 x 2048 | f32 | 2,065,298 | 23.2 | 198,518 | — |
+| 27b (16/48) | 16 x 2048 | bf16 | 2,146,441 | 22.4 | — | — |
+| 27b (16/48) | 16 x 4096 | f32 | RESOURCE_EXHAUSTED: XLA:TPU compile permanent error. Ran out | — | 199,650 | — |
 | 27b (16/48) | 16 x 4096 | bf16 | RESOURCE_EXHAUSTED: XLA:TPU compile permanent error. Ran out | — | — | — |
 
 **v6e** (`cd-v6e1-ew4a-s/gdn-v6e-t1v-n-31fd215e-w-0.json`)
@@ -362,6 +544,40 @@ State-pool dtype over chunked prefill (v5e, `cd-v5e8-uw4a-s/gdn-state-v5e-t1v-n-
 | 27b | 16384 | 8192 | f32 | 0.00e+00 | 5.34e-03 | 5.34e-03 |
 | 27b | 16384 | 8192 | bf16 | 0.00e+00 | 5.34e-03 | 5.34e-03 |
 
+State-pool dtype over chunked prefill (v5p, `cd-v5p8-ue5a-s/gdn-state-long-v5p-t1v-n-b5341e88-w-0-chips0.json`):
+
+| config | T | chunk | pool | vs single call (mean rel) | vs ref (mean rel) | last chunk vs ref |
+| --- | ---: | ---: | --- | ---: | ---: | ---: |
+| flash | 16384 | 512 | f32 | 0.00e+00 | 6.22e-03 | 6.22e-03 |
+| flash | 16384 | 512 | bf16 | 2.69e-03 | 6.24e-03 | 6.26e-03 |
+| flash | 16384 | 2048 | f32 | 0.00e+00 | 6.22e-03 | 6.22e-03 |
+| flash | 16384 | 2048 | bf16 | 2.36e-03 | 6.22e-03 | 6.23e-03 |
+| flash | 16384 | 8192 | f32 | 0.00e+00 | 6.22e-03 | 6.22e-03 |
+| flash | 16384 | 8192 | bf16 | 1.32e-03 | 6.22e-03 | 6.23e-03 |
+| 27b | 16384 | 512 | f32 | 0.00e+00 | 6.26e-03 | 6.28e-03 |
+| 27b | 16384 | 512 | bf16 | 2.77e-03 | 6.29e-03 | 6.31e-03 |
+| 27b | 16384 | 2048 | f32 | 0.00e+00 | 6.26e-03 | 6.26e-03 |
+| 27b | 16384 | 2048 | bf16 | 2.42e-03 | 6.27e-03 | 6.27e-03 |
+| 27b | 16384 | 8192 | f32 | 0.00e+00 | 6.26e-03 | 6.27e-03 |
+| 27b | 16384 | 8192 | bf16 | 1.35e-03 | 6.26e-03 | 6.27e-03 |
+
+State-pool dtype over chunked prefill (v6e, `cd-v6e1-ane1b-d/gdn-state-long-v6e-t1v-n-f2308cbd-w-0.json`):
+
+| config | T | chunk | pool | vs single call (mean rel) | vs ref (mean rel) | last chunk vs ref |
+| --- | ---: | ---: | --- | ---: | ---: | ---: |
+| flash | 16384 | 512 | f32 | 0.00e+00 | 6.21e-03 | 6.23e-03 |
+| flash | 16384 | 512 | bf16 | 2.69e-03 | 6.24e-03 | 6.25e-03 |
+| flash | 16384 | 2048 | f32 | 0.00e+00 | 6.21e-03 | 6.22e-03 |
+| flash | 16384 | 2048 | bf16 | 2.36e-03 | 6.22e-03 | 6.22e-03 |
+| flash | 16384 | 8192 | f32 | 0.00e+00 | 6.21e-03 | 6.22e-03 |
+| flash | 16384 | 8192 | bf16 | 1.32e-03 | 6.21e-03 | 6.22e-03 |
+| 27b | 16384 | 512 | f32 | 0.00e+00 | 6.25e-03 | 6.27e-03 |
+| 27b | 16384 | 512 | bf16 | 2.77e-03 | 6.28e-03 | 6.30e-03 |
+| 27b | 16384 | 2048 | f32 | 0.00e+00 | 6.25e-03 | 6.25e-03 |
+| 27b | 16384 | 2048 | bf16 | 2.42e-03 | 6.26e-03 | 6.26e-03 |
+| 27b | 16384 | 8192 | f32 | 0.00e+00 | 6.25e-03 | 6.26e-03 |
+| 27b | 16384 | 8192 | bf16 | 1.36e-03 | 6.25e-03 | 6.26e-03 |
+
 ## Causal attention, head_dim 256, one chip (best implementation per length)
 
 **v5e** (`cd-v5e8-uw4a-s/attn-v5e-t1v-n-cd164882-w-0.json`)
@@ -397,6 +613,23 @@ State-pool dtype over chunked prefill (v5e, `cd-v5e8-uw4a-s/gdn-state-v5e-t1v-n-
 | flash 16/4 | 8192 | splash_b1024 | 301 | 0.22 |
 | flash 16/4 | 16384 | splash_b1024 | 330 | 0.41 |
 | flash 16/4 | 32768 | splash_b1024 | 345 | 0.78 |
+
+**v6e** (`cd-v6e1-ane1b-d/attn-v6e-t1v-n-f2308cbd-w-0.json`)
+
+| config | seq | best impl | TFLOPS | µs/token per layer |
+| --- | ---: | --- | ---: | ---: |
+| 27b 24/4 | 1024 | splash_b1024 | 161 | 0.08 |
+| 27b 24/4 | 2048 | splash_b1024 | 235 | 0.11 |
+| 27b 24/4 | 4096 | splash_b1024 | 306 | 0.16 |
+| 27b 24/4 | 8192 | splash_b1024 | 328 | 0.31 |
+| 27b 24/4 | 16384 | splash_b1024 | 371 | 0.54 |
+| 27b 24/4 | 32768 | splash_b1024 | 396 | 1.02 |
+| flash 16/4 | 1024 | splash_b1024 | 154 | 0.05 |
+| flash 16/4 | 2048 | splash_b1024 | 229 | 0.07 |
+| flash 16/4 | 4096 | splash_b1024 | 303 | 0.11 |
+| flash 16/4 | 8192 | splash_b1024 | 352 | 0.19 |
+| flash 16/4 | 16384 | splash_b1024 | 370 | 0.36 |
+| flash 16/4 | 32768 | splash_b1024 | 396 | 0.68 |
 
 ## Full-model prefill (SGL-JAX Engine)
 
@@ -555,6 +788,46 @@ State-pool dtype over chunked prefill (v5e, `cd-v5e8-uw4a-s/gdn-state-v5e-t1v-n-
 | 32768 | 4 | 9.205 | 14,239 | 3,560 | 0.0726 | 0.3277 | 9.21 |
 | 32768 | 8 | 18.397 | 14,249 | 3,562 | 0.0725 | 0.3275 | 18.40 |
 
+**Cloudflare/clef** on v6e TP 4, bf16, load dummy, chunk 8192 — engine start 427 s (`cq-v6e4-ue1d-s/prefill-Cloudflare_clef-tp4-bf16-dummy-t1v-n-fe2fcd07-w-0.json`)
+
+| input len | batch | steady s | tok/s | tok/s per chip | spot $/M | on-demand $/M | first (compile) s |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1024 | 1 | 0.070 | 14,608 | 3,652 | 0.0444 | 0.2054 | 0.06 |
+| 1024 | 2 | 0.115 | 17,775 | 4,444 | 0.0365 | 0.1688 | 0.12 |
+| 1024 | 4 | 0.209 | 19,585 | 4,896 | 0.0331 | 0.1532 | 0.21 |
+| 1024 | 8 | 0.392 | 20,881 | 5,220 | 0.0311 | 0.1437 | 0.39 |
+| 1024 | 16 | 0.762 | 21,503 | 5,376 | 0.0302 | 0.1395 | 0.76 |
+| 1024 | 32 | 1.501 | 21,829 | 5,457 | 0.0297 | 0.1374 | 1.50 |
+| 4096 | 1 | 0.213 | 19,239 | 4,810 | 0.0337 | 0.1559 | 0.21 |
+| 4096 | 2 | 0.399 | 20,513 | 5,128 | 0.0316 | 0.1463 | 0.40 |
+| 4096 | 4 | 0.776 | 21,106 | 5,277 | 0.0307 | 0.1421 | 0.78 |
+| 4096 | 8 | 1.529 | 21,435 | 5,359 | 0.0303 | 0.1400 | 1.53 |
+
+**Cloudflare/clef-flash** on v6e TP 1, bf16, load dummy, chunk 16384 — engine start 134 s (`cq-v6e8-ue1d-s/prefill-Cloudflare_clef-flash-tp1-bf16-dummy-t1v-n-5b0eb176-w-0-chips4.json`)
+
+| input len | batch | steady s | tok/s | tok/s per chip | spot $/M | on-demand $/M | first (compile) s |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1024 | 1 | 0.056 | 18,295 | 18,295 | 0.0089 | 0.0410 | 0.05 |
+| 1024 | 2 | 0.089 | 23,084 | 23,084 | 0.0070 | 0.0325 | 0.09 |
+| 1024 | 4 | 0.159 | 25,827 | 25,827 | 0.0063 | 0.0290 | 0.16 |
+| 1024 | 8 | 0.314 | 26,074 | 26,074 | 0.0062 | 0.0288 | 0.32 |
+| 1024 | 16 | 0.641 | 25,572 | 25,572 | 0.0063 | 0.0293 | 0.63 |
+| 1024 | 32 | 1.245 | 26,320 | 26,320 | 0.0062 | 0.0285 | 1.25 |
+| 4096 | 1 | 0.171 | 23,912 | 23,912 | 0.0068 | 0.0314 | 0.19 |
+| 4096 | 2 | 0.330 | 24,796 | 24,796 | 0.0065 | 0.0302 | 0.33 |
+| 4096 | 4 | 0.647 | 25,309 | 25,309 | 0.0064 | 0.0296 | 0.65 |
+| 4096 | 8 | 1.272 | 25,760 | 25,760 | 0.0063 | 0.0291 | 1.27 |
+| 4096 | 16 | 2.526 | 25,940 | 25,940 | 0.0063 | 0.0289 | 2.53 |
+| 4096 | 32 | 5.040 | 26,008 | 26,008 | 0.0062 | 0.0288 | 5.05 |
+| 16384 | 1 | 0.740 | 22,150 | 22,150 | 0.0073 | 0.0339 | 0.74 |
+| 16384 | 2 | 1.458 | 22,471 | 22,471 | 0.0072 | 0.0334 | 1.46 |
+| 16384 | 4 | 2.894 | 22,645 | 22,645 | 0.0072 | 0.0331 | 2.90 |
+| 16384 | 8 | 5.786 | 22,655 | 22,655 | 0.0072 | 0.0331 | 5.79 |
+| 16384 | 16 | 11.555 | 22,687 | 22,687 | 0.0072 | 0.0331 | 11.56 |
+| 32768 | 1 | 1.706 | 19,212 | 19,212 | 0.0084 | 0.0390 | 1.70 |
+| 32768 | 2 | 3.392 | 19,321 | 19,321 | 0.0084 | 0.0388 | 3.40 |
+| 32768 | 4 | 6.770 | 19,360 | 19,360 | 0.0084 | 0.0387 | 6.77 |
+
 **Cloudflare/clef-flash** on v6e TP 1, bf16, load dummy, chunk 8192 — engine start 182 s (`cq-v6e8-ue1d-s/prefill-Cloudflare_clef-flash-tp1-bf16-dummy-t1v-n-5ee50bd7-w-0-chips4.json`)
 
 | input len | batch | steady s | tok/s | tok/s per chip | spot $/M | on-demand $/M | first (compile) s |
@@ -581,6 +854,16 @@ State-pool dtype over chunked prefill (v5e, `cd-v5e8-uw4a-s/gdn-state-v5e-t1v-n-
 | 32768 | 4 | 6.791 | 19,300 | 19,300 | 0.0084 | 0.0389 | 6.79 |
 | 32768 | 8 | 13.581 | 19,302 | 19,302 | 0.0084 | 0.0389 | 13.58 |
 
+**Cloudflare/clef** on v6e TP 4, bf16, load dummy, chunk 8192 — engine start 322 s (`cq-v6e8-ue1d-s/prefill-Cloudflare_clef-tp4-bf16-dummy-t1v-n-5b0eb176-w-0-chips0123.json`)
+
+| input len | batch | steady s | tok/s | tok/s per chip | spot $/M | on-demand $/M | first (compile) s |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1024 | 1 | 0.069 | 14,816 | 3,704 | 0.0438 | 0.2025 | 0.06 |
+| 1024 | 2 | 0.115 | 17,781 | 4,445 | 0.0365 | 0.1687 | 0.12 |
+| 1024 | 4 | 0.209 | 19,591 | 4,898 | 0.0331 | 0.1531 | 0.21 |
+| 1024 | 8 | 0.392 | 20,892 | 5,223 | 0.0311 | 0.1436 | 0.39 |
+| 1024 | 16 | 0.762 | 21,499 | 5,375 | 0.0302 | 0.1395 | 0.76 |
+
 **Cloudflare/clef** on v6e TP 4, bf16, load dummy, chunk 8192 — engine start 386 s (`cq-v6e8-ue1d-s/prefill-Cloudflare_clef-tp4-bf16-dummy-t1v-n-5ee50bd7-w-0-chips0123.json`)
 
 | input len | batch | steady s | tok/s | tok/s per chip | spot $/M | on-demand $/M | first (compile) s |
@@ -594,31 +877,38 @@ State-pool dtype over chunked prefill (v5e, `cd-v5e8-uw4a-s/gdn-state-v5e-t1v-n-
 | 4096 | 1 | 0.214 | 19,162 | 4,790 | 0.0339 | 0.1566 | 0.21 |
 | 4096 | 2 | 0.401 | 20,445 | 5,111 | 0.0317 | 0.1467 | 0.40 |
 
+**Cloudflare/clef** on v6e TP 4, bf16, load dummy, chunk 8192 — engine start 199 s (`cq-v6e8-ue1d-s/prefill-clef-tp4-bf16-quick-t1v-n-5b0eb176-w-0-chips0123.json`)
+
+| input len | batch | steady s | tok/s | tok/s per chip | spot $/M | on-demand $/M | first (compile) s |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 4096 | 8 | 1.529 | 21,435 | 5,359 | 0.0303 | 0.1400 | 1.53 |
+
 
 ## Spend and machines (this campaign)
 
 | VM | zone | type | mode | $/h | hours | $ so far | last state |
 | --- | --- | --- | --- | ---: | ---: | ---: | --- |
 | cd-v5e8-ue1c-s | us-east1-c | v5litepod-8 | spot | 2.87 | 1.06 | 3.05 | DELETING |
-| cd-v5e8-ue1c-s2 | us-east1-c | v5litepod-8 | spot | 2.87 | 0.20 | 0.56 | READY (held) |
+| cd-v5e8-ue1c-s2 | us-east1-c | v5litepod-8 | spot | 2.87 | 0.90 | 2.58 | READY (held) |
 | cd-v5e8-us1a-s | us-south1-a | v5litepod-8 | spot | 6.33 | 0.02 | 0.11 | DELETING |
 | cd-v5e8-uw1c-s | us-west1-c | v5litepod-8 | spot | 2.87 | 1.08 | 3.11 | DELETING |
 | cd-v5e8-uw4a-s | us-west4-a | v5litepod-8 | spot | 4.15 | 0.98 | 4.05 | DELETING |
 | cd-v5p8-ew4b-s | europe-west4-b | v5p-8 | spot | 4.72 | 0.72 | 3.39 | DELETING |
-| cd-v5p8-ue5a-s | us-east5-a | v5p-8 | spot | 3.44 | 1.40 | 4.80 | READY (held) |
-| cd-v6e1-ane1b-d | asia-northeast1-b | v6e-1 | on-demand | 3.24 | 0.31 | 1.01 | READY (held) |
+| cd-v5p8-ue5a-s | us-east5-a | v5p-8 | spot | 3.44 | 2.10 | 7.22 | READY (held) |
+| cd-v6e1-ane1b-d | asia-northeast1-b | v6e-1 | on-demand | 3.24 | 1.01 | 3.28 | READY (held) |
 | cd-v6e1-ew4a-s | europe-west4-a | v6e-1 | spot | 1.78 | 0.81 | 1.44 | DELETING |
 | cd-v6e1-uc1b-s | us-central1-b | v6e-1 | spot | 0.58 | 0.18 | 0.10 | DELETING |
-| cq-v6e4-ue1d-s | us-east1-d | v6e-4 | spot | 2.34 | 0.13 | 0.31 | READY (held) |
-| cq-v6e8-ue1d-s | us-east1-d | v6e-8 | spot | 4.67 | 0.25 | 1.16 | CREATING |
+| cq-v6e4-uc1b-s | us-central1-b | v6e-4 | spot | 2.34 | 0.14 | 0.33 | DELETING |
+| cq-v6e4-ue1d-s | us-east1-d | v6e-4 | spot | 2.34 | 0.22 | 0.52 | PREEMPTED |
+| cq-v6e8-ue1d-s | us-east1-d | v6e-8 | spot | 4.67 | 0.46 | 2.15 | DELETING |
 
-Total so far $23.11; current burn $11.89/h = $285/day (this campaign only)
+Total so far $31.34; current burn $9.56/h = $229/day (this campaign only)
 
 ## Capacity log
 
 Every create attempt from this campaign (and the coordinator's on-demand probe just before it). `resourceName` rows are duplicate-name retries of an attempt already in flight.
 
-Totals: v5e-1 on-demand: 3 created / 4 failed; v5litepod-8 spot: 6 created / 0 failed; v5p-8 spot: 2 created / 1 failed; v6e-1 on-demand: 2 created / 15 failed; v6e-1 spot: 2 created / 20 failed; v6e-4 on-demand: 0 created / 9 failed; v6e-4 spot: 0 created / 24 failed; v6e-8 spot: 0 created / 21 failed
+Totals: v5e-1 on-demand: 3 created / 4 failed; v5litepod-8 spot: 6 created / 0 failed; v5p-8 spot: 2 created / 1 failed; v6e-1 on-demand: 2 created / 15 failed; v6e-1 spot: 2 created / 20 failed; v6e-4 on-demand: 0 created / 9 failed; v6e-4 spot: 0 created / 25 failed; v6e-8 spot: 0 created / 25 failed
 
 | time (UTC) | zone | type | mode | result | EID |
 | --- | --- | --- | --- | --- | --- |
@@ -696,6 +986,7 @@ Totals: v5e-1 on-demand: 3 created / 4 failed; v5litepod-8 spot: 6 created / 0 f
 | 2026-10-13 00:25 | us-central1-c | v6e-4 | spot | insufficient capacity | 0xa082da3b508ef7fe |
 | 2026-10-13 01:28 | us-central1-c | v6e-4 | on-demand | insufficient capacity | 0x7d12727420f158d2 |
 | 2026-10-13 00:26 | us-east1-d | v6e-4 | spot | no more capacity | 0xf884d4cbcf70e0d2 |
+| 2026-10-13 02:10 | us-east1-d | v6e-4 | spot | no more capacity | 0xe72c267a170ba0a0 |
 | 2026-10-13 00:25 | us-east5-a | v6e-4 | spot | duplicate name (attempt already in flight) |  |
 | 2026-10-13 00:25 | us-east5-a | v6e-4 | spot | no more capacity | 0xe394a8fa787b2b88 |
 | 2026-10-13 01:29 | us-east5-a | v6e-4 | on-demand | no more capacity | 0xa4be761b77c6bb6a |
@@ -724,13 +1015,17 @@ Totals: v5e-1 on-demand: 3 created / 4 failed; v5litepod-8 spot: 6 created / 0 f
 | 2026-10-13 01:27 | us-central1-b | v6e-8 | spot | no more capacity | 0x550c09353cd411e6 |
 | 2026-10-13 01:27 | us-central1-b | v6e-8 | spot | no more capacity | 0x3aa262f85d4aea49 |
 | 2026-10-13 01:36 | us-central1-b | v6e-8 | spot | no more capacity | 0x7a85b47f469a79e3 |
+| 2026-10-13 02:34 | us-central1-b | v6e-8 | spot | no more capacity | 0x2cbf673da53aa833 |
 | 2026-10-13 00:25 | us-central1-c | v6e-8 | spot | insufficient capacity | 0x4785b6b60cd05e89 |
 | 2026-10-13 01:40 | us-central1-c | v6e-8 | spot | insufficient capacity | 0xa8a9c856da19fcae |
 | 2026-10-13 00:26 | us-east1-d | v6e-8 | spot | no more capacity | 0x62280f5e64dd2b23 |
+| 2026-10-13 02:26 | us-east1-d | v6e-8 | spot | no more capacity | 0x5f49d834a2e37f77 |
 | 2026-10-13 00:25 | us-south1-a | v6e-8 | spot | insufficient capacity | 0x4898e62bec4754d |
+| 2026-10-13 02:00 | us-south1-a | v6e-8 | spot | insufficient capacity | 0x8882c54571ac6527 |
 | 2026-10-13 00:26 | us-south1-c | v6e-8 | spot | internal error |  |
 | 2026-10-13 01:48 | us-south1-c | v6e-8 | spot | internal error |  |
 | 2026-10-13 00:25 | us-west1-c | v6e-8 | spot | insufficient capacity | 0x7dedf9197c1c4805 |
+| 2026-10-13 02:04 | us-west1-c | v6e-8 | spot | insufficient capacity | 0x61f7faec4a5aca2 |
 
 ## Cold start
 
@@ -745,8 +1040,9 @@ Create call = the `gcloud ... create` call until the VM is READY (successful att
 | cd-v5p8-ue5a-s | v5p8 | — | 17 | clef-flash/TP1/bf16/dummy: 221; clef/TP1/bf16/dummy: 289; clef/TP2/bf16/dummy: 328; clef/TP4/bf16/dummy: 364 | 228, 296, 335, 378 |
 | cd-v6e1-ane1b-d | v6e1 | 255 | 53 | — | — |
 | cd-v6e1-ew4a-s | v6e1 | 314 | 19 | — | — |
-| cq-v6e4-ue1d-s | v6e4 | — | 141 | — | — |
-| cq-v6e8-ue1d-s | v6e8 | — | — | clef-flash/TP1/bf16/dummy: 182; clef/TP4/bf16/dummy: 386 | 194, 398 |
+| cq-v6e4-uc1b-s | v6e4 | — | 77 | — | — |
+| cq-v6e4-ue1d-s | v6e4 | — | 40 | clef/TP4/bf16/dummy: 427 | 440 |
+| cq-v6e8-ue1d-s | v6e8 | — | 59 | clef-flash/TP1/bf16/dummy: 134; clef-flash/TP1/bf16/dummy: 182; clef/TP4/bf16/dummy: 322; clef/TP4/bf16/dummy: 386; clef/TP4/bf16/dummy: 199 | 139, 194, 327, 398, 213 |
 
 ## Lifecycle events (watcher, 30 s poll)
 
@@ -821,3 +1117,63 @@ Create call = the `gcloud ... create` call until the VM is READY (successful att
 | 2026-10-13 01:46:05 | cq-v6e4-ue1d-s | us-east1-d | v6e-4 | READY / HEALTHY |
 | 2026-10-13 01:46:38 | cq-v6e4-ue1d-s | us-east1-d | queued | ACTIVE |
 | 2026-10-13 01:49:19 | cq-v6e8-ue1d-s | us-east1-d | queued | PROVISIONING |
+| 2026-10-13 01:54:11 | cq-v6e4-uc1b-s | us-central1-b | queued | PROVISIONING |
+| 2026-10-13 01:56:18 | cq-v6e4-ue1d-s | us-east1-d | v6e-4 | DELETING / HEALTHY |
+| 2026-10-13 01:56:19 | cq-v6e4-ue1d-s | us-east1-d | queued | SUSPENDING |
+| 2026-10-13 01:56:49 | cq-v6e4-uc1b-s | us-central1-b | v6e-4 | READY |
+| 2026-10-13 01:57:53 | cq-v6e4-uc1b-s | us-central1-b | v6e-4 | READY / HEALTHY |
+| 2026-10-13 02:00:00 | cq-v6e8-ase1b-s | asia-southeast1-b | queued | SUSPENDING |
+| 2026-10-13 02:00:00 | cq-v6e4-ase1b-s | asia-southeast1-b | queued | SUSPENDING |
+| 2026-10-13 02:00:00 | cq-v6e4-uc1b-s | us-central1-b | queued | ACTIVE |
+| 2026-10-13 02:00:31 | cq-v6e8-ase1b-s | asia-southeast1-b | queued | FAILED |
+| 2026-10-13 02:00:32 | cq-v6e4-ase1b-s | asia-southeast1-b | queued | FAILED |
+| 2026-10-13 02:04:47 | cq-v6e4-uc1b-s | us-central1-b | queued | SUSPENDING |
+| 2026-10-13 02:05:18 | cq-v6e4-uc1b-s | us-central1-b | v6e-4 | DELETING / HEALTHY |
+| 2026-10-13 02:05:19 | cq-v6e4-ue1d-s | us-east1-d | queued | SUSPENDED |
+| 2026-10-13 02:10:06 | cq-v6e8-ue1d-s | us-east1-d | v6e-8 | READY / HEALTHY |
+| 2026-10-13 02:10:07 | cq-v6e4-ue1d-s | us-east1-d | queued | WAITING_FOR_RESOURCES |
+| 2026-10-13 02:10:07 | cq-v6e8-us1c-s | us-south1-c | queued | WAITING_FOR_RESOURCES |
+| 2026-10-13 02:10:40 | cq-v6e4-uc1b-s | us-central1-b | queued | SUSPENDED |
+| 2026-10-13 02:10:40 | cq-v6e8-us1c-s | us-south1-c | queued | PROVISIONING |
+| 2026-10-13 02:11:11 | cq-v6e8-ase1b-s | asia-southeast1-b | queued | WAITING_FOR_RESOURCES |
+| 2026-10-13 02:11:11 | cq-v6e4-ase1b-s | asia-southeast1-b | queued | WAITING_FOR_RESOURCES |
+| 2026-10-13 02:11:11 | cq-v6e4-uc1b-s | us-central1-b | queued | WAITING_FOR_RESOURCES |
+| 2026-10-13 02:11:11 | cq-v6e8-ue1d-s | us-east1-d | queued | ACTIVE |
+| 2026-10-13 02:11:44 | cq-v6e8-ase1b-s | asia-southeast1-b | queued | PROVISIONING |
+| 2026-10-13 02:11:44 | cq-v6e4-ase1b-s | asia-southeast1-b | queued | PROVISIONING |
+| 2026-10-13 02:11:44 | cq-v6e8-us1c-s | us-south1-c | queued | SUSPENDING |
+| 2026-10-13 02:12:49 | cq-v6e8-us1c-s | us-south1-c | queued | FAILED |
+| 2026-10-13 02:14:25 | cq-v6e8-us1c-s | us-south1-c | queued | WAITING_FOR_RESOURCES |
+| 2026-10-13 02:14:57 | cq-v6e8-us1c-s | us-south1-c | queued | PROVISIONING |
+| 2026-10-13 02:15:28 | cq-v6e8-ue1d-s | us-east1-d | v6e-8 | READY / TIMEOUT |
+| 2026-10-13 02:15:59 | cq-v6e8-ue1d-s | us-east1-d | v6e-8 | READY / HEALTHY |
+| 2026-10-13 02:16:00 | cq-v6e8-us1c-s | us-south1-c | queued | SUSPENDING |
+| 2026-10-13 02:16:31 | cq-v6e8-us1c-s | us-south1-c | queued | FAILED |
+| 2026-10-13 02:17:35 | cq-v6e8-us1c-s | us-south1-c | queued | PROVISIONING |
+| 2026-10-13 02:18:38 | cq-v6e8-us1c-s | us-south1-c | queued | SUSPENDING |
+| 2026-10-13 02:19:41 | cq-v6e8-us1c-s | us-south1-c | queued | FAILED |
+| 2026-10-13 02:20:44 | cq-v6e8-us1c-s | us-south1-c | queued | PROVISIONING |
+| 2026-10-13 02:21:15 | cq-v6e8-ue1d-s | us-east1-d | v6e-8 | READY / UNHEALTHY_MAINTENANCE |
+| 2026-10-13 02:21:48 | cq-v6e8-us1c-s | us-south1-c | queued | SUSPENDING |
+| 2026-10-13 02:22:50 | cq-v6e8-ue1d-s | us-east1-d | v6e-8 | PREEMPTED |
+| 2026-10-13 02:22:51 | cq-v6e8-us1c-s | us-south1-c | queued | FAILED |
+| 2026-10-13 02:23:54 | cq-v6e8-us1c-s | us-south1-c | queued | PROVISIONING |
+| 2026-10-13 02:24:57 | cq-v6e8-us1c-s | us-south1-c | queued | SUSPENDING |
+| 2026-10-13 02:25:28 | cq-v6e8-ue1d-s | us-east1-d | queued | SUSPENDED |
+| 2026-10-13 02:26:00 | cq-v6e8-us1c-s | us-south1-c | queued | FAILED |
+| 2026-10-13 02:26:31 | cq-v6e8-ue1d-s | us-east1-d | v6e-8 | DELETING |
+| 2026-10-13 02:26:31 | cq-v6e4-ue1d-s | us-east1-d | queued | PROVISIONING |
+| 2026-10-13 02:28:37 | cq-v6e4-ue1d-s | us-east1-d | v6e-4 | READY |
+| 2026-10-13 02:28:38 | cq-v6e8-ue1d-s | us-east1-d | queued | WAITING_FOR_RESOURCES |
+| 2026-10-13 02:28:38 | cq-v6e8-us1c-s | us-south1-c | queued | PROVISIONING |
+| 2026-10-13 02:29:09 | cq-v6e4-ue1d-s | us-east1-d | v6e-4 | READY / TIMEOUT |
+| 2026-10-13 02:29:42 | cq-v6e4-ue1d-s | us-east1-d | queued | ACTIVE |
+| 2026-10-13 02:29:42 | cq-v6e8-us1c-s | us-south1-c | queued | SUSPENDING |
+| 2026-10-13 02:30:45 | cq-v6e8-us1c-s | us-south1-c | queued | FAILED |
+| 2026-10-13 02:31:16 | cq-v6e4-ue1d-s | us-east1-d | v6e-4 | PREEMPTED |
+| 2026-10-13 02:31:48 | cq-v6e8-us1c-s | us-south1-c | queued | PROVISIONING |
+| 2026-10-13 02:32:52 | cq-v6e8-us1c-s | us-south1-c | queued | SUSPENDING |
+| 2026-10-13 02:33:55 | cq-v6e8-us1c-s | us-south1-c | queued | FAILED |
+| 2026-10-13 02:34:26 | cq-v6e8-us1c-s | us-south1-c | queued | WAITING_FOR_RESOURCES |
+| 2026-10-13 02:34:58 | cq-v6e4-ue1d-s | us-east1-d | queued | SUSPENDED |
+| 2026-10-13 02:34:58 | cq-v6e8-us1c-s | us-south1-c | queued | PROVISIONING |

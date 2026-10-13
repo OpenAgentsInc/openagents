@@ -21,9 +21,11 @@ state at 4k-token prompts, batch 8 or more.
 | Chip | Model | Chips | Tokens/s per chip | Spot $/M tokens | On-demand $/M |
 | --- | --- | ---: | ---: | ---: | ---: |
 | **v6e (Trillium)** | **Clef-Flash 9B** | 1 | **25,900** | **$0.0063** | **$0.029** |
-| v6e | Clef 27B | 4 | ~5,400 (partial; slice was preempted) | ~$0.030 | ~$0.14 |
+| v6e | Clef 27B | 4 | 5,360 | $0.029 | $0.14 |
+| v5p | Clef-Flash 9B | 1 | 19,700 | $0.013 | $0.059 |
+| v5p | Clef 27B | 1 | 6,230 | $0.042 | $0.19 |
 | v5e | Clef-Flash 9B | 8 | 4,000 | $0.025 | $0.083 |
-| v5p | Clef 27B | 4 | 4,190 | $0.062 | $0.28 |
+| v5e | Clef 27B | 8 | 1,370 | $0.073 | $0.24 |
 
 What we pay or charge today, per million tokens: our spot H100 **$0.11**,
 spot A100 $0.072; TypeSafe's Jev sells at **$0.042**; Workers AI sells
@@ -75,10 +77,11 @@ campaign. Between 23:20 on 2026-10-12 and 01:30 UTC on 2026-10-13 (EIDs in
   got came through a queued request in us-east1-d after a 29-minute wait.
   Queued requests in us-central1-c, us-south1-a and us-west1-c were refused
   outright ("Insufficient capacity", EID 0xaa5a8f264fa7994f).
-- **Preemption:** spot v6e-1 in us-east1-d preempted 5 minutes after
-  creation (2026-10-12); spot v6e-1 in us-central1-b after 11 minutes;
-  spot v6e-8 in us-east1-d after 14 minutes; spot v5p-8 in europe-west4-b
-  after 43 minutes. Each one cost us an in-flight benchmark.
+- **Spot v6e lives 5–14 minutes.** Every spot v6e we got was preempted:
+  v6e-1 after 5 and 11 min, v6e-8 after 14 min, two v6e-4s after 10 and
+  8 min (us-east1-d, us-central1-b). Loading and compiling Clef 27B takes
+  ~6.5 min, so spot v6e cannot serve. (Spot v5p-8 lasted 43 min; spot
+  v5e-8 has run for hours.)
 - **Quota:** v6e spot quota is **0 in us-east4** (the cheapest v6e spot
   region, $0.243/chip-h) and in us-east5-c; **Ironwood (TPU7x) has no quota
   at all**. We filed requests tonight (Ironwood 8 chips spot in us-central1

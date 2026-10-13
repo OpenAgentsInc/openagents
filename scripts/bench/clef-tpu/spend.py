@@ -15,14 +15,16 @@ vms = {}
 for l in open(sys.argv[1]):
     d = json.loads(l)
     if d["kind"] != "vm" or not d["name"].startswith(("cd-", "cq-")): continue
-    v = vms.setdefault(d["name"], {"zone": d["zone"], "type": d["type"], "spot": d.get("spot") == "True", "start": None, "end": None, "last": None})
-    if d["state"] == "READY" and v["start"] is None: v["start"] = ts(d["ts"])
-    if d["state"] in ("DELETING", "PREEMPTED", "TERMINATED") and v["start"] and not v["end"]: v["end"] = ts(d["ts"])
+    v = vms.setdefault(d["name"], {"zone": d["zone"], "type": d["type"], "spot": d.get("spot") == "True", "start": None, "end": None, "last": None, "done_h": 0.0})
+    if d["state"] == "READY" and (v["start"] is None or v["end"] is not None):
+        if v["end"] is not None: v["done_h"] += (v["end"] - v["start"]).total_seconds() / 3600  # a new incarnation (queued resource re-provisioned)
+        v["start"] = ts(d["ts"]); v["end"] = None
+    if d["state"] in ("DELETING", "PREEMPTED", "TERMINATED", "CREATING") and v["start"] and not v["end"]: v["end"] = ts(d["ts"])
     v["last"] = d["state"]
 total = 0; rate = 0; rows = []
 for n, v in sorted(vms.items()):
     if not v["start"]: continue
-    end = v["end"] or now; h = (end - v["start"]).total_seconds() / 3600
+    end = v["end"] or now; h = (end - v["start"]).total_seconds() / 3600 + v["done_h"]
     p = price(v["type"], v["zone"], v["spot"]) * chips(v["type"])
     cost = h * p; total += cost
     held = v["end"] is None
