@@ -25,6 +25,7 @@ pub mod hooks;
 pub mod outcome;
 pub mod registry;
 pub mod scripted;
+pub mod system_one;
 pub mod tools;
 
 pub use admission::{Admission, DisclosureRefused};
@@ -36,6 +37,8 @@ pub use compose::{
 pub use decision::{Acted, Costs, DecisionHook, Ruled, Timing};
 pub use digest::{adapter_digest, hook_set, hook_set_digest};
 pub use events::{Call, Event};
+/// The decision log every decision hook writes.
+pub use hook_log;
 pub use hooks::{Asked, Asker, Hooks};
 pub use outcome::{Context, HookOutcome, Permission, Stop};
 pub use registry::{Disclosure, Hook, Registry, Source, Versions};

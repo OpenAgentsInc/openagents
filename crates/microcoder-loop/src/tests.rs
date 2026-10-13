@@ -2185,3 +2185,129 @@ async fn the_loop_fires_the_hooks_and_obeys_them() {
         );
     }
 }
+
+/// Answers every choice question with `escalate` at 0.9.
+struct Escalates;
+
+impl coder_sdk::decide::Decider for Escalates {
+    fn decide(
+        &self,
+        request: jev::decisions::DecisionsRequest,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<jev::decisions::DecisionsResponse, String>>
+                + Send,
+        >,
+    > {
+        let probabilities = [("continue", 0.05), ("steer", 0.05), ("escalate", 0.9)];
+        let response = serde_json::json!({
+            "id": "d", "object": "decision", "model": "clef-flash",
+            "answers": [{
+                "type": "choice", "name": "next", "choice": "escalate", "confidence": 0.9,
+                "probabilities": probabilities.iter()
+                    .map(|(value, p)| serde_json::json!({"value": value, "probability": p}))
+                    .collect::<Vec<_>>(),
+            }],
+            "openagents": {"door": "clef", "latency_ms": 3},
+        });
+        let _ = request;
+        Box::pin(async move { serde_json::from_value(response).map_err(|e| e.to_string()) })
+    }
+}
+
+/// The monitor (#11488) as a decision hook on the Coder loop and on the
+/// Claude backend (#11498): the same failure three times is a loop, and
+/// both end the session with what the host observed.
+#[tokio::test]
+async fn the_monitor_decision_hook_escalates_on_the_loop_and_on_claude_code() {
+    let monitor = || {
+        let mut registry = coder_sdk::Registry::new();
+        coder_sdk::DecisionHook {
+            timing: coder_sdk::Timing::Blocking,
+            ..coder_sdk::system_one::monitor::hook(
+                false,
+                None,
+                std::sync::Arc::new(Escalates),
+                std::sync::Arc::new(|_: &coder_sdk::hook_log::Decision| {}),
+            )
+        }
+        .register(
+            &mut registry,
+            &coder_sdk::Admission::none().admitting(coder_sdk::system_one::monitor::disclosure()),
+        )
+        .unwrap();
+        registry
+    };
+    // On the loop.
+    let script = Script::new(vec![
+        Ok(act("try", &["fail build"], false)),
+        Ok(act("again", &["fail build"], false)),
+        Ok(act("again", &["fail build"], false)),
+        Ok(act("again", &["fail build"], false)),
+    ]);
+    let env = Hooked {
+        inner: Fake {
+            ran: RefCell::new(Vec::new()),
+        },
+        hooks: coder_sdk::Hooks::new(
+            monitor(),
+            coder_sdk::Budget::default(),
+            coder_sdk::HookBackend::CoderLoop,
+        )
+        .unwrap(),
+        fired: RefCell::new(Vec::new()),
+    };
+    let set = question_set();
+    let route = route_set();
+    let models = Models {
+        generator: &script,
+        judge: &jev(0.1),
+        set: &set,
+        route: &route,
+        strong: None,
+        knowledge: None,
+    };
+    let (_, outcome) = run(
+        state(),
+        "Solve.",
+        &env,
+        &models,
+        &plain(),
+        &mut Log::default(),
+    )
+    .await;
+    assert_eq!(outcome.ending, Ending::Stopped);
+    assert_eq!(env.inner.ran.borrow().len(), 3);
+    // On Claude Code: three failed Bash calls through PostToolUseFailure.
+    let claude = coder_sdk::claude::Claude::new(monitor(), coder_sdk::Budget::default()).unwrap();
+    let options = claude.install(
+        coder_sdk::claude::claude_agent_sdk::QueryOptions::new(),
+        coder_sdk::claude::PreTool::Hook,
+    );
+    let failure = &options.hooks
+        [&coder_sdk::claude::claude_agent_sdk::HookEvent::PostToolUseFailure][0]
+        .hooks[0];
+    let mut last = serde_json::Value::Null;
+    for _ in 0..3 {
+        let out = failure
+            .call(
+                serde_json::json!({"hook_event_name": "PostToolUseFailure", "tool_name": "Bash",
+                    "tool_input": {"command": "fail build"}, "error": "exit 1"}),
+                None,
+            )
+            .await
+            .unwrap();
+        last = serde_json::to_value(out).unwrap();
+    }
+    assert_eq!(last["continue"], false);
+    assert_eq!(
+        last["hookSpecificOutput"]["hookEventName"],
+        "PostToolUseFailure"
+    );
+    assert!(
+        last["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .unwrap()
+            .contains("`fail build` failed 3 times")
+    );
+}

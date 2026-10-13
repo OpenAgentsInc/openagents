@@ -33,7 +33,11 @@ pub fn registry(cwd: &Path, full: bool) -> Registry {
 /// floors' asks answered on the approval card where someone can answer.
 #[must_use]
 pub fn claude(cwd: &Path, full: bool) -> coder_sdk::claude::Claude {
-    coder_sdk::claude::Claude::new(registry(cwd, full), Budget::default())
+    let mut registry = registry(cwd, full);
+    if full {
+        system_one(&mut registry, cwd, Harness::ClaudeCode);
+    }
+    coder_sdk::claude::Claude::new(registry, Budget::default())
         .expect("every hook event is native on Claude Code")
         .asking(crate::floors::asker(
             cwd.to_owned(),
@@ -47,8 +51,10 @@ pub fn claude(cwd: &Path, full: bool) -> coder_sdk::claude::Claude {
 /// run is cancelled.
 #[must_use]
 pub fn coder_loop(cwd: &Path, cancel: &Arc<AtomicBool>) -> coder_sdk::Hooks {
+    let mut registry = registry(cwd, false);
+    system_one(&mut registry, cwd, Harness::CoderLoop);
     coder_sdk::Hooks::new(
-        registry(cwd, false),
+        registry,
         Budget::default(),
         coder_sdk::HookBackend::CoderLoop,
     )
@@ -58,6 +64,116 @@ pub fn coder_loop(cwd: &Path, cancel: &Arc<AtomicBool>) -> coder_sdk::Hooks {
         || "Coder".to_owned(),
         Some(Arc::clone(cancel)),
     ))
+}
+
+/// Where a session's System One hooks run.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Harness {
+    ClaudeCode,
+    CoderLoop,
+}
+
+/// How a System One hook runs until its A/B arm has measured it: off,
+/// recording what it would do (`shadow`), or acting (`on`). Set per hook
+/// with its variable; turning one on admits what it sends to the
+/// Decisions API.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mode {
+    Off,
+    Shadow,
+    On,
+}
+
+/// The monitor's switch (#11488).
+pub const MONITOR_VAR: &str = "CODER_MONITOR";
+/// The router's switch (#11491).
+pub const ROUTE_VAR: &str = "CODER_ROUTE";
+
+/// The mode `var` sets: `shadow` or `on`, else off.
+#[must_use]
+pub fn mode(var: &str) -> Mode {
+    match std::env::var(var)
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "shadow" => Mode::Shadow,
+        "on" | "1" | "true" => Mode::On,
+        _ => Mode::Off,
+    }
+}
+
+/// Registers the System One decision hooks that are switched on: the
+/// monitor on both harnesses, the router in Claude Code chats. A hook is
+/// registered only when the session's admission covers what it sends; the
+/// switch is that admission.
+pub fn system_one(registry: &mut Registry, cwd: &Path, harness: Harness) {
+    system_one_with(registry, cwd, harness, mode(MONITOR_VAR), mode(ROUTE_VAR));
+}
+
+/// [`system_one`] with the monitor's and the router's modes given.
+pub fn system_one_with(
+    registry: &mut Registry,
+    cwd: &Path,
+    harness: Harness,
+    monitor: Mode,
+    route: Mode,
+) {
+    let mut admission = coder_sdk::Admission::none();
+    let mut hooks = Vec::new();
+    let decider: Arc<dyn coder_sdk::decide::Decider> = Arc::new(coder_sdk::decide::Api);
+    let recorder = coder_sdk::decision::default_recorder();
+    if monitor != Mode::Off {
+        admission = admission.admitting(coder_sdk::system_one::monitor::disclosure());
+        hooks.push(coder_sdk::DecisionHook {
+            shadow: monitor == Mode::Shadow,
+            ..coder_sdk::system_one::monitor::hook(
+                harness == Harness::ClaudeCode,
+                Some(probe(cwd)),
+                decider.clone(),
+                recorder.clone(),
+            )
+        });
+    }
+    if route != Mode::Off && harness == Harness::ClaudeCode {
+        admission = admission.admitting(coder_sdk::system_one::route::disclosure());
+        hooks.push(coder_sdk::DecisionHook {
+            shadow: route == Mode::Shadow,
+            ..coder_sdk::system_one::route::hook(None, decider, recorder)
+        });
+    }
+    for hook in hooks {
+        // A refusal is recorded by the hook kind itself.
+        let _ = hook.register(registry, &admission);
+    }
+}
+
+/// The monitor's `fetch_evidence` probe: the working tree's changes, as
+/// `git status --short` and `git diff --stat` print them.
+fn probe(cwd: &Path) -> coder_sdk::system_one::monitor::Probe {
+    let cwd = cwd.to_owned();
+    Arc::new(move || {
+        let run = |args: &[&str]| {
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(&cwd)
+                .args(args)
+                .stderr(std::process::Stdio::null())
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+        };
+        let status = run(&["status", "--short"])?;
+        let stat = run(&["diff", "--stat"]).unwrap_or_default();
+        let found = format!("{status}\n{stat}").trim().to_owned();
+        Some(if found.is_empty() {
+            "no changes in the working tree".to_owned()
+        } else {
+            found
+        })
+    })
 }
 
 /// The floors for a session nobody can answer from inside (a Codex run's
@@ -197,5 +313,41 @@ mod tests {
             reason,
             alone["hookSpecificOutput"]["permissionDecisionReason"]
         );
+    }
+
+    /// With its switch on, the monitor is registered on both harnesses and
+    /// the router on Claude Code only, each pinned in the hook set; off,
+    /// neither is.
+    #[test]
+    fn the_switches_register_the_system_one_hooks() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = |harness, monitor, route| {
+            let mut registry = Registry::new();
+            system_one_with(&mut registry, dir.path(), harness, monitor, route);
+            registry
+        };
+        let ids = |registry: &Registry| {
+            registry
+                .hooks()
+                .map(|hook| hook.id.clone())
+                .collect::<Vec<_>>()
+        };
+        assert!(ids(&registry(Harness::ClaudeCode, Mode::Off, Mode::Off)).is_empty());
+        let both = registry(Harness::ClaudeCode, Mode::Shadow, Mode::On);
+        assert_eq!(ids(&both), ["route", "monitor"]);
+        assert_eq!(
+            ids(&registry(Harness::CoderLoop, Mode::Shadow, Mode::On)),
+            ["monitor"]
+        );
+        let set = coder_sdk::hook_set(&both);
+        let pinned: Vec<&str> = set["hooks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|hook| hook["question_set"].as_str())
+            .collect();
+        assert_eq!(pinned, ["route-v1", "monitor-v1"]);
+        // The probe reads the working tree.
+        assert!(probe(dir.path())().is_none(), "not a checkout");
     }
 }
