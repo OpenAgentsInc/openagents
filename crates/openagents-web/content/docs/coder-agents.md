@@ -104,7 +104,8 @@ use is never started.
 Any chat can hand a piece of work to another agent and keep going. Ask
 for it: "have Codex review this change", "ask Claude Code to write the
 tests". The agent works in its own conversation, and a row for it
-appears under the input with its task, time, and tokens.
+appears under the input, below a `main` row for your chat, with what it
+is doing right now, its time, and its tokens.
 
 - `Down` from the input selects the first row, and shows that agent's
   conversation.

@@ -28,8 +28,12 @@ It works in any terminal, over SSH, and in tmux. Install it from [Download and i
   See [Choose who answers](/docs/coder-agents).
 - **Bottom right of the input:** the folder Coder works in and its Git
   branch.
-- **Under the input:** one row for each agent this chat handed work to,
-  with its task, time, and tokens. See
+- **Under the input:** once this chat has handed work to an agent, a list
+  of chats: `main` (this one) first, then one row for each agent with
+  what it is doing right now, and its time and tokens on the right. The
+  chat you are looking at has a `❯` and a filled dot `●`; the others have
+  an empty dot `○`. A line above names the keys (`↑/↓ to select · esc for
+  main`), and `↓ 3 more` says when the list is longer than the room. See
   [Choose who answers](/docs/coder-agents).
 
 ## Keys

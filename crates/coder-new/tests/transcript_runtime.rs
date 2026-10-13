@@ -141,10 +141,10 @@ fn live_delegation_appears_at_the_bottom_of_a_long_parent_transcript() {
     let text = canvas(&buffer);
     assert!(text.contains("Delegate microcoder"));
     assert!(text.contains("Review the fixture implementation · Running"));
-    // No figure yet is left out, never a dash; the mark says it runs
-    // (#11482).
+    // No figure yet is left out, never a dash (#11482). An agent the
+    // person has not opened has an empty dot (owner, 2026-10-13).
     assert!(!text.contains("— tokens") && !text.contains("0s ·"));
-    assert!(text.contains("● microcoder"), "{text}");
+    assert!(text.contains("  ○ microcoder"), "{text}");
     delegation(&mut app, RuntimeEvent::Tokens(1_234));
     assert!(canvas(&draw(&mut app, 110, 24)).contains("1.2k tokens"));
 
@@ -419,13 +419,24 @@ fn nested_cli_delegations_get_their_own_selectable_rows_and_retained_chats() {
     assert_eq!(app.delegations[1].name, "Codex");
     assert!(!app.delegations[1].running);
     let buffer = draw(&mut app, 80, 24);
-    // The delegation rail sits directly under the input's bottom rule, one
-    // row per delegation, nested ones included.
+    // The delegation rail sits directly under the input's bottom rule: its
+    // keys, the main chat, then one row per delegation, nested ones
+    // included.
     let bottom = (0..buffer.area.height)
         .rfind(|&y| row(&buffer, y).starts_with('└'))
         .unwrap();
-    assert!(row(&buffer, bottom + 1).contains("microcoder"));
-    assert!(row(&buffer, bottom + 2).contains("Codex"));
+    assert!(
+        row(&buffer, bottom + 1)
+            .trim_start()
+            .starts_with("↑/↓ to select")
+    );
+    assert!(
+        row(&buffer, bottom + 2)
+            .trim_start()
+            .starts_with("❯ ● main")
+    );
+    assert!(row(&buffer, bottom + 3).contains("microcoder"));
+    assert!(row(&buffer, bottom + 4).contains("Codex"));
     app.selected_agent = Some(1);
     assert!(canvas(&draw(&mut app, 80, 24)).contains("Nested child reply."));
     let root = tempfile::tempdir().unwrap();
@@ -611,9 +622,9 @@ fn microcoder_work_stays_in_its_selectable_child_chat_and_trackpad_keeps_the_sel
         .unwrap();
     let rail = row(&child, rail_y);
     assert!(rail.contains("1m 15s"));
-    assert!(rail.contains("1.2k tokens ↓"));
-    assert_eq!(child[(0, rail_y)].bg, theme::BG_DARK);
-    assert_eq!(child[(child.area.width - 1, rail_y)].bg, theme::BG_DARK);
+    assert!(rail.contains("↓ 1.2k tokens"));
+    // The open agent's row: the cursor and a filled dot.
+    assert!(rail.trim_start().starts_with("❯ ● microcoder"), "{rail}");
 
     for index in 0..40 {
         app.delegations[0].chat.entries.push(Entry::Assistant {

@@ -3692,7 +3692,9 @@ impl App {
                             self.notice = None;
                         } else if self.restore_queued_prompts() {
                             self.escape_at = None;
-                        } else if self.live.busy {
+                        // An open agent's chat is not the one Esc stops: the
+                        // rail's hint says Esc goes back to the main chat.
+                        } else if self.live.busy && self.selected_agent.is_none() {
                             self.restore_unanswered_prompt();
                             self.cancel_request();
                             self.live

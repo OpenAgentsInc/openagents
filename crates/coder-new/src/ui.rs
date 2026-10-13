@@ -151,12 +151,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         return;
     }
     let (draft, cursor) = app.draft.wrapped(app.composer_width);
-    let rail_height = (if app.mode == Mode::Demo {
-        DEMOS.len()
-    } else {
-        app.rail_agents().len()
-    })
-    .min(usize::from(area.height.saturating_sub(6))) as u16;
+    let rail_height = rail_height(app).min(usize::from(area.height.saturating_sub(6))) as u16;
     let composer_height = (draft.len() as u16).clamp(1, 6) + 2;
     let header_height = if new_chat_heading(app) {
         2
@@ -379,119 +374,189 @@ fn model_words(model: &str) -> String {
         )
 }
 
-fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
-    // A finished delegation leaves the rail after a while (owner, #11434).
-    let rail = app.rail_agents();
-    let agents: Vec<_> = if app.mode == Mode::Demo {
-        DEMOS
-            .iter()
-            .map(|agent| {
-                (
-                    std::borrow::Cow::Borrowed(agent.name),
-                    std::borrow::Cow::Borrowed(agent.task),
-                    agent.tokens.to_owned(),
-                    agent.elapsed_seconds.saturating_add(app.elapsed_seconds),
-                    RailState::Running,
-                )
-            })
-            .collect()
-    } else {
-        rail.iter()
-            .map(|index| &app.delegations[*index])
-            .map(|agent| {
-                if agent.background
-                    && let Some(row) = app.fleet.get(&agent.id)
-                {
-                    let mut task = format!("{} · ", row.status.word());
-                    if let Some(cost) = row.cost_usd {
-                        task.push_str(&agent_fleet::dollars(cost));
-                        task.push_str(" · ");
-                    }
-                    match agent_activity(&agent.chat).filter(|_| agent.running) {
-                        Some(doing) => task.push_str(&doing),
-                        None => task.push_str(&agent.task),
-                    }
-                    return (
-                        agent_label(&agent.name, agent_model(&agent.chat)),
-                        std::borrow::Cow::Owned(task),
-                        if row.tokens == 0 {
-                            String::new()
-                        } else {
-                            token_count(row.tokens)
-                        },
-                        row.elapsed_seconds(agent_fleet::now_ms()),
-                        RailState::of(agent),
-                    );
-                }
-                (
-                    agent_label(&agent.name, agent_model(&agent.chat)),
-                    // What a running agent is doing right now: its tool, its
-                    // thinking, or the line it is writing; its task until
-                    // it has done anything.
-                    if agent.running
-                        && let Some(doing) = agent_activity(&agent.chat)
-                    {
-                        std::borrow::Cow::Owned(doing)
-                    // A finished delegation's dollars (#11179).
-                    } else if agent.chat.cost_usd > 0.0 {
-                        std::borrow::Cow::Owned(format!(
-                            "{} · {}",
-                            agent_fleet::dollars(agent.chat.cost_usd),
-                            agent.task
-                        ))
-                    } else {
-                        std::borrow::Cow::Borrowed(agent.task.as_str())
-                    },
-                    // A figure Coder does not have is left out, never
-                    // shown as a dash or 0s (#11482).
-                    if agent.chat.tokens == 0 {
-                        String::new()
-                    } else {
-                        token_count(agent.chat.tokens)
-                    },
-                    if agent.running {
-                        app.elapsed_seconds.saturating_sub(agent.started_at)
-                    } else {
-                        agent.elapsed_seconds
-                    },
-                    RailState::of(agent),
-                )
-            })
-            .collect()
+/// The keys the agent rail answers to, on the line above it. Every key named
+/// here works: arrows move the selection and Esc goes back to the main chat.
+pub(crate) const RAIL_HINT: &str = "↑/↓ to select · esc for main";
+
+/// One row on the agent rail: who, what it is doing, and its figures.
+struct RailRow {
+    name: String,
+    activity: String,
+    tokens: String,
+    seconds: u64,
+}
+
+/// The rail's rows: the main chat first, then each agent, as Claude Code
+/// lists its agents (owner, 2026-10-13).
+fn rail_rows(app: &App) -> Vec<RailRow> {
+    let main = RailRow {
+        name: "main".into(),
+        activity: if app.live.busy {
+            agent_activity(&app.live).unwrap_or_default()
+        } else {
+            String::new()
+        },
+        tokens: if app.live.tokens == 0 {
+            String::new()
+        } else {
+            token_count(app.live.tokens)
+        },
+        seconds: 0,
     };
+    let mut rows = vec![main];
+    if app.mode == Mode::Demo {
+        rows.extend(DEMOS.iter().map(|agent| RailRow {
+            name: agent.name.into(),
+            activity: agent.task.into(),
+            tokens: agent.tokens.to_owned(),
+            seconds: agent.elapsed_seconds.saturating_add(app.elapsed_seconds),
+        }));
+        return rows;
+    }
+    // A finished delegation leaves the rail after a while (owner, #11434).
+    rows.extend(app.rail_agents().into_iter().map(|index| {
+        let agent = &app.delegations[index];
+        let name = agent_label(&agent.name, agent_model(&agent.chat)).into_owned();
+        if agent.background
+            && let Some(row) = app.fleet.get(&agent.id)
+        {
+            let mut task = format!("{} · ", row.status.word());
+            if let Some(cost) = row.cost_usd {
+                task.push_str(&agent_fleet::dollars(cost));
+                task.push_str(" · ");
+            }
+            match agent_activity(&agent.chat).filter(|_| agent.running) {
+                Some(doing) => task.push_str(&doing),
+                None => task.push_str(&agent.task),
+            }
+            return RailRow {
+                name,
+                activity: task,
+                tokens: if row.tokens == 0 {
+                    String::new()
+                } else {
+                    token_count(row.tokens)
+                },
+                seconds: row.elapsed_seconds(agent_fleet::now_ms()),
+            };
+        }
+        RailRow {
+            name,
+            // What a running agent is doing right now: its tool, its
+            // thinking, or the line it is writing; its task until it has
+            // done anything.
+            activity: if agent.running
+                && let Some(doing) = agent_activity(&agent.chat)
+            {
+                doing
+            // A finished delegation's dollars (#11179).
+            } else if agent.chat.cost_usd > 0.0 {
+                format!(
+                    "{} · {}",
+                    agent_fleet::dollars(agent.chat.cost_usd),
+                    agent.task
+                )
+            } else {
+                agent.task.clone()
+            },
+            // A figure Coder does not have is left out, never shown as a
+            // dash or 0s (#11482).
+            tokens: if agent.chat.tokens == 0 {
+                String::new()
+            } else {
+                token_count(agent.chat.tokens)
+            },
+            seconds: if agent.running {
+                app.elapsed_seconds.saturating_sub(agent.started_at)
+            } else {
+                agent.elapsed_seconds
+            },
+        }
+    }));
+    rows
+}
+
+/// The rail's height: the hint, the main chat and every agent, or nothing
+/// while no agent is on it.
+pub(crate) fn rail_height(app: &App) -> usize {
+    let agents = if app.mode == Mode::Demo {
+        DEMOS.len()
+    } else {
+        app.rail_agents().len()
+    };
+    if agents == 0 { 0 } else { agents + 2 }
+}
+
+/// Which rail row is selected: the main chat (0) or an agent's.
+fn rail_selected(app: &App) -> usize {
+    let Some(selected) = app.selected_agent else {
+        return 0;
+    };
+    if app.mode == Mode::Demo {
+        return selected + 1;
+    }
+    app.rail_agents()
+        .iter()
+        .position(|index| *index == selected)
+        .map_or(0, |at| at + 1)
+}
+
+/// The agent rail under the input, laid out as Claude Code's agent list: a
+/// key hint, then a row per chat with an empty dot, the selected one with a
+/// `❯` cursor and a filled white dot, each with what it is doing and, at the
+/// right, its time and tokens; `↓ N more` when the list runs past the room.
+fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
     if area.height == 0 {
         return;
     }
-    let name_width = (2 + agents
-        .iter()
-        .map(|agent| agent.0.width())
-        .max()
-        .unwrap_or(0)) as u16;
+    let rows = rail_rows(app);
+    let selected = rail_selected(app).min(rows.len() - 1);
+    // The hint goes when the rail has room for one row only.
+    let hint = area.height >= 2;
+    if hint {
+        frame.render_widget(
+            Paragraph::new(span(truncate(RAIL_HINT, area.width), t::GRAY)),
+            Rect { height: 1, ..area },
+        );
+    }
+    let list = Rect {
+        y: area.y + u16::from(hint),
+        height: area.height - u16::from(hint),
+        ..area
+    };
+    let room = usize::from(list.height);
+    // Past the room, the last line says how many rows are below, and the
+    // window scrolls to keep the selection in view.
+    let shown = if rows.len() > room {
+        room.saturating_sub(1).max(1)
+    } else {
+        rows.len()
+    };
+    let first = selected.saturating_sub(shown - 1);
+    let hidden_below = rows.len() - (first + shown).min(rows.len());
     let narrow = area.width < 32;
-    let count_width = agents
+    const GUTTER: u16 = 4;
+    let name_width = (2 + rows.iter().map(|row| row.name.width()).max().unwrap_or(0)) as u16;
+    let count_width = rows.iter().map(|row| row.tokens.width()).max().unwrap_or(0);
+    let token_labels: Vec<_> = rows
         .iter()
-        .map(|agent| agent.2.width())
-        .max()
-        .unwrap_or(0);
-    let token_labels: Vec<_> = agents
-        .iter()
-        .map(|agent| {
-            if agent.2.is_empty() {
+        .map(|row| {
+            if row.tokens.is_empty() {
                 String::new()
             } else if narrow {
-                format!("{:>count_width$}↓", agent.2)
+                format!("↓{:>count_width$}", row.tokens)
             } else {
-                format!("{:>count_width$} tokens ↓", agent.2)
+                format!("↓ {:>count_width$} tokens", row.tokens)
             }
         })
         .collect();
-    let timed_labels: Vec<_> = agents
+    let timed_labels: Vec<_> = rows
         .iter()
         .zip(&token_labels)
-        .map(|(agent, tokens)| {
+        .map(|(row, tokens)| {
             // No time yet (an agent that just started, or one whose end
             // came with none) is left out too.
-            match (agent.3, tokens.is_empty()) {
+            match (row.seconds, tokens.is_empty()) {
                 (0, _) => tokens.clone(),
                 (seconds, true) => elapsed_time(seconds),
                 (seconds, false) => format!("{} · {tokens}", elapsed_time(seconds)),
@@ -499,125 +564,82 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
         })
         .collect();
     let show_elapsed = usize::from(area.width)
-        >= usize::from(name_width)
+        >= usize::from(GUTTER + name_width)
             + 1
             + timed_labels
                 .iter()
                 .map(|text| text.width())
                 .max()
                 .unwrap_or(0);
-    let first = app
-        .selected_agent
-        .and_then(|selected| rail.iter().position(|index| *index == selected))
-        .unwrap_or(agents.len().saturating_sub(1))
-        .saturating_sub(usize::from(area.height).saturating_sub(1));
-    for (index, agent) in agents
-        .iter()
-        .enumerate()
-        .skip(first)
-        .take(usize::from(area.height))
-    {
-        let row = Rect {
-            y: area.y + (index - first) as u16,
+    for (offset, index) in (first..first + shown).enumerate() {
+        let row = &rows[index];
+        let line = Rect {
+            y: list.y + offset as u16,
             height: 1,
-            ..area
+            ..list
         };
-        let active = app.selected_agent == rail.get(index).copied() && app.mode != Mode::Demo
-            || app.mode == Mode::Demo && app.selected_agent == Some(index);
-        if active {
-            frame.render_widget(
-                Block::default().style(Style::default().bg(t::BG_DARK)),
-                Rect {
-                    x: frame.area().x,
-                    width: frame.area().width,
-                    ..row
-                },
-            );
-        }
+        let active = index == selected;
         let suffix = if show_elapsed {
             &timed_labels[index]
         } else {
             &token_labels[index]
         };
-        let token_width = suffix.width() as u16;
-        let [activity, _gap, tokens] = Layout::horizontal([
+        let [left, _gap, figures] = Layout::horizontal([
             Constraint::Min(0),
             Constraint::Length(1),
-            Constraint::Length(token_width),
+            Constraint::Length(suffix.width() as u16),
         ])
-        .areas(row);
-        // The mark says where the agent stands (#11482).
-        let prefix = if active {
-            "❯ "
-        } else if narrow {
-            "  "
+        .areas(line);
+        // A filled white dot and the cursor for the selected row, an empty
+        // dot for the rest (owner, 2026-10-13).
+        let (mark, name_color, dim) = if active {
+            ("❯ ● ", t::TEXT_PRIMARY, t::GRAY_BRIGHT)
         } else {
-            agent.4.mark()
+            ("  ○ ", t::TEXT_SECONDARY, t::GRAY)
         };
-        let name = Rect {
-            width: name_width.min(activity.width),
-            ..activity
+        let bold = if active {
+            Modifier::BOLD
+        } else {
+            Modifier::empty()
         };
-        let task_width = activity.width.saturating_sub(name_width + 2);
-        frame.render_widget(
-            Paragraph::new(Line::from(vec![
-                span(prefix, if active { t::ACCENT_MODEL } else { t::GRAY }),
-                Span::styled(
-                    agent.0.to_owned(),
-                    Style::default()
-                        .fg(if active {
-                            t::ACCENT_MODEL
-                        } else {
-                            t::TEXT_SECONDARY
-                        })
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ])),
-            name,
-        );
-        if task_width > 0 {
-            let task = Rect {
-                x: activity.x + name_width + 2,
-                width: task_width,
-                ..activity
-            };
-            frame.render_widget(
-                Paragraph::new(span(truncate(&agent.1, task_width), t::GRAY)),
-                task,
-            );
+        let activity_width = left.width.saturating_sub(GUTTER + name_width);
+        let mut spans = vec![
+            Span::styled(mark, Style::default().fg(name_color).add_modifier(bold)),
+            Span::styled(
+                truncate(&row.name, left.width.saturating_sub(GUTTER)),
+                Style::default().fg(name_color).add_modifier(bold),
+            ),
+        ];
+        if activity_width > 0 && !row.activity.is_empty() {
+            let pad = usize::from(name_width) - row.name.width();
+            spans.push(Span::raw(" ".repeat(pad)));
+            spans.push(Span::styled(
+                truncate(&row.activity, activity_width),
+                Style::default().fg(dim).add_modifier(bold),
+            ));
         }
+        frame.render_widget(Paragraph::new(Line::from(spans)), left);
         frame.render_widget(
-            Paragraph::new(span(suffix, t::GRAY)).right_aligned(),
-            tokens,
+            Paragraph::new(Span::styled(
+                suffix.clone(),
+                Style::default().fg(dim).add_modifier(bold),
+            ))
+            .right_aligned(),
+            figures,
         );
     }
-}
-
-/// Where an agent on the rail stands.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum RailState {
-    Running,
-    Done,
-    Failed,
-}
-
-impl RailState {
-    fn of(agent: &crate::live::Delegation) -> Self {
-        if agent.running {
-            Self::Running
-        } else if agent.chat.notice.is_some() {
-            Self::Failed
-        } else {
-            Self::Done
-        }
-    }
-
-    const fn mark(self) -> &'static str {
-        match self {
-            Self::Running => "● ",
-            Self::Done => "✓ ",
-            Self::Failed => "✗ ",
-        }
+    if hidden_below > 0 && room > shown {
+        frame.render_widget(
+            Paragraph::new(span(
+                truncate(&format!("  ↓ {hidden_below} more"), list.width),
+                t::GRAY,
+            )),
+            Rect {
+                y: list.y + shown as u16,
+                height: 1,
+                ..list
+            },
+        );
     }
 }
 
@@ -3428,6 +3450,139 @@ mod export_notice_tests {
 #[cfg(test)]
 mod agent_rail_tests {
     use crate::live::{Chat, Entry};
+
+    /// The agent rail alone, drawn `width` x `height`, one string per row.
+    fn rail(app: &crate::App, width: u16, height: u16) -> Vec<String> {
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height)).unwrap();
+        terminal
+            .draw(|frame| super::agent_rail(frame, frame.area(), app))
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        (0..height)
+            .map(|y| {
+                (0..width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+                    .trim_end()
+                    .to_owned()
+            })
+            .collect()
+    }
+
+    fn agent(name: &str, task: &str, tokens: u64, started_at: u64) -> crate::live::Delegation {
+        crate::live::Delegation {
+            id: name.into(),
+            name: name.into(),
+            task: task.into(),
+            chat: Chat {
+                tokens,
+                ..Chat::default()
+            },
+            started_at,
+            elapsed_seconds: 0,
+            running: true,
+            draft: Default::default(),
+            composer: Default::default(),
+            scroll: 0,
+            background: false,
+        }
+    }
+
+    /// Five agents under the main chat, as fakes: no harness runs.
+    fn five_agents() -> crate::App {
+        let mut app = crate::App::default();
+        app.mode = crate::Mode::Live;
+        app.elapsed_seconds = 20_000;
+        for (name, task, tokens, started) in [
+            (
+                "general-purpose",
+                "Waiting on film_shot build",
+                752_100,
+                2_800,
+            ),
+            (
+                "general-purpose",
+                "Reading comb in draconia_hair.py",
+                732_000,
+                3_772,
+            ),
+            ("Explore", "Reading Argon routing records", 416_300, 10_986),
+            ("general-purpose", "Closing issue #11556", 339_400, 13_626),
+            ("Plan", "Drafting the plan", 1_200, 19_990),
+        ] {
+            app.delegations.push(agent(name, task, tokens, started));
+        }
+        app
+    }
+
+    #[test]
+    fn the_rail_lists_main_then_agents_with_dots_a_cursor_and_right_aligned_figures() {
+        let mut app = five_agents();
+        app.selected_agent = Some(1);
+        let rows = rail(&app, 100, 8);
+        let shown = rows.join("\n");
+        assert_eq!(rows[0], super::RAIL_HINT, "{shown}");
+        assert!(rows[1].starts_with("  ○ main"), "{shown}");
+        // The selected row: the cursor left of a filled dot; the rest an
+        // empty dot behind a two-space gutter.
+        assert!(rows[3].starts_with("❯ ● general-purpose"), "{shown}");
+        for row in [&rows[1], &rows[2], &rows[4], &rows[5], &rows[6]] {
+            assert!(row.starts_with("  ○ "), "{shown}");
+        }
+        assert_eq!(shown.matches('●').count(), 1, "{shown}");
+        assert_eq!(shown.matches('❯').count(), 1, "{shown}");
+        // Activity starts in one column on every row.
+        let column = |row: &str, text: &str| row[..row.find(text).unwrap()].chars().count();
+        let activity = column(&rows[2], "Waiting on");
+        assert_eq!(column(&rows[3], "Reading comb"), activity);
+        assert_eq!(column(&rows[4], "Reading Argon"), activity);
+        assert_eq!(column(&rows[6], "Drafting"), activity);
+        // Time, then tokens, flush right, their dots and arrows aligned.
+        assert!(rows[2].ends_with("4h 46m 40s · ↓ 752.1k tokens"), "{shown}");
+        assert!(rows[3].ends_with("4h 30m 28s · ↓ 732.0k tokens"), "{shown}");
+        assert!(rows[6].ends_with("10s · ↓   1.2k tokens"), "{shown}");
+        for row in &rows[2..7] {
+            assert_eq!(row.chars().count(), 100, "{shown}");
+            assert_eq!(column(row, "↓"), column(&rows[2], "↓"), "{shown}");
+        }
+        assert!(!shown.contains("more"), "{shown}");
+    }
+
+    #[test]
+    fn a_long_rail_says_how_many_more_and_scrolls_with_the_selection() {
+        let mut app = five_agents();
+        // The hint, three rows, and the overflow line.
+        let rows = rail(&app, 100, 5);
+        let shown = rows.join("\n");
+        assert!(rows[1].starts_with("❯ ● main"), "{shown}");
+        assert_eq!(rows[4], "  ↓ 3 more", "{shown}");
+        // Down walks the selection onto the agents; the window follows.
+        app.composer_arrow(false);
+        assert_eq!(app.selected_agent, Some(0));
+        app.composer_arrow(false);
+        app.composer_arrow(false);
+        app.composer_arrow(false);
+        assert_eq!(app.selected_agent, Some(3));
+        let rows = rail(&app, 100, 5);
+        let shown = rows.join("\n");
+        assert!(rows[3].starts_with("❯ ● general-purpose"), "{shown}");
+        assert!(rows[3].contains("Closing issue #11556"), "{shown}");
+        assert!(!shown.contains("○ main"), "{shown}");
+        assert_eq!(rows[4], "  ↓ 1 more", "{shown}");
+        app.composer_arrow(false);
+        let rows = rail(&app, 100, 5);
+        assert!(rows[3].starts_with("❯ ● Plan"), "{}", rows.join("\n"));
+        assert!(!rows.join("\n").contains("more"));
+        // Up walks back to the main chat.
+        for _ in 0..5 {
+            app.composer_arrow(true);
+        }
+        assert_eq!(app.selected_agent, None);
+        let rows = rail(&app, 100, 5);
+        assert!(rows[1].starts_with("❯ ● main"), "{}", rows.join("\n"));
+        assert_eq!(rows[4], "  ↓ 3 more");
+    }
 
     #[test]
     fn a_running_agent_shows_what_it_is_doing_and_keeps_its_model() {
