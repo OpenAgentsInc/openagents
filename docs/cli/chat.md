@@ -33,6 +33,7 @@ used, so a script can continue it.
 ```text
 openagents chat MESSAGE                        same as `chat send MESSAGE`
 openagents chat send MESSAGE [--thread ID] [--no-run] [--timeout SECONDS]
+openagents chat send MESSAGE --project PROJECT [--timeout SECONDS]
 openagents chat follow --thread ID
 openagents chat stop --thread ID
 openagents chat answer --thread ID TEXT
@@ -52,6 +53,15 @@ Every command also takes `--scratch`, `--local`, and `--socket PATH`, and
   with its context. `MESSAGE` may be several words; `-` reads it from stdin
   (`echo "What is the Gym?" | openagents chat -`). A message that is itself
   a command word (`threads`, `read`) needs `send`.
+- `send --project PROJECT` (#11542) starts a new chat inside one of your
+  projects on openagents.com instead (PROJECT by name, repository, or id, as
+  `openagents projects show` finds it), through `POST /v1/threads
+  {request_id, text, project}`, the path the website's composer takes for a
+  chat in a project. OpenAgents answers it there with the project's
+  repository; the reply streams here by reading the chat (`--json`:
+  `accepted` with `backend: "account"` and the project, `partial`, `result`
+  or `failure`). It takes no `--thread`, `--scratch`, `--local`, `--socket`,
+  or `--no-run`: the chat is the account's, not this computer's.
 - `threads` lists threads newest first; `--all` includes archived ones.
 - `read` prints a thread's turns, every page of them, then how each Coder
   turn ended and its answer (`--json`: `coder_turns`).

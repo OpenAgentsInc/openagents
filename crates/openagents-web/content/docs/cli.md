@@ -18,7 +18,14 @@ echo "What is the Gym?" | openagents chat -     # the message from stdin
 openagents chat threads                         # your threads, newest first
 openagents chat read --thread ID                # a whole thread
 openagents chat export --thread ID              # a thread as a trajectory file
+openagents chat send "Plan the budget" --project finances   # a new chat in a project
 ```
+
+`--project` starts the chat inside one of your projects on openagents.com
+(by its name, repository, or id), as starting a chat in that project on the
+website does. OpenAgents answers it there, the reply streams here, and the
+chat shows in the project on the website and the phone, and in
+`openagents projects threads finances`.
 
 The reply streams to standard output, and everything else (the thread ID,
 offers, suggestions) goes to standard error, so `reply=$(openagents chat

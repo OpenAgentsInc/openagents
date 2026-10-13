@@ -43,6 +43,8 @@ mod fleet;
 mod gce;
 #[path = "chat_placement.rs"]
 mod placement;
+#[path = "chat_project.rs"]
+mod project;
 #[path = "chat_shell.rs"]
 mod shell;
 #[path = "chat_work.rs"]
@@ -51,10 +53,15 @@ mod work;
 mod work_briefed;
 
 pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
-  send MESSAGE [--thread ID] [--no-run] [--timeout SECONDS]
+  send MESSAGE [--thread ID] [--no-run] [--timeout SECONDS] [--project PROJECT]
         Send one message to OpenAgents and stream its reply. `openagents chat
         MESSAGE` is the same, and MESSAGE `-` reads it from stdin. Without
-        --thread a new thread starts. When OpenAgents judges that the
+        --thread a new thread starts. --project starts a new chat inside
+        one of your projects on openagents.com instead (PROJECT by name,
+        repository, or id, as openagents projects show takes it), answered
+        there with the project's repository, as starting a chat in that
+        project on the website does; it shows in the project, in
+        openagents projects threads PROJECT, and on your phone. When OpenAgents judges that the
         message is coding work, Coder runs on this computer at once, in its
         own worktree of the Git checkout this command runs in, with Codex,
         Claude Code, or Grok Build, the first signed in here with capacity,
@@ -178,6 +185,8 @@ needed, and nothing prints a key.";
 /// chat router's command tree (`coder::cli_route::tree`).
 #[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
+    // With --project too: the new chat is published to the account on
+    // openagents.com (#11542).
     Declared::computer("send", Effect::Publishes),
     Declared::computer("shell-request", Effect::Publishes),
     Declared::computer("shell-result", Effect::Publishes),
@@ -205,6 +214,7 @@ const OPTIONS: &[&str] = &[
     "engine-logins",
     "template",
     "engine",
+    "project",
 ];
 const SWITCHES: &[&str] = &[
     "scratch",
@@ -342,6 +352,17 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     }
     if command == "threads" && args.switch("account") {
         return account_threads(output, &args);
+    }
+    if let Some(name) = args.option("project") {
+        if command != "send" {
+            return output.usage("chat", "--project goes with chat send", USAGE);
+        }
+        return match project::send(output, &args, name) {
+            Ok(code) => code,
+            Err(Failure::Usage(message)) => output.usage("chat", &message, USAGE),
+            Err(Failure::Refused(message)) => output.refuse("chat", &message),
+            Err(Failure::Failed(message)) => output.fail("chat", &message),
+        };
     }
     // A thread this computer doesn't keep may be the account's (#11504):
     // a website or phone chat's ID goes there at once; another name tries

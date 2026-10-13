@@ -67,6 +67,7 @@ from the code, this is how it works today:
 | `DELETE /v1/projects/{id}` | `{id, object: "project.deleted"}`; `409 project_has_threads` while chats are in it, unless `?detach_threads=true` |
 | `GET /v1/threads?project=ID\|name:NAME\|none` | `{data: [Thread], next}`, by last activity, oldest first, `?limit`, `?after` |
 | `GET /v1/threads/{id}/messages` | `{data: [Message], next}`, oldest first; each message's `content` is one `text` block |
+| `POST /v1/threads` `{"request_id": UUID, "text", "project": ID\|"name:NAME"}` | `201 {id, answering: true}`: a new chat inside the project, answered by OpenAgents with the project's repository, as starting a chat in a project on the website does ([#11542](https://github.com/OpenAgentsInc/openagents/issues/11542)). `404 not_found` when the project isn't yours. Read the reply with `GET /v1/threads/{id}` |
 | `PATCH /v1/projects/{id}` `{"protection": "standard"\|"only_me"}` | The Project, with `protection`. `sealed` answers `400 not_available`; name, instructions, and repository can't change yet |
 | `POST /v1/files?purpose=project&filename=NAME`, the file's bytes as the body | `201` File: `{id: "file_…", object: "file", filename, mime_type, size_bytes, sha256, created_at, stored_as: "original", project}`. 10 MB at most. Not multipart |
 | `GET /v1/files/{id}`, `GET /v1/files/{id}/content`, `DELETE /v1/files/{id}` | The File; its bytes (`Content-Disposition`, `Digest: sha-256=…`); `{id, object: "file.deleted"}` |
@@ -427,7 +428,12 @@ openagents projects files add PROJECT PATH... [--protection standard|only_me]
 openagents projects files get PROJECT FILE [--output PATH]
 openagents projects files remove PROJECT FILE
 openagents projects notes add PROJECT --title T (--text TEXT | --file PATH)
+openagents chat send MESSAGE --project PROJECT
 ```
+
+`chat send --project` starts a new chat inside the project on openagents.com
+and streams OpenAgents's reply; it then shows in `projects threads PROJECT`,
+on the website, and on the phone.
 
 `files list` names only-me files from the vault's index on this computer
 (and lists files added with `openagents vault add --project` too). `files
@@ -444,8 +450,9 @@ GitHub boards) instead of guessing one.
 Coder reaches projects through its `openagents_cli` tool on every engine,
 and Claude Code gets it through Coder's tool server. The tool's description
 says that "the person's projects" are openagents.com projects
-(`openagents projects`). It is the description that steers the model; no
-keyword routing. A Coder chat in a project's repository reads that project's
+(`openagents projects`), and that "make a new chat in my finances project"
+is `openagents chat send MESSAGE --project finances`. It is the description
+that steers the model; no keyword routing. A Coder chat in a project's repository reads that project's
 instructions and documents as part of its context, once the context layer
 lands ([#11451](https://github.com/OpenAgentsInc/openagents/issues/11451), phase 3).
 

@@ -58,6 +58,8 @@ pub(crate) const USAGE: &str = "usage: openagents projects COMMAND [--account-di
               Delete a file or note from the project for good.
   notes add PROJECT --title TITLE (--text TEXT | --file PATH)
               Add a text note to the project.
+Start a new chat inside a project with openagents chat send MESSAGE
+--project PROJECT; OpenAgents answers it there and it shows in the project.
 These are the projects in the left panel of openagents.com, signed in as
 openagents login or coder login saved them, or OPENAGENTS_TOKEN. Ask about
 only-me files with openagents vault ask FILE --project ID. GitHub Project
@@ -292,6 +294,12 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
 }
 
 struct Projects<'a>(&'a Site);
+
+/// The project `target` names (its name, repository, or id), found as
+/// `projects show` finds it, for `chat send --project` (#11542).
+pub(crate) fn named(site: &Site, target: &str) -> Result<Value, String> {
+    Projects(site).find(target)
+}
 
 impl Projects<'_> {
     fn get(&self, path: &str) -> Result<Value, String> {

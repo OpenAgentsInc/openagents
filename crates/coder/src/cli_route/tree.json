@@ -3419,7 +3419,7 @@
               "send"
             ],
             "usage": [
-              "send MESSAGE [--thread ID] [--no-run] [--timeout SECONDS]"
+              "send MESSAGE [--thread ID] [--no-run] [--timeout SECONDS] [--project PROJECT]"
             ],
             "forms": [
               {
@@ -3450,11 +3450,18 @@
                     "value": "SECONDS",
                     "open": true,
                     "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "project",
+                    "value": "PROJECT",
+                    "open": true,
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Send one message to OpenAgents and stream its reply. `openagents chat MESSAGE` is the same, and MESSAGE `-` reads it from stdin. Without --thread a new thread starts. When OpenAgents judges that the message is coding work, Coder runs on this computer at once, in its own worktree of the Git checkout this command runs in, with Codex, Claude Code, or Grok Build, the first signed in here with capacity, and its events stream here. --no-run only shows the offer instead. `openagents settings` chooses the providers, whether Coder asks first, the project folders, and what its commands may reach.",
+            "summary": "Send one message to OpenAgents and stream its reply. `openagents chat MESSAGE` is the same, and MESSAGE `-` reads it from stdin. Without --thread a new thread starts. --project starts a new chat inside one of your projects on openagents.com instead (PROJECT by name, repository, or id, as openagents projects show takes it), answered there with the project's repository, as starting a chat in that project on the website does; it shows in the project, in openagents projects threads PROJECT, and on your phone. When OpenAgents judges that the message is coding work, Coder runs on this computer at once, in its own worktree of the Git checkout this command runs in, with Codex, Claude Code, or Grok Build, the first signed in here with capacity, and its events stream here. --no-run only shows the offer instead. `openagents settings` chooses the providers, whether Coder asks first, the project folders, and what its commands may reach.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -3904,6 +3911,14 @@
           "kind": "option",
           "name": "timeout",
           "value": "SECONDS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "project",
+          "value": "PROJECT",
           "open": true,
           "optional": true,
           "repeated": true
@@ -7781,7 +7796,7 @@
         {
           "kind": "option",
           "name": "project",
-          "value": "ID",
+          "value": "PROJECT",
           "open": true,
           "optional": true,
           "repeated": true

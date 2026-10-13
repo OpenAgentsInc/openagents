@@ -45,6 +45,11 @@ and answers with this computer's files and commands. The answer appears
 on the web and phone as usual. When Coder isn't open, the page says so
 and offers no reply box.
 
+To start a new chat inside one of your projects on openagents.com from
+the terminal, ask Coder ("make a new chat in my finances project") or run
+`openagents chat send "MESSAGE" --project finances`. It's an
+openagents.com chat, so it shows in that project on the website and phone.
+
 With sync on, prompts you set up with `/schedule` also show on your
 account, where you can pause or delete them.
 
