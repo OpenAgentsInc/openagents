@@ -760,6 +760,17 @@ fn item_lines(
     out: &mut Vec<Rendered>,
 ) {
     let width = marker.chars().count();
+    if item.blocks.is_empty() {
+        // An empty item still shows its marker.
+        let lead = format!("{prefix}{marker}");
+        out.push(marked_line(
+            &[],
+            lead.trim_end(),
+            hang,
+            Intensity::ThreeQuarters,
+        ));
+        return;
+    }
     for (index, block) in item.blocks.iter().enumerate() {
         // A nested list sits right under its item's text, as grok-build
         // draws a tight list.
@@ -866,6 +877,7 @@ fn parse(source: &str) -> Vec<Block> {
     let mut cursor = Cursor {
         events,
         ranges,
+        source,
         len: source.len(),
         at: 0,
     };
@@ -876,6 +888,8 @@ fn parse(source: &str) -> Vec<Block> {
 struct Cursor<'a> {
     events: Vec<Event<'a>>,
     ranges: Vec<Range<usize>>,
+    /// The source the events came from.
+    source: &'a str,
     /// The length of the source.
     len: usize,
     at: usize,
@@ -960,12 +974,24 @@ fn blocks(cursor: &mut Cursor<'_>, until: Option<TagEnd>) -> Vec<Block> {
 
 /// The blocks the container `tag` contributes, with its end consumed.
 fn block(cursor: &mut Cursor<'_>, tag: Tag<'_>) -> Vec<Block> {
+    let opened = cursor
+        .ranges
+        .get(cursor.at.wrapping_sub(1))
+        .cloned()
+        .unwrap_or(0..0);
     match tag {
         Tag::Paragraph => vec![Block::Paragraph(inlines(cursor, Some(TagEnd::Paragraph)))],
-        Tag::Heading { level, .. } => vec![Block::Heading {
-            level: heading_level(level),
-            inlines: inlines(cursor, Some(TagEnd::Heading(level))),
-        }],
+        Tag::Heading { level, .. } => {
+            let inlines = inlines(cursor, Some(TagEnd::Heading(level)));
+            if text_of(&inlines).trim().is_empty() {
+                // A bare `#` is an answer, not an empty heading.
+                return literal(cursor, opened);
+            }
+            vec![Block::Heading {
+                level: heading_level(level),
+                inlines,
+            }]
+        }
         Tag::CodeBlock(kind) => {
             let start = cursor
                 .ranges
@@ -974,7 +1000,19 @@ fn block(cursor: &mut Cursor<'_>, tag: Tag<'_>) -> Vec<Block> {
             vec![code(cursor, kind, start)]
         }
         Tag::BlockQuote(_) => vec![Block::Quote(blocks(cursor, Some(TagEnd::BlockQuote(None))))],
-        Tag::List(start) => vec![list(cursor, start)],
+        Tag::List(start) => {
+            let list = list(cursor, start);
+            // A reply of just `4.` or `-` parses as a list with one empty
+            // item, which would draw nothing: show the text as written.
+            if let Block::List { items, .. } = &list
+                && items
+                    .iter()
+                    .all(|item| item.task.is_none() && item.blocks.is_empty())
+            {
+                return literal(cursor, opened);
+            }
+            vec![list]
+        }
         Tag::Table(_) => vec![table(cursor)],
         Tag::HtmlBlock => {
             let inlines = inlines(cursor, Some(TagEnd::HtmlBlock));
@@ -991,6 +1029,25 @@ fn block(cursor: &mut Cursor<'_>, tag: Tag<'_>) -> Vec<Block> {
         }
         other => blocks(cursor, Some(other.to_end())),
     }
+}
+
+/// The source of a block that parsed to nothing visible (an empty list
+/// item or heading), as a plain paragraph.
+fn literal(cursor: &Cursor<'_>, range: Range<usize>) -> Vec<Block> {
+    let text = cursor
+        .source
+        .get(range)
+        .unwrap_or_default()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if text.is_empty() {
+        return Vec::new();
+    }
+    vec![Block::Paragraph(vec![Inline {
+        text,
+        marks: Marks::default(),
+    }])]
 }
 
 fn heading_level(level: HeadingLevel) -> u8 {
@@ -1338,6 +1395,25 @@ mod tests {
         );
         assert!(marked.runs[5].1.code);
         assert!(marked.runs[7].1.strike);
+    }
+
+    #[test]
+    fn a_one_token_answer_shows_as_written() {
+        // "4." alone is an ordered list with one empty item, "-" a bullet
+        // list, "#" an empty heading: each is an answer, drawn as text.
+        for answer in ["4.", "1.", "-", "*", "+", "#", "##", "1)"] {
+            assert_eq!(texts(&render(answer)), [answer], "{answer:?}");
+            let rows = wrapped(answer, 40);
+            assert_eq!(rows.len(), 1, "{answer:?}");
+            assert_eq!(rows[0].marked.text, answer, "{answer:?}");
+        }
+        assert_eq!(texts(&render("4.\n")), ["4."]);
+        // A list that has text keeps its markers, and an empty item in it
+        // still shows its marker.
+        let lines = render("1. one\n2.");
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].marked.text.ends_with("one"));
+        assert!(lines[1].marked.text.trim_start().starts_with('2'));
     }
 
     #[test]
