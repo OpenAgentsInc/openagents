@@ -49,6 +49,7 @@ It works in any terminal, over SSH, and in tmux. Install it from [Download and i
 | Ctrl+A, Ctrl+E | Start or end of the line. |
 | Cmd+A | Select the whole input, where the terminal passes Cmd keys on. Terminal, iTerm2, and Ghostty keep Cmd+A for themselves: use Ctrl+Shift+A there. |
 | Drag | Copy text from the chat. Double-click copies a word, triple-click a line. |
+| Click a message | Shows the model that wrote it (or answered it), such as `Codex · GPT-6.1-Sol`, at the right of that line for about three seconds. |
 | Ctrl+C | Quit. The chat is saved. |
 
 ## Commands

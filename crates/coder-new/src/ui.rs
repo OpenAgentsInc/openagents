@@ -2,6 +2,7 @@
 
 pub(crate) mod agents;
 mod appearance;
+mod model_tip;
 mod models;
 mod plugins;
 mod preferences;
@@ -1781,6 +1782,9 @@ pub struct TranscriptCache {
     /// A mouse drag selecting text: where it started and where the
     /// pointer is now.
     pub(crate) drag: Option<Drag>,
+    /// The model of the message last clicked, shown at its row's right end
+    /// for a moment (`model_tip`). Display only.
+    pub(crate) model_tip: Option<model_tip::ModelTip>,
 }
 
 /// A drag across the transcript: the cell it started on and the pointer's
@@ -1974,6 +1978,7 @@ impl TranscriptCache {
             // Rows rewrap at a new width; a selection would land on other text.
             self.selection = None;
             self.drag = None;
+            self.model_tip = None;
         }
         self.entries.truncate(chat.entries.len());
         for (index, entry) in chat.entries.iter().enumerate() {
@@ -2134,6 +2139,28 @@ impl TranscriptCache {
             row: index.min(total - 1),
             col: column - area.x,
         })
+    }
+
+    /// A plain click on transcript row `row`: show the model of the
+    /// message there, or put the label down when it has none yet.
+    pub(crate) fn show_model(&mut self, row: usize, now: std::time::Instant) {
+        let entries: Vec<&crate::live::Entry> = self.blocks().map(|cached| &cached.entry).collect();
+        let mut index = row;
+        let mut at = None;
+        for (number, cached) in self.blocks().enumerate() {
+            if index < cached.lines.len() {
+                at = Some(number);
+                break;
+            }
+            index -= cached.lines.len();
+        }
+        self.model_tip = at
+            .and_then(|at| model_tip::turn_model(&entries, at))
+            .map(|model| model_tip::ModelTip {
+                row,
+                label: model_tip::label(model),
+                shown_at: now,
+            });
     }
 
     /// The selected text as a copy takes it.
@@ -2346,6 +2373,15 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     cache.view = Some((area, usize::from(position)));
     cache.follow_drag();
     cache.paint_selection(frame.buffer_mut(), area, usize::from(position));
+    if let Some(tip) = &cache.model_tip {
+        model_tip::paint(
+            frame.buffer_mut(),
+            area,
+            usize::from(position),
+            tip,
+            std::time::Instant::now(),
+        );
+    }
     if app.scroll < max_scroll {
         frame.render_widget(
             Paragraph::new("↓")

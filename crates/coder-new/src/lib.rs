@@ -1480,8 +1480,14 @@ impl App {
                         return false;
                     };
                     match self.clicks.press(std::time::Instant::now(), at) {
-                        2 => cache.select_word(at),
-                        3 => cache.select_line(at),
+                        2 => {
+                            cache.model_tip = None;
+                            cache.select_word(at);
+                        }
+                        3 => {
+                            cache.model_tip = None;
+                            cache.select_line(at);
+                        }
                         _ => {
                             cache.selection = None;
                             cache.drag = Some(ui::Drag {
@@ -1498,12 +1504,20 @@ impl App {
                         return false;
                     };
                     drag.mouse = (mouse.column, mouse.row);
+                    // Dragging selects; the model label is for a plain click.
+                    cache.model_tip = None;
                     cache.follow_drag();
                     return true;
                 }
                 MouseEventKind::Up(MouseButton::Left) => {
-                    if cache.drag.take().is_none() {
+                    let Some(drag) = cache.drag.take() else {
                         return false;
+                    };
+                    if cache.selection.is_none() {
+                        // A click without a drag: the message's model shows
+                        // at the row's right end for a moment.
+                        cache.show_model(drag.anchor.row, std::time::Instant::now());
+                        return true;
                     }
                     cache.selected_text()
                 }
