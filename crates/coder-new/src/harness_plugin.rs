@@ -45,6 +45,8 @@ pub enum Payer {
     /// An ACP agent's own login (Grok Build, Devin, Cursor...), for a turn
     /// or a delegation on one (#11535).
     AgentLogin,
+    /// The person's own Gemini API key, for a no-harness turn (#11548).
+    GeminiKey,
 }
 
 /// Why a harness is not a candidate for this chat.
@@ -267,6 +269,10 @@ pub fn paid_by(harness: Harness, agent: bool, model: &str, byok: bool) -> Payer 
                 Payer::ChatGptLogin
             } else if bare && model.starts_with("claude-") {
                 Payer::ClaudePlan
+            } else if bare && model.starts_with("gemini-") {
+                // The Gemini API names its model bare; the gateway names
+                // it `google/…` (#11548).
+                Payer::GeminiKey
             } else if model.starts_with("opencode/") {
                 Payer::OpenCode
             } else if byok && !model.starts_with("openagents/") {

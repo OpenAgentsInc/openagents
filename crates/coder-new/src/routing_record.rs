@@ -1111,6 +1111,16 @@ impl crate::App {
             harness,
             payer: if agent.is_some() {
                 Payer::AgentLogin
+            } else if harness == Harness::CoderLoop
+                && let Some(no_harness) = self.no_harness_turn()
+                && no_harness.gemini_key.is_some()
+                && !self
+                    .connections()
+                    .as_ref()
+                    .is_some_and(crate::provider::gateway_open)
+            {
+                // Signed out, a no-harness turn runs on the own key (#11548).
+                Payer::GeminiKey
             } else {
                 crate::harness_plugin::payer(harness, &facts)
             },
