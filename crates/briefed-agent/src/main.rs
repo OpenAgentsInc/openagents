@@ -30,11 +30,13 @@
 //!   verdict, unless it says it is blocked or asks a question
 //!   (`stop_gate.rs`); decisions go to the run's `stop_gate.jsonl`.
 //!
-//! Other engines run the same briefing and checks behind the same summary
-//! (#11308): `engine: "codex"` (Codex CLI, `codex.rs`), `engine:
+//! Other engines run the same briefing, checks and hooks behind the same
+//! summary (#11308, #11530): `engine: "codex"` (Codex on the Coder SDK's
+//! app-server backend, the check tools in process, `codex.rs`), `engine:
 //! "opencode"` and `engine: "gemini"` (OpenCode, Gemini on Vertex through
-//! OpenCode, `opencode.rs`). They reach the check tools over MCP from this
-//! binary's `--serve CONFIG.json` mode.
+//! OpenCode, `opencode.rs`, the check tools over MCP from this binary's
+//! `--serve CONFIG.json` mode and the hooks through Coder's OpenCode plugin
+//! and this binary's `coder-hook`).
 //!
 //! Usage: `briefed-agent CONFIG.json`. The config names the worktree, the
 //! system prompt and first message files, the model, the effort, the time
@@ -220,6 +222,14 @@ async fn run() -> Result<(), String> {
         && flag == "--squeeze"
     {
         std::process::exit(squeeze::main(std::slice::from_ref(command)));
+    }
+    // The hook bridge Codex's and OpenCode's hooks run (#11530): asks the
+    // run's host, or with none holds the floors alone.
+    if args.first().map(String::as_str) == Some(coder_sdk::bridge::COMMAND) {
+        std::process::exit(coder_sdk::bridge::main(
+            &args[1..],
+            coder_sdk::floors::held_decision,
+        ));
     }
     let (serve, path) = match args.as_slice() {
         [flag, path] if flag == "--serve" => (true, path.clone()),

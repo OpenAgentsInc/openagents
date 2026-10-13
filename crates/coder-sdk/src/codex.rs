@@ -1134,6 +1134,10 @@ pub fn patch_call(params: &Value, item: &Value) -> Call {
     if let Some(root) = params["grantRoot"].as_str() {
         input["grant_root"] = json!(root);
     }
+    // Every file the patch writes, so the worktree guard holds a patch to
+    // its worktree as it holds an edit (#11530).
+    input[crate::worktree::WRITTEN_PATHS] =
+        json!(changes.iter().map(|(path, _, _)| path).collect::<Vec<_>>());
     Call::tool(Event::PreToolUse, PATCH_TOOL, input)
 }
 

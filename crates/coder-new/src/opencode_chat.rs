@@ -266,20 +266,9 @@ pub fn with_switch(model: &str, message: &str) -> String {
 pub fn config_dir() -> Result<PathBuf, String> {
     let root = crate::home::data_dir().ok_or("Coder's settings folder is unavailable.")?;
     let dir = root.join(CONFIG_DIR);
-    write_plugin(&dir)?;
-    Ok(dir)
-}
-
-fn write_plugin(dir: &Path) -> Result<(), String> {
-    let plugins = dir.join("plugin");
-    std::fs::create_dir_all(&plugins)
+    coder_sdk::opencode::write_plugin(&dir)
         .map_err(|_| "Coder could not set up its OpenCode plugin.".to_owned())?;
-    let path = plugins.join(coder_sdk::opencode::PLUGIN_FILE);
-    if std::fs::read_to_string(&path).ok().as_deref() != Some(coder_sdk::opencode::PLUGIN_SOURCE) {
-        std::fs::write(&path, coder_sdk::opencode::PLUGIN_SOURCE)
-            .map_err(|_| "Coder could not set up its OpenCode plugin.".to_owned())?;
-    }
-    Ok(())
+    Ok(dir)
 }
 
 /// The inline configuration a turn runs with: the model, every tool
@@ -730,7 +719,7 @@ mod tests {
     #[test]
     fn the_plugin_is_written_once_and_kept_current() {
         let dir = tempfile::tempdir().unwrap();
-        write_plugin(dir.path()).unwrap();
+        coder_sdk::opencode::write_plugin(dir.path()).unwrap();
         let path = dir
             .path()
             .join("plugin")
@@ -740,7 +729,7 @@ mod tests {
             coder_sdk::opencode::PLUGIN_SOURCE
         );
         std::fs::write(&path, "changed").unwrap();
-        write_plugin(dir.path()).unwrap();
+        coder_sdk::opencode::write_plugin(dir.path()).unwrap();
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
             coder_sdk::opencode::PLUGIN_SOURCE

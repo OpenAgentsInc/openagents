@@ -1,194 +1,156 @@
-//! The briefed agent on Codex CLI (#11308): the same briefing, checks, and
-//! summary as the Claude session in `main.rs`, run as `codex exec --json`.
+//! The briefed agent on Codex (#11308), on the Coder SDK's Codex backend
+//! (#11530): the same briefing, checks, summary and hooks as the Claude
+//! session in `main.rs`, run on `codex app-server` (`coder_sdk::codex`).
 //!
 //! - **System prompt**: the briefing replaces Codex's instructions
 //!   (`model_instructions_file`), as it replaces Claude Code's.
-//! - **Tools**: Codex has no file tools of its own, only its shell and
-//!   `apply_patch`. The briefing's check tools (`verify`, `finish`, ...)
-//!   reach it as the MCP server `oa`, which is this same binary in
-//!   `--serve CONFIG.json` mode over stdio ([`serve`]). Codex's sandbox
-//!   refuses MCP calls under `approval_policy = never`, so the run bypasses
-//!   its approvals and sandbox, as `coder-delegate` does; the worktree is
-//!   the working directory, and `verify` only reads the worktree.
-//! - **Login**: Codex's own (`CODEX_HOME`); user config and rules do not
-//!   load, and the session is not kept.
-//! - **Misses**: the paths of every `file_change` the briefing did not list.
-//!   Shell reads are not visible as paths, so misses count edits only.
+//! - **Tools**: Codex's shell and `apply_patch`, and the briefing's check
+//!   tools (`verify`, `finish`, ...) as Codex dynamic tools in this process
+//!   (the SDK's one tool server, `oa`).
+//! - **Hooks**: the registry `main.rs` composes for Claude Code (the worktree
+//!   guard over the offered tools, the floors held, the shared-checkout
+//!   fence, squeeze, the Stop gate). The thread runs under Codex's
+//!   `untrusted` approvals, never its bypass flags, and the registry answers
+//!   each command and patch before it runs; a denied one is declined and the
+//!   agent told why in the same turn.
+//! - **Login**: Codex's own (`CODEX_HOME`), never `OPENAI_API_KEY`.
+//! - **Misses**: the paths of every patch the briefing did not list. Shell
+//!   reads are not visible as paths, so misses count edits only.
 //!
-//! Events are kept one JSON line each as Codex printed them; the summary
-//! has the shape `main.rs` writes, plus `"engine": "codex"`.
+//! Events are kept one JSON line each as the backend reported them; the
+//! summary has the shape `main.rs` writes, plus `"engine": "codex"`.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
-use std::process::Stdio;
-use std::sync::atomic::AtomicBool;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use coder_sdk::codex::{Codex, Launch, Open, Output};
 use serde_json::{Value, json};
-use tokio::io::AsyncBufReadExt;
 
 use crate::verify::Tally;
 
-/// What one run of `codex exec --json` observed.
+/// What one Codex session observed.
 #[derive(Default, Debug, PartialEq)]
 pub struct Observed {
     pub tool_calls: BTreeMap<String, u64>,
     pub files_written: BTreeSet<String>,
     pub misses: Vec<Value>,
+    pub denied: Vec<Value>,
     pub check_runs: u64,
-    pub turns: u64,
-    pub usage: BTreeMap<String, u64>,
-    pub last_message: Option<String>,
-    pub thread_id: Option<String>,
-    pub error: Option<String>,
 }
 
 impl Observed {
-    /// Reads one event line, with `file_change` paths made relative to
-    /// `worktree`.
-    pub fn see_in(&mut self, event: &Value, briefed: &BTreeSet<String>, worktree: &Path) {
-        match event["type"].as_str() {
-            Some("thread.started") => {
-                self.thread_id = event["thread_id"].as_str().map(str::to_owned);
-            }
-            Some("turn.completed") => {
-                self.turns += 1;
-                if let Some(usage) = event["usage"].as_object() {
-                    for (key, value) in usage {
-                        if let Some(n) = value.as_u64() {
-                            *self.usage.entry(key.clone()).or_insert(0) += n;
-                        }
+    /// Reads one backend output: a finished tool call is counted (a
+    /// patch's files written, a briefing miss when unlisted), and a call
+    /// the hooks refused is kept with why.
+    pub fn see(&mut self, output: &Output, briefed: &BTreeSet<String>, worktree: &Path) {
+        match output {
+            Output::Tool {
+                name,
+                input,
+                running: false,
+                ..
+            } => {
+                let tool = match name.as_str() {
+                    "Run" => "Bash",
+                    other => other,
+                };
+                *self.tool_calls.entry(tool.to_owned()).or_insert(0) += 1;
+                if tool == "verify" || tool == "finish" {
+                    self.check_runs += 1;
+                }
+                for change in input["changes"].as_array().into_iter().flatten() {
+                    let Some(path) = change["path"].as_str() else {
+                        continue;
+                    };
+                    let path = Path::new(path)
+                        .strip_prefix(worktree)
+                        .unwrap_or(Path::new(path))
+                        .to_string_lossy()
+                        .trim_start_matches("./")
+                        .to_owned();
+                    if !briefed.contains(&path) && !self.files_written.contains(&path) {
+                        self.misses.push(json!({"path": path, "via": "file_change"}));
                     }
+                    self.files_written.insert(path);
                 }
             }
-            Some("turn.failed") => {
-                let message = event
-                    .pointer("/error/message")
-                    .and_then(Value::as_str)
-                    .unwrap_or("the turn failed");
-                self.error = Some(message.to_owned());
-            }
-            Some("error") => {
-                if let Some(message) = event["message"].as_str() {
-                    self.error.get_or_insert_with(|| message.to_owned());
-                }
-            }
-            Some("item.completed") => {
-                let item = &event["item"];
-                match item["type"].as_str() {
-                    Some("agent_message") => {
-                        self.last_message = item["text"].as_str().map(str::to_owned);
-                    }
-                    Some("command_execution") => self.count("Bash"),
-                    Some("file_change") => {
-                        self.count("Edit");
-                        for change in item["changes"].as_array().into_iter().flatten() {
-                            if let Some(path) = change["path"].as_str() {
-                                let path = Path::new(path)
-                                    .strip_prefix(worktree)
-                                    .unwrap_or(Path::new(path))
-                                    .to_string_lossy()
-                                    .trim_start_matches("./")
-                                    .to_owned();
-                                if !briefed.contains(&path) && !self.files_written.contains(&path) {
-                                    self.misses
-                                        .push(json!({"path": path, "via": "file_change"}));
-                                }
-                                self.files_written.insert(path);
-                            }
-                        }
-                    }
-                    Some("mcp_tool_call") => {
-                        let tool = item["tool"].as_str().unwrap_or("mcp");
-                        self.count(tool);
-                        if tool == "verify" || tool == "finish" {
-                            self.check_runs += 1;
-                        }
-                    }
-                    Some("web_search") => self.count("WebSearch"),
-                    _ => {}
+            Output::Gated(applied) => {
+                if let coder_sdk::Permission::Deny { reason }
+                | coder_sdk::Permission::Ask { step: reason } = &applied.permission
+                {
+                    self.denied.push(json!({
+                        "tool": applied.tool,
+                        "input": applied.input,
+                        "why": reason,
+                        "by": applied.decided_by,
+                    }));
                 }
             }
             _ => {}
         }
     }
+}
 
-    fn count(&mut self, tool: &str) {
-        *self.tool_calls.entry(tool.to_owned()).or_insert(0) += 1;
+/// One backend output as an event-log line's `event`.
+fn event_of(output: &Output) -> Value {
+    match output {
+        Output::Thread(thread) => json!({"thread": thread}),
+        Output::Model(model) => json!({"model": model}),
+        Output::Text(text) => json!({"text": text}),
+        Output::Thinking(thinking) => json!({"thinking": thinking}),
+        Output::Tool {
+            name,
+            input,
+            output,
+            running,
+        } => json!({"tool": name, "input": input, "output": output, "running": running}),
+        Output::Gated(applied) => json!({"gated": applied}),
+        Output::Usage(usage) => json!({"usage": usage}),
+        Output::RateLimits(limits) => json!({"rate_limits": limits}),
     }
 }
 
-/// The arguments of `codex exec` for `config`: JSON output, the briefing as
-/// the whole instructions, the `oa` MCP server as this binary serving
-/// `config_path`, no user config, no session, no approval prompts, and the
-/// prompt from stdin. Without `model`, Codex picks its
-/// login's default model. `env_names` are the variables Codex hands the
-/// `oa` server: Codex starts MCP servers with a short default environment,
-/// and `verify`'s checker needs the run's own (the bench's `AB_*`, the
-/// target dir).
-pub fn argv(
+/// The thread's token usage (`tokenUsage.total`) in the shape `codex exec`
+/// reported and the bench reads: `input_tokens`, `cached_input_tokens`,
+/// `output_tokens`.
+fn usage(reported: &Value) -> Value {
+    let total = &reported["total"];
+    json!({
+        "input_tokens": total["inputTokens"],
+        "cached_input_tokens": total["cachedInputTokens"],
+        "output_tokens": total["outputTokens"],
+        "reasoning_output_tokens": total["reasoningOutputTokens"],
+    })
+}
+
+/// How `codex app-server` starts for `config`: the briefing as the whole
+/// instructions, no web search, the squeezer's variables, and Codex's own
+/// login rather than an API key.
+pub fn launch(
     config: &Value,
-    config_path: &str,
-    self_exe: &str,
     worktree: &Path,
-    env_names: &[String],
-) -> Vec<String> {
+    env: impl IntoIterator<Item = (String, String)>,
+) -> Launch {
     let toml = |value: &Value| value.to_string();
-    let mut args: Vec<String> = [
-        "exec",
-        "--json",
-        "--skip-git-repo-check",
-        "--ephemeral",
-        "--ignore-user-config",
-        "--ignore-rules",
-        "-C",
-    ]
-    .map(str::to_owned)
-    .to_vec();
-    args.push(worktree.to_string_lossy().into_owned());
-    if let Some(model) = config["model"].as_str().filter(|model| !model.is_empty()) {
-        args.extend(["-m".to_owned(), model.to_owned()]);
-    }
-    if let Some(effort) = config["effort"].as_str() {
-        args.extend([
-            "-c".to_owned(),
-            format!("model_reasoning_effort={}", toml(&json!(effort))),
-        ]);
-    }
+    let mut launch = Launch::new(config["codex_bin"].as_str().unwrap_or("codex"));
     if let Some(path) = config["system_prompt_path"].as_str() {
-        args.extend([
-            "-c".to_owned(),
-            format!("model_instructions_file={}", toml(&json!(path))),
-        ]);
+        launch
+            .config
+            .push(format!("model_instructions_file={}", toml(&json!(path))));
     }
-    if !crate::strings(&config["custom"]).is_empty() {
-        args.extend([
-            "-c".to_owned(),
-            format!("mcp_servers.oa.command={}", toml(&json!(self_exe))),
-            "-c".to_owned(),
-            format!(
-                "mcp_servers.oa.args={}",
-                toml(&json!(["--serve", config_path]))
-            ),
-            "-c".to_owned(),
-            "mcp_servers.oa.tool_timeout_sec=1800".to_owned(),
-            "-c".to_owned(),
-            format!("mcp_servers.oa.env_vars={}", toml(&json!(env_names))),
-        ]);
-    }
-    args.extend([
-        "-c".to_owned(),
-        "web_search=\"disabled\"".to_owned(),
-        "--dangerously-bypass-approvals-and-sandbox".to_owned(),
-        "-".to_owned(),
-    ]);
-    args
+    launch.config.push("web_search=\"disabled\"".to_owned());
+    launch.env = env.into_iter().collect();
+    launch.env_remove = vec!["OPENAI_API_KEY".to_owned()];
+    launch.cwd = Some(worktree.to_path_buf());
+    launch
 }
 
 /// Runs the briefed agent on Codex and writes the event log and summary.
-pub async fn run(config: &Value, config_path: &str) -> Result<(), String> {
-    let worktree = std::path::PathBuf::from(crate::text(config, "worktree")?);
+pub async fn run(config: &Value, _config_path: &str) -> Result<(), String> {
+    let worktree = PathBuf::from(crate::text(config, "worktree")?);
     let worktree = worktree.canonicalize().unwrap_or(worktree);
     let prompt = std::fs::read_to_string(crate::text(config, "prompt_path")?)
         .map_err(|error| format!("reading the prompt: {error}"))?;
@@ -198,108 +160,95 @@ pub async fn run(config: &Value, config_path: &str) -> Result<(), String> {
         .into_iter()
         .collect();
     let timeout = Duration::from_secs(config["timeout_secs"].as_u64().unwrap_or(1200));
-    let self_exe = std::env::current_exe()
-        .map_err(|error| format!("this program's path: {error}"))?
-        .to_string_lossy()
-        .into_owned();
-    let binary = config["codex_bin"].as_str().unwrap_or("codex");
 
-    let mut child = tokio::process::Command::new(binary)
-        .args(argv(
-            config,
-            config_path,
-            &self_exe,
-            &worktree,
-            &forwarded_env(),
-        ))
-        .current_dir(&worktree)
-        .env_remove("OPENAI_API_KEY")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| format!("Codex didn't start: {error}"))?;
-    if let Some(mut stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        stdin
-            .write_all(prompt.as_bytes())
-            .await
-            .map_err(|error| format!("writing the prompt: {error}"))?;
-        drop(stdin);
+    let custom = crate::strings(&config["custom"]);
+    let finished = Arc::new(AtomicBool::new(false));
+    let tally: Arc<Mutex<Tally>> = Arc::default();
+    let tools =
+        crate::tools::tool_server(&worktree, config, &custom, finished.clone(), tally.clone());
+    let mut offered = vec![
+        coder_sdk::codex::COMMAND_TOOL.to_owned(),
+        coder_sdk::codex::PATCH_TOOL.to_owned(),
+    ];
+    if let Some(tools) = &tools {
+        offered.push(format!("mcp__{}", tools.name));
     }
-    let stdout = child.stdout.take().ok_or("Codex has no stdout")?;
-    let stderr = child.stderr.take().ok_or("Codex has no stderr")?;
-    let stderr_task = tokio::spawn(async move {
-        let mut text = String::new();
-        let mut lines = tokio::io::BufReader::new(stderr).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            text.push_str(&line);
-            text.push('\n');
-        }
-        text
-    });
+    let last_text: crate::Shared<String> = Arc::default();
+    let composed = crate::compose(&crate::Setup {
+        config,
+        worktree: &worktree,
+        tools: &offered,
+        allowed: &offered,
+        summary_path: &summary_path,
+        finished: &finished,
+        last_text: &last_text,
+        timeout,
+    })?;
+    let hooks = coder_sdk::codex::hooks(composed.registry, coder_sdk::Budget::default())
+        .map_err(|refused| format!("Codex can't run these hooks: {refused:?}"))?;
 
     let started = Instant::now();
     let mut observed = Observed::default();
     let mut events = String::new();
     let mut timed_out = false;
-    let mut lines = tokio::io::BufReader::new(stdout).lines();
-    loop {
-        let remaining = timeout.saturating_sub(started.elapsed());
-        match tokio::time::timeout(remaining, lines.next_line()).await {
-            Err(_) => {
-                timed_out = true;
-                let _ = child.kill().await;
-                break;
-            }
-            Ok(Ok(None)) | Ok(Err(_)) => break,
-            Ok(Ok(Some(line))) => {
-                let Ok(event) = serde_json::from_str::<Value>(&line) else {
-                    continue;
-                };
-                observed.see_in(&event, &briefed, &worktree);
-                events.push_str(
-                    &json!({"type": "codex", "t_ms": started.elapsed().as_millis(), "event": event})
-                        .to_string(),
-                );
-                events.push('\n');
-            }
+    let mut ended = None;
+    let mut error = None;
+    let open = Open {
+        cwd: worktree.clone(),
+        model: config["model"]
+            .as_str()
+            .filter(|model| !model.is_empty())
+            .map(str::to_owned),
+        effort: config["effort"].as_str().map(str::to_owned),
+        developer_instructions: None,
+        resume: None,
+        tools,
+    };
+    let mut emit = |output: Output| {
+        if let Output::Text(text) = &output {
+            crate::lock(&last_text).push_str(text);
         }
+        if let Output::Tool { running: true, .. } = &output {
+            crate::lock(&last_text).clear();
+        }
+        observed.see(&output, &briefed, &worktree);
+        events.push_str(
+            &json!({"type": "codex", "t_ms": started.elapsed().as_millis(), "event": event_of(&output)})
+                .to_string(),
+        );
+        events.push('\n');
+    };
+    let session = async {
+        let mut codex = Codex::spawn(&launch(config, &worktree, composed.env), hooks).await?;
+        codex.open(&open, &mut emit).await?;
+        let turn = codex.turn(&prompt, None, None, &mut emit).await;
+        codex.close().await;
+        turn
+    };
+    match tokio::time::timeout(timeout, session).await {
+        Err(_) => timed_out = true,
+        Ok(Ok(done)) => ended = Some(done),
+        Ok(Err(failure)) => error = Some(failure),
     }
-    let status = child.wait().await.ok();
-    let stderr_text = stderr_task.await.unwrap_or_default();
     let wall_ms = started.elapsed().as_millis();
-    let mut error = observed.error.clone();
-    if error.is_none() && status.is_some_and(|status| !status.success()) && !timed_out {
-        let tail: String = stderr_text
-            .chars()
-            .rev()
-            .take(600)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect();
-        error = Some(format!("Codex exited {status:?}: {}", tail.trim()));
+    if let Some(done) = &ended
+        && error.is_none()
+    {
+        error.clone_from(&done.error);
     }
 
     std::fs::write(&events_path, events).map_err(|error| format!("{events_path}: {error}"))?;
-    let finished = config["finish_path"]
-        .as_str()
-        .is_some_and(|path| Path::new(path).exists());
-    let tally = config
-        .pointer("/verify/log")
-        .and_then(Value::as_str)
-        .map(tally_from_log)
-        .unwrap_or_default();
     let summary = json!({
         "engine": "codex",
         "model": config["model"].as_str().filter(|model| !model.is_empty()),
-        "result": {
-            "thread_id": observed.thread_id,
-            "num_turns": observed.turns,
-            "usage": observed.usage,
-            "result": observed.last_message,
-        },
+        "result": ended.as_ref().map(|done| json!({
+            "thread_id": done.thread,
+            "num_turns": 1 + done.continued,
+            "status": done.status,
+            "model": done.model,
+            "usage": usage(&done.usage),
+            "result": done.text,
+        })),
         "error": error,
         "timed_out": timed_out,
         "wall_ms": wall_ms,
@@ -307,10 +256,11 @@ pub async fn run(config: &Value, config_path: &str) -> Result<(), String> {
         "files_read": [],
         "files_written": observed.files_written,
         "misses": observed.misses,
-        "denied": [],
+        "denied": observed.denied,
         "check_runs": observed.check_runs,
-        "verify": tally.to_json(),
-        "finished": finished,
+        "verify": crate::lock(&tally).to_json(),
+        "finished": finished.load(Ordering::SeqCst),
+        "stop_gate": composed.gate.map(|gate| gate.tally.lock().map(|t| t.clone()).unwrap_or_default()),
     });
     std::fs::write(
         &summary_path,
@@ -318,17 +268,6 @@ pub async fn run(config: &Value, config_path: &str) -> Result<(), String> {
     )
     .map_err(|error| format!("{summary_path}: {error}"))?;
     Ok(())
-}
-
-/// The names of this process's environment variables that the `oa` server
-/// gets (all but Codex's own credential).
-fn forwarded_env() -> Vec<String> {
-    let mut names: Vec<String> = std::env::vars_os()
-        .filter_map(|(name, _)| name.into_string().ok())
-        .filter(|name| name != "OPENAI_API_KEY")
-        .collect();
-    names.sort();
-    names
 }
 
 /// The `verify` tally from the log the serving process appended to, one
@@ -370,89 +309,94 @@ pub async fn serve(config: &Value) -> Result<(), String> {
 mod tests {
     use super::*;
 
-    fn briefed() -> BTreeSet<String> {
-        ["crates/a/src/lib.rs".to_owned()].into_iter().collect()
-    }
+    /// A stand-in `codex app-server`: answers the handshake, the thread and
+    /// the turn, asks to run a merge, a `git stash`, a patch outside the
+    /// worktree and `cargo test`, keeping each answer, then ends the turn.
+    const STAND_IN: &str = r#"#!/bin/sh
+[ "$1" = app-server ] || exit 2
+printf '%s\n' "$*" > "$REC/args"
+read l; echo '{"jsonrpc":"2.0","id":1,"result":{"userAgent":"codex_cli_rs/0.162.1 (stand-in)"}}'
+read l
+read l; printf '%s\n' "$l" > "$REC/thread"; echo '{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"thr-1"},"model":"stand-in"}}'
+read l; echo '{"jsonrpc":"2.0","id":3,"result":{"turn":{"id":"turn-1"}}}'
+ask() {
+  echo "$1"
+  while read l; do
+    case "$l" in *'"result":{"decision"'*) printf '%s\n' "$l" >> "$REC/decisions"; return;; esac
+  done
+}
+command() {
+  ask '{"jsonrpc":"2.0","id":'"$1"',"method":"item/commandExecution/requestApproval","params":{"threadId":"thr-1","turnId":"turn-1","itemId":"c'"$1"'","command":"/bin/zsh -lc '"'$2'"'","cwd":"'"$PWD"'"}}'
+}
+command 100 'gh pr merge 5 --squash'
+command 101 'git stash'
+echo '{"jsonrpc":"2.0","method":"item/started","params":{"item":{"type":"fileChange","id":"p1","status":"inProgress","changes":[{"path":"/etc/briefed-outside","kind":{"type":"add"},"diff":"x"}]}}}'
+ask '{"jsonrpc":"2.0","id":102,"method":"item/fileChange/requestApproval","params":{"threadId":"thr-1","turnId":"turn-1","itemId":"p1"}}'
+command 103 'cargo test'
+echo '{"jsonrpc":"2.0","method":"item/completed","params":{"item":{"type":"agentMessage","id":"m1","text":"Done.","phase":"final_answer"}}}'
+echo '{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"thr-1","turn":{"id":"turn-1","status":"completed","error":null}}}'
+cat > /dev/null
+"#;
 
-    #[test]
-    fn argv_replaces_instructions_and_serves_checks() {
-        let config = json!({
-            "model": "gpt-x", "effort": "high", "system_prompt_path": "/b/system.md",
-            "custom": ["verify", "finish"]
-        });
-        let args = argv(
-            &config,
-            "/b/agent.json",
-            "/bin/briefed-agent",
-            Path::new("/w"),
-            &["AB_ROOT".to_owned(), "PATH".to_owned()],
-        );
-        assert_eq!(args[0], "exec");
-        assert!(args.contains(&"--json".to_owned()));
-        assert!(args.contains(&"model_instructions_file=\"/b/system.md\"".to_owned()));
-        assert!(args.contains(&"model_reasoning_effort=\"high\"".to_owned()));
-        assert!(args.contains(&"mcp_servers.oa.command=\"/bin/briefed-agent\"".to_owned()));
-        assert!(args.contains(&"mcp_servers.oa.args=[\"--serve\",\"/b/agent.json\"]".to_owned()));
-        assert!(args.contains(&"mcp_servers.oa.env_vars=[\"AB_ROOT\",\"PATH\"]".to_owned()));
-        assert_eq!(
-            args[args.len() - 2..],
-            ["--dangerously-bypass-approvals-and-sandbox", "-"]
-        );
-    }
-
-    #[test]
-    fn argv_without_check_tools_has_no_server() {
-        let args = argv(&json!({}), "/b/agent.json", "/bin/x", Path::new("/w"), &[]);
-        assert!(!args.iter().any(|a| a.starts_with("mcp_servers")));
-        assert!(!args.contains(&"-m".to_owned()));
-    }
-
-    #[test]
-    fn events_become_tool_calls_misses_usage_and_errors() {
-        let mut seen = Observed::default();
-        let lines = [
-            r#"{"type":"thread.started","thread_id":"t1"}"#,
-            r#"{"type":"item.completed","item":{"id":"1","type":"command_execution","command":"cargo test","exit_code":0}}"#,
-            r#"{"type":"item.completed","item":{"id":"2","type":"file_change","changes":[{"path":"/w/crates/a/src/lib.rs","kind":"update"},{"path":"/w/crates/a/src/new.rs","kind":"add"}]}}"#,
-            r#"{"type":"item.completed","item":{"id":"3","type":"mcp_tool_call","server":"oa","tool":"verify","status":"completed"}}"#,
-            r#"{"type":"item.completed","item":{"id":"4","type":"agent_message","text":"done"}}"#,
-            r#"{"type":"turn.completed","usage":{"input_tokens":10,"cached_input_tokens":4,"output_tokens":3}}"#,
-            r#"{"type":"turn.failed","error":{"message":"overloaded"}}"#,
-        ];
-        for line in lines {
-            seen.see_in(
-                &serde_json::from_str(line).unwrap(),
-                &briefed(),
-                Path::new("/w"),
-            );
-        }
-        assert_eq!(seen.tool_calls["Bash"], 1);
-        assert_eq!(seen.tool_calls["Edit"], 1);
-        assert_eq!(seen.tool_calls["verify"], 1);
-        assert_eq!(seen.check_runs, 1);
-        assert_eq!(seen.files_written.len(), 2);
-        assert_eq!(
-            seen.misses,
-            vec![json!({"path": "crates/a/src/new.rs", "via": "file_change"})]
-        );
-        assert_eq!(seen.usage["input_tokens"], 10);
-        assert_eq!(seen.turns, 1);
-        assert_eq!(seen.last_message.as_deref(), Some("done"));
-        assert_eq!(seen.error.as_deref(), Some("overloaded"));
-        assert_eq!(seen.thread_id.as_deref(), Some("t1"));
-    }
-
-    #[test]
-    fn tally_reads_the_verify_log() {
+    /// The briefed agent's Codex engine, started through `run` on a
+    /// stand-in app-server, runs the composition the Claude engine runs:
+    /// the floors hold a merge, the shared-checkout fence refuses a
+    /// `git stash`, the worktree guard refuses a patch outside the
+    /// worktree, and `cargo test` runs; the thread is under Codex's
+    /// approvals, never its bypass flags.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_codex_session_meets_the_floors_the_fence_and_the_worktree_guard() {
         let dir = tempfile::tempdir().unwrap();
-        let log = dir.path().join("verify.jsonl");
-        std::fs::write(
-            &log,
-            "{\"status\":\"pass\"}\n{\"verdict\":{\"status\":\"test_failure\"}}\nnot json\n",
-        )
-        .unwrap();
-        let tally = tally_from_log(log.to_str().unwrap());
-        let json = tally.to_json();
-        assert_eq!(json["calls"].as_u64(), Some(2));
+        let root = dir.path().canonicalize().unwrap();
+        let (worktree, rec) = (root.join("tree"), root.join("rec"));
+        std::fs::create_dir_all(&worktree).unwrap();
+        std::fs::create_dir_all(&rec).unwrap();
+        let program = root.join("codex");
+        std::fs::write(&program, STAND_IN).unwrap();
+        let mut permissions = std::fs::metadata(&program).unwrap().permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+        std::fs::set_permissions(&program, permissions).unwrap();
+        std::fs::write(root.join("prompt.md"), "Fix it.").unwrap();
+        std::fs::write(root.join("system.md"), "The briefing.").unwrap();
+        // The stand-in reads where to record from its environment.
+        // SAFETY: this test alone reads REC.
+        unsafe { std::env::set_var("REC", &rec) };
+        let at = |name: &str| root.join(name).display().to_string();
+        let config = json!({
+            "engine": "codex", "codex_bin": at("codex"), "worktree": worktree,
+            "prompt_path": at("prompt.md"), "system_prompt_path": at("system.md"),
+            "events_path": at("events.jsonl"), "summary_path": at("summary.json"),
+            "timeout_secs": 30,
+        });
+        run(&config, "agent.json").await.unwrap();
+
+        let decisions = std::fs::read_to_string(rec.join("decisions")).unwrap();
+        let decisions: Vec<Value> = decisions
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap()["result"]["decision"].clone())
+            .collect();
+        assert_eq!(decisions, ["decline", "decline", "decline", "accept"]);
+        let summary: Value =
+            serde_json::from_str(&std::fs::read_to_string(root.join("summary.json")).unwrap())
+                .unwrap();
+        let why: Vec<&str> = summary["denied"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|denied| denied["why"].as_str().unwrap())
+            .collect();
+        assert_eq!(why.len(), 3, "{summary}");
+        assert!(why[0].starts_with("Held for the person"), "{why:?}");
+        assert!(why[1].contains("git stash"), "{why:?}");
+        assert_eq!(why[2], coder_sdk::worktree::OUTSIDE);
+        assert_eq!(summary["result"]["result"], "Done.");
+        assert_eq!(summary["error"], Value::Null);
+        let args = std::fs::read_to_string(rec.join("args")).unwrap();
+        assert!(args.contains("model_instructions_file"), "{args}");
+        assert!(!args.contains("bypass"), "{args}");
+        let thread: Value =
+            serde_json::from_str(&std::fs::read_to_string(rec.join("thread")).unwrap()).unwrap();
+        assert_eq!(thread["params"]["approvalPolicy"], "untrusted");
     }
 }

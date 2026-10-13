@@ -15,6 +15,10 @@
 //!   tools are off; LSP, formatters, and snapshots are off.
 //! - **Boundary**: OpenCode's `external_directory` permission is `deny`, so
 //!   a file tool outside the worktree fails; `bash` is denied unless named.
+//! - **Hooks** (#11530): the registry `main.rs` composes for Claude Code
+//!   (the worktree guard, the floors held, the shared-checkout fence,
+//!   squeeze) on a bridge host, which Coder's OpenCode plugin asks before
+//!   every tool through this program's `coder-hook` ([`Hooked`]).
 //! - **Login**: the provider's credential from the environment
 //!   (`OPENROUTER_API_KEY`, or Google's application default credentials for
 //!   `google-vertex/...`, where `GOOGLE_CLOUD_PROJECT` defaults to
@@ -355,6 +359,90 @@ fn tracked_files(worktree: &Path) -> BTreeSet<String> {
         .unwrap_or_default()
 }
 
+/// An OpenCode run's hooks on the Coder SDK (#11530): the registry
+/// `main.rs` composes for Claude Code (the worktree guard over the offered
+/// tools, the floors held, the shared-checkout fence, squeeze), answered by
+/// a bridge host for as long as the run lasts. OpenCode asks it through
+/// Coder's plugin (`coder_sdk::opencode`), which runs this program's
+/// `coder-hook` before every tool; a refused call throws and never runs.
+pub struct Hooked {
+    _host: coder_sdk::bridge::Host,
+    /// The variables OpenCode runs with: its plugin folder, the bridge
+    /// program and socket, and the squeezer's.
+    pub env: Vec<(String, String)>,
+}
+
+impl Hooked {
+    /// Composes the registry and starts its host.
+    ///
+    /// # Errors
+    /// A hook OpenCode can't run (the Stop gate: OpenCode's stop is only
+    /// seen afterwards), or the host or the plugin can't be set up.
+    pub fn start(
+        config: &Value,
+        worktree: &Path,
+        summary_path: &str,
+        timeout: Duration,
+        scratch: &Path,
+        self_exe: &str,
+    ) -> Result<Self, String> {
+        let named = crate::strings(&config["tools"]);
+        let mut offered: Vec<String> = if named.is_empty() {
+            crate::DEFAULT_TOOLS.iter().map(|&t| t.to_owned()).collect()
+        } else {
+            named
+        };
+        offered.extend(
+            crate::strings(&config["custom"])
+                .iter()
+                .map(|tool| format!("oa_{tool}")),
+        );
+        let composed = crate::compose(&crate::Setup {
+            config,
+            worktree,
+            tools: &offered,
+            allowed: &offered,
+            summary_path,
+            finished: &std::sync::Arc::default(),
+            last_text: &std::sync::Arc::default(),
+            timeout,
+        })?;
+        coder_sdk::check_backend(&composed.registry, coder_sdk::HookBackend::OpenCode).map_err(
+            |refused| {
+                refused
+                    .into_iter()
+                    .map(|refused| refused.message)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            },
+        )?;
+        let runner = coder_sdk::Runner::new(composed.registry, coder_sdk::Budget::default());
+        let host = coder_sdk::bridge::Host::start(std::sync::Arc::new(std::sync::Mutex::new(
+            runner,
+        )))
+        .map_err(|error| format!("the hook host: {error}"))?;
+        let plugins = scratch.join("coder");
+        coder_sdk::opencode::write_plugin(&plugins)
+            .map_err(|error| format!("writing Coder's OpenCode plugin: {error}"))?;
+        let mut env = vec![
+            (
+                "OPENCODE_CONFIG_DIR".to_owned(),
+                plugins.to_string_lossy().into_owned(),
+            ),
+            (
+                coder_sdk::opencode::PROGRAM_VAR.to_owned(),
+                self_exe.to_owned(),
+            ),
+            (
+                coder_sdk::bridge::SOCKET_VAR.to_owned(),
+                host.path().to_string_lossy().into_owned(),
+            ),
+        ];
+        env.extend(composed.env);
+        Ok(Hooked { _host: host, env })
+    }
+}
+
 /// The arguments of `opencode run` for `model`: JSON events, the `briefed`
 /// agent, the worktree, and the effort as OpenCode's model variant. The
 /// prompt goes on stdin.
@@ -406,11 +494,13 @@ pub async fn run(config: &Value, config_path: &str, engine: &str) -> Result<(), 
     .map_err(|error| format!("writing OpenCode's config: {error}"))?;
     let env = env_for(&model, scratch.path(), &|name| std::env::var(name).ok());
     let tracked = tracked_files(&worktree);
+    let hooks = Hooked::start(config, &worktree, &summary_path, timeout, scratch.path(), &self_exe)?;
 
     let mut child = tokio::process::Command::new(binary)
         .args(argv(config, &model, &worktree))
         .current_dir(&worktree)
         .envs(env)
+        .envs(hooks.env.iter().map(|(name, value)| (name.as_str(), value.as_str())))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

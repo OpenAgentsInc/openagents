@@ -96,6 +96,22 @@ export const CoderGuard = async ({ directory }) => ({
 });
 "#;
 
+/// Writes Coder's plugin ([`PLUGIN_SOURCE`]) into the OpenCode
+/// configuration directory `dir` (`dir/plugin/`), the one named to OpenCode
+/// by `OPENCODE_CONFIG_DIR`; an unchanged plugin is left as it is.
+///
+/// # Errors
+/// The directory or the file can't be written.
+pub fn write_plugin(dir: &std::path::Path) -> std::io::Result<()> {
+    let plugins = dir.join("plugin");
+    std::fs::create_dir_all(&plugins)?;
+    let path = plugins.join(PLUGIN_FILE);
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(PLUGIN_SOURCE) {
+        std::fs::write(&path, PLUGIN_SOURCE)?;
+    }
+    Ok(())
+}
+
 /// OpenCode's tool name as Claude Code names the same tool, so the floors,
 /// the worktree fence and command hooks written for Claude Code read it.
 /// Coder's own MCP tools (`coder_agent`) become `mcp__coder__agent`.
