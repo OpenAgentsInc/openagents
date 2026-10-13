@@ -815,6 +815,13 @@ pub(crate) async fn read_turn(
     let mut first_text_ms = None;
     let mut reported: Option<String> = None;
     let mut stream = crate::claude_stream::Stream::default();
+    // The checkout's changed files, so a Bash call that edits a file shows
+    // its diff (`crate::shell_changes`).
+    let mut changed: Option<crate::shell_changes::Snapshot> = None;
+    let mut snapshot = Some(tokio::task::spawn_blocking({
+        let cwd = cwd.to_path_buf();
+        move || crate::shell_changes::Snapshot::take(&cwd)
+    }));
     loop {
         if cancel.load(Ordering::Relaxed) {
             stop(query, keep).await;
@@ -1006,6 +1013,11 @@ pub(crate) async fn read_turn(
                         structured,
                         failed,
                     );
+                    if let Some(task) = snapshot.take() {
+                        changed = task.await.ok().flatten();
+                    }
+                    let edited = matches!(call.coder_name.as_str(), "Edit" | "Write");
+                    let shell = call.coder_name == "Bash";
                     emit(stream.under(
                         call.parent.as_deref(),
                         RuntimeEvent::Tool {
@@ -1015,6 +1027,23 @@ pub(crate) async fn read_turn(
                             running: false,
                         },
                     ));
+                    // An Edit or Write drew its own diff; a Bash call's
+                    // file changes show as diffs of their own.
+                    if edited
+                        && let Some(before) = changed.as_mut()
+                        && let Some(path) = crate::shell_changes::edited_path(&call.sdk_input)
+                    {
+                        before.refresh(&path);
+                    }
+                    if shell && let Some(before) = changed.take() {
+                        let (changes, now) = tokio::task::spawn_blocking(move || before.changes())
+                            .await
+                            .unwrap_or_default();
+                        changed = now;
+                        for change in changes {
+                            emit(stream.under(call.parent.as_deref(), change.event()));
+                        }
+                    }
                 }
             }
             Ok(SdkMessage::Result(result)) => {

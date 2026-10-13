@@ -80,6 +80,7 @@ pub mod routing_record;
 mod schedule;
 mod schedule_sync;
 pub mod sessions;
+pub mod shell_changes;
 mod shells;
 pub mod slash;
 pub mod snapshot;

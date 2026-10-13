@@ -745,6 +745,7 @@ fn approve(action: &str) -> Result<(), String> {
 }
 
 /// A unified diff of a change, hunks only, with its line counts.
+#[derive(Debug)]
 pub struct Diff {
     pub text: String,
     pub added: usize,
