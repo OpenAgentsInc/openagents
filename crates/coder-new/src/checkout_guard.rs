@@ -90,6 +90,12 @@ impl Boundary {
     /// it followed by such a command counts too.
     #[must_use]
     pub fn run_refusal(&self, command: &str, cwd: &Path) -> Option<String> {
+        // Paths held in shell variables (`F=/repo/x; echo >> "$F"`) are read
+        // through; a write whose target still can't be worked out before
+        // the command runs (`$(...)`, a loop variable) is refused rather
+        // than guessed at (#11522).
+        let expanded = expand_variables(command);
+        let command = expanded.as_str();
         let mut here = cwd.to_path_buf();
         for words in segments(command) {
             if let Some(target) = words
@@ -97,9 +103,22 @@ impl Boundary {
                 .position(|word| word == "cd")
                 .and_then(|index| words.get(index + 1))
             {
-                here = here.join(target);
+                // A directory that can't be worked out counts as the
+                // shared checkout.
+                here = if unresolved(target) {
+                    self.shared.clone()
+                } else {
+                    here.join(target)
+                };
             }
             if let Some(path) = self.written_path(&words, &here) {
+                if unresolved(&path) {
+                    return Some(format!(
+                        "Refused: this command writes to {path}, and Coder can't tell where that is before it runs. The shared checkout ({}) is read-only for this session, so write to a plain path in your own worktree ({}) instead.",
+                        self.shared.display(),
+                        self.worktree.display()
+                    ));
+                }
                 return Some(format!(
                     "Refused: this command writes to {path}, which is in the shared checkout that other sessions and the user may be editing. Run it in your own worktree ({}) instead.",
                     self.worktree.display()
@@ -145,12 +164,13 @@ impl Boundary {
                 .strip_prefix(">>")
                 .or_else(|| trimmed.strip_prefix('>'))
             {
-                (!rest.is_empty()).then_some(rest)
+                // `2>&1` duplicates a descriptor; it names no file.
+                (!rest.is_empty() && !rest.starts_with('&')).then_some(rest)
             } else {
                 None
             };
             if let Some(target) = target
-                && self.protects(here, target)
+                && (unresolved(target) || self.protects(here, target))
             {
                 return Some(target.to_owned());
             }
@@ -180,7 +200,7 @@ impl Boundary {
                     .iter()
                     .find_map(|word| word.strip_prefix("of="))
                     .map(|path| path.to_owned())
-                    .filter(|path| self.protects(here, path));
+                    .filter(|path| unresolved(path) || self.protects(here, path));
             }
             "tar"
                 if words.iter().any(|word| {
@@ -213,7 +233,15 @@ impl Boundary {
             }
             "rustfmt" => operands.first().map(|path| (*path).to_owned()),
             "cargo" => {
-                let under = cargo_dir(words).unwrap_or_else(|| here.to_path_buf());
+                let under = cargo_dir(words)
+                    .map(|dir| {
+                        if unresolved(&dir.to_string_lossy()) {
+                            self.shared.clone()
+                        } else {
+                            here.join(dir)
+                        }
+                    })
+                    .unwrap_or_else(|| here.to_path_buf());
                 let writes = matches!(
                     operands.first(),
                     Some(&"fmt" | &"fix" | &"clean" | &"add" | &"remove")
@@ -223,7 +251,16 @@ impl Boundary {
             }
             _ => {
                 let (subcommand, rest, dir) = git_subcommand(words)?;
-                let under = dir.map_or_else(|| here.to_path_buf(), |dir| here.join(dir));
+                let under = dir.map_or_else(
+                    || here.to_path_buf(),
+                    |dir| {
+                        if unresolved(dir) {
+                            self.shared.clone()
+                        } else {
+                            here.join(dir)
+                        }
+                    },
+                );
                 let writes = match subcommand {
                     "add" | "am" | "apply" | "checkout" | "cherry-pick" | "clean" | "commit"
                     | "merge" | "mv" | "pull" | "push" | "rebase" | "reset" | "restore"
@@ -283,8 +320,115 @@ impl Boundary {
                     .then(|| format!("{} (git {subcommand})", under.display()));
             }
         };
-        candidate.filter(|path| self.protects(here, path))
+        candidate.filter(|path| unresolved(path) || self.protects(here, path))
     }
+}
+
+/// Whether a word still holds something the shell fills in when it runs
+/// (`$NAME`, `${...}`, `$(...)`, backticks), so where it points can't be
+/// told beforehand.
+fn unresolved(word: &str) -> bool {
+    word.contains('$') || word.contains('`')
+}
+
+/// `command` with `$NAME` and `${NAME}` filled in where the command itself
+/// sets `NAME` once to a plain value (`F=/repo/x`, `export F="/repo/x"`),
+/// or, for `HOME` and `TMPDIR`, from this process. Anything else is left as
+/// written, so [`unresolved`] still sees it.
+fn expand_variables(command: &str) -> String {
+    let mut values: std::collections::HashMap<String, Option<String>> =
+        std::collections::HashMap::new();
+    let bytes = command.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        let starts_word = index == 0
+            || matches!(
+                bytes[index - 1],
+                b' ' | b'\t' | b'\n' | b';' | b'&' | b'|' | b'(' | b'{'
+            );
+        let name_len = command[index..]
+            .bytes()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == b'_')
+            .count();
+        if starts_word
+            && name_len > 0
+            && !bytes[index].is_ascii_digit()
+            && bytes.get(index + name_len) == Some(&b'=')
+        {
+            let name = command[index..index + name_len].to_owned();
+            let (value, end) = assigned_value(&command[index + name_len + 1..]);
+            let value = value.filter(|value| !unresolved(value));
+            let entry = values.entry(name).or_insert_with(|| value.clone());
+            if *entry != value {
+                // Set twice to different things: which one a later use sees
+                // depends on order, so it stays unknown.
+                *entry = None;
+            }
+            index += name_len + 1 + end;
+            continue;
+        }
+        index += command[index..].chars().next().map_or(1, char::len_utf8);
+    }
+    let lookup = |name: &str| -> Option<String> {
+        match values.get(name) {
+            Some(value) => value.clone(),
+            None if matches!(name, "HOME" | "TMPDIR") => std::env::var(name).ok(),
+            None => None,
+        }
+    };
+    let mut out = String::with_capacity(command.len());
+    let mut rest = command;
+    while let Some(at) = rest.find('$') {
+        out.push_str(&rest[..at]);
+        let after = &rest[at + 1..];
+        let (name, used) = if let Some(braced) = after.strip_prefix('{') {
+            match braced.find('}') {
+                Some(close)
+                    if braced[..close]
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '_') =>
+                {
+                    (&braced[..close], close + 2)
+                }
+                _ => ("", 0),
+            }
+        } else {
+            let len = after
+                .bytes()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == b'_')
+                .count();
+            (&after[..len], len)
+        };
+        match (!name.is_empty()).then(|| lookup(name)).flatten() {
+            Some(value) => out.push_str(&value),
+            None => {
+                out.push('$');
+                out.push_str(&after[..used]);
+            }
+        }
+        rest = &after[used..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The value an assignment's text starts with, unquoted, and how many
+/// bytes it took; `None` when it is built from more than plain text.
+fn assigned_value(text: &str) -> (Option<String>, usize) {
+    let mut value = String::new();
+    let mut chars = text.char_indices().peekable();
+    let mut quote = None;
+    while let Some(&(at, c)) = chars.peek() {
+        match (quote, c) {
+            (None, '\'' | '"') => quote = Some(c),
+            (Some(open), c) if c == open => quote = None,
+            (None, ' ' | '\t' | '\n' | ';' | '&' | '|' | ')') => return (Some(value), at),
+            (None, '(') => return (None, at),
+            _ => value.push(c),
+        }
+        chars.next();
+    }
+    (Some(value), text.len())
 }
 
 /// Why a harness's tool call is refused under the session's `boundary`,
@@ -436,6 +580,7 @@ fn interpreter(program: &str) -> bool {
                 | "bun"
                 | "osascript"
                 | "lua"
+                | "eval"
         )
 }
 
@@ -496,6 +641,13 @@ fn segments(command: &str) -> impl Iterator<Item = Vec<String>> + '_ {
         .map(|part| {
             part.split_whitespace()
                 .map(|word| word.trim_matches(|c| c == '\'' || c == '"').to_owned())
+                // A shell keyword (`do sed -i ...`) leads into the command.
+                .skip_while(|word| {
+                    matches!(
+                        word.as_str(),
+                        "do" | "then" | "else" | "elif" | "if" | "while" | "until" | "!"
+                    )
+                })
                 .collect::<Vec<_>>()
         })
         .filter(|words| !words.is_empty())
@@ -619,6 +771,50 @@ mod tests {
         ] {
             assert!(b.run_refusal(command, wt).is_none(), "{command}");
         }
+    }
+
+    #[test]
+    fn writes_through_shell_variables_are_read_through_or_refused() {
+        let b = boundary();
+        let wt = Path::new("/repo/.coder/worktrees/chat-abc");
+        // #11522: the path in a variable, or one that can't be worked out
+        // before the command runs.
+        for command in [
+            "F=/repo/calc/__init__.py; echo '# touched' >> \"$F\"; git -C /repo status",
+            "F=/repo/x; echo >> \"$F\"",
+            "F=/repo/x && echo >> ${F}",
+            "echo >> ${F}",
+            "echo > \"$(dirname /repo/calc/x.py)/x\"",
+            "echo > `pwd`/x",
+            "export D=\"/repo\"; cp a.rs $D/a.rs",
+            "D=/repo; git -C \"$D\" commit -am x",
+            "cd \"$SOMEWHERE\" && make",
+            "for f in *.rs; do sed -i 's/a/b/' \"$f\"; done",
+            "F=/repo/x; python3 -c \"open('$F','w').write('x')\"",
+            "tee \"$OUT\" < x",
+        ] {
+            assert!(b.run_refusal(command, wt).is_some(), "{command}");
+        }
+        for command in [
+            "F=/repo/.coder/worktrees/chat-abc/x; echo >> \"$F\"",
+            "F=src/x.rs; echo >> \"$F\" && cat \"$F\"",
+            "cargo test 2>&1 | tail -40",
+            "cd /repo && git status 2>&1",
+            "echo \"$HOME\" && cat \"$F\"",
+            "cargo test > \"$TMPDIR/out.txt\"",
+        ] {
+            assert!(b.run_refusal(command, wt).is_none(), "{command}");
+        }
+        // Through a shell wrapper and a harness's Bash too.
+        assert!(
+            super::tool_refusal(
+                Some(&b),
+                "Bash",
+                &serde_json::json!({"command": "bash -lc 'F=/repo/x; echo >> \"$F\"'"}),
+                wt
+            )
+            .is_some()
+        );
     }
 
     #[test]
