@@ -790,6 +790,7 @@ impl App {
         crate::Draft {
             cursor: text.len(),
             text,
+            pastes: Vec::new(),
         }
     }
 
