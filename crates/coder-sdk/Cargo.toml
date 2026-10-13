@@ -1,0 +1,18 @@
+[package]
+name = "coder-sdk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Coder's harness-independent hook layer: normalized events, hook outcomes and how they combine, support tiers per backend, the hook set digest, and a scripted backend that replays a recorded session (docs/coder/design/coder-sdk.md)."
+
+[dependencies]
+# The `Session` capability matrix and its hook tiers.
+coder-delegate = { path = "../coder-delegate" }
+# The adapter digest the hook set joins (`route_contract::recipe`).
+route-contract = { path = "../route-contract" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints]
+workspace = true
