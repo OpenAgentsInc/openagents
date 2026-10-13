@@ -67,7 +67,7 @@ pub const SUMMARY: &str = "Summary";
 /// Which System One door answers the decision questions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Decider {
-    /// Our gateway's H100 first ([`Decider::Gateway`]), then Jev with this
+    /// Our gateway's hosted Clef first ([`Decider::Gateway`]), then Jev with this
     /// computer's key, then our decision API (`openagents.com/api/v1/systemone`, Jev under the house
     /// key first, then connected Pylons; #11225), keyless.
     Auto,
@@ -76,7 +76,7 @@ pub enum Decider {
     /// Clef-Flash on this computer's Ollama for every question.
     Clef,
     /// Our gateway's hosted Clef alone (`openagents.com/api/v1/systemone`
-    /// with `X-Decision-Order: hosted`): the always-on H100 answers with
+    /// with `X-Decision-Order: hosted`): the H100 and A100 pool answers with
     /// Clef-Flash, keyless, and the payload never leaves our machines.
     Gateway,
     /// A constrained Claude Haiku arm (`claude -p`, no tools) answering the
@@ -195,8 +195,9 @@ Options:
   --repo PATH        The repository checkout to read (default: this directory).
   --github OWNER/R   The GitHub repository of the issue (default: OpenAgentsInc/openagents).
   --fix SHA          A closed issue's fix commit (default: the newest commit naming #N).
-  --decider WHO      auto, jev, clef, haiku-arm, subq (SubQ Snap, SUBQ_API_KEY), or off (default: auto: Jev with your TypeSafe key,
-                     else our decision API, keyless); or per point, as in
+  --decider WHO      auto, gateway, jev, clef, haiku-arm, subq (SubQ Snap, SUBQ_API_KEY), or off
+                     (default: auto: our hosted Clef on openagents.com, keyless, then Jev
+                     with your TypeSafe key, then our decision API); or per point, as in
                      kind=jev,relevance=clef.
   --files K          Files in the briefing (default 6).
   --model NAME       The agent's model (default claude-opus-5-5).

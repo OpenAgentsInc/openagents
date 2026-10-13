@@ -21,10 +21,26 @@ use serde_json::{Value, json};
 
 use super::{Decider, Options, Transcript, setup::Base, setup::output};
 
+/// How many per-file questions run at once against the first door.
+const AT_ONCE: usize = 4;
 /// A per-file probability below this drops the file from the briefing.
 const KEEP_AT: f64 = 0.35;
 /// The fewest files a briefing keeps whatever the answers say.
 const MIN_FILES: usize = 3;
+/// How many of the finder's candidates the per-file question weighs when
+/// the door is our hosted Clef, which costs nothing per question (#11484).
+pub const WIDE: usize = 60;
+
+/// How many candidates the per-file question weighs at `decider`: [`WIDE`]
+/// on our hosted Clef, else twice the briefing's files, 6 to 12.
+#[must_use]
+pub fn weighed(decider: Decider, files: usize) -> usize {
+    if decider == Decider::Gateway {
+        WIDE
+    } else {
+        (files * 2).clamp(6, 12)
+    }
+}
 
 /// One check the briefing names.
 #[derive(Clone, Debug)]
@@ -140,7 +156,8 @@ pub async fn decide(
     folder: &Path,
     transcript: &mut Transcript,
 ) -> Option<Briefing> {
-    let found = finder(base, folder, transcript).await;
+    let wide = weighed(options.relevance_decider(), options.files);
+    let found = finder(base, folder, wide.max(40), transcript).await;
     let ranked: Vec<Value> = found
         .as_ref()
         .and_then(|found| found["files"].as_array().cloned())
@@ -148,7 +165,7 @@ pub async fn decide(
     let mut spent = Spent::default();
     let kind = issue_kind(options, base, transcript, &mut spent).await;
     let judged = file_questions(options, base, &ranked, transcript, &mut spent).await;
-    let chosen = choose(options, &ranked, &judged, transcript);
+    let chosen = choose(options, &ranked, &judged, wide > 12, transcript);
     let mut briefing = brief(options, base, &chosen, kind.as_deref(), folder, transcript).await?;
     briefing.decision_usd = spent.usd;
     briefing.decision_unpriced = spent.unpriced;
@@ -157,7 +174,12 @@ pub async fn decide(
 }
 
 /// The finder's answer, with a card per stage and one for the scorer.
-async fn finder(base: &Base, folder: &Path, transcript: &mut Transcript) -> Option<Value> {
+async fn finder(
+    base: &Base,
+    folder: &Path,
+    k: usize,
+    transcript: &mut Transcript,
+) -> Option<Value> {
     let script = super::tools_root(&base.repo).join("scripts/filefind/filefind.py");
     let card = json!({
         "kind": "stage",
@@ -190,7 +212,7 @@ async fn finder(base: &Base, folder: &Path, transcript: &mut Transcript) -> Opti
                 "--issue",
                 &base.issue.to_string(),
                 "--k",
-                "40",
+                &k.to_string(),
                 "--json",
             ])
             .current_dir(&base.repo)
@@ -414,8 +436,8 @@ fn ours_door() -> Option<Door> {
 
 /// Our gateway's hosted Clef alone: `POST /v1/systemone` on
 /// openagents.com (or `OPENAGENTS_DECISIONS_URL`) with
-/// `X-Decision-Order: hosted`, answered by the always-on H100 with
-/// Clef-Flash. Keyless; the payload never leaves our machines.
+/// `X-Decision-Order: hosted`, answered with Clef-Flash by the H100 and
+/// A100 pool. Keyless; the payload never leaves our machines.
 fn gateway_door() -> Option<Door> {
     let url = std::env::var(jev_hosted::DECISIONS_URL_VAR)
         .ok()
@@ -434,7 +456,7 @@ fn gateway_door() -> Option<Door> {
         .default_model("clef-flash");
     Some(Door {
         backend: Backend::SystemOne(jev::Client::new(config).ok()?),
-        label: "Clef-Flash, OpenAgents gateway H100".into(),
+        label: "Clef-Flash, OpenAgents gateway".into(),
         model: "clef-flash".into(),
     })
 }
@@ -524,7 +546,7 @@ async fn the_gateway_door_answers() {
         "Issue: the README links to a file that was deleted.".to_owned(),
         jev::Questions::new().with("small", jev::Noul::new("Is this a small change?")),
     );
-    let response = door.ask(request).await.expect("the H100 answers");
+    let response = door.ask(request).await.expect("the gateway answers");
     let by = answered_by(&door, &response);
     println!("answered by: {by}\n{response:?}");
     assert!(by.contains("Clef-Flash"), "{by}");
@@ -661,7 +683,7 @@ async fn file_questions(
     let question = "Does the fix for this issue need to change this file?";
     let asked: Vec<String> = ranked
         .iter()
-        .take((options.files * 2).clamp(6, 12))
+        .take(weighed(options.relevance_decider(), options.files))
         .filter_map(|file| file["path"].as_str().map(str::to_owned))
         .collect();
     if asked.is_empty() {
@@ -690,10 +712,10 @@ async fn file_questions(
     let mut cost_total = Spent::default();
     let mut tokens = 0u64;
     let mut last_door = door.label.clone();
-    for (row, path) in asked.iter().enumerate() {
-        if transcript.cancelled() {
-            break;
-        }
+    // The heads are read first, then asked a few at a time at the first
+    // door; a question that door fails is asked again door by door.
+    let mut requests = Vec::new();
+    for path in &asked {
         let head = output(
             "git",
             &["show", &format!("{}:{path}", base.base)],
@@ -703,42 +725,81 @@ async fn file_questions(
         .map(|text| text.lines().take(80).collect::<Vec<_>>().join("\n"))
         .unwrap_or_else(|_| "(the file does not exist at this commit)".into());
         let state = format!("{}\n\nFile: {path}\n\n{head}", issue_state(base));
-        let request = jev::SystemOneRequest::new(
+        requests.push(jev::SystemOneRequest::new(
             state,
             jev::Questions::new().with("relevant", jev::Noul::new(question)),
-        );
+        ));
+    }
+    let mut requests = requests.into_iter().enumerate();
+    loop {
+        if transcript.cancelled() {
+            break;
+        }
+        let batch: Vec<(usize, jev::SystemOneRequest)> = requests.by_ref().take(AT_ONCE).collect();
+        if batch.is_empty() {
+            break;
+        }
         let asked_at = Instant::now();
-        match doors.system_one(request).await {
-            Ok((response, door)) => {
-                let ms = asked_at.elapsed().as_millis() as u64;
-                last_door = answered_by(door, &response);
-                cost_total.add(response.usage.cost_usd());
-                tokens += response.usage.input_tokens.unwrap_or(0);
-                if let Ok(answer) = response.noul("relevant") {
-                    rows[row] = json!({
-                        "name": path,
-                        "p": answer.noul,
-                        "chosen": if answer.noul >= KEEP_AT { "yes" } else { "no" },
-                        "ms": ms,
-                    });
-                    answers.push((path.clone(), answer.noul));
-                    spent.judgments.push(judgment(
-                        "file_relevance",
-                        Some(path),
-                        &last_door,
-                        &response.model,
-                        answer.noul,
-                        Some(KEEP_AT),
-                        if answer.noul >= KEEP_AT {
-                            "keep"
-                        } else {
-                            "drop"
-                        },
-                    ));
-                }
+        let firsts: Vec<Result<jev::SystemOneResponse, String>> = match doors.first() {
+            Some(door) => {
+                futures::future::join_all(
+                    batch.iter().map(|(_, request)| door.ask(request.clone())),
+                )
+                .await
             }
-            Err(error) => {
-                rows[row] = json!({"name": path, "error": error});
+            None => Vec::new(),
+        };
+        let first_label = doors
+            .first()
+            .map(|door| door.label.clone())
+            .unwrap_or_default();
+        for (at, (row, request)) in batch.into_iter().enumerate() {
+            let path = &asked[row];
+            let answered = match firsts.get(at) {
+                Some(Ok(response)) => Ok((response.clone(), first_label.clone())),
+                _ => doors.system_one(request).await.map(|(response, door)| {
+                    let by = answered_by(door, &response);
+                    (response, by)
+                }),
+            };
+            let ms = asked_at.elapsed().as_millis() as u64;
+            match answered {
+                Ok((response, by)) => {
+                    last_door = if by == first_label {
+                        doors
+                            .first()
+                            .map_or(by, |door| answered_by(door, &response))
+                    } else {
+                        by
+                    };
+                    cost_total.add(response.usage.cost_usd());
+                    tokens += response.usage.input_tokens.unwrap_or(0);
+                    if let Ok(answer) = response.noul("relevant") {
+                        rows[row] = json!({
+                            "name": path,
+                            "p": answer.noul,
+                            "chosen": if answer.noul >= KEEP_AT { "yes" } else { "no" },
+                            "ms": ms,
+                        });
+                        answers.push((path.clone(), answer.noul));
+                        spent.judgments.push(judgment(
+                            "file_relevance",
+                            Some(path),
+                            &last_door,
+                            &response.model,
+                            answer.noul,
+                            Some(KEEP_AT),
+                            if answer.noul >= KEEP_AT {
+                                "keep"
+                            } else {
+                                "drop"
+                            },
+                        ));
+                    }
+                }
+                Err(error) => {
+                    rows[row] = json!({"name": path, "error": error});
+                }
             }
         }
         card["files"] = json!(rows);
@@ -772,6 +833,7 @@ fn choose(
     options: &Options,
     ranked: &[Value],
     judged: &[(String, f64)],
+    wide: bool,
     transcript: &mut Transcript,
 ) -> Vec<Value> {
     let p_of = |path: &str| judged.iter().find(|(p, _)| p == path).map(|(_, p)| *p);
@@ -793,6 +855,14 @@ fn choose(
             Some(p) if p < KEEP_AT => dropped.push(file),
             _ => kept.push(file),
         }
+    }
+    // Weighing many candidates, the answers order the kept files: a file
+    // far down the scorer's list that clearly needs changing beats a high
+    // one the door doubts. The sort is stable, so ties keep the scorer's
+    // order.
+    if wide {
+        let p = |file: &&Value| p_of(file["path"].as_str().unwrap_or_default()).unwrap_or(0.0);
+        kept.sort_by(|a, b| p(b).total_cmp(&p(a)));
     }
     // Keep the fewest files the briefing needs, refilling from the dropped
     // ones in the scorer's order.

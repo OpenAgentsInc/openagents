@@ -147,10 +147,13 @@ fn the_analysis_replaces_an_earlier_round_and_costs_add_up() {
 }
 
 #[test]
-fn solver_asks_no_decision_model_and_refuses_a_decider() {
+fn solver_asks_our_hosted_clef_by_default_and_refuses_a_decider() {
     let options = Options::parse(&["7".to_owned()]).unwrap();
     assert_eq!(options.tester_model, "haiku");
-    assert_eq!(options.inner.decider, crate::issue_run::Decider::Off);
+    assert_eq!(options.inner.decider, crate::issue_run::Decider::Gateway);
+    assert!(options.gate && options.review);
+    let off = Options::parse(&["7".into(), "--no-gate".into(), "--no-review".into()]).unwrap();
+    assert!(!off.gate && !off.review);
     let refused = Options::parse(&["7".into(), "--decider".into(), "jev".into()]).unwrap_err();
     assert!(refused.contains("Unknown option --decider"), "{refused}");
 }
@@ -770,7 +773,7 @@ fn decisions_names_one_door_and_only_that_door() {
     assert_eq!(subq.inner.decider, crate::issue_run::Decider::Subq);
     let refused = Options::parse(&["7".into(), "--decisions".into(), "auto".into()]).unwrap_err();
     assert!(
-        refused.contains("--decisions takes jev, clef, haiku-arm, subq or off"),
+        refused.contains("--decisions takes gateway, jev, clef, haiku-arm, subq or off"),
         "{refused}"
     );
 }

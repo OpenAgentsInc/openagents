@@ -177,8 +177,10 @@ impl Effects for Recorded {
         self.taken += 1;
         Ok(match want {
             "intaker" => {
-                let stopped = matches!(self.status.as_str(), "setup_failed" | "already_done")
-                    || (self.status == "cancelled" && self.hands.is_empty());
+                let stopped = matches!(
+                    self.status.as_str(),
+                    "setup_failed" | "already_done" | "gated"
+                ) || (self.status == "cancelled" && self.hands.is_empty());
                 let status = if stopped {
                     self.status.as_str()
                 } else {

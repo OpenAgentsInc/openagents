@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "slug": "issue-sense",
+  "name": "Issue Sense",
+  "summary": "Clef judgments for issue work: a daily sweep asks which open issues new commits already did, and which are stale or blocked.",
+  "version": "0.1.0",
+  "publisher": "",
+  "provenance": "local file",
+  "background": [
+    {
+      "name": "issue-sense",
+      "digest": "fd24d783ab482cded69f4b83c2ab148679a76607132f04e2f22825b0527d47e0"
+    }
+  ]
+}

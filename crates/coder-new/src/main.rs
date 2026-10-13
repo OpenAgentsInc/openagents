@@ -94,6 +94,7 @@ fn run() -> io::Result<()> {
             || args[1] == "queue"
             || args[1] == "hand-backs"
             || args[1] == "conform"
+            || args[1] == "watch"
             || args[1] == "merge")
     {
         let runtime = tokio::runtime::Runtime::new()?;
@@ -103,6 +104,8 @@ fn run() -> io::Result<()> {
             runtime.block_on(coder_new::solver::merge::command(&args[2..]))
         } else if args[1] == "hand-backs" {
             coder_new::solver::rollup::command(&args[2..])
+        } else if args[1] == "watch" {
+            runtime.block_on(coder_new::solver::sense::watch(&args[2..]))
         } else if args[1] == "conform" {
             coder_new::solver::conform::command(&args[2..])
         } else {

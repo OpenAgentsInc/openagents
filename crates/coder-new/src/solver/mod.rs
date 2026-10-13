@@ -30,6 +30,7 @@ pub mod ledger;
 pub mod merge;
 pub mod queue;
 pub mod rollup;
+pub mod sense;
 
 use std::{path::PathBuf, time::Instant};
 
@@ -237,15 +238,22 @@ Options:
                         Code sessions) or devin (four `devin acp` sessions on
                         this computer's Devin login).
   --rounds R            How many times the Tester may hand work back (default 2).
-  --decisions DOOR      Which decision door judges the briefing's file relevance,
-                        size, and change kind: gateway (our H100 on
-                        openagents.com, keyless), jev (TypeSafe's API), clef (this
-                        computer's Clef), haiku-arm (a constrained Claude Haiku
-                        answering the same typed question, no tools), subq (SubQ
-                        Snap, SUBQ_API_KEY; a public preview), or off
-                        (default; the ranking stands and
-                        the Haiku Briefer judges it). No other door is asked. Or
-                        one door per point: kind=jev,relevance=clef.
+  --decisions DOOR      Which decision door judges the run: the gate before any
+                        hand works, the briefing's file relevance and change
+                        kind, what made a failed check fail, and each hunk of
+                        the change (#11484). gateway (default: our hosted Clef
+                        on openagents.com's H100 and A100, keyless and free;
+                        with it the briefing weighs 60 files, not 12), jev
+                        (TypeSafe's API), clef (this computer's Clef), haiku-arm
+                        (a constrained Claude Haiku answering the same typed
+                        question, no tools), subq (SubQ Snap, SUBQ_API_KEY; a
+                        public preview), or off (the ranking stands, the Haiku
+                        Briefer judges it, and the Tester reads every failure).
+                        No other door is asked. Or one door per point:
+                        kind=jev,relevance=clef.
+  --no-gate             Work the issue even when the door judges it already
+                        landed, no longer current, or not actionable.
+  --no-review           Open the pull request without asking about each hunk.
   --no-pr               Stop after the checks; open no pull request.
   --coder-model NAME    The Coder's model on every round. Without it, a change the
                         Briefer judges small starts on sonnet and a large one, or
@@ -263,6 +271,11 @@ Options:
   --replay FILE         Play a recorded run (its events.jsonl) again.
   --speed X             Play a recording X times faster (default 1).
   --state DIR           Where runs live (default ~/.openagents/coder/solver-runs).
+
+coder solver watch [--since REV] [--decisions DOOR] [--repo PATH]
+  For each commit on origin/main since the last watch, asks whether it did
+  the work of an open issue whose text names a file or crate it touched.
+  One JSON line per commit and issue asked; likely_landed at p >= 0.8.
 
 coder solver ledger [--state DIR] [--repo PATH]
   One JSON line per finished run: issue, status, pull request, files
@@ -326,6 +339,11 @@ pub struct Options {
     /// `--coder-model` was given; `None` when the Coder's model is fixed.
     /// A hand-back always goes to the full Coder model.
     pub small_coder: Option<String>,
+    /// Stop before any hand when the door clearly judges the issue done,
+    /// stale or blocked (#11484).
+    pub gate: bool,
+    /// Ask about each hunk once the checks pass (#11484).
+    pub review: bool,
 }
 
 impl Options {
@@ -341,9 +359,12 @@ impl Options {
         let mut briefer_model: Option<String> = None;
         let mut tester_model: Option<String> = None;
         let mut small_coder = Some("sonnet".to_owned());
-        // By default the briefing's ranking is deterministic and the Haiku
-        // Briefer judges it; --decisions names one door and only that door.
-        let mut decisions = "off".to_owned();
+        // By default our hosted Clef pool judges the run (Clef first,
+        // keyless and free, #11484); --decisions names one door and only
+        // that door.
+        let mut decisions = "gateway".to_owned();
+        let mut gate = true;
+        let mut review = true;
         let mut inner_args: Vec<String> =
             vec!["--state".into(), default_state().display().to_string()];
         let mut args = args.iter();
@@ -361,6 +382,8 @@ impl Options {
                         .min(10);
                 }
                 "--no-pr" => open_pr = false,
+                "--no-gate" => gate = false,
+                "--no-review" => review = false,
                 "--json" => json = true,
                 "--decisions" => {
                     decisions = value("--decisions")?;
@@ -368,7 +391,8 @@ impl Options {
                         .map_err(|why| why.replace("--decider", "--decisions"))?;
                     if [all, kind, relevance].contains(&Some(issue_run::Decider::Auto)) {
                         return Err(
-                            "--decisions takes jev, clef, haiku-arm, subq or off, not auto.".into(),
+                            "--decisions takes gateway, jev, clef, haiku-arm, subq or off, not auto."
+                                .into(),
                         );
                     }
                 }
@@ -422,6 +446,8 @@ impl Options {
             briefer_model: model_default(briefer_model),
             tester_model: model_default(tester_model),
             small_coder,
+            gate,
+            review,
         })
     }
 }
@@ -552,6 +578,7 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
             options.inner.relevance_decider(),
         ),
         verdict: None,
+        judgments: Vec::new(),
         started,
     };
 
@@ -583,6 +610,12 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
         options.inner.kind_decider(),
     )
     .await;
+    if let Some(entry) = &end.verdict {
+        end.judgments.extend(sense::gate_rows(entry));
+        if let Some(outcome) = sense::gate(entry).filter(|_| options.gate) {
+            return end.conclude(outcome, transcript).await;
+        }
+    }
     if let Some(entry) = end
         .verdict
         .as_ref()
@@ -646,6 +679,7 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
         .map(|check| check.id.clone())
         .collect();
     let mut round = 0;
+    let mut reviewed = !options.review;
     let mut hand_backs: Vec<hands::HandBack> = Vec::new();
     let outcome = loop {
         if transcript.cancelled() {
@@ -685,6 +719,26 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
             .collect();
         let judged = verdict::judge(transcript.cancelled(), None, &required, &end.checks);
         if judged.status == Status::Passed || judged.status == Status::Unchecked {
+            // One review of the change's hunks before it is delivered: a
+            // clear stray hunk sends the Coder one round back naming it.
+            if !reviewed && round < options.rounds {
+                reviewed = true;
+                let diff = setup::working_diff(&base.worktree, &base.base);
+                let answers = sense::review(
+                    options.inner.kind_decider(),
+                    &base,
+                    &diff,
+                    &mut end.judgments,
+                    transcript,
+                )
+                .await;
+                if let Some(text) = sense::review_notes(&answers) {
+                    round += 1;
+                    transcript.notice(format!("Round {round}: back to the Coder. {text}"));
+                    notes = Some(text);
+                    continue;
+                }
+            }
             break judged;
         }
         if transcript.cancelled() {
@@ -698,12 +752,40 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
                 ),
             );
         }
-        let tester = hands::test(
-            options, &base, &briefing, &errors, round, folder, transcript,
+        // The door reads each failure first; when it is sure of every one,
+        // the hand-back needs no Tester session.
+        let triaged = sense::triage(
+            options.inner.kind_decider(),
+            &base,
+            &briefing,
+            &outputs,
+            &mut end.judgments,
+            transcript,
         )
         .await;
-        let verdict = hands::Verdict::parse(tester.verdict.as_deref().unwrap_or_default());
-        end.turns.push(tester);
+        let failing = outputs.iter().filter(|(_, ok, _)| !ok).count();
+        let verdict = match sense::route(&triaged, failing) {
+            Some(sense::Route::Environment(why)) => {
+                break Outcome::stopped(Status::Failed, format!("{why} Fix it and run again."));
+            }
+            Some(sense::Route::Coder(text)) => {
+                transcript.notice(text.clone());
+                hands::Verdict::Coder(text)
+            }
+            Some(sense::Route::Briefer(text)) => {
+                transcript.notice(text.clone());
+                hands::Verdict::Briefer(text)
+            }
+            None => {
+                let tester = hands::test(
+                    options, &base, &briefing, &errors, round, folder, transcript,
+                )
+                .await;
+                let verdict = hands::Verdict::parse(tester.verdict.as_deref().unwrap_or_default());
+                end.turns.push(tester);
+                verdict
+            }
+        };
         if transcript.cancelled() {
             break Outcome::stopped(Status::Cancelled, "The run was stopped.");
         }
@@ -836,6 +918,9 @@ struct End<'a> {
     decisions: Value,
     /// The queue's verdict on the issue when the run started (#11388).
     verdict: Option<queue::Entry>,
+    /// The run's own judgment rows beyond the briefing's: the gate, failure
+    /// triage and hunk review (#11484).
+    judgments: Vec<Value>,
     started: Instant,
 }
 
@@ -883,13 +968,13 @@ impl End<'_> {
         };
         let url = delivery.url;
         let total = hands::total_cost(&self.turns);
-        let judgments = joined(
-            self.briefing
-                .as_ref()
-                .map(|briefing| briefing.judgments.as_slice())
-                .unwrap_or_default(),
-            &summary["outcome"]["status"],
-        );
+        let mut rows: Vec<Value> = self
+            .briefing
+            .as_ref()
+            .map(|briefing| briefing.judgments.clone())
+            .unwrap_or_default();
+        rows.extend(self.judgments.iter().cloned());
+        let judgments = sense::labeled(&rows, &summary["outcome"]["status"], &summary["changed"]);
         summary["solver"] = json!({
             "hands": self.turns.iter().map(Turn::json).collect::<Vec<_>>(),
             "rounds": self.rounds,

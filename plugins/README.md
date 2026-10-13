@@ -11,6 +11,7 @@ environment values for your deployment.
 | `codex/` | `.codex-plugin/plugin.json` + `.mcp.json` + `skills/` | Codex plugin directory |
 | `skills/openagents-decision-api/` | bare `SKILL.md` | Any client that reads the Agent Skills format |
 | `skills/openagents-workflow/` | bare `SKILL.md` | Any client that reads the Agent Skills format. Coder's harness also loads this file into a run's instructions. |
+| `issue-sense/` | `package.json` + `background/` + `skills/` | `openagents plugin install ./plugins/issue-sense`: Clef's daily sweep of which open issues new commits already did ([README](issue-sense/README.md)) |
 
 ## Manual installation
 

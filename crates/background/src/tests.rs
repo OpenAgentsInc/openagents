@@ -909,6 +909,32 @@ fn an_edit_on_this_computer_cannot_widen_a_plugin_rule_and_its_files_are_never_c
 }
 
 #[test]
+fn shipped_issue_sense_package_is_pinned_opt_in_and_only_starts_a_coder_run() {
+    let home = Home::new();
+    let text = include_str!("../../../plugins/issue-sense/background/issue-sense.json");
+    let package: serde_json::Value =
+        serde_json::from_str(include_str!("../../../plugins/issue-sense/package.json")).unwrap();
+    assert_eq!(
+        package["background"][0]["digest"],
+        crate::plugins::digest(text)
+    );
+    let rule: Rule = serde_json::from_str(text).unwrap();
+    assert!(!rule.enabled);
+    assert!(rule.needs.delete.is_empty() && rule.needs.coder);
+    assert!(
+        rule.actions
+            .iter()
+            .all(|action| matches!(action, crate::rule::Action::StartCoderRun { .. })),
+        "the sweep only starts a Coder run that reports"
+    );
+    install(&home, "issue-sense", &rule);
+    assert!(crate::plugins::rules(&home.layout).is_empty());
+    crate::plugins::set_enabled(&home.layout, "issue-sense", true).unwrap();
+    let admitted = crate::store::load(&home.layout, "issue-sense").unwrap();
+    assert!(admitted.enabled);
+}
+
+#[test]
 fn shipped_disk_cleanup_package_is_pinned_read_only_and_opt_in() {
     let home = Home::new();
     let text = include_str!("../../../plugins/disk-cleanup/background/disk-cleanup.json");

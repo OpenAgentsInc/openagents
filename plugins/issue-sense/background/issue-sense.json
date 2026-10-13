@@ -1,0 +1,86 @@
+{
+  "schema": "openagents.background.rule.v1",
+  "id": "issue-sense",
+  "name": "Issue Sense",
+  "version": 1,
+  "origin": {
+    "kind": "file",
+    "path": "background/issue-sense.json"
+  },
+  "enabled": false,
+  "triggers": [
+    {
+      "kind": "daily",
+      "at": "06:00"
+    }
+  ],
+  "goal": {
+    "start": {
+      "bytes": 200000000000,
+      "percent": 15
+    },
+    "stop": {
+      "bytes": 300000000000,
+      "percent": 20
+    },
+    "emergency": {
+      "bytes": 10000000000,
+      "percent": 1
+    },
+    "max_freed": 100000000000,
+    "pressure_secs": 60
+  },
+  "actions": [
+    {
+      "kind": "start_coder_run",
+      "prompt": "Issue Sense's daily sweep (#11484). In this checkout, run `cargo run -q -p coder-new -- solver watch` (each new commit on main asked by our hosted Clef whether it did an open issue's work) and `cargo run -q -p coder-new -- solver queue --decisions gateway` (every open issue judged landed, current, actionable). Report in a few lines: the issues judged likely landed (p >= 0.8) with the commit, and the issues judged stale or blocked, each with its link. Change nothing on GitHub; the person decides."
+    }
+  ],
+  "classes": {
+    "agent_targets": [
+      "~/work/openagents-target-agent*"
+    ],
+    "checkouts": [
+      "~/work/*"
+    ],
+    "idle_days": 3,
+    "agent_idle_hours": 6,
+    "checkout_days": 7,
+    "keep": 0,
+    "orphan_worktree_days": 7,
+    "gate_idle_hours": 1,
+    "claude_checkouts": [
+      "~/code/*",
+      "~/work/*"
+    ],
+    "claude_worktree_hours": 2,
+    "scratch_days": 7
+  },
+  "safety": {
+    "allow": [
+      "~/.openagents/targets",
+      "~/.openagents/coder-one/target",
+      "~/.openagents/worktrees",
+      "~/.openagents/gate",
+      "~/.openagents/background/trash",
+      "~/.openagents/scratch",
+      "~/work",
+      "~/code"
+    ],
+    "deny": [],
+    "report": [
+      "~/.openagents/pylon",
+      "~/Library/Caches",
+      "/private/var/folders"
+    ]
+  },
+  "cooldown_secs": 3600,
+  "needs": {
+    "coder": true
+  },
+  "conditions": [
+    {
+      "kind": "no_task_running"
+    }
+  ]
+}

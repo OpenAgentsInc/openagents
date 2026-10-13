@@ -19,7 +19,7 @@ do not edit the same file or hold the same build lease. See
 | **Intaker** | Haiku | `environment`, `issue`, `worktree` (in-process) | Checks that `git`, `gh`, and the Claude Code login are present and that the checkout is clean, reads the issue, makes the run's fresh worktree at the issue's base, and sums up what it found. It asks the person for the repository and the issue when they were not given. |
 | **Briefer** | Haiku | Read, Grep, Glob (held to the worktree) | Runs the existing code-brief algorithm (the context finder's stages, scorer and System One questions, then the briefing generator; `issue_run::decide`), then reads the listed files and writes its **analysis**: the files to change, the shape of the change, what tests to add, and the checks that prove it. The analysis and the file list join the briefing. |
 | **Coder** | Opus | Read, Edit, Write, Grep, Glob (held to the worktree) | Codes only. No shell, no checks, no issue reading. Gets the briefing, the analysis, and, on a second round, the Tester's notes. |
-| **Tester** | Haiku | Read, Grep, Glob, `run_check` (the briefing's checks) | Called only when a required check fails. Reads the failures the harness hands it and the code behind them, and ends with one verdict line: `VERDICT: coder: <what to fix>` or `VERDICT: briefer: <what context is missing>`. |
+| **Tester** | Haiku | Read, Grep, Glob, `run_check` (the briefing's checks) | Called only when a required check fails and Clef is not sure what caused it ([below](#issue-sense-clef-at-every-turning-point)). Reads the failures the harness hands it and the code behind them, and ends with one verdict line: `VERDICT: coder: <what to fix>` or `VERDICT: briefer: <what context is missing>`. |
 
 After the Coder, the harness runs every required check itself: the touched
 crates' `check:` and `test:` entries, a browser crate's `wasm:` half, and
@@ -28,6 +28,30 @@ Markdown links. A test that already fails at the base commit is excused
 passes the run opens the pull request with no Tester session; when a check
 reports a computer fault (a full disk, a dead linker) the run stops without
 a hand-back, because no edit can fix it (`issue_run::verdict`).
+
+## Issue Sense: Clef at every turning point
+
+The run asks its decision door (`--decisions`, by default `gateway`: our
+hosted Clef on the H100 and A100 pool, keyless and free;
+[`docs/inference/clef-decisions-h100.md`](../inference/clef-decisions-h100.md))
+a typed question wherever an answer is cheaper than a Claude session
+([#11484](https://github.com/OpenAgentsInc/openagents/issues/11484),
+`crates/coder-new/src/solver/sense.rs`):
+
+| Where | Questions | What a clear answer does |
+|---|---|---|
+| **Gate**, before the worktree | Has the work landed? Is the issue still current? Can an agent act on it now? (the queue's questions) | Landed at p ≥ 0.8 ends the run `already_done`; current or actionable under 0.2 ends it `gated`. `--no-gate` works it anyway. |
+| **Briefing** | Does the fix change this file? for 60 of the finder's candidates (12 on a paid door) | Files under 0.35 drop; on the wide pass the answers order the kept files. |
+| **Failed checks**, before the Tester | What caused each failure (the change, the computer, a flaky test, something already there)? Does the fix need a file outside the briefing? | Every failure caused by the change at p ≥ 0.9 goes straight back to the Coder (or the Briefer, when it needs another file) with no Tester session; the computer at p ≥ 0.9 stops the run. |
+| **Hunks**, once the checks pass | Does it serve the issue? Does it change unrequested behavior? Is it stray? | A hunk stray at p ≥ 0.9, or unrequested and not serving, sends the Coder one round back naming it. `--no-review` skips it. |
+
+Every answer is a row in `summary.json`'s `solver.judgments`, with the
+run's outcome and, for a file or hunk, whether the final change touched that
+file (`in_change`), so the thresholds can be refit from real runs.
+`coder solver watch` asks of each new commit on main whether it did the
+work of an open issue that names a file or crate it touched; the
+[Issue Sense plugin](../../plugins/issue-sense/README.md) runs it daily.
+`--decisions off` asks nothing and leaves every choice to the hands.
 
 ## Handoffs
 

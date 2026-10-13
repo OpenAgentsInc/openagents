@@ -35,6 +35,10 @@ pub enum Status {
     /// Main already carries a commit for the issue, so there is nothing to
     /// code; the reason names the commit.
     AlreadyDone,
+    /// The decision door judged the issue clearly no longer current or not
+    /// actionable now, so no hand worked it (#11484); the reason names the
+    /// answer.
+    Gated,
 }
 
 impl Status {
@@ -48,6 +52,7 @@ impl Status {
             Self::SetupFailed => "setup_failed",
             Self::DecisionFailed => "decision_failed",
             Self::AlreadyDone => "already_done",
+            Self::Gated => "gated",
         }
     }
 }

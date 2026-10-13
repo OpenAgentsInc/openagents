@@ -3,7 +3,7 @@
 //! come from state the solver already reads: `main`'s log, the issue's
 //! assignees, the landed-work ledger, and the issue's last update.
 //!
-//! With `--decisions jev|clef`, every issue the facts leave `ready` or
+//! With `--decisions gateway|jev|clef`, every issue the facts leave `ready` or
 //! `stale` is also asked, in one batched request at that door, whether it is
 //! already on main, still about code that exists, in conflict with a
 //! declared intent, and actionable now; the 21-day window is then only the
@@ -537,10 +537,11 @@ pub async fn command(args: &[String]) -> Result<String, String> {
             }
             "--decisions" => {
                 decider = match args.next().map(String::as_str) {
+                    Some("gateway") => Decider::Gateway,
                     Some("jev") => Decider::Jev,
                     Some("clef") => Decider::Clef,
                     Some("off") => Decider::Off,
-                    _ => return Err("--decisions takes jev, clef or off".into()),
+                    _ => return Err("--decisions takes gateway, jev, clef or off".into()),
                 };
             }
             "--state" => state = args.next().ok_or("--state needs a directory")?.into(),
@@ -548,7 +549,7 @@ pub async fn command(args: &[String]) -> Result<String, String> {
             "--github" => github = Some(args.next().ok_or("--github needs owner/repo")?.clone()),
             other => {
                 return Err(format!(
-                    "unknown option {other}; coder solver queue takes --github OWNER/REPO, --state DIR, --repo PATH, --channel DIR, --decisions jev|clef|off, and --next"
+                    "unknown option {other}; coder solver queue takes --github OWNER/REPO, --state DIR, --repo PATH, --channel DIR, --decisions gateway|jev|clef|off, and --next"
                 ));
             }
         }
