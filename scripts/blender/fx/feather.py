@@ -122,7 +122,7 @@ def feather():
     disc = np.clip((0.62 - e) / 0.08, 0.0, 1.0)
     rim = np.clip((e - 0.54) / 0.08, 0.0, 1.0) * np.clip((1.0 - e) / 0.05, 0.0, 1.0)
     halo = np.exp(-np.maximum(e - 0.98, 0.0) ** 2 / (2 * 0.16**2)) * (e > 0.95)
-    inner = np.array([0.68, 0.82, 1.0]) * (0.72 - 0.08 * np.clip(1 - e / 0.62, 0, 1))[..., None]
+    inner = np.array([0.62, 0.78, 1.0]) * (0.5 - 0.08 * np.clip(1 - e / 0.62, 0, 1))[..., None]
     img += disc[..., None] * inner
     img += rim[..., None] * np.array([1.0, 1.0, 1.0])
     img += halo[..., None] * np.array([0.4, 0.5, 0.8]) * 0.35

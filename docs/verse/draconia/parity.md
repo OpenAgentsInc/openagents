@@ -339,3 +339,22 @@ top), and `~/Downloads/draconia-peacock-progress.png` (one row per version).
   - the reference's eyes are still crisper white rings;
   - the core's band reads as four lobes;
   - her hair and outfit.
+
+### v11, 2026-10-13
+
+- **Gaps fixed:**
+  - The walls were Lego stairs. They're now ragged near-black silhouettes:
+    vertical strips with irregular broken tops, deep notches and pointed
+    Gothic window holes, plus three broken pillars with stepped, slanted
+    breaks, kept to the frame's edges.
+  - The core: a blinding, clipped-white center behind her torso and hips
+    over the hip-to-shoulder band, so her silhouette pops.
+  - Her scale and position: the camera is closer (5.5 m) and aimed lower, so
+    she stands higher and larger in frame.
+  - The neck is brighter (3.5× the eyespots' light) and stands in front of
+    the fan.
+  - The sheet's eyespots have a darker fill, so the white rims read as rings.
+- **Still open:**
+  - the neck still reads faintly against the bright fan;
+  - the fan's eyes are paler than the reference's white;
+  - her hair and outfit (waiting on the face agent's skinned Draconia).

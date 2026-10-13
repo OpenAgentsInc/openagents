@@ -318,13 +318,21 @@ impl Set {
                     .sprites(),
                 );
                 // The core of light behind her.
+                // A blinding center behind her torso and hips, clipped
+                // white, so her silhouette pops against it.
+                sprites.push(feathers::dot(
+                    Vec3::new(0.0, 1.15, -0.7),
+                    1.5,
+                    [14.0, 14.5, 15.0],
+                    1.0,
+                ));
                 // A band from her hips to her shoulders, so the guardian's
                 // neck above stands against the fan, not the glare.
-                for x in [-1.5_f32, -0.5, 0.5, 1.5] {
+                for x in [-1.8_f32, -1.2, -0.6, 0.0, 0.6, 1.2, 1.8] {
                     sprites.push(feathers::dot(
                         TAIL_CENTER + Vec3::new(x, 0.35, 0.4),
-                        1.9 - 0.25 * x.abs(),
-                        [2.6, 2.9, 3.4],
+                        1.8 - 0.25 * x.abs(),
+                        [1.6, 1.8, 2.1],
                         1.0,
                     ));
                 }
@@ -356,14 +364,14 @@ impl Set {
                 }
                 // An S-curved neck, thick at the breast and thin at the
                 // head, the head turned to her right with a fanned crest.
-                let bright = lum.map(|c| c * 2.2);
+                let bright = lum.map(|c| c * 3.5);
                 let neck: Vec<Vec3> = (0..=14)
                     .map(|i| {
                         let u = i as f32 / 14.0;
                         Vec3::new(
                             -0.28 * (u * std::f32::consts::PI).sin() * u + 0.1 * u,
                             2.5 + 1.1 * u,
-                            -0.95,
+                            -0.6,
                         )
                     })
                     .collect();
@@ -736,45 +744,115 @@ fn cobbles(out: &mut Vec<LitVertex>) {
 
 /// Broken walls at the frame's edges and rubble at their feet.
 fn ruins(out: &mut Vec<LitVertex>) {
-    let mut n = 50_000u32;
-    let mut wall =
-        |out: &mut Vec<LitVertex>, x0: f32, x1: f32, z: f32, height: &dyn Fn(f32) -> f32| {
-            let course = 0.45;
-            let mut layer = 0;
-            let mut y = 0.0;
-            while y < 11.0 {
-                let mut x = x0 + if layer % 2 == 0 { 0.0 } else { 0.4 };
-                while x < x1 {
-                    n += 1;
-                    let w = 0.7 + 0.35 * hash(n);
-                    let top = height(x + w * 0.5);
-                    if y + course <= top {
-                        let shade = 0.03 + 0.03 * hash(n + 3);
-                        push_box(
-                            out,
-                            Vec3::new(x, y, z - 0.45),
-                            Vec3::new((x + w - 0.03).min(x1), y + course - 0.03, z + 0.45),
-                            0.0,
-                            [shade, shade * 0.98, shade * 0.95],
-                            0.85,
-                        );
-                    }
-                    x += w;
+    // A ruined wall as a jagged silhouette: vertical strips whose tops
+    // break irregularly, with deep notches, and pointed window holes.
+    let wall = |out: &mut Vec<LitVertex>,
+                x0: f32,
+                x1: f32,
+                z: f32,
+                seed: u32,
+                height: &dyn Fn(f32) -> f32,
+                windows: &[(f32, f32, f32)]| {
+        let strip = 0.22;
+        let mut i = 0u32;
+        let mut x = x0;
+        while x < x1 {
+            i += 1;
+            let w = strip * (0.7 + 0.6 * hash(seed + i));
+            let notch = if hash(seed + i * 7) > 0.9 {
+                -1.4 * hash(seed + i * 11)
+            } else {
+                0.0
+            };
+            let top = (height(x + w * 0.5) + 0.5 * (hash(seed + i * 3) - 0.5) + notch).max(0.3);
+            // Where a window cuts this strip: from its sill up to its
+            // pointed head.
+            let mut spans = vec![(0.0_f32, top)];
+            for &(cx, sill, half) in windows {
+                let d = ((x + w * 0.5) - cx).abs() / half;
+                if d < 1.0 {
+                    let head = sill + half * 2.2 + half * 1.2 * (1.0 - d).sqrt();
+                    spans = vec![(0.0, sill.min(top)), (head.min(top), top)];
                 }
-                y += course;
-                layer += 1;
             }
-        };
-    // Left: a tall broken wall stepping down toward the middle.
-    wall(out, -16.0, -5.6, -3.0, &|x: f32| {
-        let k = ((x + 5.6) / -4.0).clamp(0.0, 1.0);
-        1.0 + 9.0 * k.powf(0.8) + 0.9 * ((x * 2.3).sin() * (x * 0.9).cos())
-    });
-    // Right: lower, more broken.
-    wall(out, 5.8, 16.0, -3.4, &|x: f32| {
-        let k = ((x - 5.8) / 4.0).clamp(0.0, 1.0);
-        0.8 + 7.5 * k.powf(0.9) + 0.8 * ((x * 1.7).sin() * (x * 1.1).cos())
-    });
+            for (y0, y1) in spans {
+                if y1 - y0 > 0.02 {
+                    let shade = 0.018 + 0.015 * hash(seed + i * 5);
+                    push_box(
+                        out,
+                        Vec3::new(x, y0, z - 0.5),
+                        Vec3::new(x + w, y1, z + 0.5),
+                        0.0,
+                        [shade, shade, shade * 1.08],
+                        0.9,
+                    );
+                }
+            }
+            x += w;
+        }
+    };
+    // Left: a tall broken Gothic wall stepping down toward the middle, two
+    // pointed windows, and a broken pillar at its inner end.
+    wall(
+        out,
+        -16.0,
+        -5.6,
+        -3.0,
+        5_000,
+        &|x: f32| {
+            let k = ((x + 5.6) / -4.0).clamp(0.0, 1.0);
+            1.0 + 9.0 * k.powf(0.8) + 0.9 * ((x * 2.3).sin() * (x * 0.9).cos())
+        },
+        &[(-8.4, 3.0, 0.55), (-11.2, 3.4, 0.6)],
+    );
+    // Right: lower, more broken, one window.
+    wall(
+        out,
+        5.8,
+        16.0,
+        -3.4,
+        9_000,
+        &|x: f32| {
+            let k = ((x - 5.8) / 4.0).clamp(0.0, 1.0);
+            0.8 + 7.5 * k.powf(0.9) + 0.8 * ((x * 1.7).sin() * (x * 1.1).cos())
+        },
+        &[(9.0, 2.6, 0.5)],
+    );
+    // Broken pillars with slanted tops.
+    for (k, (x, z, h)) in [
+        (-7.4_f32, -3.2_f32, 4.6_f32),
+        (7.6, -3.4, 3.4),
+        (-9.6, -3.0, 6.0),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let shade = [0.02, 0.02, 0.022];
+        push_box(
+            out,
+            Vec3::new(x - 0.3, 0.0, z - 0.3),
+            Vec3::new(x + 0.3, h, z + 0.3),
+            0.0,
+            shade,
+            0.9,
+        );
+        // The break: a wedge of smaller blocks stepping down.
+        for j in 0..4 {
+            let jj = j as f32;
+            push_box(
+                out,
+                Vec3::new(x - 0.3 + 0.15 * jj, h, z - 0.3),
+                Vec3::new(
+                    x - 0.15 + 0.15 * jj,
+                    h + 0.5 - 0.12 * jj - 0.1 * k as f32,
+                    z + 0.3,
+                ),
+                0.0,
+                shade,
+                0.9,
+            );
+        }
+    }
     // Rubble.
     for i in 0..70u32 {
         let side = if i % 2 == 0 { -1.0 } else { 1.0 };
