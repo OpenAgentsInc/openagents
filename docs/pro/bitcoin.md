@@ -109,10 +109,43 @@ MDK's grace period is fixed at 3 days, so **use 3 days for both rails.**
 That replaces the spec's proposed 7 for Stripe, and gives one rule
 everywhere: "If a payment is missed, Pro stays on for 3 days."
 
+## What we can drive from code
+
+Checked against MDK's published API contract (`@moneydevkit/api-contract`
+0.1.36):
+
+- **With the app's access token (`MDK_ACCESS_TOKEN`), which our server
+  holds:**
+  - `checkout.create` / `get` / `confirm`, including checkouts for a
+    recurring product, which is how a subscription starts;
+  - `registerInvoice`, `paymentReceived`, and L402 `redeem` / `check`;
+  - `products.list`.
+  - Everything a subscribe flow needs at run time.
+- **With the account MCP** (`https://mcp.moneydevkit.com/mcp/account/`,
+  after the owner signs in to MoneyDevKit once):
+  - products `create` / `update` / `delete` / `list`;
+  - customers `create` / `get` / `update` / `delete` / `list`;
+  - orders and checkouts `list` / `get`.
+  - An agent can set up the Pro product and look up customers this way.
+- **Not exposed in either API:** reading or cancelling a subscription
+  (`subscription.get`, `cancel` and `createRenewalCheckout` exist in the
+  contract but not in the routers above).
+  - Subscription state comes from the webhooks.
+  - Cancelling happens from the customer's renewal email or the MDK
+    dashboard.
+  - For our own "Cancel" button, we stop treating the subscription as
+    renewing on our side and simply don't send a renewal, then mark it
+    cancelled when MDK's `subscription.canceled` arrives after the grace
+    period.
+- **The app credentials** come from MDK's device sign-in (the `onboarding`
+  contract: start, poll, bootstrap), which the owner approves once in the
+  browser.
+
 ## Owner steps (NEEDS_OWNER)
 
-1. **Create the MDK app and product** in the MDK dashboard: the "OpenAgents
-   Pro" monthly product at $20.
+1. **Sign in to the MDK account MCP once.** An agent then creates the app's
+   "OpenAgents Pro" monthly $20 product itself. If you'd rather not, create
+   it in the dashboard.
 2. **Put the platform access token and the webhook signing secret** into
    Secret Manager.
 3. **Add the webhook endpoint** `https://openagents.com/v1/billing/mdk-webhook`
