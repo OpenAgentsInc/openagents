@@ -58,6 +58,7 @@ pub fn dropdown(
         content,
         closing,
         trigger_height,
+        align: popover::MenuAlign::End,
     }
     .into_any_element()
 }
@@ -68,6 +69,7 @@ struct SettingsDropdown {
     content: gpui::Div,
     closing: Option<std::time::Instant>,
     trigger_height: f32,
+    align: popover::MenuAlign,
 }
 
 impl RenderOnce for SettingsDropdown {
@@ -79,6 +81,7 @@ impl RenderOnce for SettingsDropdown {
             self.closing,
             self.trigger_height,
             limits,
+            self.align,
         )
     }
 }
@@ -1258,6 +1261,7 @@ pub fn select<V: 'static>(
         menu_width: None,
         font: None,
         heading: None,
+        align: popover::MenuAlign::End,
         reach: Rc::new(reach),
         on_select: None,
     }
@@ -1273,6 +1277,7 @@ pub struct Select<V: 'static> {
     menu_width: Option<f32>,
     font: Option<SharedString>,
     heading: Option<&'static str>,
+    align: popover::MenuAlign,
     reach: SelectReach<V>,
     on_select: Option<SelectHandler<V>>,
 }
@@ -1342,6 +1347,13 @@ impl<V: 'static> Select<V> {
         self
     }
 
+    /// Open the menu rightward from the trigger's left edge, for triggers
+    /// that lead a row rather than end it.
+    pub fn open_rightward(mut self) -> Self {
+        self.align = popover::MenuAlign::Start;
+        self
+    }
+
     pub fn render(self, state: &SelectState, cx: &mut Context<V>) -> gpui::Stateful<gpui::Div> {
         let Self {
             id,
@@ -1353,6 +1365,7 @@ impl<V: 'static> Select<V> {
             menu_width,
             font,
             heading,
+            align,
             reach,
             on_select,
         } = self;
@@ -1488,12 +1501,13 @@ impl<V: 'static> Select<V> {
                     SELECT_HEIGHT,
                     if heading.is_some() { 32.0 } else { 8.0 },
                 ));
-            trigger = trigger.child(dropdown(
-                format!("{id}-menu"),
-                menu,
-                state.menu.closing_since(),
-                SELECT_HEIGHT,
-            ));
+            trigger = trigger.child(SettingsDropdown {
+                id: format!("{id}-menu").into(),
+                content: menu,
+                closing: state.menu.closing_since(),
+                trigger_height: SELECT_HEIGHT,
+                align,
+            });
         }
         trigger
     }

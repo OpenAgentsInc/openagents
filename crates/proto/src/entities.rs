@@ -444,6 +444,25 @@ pub struct FolderListing {
     pub truncated: bool,
 }
 
+/// Device-local preferences, used only when creating a new worktree.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct WorktreeSettings {
+    pub use_custom_directory: bool,
+    /// Remembered even while the custom location is disabled.
+    pub custom_directory: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeSettingsStatus {
+    pub settings: WorktreeSettings,
+    pub default_directory: String,
+    pub effective_directory: String,
+    /// An explicit host environment override takes precedence over preferences.
+    pub environment_override: Option<String>,
+}
+
 /// `SearchHomeFolders`: folders anywhere under the host's home whose names
 /// match `query`, for the new-project picker. An empty query only starts the
 /// host's home search index.
