@@ -72,12 +72,18 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         Stop the thread's running Coder task.
   answer --thread ID TEXT
         Answer the question Coder asked, and follow the turn it starts.
-  threads [--all] [--limit N]
+  threads [--all] [--limit N] [--account]
         List threads, newest first; --all includes archived threads.
+        --account lists the signed-in account's chats on openagents.com
+        instead: those made on the website, the phone, and every terminal.
   read --thread ID
-        Print a thread's turns.
+        Print a thread's turns. A thread this computer doesn't keep is read
+        from the signed-in account on openagents.com, so a website or phone
+        chat's ID (as `chat threads --account` or `projects show` lists it),
+        a unique prefix of it, or its title prints its messages.
   export --thread ID
-        Print the thread as an ATIF-v1.8 trajectory whose session_id is ID.
+        Print the thread as an ATIF-v1.8 trajectory whose session_id is ID;
+        an account chat exports the same way.
   apply --thread ID
         Bring the thread's Coder change into the checkout it was made from,
         uncommitted, so you can review and commit it there. The checkout
@@ -207,6 +213,7 @@ const SWITCHES: &[&str] = &[
     "run-coder",
     "no-run",
     "engine-fallback",
+    "account",
 ];
 
 pub(crate) enum Failure {
@@ -333,13 +340,119 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     {
         return output.usage("chat", &format!("unknown option `--{name}`"), USAGE);
     }
+    if command == "threads" && args.switch("account") {
+        return account_threads(output, &args);
+    }
+    // A thread this computer doesn't keep may be the account's (#11504):
+    // a website or phone chat's ID goes there at once; another name tries
+    // here first.
+    let account_arg = args
+        .option("thread")
+        .filter(|id| {
+            matches!(command, "read" | "export")
+                && !client::thread_id(id)
+                && !args.switch("scratch")
+                && !args.switch("local")
+        })
+        .map(str::to_owned);
+    if let Some(id) = account_arg
+        .as_deref()
+        .filter(|id| crate::account_threads::account_id(id))
+    {
+        return account_read(output, command, id)
+            .unwrap_or_else(|message| output.fail("chat", &message));
+    }
     let result = runtime().block_on(dispatch(output, command, &args));
+    let result = match (result, account_arg) {
+        // Not signed in: the answer is this computer's alone.
+        (Err(Failure::Refused(message)), Some(id)) => match crate::keys::Site::open(None) {
+            Err(_) => Err(Failure::Refused(message)),
+            Ok(_) => match account_read(output, command, &id) {
+                Ok(code) => return code,
+                Err(message) => Err(Failure::Refused(message)),
+            },
+        },
+        (result, _) => result,
+    };
     match result {
         Ok(code) => code,
         Err(Failure::Usage(message)) => output.usage("chat", &message, USAGE),
         Err(Failure::Refused(message)) => output.refuse("chat", &message),
         Err(Failure::Failed(message)) => output.fail("chat", &message),
     }
+}
+
+/// `chat threads --account`: the account's chats on openagents.com.
+fn account_threads(output: &Output, args: &Args) -> u8 {
+    let limit: usize = match args.number("limit", 50) {
+        Ok(limit) => limit,
+        Err(message) => return output.usage("chat", &message, USAGE),
+    };
+    let site = match crate::keys::Site::open(None) {
+        Ok(site) => site,
+        Err(message) => return output.fail("chat", &message),
+    };
+    let rows = match crate::account_threads::threads(&site, None, usize::MAX) {
+        Ok(rows) => rows,
+        Err(message) => return output.fail("chat", &message),
+    };
+    let total = rows.len();
+    let rows: Vec<Value> = rows
+        .into_iter()
+        .filter(|row| args.switch("all") || row["archived"] != true)
+        .take(limit)
+        .collect();
+    output.emit(
+        &json!({"backend": "account", "total": total, "threads": rows}),
+        |value| {
+            let mut table_rows = vec![vec![
+                "THREAD".into(),
+                "UPDATED".into(),
+                "MADE ON".into(),
+                "TITLE".into(),
+            ]];
+            for row in value["threads"].as_array().into_iter().flatten() {
+                table_rows.push(vec![
+                    row["id"].as_str().unwrap_or("").to_owned(),
+                    atif::iso(row["updated"].as_u64().unwrap_or(0) * 1_000),
+                    crate::account_threads::place(row),
+                    row["title"].as_str().unwrap_or("").to_owned(),
+                ]);
+            }
+            let total = value["total"].as_u64().unwrap_or(0);
+            let noun = if total == 1 { "chat" } else { "chats" };
+            format!(
+                "{}\n{total} {noun} in your account on openagents.com. Read one with openagents chat read --thread ID.",
+                table(&table_rows)
+            )
+        },
+    );
+    0
+}
+
+/// `chat read` or `chat export` of the account thread `arg` names.
+fn account_read(output: &Output, command: &str, arg: &str) -> Result<u8, String> {
+    let site = crate::keys::Site::open(None)?;
+    let row = crate::account_threads::find(&site, arg)?;
+    let id = row["id"].as_str().unwrap_or_default().to_owned();
+    let turns = crate::account_threads::messages(&site, &id)?;
+    if command == "read" {
+        output.emit(
+            &crate::account_threads::whole(&row, turns),
+            crate::account_threads::read_text,
+        );
+    } else {
+        let thread = crate::account_threads::as_thread(&row, &turns);
+        let document = openagents_chat::thread::trajectory(&thread, &crate::version_line());
+        if let Some(problem) = atif::validate(&document).into_iter().next() {
+            return Err(format!("the trajectory is not valid ATIF: {problem}"));
+        }
+        output.emit(&document, |document| {
+            serde_json::to_string_pretty(document).unwrap_or_default()
+        });
+        eprintln!("thread {id}");
+    }
+    Ok(0)
 }
 
 async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Failure> {

@@ -16,6 +16,7 @@ use std::process::ExitCode;
 
 // `connect`, `labor`, `pay`, `service`, `ssh`, `wallet`, and `x402` are Unix-only
 // (see the dispatch below); Windows builds the rest.
+mod account_threads;
 mod agent;
 mod approval_gate;
 mod argv;

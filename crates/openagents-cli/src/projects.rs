@@ -32,6 +32,10 @@ pub(crate) const USAGE: &str = "usage: openagents projects COMMAND [--account-di
               One project, by name, repository, or id, with its chats.
   threads PROJECT
               The project's chats, oldest activity first.
+  read PROJECT [CHAT]
+              Every chat in the project, message by message, or only CHAT
+              (its id, a unique id prefix, or its title). One chat also
+              reads with openagents chat read --thread ID.
   add REPOSITORY [--protection standard|only_me]
               Add a project from a connected GitHub repository (owner/name).
   edit PROJECT --protection standard|only_me
@@ -63,6 +67,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("list", Effect::ReadOnly),
     Declared::computer("show", Effect::ReadOnly),
     Declared::computer("threads", Effect::ReadOnly),
+    Declared::computer("read", Effect::ReadOnly),
     Declared::computer("add", Effect::Publishes),
     Declared::computer("edit", Effect::Publishes),
     Declared::computer("remove", Effect::Publishes),
@@ -116,6 +121,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     let (known, fewest, most): (&[&str], usize, usize) = match command.as_str() {
         "list" => (&["account-dir"], 0, 0),
         "show" | "threads" => (&["account-dir"], 1, 1),
+        "read" => (&["account-dir"], 1, 2),
         "add" => (&["account-dir", "protection"], 1, 1),
         "edit" => (&["account-dir", "protection"], 1, 1),
         "remove" => (&["account-dir", "detach-threads"], 1, 1),
@@ -137,6 +143,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         let wanted = match (fewest, most) {
             (0, 0) => "no arguments".to_owned(),
             (1, 1) => "one argument".to_owned(),
+            (1, 2) => "a project and at most one chat".to_owned(),
             (2, 2) => "a project and a file".to_owned(),
             _ => "a project and one or more files".to_owned(),
         };
@@ -174,6 +181,11 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "show" | "threads" => projects.show(target).map(|shown| {
             output.emit(&shown, show_text);
         }),
+        "read" => projects
+            .read(target, rest.get(1).map(String::as_str))
+            .map(|read| {
+                output.emit(&read, read_text);
+            }),
         "add" => projects
             .add(target)
             .and_then(|added| match protection {
@@ -339,6 +351,51 @@ impl Projects<'_> {
             }
         }
         Ok(json!({"project": project, "threads": threads}))
+    }
+
+    /// The project's chats with their messages: all of them, or the one
+    /// `chat` names (#11504).
+    fn read(&self, target: &str, chat: Option<&str>) -> Result<Value, String> {
+        let shown = self.show(target)?;
+        let mut threads = shown["threads"].as_array().cloned().unwrap_or_default();
+        if let Some(chat) = chat {
+            let lowered = chat.trim().to_lowercase();
+            let id = |thread: &Value| thread["id"].as_str().unwrap_or_default().to_owned();
+            let exact: Vec<Value> = threads.iter().filter(|t| id(t) == chat).cloned().collect();
+            let prefixed: Vec<Value> = threads
+                .iter()
+                .filter(|t| id(t).starts_with(chat))
+                .cloned()
+                .collect();
+            let titled: Vec<Value> = threads
+                .iter()
+                .filter(|t| {
+                    t["title"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .trim()
+                        .to_lowercase()
+                        == lowered
+                })
+                .cloned()
+                .collect();
+            threads = [exact, prefixed, titled]
+                .into_iter()
+                .find(|found| found.len() == 1)
+                .ok_or_else(|| {
+                    format!(
+                        "no single chat in {} is named `{chat}`; give its id, a unique id prefix, or its title (openagents projects show {target} lists them)",
+                        shown["project"]["name"].as_str().unwrap_or(target)
+                    )
+                })?;
+        }
+        let mut read = Vec::with_capacity(threads.len());
+        for mut thread in threads {
+            let id = thread["id"].as_str().unwrap_or_default().to_owned();
+            thread["turns"] = json!(crate::account_threads::messages(self.0, &id)?);
+            read.push(thread);
+        }
+        Ok(json!({"project": shown["project"], "threads": read}))
     }
 
     fn add(&self, repository: &str) -> Result<Value, String> {
@@ -906,6 +963,26 @@ fn list_text(listed: &Value) -> String {
         .join("\n")
 }
 
+/// `projects read`: each chat's title, then its messages.
+fn read_text(read: &Value) -> String {
+    let threads = read["threads"].as_array().cloned().unwrap_or_default();
+    let mut out = format!(
+        "{}: {} chat{}",
+        read["project"]["name"].as_str().unwrap_or_default(),
+        threads.len(),
+        if threads.len() == 1 { "" } else { "s" }
+    );
+    for thread in &threads {
+        out.push_str(&format!(
+            "\n\n## {} ({})\n{}",
+            thread["title"].as_str().unwrap_or("Untitled"),
+            thread["id"].as_str().unwrap_or_default(),
+            crate::account_threads::turns_text(&thread["turns"]).trim_start_matches('\n')
+        ));
+    }
+    out.trim_end().to_owned()
+}
+
 fn show_text(shown: &Value) -> String {
     let threads = shown["threads"].as_array().cloned().unwrap_or_default();
     let mut lines = vec![project_line(&shown["project"])];
@@ -930,6 +1007,12 @@ fn show_text(shown: &Value) -> String {
                 ""
             },
             thread["id"].as_str().unwrap_or_default(),
+        ));
+    }
+    if !threads.is_empty() {
+        lines.push(format!(
+            "Read their messages with openagents projects read {}",
+            shown["project"]["name"].as_str().unwrap_or_default()
         ));
     }
     lines.join("\n")
@@ -992,6 +1075,23 @@ mod tests {
         let text = show_text(&shown);
         assert!(text.starts_with("finances  chris/finances"), "{text}");
         assert!(text.contains("  2026-10-09  Taxes  c2"), "{text}");
+        assert!(text.ends_with("Read their messages with openagents projects read finances"));
+    }
+
+    #[test]
+    fn a_projects_chats_read_message_by_message() {
+        let read = json!({
+            "project": projects()[0],
+            "threads": [{"id": "c2", "title": "Taxes", "turns": [
+                {"role": "user", "text": "When are they due?"},
+                {"role": "assistant", "text": "April 15."},
+            ]}],
+        });
+        let text = read_text(&read);
+        assert_eq!(
+            text,
+            "finances: 1 chat\n\n## Taxes (c2)\nyou:\nWhen are they due?\n\nopenagents:\nApril 15."
+        );
     }
 
     #[test]
