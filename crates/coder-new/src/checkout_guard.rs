@@ -7,6 +7,8 @@
 
 use std::path::{Component, Path, PathBuf};
 
+use serde_json::Value;
+
 /// Guidance for a session that works in its own worktree.
 pub const INSTRUCTIONS: &str = "You work in your own git worktree on your own branch; the folder you were started from is another checkout that other sessions and the user may be editing, and it is read-only for you: Edit, Write and commands that write under it are refused. To land, commit on this branch and `git push origin HEAD:main`; if the push is rejected, `git fetch origin && git rebase origin/main` and push again. Never split hunks: this checkout has no one else's changes.\n";
 
@@ -23,6 +25,33 @@ pub struct Boundary {
 }
 
 impl Boundary {
+    /// The boundary a Coder worktree implies when `cwd` is in one
+    /// (`<checkout>/.coder/worktrees/<name>`): the worktree, and the
+    /// checkout it was made from as the read-only side. `None` elsewhere.
+    /// A harness session started in a session worktree gets the same fence
+    /// as Coder's own tools without being handed it (#11485).
+    #[must_use]
+    pub fn around(cwd: &Path) -> Option<Self> {
+        let parts = cwd.components().collect::<Vec<_>>();
+        let at = parts.windows(3).position(|window| {
+            window[0].as_os_str() == ".coder"
+                && window[1].as_os_str() == "worktrees"
+                && matches!(window[2], Component::Normal(_))
+        })?;
+        let shared = parts[..at].iter().collect::<PathBuf>();
+        let worktree = parts[..at + 3].iter().collect::<PathBuf>();
+        let name = parts[at + 2].as_os_str().to_string_lossy();
+        let branch = name
+            .strip_prefix("chat-")
+            .map(|short| format!("chat/{short}"))
+            .unwrap_or_default();
+        (!shared.as_os_str().is_empty()).then_some(Self {
+            worktree,
+            shared,
+            branch,
+        })
+    }
+
     /// Whether a path, as the tool or command names it from `cwd`, lands
     /// under the shared checkout and outside the session's own worktree.
     #[must_use]
@@ -45,7 +74,9 @@ impl Boundary {
     /// Why a file tool call is refused, or `None` when it may run.
     #[must_use]
     pub fn file_refusal(&self, tool: &str, path: &str, cwd: &Path) -> Option<String> {
-        (matches!(tool, "Edit" | "Write") && self.protects(cwd, path)).then(|| {
+        (matches!(tool, "Edit" | "Write" | "MultiEdit" | "NotebookEdit")
+            && self.protects(cwd, path))
+        .then(|| {
             format!(
                 "Refused: {path} is in the shared checkout, which other sessions and the user may be editing. Work in your own worktree ({}); read the shared file if you need its contents.",
                 self.worktree.display()
@@ -74,6 +105,32 @@ impl Boundary {
                     self.worktree.display()
                 ));
             }
+            // In the shared checkout only reading runs: a command that is
+            // not a known reader is refused there rather than trusted not to
+            // write (#11485). Git and cargo were judged above.
+            if self.protects(&here, ".")
+                && let Some(program) = program(&words)
+                && !reads_only(&program, &words)
+            {
+                return Some(format!(
+                    "Refused: `{program}` would run in the shared checkout ({}), which other sessions and the user may be editing, and it may write there. Run it in your own worktree ({}) instead; reading there with ls, cat, rg, or git status and log is fine.",
+                    here.display(),
+                    self.worktree.display()
+                ));
+            }
+        }
+        // A script (`python3 - <<EOF`, `node -e`, `bash -c`) can write
+        // anywhere it names, so one that names a path in the shared checkout
+        // is refused, whatever it does with it (#11485).
+        if segments(command)
+            .filter_map(|words| program(&words))
+            .any(|program| interpreter(&program))
+            && let Some(path) = named_paths(command).find(|path| self.protects(cwd, path))
+        {
+            return Some(format!(
+                "Refused: this runs a script that names {path}, which is in the shared checkout that other sessions and the user may be editing. Write in your own worktree ({}) instead; read the shared file with Read or cat if you need its contents.",
+                self.worktree.display()
+            ));
         }
         None
     }
@@ -230,6 +287,177 @@ impl Boundary {
     }
 }
 
+/// Why a harness's tool call is refused under the session's `boundary`,
+/// or `None` when it may run: Edit, Write, MultiEdit and NotebookEdit under
+/// the shared checkout, a patch that touches it, and a shell command that
+/// [`crate::git_guard`] refuses or that writes there. `cwd` is where the
+/// call runs. The Claude Code and Codex hooks call this (#11485), so the
+/// fence Coder's own tools keep holds on those harnesses too.
+#[must_use]
+pub fn tool_refusal(
+    boundary: Option<&Boundary>,
+    tool: &str,
+    input: &Value,
+    cwd: &Path,
+) -> Option<String> {
+    match tool {
+        "Bash" | "Run" | "Monitor" | "shell" | "exec_command" | "local_shell" => {
+            let text = match input.get("command").or_else(|| input.get("cmd"))? {
+                Value::String(text) => text.clone(),
+                Value::Array(words) => words
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                _ => return None,
+            };
+            let here = input
+                .get("workdir")
+                .and_then(Value::as_str)
+                .map_or_else(|| cwd.to_path_buf(), |dir| cwd.join(dir));
+            crate::git_guard::refusal(&text).or_else(|| boundary?.run_refusal(&text, &here))
+        }
+        "Edit" | "Write" | "MultiEdit" | "NotebookEdit" => {
+            let path = input
+                .get("file_path")
+                .or_else(|| input.get("notebook_path"))
+                .or_else(|| input.get("path"))
+                .and_then(Value::as_str)?;
+            boundary?.file_refusal(tool, path, cwd)
+        }
+        "apply_patch" => {
+            let boundary = boundary?;
+            let text = input
+                .get("input")
+                .or_else(|| input.get("patch"))
+                .or_else(|| input.get("command"))
+                .and_then(Value::as_str)?;
+            text.lines()
+                .filter_map(|line| {
+                    [
+                        "*** Update File: ",
+                        "*** Add File: ",
+                        "*** Delete File: ",
+                        "*** Move to: ",
+                    ]
+                    .iter()
+                    .find_map(|head| line.strip_prefix(head))
+                })
+                .find_map(|path| boundary.file_refusal("Edit", path.trim(), cwd))
+        }
+        _ => None,
+    }
+}
+
+/// The fence as a Coder SDK hook (#11485) for a session in `cwd`: on
+/// `PreToolUse`, a call [`tool_refusal`] refuses is denied with its reason.
+/// Under bypass nothing else stops Claude Code's own Edit, Write and Bash
+/// from writing the shared checkout. The boundary is the Coder worktree
+/// `cwd` is in ([`Boundary::around`]); with none, only [`crate::git_guard`]
+/// judges.
+#[must_use]
+pub fn sdk_hook(cwd: PathBuf) -> coder_sdk::Hook {
+    let boundary = Boundary::around(&cwd);
+    coder_sdk::Hook::floor(
+        "worktree-fence",
+        coder_sdk::Event::PreToolUse,
+        coder_sdk::Permission::deny(
+            "Refused: Coder could not check whether this writes to the shared checkout. Work in your own worktree.",
+        ),
+        move |call: &coder_sdk::Call| {
+            let tool = call.tool.as_deref().unwrap_or_default();
+            Ok(
+                match tool_refusal(boundary.as_ref(), tool, &call.input, &cwd) {
+                    Some(reason) => coder_sdk::HookOutcome::deny(&reason),
+                    None => coder_sdk::HookOutcome::none(),
+                },
+            )
+        },
+    )
+}
+
+/// The program a simple command runs, past `VAR=value` assignments and
+/// the wrappers that run another program.
+fn program(words: &[String]) -> Option<String> {
+    let word = words.iter().find(|word| {
+        let assignment = word.split_once('=').is_some_and(|(name, _)| {
+            !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        });
+        !assignment
+            && !matches!(
+                word.as_str(),
+                "sudo" | "env" | "time" | "nohup" | "command" | "exec"
+            )
+    })?;
+    Some(word.rsplit('/').next().unwrap_or(word).to_owned())
+}
+
+/// Whether `program` (with its `words`) only reads where it runs. Git and
+/// cargo are judged by their subcommands in [`Boundary::written_path`].
+fn reads_only(program: &str, words: &[String]) -> bool {
+    match program {
+        "find" => !words.iter().any(|word| {
+            matches!(
+                word.as_str(),
+                "-delete"
+                    | "-exec"
+                    | "-execdir"
+                    | "-ok"
+                    | "-okdir"
+                    | "-fprint"
+                    | "-fprint0"
+                    | "-fprintf"
+                    | "-fls"
+            )
+        }),
+        "git" | "cargo" | "cd" | "pushd" | "popd" | "ls" | "cat" | "head" | "tail" | "wc"
+        | "rg" | "grep" | "egrep" | "fgrep" | "fd" | "file" | "stat" | "du" | "df" | "tree"
+        | "less" | "more" | "bat" | "diff" | "cmp" | "echo" | "printf" | "pwd" | "true"
+        | "false" | "test" | "[" | "which" | "type" | "sort" | "uniq" | "cut" | "tr" | "jq"
+        | "xxd" | "od" | "nl" | "column" | "basename" | "dirname" | "realpath" | "readlink"
+        | "date" | "sleep" | "exit" | "sed" | "awk" | "gh" | "shasum" | "sha256sum" | "md5"
+        | "md5sum" => true,
+        _ => false,
+    }
+}
+
+/// Whether `program` runs a script it is given.
+fn interpreter(program: &str) -> bool {
+    program.starts_with("python")
+        || matches!(
+            program,
+            "node"
+                | "nodejs"
+                | "perl"
+                | "ruby"
+                | "php"
+                | "bash"
+                | "sh"
+                | "zsh"
+                | "dash"
+                | "fish"
+                | "deno"
+                | "bun"
+                | "osascript"
+                | "lua"
+        )
+}
+
+/// Every path-looking run of characters in `command`, script bodies
+/// included: one that starts with `/`, `~/`, `./` or `../`.
+fn named_paths(command: &str) -> impl Iterator<Item = &str> {
+    command
+        .split(|c: char| {
+            !(c.is_alphanumeric() || matches!(c, '/' | '.' | '_' | '-' | '~' | '+' | '@' | '%'))
+        })
+        .filter(|word| {
+            word.starts_with('/')
+                || word.starts_with("~/")
+                || word.starts_with("./")
+                || word.starts_with("../")
+        })
+}
+
 fn cargo_dir(words: &[String]) -> Option<PathBuf> {
     words
         .iter()
@@ -352,6 +580,15 @@ mod tests {
             "cd /repo && tar xf bundle.tar",
             "cd /repo && unzip bundle.zip",
             "cd /repo/crates && rm src/lib.rs",
+            // #11485: scripts that name the shared checkout, and anything
+            // but reading run from inside it.
+            "python3 - <<'EOF'\np = open('/repo/crates/x/src/lib.rs', 'w')\np.write('x')\nEOF",
+            "node -e \"require('fs').writeFileSync('/repo/notes.md', 'x')\"",
+            "bash -c 'echo x > ../../../notes.md'",
+            "cd /repo && python3 fix.py",
+            "cd /repo && npm install",
+            "cd /repo && make",
+            "cd /repo && find . -name '*.orig' -delete",
         ] {
             assert!(b.run_refusal(command, wt).is_some(), "{command}");
         }
@@ -378,8 +615,115 @@ mod tests {
             "rg pattern /repo/crates",
             "cp /repo/README.md notes.md",
             "git show origin/main:ui.rs > src/ui.rs",
+            "cd /repo && ls crates && rg foo && git log -3 --oneline",
+            "cd /repo && cargo test -p coder-new",
+            "python3 - <<'EOF'\nopen('src/lib.rs', 'w').write('x')\nEOF",
+            "python3 -c 'print(1)'",
+            "python3 /repo/.coder/worktrees/chat-abc/tool.py",
         ] {
             assert!(b.run_refusal(command, wt).is_none(), "{command}");
         }
+    }
+
+    #[test]
+    fn a_coder_worktree_implies_its_boundary() {
+        let b = Boundary::around(Path::new("/repo/.coder/worktrees/chat-abc")).unwrap();
+        assert_eq!(b, boundary());
+        let inner =
+            Boundary::around(Path::new("/repo/.coder/worktrees/chat-abc/crates/x")).unwrap();
+        assert_eq!(inner, boundary());
+        assert!(Boundary::around(Path::new("/repo")).is_none());
+        assert!(Boundary::around(Path::new("/repo/.coder")).is_none());
+    }
+
+    #[test]
+    fn harness_tool_calls_are_judged_by_the_same_fence() {
+        use super::tool_refusal;
+        use serde_json::json;
+        let b = boundary();
+        let wt = Path::new("/repo/.coder/worktrees/chat-abc");
+        for (tool, input) in [
+            (
+                "Edit",
+                json!({"file_path": "/repo/src/lib.rs", "old_string": "a", "new_string": "b"}),
+            ),
+            (
+                "Write",
+                json!({"file_path": "/repo/README.md", "content": "x"}),
+            ),
+            (
+                "MultiEdit",
+                json!({"file_path": "/repo/src/lib.rs", "edits": []}),
+            ),
+            (
+                "NotebookEdit",
+                json!({"notebook_path": "/repo/n.ipynb", "new_source": ""}),
+            ),
+            (
+                "Bash",
+                json!({"command": "python3 - <<'EOF'\nopen('/repo/src/lib.rs','w').write('')\nEOF"}),
+            ),
+            ("Bash", json!({"command": "cat x > /repo/notes.md"})),
+            (
+                "shell",
+                json!({"command": ["bash", "-lc", "cd /repo && cargo fmt"]}),
+            ),
+            (
+                "apply_patch",
+                json!({"input": "*** Begin Patch\n*** Update File: /repo/src/lib.rs\n@@\n-a\n+b\n*** End Patch"}),
+            ),
+        ] {
+            assert!(
+                tool_refusal(Some(&b), tool, &input, wt).is_some(),
+                "{tool} {input}"
+            );
+        }
+        // The shell the agent left in the shared checkout counts as there.
+        assert!(
+            tool_refusal(
+                Some(&b),
+                "Bash",
+                &json!({"command": "sed 's/a/b/' x > y"}),
+                Path::new("/repo")
+            )
+            .is_some()
+        );
+        // Stashing or discarding work is refused with or without a worktree.
+        assert!(
+            tool_refusal(
+                None,
+                "Bash",
+                &json!({"command": "git stash"}),
+                Path::new("/repo")
+            )
+            .is_some()
+        );
+        for (tool, input) in [
+            ("Edit", json!({"file_path": "src/lib.rs"})),
+            (
+                "Write",
+                json!({"file_path": "/repo/.coder/worktrees/chat-abc/x.rs"}),
+            ),
+            ("Read", json!({"file_path": "/repo/src/lib.rs"})),
+            (
+                "Bash",
+                json!({"command": "cargo test -p x && git commit -am x && git push origin HEAD:main"}),
+            ),
+            ("Bash", json!({"command": "cat /repo/README.md"})),
+        ] {
+            assert!(
+                tool_refusal(Some(&b), tool, &input, wt).is_none(),
+                "{tool} {input}"
+            );
+        }
+        assert!(
+            tool_refusal(
+                None,
+                "Edit",
+                &json!({"file_path": "/repo/src/lib.rs"}),
+                Path::new("/repo")
+            )
+            .is_none()
+        );
     }
 }

@@ -552,3 +552,55 @@ fn a_pin_is_honored_and_recorded_and_never_means_never() {
     assert_eq!(chose[0].rule, crate::routing_record::Rule::Pin);
     assert_eq!(chose[0].harness, Harness::CoderLoop);
 }
+
+/// #11485: on Claude Code and Codex, a session started in its own worktree
+/// keeps the shared checkout read-only: an Edit and a `python3` heredoc
+/// aimed at it are both refused by the hook Coder installs.
+#[test]
+fn the_harness_hooks_keep_the_shared_checkout_read_only() {
+    let shared = std::path::Path::new("/repo");
+    let worktree = shared.join(".coder/worktrees/chat-abc");
+    let (options, _) = crate::claude::turn_options(&worktree, crate::claude::Access::Full, None);
+    let hook = options
+        .hooks
+        .get(&claude_agent_sdk::HookEvent::PreToolUse)
+        .expect("the hook is installed")[0]
+        .hooks[0]
+        .clone();
+    let calls = [
+        (
+            "Edit",
+            json!({"file_path": "/repo/src/lib.rs", "old_string": "a", "new_string": "b"}),
+        ),
+        (
+            "Bash",
+            json!({"command": "python3 - <<'EOF'\nopen('/repo/src/lib.rs', 'w').write('x')\nEOF"}),
+        ),
+    ];
+    for (tool, tool_input) in &calls {
+        let call = json!({"hook_event_name": "PreToolUse", "tool_name": tool,
+            "tool_input": tool_input, "cwd": worktree});
+        let value = serde_json::to_value(block(hook.call(call.clone(), None)).unwrap()).unwrap();
+        assert_eq!(
+            value["hookSpecificOutput"]["permissionDecision"], "deny",
+            "{tool}"
+        );
+        assert!(
+            value["hookSpecificOutput"]["permissionDecisionReason"]
+                .as_str()
+                .unwrap()
+                .starts_with("Refused"),
+            "{tool}"
+        );
+        let codex = hook_decision(&call).expect("codex refuses it too");
+        assert_eq!(
+            codex["hookSpecificOutput"]["permissionDecision"], "deny",
+            "{tool}"
+        );
+    }
+    let inside = json!({"tool_name": "Edit", "tool_input": {"file_path": "src/lib.rs"},
+        "cwd": worktree});
+    let value = serde_json::to_value(block(hook.call(inside.clone(), None)).unwrap()).unwrap();
+    assert!(value.get("hookSpecificOutput").is_none(), "{value}");
+    assert!(hook_decision(&inside).is_none());
+}

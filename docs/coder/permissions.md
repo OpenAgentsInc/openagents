@@ -43,6 +43,18 @@ request?", with the exact command. With nobody to answer, and always inside
 Codex, the call is held: the agent is told to finish what it can and hand
 that step back to the person.
 
+## The session's own worktree
+
+A `coder chat` session works in its own worktree
+(`.coder/worktrees/chat-<session>`), and the checkout it was started from is
+read-only for it (#11372). The same hook keeps that true on Claude Code and
+Codex (#11485): an Edit, Write, MultiEdit, NotebookEdit or patch under the
+shared checkout is refused; so is a shell command that writes there, any
+command but reading run from inside it, and a script (`python3 - <<EOF`,
+`node -e`, `bash -c`) that names a path in it. Stashing, hard resets and
+other commands that throw away uncommitted work are refused on every harness,
+worktree or not (`crates/coder-new/src/git_guard.rs`).
+
 ## Pins
 
 A person can pin a harness, and a model on it, for one repository, one kind

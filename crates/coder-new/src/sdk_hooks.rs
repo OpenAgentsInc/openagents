@@ -6,13 +6,17 @@ use std::path::Path;
 
 use coder_sdk::{Budget, Registry};
 
-/// The built-in hooks a session runs: the floors on every turn, and on a
+/// The built-in hooks a session runs: the session worktree's fence
+/// (#11485) and the floors on every turn, and on a
 /// full turn the token savers' squeezer, registered before them in the
 /// rewrite chain (the floors judge the final input whatever the order).
 #[must_use]
 pub fn registry(cwd: &Path, full: bool) -> Registry {
     let mut registry = Registry::new();
-    let mut hooks = vec![crate::floors::sdk_hook(cwd.to_owned())];
+    let mut hooks = vec![
+        crate::checkout_guard::sdk_hook(cwd.to_owned()),
+        crate::floors::sdk_hook(cwd.to_owned()),
+    ];
     if full {
         hooks.extend(crate::token_savers::sdk_hooks());
     }

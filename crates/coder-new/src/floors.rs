@@ -672,18 +672,28 @@ fn toml_string(text: &str) -> String {
 }
 
 /// The Codex hook: reads one `PreToolUse` call on standard input and
-/// writes the floor's decision. Nobody can answer from inside Codex, so a
+/// writes the decision: the session worktree's fence
+/// ([`crate::checkout_guard::tool_refusal`]), then the floors. Nobody can answer from inside Codex, so a
 /// floored call is held (denied with a note to hand it back), and anything
 /// else is let through.
 #[must_use]
 pub fn hook_decision(input: &Value) -> Option<Value> {
     let tool = input["tool_name"].as_str().unwrap_or_default();
-    let floor = classify(tool, &input["tool_input"])?;
     let cwd = input["cwd"]
         .as_str()
         .map(PathBuf::from)
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| PathBuf::from("."));
+    // The session's worktree fence first (#11485), as on Claude Code.
+    if let Some(reason) = crate::checkout_guard::tool_refusal(
+        crate::checkout_guard::Boundary::around(&cwd).as_ref(),
+        tool,
+        &input["tool_input"],
+        &cwd,
+    ) {
+        return Some(json!({"hookSpecificOutput": deny_output(&reason)}));
+    }
+    let floor = classify(tool, &input["tool_input"])?;
     let reason = match rule(&cwd, floor.ability) {
         Rule::Allow => return None,
         Rule::Deny => refused(&floor),
