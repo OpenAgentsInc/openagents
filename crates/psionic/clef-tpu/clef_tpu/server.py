@@ -1,6 +1,6 @@
 """The sealed Clef TPU worker: HTTP on localhost behind the Rust door.
 
-  python -I -m clef_tpu.server <clef-flash dir> [--port 8091] [--chunk 2048] [--precision bf16] [--scan jax]
+  python -I -m clef_tpu.server <clef-flash dir> [--port 8091] [--chunk 0] [--precision bf16|int8] [--scan fused]
 
 GET  /v1/identity  -> backend, device, precision, artifact and head digests
 POST /v1/logits    {"input_ids": [...], "questions": [{"type", "question_span", "option_spans"}], "chunk"?}
@@ -36,7 +36,7 @@ def main():
     ap.add_argument("--port", type=int, default=8091)
     ap.add_argument("--chunk", type=int, default=0, help="prefill chunk; 0 picks 512 or 768 per prompt")
     ap.add_argument("--precision", default="bf16")
-    ap.add_argument("--scan", default="jax")
+    ap.add_argument("--scan", default="fused", help="delta rule: fused (Pallas, default), jax or pallas (XLA prep + scan)")
     ap.add_argument("--prefix-budget", type=float, default=4.0,
                     help="GB of device memory for prefix snapshots (0 turns prefix reuse off)")
     ap.add_argument("--warm", default="500,1500,2300,3500,6000,7500,15000", help="prompt lengths to compile before serving")

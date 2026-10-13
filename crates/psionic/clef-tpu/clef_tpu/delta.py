@@ -222,6 +222,8 @@ def step_ref(q, k, v, g, beta, S0):
 # needs no matmul chain.
 
 FUSED_PREC = getattr(jax.lax.Precision, os.environ.get("CLEF_TPU_FUSED_PRECISION", "HIGHEST"))
+# rows per forward-substitution block in the fused kernel (CLEF_TPU_FS_BLOCK)
+FS_BLOCK = int(os.environ.get("CLEF_TPU_FS_BLOCK", "16"))
 
 
 def _bdot(a, b, ca, cb, prec):
@@ -236,24 +238,46 @@ def _rep(x, rep):
     return jnp.broadcast_to(x[:, None], (x.shape[0], rep) + x.shape[1:]).reshape((x.shape[0] * rep,) + x.shape[1:])
 
 
-def _fused_kernel(q_ref, k_ref, v_ref, g_ref, b_ref, s0_ref, o_ref, s_out_ref, s_ref, x_ref, *, C, rep, dk, prec):
+# the fused kernel reads q, k, v straight from the conv output [T, (heads x d)]
+# and writes o as [T, Hv dv], with the head split done in VMEM
+# (CLEF_TPU_FUSED_2D=1), instead of head-major copies made by XLA around it
+FUSED_2D = os.environ.get("CLEF_TPU_FUSED_2D", "1") == "1"
+
+
+def _heads(ref, d):
+    if FUSED_2D:
+        x = ref[...]                                                 # [C, H d]
+        return pltpu.einshape("t(hd)->htd", x, d=d)
+    return ref[...]
+
+
+def _tokens_last(ref):
+    if FUSED_2D:
+        return ref[...].T                                            # [C, H] -> [H, C]
+    return ref[0]
+
+
+def _put_heads(ref, o):
+    if FUSED_2D:
+        ref[...] = pltpu.einshape("htd->t(hd)", o)
+    else:
+        ref[...] = o
+
+
+def _prep(q_ref, k_ref, v_ref, g_ref, b_ref, x_ref, *, C, rep, dk, prec):
+    """Everything of one sub-chunk that does not need the state:
+    (u, w, q e^gc, the masked intra-chunk A, k e^(gc_last - gc), e^gc_last)."""
     f32 = jnp.float32
-    n = pl.program_id(0)
-
-    @pl.when(n == 0)
-    def _():
-        s_ref[...] = s0_ref[...]
-
-    q = q_ref[...]                                                   # [Hk, C, dk]
-    k = k_ref[...]
+    q = _heads(q_ref, dk)                                            # [Hk, C, dk]
+    k = _heads(k_ref, dk)
     q = q * jax.lax.rsqrt(jnp.sum(q * q, -1, keepdims=True) + 1e-6) * (dk ** -0.5)
     k = k * jax.lax.rsqrt(jnp.sum(k * k, -1, keepdims=True) + 1e-6)
     KK = _rep(_bdot(k, k, 2, 2, prec), rep)                          # [Hv, C, C]
     QK = _rep(_bdot(q, k, 2, 2, prec), rep)
     q = _rep(q, rep)
     k = _rep(k, rep)
-    g = g_ref[0]                                                     # [Hv, C]
-    beta = b_ref[0]
+    g = _tokens_last(g_ref)                                          # [Hv, C]
+    beta = _tokens_last(b_ref)
     r = jax.lax.broadcasted_iota(jnp.int32, (C, C), 0)
     c = jax.lax.broadcasted_iota(jnp.int32, (C, C), 1)
     gc = jax.lax.dot_general(g, (r <= c).astype(f32), (((1,), (0,)), ((), ())),
@@ -264,26 +288,77 @@ def _fused_kernel(q_ref, k_ref, v_ref, g_ref, b_ref, s0_ref, o_ref, s_out_ref, s
     strict = (r > c)[None]
     D = jnp.exp(jnp.where(tril, gcol - gc[:, None, :], -jnp.inf))   # [Hv, C, C] decay
     Lm = jnp.where(strict, bcol * KK * D, 0.0)
-    # X = (I + Lm)^-1 by forward substitution: row j is final before it is used
-    # rows above j never change at step j; start each update at j's 8-row tile
-    x_ref[...] = jnp.broadcast_to((r == c).astype(f32)[None], Lm.shape)
-    for j in range(int(os.environ.get("CLEF_TPU_FS_STEPS", C - 1))):
-        r0 = (j + 1) // 8 * 8
-        x_ref[:, r0:, :] = x_ref[:, r0:, :] - Lm[:, r0:, j:j + 1] * x_ref[:, j:j + 1, :]
+    # X = (I + Lm)^-1 by forward substitution, in FS_BLOCK-row blocks: a
+    # block's rows first take the earlier blocks' part in one matmul, then
+    # eliminate within the block (row j is final before it is used). Rows
+    # above j never change at step j; each update starts at j's 8-row tile.
+    eye = (r == c).astype(f32)
+    for b0 in range(0, C, FS_BLOCK):
+        b1 = b0 + FS_BLOCK
+        if b0 == 0:
+            x_ref[:, :b1, :] = jnp.broadcast_to(eye[None, :b1], (Lm.shape[0], b1, C))
+        else:
+            x_ref[:, b0:b1, :] = eye[None, b0:b1] - _bdot(Lm[:, b0:b1, :b0], x_ref[:, :b0, :], 2, 1, prec)
+        for j in range(b0, b1 - 1):
+            r0 = (j + 1) // 8 * 8
+            x_ref[:, r0:b1, :] = x_ref[:, r0:b1, :] - Lm[:, r0:b1, j:j + 1] * x_ref[:, j:j + 1, :]
     X = x_ref[...]
     egc = jnp.exp(gcol)
-    UW = _bdot(X, jnp.concatenate([v_ref[...] * bcol, k * (bcol * egc)], -1), 2, 1, prec)   # [Hv, C, dv + dk]
+    UW = _bdot(X, jnp.concatenate([_heads(v_ref, dk) * bcol, k * (bcol * egc)], -1), 2, 1, prec)   # [Hv, C, dv + dk]
     dv = UW.shape[-1] - dk
-    u, w = UW[..., :dv], UW[..., dv:]
-    S = s_ref[...]
-    WQ = _bdot(jnp.concatenate([w, q * egc], 1), S, 2, 1, prec)     # [Hv, 2C, dv]
-    vn = u - WQ[:, :C]
-    Aq = jnp.where(tril, QK * D, 0.0)
-    o_ref[...] = WQ[:, C:] + _bdot(Aq, vn, 2, 1, prec)
     gl = gc[:, C - 1:C][:, :, None]                                  # [Hv, 1, 1]
-    S = S * jnp.exp(gl) + _bdot(k * jnp.exp(gl - gcol), vn, 1, 1, prec)
+    return (UW[..., :dv], UW[..., dv:], q * egc, jnp.where(tril, QK * D, 0.0),
+            k * jnp.exp(gl - gcol), jnp.exp(gl))
+
+
+def _scan(S, u, w, qe, Aq, kt, dl, *, C, prec):
+    """One sub-chunk against the state: (o, new state)."""
+    WQ = _bdot(jnp.concatenate([w, qe], 1), S, 2, 1, prec)          # [Hv, 2C, dv]
+    vn = u - WQ[:, :C]
+    o = WQ[:, C:] + _bdot(Aq, vn, 2, 1, prec)
+    return o, S * dl + _bdot(kt, vn, 1, 1, prec)
+
+
+def _fused_kernel(q_ref, k_ref, v_ref, g_ref, b_ref, s0_ref, o_ref, s_out_ref, s_ref, x_ref, *, C, rep, dk, prec):
+    n = pl.program_id(0)
+
+    @pl.when(n == 0)
+    def _():
+        s_ref[...] = s0_ref[...]
+
+    parts = _prep(q_ref, k_ref, v_ref, g_ref, b_ref, x_ref, C=C, rep=rep, dk=dk, prec=prec)
+    o, S = _scan(s_ref[...], *parts, C=C, prec=prec)
+    _put_heads(o_ref, o)
     s_ref[...] = S
     s_out_ref[...] = S
+
+
+def _fused_kernel_pipe(q_ref, k_ref, v_ref, g_ref, b_ref, s0_ref, o_ref, s_out_ref, s_ref, x_ref, *slots,
+                       C, N, rep, dk, prec):
+    """Software-pipelined: grid step n prepares sub-chunk n (while it exists)
+    and scans sub-chunk n - 1 (from step 1), in one basic block, so the
+    prep's VPU work can overlap the scan's matmul chain. Each slot scratch
+    holds two sub-chunks' parts: [n % 2] is written, [(n + 1) % 2] read."""
+    n = pl.program_id(0)
+
+    @pl.when(n == 0)
+    def _():
+        s_ref[...] = s0_ref[...]
+
+    rd, wr = (n + 1) % 2, n % 2
+    prev_parts = [a[rd] for a in slots]
+    parts = _prep(q_ref, k_ref, v_ref, g_ref, b_ref, x_ref, C=C, rep=rep, dk=dk, prec=prec)
+    S0 = s_ref[...]
+    o, S = _scan(S0, *prev_parts, C=C, prec=prec)
+    o_ref[...] = o
+    S = jnp.where(n > 0, S, S0)
+    s_ref[...] = S
+    s_out_ref[...] = S
+    for a, x in zip(slots, parts):
+        a[wr] = x
+
+
+PIPE = os.environ.get("CLEF_TPU_FUSED_PIPE", "0") == "1"
 
 
 def fused(conv, g, beta, S0, *, Hk, Hv, dk, dv, C=64):
@@ -294,26 +369,55 @@ def fused(conv, g, beta, S0, *, Hk, Hv, dk, dv, C=64):
     C = SUBCHUNK or C
     N = T // C
     kd = Hk * dk
+    if FUSED_2D and not PIPE:
+        kern = functools.partial(_fused_kernel, C=C, rep=Hv // Hk, dk=dk, prec=FUSED_PREC)
+        o, S = pl.pallas_call(
+            kern,
+            grid=(N,),
+            in_specs=[pl.BlockSpec((C, kd), lambda n: (n, 0)),
+                      pl.BlockSpec((C, kd), lambda n: (n, 1)),
+                      pl.BlockSpec((C, Hv * dv), lambda n: (n, 2 * kd // (Hv * dv))),
+                      pl.BlockSpec((C, Hv), lambda n: (n, 0)),
+                      pl.BlockSpec((C, Hv), lambda n: (n, 0)),
+                      pl.BlockSpec((Hv, dk, dv), lambda n: (0, 0, 0))],
+            out_specs=[pl.BlockSpec((C, Hv * dv), lambda n: (n, 0)),
+                       pl.BlockSpec((Hv, dk, dv), lambda n: (0, 0, 0))],
+            out_shape=[jax.ShapeDtypeStruct((T, Hv * dv), jnp.float32),
+                       jax.ShapeDtypeStruct((Hv, dk, dv), jnp.float32)],
+            scratch_shapes=[pltpu.VMEM((Hv, dk, dv), jnp.float32), pltpu.VMEM((Hv, C, C), jnp.float32)],
+            compiler_params=pltpu.CompilerParams(dimension_semantics=("arbitrary",), vmem_limit_bytes=100 << 20),
+        )(conv, conv, conv, g, beta, S0)
+        return o, S
     q = conv[:, :kd].reshape(T, Hk, dk).transpose(1, 0, 2)
     k = conv[:, kd:2 * kd].reshape(T, Hk, dk).transpose(1, 0, 2)
     v = conv[:, 2 * kd:].reshape(T, Hv, dv).transpose(1, 0, 2)
     gT = g.reshape(N, C, Hv).transpose(0, 2, 1)                      # [N, Hv, C]
     bT = beta.reshape(N, C, Hv).transpose(0, 2, 1)
-    kern = functools.partial(_fused_kernel, C=C, rep=Hv // Hk, dk=dk, prec=FUSED_PREC)
+    rep = Hv // Hk
+    scratch = [pltpu.VMEM((Hv, dk, dv), jnp.float32), pltpu.VMEM((Hv, C, C), jnp.float32)]
+    if PIPE:
+        kern = functools.partial(_fused_kernel_pipe, C=C, N=N, rep=rep, dk=dk, prec=FUSED_PREC)
+        scratch += [pltpu.VMEM((2, Hv, C, dv), jnp.float32), pltpu.VMEM((2, Hv, C, dk), jnp.float32),
+                    pltpu.VMEM((2, Hv, C, dk), jnp.float32), pltpu.VMEM((2, Hv, C, C), jnp.float32),
+                    pltpu.VMEM((2, Hv, C, dk), jnp.float32), pltpu.VMEM((2, Hv, 1, 1), jnp.float32)]
+        steps, ix, ox = N + 1, (lambda n: jnp.minimum(n, N - 1)), (lambda n: jnp.maximum(n - 1, 0))
+    else:
+        kern = functools.partial(_fused_kernel, C=C, rep=rep, dk=dk, prec=FUSED_PREC)
+        steps, ix, ox = N, (lambda n: n), (lambda n: n)
     o, S = pl.pallas_call(
         kern,
-        grid=(N,),
-        in_specs=[pl.BlockSpec((Hk, C, dk), lambda n: (0, n, 0)),
-                  pl.BlockSpec((Hk, C, dk), lambda n: (0, n, 0)),
-                  pl.BlockSpec((Hv, C, dv), lambda n: (0, n, 0)),
-                  pl.BlockSpec((1, Hv, C), lambda n: (n, 0, 0)),
-                  pl.BlockSpec((1, Hv, C), lambda n: (n, 0, 0)),
+        grid=(steps,),
+        in_specs=[pl.BlockSpec((Hk, C, dk), lambda n: (0, ix(n), 0)),
+                  pl.BlockSpec((Hk, C, dk), lambda n: (0, ix(n), 0)),
+                  pl.BlockSpec((Hv, C, dv), lambda n: (0, ix(n), 0)),
+                  pl.BlockSpec((1, Hv, C), lambda n: (ix(n), 0, 0)),
+                  pl.BlockSpec((1, Hv, C), lambda n: (ix(n), 0, 0)),
                   pl.BlockSpec((Hv, dk, dv), lambda n: (0, 0, 0))],
-        out_specs=[pl.BlockSpec((Hv, C, dv), lambda n: (0, n, 0)),
+        out_specs=[pl.BlockSpec((Hv, C, dv), lambda n: (0, ox(n), 0)),
                    pl.BlockSpec((Hv, dk, dv), lambda n: (0, 0, 0))],
         out_shape=[jax.ShapeDtypeStruct((Hv, T, dv), jnp.float32),
                    jax.ShapeDtypeStruct((Hv, dk, dv), jnp.float32)],
-        scratch_shapes=[pltpu.VMEM((Hv, dk, dv), jnp.float32), pltpu.VMEM((Hv, C, C), jnp.float32)],
+        scratch_shapes=scratch,
         compiler_params=pltpu.CompilerParams(dimension_semantics=("arbitrary",), vmem_limit_bytes=100 << 20),
     )(q, k, v, gT, bT, S0)
     return o.transpose(1, 0, 2).reshape(T, Hv * dv), S

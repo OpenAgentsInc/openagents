@@ -49,10 +49,10 @@ def chunks(r, ids):
 
 @jax.jit
 def _errors(x, w, amax, alphas):
-    """Squared int8 output error of x @ w for each SmoothQuant alpha (x bf16 [R, in], pad rows 0)."""
+    """Squared int8 output error of x @ w for each SmoothQuant alpha (x [R, in], pad rows 0)."""
     xf = x.astype(jnp.float32)
     wf = w.astype(jnp.float32)
-    ref = jnp.dot(x, w, preferred_element_type=jnp.float32)
+    ref = jnp.dot(x.astype(jnp.bfloat16), w, preferred_element_type=jnp.float32)
     wmax = jnp.maximum(jnp.max(jnp.abs(wf), 1), 1e-5)
     am = jnp.maximum(amax, 1e-5)
 

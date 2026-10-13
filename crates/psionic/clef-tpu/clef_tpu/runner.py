@@ -37,7 +37,7 @@ def _bucket(n, least):
 
 
 class Runner:
-    def __init__(self, path: str, *, chunk=0, prefix_budget=0, precision="bf16", scan="jax", cache_buckets=(2048, 4096, 8192, 16384),
+    def __init__(self, path: str, *, chunk=0, prefix_budget=0, precision="bf16", scan="fused", cache_buckets=(2048, 4096, 8192, 16384),
                  calib=None):
         self.path = Path(path)
         self.cfg = M.Config.load(self.path)
@@ -135,7 +135,16 @@ class Runner:
         _, rest = self._segment(state, ids_dev, P, T, C)
         return jnp.concatenate([prefix_rows, rest], 0), restored
 
-    HEAD_SHAPES = ((8, 32), (8, 64), (16, 64), (16, 128), (32, 128), (32, 256), (64, 256), (64, 512))
+    # (questions, options) buckets the head compiles for, and its token
+    # buckets (powers of two from 2048): 4 x 4 programs, all warmed at start
+    HEAD_SHAPES = ((8, 64), (16, 128), (32, 256), (64, 512))
+    HEAD_MIN_TOKENS = 2048
+
+    def head_shape(self, Qn, N):
+        for Qb, Nb in self.HEAD_SHAPES:
+            if Qb >= Qn and Nb >= N:
+                return Qb, Nb
+        return _bucket(Qn, 64), _bucket(N, 512)
 
     def warm_head(self, max_tokens=16384):
         """Compiles the head for every token bucket and the common
@@ -143,7 +152,7 @@ class Runner:
         not wait ~30 s for XLA (the persistent cache keeps them across restarts)."""
         d = self.lm_head.shape[1]
         hc = self.head_cfg
-        Tb = 512
+        Tb = self.HEAD_MIN_TOKENS
         while Tb <= max_tokens:
             for Qb, Nb in self.HEAD_SHAPES:
                 out = M.head_logits(self.head, jnp.zeros((Tb, d), jnp.float32), jnp.arange(Tb) < 3,
@@ -159,12 +168,12 @@ class Runner:
         T = len(ids)
         H, self.last_restored = self.hidden_rows(ids, chunk, prefix_tokens)
         Tp = H.shape[0]
-        Tb = _bucket(Tp, 512)
+        Tb = _bucket(Tp, self.HEAD_MIN_TOKENS)
         if Tb != Tp:
             H = jnp.pad(H, ((0, Tb - Tp), (0, 0)))
         Qn = len(questions)
         N = sum(len(q["option_spans"]) for q in questions)
-        Qb, Nb = _bucket(Qn, 8), _bucket(N, 32)
+        Qb, Nb = self.head_shape(Qn, N)
         span_w = np.zeros((Qb + Nb, Tb), np.float32)
         q_of_opt = np.zeros(Nb, np.int32)
         opt_mask = np.zeros(Nb, bool)

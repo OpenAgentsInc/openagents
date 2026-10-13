@@ -33,7 +33,7 @@ def main():
     ap.add_argument("--chunks", default="", help="extra chunk sizes for the invariance check, e.g. 512,64")
     ap.add_argument("--precision", default="bf16")
     ap.add_argument("--calib", default=None, help="int8 calibration map (calibrate.py)")
-    ap.add_argument("--scan", default="jax")
+    ap.add_argument("--scan", default="fused", help="delta rule: fused (Pallas, default), jax or pallas (XLA prep + scan)")
     a = ap.parse_args()
     r = Runner(a.model, chunk=a.chunk, precision=a.precision, scan=a.scan, calib=a.calib)
     print("loaded", round(r.load_seconds, 1), "s", r.identity(), file=sys.stderr, flush=True)

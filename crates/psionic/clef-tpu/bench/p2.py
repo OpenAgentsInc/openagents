@@ -20,7 +20,7 @@ def main():
     ap.add_argument("model")
     ap.add_argument("--lengths", default="1536,4096,16384")
     ap.add_argument("--chunk", type=int, default=0)
-    ap.add_argument("--scan", default="jax")
+    ap.add_argument("--scan", default="fused", help="delta rule: fused (Pallas, default), jax or pallas (XLA prep + scan)")
     ap.add_argument("--precision", default="bf16")
     ap.add_argument("--calib", default=None, help="int8 calibration map (calibrate.py)")
     ap.add_argument("--reps", type=int, default=3)

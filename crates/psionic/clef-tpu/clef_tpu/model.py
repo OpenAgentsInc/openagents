@@ -84,7 +84,44 @@ def _open_all(path: Path):
                 yield name, h
 
 
-def quantize_int8(w, act_max=None, alpha=0.5):
+def hadamard(n):
+    """Normalized Sylvester Hadamard matrix (n a power of two): orthogonal and symmetric."""
+    h = np.ones((1, 1), np.float32)
+    while h.shape[0] < n:
+        h = np.block([[h, h], [h, -h]])
+    return h / np.sqrt(n)
+
+
+# int8 projections rotate their input by a block Hadamard first (CLEF_TPU_INT8_ROT:
+# block size, 0 = off; 4096 is applied as H64 x H64): an orthogonal rotation
+# spreads activation outliers over the block, so per-token int8 loses less,
+# and the weight takes H^T W offline, which leaves x W unchanged
+ROT = int(os.environ.get("CLEF_TPU_INT8_ROT", "0"))
+
+
+def rotate(x, r):
+    """x [..., K] -> x (I_{K/r} (x) H_r), the block Hadamard rotation of the last axis."""
+    K = x.shape[-1]
+    lead = x.shape[:-1]
+    hp = jax.lax.Precision.HIGH
+    if r == 4096:
+        h = jnp.asarray(hadamard(64))
+        y = x.reshape(lead + (K // 4096, 64, 64))
+        y = jnp.einsum("...ij,jk->...ik", y, h, precision=hp)
+        y = jnp.einsum("ki,...ij->...kj", h, y, precision=hp)
+        return y.reshape(lead + (K,))
+    h = jnp.asarray(hadamard(r))
+    return jnp.einsum("...ij,jk->...ik", x.reshape(lead + (K // r, r)), h, precision=hp).reshape(lead + (K,))
+
+
+def smooth_scale(w, act_max, alpha):
+    """SmoothQuant per-input-channel scale s_j = act_max_j^alpha / w_max_j^(1-alpha) of a [in, out] weight."""
+    a = np.maximum(np.asarray(act_max, np.float32), 1e-5)
+    wm = np.maximum(np.abs(np.asarray(w, np.float32)).max(1), 1e-5)
+    return np.clip(a ** alpha / wm ** (1.0 - alpha), 1e-4, 1e4)
+
+
+def quantize_int8(w, act_max=None, alpha=0.5, rot=0):
     """Per-output-channel symmetric int8 of a [in, out] weight: (q int8, scale f32 [out]).
 
     With `act_max` (the calibrated per-input-channel |x| maximum of the
@@ -95,15 +132,19 @@ def quantize_int8(w, act_max=None, alpha=0.5):
     which are quantized per output channel."""
     w = np.asarray(w, np.float32)
     out = {}
+    if rot:
+        # x W = (x H)(H^T W), H symmetric: rotate the weight's rows the same way
+        w = np.asarray(rotate(jnp.asarray(w.T), rot)).T
+        act_max = None
     if act_max is not None:
-        a = np.maximum(np.asarray(act_max, np.float32), 1e-5)
-        wm = np.maximum(np.abs(w).max(1), 1e-5)
-        sm = np.clip(a ** alpha / wm ** (1.0 - alpha), 1e-4, 1e4)
+        sm = smooth_scale(w, act_max, alpha)
         w = w * sm[:, None]
         out["inv"] = jnp.asarray(1.0 / sm, jnp.float32)
     scale = np.maximum(np.abs(w).max(0), 1e-12) / 127.0
     q = np.clip(np.rint(w / scale), -127, 127).astype(np.int8)
     out.update(q=jnp.asarray(q), s=jnp.asarray(scale, jnp.float32))
+    if os.environ.get("CLEF_TPU_INT8_DIAG") == "a8w16":
+        out["wf"] = jnp.asarray(w, jnp.bfloat16)
     return out
 
 
@@ -137,12 +178,25 @@ def load_backbone(path: Path, cfg: Config, quant: str | None = None, calib: str 
     skip_layers = {int(x) for x in os.environ.get("CLEF_TPU_INT8_SKIP_LAYERS", "").split(",") if x}
     alpha = float(os.environ.get("CLEF_TPU_SMOOTH_ALPHA", "0.5"))
     stats = dict(np.load(calib)) if calib else {}
+    # a prebuilt int8 artifact (gptq.py): per layer, <name>.q int8 [K, N] and <name>.s [N]
+    art = os.environ.get("CLEF_TPU_INT8_ARTIFACT")
+    if art and quant == "int8":
+        man = json.loads((Path(art) / "manifest.json").read_text())
+        assert man["rot"] == ROT, f"artifact built with CLEF_TPU_INT8_ROT={man['rot']}, running with {ROT}"
     cur = {"layer": 0}
     def dev(a, name=None):
         i = cur["layer"]
+        if quant == "int8" and art and name in int8_names and i not in skip_layers:
+            if "art" not in cur or cur["art"][0] != i:
+                cur["art"] = (i, dict(np.load(Path(art) / f"layer{i}.npz")))
+            z = cur["art"][1]
+            d = {"q": jnp.asarray(z[name + ".q"]), "s": jnp.asarray(z[name + ".s"], jnp.float32)}
+            if name + ".inv" in z:
+                d["inv"] = jnp.asarray(z[name + ".inv"], jnp.float32)
+            return d
         if quant == "int8" and name in int8_names and i not in skip_layers:
             al = float(stats[f"alpha.{i}.{name}"]) if f"alpha.{i}.{name}" in stats else alpha
-            return quantize_int8(a, stats.get(f"{i}.{name}"), al)
+            return quantize_int8(a, stats.get(f"{i}.{name}"), al, ROT)
         return bf(a)
     devf = lambda a: jnp.asarray(np.asarray(a, np.float32))
     layers = []
@@ -192,6 +246,9 @@ def rms(x, w, eps):
 
 
 MM_BARRIER = os.environ.get("CLEF_TPU_MM_BARRIER", "0") == "1"
+# int8 error diagnostics (CLEF_TPU_INT8_DIAG): "w8a16" quantizes only the
+# weights, "a8w16" only the activations
+INT8_DIAG = os.environ.get("CLEF_TPU_INT8_DIAG", "")
 
 
 def mm(x, w, precision, tap=None, name=None):
@@ -201,8 +258,18 @@ def mm(x, w, precision, tap=None, name=None):
         # w8a8: activations quantized per row on the fly, int8 x int8 -> int32 on the MXU
         if "inv" in w:
             x = x * w["inv"][None, :]
+        if ROT:
+            x = rotate(x, ROT)
+        if INT8_DIAG == "w8a16":
+            # diagnostic: int8 weights, bf16 activations
+            return jnp.dot(x.astype(jnp.bfloat16), w["q"].astype(jnp.bfloat16),
+                           preferred_element_type=jnp.float32) * w["s"][None, :]
         ax = jnp.maximum(jnp.max(jnp.abs(x), -1, keepdims=True), 1e-12) / 127.0
         xq = jnp.clip(jnp.round(x / ax), -127, 127).astype(jnp.int8)
+        if INT8_DIAG == "a8w16":
+            # diagnostic: int8 activations, the weights dequantized back (per-channel int8 grid kept out)
+            return jnp.dot((xq.astype(jnp.float32) * ax).astype(jnp.bfloat16), w["wf"],
+                           preferred_element_type=jnp.float32)
         if MM_BARRIER:
             xq, ax = jax.lax.optimization_barrier((xq, ax))
         y = jnp.dot(xq, w["q"], preferred_element_type=jnp.int32)
@@ -297,6 +364,8 @@ def deltanet(cfg, L, st, x, precision, scan, real=None, tap=None):
     return out, {"conv": new_conv, "S": S}
 
 
+# exact row max before the softmax pass (CLEF_TPU_ATTN_TWO_PASS=1): chunk-invariant probabilities
+ATTN_TWO_PASS = os.environ.get("CLEF_TPU_ATTN_TWO_PASS", "0") == "1"
 # keys per online-softmax step; the cache buckets are multiples of it
 KEY_BLOCK = int(__import__("os").environ.get("CLEF_TPU_KEY_BLOCK", "2048"))
 
@@ -336,7 +405,32 @@ def causal_attention(qh, kc, vc, pos0, precision):
     m0 = jnp.full((Hkv, rep, C), -jnp.inf, jnp.float32)
     l0 = jnp.zeros((Hkv, rep, C), jnp.float32)
     a0 = jnp.zeros((Hkv, rep, C, D), jnp.float32)
-    _, l, acc = jax.lax.fori_loop(0, n_blocks, body, (m0, l0, a0))
+    if ATTN_TWO_PASS:
+        # the row max over every key first, then one pass with it fixed: the
+        # probabilities (rounded to bf16 for P V) then do not depend on how
+        # the keys were blocked, i.e. on the prefill chunk
+        def mx(j, m):
+            start = j * KB
+            kb = jax.lax.dynamic_slice_in_dim(kc, start, KB, 0)
+            s = dot(qx, kb, "cgrd,tgd->grct")
+            kpos = start + jnp.arange(KB)
+            return jnp.maximum(m, jnp.where((kpos[None, :] <= qpos[:, None])[None, None], s, -jnp.inf).max(-1))
+
+        m = jax.lax.fori_loop(0, n_blocks, mx, m0)
+
+        def body2(j, carry):
+            l, acc = carry
+            start = j * KB
+            kb = jax.lax.dynamic_slice_in_dim(kc, start, KB, 0)
+            vb = jax.lax.dynamic_slice_in_dim(vc, start, KB, 0)
+            s = dot(qx, kb, "cgrd,tgd->grct")
+            kpos = start + jnp.arange(KB)
+            p = jnp.where((kpos[None, :] <= qpos[:, None])[None, None], jnp.exp(s - m[..., None]), 0.0)
+            return l + p.sum(-1), acc + dot(p, vb, "grct,tgd->grcd")
+
+        l, acc = jax.lax.fori_loop(0, n_blocks, body2, (l0, a0))
+    else:
+        _, l, acc = jax.lax.fori_loop(0, n_blocks, body, (m0, l0, a0))
     return (acc / l[..., None]).transpose(2, 0, 1, 3)
 
 
@@ -363,7 +457,7 @@ def attention(cfg, L, st, x, pos0, cos, sin, precision, tap=None):
 
 
 @functools.partial(jax.jit, static_argnames=("cfg", "precision", "scan", "calib"), donate_argnums=(2,))
-def prefill_chunk(cfg: Config, params, state, x, pos0, n_valid, *, precision="bf16", scan="jax", calib=False):
+def prefill_chunk(cfg: Config, params, state, x, pos0, n_valid, *, precision="bf16", scan="fused", calib=False):
     """x [C, d] f32 embeddings at positions pos0..pos0+C; rows at or past
     `n_valid` are padding. Returns (state, final-normed rows [C, d]); with
     `calib`, also {"<layer>.<projection>": max |input| per input channel}
@@ -382,7 +476,7 @@ def prefill_chunk(cfg: Config, params, state, x, pos0, n_valid, *, precision="bf
         tap = None
         if calib == "inputs":
             def tap(name, v, i=i):
-                stats[f"{i}.{name}"] = jnp.where(real, v, 0.0).astype(jnp.bfloat16)
+                stats[f"{i}.{name}"] = jnp.where(real, v, 0.0)
         elif calib:
             def tap(name, v, i=i):
                 stats[f"{i}.{name}"] = jnp.max(jnp.abs(jnp.where(real, v, 0.0)), 0)
@@ -433,6 +527,9 @@ def _gelu(x):
 
 
 _HP = jax.lax.Precision.HIGHEST
+# the head's two wide products over every token row (the memory projection and
+# the span means; CLEF_TPU_HEAD_PRECISION). HIGH is bf16x3, ~f32 accuracy at half the passes
+_HEAD_WIDE = getattr(jax.lax.Precision, os.environ.get("CLEF_TPU_HEAD_PRECISION", "HIGHEST"))
 
 
 def _lin(x, W, b=None):
@@ -465,10 +562,10 @@ def head_logits(W, hidden, mem_mask, span_w, q_of_opt, opt_mask, q_mask, q_type,
     lexical [N, d] mean lm_head rows. Returns logits [N]."""
     Qn = q_mask.shape[0]
     Hh = _ln(hidden, W["hidden_norm.weight"], W["hidden_norm.bias"])
-    M = _lin(Hh, W["memory_projection.weight"])
+    M = jnp.dot(Hh, W["memory_projection.weight"].T, precision=_HEAD_WIDE)
     last = jnp.max(jnp.where(mem_mask, jnp.arange(hidden.shape[0]), -1))
     g = Hh[last]
-    means = jnp.dot(span_w, Hh, precision=_HP)
+    means = jnp.dot(span_w, Hh, precision=_HEAD_WIDE)
     qv, cv = means[:Qn], means[Qn:]
     R = (_lin(cv, W["option_context_projection.weight"]) + _lin(lexical, W["option_lexical_projection.weight"])
          + _lin(qv, W["option_question_projection.weight"])[q_of_opt])
