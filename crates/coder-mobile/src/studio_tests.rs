@@ -452,7 +452,7 @@ mod scratch_host {
     use std::sync::Arc;
     use std::time::{Duration, Instant};
     use verse::zones::everglade::studio::intents;
-    use verse::zones::everglade::studio::live::{ControlSocket, Transport};
+    use verse::zones::everglade::studio::live::ControlSocket;
 
     const POLICY: RelayPolicy = RelayPolicy::LoopbackTest;
     /// How long the phone may take to show what a step did.

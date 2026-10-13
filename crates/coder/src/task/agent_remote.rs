@@ -469,7 +469,7 @@ pub(crate) mod tests {
             }
         }
 
-        fn review(&mut self, name: &str, task: &str, checkout: &str) -> Result<Review, String> {
+        fn review(&mut self, name: &str, task: &str, _checkout: &str) -> Result<Review, String> {
             self.calls
                 .lock()
                 .unwrap()

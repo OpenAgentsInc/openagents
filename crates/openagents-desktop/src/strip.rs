@@ -15,7 +15,7 @@
 
 use openagents_desktop::chrome::{Action, Page};
 use openagents_desktop::model::Intent;
-use rust_native::style::{Color, Space, Style, TextWeight};
+use rust_native::style::{Space, Style, TextWeight};
 use rust_native::{Axis, Element, Node, TextRole};
 use rust_native_desktop::{OverlayLayout, OverlayPlacement};
 

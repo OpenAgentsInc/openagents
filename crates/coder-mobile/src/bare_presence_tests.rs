@@ -392,7 +392,7 @@ fn the_everglade_arch_loads_its_pack_moves_presence_and_the_return_rejoins() {
     scene.relay = Some(relay.url.clone());
     scene.activate(true).unwrap();
     let clock = Instant::now();
-    let mut frame = |scene: &mut Scene, limit: Duration, done: fn(&Scene) -> bool| {
+    let frame = |scene: &mut Scene, limit: Duration, done: fn(&Scene) -> bool| {
         let start = Instant::now();
         while start.elapsed() < limit {
             scene.update(clock.elapsed().as_secs_f64()).unwrap();

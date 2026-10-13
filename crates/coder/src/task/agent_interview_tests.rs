@@ -305,7 +305,7 @@ fn the_scripted_judge_reads_support_and_embellishment() {
         .unwrap();
     let evidence = judge::evidence(&fixture.gym, item).unwrap();
     let briefing = Briefing::default();
-    let mut read = |answer: &str| {
+    let read = |answer: &str| {
         ScriptedJudge
             .judge(&judge::Case {
                 agent: "alice",

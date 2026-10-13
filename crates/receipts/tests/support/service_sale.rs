@@ -17,6 +17,7 @@ pub fn retain(root: &Path, name: &str, bytes: &[u8]) -> Reference {
 pub fn doc(root: &Path, name: &str, value: Value) -> Reference {
     retain(root, name, &serde_json::to_vec(&value).unwrap())
 }
+#[allow(dead_code)] // shared by several crates' tests; not every one uses it
 pub struct Comparison {
     pub manifest: Reference,
     pub report: Reference,
@@ -25,6 +26,7 @@ pub struct Comparison {
     pub decision: Reference,
     pub frozen_checks: Vec<Reference>,
 }
+#[allow(dead_code)] // shared by several crates' tests; not every one uses it
 pub fn admission(
     root: &Path,
     now: u64,
@@ -143,6 +145,7 @@ pub fn admission(
         fulfillment: None,
     }
 }
+#[allow(dead_code)] // shared by several crates' tests; not every one uses it
 pub fn fulfillment(
     root: &Path,
     now: u64,
@@ -184,6 +187,7 @@ pub fn fulfillment(
         payment: None,
     }
 }
+#[allow(dead_code)] // shared by several crates' tests; not every one uses it
 pub fn fulfillment_input(
     root: &Path,
     now: u64,

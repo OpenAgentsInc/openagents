@@ -113,6 +113,8 @@ pub(crate) struct Content {
     pub pack: verse_engine::assets::Pack,
     pub atlas: verse::ui::Atlas,
     pub scene: verse_engine::director::Scene,
+    // Kept for the phone hosts, which read where the chamber pack lives.
+    #[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(dead_code))]
     pub dir: PathBuf,
 }
 
@@ -332,6 +334,7 @@ impl Play {
     }
 
     /// Assembles the joined session's frame for a viewport of `size`.
+    #[cfg(test)]
     pub fn frame(&self, size: [u32; 2]) -> Result<Option<chamber_session::Frame>, String> {
         self.frame_in(size, size.map(|value| value.max(1) as f32))
     }

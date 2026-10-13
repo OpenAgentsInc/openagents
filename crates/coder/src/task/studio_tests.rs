@@ -175,7 +175,7 @@ fn a_goal_queues_its_lead_with_a_briefing_and_notes_it_eligible() {
             "Run cargo fmt before committing.",
         )
         .unwrap();
-    let (goal_id, lead) = studio.submit_goal(&mut tasks, goal(&scratch), 100).unwrap();
+    let (_goal_id, lead) = studio.submit_goal(&mut tasks, goal(&scratch), 100).unwrap();
     assert_eq!(lead.task_id.len(), 64, "host access names tasks by hex");
     assert!(
         lead.task_id

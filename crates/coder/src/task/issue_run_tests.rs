@@ -1260,16 +1260,9 @@ fn the_checks_build_in_a_slot_of_the_task_store() {
     let root = store.parent().unwrap().join("targets");
     assert!(first.path.starts_with(&root), "{}", first.path.display());
     assert!(first.path.is_dir());
-    // The checks stand before a push, so their build lease waits at `push`
-    // unless the flow already runs at `owner` (#10757).
-    let inherited = coder_lease::Priority::from_env().ok().flatten();
-    assert_eq!(
-        first.build_priority(),
-        Some(crate::task::targets::check_priority(inherited))
-    );
-    if inherited.is_none() {
-        assert_eq!(first.build_priority(), Some(coder_lease::Priority::Push));
-    }
+    // The checks build in their slot without waiting on a counted `build`
+    // lease (7b327ff0ad: queued builds cost more than the contention saved).
+    assert_eq!(first.build_priority(), None);
     // A second check at the same time takes another slot, not the same one.
     let second = gate
         .slot(&repo)

@@ -52,28 +52,6 @@ pub enum Section {
     Archived,
 }
 
-impl Section {
-    fn key(self) -> &'static str {
-        match self {
-            Self::Pinned => "pinned",
-            Self::OpenAgents => "openagents",
-            Self::Website => "website",
-            Self::Recent => "recent",
-            Self::Archived => "archived",
-        }
-    }
-
-    fn label(self) -> &'static str {
-        match self {
-            Self::Pinned => "Pinned",
-            Self::OpenAgents => "OpenAgents",
-            Self::Website => "Website",
-            Self::Recent => "Recent",
-            Self::Archived => "Archived",
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum Action {
@@ -379,17 +357,6 @@ impl State {
                 return Some(page);
             }
         }
-    }
-
-    fn can_step(&self, forward: bool) -> bool {
-        let pages = if forward {
-            self.history.get(self.at + 1..).unwrap_or_default()
-        } else {
-            &self.history[..self.at.min(self.history.len())]
-        };
-        pages.iter().any(
-            |page| !matches!(page, Page::Chat(id) if !self.chats.iter().any(|chat| chat.id == *id)),
-        )
     }
 
     pub fn resize(&mut self, width: f32) {

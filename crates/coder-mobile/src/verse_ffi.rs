@@ -184,6 +184,7 @@ pub struct VerseHandle {
 
 /// The renderer on the native surface: the Grid draws through the engine,
 /// every other zone through the legacy renderer until its own migration.
+#[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(dead_code))]
 pub(crate) enum Surface {
     Legacy(Box<verse::render::Renderer>),
     Grid(Box<verse::grid_engine::GridEngine>),
@@ -216,6 +217,7 @@ fn on_grid(scene: &Scene) -> bool {
 
 /// The engine content the scene draws: the chamber's pack while the
 /// player is joined to one, the Grid otherwise.
+#[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(dead_code))]
 fn engine_content(scene: &Scene) -> Result<verse::grid_engine::Content, String> {
     if let Some(content) = scene.chamber.as_ref().and_then(|c| c.content.as_ref()) {
         return verse::grid_engine::Content::chamber(

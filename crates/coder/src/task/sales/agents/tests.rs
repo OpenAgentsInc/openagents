@@ -2644,7 +2644,7 @@ fn outbox_batch_items_consume_once_and_revocation_pause_and_size_stay_bounded() 
     assert_eq!(transport.calls, 1);
     let root = f.dir.path().join("host");
     drop(f.store);
-    let mut store = Store::open_with_clock(&root, now).unwrap();
+    let store = Store::open_with_clock(&root, now).unwrap();
     assert_eq!(
         store.state.outbox.batches.grants["five"].phase,
         GrantPhase::Revoked
