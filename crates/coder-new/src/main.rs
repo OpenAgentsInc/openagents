@@ -210,6 +210,9 @@ fn run() -> io::Result<()> {
                 })?;
             }
             "--live" => app.set_mode(Mode::Live),
+            // Every harness off for this run, every turn on the Coder loop
+            // and its one model (#11548).
+            "--no-harness" => coder_new::no_harness::force(),
             "--demo" if DEMO_AVAILABLE => app.set_mode(Mode::Demo),
             "--demo" => {
                 return Err(io::Error::new(
@@ -838,6 +841,9 @@ Options:
   --follow ID         Watch a chat another program is running; press any key to take it over.
   --state DIR         Keep Coder's data in DIR instead of ~/.openagents/coder.
   --live              Use your providers and tools (the default).
+  --no-harness        Leave Claude Code, Codex, OpenCode, and other agents off
+                      and run every turn on Coder with Gemini 4 Argon
+                      (also CODER_NO_HARNESS=1).
 {demo_option}  --snapshot          Print a 110x36 SVG picture of the {snapshot_mode} screen and exit.
   -V, --version       Print the version.
   -h, --help          Print this help.

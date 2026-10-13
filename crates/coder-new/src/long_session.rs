@@ -498,7 +498,8 @@ pub(crate) fn context_line(app: &App) -> Option<String> {
 
 /// The context window of `model`: `OPENAGENTS_CODER_CONTEXT_TOKENS` when
 /// set, else the chat's known window, else what the OpenAgents gateway's
-/// model list says for it, else [`DEFAULT_CONTEXT_TOKENS`] (Claude's).
+/// model list says for it, else the Coder SDK's word (Argon's million,
+/// #11548), else [`DEFAULT_CONTEXT_TOKENS`] (Claude's).
 pub(crate) fn context_window(app: &App, model: &str) -> u64 {
     if let Some(tokens) = context_tokens_override() {
         return tokens;
@@ -506,7 +507,9 @@ pub(crate) fn context_window(app: &App, model: &str) -> u64 {
     if let Some(tokens) = app.long_session.context_tokens.filter(|tokens| *tokens > 0) {
         return tokens;
     }
-    gateway_window(app, model).unwrap_or(DEFAULT_CONTEXT_TOKENS)
+    gateway_window(app, model)
+        .or_else(|| coder_sdk::auto_policy::window(model))
+        .unwrap_or(DEFAULT_CONTEXT_TOKENS)
 }
 
 /// The gateway's word on `model`'s window, read once per model.
@@ -669,15 +672,28 @@ impl App {
             }
             return false;
         };
+        // A no-harness chat's summary is written by its one model too
+        // (#11548).
+        let no_harness = self.no_harness_turn().filter(|no_harness| {
+            !no_harness
+                .policy
+                .doors(
+                    self.connections()
+                        .as_ref()
+                        .is_some_and(crate::provider::gateway_open),
+                    no_harness.gemini_key.is_some(),
+                )
+                .is_empty()
+        });
         let key = self
             .plugins
             .key_for_request()
-            .filter(|_| self.plugins.enabled);
-        let Some(key) = key else {
+            .filter(|_| self.plugins.enabled && no_harness.is_none());
+        if key.is_none() && no_harness.is_none() {
             let summary = local_summary(&self.live.entries[start..cut]);
             self.apply_summary(start, cut, summary, false);
             return true;
-        };
+        }
         let older = messages_of(&self.live.entries[start..cut]);
         self.cancel_request();
         self.live.busy = true;
@@ -690,13 +706,21 @@ impl App {
             start,
             cut,
         });
-        self.request = Some(live::Request {
-            id: self.request_id,
-            key,
-            kind: live::Work::Summarize {
+        let kind = match no_harness {
+            Some(no_harness) => live::Work::SummarizeNoHarness {
+                messages: summary_request(&older),
+                no_harness,
+                account: self.connections(),
+            },
+            None => live::Work::Summarize {
                 model: self.plugins.model.clone(),
                 messages: summary_request(&older),
             },
+        };
+        self.request = Some(live::Request {
+            id: self.request_id,
+            key: key.unwrap_or_else(|| model_access::ApiKey::new("")),
+            kind,
         });
         true
     }
@@ -805,7 +829,20 @@ impl App {
             return;
         }
         self.long_session.checked = self.live.entries.len();
-        let limit = self.long_session.limit();
+        // A no-harness chat's window is its model's (#11548): Argon's
+        // million tokens, input and output together.
+        let limit = match (
+            context_tokens_override(),
+            self.long_session
+                .context_tokens
+                .filter(|tokens| *tokens > 0),
+        ) {
+            (None, None) => self
+                .no_harness_turn()
+                .and_then(|no_harness| no_harness.policy.no_harness.window())
+                .unwrap_or_else(|| self.long_session.limit()),
+            _ => self.long_session.limit(),
+        };
         let used = |chat: &live::Chat| {
             estimate_tokens(&chat.messages())
                 + chat

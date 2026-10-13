@@ -117,7 +117,12 @@ impl Facts {
 
     fn from_parts(app: &App, execution: &ExecutionSettings) -> Self {
         let now = atif::now_ms() / 1000;
-        let claude_plugin_on = app.plugins.bundled.claude;
+        // A forced no-harness run counts every harness plugin as off
+        // (#11548).
+        let forced = crate::no_harness::forced();
+        let claude_plugin_on = app.plugins.bundled.claude && !forced;
+        let codex_on = app.plugins.bundled.codex && !forced;
+        let opencode_on = app.plugins.bundled.opencode && !forced;
         // The sign-in and the plan windows are read only for a plugin
         // that is on.
         let claude_signed_in = claude_plugin_on && claude_signed_in();
@@ -128,17 +133,17 @@ impl Facts {
                 signed_in: claude_signed_in,
                 at_limit: claude_signed_in && claude_at_limit(now),
             },
-            codex_on: app.plugins.bundled.codex,
+            codex_on,
             // The sign-in is read once and cached ([`crate::codex::available`]);
             // the windows are what Codex last reported.
             codex: Health {
-                signed_in: app.plugins.bundled.codex && crate::codex::available(),
+                signed_in: codex_on && crate::codex::available(),
                 at_limit: crate::codex::at_limit(now),
             },
-            opencode_on: app.plugins.bundled.opencode,
+            opencode_on,
             // Whether it is installed is read only for a plugin that is on.
             opencode: {
-                let installed = app.plugins.bundled.opencode && crate::opencode_chat::installed();
+                let installed = opencode_on && crate::opencode_chat::installed();
                 Health {
                     signed_in: installed,
                     at_limit: installed && crate::opencode_chat::rate_limited(),

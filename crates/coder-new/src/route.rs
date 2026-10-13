@@ -38,6 +38,27 @@ pub struct Cheap {
     pub gateway_model: Option<String>,
 }
 
+/// A no-harness turn (#11548): Auto found no harness that can run here
+/// (or `CODER_NO_HARNESS` forced it), so the Coder loop runs every call on
+/// [`coder_sdk::auto_policy::NoHarnessModel`].
+#[derive(Clone, Debug)]
+pub struct NoHarness {
+    pub policy: coder_sdk::auto_policy::AutoPolicy,
+    /// The person's own Gemini API key, when one is set here.
+    pub gemini_key: Option<model_access::ApiKey>,
+    /// The Gemini API's OpenAI-compatible endpoint
+    /// ([`coder_sdk::auto_policy::GEMINI_OPENAI_BASE`]).
+    pub gemini_base: String,
+}
+
+impl NoHarness {
+    /// The model every call runs on.
+    #[must_use]
+    pub fn model(&self) -> &str {
+        self.policy.model_for(coder_sdk::auto_policy::Call::Work)
+    }
+}
+
 /// The Codex login's cheapest model, for a cheap answer.
 pub const CHEAP_CODEX_MODEL: &str = "gpt-6-luna";
 
@@ -60,6 +81,9 @@ pub enum Lane {
     /// The person's OpenRouter key, on the model the favor favors
     /// ([`openrouter_model`]).
     OpenRouter,
+    /// The person's own Gemini API key, for a no-harness turn's model
+    /// (#11548).
+    GeminiKey,
 }
 
 impl Lane {
@@ -72,6 +96,7 @@ impl Lane {
             Lane::Local => (4, 3, 5),
             Lane::OpenCode => (5, 4, 3),
             Lane::OpenRouter => (2, 5, 4),
+            Lane::GeminiKey => (3, 4, 4),
         }
     }
 
@@ -90,6 +115,7 @@ impl Lane {
             Lane::Local => "this computer's model logins",
             Lane::OpenCode => "OpenCode",
             Lane::OpenRouter => "the OpenRouter key",
+            Lane::GeminiKey => "your Gemini API key",
         }
     }
 }
@@ -111,6 +137,34 @@ pub struct Plan {
 pub fn plan(execution: &ExecutionSettings, has_key: bool, favor: Favor) -> Plan {
     let mut lanes = Vec::new();
     let mut notes = Vec::new();
+    // No harness here (#11548): the one model, through the gateway while
+    // signed in, then the person's own Gemini key. Never this computer's
+    // logins, OpenCode, or an OpenRouter key.
+    if let Some(no_harness) = &execution.no_harness {
+        let signed_in = match &execution.connections {
+            Some(account) if crate::provider::gateway_open(account) => true,
+            Some(_) => {
+                notes.push("the OpenAgents account can't answer right now".to_owned());
+                false
+            }
+            None => false,
+        };
+        let lanes = no_harness
+            .policy
+            .doors(signed_in, no_harness.gemini_key.is_some())
+            .into_iter()
+            .map(|door| match door {
+                coder_sdk::auto_policy::Door::Gateway => Lane::Gateway,
+                coder_sdk::auto_policy::Door::GeminiKey => Lane::GeminiKey,
+            })
+            .collect::<Vec<_>>();
+        if lanes.is_empty() {
+            notes.push(
+                "you're not signed in (run coder login) and no GEMINI_API_KEY is set".to_owned(),
+            );
+        }
+        return Plan { lanes, notes };
+    }
     // A gateway model the person picked (#11526) runs only there: a
     // chosen model's turn is never handed to another model.
     if execution.gateway_model.is_some()
@@ -341,6 +395,36 @@ mod tests {
         settings.connections = None;
         assert_eq!(plan(&settings, true, favor).lanes[0], Lane::Local);
         assert_eq!(CHEAP_CLAUDE_MODEL, "claude-haiku-5-5");
+    }
+
+    /// #11548: with no harness, the turn runs on its one model through
+    /// the gateway while signed in, then the person's own Gemini key, and
+    /// never on this computer's logins, OpenCode, or an OpenRouter key.
+    #[test]
+    fn a_no_harness_turn_takes_only_the_gateway_and_the_own_gemini_key() {
+        let mut settings = settings(&["opencode"]);
+        settings.cheap = Some(Cheap {
+            gateway_model: Some(crate::models::GATEWAY_FAST.into()),
+        });
+        settings.no_harness = Some(NoHarness {
+            policy: coder_sdk::auto_policy::AutoPolicy::default(),
+            gemini_key: Some(model_access::ApiKey::new("fixture-gemini-key")),
+            gemini_base: coder_sdk::auto_policy::GEMINI_OPENAI_BASE.into(),
+        });
+        assert_eq!(
+            plan(&settings, true, BALANCED).lanes,
+            [Lane::Gateway, Lane::GeminiKey]
+        );
+        assert_eq!(
+            settings.no_harness.as_ref().unwrap().model(),
+            "google/gemini-4-argon"
+        );
+        settings.connections = None;
+        assert_eq!(plan(&settings, true, BALANCED).lanes, [Lane::GeminiKey]);
+        settings.no_harness.as_mut().unwrap().gemini_key = None;
+        let none = plan(&settings, true, BALANCED);
+        assert!(none.lanes.is_empty());
+        assert!(none.explain(&none.notes).contains("GEMINI_API_KEY"));
     }
 
     #[test]

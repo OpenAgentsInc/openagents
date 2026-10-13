@@ -945,6 +945,10 @@ fn coder_rail_model(app: &App) -> Option<String> {
     {
         return Some(rail_model_name(picked));
     }
+    // A no-harness turn's one model (#11548): "Coder (Gemini 4 Argon)".
+    if let Some(model) = &app.no_harness_model {
+        return Some(rail_model_name(model));
+    }
     served_model(app).map(|model| rail_model_name(&model))
 }
 

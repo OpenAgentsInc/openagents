@@ -91,6 +91,79 @@ pub struct Config {
     pub title: Option<String>,
     pub timeout: Duration,
     pub retries: u32,
+    /// The wire the endpoint speaks: OpenRouter's, or the Gemini API's
+    /// OpenAI-compatible one.
+    pub dialect: Dialect,
+}
+
+/// Which chat completions wire an endpoint speaks.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Dialect {
+    /// OpenRouter's, and the OpenAgents gateway's: `usage`, `provider`,
+    /// `plugins`, and `reasoning` as an object.
+    #[default]
+    OpenRouter,
+    /// The Gemini API's OpenAI-compatible endpoint
+    /// (`generativelanguage.googleapis.com/v1beta/openai`): plain OpenAI
+    /// fields only (`reasoning_effort`, `stream_options`), and every
+    /// model turn's first function call carries its thought signature in
+    /// `extra_content.google.thought_signature`, or Google's documented
+    /// placeholder when the call came from elsewhere.
+    Gemini,
+}
+
+/// Google's placeholder for a function call whose thought signature was
+/// not kept: Gemini refuses a function call turn without one.
+pub const SKIP_THOUGHT_SIGNATURE: &str = "skip_thought_signature_validator";
+
+impl Dialect {
+    /// `body` as this dialect's endpoint takes it.
+    #[must_use]
+    pub fn wire(self, mut body: Value) -> Value {
+        if self == Dialect::OpenRouter {
+            return body;
+        }
+        let Some(object) = body.as_object_mut() else {
+            return body;
+        };
+        object.remove("usage");
+        object.remove("provider");
+        object.remove("plugins");
+        if let Some(reasoning) = object.remove("reasoning")
+            && let Some(effort) = reasoning["effort"].as_str()
+        {
+            let effort = match effort {
+                "none" | "minimal" => "low",
+                "xhigh" | "max" => "high",
+                other => other,
+            };
+            object.insert("reasoning_effort".into(), Value::String(effort.into()));
+        }
+        if object.get("stream").and_then(Value::as_bool) == Some(true) {
+            object.insert(
+                "stream_options".into(),
+                serde_json::json!({"include_usage": true}),
+            );
+        }
+        if let Some(messages) = object.get_mut("messages").and_then(Value::as_array_mut) {
+            for message in messages {
+                let Some(calls) = message.get_mut("tool_calls").and_then(Value::as_array_mut)
+                else {
+                    continue;
+                };
+                if let Some(first) = calls.first_mut()
+                    && first["extra_content"]["google"]["thought_signature"]
+                        .as_str()
+                        .is_none()
+                {
+                    first["extra_content"] = serde_json::json!({
+                        "google": {"thought_signature": SKIP_THOUGHT_SIGNATURE}
+                    });
+                }
+            }
+        }
+        body
+    }
 }
 
 impl Config {
@@ -104,6 +177,7 @@ impl Config {
             title: Some("OpenAgents".to_string()),
             timeout: TIMEOUT,
             retries: RETRIES,
+            dialect: Dialect::OpenRouter,
         }
     }
 
@@ -636,7 +710,13 @@ impl Client {
     ///
     /// The last attempt's [`Error`].
     pub async fn chat(&self, request: &ChatRequest) -> Result<ChatResponse, Error> {
-        self.post("chat/completions", request).await
+        if self.config.dialect == Dialect::OpenRouter {
+            return self.post("chat/completions", request).await;
+        }
+        let body = serde_json::to_value(request)
+            .map_err(|_| tool_decode("the request could not be encoded"))?;
+        self.post("chat/completions", &self.config.dialect.wire(body))
+            .await
     }
 
     /// Embeds each of `request`'s inputs, with the same retries as
@@ -899,6 +979,10 @@ pub struct FunctionCall {
     pub id: String,
     pub name: String,
     pub arguments: String,
+    /// Gemini's thought signature for the call
+    /// (`extra_content.google.thought_signature`), to send back with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
 }
 
 /// A streamed reply and its complete, validated function calls.
@@ -963,7 +1047,15 @@ impl ToolCalls {
                 id: String::new(),
                 name: String::new(),
                 arguments: String::new(),
+                signature: None,
             });
+            if let Some(signature) =
+                fragment["extra_content"]["google"]["thought_signature"].as_str()
+                && !signature.is_empty()
+                && signature.len() <= TOOL_ARGUMENT_LIMIT
+            {
+                call.signature = Some(signature.to_owned());
+            }
             Self::append(
                 &mut call.id,
                 fragment.get("id"),
@@ -1341,11 +1433,15 @@ impl Client {
         model_sink: &mut (dyn FnMut(&str) + Send),
     ) -> Result<ToolStreamed, Error> {
         let started = std::time::Instant::now();
+        let body = self.config.dialect.wire(
+            serde_json::to_value(body)
+                .map_err(|_| tool_decode("the request could not be encoded"))?,
+        );
         let mut builder = self
             .http
             .post(format!("{}/chat/completions", self.config.base_url))
             .bearer_auth(self.config.api_key.expose())
-            .json(body);
+            .json(&body);
         if let Some(referer) = &self.config.referer {
             builder = builder.header("HTTP-Referer", referer);
         }
@@ -1664,15 +1760,74 @@ mod tests {
                 FunctionCall {
                     id: "judge_1".into(),
                     name: "jev".into(),
-                    arguments: "{\"state\":\"café\"}".into()
+                    arguments: "{\"state\":\"café\"}".into(),
+                    signature: None,
                 },
                 FunctionCall {
                     id: "call_2".into(),
                     name: "openagents_cli".into(),
-                    arguments: "{\"args\":[\"--help\"]}".into()
+                    arguments: "{\"args\":[\"--help\"]}".into(),
+                    signature: None,
                 },
             ]
         );
+    }
+
+    /// #11548: the Gemini API's OpenAI-compatible endpoint refuses
+    /// OpenRouter's fields, and a function call turn without its thought
+    /// signature.
+    #[test]
+    fn the_gemini_dialect_sends_plain_openai_with_signatures() {
+        let body = serde_json::json!({
+            "model": "gemini-4-argon",
+            "stream": true,
+            "usage": {"include": true},
+            "provider": {"require_parameters": true},
+            "reasoning": {"effort": "max"},
+            "messages": [
+                {"role": "user", "content": "List the files."},
+                {"role": "assistant", "content": "", "tool_calls": [
+                    {"id": "a", "type": "function", "function": {"name": "bash", "arguments": "{}"}},
+                    {"id": "b", "type": "function", "function": {"name": "bash", "arguments": "{}"}}
+                ]},
+                {"role": "assistant", "content": "", "tool_calls": [
+                    {"id": "c", "type": "function",
+                     "extra_content": {"google": {"thought_signature": "sig"}},
+                     "function": {"name": "bash", "arguments": "{}"}}
+                ]}
+            ]
+        });
+        assert_eq!(Dialect::OpenRouter.wire(body.clone()), body);
+        let wire = Dialect::Gemini.wire(body);
+        assert!(wire.get("usage").is_none());
+        assert!(wire.get("provider").is_none());
+        assert!(wire.get("reasoning").is_none());
+        assert_eq!(wire["reasoning_effort"], "high");
+        assert_eq!(wire["stream_options"]["include_usage"], true);
+        let calls = &wire["messages"][1]["tool_calls"];
+        assert_eq!(
+            calls[0]["extra_content"]["google"]["thought_signature"],
+            SKIP_THOUGHT_SIGNATURE
+        );
+        assert!(calls[1].get("extra_content").is_none());
+        assert_eq!(
+            wire["messages"][2]["tool_calls"][0]["extra_content"]["google"]["thought_signature"],
+            "sig"
+        );
+    }
+
+    #[test]
+    fn a_streamed_call_keeps_its_thought_signature() {
+        let mut calls = ToolCalls::default();
+        calls
+            .push(
+                &serde_json::json!([{"index": 0, "id": "call_1", "type": "function",
+                "extra_content": {"google": {"thought_signature": "ElkKVw=="}},
+                "function": {"name": "bash", "arguments": "{\"command\":\"ls\"}"}}]),
+            )
+            .unwrap();
+        let calls = calls.finish(Some("tool_calls")).unwrap();
+        assert_eq!(calls[0].signature.as_deref(), Some("ElkKVw=="));
     }
 
     #[test]

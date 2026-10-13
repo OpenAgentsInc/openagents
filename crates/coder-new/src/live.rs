@@ -508,6 +508,13 @@ pub enum Work {
         model: String,
         messages: Vec<Message>,
     },
+    /// The same summary on a no-harness chat's one model (#11548),
+    /// through the gateway while signed in, else the person's Gemini key.
+    SummarizeNoHarness {
+        messages: Vec<Message>,
+        no_harness: crate::route::NoHarness,
+        account: Option<openagents_login::Saved>,
+    },
     /// A multi-part ask's independent parts at the same time (#11539):
     /// each a delegated child in its own worktree, then one converge step
     /// and the combined report as the reply.
@@ -1346,6 +1353,41 @@ fn run_with_provider(
                     id,
                     result: crate::jev_plugin::test_key_for_model(request.key.expose(), &endpoint, &model).await,
                 },
+                Work::SummarizeNoHarness { messages, no_harness, account } => {
+                    let mut reasons = Vec::new();
+                    let mut result = Err(String::new());
+                    let doors = no_harness.policy.doors(
+                        account.as_ref().is_some_and(crate::provider::gateway_open),
+                        no_harness.gemini_key.is_some(),
+                    );
+                    for door in doors {
+                        let (provider, model) = match door {
+                            coder_sdk::auto_policy::Door::Gateway => (
+                                account.as_ref().map_or_else(|| Err(String::new()), Provider::gateway),
+                                no_harness.model().to_owned(),
+                            ),
+                            coder_sdk::auto_policy::Door::GeminiKey => (
+                                no_harness.gemini_key.clone().map_or_else(
+                                    || Err(String::new()),
+                                    |key| gemini_provider(key, &no_harness.gemini_base),
+                                ),
+                                no_harness.policy.no_harness.provider_id().to_owned(),
+                            ),
+                        };
+                        result = match provider {
+                            Ok(provider) => provider.stream_with_options_and_model(
+                                &model, &crate::models::GenerationOptions::default(), messages.clone(),
+                                &mut |_: &str| {}, &mut |_: &str| {},
+                            ).await,
+                            Err(why) => Err(why),
+                        };
+                        match &result {
+                            Ok(_) => break,
+                            Err(why) => reasons.push(why.clone()),
+                        }
+                    }
+                    Update::Finished { id, result: result.map_err(|_| reasons.join("; ")) }
+                }
                 Work::Microcoder { messages, execution, options } => {
                     auto_route(id, messages, execution, &request.key, options, &create, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
                 }
@@ -1584,6 +1626,17 @@ async fn auto_route(
                 )
                 .await
             }
+            crate::route::Lane::GeminiKey => {
+                gemini_turn(
+                    &messages,
+                    &execution,
+                    cancel,
+                    &mut text,
+                    model_callback,
+                    &mut events,
+                )
+                .await
+            }
             crate::route::Lane::OpenRouter => match create(openrouter::ApiKey::new(key.expose())) {
                 Ok(provider) => {
                     provider
@@ -1661,13 +1714,15 @@ async fn gateway_turn(
             }
             event_callback(event);
         };
-        // The model the person picked in /models (#11526), else the
-        // gateway's own router.
+        // A no-harness turn's one model (#11548), else the model the
+        // person picked in /models (#11526), else the gateway's own router.
         provider
             .chat_with_plugins(
                 execution
-                    .gateway_model
-                    .as_deref()
+                    .no_harness
+                    .as_ref()
+                    .map(crate::route::NoHarness::model)
+                    .or(execution.gateway_model.as_deref())
                     .or_else(|| {
                         execution
                             .cheap
@@ -1691,6 +1746,45 @@ async fn gateway_turn(
         }
         result => Ok(result),
     }
+}
+
+/// A no-harness turn's own-key door (#11548): the no-harness model on the
+/// person's Gemini API key, through Gemini's OpenAI-compatible endpoint,
+/// with the same loop and tools as the gateway's.
+async fn gemini_turn(
+    messages: &[Message],
+    execution: &ExecutionSettings,
+    cancel: &Arc<AtomicBool>,
+    text_callback: &mut (dyn FnMut(&str) + Send),
+    model_callback: &mut (dyn FnMut(&str) + Send),
+    event_callback: &mut (dyn FnMut(RuntimeEvent) + Send),
+) -> Result<Streamed, String> {
+    let Some(no_harness) = execution.no_harness.as_ref() else {
+        return Err("No Gemini API key is set.".into());
+    };
+    let Some(key) = no_harness.gemini_key.clone() else {
+        return Err("No Gemini API key is set.".into());
+    };
+    let provider = gemini_provider(key.clone(), &no_harness.gemini_base)?;
+    let mut execution = execution.clone();
+    execution.redaction_keys.push(key);
+    provider
+        .chat_with_plugins(
+            no_harness.policy.no_harness.provider_id(),
+            &crate::models::GenerationOptions::default(),
+            messages.to_vec(),
+            &execution,
+            text_callback,
+            model_callback,
+            event_callback,
+            cancel,
+        )
+        .await
+}
+
+/// The Gemini API at `base` on `key`.
+fn gemini_provider(key: model_access::ApiKey, base: &str) -> Result<Provider, String> {
+    Provider::gemini_at(openrouter::ApiKey::new(key.expose()), base)
 }
 
 /// `auto`'s OpenCode door: one `opencode acp` turn on the free

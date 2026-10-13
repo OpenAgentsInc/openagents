@@ -47,6 +47,8 @@ mod fleet_app;
 pub mod floors;
 pub mod gate;
 pub mod gateway_models;
+#[cfg(test)]
+mod no_harness_tests;
 use coder_sdk::git_guard;
 pub mod fanout;
 pub mod github_tool;
@@ -67,6 +69,7 @@ mod memory_sync;
 pub mod message_route;
 pub mod model_catalog;
 pub mod models;
+pub mod no_harness;
 pub mod opencode_chat;
 pub mod ops_tool;
 mod own_runs;
@@ -212,6 +215,9 @@ pub struct App {
     /// The OpenAgents gateway model picked in /models (#11526); `None` is
     /// `auto`.
     pub gateway_model: Option<String>,
+    /// The model the chat's latest no-harness turn was sent to (#11548),
+    /// for the rail before the reply names it.
+    pub(crate) no_harness_model: Option<String>,
     /// Where the account sign-in is kept (`~/.openagents/coder`).
     pub account_dir: Option<std::path::PathBuf>,
     pub(crate) login: Option<account::Login>,
@@ -2336,6 +2342,12 @@ impl App {
         // A cheap answer runs on a cheap model unless the person chose
         // one (#11537).
         execution.cheap = self.cheap_turn();
+        // No harness can run here (#11548): every call on the one model.
+        execution.no_harness = self.no_harness_turn();
+        self.no_harness_model = execution
+            .no_harness
+            .as_ref()
+            .map(|no_harness| no_harness.model().to_owned());
         let kind = if key.is_some() && models::pinned(&model) {
             live::Work::Chat {
                 model,
@@ -2355,6 +2367,37 @@ impl App {
             key: key.unwrap_or_else(|| model_access::ApiKey::new("")),
             kind,
         });
+    }
+
+    /// The no-harness turn (#11548): Auto found no harness that can run
+    /// here (Claude Code, Codex, OpenCode all off, missing, signed out, or
+    /// at their limits), or `CODER_NO_HARNESS` forced it, and nobody chose
+    /// a model, so the Coder loop runs every call on the Coder SDK's
+    /// no-harness model, Gemini 4 Argon by default.
+    pub(crate) fn no_harness_turn(&self) -> Option<crate::route::NoHarness> {
+        if self.live.pinned_model.is_some() || self.live.agent.is_some() {
+            return None;
+        }
+        let keyed = self.plugins.enabled && self.plugins.key_configured;
+        let account = self.connections();
+        let chosen = (keyed && models::pinned(&self.plugins.model))
+            || gateway_models::active(self.gateway_model.as_deref(), account.as_ref()).is_some();
+        if chosen {
+            return None;
+        }
+        let policy = no_harness::policy()?;
+        let usable = crate::harness_plugin::candidates(&crate::harness_plugin::Facts::read(self))
+            .admitted
+            .iter()
+            .any(|harness| *harness != crate::harness_plugin::Harness::CoderLoop);
+        match policy.engine(usable) {
+            coder_sdk::auto_policy::Engine::Harnesses => None,
+            coder_sdk::auto_policy::Engine::CoderLoop(_) => Some(crate::route::NoHarness {
+                policy,
+                gemini_key: no_harness::gemini_key(),
+                gemini_base: no_harness::gemini_base(),
+            }),
+        }
     }
 
     /// The cheap model this Coder loop turn runs on when the router

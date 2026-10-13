@@ -426,6 +426,20 @@ pub fn cheap_choice(
     }
 }
 
+/// The model a no-harness turn runs every call on, and why (#11548).
+#[must_use]
+pub fn no_harness_choice(no_harness: &crate::route::NoHarness) -> ModelChoice {
+    ModelChoice {
+        model: no_harness.model().to_owned(),
+        reason: if no_harness.policy.force_no_harness {
+            "No harness for this run (CODER_NO_HARNESS): Coder's own loop and tools, every call on this model."
+        } else {
+            "No harness can run here: Coder's own loop and tools, every call on this model."
+        }
+        .to_owned(),
+    }
+}
+
 /// An outcome as written.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EndedLine {
@@ -1096,9 +1110,16 @@ impl crate::App {
             agent,
             rule,
             model: (harness == Harness::CoderLoop)
-                .then(|| self.cheap_turn())
-                .flatten()
-                .map(|cheap| cheap_choice(&cheap, &facts, self.connections().is_some())),
+                .then(|| {
+                    self.no_harness_turn()
+                        .map(|no_harness| no_harness_choice(&no_harness))
+                        .or_else(|| {
+                            self.cheap_turn().map(|cheap| {
+                                cheap_choice(&cheap, &facts, self.connections().is_some())
+                            })
+                        })
+                })
+                .flatten(),
         };
         let mut open = recorder.chose(&choice, self.live.tokens, self.live.cost_usd);
         open.entries_before = self.live.entries.len();

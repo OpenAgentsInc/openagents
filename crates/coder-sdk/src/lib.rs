@@ -11,9 +11,12 @@
 //!
 //! The Claude Code backend is [`claude`], Codex's [`codex`], and the ACP
 //! agents' [`acp`]; the Coder loop's builds on this crate elsewhere.
+//! Auto's policy when no harness can run, the Coder loop on one model
+//! (Gemini 4 Argon by default), is [`auto_policy`].
 
 pub mod acp;
 pub mod admission;
+pub mod auto_policy;
 pub mod bridge;
 pub mod checkout_guard;
 pub mod claude;

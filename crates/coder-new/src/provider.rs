@@ -100,6 +100,10 @@ pub struct Provider {
     /// session: a failure returns to the caller, which falls back, instead
     /// of starting the local loop here.
     gateway: bool,
+    /// The Gemini API on the person's own key (#11548): no web search
+    /// through it, and a failure is its own, never handed to this
+    /// computer's other logins.
+    gemini: bool,
     check_http: reqwest::Client,
     chat: Client,
     base_url: String,
@@ -113,6 +117,14 @@ impl Provider {
     }
 
     fn build(key: ApiKey, base_url: &str) -> Result<Self, String> {
+        Self::build_with(key, base_url, openrouter::Dialect::OpenRouter)
+    }
+
+    fn build_with(
+        key: ApiKey,
+        base_url: &str,
+        dialect: openrouter::Dialect,
+    ) -> Result<Self, String> {
         if key.expose().is_empty()
             || !key.expose().is_ascii()
             || key
@@ -131,10 +143,12 @@ impl Provider {
         let mut config = Config::new(key.clone()).base_url(base_url);
         config.timeout = STREAM_TIMEOUT;
         config.retries = 0;
+        config.dialect = dialect;
         let chat = Client::new(config).map_err(|_| "The OpenRouter connection could not start.")?;
         Ok(Self {
             key,
             gateway: false,
+            gemini: dialect == openrouter::Dialect::Gemini,
             check_http,
             chat,
             base_url: base_url.trim_end_matches('/').to_owned(),
@@ -154,6 +168,14 @@ impl Provider {
         .map_err(|_| "The OpenAgents connection could not start.".to_owned())?;
         provider.gateway = true;
         Ok(provider)
+    }
+
+    /// The Gemini API's OpenAI-compatible endpoint at `base_url` on the
+    /// person's own key (#11548): the no-harness model's door before the
+    /// gateway lists it, or while signed out.
+    pub(crate) fn gemini_at(key: ApiKey, base_url: &str) -> Result<Self, String> {
+        Self::build_with(key, base_url, openrouter::Dialect::Gemini)
+            .map_err(|_| "Set a Gemini API key without spaces or control characters.".to_owned())
     }
 
     /// Checks the key without returning its label or any response-body text.
@@ -429,7 +451,7 @@ impl Provider {
             client: self.chat.clone(),
             model: model.into(),
             effort: options.reasoning.clone(),
-            search_key: (!self.gateway)
+            search_key: (!self.gateway && !self.gemini)
                 .then(|| (self.base_url.clone(), self.key.expose().to_owned())),
         };
         loop {
@@ -520,7 +542,9 @@ impl Provider {
                                 // words: `auto`'s next door takes the turn.
                                 return Err(gateway_error(error));
                             }
-                        } else if crate::models::pinned(model) {
+                        } else if self.gemini && !produced {
+                            return Err(gemini_error(error));
+                        } else if crate::models::pinned(model) && !self.gemini {
                             // A model the person chose is never swapped for
                             // another (#11132): the turn fails, says why, and
                             // the app offers another model.
@@ -533,9 +557,17 @@ impl Provider {
                         }
                         let reason = if self.gateway {
                             gateway_error(error)
+                        } else if self.gemini {
+                            gemini_error(error)
                         } else {
                             stream_error(error)
                         };
+                        // A no-harness turn runs on its one model only
+                        // (#11548): it never moves to this computer's
+                        // Claude or Codex login halfway through.
+                        if execution.no_harness.is_some() {
+                            return Err(reason);
+                        }
                         return self
                             .fallback(
                                 InterruptedTurn {
@@ -645,7 +677,12 @@ impl Provider {
                 execution.redact(&mut arguments);
                 redact_value(&mut arguments, self.key.expose());
                 if call.name == crate::plan::TOOL { arguments = json!({}); }
-                json!({"id":call.id,"type":"function","function":{"name":call.name,"arguments":arguments.to_string()}})
+                let mut wire = json!({"id":call.id,"type":"function","function":{"name":call.name,"arguments":arguments.to_string()}});
+                // Gemini's thought signature goes back with its call (#11548).
+                if let Some(signature) = &call.signature {
+                    wire["extra_content"] = json!({"google":{"thought_signature":signature}});
+                }
+                wire
             }).collect();
             let mut assistant =
                 json!({"role":"assistant","content":streamed.reply.text,"tool_calls":wire_calls});
@@ -1299,6 +1336,25 @@ fn check_error(error: reqwest::Error) -> String {
     }
 }
 
+/// A failure from the Gemini API on the person's own key, named as
+/// Google's.
+fn gemini_error(error: openrouter::Error) -> String {
+    if let openrouter::Error::Api {
+        status: 400,
+        ref message,
+        ..
+    } = error
+    {
+        let message = message.trim().trim_end_matches('.');
+        if !message.is_empty() {
+            return format!("The Gemini API refused the request (HTTP 400): {message}.");
+        }
+    }
+    stream_error(error)
+        .replace("The OpenRouter", "The Gemini API")
+        .replace("OpenRouter", "the Gemini API")
+}
+
 /// A failure from the OpenAgents gateway (`auto`), named as ours rather
 /// than OpenRouter's, which it is not.
 fn gateway_error(error: openrouter::Error) -> String {
@@ -1523,6 +1579,7 @@ mod tests {
             briefing: None,
             gateway_model: None,
             cheap: None,
+            no_harness: None,
         }
     }
 
@@ -1738,6 +1795,73 @@ mod tests {
         assert_eq!(tail[2], json!({"role":"user","content":"third"}));
         assert!(slots.iter().all(|slot| slot.lock().unwrap().is_none()));
         assert!(inbox.lock().unwrap().is_empty());
+    }
+
+    /// #11548: the no-harness model on the person's own Gemini key. The
+    /// Gemini API takes plain OpenAI fields only, and each call goes back
+    /// with the thought signature it came with; a tool runs in between.
+    #[test]
+    fn a_gemini_key_turn_sends_plain_openai_and_returns_signatures() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("notes.txt"), "argon fixture line\n").unwrap();
+        let call = format!(
+            "data: {}\n\ndata: [DONE]\n\n",
+            json!({"model":"gemini-4-argon","choices":[{"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_1","type":"function",
+                "extra_content":{"google":{"thought_signature":"ElkKVwFixture=="}},
+                "function":{"name":"Read","arguments":json!({"path":"notes.txt"}).to_string()}}]},"finish_reason":"tool_calls"}],
+                "usage":{"prompt_tokens":91,"completion_tokens":22,"total_tokens":113}})
+        );
+        let answer = format!(
+            "data: {}\n\ndata: [DONE]\n\n",
+            json!({"model":"gemini-4-argon","choices":[{"delta":{"role":"assistant","content":"It says argon fixture line."},"finish_reason":"stop"}],
+                "usage":{"prompt_tokens":140,"completion_tokens":8,"total_tokens":148}})
+        );
+        let (base, server) = sequence(vec![call, answer]);
+        let mut execution = jev_settings("http://127.0.0.1:1".into(), None);
+        execution.shell = true;
+        execution.jev_enabled = false;
+        execution.cwd = dir.path().to_path_buf();
+        let provider = Provider::gemini_at(ApiKey::new("fixture-gemini-key"), &base).unwrap();
+        let mut models = vec![];
+        let reply = runtime()
+            .block_on(provider.chat_with_plugins(
+                "gemini-4-argon",
+                &crate::models::GenerationOptions::default(),
+                vec![Message::user("What does notes.txt say?")],
+                &execution,
+                &mut |_| {},
+                &mut |model| models.push(model.to_owned()),
+                &mut |_| {},
+                &Arc::new(AtomicBool::new(false)),
+            ))
+            .unwrap();
+        assert_eq!(reply.text, "It says argon fixture line.");
+        assert!(models.iter().any(|model| model == "gemini-4-argon"));
+        let requests = server.join().unwrap();
+        assert_eq!(requests.len(), 2);
+        for request in &requests {
+            assert_eq!(request["model"], "gemini-4-argon");
+            assert!(request.get("usage").is_none(), "{request}");
+            assert!(request.get("provider").is_none(), "{request}");
+            assert_eq!(request["stream_options"]["include_usage"], true);
+        }
+        let messages = requests[1]["messages"].as_array().unwrap();
+        let assistant = messages
+            .iter()
+            .find(|message| message["role"] == "assistant")
+            .unwrap();
+        assert_eq!(
+            assistant["tool_calls"][0]["extra_content"]["google"]["thought_signature"],
+            "ElkKVwFixture=="
+        );
+        let observation = messages.last().unwrap();
+        assert_eq!(observation["role"], "tool");
+        assert!(
+            observation["content"]
+                .as_str()
+                .unwrap()
+                .contains("argon fixture line")
+        );
     }
 
     #[test]

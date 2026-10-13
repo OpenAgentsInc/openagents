@@ -571,8 +571,10 @@ impl Plugins {
             cloud_root: self.bundled.cloud_root(),
             microcoder: self.bundled.microcoder,
             cli: self.bundled.cli,
-            acp: self.bundled.acp,
-            claude: self.bundled.claude,
+            // A forced no-harness run starts no harness, not even as a
+            // delegate (#11548).
+            acp: self.bundled.acp && !crate::no_harness::forced(),
+            claude: self.bundled.claude && !crate::no_harness::forced(),
             openrouter: self.enabled,
             solver: self.bundled.solver,
             comms: self.bundled.comms,
@@ -594,6 +596,7 @@ impl Plugins {
                 .acp_registered()
                 .into_iter()
                 .filter(|agent| self.bundled.claude || !crate::fleet::runs_claude(&agent.id))
+                .filter(|_| !crate::no_harness::forced())
                 .collect(),
             cwd,
             boundary: None,
@@ -613,6 +616,7 @@ impl Plugins {
             briefing: None,
             gateway_model: None,
             cheap: None,
+            no_harness: None,
         }
     }
 

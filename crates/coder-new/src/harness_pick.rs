@@ -498,6 +498,10 @@ pub fn windows_text(windows: &[microcoder_loop::usage::Window], now: u64) -> Str
 #[must_use]
 pub fn local(app: &crate::App) -> Local {
     use crate::routing_preferences::Stance;
+    // A forced no-harness run offers only Auto (#11548).
+    if crate::no_harness::forced() {
+        return Local::default();
+    }
     let routing = app.plugins.execution_settings(app.context_cwd()).routing;
     let leaning =
         crate::routing_preferences::Leaning::read(routing.as_deref(), |harness| match harness {
