@@ -643,3 +643,18 @@ shot.
   - the reference's wraiths are torn and wispy, and darker against the
     moon;
   - the duelers behind her boots are wraith shapes, not students.
+
+### D3 v2, 2026-10-13
+
+- **Gaps fixed:**
+  - The wraiths are torn and wispy. The cloak hangs in separate rags below
+    the waist, with sky between, and the rags trail longer. Dark smoke wisps
+    drift from every hem. The cloth is near-black.
+  - The stand-off: in the 43–47 s shot, a field of forty wraiths hangs low
+    over the far courtyard in ranks, facing her, fading into the dark, with
+    more in the sky above.
+- **Still open:**
+  - the faces;
+  - the spiders;
+  - the reference's wraiths fly in looser, more dynamic poses;
+  - the field could press closer as the shot goes on.

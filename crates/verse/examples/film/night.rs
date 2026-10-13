@@ -237,13 +237,29 @@ impl Set {
                         + 80.0 * hash(i * 5 + 3)
                         + speed * t * if i % 2 == 0 { 1.0 } else { -1.0 };
                     let at = Vec3::new(x * 0.6, 14.0 + 22.0 * lane, -18.0 - 14.0 * hash(i * 5 + 4));
+                    let size = 3.0 + 2.0 * hash(i * 5 + 5);
                     wraith(
                         &mut mesh.lit,
                         at,
                         if i % 2 == 0 { 0.0 } else { 3.14 },
-                        3.0 + 2.0 * hash(i * 5 + 5),
+                        size,
                         t + i as f32,
                     );
+                    wisps(&mut mesh.sprites, at, size, t, i);
+                }
+                if self.shot == Shot::Behind {
+                    // The stand-off: a field of wraiths hanging low over the
+                    // far courtyard, facing her, ranks fading into the dark.
+                    for i in 0..40u32 {
+                        let row = (i / 10) as f32;
+                        let at = Vec3::new(
+                            -14.0 + 28.0 * ((i % 10) as f32 + 0.5 * hash(i + 300)) / 10.0,
+                            2.4 + 1.2 * row + 0.8 * (t * 0.8 + i as f32).sin() * 0.3,
+                            -9.0 - 4.0 * row - 2.0 * hash(i + 301),
+                        );
+                        wraith(&mut mesh.lit, at, std::f32::consts::PI, 1.1, t + i as f32);
+                        wisps(&mut mesh.sprites, at, 1.1, t, i + 100);
+                    }
                 }
             }
             Shot::Boots => {
@@ -307,7 +323,12 @@ fn clouds(out: &mut Vec<Sprite>, vortex: bool, t: f32) {
             // A clear eye round the moon, the cloud wheeling outside it.
             let r = 16.0 + 40.0 * hash(i * 7 + 1);
             let a = hash(i * 7 + 2) * std::f32::consts::TAU + t * 0.25 * (30.0 / r);
-            VORTEX + Vec3::new(a.cos() * r * 0.7, 2.0 - 4.0 * hash(i * 7 + 3), a.sin() * r * 0.45)
+            VORTEX
+                + Vec3::new(
+                    a.cos() * r * 0.7,
+                    2.0 - 4.0 * hash(i * 7 + 3),
+                    a.sin() * r * 0.45,
+                )
         } else {
             Vec3::new(
                 -60.0 + 120.0 * hash(i * 7 + 1) + t * 1.5,
@@ -332,7 +353,7 @@ fn clouds(out: &mut Vec<Sprite>, vortex: bool, t: f32) {
 /// its hood at `at`, turned `yaw`, `scale` times human size, its rags
 /// stirring with `t`.
 fn wraith(out: &mut Vec<LitVertex>, at: Vec3, yaw: f32, scale: f32, t: f32) {
-    let (around, down) = (16usize, 10usize);
+    let (around, down) = (20usize, 12usize);
     let turn = Mat3::from_rotation_y(yaw) * Mat3::from_rotation_x(0.3);
     let point = |i: usize, j: usize| -> Vec3 {
         let u = i as f32 / around as f32;
@@ -345,7 +366,7 @@ fn wraith(out: &mut Vec<LitVertex>, at: Vec3, yaw: f32, scale: f32, t: f32) {
         } else {
             0.34 + 0.25 * (v - 0.25)
         };
-        let rag = 0.5 * v * v * hash((i as u32) * 13 + 1);
+        let rag = 1.1 * v * v * hash((i as u32 % 20) * 13 + 1);
         let stir = 0.12 * v * (t * 2.5 + theta * 3.0).sin();
         let local = Vec3::new(
             r * theta.sin() + stir,
@@ -354,9 +375,16 @@ fn wraith(out: &mut Vec<LitVertex>, at: Vec3, yaw: f32, scale: f32, t: f32) {
         );
         at + turn * (local * scale)
     };
-    let color = [0.006, 0.006, 0.008];
+    let color = [0.003, 0.003, 0.004];
     for j in 0..down {
         for i in 0..around {
+            // Tears: below the waist, some columns are gone, so the
+            // cloak hangs in separate rags with sky between.
+            if j as f32 >= down as f32 * 0.5
+                && hash(i as u32 * 7 + 3) > 0.5 + 0.4 * (1.0 - j as f32 / down as f32)
+            {
+                continue;
+            }
             let [a, b, c, d] = [
                 point(i, j),
                 point(i + 1, j),
@@ -375,5 +403,38 @@ fn wraith(out: &mut Vec<LitVertex>, at: Vec3, yaw: f32, scale: f32, t: f32) {
                 });
             }
         }
+    }
+}
+
+/// The smoke a wraith trails from its rags: dark wisps drifting below and
+/// behind its hem, at `at` (its hood) and `scale`.
+fn wisps(out: &mut Vec<Sprite>, at: Vec3, scale: f32, t: f32, seed: u32) {
+    let (rect, layer) = (
+        sheet::find("smoke").map(|s| s.rect(11)).unwrap_or_default(),
+        sheet::layer("smoke").unwrap_or_default(),
+    );
+    for k in 0..5u32 {
+        let drift = (t * 0.6 + k as f32 * 0.7 + seed as f32).fract();
+        let below = at
+            + Vec3::new(
+                0.3 * (hash(seed * 11 + k) - 0.5) * scale,
+                (-1.6 - 1.4 * drift) * scale,
+                -0.2 * scale,
+            );
+        out.push(Sprite {
+            rect_a: rect,
+            rect_b: rect,
+            layer,
+            additive: 0.0,
+            alpha: 0.6 * (1.0 - drift),
+            angle: hash(seed * 13 + k) * 6.28 + t,
+            priority: 3,
+            ..feathers::dot(
+                below,
+                (0.35 + 0.5 * drift) * scale,
+                [0.01, 0.01, 0.015],
+                1.0,
+            )
+        });
     }
 }
