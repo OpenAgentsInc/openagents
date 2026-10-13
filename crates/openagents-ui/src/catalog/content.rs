@@ -6,9 +6,9 @@ use super::{Pane, row, specimen, stack};
 use crate::actions::{Button, ButtonVariant, Color, ControlSize};
 use crate::content::{
     ActivityStatus, CodeBlock, ColSize, Facts, Favicon, FileChanges, Heading, InlineCode, LinkCard,
-    LinkCards, List, ListItem, MarkdownRoot, MarkdownSize, PageColumn, Paragraph, PluginCard,
-    PluginCards, ResultCard, Source, SourceVariant, Step, Steps, StickyActionBar, Table, ToolCall,
-    ToolGroup,
+    LinkCards, List, ListItem, MarkdownRoot, MarkdownSize, PageColumn, Paragraph, PlanCard,
+    PlanCards, PluginCard, PluginCards, ResultCard, Source, SourceVariant, Step, Steps,
+    StickyActionBar, Table, ToolCall, ToolGroup,
 };
 use crate::icons::Icon;
 
@@ -161,6 +161,32 @@ pub(super) fn plugins(_pane: Pane) -> Markup {
             Icon::ApiKey,
             "Use OpenRouter models in Coder with your own API key.",
         )))
+    }
+}
+
+/// Plan cards as the pricing page shows them.
+pub(super) fn plans(_pane: Pane) -> Markup {
+    let cards = PlanCards::new("Plans")
+        .lead("Start free. Upgrade when you need the cloud.")
+        .cards([
+            PlanCard::new("Free", "Free")
+                .lead("Everything you need to use Coder:")
+                .item("Coder on terminal, desktop, web and phone")
+                .item_with("Every coding agent", ["Use your own subscriptions"])
+                .action("Get Coder", "/download"),
+            PlanCard::new("Pro", "$20")
+                .per("/mo.")
+                .note("3-day free trial")
+                .lead("Everything in Free, and:")
+                .item_with(
+                    "6,000 minutes of cloud time a month",
+                    ["2 vCPU, 8 GB machines \u{b7} 2 at once"],
+                )
+                .action("Start 3-day free trial", "/settings")
+                .featured(true),
+        ]);
+    html! {
+        (specimen("PlanCards PlanCard", "Plans side by side", cards))
     }
 }
 

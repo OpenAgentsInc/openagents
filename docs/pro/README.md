@@ -4,6 +4,9 @@ Status: **proposal, 2026-10-13.** Prices and allowances marked *proposed* need
 the owner's sign-off. Stripe product and price details get filled in once the
 Stripe side is set up (see [Stripe](#stripe)).
 
+Related: Nostr in the CLI and what's free, Pro or usage: [nostr.md](nostr.md).
+Paying for Pro in Bitcoin over Lightning: [bitcoin.md](bitcoin.md).
+
 ## The idea in one paragraph
 
 A really good free plan for people and for agents: Coder everywhere, every
@@ -54,7 +57,7 @@ trial, plus usage** past what's included.
 
 Everything in Free, plus:
 
-1. **Cloud compute included every month.**
+1. **6,000 minutes of cloud time a month (100 machine-hours).**
    - The existing environments plan (`docs/cloud/retail-environment-contract.md`):
      100 machine-hours on the standard machine (2 vCPU, 8 GB), 2 machines at
      once, 20 GB of saved images (up to 10 versions).
@@ -163,7 +166,8 @@ are enforced on the server; the apps only reflect them.
     uploads are part of Pro. Try it free for 3 days."
   - No dead controls: a Pro control on Free either works (by opening the
     upgrade) or isn't shown.
-- **Past due.** Stripe retries for up to 7 days (*proposed*). During that
+- **Past due.** A missed payment gets 3 days of grace, on card and on
+  Bitcoin ([bitcoin.md](bitcoin.md)). During that
   time Pro stays on, with a line asking to update the card. After that the
   account goes to Free, as in [Downgrade and cancel](#downgrade-and-cancel).
 
@@ -225,7 +229,27 @@ What this spec adds:
 - **Terminal.**
   - `openagents plan` shows the plan and use.
   - `openagents plan upgrade` prints the checkout link and opens it.
-- **Pricing page** on openagents.com: the two columns above, in plain words.
+- **Pricing page** on openagents.com: see [Pricing page](#pricing-page).
+
+## Pricing page
+
+`/pricing` on openagents.com (`crates/openagents-web/src/pages/pricing.rs`,
+cards from `openagents_ui::content::PlanCards`). Linked from the site's footer
+links and from Settings → Plan ("Compare plans").
+
+- **Three cards:** Free, Pro ($20/mo., 3-day free trial) and Teams &
+  companies ("Talk to us", a mail link; no team price).
+- **Pro leads with minutes:** "6,000 minutes of cloud time a month", with
+  "2 vCPU, 8 GB machines · 2 at once" under it. The numbers come from the
+  checked-in plan terms, the same ones Settings → Plan shows.
+- **Buttons always go somewhere:** Pro's goes to Settings → Plan (signed
+  out, through sign-up first), where Subscribe opens checkout or says
+  subscribing isn't open on that server. Free's says "Current plan" when
+  signed in. Teams' opens an email to us.
+- **Nothing marked proposed** shows on the page: an unsettled number (such
+  as the included model usage) is described without one.
+- **Questions under the cards:** the trial, going past what's included,
+  paying (card or Bitcoin over Lightning), models you bring, and agents.
 
 ## Build order (issues to file)
 
@@ -255,13 +279,11 @@ What this spec adds:
    - $5 of included model usage a month;
    - 5 GB of uploads;
    - a trial limited to 10 hours and $1 of models;
-   - 7 days of past-due grace;
    - 30 days of keep after downgrade.
 2. **Agent access without Pro.** Should agents with only Lightning credits get
    metered cloud compute without Pro (proposed yes), or must every cloud run
    be on a Pro account?
-3. **Paying for Pro in Bitcoin.** Pay for Pro itself over Lightning (a 30-day
-   pass at $20) as well as by Stripe card? The payments policy is Bitcoin
-   rails, and this keeps agents fully self-serve.
+3. **Paying for Pro in Bitcoin.** Decided: Pro can be paid by card or over
+   Lightning; the trial is card-only ([bitcoin.md](bitcoin.md)).
 4. **Teams.** A team plan (per-seat Pro with shared hours) now or later?
 5. **Annual price.** E.g. $200 a year, now or later?

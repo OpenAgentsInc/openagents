@@ -17,7 +17,9 @@ use std::collections::BTreeSet;
 /// the chat's one-step-smaller type scale, about 2 KB. Raised to 325,000
 /// the same day for the chat's tool-step and thinking rows (`thread.css`,
 /// about 3 KB; #11543).
-pub const STYLESHEET_BUDGET_BYTES: usize = 325_000;
+/// Raised to 330,000 the same day for the pricing page's plan cards
+/// (`plan-card.css`, about 3 KB).
+pub const STYLESHEET_BUDGET_BYTES: usize = 330_000;
 
 /// Classes that components emit on purpose with no rule of their own:
 /// script hooks (`querySelector`, Alpine roots) and structural wrappers

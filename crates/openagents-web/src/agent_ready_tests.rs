@@ -95,9 +95,15 @@ async fn the_agent_documents_answer_in_their_types() {
         );
         assert!(!body.trim().is_empty(), "{uri}");
     }
+    // `/pricing` is the plans page now (`pages::pricing`), with this
+    // module's Markdown twin.
     let (status, headers, _) = fetch(site(root.path()), "/pricing", None).await;
-    assert_eq!(status, StatusCode::PERMANENT_REDIRECT);
-    assert_eq!(headers[header::LOCATION], "/docs/pricing");
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        kind(&headers).starts_with("text/html"),
+        "{}",
+        kind(&headers)
+    );
     // Without a gateway there is no OpenAPI document to pass on.
     let (status, _, _) = fetch(site(root.path()), "/openapi.json", None).await;
     assert_eq!(status, StatusCode::NOT_FOUND);

@@ -14,6 +14,7 @@ mod everglade;
 pub(crate) mod home;
 mod icecream;
 pub(crate) mod live;
+mod pricing;
 pub(crate) mod profile;
 pub(crate) mod stats;
 
@@ -46,6 +47,7 @@ pub(crate) use everglade::{CANVAS_ID, EVERGLADE_POLICY, GLUE, WASM};
 pub(crate) use icecream::{
     ICECREAM_CANVAS, ICECREAM_GLUE, ICECREAM_PATH, ICECREAM_POLICY, ICECREAM_START, ICECREAM_WASM,
 };
+pub(crate) use pricing::PRICING;
 #[cfg(test)]
 pub(crate) use stats::utc;
 
@@ -67,4 +69,5 @@ pub(crate) fn routes() -> Router<App> {
         .merge(download::routes())
         .merge(connect::routes())
         .merge(profile::routes())
+        .merge(pricing::routes())
 }

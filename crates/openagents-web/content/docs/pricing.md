@@ -1,6 +1,7 @@
 # Pricing
 
 Chatting with OpenAgents is free, and so is Coder on your own computer.
+See every plan side by side on [Pricing](/pricing).
 
 ## Free daily allowance
 

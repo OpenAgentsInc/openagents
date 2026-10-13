@@ -436,6 +436,7 @@ pub fn legal_links() -> Markup {
 fn legal() -> LegalLinks {
     LegalLinks::new()
         .link("Docs", DOCS)
+        .link("Pricing", crate::pages::PRICING)
         .link("Roadmap", ROADMAP)
         .link("Promises", PROMISES)
         .link("Terms", "/terms")

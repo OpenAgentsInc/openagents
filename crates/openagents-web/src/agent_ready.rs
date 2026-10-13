@@ -16,7 +16,7 @@ use axum::Router;
 use axum::extract::{Request, State};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header};
 use axum::middleware::Next;
-use axum::response::{IntoResponse, Redirect, Response};
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -92,10 +92,6 @@ pub(crate) fn routes() -> Router<App> {
         .route("/terms.md", get(terms_md))
         .route("/privacy.md", get(privacy_md))
         .route("/download.md", get(download_md))
-        .route(
-            "/pricing",
-            get(|| async { Redirect::permanent("/docs/pricing") }),
-        )
         .route("/pricing.md", get(pricing_md))
         .route("/openapi.json", get(openapi))
         .route("/.well-known/api-catalog", get(api_catalog))

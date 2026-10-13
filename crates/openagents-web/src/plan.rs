@@ -98,6 +98,17 @@ impl Plans {
         }
     }
 
+    /// Whether `account` is on the plan now (a paid month is running).
+    pub(crate) fn active(&self, account: &str, now: i64) -> bool {
+        matches!(
+            self.view(account, now, false).summary,
+            Some(Some(Summary {
+                standing: Standing::Active { .. },
+                ..
+            }))
+        )
+    }
+
     /// Save the account's extra-hours choice.
     pub(crate) fn set_extra(&self, account: &str, choice: ExtraHours) -> Result<(), ()> {
         let meter = self.meter.as_ref().ok_or(())?;
@@ -205,7 +216,10 @@ pub(crate) fn section(
             div class="oa-settings-row" {
                 div class="oa-settings-text" {
                     span class="oa-settings-label" { (t.name) }
-                    span class="oa-settings-hint" { (includes(t)) }
+                    span class="oa-settings-hint" {
+                        (includes(t)) " "
+                        a href=(crate::pages::PRICING) { "Compare plans" }
+                    }
                     span class="oa-settings-hint" {
                         @if let Some((_, renews)) = active {
                             "You're on " (t.name) ". It renews " (day_label(renews)) " unless you cancel."

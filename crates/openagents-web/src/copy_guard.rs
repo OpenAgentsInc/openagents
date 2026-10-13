@@ -14,6 +14,8 @@ fn allowed(route: &str) -> &'static [&'static str] {
         "/privacy" => &["projection", "retained"],
         // The component catalog's icon gallery names the "Cursor" icon.
         "/ui" => &["cursor"],
+        // The pricing page names the Cursor coding agent.
+        "/pricing" => &["cursor"],
         _ => &[],
     }
 }
@@ -106,6 +108,8 @@ const ALLOW_IN: &[(&str, &[&str])] = &[
     ("tasks.rs", &["cursor"]),
     // `rel="canonical"` is a link relation for crawlers, not words.
     ("agent_ready.rs", &["canonical"]),
+    // The pricing page names the Cursor coding agent.
+    ("pages/pricing.rs", &["cursor"]),
 ];
 
 /// #11031: no string in this site's sources that reads like words, and no
