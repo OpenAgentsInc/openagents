@@ -302,20 +302,16 @@ pub fn tool_refusal(
 ) -> Option<String> {
     match tool {
         "Bash" | "Run" | "Monitor" | "shell" | "exec_command" | "local_shell" => {
-            let text = match input.get("command").or_else(|| input.get("cmd"))? {
-                Value::String(text) => text.clone(),
-                Value::Array(words) => words
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .collect::<Vec<_>>()
-                    .join(" "),
-                _ => return None,
-            };
+            let text = crate::floors::command_text(input)?;
             let here = input
                 .get("workdir")
                 .and_then(Value::as_str)
                 .map_or_else(|| cwd.to_path_buf(), |dir| cwd.join(dir));
-            crate::git_guard::refusal(&text).or_else(|| boundary?.run_refusal(&text, &here))
+            // The command and each script a shell wrapper in it runs
+            // (`bash -lc '...'`), so wrapping never hides a write.
+            crate::floors::scripts(&text).iter().find_map(|script| {
+                crate::git_guard::refusal(script).or_else(|| boundary?.run_refusal(script, &here))
+            })
         }
         "Edit" | "Write" | "MultiEdit" | "NotebookEdit" => {
             let path = input
@@ -678,6 +674,42 @@ mod tests {
                 "{tool} {input}"
             );
         }
+        // A shell wrapper never hides a write or a discard (Codex sends
+        // `["bash", "-lc", "..."]`).
+        for (tool, input) in [
+            (
+                "shell",
+                json!({"command": ["bash", "-lc", "rm src/x.rs"], "workdir": "/repo"}),
+            ),
+            (
+                "shell",
+                json!({"command": ["bash", "-lc", "touch /repo/notes.md"]}),
+            ),
+            ("Bash", json!({"command": "sh -c 'cp a /repo/b'"})),
+            (
+                "Bash",
+                json!({"command": "env A=1 zsh -c \"git -C /repo commit -am x\""}),
+            ),
+            ("shell", json!({"command": ["bash", "-lc", "git stash"]})),
+            (
+                "Bash",
+                json!({"command": "bash -lc \"sh -c 'git reset --hard'\""}),
+            ),
+        ] {
+            assert!(
+                tool_refusal(Some(&b), tool, &input, wt).is_some(),
+                "{tool} {input}"
+            );
+        }
+        assert!(
+            tool_refusal(
+                Some(&b),
+                "shell",
+                &json!({"command": ["bash", "-lc", "cargo test -p x"]}),
+                wt
+            )
+            .is_none()
+        );
         // The shell the agent left in the shared checkout counts as there.
         assert!(
             tool_refusal(

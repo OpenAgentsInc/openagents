@@ -208,6 +208,72 @@ fn the_same_rules_hold_ask_or_refuse() {
     );
 }
 
+/// A shell wrapper never hides a floored command: Codex's `shell` sends
+/// `["bash", "-lc", "..."]`, and `sh -c`, `zsh -c`, `env` prefixes and
+/// nested wrappers are read through on every harness.
+#[test]
+fn shell_wrappers_are_read_through() {
+    let shell = |words: &[&str]| ability("shell", json!({ "command": words }));
+    assert_eq!(
+        shell(&["bash", "-lc", "gh pr merge 5 --squash"]),
+        Some(risk_policy::PR_MERGE)
+    );
+    assert_eq!(
+        shell(&["bash", "-lc", "cd /repo && gh pr merge 5"]),
+        Some(risk_policy::PR_MERGE)
+    );
+    assert_eq!(shell(&["bash", "-lc", "gh pr view 5"]), None);
+    assert_eq!(
+        shell(&["/bin/zsh", "-c", "cat .secrets/key.env"]),
+        Some(risk_policy::SECRETS)
+    );
+    for command in [
+        "bash -lc 'gh pr merge 5'",
+        "sh -c \"gh pr merge 5\"",
+        "zsh -c 'gh pr merge 5'",
+        "env FOO=1 bash -c 'gh pr merge 5'",
+        "FOO=1 /usr/bin/env bash -lc 'gh pr merge 5'",
+        "bash -o pipefail -c 'gh pr merge 5'",
+        "env -i bash -c 'gh pr merge 5'",
+        "bash -lc \"sh -c 'gh pr merge 5'\"",
+        "ls && bash -c 'gh pr merge 5'",
+    ] {
+        assert_eq!(bash(command), Some(risk_policy::PR_MERGE), "{command}");
+        assert_eq!(
+            ability("exec_command", json!({ "cmd": command })),
+            Some(risk_policy::PR_MERGE),
+            "{command}"
+        );
+    }
+    assert_eq!(bash("bash script.sh gh pr merge 5"), None);
+    assert_eq!(bash("bash -lc 'cargo test'"), None);
+    // A word with a quote in it stays one word.
+    assert_eq!(
+        shell(&["bash", "-lc", "echo 'it''s' && gh pr merge 5"]),
+        Some(risk_policy::PR_MERGE)
+    );
+}
+
+/// Codex's hook holds a merge wrapped in `bash -lc`, as Codex sends it.
+#[test]
+fn the_codex_hook_holds_a_wrapped_merge() {
+    let repo = checkout(None);
+    let cwd = repo.path().display().to_string();
+    let decision = hook_decision(&json!({
+        "hook_event_name": "PreToolUse", "tool_name": "shell",
+        "tool_input": {"command": ["bash", "-lc", "gh pr merge 5 --squash"]}, "cwd": cwd,
+    }))
+    .expect("held");
+    let output = &decision["hookSpecificOutput"];
+    assert_eq!(output["permissionDecision"], "deny");
+    assert!(
+        output["permissionDecisionReason"]
+            .as_str()
+            .unwrap()
+            .starts_with("Held for the person")
+    );
+}
+
 /// Codex's hook (`coder-floor-hook`): a floored call is denied with a note
 /// to hand it back; anything else gets no answer and runs.
 #[test]

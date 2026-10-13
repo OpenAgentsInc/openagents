@@ -175,8 +175,9 @@ fn simple_commands(command: &str) -> Vec<Vec<String>> {
 fn argv(words: &[String]) -> Option<(String, &[String])> {
     let mut at = 0;
     while let Some(word) = words.get(at) {
+        let base = word.rsplit('/').next().unwrap_or(word);
         let wrapper = matches!(
-            word.as_str(),
+            base,
             "sudo" | "env" | "time" | "nohup" | "command" | "exec" | "npx" | "bunx" | "pnpx"
         );
         if matches!(word.as_str(), "pnpm" | "yarn")
@@ -191,7 +192,12 @@ fn argv(words: &[String]) -> Option<(String, &[String])> {
             && word.split('=').next().is_some_and(|name| {
                 !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
             });
-        if wrapper || assignment || (at > 0 && word.starts_with('-') && words[at - 1] == "sudo") {
+        if wrapper
+            || assignment
+            || (at > 0
+                && word.starts_with('-')
+                && matches!(words[at - 1].rsplit('/').next(), Some("sudo" | "env")))
+        {
             at += 1;
             continue;
         }
@@ -338,12 +344,103 @@ fn command_floor(words: &[String], shown: &str) -> Option<Floor> {
     }
 }
 
-/// The floor a shell `command` reaches, if any.
+/// The floor a shell `command` reaches, if any, including inside the
+/// scripts a shell wrapper runs (`bash -lc '...'`, `sh -c`, `zsh -c`, past
+/// `env` and assignments), however deep.
 #[must_use]
 pub fn command(command: &str) -> Option<Floor> {
-    simple_commands(command)
+    scripts(command)
         .iter()
-        .find_map(|words| command_floor(words, command.trim()))
+        .flat_map(|script| simple_commands(script))
+        .find_map(|words| command_floor(&words, command.trim()))
+}
+
+/// How many shell wrappers deep a command is read.
+const WRAPPER_DEPTH: usize = 8;
+
+/// `command` and every script a shell wrapper in it runs, outermost first:
+/// `bash -lc 'gh pr merge 5'` gives itself and `gh pr merge 5`. Every
+/// harness's checks read each one, so wrapping a command never hides it
+/// (Codex's `shell` sends `["bash", "-lc", "..."]`).
+#[must_use]
+pub fn scripts(command: &str) -> Vec<String> {
+    let mut found = vec![command.to_owned()];
+    let mut at = 0;
+    while at < found.len() && found.len() <= WRAPPER_DEPTH {
+        let inner: Vec<String> = simple_commands(&found[at])
+            .iter()
+            .filter_map(|words| wrapped_script(words))
+            .collect();
+        found.extend(inner);
+        at += 1;
+    }
+    found
+}
+
+/// The script a shell wrapper runs: `bash`, `sh`, `zsh`, `dash`, `ksh` or
+/// `fish` given `-c` (alone or in a cluster such as `-lc`), past the
+/// wrappers [`argv`] skips (`env`, `sudo`, assignments).
+#[must_use]
+pub fn wrapped_script(words: &[String]) -> Option<String> {
+    let (program, args) = argv(words)?;
+    if !matches!(
+        program.as_str(),
+        "bash" | "sh" | "zsh" | "dash" | "ksh" | "fish"
+    ) {
+        return None;
+    }
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        let Some(flags) = arg.strip_prefix('-').filter(|f| !f.starts_with('-')) else {
+            // A long option (`--login`) takes no script; anything else is
+            // a script file, not `-c`.
+            if arg.starts_with("--") {
+                continue;
+            }
+            return None;
+        };
+        if flags.contains('c') {
+            return args.next().cloned();
+        }
+        // `-o option` takes a value.
+        if flags.ends_with('o') || flags.ends_with('O') {
+            args.next();
+        }
+    }
+    None
+}
+
+/// The shell text of a tool call's `command` (or `cmd`): a string as it
+/// is, an argument list quoted word by word so each stays one word.
+#[must_use]
+pub fn command_text(input: &Value) -> Option<String> {
+    match input.get("command").or_else(|| input.get("cmd"))? {
+        Value::String(text) => Some(text.clone()),
+        Value::Array(words) => Some(
+            words
+                .iter()
+                .filter_map(Value::as_str)
+                .map(quote_word)
+                .collect::<Vec<_>>()
+                .join(" "),
+        ),
+        _ => None,
+    }
+}
+
+/// One shell word, single-quoted when it holds anything but plain
+/// characters.
+fn quote_word(word: &str) -> String {
+    if !word.is_empty()
+        && word.chars().all(|c| {
+            c.is_ascii_alphanumeric()
+                || matches!(c, '/' | '.' | '-' | '_' | '=' | ':' | ',' | '@' | '+')
+        })
+    {
+        word.to_owned()
+    } else {
+        format!("'{}'", word.replace('\'', "'\\''"))
+    }
 }
 
 /// The floor a tool call reaches, if any: a shell command (`Bash`, `Run`,
@@ -351,18 +448,7 @@ pub fn command(command: &str) -> Option<Floor> {
 #[must_use]
 pub fn classify(tool: &str, input: &Value) -> Option<Floor> {
     match tool {
-        "Bash" | "Run" | "shell" | "exec_command" | "local_shell" => {
-            let text = match input.get("command").or_else(|| input.get("cmd"))? {
-                Value::String(text) => text.clone(),
-                Value::Array(words) => words
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .collect::<Vec<_>>()
-                    .join(" "),
-                _ => return None,
-            };
-            command(&text)
-        }
+        "Bash" | "Run" | "shell" | "exec_command" | "local_shell" => command(&command_text(input)?),
         "Read" | "read_file" | "View" => {
             let path = input
                 .get("file_path")
