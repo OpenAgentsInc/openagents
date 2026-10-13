@@ -368,7 +368,7 @@ balance, offers in the route contract); the SDK would call them from a
 | Claude Code | `claude_agent_sdk` (`coder_sdk::claude`: hooks, or `can_use_tool` for sessions that ask) | native, all events | built (#11496): floors and squeeze in one registry for Coder chat, squeeze for the briefed agent, the worktree gate for the `claude/sdk:` seat |
 | Coder loop | `microcoder_loop::run` (`Env::hook`, `microcoder_loop::hooks`), used by Coder's live loop and Microcoder | native for SessionStart, UserPromptSubmit, Pre/PostToolUse, PostToolBatch, Stop, PostCompact, SessionEnd; none for the subagent, PreCompact and FileChanged events it never fires | built (#11497): the floors are the loop's hook (`sdk_hooks::coder_loop`); Microcoder's own places fire with no hooks yet |
 | Scripted | recorded sessions | native | first, for tests |
-| Codex | `exec` command hooks now; app-server later | command (`PreToolUse`), emulated otherwise | deferred: its usage is spent and it isn't being tested now |
+| Codex | `codex app-server` (`coder_sdk::codex`); `exec` with command hooks as the fallback | app-server: native for SessionStart, UserPromptSubmit, PreToolUse (Codex asks before each command and patch under `approval_policy = "untrusted"`), Stop (a block starts the next turn on the same thread) and SessionEnd; emulated otherwise. exec: command (`PreToolUse`), emulated otherwise | built (#11510): approvals answered by the session's `PreToolUse` composition, an ask answered on the approval card while Codex waits, Coder's tools as dynamic tools in process |
 | ACP agents (Cursor, Devin, OpenCode, Grok) | `acp-client` | permission requests native; the rest emulated | later |
 
 ## Open questions
@@ -396,6 +396,6 @@ Tracked on project 22.
 | 6 | Command hooks and the hook bridge | [#11500](https://github.com/OpenAgentsInc/openagents/issues/11500) |
 | 7 | One Coder tools MCP server for every harness | [#11501](https://github.com/OpenAgentsInc/openagents/issues/11501) |
 
-Deferred, filed when needed: a Codex backend on app-server (#11493
-described its permission half), an ACP backend at the emulated tier, and
-paid plugins.
+Built since: the Codex backend on app-server (#11510; #11493 described
+its permission half). Deferred, filed when needed: an ACP backend at the
+emulated tier, and paid plugins.

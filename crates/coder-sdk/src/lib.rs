@@ -15,6 +15,7 @@
 pub mod admission;
 pub mod bridge;
 pub mod claude;
+pub mod codex;
 pub mod command;
 pub mod compose;
 pub mod decide;

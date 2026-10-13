@@ -208,8 +208,14 @@ pub enum HookBackend {
     CoderLoop,
     /// A recorded session replayed for tests.
     Scripted,
-    /// Codex `exec`: `PreToolUse` command hooks, the rest seen in the stream.
+    /// Codex `exec`, the fallback: `PreToolUse` command hooks, the rest
+    /// seen in the stream.
     Codex,
+    /// Codex on `codex app-server` (#11510): its approval requests answer
+    /// `PreToolUse` before a command or a patch runs, the host opens the
+    /// thread and each turn and sees each turn end, and the rest is seen in
+    /// the stream.
+    CodexAppServer,
     /// ACP agents (Cursor, Devin, OpenCode, Grok): permission requests
     /// before a tool, the rest seen in the stream.
     Acp,
@@ -217,11 +223,12 @@ pub enum HookBackend {
 
 impl HookBackend {
     /// Every backend, in the tier table's order.
-    pub const ALL: [HookBackend; 5] = [
+    pub const ALL: [HookBackend; 6] = [
         HookBackend::ClaudeCode,
         HookBackend::CoderLoop,
         HookBackend::Scripted,
         HookBackend::Codex,
+        HookBackend::CodexAppServer,
         HookBackend::Acp,
     ];
 
@@ -233,6 +240,7 @@ impl HookBackend {
             HookBackend::CoderLoop => "the Coder loop",
             HookBackend::Scripted => "a recorded session",
             HookBackend::Codex => "Codex",
+            HookBackend::CodexAppServer => "Codex",
             HookBackend::Acp => "an ACP agent",
         }
     }
@@ -247,6 +255,15 @@ pub const CODER_LOOP_EVENTS: [&str; 8] = [
     "PostToolBatch",
     "Stop",
     "PostCompact",
+    "SessionEnd",
+];
+
+/// The events Codex on app-server honors before it acts (#11510).
+pub const CODEX_APP_SERVER_EVENTS: [&str; 5] = [
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "Stop",
     "SessionEnd",
 ];
 
@@ -265,11 +282,18 @@ pub fn hook_tier(backend: HookBackend, event: &str) -> HookTier {
         HookBackend::CoderLoop if CODER_LOOP_EVENTS.contains(&event) => HookTier::Native,
         HookBackend::CoderLoop => HookTier::None,
         HookBackend::Codex if event == "PreToolUse" => HookTier::Command,
+        // Verified live on 2026-10-13 (codex-cli 0.162.1): under
+        // `approval_policy = "untrusted"` Codex asked before every command
+        // and patch, `cat .env` included, and obeyed each answer. The host
+        // opens the thread (SessionStart), starts each turn
+        // (UserPromptSubmit), sees each turn complete and can start the
+        // next with a reason (Stop), and closes it (SessionEnd).
+        HookBackend::CodexAppServer if CODEX_APP_SERVER_EVENTS.contains(&event) => HookTier::Native,
         // An ACP agent asks permission before a tool only when its own mode
         // says to, and Coder doesn't set that mode for every agent, so a
         // floor can't count on the request: the host sees the tool in the
         // stream.
-        HookBackend::Codex | HookBackend::Acp => HookTier::Emulated,
+        HookBackend::Codex | HookBackend::CodexAppServer | HookBackend::Acp => HookTier::Emulated,
     }
 }
 
@@ -1253,6 +1277,16 @@ mod tests {
                 };
                 assert_eq!(tier, want, "{backend:?} {event}");
             }
+        }
+        // Codex on app-server (#11510): native where the host acts first or
+        // Codex asks, seen in the stream otherwise.
+        for (event, tier) in hook_tiers(HookBackend::CodexAppServer) {
+            let want = if CODEX_APP_SERVER_EVENTS.contains(&event) {
+                HookTier::Native
+            } else {
+                HookTier::Emulated
+            };
+            assert_eq!(tier, want, "{event}");
         }
         assert_eq!(
             hook_tier(HookBackend::ClaudeCode, "Mystery"),
