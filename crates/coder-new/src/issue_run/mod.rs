@@ -730,6 +730,18 @@ impl End<'_> {
         ) {
             transcript.notice(format!("{why}. The worktree is kept."));
         }
+        // The outcome the hooks' decisions are joined to (#11492):
+        // `hook-log report stop_gate.jsonl --outcomes outcome.jsonl`.
+        let _ = std::fs::write(
+            folder.join("outcome.jsonl"),
+            format!(
+                "{}\n",
+                json!({
+                    "run_id": self.run.id,
+                    "passed": outcome.status == verdict::Status::Passed,
+                })
+            ),
+        );
         if self.options.open_pr {
             match &self.base {
                 Some(base) => {

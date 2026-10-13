@@ -94,6 +94,9 @@ pub struct StopGate {
     pub check: Check,
     pub tree: Tree,
     pub log: Option<PathBuf>,
+    /// The run each decision is joined to (#11492), when the host names it
+    /// here rather than in `CODER_RUN_ID`.
+    pub run_id: Option<String>,
     /// The candidate the agent was last sent back on.
     blocked_on: Mutex<Option<String>>,
     /// Counts for the run summary.
@@ -121,6 +124,7 @@ impl StopGate {
             check,
             tree,
             log,
+            run_id: None,
             blocked_on: Mutex::new(None),
             tally: Mutex::new(json!({"stops": 0, "blocked": 0, "allowed": {}})),
         }
@@ -147,6 +151,9 @@ impl StopGate {
         decision.model = line["model"].as_str().map(str::to_owned);
         decision.door = line["door"].as_str().map(str::to_owned);
         decision.latency_ms = line["latency_ms"].as_u64();
+        if self.run_id.is_some() {
+            decision.run_id.clone_from(&self.run_id);
+        }
         decision.detail = json!({
             "claim": line["claim"], "verdict": line["verdict"], "why": why, "error": line["error"],
         });
