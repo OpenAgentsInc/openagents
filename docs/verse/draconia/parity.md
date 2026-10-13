@@ -491,3 +491,22 @@ as D1: no stand-in face in a close-up or medium shot.
   - The wave lacks the reference's tall rolling darkness.
   - Shot 15 lacks the reference's grand Gothic courtyard facades and wider
     scatter of groups.
+
+### D2 v2 (and D1 v4), 2026-10-13
+
+- **Gaps fixed:**
+  - The courtyard has Gothic ranges:
+    - one across the far side and a wing down each flank;
+    - bays of tall pointed windows between buttresses with pinnacles;
+    - crenellated parapets and a square tower.
+    Shots 13, 14 and 15 sit inside them under a moonlit key.
+  - Shot 13: Draconia stands nearer and larger, backlit by the moon, so her
+    stand-in face doesn't read.
+  - Shot 14's wave is taller and darker.
+  - Shot 15: a hooded figure fills the right foreground. The cloak has a
+    rounded hood and goes near-black (D1's cloak wipe gets the hood too, as
+    D1 v4).
+- **Still open:**
+  - the close-ups' faces;
+  - the reference's warm firelit facade faces and lit windows;
+  - Draconia's streaming hair (waiting on the face work's joint chains).

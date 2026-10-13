@@ -192,7 +192,36 @@ impl Set {
             Shot::Haul | Shot::Runner | Shot::Profile | Shot::Shout | Shot::Eye => {
                 brick_wall(&mut lit, -9.0, 9.0, -4.0, &|x| 2.4 + 0.6 * broken_top(x), 5);
             }
-            Shot::Alone | Shot::Wave | Shot::Wide => crate::peacock::ruins(&mut lit),
+            Shot::Alone | Shot::Wave | Shot::Wide => {
+                crate::peacock::ruins(&mut lit);
+                // The courtyard's Gothic ranges: one across the far side
+                // and a wing down each flank, with a tower.
+                facade(
+                    &mut lit,
+                    Vec3::new(-18.0, 0.0, -13.0),
+                    Vec3::X,
+                    36.0,
+                    9.0,
+                    7,
+                );
+                facade(
+                    &mut lit,
+                    Vec3::new(-14.0, 0.0, -12.0),
+                    Vec3::Z,
+                    16.0,
+                    8.0,
+                    8,
+                );
+                facade(
+                    &mut lit,
+                    Vec3::new(14.0, 0.0, 4.0),
+                    Vec3::NEG_Z,
+                    16.0,
+                    8.0,
+                    9,
+                );
+                tower(&mut lit, Vec3::new(5.0, 0.0, -14.0), 3.2, 17.0);
+            }
             Shot::Cloak | Shot::Duel => {
                 brick_wall(
                     &mut lit,
@@ -552,7 +581,7 @@ impl Set {
         }
         if self.shot == Shot::Wide {
             // A hooded figure filling the right foreground.
-            cloak(&mut mesh.lit, Vec3::new(1.9, -0.2, 2.6), 0.4);
+            cloak(&mut mesh.lit, Vec3::new(1.05, 0.6, 5.0), 0.4);
         }
         if self.shot == Shot::Cloak {
             // A dark wool cloak sweeping right across the lens.
@@ -650,8 +679,16 @@ impl Set {
             }
             Shot::Alone | Shot::Wave | Shot::Wide => {
                 neon.field = [0.012, 0.02, 0.04];
-                neon.key = Some(key(Vec3::new(-0.3, 0.8, -0.6), 2.0, 0.08));
-                neon.key_color = [0.6, 0.7, 1.0];
+                // Moonlight from behind the camera's left, so the ranges'
+                // faces read.
+                neon.key = Some(if self.shot == Shot::Alone {
+                    // For her, the moon is behind: a rim, and no stand-in
+                    // face to read.
+                    key(Vec3::new(0.3, 0.6, -0.75), 4.0, 0.03)
+                } else {
+                    key(Vec3::new(-0.4, 0.7, 0.6), 4.5, 0.12)
+                });
+                neon.key_color = [0.55, 0.65, 1.0];
                 neon.fog_start = 15.0;
                 neon.fog_end = 90.0;
             }
@@ -874,11 +911,21 @@ fn uniform(scene: &mut TexturedScene) {
 /// drape round a half cylinder with deep folds, flaring toward the hem.
 fn cloak(out: &mut Vec<LitVertex>, at: Vec3, t: f32) {
     let (around, down) = (28usize, 14usize);
+    // Rows above the shoulders (negative `v`) close into a hood.
+    let hood = 5usize;
     let point = |i: usize, j: usize| -> Vec3 {
         let u = i as f32 / around as f32;
-        let v = j as f32 / down as f32;
+        let v = (j as f32 - hood as f32) / down as f32;
         let theta = std::f32::consts::PI * (u - 0.5) * 1.6;
-        let flare = 0.32 + 0.22 * v;
+        let flare = if v < 0.0 {
+            // A rounded hood, narrowing to its peak.
+            0.3 * (1.0 - (-v / (hood as f32 / down as f32)).powi(2))
+                .max(0.0)
+                .sqrt()
+                + 0.02
+        } else {
+            0.32 + 0.22 * v
+        };
         let fold = 0.05 * (theta * 9.0 + v * 2.0 + t * 3.0).sin() * (0.3 + v);
         let r = flare + fold;
         let swing = 0.08 * v * v * (t * 5.0).sin();
@@ -888,8 +935,8 @@ fn cloak(out: &mut Vec<LitVertex>, at: Vec3, t: f32) {
             r * theta.cos() * 0.7,
         )
     };
-    let color = [0.018, 0.017, 0.02];
-    for j in 0..down {
+    let color = [0.008, 0.008, 0.01];
+    for j in 0..down + hood {
         for i in 0..around {
             let [a, b, c, d] = [
                 point(i, j),
@@ -905,9 +952,123 @@ fn cloak(out: &mut Vec<LitVertex>, at: Vec3, t: f32) {
                     tangent: Vec3::Y.to_array(),
                     local: (p - at).to_array(),
                     color,
-                    params: [0.0, 0.85, Material::Fabric.code(), 1.0],
+                    params: [0.0, 0.9, Material::Dark.code(), 1.0],
                 });
             }
         }
+    }
+}
+
+/// A Gothic range: a wall `length` m long from `start` along `along`,
+/// `height` m tall, in bays of tall pointed windows between buttresses,
+/// under a crenellated parapet. Its face looks to the left of `along`.
+fn facade(out: &mut Vec<LitVertex>, start: Vec3, along: Vec3, length: f32, height: f32, seed: u32) {
+    let face = Vec3::Y.cross(along).normalize_or(Vec3::Z);
+    let place = |u: f32, y: f32, d: f32| start + along * u + Vec3::Y * y + face * d;
+    let stone = |n: u32| {
+        let k = 0.05 + 0.04 * hash(seed * 1000 + n);
+        [k * 1.04, k, k * 0.92]
+    };
+    // A box between two along-positions, two heights, and two depths.
+    let mut slab =
+        |out: &mut Vec<LitVertex>, u0: f32, u1: f32, y0: f32, y1: f32, d0: f32, d1: f32, n: u32| {
+            let a = place(u0, y0, d0);
+            let b = place(u1, y1, d1);
+            push_box(out, a.min(b), a.max(b), 0.0, stone(n), 0.9);
+        };
+    let bay = 4.0;
+    let bays = (length / bay).floor() as u32;
+    let mut n = 0;
+    for i in 0..bays {
+        let u = i as f32 * bay;
+        // The wall either side of the window, under it, and over its head.
+        let (w0, w1) = (u + 1.2, u + bay - 1.2);
+        let (sill, head) = (2.2, height - 2.4);
+        slab(out, u, w0, 0.0, height, -0.5, 0.0, n);
+        slab(out, w1, u + bay, 0.0, height, -0.5, 0.0, n + 1);
+        slab(out, w0, w1, 0.0, sill, -0.5, 0.0, n + 2);
+        // The pointed head: steps narrowing to the apex.
+        for k in 0..6 {
+            let kk = k as f32 / 6.0;
+            let inset = (w1 - w0) * 0.5 * (1.0 - (1.0 - kk).sqrt());
+            slab(
+                out,
+                w0,
+                w0 + inset + 0.02,
+                head + kk * 1.6,
+                head + (kk + 1.0 / 6.0) * 1.6,
+                -0.5,
+                0.0,
+                n + 3,
+            );
+            slab(
+                out,
+                w1 - inset - 0.02,
+                w1,
+                head + kk * 1.6,
+                head + (kk + 1.0 / 6.0) * 1.6,
+                -0.5,
+                0.0,
+                n + 4,
+            );
+        }
+        slab(out, w0, w1, head + 1.6, height, -0.5, 0.0, n + 5);
+        // Dark glass set back in the opening.
+        slab(out, w0, w1, sill, head + 1.6, -0.45, -0.4, n + 6);
+        // A buttress and a pinnacle.
+        slab(
+            out,
+            u - 0.3,
+            u + 0.3,
+            0.0,
+            height + 1.2,
+            0.0,
+            0.9 - 0.2 * hash(i),
+            n + 7,
+        );
+        slab(
+            out,
+            u - 0.15,
+            u + 0.15,
+            height + 1.2,
+            height + 2.4,
+            0.2,
+            0.5,
+            n + 8,
+        );
+        // Crenels along the top.
+        let mut c = u;
+        while c < u + bay {
+            slab(out, c, c + 0.5, height, height + 0.7, -0.5, -0.1, n + 9);
+            c += 1.0;
+        }
+        n += 10;
+    }
+}
+
+/// A square tower `width` m across and `height` m tall at `at`, with a
+/// pointed roof.
+fn tower(out: &mut Vec<LitVertex>, at: Vec3, width: f32, height: f32) {
+    let h = width * 0.5;
+    push_box(
+        out,
+        at - Vec3::new(h, 0.0, h),
+        at + Vec3::new(h, height, h),
+        0.0,
+        [0.05, 0.048, 0.045],
+        0.9,
+    );
+    // The roof: stacked, narrowing blocks.
+    for k in 0..8 {
+        let kk = k as f32;
+        let w = h * (1.0 - kk / 8.0);
+        push_box(
+            out,
+            at + Vec3::new(-w, height + kk * 0.7, -w),
+            at + Vec3::new(w, height + kk * 0.7 + 0.7, w),
+            0.0,
+            [0.03, 0.03, 0.034],
+            0.8,
+        );
     }
 }
