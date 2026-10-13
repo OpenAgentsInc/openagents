@@ -3503,7 +3503,9 @@ impl Shell {
             });
         if valid {
             composer.update(cx, |composer, cx| {
-                composer.add_workspace_path(&payload.path, payload.is_directory, window, cx)
+                for item in payload.items() {
+                    composer.add_workspace_path(&item.path, item.is_directory, window, cx)
+                }
             });
         }
     }
@@ -4023,7 +4025,7 @@ impl Shell {
                     return;
                 }
                 match event {
-                    FilesEvent::HoldMutation { origin, path } => {
+                    FilesEvent::HoldMutation { origin, paths } => {
                         let surfaces = this
                             .files
                             .values()
@@ -4032,7 +4034,7 @@ impl Shell {
                             .cloned()
                             .collect::<Vec<_>>();
                         for surface in surfaces {
-                            surface.update(cx, |files, cx| files.hold_mutation(path.clone(), cx));
+                            surface.update(cx, |files, cx| files.hold_mutation(paths.clone(), cx));
                         }
                     }
                     FilesEvent::AddToChat {
@@ -4051,6 +4053,9 @@ impl Shell {
                     }
                     FilesEvent::Mutate(intent) => {
                         this.start_file_mutation(source.clone(), intent.clone(), cx)
+                    }
+                    FilesEvent::MutateMany(intents) => {
+                        this.start_file_mutations(source.clone(), intents.clone(), cx)
                     }
                     // Navigation from an editor stays in its own chat.
                     FilesEvent::OpenFile(path) => {
