@@ -258,6 +258,22 @@ moving the run time to D.
 | P4 Clef 27B | v6e-4 bf16 (tensor parallel) or v6e-1 int8 | Ladder on 27B; ≤ $0.05/M spot | ~$200 |
 | P5 Production pool member | Rust door, identity block, spot restarter, gateway pool entry | 24 h shadow beside the H100 and A100 with ≥ 99 % top-answer agreement on live traffic and no errors | spot hours |
 
+## Held TPU machines
+
+Owner policy (2026-10-13): hold useful TPU capacity rather than release
+it, up to $500/day across all TPU work. Measured results:
+[clef-tpu-data.md](clef-tpu-data.md). Updated 2026-10-13 01:30 UTC.
+
+| Name | Zone | Type | Mode | $/h | $/day | Purpose |
+| --- | --- | --- | --- | ---: | ---: | --- |
+| p6-asia-northeast1-b | asia-northeast1-b | v6e-1 | on-demand | 2.70 | 65 | P1 correctness/serving worker (other agent) |
+| cd-v5e8-uw1c-s | us-west1-c | v5e-8 | spot | 2.87 | 69 | Flash prefill TP 1/2/4 and int8 |
+| cd-v5e8-ue1c-s | us-east1-c | v5e-8 | spot | 2.87 | 69 | Clef 27B prefill TP 8 |
+| cd-v5e8-uw4a-s | us-west4-a | v5e-8 | spot | 4.15 | 100 | kernel benches (release when done) |
+| cd-v5p8-ue5a-s | us-east5-a | v5p-8 | spot | 3.44 | 83 | 27B / Flash prefill on v5p |
+| cd-v6e8-*-uscentral1b | us-central1-b | v6e-8 | spot | 4.67 | 112 | creating; v6e standard plan |
+| queued: v6e-8 us-central1-a/b, us-east1-d, us-south1-c; v6e-4 us-central1-a/b, us-east1-d | | | spot | 0 until granted | | waiting for capacity |
+
 ## Owner decisions
 
 1. **Language at run time.** Path A runs Python (JAX) on the TPU worker.

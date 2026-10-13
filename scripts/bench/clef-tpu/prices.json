@@ -1,0 +1,410 @@
+{
+ "tpu7x": {
+  "europe-west2": {
+   "ondemand": 13.2,
+   "spot": 5.28
+  },
+  "us-central1": {
+   "ondemand": 12.0,
+   "spot": 4.1154
+  },
+  "us-east1": {
+   "ondemand": 12.0,
+   "spot": 4.1154
+  },
+  "us-east5": {
+   "ondemand": 12.0,
+   "spot": 4.8
+  },
+  "us-west1": {
+   "ondemand": 12.0,
+   "spot": 4.1154
+  },
+  "us-west8": {
+   "ondemand": 12.0,
+   "spot": 4.8
+  }
+ },
+ "v5e": {
+  "africa-south1": {
+   "ondemand": 1.5695999999999999,
+   "spot": 0.141264
+  },
+  "asia-east1": {
+   "ondemand": 1.38948,
+   "spot": 0.300328
+  },
+  "asia-east2": {
+   "ondemand": 1.67868,
+   "spot": 0.151081
+  },
+  "asia-northeast1": {
+   "ondemand": 1.54104,
+   "spot": 0.138694
+  },
+  "asia-northeast2": {
+   "ondemand": 1.54104,
+   "spot": 0.138694
+  },
+  "asia-northeast3": {
+   "ondemand": 1.54104,
+   "spot": 0.627593
+  },
+  "asia-south1": {
+   "ondemand": 1.248,
+   "spot": 0.11232
+  },
+  "asia-south2": {
+   "ondemand": 1.44132,
+   "spot": 0.586982
+  },
+  "asia-southeast1": {
+   "ondemand": 1.56,
+   "spot": 0.78
+  },
+  "asia-southeast2": {
+   "ondemand": 1.61364,
+   "spot": 0.145228
+  },
+  "australia-southeast1": {
+   "ondemand": 1.5,
+   "spot": 0.610879
+  },
+  "australia-southeast2": {
+   "ondemand": 1.56,
+   "spot": 0.1404
+  },
+  "europe-central2": {
+   "ondemand": 1.54608,
+   "spot": 0.629647
+  },
+  "europe-north1": {
+   "ondemand": 1.32132,
+   "spot": 0.66066
+  },
+  "europe-southwest1": {
+   "ondemand": 1.416,
+   "spot": 0.576671
+  },
+  "europe-west1": {
+   "ondemand": 1.32132,
+   "spot": 0.528528
+  },
+  "europe-west10": {
+   "ondemand": 1.8479999999999999,
+   "spot": 0.752603
+  },
+  "europe-west12": {
+   "ondemand": 1.548,
+   "spot": 0.13932
+  },
+  "europe-west2": {
+   "ondemand": 1.3679999999999999,
+   "spot": 0.12312
+  },
+  "europe-west3": {
+   "ondemand": 1.416,
+   "spot": 0.12744
+  },
+  "europe-west4": {
+   "ondemand": 1.56,
+   "spot": 0.590518
+  },
+  "europe-west6": {
+   "ondemand": 1.67868,
+   "spot": 0.151081
+  },
+  "europe-west8": {
+   "ondemand": 1.392,
+   "spot": 0.12528
+  },
+  "europe-west9": {
+   "ondemand": 1.392,
+   "spot": 0.12528
+  },
+  "me-central1": {
+   "ondemand": 1.458,
+   "spot": 0.13122
+  },
+  "me-central2": {
+   "ondemand": 1.92,
+   "spot": 0.781926
+  },
+  "me-west1": {
+   "ondemand": 1.32,
+   "spot": 0.1188
+  },
+  "northamerica-northeast1": {
+   "ondemand": 1.32132,
+   "spot": 0.118919
+  },
+  "northamerica-northeast2": {
+   "ondemand": 1.32132,
+   "spot": 0.118919
+  },
+  "southamerica-east1": {
+   "ondemand": 1.9054799999999998,
+   "spot": 0.171493
+  },
+  "southamerica-west1": {
+   "ondemand": 1.716,
+   "spot": 0.15444
+  },
+  "us-central1": {
+   "ondemand": 1.2,
+   "spot": 0.359329
+  },
+  "us-east1": {
+   "ondemand": 1.2,
+   "spot": 0.359329
+  },
+  "us-east4": {
+   "ondemand": 1.2,
+   "spot": 0.488704
+  },
+  "us-east5": {
+   "ondemand": 1.2,
+   "spot": 0.57
+  },
+  "us-south1": {
+   "ondemand": 1.416,
+   "spot": 0.791572
+  },
+  "us-west1": {
+   "ondemand": 1.2,
+   "spot": 0.359329
+  },
+  "us-west2": {
+   "ondemand": 1.44252,
+   "spot": 0.129827
+  },
+  "us-west3": {
+   "ondemand": 1.44252,
+   "spot": 0.129827
+  },
+  "us-west4": {
+   "ondemand": 1.2,
+   "spot": 0.518949
+  },
+  "us-west8": {
+   "ondemand": 1.2,
+   "spot": 0.173741
+  }
+ },
+ "v5p": {
+  "africa-south1": {
+   "ondemand": 5.2974,
+   "spot": 2.162709
+  },
+  "asia-east1": {
+   "ondemand": 4.689495,
+   "spot": 0.422055
+  },
+  "asia-east2": {
+   "ondemand": 5.665545,
+   "spot": 0.509899
+  },
+  "asia-northeast1": {
+   "ondemand": 5.20101,
+   "spot": 0.468091
+  },
+  "asia-northeast2": {
+   "ondemand": 5.20101,
+   "spot": 0.468091
+  },
+  "asia-northeast3": {
+   "ondemand": 5.20101,
+   "spot": 0.468091
+  },
+  "asia-south1": {
+   "ondemand": 4.212,
+   "spot": 0.37908
+  },
+  "asia-south2": {
+   "ondemand": 4.8644549999999995,
+   "spot": 0.437801
+  },
+  "asia-southeast1": {
+   "ondemand": 4.996485,
+   "spot": 2.039857
+  },
+  "asia-southeast2": {
+   "ondemand": 5.446035,
+   "spot": 0.490143
+  },
+  "australia-southeast1": {
+   "ondemand": 5.0625,
+   "spot": 0.455625
+  },
+  "australia-southeast2": {
+   "ondemand": 5.265,
+   "spot": 0.47385
+  },
+  "europe-central2": {
+   "ondemand": 5.21802,
+   "spot": 2.130302
+  },
+  "europe-north1": {
+   "ondemand": 4.459455,
+   "spot": 0.401351
+  },
+  "europe-southwest1": {
+   "ondemand": 4.779,
+   "spot": 1.951068
+  },
+  "europe-west1": {
+   "ondemand": 4.459455,
+   "spot": 1.682307
+  },
+  "europe-west10": {
+   "ondemand": 6.237,
+   "spot": 2.54631
+  },
+  "europe-west12": {
+   "ondemand": 5.2245,
+   "spot": 0.470205
+  },
+  "europe-west2": {
+   "ondemand": 4.617,
+   "spot": 0.41553
+  },
+  "europe-west3": {
+   "ondemand": 4.779,
+   "spot": 0.43011
+  },
+  "europe-west4": {
+   "ondemand": 4.2525,
+   "spot": 1.179146
+  },
+  "europe-west6": {
+   "ondemand": 5.665545,
+   "spot": 0.509899
+  },
+  "europe-west8": {
+   "ondemand": 4.698,
+   "spot": 0.42282
+  },
+  "europe-west9": {
+   "ondemand": 4.698,
+   "spot": 1.9180000000000001
+  },
+  "me-central1": {
+   "ondemand": 4.92075,
+   "spot": 0.442867
+  },
+  "me-central2": {
+   "ondemand": 6.48,
+   "spot": 0.5832
+  },
+  "me-west1": {
+   "ondemand": 4.455,
+   "spot": 0.40095
+  },
+  "northamerica-northeast1": {
+   "ondemand": 4.459455,
+   "spot": 1.8206099999999998
+  },
+  "northamerica-northeast2": {
+   "ondemand": 4.459455,
+   "spot": 0.401351
+  },
+  "southamerica-east1": {
+   "ondemand": 6.430995,
+   "spot": 2.625509
+  },
+  "southamerica-west1": {
+   "ondemand": 5.7915,
+   "spot": 0.521235
+  },
+  "us-central1": {
+   "ondemand": 4.2,
+   "spot": 0.926101
+  },
+  "us-east1": {
+   "ondemand": 4.2,
+   "spot": 0.926101
+  },
+  "us-east4": {
+   "ondemand": 4.05,
+   "spot": 0.3645
+  },
+  "us-east5": {
+   "ondemand": 4.2,
+   "spot": 0.860258
+  },
+  "us-south1": {
+   "ondemand": 4.779,
+   "spot": 0.663867
+  },
+  "us-west1": {
+   "ondemand": 4.2,
+   "spot": 0.926101
+  },
+  "us-west2": {
+   "ondemand": 4.868505,
+   "spot": 0.438165
+  },
+  "us-west3": {
+   "ondemand": 4.868505,
+   "spot": 0.438165
+  },
+  "us-west4": {
+   "ondemand": 4.561515,
+   "spot": 0.410536
+  },
+  "us-west8": {
+   "ondemand": 4.05,
+   "spot": 0.587825
+  }
+ },
+ "v6e": {
+  "asia-northeast1": {
+   "ondemand": 3.24,
+   "spot": 1.594407
+  },
+  "asia-south1": {
+   "ondemand": 3.24,
+   "spot": 1.355559
+  },
+  "asia-southeast1": {
+   "ondemand": 2.9699999999999998,
+   "spot": 0.2673
+  },
+  "europe-west2": {
+   "ondemand": 3.24,
+   "spot": 0.2916
+  },
+  "europe-west4": {
+   "ondemand": 2.9699999999999998,
+   "spot": 1.782
+  },
+  "southamerica-west1": {
+   "ondemand": 2.7,
+   "spot": 1.08
+  },
+  "us-central1": {
+   "ondemand": 2.7,
+   "spot": 0.58383
+  },
+  "us-east1": {
+   "ondemand": 2.7,
+   "spot": 0.58383
+  },
+  "us-east4": {
+   "ondemand": 2.7,
+   "spot": 0.243
+  },
+  "us-east5": {
+   "ondemand": 2.7,
+   "spot": 1.62
+  },
+  "us-south1": {
+   "ondemand": 2.7,
+   "spot": 0.65836
+  },
+  "us-west1": {
+   "ondemand": 2.7,
+   "spot": 0.58383
+  }
+ }
+}

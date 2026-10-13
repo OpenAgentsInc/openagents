@@ -1,0 +1,8 @@
+# Clef/Qwen3.5 text backbone only: skip the vision tower (its 1152-wide layers break SGL-JAX's
+# quantized shard_map at TP 1). Per-channel int8 weights; activations: null (dynamic per token).
+quantization:
+  linear:
+    rules:
+      - module_path: '^(?!visual).*'
+        weight_dtype: 'int8'
+        activation_dtype: null
