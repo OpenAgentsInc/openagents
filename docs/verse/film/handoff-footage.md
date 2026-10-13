@@ -55,6 +55,7 @@ Earlier footage: `~/work/film-out/footage/`, `footage-v2/` (including
 | `phone-app.mjs` | The app's Running screen while Coder works (`--edit RAW` re-cuts) |
 | `cdp.mjs`, `web.mjs` | Headless Chrome over CDP: screencast recorder, encoding at shared-clock times |
 | `terminal.mjs`, `ptyrun.py`, `replay-terminal.mjs` | Real PTY sessions kept as asciicast (with their wall-clock start), rendered frame by frame in xterm.js with Paper Mono; `replayAt` renders at shared-clock times |
+| `coder-plugins.mjs` | `terminal-plugins.mp4`: Coder's Plugins screen browsed live (`/plugins`, the list, the ACP agents page, Esc) on the person's real installs, with an isolated `--state` copy of their settings and no account file, so nothing is changed or synced. Pacing is the recording's own (no waits shortened). Kept in `~/work/film-out/footage-v7/` |
 | `make-demo-repo.sh` | The slugkit repository with three failing tests |
 
 The phone is driven by `bins/openagents-ios/host/UITests/FilmUITests.swift`
