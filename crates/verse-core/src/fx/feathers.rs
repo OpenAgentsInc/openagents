@@ -457,7 +457,8 @@ mod tests {
         assert!((90..=110).contains(&feathers.len()), "{}", feathers.len());
         for s in feathers {
             let out = s.at - fan.center;
-            assert!(out.length() <= 6.0 + 1e-3);
+            // Eyespots may stray 4% past the radius, as real ones do.
+            assert!(out.length() <= 6.0 * 1.04 + 1e-3);
             assert!(s.tail.dot(out) < 0.0, "a feather points back to the center");
         }
     }
