@@ -24,7 +24,7 @@ them ([below](#the-pool-and-how-a-decision-picks-a-machine)).
 | Machine | `a3-highgpu-1g`: 1 × H100 80 GB, 26 vCPU, 234 GB RAM | `a2-highgpu-1g`: 1 × A100 40 GB, 12 vCPU, 85 GB RAM |
 | Pricing model | Spot, termination action **STOP** (a preemption stops it and keeps its disk) | On-demand (standard), never preempted; host maintenance stops it and GCE restarts it (`--restart-on-failure`) |
 | Internal IP | `10.128.0.61`, the reserved address `clef-decisions-h100` | `10.128.0.75`, the reserved address `clef-decisions-a100` |
-| Psionic bundle | `bin/latest` (sm_90 build; today `42334c876b`) | pinned by metadata `clef-bundle=661e02d3ed-sm80` (an sm_80 build) |
+| Psionic bundle | pinned by metadata `clef-bundle=80d8a5c292` (an sm_90 build) | pinned by metadata `clef-bundle=80d8a5c292-sm80` (an sm_80 build) |
 
 Both: project `openagentsgemini`, the `default` subnet, Deep Learning VM
 image `common-cu129-ubuntu-2404-nvidia-580`, a 200 GB pd-ssd boot disk,
@@ -238,7 +238,33 @@ default (exact; a 32nd of the device, at most 2 GiB per service; clef-native.md
 Round 9). Responses report `usage.cached_input_tokens`. The A100's sm_80
 build keeps it off.
 
-**Status 2026-10-13 (applied).**
+**Status 2026-10-13, 03:30 UTC (applied): the head in one round trip.**
+Both machines run `80d8a5c292`, whose CUDA head runs in one submission
+(clef-native.md Round 11; `PSIONIC_CLEF_CUDA_HEAD=staged` in a unit's
+environment would bring back the old path). Rolled out A100 first.
+
+| Machine | `clef-bundle` | Batching | Prefix reuse |
+| --- | --- | --- | --- |
+| `clef-decisions-a100` | `80d8a5c292-sm80` | 2 | off |
+| `clef-decisions-h100` | `80d8a5c292` | 2 | on (2 GiB) |
+
+- e2e (40 requests, 104 questions) on each machine against its previous
+  bundle: identical answers on both models (max |Δp| 0). Flash vs the CPU
+  goldens: A100 100 %, max 0.0049; H100 100 %, max 0.0010 (both unchanged).
+- Production bursts (16 `clef-flash` + 16 `clef` at once, two questions,
+  three rounds each), 0 errors. Median `openagents.latency_ms` before → after:
+  Flash H100 312–435 → 221–261 ms; Flash A100 1,182–1,306 → 710–838 ms;
+  27B H100 310–499 → 432–498 ms; 27B A100 1,763–2,066 → 1,670–1,880 ms.
+  Bursts on the live pool are noisy; the controlled H100 measurement is in
+  clef-native.md Round 11 (head 6.1 → 2.0 ms, Flash −6 to −8 % at ≤ 1k
+  tokens, −10 % on prefix hits).
+- One call at a time: `clef-flash` 19–23 ms gateway round trip on the H100.
+
+Rollback to the previous bundles (one machine at a time, then rerun the
+startup script): A100 `add-metadata clef-bundle=23f44c8ad5-sm80`, H100
+`add-metadata clef-bundle=15aac3e386`.
+
+**Status 2026-10-13, 01:30 UTC (superseded above).**
 
 | Machine | `clef-bundle` | Batching | Prefix reuse |
 | --- | --- | --- | --- |
