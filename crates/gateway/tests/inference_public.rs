@@ -761,6 +761,45 @@ async fn a_new_account_is_answered_on_its_free_allowance() {
     assert_eq!(allowance_used(&d).len(), 2);
 }
 
+/// #11545: a model `GET /v1/models` marks free answers a signed-in
+/// account on its free allowance once the day's free requests are used,
+/// instead of `402 insufficient_balance`; a key gets no allowance, so it
+/// is still refused once its free requests are used.
+#[tokio::test]
+async fn a_model_marked_free_runs_on_the_allowance_after_the_free_requests() {
+    let d = deploy_with(Some(allowance(1_000_000)), None).await;
+    let (_, catalog) = read(&d, Some(&d.acme), "/v1/models").await;
+    let listed = catalog["data"].as_array().unwrap();
+    let free = listed.iter().find(|model| model["id"] == FREE).unwrap();
+    assert_eq!(free["openagents"]["free"], true, "{free}");
+    let signed = sign_in(&d);
+    for _ in 0..2 {
+        let (status, body, _) = call(&d, &signed.user, "/v1/chat/completions", chat(FREE)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+    }
+    assert!(
+        allowance_used(&d).is_empty(),
+        "the free requests come first"
+    );
+    let (status, body, _) = call(&d, &signed.user, "/v1/chat/completions", chat(FREE)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let used = allowance_used(&d);
+    assert_eq!(used.len(), 1, "{used:?}");
+    assert!(
+        used.values()
+            .all(|spent| spent["micros"].as_u64() > Some(0))
+    );
+    // A paid model is still paid from the balance.
+    let (status, body, _) = call(&d, &signed.user, "/v1/chat/completions", chat(PAID)).await;
+    assert_eq!(status, StatusCode::PAYMENT_REQUIRED, "{body}");
+    // A key's free requests run out as before.
+    for expected in [StatusCode::OK, StatusCode::OK, StatusCode::PAYMENT_REQUIRED] {
+        let (status, body, _) = call(&d, &d.poor, "/v1/chat/completions", chat(FREE)).await;
+        assert_eq!(status, expected, "{body}");
+    }
+    assert_eq!(allowance_used(&d).len(), 1);
+}
+
 /// #11264: once the day's allowance can't cover a turn and there is no
 /// balance, the refusal says so plainly, and nothing is charged.
 #[tokio::test]

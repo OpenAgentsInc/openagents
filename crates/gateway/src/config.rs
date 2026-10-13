@@ -344,15 +344,17 @@ pub struct PublicInference {
     #[serde(default)]
     pub free_tier: Option<FreeTier>,
     /// A signed-in account's free daily allowance of model cost on the
-    /// router models (#11264): Coder's `auto` answers on it before the
-    /// account's own balance.
+    /// router models (#11264) and, once the day's free requests are used,
+    /// on the free tier's models (#11545): it answers before the account's
+    /// own balance.
     #[serde(default)]
     pub free_allowance: Option<FreeAllowance>,
 }
 
 /// The free daily allowance: up to `usd_micros_per_day` of model cost a
-/// day (UTC) per signed-in account, only on the models listed, funded from
-/// our own provider credit.
+/// day (UTC) per signed-in account, on the models listed and on the free
+/// tier's models ([`FreeTier::models`]), funded from our own provider
+/// credit.
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FreeAllowance {

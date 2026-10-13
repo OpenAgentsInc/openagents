@@ -13,7 +13,9 @@
 //! - **Free allowance** (#11264). A signed-in account's `sess_` session
 //!   gets up to `inference.public.free_allowance.usd_micros_per_day` of
 //!   model cost a day (UTC) on the router models it lists
-//!   (`openagents/auto`, `openagents/fast`), before its own balance. Each
+//!   (`openagents/auto`, `openagents/fast`), and on the free tier's models
+//!   once the day's free requests are used (#11545), before its own
+//!   balance. Each
 //!   request reserves its worst case from the day's allowance and settles
 //!   at the cost the upstream reported; one that fails first gives it
 //!   back. When the day's allowance can't cover a request and the balance
@@ -898,6 +900,18 @@ pub(crate) fn named_workspace(headers: &HeaderMap) -> Option<&str> {
         .filter(|value| !value.is_empty())
 }
 
+/// Whether every planned attempt is on a model the free tier lists: the
+/// models `GET /v1/models` marks free ([`catalog`]).
+fn all_free(free_tier: Option<&crate::config::FreeTier>, prepared: &Prepared) -> bool {
+    free_tier.is_some_and(|free| {
+        !prepared.attempts().is_empty()
+            && prepared
+                .attempts()
+                .iter()
+                .all(|attempt| free.models.contains(&attempt.model))
+    })
+}
+
 /// Admits a planned public request: free when the free tier covers every
 /// attempt and has a request left today, otherwise held from the
 /// workspace balance.
@@ -944,11 +958,7 @@ pub(crate) async fn admit(
         .and_then(|inference| inference.public.as_ref())
         .and_then(|public| public.free_tier.as_ref());
     if let Some(free) = free_tier
-        && !prepared.attempts().is_empty()
-        && prepared
-            .attempts()
-            .iter()
-            .all(|attempt| free.models.contains(&attempt.model))
+        && all_free(Some(free), prepared)
     {
         let mut book = book.lock().await;
         if book.take_free(&public.scope, free.requests_per_day, day) {
@@ -1006,8 +1016,11 @@ pub(crate) async fn admit(
             }
         }
     }
-    // The signed-in account's free allowance on the router models comes
-    // before its balance (#11264).
+    // The signed-in account's free allowance comes before its balance
+    // (#11264): on the router models it lists, and on the models
+    // `GET /v1/models` marks free once the day's free requests are used
+    // (#11545), so a free model never answers a signed-in account 402
+    // while its allowance lasts.
     let allowance = state
         .config
         .inference
@@ -1015,10 +1028,11 @@ pub(crate) async fn admit(
         .and_then(|inference| inference.public.as_ref())
         .and_then(|public| public.free_allowance.as_ref())
         .filter(|allowance| {
-            request
+            let router = request
                 .model
                 .as_deref()
-                .is_some_and(|model| allowance.models.iter().any(|listed| listed == model))
+                .is_some_and(|model| allowance.models.iter().any(|listed| listed == model));
+            router || all_free(free_tier, prepared)
         });
     let mut allowance_used_up = false;
     if let (Some(allowance), Some(account)) = (allowance, &public.account) {

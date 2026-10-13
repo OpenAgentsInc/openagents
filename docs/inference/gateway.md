@@ -848,7 +848,9 @@ P1 public API as built (#11065), deployed in both gateway sidecars:
   listed model; one that fails before its first token gives its count back.
 - Free allowance: `inference.public.free_allowance` (`usd_micros_per_day`,
   `models`): a signed-in account's `sess_` session gets that much model
-  cost a UTC day on the listed router models before its balance, reserved
+  cost a UTC day on the listed router models, and on the free tier's
+  models once the day's free requests are used (#11545), before its
+  balance, reserved
   at the worst case and settled at the reported usage (#11264,
   [providers.md](providers.md#free-daily-allowance-11264)).
 - Paying: one `tenancy::money` hold per distinct model the plan may try,

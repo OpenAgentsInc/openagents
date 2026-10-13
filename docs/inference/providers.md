@@ -32,9 +32,12 @@ of a `402 insufficient_balance` and a fallback.
   `models`) in the gateway config; `deploy/staging/gateway.sh` (staging and
   production) sets it from `GATEWAY_FREE_ALLOWANCE_MICROS`, default
   `1000000` (about $1 of model cost a day).
-- **Scope:** `openagents/auto` and `openagents/fast` only, and only for a
-  signed-in account's `sess_` session (Coder after `coder login`). An `oak_`
-  key gets no allowance.
+- **Scope:** `openagents/auto` and `openagents/fast`, plus the models
+  `GET /v1/models` marks free (`free_tier.models`) once the workspace's
+  free requests for the day are used (#11545), so a model listed as free
+  never answers a signed-in account `402` while its allowance lasts. Only
+  for a signed-in account's `sess_` session (Coder after `coder login`).
+  An `oak_` key gets no allowance.
 - **Use:** one allowance per account per UTC day, in the key book
   (`inference-keys.json`, `allowance`). Each request reserves its worst
   case and settles at the reported usage at the rate card; it is metered as
