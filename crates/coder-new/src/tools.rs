@@ -28,6 +28,16 @@ pub(crate) fn outcome_header(running: bool, failed: bool, phase: u8) -> (&'stati
     }
 }
 
+/// A tool call's input on its header row: gray while it runs or after it
+/// failed, like the call's name, and bright once it succeeded.
+pub(crate) fn input_color(running: bool, failed: bool) -> Color {
+    if running || failed {
+        t::GRAY
+    } else {
+        t::TEXT_SECONDARY
+    }
+}
+
 pub(crate) fn output_failed(output: &serde_json::Value) -> bool {
     output.get("error").is_some()
         || output
@@ -104,10 +114,49 @@ fn path_first(value: &serde_json::Value) -> Vec<(String, String)> {
     values
 }
 
+/// A call whose only parameter is its argument list (`arguments` or
+/// `args`, all strings), as one command line: words joined by spaces, a
+/// word with a space or a quote in it single-quoted.
+fn argument_line(value: &serde_json::Value) -> Option<String> {
+    let object = value.as_object()?;
+    if object.len() != 1 {
+        return None;
+    }
+    let (key, list) = object.iter().next()?;
+    if key != "arguments" && key != "args" {
+        return None;
+    }
+    let words = list
+        .as_array()?
+        .iter()
+        .map(|word| word.as_str().map(str::to_owned))
+        .collect::<Option<Vec<_>>>()?;
+    Some(
+        words
+            .iter()
+            .map(|word| {
+                if word.is_empty()
+                    || word.contains(|c: char| c.is_whitespace() || c == '\'' || c == '"')
+                {
+                    format!("'{}'", word.replace('\'', "'\\''"))
+                } else {
+                    word.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
+}
+
 /// A call's parameters on one row, for the compact view: the path it works
 /// on first and bare, then the rest as `key: value` joined with ` · `, all
 /// together truncated to `width`. Empty when the call has none.
 pub fn compact_params(value: &serde_json::Value, width: u16) -> String {
+    // A command-line tool's arguments read as the command line it runs
+    // ("projects show finances"), not as a list.
+    if let Some(line) = argument_line(value) {
+        return truncate(&line, width);
+    }
     let values = path_first(value);
     let path = values
         .first()
@@ -197,7 +246,13 @@ pub fn tool_lines(call: &ToolCall, phase: u8, width: u16) -> Vec<Line<'static>> 
             Style::default().fg(accent).add_modifier(Modifier::BOLD),
         ),
         Span::raw(" "),
-        styled(call.input, t::TEXT_SECONDARY),
+        styled(
+            call.input,
+            input_color(
+                call.state == ToolState::Running,
+                call.state == ToolState::Failed,
+            ),
+        ),
     ])];
 
     if call.kind == ToolKind::Edit && call.state == ToolState::Complete {
@@ -587,5 +642,25 @@ mod tests {
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].trim_end(), "  │  cargo test");
         assert_eq!(rows[1].trim_end(), "  │  timeout: 5");
+    }
+    #[test]
+    fn a_command_line_tools_arguments_read_as_its_command_line() {
+        let input = serde_json::json!({"arguments": ["projects", "show", "finances"]});
+        assert_eq!(compact_params(&input, 80), "projects show finances");
+        let quoted = serde_json::json!({"args": ["issue", "create", "--title", "Fix the rail"]});
+        assert_eq!(
+            compact_params(&quoted, 80),
+            "issue create --title 'Fix the rail'"
+        );
+        // Anything else keeps the key: value form.
+        let other = serde_json::json!({"arguments": ["a"], "cwd": "x"});
+        assert!(compact_params(&other, 80).contains("cwd: x"));
+    }
+    #[test]
+    fn a_calls_input_is_gray_until_it_succeeds() {
+        use crate::theme as t;
+        assert_eq!(super::input_color(true, false), t::GRAY);
+        assert_eq!(super::input_color(false, true), t::GRAY);
+        assert_eq!(super::input_color(false, false), t::TEXT_SECONDARY);
     }
 }

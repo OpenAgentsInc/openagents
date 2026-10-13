@@ -1490,7 +1490,10 @@ fn entry_rows(
         };
         if !params.is_empty() {
             spans.push(span(" ", t::GRAY_DIM));
-            spans.push(span(params, t::TEXT_SECONDARY));
+            spans.push(span(
+                params,
+                crate::tools::input_color(*running, crate::tools::output_failed(output)),
+            ));
         }
         lines.push(Line::from(spans));
         fill_copy(&lines, &mut copy);
