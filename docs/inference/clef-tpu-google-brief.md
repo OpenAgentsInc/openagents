@@ -59,7 +59,10 @@ campaign. Between 23:20 on 2026-10-12 and 01:30 UTC on 2026-10-13 (EIDs in
 
 - **v6e, on demand:** "User does not have permission to submit requests for
   accelerator type v6e-1" in **us-central1-b** (EID 0xf986782ffb08c245)
-  and **us-east1-d** (0x454746e6c3bafdd2). "No more capacity" in us-east5-a/b
+  and **us-east1-d** (0x454746e6c3bafdd2). Yet *spot* v6e did run in both
+  zones for us (a v6e-1 in us-central1-b, a v6e-8 in us-east1-d), so the
+  on-demand block is an access setting on our project, not missing
+  hardware. "No more capacity" in us-east5-a/b
   and europe-west4-a; "Insufficient capacity" in us-south1-a. The only
   on-demand v6e we got was in **asia-northeast1-b** (Tokyo).
 - **v6e, spot:** 56 create attempts (v6e-1, -4, -8) across 17 zones on four

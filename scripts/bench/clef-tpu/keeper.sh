@@ -7,8 +7,8 @@ export CLOUDSDK_CONFIG=${CLOUDSDK_CONFIG:-/Users/christopherdavid/work/.secrets/
 MAX_RATE=${MAX_RATE:-18}
 declare -A TARGET=( [v6e-1]=${T_V6E1:-2} [v6e-4]=${T_V6E4:-1} [v6e-8]=${T_V6E8:-1} )
 declare -A ZONES=(
-  [v6e-1]="us-central1-b us-central1-a us-east1-d us-central1-c us-south1-a us-south1-c us-west1-c"
-  [v6e-4]="us-central1-b us-east1-d us-central1-a us-central1-c us-south1-a us-south1-c us-west1-c"
+  [v6e-1]="us-central1-b asia-southeast1-b us-central1-a us-east1-d us-central1-c us-south1-a us-south1-c us-west1-c"
+  [v6e-4]="asia-southeast1-b us-central1-b us-east1-d us-central1-a us-central1-c us-south1-a us-south1-c us-west1-c"
   [v6e-8]="us-central1-b us-central1-c us-central1-a us-south1-c us-south1-a us-west1-c us-east1-d"
 )
 declare -A IDX

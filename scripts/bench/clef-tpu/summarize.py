@@ -55,7 +55,7 @@ for d in mm:
     print()
 
 print("## Gated DeltaNet (gdn/v3 fused Pallas kernel), one layer, one chip\n")
-for d in load("gdn-v*.json") + load("gdn-t*.json"):
+for d in load("gdn-*.json"):
     if "state" in d["_file"]: continue
     e = d["env"]
     print(f"**{e['chip']}** (`{d['_file']}`)\n")
