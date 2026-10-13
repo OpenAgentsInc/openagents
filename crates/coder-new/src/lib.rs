@@ -337,6 +337,17 @@ struct Chat {
 }
 
 impl App {
+    /// The openagents.com sign-in this chat's state holds, if any: it
+    /// reaches the account's Connections and opens `auto`'s gateway lane
+    /// (#11238, #11517).
+    pub(crate) fn connections(&self) -> Option<openagents_login::Saved> {
+        self.account_dir
+            .as_deref()
+            .and_then(connection_tools::signed_in)
+    }
+}
+
+impl App {
     fn clear_disclosure(&mut self) {
         if let Some(desk) = self.disclosure_desk.take() {
             desk.close();
@@ -2153,10 +2164,7 @@ impl App {
         execution.prompt_inbox = Some(self.prompt_inbox.clone());
         execution.boundary = self.boundary.clone();
         // Google Drive through the signed-in account's Connections (#11238).
-        execution.connections = self
-            .account_dir
-            .as_deref()
-            .and_then(connection_tools::signed_in);
+        execution.connections = self.connections();
         execution.fleet = Some(self.fleet_host());
         // The chat keeps the harness its first tool turn chose (#11289).
         execution.harness = self.live.harness.clone();

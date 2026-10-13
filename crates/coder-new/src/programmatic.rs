@@ -533,6 +533,10 @@ fn bootstrap(context: &Context) -> Result<App, Error> {
     app.routing_records = true;
     app.set_mode(Mode::Live);
     app.load_plugin_settings(crate::plugin_store::Store::under(&context.root))?;
+    // The account in the state, as the terminal loads it, so a headless
+    // turn tries the signed-in gateway first too (#11517).
+    app.account = crate::account::signed_in(&context.root);
+    app.account_dir = Some(context.root.clone());
     let imported = crate::credentials::load(&context.cwd, context.root.parent(), |name| {
         context.environment.get(name).cloned()
     })?;
@@ -1934,6 +1938,35 @@ fn import(args: &[String], context: &Context) -> Result<Value, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_headless_chat_signed_in_in_its_state_tries_the_gateway_first() {
+        // #11517: the terminal's lane order, Gateway first when signed in.
+        crate::account::without_env_sign_in();
+        let temp = tempfile::tempdir().unwrap();
+        let context = context(&temp);
+        std::fs::create_dir_all(&context.root).unwrap();
+        let plan = |app: &App| {
+            let mut execution = app.plugins.execution_settings(context.cwd.clone());
+            execution.connections = app.connections();
+            crate::route::plan(&execution, false, crate::route::Favor::default()).lanes
+        };
+        let app = bootstrap(&context).unwrap();
+        assert!(!plan(&app).contains(&crate::route::Lane::Gateway));
+        std::fs::write(
+            context.root.join("account.json"),
+            serde_json::to_string(&json!({
+                "origin": "http://fixture", "account": "acct", "label": "Fixture",
+                "expires_at": u64::MAX, "token": "fixture-headless-token",
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let app = bootstrap(&context).unwrap();
+        assert_eq!(app.account.as_deref(), Some("Fixture"));
+        assert_eq!(plan(&app).first(), Some(&crate::route::Lane::Gateway));
+    }
+
     fn context(temp: &tempfile::TempDir) -> Context {
         Context {
             root: temp.path().join("state"),
