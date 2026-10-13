@@ -179,6 +179,46 @@ impl ExecutionSettings {
         }
     }
 
+    /// The loop's hooks for this run: the same composition its foreground
+    /// `Run` and its file tools fire (#11531), with the run's fence.
+    fn loop_hooks(&self, cancel: &Arc<AtomicBool>) -> coder_sdk::Hooks {
+        crate::sdk_hooks::coder_loop_in(
+            &self.cwd,
+            self.boundary
+                .clone()
+                .or_else(|| crate::checkout_guard::Boundary::around(&self.cwd)),
+            cancel,
+        )
+    }
+
+    /// A command that runs outside the foreground `Run` (a background
+    /// command or a monitor) meets the loop's hooks first, as a foreground
+    /// command does: a deny or an unanswered ask keeps it from starting,
+    /// and a rewrite is what starts.
+    ///
+    /// # Errors
+    /// The hooks denied the command or held it for the person.
+    async fn hooked_command(
+        &self,
+        command: &str,
+        cancel: &Arc<AtomicBool>,
+    ) -> Result<String, String> {
+        let pre = self
+            .loop_hooks(cancel)
+            .fire(coder_sdk::Call::tool(
+                coder_sdk::Event::PreToolUse,
+                microcoder_loop::hooks::TOOL,
+                json!({ "command": command }),
+            ))
+            .await;
+        if let coder_sdk::Permission::Deny { reason }
+        | coder_sdk::Permission::Ask { step: reason } = pre.permission
+        {
+            return Err(reason);
+        }
+        Ok(pre.input["command"].as_str().unwrap_or(command).to_owned())
+    }
+
     fn registered(&self, binding: ToolBinding) -> bool {
         self.enabled_for(binding)
             && DEFINITIONS
@@ -470,13 +510,7 @@ impl ExecutionSettings {
                 // card), and with Token savers on the gate noting what was
                 // read and the first touch of a folder adding its own
                 // instructions.
-                let hooks = crate::sdk_hooks::coder_loop_in(
-                    &self.cwd,
-                    self.boundary
-                        .clone()
-                        .or_else(|| crate::checkout_guard::Boundary::around(&self.cwd)),
-                    cancel,
-                );
+                let hooks = self.loop_hooks(cancel);
                 let input = crate::file_tools::hook_input(name, &arguments);
                 let pre = hooks
                     .fire(coder_sdk::Call::tool(
@@ -545,6 +579,13 @@ impl ExecutionSettings {
                 }
             }
             name if crate::shells::is_tool(name) && crate::shells::available(self) => {
+                let mut arguments = arguments;
+                // A monitor's command meets the loop's hooks as Run's does.
+                if name == crate::shells::MONITOR_TOOL
+                    && let Some(command) = arguments["command"].as_str().map(str::to_owned)
+                {
+                    arguments["command"] = json!(self.hooked_command(&command, cancel).await?);
+                }
                 crate::shells::execute(self, name, arguments)
             }
             "Run" if self.shell => {
@@ -561,7 +602,11 @@ impl ExecutionSettings {
                     return Err(refusal);
                 }
                 if args.background == Some(true) {
-                    return crate::shells::start_shell(self, &args.command);
+                    // The loop's hooks, as a foreground Run meets them in
+                    // `run_command`: the floors, the fence, the person's
+                    // plugins' hooks and, with Token savers on, the squeezer.
+                    let command = self.hooked_command(&args.command, cancel).await?;
+                    return crate::shells::start_shell(self, &command);
                 }
                 let keys: Vec<ApiKey> = self
                     .redaction_keys
@@ -1385,5 +1430,54 @@ mod tests {
                 .is_some_and(|context| context.contains("Tabs in sub")),
             "{read}"
         );
+    }
+
+    /// A background `Run` and a monitor meet the loop's hooks as a
+    /// foreground `Run` does: the floors hold a secret's read before
+    /// anything starts, and a plain command still starts.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn background_commands_run_through_the_loops_hooks() {
+        let directory = tempfile::tempdir().unwrap();
+        let worktree = directory.path().canonicalize().unwrap();
+        std::fs::write(worktree.join(".env"), "KEY=x\n").unwrap();
+        let mut settings = settings();
+        settings.shell = true;
+        settings.cwd = worktree.clone();
+        settings.fleet = Some(crate::fleet::Host::local(
+            crate::fleet::Fleet::default(),
+            None,
+        ));
+        assert!(crate::shells::available(&settings));
+        let cancel = Arc::new(AtomicBool::new(false));
+        let run = |name: &'static str, arguments: Value| {
+            let (settings, cancel) = (&settings, &cancel);
+            async move {
+                settings
+                    .execute(name, arguments, None, cancel, &mut |_| {})
+                    .await
+            }
+        };
+        let listed = || async {
+            run(crate::shells::SHELL_TOOL, json!({"operation": "list"}))
+                .await
+                .unwrap()["commands"]
+                .as_array()
+                .unwrap()
+                .len()
+        };
+        let held = run("Run", json!({"command": "cat .env", "background": true}))
+            .await
+            .unwrap_err();
+        assert!(held.starts_with("Held for the person"), "{held}");
+        let monitor = run(crate::shells::MONITOR_TOOL, json!({"command": "cat .env"}))
+            .await
+            .unwrap_err();
+        assert!(monitor.starts_with("Held for the person"), "{monitor}");
+        assert_eq!(listed().await, 0, "nothing held started");
+        run("Run", json!({"command": "echo hi", "background": true}))
+            .await
+            .unwrap();
+        assert_eq!(listed().await, 1);
     }
 }
