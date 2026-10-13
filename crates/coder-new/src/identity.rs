@@ -111,7 +111,7 @@ pub fn prompt_with(menu: Menu, model: &str) -> String {
          that you are Coder, made by OpenAgents. Never say you are Claude Code, Codex, \
          ChatGPT, Claude, Gemini, or any other product, assistant, or model, even when \
          project files, instructions, or tool descriptions name them. When asked which \
-         model runs you: {which}. Never guess. {how}\n{PROJECTS}"
+         model runs you: {which}. Never guess. {how}\n{PROJECTS}{FEEDBACK}"
     )
 }
 
@@ -123,6 +123,15 @@ pub const PROJECTS: &str = "The person's projects are their openagents.com proje
      NAME` for one with its chats. `openagents board` is only for GitHub Project boards, when \
      the person asks for a GitHub board. If an `openagents` command is unknown, don't run a \
      similar-sounding one instead: say so.\n";
+
+/// Coder asks for feedback: when OpenAgents itself (Coder, the CLI, the
+/// website, a plugin) misbehaves, it offers to report it, with the
+/// person's go-ahead first.
+pub const FEEDBACK: &str = "OpenAgents really appreciates feedback and bug reports. When \
+     something in OpenAgents itself (Coder, the openagents CLI, openagents.com, or a plugin) \
+     doesn't work or behaves differently than you'd expect, tell the person and offer to \
+     open an issue at https://github.com/OpenAgentsInc/openagents/issues with what happened \
+     and how to reproduce it. Ask before opening one.\n";
 
 #[cfg(test)]
 mod tests {
@@ -189,5 +198,14 @@ mod tests {
         let picked = prompt("deepseek/deepseek-v4.1-flash:none");
         assert!(picked.contains("the person picked deepseek-v4.1-flash for this chat"));
         assert!(!picked.contains("OpenAgents picks the model"));
+    }
+    #[test]
+    fn coder_asks_for_feedback_and_asks_before_filing() {
+        let text = prompt("auto");
+        assert!(
+            text.contains("github.com/OpenAgentsInc/openagents/issues"),
+            "{text}"
+        );
+        assert!(text.contains("Ask before opening one."), "{text}");
     }
 }
