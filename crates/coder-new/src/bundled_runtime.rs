@@ -202,6 +202,9 @@ pub enum RuntimeEvent {
     /// Where the Claude plan's windows stand, each time Claude Code reports
     /// one (#11292): run cards show it.
     Plan(coder_engine_status::PlanUsage),
+    /// The model's thinking started (`true`) or stopped streaming in: the
+    /// input's rail says `Thinking` while it streams.
+    Thinking(bool),
 }
 
 /// What one model call used and how long it took.
@@ -236,7 +239,8 @@ impl RuntimeEvent {
             | Self::Progress { .. }
             | Self::Usage(_)
             | Self::Harness(_)
-            | Self::Plan(_) => {}
+            | Self::Plan(_)
+            | Self::Thinking(_) => {}
             Self::Text(text) | Self::Model(text) => *text = redact_text(text, keys),
             Self::Delegation {
                 id,

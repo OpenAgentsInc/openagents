@@ -112,6 +112,7 @@ impl App {
                 let child = &mut self.delegations[index];
                 child.running = false;
                 child.chat.busy = false;
+                child.chat.thinking = false;
                 child.chat.finish_partial();
                 child
                     .chat

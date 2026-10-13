@@ -396,6 +396,7 @@ mod tests {
 
         app.disclosure_event = None;
         app.live.busy = false;
+        app.live.thinking = false;
         let items = app.activity_items();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].status, "done");

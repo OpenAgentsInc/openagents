@@ -695,6 +695,7 @@ impl Run {
         };
         chat.stop_tools("The agent ended before this tool returned.");
         chat.busy = false;
+        chat.thinking = false;
         // A worktree with no changes is removed, with its branch; one with
         // work stays for review.
         if let Some(checkout) = &self.checkout {
@@ -787,6 +788,7 @@ fn record(chat: &mut Chat, event: &RuntimeEvent) {
         RuntimeEvent::Tokens(tokens) => chat.tokens = *tokens,
         RuntimeEvent::Usage(usage) => chat.round(*usage.clone()),
         RuntimeEvent::Harness(run) => chat.harness = Some(*run.clone()),
+        RuntimeEvent::Thinking(on) => chat.thinking = *on,
         RuntimeEvent::Tool {
             name,
             input,

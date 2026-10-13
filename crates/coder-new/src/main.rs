@@ -513,6 +513,7 @@ fn write_issue_snapshot(app: &mut App, path: &std::path::Path) -> io::Result<()>
     let rows = ui::transcript_text(&app.live.entries, width).len();
     let height = u16::try_from(rows + 12).unwrap_or(u16::MAX);
     app.live.busy = false;
+    app.live.thinking = false;
     app.scroll = 0;
     std::fs::write(path, snapshot::svg(app, width, height))
 }

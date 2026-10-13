@@ -900,6 +900,9 @@ pub(crate) async fn read_turn(
                 }
             }
             Ok(SdkMessage::StreamEvent(event)) => {
+                if let Some(thinking) = stream.thinking(&event) {
+                    emit(RuntimeEvent::Thinking(thinking));
+                }
                 if let Some(text) = stream.partial(&event) {
                     if first_text_ms.is_none() {
                         first_text_ms = Some(elapsed_ms(started));

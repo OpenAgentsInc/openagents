@@ -57,3 +57,24 @@ fn an_idle_input_rail_carries_no_working_label() {
     assert_eq!(label(&rows[top]), "Coder (auto)");
     assert!(!rows.join("\n").contains("Working"));
 }
+
+#[test]
+fn thinking_rides_the_rail_right_of_working_while_it_streams() {
+    let mut app = App::default();
+    app.set_mode(Mode::Live);
+    app.live.runs_on = Some(coder_new::harness_plugin::Harness::CoderLoop);
+    app.live.busy = true;
+    app.live.thinking = true;
+    let shown = rows(&mut app, 80, 24);
+    let top = shown
+        .iter()
+        .position(|line| line.starts_with('┌'))
+        .expect("the input's top rail");
+    let rail = label(&shown[top]);
+    let working = rail.find("Working").expect("Working on the rail");
+    let thinking = rail.find("Thinking").expect("Thinking on the rail");
+    assert!(working < thinking, "{rail:?}");
+
+    app.live.thinking = false;
+    assert!(!rows(&mut app, 80, 24).join("\n").contains("Thinking"));
+}

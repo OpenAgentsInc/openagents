@@ -49,6 +49,9 @@ pub struct Chat {
     /// How long each finished tool call ran, by entry index.
     pub tool_ms: std::collections::BTreeMap<usize, u64>,
     pub open_tools: std::collections::BTreeSet<usize>,
+    /// The model's thinking is streaming in now, so the input's rail says
+    /// `Thinking` beside `Working`.
+    pub thinking: bool,
     /// Once the chat passes [`crate::long_session::ELIDE_PERCENT`] of the
     /// context window (#11286), bulky tool outputs older than the newest
     /// [`crate::long_session::VERBATIM_TURNS`] requests reach the model as
@@ -459,6 +462,11 @@ pub enum Update {
         id: u64,
         run: crate::harness::Run,
     },
+    /// The model's thinking started or stopped streaming in.
+    Thinking {
+        id: u64,
+        on: bool,
+    },
     Model {
         id: u64,
         model: String,
@@ -480,6 +488,7 @@ impl Update {
             | Self::Delta { id, .. }
             | Self::Usage { id, .. }
             | Self::Harness { id, .. }
+            | Self::Thinking { id, .. }
             | Self::Model { id, .. }
             | Self::Finished { id, .. } => *id,
         }
@@ -810,6 +819,7 @@ impl Background {
                     },
                     RuntimeEvent::Usage(usage) => Update::Usage { id, usage: *usage },
                     RuntimeEvent::Harness(run) => Update::Harness { id, run: *run },
+                    RuntimeEvent::Thinking(on) => Update::Thinking { id, on },
                     _ => return,
                 };
                 app.apply_update(update);
@@ -1295,7 +1305,8 @@ async fn local_turn(
         | RuntimeEvent::Usage(_)
         | RuntimeEvent::Harness(_)
         | RuntimeEvent::Progress { .. }
-        | RuntimeEvent::Plan(_) => event_callback(event),
+        | RuntimeEvent::Plan(_)
+        | RuntimeEvent::Thinking(_) => event_callback(event),
     };
     let result = async {
         let task = local_task(&messages, &execution)?;

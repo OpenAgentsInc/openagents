@@ -236,6 +236,7 @@ pub(crate) fn decode(value: &Value, depth: usize) -> Option<RuntimeEvent> {
         },
         "delta" => RuntimeEvent::Text(word("text")?),
         "model" => RuntimeEvent::Model(word("model")?),
+        "thinking" => RuntimeEvent::Thinking(value.get("on")?.as_bool()?),
         "usage" => RuntimeEvent::Tokens(value.get("tokens")?.as_u64()?),
         coder_engine_status::plan::EVENT => {
             RuntimeEvent::Plan(serde_json::from_value(value.get("usage")?.clone()).ok()?)

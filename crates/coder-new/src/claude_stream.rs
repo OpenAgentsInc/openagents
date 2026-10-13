@@ -54,6 +54,8 @@ pub(crate) struct Stream {
     agents: HashMap<String, Agent>,
     /// What the newest main call read and wrote, in tokens.
     context: u64,
+    /// Whether the main reply's thinking is streaming in now.
+    thinking: bool,
 }
 
 impl Stream {
@@ -78,6 +80,26 @@ impl Stream {
             }
             _ => None,
         }
+    }
+
+    /// Whether the main reply's thinking started or stopped streaming with
+    /// `event`, when that changed: the input's rail says `Thinking` while
+    /// it streams.
+    pub(crate) fn thinking(&mut self, event: &SdkStreamEvent) -> Option<bool> {
+        if event.parent_tool_use_id.is_some() {
+            return None;
+        }
+        let event = &event.event;
+        let now = match event["type"].as_str() {
+            Some("content_block_start") => event["content_block"]["type"] == "thinking",
+            Some("content_block_delta") => event["delta"]["type"] == "thinking_delta",
+            Some("content_block_stop" | "message_stop" | "message_delta") => false,
+            _ => return None,
+        };
+        (now != self.thinking).then(|| {
+            self.thinking = now;
+            now
+        })
     }
 
     /// Whether the main reply's `message` already showed its words one by
@@ -430,6 +452,23 @@ mod tests {
         }));
         sub.parent_tool_use_id = Some("t1".into());
         assert_eq!(stream.partial(&sub), None);
+    }
+
+    #[test]
+    fn thinking_starts_with_its_block_and_stops_when_it_ends() {
+        let mut stream = Stream::default();
+        let start = json!({"type": "content_block_start", "content_block": {"type": "thinking"}});
+        assert_eq!(stream.thinking(&event(start)), Some(true));
+        let delta = json!({"type": "content_block_delta", "delta": {"type": "thinking_delta"}});
+        assert_eq!(stream.thinking(&event(delta)), None);
+        let stop = json!({"type": "content_block_stop", "index": 0});
+        assert_eq!(stream.thinking(&event(stop)), Some(false));
+        let text = json!({"type": "content_block_start", "content_block": {"type": "text"}});
+        assert_eq!(stream.thinking(&event(text)), None);
+        let mut sub =
+            event(json!({"type": "content_block_start", "content_block": {"type": "thinking"}}));
+        sub.parent_tool_use_id = Some("t1".into());
+        assert_eq!(stream.thinking(&sub), None);
     }
 
     #[test]

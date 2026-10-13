@@ -464,6 +464,7 @@ impl App {
             bundled_runtime::RuntimeEvent::Tokens(tokens) => child.chat.tokens = tokens,
             bundled_runtime::RuntimeEvent::Usage(usage) => child.chat.round(*usage),
             bundled_runtime::RuntimeEvent::Harness(run) => child.chat.harness = Some(*run),
+            bundled_runtime::RuntimeEvent::Thinking(on) => child.chat.thinking = on,
             bundled_runtime::RuntimeEvent::Text(text) => child.chat.partial.push_str(&text),
             bundled_runtime::RuntimeEvent::Model(model) => {
                 child.chat.partial_model = live::model_slug(&model)
@@ -808,6 +809,7 @@ impl App {
             self.live.partial_model = None;
             self.live.text_streamed = false;
             self.live.busy = false;
+            self.live.thinking = false;
             self.live.notice = Some(
                 if brainstorm.is_some() {
                     "Brainstorm lookup cancelled."
@@ -852,6 +854,7 @@ impl App {
                 delegation.elapsed_seconds =
                     self.elapsed_seconds.saturating_sub(delegation.started_at);
                 delegation.chat.busy = false;
+                delegation.chat.thinking = false;
                 delegation.chat.notice = Some("Stopped by the user.".into());
                 delegation.chat.finish_partial();
                 delegation.chat.stop_tools("Stopped by the user.");
@@ -928,6 +931,7 @@ impl App {
                     || generation != self.plugins.bundled.brainstorm.generation
                 {
                     self.live.busy = false;
+                    self.live.thinking = false;
                     if let Some(conversation) = &conversation {
                         self.finish_brainstorm_conversation(conversation);
                         if let Some(chat) = conversation.chat_mut(self) {
@@ -956,6 +960,7 @@ impl App {
                 }
                 let Some(conversation) = conversation else {
                     self.live.busy = false;
+                    self.live.thinking = false;
                     self.live.notice =
                         Some("The Brainstorm lookup conversation is unavailable.".into());
                     return;
@@ -1048,6 +1053,9 @@ impl App {
             live::Update::Harness { run, .. } if self.live.busy => {
                 self.live.harness = Some(run);
             }
+            live::Update::Thinking { on, .. } if self.live.busy => {
+                self.live.thinking = on;
+            }
             live::Update::Delta { text, .. } if self.live.busy => {
                 self.live.text_streamed = true;
                 self.live.partial.push_str(&text);
@@ -1067,11 +1075,13 @@ impl App {
             }
             live::Update::Finished { result, .. } if self.live.busy => {
                 self.live.busy = false;
+                self.live.thinking = false;
                 let text_streamed = std::mem::take(&mut self.live.text_streamed);
                 if let Some(id) = self.active_delegation.take() {
                     if let Some(child) = self.delegations.iter_mut().find(|child| child.id == id) {
                         child.running = false;
                         child.chat.busy = false;
+                        child.chat.thinking = false;
                         child.elapsed_seconds =
                             self.elapsed_seconds.saturating_sub(child.started_at);
                         if let Err(error) = result {
@@ -1092,6 +1102,7 @@ impl App {
                         if child.running && !child.background {
                             child.running = false;
                             child.chat.busy = false;
+                            child.chat.thinking = false;
                             child.elapsed_seconds =
                                 self.elapsed_seconds.saturating_sub(child.started_at);
                             child.chat.finish_partial();
@@ -1665,10 +1676,12 @@ impl App {
 
     fn finish_brainstorm_conversation(&mut self, conversation: &brainstorm::Conversation) {
         self.live.busy = false;
+        self.live.thinking = false;
         if let brainstorm::Conversation::Delegation(id) = conversation {
             if let Some(child) = self.delegations.iter_mut().find(|child| &child.id == id) {
                 child.running = false;
                 child.chat.busy = false;
+                child.chat.thinking = false;
                 child.elapsed_seconds = self.elapsed_seconds.saturating_sub(child.started_at);
             }
         }

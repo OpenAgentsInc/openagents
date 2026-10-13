@@ -736,6 +736,10 @@ fn working_label(app: &App) -> Option<String> {
         }
         label.push_str(&format!(" ({})", facts.join(" · ")));
     }
+    // While the model's thinking streams in, the rail says so to the right.
+    if chat.thinking {
+        label.push_str(" · Thinking");
+    }
     Some(label)
 }
 

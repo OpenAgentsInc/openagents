@@ -654,6 +654,7 @@ impl App {
         };
         let job = self.long_session.compacting.take()?;
         self.live.busy = false;
+        self.live.thinking = false;
         self.live.notice = None;
         if job.cut > self.live.entries.len() || job.start >= job.cut {
             return None;
