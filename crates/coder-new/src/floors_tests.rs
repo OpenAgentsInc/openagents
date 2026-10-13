@@ -454,13 +454,13 @@ fn pins_are_written_read_and_shown_in_plain_words() {
     .unwrap();
     assert_eq!(
         saved["pinned"],
-        "Always Claude Code (claude-opus-5-5) for changes to code, in openagents"
+        "Always Claude Code with Opus 5.5 for changes to code, in openagents"
     );
     let preferences = crate::routing_preferences::RoutingPreferences::load(&path).unwrap();
     assert_eq!(preferences.pins_in(Some("openagents")).len(), 1);
     assert!(preferences.pins_in(Some("elsewhere")).is_empty());
     assert!(preferences.summary().contains(
-        &"Always Claude Code (claude-opus-5-5) for changes to code, in openagents".to_owned()
+        &"Always Claude Code with Opus 5.5 for changes to code, in openagents".to_owned()
     ));
     let again =
         crate::routing_preferences::RoutingPreferences::parse(&preferences.render()).unwrap();

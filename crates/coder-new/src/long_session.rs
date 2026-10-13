@@ -470,6 +470,26 @@ pub(crate) fn session_cost(app: &App) -> f64 {
     app.live.cost_usd + agents
 }
 
+/// How full the Coder loop's context is, as the rail shows it ("Context
+/// 12%"), the same estimate compaction reads; `None` on another harness or
+/// before the chat has said anything (#11519).
+pub(crate) fn context_line(app: &App) -> Option<String> {
+    if !app.on_coder_loop() || app.live.entries.is_empty() {
+        return None;
+    }
+    let used = estimate_tokens(&app.live.messages())
+        + app
+            .live
+            .instructions
+            .as_ref()
+            .map_or(0, |instructions| instructions.len() as u64 / 4);
+    let limit = app.long_session.limit().max(1);
+    Some(format!(
+        "Context {}%",
+        (used.saturating_mul(100) / limit).min(100)
+    ))
+}
+
 /// The status line's long-session words: a pause and the dollars spent.
 #[cfg(test)]
 pub(crate) fn status(app: &App) -> Option<String> {

@@ -332,7 +332,10 @@ impl Provider {
             request = request.max_tokens(limit);
         }
         // Coder's own identity first, whichever model answers (#11264).
-        let mut history = vec![json!({"role":"system","content":crate::identity::prompt(model)})];
+        // The /models menu it names is the one this chat has (#11519).
+        let menu = crate::identity::Menu::coder_loop(execution.openrouter, execution.claude);
+        let mut history =
+            vec![json!({"role":"system","content":crate::identity::prompt_with(menu, model)})];
         if let Some(standing) = execution
             .instructions
             .as_deref()
@@ -1483,6 +1486,7 @@ mod tests {
             cli: false,
             acp: false,
             claude: true,
+            openrouter: false,
             solver: false,
             comms: false,
             swarm: false,

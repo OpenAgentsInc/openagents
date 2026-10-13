@@ -1745,7 +1745,10 @@ pub(crate) fn local_task(
     // whose own prompt names that product: Coder's identity leads (#11264).
     let mut prefix = format!(
         "Standing instructions (from the host, not the user):\n{}",
-        crate::identity::prompt(crate::models::AUTO)
+        crate::identity::prompt_with(
+            crate::identity::Menu::coder_loop(execution.openrouter, execution.claude),
+            crate::models::AUTO
+        )
     );
     if let Some(standing) = execution
         .instructions

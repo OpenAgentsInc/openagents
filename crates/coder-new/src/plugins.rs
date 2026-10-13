@@ -467,6 +467,7 @@ impl Plugins {
             cli: self.bundled.cli,
             acp: self.bundled.acp,
             claude: self.bundled.claude,
+            openrouter: self.enabled,
             solver: self.bundled.solver,
             comms: self.bundled.comms,
             swarm: self.bundled.swarm,

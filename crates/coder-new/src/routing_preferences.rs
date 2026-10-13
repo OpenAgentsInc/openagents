@@ -208,7 +208,11 @@ impl Pin {
     #[must_use]
     pub fn words(&self) -> String {
         let agent = match &self.model {
-            Some(model) => format!("{} ({model})", self.harness.declaration().name),
+            Some(model) => format!(
+                "{} with {}",
+                self.harness.declaration().name,
+                crate::claude::name(model)
+            ),
             None => self.harness.declaration().name.to_owned(),
         };
         let kind = self.kind.map(|kind| match kind {
@@ -694,6 +698,24 @@ impl Leaning {
 /// The tool's definition, in the shape the live loop offers tools.
 #[must_use]
 pub fn definition() -> Value {
+    definition_for(true)
+}
+
+/// [`definition`] for a chat where Claude Code is on or off (#11519): with
+/// it off, the description points to no Claude model.
+#[must_use]
+pub fn definition_for(claude: bool) -> Value {
+    let mut definition = definition_text();
+    if !claude && let Some(description) = definition["function"]["description"].as_str() {
+        definition["function"]["description"] = json!(description.replace(
+            " Asked how to use a model such as Opus, say in one line: type /models and pick it (Claude Code offers Haiku 5.5, Sonnet 5.5, Opus 5.5 and Fable 5.1).",
+            " Claude Code is off in /plugins here: a pin or preference for it is refused until it is turned on.",
+        ));
+    }
+    definition
+}
+
+fn definition_text() -> Value {
     json!({"type":"function","function":{"name":TOOL,
         "description":"Change which engines or models Coder uses for the person's turns. Call it only when the person asks to change that: to use an engine more, less, never, or as usual again; never to run a certain model on one; to always use one (a pin: set pin, with this_repo for this repository only, kind for one kind of work, and model for one model; unpin removes it); or to prefer a Claude model (harness claude-code, stance prefer, and the model: this sets the model Claude Code runs, the same as picking it in /models). Never call it for a question about how something works; answer the question instead. Asked how to use a model such as Opus, say in one line: type /models and pick it (Claude Code offers Haiku 5.5, Sonnet 5.5, Opus 5.5 and Fable 5.1). The engines: claude-code is Claude Code on this computer's Claude plan; coder-loop is Coder's own loop on OpenAgents; codex is Codex on this computer's ChatGPT login. Stances: prefer (try it first), avoid (try it after the others), never (never use it), neutral (no preference). With a model other than a Claude preference, only never or neutral apply, to that exact model on that engine. Set undo to reverse the most recent change instead. Always pass the person's own words in said. The change is saved and applies from the next turn; afterwards tell the person in one line what changed.",
         "parameters":{"type":"object","additionalProperties":false,"required":["said"],"properties":{
@@ -727,12 +749,34 @@ pub fn execute(path: &Path, arguments: Value) -> Result<Value, String> {
 /// # Errors
 /// As [`execute`].
 pub fn execute_in(path: &Path, arguments: Value, repo: Option<&str>) -> Result<Value, String> {
+    execute_on(path, arguments, repo, |_| None)
+}
+
+/// [`execute_in`], where `off` says why a harness can't run here (its
+/// plugin is off), so a pin or a preference for it is refused when asked
+/// rather than confirmed and then ignored (#11519).
+///
+/// # Errors
+/// As [`execute`], and a pin or prefer for a harness that is off.
+pub fn execute_on(
+    path: &Path,
+    arguments: Value,
+    repo: Option<&str>,
+    off: impl Fn(Harness) -> Option<String>,
+) -> Result<Value, String> {
     let request: Request = serde_json::from_value(arguments).map_err(|_| {
         "Pass said, and either undo, or a harness with a stance (and a model for a pair)."
             .to_owned()
     })?;
     if request.said.trim().is_empty() {
         return Err("Pass the person's words in said.".into());
+    }
+    if !request.undo
+        && (request.pin || request.stance == Some(Stance::Prefer))
+        && let Some(harness) = request.harness
+        && let Some(why) = off(harness)
+    {
+        return Err(why);
     }
     let mut preferences = RoutingPreferences::load(path)?;
     if request.pin || request.unpin {
@@ -830,6 +874,54 @@ pub fn execute_in(path: &Path, arguments: Value, repo: Option<&str>) -> Result<V
 mod tests {
     use super::*;
     use crate::harness_plugin::{Exclusion, Facts, Health, candidates};
+
+    #[test]
+    fn a_pin_or_preference_for_an_engine_that_is_off_is_refused_when_asked() {
+        // #11519: never confirmed and then ignored.
+        let dir = temporary();
+        let path = dir.path().join("routing.toml");
+        let off = |harness: Harness| {
+            (harness == Harness::ClaudeCode)
+                .then(|| "Claude Code is off in /plugins; turn it on for this to apply.".to_owned())
+        };
+        for arguments in [
+            json!({"harness":"claude-code","pin":true,"model":"claude-opus-5-5","said":"always use Claude Code with Opus 5.5"}),
+            json!({"harness":"claude-code","stance":"prefer","said":"use Claude more"}),
+        ] {
+            let refused = execute_on(&path, arguments, None, off).unwrap_err();
+            assert!(
+                refused.starts_with("Claude Code is off in /plugins"),
+                "{refused}"
+            );
+        }
+        assert!(!path.exists(), "nothing was saved");
+        // Avoiding or never using it still saves, and the Coder loop pins.
+        execute_on(
+            &path,
+            json!({"harness":"claude-code","stance":"never","said":"never Claude"}),
+            None,
+            off,
+        )
+        .unwrap();
+        let pinned = execute_on(
+            &path,
+            json!({"harness":"coder-loop","pin":true,"said":"always Coder"}),
+            None,
+            off,
+        )
+        .unwrap();
+        assert_eq!(pinned["pinned"], "Always Coder, everywhere");
+        // A pinned model reads by its name.
+        let pin = Pin {
+            harness: Harness::ClaudeCode,
+            model: Some("claude-opus-5-5".into()),
+            repo: None,
+            kind: None,
+            said: String::new(),
+            at: String::new(),
+        };
+        assert_eq!(pin.words(), "Always Claude Code with Opus 5.5, everywhere");
+    }
 
     fn temporary() -> tempfile::TempDir {
         match std::env::var_os("OPENAGENTS_SCRATCH") {

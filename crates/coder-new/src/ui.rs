@@ -755,7 +755,36 @@ fn top_rail(app: &App) -> Option<String> {
     if cost > 0.0 && !app.on_claude() && !app.on_codex() {
         parts.push(agent_fleet::dollars(cost));
     }
+    // How full the Coder loop's context is, as Claude's rail shows its
+    // own (#11519).
+    if let Some(context) = crate::long_session::context_line(app) {
+        parts.push(context);
+    }
     (!parts.is_empty()).then(|| parts.join(" · "))
+}
+
+/// A model id as a person reads it: Claude's and Codex's names from
+/// /models, else the model's own words capitalized
+/// (`google/gemini-3.8-flash` reads "Gemini 3.8 Flash").
+fn rail_model_name(model: &str) -> String {
+    if crate::claude::MODELS.iter().any(|(id, _, _)| *id == model) {
+        return crate::claude::name(model);
+    }
+    let base = model.split(':').next().unwrap_or(model);
+    let name = base.rsplit('/').next().unwrap_or(base);
+    name.split(['-', '_'])
+        .filter(|word| !word.is_empty())
+        .map(|word| match word {
+            "gpt" | "glm" | "oss" => word.to_ascii_uppercase(),
+            _ => {
+                let mut chars = word.chars();
+                chars.next().map_or_else(String::new, |first| {
+                    first.to_uppercase().chain(chars).collect()
+                })
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Which harness ran the chat, on the input's top-right rail: "Claude
@@ -783,8 +812,22 @@ fn rail_harness(app: &App) -> Option<String> {
             } else {
                 "auto".into()
             };
+            // On auto, the model the last turn ran, as the transcript
+            // knows it (#11519).
             let model = if model == crate::models::AUTO_LABEL {
-                "auto".into()
+                app.live
+                    .entries
+                    .iter()
+                    .rev()
+                    .find_map(|entry| match entry {
+                        crate::live::Entry::Assistant {
+                            model: Some(model), ..
+                        } if !model.is_empty() && crate::models::pinned(model) => {
+                            Some(rail_model_name(model))
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| "auto".into())
             } else {
                 model
             };
@@ -2609,6 +2652,18 @@ mod export_notice_tests {
         // A model chosen in /models is named after the loop.
         app.plugins.model = crate::models::OPENROUTER.into();
         assert!(rail(&mut app).contains("Coder (deepseek-v4.1-flash)"));
+        // #11519: on auto, the model the last turn ran and how full the
+        // context is.
+        app.plugins.model = crate::models::AUTO.into();
+        app.live.entries.push(crate::live::Entry::User("hi".into()));
+        app.live.entries.push(crate::live::Entry::Assistant {
+            text: "Hello.".into(),
+            model: Some("google/gemini-3.8-flash".into()),
+            elapsed_ms: None,
+        });
+        let shown = rail(&mut app);
+        assert!(shown.contains("Coder (Gemini 3.8 Flash)"), "{shown}");
+        assert!(shown.contains("Context 0%"), "{shown}");
     }
 
     #[test]

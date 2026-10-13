@@ -29,6 +29,9 @@ pub struct ExecutionSettings {
     /// starts Claude Code or uses its login: not `auto`'s local lane, not a
     /// background agent, not Solver.
     pub claude: bool,
+    /// OpenRouter BYOK is on, so /models lists the person's OpenRouter
+    /// models (#11519).
+    pub openrouter: bool,
     /// The Solver plugin: an issue handed to a four-hand run that ends in
     /// a pull request ([`crate::solver_plugin`]).
     pub solver: bool,
@@ -136,6 +139,22 @@ struct AcpArguments {
 }
 
 impl ExecutionSettings {
+    /// Why `harness` can't take this chat's turns, in the person's words,
+    /// or `None` when it can (#11519).
+    #[must_use]
+    pub fn harness_off(&self, harness: crate::harness_plugin::Harness) -> Option<String> {
+        use crate::harness_plugin::Harness;
+        match harness {
+            Harness::ClaudeCode if !self.claude => {
+                Some("Claude Code is off in /plugins; turn it on for this to apply.".into())
+            }
+            Harness::Codex if !crate::fleet::engines(self).iter().any(|e| e == "codex") => {
+                Some("Codex isn't on here; turn it on in /plugins for this to apply.".into())
+            }
+            _ => None,
+        }
+    }
+
     fn enabled_for(&self, binding: ToolBinding) -> bool {
         if !crate::approval::tools_allowed() {
             return false;
@@ -186,7 +205,7 @@ impl ExecutionSettings {
             definitions.extend(crate::memory::Memory::tool_definitions());
         }
         if self.routing.is_some() {
-            definitions.push(crate::routing_preferences::definition());
+            definitions.push(crate::routing_preferences::definition_for(self.claude));
         }
         for definition in DEFINITIONS {
             for binding in definition
@@ -405,10 +424,11 @@ impl ExecutionSettings {
                 .as_deref()
                 .ok_or_else(|| "Routing preferences are off here.".to_string())
                 .and_then(|path| {
-                    crate::routing_preferences::execute_in(
+                    crate::routing_preferences::execute_on(
                         path,
                         arguments,
                         crate::routing_preferences::repo_name(&self.cwd).as_deref(),
+                        |harness| self.harness_off(harness),
                     )
                 }),
             crate::workflow::TOOL if self.shell => {
@@ -914,6 +934,7 @@ mod tests {
             cli: false,
             acp: false,
             claude: true,
+            openrouter: false,
             solver: false,
             comms: false,
             swarm: false,
