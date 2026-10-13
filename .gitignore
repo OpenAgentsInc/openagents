@@ -61,3 +61,4 @@ private-assets.json
 /bench/verse/**/*.zip
 /bench/verse/**/*.npy
 /bench/terminal-bench/experiments/**/*.tar.gz
+/target-agents/
