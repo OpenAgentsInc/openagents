@@ -3767,6 +3767,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-sdk"
+version = "0.1.0"
+dependencies = [
+ "coder-delegate",
+ "route-contract",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "coder-service"
 version = "0.1.0"
 dependencies = [

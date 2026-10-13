@@ -367,6 +367,26 @@ pub fn adapter_digest(engines: &[&str]) -> Digest {
     crate::digest_of(&adapter(engines))
 }
 
+/// The recipe document with a session's hook set beside it
+/// (`coder_sdk::digest`). With no hook set it is [`adapter`] unchanged, so
+/// a route with no hooks keeps the digest it had.
+#[must_use]
+pub fn adapter_with_hooks(engines: &[&str], hook_set: Option<&Digest>) -> Value {
+    let mut document = adapter(engines);
+    if let (Some(hook_set), Some(object)) = (hook_set, document.as_object_mut()) {
+        object.insert("hook_set".to_string(), json!(hook_set));
+    }
+    document
+}
+
+/// The adapter digest a route records for runs on `engines` under a hook
+/// set (`coder_sdk::hook_set_digest`): [`adapter_digest`] when there is
+/// none.
+#[must_use]
+pub fn adapter_digest_with_hooks(engines: &[&str], hook_set: Option<&Digest>) -> Digest {
+    crate::digest_of(&adapter_with_hooks(engines, hook_set))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -449,5 +469,22 @@ mod tests {
             adapter_digest(&["codex", "codex"])
         );
         assert_eq!(adapter(&["mystery"])["engines"][0]["recipe"], "none");
+    }
+
+    #[test]
+    fn a_hook_set_moves_the_adapter_digest_and_none_leaves_it() {
+        assert_eq!(
+            adapter_digest_with_hooks(&["codex"], None),
+            adapter_digest(&["codex"])
+        );
+        let hooks = crate::digest_of(&json!({"hooks": ["floors"]}));
+        let other = crate::digest_of(&json!({"hooks": ["floors", "squeeze"]}));
+        let with = adapter_digest_with_hooks(&["codex"], Some(&hooks));
+        assert_ne!(with, adapter_digest(&["codex"]));
+        assert_ne!(with, adapter_digest_with_hooks(&["codex"], Some(&other)));
+        assert_eq!(
+            adapter_with_hooks(&["codex"], Some(&hooks))["hook_set"],
+            json!(hooks)
+        );
     }
 }

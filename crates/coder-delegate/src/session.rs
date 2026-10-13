@@ -157,6 +157,117 @@ pub fn cli_capabilities(agent: Agent) -> (Capabilities, &'static str) {
     crate::adapter::capabilities(agent)
 }
 
+/// How far a backend honors a hook on one event (`coder_sdk`'s hooks).
+/// The tiers sit beside [`Capabilities`] rather than in it, so the v1
+/// matrix records keep their shape.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HookTier {
+    /// The harness calls the hook before it acts and obeys the outcome.
+    Native,
+    /// The harness runs a shell hook before it acts and obeys it.
+    Command,
+    /// The host sees the event in the stream after the fact: it can add
+    /// context, cancel or steer, but not deny or rewrite what already ran.
+    Emulated,
+    /// The backend has no such event.
+    None,
+}
+
+impl HookTier {
+    /// Whether a hook on this tier can deny or rewrite before the harness
+    /// acts.
+    #[must_use]
+    pub fn can_deny(self) -> bool {
+        matches!(self, HookTier::Native | HookTier::Command)
+    }
+}
+
+/// The hook events, named as Claude Code names them, in `coder_sdk`'s
+/// order.
+pub const HOOK_EVENTS: [&str; 12] = [
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "PostToolBatch",
+    "Stop",
+    "PreCompact",
+    "PostCompact",
+    "SubagentStart",
+    "SubagentStop",
+    "FileChanged",
+    "SessionEnd",
+];
+
+/// A backend a session's hooks run on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HookBackend {
+    ClaudeCode,
+    CoderLoop,
+    /// A recorded session replayed for tests.
+    Scripted,
+    /// Codex `exec`: `PreToolUse` command hooks, the rest seen in the stream.
+    Codex,
+    /// ACP agents (Cursor, Devin, OpenCode, Grok): permission requests
+    /// before a tool, the rest seen in the stream.
+    Acp,
+}
+
+impl HookBackend {
+    /// Every backend, in the tier table's order.
+    pub const ALL: [HookBackend; 5] = [
+        HookBackend::ClaudeCode,
+        HookBackend::CoderLoop,
+        HookBackend::Scripted,
+        HookBackend::Codex,
+        HookBackend::Acp,
+    ];
+
+    /// The backend's name for people.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            HookBackend::ClaudeCode => "Claude Code",
+            HookBackend::CoderLoop => "the Coder loop",
+            HookBackend::Scripted => "a recorded session",
+            HookBackend::Codex => "Codex",
+            HookBackend::Acp => "an ACP agent",
+        }
+    }
+}
+
+/// The tier `backend` gives a hook on `event` (a [`HOOK_EVENTS`] name). An
+/// unknown event has no tier.
+#[must_use]
+pub fn hook_tier(backend: HookBackend, event: &str) -> HookTier {
+    if !HOOK_EVENTS.contains(&event) {
+        return HookTier::None;
+    }
+    match backend {
+        HookBackend::ClaudeCode | HookBackend::Scripted => HookTier::Native,
+        // The Coder loop fires no hooks until its backend lands (#11497);
+        // until then a hook that must deny is refused there at start.
+        HookBackend::CoderLoop => HookTier::None,
+        HookBackend::Codex if event == "PreToolUse" => HookTier::Command,
+        // An ACP agent asks permission before a tool only when its own mode
+        // says to, and Coder doesn't set that mode for every agent, so a
+        // floor can't count on the request: the host sees the tool in the
+        // stream.
+        HookBackend::Codex | HookBackend::Acp => HookTier::Emulated,
+    }
+}
+
+/// `backend`'s tier for every hook event, in [`HOOK_EVENTS`] order.
+#[must_use]
+pub fn hook_tiers(backend: HookBackend) -> Vec<(&'static str, HookTier)> {
+    HOOK_EVENTS
+        .iter()
+        .map(|event| (*event, hook_tier(backend, event)))
+        .collect()
+}
+
 /// The schema of a versioned observation in the record.
 pub const OBSERVATION_SCHEMA: &str = "openagents.coder-one.executor-event.v1";
 
@@ -487,6 +598,12 @@ pub trait Session {
     /// The adapter's name in the record, such as `scripted`.
     fn adapter(&self) -> &str;
     fn capabilities(&self) -> Capabilities;
+    /// The tier this session gives a hook on `event` (a [`HOOK_EVENTS`]
+    /// name). A session that runs no hooks gives none.
+    fn hook_tier(&self, event: &str) -> HookTier {
+        let _ = event;
+        HookTier::None
+    }
     /// The native session ID, once the session has reported one.
     fn session_id(&self) -> Option<String>;
     /// Starts the session on `briefing`.
@@ -1088,6 +1205,41 @@ mod tests {
         assert!(codex.resume && !codex.steer);
         let record = Capabilities::all().record("scripted", "every capability");
         assert_eq!(record["capabilities"]["steer"], json!(true));
+    }
+
+    #[test]
+    fn the_hook_tier_table_matches_the_spec() {
+        for backend in [HookBackend::ClaudeCode, HookBackend::Scripted] {
+            assert!(
+                hook_tiers(backend)
+                    .iter()
+                    .all(|(_, tier)| *tier == HookTier::Native),
+                "{backend:?}"
+            );
+        }
+        assert!(
+            hook_tiers(HookBackend::CoderLoop)
+                .iter()
+                .all(|(_, tier)| *tier == HookTier::None)
+        );
+        for (backend, pre) in [
+            (HookBackend::Codex, HookTier::Command),
+            (HookBackend::Acp, HookTier::Emulated),
+        ] {
+            for (event, tier) in hook_tiers(backend) {
+                let want = if event == "PreToolUse" {
+                    pre
+                } else {
+                    HookTier::Emulated
+                };
+                assert_eq!(tier, want, "{backend:?} {event}");
+            }
+        }
+        assert_eq!(
+            hook_tier(HookBackend::ClaudeCode, "Mystery"),
+            HookTier::None
+        );
+        assert!(HookTier::Command.can_deny() && !HookTier::Emulated.can_deny());
     }
 
     #[test]
