@@ -24,6 +24,7 @@ fn cli(agent: Agent, dir: &Path) -> Cli {
         tools: None,
         prompt_cache_ttl: None,
         codex_config: Vec::new(),
+        hooks: None,
         system: None,
         episode: coder_delegate::deadline::Deadline::unbounded(),
         gate: None,

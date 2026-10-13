@@ -2008,6 +2008,11 @@ pub struct Cli {
     /// `-c key=value`, such as `service_tier="default"`; empty for every
     /// other agent and for [`Cli::command`].
     pub codex_config: Vec<String>,
+    /// The host's hook bridge a watched session ([`Cli::live_command`])
+    /// runs before every tool (#11509): the session's registry on the
+    /// host's socket, answering Claude Code's and Codex's command hooks.
+    /// `None` runs no hooks.
+    pub hooks: Option<HookBridge>,
     /// The system prompt variant (`exec.system`); `None` runs the CLI's
     /// own default prompt.
     pub system: Option<crate::system::Variant>,
@@ -2023,6 +2028,75 @@ pub struct Cli {
     /// Session control: where executor events are recorded, the policy's
     /// rules, and the last session's record.
     pub control: Control,
+}
+
+/// The variable naming the host's hook socket for the bridge program
+/// (`coder_sdk::bridge::SOCKET_VAR`).
+pub const HOOK_SOCKET_VAR: &str = "CODER_HOOK_SOCKET";
+
+/// How long a delegated CLI waits for one hook, in seconds: past the
+/// bridge's own wait for the host, so the bridge always answers.
+pub const HOOK_TIMEOUT_SECS: u64 = 600;
+
+/// The Coder SDK's hook bridge for a delegated CLI session (#11509): the
+/// bridge program (`program args… --format claude|codex`, which asks the
+/// host on `socket` and falls back to the floors alone) installed as the
+/// CLI's own `PreToolUse` command hook, so the host's registry (the floors
+/// first) answers every tool call Claude Code or Codex makes. OpenCode's
+/// `run` takes no command hooks; its calls are only seen afterwards.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HookBridge {
+    pub program: PathBuf,
+    /// The words before `--format`, such as `["coder-hook"]`.
+    pub args: Vec<String>,
+    /// The host's socket.
+    pub socket: PathBuf,
+}
+
+impl HookBridge {
+    /// The hook's shell command in `format` (`claude` or `codex`).
+    #[must_use]
+    pub fn command(&self, format: &str) -> String {
+        let mut words = vec![shell_word(&self.program.display().to_string())];
+        words.extend(self.args.iter().map(|arg| shell_word(arg)));
+        words.extend(["--format".to_owned(), shell_word(format)]);
+        words.join(" ")
+    }
+
+    /// Claude Code's `--settings`: the bridge as a `PreToolUse` hook on
+    /// every tool.
+    #[must_use]
+    pub fn claude_settings(&self) -> String {
+        serde_json::json!({"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [
+            {"type": "command", "command": self.command("claude"), "timeout": HOOK_TIMEOUT_SECS}
+        ]}]}})
+        .to_string()
+    }
+
+    /// Codex's `-c hooks.PreToolUse=...`, run without a trust prompt (the
+    /// host installed it itself).
+    #[must_use]
+    pub fn codex_args(&self) -> Vec<String> {
+        let command = serde_json::to_string(&self.command("codex")).unwrap_or_default();
+        vec![
+            "-c".into(),
+            format!("hooks.PreToolUse=[{{hooks=[{{type=\"command\",command={command}}}]}}]"),
+            "--dangerously-bypass-hook-trust".into(),
+        ]
+    }
+}
+
+/// One shell word, single-quoted unless it is plain.
+fn shell_word(text: &str) -> String {
+    if !text.is_empty()
+        && text
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '.' | '-' | '_'))
+    {
+        text.to_owned()
+    } else {
+        format!("'{}'", text.replace('\'', "'\\''"))
+    }
 }
 
 /// How [`Cli`] runs its session beyond starting it.
@@ -2164,6 +2238,9 @@ impl Cli {
             .env("PYTHONDONTWRITEBYTECODE", "1");
         let (mark, value) = self.agent.engine_mark();
         command.env(mark, value);
+        if let Some(hooks) = &self.hooks {
+            command.env(HOOK_SOCKET_VAR, &hooks.socket);
+        }
         if self.agent == Agent::OpenCode {
             // A delegated session neither shares itself nor updates the CLI.
             command
@@ -2248,6 +2325,9 @@ impl Cli {
                 if !append.is_empty() {
                     args.extend(["--append-system-prompt-file".to_string(), append]);
                 }
+                if let Some(hooks) = &self.hooks {
+                    args.extend(["--settings".to_string(), hooks.claude_settings()]);
+                }
             }
             Agent::Codex | Agent::Microluna => {
                 args.push("exec".to_string());
@@ -2270,6 +2350,9 @@ impl Cli {
                 }
                 for setting in &self.codex_config {
                     args.extend(["-c".to_string(), setting.clone()]);
+                }
+                if let Some(hooks) = &self.hooks {
+                    args.extend(hooks.codex_args());
                 }
                 args.extend([
                     "--dangerously-bypass-approvals-and-sandbox".to_string(),

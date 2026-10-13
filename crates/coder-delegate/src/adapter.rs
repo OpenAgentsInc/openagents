@@ -902,6 +902,7 @@ mod tests {
             tools: None,
             prompt_cache_ttl: None,
             codex_config: Vec::new(),
+            hooks: None,
             system: None,
             episode: crate::deadline::Deadline::unbounded(),
             gate: None,
@@ -1285,6 +1286,55 @@ mod tests {
         assert_eq!(
             args,
             ["run", "--format", "json", "-m", "stand-in", "--auto"]
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A session with the host's hook bridge (#11509) installs it as the
+    /// CLI's own `PreToolUse` command hook: Claude Code's `--settings`,
+    /// Codex's `-c hooks.PreToolUse` without a trust prompt, and the
+    /// host's socket in the environment.
+    #[test]
+    fn the_hook_bridge_is_each_clis_own_pretooluse_hook() {
+        let dir = scratch("hook-bridge");
+        let bridge = crate::delegate::HookBridge {
+            program: PathBuf::from("/opt/coder one/coder-one"),
+            args: vec!["coder-hook".into()],
+            socket: dir.join("hook.sock"),
+        };
+        let launch = Launch {
+            session: SessionArg::New(None),
+            steerable: false,
+        };
+        let mut claude = cli(Agent::ClaudeCode, &dir, &[]);
+        claude.hooks = Some(bridge.clone());
+        let args = claude.live_args(&launch);
+        let at = args.iter().position(|arg| arg == "--settings").unwrap();
+        let settings: serde_json::Value = serde_json::from_str(&args[at + 1]).unwrap();
+        assert_eq!(
+            settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"],
+            "'/opt/coder one/coder-one' coder-hook --format claude"
+        );
+        let command = claude.live_command(Path::new("claude"), &launch);
+        assert!(
+            command
+                .get_envs()
+                .any(|(name, value)| name == crate::delegate::HOOK_SOCKET_VAR
+                    && value == Some(bridge.socket.as_os_str()))
+        );
+        let mut codex = cli(Agent::Codex, &dir, &[]);
+        codex.hooks = Some(bridge);
+        let args = codex.live_args(&launch);
+        assert!(
+            args.iter().any(|arg| arg.starts_with("hooks.PreToolUse=")
+                && arg.contains("coder-hook --format codex"))
+        );
+        assert!(args.contains(&"--dangerously-bypass-hook-trust".to_owned()));
+        assert!(
+            !cli(Agent::Codex, &dir, &[])
+                .live_args(&launch)
+                .iter()
+                .any(|arg| arg.starts_with("hooks."))
         );
         let _ = std::fs::remove_dir_all(dir);
     }

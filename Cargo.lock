@@ -3681,6 +3681,7 @@ dependencies = [
  "coder-boundary",
  "coder-delegate",
  "coder-history",
+ "coder-sdk",
  "futures-util",
  "indexmap 2.14.2",
  "jev",

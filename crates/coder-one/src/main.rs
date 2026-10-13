@@ -95,6 +95,11 @@ async fn main() -> ExitCode {
             println!("{}", episode::version());
             Ok(())
         }
+        // The Coder SDK's hook bridge a delegated CLI runs before every
+        // tool (#11509).
+        Some(coder_one::hooks::COMMAND) => {
+            return ExitCode::from(u8::try_from(coder_one::hooks::main(&args[1..])).unwrap_or(1));
+        }
         Some("episode") => return episode_command(&args[1..]).await,
         Some("component") => return component_command(&args[1..]).await,
         Some("minitask") => return minitask_command(&args[1..]).await,
@@ -690,6 +695,7 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
                 .map(|ttl| ttl.trim().to_string())
                 .filter(|ttl| !ttl.is_empty()),
             codex_config: Vec::new(),
+            hooks: None,
             system: None,
             episode: coder_one::deadline::Deadline::unbounded(),
             gate: None,
@@ -700,6 +706,8 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
                 ..delegate::Control::default()
             },
         };
+        // The delegate runs the Coder SDK's floors (#11509).
+        let _hooks = coder_one::hooks::install(&mut executor);
         let instruction = format!("{}\n\n{}", state.issue.title, state.issue.body);
         let plan = Plan {
             mode: options.delegate,

@@ -734,6 +734,8 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
             env: vec![("IS_SANDBOX".to_string(), "1".to_string())],
         });
         executor.episode = deadline.clone();
+        // The delegate runs the Coder SDK's floors (#11509).
+        let _hooks = crate::hooks::install(&mut executor);
         // Each normalized executor event lands in the durable log as it
         // arrives, which is what a live reader follows.
         executor.control.recorder = Some(recorder.clone());
@@ -1025,6 +1027,7 @@ impl crate::compose::Factory for CliFactory {
             tools: tier.tools.clone().filter(|_| claude),
             prompt_cache_ttl: tier.prompt_cache_ttl.clone().filter(|_| claude),
             codex_config: Vec::new(),
+            hooks: None,
             system,
             episode: self.episode.clone(),
             gate: self.soft.map(|soft| spend_gate(&self.recorder, soft)),
@@ -1894,6 +1897,7 @@ mod accounting_tests {
             tools: None,
             prompt_cache_ttl: None,
             codex_config: Vec::new(),
+            hooks: None,
             system: None,
             episode,
             gate: None,

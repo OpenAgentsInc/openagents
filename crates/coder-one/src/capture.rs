@@ -428,6 +428,7 @@ fn capture_in(plan: &Plan, scratch: &Path) -> Result<Capture, String> {
         tools: plan.tools.clone(),
         prompt_cache_ttl: plan.prompt_cache_ttl.clone(),
         codex_config: Vec::new(),
+        hooks: None,
         system: plan.variant.clone(),
         episode: crate::deadline::Deadline::unbounded(),
         gate: None,

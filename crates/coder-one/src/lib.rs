@@ -35,6 +35,7 @@ pub mod fire;
 pub mod generate;
 pub mod grade;
 pub mod handoff;
+pub mod hooks;
 pub mod issue_eval;
 pub mod issue_turn;
 pub mod localize;

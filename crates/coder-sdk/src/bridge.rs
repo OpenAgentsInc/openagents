@@ -30,7 +30,7 @@ use super::events::Event;
 
 /// The variable naming the host's socket, set on the harness's
 /// environment so its hook processes inherit it.
-pub const SOCKET_VAR: &str = "CODER_HOOK_SOCKET";
+pub const SOCKET_VAR: &str = coder_delegate::delegate::HOOK_SOCKET_VAR;
 /// The Coder subcommand that runs the bridge: `coder coder-hook --format
 /// claude|codex|acp`.
 pub const COMMAND: &str = "coder-hook";

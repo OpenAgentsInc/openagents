@@ -437,6 +437,7 @@ pub fn executor<M>(executor: &ExecutorPolicy<M>, host: ExecutorHost) -> Cli {
         tools: executor.tools.clone(),
         prompt_cache_ttl: executor.prompt_cache_ttl.clone(),
         codex_config: Vec::new(),
+        hooks: None,
         system: executor
             .system
             .clone()

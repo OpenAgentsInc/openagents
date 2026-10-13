@@ -190,6 +190,7 @@ pub fn bounded_cli(
             tools: None,
             prompt_cache_ttl: None,
             codex_config: Vec::new(),
+            hooks: None,
             system: None,
             runs,
             episode,

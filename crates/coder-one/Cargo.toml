@@ -10,6 +10,8 @@ publish.workspace = true
 atif = { path = "../atif" }
 coder-boundary = { path = "../coder-boundary" }
 coder-delegate = { path = "../coder-delegate" }
+# Delegated sessions run the Coder SDK's floors through its hook bridge (#11509).
+coder-sdk = { path = "../coder-sdk" }
 coder-history = { path = "../coder-history", default-features = false }
 futures-util = "0.3"
 indexmap = "2"
