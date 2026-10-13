@@ -349,6 +349,11 @@ fn agent_activity(chat: &crate::live::Chat) -> Option<String> {
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_owned)
                 .unwrap_or_else(|| crate::tools::compact_params(&shown, 120));
+            // The home folder as `~`, so a path shows what is inside it.
+            let what = match std::env::var("HOME") {
+                Ok(home) if home.len() > 1 => what.replace(&home, "~"),
+                _ => what,
+            };
             Some(if what.is_empty() {
                 tool
             } else {
@@ -3228,6 +3233,17 @@ mod agent_rail_tests {
             running: true,
         });
         assert_eq!(super::agent_activity(&chat).as_deref(), Some("Bash"));
+        // OpenCode's read names its file as filePath.
+        chat.entries.push(Entry::Tool {
+            name: "read".into(),
+            input: serde_json::json!({"filePath": "src/slugify.js"}),
+            output: serde_json::Value::Null,
+            running: true,
+        });
+        assert_eq!(
+            super::agent_activity(&chat).as_deref(),
+            Some("Read · src/slugify.js")
+        );
         chat.partial = "Writing the restore step\nnow".into();
         assert_eq!(super::agent_activity(&chat).as_deref(), Some("now"));
     }

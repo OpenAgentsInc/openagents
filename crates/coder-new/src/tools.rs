@@ -40,7 +40,15 @@ pub(crate) fn output_failed(output: &serde_json::Value) -> bool {
 
 /// The keys a call names the file or folder it works on with, in the order
 /// they are preferred.
-const PATH_KEYS: [&str; 5] = ["path", "file_path", "notebook_path", "folder", "directory"];
+/// `filePath` is OpenCode's name for it.
+const PATH_KEYS: [&str; 6] = [
+    "path",
+    "file_path",
+    "filePath",
+    "notebook_path",
+    "folder",
+    "directory",
+];
 
 /// Whether a flattened key is a top-level path key.
 fn is_path_key(key: &str) -> bool {
