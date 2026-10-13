@@ -9226,7 +9226,9 @@ impl Shell {
             SIDEBAR_GLASS_FADE_BAND,
             true,
             true,
-            div().relative().flex_1().min_h_0().child(
+            div().relative().flex_1().min_h_0().child(crate::overscroll::overscroll(
+                "sidebar-overscroll",
+                crate::overscroll::OverscrollSource::Handle(self.sidebar_scroll.clone()),
                 div()
                     .id("sidebar-lists")
                     .relative()
@@ -9269,7 +9271,7 @@ impl Shell {
                     .child(active_list)
                     .children(archived_section)
                     .children(moving_row),
-            ),
+            )),
         )
         .fade_overflow_y(&self.sidebar_scroll);
 
