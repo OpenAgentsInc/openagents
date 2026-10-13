@@ -51,6 +51,8 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 ap = argparse.ArgumentParser()
 ap.add_argument("out")
 ap.add_argument("--frames-dir", help="also save a PNG every second here")
+ap.add_argument("--grid", action="store_true",
+                help="a faint Verse Grid floor behind the shot, moving with the camera")
 ap.add_argument("--only", help="render only these seconds to PNGs (comma list), no video")
 args = ap.parse_args()
 
@@ -843,6 +845,58 @@ def future_labels(d, t, placed):
         d.text((lx, ly), name, font=g_fut, fill=(*SECONDARY, int(255 * k)))
 
 
+# --- the Grid ---------------------------------------------------------------
+# The film's Grid stage (~/work/film-out/studio/grid-plate.mp4): a black floor
+# with thin white lines receding to a horizon at 0.42 of the height, lines
+# about 79/255 near the lens there. Here at about a third of that, so the map,
+# its light and the words stay on top. The floor has its own camera, so the
+# shot's pull-backs and pan move through it with parallax while the map
+# hovers above it. Units are grid cells.
+GRID_PEAK = 30.0
+GRID_F, GRID_H, GRID_Y0 = 1400.0, 0.9, 0.42 * H
+GRID_FAR = 70.0
+
+
+def grid_cam(t):
+    """The floor camera's x and z: in close for beat 1, back with the
+    pull-back, a slow drift forward, then right and back with the final
+    pan."""
+    back = ease((t - CAM_OUT[0]) / (CAM_OUT[1] - CAM_OUT[0]))
+    z = 2.6 * (1 - back) + 0.035 * t - 1.1 * fade(t, *PAN)
+    x = 0.85 * fade(t, *PAN) + 0.15 * math.sin(t * 0.11)
+    return x, z
+
+
+def grid_layer(t):
+    cx, cz = grid_cam(t)
+    im = Image.new("L", (W * S, H * S), 0)
+    d = ImageDraw.Draw(im)
+
+    def scr(x, z):
+        dz = z - cz
+        return ((W / 2 + GRID_F * (x - cx) / dz) * S, (GRID_Y0 + GRID_F * GRID_H / dz) * S)
+
+    def bright(dz):  # fades into the horizon
+        return int(GRID_PEAK * clamp(1.6 / dz) ** 0.35 * clamp((GRID_FAR - dz) / (GRID_FAR * 0.7)))
+
+    near = 0.6
+    for k in range(int(math.floor(cz + near)) + 1, int(cz + GRID_FAR)):
+        dz = k - cz
+        y = scr(0, k)[1]
+        if y > H * S:
+            continue
+        d.line([(0, y), (W * S, y)], fill=bright(dz), width=S)
+    for k in range(int(cx) - 70, int(cx) + 71):
+        # each receding line in short pieces, so it fades toward the horizon
+        zs = [cz + near * 1.0001] + [cz + 1.0 * j for j in range(1, int(GRID_FAR))]
+        for z0, z1 in zip(zs, zs[1:]):
+            a, b = scr(k, z0), scr(k, z1)
+            if max(a[0], b[0]) < 0 or min(a[0], b[0]) > W * S:
+                continue
+            d.line([a, b], fill=bright(z1 - cz), width=S)
+    return np.asarray(im.resize((W, H), Image.BILINEAR), np.float32)[..., None]
+
+
 def render(i):
     t = i / FPS
     frame = BG.copy()
@@ -873,7 +927,11 @@ def render(i):
     ox, oy = CX - (CX - pan) / z, CY - CY / z
     img = img.transform((W, H), Image.EXTENT, (ox, oy, ox + cw, oy + ch), Image.BICUBIC, fillcolor=CANVAS)
     # the words on screen, over the camera
-    arr = over(np.asarray(img, np.float32), text_layer(lambda d: (caption(d, t), messages(d, t), meters(d, t))))
+    arr = np.asarray(img, np.float32)
+    if args.grid:  # under the scene: it shows only where the frame is dark
+        lum = arr.max(axis=2, keepdims=True)
+        arr = arr + grid_layer(t) * np.clip(1 - (lum - 14) / 40, 0, 1)
+    arr = over(arr, text_layer(lambda d: (caption(d, t), messages(d, t), meters(d, t))))
     arr = arr * VIG * fade(t, 0.0, 0.6)
     noise = np.random.default_rng(i).normal(0, 3.2, (H, W, 1)).astype(np.float32)
     return Image.fromarray((arr + noise).clip(0, 255).astype(np.uint8))
