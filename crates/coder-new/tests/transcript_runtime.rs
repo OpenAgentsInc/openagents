@@ -40,9 +40,10 @@ fn live_app() -> App {
     let mut app = App::default();
     app.set_mode(Mode::Live);
     // These chats run on Coder's own loop, never this computer's Claude
-    // Code login.
+    // Code, OpenCode or Codex login.
     app.plugins.bundled.claude = false;
     app.plugins.bundled.opencode = false;
+    app.plugins.bundled.codex = false;
     // Most of these tests read a tool call's own rows, so they start in the
     // verbose view; the compact default has its own tests.
     app.view = ViewMode::Verbose;

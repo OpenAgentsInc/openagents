@@ -64,6 +64,7 @@ fn app() -> App {
     app.set_mode(Mode::Live);
     app.plugins.bundled.claude = false;
     app.plugins.bundled.opencode = false;
+    app.plugins.bundled.codex = false;
     app.plugins.enabled = true;
     app.plugins.key_configured = true;
     app
@@ -132,6 +133,8 @@ fn completed_reply_shows_neither_the_model_nor_the_elapsed_time() {
 #[test]
 fn reply_keeps_its_actual_model_without_showing_it_in_the_transcript() {
     let mut app = app();
+    // Auto routed this chat to Coder's own loop (#11524).
+    app.live.runs_on = Some(coder_new::harness_plugin::Harness::CoderLoop);
     app.live.entries.push(Entry::User("Say hello.".into()));
     app.live.busy = true;
     app.apply_update(Update::Finished {
@@ -153,10 +156,10 @@ fn reply_keeps_its_actual_model_without_showing_it_in_the_transcript() {
             .any(|line| line.starts_with("● Hello from the routed model."))
     );
     assert!(!text.iter().any(|line| line.contains("openai/gpt-6-luna")));
-    assert_eq!(
-        label(&rows(&buffer)[top_rule(&rows(&buffer)).unwrap()]),
-        "Coder"
-    );
+    // On auto, the rail names the model the last turn ran as a person
+    // reads it (#11519), after what Auto routed to (#11524).
+    let rail = label(&rows(&buffer)[top_rule(&rows(&buffer)).unwrap()]).to_owned();
+    assert!(rail.starts_with("Auto · Coder (GPT 6 Luna)"), "{rail}");
     app.plugins.model = "anthropic/claude-fable-5.1".into();
     let (buffer, _) = render(&mut app, 110, 36);
     assert!(
@@ -164,9 +167,10 @@ fn reply_keeps_its_actual_model_without_showing_it_in_the_transcript() {
             .iter()
             .any(|line| line.contains("openai/gpt-6-luna"))
     );
-    assert_eq!(
-        label(&rows(&buffer)[top_rule(&rows(&buffer)).unwrap()]),
-        "claude-fable-5.1"
+    let rail = label(&rows(&buffer)[top_rule(&rows(&buffer)).unwrap()]).to_owned();
+    assert!(
+        rail.starts_with("Auto · Coder (claude-fable-5.1)"),
+        "{rail}"
     );
     assert!(!rows(&buffer).iter().any(|line| line.contains("anthropic/")));
 }
@@ -178,12 +182,13 @@ fn composer_registration_follows_enablement_and_preserves_input_geometry() {
         let (buffer, cursor) = render(&mut app, width, height);
         let text = rows(&buffer);
         let top = top_rule(&text).unwrap();
-        assert_eq!(label(&text[top]), "Coder");
+        // A new chat's rail reads Auto until Auto routes a turn (#11524).
+        assert_eq!(label(&text[top]), "Auto");
         assert!(text[top].ends_with('┐'));
         assert!(text[top + 1].starts_with("│❯ ") && text[top + 1].ends_with('│'));
         assert!(text[top + 2].starts_with('└') && text[top + 2].ends_with('┘'));
         assert_eq!(cursor, (3, (top + 1) as u16));
-        let byte = text[top].find("Coder").unwrap();
+        let byte = text[top].find("Auto").unwrap();
         let x = UnicodeWidthStr::width(&text[top][..byte]) as u16;
         // Which engine runs is a quiet fact in gray, never a colored
         // control that reads as a mode (owner, 2026-10-12).
@@ -201,7 +206,7 @@ fn composer_registration_follows_enablement_and_preserves_input_geometry() {
     let (buffer, cursor) = render(&mut app, 80, 24);
     let text = rows(&buffer);
     let top = top_rule(&text).unwrap();
-    assert_eq!(label(&text[top]), "Coder");
+    assert_eq!(label(&text[top]), "Auto");
     assert_eq!(cursor, (8, (top + 3) as u16));
     assert!(text[top + 4].starts_with('└'));
 }
@@ -285,6 +290,7 @@ fn streaming_and_stopped_replies_show_no_model_and_never_guess_from_settings() {
 #[test]
 fn long_attribution_does_not_overwrite_the_reply_or_the_draft_after_resize() {
     let mut app = app();
+    app.live.runs_on = Some(coder_new::harness_plugin::Harness::CoderLoop);
     app.plugins.model = "anthropic/claude-fable-5.1".into();
     app.live.entries.push(Entry::Assistant {
         elapsed_ms: None,
@@ -298,13 +304,19 @@ fn long_attribution_does_not_overwrite_the_reply_or_the_draft_after_resize() {
     assert!(text.iter().any(|line| line.contains("Visible reply body.")));
     assert!(text.iter().any(|line| line.contains("❯ draft")));
     assert_eq!(cursor.0, 8);
-    assert!(text[top_rule(&text).unwrap()].contains("claude-fable"));
+    // Narrow, the rail keeps what ran and cuts the model's name short
+    // ("Auto · Coder (cla…", #11524); wide, it names the model whole.
+    assert!(text[top_rule(&text).unwrap()].contains("Coder (cla"));
+    assert!(!text.iter().any(|line| line.contains("anthropic/")));
+    let text = rows(&render(&mut app, 80, 12).0);
+    assert!(text[top_rule(&text).unwrap()].contains("claude-fable-5.1"));
     assert!(!text.iter().any(|line| line.contains("anthropic/")));
 }
 
 #[test]
 fn input_rails_name_the_chosen_model_only_and_the_bottom_rule_names_the_repository() {
     let mut app = app();
+    app.live.runs_on = Some(coder_new::harness_plugin::Harness::CoderLoop);
     app.plugins.model = "openai/gpt-6-luna".into();
     app.plugins.options.reasoning = Some("low".into());
     app.apply_update(Update::Checked {
@@ -316,8 +328,17 @@ fn input_rails_name_the_chosen_model_only_and_the_bottom_rule_names_the_reposito
     });
     for width in [24, 80, 110] {
         let text = rows(&render(&mut app, width, 24).0);
-        // The rail names the chosen model only, never its settings.
-        assert!(text[top_rule(&text).unwrap()].contains("gpt-6"));
+        // The rail names the chosen model only, never its settings; at 24
+        // columns its name is cut short after what ran (#11524).
+        let rule = &text[top_rule(&text).unwrap()];
+        assert!(
+            rule.contains(if width < 80 {
+                "Coder (gpt"
+            } else {
+                "gpt-6-luna"
+            }),
+            "{rule}"
+        );
         assert!(!text.iter().any(|line| line.contains(":low")));
         // The bottom rule names the repository, never the key's status.
         let bottom = text.iter().rfind(|line| line.starts_with('└')).unwrap();
@@ -325,7 +346,11 @@ fn input_rails_name_the_chosen_model_only_and_the_bottom_rule_names_the_reposito
     }
     app.plugins.options.reasoning = None;
     let text = rows(&render(&mut app, 110, 24).0);
-    assert_eq!(label(&text[top_rule(&text).unwrap()]), "gpt-6-luna");
+    // What Auto routed to, and the model the person chose (#11524).
+    assert_eq!(
+        label(&text[top_rule(&text).unwrap()]),
+        "Auto · Coder (gpt-6-luna)"
+    );
     app.apply_update(Update::Checked {
         id: app.request_id,
         result: Err("HTTP 401".into()),

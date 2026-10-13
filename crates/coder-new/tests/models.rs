@@ -45,7 +45,7 @@ fn models_command_requires_an_enabled_provider_and_never_sends_a_chat() {
         app.notice
             .as_deref()
             .unwrap()
-            .contains("Turn on OpenRouter BYOK")
+            .contains("Sign in to OpenAgents or turn on OpenRouter BYOK")
     );
     assert!(app.request.is_none());
     app.plugins.toggle_enabled();

@@ -54,7 +54,8 @@ fn an_idle_input_rail_carries_no_working_label() {
         .iter()
         .position(|line| line.starts_with('┌'))
         .expect("the input's top rail");
-    assert_eq!(label(&rows[top]), "Coder (auto)");
+    // What Auto routed this chat to (#11524).
+    assert_eq!(label(&rows[top]), "Auto · Coder (auto)");
     assert!(!rows.join("\n").contains("Working"));
 }
 

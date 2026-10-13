@@ -247,6 +247,8 @@ fn narrow_transcripts_keep_long_code_and_table_content_accessible_by_scrolling()
     let code_token = "code_begin_0123456789_abcdefghijklmnopqrstuvwxyz_code_end";
     let table_token = "table_begin_0123456789_abcdefghijklmnopqrstuvwxyz_table_end";
     let mut app = live_app();
+    // Auto routed this chat to Coder's own loop (#11524).
+    app.live.runs_on = Some(coder_new::harness_plugin::Harness::CoderLoop);
     app.live.entries.push(Entry::Assistant {
         elapsed_ms: None,
         text: format!(
@@ -277,7 +279,7 @@ fn narrow_transcripts_keep_long_code_and_table_content_accessible_by_scrolling()
         assert!(text.contains("❯ draft"));
         assert_eq!(cursor.0, 8);
         // The rail names Coder's own loop "Coder", never its lowercase id
-        // (#11483).
+        // (#11483), after Auto ("Auto · Coder (…", #11524).
         assert!(
             rows(&buffer)
                 .iter()

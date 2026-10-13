@@ -27,9 +27,10 @@ fn new_app(store: &Store, cwd: &Path) -> App {
     let mut app = App::default();
     app.set_mode(Mode::Live);
     // These chats run on Coder's own loop, never this computer's Claude
-    // Code login.
+    // Code, OpenCode or Codex login.
     app.plugins.bundled.claude = false;
     app.plugins.bundled.opencode = false;
+    app.plugins.bundled.codex = false;
     app.cwd = Some(cwd.to_owned());
     app.attach_session_store(store.clone());
     app

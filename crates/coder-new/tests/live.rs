@@ -98,7 +98,7 @@ fn verified(app: &mut App, id: u64) {
 }
 
 /// A chat that runs on Coder's own loop, never on this computer's Claude
-/// Code login, which the harness selector would otherwise pick (#11453).
+/// Code, OpenCode or Codex login, which the harness selector would otherwise pick (#11453).
 fn coder_loop_app() -> App {
     let mut app = App::default();
     // Demo and live keep their own plugin settings: off in both, and the
@@ -106,6 +106,7 @@ fn coder_loop_app() -> App {
     let start = app.mode;
     app.plugins.bundled.claude = false;
     app.plugins.bundled.opencode = false;
+    app.plugins.bundled.codex = false;
     app.set_mode(if start == Mode::Live {
         Mode::Demo
     } else {
@@ -113,6 +114,7 @@ fn coder_loop_app() -> App {
     });
     app.plugins.bundled.claude = false;
     app.plugins.bundled.opencode = false;
+    app.plugins.bundled.codex = false;
     app.set_mode(start);
     app
 }

@@ -102,8 +102,8 @@ fn acp_ids(app: &App) -> Vec<&str> {
 fn bundled_plugins_are_selectable_and_default_on_with_router_off() {
     let mut app = App::default();
     // Claude Code joined as the twelfth bundled plugin (837f848960), Token
-    // savers as the thirteenth (#11494).
-    assert_eq!(DEFINITIONS.len(), 13);
+    // savers as the thirteenth (#11494), Codex as the fourteenth (#11510).
+    assert_eq!(DEFINITIONS.len(), 14);
     assert!(
         DEFINITIONS
             .iter()
@@ -129,10 +129,11 @@ fn bundled_plugins_are_selectable_and_default_on_with_router_off() {
         key(&mut app, KeyCode::Esc);
         key(&mut app, KeyCode::Down);
     }
-    // With Claude Code and OpenCode off, a new chat runs on Coder's own loop.
+    // With Claude Code, OpenCode and Codex off, a new chat runs on Coder's own loop.
     app.set_mode(Mode::Live);
     app.plugins.bundled.claude = false;
     app.plugins.bundled.opencode = false;
+    app.plugins.bundled.codex = false;
     assert!(app.handle(Event::Paste("Explain this checkout.".into())));
     key(&mut app, KeyCode::Enter);
     let request = app.request.take().unwrap();
