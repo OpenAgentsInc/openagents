@@ -1,0 +1,86 @@
+"""The sealed Clef TPU worker: HTTP on localhost behind the Rust door.
+
+  python -I -m clef_tpu.server <clef-flash dir> [--port 8091] [--chunk 2048] [--precision bf16] [--scan jax]
+
+GET  /v1/identity  -> backend, device, precision, artifact and head digests
+POST /v1/logits    {"input_ids": [...], "questions": [{"type", "question_span", "option_spans"}], "chunk"?}
+                   -> {"logits": [[...], ...], "prefill_seconds", "head_seconds"}
+
+It binds 127.0.0.1 only; the door (`psionic-openai-server --decision-worker`)
+owns the public edge, parsing, encoding, admission and answers.
+"""
+import argparse
+import hashlib
+import json
+import sys
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+from .runner import Runner
+
+
+def artifact_digest(path: Path):
+    h = hashlib.sha256()
+    for f in sorted(path.glob("model*.safetensors")):
+        with open(f, "rb") as fh:
+            while chunk := fh.read(64 << 20):
+                h.update(chunk)
+    return "sha256:" + h.hexdigest()
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("model")
+    ap.add_argument("--port", type=int, default=8091)
+    ap.add_argument("--chunk", type=int, default=2048)
+    ap.add_argument("--precision", default="bf16")
+    ap.add_argument("--scan", default="jax")
+    ap.add_argument("--warm", default="512,2048", help="prompt lengths to compile before serving")
+    a = ap.parse_args()
+    runner = Runner(a.model, chunk=a.chunk, precision=a.precision, scan=a.scan)
+    identity = dict(runner.identity(), artifact_digest=artifact_digest(Path(a.model)),
+                    artifact_family="bf16-safetensors", model=Path(a.model).name)
+    for n in [int(x) for x in a.warm.split(",") if x]:
+        runner.logits([0] * n, [{"type": 0, "question_span": [0, 1], "option_spans": [[1, 2], [2, 3]]}])
+    lock = threading.Lock()
+
+    class H(BaseHTTPRequestHandler):
+        def _send(self, code, body):
+            data = json.dumps(body).encode()
+            self.send_response(code)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_GET(self):
+            if self.path == "/v1/identity":
+                return self._send(200, identity)
+            self._send(404, {"error": "not found"})
+
+        def do_POST(self):
+            if self.path != "/v1/logits":
+                return self._send(404, {"error": "not found"})
+            try:
+                req = json.loads(self.rfile.read(int(self.headers["content-length"])))
+                ids, qs = req["input_ids"], req["questions"]
+                chunk = req.get("chunk") or a.chunk
+                with lock:
+                    t = time.time()
+                    logits = runner.logits(ids, qs, chunk=chunk)
+                    dt = time.time() - t
+                self._send(200, {"logits": logits, "prefill_seconds": dt, "head_seconds": 0.0})
+            except Exception as e:  # the door maps this to an internal error
+                self._send(500, {"error": f"{type(e).__name__}: {e}"})
+
+        def log_message(self, *args):
+            pass
+
+    print(f"clef-tpu worker on 127.0.0.1:{a.port} {json.dumps(identity)}", file=sys.stderr, flush=True)
+    ThreadingHTTPServer(("127.0.0.1", a.port), H).serve_forever()
+
+
+if __name__ == "__main__":
+    main()

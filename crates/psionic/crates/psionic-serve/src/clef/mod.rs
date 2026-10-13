@@ -31,6 +31,7 @@ pub mod head;
 pub mod json;
 pub mod media;
 pub(crate) mod prefix;
+pub mod remote;
 mod worker;
 
 use std::path::{Path, PathBuf};
@@ -483,6 +484,9 @@ pub struct ClefDecisionLane {
     /// The trunk on CUDA; the CPU backbone then only serves embedding and
     /// output rows.
     cuda: Option<Arc<DeviceTrunk>>,
+    /// A sealed worker that runs the trunk and head (`--decision-worker`,
+    /// the Cloud TPU lane); this lane then only parses, encodes and answers.
+    remote: Option<Arc<remote::RemoteTrunk>>,
     head: Arc<ClefHeadWeights>,
     image_runtime: Option<Arc<media::ClefImageRuntime>>,
     limits: ClefLimits,
@@ -754,6 +758,7 @@ impl ClefDecisionLane {
             artifact_digest,
             backbone,
             cuda,
+            remote: None,
             head,
             image_runtime: None,
             limits,
@@ -766,6 +771,17 @@ impl ClefDecisionLane {
             batch_slots,
             logit_cache: std::sync::Mutex::new(std::collections::VecDeque::new()),
         })
+    }
+
+    /// Runs the trunk and head in the worker at `url` (`--decision-worker`).
+    pub fn with_remote_worker(mut self, url: &str) -> Result<Self, String> {
+        if self.cuda.is_some() || self.batching.is_some() {
+            return Err(String::from(
+                "--decision-worker runs the model in the worker; use --decision-device cpu and no batching",
+            ));
+        }
+        self.remote = Some(Arc::new(remote::RemoteTrunk::connect(url)?));
+        Ok(self)
     }
 
     /// Loads the image encoder from an explicit Ollama model manifest.
@@ -832,7 +848,10 @@ impl ClefDecisionLane {
 
     /// `cuda`, `metal` or `cpu`.
     #[must_use]
-    pub fn backend(&self) -> &'static str {
+    pub fn backend(&self) -> &str {
+        if let Some(remote) = &self.remote {
+            return remote.backend();
+        }
         self.cuda.as_deref().map_or("cpu", DeviceTrunk::backend)
     }
 
@@ -957,6 +976,30 @@ impl ClefDecisionLane {
         capture: Option<&mut HeadInputs>,
     ) -> Result<LogitResult, ClefRefusal> {
         let inference_began = Instant::now();
+        if let Some(remote) = &self.remote {
+            if record.media.is_some() {
+                return Err(ClefRefusal::not_admitted(
+                    400,
+                    "image inputs are not supported on this decision worker",
+                ));
+            }
+            let (logits, prefill_seconds, head_seconds) = remote
+                .logits(
+                    record,
+                    if chunk == self.prefill_chunk() {
+                        self.limits.prefill_chunk
+                    } else {
+                        chunk
+                    },
+                )
+                .map_err(ClefRefusal::internal)?;
+            return Ok(LogitResult {
+                logits,
+                cached_input_tokens: 0,
+                prefill_seconds,
+                head_seconds,
+            });
+        }
         if record.media.is_some() && matches!(self.cuda.as_deref(), Some(DeviceTrunk::Cuda(_))) {
             return Err(ClefRefusal::not_admitted(
                 400,
@@ -1385,6 +1428,29 @@ impl ClefDecisionLane {
             "max_tokens": self.limits.max_tokens,
             "latency_ms": began.elapsed().as_millis() as u64,
         });
+        if let Some(remote) = &self.remote {
+            // the worker serves its own artifact family (BF16 / int8 safetensors);
+            // its digests and precision are what calibration and receipts key on
+            psionic["worker"] = remote.identity.clone();
+            for key in [
+                "artifact_digest",
+                "head_digest",
+                "precision",
+                "prefill_chunk",
+            ] {
+                if let Some(value) = remote.identity.get(key) {
+                    psionic[key] = value.clone();
+                }
+            }
+            psionic["artifact"] = remote.identity.get("model").cloned().unwrap_or(Value::Null);
+            psionic["artifact_family"] = remote
+                .identity
+                .get("artifact_family")
+                .cloned()
+                .unwrap_or(Value::Null);
+            psionic["head_source"] = json!("worker");
+            psionic["accumulate"] = json!("f32");
+        }
         if prompt_tokens > TRAINED_LENGTH {
             psionic["out_of_training_distribution"] = json!(true);
         }

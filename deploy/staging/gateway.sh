@@ -57,6 +57,10 @@
 #                               VPC (docs/inference/clef-decisions-h100.md); one URL is a pool
 #                               of one; set empty to turn it off
 #   DECISION_CLEF_27B_URL       our hosted Clef 27B (`clef`) pool; default the same two, :18098
+#   DECISION_CLEF_FLASH_TPU_URL the Cloud TPU Clef-Flash pool (#11459), asked only for
+#                               `X-Decision-Order: tpu`, never by default; default the on-demand
+#                               v6e-1 p6-asia-northeast1-b (10.146.0.2:18096) over the VPC
+#                               (docs/inference/clef-tpu.md); set empty to turn it off
 #   DECISION_JEV                ignored: since 2026-10-12 the gateway asks our hosted Clef
 #                               first, then the Pylons, then Jev as a backup under
 #                               TYPESAFE_API_KEY, else the Secret Manager key
@@ -265,6 +269,10 @@ clef_models=""
 [ -n "$flash_url" ] && clef_models="\"clef-flash\": \"$flash_url\""
 if [ -n "$big_url" ]; then
     clef_models="${clef_models:+$clef_models, }\"clef\": \"$big_url\""
+fi
+tpu_url=${DECISION_CLEF_FLASH_TPU_URL-tpu=http://10.146.0.2:18096}
+if [ -n "$tpu_url" ]; then
+    clef_models="${clef_models:+$clef_models, }\"clef-flash-tpu\": \"$tpu_url\""
 fi
 clef="$clef \"clef_models\": {$clef_models},"
 jev=false

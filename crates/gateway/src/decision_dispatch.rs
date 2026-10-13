@@ -36,6 +36,9 @@
 //! the backend (`service.backend`, `X-Decision-Backend`, the evidence line).
 //! `X-Decision-Order: pylon`, or the models `clef-flash` and
 //! `openagents/pylon`, ask the Pylons first.
+//! `X-Decision-Order: tpu` asks only the Cloud TPU Clef-Flash pool
+//! (`clef_models["clef-flash-tpu"]`, #11459), an opt-in lane outside the
+//! default order until it passes its 24 h shadow.
 //!
 //! `POST /v1/decisions` ([`crate::decisions`]) uses the same default for
 //! `openagents/decide`; `clef-flash` or `clef` ask our hosted Clef only.
@@ -454,6 +457,10 @@ pub enum Order {
     /// `clef`, or `X-Decision-Order: hosted`): the payload never leaves our
     /// machines, and no shadow second opinion is asked elsewhere.
     HostedOnly,
+    /// `X-Decision-Order: tpu`: only the Cloud TPU Clef-Flash pool
+    /// (`clef_models["clef-flash-tpu"]`, #11459), opt-in while that lane
+    /// is shadowed; never part of the default order.
+    TpuOnly,
 }
 
 /// One step of an [`Order`].
@@ -462,6 +469,7 @@ enum Step {
     Jev,
     Pylons,
     Clef,
+    ClefTpu,
     Vertex,
 }
 
@@ -472,6 +480,7 @@ impl Order {
             Self::JevFirst => &[Step::Jev, Step::Pylons, Step::Clef, Step::Vertex],
             Self::PylonFirst => &[Step::Pylons, Step::Clef, Step::Vertex, Step::Jev],
             Self::HostedOnly => &[Step::Clef],
+            Self::TpuOnly => &[Step::ClefTpu],
         }
     }
 
@@ -483,6 +492,8 @@ impl Order {
             Some(Self::PylonFirst)
         } else if value.eq_ignore_ascii_case("hosted") {
             Some(Self::HostedOnly)
+        } else if value.eq_ignore_ascii_case("tpu") {
+            Some(Self::TpuOnly)
         } else if value.eq_ignore_ascii_case("jev") {
             Some(Self::JevFirst)
         } else if value.eq_ignore_ascii_case("clef") {
@@ -607,6 +618,7 @@ impl Dispatch {
                     .or(config.clef_url.as_ref()),
             ),
             ("clef", config.clef_models.get("clef")),
+            ("clef-flash-tpu", config.clef_models.get("clef-flash-tpu")),
         ] {
             let pool = Pool::parse(spec.map_or("", String::as_str));
             if !pool.backends.is_empty() {
@@ -842,6 +854,7 @@ impl Dispatch {
                 // again, and a hosted-only decision never leaves our
                 // machines for one.
                 if order != Order::HostedOnly
+                    && order != Order::TpuOnly
                     && headers.get("x-decision-shadow").is_none()
                     && self.shadow_due()
                 {
@@ -891,7 +904,14 @@ impl Dispatch {
     /// Our hosted Clef door for a requested model: its pool of backends
     /// and the served name to ask for. `clef` (27B) only through
     /// `clef_models`; every other name is answered by `clef-flash`.
-    fn clef_door(&self, model: &str) -> Option<(&Pool, &'static str)> {
+    fn clef_door(&self, model: &str, tpu: bool) -> Option<(&Pool, &'static str)> {
+        if tpu {
+            // the TPU lane serves Clef-Flash only (BF16 weights)
+            return self
+                .clef_pools
+                .get("clef-flash-tpu")
+                .map(|pool| (pool, "clef-flash"));
+        }
         let served = if model == "clef" {
             "clef"
         } else {
@@ -933,7 +953,19 @@ impl Dispatch {
                     .await
                 }
                 Step::Clef => {
-                    self.try_clef(model, state, questions, deadline, skip, &mut attempts)
+                    self.try_clef(
+                        model,
+                        state,
+                        questions,
+                        deadline,
+                        skip,
+                        false,
+                        &mut attempts,
+                    )
+                    .await
+                }
+                Step::ClefTpu => {
+                    self.try_clef(model, state, questions, deadline, skip, true, &mut attempts)
                         .await
                 }
                 Step::Vertex => {
@@ -962,12 +994,13 @@ impl Dispatch {
         questions: &Map<String, Value>,
         deadline: Instant,
         skip: Option<&str>,
+        tpu: bool,
         attempts: &mut Vec<Attempt>,
     ) -> Option<(Kind, String, Value)> {
         if skip == Some("clef") {
             return None;
         }
-        let (pool, served) = self.clef_door(model)?;
+        let (pool, served) = self.clef_door(model, tpu)?;
         let mut tried = Vec::new();
         let (mut last_busy, mut busy_rounds) = (false, 0u32);
         loop {

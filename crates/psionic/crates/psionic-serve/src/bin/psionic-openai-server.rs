@@ -83,6 +83,9 @@ async fn run() -> Result<(), String> {
             if let Some(dir) = &decision.export_rows {
                 lane = lane.with_row_export(dir)?;
             }
+            if let Some(url) = &decision.worker {
+                lane = lane.with_remote_worker(url)?;
+            }
             Ok::<_, String>(lane)
         })
         .collect::<Result<Vec<_>, _>>()
@@ -165,6 +168,7 @@ struct DecisionArgs {
     export_rows: Option<PathBuf>,
     vision_manifest: Option<PathBuf>,
     vision_blobs: Option<PathBuf>,
+    worker: Option<String>,
 }
 
 fn split_decision_args<I, S>(args: I) -> Result<(DecisionArgs, Vec<String>), String>
@@ -218,6 +222,9 @@ where
                             ));
                         }
                     };
+            }
+            "--decision-worker" => {
+                decision.worker = Some(next_value(&mut args, argument.as_str())?);
             }
             "--decision-chunk" => {
                 decision.limits.prefill_chunk =
@@ -343,7 +350,7 @@ fn next_value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<Str
 
 fn usage() -> String {
     String::from(
-        "usage: psionic-openai-server -m <model-artifact> [-m <model-artifact> ...] [--backend cpu|cuda|metal] [--qwen38-vision-model-dir <official-model-dir>] [--host <ip>] [--port <port>] [--reasoning-budget <n>] [--mesh-coordination enabled|disabled] [--decision-model <clef-or-qwen35-gguf>] [--clef-head <joint_head dir or .safetensors>] [--decision-max-tokens <n>] [--decision-max-questions <n>] [--decision-max-options <n>] [--decision-max-queue <n>] [--decision-chunk <n>] [--decision-device auto|cpu|cuda|metal] [--decision-accumulate f16|f32] [--decision-calibration <map.json> ...] [--decision-export-rows <dir>] [--decision-vision-manifest <manifest> --decision-vision-blobs <dir>] [--allow-origin <https://origin> ...]\n\nA Clef GGUF (general.architecture = clef) given with -m is served as a decision model at POST /v1/systemone; with only decision models, -m may be omitted. --allow-origin lets pages on that exact origin call this server from a browser (CORS, including Chrome's local network preflight).",
+        "usage: psionic-openai-server -m <model-artifact> [-m <model-artifact> ...] [--backend cpu|cuda|metal] [--qwen38-vision-model-dir <official-model-dir>] [--host <ip>] [--port <port>] [--reasoning-budget <n>] [--mesh-coordination enabled|disabled] [--decision-model <clef-or-qwen35-gguf>] [--clef-head <joint_head dir or .safetensors>] [--decision-max-tokens <n>] [--decision-max-questions <n>] [--decision-max-options <n>] [--decision-max-queue <n>] [--decision-chunk <n>] [--decision-device auto|cpu|cuda|metal] [--decision-accumulate f16|f32] [--decision-calibration <map.json> ...] [--decision-export-rows <dir>] [--decision-worker <http://worker>] [--decision-vision-manifest <manifest> --decision-vision-blobs <dir>] [--allow-origin <https://origin> ...]\n\nA Clef GGUF (general.architecture = clef) given with -m is served as a decision model at POST /v1/systemone; with only decision models, -m may be omitted. --allow-origin lets pages on that exact origin call this server from a browser (CORS, including Chrome's local network preflight).",
     )
 }
 

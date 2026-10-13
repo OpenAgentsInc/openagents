@@ -1,14 +1,77 @@
 # Clef on Cloud TPU: spec and phased plan
 
-2026-10-12. Proposed. What it takes to serve our Clef decision models
+2026-10-12. What it takes to serve our Clef decision models
 (Clef-Flash 9B, Clef 27B) on Google Cloud TPUs, what it would cost, and the
-plan with gates. Nothing here is built; every throughput figure below is an
-estimate from published chip specifications unless it says measured.
+plan with gates. Throughput figures in the planning sections are estimates
+from published chip specifications unless they say measured; the status
+section below is measured.
 Tracking: [#11446](https://github.com/OpenAgentsInc/openagents/issues/11446).
 Context: [decision-profitability.md](decision-profitability.md),
 [gpu-options.md](gpu-options.md), [clef-native.md](clef-native.md).
 Survey of existing TPU stacks, kernels, quantization and prices:
 [clef-tpu-survey.md](clef-tpu-survey.md).
+
+## Status (2026-10-13)
+
+**P1 passed: Clef-Flash in BF16 answers correctly on a v6e-1.** The 40 e2e
+fixture requests (104 questions) run through the Rust door
+(`psionic-openai-server --decision-worker`, using Psionic's own encoder)
+in front of the JAX worker. Against the HF f32 reference
+(`crates/psionic/fixtures/clef/e2e/reference-hf-f32.jsonl`) the top answer
+agrees on 104/104, with median |Δp| 0.0004 and max 0.012. That is closer
+to the reference than our Q4_K_M GPU lanes, which agree on 98/104 against
+the same goldens. With f32 matmuls the agreement is still 104/104, median
+0.0001 and max 0.0024.
+
+Chunk invariance (gate 5) is not met yet. Comparing chunks 2048, 512 and
+64, f32 matmuls differ by up to 0.0022 in logits (no argmax flips) and
+bf16 by up to 0.053 (one near-tie flip), against a target of 1e-3. A
+server runs one fixed chunk (2048) and repeats are deterministic, so
+answers are unaffected; prefix reuse (P3) needs the gate closed first.
+
+| Measured on the v6e-1, P1 code (plain JAX, batch 1) | Value |
+| --- | --- |
+| Request latency through the door, 155 to 1,090 token prompts | 0.18 s median (0.176 to 0.181), every prompt one padded 2,048 chunk |
+| Worker alone, same requests | 0.125 s bf16, 0.24 s f32 |
+| Cold start (load 18 GB to HBM, hash the artifact, compile two shapes) | 71 s worker, then 5 s door |
+
+**Where it runs.** `crates/psionic/clef-tpu/`:
+
+- `clef_tpu/model.py`: the Qwen3.5 backbone with chunked prefill, carrying
+  the DeltaNet state, conv tail and K/V cache, plus the joint head on padded
+  buckets.
+- `clef_tpu/delta.py`: the chunked gated delta rule, its UT transform done
+  as a triangular solve, with a JAX or Pallas scan.
+- `clef_tpu/server.py`: the localhost worker.
+- `bench/`: the P0 bench and the e2e harness.
+- `scripts/vm.sh`: create and drive TPU VMs.
+- `scripts/install-units.sh`: installs the systemd units `clef-tpu-worker`
+  and `clef-tpu-door`.
+
+The door is `psionic-openai-server --decision-worker
+http://127.0.0.1:8091` (`clef/remote.rs`). It parses, encodes, admits and
+answers, and puts the worker's identity in `psionic.worker` (`backend: "tpu"`,
+`artifact_family: "bf16-safetensors"`, artifact and head digests).
+
+**Gateway.** `X-Decision-Order: tpu` asks only the pool
+`clef_models["clef-flash-tpu"]`. The launcher's default for that pool is
+`tpu=http://10.146.0.2:18096`, and the firewall rule `clef-tpu-from-gateway`
+plus the network tag `clef-tpu` let the gateway subnets and IAP reach it.
+The TPU pool is never part of the default order until P5's shadow passes.
+
+### TPU machines we hold
+
+Owner policy (2026-10-12): keep held TPUs. Never delete these, and list
+every machine here so none is orphaned.
+
+| Name | Zone | Type | $/h | Purpose |
+| --- | --- | --- | ---: | --- |
+| `p6-asia-northeast1-b` | asia-northeast1-b | v6e-1, on-demand | 2.70 | Clef-Flash BF16 lane: `clef-tpu-worker` + `clef-tpu-door` on :18096 (internal 10.146.0.2); P1 → P2 benchmarks |
+
+Capacity on 2026-10-12: no v6e anywhere in the US, spot or on-demand. The
+one spot v6e-1 we got (us-east1-d) was preempted within 5 minutes. The
+automation account creates TPU VMs only with
+`--service-account oa-mvp-automation@…`, and us-east4-a has a v6e quota of 0.
 
 ## Why look at TPUs
 

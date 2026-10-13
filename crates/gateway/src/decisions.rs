@@ -1009,5 +1009,9 @@ mod tests {
         let mut hosted = HeaderMap::new();
         hosted.insert("x-decision-order", "hosted".parse().unwrap());
         assert_eq!(order("openagents/decide", &hosted), Order::HostedOnly);
+        let mut tpu = HeaderMap::new();
+        tpu.insert("x-decision-order", "tpu".parse().unwrap());
+        assert_eq!(order("openagents/decide", &tpu), Order::TpuOnly);
+        assert_eq!(order("clef-flash", &tpu), Order::TpuOnly);
     }
 }
