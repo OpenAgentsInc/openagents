@@ -76,6 +76,7 @@ pub async fn run<E: Env>(env: &E, command: &str, deadline: Duration, post: bool)
                 json!({
                     "tool_input": { "command": command },
                     "tool_response": response(&result),
+                    "failed": !result.ok(),
                 }),
             ))
             .await;

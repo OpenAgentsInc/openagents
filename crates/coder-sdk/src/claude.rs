@@ -82,11 +82,22 @@ pub fn call(event: Event, input: &Value) -> Call {
             input["tool_name"].as_str().unwrap_or_default(),
             input["tool_input"].clone(),
         ),
-        Event::PostToolUse => Call::tool(
-            event,
-            input["tool_name"].as_str().unwrap_or_default(),
-            json!({"tool_input": input["tool_input"], "tool_response": input["tool_response"]}),
-        ),
+        // A failed tool reaches Claude Code's `PostToolUseFailure` with its
+        // error; both are our `PostToolUse`, with `failed` saying which.
+        Event::PostToolUse => {
+            let failed = input["hook_event_name"] == "PostToolUseFailure"
+                || input.get("error").is_some_and(|error| !error.is_null());
+            let response = if failed {
+                json!({"error": input["error"]})
+            } else {
+                input["tool_response"].clone()
+            };
+            Call::tool(
+                event,
+                input["tool_name"].as_str().unwrap_or_default(),
+                json!({"tool_input": input["tool_input"], "tool_response": response, "failed": failed}),
+            )
+        }
         Event::UserPromptSubmit => Call::new(event, json!({"prompt": input["prompt"]})),
         _ => Call::new(event, input.clone()),
     }
@@ -262,9 +273,22 @@ impl Claude {
                 let backend = backend.clone();
                 async move {
                     let applied = backend.fire(call(event, &input)).await;
-                    Ok(HookJSONOutput::from(output(&applied)))
+                    let mut out = output(&applied);
+                    // A failed tool's answer names the event it came on.
+                    if input["hook_event_name"] == "PostToolUseFailure"
+                        && let Some(Value::Object(specific)) = out.hook_specific_output.as_mut()
+                    {
+                        specific.insert("hookEventName".into(), json!("PostToolUseFailure"));
+                    }
+                    Ok(HookJSONOutput::from(out))
                 }
             });
+            if event == Event::PostToolUse {
+                options = options.hook(
+                    HookEvent::PostToolUseFailure,
+                    HookMatcher::new(matcher.as_deref(), callback.clone()),
+                );
+            }
             options = options.hook(
                 hook_event(event),
                 HookMatcher::new(matcher.as_deref(), callback),

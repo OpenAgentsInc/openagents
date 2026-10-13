@@ -16,6 +16,7 @@ pub mod admission;
 pub mod claude;
 pub mod compose;
 pub mod decide;
+pub mod decision;
 pub mod digest;
 pub mod events;
 pub mod hooks;
@@ -30,6 +31,7 @@ pub use compose::{
     Applied, Budget, Dropped, Failure, FailureKind, Refused, Runner, check_backend, check_session,
     check_start,
 };
+pub use decision::{Acted, Costs, DecisionHook, Ruled, Timing};
 pub use digest::{adapter_digest, hook_set, hook_set_digest};
 pub use events::{Call, Event};
 pub use hooks::{Asked, Asker, Hooks};
