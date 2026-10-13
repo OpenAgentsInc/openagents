@@ -14,12 +14,12 @@ pub mod scope;
 mod snapshot;
 
 pub use engine::{
-    BuildReceipt, Call, GuestValue, HostError, Limits, Profile, build_receipt, digest, invoke,
-    representation,
+    BuildReceipt, Call, GuestValue, HostCalls, HostError, Limits, Profile, build_receipt, digest,
+    invoke, invoke_with_host, representation,
 };
 pub use replay::{
     ENGINE, EXACT_REPLAY, InvocationReceipt, Outcome, RECEIPT_SCHEMA, Replay, canonical,
-    invoke_with_receipt, replay, snapshot_digest,
+    invoke_with_receipt, invoke_with_receipt_and_host, replay, replay_with_host, snapshot_digest,
 };
 pub use snapshot::{
     Entry, SUPPLIED_ENTRIES, SUPPLIED_SNAPSHOT, SUPPLIED_VERSION, Snapshot, decode_base64,

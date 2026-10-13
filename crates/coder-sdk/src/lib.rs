@@ -23,6 +23,7 @@ pub mod digest;
 pub mod events;
 pub mod hooks;
 pub mod outcome;
+pub mod plugin_hooks;
 pub mod registry;
 pub mod scripted;
 pub mod system_one;

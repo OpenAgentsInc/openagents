@@ -1,0 +1,17 @@
+{
+  "id": "remind",
+  "event": "PostToolUse",
+  "matcher": "Bash",
+  "operation": "remind",
+  "authority": [
+    "context"
+  ],
+  "discloses": [
+    "tool"
+  ],
+  "summary": "Adds a reminder to check a command's output.",
+  "module": {
+    "name": "hook-guard",
+    "digest": "sha256:86998c2bc55b4e4e4735e34913195e9cca616743c6794f67226e5cc8d75ffc0d"
+  }
+}

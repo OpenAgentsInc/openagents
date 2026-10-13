@@ -166,6 +166,13 @@ pub struct Package {
     /// (`background::plugins`, docs/background/2026-10-02-disk-cleanup-plugin.md).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub background: Vec<Reference>,
+    /// The hooks the package brings, pinned: hook documents under
+    /// `hooks/`, each naming an event, a matcher, a Wasm guest operation,
+    /// the authority it asks for and what it discloses. They run in a
+    /// session only while the plugin is on, and only within that
+    /// authority (Coder SDK plugin hooks, #11499).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hooks: Vec<Reference>,
     /// The question sets the program's `decide` steps name, pinned.
     #[serde(default)]
     pub questions: Vec<Reference>,
@@ -247,6 +254,7 @@ impl Package {
             ("policies", &self.policies, is_slug),
             ("capabilities", &self.capabilities, is_slug),
             ("background", &self.background, is_slug),
+            ("hooks", &self.hooks, is_slug),
         ] {
             let mut seen = Vec::new();
             for reference in references {
@@ -362,7 +370,7 @@ impl Package {
 }
 
 /// Whether the package at `root` carries something: a program, background
-/// rules, or skills (a `.md` file directly in `skills/`, as a plugin made
+/// rules, hooks, or skills (a `.md` file directly in `skills/`, as a plugin made
 /// in chat or drafted by Coder from the chat is, #10177).
 fn carries(root: &Path, package: &Package) -> Result<(), Refusal> {
     let skills = std::fs::read_dir(root.join("skills"))
@@ -372,12 +380,17 @@ fn carries(root: &Path, package: &Package) -> Result<(), Refusal> {
             })
         })
         .unwrap_or(false);
-    if package.program.is_some() || !package.background.is_empty() || skills {
+    if package.program.is_some()
+        || !package.background.is_empty()
+        || !package.hooks.is_empty()
+        || skills
+    {
         Ok(())
     } else {
         Err(Refusal::Record {
             source: package.slug.clone(),
-            reason: "a package carries a program, background rules, skills, or any of them".into(),
+            reason: "a package carries a program, background rules, hooks, skills, or any of them"
+                .into(),
         })
     }
 }
@@ -782,8 +795,9 @@ fn pin(root: &Path, dir: &str, field: &str, reference: &Reference) -> Result<Pin
 
 /// The reference lists a package record holds: its field, the directory
 /// its files live in, and the field inside a file that names it.
-const REFERENCE_FIELDS: [(&str, &str, &str); 5] = [
+const REFERENCE_FIELDS: [(&str, &str, &str); 6] = [
     ("background", "background", "id"),
+    ("hooks", "hooks", "id"),
     ("questions", "questions", "id"),
     ("sources", "sources", "slug"),
     ("policies", "policies", "slug"),
@@ -1108,6 +1122,7 @@ mod tests {
             trusted_publishers: Vec::new(),
             program: Some(program.clone()),
             background: Vec::new(),
+            hooks: Vec::new(),
             questions: Vec::new(),
             sources: Vec::new(),
             policies: Vec::new(),

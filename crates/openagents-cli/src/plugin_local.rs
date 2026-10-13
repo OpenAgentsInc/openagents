@@ -34,6 +34,25 @@ pub fn run(output: &Output, words: &[String]) -> Option<u8> {
             .ok_or_else(|| "install needs the plugin's directory".to_owned())
             .and_then(|dir| install(Path::new(dir))),
         "installed" => list(),
+        // A plugin hook that asks to change commands runs without that
+        // until the person turns it on (#11499).
+        "allow-rewrite" | "deny-rewrite" => {
+            let words: Vec<&String> = rest.iter().filter(|word| !word.starts_with('-')).collect();
+            match words.as_slice() {
+                [plugin, hook] => layout().and_then(|layout| {
+                    coder_new::plugin_hooks::set_rewrite(
+                        &layout,
+                        plugin,
+                        hook,
+                        command == "allow-rewrite",
+                    )
+                    .map(|text| json!({"text": text}))
+                }),
+                _ => Err(format!(
+                    "{command} needs the plugin's name and the hook's name"
+                )),
+            }
+        }
         "enable" | "disable" => first
             .ok_or_else(|| format!("{command} needs the plugin's name"))
             .and_then(|plugin| {
@@ -147,7 +166,20 @@ fn list() -> Result<serde_json::Value, String> {
     let text = if all.is_empty() {
         "No plugins are installed on this computer.".to_owned()
     } else {
-        all.iter().map(line).collect::<Vec<_>>().join("\n")
+        all.iter()
+            .map(|plugin| {
+                // What each of its hooks does, sees, and may change.
+                std::iter::once(line(plugin))
+                    .chain(
+                        coder_new::plugin_hooks::listing(&layout, &plugin.id)
+                            .into_iter()
+                            .map(|hook| format!("  {hook}")),
+                    )
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     };
     Ok(json!({
         "text": text,

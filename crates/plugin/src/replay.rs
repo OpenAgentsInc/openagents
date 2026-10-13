@@ -19,7 +19,9 @@ use std::sync::atomic::Ordering;
 use nostr::contracts::parse_strict;
 use serde_json::{Map, Value, json};
 
-use crate::engine::{Call, GuestValue, HostError, Limits, Profile, digest, metered};
+use crate::engine::{
+    Call, GuestValue, HostCalls, HostError, Limits, Profile, digest, metered, metered_with,
+};
 use crate::snapshot::{Entry, Snapshot};
 
 /// The receipt's schema identifier.
@@ -161,6 +163,27 @@ pub fn invoke_with_receipt(call: Call<'_>) -> (Result<GuestValue, HostError>, In
     (result, receipt)
 }
 
+/// [`invoke_with_receipt`] with the host's capabilities. The receipt
+/// digests the call as usual; what the capabilities answered is the
+/// caller's to keep (a hook firing keeps its exchanges), so a replay can
+/// answer the same ([`replay_with_host`]).
+pub fn invoke_with_receipt_and_host(
+    call: Call<'_>,
+    host: HostCalls,
+) -> (Result<GuestValue, HostError>, InvocationReceipt) {
+    let inputs = Inputs::of(&call);
+    let (result, fuel) = metered_with(call, Some(host));
+    let receipt = inputs.receipt(Outcome::of(&result), fuel);
+    (result, receipt)
+}
+
+/// [`replay`] with the host's capabilities, typically answering from the
+/// exchanges the original invocation recorded.
+#[must_use]
+pub fn replay_with_host(receipt: &InvocationReceipt, call: Call<'_>, host: HostCalls) -> Replay {
+    replay_inner(receipt, call, Some(host))
+}
+
 /// Rerun `call` and compare it with `receipt`.
 ///
 /// The call must supply the same module, operation, invocation ID, input,
@@ -169,6 +192,10 @@ pub fn invoke_with_receipt(call: Call<'_>) -> (Result<GuestValue, HostError>, In
 /// not run.
 #[must_use]
 pub fn replay(receipt: &InvocationReceipt, call: Call<'_>) -> Replay {
+    replay_inner(receipt, call, None)
+}
+
+fn replay_inner(receipt: &InvocationReceipt, call: Call<'_>, host: Option<HostCalls>) -> Replay {
     if receipt.engine != ENGINE {
         return unverifiable(format!("engine {} is not {ENGINE}", receipt.engine));
     }
@@ -190,7 +217,7 @@ pub fn replay(receipt: &InvocationReceipt, call: Call<'_>) -> Replay {
         return unverifiable(format!("{name} differs"));
     }
     let cancelled = std::sync::Arc::clone(&call.cancelled);
-    let (result, fuel) = metered(call);
+    let (result, fuel) = metered_with(call, host);
     if cancelled.load(Ordering::SeqCst) {
         return unverifiable("the replay was cancelled".into());
     }

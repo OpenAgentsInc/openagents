@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "slug": "hook-guard",
+  "name": "Hook guard",
+  "summary": "Guards an agent's commands as it works: no force pushes, a reminder after commands, a dry run for deploys, and a check on risky commands.",
+  "version": "0.1.0",
+  "provenance": "OpenAgents example: the hook-guard guest (crates/plugin-hook-guard), Coder SDK plugin hooks (#11499)",
+  "hooks": [
+    {
+      "name": "guard",
+      "digest": "b6f00fd470fc9f143ac50494964a76a44affa1d17b5edd7f25cd9a499140de50"
+    },
+    {
+      "name": "remind",
+      "digest": "e6a73d8ae87a1e2e26d66f82ca4552865a81b96a0b1bca2d411605840eeb1a36"
+    },
+    {
+      "name": "dry-run",
+      "digest": "03100779b62b705e84e90dd402469312739597310b385a762d2f559a0990e6f8"
+    },
+    {
+      "name": "risky",
+      "digest": "55139ca56f3ecfe5d55be14551d58c81faa4e3d69ee1e7e0f00670e28e896d43"
+    }
+  ]
+}

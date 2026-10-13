@@ -44,6 +44,7 @@ A plugin can contain any of these parts:
 | Knowledge | Cited reference entries: a method, an edge case, a common slip, or how a command is used ([NIP-KB](../../nips/openagents/NIP-KB.md)). | Published as NIP-KB entries with `openagents kb publish`, beside the plugin's release |
 | Wasm | Sandboxed WebAssembly code that performs one bounded operation, such as mapping a repository's files. It is the only executable code a plugin can carry. It runs with no network, under fuel and memory limits, and reads only what the host hands it. A workflow runs it; a model never calls it by name. | A guest crate built against [`crates/plugin-pdk`](../../crates/plugin-pdk/) |
 | Tests | The test set that shows whether the plugin helps: tasks Coder runs with the plugin and without it, and the checks on each run. | `evals/` |
+| Hooks | Wasm that runs at a step of an agent's session (before a command, after a tool, at a stop) and can refuse, ask you first, or add a note. It can change a command only when you turn that on. See [Hooks](#hooks). | `hooks/`, pinned by `hooks` in `package.json` |
 
 A plugin can also bring **background rules**: a rule the host runs on its
 own, on a timer or when a task ends, only while the plugin is turned on
@@ -284,6 +285,41 @@ Add the parts your plugin needs:
    limits, and build receipts.
 1. Write knowledge entries under `knowledge/` and check them with
    `openagents kb`.
+
+## Hooks
+
+A plugin's hooks run inside an agent's session, on every agent Coder runs
+(Claude Code, Coder's own loop, Codex), at the step each one names. Each
+hook is a document under `hooks/`, pinned in `package.json` like a
+background rule, that names its Wasm guest operation:
+
+```json
+{"id": "guard", "event": "PreToolUse", "matcher": "Bash", "operation": "guard",
+ "module": {"name": "hook-guard", "digest": "sha256:<digest of wasm/hook-guard.wasm>"},
+ "authority": ["deny", "ask"], "discloses": ["tool", "input"],
+ "summary": "Refuses a force push."}
+```
+
+- `authority` is what it may do: `deny`, `ask`, `context` (add a note for
+  the agent), `block_stop`, and `rewrite` (change the command). A hook
+  only tightens: it can't allow anything, and nothing gets past Coder's
+  own safety rules.
+- `rewrite` is off until you turn it on for that hook:
+  `openagents plugin allow-rewrite PLUGIN HOOK` (`deny-rewrite` turns it
+  off). `openagents plugin installed` lists each hook, what it sees, and
+  whether it can change commands.
+- `discloses` is what of the step the guest sees (`tool`, `input`).
+  `"decide": true` lets the guest ask a decision model through the host
+  (`{"v": 1, "capability": "decide", "args": {"input", "question"}}` on
+  its `oa_host.call` import), so a plugin can ship its own judgment
+  without a key.
+- A plugin's hooks run only while the plugin is on. Each firing is kept,
+  with a receipt that replays it exactly, in
+  `~/.openagents/plugin-hooks/firings.jsonl`.
+
+[`crates/plugin-hook-guard`](../../crates/plugin-hook-guard/) is a
+complete example: a guard, a reminder, a dry run for deploys, and a check
+that asks a decision model.
 
 ## Plugins that run in the background
 

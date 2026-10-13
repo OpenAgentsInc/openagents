@@ -66,6 +66,7 @@ mod plan;
 #[cfg(unix)]
 pub mod plugin_catalog;
 pub mod plugin_definition;
+pub mod plugin_hooks;
 pub mod plugin_store;
 pub mod plugin_tools;
 pub mod plugins;

@@ -164,10 +164,22 @@ pub fn request(args: &Value) -> Result<DecisionsRequest, String> {
 
 /// Asks, records, and answers in the tool's reply shape.
 async fn ask(decider: &dyn Decider, args: &Value) -> ToolResult {
-    let request = match request(args) {
-        Ok(request) => request,
-        Err(message) => return ToolResult::error(message),
-    };
+    match answer(decider, args, TOOL).await {
+        Ok(reply) => ToolResult::text(reply.to_string()),
+        Err(message) => ToolResult::error(message),
+    }
+}
+
+/// Asks one question for `asked_by` (the tool, or a plugin's hook through
+/// its guest's `decide` capability), records it as a hook-log `decide`
+/// line, and answers `{kind, probability | choice | score, model, door,
+/// latency_ms}`.
+///
+/// # Errors
+///
+/// Bad arguments, or the decision model didn't answer.
+pub async fn answer(decider: &dyn Decider, args: &Value, asked_by: &str) -> Result<Value, String> {
+    let request = request(args)?;
     let kind = args["kind"].as_str().unwrap_or("predicate").to_owned();
     let started = Instant::now();
     let answered = decider.decide(request).await;
@@ -177,9 +189,9 @@ async fn ask(decider: &dyn Decider, args: &Value) -> ToolResult {
             let mut decision =
                 hook_log::Decision::new(TOOL, QUESTION, "none", hook_log::How::Fallback);
             decision.latency_ms = Some(latency);
-            decision.detail = json!({"kind": kind, "error": error});
+            decision.detail = json!({"kind": kind, "error": error, "asked_by": asked_by});
             (
-                ToolResult::error(format!("The decision model didn't answer: {error}")),
+                Err(format!("The decision model didn't answer: {error}")),
                 decision,
             )
         }
@@ -226,13 +238,19 @@ async fn ask(decider: &dyn Decider, args: &Value) -> ToolResult {
                     reply["refused"] = json!("The model gave no answer.");
                 }
             }
-            decision.detail = reply.clone();
-            (ToolResult::text(reply.to_string()), decision)
+            let mut detail = reply.clone();
+            detail["asked_by"] = json!(asked_by);
+            decision.detail = detail;
+            (Ok(reply), decision)
         }
     };
     hook_log::append_default(&decision);
     reply
 }
+
+/// Held by tests that point the decision log at a file of their own.
+#[cfg(test)]
+pub(crate) static LOG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(test)]
 mod tests {
@@ -295,11 +313,15 @@ mod tests {
         );
     }
 
-    // One test owns the log variable, so parallel tests don't race on it.
+    // Tests that log decisions hold [`LOG_LOCK`], so they don't race on
+    // the log variable.
     #[tokio::test]
     async fn answers_and_failures_are_replied_and_recorded() {
+        let _lock = LOG_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = tempfile::tempdir().unwrap();
-        // SAFETY: only this test sets this variable.
+        // SAFETY: tests that set this variable hold LOG_LOCK.
         unsafe { std::env::set_var(hook_log::log_var(TOOL), dir.path().join("decide.jsonl")) };
         let admitted = Admission::none().admitting(disclosure());
         let yes = Fixed(Ok(response(

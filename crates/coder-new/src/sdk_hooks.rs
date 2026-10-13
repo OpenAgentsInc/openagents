@@ -26,6 +26,8 @@ pub fn registry(cwd: &Path, full: bool) -> Registry {
         // Built-in IDs are distinct, and the floors fall back to ask.
         let _ = registry.register(hook);
     }
+    // The person's plugins' hooks, while each is on (#11499).
+    crate::plugin_hooks::register(&mut registry);
     registry
 }
 
@@ -230,6 +232,8 @@ pub fn codex_registry(cwd: &Path) -> (Registry, Vec<String>) {
         cwd,
         &session,
     ));
+    // The person's plugins' hooks, while each is on (#11499).
+    crate::plugin_hooks::register(&mut registry);
     (registry, problems)
 }
 

@@ -1,0 +1,19 @@
+{
+  "id": "risky",
+  "event": "PreToolUse",
+  "matcher": "Bash",
+  "operation": "risky",
+  "authority": [
+    "ask"
+  ],
+  "discloses": [
+    "tool",
+    "input"
+  ],
+  "decide": true,
+  "summary": "Asks a decision model whether a command could delete data, and asks you first when it probably could.",
+  "module": {
+    "name": "hook-guard",
+    "digest": "sha256:86998c2bc55b4e4e4735e34913195e9cca616743c6794f67226e5cc8d75ffc0d"
+  }
+}

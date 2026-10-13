@@ -1,0 +1,19 @@
+{
+  "id": "guard",
+  "event": "PreToolUse",
+  "matcher": "Bash",
+  "operation": "guard",
+  "authority": [
+    "deny",
+    "ask"
+  ],
+  "discloses": [
+    "tool",
+    "input"
+  ],
+  "summary": "Refuses a force push and deleting the whole disk.",
+  "module": {
+    "name": "hook-guard",
+    "digest": "sha256:86998c2bc55b4e4e4735e34913195e9cca616743c6794f67226e5cc8d75ffc0d"
+  }
+}

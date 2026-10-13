@@ -20,6 +20,13 @@ use wasmtime::{Caller, Engine, Linker, Memory, Module, Store, StoreLimits, Trap}
 use crate::memory::{check_range, overlaps};
 use crate::snapshot::Snapshot;
 
+/// A host capability a `snapshot-read` guest may call through
+/// `oa_host.call` with `{"v": 1, "capability": NAME, "args": {...}}`, such
+/// as a decision (#11499). One JSON request in, one JSON response or a
+/// negative error code out. Without one, a capability call is
+/// unsupported (`-2`).
+pub type HostCalls = Arc<dyn Fn(&Value) -> Result<Value, i32> + Send + Sync>;
+
 /// How often the watcher thread checks the cancel flag while a guest runs.
 const CANCEL_POLL: Duration = Duration::from_millis(5);
 
@@ -118,6 +125,8 @@ struct GuestState {
     minted: usize,
     cancelled: Arc<AtomicBool>,
     store_limits: StoreLimits,
+    /// The host's capabilities, when the caller grants any.
+    host: Option<HostCalls>,
 }
 
 /// One guest invocation.
@@ -155,9 +164,27 @@ pub fn invoke(call: Call<'_>) -> Result<GuestValue, HostError> {
     metered(call).0
 }
 
+/// Run one guest with the host's capabilities (`snapshot-read` guests
+/// only reach them).
+///
+/// # Errors
+///
+/// As [`invoke`].
+pub fn invoke_with_host(call: Call<'_>, host: HostCalls) -> Result<GuestValue, HostError> {
+    metered_with(call, Some(host)).0
+}
+
 /// Run one guest and report the fuel it consumed, zero when it never
 /// started.
 pub(crate) fn metered(call: Call<'_>) -> (Result<GuestValue, HostError>, u64) {
+    metered_with(call, None)
+}
+
+/// [`metered`] with the host's capabilities.
+pub(crate) fn metered_with(
+    call: Call<'_>,
+    host: Option<HostCalls>,
+) -> (Result<GuestValue, HostError>, u64) {
     if call.wasm.len() > call.limits.module_bytes {
         return (Err(HostError::Limit("module bytes".into())), 0);
     }
@@ -186,7 +213,7 @@ pub(crate) fn metered(call: Call<'_>) -> (Result<GuestValue, HostError>, u64) {
     std::thread::scope(|scope| {
         let watcher = scope.spawn(|| interrupt_on_cancel(&engine, &cancelled, &done));
         let mut fuel = 0;
-        let outcome = run_guest(&engine, call, &mut fuel);
+        let outcome = run_guest(&engine, call, host, &mut fuel);
         done.store(true, Ordering::SeqCst);
         watcher.thread().unpark();
         (outcome, fuel)
@@ -205,7 +232,12 @@ fn interrupt_on_cancel(engine: &Engine, cancelled: &AtomicBool, done: &AtomicBoo
     }
 }
 
-fn run_guest(engine: &Engine, call: Call<'_>, fuel: &mut u64) -> Result<GuestValue, HostError> {
+fn run_guest(
+    engine: &Engine,
+    call: Call<'_>,
+    host: Option<HostCalls>,
+    fuel: &mut u64,
+) -> Result<GuestValue, HostError> {
     let Call {
         wasm,
         profile,
@@ -233,6 +265,7 @@ fn run_guest(engine: &Engine, call: Call<'_>, fuel: &mut u64) -> Result<GuestVal
         minted: 0,
         cancelled: Arc::clone(&cancelled),
         store_limits: store_limits(limits.memory_bytes),
+        host,
     };
     let mut store = Store::new(engine, state);
     store
@@ -421,6 +454,14 @@ fn dispatch_import(guest: &mut GuestState, value: &Value) -> Result<Value, i32> 
     let object = value.as_object().ok_or(-1)?;
     if object.get("v").and_then(Value::as_u64) != Some(1) {
         return Err(-1);
+    }
+    // A host capability, not a snapshot handle.
+    if object.contains_key("capability") {
+        if guest.cancelled.load(Ordering::Relaxed) {
+            return Err(-6);
+        }
+        let host = guest.host.as_ref().ok_or(-2)?;
+        return host(value);
     }
     let handle = object.get("handle").and_then(Value::as_str).ok_or(-1)?;
     let name = guest.handles.get(handle).ok_or(-5)?.clone();

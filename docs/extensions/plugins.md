@@ -53,6 +53,14 @@ The host implements the two access modes as `plugin::Profile`:
   and path traversal, symlink escape, and a partial capture are refused.
   An entry name is a logical label; it may have `/`-separated segments,
   but no segment is empty, `.`, or `..`.
+- A caller may also grant host capabilities (`plugin::invoke_with_host`,
+  `plugin::HostCalls`): a request `{"v": 1, "capability": NAME, "args":
+  {...}}` on the same import goes to the caller instead of the snapshot,
+  and is unsupported (`-2`) when none is granted. The one capability so
+  far is `decide`, which plugin hooks use to
+  ask the Decisions API without holding a key (#11499). The receipt
+  digests the call as usual; the caller keeps the exchanges, and
+  `plugin::replay_with_host` replays from them.
 
 `plugin::Limits` bounds each call. The defaults are the following:
 

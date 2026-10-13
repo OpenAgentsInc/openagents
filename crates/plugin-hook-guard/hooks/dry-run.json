@@ -1,0 +1,18 @@
+{
+  "id": "dry-run",
+  "event": "PreToolUse",
+  "matcher": "Bash",
+  "operation": "dry_run",
+  "authority": [
+    "rewrite"
+  ],
+  "discloses": [
+    "tool",
+    "input"
+  ],
+  "summary": "Adds --dry-run to a deploy command.",
+  "module": {
+    "name": "hook-guard",
+    "digest": "sha256:86998c2bc55b4e4e4735e34913195e9cca616743c6794f67226e5cc8d75ffc0d"
+  }
+}

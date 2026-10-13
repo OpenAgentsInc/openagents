@@ -221,6 +221,22 @@ invocation receipt that can be replayed (`crates/plugin`,
 - A plugin's hooks are off until the person turns the plugin on, the same
   rule the router keeps for a plugin's standing rules (router doc 13.9).
 
+Built (#11499): `coder_sdk::plugin_hooks`. The package record's `hooks`
+pins documents under `hooks/` (event, matcher, operation, module by
+digest, `authority`, `discloses`, `decide`); `coder::package` accepts the
+part. Each firing runs the guest in a fresh `snapshot-read` instance with
+an empty snapshot, so its one import reaches only a granted capability
+(`decide`, through `plugin::invoke_with_host`); the firing keeps the
+invocation receipt and the host exchanges and replays exactly
+(`plugin_hooks::replay`). Authority is narrowed in code (`narrow`); a
+rewrite asked for without the person's grant is withheld and recorded;
+`spend` parses and is never granted. `coder-new::plugin_hooks` registers
+every installed plugin's hooks into each session's registry while the
+plugin is on, admitting what its listing shows, and keeps notes and
+firings under `~/.openagents/plugin-hooks/`. `with_and_without` replays a
+recorded session with and without a plugin's hooks for its tests. The
+example is `crates/plugin-hook-guard`.
+
 ## Rules from the agentic execution router
 
 The router decides what runs, where, for whom and at what price, before a

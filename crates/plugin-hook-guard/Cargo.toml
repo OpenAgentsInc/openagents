@@ -1,0 +1,17 @@
+[package]
+name = "plugin-hook-guard"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Hook guard guest (#11499): a plugin whose Wasm runs as Coder SDK hooks: refuses force pushes and deleting the disk, reminds after a command, offers a dry run for deploys, and asks a decision about a risky command."
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+plugin-pdk = { path = "../plugin-pdk", features = ["guest"] }
+serde_json = "1"
+
+[lints]
+workspace = true
