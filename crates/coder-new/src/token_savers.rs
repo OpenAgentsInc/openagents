@@ -28,6 +28,11 @@ pub enum Lever {
     /// #11490: the first touch of a directory adds the instruction files
     /// Claude Code would not load for it.
     Context,
+    /// #11487: an issue-run agent that stops without passing its final
+    /// checks is sent back with their verdict, unless it says it is blocked
+    /// or asks a question. The gate needs the session's checks, so the
+    /// session builds it and installs it through [`install_stop_gate`].
+    StopGate,
 }
 
 /// Every lever, with the sentence the Plugins screen shows for it.
@@ -43,6 +48,10 @@ pub const LEVERS: &[(Lever, &str)] = &[
     (
         Lever::Context,
         "A folder's own instructions are added the first time the agent works in it, when they matter for the task.",
+    ),
+    (
+        Lever::StopGate,
+        "An agent that stops on an issue before its final checks pass is sent back with what failed, instead of being told up front to verify everything.",
     ),
 ];
 
@@ -120,8 +129,32 @@ fn install_if(mut options: QueryOptions, lever: Lever, on: bool) -> QueryOptions
                 options = options.hook(event, matcher);
             }
         }
+        // Built per session: see [`install_stop_gate`].
+        Lever::StopGate => {}
     }
     options
+}
+
+/// `options` with `gate`'s `Stop` hook when the plugin is on (#11487), and
+/// whether it went in.
+#[must_use]
+pub fn install_stop_gate(
+    options: QueryOptions,
+    gate: std::sync::Arc<briefed_agent::stop_gate::StopGate>,
+) -> (QueryOptions, bool) {
+    install_stop_gate_if(options, gate, enabled())
+}
+
+fn install_stop_gate_if(
+    options: QueryOptions,
+    gate: std::sync::Arc<briefed_agent::stop_gate::StopGate>,
+    on: bool,
+) -> (QueryOptions, bool) {
+    if on {
+        (options.hook(HookEvent::Stop, gate.hook()), true)
+    } else {
+        (options, false)
+    }
 }
 
 /// The Plugins screen's description.
@@ -140,5 +173,26 @@ mod tests {
         let options = install_if(QueryOptions::new(), Lever::Squeeze, true);
         let hooks = options.hooks.get(&HookEvent::PreToolUse).unwrap();
         assert_eq!(hooks[0].matcher.as_deref(), Some("Bash"));
+    }
+
+    #[test]
+    fn the_stop_gate_goes_in_only_when_the_plugin_is_on() {
+        use briefed_agent::stop_gate::{Check, Classify, StopGate, Tree};
+        use std::sync::Arc;
+        let check: Check = Arc::new(|| Box::pin(async { serde_json::json!({"status": "pass"}) }));
+        let tree: Tree = Arc::new(|| Box::pin(async { None }));
+        let classify: Classify = Arc::new(|_| Box::pin(async { Err("offline".to_owned()) }));
+        let gate = Arc::new(StopGate::new(
+            Arc::default(),
+            Arc::default(),
+            classify,
+            check,
+            tree,
+            None,
+        ));
+        let (options, on) = install_stop_gate_if(QueryOptions::new(), gate.clone(), false);
+        assert!(!on && options.hooks.get(&HookEvent::Stop).is_none());
+        let (options, on) = install_stop_gate_if(QueryOptions::new(), gate, true);
+        assert!(on && options.hooks.get(&HookEvent::Stop).unwrap().len() == 1);
     }
 }

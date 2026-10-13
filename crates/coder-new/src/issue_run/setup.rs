@@ -894,6 +894,7 @@ pub fn summary(report: &Report<'_>) -> Value {
         "checks": checks.iter().map(|(id, ok)| json!({"id": id, "ok": ok})).collect::<Vec<_>>(),
         "optional_checks": optional,
         "agent_checks": work.map(|w| w.checks.iter().map(|(id, ok)| json!({"id": id, "ok": ok})).collect::<Vec<_>>()).unwrap_or_default(),
+        "stop_gate": work.and_then(|w| w.stop_gate.clone()),
         "changed": changed,
         "base": base.map(|b| b.base.clone()),
         "base_fetch_error": base.and_then(|b| b.fetch_error.clone()),

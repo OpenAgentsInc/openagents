@@ -37,6 +37,10 @@ jev = { path = "../jev" }
 # System One hook 1: noisy shell output squeezed before it enters the history (#11486).
 squeeze = { path = "../squeeze" }
 hook-log = { path = "../hook-log" }
+# System One hook 2: the issue-run session's Stop gate (#11487).
+briefed-agent = { path = "../briefed-agent" }
+# The Stop gate's scratch index.
+tempfile = "3"
 jev-hosted = { path = "../jev-hosted" }
 microcoder-loop = { path = "../microcoder-loop" }
 supervise = { path = "../supervise" }

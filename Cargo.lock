@@ -3619,6 +3619,7 @@ dependencies = [
  "background",
  "base64 0.22.1",
  "brainstorm-client",
+ "briefed-agent",
  "claude_agent_sdk",
  "code-highlight",
  "coder",

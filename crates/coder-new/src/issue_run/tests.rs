@@ -958,3 +958,63 @@ fn the_boundary_answerer_holds_writes_to_the_worktree() {
     let (answer, _) = agent::boundary_answer(&bare, root, false);
     assert_eq!(answer, PermissionAnswer::Cancelled);
 }
+
+/// #11487: the issue-run's Stop gate runs the harness's final checks on a
+/// done claim, sends the agent back with the failed check, and lets it stop
+/// once the working copy passes them.
+#[tokio::test]
+async fn the_stop_gate_checks_a_done_claim_against_the_final_checks() {
+    use briefed_agent::stop_gate::{Claim, Classify, Outcome};
+    use std::sync::{Arc, Mutex};
+    let repo = tempfile::tempdir().unwrap();
+    let root = repo.path().canonicalize().unwrap();
+    let git = |args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{out:?}");
+    };
+    git(&["init", "-q"]);
+    std::fs::write(root.join("a.txt"), "a\n").unwrap();
+    git(&["add", "-A"]);
+    git(&[
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "commit",
+        "-qm",
+        "a",
+    ]);
+    let finals = vec![Check {
+        id: "check:done".into(),
+        argv: args("test -f done.txt"),
+        filter: false,
+        what: "the marker exists".into(),
+        required: false,
+    }];
+    let classify: Classify =
+        Arc::new(|_| Box::pin(async { Ok((Claim::Done, 0.97, "clef-flash".into(), None, 5)) }));
+    let folder = tempfile::tempdir().unwrap();
+    let gate = agent::stop_gate(
+        Arc::new(finals),
+        root.clone(),
+        None,
+        Arc::new(Mutex::new("Done.".into())),
+        classify,
+        folder.path(),
+    );
+    let before = agent::candidate_tree(&root).await.unwrap();
+    let Outcome::Block(reason) = gate.decide().await else {
+        panic!("a failing final check sends the agent back");
+    };
+    assert!(reason.contains("check:done"), "{reason}");
+    std::fs::write(root.join("done.txt"), "").unwrap();
+    assert_ne!(agent::candidate_tree(&root).await.unwrap(), before);
+    assert_eq!(gate.decide().await, Outcome::Allow("the final checks pass"));
+    let log = std::fs::read_to_string(folder.path().join("stop_gate.jsonl")).unwrap();
+    assert_eq!(log.lines().count(), 2);
+}

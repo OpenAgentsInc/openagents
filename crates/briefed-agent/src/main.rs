@@ -42,7 +42,6 @@
 //! the summary (which includes how the `verify` calls went: calls,
 //! failures, whether one passed, and the last status).
 
-mod stop_gate;
 mod tools;
 mod verify;
 
@@ -52,6 +51,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use briefed_agent::stop_gate;
 use claude_agent_sdk::{
     EffortLevel, McpServerConfig, PermissionMode, PermissionResult, QueryOptions, SdkMessage,
     SystemPromptConfig, ToolsConfig,

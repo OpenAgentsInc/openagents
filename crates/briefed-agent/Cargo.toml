@@ -6,6 +6,11 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[lib]
+# The Stop gate (#11487), shared with Coder's issue-run session.
+name = "briefed_agent"
+path = "src/lib.rs"
+
 [[bin]]
 name = "briefed-agent"
 path = "src/main.rs"

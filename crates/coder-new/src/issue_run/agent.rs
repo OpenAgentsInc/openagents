@@ -63,6 +63,9 @@ pub struct Work {
     pub checks: Vec<(String, bool)>,
     pub error: Option<String>,
     pub reply: Option<String>,
+    /// What the Stop gate (#11487) did, when it was on: stops, blocks, and
+    /// why each allowed stop went through.
+    pub stop_gate: Option<Value>,
 }
 
 fn lock<T>(shared: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -1024,13 +1027,96 @@ pub async fn work(
     folder: &Path,
     transcript: &mut Transcript,
 ) -> Work {
-    run(
+    run_gated(
         Session::briefed(options, briefing),
         &base.worktree,
         folder,
         transcript,
+        true,
     )
     .await
+}
+
+/// The issue-run session's Stop gate (#11487): a stop is checked against
+/// `finals` (the checks the harness runs after the agent) unless the agent
+/// says it is blocked or asks a question. Decisions go to the run folder's
+/// `stop_gate.jsonl`.
+pub(crate) fn stop_gate(
+    finals: Arc<Vec<Check>>,
+    root: PathBuf,
+    baseline: Option<Baseline>,
+    last_text: Arc<Mutex<String>>,
+    classify: briefed_agent::stop_gate::Classify,
+    folder: &Path,
+) -> briefed_agent::stop_gate::StopGate {
+    use briefed_agent::stop_gate::{Check as GateCheck, StopGate, Tree};
+    let check: GateCheck = {
+        let root = root.clone();
+        Arc::new(move || {
+            let (finals, root, baseline) = (finals.clone(), root.clone(), baseline.clone());
+            Box::pin(async move { final_verdict(&finals, &root, baseline.as_ref()).await })
+        })
+    };
+    let tree: Tree = Arc::new(move || {
+        let root = root.clone();
+        Box::pin(async move { candidate_tree(&root).await })
+    });
+    let mut gate = StopGate::new(
+        Arc::default(),
+        last_text,
+        classify,
+        check,
+        tree,
+        Some(folder.join("stop_gate.jsonl")),
+    );
+    // The run folder is named for the run, the key `outcome.jsonl` joins on.
+    gate.run_id = folder
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned());
+    gate
+}
+
+/// Each of `finals` run against `root`: `{"status": "pass"}`, or `"fail"`
+/// with each failed check's id and output.
+pub async fn final_verdict(finals: &[Check], root: &Path, baseline: Option<&Baseline>) -> Value {
+    let mut failed = Vec::new();
+    for check in finals {
+        let (text, ok) = run_check_against(finals, root, baseline, &check.id, None).await;
+        if !ok {
+            failed.push(json!({"check": check.id, "output": text}));
+        }
+    }
+    if failed.is_empty() {
+        json!({"status": "pass"})
+    } else {
+        json!({"status": "fail", "failed": failed})
+    }
+}
+
+/// The working copy's content as a git tree id, staged into a scratch
+/// index so the real one is untouched; `None` when git can't say.
+pub(crate) async fn candidate_tree(root: &Path) -> Option<String> {
+    async fn git(root: &Path, args: &[&str], index: Option<&Path>) -> Option<String> {
+        let mut command = tokio::process::Command::new("git");
+        command.arg("-C").arg(root).args(args);
+        if let Some(index) = index {
+            command.env("GIT_INDEX_FILE", index);
+        }
+        let out = command.output().await.ok()?;
+        out.status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
+    }
+    let index = git(
+        root,
+        &["rev-parse", "--path-format=absolute", "--git-path", "index"],
+        None,
+    )
+    .await?;
+    let scratch = tempfile::NamedTempFile::new().ok()?;
+    std::fs::copy(&index, scratch.path()).ok()?;
+    git(root, &["add", "-A"], Some(scratch.path())).await?;
+    git(root, &["write-tree"], Some(scratch.path())).await
 }
 
 /// The `run_check` tool server over `checks`, and the verdicts it records.
@@ -1116,6 +1202,19 @@ pub async fn run(
     folder: &Path,
     transcript: &mut Transcript,
 ) -> Work {
+    run_gated(session, worktree, folder, transcript, false).await
+}
+
+/// [`run`], with the Stop gate (#11487) when `gated` and the Token savers
+/// plugin is on. Only the issue-run's own agent is gated: the Solver's
+/// hands already hand their work to a Tester.
+pub async fn run_gated(
+    session: Session,
+    worktree: &Path,
+    folder: &Path,
+    transcript: &mut Transcript,
+    gated: bool,
+) -> Work {
     if matches!(session.engine, Engine::Acp(_)) {
         return run_acp(session, worktree, folder, transcript).await;
     }
@@ -1144,6 +1243,23 @@ pub async fn run(
         allowed.extend(check_server.allowed_tool_names());
         query_options = query_options.sdk_mcp_server(check_server);
         verdicts = Some(seen);
+    }
+    // Token savers (#11494): no done without an observation (#11487).
+    let last_text: Arc<Mutex<String>> = Arc::default();
+    let mut gate = None;
+    let finals: Vec<Check> = checks.iter().filter(|c| harness_runs(c)).cloned().collect();
+    if gated && !finals.is_empty() {
+        let built = Arc::new(stop_gate(
+            Arc::new(finals),
+            root.clone(),
+            session.baseline.clone(),
+            last_text.clone(),
+            briefed_agent::stop_gate::decisions(),
+            folder,
+        ));
+        let (options, on) = crate::token_savers::install_stop_gate(query_options, built.clone());
+        query_options = options;
+        gate = on.then_some(built);
     }
     if let Some(server) = server {
         allowed.extend(server.allowed_tool_names());
@@ -1265,6 +1381,7 @@ pub async fn run(
                         Some("text") => {
                             let text = block["text"].as_str().unwrap_or_default().trim();
                             if !text.is_empty() {
+                                text.clone_into(&mut lock(&last_text));
                                 transcript.push(Entry::Assistant {
                                     text: text.to_owned(),
                                     model: model.clone(),
@@ -1377,6 +1494,7 @@ pub async fn run(
     work.wall_ms = started.elapsed().as_millis() as u64;
     work.misses = lock(&misses).clone();
     work.checks = verdicts.map(|v| lock(&v).clone()).unwrap_or_default();
+    work.stop_gate = gate.map(|gate| lock(&gate.tally).clone());
     work
 }
 
