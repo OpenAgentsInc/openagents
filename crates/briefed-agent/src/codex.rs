@@ -72,7 +72,8 @@ impl Observed {
                         .trim_start_matches("./")
                         .to_owned();
                     if !briefed.contains(&path) && !self.files_written.contains(&path) {
-                        self.misses.push(json!({"path": path, "via": "file_change"}));
+                        self.misses
+                            .push(json!({"path": path, "via": "file_change"}));
                     }
                     self.files_written.insert(path);
                 }

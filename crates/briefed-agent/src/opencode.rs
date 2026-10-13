@@ -417,10 +417,9 @@ impl Hooked {
             },
         )?;
         let runner = coder_sdk::Runner::new(composed.registry, coder_sdk::Budget::default());
-        let host = coder_sdk::bridge::Host::start(std::sync::Arc::new(std::sync::Mutex::new(
-            runner,
-        )))
-        .map_err(|error| format!("the hook host: {error}"))?;
+        let host =
+            coder_sdk::bridge::Host::start(std::sync::Arc::new(std::sync::Mutex::new(runner)))
+                .map_err(|error| format!("the hook host: {error}"))?;
         let plugins = scratch.join("coder");
         coder_sdk::opencode::write_plugin(&plugins)
             .map_err(|error| format!("writing Coder's OpenCode plugin: {error}"))?;
@@ -494,13 +493,25 @@ pub async fn run(config: &Value, config_path: &str, engine: &str) -> Result<(), 
     .map_err(|error| format!("writing OpenCode's config: {error}"))?;
     let env = env_for(&model, scratch.path(), &|name| std::env::var(name).ok());
     let tracked = tracked_files(&worktree);
-    let hooks = Hooked::start(config, &worktree, &summary_path, timeout, scratch.path(), &self_exe)?;
+    let hooks = Hooked::start(
+        config,
+        &worktree,
+        &summary_path,
+        timeout,
+        scratch.path(),
+        &self_exe,
+    )?;
 
     let mut child = tokio::process::Command::new(binary)
         .args(argv(config, &model, &worktree))
         .current_dir(&worktree)
         .envs(env)
-        .envs(hooks.env.iter().map(|(name, value)| (name.as_str(), value.as_str())))
+        .envs(
+            hooks
+                .env
+                .iter()
+                .map(|(name, value)| (name.as_str(), value.as_str())),
+        )
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

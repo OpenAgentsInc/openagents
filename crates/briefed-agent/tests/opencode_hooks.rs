@@ -77,8 +77,7 @@ fn an_opencode_session_meets_the_floors_the_fence_and_the_worktree_guard() {
         .unwrap();
     assert!(status.success());
     let results: Vec<String> =
-        serde_json::from_str(&std::fs::read_to_string(root.join("results.json")).unwrap())
-            .unwrap();
+        serde_json::from_str(&std::fs::read_to_string(root.join("results.json")).unwrap()).unwrap();
     assert!(results[0].starts_with("Held for the person"), "{results:?}");
     assert!(results[1].contains("git stash"), "{results:?}");
     assert!(results[2].contains("worktree"), "{results:?}");

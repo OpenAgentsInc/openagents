@@ -35,7 +35,11 @@ pub fn python() -> Option<PathBuf> {
     FOUND
         .get_or_init(|| {
             std::iter::once("python3".to_owned())
-                .chain((MIN_PYTHON.1..=20).rev().map(|minor| format!("python3.{minor}")))
+                .chain(
+                    (MIN_PYTHON.1..=20)
+                        .rev()
+                        .map(|minor| format!("python3.{minor}")),
+                )
                 .filter_map(|name| which(&name))
                 .find(|path| version(path).is_some_and(|found| found >= MIN_PYTHON))
         })

@@ -141,7 +141,9 @@ fn compose(setup: &Setup<'_>) -> Result<Composed, String> {
     // The shared-checkout fence (#11532): no git command that throws away
     // uncommitted work, and no write to the checkout a Coder worktree came
     // from.
-    registry.register(coder_sdk::checkout_guard::hook(setup.worktree.to_path_buf()))?;
+    registry.register(coder_sdk::checkout_guard::hook(
+        setup.worktree.to_path_buf(),
+    ))?;
 
     // System One hook 1 (#11486): noisy Bash output squeezed.
     if config["squeeze"].as_bool() == Some(true)
