@@ -387,7 +387,9 @@ def answers(screen: str) -> list[str]:
 
 
 def picker_open(screen: str) -> bool:
-    return "╭ Pick" in screen or "Pick model" in screen
+    # Any boxed picker: Coder's own ("Pick model", "Pick reasoning level")
+    # or a harness's model list, all with the same footer.
+    return "╭ Pick" in screen or "Pick model" in screen or ("╭" in screen and "Enter Select" in screen)
 
 
 def read_picker(tui: Tui, limit=60) -> dict:
@@ -399,7 +401,7 @@ def read_picker(tui: Tui, limit=60) -> dict:
     if not s:
         time.sleep(0.5)
         body = [l for l in transcript(tui.screen()) if l.strip() and not l.strip().startswith(("❯", "●"))]
-        return {"opened": False, "notice": words(" ".join(body[-2:])), "items": []}
+        return {"opened": False, "notice": words(" ".join(body[-2:])), "items": [], "screen": tui.screen()}
     items: list[dict] = []
     seen = set()
     first_rows = picker_rows(s)
