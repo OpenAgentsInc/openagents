@@ -59,6 +59,8 @@ pub fn default_models() -> Vec<ModelRow> {
             price: Price::micro(750_000, 75_000, 3_750_000),
             price_source: "Google's list price, as on the Vertex row",
         },
+        // Fallbacks for Gemini 4 Argon: Vertex AI serves it first (#11546).
+        argon(),
         ModelRow {
             id: "zai/glm-5.3-flash".into(),
             upstream_model: "z-ai/glm-5.3-flash".into(),
@@ -135,3 +137,17 @@ pub async fn resolve(google: &TokenSource) -> Result<ResponsesUpstream, String> 
 
 /// The OpenRouter adapter type.
 pub type OpenRouter = ResponsesUpstream;
+
+/// Gemini 4 Argon at Google's dated list price, as on the Vertex row.
+fn argon() -> ModelRow {
+    let vertex = super::vertex::default_models()
+        .into_iter()
+        .map(|(row, _)| row)
+        .find(|row| row.id == super::vertex::ARGON)
+        .expect("Vertex serves Argon");
+    ModelRow {
+        upstream_model: vertex.id.clone(),
+        price_source: "OpenRouter's listing of google/gemini-4-argon (2026-10-13): $2 and $10 per million, as on the Vertex row",
+        ..vertex
+    }
+}

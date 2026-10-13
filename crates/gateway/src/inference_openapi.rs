@@ -804,7 +804,7 @@ fn schemas() -> Value {
                         "model": {"type": "string"},
                         "provider": {"type": "string"},
                         "upstream": {"type": "string", "description": "The id `openagents.route` takes."},
-                        "kind": {"type": "string", "enum": ["list", "promotion"]},
+                        "kind": {"type": "string", "enum": ["list", "promotion", "scheduled"]},
                         "label": {"type": "string"},
                         "margin_percent": {"type": "string"},
                         "input": {"$ref": "#/components/schemas/Amount"},

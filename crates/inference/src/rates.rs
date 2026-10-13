@@ -114,6 +114,8 @@ pub struct Card {
 pub enum Kind {
     List,
     Promotion,
+    /// The list price from a later day on (its label names the day).
+    Scheduled,
 }
 
 /// One model through one provider.
@@ -162,6 +164,11 @@ pub fn percent(bps: u32) -> String {
     }
 }
 
+/// `list`'s margin at `bps`, rounded as the meter rounds it.
+fn round_margin(list: u64, bps: u32) -> u64 {
+    u64::try_from((u128::from(list) * u128::from(bps) + 5_000) / 10_000).unwrap_or(u64::MAX)
+}
+
 fn amount(list: u64, margin: u64, price: u64, sats: Option<&SatsRate>) -> Amount {
     Amount {
         list_usd: micros_usd(list),
@@ -188,6 +195,25 @@ pub fn rows(row: &RateRow, sats: Option<&SatsRate>) -> Vec<Row> {
         output: amount(output.0, output.1, output.2, sats),
     };
     let mut out = vec![list];
+    // A change still ahead is shown beside today's price (#11546).
+    if let Some(change) = row
+        .change
+        .as_ref()
+        .filter(|_| row.current().change.is_some())
+    {
+        let at = |list: u64| {
+            let margin = round_margin(list, row.margin_bps);
+            amount(list, margin, list.saturating_add(margin), sats)
+        };
+        out.push(Row {
+            kind: Kind::Scheduled,
+            label: Some(format!("From {}", change.from)),
+            input: at(change.input),
+            cached_input: at(change.cached_input.unwrap_or(change.input)),
+            output: at(change.output),
+            ..out[0].clone()
+        });
+    }
     if let Some(promotion) = &row.promotion {
         let promo = |list: u64, price: u64| amount(list, price.saturating_sub(list), price, sats);
         out.push(Row {
@@ -320,7 +346,11 @@ mod tests {
         assert_eq!(glm.output.price_usd, "0.525");
         // $0.1575 at $100,000 a bitcoin is 157.5 sats.
         assert_eq!(glm.input.price_sats, Some(158));
-        assert!(card.rows.iter().all(|row| row.kind == Kind::List));
+        assert!(
+            card.rows
+                .iter()
+                .all(|row| matches!(row.kind, Kind::List | Kind::Scheduled))
+        );
         // The Pro door's models are named as ours, never the proxy's vendor.
         for row in card.rows.iter().filter(|row| row.upstream == "pro") {
             assert_eq!(row.provider, "OpenAgents (Pro)");
@@ -353,6 +383,58 @@ mod tests {
         assert_eq!(card.rows[1].input.list_usd, "0.15");
         assert_eq!(card.rows[1].input.price_usd, "0");
         assert_eq!(card.rows[1].input.price_sats, None);
+    }
+
+    /// #11546: Gemini 4 Argon on Vertex global at $2/$10, cached input
+    /// 95% off, with its $4/$20 price from 2026-12-01 on a row of its own
+    /// until that day.
+    #[test]
+    fn argon_is_listed_on_vertex_with_its_dated_change() {
+        let row = published()
+            .get("vertex", "google/gemini-4-argon")
+            .cloned()
+            .unwrap();
+        let today = row.on("2026-10-13");
+        assert_eq!(
+            (today.input, today.cached_input, today.output),
+            (2_000_000, Some(100_000), 10_000_000)
+        );
+        let later = row.on("2026-12-01");
+        assert_eq!(
+            (later.input, later.cached_input, later.output),
+            (4_000_000, Some(200_000), 20_000_000)
+        );
+        let card = Card::from_rates(&RateCard::new([row.clone()]), None);
+        if crate::meter::card::today().as_str() < "2026-12-01" {
+            assert_eq!(card.rows.len(), 2);
+            assert_eq!(card.rows[0].input.list_usd, "2");
+            assert_eq!(card.rows[0].cached_input.list_usd, "0.1");
+            assert_eq!(card.rows[0].output.price_usd, "10.5");
+            assert_eq!(card.rows[1].kind, Kind::Scheduled);
+            assert_eq!(card.rows[1].label.as_deref(), Some("From 2026-12-01"));
+            assert_eq!(card.rows[1].input.price_usd, "4.2");
+            assert_eq!(card.rows[1].output.price_usd, "21");
+        } else {
+            assert_eq!(card.rows.len(), 1);
+            assert_eq!(card.rows[0].input.list_usd, "4");
+        }
+        let offering = crate::upstream::vertex::default_models()
+            .into_iter()
+            .find(|(model, _)| model.id == "google/gemini-4-argon")
+            .unwrap()
+            .0;
+        assert_eq!(offering.upstream_model, "gemini-4-argon");
+        // OpenRouter and Vercel list it too, as fallbacks at the same price.
+        for upstream in ["openrouter", "vercel"] {
+            let fallback = published().get(upstream, "google/gemini-4-argon").cloned();
+            assert_eq!(
+                fallback.map(|row| (row.on("2026-10-13").input, row.change.is_some())),
+                Some((2_000_000, true)),
+                "{upstream}"
+            );
+        }
+        assert_eq!(offering.capabilities.context, 1_048_576);
+        assert!(offering.capabilities.tools);
     }
 
     #[test]

@@ -218,6 +218,7 @@ fn cell(amount: &inference::rates::Amount, kind: Kind) -> String {
             dollars(&amount.list_usd),
             dollars(&amount.price_usd)
         ),
+        Kind::Scheduled => format!("{}{sats}", dollars(&amount.price_usd)),
     }
 }
 
@@ -265,6 +266,8 @@ fn table_row(row: &Row) -> String {
         }
         (Kind::Promotion, None) => format!("`{}`, promotion", plain(&row.model)),
         (Kind::List, _) => format!("`{}`", plain(&row.model)),
+        (Kind::Scheduled, Some(label)) => format!("`{}`, {}", plain(&row.model), plain(label)),
+        (Kind::Scheduled, None) => format!("`{}`, later", plain(&row.model)),
     };
     format!(
         "| {model} | {} | {} | {} | {} |\n",

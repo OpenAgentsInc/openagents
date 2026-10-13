@@ -1,0 +1,6 @@
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "One\nTwo\n"}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-4-argon","createTime": "2026-10-13T18:20:55.595800Z","responseId": "h3bOatiuJPuHu-gP08zz2QY"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "Three\nFour\nFive"}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-4-argon","createTime": "2026-10-13T18:20:55.595800Z","responseId": "h3bOatiuJPuHu-gP08zz2QY"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "","thoughtSignature": "AY89a19iE2q2y8fRQlQ9IzgnRV62EVFsRDHHG/q8/oV+ot+9gJiAbZD56UnzuFMNjgvHLxykSQtoDKFh/M61RfqnPdkaKIbmJ1zW+0rn6eRARdQPyA=="}]},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 61,"candidatesTokenCount": 13,"totalTokenCount": 74,"trafficType": "ON_DEMAND","promptTokensDetails": [{"modality": "TEXT","tokenCount": 61}],"candidatesTokensDetails": [{"modality": "TEXT","tokenCount": 13}]},"modelVersion": "gemini-4-argon","createTime": "2026-10-13T18:20:55.595800Z","responseId": "h3bOatiuJPuHu-gP08zz2QY"}
+

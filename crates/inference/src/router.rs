@@ -683,7 +683,12 @@ pub fn plan(request: &CreateResponse, context: &Context<'_>) -> Result<Plan, Api
     let mut dropped = Vec::new();
     let mut kept: Vec<(Candidate, usize, Option<Rank>)> = Vec::new();
     for (offering, position) in considered {
-        let row = context.card.get(&offering.upstream, &offering.model);
+        // The prices in force today, a dated change included (#11546).
+        let row = context
+            .card
+            .get(&offering.upstream, &offering.model)
+            .map(crate::meter::RateRow::current);
+        let row = row.as_ref();
         let estimate = row.map(|row| {
             let output = needs.max_output.unwrap_or(ASSUMED_OUTPUT);
             let input = u128::from(needs.input_tokens) * u128::from(caller_rate(row.input, row));

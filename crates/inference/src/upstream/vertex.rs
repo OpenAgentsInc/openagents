@@ -54,6 +54,12 @@ use crate::wire::Extra;
 /// `VERTEX_PROJECT` names the project that holds the credit.
 pub const DEFAULT_PROJECT: &str = "openagentsgemini";
 
+/// Gemini 4 Argon, served at `global` only (`us-central1` answers 404).
+pub const ARGON: &str = "google/gemini-4-argon";
+
+/// The first day Argon's introductory price no longer applies.
+pub const ARGON_PRICE_CHANGE: &str = "2026-12-01";
+
 /// `global`, where Gemini 3 models are served.
 pub const DEFAULT_LOCATION: &str = "global";
 
@@ -125,6 +131,35 @@ pub fn default_models() -> Vec<(ModelRow, Thinking)> {
                 price_source: "Vertex AI pricing page, Gemini 2.5 Flash-Lite",
             },
             Thinking::Budget,
+        ),
+        (
+            ModelRow {
+                id: ARGON.into(),
+                upstream_model: "gemini-4-argon".into(),
+                capabilities: Capabilities {
+                    tools: true,
+                    reasoning: true,
+                    reasoning_always_on: false,
+                    json_schema: true,
+                    images: true,
+                    // One million tokens of input and output together;
+                    // one reply is at most 32,768 tokens, and a longer
+                    // one continues in the next call.
+                    context: 1_048_576,
+                    max_output: 32_768,
+                },
+                price: Price::micro(2_000_000, 100_000, 10_000_000).changing_on(
+                    ARGON_PRICE_CHANGE,
+                    4_000_000,
+                    200_000,
+                    20_000_000,
+                ),
+                price_source: "Google's Gemini 4 Argon launch post (2026-10-13): $2 input and $10 \
+                               output per million tokens, cached input 95% off, $4 and $20 \
+                               after 2026-11-30; limits from the Gemini API model card \
+                               (1,048,576 input, 32,768 output per reply)",
+            },
+            Thinking::Level,
         ),
     ]
 }

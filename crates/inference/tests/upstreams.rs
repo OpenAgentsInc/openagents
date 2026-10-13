@@ -1370,3 +1370,98 @@ async fn anthropic_empty_tool_arguments_and_missing_usage_are_honest() {
     assert!(response.usage.is_none());
     assert!(matches!(&response.output[0], Item::FunctionCall(call) if call.arguments == "{}"));
 }
+
+// ---------------------------------------------------------------------
+// Gemini 4 Argon on Vertex (#11546).
+
+fn argon() -> vertex::Vertex {
+    vertex_at("http://unused")
+}
+
+#[tokio::test]
+async fn argon_streams_its_answer_from_vertex_global() {
+    let stub = stub(vec![Reply::stream(&fixture("vertex-gemini-4-argon.sse"))]).await;
+    let adapter = vertex_at(&stub.url);
+    let sent = adapter
+        .send(&count_request("strict"), vertex::ARGON)
+        .await
+        .expect("sent");
+    let (events, error) = drain(sent).await;
+    assert!(error.is_none(), "{error:?}");
+    check(&events);
+    let response = folded(&events);
+    assert_eq!(response.status, ResponseStatus::Completed);
+    assert_eq!(response.model, "google/gemini-4-argon");
+    assert_eq!(response.output_text(), "One\nTwo\nThree\nFour\nFive");
+    let usage = response.usage.expect("usage");
+    assert_eq!(usage.input_tokens, 61);
+    assert_eq!(usage.output_tokens, 13);
+    assert_eq!(
+        stub.seen()[0].path,
+        "/v1/projects/test-project/locations/global/publishers/google/models/gemini-4-argon:streamGenerateContent?alt=sse"
+    );
+    // The real host for location `global` has no region prefix.
+    let mut config = vertex::Config::from_env();
+    config.project = "openagentsgemini".into();
+    config.location = vertex::DEFAULT_LOCATION.into();
+    config.base_url = None;
+    assert!(
+        vertex::Vertex::new(config)
+            .url("gemini-4-argon")
+            .starts_with(
+                "https://aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/global/"
+            )
+    );
+    assert!(argon().models().iter().any(|row| row.id == vertex::ARGON));
+}
+
+#[tokio::test]
+async fn argon_calls_a_tool_and_keeps_its_signature() {
+    let stub = stub(vec![Reply::stream(&fixture(
+        "vertex-gemini-4-argon-tools.sse",
+    ))])
+    .await;
+    let adapter = vertex_at(&stub.url);
+    let tools = json!([{"type": "function", "name": "get_weather",
+        "description": "Current weather for a city.",
+        "parameters": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}]);
+    let first = request(json!({
+        "input": "What is the weather in Paris? Use the tool.",
+        "tools": tools,
+        "tool_choice": "auto",
+        "reasoning": {"effort": "low"},
+    }));
+    let sent = adapter.send(&first, vertex::ARGON).await.expect("sent");
+    let (events, error) = drain(sent).await;
+    assert!(error.is_none(), "{error:?}");
+    check(&events);
+    let response = folded(&events);
+    let call = response
+        .output
+        .iter()
+        .find_map(|item| match item {
+            Item::FunctionCall(call) => Some(call.clone()),
+            _ => None,
+        })
+        .expect("a function call");
+    assert_eq!(call.name, "get_weather");
+    assert_eq!(call.call_id, "call_349609");
+    assert_eq!(
+        serde_json::from_str::<Value>(&call.arguments).unwrap(),
+        json!({"city": "Paris"})
+    );
+    let signature = response
+        .output
+        .iter()
+        .find_map(|item| match item {
+            Item::Reasoning(reasoning) => reasoning.encrypted_content.clone(),
+            _ => None,
+        })
+        .expect("the signature rides as encrypted_content");
+    assert!(signature.starts_with("AY89a1+prvXD"));
+    let body = stub.seen()[0].json();
+    assert_eq!(
+        body["generationConfig"]["thinkingConfig"]["thinkingLevel"],
+        "low"
+    );
+}

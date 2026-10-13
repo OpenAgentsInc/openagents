@@ -10,6 +10,8 @@ nothing else.`
 | --- | --- | --- | --- |
 | `vertex-gemini-3.8-flash.sse` | `vertex` | `gemini-3.8-flash` | Recorded 2026-10-09 from `streamGenerateContent?alt=sse` (project `openagentsgemini`, location `global`), thoughts included |
 | `vertex-gemini-3.8-flash-tools.sse` | `vertex` | `gemini-3.8-flash` | Recorded 2026-10-09: `What is the weather in Paris? Use the tool.` with one `get_weather` declaration and `thinkingLevel: low`; a `functionCall` with its `thoughtSignature` |
+| `vertex-gemini-4-argon.sse` | `vertex` | `gemini-4-argon` | Recorded 2026-10-13 from `streamGenerateContent?alt=sse` (project `openagentsgemini`, location `global`; `us-central1` answers 404), the count request with `includeThoughts` |
+| `vertex-gemini-4-argon-tools.sse` | `vertex` | `gemini-4-argon` | Recorded 2026-10-13: the `get_weather` request above with `thinkingLevel: low`; a `functionCall` with its `thoughtSignature` |
 | `pro-gpt-5.6-luna.sse` | `pro` | `openai/gpt-5.6-luna` | Recorded 2026-10-09 from the Pro door's proxy with `reasoning_effort: low` and `stream_options.include_usage` |
 | `zai-glm-5.3-flash.sse` | `zai` | `glm-5.3-flash` | Constructed, not recorded: no Z.ai key is configured yet. Z.ai's documented stream shape (`reasoning_content` deltas, then `content`, usage on the finishing chunk), with the token counts of the Vercel-recorded GLM stream |
 

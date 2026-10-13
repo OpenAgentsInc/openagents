@@ -29,7 +29,7 @@ pub use attempt::{
     Api, Attempt, Audience, Collect, ErrorClass, NoRecorder, Outcome, Payment, Recorder, Tokens,
     Traffic,
 };
-pub use card::{Promotion, RateCard, RateRow};
+pub use card::{Promotion, RateCard, RateChange, RateRow};
 pub use ledger::{Alert, Basis, BurnDown, CreditAccount, Ledger};
 pub use live::Rate;
 pub use reconcile::{Billed, FakeBilling, ProviderBilling, Reconciled};
@@ -271,7 +271,12 @@ impl Meter {
 
     /// The rate row for `upstream` and `model`, when there is one.
     pub fn rate_row(&self, upstream: &str, model: &str) -> Option<RateRow> {
-        self.inner.lock().ok()?.card.get(upstream, model).cloned()
+        self.inner
+            .lock()
+            .ok()?
+            .card
+            .get(upstream, model)
+            .map(RateRow::current)
     }
 
     /// A copy of the rate card and the credit ledger, for the router to

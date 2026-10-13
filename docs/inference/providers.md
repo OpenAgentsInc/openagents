@@ -32,7 +32,8 @@ of a `402 insufficient_balance` and a fallback.
   `models`) in the gateway config; `deploy/staging/gateway.sh` (staging and
   production) sets it from `GATEWAY_FREE_ALLOWANCE_MICROS`, default
   `1000000` (about $1 of model cost a day).
-- **Scope:** `openagents/auto` and `openagents/fast`, plus the models
+- **Scope:** `openagents/auto`, `openagents/fast`, and `google/gemini-4-argon`
+  (Coder's model when no coding agent is installed, #11548), plus the models
   `GET /v1/models` marks free (`free_tier.models`) once the workspace's
   free requests for the day are used (#11545), so a model listed as free
   never answers a signed-in account `402` while its allowance lasts. Only

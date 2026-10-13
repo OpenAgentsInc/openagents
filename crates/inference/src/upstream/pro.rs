@@ -62,6 +62,7 @@ fn row(name: &str, input: u64, output: u64, cached: u64, cache_write: u64) -> Mo
             cached_input: cached,
             cache_write: Some(cache_write),
             output,
+            change: None,
         },
         price_source: "the proxy's OpenAI per-token rates, read 2026-10-08 (docs/gateway/README.md)",
     }

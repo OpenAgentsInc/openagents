@@ -53,6 +53,8 @@ pub fn default_models() -> Vec<ModelRow> {
             price: Price::micro(750_000, 75_000, 3_750_000),
             price_source: "Vercel's marketCost in crates/coder/fixtures/gateway/google-gemini-3.8-flash.sse",
         },
+        // Fallbacks for Gemini 4 Argon: Vertex AI serves it first (#11546).
+        argon(),
         ModelRow {
             id: "zai/glm-5.3-flash".into(),
             upstream_model: "zai/glm-5.3-flash".into(),
@@ -108,3 +110,17 @@ pub async fn resolve(google: &TokenSource) -> Result<ResponsesUpstream, String> 
 
 /// The Vercel adapter type.
 pub type Vercel = ResponsesUpstream;
+
+/// Gemini 4 Argon at Google's dated list price, as on the Vertex row.
+fn argon() -> ModelRow {
+    let vertex = super::vertex::default_models()
+        .into_iter()
+        .map(|(row, _)| row)
+        .find(|row| row.id == super::vertex::ARGON)
+        .expect("Vertex serves Argon");
+    ModelRow {
+        upstream_model: vertex.id.clone(),
+        price_source: "Vercel AI Gateway lists google/gemini-4-argon (2026-10-13); Google's list price, as on the Vertex row",
+        ..vertex
+    }
+}

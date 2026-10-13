@@ -249,6 +249,19 @@ pub struct Price {
     /// Writing a prompt cache, where the upstream charges for it.
     pub cache_write: Option<u64>,
     pub output: u64,
+    /// A list price change the provider announced for a date
+    /// ([`crate::meter::RateChange`]).
+    pub change: Option<PriceChange>,
+}
+
+/// A dated list price change: from `from` (a UTC day, `YYYY-MM-DD`) the
+/// model costs these, in micro-dollars per million tokens.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PriceChange {
+    pub from: &'static str,
+    pub input: u64,
+    pub cached_input: u64,
+    pub output: u64,
 }
 
 impl Price {
@@ -260,6 +273,28 @@ impl Price {
             cached_input,
             cache_write: None,
             output,
+            change: None,
+        }
+    }
+
+    /// This price, changing to `input`, `cached_input`, and `output` on
+    /// the UTC day `from`.
+    #[must_use]
+    pub const fn changing_on(
+        self,
+        from: &'static str,
+        input: u64,
+        cached_input: u64,
+        output: u64,
+    ) -> Self {
+        Self {
+            change: Some(PriceChange {
+                from,
+                input,
+                cached_input,
+                output,
+            }),
+            ..self
         }
     }
 
@@ -277,6 +312,12 @@ impl Price {
             output: self.output,
             margin_bps: DEFAULT_MARGIN_BPS,
             promotion: None,
+            change: self.change.map(|change| crate::meter::RateChange {
+                from: change.from.to_owned(),
+                input: change.input,
+                cached_input: Some(change.cached_input),
+                output: change.output,
+            }),
         }
     }
 }

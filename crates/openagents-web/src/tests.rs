@@ -3387,7 +3387,7 @@ async fn the_models_page_shows_the_gateways_rate_card() {
                         "${} + ${} = ${}",
                         amount.list_usd, amount.margin_usd, amount.price_usd
                     ),
-                    Kind::Promotion => format!("${}", amount.price_usd),
+                    Kind::Promotion | Kind::Scheduled => format!("${}", amount.price_usd),
                 };
                 let cell = match amount.price_sats {
                     Some(sats) => format!("{cell} ({sats} sats)"),
