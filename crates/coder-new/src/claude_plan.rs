@@ -451,6 +451,11 @@ pub fn panel_line() -> String {
     )
 }
 
+/// The plan's book is process-wide: every test that fills or reads it
+/// holds this.
+#[cfg(test)]
+pub(crate) static TEST_SERIAL: Mutex<()> = Mutex::new(());
+
 #[cfg(test)]
 pub(crate) fn reset_for_test(limit: usize) {
     LIMIT.store(limit, Ordering::Relaxed);
@@ -470,7 +475,7 @@ mod tests {
     use std::sync::Arc;
 
     // The book is process-wide, so its tests run as one.
-    static SERIAL: Mutex<()> = Mutex::new(());
+    use super::TEST_SERIAL as SERIAL;
 
     fn none(_: &str) -> Option<String> {
         None

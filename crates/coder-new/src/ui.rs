@@ -624,10 +624,12 @@ fn repository_rail(app: &App) -> String {
     text
 }
 
-/// What the input's top-right rule carries before the harness's name: the
-/// Claude plan's windows and how full the context is when Claude Code ran
-/// the chat, else what the chat has cost, which is metered spend; the
-/// Claude plan is paid by the month rather than by the turn.
+/// What the input's top-right rule carries after the harness's name: the
+/// Claude plan's windows and how full the context is when Claude Code runs
+/// the chat ("Claude (Opus 5.5) · 5h 12% · week 15%"), else what the chat
+/// has cost, which is metered spend; the Claude plan is paid by the month
+/// rather than by the turn. Nothing of Claude's shows on another harness
+/// or before the first turn (#11483).
 fn top_rail(app: &App) -> Option<String> {
     let mut parts = Vec::new();
     if app.on_claude() {
@@ -774,16 +776,9 @@ fn context_text(app: &App) -> String {
             crate::long_session::clock(until)
         ));
     }
-    // In a Claude Code chat the plan rides the top rail ([`top_rail`]).
-    let now = atif::now_ms() / 1000;
-    if !app.on_claude()
-        // Only the 5-hour and weekly percentages: no reset time, which
-        // read as today's clock for a window that resets days later
-        // (owner, 2026-10-12).
-        && let Some(plan) = crate::claude_plan::rail_text(now)
-    {
-        parts.push(plan);
-    }
+    // Claude's plan windows are Claude's, not Coder's: they ride the top
+    // rail beside Claude's name while Claude runs the chat, and never sit
+    // here next to the path ([`top_rail`], #11483).
     // How full the claude session's context is rides the top rail ([`top_rail`]).
     // The signed-in account's name is never shown under the input.
     if let Some(update) = &app.update_line {
@@ -2159,7 +2154,14 @@ fn composer_view(
             RailSlot::ComposerTopRight => 0,
             RailSlot::ComposerBottomRight => area.height.saturating_sub(1),
         };
-        let label = composer_rail_text(&contribution.text, area.width.saturating_sub(6));
+        // Before the first turn the loop's rail names the product the way
+        // the turn label does, "Coder", never the lowercase id (#11483).
+        let named = if contribution.text == crate::models::AUTO_LABEL {
+            CODER_RAIL
+        } else {
+            contribution.text.as_str()
+        };
+        let label = composer_rail_text(named, area.width.saturating_sub(6));
         let text = contribution.text.as_str();
         // Which engine ran is a quiet fact in gray, never a colored
         // control that reads as a mode (owner, 2026-10-12).
@@ -2197,10 +2199,13 @@ fn composer_view(
         if !fits(extra, warning) {
             warning = None;
         }
-        let text = extra
+        // The name comes first and what is its own follows it, so a
+        // plan's windows read as that harness's: "Claude (Opus 5.5) · 5h
+        // 12% · week 15%" (#11483).
+        let text = warning
             .into_iter()
-            .chain(warning)
             .chain([label.as_str()])
+            .chain(extra)
             .collect::<Vec<_>>()
             .join(" · ");
         let plain = extra.is_none() && warning.is_none();
@@ -2220,12 +2225,13 @@ fn composer_view(
         );
         if !plain {
             let label_width = label.width() as u16;
+            let after_label = extra.map_or(0, |extra| extra.width() as u16 + 3);
             accent_tail(
                 frame.buffer_mut(),
                 area,
                 offset,
                 &text,
-                0,
+                after_label,
                 label_width,
                 accent,
             );
@@ -2235,7 +2241,7 @@ fn composer_view(
                     area,
                     offset,
                     &text,
-                    label_width + 3,
+                    after_label + label_width + 3,
                     warning.width() as u16,
                     Style::default().fg(t::WARNING),
                 );
@@ -2533,7 +2539,7 @@ mod export_notice_tests {
         let buffer = terminal.backend().buffer();
         let rail: String = (0..width).map(|x| buffer[(x, 0)].symbol()).collect();
         assert!(
-            rail.contains("ctx 40% · stripe needs sign-in · Claude (Haiku 5.5)"),
+            rail.contains("stripe needs sign-in · Claude (Haiku 5.5) · ctx 40%"),
             "{rail}"
         );
         let at = |word: &str| {
@@ -2545,6 +2551,66 @@ mod export_notice_tests {
         assert_eq!(buffer[(at("sign-in"), 0)].fg, t::WARNING);
         assert_eq!(buffer[(at("ctx"), 0)].fg, t::GRAY);
         assert_eq!(buffer[(at("Claude"), 0)].fg, t::GRAY);
+    }
+
+    /// Claude's plan windows are Claude's: they show only while Claude runs
+    /// the chat, right after its name, and never at startup, on the path's
+    /// rail, or beside Coder's own loop, whose startup name is "Coder"
+    /// (#11483).
+    #[test]
+    fn claudes_plan_windows_sit_beside_claude_only() {
+        use crate::harness_plugin::Harness;
+        let _serial = crate::claude_plan::TEST_SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::claude_plan::reset_for_test(1);
+        let now = atif::now_ms() / 1000;
+        crate::claude_plan::observe_rate_limit(
+            &serde_json::json!({"rateLimitType": "five_hour", "utilization": 0.12,
+                "resetsAt": now + 3600, "status": "allowed"}),
+            now,
+        );
+        let plan = crate::claude_plan::rail_text(now).expect("the plan's windows");
+        assert!(plan.starts_with("5h 12%"), "{plan}");
+        let rail = |app: &mut App| {
+            let mut terminal = Terminal::new(TestBackend::new(100, 20)).unwrap();
+            terminal.draw(|frame| render(frame, app)).unwrap();
+            let buffer = terminal.backend().buffer();
+            (0..20)
+                .map(|y| {
+                    (0..100)
+                        .map(|x| buffer[(x, y)].symbol())
+                        .collect::<String>()
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let mut app = App::default();
+        app.mode = Mode::Live;
+        app.cwd = Some("/tmp/repo".into());
+        app.plugins.model = crate::models::AUTO.into();
+        app.plugins.enabled = true;
+        // Startup: the product's name, and no plan anywhere.
+        let shown = rail(&mut app);
+        assert!(shown.contains("Coder"), "{shown}");
+        assert!(
+            !shown.contains("coder") && !shown.contains("5h "),
+            "{shown}"
+        );
+        // Coder's own loop answers: still no Claude plan.
+        app.live.runs_on = Some(Harness::CoderLoop);
+        let shown = rail(&mut app);
+        assert!(
+            shown.contains("Coder (auto)") && !shown.contains("5h "),
+            "{shown}"
+        );
+        // Claude runs the chat: its windows follow its name.
+        app.live.runs_on = Some(Harness::ClaudeCode);
+        let shown = rail(&mut app);
+        let expected = format!("{} · {plan}", claude_rail_label());
+        assert!(shown.contains(&expected), "{shown}");
+        assert!(!repository_rail(&app).contains("5h "));
+        crate::claude_plan::reset_for_test(1);
     }
 
     /// A long warning or plan line gives way on a narrow input; the
@@ -3164,6 +3230,6 @@ mod repository_tests {
         assert!(!text.contains("$0.25"), "{text}");
         assert!(text.trim_end_matches(['─', '┘']).ends_with(' '), "{text}");
         let top: String = (0..80).map(|x| buffer[(x, row - 1)].symbol()).collect();
-        assert!(top.contains("$0.25 · "), "{top}");
+        assert!(top.contains("Coder (auto) · $0.25"), "{top}");
     }
 }
