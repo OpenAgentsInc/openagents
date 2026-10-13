@@ -707,3 +707,33 @@ shot.
 - **The rule from here:** the other Draconia shots stay on the stand-in. When
   this file lists the MetaHuman Draconia, it's tested in one shot first and
   compared with the stand-in, and only switched if clearly better.
+
+## Scene: D4 (reference 56–92 s)
+
+The `night` scene kind's `stride`, `star` and `attack` shots, plus
+`draconia-d4-stand` (the stand-off held longer). They're cut by
+`~/work/film-out/draconia/d4-cut.sh` together with clips from D1–D3, at the
+reference's times, into `~/Downloads/draconia-d4-vN.mp4`,
+`-vN-side-by-side.mp4` and `~/Downloads/draconia-d4-progress.png`. Same
+rule: no stand-in face, hands or hair in close-up.
+
+### v1, 2026-10-13
+
+- **Built (35.9 s):**
+  - 56–57 s: students fleeing past the fire.
+  - 57–58 s: a blast.
+  - 58–60 s: Draconia striding away from us through the burning courtyard as
+    a green bolt cuts behind her.
+  - 60–67 s: slated plates for the crowd's faces, the hand on the rubble,
+    and the girl's close-up.
+  - 67–70 s: a blue-white star flaring with long cross spikes in a cloudy
+    sky, sparks drifting down.
+  - 70–73 s: a wraith reaching for a student by the fires, others fallen.
+  - 73–78 s: the stand-off from behind.
+  - 78–80 s: her boots.
+  - 80–92 s: slated plates for the hair, wand and face close-ups.
+- **Gaps:**
+  - About 19 s of the 36 are slated close-ups (faces, hands, hair, the wand)
+    waiting on the cast.
+  - The fallen students are dark heaps, not bodies.
+  - The 56 s shot runs with students, not with Draconia.

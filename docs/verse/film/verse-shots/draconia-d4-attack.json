@@ -1,0 +1,52 @@
+{
+  "name": "draconia-d4-attack",
+  "notes": "D4, 70-73 s: a wraith lunges at a student by the fires, others fallen on the cobbles; the student is a backlit stand-in.",
+  "scene": {
+    "kind": "night",
+    "shot": "attack"
+  },
+  "duration": 3.0,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "far": 4000.0,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.5,
+          1.4,
+          4.0
+        ],
+        "target": [
+          0.0,
+          1.3,
+          -2.5
+        ],
+        "focal_mm": 28
+      },
+      {
+        "t": 3.0,
+        "eye": [
+          0.6,
+          1.4,
+          3.6
+        ],
+        "target": [
+          0.0,
+          1.3,
+          -2.5
+        ],
+        "focal_mm": 28
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 51
+    }
+  }
+}

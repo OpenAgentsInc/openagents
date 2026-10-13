@@ -1,0 +1,53 @@
+{
+  "name": "draconia-d4-stand",
+  "notes": "D4, 73-78 s: Draconia from behind before the field of wraiths, as D3's stand-off, held longer.",
+  "scene": {
+    "kind": "night",
+    "shot": "behind"
+  },
+  "duration": 5.0,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "far": 4000.0,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.4,
+          0.9,
+          2.6
+        ],
+        "target": [
+          0.0,
+          8.0,
+          -20.0
+        ],
+        "focal_mm": 24
+      },
+      {
+        "t": 5.0,
+        "eye": [
+          0.5,
+          1.3,
+          2.8
+        ],
+        "target": [
+          0.0,
+          9.0,
+          -20.0
+        ],
+        "focal_mm": 24,
+        "ease": "in_out"
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 51
+    }
+  }
+}

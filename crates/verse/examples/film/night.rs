@@ -35,6 +35,13 @@ pub enum Shot {
     /// 41–43 s: giant spiders behind a great web in the ruined garden, a
     /// green bolt and then a red one striking among them.
     Spiders,
+    /// 58–60 s: Draconia striding away from us through the fire, a green
+    /// bolt cutting across behind her.
+    Stride,
+    /// 67–70 s: a blue star flaring in the night sky, sparks falling.
+    Star,
+    /// 70–73 s: a wraith lunging at a student by the fires, others fallen.
+    Attack,
 }
 
 /// The moon, far up the sky.
@@ -60,7 +67,7 @@ impl Set {
     pub fn world(shot: Shot) -> Mesh {
         let mut lit = Vec::new();
         cobbles(&mut lit);
-        if shot != Shot::Sky {
+        if !matches!(shot, Shot::Sky | Shot::Star) {
             ruins(&mut lit);
         }
         Mesh {
@@ -72,7 +79,10 @@ impl Set {
     pub fn new(shot: Shot, pack: &ZonePack) -> Result<Self, String> {
         let mut fx = Particles::new(0xD3);
         let mut lamps = Vec::new();
-        let her = if matches!(shot, Shot::Vortex | Shot::Behind | Shot::Boots) {
+        let her = if matches!(
+            shot,
+            Shot::Vortex | Shot::Behind | Shot::Boots | Shot::Stride | Shot::Attack
+        ) {
             let form = pack
                 .form("npc/alice")
                 .ok_or("the pack carries no npc/alice")?;
@@ -118,7 +128,29 @@ impl Set {
                     );
                 }
             }
-            Shot::Sky => {}
+            Shot::Sky | Shot::Star => {}
+            Shot::Stride => {
+                for at in [
+                    Vec3::new(-2.5, 0.2, -4.0),
+                    Vec3::new(2.0, 0.2, -6.0),
+                    Vec3::new(-1.0, 0.2, -8.0),
+                ] {
+                    fire(&mut fx, at, 40.0);
+                }
+                fx.start(
+                    "night_embers",
+                    Spawn::at(Vec3::new(0.0, 0.4, -2.0)).scaled(0.6),
+                );
+            }
+            Shot::Attack => {
+                for at in [Vec3::new(-3.5, 0.2, -2.0), Vec3::new(3.5, 0.2, -3.0)] {
+                    fire(&mut fx, at, 45.0);
+                }
+                fx.start(
+                    "night_embers",
+                    Spawn::at(Vec3::new(0.0, 0.4, -1.0)).scaled(0.6),
+                );
+            }
             Shot::Spiders => {
                 fire(&mut fx, Vec3::new(-3.0, 0.2, -5.0), 30.0);
                 fire(&mut fx, Vec3::new(2.5, 0.2, -6.0), 30.0);
@@ -170,6 +202,30 @@ impl Set {
                         dt,
                     );
                 }
+                // She strides away from us.
+                Shot::Stride => {
+                    beast.pose_clip(
+                        Vec3::new(0.0, 0.0, -0.5 - t * 1.3),
+                        std::f32::consts::PI,
+                        1.0,
+                        "walk",
+                        t,
+                        true,
+                        dt,
+                    );
+                }
+                // The student, backlit, staggering back from the wraith.
+                Shot::Attack => {
+                    beast.pose_clip(
+                        Vec3::new(-0.6, 0.0, -1.5 - 0.6 * t),
+                        2.6,
+                        1.0,
+                        "backpedal",
+                        t,
+                        true,
+                        dt,
+                    );
+                }
                 // She walks toward us.
                 Shot::Boots => {
                     beast.pose_clip(
@@ -207,6 +263,10 @@ impl Set {
             });
         }
         let sky = matches!(self.shot, Shot::Vortex | Shot::Sky | Shot::Behind);
+        if self.shot == Shot::Star {
+            // A cloudy night sky behind the star.
+            clouds(&mut mesh.sprites, false, t);
+        }
         if sky {
             // The moon and its halo.
             mesh.sprites
@@ -291,6 +351,74 @@ impl Set {
                 ));
             }
             Shot::Plate => {}
+            Shot::Stride => {
+                if (0.6..1.5).contains(&t) {
+                    let k = ((t - 0.6) / 0.25).clamp(0.0, 1.0);
+                    let from = Vec3::new(-7.0, 1.6, -5.0);
+                    let to = Vec3::new(7.0, 1.4, -5.5);
+                    mesh.ribbons.extend(feathers::beam(
+                        from,
+                        from.lerp(to, k),
+                        0.06,
+                        [0.6, 6.0, 1.2],
+                    ));
+                }
+            }
+            Shot::Star => {
+                // A blue-white star flaring with long cross spikes, sparks
+                // drifting down from it.
+                let at = Vec3::new(0.0, 22.0, -40.0);
+                let swell = (t / 1.5).min(1.0);
+                mesh.sprites.push(feathers::dot(
+                    at,
+                    0.6 + 0.8 * swell,
+                    [30.0, 40.0, 60.0],
+                    1.0,
+                ));
+                mesh.sprites
+                    .push(feathers::dot(at, 6.0 * swell + 1.0, [0.4, 0.6, 1.2], 1.0));
+                for (dir, len) in [(Vec3::X, 14.0_f32), (Vec3::Y, 6.0)] {
+                    let l = len * (0.4 + 0.6 * swell);
+                    mesh.ribbons.push(feathers::glow_line(
+                        &[at - dir * l, at, at + dir * l],
+                        0.25,
+                        [1.5, 2.2, 4.0],
+                    ));
+                }
+                for i in 0..40u32 {
+                    let fall = (t * 0.4 + hash(i + 700)).fract();
+                    let p = at
+                        + Vec3::new(
+                            (hash(i + 701) - 0.5) * 3.0,
+                            -fall * 10.0,
+                            (hash(i + 702) - 0.5) * 2.0,
+                        );
+                    mesh.sprites.push(feathers::dot(
+                        p,
+                        0.08,
+                        [2.0 * (1.0 - fall), 3.0 * (1.0 - fall), 6.0 * (1.0 - fall)],
+                        1.0,
+                    ));
+                }
+            }
+            Shot::Attack => {
+                // The wraith lunges in from the right, low and reaching.
+                let k = (t / 1.5).min(1.0);
+                let at = Vec3::new(2.5 - 2.0 * k, 2.6 - 0.6 * k, -2.5);
+                // Upright, reaching: its own sway held near level.
+                wraith(&mut mesh.lit, at, 1.2, 1.2, -1.75 + 0.2 * (t * 3.0).sin());
+                wisps(&mut mesh.sprites, at, 1.4, t, 9);
+                // Fallen students: dark heaps on the cobbles.
+                for (x, z) in [(-2.0_f32, -3.5_f32), (1.2, -4.5), (-0.2, -6.0)] {
+                    wraith(
+                        &mut mesh.lit,
+                        Vec3::new(x, 0.35, z),
+                        std::f32::consts::FRAC_PI_2,
+                        0.45,
+                        0.0,
+                    );
+                }
+            }
             Shot::Spiders => {
                 web(&mut mesh.ribbons, Vec3::new(0.0, 1.7, 1.2), 2.4, t);
                 for (k, (at, yaw)) in [
@@ -351,7 +479,10 @@ impl Set {
                 range: 8.0,
             };
         }
-        if matches!(self.shot, Shot::Plate | Shot::Boots) {
+        if matches!(
+            self.shot,
+            Shot::Plate | Shot::Boots | Shot::Stride | Shot::Attack
+        ) {
             neon.field = [0.014, 0.009, 0.006];
             neon.key = Some(key(Vec3::new(0.0, 0.5, -0.8), 3.0, 0.03));
             neon.key_color = [1.0, 0.55, 0.25];

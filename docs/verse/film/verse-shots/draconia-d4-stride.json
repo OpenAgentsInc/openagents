@@ -1,0 +1,52 @@
+{
+  "name": "draconia-d4-stride",
+  "notes": "D4, 58-60 s: Draconia strides away from us through the burning courtyard; a green bolt cuts across behind her.",
+  "scene": {
+    "kind": "night",
+    "shot": "stride"
+  },
+  "duration": 2.0,
+  "width": 1920,
+  "height": 822,
+  "subframes": 6,
+  "prewarm": 8,
+  "far": 4000.0,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          0.6,
+          1.5,
+          2.4
+        ],
+        "target": [
+          0.0,
+          1.2,
+          -4.0
+        ],
+        "focal_mm": 35
+      },
+      {
+        "t": 2.0,
+        "eye": [
+          0.6,
+          1.5,
+          1.4
+        ],
+        "target": [
+          0.0,
+          1.2,
+          -5.0
+        ],
+        "focal_mm": 35
+      }
+    ],
+    "shake": {
+      "amplitude": 0.0015,
+      "position": 0.01,
+      "frequency": 0.5,
+      "seed": 51
+    }
+  }
+}
