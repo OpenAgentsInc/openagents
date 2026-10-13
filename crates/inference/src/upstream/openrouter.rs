@@ -16,7 +16,7 @@ use serde_json::json;
 use super::google::TokenSource;
 use super::responses::{ResponsesConfig, ResponsesUpstream, fields};
 use super::secret::{KeyRef, Secret};
-use super::{Account, Capabilities, CostBasis, ModelRow, Price, PrivacyTerms};
+use super::{Account, CostBasis, ModelRow, Price, PrivacyTerms};
 use crate::openagents::Privacy;
 
 /// The Secret Manager secret holding the key.
@@ -36,22 +36,6 @@ pub fn privacy_fields(level: &Privacy) -> serde_json::Map<String, serde_json::Va
 #[must_use]
 pub fn default_models() -> Vec<ModelRow> {
     vec![
-        ModelRow {
-            id: "stealth/space-bunny-alpha".into(),
-            upstream_model: "stealth/space-bunny-alpha".into(),
-            capabilities: Capabilities {
-                tools: true,
-                reasoning: true,
-                reasoning_always_on: false,
-                json_schema: true,
-                images: false,
-                context: 256_000,
-                max_output: 64_000,
-            },
-            price: Price::micro(0, 0, 0),
-            price_source: "free while in stealth: usage.cost 0 in \
-                           crates/coder/fixtures/gateway/stealth-space-bunny-alpha.sse (2026-10-01)",
-        },
         ModelRow {
             id: "google/gemini-3.8-flash".into(),
             upstream_model: "google/gemini-3.8-flash".into(),

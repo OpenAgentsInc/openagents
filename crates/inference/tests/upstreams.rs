@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use futures_util::StreamExt;
-use inference::event::{Event, EventBody};
+use inference::event::Event;
 use inference::item::Item;
 use inference::meter::{self, Attempt, Collect};
 use inference::request::CreateResponse;
@@ -889,7 +889,7 @@ async fn pro_takes_no_tools_and_never_names_its_upstream() {
 #[tokio::test]
 async fn openrouter_recorded_stream_with_privacy_and_reported_cost() {
     let stub = stub(vec![Reply::stream(&common::recorded(
-        "stealth-space-bunny-alpha.sse",
+        "openrouter-gemini-3.8-flash.sse",
     ))])
     .await;
     let adapter = openrouter_at(&stub.url);
@@ -898,26 +898,21 @@ async fn openrouter_recorded_stream_with_privacy_and_reported_cost() {
     req.extra
         .insert("provider".into(), json!({"order": ["chutes"]}));
     let sent = adapter
-        .send(&req, "stealth/space-bunny-alpha")
+        .send(&req, "google/gemini-3.8-flash")
         .await
         .expect("sent");
     let meter = sent.meter.clone();
     let (events, error) = drain(sent).await;
     assert!(error.is_none(), "{error:?}");
     check(&events);
-    assert!(
-        events
-            .iter()
-            .any(|e| matches!(e.body, EventBody::ReasoningDelta(_)))
-    );
     let response = folded(&events);
-    assert_eq!(response.output_text(), "one\ntwo\nthree\nfour\nfive");
+    assert_eq!(response.output_text(), "One\nTwo\nThree\nFour\nFive");
 
     let seen = stub.seen();
     assert_eq!(seen[0].path, "/api/v1/responses");
     assert_eq!(seen[0].headers["x-title"], "OpenAgents");
     let body = seen[0].json();
-    assert_eq!(body["model"], "stealth/space-bunny-alpha");
+    assert_eq!(body["model"], "google/gemini-3.8-flash");
     assert_eq!(body["store"], false);
     assert_eq!(body["stream"], true);
     assert!(body.get("openagents").is_none());
@@ -928,9 +923,9 @@ async fn openrouter_recorded_stream_with_privacy_and_reported_cost() {
     );
 
     let record = meter.attempt(template());
-    assert_eq!(record.reported_cost, Some(0));
-    assert_eq!(record.tokens.input, 176);
-    assert_eq!(record.tokens.cached_input, 140);
+    assert_eq!(record.reported_cost, Some(506));
+    assert_eq!(record.tokens.input, 25);
+    assert_eq!(record.tokens.cached_input, 0);
 
     let standard = openrouter::privacy_fields(&inference::openagents::Privacy::Standard);
     assert_eq!(
@@ -994,7 +989,7 @@ async fn status_errors_carry_class_status_and_retry_after() {
     let mut classes = Vec::new();
     for _ in 0..4 {
         let error = adapter
-            .send(&count_request("strict"), "stealth/space-bunny-alpha")
+            .send(&count_request("strict"), "google/gemini-3.8-flash")
             .await
             .unwrap_err();
         classes.push((error.class, error.status, error.retry_after));

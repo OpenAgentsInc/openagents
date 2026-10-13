@@ -112,11 +112,13 @@ pub trait Upstream: Send + Sync {
     }
 
     /// What this adapter advertises to the router: one offering per
-    /// model, `zero_retention` when its terms meet `strict`.
+    /// model but a retired one, `zero_retention` when its terms meet
+    /// `strict`.
     fn offerings(&self) -> Vec<crate::router::Offering> {
         let zero_retention = self.privacy().allows(&Privacy::Strict);
         self.models()
             .iter()
+            .filter(|row| !crate::retired::is_retired(&row.id))
             .map(|row| {
                 let caps = row.capabilities;
                 crate::router::Offering {

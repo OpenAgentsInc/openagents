@@ -228,7 +228,7 @@ event: message.accepted
 data: {"thread":"th_8f2c…","message":"msg_41…","created_at":"2026-10-02T15:01:02Z"}
 
 event: route
-data: {"route":"knowledge.product","model":"stealth/space-bunny-alpha"}
+data: {"route":"knowledge.product","model":"google/gemini-3.8-flash"}
 
 event: text.delta
 data: {"delta":"Three new plugins landed in the Gym this week: "}
@@ -240,7 +240,7 @@ event: message.completed
 data: {"message":"msg_41…","text":"Three new plugins …","follow_ups":["Show the leaderboard"],"offers":[]}
 
 event: usage
-data: {"route":"knowledge.product","model":"stealth/space-bunny-alpha","cost_usd":0.0014,"cost_status":"priced","first_token_ms":1050,"total_ms":3900}
+data: {"route":"knowledge.product","model":"google/gemini-3.8-flash","cost_usd":0.0014,"cost_status":"priced","first_token_ms":1050,"total_ms":3900}
 ```
 
 The `route` event and the `usage` event carry what D11 allows: the route,

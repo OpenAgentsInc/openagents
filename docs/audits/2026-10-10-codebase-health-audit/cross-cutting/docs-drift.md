@@ -161,7 +161,7 @@ Evidence:
   - `a_toggle_allows_and_removes_a_provider_and_keeps_the_settings_valid`
   - `a_question_must_end_with_the_visitor`
   - `the_judge_answers_first_and_the_model_follows_its_opener`
-  - `the_primary_is_space_bunny_whenever_openrouter_is_reachable`
+  - a test named for the retired preview model (`the_primary_is_…_whenever_openrouter_is_reachable`)
   - `a_refusal_carries_its_code_and_wait`
   - `a_wrong_answer_report_carries_the_exchange`
 - `the_catalog_plugins_have_their_real_statuses` appears only in `INVARIANTS.md` and a docs verification record.

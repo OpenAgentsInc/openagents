@@ -75,7 +75,7 @@ repository root.
 
 | Call site | What it does | Model today | Door and key today |
 | --- | --- | --- | --- |
-| Chat worker, primary (`crates/coder/src/generate.rs` `Lane::SpaceBunny`, `FallbackDoor::openrouter`; `crates/coder/src/bin/coder-worker.rs`) | Chat replies for the phone, the desktop, `openagents chat`, the terminal | `stealth/space-bunny-alpha`, reasoning low (free on OpenRouter; retired 2026-10-05) | OpenRouter, our `OPENROUTER_API_KEY` on oa-coder-worker-1 |
+| Chat worker, primary (`crates/coder/src/generate.rs` `Lane::Gemini`, `FallbackDoor::openrouter`; `crates/coder/src/bin/coder-worker.rs`) | Chat replies for the phone, the desktop, `openagents chat`, the terminal | `google/gemini-3.8-flash`, reasoning low | OpenRouter, our `OPENROUTER_API_KEY` on oa-coder-worker-1 |
 | Chat worker, fallback (`generate.rs` `Lane::Gemini`) | Any turn the primary misses | `google/gemini-3.8-flash` | Vercel AI Gateway, our `CODER_DOOR_KEY` |
 | Website Ask box (`crates/openagents-web/src/ask.rs`) | Homepage questions | Same chat worker, through the relay | Ours (the site signs each visitor's jobs with a derived key) |
 | Chat router judge (`coder-worker.rs`, `crates/coder/src/router/judge.rs`) | Route, prepared answer, opener, lane, risk, command group, tool, capability | Jev | Gateway `typesafe-ai/jev`, then OpenRouter `typesafe/jev-1.13`, then TypeSafe (`crates/jev/src/doors.rs`, `Failover::primary_last`) |
@@ -85,7 +85,7 @@ repository root.
 | Microcoder's cloud provider (`crates/coder/src/delegate_door.rs` `targets`, `Provider::Vertex`; `crates/microcoder` `--provider door`) | Microcoder steps when the person has no Codex login | OpenAgents cloud | Ours |
 | Plugin eval graders (`crates/ext-eval/src/door.rs`, `crates/eval-runner/src/config.rs`) | `decision` and `judge` graders | Jev; `google/gemini-3.8-flash` | Gateway, our key when run on our hosts |
 | Knowledge harvest proposer (`crates/knowledge/src/harvest.rs`) | Proposes entries | `openai/gpt-6-luna` | Codex login or `OPENROUTER_API_KEY` |
-| Simulated QA (`scripts/qa/simulated_users.py`) | Persona and rubric judge | `stealth/space-bunny-alpha` | Our OpenRouter key; an internal tool, out of BYOK scope |
+| Simulated QA (`scripts/qa/simulated_users.py`) | Persona and rubric judge | `google/gemini-3.8-flash` | Our OpenRouter key; an internal tool, out of BYOK scope |
 
 Already the person's own and unchanged by BYOK: Claude Code, Codex, Grok Build,
 OpenCode, and Devin runs (`crates/microcoder`, `crates/acp-client`), and
@@ -292,7 +292,7 @@ Checked against OpenRouter's public catalog (`/api/v1/models`,
 
 | Use | Ours today | On OpenRouter | On Vercel AI Gateway | On TypeSafe |
 | --- | --- | --- | --- | --- |
-| Chat primary | `stealth/space-bunny-alpha` (OpenRouter; retires 2026-10-05) | Our current primary, whatever it is (section 9, decision 2) | Our current primary when the gateway serves it. Space Bunny it does not, so until then this falls to the chat fallback | — |
+| Chat primary | `google/gemini-3.8-flash` (OpenRouter) | Our current primary, whatever it is (section 9, decision 2) | Our current primary when the gateway serves it | — |
 | Chat fallback | `google/gemini-3.8-flash` (Gateway) | `google/gemini-3.8-flash` | `google/gemini-3.8-flash` | — |
 | Personalization | `google/gemini-2.5-flash-lite` (OpenRouter) | same | `google/gemini-2.5-flash-lite` | — |
 | Jev | `typesafe-ai/jev` → `typesafe/jev-1.13` → `jev-1.13.0` | `typesafe/jev-1.13` at `POST /api/alpha/decisions` (Phase 1 test: any key?) | `typesafe-ai/jev` at `/typesafe/v1/systemone` | `jev-1.13.0` at `POST /v1/systemone` |
@@ -472,9 +472,8 @@ The owner answered the first draft's open questions:
 
 1. **Two modes.** `mine` fails plainly and never falls back to ours. The
    earlier `mine_then_ours` mode is dropped: the modes are `ours` and `mine`.
-2. **The chat model follows ours.** After Space Bunny retires on 2026-10-05, a
-   BYOK person follows our current chat primary, on their key. There is no
-   model picker.
+2. **The chat model follows ours.** A BYOK person follows our current chat
+   primary, on their key. There is no model picker.
 3. **API callers can bring a key.** A caller of the OpenAgents API may send its
    own provider key per request. When it does, no x402 payment is needed for
    model cost (section 6).

@@ -31,9 +31,6 @@ const GEMINI: &str = include_str!("../fixtures/gateway/google-gemini-3.8-flash.s
 /// The `glm` lane's recorded stream.
 const GLM: &str = include_str!("../fixtures/gateway/zai-glm-5.3-flash.sse");
 
-/// The `space-bunny` lane's recorded stream, from OpenRouter.
-const SPACE_BUNNY: &str = include_str!("../fixtures/gateway/stealth-space-bunny-alpha.sse");
-
 /// Waits short enough to spend in a test, in the proportions the real ones
 /// hold: the headers wait is the short one, the silence between events is
 /// the long one, and the pause between attempts is shorter than both.
@@ -61,8 +58,8 @@ enum Stub {
     Truncated,
     /// Send keepalive events forever, never completing.
     Endless,
-    /// Send reasoning events through this wait, then Space Bunny Alpha's
-    /// recorded answer: a model thinking before it answers.
+    /// Send reasoning events through this wait, then GLM's recorded
+    /// answer: a model thinking before it answers.
     Thinking(Duration),
     /// Answer with this HTTP error status and a short JSON body, as
     /// OpenRouter does for a model it no longer serves (404) or a rate
@@ -206,7 +203,7 @@ async fn answer(mut socket: TcpStream, stub: Stub) {
                 let _ = socket.flush().await;
                 tokio::time::sleep(wait / 2).await;
             }
-            let _ = socket.write_all(SPACE_BUNNY.as_bytes()).await;
+            let _ = socket.write_all(GLM.as_bytes()).await;
             let _ = socket.shutdown().await;
         }
         Stub::Mute | Stub::Deaf => forever(socket).await,
@@ -254,12 +251,6 @@ async fn both_lanes_read_through_one_reader() {
     for (lane, recording, answer, output_tokens) in [
         (Lane::Gemini, GEMINI, "One\nTwo\nThree\nFour\nFive", 130),
         (Lane::Glm, GLM, "one\ntwo\nthree\nfour\nfive", 45),
-        (
-            Lane::SpaceBunny,
-            SPACE_BUNNY,
-            "one\ntwo\nthree\nfour\nfive",
-            53,
-        ),
     ] {
         let server = Server::start(Stub::Whole(recording)).await;
         let (seen, outcome) = ask(&server.door(lane.model())).await;
@@ -461,7 +452,7 @@ fn the_bounds_are_thirty_seconds_two_minutes_and_a_second() {
 /// first-word wait short enough to spend in a test.
 fn ordered(primary: &Server, fallback: &Server) -> FallbackDoor {
     FallbackDoor::new(
-        primary.door(Lane::SpaceBunny.model()),
+        primary.door(Lane::Glm.model()),
         fallback.door(Lane::Gemini.model()),
     )
     .first_word(Duration::from_millis(300), Duration::from_millis(900))
@@ -497,21 +488,21 @@ async fn ask_ordered(
 /// The primary answers, names itself, and the fallback is never asked.
 #[tokio::test]
 async fn a_primary_that_answers_names_itself() {
-    let primary = Server::start(Stub::Whole(SPACE_BUNNY)).await;
+    let primary = Server::start(Stub::Whole(GLM)).await;
     let fallback = Server::start(Stub::Whole(GEMINI)).await;
     let door = ordered(&primary, &fallback);
     let (seen, outcome, named) = ask_ordered(&door).await;
     let (text, _) = outcome.expect("the primary answers");
     assert_eq!(text, "one\ntwo\nthree\nfour\nfive");
     assert_eq!(seen, text);
-    assert_eq!(named.as_deref(), Some(Lane::SpaceBunny.model()));
+    assert_eq!(named.as_deref(), Some(Lane::Glm.model()));
     assert_eq!(fallback.asked(), 0);
     assert!(!door.primary_down());
-    assert_eq!(door.answering().model, Lane::SpaceBunny.model());
+    assert_eq!(door.answering().model, Lane::Glm.model());
 }
 
-/// A model OpenRouter no longer serves (404, as Space Bunny Alpha will be
-/// after 2026-10-05) and a rate limit (429) both hand the same turn to the
+/// A model OpenRouter no longer serves (404, as a retired preview model
+/// was after 2026-10-05) and a rate limit (429) both hand the same turn to the
 /// fallback, which names itself; the next turn asks the primary again.
 #[tokio::test]
 async fn an_error_status_before_the_first_word_falls_back() {
@@ -602,7 +593,7 @@ async fn a_primary_that_is_thinking_is_waited_for() {
     let (_, outcome, named) = ask_ordered(&door).await;
     let (text, _) = outcome.expect("the primary answers after thinking");
     assert_eq!(text, "one\ntwo\nthree\nfour\nfive");
-    assert_eq!(named.as_deref(), Some(Lane::SpaceBunny.model()));
+    assert_eq!(named.as_deref(), Some(Lane::Glm.model()));
     assert_eq!(fallback.asked(), 0);
 }
 
@@ -642,11 +633,7 @@ async fn a_402_then_a_404_then_an_answer_is_answered() {
     let backup = Server::start(Stub::Whole(GLM)).await;
     let door = chain(
         [&primary, &fallback, &backup],
-        [
-            Lane::Gemini.model(),
-            Lane::SpaceBunny.model(),
-            Lane::Glm.model(),
-        ],
+        [Lane::Gemini.model(), Lane::Glm.model(), Lane::Glm.model()],
     );
     let (seen, outcome, named) = ask_ordered(&door).await;
     let (text, _) = outcome.expect("the third door answers");
@@ -701,11 +688,7 @@ async fn a_turn_another_door_answered_says_which_missed_it_and_why() {
         let backup = Server::start(Stub::Whole(GLM)).await;
         let door = chain(
             [&primary, &fallback, &backup],
-            [
-                Lane::Gemini.model(),
-                Lane::SpaceBunny.model(),
-                Lane::Glm.model(),
-            ],
+            [Lane::Gemini.model(), Lane::Glm.model(), Lane::Glm.model()],
         );
         let seen = switches(&door).await;
         assert_eq!(seen.len(), 1, "{seen:?}");
@@ -724,10 +707,10 @@ async fn a_turn_another_door_answered_says_which_missed_it_and_why() {
     assert_eq!(primary.asked(), 1, "the benched primary sat the turn out");
     assert_eq!(seen.len(), 1, "{seen:?}");
     assert_eq!(seen[0].why, Missed::Refused);
-    assert_eq!(seen[0].model, Lane::SpaceBunny.model());
+    assert_eq!(seen[0].model, Lane::Glm.model());
     assert_eq!(seen[0].answered.as_deref(), Some(Lane::Gemini.model()));
 
-    let primary = Server::start(Stub::Whole(SPACE_BUNNY)).await;
+    let primary = Server::start(Stub::Whole(GLM)).await;
     let fallback = Server::start(Stub::Whole(GEMINI)).await;
     assert!(switches(&ordered(&primary, &fallback)).await.is_empty());
 }
@@ -778,11 +761,7 @@ async fn each_door_has_the_first_word_wait_and_no_more() {
     let backup = Server::start(Stub::Whole(GEMINI)).await;
     let door = chain(
         [&deaf, &mute, &backup],
-        [
-            Lane::Glm.model(),
-            Lane::SpaceBunny.model(),
-            Lane::Gemini.model(),
-        ],
+        [Lane::Glm.model(), Lane::Glm.model(), Lane::Gemini.model()],
     );
     let started = Instant::now();
     let (_, outcome, named) = ask_ordered(&door).await;
@@ -798,8 +777,8 @@ async fn each_door_has_the_first_word_wait_and_no_more() {
     assert_eq!(deaf.asked(), 2);
 }
 
-/// Live, the 2026-10-09 outage forced on purpose: the retired Space Bunny
-/// Alpha on OpenRouter (404), then the Vercel AI Gateway (402 while its
+/// Live, the 2026-10-09 outage forced on purpose: a model OpenRouter does
+/// not serve (404), then the Vercel AI Gateway (402 while its
 /// account is empty, or an answer once it is funded), then GLM on
 /// OpenRouter. The turn is answered with no error, and the door that
 /// answered names itself. Needs `OPENROUTER_API_KEY` and
@@ -811,7 +790,7 @@ async fn live_a_dead_chain_head_fails_over_to_a_live_door() {
     let door = FallbackDoor::new(
         ResponsesDoor::new(
             coder::generate::OPENROUTER_DOOR_URL,
-            Lane::SpaceBunny.openrouter_model(),
+            "stealth/no-such-model",
             key("OPENROUTER_API_KEY"),
         ),
         ResponsesDoor::new(
@@ -849,18 +828,17 @@ async fn live_a_dead_chain_head_fails_over_to_a_live_door() {
         started.elapsed()
     );
     assert!(text.contains("Paris"), "{text}");
-    assert_ne!(named.as_deref(), Some(Lane::SpaceBunny.model()));
+    assert_ne!(named.as_deref(), Some("stealth/no-such-model"));
 }
 
-/// Live: a primary OpenRouter does not serve (as Space Bunny Alpha will
-/// be after 2026-10-05) hands the turn to Gemini 3.8 Flash on the gateway,
-/// which names itself. Needs `OPENROUTER_API_KEY` and `AI_GATEWAY_API_KEY`;
+/// Live: a primary OpenRouter does not serve hands the turn to Gemini 3.8
+/// Flash on the gateway, which names itself. Needs `OPENROUTER_API_KEY` and `AI_GATEWAY_API_KEY`;
 /// prints the timings.
 #[tokio::test]
 #[ignore = "live: asks OpenRouter and the Vercel AI Gateway"]
 async fn live_a_retired_primary_falls_back_to_gemini() {
     let key = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("{name} is not set"));
-    for primary in ["stealth/no-such-model", Lane::SpaceBunny.model()] {
+    for primary in ["stealth/no-such-model"] {
         let door = FallbackDoor::openrouter(
             primary,
             &key("OPENROUTER_API_KEY"),
@@ -897,12 +875,7 @@ async fn live_a_retired_primary_falls_back_to_gemini() {
             first.unwrap_or_default(),
             started.elapsed()
         );
-        let expected = if primary == Lane::SpaceBunny.model() {
-            Lane::SpaceBunny.model()
-        } else {
-            Lane::Gemini.model()
-        };
-        assert_eq!(named.as_deref(), Some(expected));
+        assert_eq!(named.as_deref(), Some(Lane::Gemini.model()));
         assert!(text.contains("Paris"), "{text}");
     }
 }

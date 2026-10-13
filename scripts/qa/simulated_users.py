@@ -51,7 +51,7 @@ INSTALL_URL = (
     "https://storage.googleapis.com/openagentsgemini-cli-releases/openagents/install.sh"
 )
 OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL = "stealth/space-bunny-alpha"
+DEFAULT_MODEL = "google/gemini-3.8-flash"
 REPO = "OpenAgentsInc/openagents"
 
 

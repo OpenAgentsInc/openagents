@@ -119,9 +119,9 @@ fn each_upstream_departs_from_the_spec_where_we_know_it_does() {
         "{glm:?}"
     );
     assert_eq!(glm[34], "stream ended without [DONE]");
-    // OpenRouter follows the spec, under OpenAI's reasoning_text names.
+    // OpenRouter follows the spec.
     assert_eq!(
-        what(StreamCheck::run(&decode("stealth-space-bunny-alpha.sse"))),
+        what(StreamCheck::run(&decode("openrouter-gemini-3.8-flash.sse"))),
         Vec::<String>::new()
     );
 }

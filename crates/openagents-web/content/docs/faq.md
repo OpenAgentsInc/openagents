@@ -24,8 +24,8 @@ chats from your computer. See [Sync, share, and export](/docs/coder-sync).
 
 ## Which model answers the chat?
 
-Space Bunny Alpha, an anonymous preview model through OpenRouter, first;
-Google's Gemini 3.8 Flash when it doesn't answer. Jev, a small decision
+Google's Gemini 3.8 Flash, on Vertex AI or through OpenRouter or the
+Vercel AI Gateway, with GLM as a backup. Jev, a small decision
 model from TypeSafe, decides how we reply. Ask the chat "What model is
 this?" to hear which one is answering now. See
 [Privacy and security](/docs/privacy-and-security).

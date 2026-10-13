@@ -34,7 +34,7 @@ pub const DEFAULT_DOOR_URL: &str = "https://ai-gateway.vercel.sh";
 
 /// The OpenRouter door: its Open Responses route is
 /// `https://openrouter.ai/api/v1/responses`. The chat worker's primary
-/// model, [`Lane::SpaceBunny`], is served only here.
+/// asks it first ([`DEFAULT_PRIMARY`]).
 pub const OPENROUTER_DOOR_URL: &str = "https://openrouter.ai/api";
 
 /// The variable holding the OpenRouter key the chat worker's primary door
@@ -339,17 +339,11 @@ pub enum Lane {
     Gemini,
     /// Z.ai's GLM Flash.
     Glm,
-    /// Space Bunny Alpha, an anonymous preview model served only through
-    /// OpenRouter ([`OPENROUTER_DOOR_URL`], not the gateway), until
-    /// 2026-10-05. Retired: OpenRouter answers it with HTTP 404 "No
-    /// endpoints found", and the chat worker's primary is [`Lane::Gemini`]
-    /// on OpenRouter since 2026-10-09. Kept so older records still name it.
-    SpaceBunny,
 }
 
 impl Lane {
     /// Every lane, in the order the crate documents them.
-    pub const ALL: [Lane; 3] = [Lane::Gemini, Lane::Glm, Lane::SpaceBunny];
+    pub const ALL: [Lane; 2] = [Lane::Gemini, Lane::Glm];
 
     /// The lane's short name, which configuration may use in place of the
     /// model id.
@@ -358,7 +352,6 @@ impl Lane {
         match self {
             Lane::Gemini => "gemini",
             Lane::Glm => "glm",
-            Lane::SpaceBunny => "space-bunny",
         }
     }
 
@@ -368,7 +361,6 @@ impl Lane {
         match self {
             Lane::Gemini => "google/gemini-3.8-flash",
             Lane::Glm => "zai/glm-5.3-flash",
-            Lane::SpaceBunny => "stealth/space-bunny-alpha",
         }
     }
 
@@ -379,17 +371,14 @@ impl Lane {
         match self {
             Lane::Gemini => "google/gemini-3.8-flash",
             Lane::Glm => "z-ai/glm-5.3-flash",
-            Lane::SpaceBunny => "stealth/space-bunny-alpha",
         }
     }
 
-    /// The door that serves the lane: the gateway for every lane but
-    /// [`Lane::SpaceBunny`], which only OpenRouter serves.
+    /// The door that serves the lane: the gateway serves every lane.
     #[must_use]
     pub const fn door_url(self) -> &'static str {
         match self {
             Lane::Gemini | Lane::Glm => DEFAULT_DOOR_URL,
-            Lane::SpaceBunny => OPENROUTER_DOOR_URL,
         }
     }
 
@@ -433,15 +422,15 @@ pub const WORKER_MODEL_VAR: &str = "CODER_WORKER_MODEL";
 pub const WORKER_PRIMARY_VAR: &str = "CODER_WORKER_PRIMARY";
 
 /// The chat worker's primary when [`WORKER_PRIMARY_VAR`] names none:
-/// Gemini Flash on OpenRouter. It replaced Space Bunny Alpha, which
+/// Gemini Flash on OpenRouter. It replaced an earlier preview model that
 /// OpenRouter retired (#10109); a primary that goes away later costs one
 /// 404 and is then benched ([`BENCH_GONE`]).
 pub const DEFAULT_PRIMARY: Lane = Lane::Gemini;
 
 /// The reasoning effort the primary door asks for. Measured 2026-10-01
-/// through OpenRouter's Open Responses route, Space Bunny Alpha's first
-/// token came at 0.96 s at `low`, against 1.8 to 2.9 s at its default
-/// (#10109).
+/// through OpenRouter's Open Responses route, the primary of the day had
+/// its first token at 0.96 s at `low`, against 1.8 to 2.9 s at its
+/// default (#10109).
 pub const PRIMARY_EFFORT: &str = "low";
 
 /// How long the primary door has to show it is working — the first event
@@ -457,7 +446,7 @@ pub const PRIMARY_FIRST_WORD: Duration = Duration::from_secs(4);
 /// How long a primary that is working (streaming its reasoning) has for
 /// the first words of its answer, from the request.
 ///
-/// Measured 2026-10-01, Space Bunny Alpha's reasoning began within about
+/// Measured 2026-10-01, the primary of the day began reasoning within about
 /// a second, and a question that takes thought ("What is the capital of
 /// Australia and why was it chosen?") had its first words at 2.3 to 3.2 s
 /// under a one-line instruction and past four seconds under the chat
@@ -1885,8 +1874,8 @@ impl Generate for ResponsesDoor {
 /// asked anyway. Each switch is logged with the door, its cause, and the
 /// door that takes the turn ("takes the turn").
 ///
-/// On 2026-10-09 the chat worker's primary (Space Bunny Alpha, retired from
-/// OpenRouter) answered 404 and its one fallback (the Vercel AI Gateway)
+/// On 2026-10-09 the chat worker's primary (a preview model OpenRouter had
+/// retired) answered 404 and its one fallback (the Vercel AI Gateway)
 /// 402, and every chat failed; this chain is why that cannot happen while
 /// any door answers.
 ///
@@ -2795,7 +2784,7 @@ mod tests {
 
         // The chat worker's primary, built the way the worker builds it.
         let ordered = FallbackDoor::openrouter(
-            "space-bunny",
+            "gemini",
             "o",
             ResponsesDoor::new(DEFAULT_DOOR_URL, DEFAULT_MODEL, "g"),
         );
@@ -2956,14 +2945,13 @@ mod tests {
         assert_eq!(UNKNOWN_MODEL, "unknown");
     }
 
-    /// Three lanes, three models, one client. A lane is readable by short
+    /// Two lanes, two models, one client. A lane is readable by short
     /// name and by model id, so a shell that says `glm` and one that says
     /// `zai/glm-5.3-flash` ask for the same door.
     #[test]
     fn a_lane_is_a_model_under_a_short_name() {
         assert_eq!(Lane::Gemini.model(), "google/gemini-3.8-flash");
         assert_eq!(Lane::Glm.model(), "zai/glm-5.3-flash");
-        assert_eq!(Lane::SpaceBunny.model(), "stealth/space-bunny-alpha");
         assert_eq!(DEFAULT_MODEL, Lane::Gemini.model());
 
         assert_eq!(Lane::read("glm"), Some(Lane::Glm));
@@ -3041,8 +3029,7 @@ mod tests {
     }
 
     /// The worker's primary: Gemini Flash on OpenRouter whenever
-    /// OpenRouter's key is here and nothing names another (Space Bunny
-    /// Alpha is retired), a named one when it is, nothing when it is `off`
+    /// OpenRouter's key is here and nothing names another, a named one when it is, nothing when it is `off`
     /// or there is no key, and a refusal when one is named with no key to
     /// reach it.
     #[test]
@@ -3058,19 +3045,15 @@ mod tests {
         assert_eq!(worker_primary(None, None), Ok(None));
         assert_eq!(worker_primary(Some("off"), Some("k")), Ok(None));
         assert_eq!(
-            worker_primary(Some("space-bunny"), Some("k")),
-            Ok(Some((
-                Lane::SpaceBunny.model().to_string(),
-                "k".to_string()
-            )))
+            worker_primary(Some("glm"), Some("k")),
+            Ok(Some((Lane::Glm.model().to_string(), "k".to_string())))
         );
         assert_eq!(
             worker_primary(Some("stealth/gone"), Some(" k ")),
             Ok(Some(("stealth/gone".to_string(), "k".to_string())))
         );
-        let refused = worker_primary(Some("space-bunny"), Some("")).expect_err("no key");
+        let refused = worker_primary(Some("glm"), Some("")).expect_err("no key");
         assert!(refused.contains(OPENROUTER_KEY_VAR), "{refused}");
-        assert_eq!(Lane::SpaceBunny.door_url(), OPENROUTER_DOOR_URL);
         assert_eq!(Lane::Gemini.door_url(), DEFAULT_DOOR_URL);
     }
 
@@ -3080,18 +3063,18 @@ mod tests {
     #[test]
     fn a_fallback_door_asks_the_primary_at_low_reasoning() {
         let gateway = ResponsesDoor::new(DEFAULT_DOOR_URL, DEFAULT_MODEL, "g");
-        let ordered = FallbackDoor::openrouter("space-bunny", "o", gateway);
+        let ordered = FallbackDoor::openrouter("glm", "o", gateway);
         assert_eq!(ordered.primary.url, OPENROUTER_DOOR_URL);
-        assert_eq!(ordered.primary.model, Lane::SpaceBunny.model());
+        assert_eq!(ordered.primary.model, Lane::Glm.openrouter_model());
         let body = ordered.primary.body("sys", &[]);
         assert_eq!(body["reasoning"], json!({ "effort": PRIMARY_EFFORT }));
         assert_eq!(body["tool_choice"], "none");
         assert_eq!(ordered.fallback.body("sys", &[]).get("reasoning"), None);
         assert!(!ordered.primary_down());
-        assert_eq!(ordered.answering().model, Lane::SpaceBunny.model());
+        assert_eq!(ordered.answering().model, Lane::Glm.openrouter_model());
 
         let door = Door::Fallback(Box::new(ordered));
-        assert_eq!(door.model(), Lane::SpaceBunny.model());
+        assert_eq!(door.model(), Lane::Glm.openrouter_model());
         assert_eq!(door.name(), "live");
         assert_eq!(
             door.gateway().map(|g| g.model.as_str()),

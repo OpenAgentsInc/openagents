@@ -228,8 +228,8 @@ Jev's readings vary from run to run, so numbers move by a few cases.
 
 The first `local` run with the shipped configuration failed half its cases
 with "We couldn't answer this time": the Vercel AI Gateway answers every
-call with 402 (no credit), and Space Bunny Alpha, the worker's OpenRouter
-primary, is gone from OpenRouter (404). The runs above keep the gateway out
+call with 402 (no credit), and the worker's then OpenRouter primary, a
+preview model, is gone from OpenRouter (404). The runs above keep the gateway out
 (`CHAT_GOLDENS_NO_GATEWAY=1`), so the chat model is Gemini 3.8 Flash on
 OpenRouter.
 

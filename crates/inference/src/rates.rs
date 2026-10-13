@@ -233,7 +233,10 @@ impl Card {
     /// upstream order.
     #[must_use]
     pub fn from_rates(rates: &RateCard, sats: Option<&SatsRate>) -> Self {
-        let mut ordered: Vec<&RateRow> = rates.rows().collect();
+        let mut ordered: Vec<&RateRow> = rates
+            .rows()
+            .filter(|row| !crate::retired::is_retired(&row.model))
+            .collect();
         ordered.sort_by(|a, b| (&a.model, &a.upstream).cmp(&(&b.model, &b.upstream)));
         Self {
             v: SCHEMA.to_owned(),
@@ -257,6 +260,7 @@ impl Card {
 /// `GET /v1/models`: the OpenAI list shape, one entry per model id with an
 /// `openagents` object naming each provider that serves it, its
 /// capabilities, privacy, rate card rows, and the last hour's live rates.
+/// A retired model ([`crate::retired`]) is never listed.
 #[must_use]
 pub fn catalog(
     offerings: &[Offering],
@@ -264,7 +268,11 @@ pub fn catalog(
     live: &[Rate],
     sats: Option<&SatsRate>,
 ) -> serde_json::Value {
-    let mut models: Vec<&str> = offerings.iter().map(|o| o.model.as_str()).collect();
+    let mut models: Vec<&str> = offerings
+        .iter()
+        .map(|o| o.model.as_str())
+        .filter(|model| !crate::retired::is_retired(model))
+        .collect();
     models.sort_unstable();
     models.dedup();
     let data: Vec<serde_json::Value> = models
@@ -455,5 +463,46 @@ mod tests {
             .sats(1),
             None
         );
+    }
+
+    /// A retired model is never listed, priced, or offered, even when an
+    /// adapter row or a rate override still names it (#11553).
+    #[test]
+    fn a_retired_model_is_never_listed() {
+        let retired = crate::retired::RETIRED[0].id;
+        let live = "google/gemini-3.8-flash";
+        let offering = |model: &str| Offering {
+            upstream: "openrouter".into(),
+            model: model.into(),
+            capabilities: crate::router::Capabilities {
+                tools: true,
+                context: 1_000,
+                ..Default::default()
+            },
+            zero_retention: true,
+            payer: crate::openagents::Payer::Ours,
+            account: None,
+        };
+        let price = crate::upstream::Price::micro(0, 0, 0);
+        let rates = RateCard::new([
+            price.rate_row("openrouter", retired),
+            price.rate_row("openrouter", live),
+        ]);
+        let listed = catalog(&[offering(retired), offering(live)], &rates, &[], None);
+        let ids: Vec<&str> = listed["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|model| model["id"].as_str())
+            .collect();
+        assert_eq!(ids, vec![live]);
+        let card = Card::from_rates(&rates, None);
+        assert!(card.rows.iter().all(|row| row.model != retired));
+        assert!(card.rows.iter().any(|row| row.model == live));
+        // Nothing we publish names it either.
+        let published = serde_json::to_string(&Card::published(None)).unwrap();
+        for gone in crate::retired::RETIRED {
+            assert!(!published.contains(gone.id), "{published}");
+        }
     }
 }

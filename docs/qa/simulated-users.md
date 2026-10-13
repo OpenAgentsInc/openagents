@@ -39,8 +39,8 @@ the goals are met or the person would give up. When the run ends, a second
 model call reads the whole transcript (with reply times, statuses, and
 Coder's outcome) against the rubric and the facts, and returns findings:
 title, category, severity, the turn, an exact quote, and expected versus
-actual. Both default to Space Bunny Alpha through OpenRouter
-(`stealth/space-bunny-alpha`), the chat worker's own first route. Pass
+actual. Both default to Gemini 3.8 Flash through OpenRouter
+(`google/gemini-3.8-flash`), the chat worker's own OpenRouter route. Pass
 `--judge-model claude:sonnet` to judge with the Claude CLI instead.
 
 The judge proposes; a person (or the agent running the process) confirms.
@@ -104,10 +104,11 @@ content has its own owner.
 
 Measured on 2026-10-02 for the eight personas (run `qa-run2`):
 
-- Persona and judge models: 32 calls to Space Bunny Alpha, which is free
-  on OpenRouter during its preview: `$0.00` (the report prints the exact
-  figure). The Claude CLI fallback (`claude:haiku`) is called only when
-  Space Bunny returns no JSON three times.
+- Persona and judge models: 32 calls to the then-default preview model
+  (since retired), which was free on OpenRouter: `$0.00`. The default is
+  now Gemini 3.8 Flash, which OpenRouter bills; the report prints the
+  exact figure. The Claude CLI fallback (`claude:haiku`) is called only
+  when the model returns no JSON three times.
 - Chat worker: 31 jobs, each one ordinary chat turn.
 - Coder: one tiny run in the seeded scratch project (`mac-developer`, 32 s
   on the first engine with capacity) and, when the persona asks for it, one

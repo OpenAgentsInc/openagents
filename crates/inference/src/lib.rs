@@ -48,6 +48,7 @@ pub mod outcomes;
 pub mod rates;
 pub mod request;
 pub mod response;
+pub mod retired;
 pub mod router;
 pub mod run;
 pub mod seal;

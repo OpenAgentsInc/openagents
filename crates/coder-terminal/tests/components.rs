@@ -102,7 +102,7 @@ fn welcome() -> Card {
     Card {
         title: "OpenAgents".into(),
         rows: vec![
-            ("model".into(), "Space Bunny Alpha".into()),
+            ("model".into(), "Gemini 3.8 Flash".into()),
             ("folder".into(), "~/work/openagents".into()),
             (
                 "account".into(),

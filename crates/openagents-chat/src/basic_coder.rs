@@ -5,8 +5,8 @@
 //! conversation job (kind `25900`), signed by this device's key and
 //! encrypted (NIP-44) to the OpenAgents chat worker, through
 //! `relay.openagents.com`. The worker is `coder-worker`, answering on
-//! Space Bunny Alpha through OpenRouter first and the gateway door's Gemini
-//! Flash lane after, open to every caller with no usage limit (#10120); it
+//! Gemini Flash through its own chain of doors (Vertex AI, then
+//! OpenRouter, then the gateway door and its backups), open to every caller with no usage limit (#10120); it
 //! streams the reply back as `27000` partial feedback and one `26900`
 //! result. The relay sees ciphertext and routing tags only. Read
 //! `docs/deployment/chat-worker.md` for the serving path.

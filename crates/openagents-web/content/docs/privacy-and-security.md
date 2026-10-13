@@ -50,11 +50,11 @@
 
 To answer, our chat service sends your messages to these services:
 
-- **Space Bunny Alpha**, an anonymous preview model reached through
-  OpenRouter, which every turn asks first.
-- **Google's Gemini 3.8 Flash**, through the Vercel AI Gateway, when Space
-  Bunny Alpha doesn't answer (and Gemini 2.5 Flash, through the same
-  gateway, for some Gym news replies).
+- **Google's Gemini 3.8 Flash**, on Google's Vertex AI, through
+  OpenRouter, or through the Vercel AI Gateway (and Gemini 2.5 Flash,
+  through the same gateway, for some Gym news replies).
+- **GLM**, through OpenRouter or the Vercel AI Gateway, as a backup when
+  Gemini doesn't answer.
 - **TypeSafe's Jev**, which decides how we reply. Jev is reached through
   the Vercel AI Gateway first, then OpenRouter, then TypeSafe directly.
 - **OpenRouter**, for a short personalized line in some replies that hand
@@ -62,7 +62,7 @@ To answer, our chat service sends your messages to these services:
 - **OpenAI embeddings, through the Vercel AI Gateway**, when a question is
   answered from our product notes, our code, or the Gym's records.
 
-When we send your messages to Space Bunny Alpha, Gemini, or the
+When we send your messages to Gemini, GLM, or the
 OpenRouter model that writes personalized lines, we ask the model provider
 not to keep them or train on them. If a model's provider can't agree, we
 don't use that model. We don't ask this of Jev or the embeddings yet.

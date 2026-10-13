@@ -32,7 +32,7 @@
 //!
 //! That is the shipped chat worker's configuration
 //! (`deploy/coder-worker-chat.env.example`): every turn asks the OpenRouter
-//! primary (Space Bunny Alpha) first, and the gateway's `gemini` lane
+//! primary (Gemini Flash) first, and the gateway's `gemini` lane
 //! answers any turn the primary does not.
 //!
 //! The lane is the worker's own. [`coder::generate::WORKER_MODEL_VAR`]
@@ -42,7 +42,7 @@
 //!
 //! A gateway door gets a primary in front of it
 //! ([`coder::generate::WORKER_PRIMARY_VAR`], #10109): every turn asks
-//! OpenRouter's primary first — Space Bunny Alpha at low reasoning unless
+//! OpenRouter's primary first — Gemini Flash at low reasoning unless
 //! the variable names another, or `off` — and a turn the primary has not
 //! started answering goes to the gateway door. Each result names the model
 //! that wrote it.
@@ -274,7 +274,7 @@ this worker runs, and outranks CODER_MODEL. CODER_WORKER_PRIMARY names a
 model every turn asks OpenRouter (OPENROUTER_API_KEY) for first, at low
 reasoning, in front of that door, which takes any turn the primary has not
 started in four seconds, or, while thinking, answered in eight; unset, it
-is Space Bunny Alpha whenever
+is Gemini Flash whenever
 OPENROUTER_API_KEY is set, and off answers on that door alone. The worker proves its relay
 subscription live with a probe every 30 seconds and renews it on an
 overlapping connection every 45 minutes; CODER_WORKER_PROBE_MS and
@@ -632,8 +632,8 @@ async fn serve(options: &Options) -> Result<(), String> {
             }
             // The primary goes in front of that door (#10109): every turn
             // asks OpenRouter's primary first, and one it does not start
-            // answering goes to the door above. Unset, the primary is Space
-            // Bunny Alpha whenever OpenRouter's key is here.
+            // answering goes to the door above. Unset, the primary is
+            // Gemini Flash whenever OpenRouter's key is here.
             let door = ordered(
                 door,
                 env::var(WORKER_PRIMARY_VAR).ok().as_deref(),
@@ -4736,17 +4736,17 @@ mod tests {
         }
     }
 
+    /// A model only OpenRouter serves (the gateway serves no stealth
+    /// preview model), as a primary can be.
+    const OPENROUTER_ONLY: &str = "stealth/preview-model";
+
     /// The chat door on a caller's keys asks our primary on their
     /// OpenRouter key, then our fallback on their gateway key, at the
     /// providers' own URLs and never at our door.
     #[test]
     fn the_callers_door_is_our_models_on_their_providers() {
         let ours = Door::Fallback(Box::new(FallbackDoor::new(
-            coder::generate::ResponsesDoor::new(
-                "https://our.door",
-                Lane::SpaceBunny.model(),
-                "our-key",
-            ),
+            coder::generate::ResponsesDoor::new("https://our.door", OPENROUTER_ONLY, "our-key"),
             coder::generate::ResponsesDoor::new("https://our.gateway", GEMINI, "our-key"),
         )));
         let mut keys = model_access::Keys::none();
@@ -4764,7 +4764,7 @@ mod tests {
         };
         // Every door their keys open, in order, ending at their gateway.
         assert_eq!(ordered.primary.url, "https://openrouter.ai/api");
-        assert_eq!(ordered.primary.model, Lane::SpaceBunny.model());
+        assert_eq!(ordered.primary.model, OPENROUTER_ONLY);
         let last_door = ordered.doors().last().expect("a last door");
         assert_eq!(last_door.url, "https://ai-gateway.vercel.sh");
         assert_eq!(last_door.model, GEMINI);
@@ -4831,7 +4831,7 @@ mod tests {
         let ours = Door::Fallback(Box::new(FallbackDoor::new(
             coder::generate::ResponsesDoor::new(
                 coder::generate::OPENROUTER_DOOR_URL,
-                Lane::SpaceBunny.model(),
+                Lane::Glm.model(),
                 "our-key",
             ),
             coder::generate::ResponsesDoor::new(
@@ -4882,7 +4882,7 @@ mod tests {
         // (a router picks per message), on our keys or theirs.
         let model = render(&config.facts, "meta.model");
         assert!(model.starts_with("There isn't one model."), "{model}");
-        assert!(!model.contains("Space Bunny"), "{model}");
+        assert!(!model.contains("GLM"), "{model}");
         let privacy = render(&config.facts, "meta.privacy");
         assert!(privacy.contains("Their door (embeddings)"), "{privacy}");
         assert!(!privacy.contains("Our door"), "{privacy}");
@@ -6308,7 +6308,7 @@ mod tests {
             let bodies = [
                 (
                     Duration::from_millis(150),
-                    include_str!("../../fixtures/gateway/stealth-space-bunny-alpha.sse"),
+                    include_str!("../../fixtures/gateway/zai-glm-5.3-flash.sse"),
                 ),
                 (
                     Duration::ZERO,
@@ -6727,12 +6727,12 @@ mod tests {
         assert!(news[0]["instructions"].as_str().unwrap().contains(&lead));
     }
 
-    /// A Space Bunny Alpha primary on loopback in front of `fallback`:
-    /// answering from the recorded OpenRouter stream when `answers`, and
+    /// A GLM primary on loopback in front of `fallback`:
+    /// answering from its recorded stream when `answers`, and
     /// refusing every connection otherwise, as a model that is gone does.
     fn primary_before(answers: bool, fallback: Door) -> Door {
         let url = if answers {
-            let stream = include_str!("../../fixtures/gateway/stealth-space-bunny-alpha.sse");
+            let stream = include_str!("../../fixtures/gateway/zai-glm-5.3-flash.sse");
             serve_once(Duration::ZERO, "text/event-stream", stream.to_string())
         } else {
             // A port that was bound and let go: nothing listens there.
@@ -6746,7 +6746,7 @@ mod tests {
         };
         Door::Fallback(Box::new(
             coder::generate::FallbackDoor::new(
-                coder::generate::ResponsesDoor::new(url, Lane::SpaceBunny.model(), "test"),
+                coder::generate::ResponsesDoor::new(url, Lane::Glm.model(), "test"),
                 fallback,
             )
             .first_word(Duration::from_secs(2), Duration::from_secs(4)),
@@ -6761,11 +6761,7 @@ mod tests {
         let mut payload = turn("How do Nostr relays work?");
         payload.as_object_mut().unwrap().remove("opener");
         for (answers, model, text) in [
-            (
-                true,
-                Lane::SpaceBunny.model(),
-                "one\ntwo\nthree\nfour\nfive",
-            ),
+            (true, Lane::Glm.model(), "one\ntwo\nthree\nfour\nfive"),
             (false, GEMINI, "One\nTwo\nThree\nFour\nFive"),
         ] {
             let door = primary_before(answers, slow_door(Duration::ZERO));
@@ -6783,7 +6779,7 @@ mod tests {
                     result["switched"],
                     json!({
                         "provider": "other",
-                        "model": Lane::SpaceBunny.model(),
+                        "model": Lane::Glm.model(),
                         "why": "error",
                     })
                 );
@@ -6816,8 +6812,8 @@ mod tests {
         let Door::Fallback(both) = &ordered_door else {
             panic!("the primary is in front");
         };
-        // Space Bunny Alpha is retired: the default primary is Gemini on
-        // OpenRouter, in front of the gateway's Gemini.
+        // The default primary is Gemini on OpenRouter, in front of the
+        // gateway's Gemini.
         assert_eq!(both.primary.model, Lane::Gemini.openrouter_model());
         assert_eq!(both.primary.url, coder::generate::OPENROUTER_DOOR_URL);
         assert_eq!(both.fallback.model, GEMINI);
@@ -6847,8 +6843,8 @@ mod tests {
             ordered(stub(), None, Some("key")).unwrap(),
             Door::Stub(_)
         ));
-        assert!(ordered(stub(), Some("space-bunny"), Some("key")).is_err());
-        assert!(ordered(gateway(), Some("space-bunny"), None).is_err());
+        assert!(ordered(stub(), Some("glm"), Some("key")).is_err());
+        assert!(ordered(gateway(), Some("glm"), None).is_err());
     }
 
     /// "What models does this use?" names no single model: a router picks
@@ -6858,7 +6854,7 @@ mod tests {
     #[test]
     fn the_model_answer_names_no_single_model() {
         let door = Door::Fallback(Box::new(coder::generate::FallbackDoor::openrouter(
-            Lane::SpaceBunny.model(),
+            Lane::Glm.model(),
             "test",
             coder::generate::ResponsesDoor::new(coder::generate::DEFAULT_DOOR_URL, GEMINI, "test"),
         )));
@@ -6883,8 +6879,8 @@ mod tests {
                 let said = render(facts, id);
                 assert!(
                     said.contains(
-                        "OpenRouter for Space Bunny Alpha (an anonymous preview model), the Vercel AI \
-                         Gateway for Google's Gemini 3.8 Flash when Space Bunny Alpha can't answer"
+                        "OpenRouter for Z.ai's GLM 5.3 Flash, the Vercel AI Gateway for Google's \
+                         Gemini 3.8 Flash when Z.ai's GLM 5.3 Flash can't answer"
                     ),
                     "{said}"
                 );

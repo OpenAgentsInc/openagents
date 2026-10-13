@@ -78,7 +78,7 @@ fn now() -> u64 {
 
 /// The models a gateway `/v1/models` body offers the Coder loop: concrete
 /// models that take tools, without the gateway's own routers (`auto` is
-/// already the default).
+/// already the default) or a retired model (`inference::retired`).
 #[must_use]
 pub fn parse(body: &Value) -> Vec<Row> {
     let Some(data) = body.get("data").and_then(Value::as_array) else {
@@ -89,6 +89,7 @@ pub fn parse(body: &Value) -> Vec<Row> {
             let id = entry.get("id")?.as_str()?.trim();
             let meta = entry.get("openagents");
             if id.is_empty()
+                || inference::retired::is_retired(id)
                 || meta
                     .and_then(|meta| meta.get("router"))
                     .and_then(Value::as_bool)
@@ -133,8 +134,15 @@ pub fn parse(body: &Value) -> Vec<Row> {
 pub fn cached_in(root: &Path, account: &openagents_login::Saved) -> Option<(u64, Vec<Row>)> {
     let path = root.join(CACHE_FILE);
     let file: CacheFile = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
+    // A list kept before a model was retired never shows it.
     (file.version == 1 && file.origin == account.origin && file.account == account.account)
-        .then_some((file.fetched_at, file.models))
+        .then_some((
+            file.fetched_at,
+            file.models
+                .into_iter()
+                .filter(|row| !inference::retired::is_retired(&row.id))
+                .collect(),
+        ))
 }
 
 fn keep_in(root: &Path, account: &openagents_login::Saved, models: &[Row], at: u64) {
@@ -334,12 +342,14 @@ pub fn catalog(models: &[Row], with_auto: bool) -> Vec<Model> {
 }
 
 /// The pick the Coder loop's next turn runs: `picked` while `account`
-/// can reach the gateway, else `None` (`auto`).
+/// can reach the gateway, else `None` (`auto`). A retired model
+/// (`inference::retired`) is never run, whatever was saved.
 #[must_use]
 pub fn active(picked: Option<&str>, account: Option<&openagents_login::Saved>) -> Option<String> {
     account
         .filter(|account| reachable(account))
         .and(picked)
+        .filter(|model| !inference::retired::is_retired(model))
         .map(str::to_owned)
 }
 
@@ -350,7 +360,11 @@ pub fn load_choice(root: &Path) -> Option<String> {
     std::fs::read(root.join(CHOICE_FILE))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<ChoiceFile>(&bytes).ok())
-        .filter(|file| file.version == 1 && crate::models::pinned(&file.model))
+        .filter(|file| {
+            file.version == 1
+                && crate::models::pinned(&file.model)
+                && !inference::retired::is_retired(&file.model)
+        })
         .map(|file| file.model)
 }
 
@@ -360,7 +374,8 @@ pub fn load_choice(root: &Path) -> Option<String> {
 /// # Errors
 /// The pick could not be saved; the earlier one stays.
 pub fn choose(root: Option<&Path>, model: Option<&str>) -> Result<Option<String>, String> {
-    let model = model.filter(|model| crate::models::pinned(model));
+    let model = model
+        .filter(|model| crate::models::pinned(model) && !inference::retired::is_retired(model));
     if let Some(root) = root {
         let path = root.join(CHOICE_FILE);
         let saved = match model {
@@ -390,6 +405,9 @@ pub fn choose(root: Option<&Path>, model: Option<&str>) -> Result<Option<String>
 mod tests {
     use super::*;
 
+    /// A model the gateway retired.
+    const RETIRED: &str = inference::retired::RETIRED[0].id;
+
     fn body() -> Value {
         serde_json::json!({"object":"list","data":[
             {"id":"google/gemini-2.5-flash-lite","openagents":{"free":true,"providers":[
@@ -397,6 +415,8 @@ mod tests {
             {"id":"zai/glm-5.3-flash","openagents":{"providers":[
                 {"context":1000000,"max_output":128000,"capabilities":{"tools":true,"images":false}}]}},
             {"id":"embed/no-tools","openagents":{"providers":[{"capabilities":{"tools":false}}]}},
+            {"id":RETIRED,"openagents":{"providers":[
+                {"context":256000,"max_output":64000,"capabilities":{"tools":true}}]}},
             {"id":"openagents/auto","openagents":{"router":true}},
             {"id":"openagents/code","openagents":{"router":true,"models":["zai/glm-5.3-flash"]}}
         ]})
@@ -439,6 +459,53 @@ mod tests {
         assert_eq!(cached_in(dir.path(), &account("acct_b")), None);
         let text = std::fs::read_to_string(dir.path().join(CACHE_FILE)).unwrap();
         assert!(!text.contains("fixture-session-token"));
+    }
+
+    /// A list kept before a model was retired, and a pick of it, never
+    /// bring it back (#11553).
+    #[test]
+    fn a_retired_model_never_shows_from_a_stale_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let stale = [
+            Row {
+                id: RETIRED.into(),
+                context: Some(256_000),
+                max_output: Some(64_000),
+                free: false,
+                images: false,
+            },
+            Row {
+                id: "zai/glm-5.3-flash".into(),
+                context: None,
+                max_output: None,
+                free: false,
+                images: false,
+            },
+        ];
+        keep_in(dir.path(), &account("acct_a"), &stale, 1_700_000_000);
+        let (_, kept) = cached_in(dir.path(), &account("acct_a")).unwrap();
+        let ids: Vec<_> = kept.iter().map(|row| row.id.as_str()).collect();
+        assert_eq!(ids, ["zai/glm-5.3-flash"]);
+        std::fs::write(
+            dir.path().join(CHOICE_FILE),
+            serde_json::to_vec(&ChoiceFile {
+                version: 1,
+                model: RETIRED.into(),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(load_choice(dir.path()), None);
+        // Auto never runs it: a saved or handed-in pick of it is auto.
+        assert_eq!(active(Some(RETIRED), Some(&account("acct_a"))), None);
+        assert_eq!(choose(Some(dir.path()), Some(RETIRED)).unwrap(), None);
+        assert_eq!(load_choice(dir.path()), None);
+        // And the picker never offers it, even from a gateway list naming it.
+        assert!(
+            catalog(&parse(&body()), true)
+                .iter()
+                .all(|row| row.id != RETIRED)
+        );
     }
 
     #[test]

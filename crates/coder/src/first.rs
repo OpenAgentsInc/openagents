@@ -97,9 +97,8 @@ pub struct Facts {
 /// What the privacy answer says about the providers keeping what we send,
 /// at the level the worker's doors ask for ([`ProviderPrivacy`], #11040).
 /// Under `strict` every chat-model request asks for no training and no
-/// retention, and a primary that cannot agree is not used; below it,
-/// Space Bunny Alpha's anonymous provider may keep prompts and replies
-/// (OpenRouter's notice for the model, 2026-10-01).
+/// retention, and a primary that cannot agree is not used; below it, the
+/// primary's provider may keep prompts and replies.
 #[must_use]
 pub fn keeps_sentence(privacy: ProviderPrivacy) -> &'static str {
     match privacy {
@@ -107,12 +106,12 @@ pub fn keeps_sentence(privacy: ProviderPrivacy) -> &'static str {
             "We ask the model providers not to keep or train on what we send them"
         }
         ProviderPrivacy::NoTraining => {
-            "We ask the model providers not to train on what we send them; Space Bunny Alpha's \
-             anonymous provider may still keep the messages it is sent and its replies"
+            "We ask the model providers not to train on what we send them; the provider may \
+             still keep the messages it is sent and its replies"
         }
         ProviderPrivacy::Off => {
-            "Space Bunny Alpha's anonymous provider may keep the messages it is sent and its \
-             replies, though not to train on them"
+            "We ask the model providers nothing beyond not storing the conversation, so the \
+             provider may keep the messages it is sent and its replies"
         }
     }
 }
@@ -125,14 +124,15 @@ impl Facts {
     pub fn of(model: &str, url: Option<&str>) -> Self {
         let lane = ModelLane::ALL
             .into_iter()
-            .find(|lane| lane.model() == model);
+            .find(|lane| lane.model() == model || lane.openrouter_model() == model);
         let chat_model = lane.map(|lane| match lane {
             ModelLane::Gemini => "Google's Gemini 3.8 Flash".to_string(),
             ModelLane::Glm => "Z.ai's GLM 5.3 Flash".to_string(),
-            ModelLane::SpaceBunny => "Space Bunny Alpha (an anonymous preview model)".to_string(),
         });
+        // The primary's door (OpenRouter) is the one whose provider terms
+        // follow the privacy level the doors ask for.
         let chat_model_keeps = lane
-            .filter(|lane| *lane == ModelLane::SpaceBunny)
+            .filter(|_| url.map(|url| url.trim_end_matches('/')) == Some(OPENROUTER_DOOR_URL))
             .map(|_| keeps_sentence(ProviderPrivacy::from_env()).to_string());
         let chat_model_host = url
             .map(|url| url.trim_end_matches('/'))
@@ -343,11 +343,8 @@ mod tests {
         assert_eq!(gateway.chat_model_keeps, None);
 
         // The primary names itself, its door, and what its provider keeps.
-        let primary = Facts::of(ModelLane::SpaceBunny.model(), Some(OPENROUTER_DOOR_URL));
-        assert_eq!(
-            primary.chat_model.as_deref(),
-            Some("Space Bunny Alpha (an anonymous preview model)")
-        );
+        let primary = Facts::of(ModelLane::Glm.openrouter_model(), Some(OPENROUTER_DOOR_URL));
+        assert_eq!(primary.chat_model.as_deref(), Some("Z.ai's GLM 5.3 Flash"));
         assert_eq!(primary.chat_model_host.as_deref(), Some("OpenRouter"));
         assert!(
             primary
@@ -362,7 +359,7 @@ mod tests {
             "We ask the model providers not to keep or train on what we send them"
         );
         assert!(keeps_sentence(ProviderPrivacy::NoTraining).contains("may still keep"));
-        assert!(keeps_sentence(ProviderPrivacy::Off).contains("not to train on them"));
+        assert!(keeps_sentence(ProviderPrivacy::Off).contains("may keep"));
     }
 
     #[test]

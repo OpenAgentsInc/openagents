@@ -144,10 +144,13 @@ impl ResponsesUpstream {
         &self.config
     }
 
-    /// Adds a model row (the long tail a deployment configures).
+    /// Adds a model row (the long tail a deployment configures). A
+    /// retired model ([`crate::retired`]) is not added.
     #[must_use]
     pub fn with_model(mut self, row: super::ModelRow) -> Self {
-        self.config.models.push(row);
+        if !crate::retired::is_retired(&row.id) {
+            self.config.models.push(row);
+        }
         self
     }
 }

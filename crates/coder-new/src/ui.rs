@@ -976,6 +976,7 @@ fn coder_rail_model(app: &App) -> Option<String> {
     }
     if app.account.is_some()
         && let Some(picked) = &app.gateway_model
+        && !inference::retired::is_retired(picked)
     {
         return Some(rail_model_name(picked));
     }
@@ -1014,7 +1015,9 @@ fn coder_model_picked(app: &App) -> bool {
 /// knows it: the one answering now while a turn streams, else the latest
 /// reply's.
 fn served_model(app: &App) -> Option<String> {
-    let usable = |model: &str| !model.is_empty() && crate::models::pinned(model);
+    let usable = |model: &str| {
+        !model.is_empty() && crate::models::pinned(model) && !inference::retired::is_retired(model)
+    };
     app.live
         .partial_model
         .clone()

@@ -93,7 +93,7 @@ pub fn spec(name: &str) -> Value {
 pub const RECORDED: [&str; 3] = [
     "google-gemini-3.8-flash.sse",
     "zai-glm-5.3-flash.sse",
-    "stealth-space-bunny-alpha.sse",
+    "openrouter-gemini-3.8-flash.sse",
 ];
 
 /// A small deterministic generator, for splitting streams at arbitrary

@@ -107,7 +107,7 @@ pub struct Access {
 }
 
 /// Whether the gateway serves `model`. It does not serve OpenRouter's
-/// stealth models (Space Bunny).
+/// stealth (anonymous preview) models.
 fn gateway_serves(model: &str) -> bool {
     !model.starts_with("stealth/") && !model.starts_with("openrouter/")
 }
@@ -329,7 +329,8 @@ impl Access {
 mod tests {
     use super::*;
 
-    const PRIMARY: &str = "stealth/space-bunny-alpha";
+    /// A model only OpenRouter serves, as its stealth previews are.
+    const PRIMARY: &str = "stealth/preview-model";
     const FALLBACK: &str = "google/gemini-3.8-flash";
 
     fn keys(providers: &[Provider]) -> Keys {

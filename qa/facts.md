@@ -49,10 +49,9 @@ finding. When the product changes, change this file in the same commit.
 - Chat messages are encrypted before they leave the device; the relay sees
   only the encrypted form and keeps nothing. The chat service stores no
   message text. To answer, it sends the conversation to Jev (TypeSafe, through
-  the Vercel AI Gateway) to route it, then to Space Bunny Alpha
-  through OpenRouter (whose provider may keep it, not to train on), and to
-  Google's Gemini through the Vercel AI Gateway when Space Bunny can't
-  answer.
+  the Vercel AI Gateway) to route it, then to Google's Gemini 3.8 Flash on
+  Vertex AI, through OpenRouter, or through the Vercel AI Gateway, with GLM
+  as a backup when Gemini can't answer.
 - Coder sends what it reads to the model provider you signed in to (as
   Codex or Claude Code do on their own). Your code stays on your computer.
 

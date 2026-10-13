@@ -154,7 +154,7 @@ The violations are in less-watched paths. The crew agent (`crates/coder/src/task
 **Locations:**
 - [INVARIANTS.md](../../../../INVARIANTS.md), INVARIANTS.md:49, INVARIANTS.md:140, INVARIANTS.md:152, INVARIANTS.md:160-166, INVARIANTS.md:523, INVARIANTS.md:617
 
-**Evidence:** The verifier spot-checked 6 of the 11 named tests: `a_question_must_end_with_the_visitor`, `the_judge_answers_first_and_the_model_follows_its_opener`, `a_refusal_carries_its_code_and_wait`, `the_catalog_plugins_have_their_real_statuses`, `a_toggle_allows_and_removes_a_provider_and_keeps_the_settings_valid` and `the_primary_is_space_bunny_whenever_openrouter_is_reachable`. Each appears once in INVARIANTS.md, and none has a `fn NAME` definition under `crates/`, `bins/` or `tests/`. Only one missing path was confirmed: `crates/openagents-mobile/src/gym/tests.rs` (row at line 523). `gym.rs` is a single file.
+**Evidence:** The verifier spot-checked 6 of the 11 named tests: `a_question_must_end_with_the_visitor`, `the_judge_answers_first_and_the_model_follows_its_opener`, `a_refusal_carries_its_code_and_wait`, `the_catalog_plugins_have_their_real_statuses`, `a_toggle_allows_and_removes_a_provider_and_keeps_the_settings_valid` and a test named for the retired preview model (`the_primary_is_…_whenever_openrouter_is_reachable`). Each appears once in INVARIANTS.md, and none has a `fn NAME` definition under `crates/`, `bins/` or `tests/`. Only one missing path was confirmed: `crates/openagents-mobile/src/gym/tests.rs` (row at line 523). `gym.rs` is a single file.
 
 **Impact:** Rows that say "checked by X" point at tests that no longer exist, and the drift goes unnoticed.
 

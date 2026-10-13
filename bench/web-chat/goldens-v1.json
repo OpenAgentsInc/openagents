@@ -82,7 +82,7 @@
           "tier": ["canned"],
           "speed": "instant",
           "required": [["isn't one model"], ["router"], ["many models"]],
-          "forbidden": ["Gemini", "Vercel", "Space Bunny", "GPT-"]
+          "forbidden": ["Gemini", "Vercel", "GPT-"]
         },
         {
           "id": "starters.codebase",
@@ -149,7 +149,7 @@
           "tier": ["canned"],
           "speed": "instant",
           "required": [["router"], ["isn't one model", "many models"]],
-          "forbidden": ["Gemini", "Vercel", "Space Bunny"]
+          "forbidden": ["Gemini", "Vercel"]
         },
         {
           "id": "about.jev",

@@ -346,12 +346,17 @@ impl Gateway {
 
 /// The offerings of every configured adapter in `upstreams`, paid by
 /// `payer`. An adapter without its key is left out, so it never costs a
-/// request an attempt.
+/// request an attempt, and a retired model ([`crate::retired`]) is never
+/// offered.
 fn offerings_of(upstreams: &[Arc<dyn Upstream>], payer: &ext::Payer) -> Vec<Offering> {
     let mut offerings = Vec::new();
     for upstream in upstreams.iter().filter(|upstream| upstream.configured()) {
         let zero_retention = upstream.privacy().allows(&Privacy::Strict);
-        for row in upstream.models() {
+        for row in upstream
+            .models()
+            .iter()
+            .filter(|row| !crate::retired::is_retired(&row.id))
+        {
             let caps = row.capabilities;
             offerings.push(Offering {
                 upstream: upstream.name().to_owned(),

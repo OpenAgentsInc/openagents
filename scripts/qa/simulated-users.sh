@@ -10,9 +10,9 @@
 #
 # --build first builds openagents, openagents-desktop, coder, and microcoder
 # into $CARGO_TARGET_DIR/debug, the binaries the run drives. The persona and
-# judge models default to Space Bunny Alpha through OpenRouter; the key is
-# read from OPENROUTER_API_KEY or ~/work/.secrets/openrouter.env and never
-# printed. `--judge-model claude:sonnet` judges with the Claude CLI instead.
+# judge models default to Gemini 3.8 Flash through OpenRouter (billed); the
+# key is read from OPENROUTER_API_KEY or ~/work/.secrets/openrouter.env and
+# never printed. `--judge-model claude:sonnet` judges with the Claude CLI instead.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

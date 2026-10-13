@@ -1,7 +1,7 @@
 OpenAgents
 model
- Space Bunny
- Alpha
+ Gemini 3.8
+ Flash
 folder
  ~/work/openagen
  ts

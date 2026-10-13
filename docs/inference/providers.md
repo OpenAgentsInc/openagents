@@ -116,7 +116,7 @@ Owners of a row update it when they change the path. The gateway spec's
 | Anthropic key check (**prod**, **BYOK**) | `crates/openagents-web/src/cloud/byo.rs` `check` | `api.anthropic.com` `GET /v1/models` (validates, no generation) | None |
 | Mobile and desktop key tests (**BYOK**) | `crates/openagents-mobile/src/provider_keys.rs`; `crates/openagents-desktop/src/settings.rs`; `crates/model-access` | Key checks only (OpenRouter `/key`, Vercel `/credits`, TypeSafe); chat goes over the relay to the chat worker | None |
 | File-finding bench plan and judge stages (**tool**) | `scripts/bench/file-finding-bench.py` `cmd_plan`, `cmd_rerank`, judge | OpenRouter `anthropic/claude-sonnet-5.5` or the Claude CLI (plan); TypeSafe Jev with a key (judge) | Our `/v1/systemone` without a key |
-| Simulated users QA (**tool**) | `scripts/qa/simulated_users.py` `ask_model` | OpenRouter `stealth/space-bunny-alpha` (retired model) | The same model again, then `claude:haiku` via the Claude CLI |
+| Simulated users QA (**tool**) | `scripts/qa/simulated_users.py` `ask_model` | OpenRouter `google/gemini-3.8-flash` | The same model again, then `claude:haiku` via the Claude CLI |
 | Relevance and score benches (**tool**) | `scripts/bench/clef-relevance-bench.py`; `training/score-probe/probe.py`; `crates/gym/suites/eval_independence_v1.py`; `bench/jev-lifecycle/gateway.py` | Local Clef/Kev/Lev or TypeSafe `jev-latest`; Vercel `typesafe-ai/jev` (lifecycle) | None |
 | Delegation study broker (**tool**) | `bench/delegation-study/broker.py` | `api.anthropic.com` `/v1/messages` (metered forwarder) | None |
 | Local gateway and worker (**tool**) | `scripts/dev/inference-local.sh` | The local inference gateway (Vertex with `VERTEX_ACCESS_TOKEN`) | Its chain |
