@@ -71,7 +71,9 @@ of `main`:
 2. **Build and check, publishing nothing:**
    `CARGO_TARGET_DIR=~/work/openagents-target-release scripts/release/coder.sh --version 1.0.0`
 3. **Publish, point stable and rc, publish the installers** (the one
-   command):
+   command). It runs the [harness acceptance gate](../coder/harness-acceptance.md)
+   on the macOS archive first and refuses to publish on a failing check;
+   `--skip-acceptance "REASON"` overrides it, and the reason is published:
    `CARGO_TARGET_DIR=~/work/openagents-target-release scripts/release/coder.sh --version 1.0.0 --publish --channel stable --publish-installers`
 4. **Read it back and install it:**
    `curl -fsS https://storage.googleapis.com/openagentsgemini-cli-releases/coder/coder.stable`

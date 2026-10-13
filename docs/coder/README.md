@@ -91,6 +91,7 @@ for sessions, workspaces, tracked work, automation, environments, and live media
 | [Programs and extensions](../extensions/) | Target specification for programs, Wasm plugins, skills, discovery, and packages. |
 | [Measurements](measurements/) | Observed results, task-selection studies, and supporting evidence. |
 | [Verification](verification/) | Dated acceptance records and supporting evidence. |
+| [Harness acceptance gate](harness-acceptance.md) | The real chat on every harness that each release and local install must pass. |
 | [Examples](examples/) | Work lists and project supervisor configuration. |
 | [Source archive](thoughts-on-a-typesafe-coding-agent/) | Original exports and images for the coding-agent proposal. |
 

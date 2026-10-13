@@ -43,6 +43,13 @@
 #   --point-channel NAME    Move a fully covered published version; no build.
 #   --publish-installers    Publish scripts/install/coder.sh and coder.ps1;
 #                            with --version and --publish, after the release.
+#   --skip-acceptance REASON
+#                           Publish without the harness acceptance gate. The
+#                           gate (scripts/coder/harness-acceptance.sh, #11549)
+#                           otherwise runs on the macOS archive before any
+#                           upload and a failing check refuses to publish.
+#                           REASON is required, printed, and published as the
+#                           version's acceptance record.
 #
 # Environment:
 #   CODER_RELEASES_BUCKET   Default openagentsgemini-cli-releases.
@@ -116,6 +123,7 @@ allow_partial=0
 skip_notarization=0
 point_channel_name=''
 publish_installers=0
+skip_acceptance=''
 
 assess_attempts=${CODER_RELEASE_ASSESS_ATTEMPTS:-45}
 assess_delay=${CODER_RELEASE_ASSESS_DELAY:-60}
@@ -426,6 +434,11 @@ while [ $# -gt 0 ]; do
     --skip-notarization) skip_notarization=1; shift ;;
     --point-channel) point_channel_name=${2:-}; shift 2 ;;
     --publish-installers) publish_installers=1; shift ;;
+    --skip-acceptance)
+      skip_acceptance=${2:-}
+      [ "$(printf '%s' "$skip_acceptance" | tr -d '[:space:]' | wc -c)" -ge 10 ] ||
+        die "--skip-acceptance needs a written reason (at least a short sentence)"
+      shift 2 ;;
     -h | --help) sed -n '2,/^set -eu/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
@@ -862,6 +875,29 @@ if [ "$publish" = 0 ]; then
   exit 0
 fi
 
+# The harness acceptance gate (#11549, docs/coder/harness-acceptance.md): a
+# real chat on every harness installed here, on the exact macOS archive
+# about to be published. A failing check refuses the publish.
+acceptance_record="$dist/acceptance.md"
+if [ -n "$skip_acceptance" ]; then
+  echo "Skipping the harness acceptance gate: $skip_acceptance" >&2
+  printf '# Coder %s: harness acceptance skipped\n\n%s\n' "$version" "$skip_acceptance" >"$acceptance_record"
+else
+  case " $built " in *" $native_platform "*) ;; *)
+    die "the harness acceptance gate runs on this Mac's archive ($native_platform), which wasn't built; build it, or pass --skip-acceptance REASON" ;;
+  esac
+  accept_bin=$(mktemp -d "${TMPDIR:-/tmp}/coder-accept.XXXXXX")
+  tar -xzf "$dist/$(archive_name "$native_platform")" -C "$accept_bin"
+  accept_out=${CODER_ACCEPTANCE_OUT:-$HOME/work/harness-acceptance}
+  if ! "$repo_root/scripts/coder/harness-acceptance.sh" --coder "$accept_bin/coder" --out "$accept_out"; then
+    rm -rf "$accept_bin"
+    die "the harness acceptance gate failed on $version; read its report under $accept_out, fix the failures, or pass --skip-acceptance REASON"
+  fi
+  report_dir=$(ls -dt "$accept_out"/*/ 2>/dev/null | head -1)
+  cp "${report_dir}report.md" "$acceptance_record"
+  rm -rf "$accept_bin"
+fi
+
 echo "Publishing to $root"
 for platform in $built; do
   archive=$(archive_name "$platform")
@@ -877,6 +913,8 @@ done
 gs cp --no-clobber "$sums" "$root/$(sums_file_name)" --content-type=text/plain --quiet
 gs cp --no-clobber "$dist/release-manifest.json" "$root/$product-$version.release-manifest.json" \
   --content-type=application/json --quiet
+gs cp --no-clobber "$acceptance_record" "$root/$product-$version.acceptance.md" \
+  --content-type=text/markdown --quiet
 
 # Read back what was published, through the public URL an installer uses.
 readback="$dist/.readback-sums"

@@ -134,5 +134,11 @@ if CODER_RELEASE_LIBRARY=0 CLOUDSDK_CONFIG="$work/config" OPENAGENTS_NOTARY_ENV=
 else
   grep -q 'skip-notarization is refused with --publish' "$work/notary.log" && pass "publishing without notarization is refused" || fail "publishing without notarization is refused"
 fi
+if CODER_RELEASE_LIBRARY=0 CLOUDSDK_CONFIG="$work/config" OPENAGENTS_NOTARY_ENV="$work/no-notary-config" CARGO_TARGET_DIR="$work/target" \
+  sh "$CODER_RELEASE_SCRIPT" --version 1.0.0-rc.3 --publish --skip-acceptance "" >"$work/skip.log" 2>&1; then
+  fail "skipping the acceptance gate needs a reason"
+else
+  grep -q 'skip-acceptance needs a written reason' "$work/skip.log" && pass "skipping the acceptance gate needs a reason" || fail "skipping the acceptance gate needs a reason"
+fi
 
 exit "$failures"
