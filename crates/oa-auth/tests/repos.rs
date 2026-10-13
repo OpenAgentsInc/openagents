@@ -74,6 +74,7 @@ async fn call(world: &World, method: &str, token: &str, path: &str, body: Value)
     let request = match method {
         "GET" => world.http.get(url),
         "DELETE" => world.http.delete(url),
+        "PATCH" => world.http.patch(url).json(&body),
         _ => world.http.post(url).json(&body),
     };
     let response = request.bearer_auth(token).send().await.unwrap();
@@ -192,7 +193,7 @@ async fn public_access_lists_public_repositories_and_private_access_adds_the_res
         assert!(!text.contains("gho_"), "{text}");
     }
 
-    // A project, once per repository.
+    // A project from a repository (the older one-step form).
     let (status, body) = call(
         &world,
         "POST",
@@ -204,10 +205,12 @@ async fn public_access_lists_public_repositories_and_private_access_adds_the_res
     assert_eq!(status, 200, "{body}");
     let project = body["project"].clone();
     assert_eq!(project["name"], "storefront");
-    assert_eq!(project["repository"], "acme/storefront");
-    assert_eq!(project["repository_id"], 7003);
-    assert_eq!(project["default_branch"], "main");
-    assert_eq!(project["private"], true);
+    let held = &project["repositories"][0];
+    assert_eq!(held["repository"], "acme/storefront");
+    assert_eq!(held["repository_id"], 7003);
+    assert_eq!(held["default_branch"], "main");
+    assert_eq!(held["private"], true);
+    assert_eq!(held["primary"], true);
     let id = project["id"].as_str().unwrap().to_string();
     assert!(oa_auth::repos::project_id(&id));
     let (_, again) = call(
@@ -218,7 +221,13 @@ async fn public_access_lists_public_repositories_and_private_access_adds_the_res
         json!({"repository": "acme/storefront"}),
     )
     .await;
-    assert_eq!(again["project"]["id"], id.as_str());
+    // Creating never reuses a project: the same repository makes a second.
+    let second = again["project"]["id"].as_str().unwrap().to_string();
+    assert_ne!(second, id);
+    assert_eq!(
+        again["project"]["repositories"][0]["repository"],
+        "acme/storefront"
+    );
 
     // The web server reads the token to read GitHub as the person.
     let (status, body) = call(
@@ -270,16 +279,18 @@ async fn public_access_lists_public_repositories_and_private_access_adds_the_res
     let (_, body) = grant(&world, &session, true, "octo-local").await;
     assert_eq!(body["github"]["state"], "connected");
 
-    // Removing the project, then disconnecting.
-    let (status, _) = call(
-        &world,
-        "DELETE",
-        &session,
-        &format!("/v1/account/projects/{id}"),
-        json!({}),
-    )
-    .await;
-    assert_eq!(status, 200);
+    // Removing the projects, then disconnecting.
+    for id in [&id, &second] {
+        let (status, _) = call(
+            &world,
+            "DELETE",
+            &session,
+            &format!("/v1/account/projects/{id}"),
+            json!({}),
+        )
+        .await;
+        assert_eq!(status, 200);
+    }
     let (_, body) = call(
         &world,
         "DELETE",
@@ -657,4 +668,94 @@ async fn a_nearly_spent_budget_serves_kept_pages() {
         at,
         "no refresh while the budget is low"
     );
+}
+
+/// Projects without a repository, with several, and the same repository in
+/// several projects (2026-10-13): create needs only a name; repositories
+/// are added, made primary, and removed; creating never reuses a project.
+#[tokio::test]
+async fn projects_hold_zero_or_more_repositories() {
+    let world = world().await;
+    let session = sign_in(&world, "octo-local").await;
+
+    // A name is enough, before GitHub is connected at all.
+    let (status, body) = call(
+        &world,
+        "POST",
+        &session,
+        "/v1/projects",
+        json!({"name": "finances", "instructions": "Keep it short."}),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let bare = body["project"]["id"].as_str().unwrap().to_string();
+    assert_eq!(body["project"]["repositories"], json!([]));
+    assert_eq!(body["project"]["instructions"], "Keep it short.");
+    // Neither a name nor a repository is refused.
+    let (status, _) = call(&world, "POST", &session, "/v1/projects", json!({})).await;
+    assert_eq!(status, 400);
+
+    grant(&world, &session, true, "octo-local").await;
+    let patch = |change: Value| {
+        let (world, session, bare) = (&world, &session, &bare);
+        async move {
+            call(
+                world,
+                "PATCH",
+                session,
+                &format!("/v1/projects/{bare}"),
+                change,
+            )
+            .await
+        }
+    };
+    // The first repository added is the primary.
+    let (status, body) = patch(json!({"add_repository": "octo-local/hello-world"})).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["project"]["repositories"][0]["primary"], true);
+    // A second one is not, until asked.
+    let (_, body) = patch(json!({"add_repository": "octo-local/secret-plans"})).await;
+    let repos = &body["project"]["repositories"];
+    assert_eq!(repos[1]["repository"], "octo-local/secret-plans");
+    assert_eq!(
+        (repos[0]["primary"].clone(), repos[1]["primary"].clone()),
+        (json!(true), json!(false))
+    );
+    let (_, body) = patch(json!({"primary_repository": "octo-local/secret-plans"})).await;
+    let repos = &body["project"]["repositories"];
+    assert_eq!(
+        (repos[0]["primary"].clone(), repos[1]["primary"].clone()),
+        (json!(false), json!(true))
+    );
+    // Removing the primary makes the first one left the primary.
+    let (_, body) = patch(json!({"remove_repository": "octo-local/secret-plans"})).await;
+    let repos = body["project"]["repositories"].as_array().unwrap().clone();
+    assert_eq!(repos.len(), 1);
+    assert_eq!(repos[0]["repository"], "octo-local/hello-world");
+    assert_eq!(repos[0]["primary"], true);
+    // A repository that isn't in it.
+    let (status, _) = patch(json!({"remove_repository": "octo-local/secret-plans"})).await;
+    assert_eq!(status, 404);
+    // Renamed, instructions cleared.
+    let (_, body) = patch(json!({"name": "money", "instructions": null})).await;
+    assert_eq!(body["project"]["name"], "money");
+    assert!(body["project"].get("instructions").is_none());
+
+    // The same repository, primary in a second project with the same name.
+    let (status, body) = call(
+        &world,
+        "POST",
+        &session,
+        "/v1/projects",
+        json!({"name": "money", "repositories": ["octo-local/hello-world"]}),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_ne!(body["project"]["id"], bare.as_str());
+    let (_, listed) = call(&world, "GET", &session, "/v1/account/github", json!({})).await;
+    let projects = listed["projects"].as_array().unwrap();
+    assert_eq!(projects.len(), 2);
+    assert!(projects.iter().all(|p| p["name"] == "money"
+        && p["repositories"][0]["repository"] == "octo-local/hello-world"
+        && p["repositories"][0]["primary"] == true));
 }

@@ -1,9 +1,13 @@
-//! Projects from connected GitHub repositories (#11034,
-//! `docs/web/sidebar.md` "Projects and repositories", `docs/auth/github.md`
-//! "Repository access").
+//! Projects (#11034, `docs/web/sidebar.md` "Projects and repositories",
+//! `docs/auth/github.md` "Repository access").
 //!
-//! `/projects` is the signed-in person's page: their projects, and a
-//! Connect GitHub step that lists their repositories to add. Connecting
+//! A project is a name, optional instructions, and zero or more connected
+//! GitHub repositories, one of them the primary when there are any.
+//! `/projects` is the signed-in person's page: a form for a new project
+//! (a name is enough), their projects, and a Connect GitHub step that
+//! lists their repositories to start a project from. `/projects/{id}`
+//! ([`page`]) is one project: its name and instructions, and its
+//! repositories with add, remove, and make-primary. Connecting
 //! starts a second trip to GitHub through the same OAuth App
 //! ([`oa_auth::Purpose::Repos`]) that asks for `repo` and `read:org` only
 //! then, or nothing more for public repositories only. GitHub returns to
@@ -59,13 +63,15 @@ const CSRF_SCOPE: &str = "projects";
 /// The most repositories the page lists at once.
 pub(crate) mod api;
 pub(crate) mod files;
+pub(crate) mod page;
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .merge(api::routes())
         .merge(files::routes())
-        .route(PAGE, get(page).post(add))
+        .route(PAGE, get(list_page).post(add))
         .route(REPOS, get(repositories))
+        .merge(page::routes())
         .route("/projects/{id}/remove", post(remove))
         .route("/projects/disconnect", post(disconnect))
         .route(CONNECT, get(connect))
@@ -208,7 +214,7 @@ struct PageQuery {
     q: String,
 }
 
-async fn page(
+async fn list_page(
     State(app): State<App>,
     headers: HeaderMap,
     Query(query): Query<PageQuery>,
@@ -274,8 +280,12 @@ fn htmx_head() -> Markup {
 /// Where one page of repositories loads from.
 const REPOS: &str = "/projects/repositories";
 
-fn repos_href(page: u32, q: &str) -> String {
+fn repos_href(page: u32, q: &str, project: Option<&str>) -> String {
     let mut href = format!("{REPOS}?page={page}");
+    if let Some(project) = project {
+        href.push_str("&project=");
+        href.push_str(project);
+    }
     if !q.is_empty() {
         href.push_str("&q=");
         href.push_str(&url::form_urlencoded::byte_serialize(q.as_bytes()).collect::<String>());
@@ -289,6 +299,9 @@ struct ReposQuery {
     page: Option<u32>,
     #[serde(default)]
     q: String,
+    /// Adding to this project, not starting a new one.
+    #[serde(default)]
+    project: Option<String>,
 }
 
 /// One page of repositories to add, and a Show more button for the next.
@@ -310,22 +323,30 @@ async fn repositories(
         .csrf(&headers, &viewer, CSRF_SCOPE, "")
         .unwrap_or_default();
     let listed = service.github_repositories(&headers, page).await;
-    fragment(repos_page(&state, listed, &csrf, query.q.trim(), page))
+    let project = query
+        .project
+        .as_deref()
+        .and_then(|id| state.projects.iter().find(|p| p.id == id));
+    fragment(repos_page(listed, &csrf, query.q.trim(), page, project))
 }
 
 fn fragment(body: Markup) -> Response {
     protect(body.into_response())
 }
 
-/// The rows of one page (filtered by `q`, without repositories already
-/// added), and the button that loads the next page in its place.
+/// The rows of one page (filtered by `q`), and the button that loads the
+/// next page in its place. With `project`, Add puts the repository in that
+/// project (those already in it are left out); without, Add starts a new
+/// project from it (a repository may be in any number of projects).
 pub(crate) fn repos_page(
-    state: &Status,
     listed: Result<Listing, RepoCallError>,
     csrf: &str,
     q: &str,
     page: u32,
+    project: Option<&Project>,
 ) -> Markup {
+    let in_project = project.map(|p| p.id.as_str());
+    let action = project.map_or_else(|| PAGE.to_owned(), |p| page::repositories_href(&p.id));
     let Listing {
         repositories,
         more,
@@ -345,18 +366,20 @@ pub(crate) fn repos_page(
             return html! {
                 div #projects-repos {
                     p role="alert" { (error.to_string()) }
-                    (ButtonLink::new("Try again", repos_href(page, q))
+                    (ButtonLink::new("Try again", repos_href(page, q, in_project))
                         .size(ControlSize::Sm)
                         .variant(ButtonVariant::Soft)
                         .color(Color::Secondary)
-                        .attr("hx-get", repos_href(page, q))
+                        .attr("hx-get", repos_href(page, q, in_project))
                         .attr("hx-target", "#projects-repos")
                         .attr("hx-swap", "outerHTML"))
                 }
             };
         }
     };
-    let have: BTreeSet<u64> = state.projects.iter().map(|p| p.repository_id).collect();
+    let have: BTreeSet<u64> = project
+        .map(|p| p.repositories.iter().map(|r| r.repository_id).collect())
+        .unwrap_or_default();
     let needle = q.to_lowercase();
     let shown: Vec<&Repository> = repositories
         .iter()
@@ -380,7 +403,7 @@ pub(crate) fn repos_page(
                             @if repository.private { " " (Badge::new("Private")) }
                             @if repository.archived { " " (Badge::new("Archived")) }
                         }
-                        form method="post" action=(PAGE) {
+                        form method="post" action=(action) {
                             input type="hidden" name="csrf" value=(csrf);
                             input type="hidden" name="repository" value=(repository.full_name);
                             (Button::new("Add")
@@ -396,7 +419,7 @@ pub(crate) fn repos_page(
             p { @if q.is_empty() { "No more repositories to add." } @else { "No repositories match." } }
         }
         @if by_name {
-            form method="post" action=(PAGE) {
+            form method="post" action=(action) {
                 input type="hidden" name="csrf" value=(csrf);
                 input type="hidden" name="repository" value=(q);
                 (Button::new(format!("Add {q}"))
@@ -411,11 +434,11 @@ pub(crate) fn repos_page(
         }
         @if more {
             div id=(next) {
-                (ButtonLink::new("Show more", repos_href(page + 1, q))
+                (ButtonLink::new("Show more", repos_href(page + 1, q, in_project))
                     .size(ControlSize::Sm)
                     .variant(ButtonVariant::Soft)
                     .color(Color::Secondary)
-                    .attr("hx-get", repos_href(page + 1, q))
+                    .attr("hx-get", repos_href(page + 1, q, in_project))
                     .attr("hx-target", format!("#{next}"))
                     .attr("hx-swap", "outerHTML"))
             }
@@ -443,7 +466,7 @@ pub(crate) fn view_with(
     html! {
         (MarkdownRoot::new(html! {
             h1 { "Projects" }
-            p { "A project is a GitHub repository. Chats you start in a project are grouped under it." }
+            p { "A project keeps chats, instructions, and files together. Add GitHub repositories to it if you like." }
         }))
         @if let Some(problem) = problem {
             (Alert::new().color(Color::Danger).description(problem))
@@ -455,6 +478,10 @@ pub(crate) fn view_with(
                 .description("Your projects are still here. Reconnect GitHub to add repositories again.")
                 .actions(ButtonLink::new("Reconnect GitHub", RECONNECT)))
         }
+        section aria-labelledby="projects-new" {
+            (MarkdownRoot::new(html! { h2 #projects-new { "New project" } }))
+            (page::new_form(csrf))
+        }
         @if !state.projects.is_empty() {
             section aria-labelledby="projects-yours" {
                 (MarkdownRoot::new(html! { h2 #projects-yours { "Your projects" } }))
@@ -462,13 +489,18 @@ pub(crate) fn view_with(
                     @for project in &state.projects {
                         li.oa-chat-archive-row {
                             span {
-                                strong { (project.name) } " · " (project.repository)
-                                @if project.private { " " (Badge::new("Private")) }
+                                a href=(page::href(&project.id)) { strong { (project.name) } }
+                                " · " (page::repositories_line(project))
+                                @if project.primary().is_some_and(|r| r.private) { " " (Badge::new("Private")) }
                             }
                             span.oa-page-actions {
                                 (ButtonLink::new("New chat", format!("/?project={}", project.id))
                                     .size(ControlSize::Sm)
                                     .variant(ButtonVariant::Soft)
+                                    .color(Color::Secondary))
+                                (ButtonLink::new("Open", page::href(&project.id))
+                                    .size(ControlSize::Sm)
+                                    .variant(ButtonVariant::Ghost)
                                     .color(Color::Secondary))
                                 (ButtonLink::new("Sources", crate::connections::sources::href(&project.id))
                                     .size(ControlSize::Sm)
@@ -493,94 +525,114 @@ pub(crate) fn view_with(
             }
         }
         section aria-labelledby="projects-add" {
-            (MarkdownRoot::new(html! { h2 #projects-add { "Add a repository" } }))
-            @match &state.access {
-                Access::Installed { login, installations } => {
-                    p { "Connected to GitHub as " strong { (login) } "." }
-                    @if installations.is_empty() {
-                        p { "Choose the repositories OpenAgents can use on GitHub." }
-                        div.oa-page-actions {
-                            (ButtonLink::new("Choose repositories", INSTALL))
-                        }
-                    } @else {
-                        form method="get" action=(PAGE) role="search" {
-                            (Input::new("q").value(q).placeholder("Filter repositories").aria_label("Filter repositories"))
-                        }
-                        @if let Some(list) = &list {
-                            (list)
-                        } @else {
-                            div #projects-repos hx-get=(repos_href(1, q)) hx-trigger="load" hx-swap="outerHTML" {
-                                p { (openagents_ui::actions::Busy::new("Loading your repositories")) }
-                            }
-                        }
-                        p {
-                            "Missing one? "
-                            a href=(INSTALL) { "Choose repositories on GitHub" }
-                        }
-                    }
-                    form method="post" action="/projects/disconnect" {
-                        input type="hidden" name="csrf" value=(csrf);
-                        (Button::new("Disconnect GitHub")
-                            .kind(ButtonType::Submit)
-                            .size(ControlSize::Sm)
-                            .variant(ButtonVariant::Ghost)
-                            .color(Color::Secondary))
-                    }
-                }
-                Access::None if install => {
-                    p { "Install OpenAgents on the GitHub repositories you want to use." }
+            (MarkdownRoot::new(html! { h2 #projects-add { "Start from a repository" } }))
+            (github_section(state, csrf, q, install, list, None))
+        }
+    }
+}
+
+/// Connecting GitHub, and the repositories to pick from: each starts a new
+/// project, or with `project` goes into it.
+pub(crate) fn github_section(
+    state: &Status,
+    csrf: &str,
+    q: &str,
+    install: bool,
+    list: Option<Markup>,
+    project: Option<&Project>,
+) -> Markup {
+    let in_project = project.map(|p| p.id.as_str());
+    let here = project.map_or_else(|| PAGE.to_owned(), |p| page::href(&p.id));
+    html! {
+        @match &state.access {
+            Access::Installed { login, installations } => {
+                p { "Connected to GitHub as " strong { (login) } "." }
+                @if installations.is_empty() {
+                    p { "Choose the repositories OpenAgents can use on GitHub." }
                     div.oa-page-actions {
-                        (ButtonLink::new("Install on repositories", INSTALL))
+                        (ButtonLink::new("Choose repositories", INSTALL))
                     }
-                    p.oa-page-meta {
-                        "OpenAgents can read and change code only in the repositories you pick, and you can change them on GitHub at any time."
-                    }
-                }
-                Access::Connected { login, private } => {
-                    p { "Connected to GitHub as " strong { (login) } "." }
-                    form method="get" action=(PAGE) role="search" {
+                } @else {
+                    form method="get" action=(here) role="search" {
                         (Input::new("q").value(q).placeholder("Filter repositories").aria_label("Filter repositories"))
                     }
-                    // The list loads after the page shows (one GitHub call
-                    // per page of repositories), most recently pushed first.
                     @if let Some(list) = &list {
                         (list)
                     } @else {
-                        div #projects-repos hx-get=(repos_href(1, q)) hx-trigger="load" hx-swap="outerHTML" {
+                        div #projects-repos hx-get=(repos_href(1, q, in_project)) hx-trigger="load" hx-swap="outerHTML" {
                             p { (openagents_ui::actions::Busy::new("Loading your repositories")) }
                         }
                     }
-                    @if install {
-                        p {
-                            a href=(INSTALL) { "Install OpenAgents on your repositories" }
-                            " to pick exactly which ones it can use."
-                        }
-                    } @else if !private {
-                        p {
-                            "Only public repositories are shown. "
-                            a href=(format!("{CONNECT}?access=private")) { "Include private repositories" }
-                        }
-                    }
-                    form method="post" action="/projects/disconnect" {
-                        input type="hidden" name="csrf" value=(csrf);
-                        (Button::new("Disconnect GitHub")
-                            .kind(ButtonType::Submit)
-                            .size(ControlSize::Sm)
-                            .variant(ButtonVariant::Ghost)
-                            .color(Color::Secondary))
+                    p {
+                        "Missing one? "
+                        a href=(INSTALL) { "Choose repositories on GitHub" }
                     }
                 }
-                _ => {
-                    p { "Connect GitHub to pick one of your repositories." }
-                    div.oa-page-actions {
-                        (ButtonLink::new("Connect GitHub", format!("{CONNECT}?access=private")))
-                        (crate::ui_page::action_link("Public repositories only", &format!("{CONNECT}?access=public")))
-                    }
-                    p.oa-page-meta {
-                        "Including private repositories asks GitHub to let OpenAgents read and change their code. Public only asks for nothing new."
-                    }
+                @if project.is_none() {
+                    (disconnect_form(csrf))
                 }
             }
+            Access::None if install => {
+                p { "Install OpenAgents on the GitHub repositories you want to use." }
+                div.oa-page-actions {
+                    (ButtonLink::new("Install on repositories", INSTALL))
+                }
+                p.oa-page-meta {
+                    "OpenAgents can read and change code only in the repositories you pick, and you can change them on GitHub at any time."
+                }
+            }
+            Access::Connected { login, private } => {
+                p { "Connected to GitHub as " strong { (login) } "." }
+                form method="get" action=(here) role="search" {
+                    (Input::new("q").value(q).placeholder("Filter repositories").aria_label("Filter repositories"))
+                }
+                // The list loads after the page shows (one GitHub call
+                // per page of repositories), most recently pushed first.
+                @if let Some(list) = &list {
+                    (list)
+                } @else {
+                    div #projects-repos hx-get=(repos_href(1, q, in_project)) hx-trigger="load" hx-swap="outerHTML" {
+                        p { (openagents_ui::actions::Busy::new("Loading your repositories")) }
+                    }
+                }
+                @if install {
+                    p {
+                        a href=(INSTALL) { "Install OpenAgents on your repositories" }
+                        " to pick exactly which ones it can use."
+                    }
+                } @else if !private {
+                    p {
+                        "Only public repositories are shown. "
+                        a href=(format!("{CONNECT}?access=private")) { "Include private repositories" }
+                    }
+                }
+                @if project.is_none() {
+                    (disconnect_form(csrf))
+                }
+            }
+            _ => {
+                p { "Connect GitHub to pick one of your repositories." }
+                div.oa-page-actions {
+                    (ButtonLink::new("Connect GitHub", format!("{CONNECT}?access=private")))
+                    (crate::ui_page::action_link("Public repositories only", &format!("{CONNECT}?access=public")))
+                }
+                p.oa-page-meta {
+                    "Including private repositories asks GitHub to let OpenAgents read and change their code. Public only asks for nothing new."
+                }
+            }
+        }
+    }
+}
+
+fn disconnect_form(csrf: &str) -> Markup {
+    html! {
+        form method="post" action="/projects/disconnect" {
+            input type="hidden" name="csrf" value=(csrf);
+            (Button::new("Disconnect GitHub")
+                .kind(ButtonType::Submit)
+                .size(ControlSize::Sm)
+                .variant(ButtonVariant::Ghost)
+                .color(Color::Secondary))
         }
     }
 }
@@ -604,7 +656,14 @@ fn failed(headers: &HeaderMap, error: &RepoCallError) -> Response {
 #[derive(Deserialize)]
 struct AddForm {
     csrf: String,
-    repository: String,
+    /// A new project by name (with `instructions`)…
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    instructions: Option<String>,
+    /// …or one started from a repository, named after it.
+    #[serde(default)]
+    repository: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -630,15 +689,38 @@ async fn add(State(app): State<App>, headers: HeaderMap, Form(form): Form<AddFor
         Ok(found) => found,
         Err(response) => return response,
     };
-    match service.add_project(&headers, form.repository.trim()).await {
-        Ok(_) => protect(Redirect::to(PAGE).into_response()),
+    let repository = form
+        .repository
+        .map(|r| r.trim().to_owned())
+        .filter(|r| !r.is_empty());
+    let name = form
+        .name
+        .map(|n| n.trim().to_owned())
+        .filter(|n| !n.is_empty());
+    let new = oa_auth::repos::NewProject {
+        name: name.clone(),
+        instructions: form.instructions.filter(|t| !t.trim().is_empty()),
+        repositories: repository.into_iter().collect(),
+    };
+    let created = if new.name.is_none() && new.repositories.is_empty() {
+        Err(RepoCallError::Repo(RepoError::Invalid))
+    } else {
+        service.create_project(&headers, &new).await
+    };
+    match created {
+        Ok(project) => protect(Redirect::to(&page::href(&project.id)).into_response()),
         Err(RepoCallError::Repo(error)) => {
+            let problem = if error == RepoError::Invalid && new.repositories.is_empty() {
+                "Give the project a name of up to 100 characters.".to_owned()
+            } else {
+                error.to_string()
+            };
             render(
                 service,
                 &viewer,
                 &headers,
                 "",
-                Some(error.to_string()),
+                Some(problem),
                 StatusCode::from_u16(error.status()).unwrap_or(StatusCode::BAD_REQUEST),
                 app.config.github_install.is_some(),
             )

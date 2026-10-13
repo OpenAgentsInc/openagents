@@ -141,7 +141,14 @@ Where each status comes from:
 
 ## Projects and repositories
 
-- A project is created by connecting a GitHub repository after GitHub
+- A project needs only a name (2026-10-13). It has optional instructions
+  and zero or more GitHub repositories; when it has any, exactly one is the
+  primary, and a chat started in the project works in the primary. The same
+  repository may be in several projects, and names may repeat. Its page,
+  `/projects/{id}`, lists its repositories with a Primary mark and Add,
+  Remove, and Make primary; removing the primary makes the first one left
+  the primary.
+- Repositories come from connecting GitHub after GitHub
   sign-in ([auth](../auth/README.md)). Sign-in asks only for identity. Seeing
   private repositories needs the `repo` scope (and `read:org` for
   organization repositories); we ask for it the first time the person

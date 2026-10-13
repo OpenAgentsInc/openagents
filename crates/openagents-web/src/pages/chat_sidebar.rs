@@ -138,12 +138,16 @@ pub(crate) fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: Vie
                 project.id.clone(),
                 project.name.clone(),
                 format!("/?project={}", project.id),
-            )
-            .repository(project.repository.clone(), project.default_branch.clone())
-            .edit(crate::projects::PAGE)
-            .open(at.is_some() || !q.is_empty() || !sidebar.closed.contains(&project.id))
-            .more_open(at.is_some_and(|at| at >= GROUP_ROWS))
-            .items(chats.iter().map(|chat| row(chat, csrf, view, true)));
+            );
+            if let Some(primary) = project.primary() {
+                group =
+                    group.repository(primary.repository.clone(), primary.default_branch.clone());
+            }
+            let mut group = group
+                .edit(crate::projects::page::href(&project.id))
+                .open(at.is_some() || !q.is_empty() || !sidebar.closed.contains(&project.id))
+                .more_open(at.is_some_and(|at| at >= GROUP_ROWS))
+                .items(chats.iter().map(|chat| row(chat, csrf, view, true)));
             if sidebar.reconnect() {
                 group = group.note("Reconnect GitHub", crate::projects::PAGE);
             }
@@ -184,13 +188,13 @@ pub(crate) fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: Vie
     }
     let archived = rows.iter().any(|chat| chat.archived_unix.is_some());
     // Signed in: "Manage projects" is a button on the Projects heading;
-    // with no projects yet, a link to connect a repository.
+    // with no projects yet, a link to make one.
     let projects = view.projects.and_then(|sidebar| {
         sidebar
             .status
             .projects
             .is_empty()
-            .then_some("Connect a GitHub repository")
+            .then_some("Make a project")
     });
     if view
         .projects
@@ -851,7 +855,7 @@ pub(crate) fn move_page_for(
             @if projects.is_empty() {
                 p {
                     "You don't have any projects yet. "
-                    a href=(crate::projects::PAGE) { "Connect a GitHub repository" }
+                    a href=(crate::projects::PAGE) { "Make a project" }
                 }
             } @else {
                 ul.oa-chat-archive-list role="list" {

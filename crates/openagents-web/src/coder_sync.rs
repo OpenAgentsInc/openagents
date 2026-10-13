@@ -42,6 +42,7 @@ use axum::extract::{DefaultBodyLimit, Path, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
+use oa_auth::repos::Project;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -403,11 +404,13 @@ pub(crate) async fn save(
     Err(Error::Conflict)
 }
 
-/// Put a synced chat in the person's project whose repository is
-/// `repository` (#11541): the chat's own GitHub repository, as Coder read
-/// it from the git remote of the chat's folder. The match is on the typed
-/// `owner/name` (GitHub treats it without regard to case), never on a
-/// name. Only a chat that is in no project and was never filed (by this or
+/// Put a synced chat in the person's project for `repository` (#11541):
+/// the chat's own GitHub repository, as Coder read it from the git remote
+/// of the chat's folder. The match is on the typed `owner/name` (GitHub
+/// treats it without regard to case) against each project's repositories,
+/// never on a name: the one project holding it, else the one where it is
+/// the primary, else (several primaries, or none) the chat stays unfiled
+/// ([`oa_auth::repos::filing_project`]). Only a chat that is in no project and was never filed (by this or
 /// by the person moving it, [`Conversation::filed`]) moves, so a person's
 /// move stays. The chat's time doesn't change. Returns whether it moved.
 pub(crate) async fn file_in_project(
@@ -415,12 +418,9 @@ pub(crate) async fn file_in_project(
     owner: &str,
     session: &str,
     repository: &str,
-    projects: &[(String, String)],
+    projects: &[Project],
 ) -> Result<bool, Error> {
-    let Some((project, _)) = projects
-        .iter()
-        .find(|(_, repo)| repo.eq_ignore_ascii_case(repository))
-    else {
+    let Some(project) = oa_auth::repos::filing_project(projects, repository).map(|p| &p.id) else {
         return Ok(false);
     };
     let id = chat_id(owner, session);
@@ -449,11 +449,11 @@ pub(crate) async fn file_in_project(
     Err(Error::Conflict)
 }
 
-/// The caller's projects as `(id, repository)`, read with their own
+/// The caller's projects, read with their own
 /// sign-in and kept for a minute per sign-in, so a run of uploads asks
 /// the account once. `None` when they can't be read now.
-async fn projects_of(app: &App, headers: &HeaderMap) -> Option<Vec<(String, String)>> {
-    type Kept = HashMap<[u8; 32], (Vec<(String, String)>, Instant)>;
+async fn projects_of(app: &App, headers: &HeaderMap) -> Option<Vec<Project>> {
+    type Kept = HashMap<[u8; 32], (Vec<Project>, Instant)>;
     static KEPT: OnceLock<Mutex<Kept>> = OnceLock::new();
     const FOR: Duration = Duration::from_secs(60);
     let (service, token, _) = crate::projects::api::caller(app, headers).await.ok()?;
@@ -465,11 +465,7 @@ async fn projects_of(app: &App, headers: &HeaderMap) -> Option<Vec<(String, Stri
         return Some(projects.clone());
     }
     let status = service.github_status_as(&token).await.ok()?;
-    let projects: Vec<(String, String)> = status
-        .projects
-        .into_iter()
-        .map(|project| (project.id, project.repository))
-        .collect();
+    let projects = status.projects;
     let mut kept = kept.lock().ok()?;
     kept.retain(|_, (_, at)| at.elapsed() < FOR);
     kept.insert(key, (projects.clone(), Instant::now()));
@@ -1746,10 +1742,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::local(dir.path().to_path_buf());
         let projects = vec![
-            ("prj_00000000000000aa".to_owned(), "Acme/site".to_owned()),
-            (
-                "prj_00000000000000bb".to_owned(),
-                "OpenAgentsInc/openagents".to_owned(),
+            project("prj_00000000000000aa", &[("Acme/site", true)]),
+            project(
+                "prj_00000000000000bb",
+                &[("OpenAgentsInc/openagents", true)],
             ),
         ];
         let first = upload("Fix the build", &[("user", "Fix it")]);
@@ -1841,6 +1837,79 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(named.repository.as_deref(), Some("Acme/site"));
+    }
+
+    fn project(id: &str, repositories: &[(&str, bool)]) -> Project {
+        Project {
+            id: id.into(),
+            name: "p".into(),
+            instructions: None,
+            created_unix: 1,
+            repositories: repositories
+                .iter()
+                .enumerate()
+                .map(
+                    |(n, (repository, primary))| oa_auth::repos::ProjectRepository {
+                        repository_id: n as u64 + 1,
+                        repository: (*repository).into(),
+                        default_branch: "main".into(),
+                        private: false,
+                        primary: *primary,
+                        installation_id: None,
+                    },
+                )
+                .collect(),
+        }
+    }
+
+    /// With several projects on one repository, a synced chat files where
+    /// it is the primary; primary in two, it stays unfiled.
+    #[tokio::test]
+    async fn a_synced_chat_on_a_shared_repository_files_where_it_is_primary() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::local(dir.path().to_path_buf());
+        let up = upload("Fix the build", &[("user", "Fix it")]);
+        for session in ["s1", "s2"] {
+            save(&store, &owner(), session, &up).await.unwrap();
+        }
+        let shared = vec![
+            project(
+                "prj_00000000000000a1",
+                &[("Acme/docs", true), ("Acme/site", false)],
+            ),
+            project("prj_00000000000000a2", &[("Acme/site", true)]),
+            project("prj_00000000000000a3", &[]),
+        ];
+        assert!(
+            file_in_project(&store, &owner(), "s1", "acme/site", &shared)
+                .await
+                .unwrap()
+        );
+        let chat = store
+            .load(&owner(), &chat_id(&owner(), "s1"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            chat.conversation.project.as_deref(),
+            Some("prj_00000000000000a2")
+        );
+        let tied = vec![
+            project("prj_00000000000000b1", &[("Acme/site", true)]),
+            project("prj_00000000000000b2", &[("Acme/site", true)]),
+        ];
+        assert!(
+            !file_in_project(&store, &owner(), "s2", "Acme/site", &tied)
+                .await
+                .unwrap()
+        );
+        let chat = store
+            .load(&owner(), &chat_id(&owner(), "s2"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(chat.conversation.project, None);
+        assert!(!chat.conversation.filed);
     }
 
     #[test]

@@ -2,8 +2,12 @@
 //! (the Projects list in the website's left panel), from the command line,
 //! through the website's `/v1/projects` routes.
 //!
-//! A project is one connected GitHub repository that groups chats; it can
-//! also hold Drive sources. Calls run under the
+//! A project groups chats and keeps instructions, files, and notes. It
+//! needs only a name: it can have no GitHub repository, one, or several
+//! with one of them the primary (the one a chat started in the project
+//! uses). The same repository can be in several projects, and two projects
+//! can share a name; a name that matches more than one project is never
+//! guessed. It can also hold Drive sources. Calls run under the
 //! account's own sign-in, as `openagents keys` does: `OPENAGENTS_TOKEN`
 //! with `OPENAGENTS_ORIGIN`, else `--account-dir DIR`, else the sign-in
 //! `openagents login` or `coder login` saved.
@@ -27,23 +31,39 @@ use crate::keys::Site;
 use crate::{Args, Output};
 
 pub(crate) const USAGE: &str = "usage: openagents projects COMMAND [--account-dir DIR]
-  list        Your openagents.com projects: name, repository, chats, and last
-              activity.
+  list        Your openagents.com projects: name, repositories, chats, and
+              last activity.
   show PROJECT
-              One project, by name, repository, or id, with its chats.
+              One project, by name, repository, or id, with its repositories
+              and chats.
   threads PROJECT
               The project's chats, oldest activity first.
   read PROJECT [CHAT]
               Every chat in the project, message by message, or only CHAT
               (its id, a unique id prefix, or its title). One chat also
               reads with openagents chat read --thread ID.
+  create NAME [--repo OWNER/NAME]... [--instructions TEXT] [--protection standard|only_me]
+              Make a new project. It needs only a name. Each --repo adds a
+              connected GitHub repository; the first is the primary.
   add REPOSITORY [--protection standard|only_me]
-              Add a project from a connected GitHub repository (owner/name).
-  edit PROJECT --protection standard|only_me
-              Who can open the project's new files. standard: openagents.com
+              Older form of create: a new project named after the
+              repository (owner/name), with it as the primary.
+  edit PROJECT [--name NAME] [--instructions TEXT] [--protection standard|only_me]
+              Rename the project, set its instructions (\"\" clears them), or
+              choose who can open its new files. standard: openagents.com
               keeps them for your account. only_me: each file is locked on
               your computer before it's sent, and only your devices can open
               it (set up once with openagents vault setup).
+  repo add PROJECT REPOSITORY [--primary]
+              Add a connected GitHub repository (owner/name) to the project.
+              Its first repository is the primary; --primary makes this one
+              the primary.
+  repo remove PROJECT REPOSITORY
+              Take a repository out of the project. When it was the primary,
+              the next one becomes the primary.
+  repo primary PROJECT REPOSITORY
+              Make one of the project's repositories the primary. A chat
+              started in the project uses its primary repository.
   move CHAT PROJECT
               Move a chat into a project. CHAT is its id, a unique id
               prefix, or its title; PROJECT its name, repository, or id.
@@ -64,7 +84,11 @@ pub(crate) const USAGE: &str = "usage: openagents projects COMMAND [--account-di
   notes add PROJECT --title TITLE (--text TEXT | --file PATH)
               Add a text note to the project.
 Start a new chat inside a project with openagents chat send MESSAGE
---project PROJECT; OpenAgents answers it there and it shows in the project.
+--project PROJECT; OpenAgents answers it there, with the project's
+instructions and files and its primary repository when it has one, and it
+shows in the project. A project can be in no repository, and one repository
+can be in several projects; when a name matches more than one project, use
+the id.
 These are the projects in the left panel of openagents.com, signed in as
 openagents login or coder login saved them, or OPENAGENTS_TOKEN. Ask about
 only-me files with openagents vault ask FILE --project ID. GitHub Project
@@ -77,8 +101,12 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("show", Effect::ReadOnly),
     Declared::computer("threads", Effect::ReadOnly),
     Declared::computer("read", Effect::ReadOnly),
+    Declared::computer("create", Effect::Publishes),
     Declared::computer("add", Effect::Publishes),
     Declared::computer("edit", Effect::Publishes),
+    Declared::computer("repo add", Effect::Publishes),
+    Declared::computer("repo remove", Effect::Publishes),
+    Declared::computer("repo primary", Effect::Publishes),
     Declared::computer("move", Effect::Publishes),
     Declared::computer("remove", Effect::Publishes),
     Declared::computer("files list", Effect::ReadOnly),
@@ -102,7 +130,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             0
         };
     }
-    let args = match Args::parse(words, &["detach-threads", "none"]) {
+    let args = match Args::parse(words, &["detach-threads", "none", "primary"]) {
         Ok(args) => args,
         Err(message) => return output.usage("projects", &message, USAGE),
     };
@@ -115,7 +143,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     };
     // `files add` and `notes add` are two words; their arguments follow.
     let (command, rest): (String, &[String]) = match command {
-        "files" | "notes" => match positional.get(1) {
+        "files" | "notes" | "repo" => match positional.get(1) {
             Some(sub) => (format!("{command} {sub}"), &positional[2..]),
             None => {
                 return output.usage(
@@ -132,8 +160,11 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "list" => (&["account-dir"], 0, 0),
         "show" | "threads" => (&["account-dir"], 1, 1),
         "read" => (&["account-dir"], 1, 2),
+        "create" => (&["account-dir", "repo", "instructions", "protection"], 1, 1),
         "add" => (&["account-dir", "protection"], 1, 1),
-        "edit" => (&["account-dir", "protection"], 1, 1),
+        "edit" => (&["account-dir", "name", "instructions", "protection"], 1, 1),
+        "repo add" => (&["account-dir"], 2, 2),
+        "repo remove" | "repo primary" => (&["account-dir"], 2, 2),
         "move" if args.switch("none") => (&["account-dir", "none"], 1, 1),
         "move" => (&["account-dir"], 2, 2),
         "remove" => (&["account-dir", "detach-threads"], 1, 1),
@@ -157,6 +188,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             (1, 1) => "one argument".to_owned(),
             (1, 2) => "a project and at most one chat".to_owned(),
             (2, 2) if command == "move" => "a chat and a project, or a chat and --none".to_owned(),
+            (2, 2) if command.starts_with("repo ") => "a project and a repository".to_owned(),
             (2, 2) => "a project and a file".to_owned(),
             _ => "a project and one or more files".to_owned(),
         };
@@ -173,10 +205,36 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             );
         }
     };
-    if command == "edit" && protection.is_none() {
+    if args.switch("primary") && command != "repo add" {
+        return output.usage("projects", "--primary goes with repo add", USAGE);
+    }
+    if command == "edit"
+        && protection.is_none()
+        && args.option("name").is_none()
+        && args.option("instructions").is_none()
+    {
         return output.usage(
             "projects",
-            "edit takes --protection standard|only_me",
+            "edit takes --name NAME, --instructions TEXT, or --protection standard|only_me",
+            USAGE,
+        );
+    }
+    if command == "create" && rest.first().is_some_and(|name| name.trim().is_empty()) {
+        return output.usage("projects", "create takes the project's name", USAGE);
+    }
+    for repository in args.options("repo") {
+        if !repository_name(repository) {
+            return output.usage(
+                "projects",
+                &format!("--repo is a GitHub repository as owner/name, not `{repository}`"),
+                USAGE,
+            );
+        }
+    }
+    if command.starts_with("repo ") && !repository_name(&rest[1]) {
+        return output.usage(
+            "projects",
+            &format!("Name the repository as owner/name, not `{}`.", rest[1]),
             USAGE,
         );
     }
@@ -199,10 +257,25 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             .map(|read| {
                 output.emit(&read, read_text);
             }),
+        "create" => projects
+            .create(target, args.option("instructions"), &args.options("repo"))
+            .and_then(|created| match protection {
+                Some("only_me") => projects.edit(id(&created)?, &edit_body(None, None, protection)),
+                _ => Ok(created),
+            })
+            .map(|created| {
+                output.emit(&created, |value| {
+                    format!(
+                        "Made the project {} ({}).",
+                        value["name"].as_str().unwrap_or_default(),
+                        repositories_text(value)
+                    )
+                });
+            }),
         "add" => projects
             .add(target)
             .and_then(|added| match protection {
-                Some("only_me") => projects.edit(id(&added)?, "only_me"),
+                Some("only_me") => projects.edit(id(&added)?, &edit_body(None, None, protection)),
                 _ => Ok(added),
             })
             .map(|added| {
@@ -210,23 +283,52 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                     format!(
                         "Added {} ({}).",
                         value["name"].as_str().unwrap_or_default(),
-                        value["repository"].as_str().unwrap_or_default()
+                        repositories_text(value)
                     )
                 });
             }),
-        "edit" => projects
-            .find(target)
-            .and_then(|project| projects.edit(id(&project)?, protection.unwrap_or_default()))
-            .map(|edited| {
-                output.emit(&edited, |value| {
-                    let name = value["name"].as_str().unwrap_or_default();
-                    if value["protection"] == "only_me" {
-                        format!("Only you can open {name}'s new files now. They're locked on your computer before they're sent.")
-                    } else {
-                        format!("openagents.com keeps {name}'s new files for your account now.")
-                    }
-                });
-            }),
+        "edit" => {
+            let body = edit_body(args.option("name"), args.option("instructions"), protection);
+            projects
+                .find(target)
+                .and_then(|project| projects.edit(id(&project)?, &body))
+                .map(|edited| {
+                    output.emit(&edited, |value| {
+                        let name = value["name"].as_str().unwrap_or_default();
+                        if protection.is_none() {
+                            format!("Changed {name}.")
+                        } else if value["protection"] == "only_me" {
+                            format!("Only you can open {name}'s new files now. They're locked on your computer before they're sent.")
+                        } else {
+                            format!("openagents.com keeps {name}'s new files for your account now.")
+                        }
+                    });
+                })
+        }
+        "repo add" | "repo remove" | "repo primary" => {
+            let repository = rest[1].as_str();
+            let change = match command.as_str() {
+                "repo add" => RepoChange::Add {
+                    primary: args.switch("primary"),
+                },
+                "repo remove" => RepoChange::Remove,
+                _ => RepoChange::Primary,
+            };
+            projects
+                .change_repository(target, repository, change)
+                .map(|changed| {
+                    output.emit(&changed, |value| {
+                        let name = value["name"].as_str().unwrap_or_default();
+                        match change {
+                            RepoChange::Remove => format!(
+                                "Took {repository} out of {name}. It now has {}.",
+                                repositories_text(value)
+                            ),
+                            _ => format!("{name} now has {}.", repositories_text(value)),
+                        }
+                    });
+                })
+        }
         "move" => projects
             .move_chat(target, rest.get(1).map(String::as_str))
             .map(|moved| {
@@ -273,7 +375,10 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             .remove_file(target, &rest[1], account_dir)
             .map(|removed| {
                 output.emit(&removed, |value| {
-                    format!("Deleted {} for good.", value["name"].as_str().unwrap_or_default())
+                    format!(
+                        "Deleted {} for good.",
+                        value["name"].as_str().unwrap_or_default()
+                    )
                 });
             }),
         "notes add" => {
@@ -282,8 +387,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             };
             let text = match (args.option("text"), args.option("file")) {
                 (Some(text), None) => Ok(text.to_owned()),
-                (None, Some(path)) => std::fs::read_to_string(path)
-                    .map_err(|error| format!("{path}: {error}")),
+                (None, Some(path)) => {
+                    std::fs::read_to_string(path).map_err(|error| format!("{path}: {error}"))
+                }
                 _ => {
                     return output.usage(
                         "projects",
@@ -295,7 +401,10 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             text.and_then(|text| projects.add_note(target, title, &text))
                 .map(|added| {
                     output.emit(&added, |value| {
-                        format!("Added the note {}.", value["title"].as_str().unwrap_or_default())
+                        format!(
+                            "Added the note {}.",
+                            value["title"].as_str().unwrap_or_default()
+                        )
                     });
                 })
         }
@@ -422,8 +531,77 @@ impl Projects<'_> {
         Ok(json!({"project": shown["project"], "threads": read}))
     }
 
+    /// `POST /v1/projects {name, instructions?, repositories?}`: a new
+    /// project, with no repository unless some are named.
+    fn create(
+        &self,
+        name: &str,
+        instructions: Option<&str>,
+        repositories: &[&str],
+    ) -> Result<Value, String> {
+        let site = self.0;
+        self.send(
+            site.http
+                .post(site.url("/v1/projects"))
+                .json(&create_body(name, instructions, repositories)),
+        )
+        .map_err(|message| {
+            // A website from before projects without a repository.
+            if message.contains("A project is one GitHub repository") {
+                "openagents.com can't make a project without a repository yet; it will once its next update is out. Until then: openagents projects add owner/name".to_owned()
+            } else {
+                message
+            }
+        })
+    }
+
+    /// Add, remove, or make primary one of the project's repositories.
+    fn change_repository(
+        &self,
+        target: &str,
+        repository: &str,
+        change: RepoChange,
+    ) -> Result<Value, String> {
+        let project = self.find(target)?;
+        let project_id = id(&project)?.to_owned();
+        let held = repositories(&project);
+        let has = held
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case(repository))
+            .map(|(name, _)| name.clone())
+            .filter(|name| repository_name(name));
+        let site = self.0;
+        let request = match (change, has) {
+            (RepoChange::Add { primary }, _) => site
+                .http
+                .post(site.url(&format!("/v1/projects/{project_id}/repositories")))
+                .json(&json!({"repository": repository, "primary": primary})),
+            (RepoChange::Remove, Some(held)) => site
+                .http
+                .delete(site.url(&format!("/v1/projects/{project_id}/repositories/{held}"))),
+            (RepoChange::Primary, Some(held)) => site
+                .http
+                .patch(site.url(&format!("/v1/projects/{project_id}")))
+                .json(&json!({"primary_repository": held})),
+            (_, None) => {
+                return Err(format!(
+                    "{} has no repository {repository}. It has {}.",
+                    project["name"].as_str().unwrap_or(target),
+                    repositories_text(&project)
+                ));
+            }
+        };
+        self.send(request).map_err(|message| {
+            if message.contains("answered 404") || message.contains("answered 405") {
+                "openagents.com can't change a project's repositories yet; it will once its next update is out.".to_owned()
+            } else {
+                message
+            }
+        })
+    }
+
     fn add(&self, repository: &str) -> Result<Value, String> {
-        if repository.split('/').count() != 2 || repository.split('/').any(str::is_empty) {
+        if !repository_name(repository) {
             return Err(format!(
                 "Name the repository as owner/name, not `{repository}`."
             ));
@@ -489,13 +667,13 @@ impl Projects<'_> {
         Site::answer(request.bearer_auth(self.0.saved.token()).send())
     }
 
-    /// `PATCH /v1/projects/{id}` with the protection.
-    fn edit(&self, project: &str, protection: &str) -> Result<Value, String> {
+    /// `PATCH /v1/projects/{id}` with `body` ([`edit_body`]).
+    fn edit(&self, project: &str, body: &Value) -> Result<Value, String> {
         let site = self.0;
         self.send(
             site.http
                 .patch(site.url(&format!("/v1/projects/{project}")))
-                .json(&json!({"protection": protection})),
+                .json(body),
         )
     }
 
@@ -948,30 +1126,179 @@ fn id(project: &Value) -> Result<&str, String> {
         .ok_or_else(|| "The website answered without the project's id.".to_owned())
 }
 
-/// The project `target` names: its id, its name, or its repository
-/// (`owner/name`); names and repositories match without regard to case.
+/// What `repo add`, `repo remove`, and `repo primary` do.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RepoChange {
+    Add { primary: bool },
+    Remove,
+    Primary,
+}
+
+/// Whether `value` is a GitHub `owner/name`.
+fn repository_name(value: &str) -> bool {
+    let mut parts = value.split('/');
+    let part = |p: Option<&str>| {
+        p.is_some_and(|p| {
+            !p.is_empty()
+                && p.len() <= 100
+                && !p.starts_with('.')
+                && p.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+        })
+    };
+    part(parts.next()) && part(parts.next()) && parts.next().is_none()
+}
+
+/// `POST /v1/projects`'s body.
+fn create_body(name: &str, instructions: Option<&str>, repositories: &[&str]) -> Value {
+    let mut body = json!({"name": name.trim()});
+    if let Some(instructions) = instructions.filter(|text| !text.trim().is_empty()) {
+        body["instructions"] = json!(instructions);
+    }
+    if !repositories.is_empty() {
+        body["repositories"] = json!(repositories);
+    }
+    body
+}
+
+/// `PATCH /v1/projects/{id}`'s body: only what was given; empty
+/// instructions clear them.
+fn edit_body(name: Option<&str>, instructions: Option<&str>, protection: Option<&str>) -> Value {
+    let mut body = json!({});
+    if let Some(name) = name {
+        body["name"] = json!(name.trim());
+    }
+    if let Some(instructions) = instructions {
+        body["instructions"] = if instructions.trim().is_empty() {
+            Value::Null
+        } else {
+            json!(instructions)
+        };
+    }
+    if let Some(protection) = protection {
+        body["protection"] = json!(protection);
+    }
+    body
+}
+
+/// The project's repositories as `(owner/name, primary)`, the primary
+/// first: from `repositories`, or an older website's one `repository`.
+fn repositories(project: &Value) -> Vec<(String, bool)> {
+    let mut held: Vec<(String, bool)> = match project["repositories"].as_array() {
+        Some(rows) => rows
+            .iter()
+            .filter_map(|row| {
+                let name = row["repository"].as_str().or_else(|| row.as_str())?;
+                Some((name.to_owned(), row["primary"] == json!(true)))
+            })
+            .collect(),
+        None => project["repository"]
+            .as_str()
+            .filter(|name| !name.is_empty())
+            .map(|name| vec![(name.to_owned(), true)])
+            .unwrap_or_default(),
+    };
+    if held.len() == 1 {
+        held[0].1 = true;
+    }
+    held.sort_by_key(|(_, primary)| !primary);
+    held
+}
+
+/// The project's repositories in a few words: `no repository`, one
+/// `owner/name`, or several with the primary marked.
+fn repositories_text(project: &Value) -> String {
+    let held = repositories(project);
+    match held.as_slice() {
+        [] => "no repository".to_owned(),
+        [(name, _)] => name.clone(),
+        many => many
+            .iter()
+            .map(|(name, primary)| {
+                if *primary {
+                    format!("{name} (primary)")
+                } else {
+                    name.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", "),
+    }
+}
+
+/// One project among several a name matched: its id and repositories.
+fn choice_text(project: &Value) -> String {
+    let held = repositories(project);
+    let repos = match held.as_slice() {
+        [] => "no repository".to_owned(),
+        many => many
+            .iter()
+            .map(|(name, primary)| {
+                if *primary {
+                    format!("{name}, primary")
+                } else {
+                    name.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("; "),
+    };
+    format!(
+        "{} {} ({repos})",
+        project["id"].as_str().unwrap_or_default(),
+        project["name"].as_str().unwrap_or_default()
+    )
+}
+
+fn count_word(n: usize) -> String {
+    match n {
+        2 => "Two".into(),
+        3 => "Three".into(),
+        4 => "Four".into(),
+        n => n.to_string(),
+    }
+}
+
+/// The project `target` names: its id, its name, or one of its
+/// repositories (`owner/name`); names and repositories match without
+/// regard to case. Names can repeat and a repository can be in several
+/// projects, so a target that matches more than one project is refused
+/// with the choices, never guessed.
 fn find_project<'a>(projects: &'a [Value], target: &str) -> Result<&'a Value, String> {
     if let Some(project) = projects.iter().find(|p| p["id"] == target) {
         return Ok(project);
     }
-    let same = |field: &str, p: &Value| {
-        p[field]
-            .as_str()
-            .is_some_and(|value| value.eq_ignore_ascii_case(target))
+    let named: Vec<&Value> = projects
+        .iter()
+        .filter(|p| {
+            p["name"]
+                .as_str()
+                .is_some_and(|name| name.trim().eq_ignore_ascii_case(target.trim()))
+        })
+        .collect();
+    let (found, how) = if named.is_empty() {
+        let held: Vec<&Value> = projects
+            .iter()
+            .filter(|p| {
+                repositories(p)
+                    .iter()
+                    .any(|(name, _)| name.eq_ignore_ascii_case(target))
+            })
+            .collect();
+        (held, "have the repository")
+    } else {
+        (named, "are called")
     };
-    let mut found: Vec<&Value> = projects.iter().filter(|p| same("name", p)).collect();
-    if found.is_empty() {
-        found = projects.iter().filter(|p| same("repository", p)).collect();
-    }
     match found.as_slice() {
         [project] => Ok(project),
         [] => Err(format!(
             "You have no project named `{target}`. See yours with: openagents projects list"
         )),
         many => Err(format!(
-            "More than one project is named `{target}`: {}. Use the repository or the id.",
+            "{} projects {how} {target}: {}. Use the id.",
+            count_word(many.len()),
             many.iter()
-                .map(|p| p["repository"].as_str().unwrap_or_default())
+                .map(|p| choice_text(p))
                 .collect::<Vec<_>>()
                 .join(", ")
         )),
@@ -992,7 +1319,7 @@ fn project_line(project: &Value) -> String {
     format!(
         "{}  {}  {} chat{}  last activity {}  ({})",
         project["name"].as_str().unwrap_or_default(),
-        project["repository"].as_str().unwrap_or_default(),
+        repositories_text(project),
         chats,
         if chats == 1 { "" } else { "s" },
         day(&project["updated_at"]),
@@ -1003,7 +1330,7 @@ fn project_line(project: &Value) -> String {
 fn list_text(listed: &Value) -> String {
     let projects = listed["data"].as_array().cloned().unwrap_or_default();
     if projects.is_empty() {
-        return "You have no projects on openagents.com yet. Add one with: openagents projects add owner/name".into();
+        return "You have no projects on openagents.com yet. Make one with: openagents projects create NAME".into();
     }
     projects
         .iter()
@@ -1043,6 +1370,21 @@ fn read_text(read: &Value) -> String {
 fn show_text(shown: &Value) -> String {
     let threads = shown["threads"].as_array().cloned().unwrap_or_default();
     let mut lines = vec![project_line(&shown["project"])];
+    let held = repositories(&shown["project"]);
+    if held.len() > 1 {
+        for (name, primary) in &held {
+            lines.push(format!(
+                "  repository {name}{}",
+                if *primary { "  Primary" } else { "" }
+            ));
+        }
+    }
+    if let Some(instructions) = shown["project"]["instructions"]
+        .as_str()
+        .filter(|text| !text.trim().is_empty())
+    {
+        lines.push(format!("Instructions: {}", instructions.trim()));
+    }
     let sources = shown["project"]["counts"]["sources"].as_u64().unwrap_or(0);
     if sources > 0 {
         lines.push(format!(
@@ -1113,6 +1455,94 @@ mod tests {
     }
 
     #[test]
+    fn a_project_needs_no_repository_and_reads_either_shape() {
+        let bare = json!({"id": "prj_cccccccccccccccc", "name": "taxes", "repositories": [], "repository": null, "counts": {"threads": 0}, "updated_at": "2026-10-13T08:00:00Z"});
+        assert!(repositories(&bare).is_empty());
+        assert_eq!(
+            project_line(&bare),
+            "taxes  no repository  0 chats  last activity 2026-10-13  (prj_cccccccccccccccc)"
+        );
+        // An older website names one `repository`.
+        assert_eq!(
+            repositories(&projects()[0]),
+            [("chris/finances".to_owned(), true)]
+        );
+        let two = json!({"id": "prj_dddddddddddddddd", "name": "site", "repository": "acme/web", "repositories": [
+            {"repository": "acme/api", "primary": false, "default_branch": "main", "private": true},
+            {"repository": "acme/web", "primary": true, "default_branch": "main", "private": false},
+        ]});
+        assert_eq!(
+            repositories(&two),
+            [
+                ("acme/web".to_owned(), true),
+                ("acme/api".to_owned(), false)
+            ]
+        );
+        assert_eq!(repositories_text(&two), "acme/web (primary), acme/api");
+        let shown = show_text(&json!({"project": two, "threads": []}));
+        assert!(shown.contains("  repository acme/web  Primary"), "{shown}");
+        assert!(shown.contains("  repository acme/api\n"), "{shown}");
+        // A repo-less project is found by name, as chat send --project
+        // finds it.
+        let all = vec![bare, projects()[0].clone()];
+        assert_eq!(
+            find_project(&all, "taxes").unwrap()["id"],
+            "prj_cccccccccccccccc"
+        );
+    }
+
+    #[test]
+    fn a_name_two_projects_share_is_never_guessed() {
+        let all = vec![
+            json!({"id": "prj_aaaaaaaaaaaaaaaa", "name": "finances", "repository": "AtlantisPleb/finances"}),
+            json!({"id": "prj_eeeeeeeeeeeeeeee", "name": "finances", "repositories": []}),
+            json!({"id": "prj_ffffffffffffffff", "name": "books", "repositories": [{"repository": "AtlantisPleb/finances", "primary": true}]}),
+        ];
+        let error = find_project(&all, "finances").unwrap_err();
+        assert_eq!(
+            error,
+            "Two projects are called finances: prj_aaaaaaaaaaaaaaaa finances (AtlantisPleb/finances, primary), prj_eeeeeeeeeeeeeeee finances (no repository). Use the id."
+        );
+        // One repository in two projects: the choice, not a guess.
+        let error = find_project(&all, "atlantispleb/finances").unwrap_err();
+        assert!(
+            error.starts_with(
+                "Two projects have the repository atlantispleb/finances: prj_aaaaaaaaaaaaaaaa"
+            ),
+            "{error}"
+        );
+        assert_eq!(
+            find_project(&all, "prj_eeeeeeeeeeeeeeee").unwrap()["repositories"],
+            json!([])
+        );
+        assert_eq!(
+            find_project(&all, "books").unwrap()["id"],
+            "prj_ffffffffffffffff"
+        );
+    }
+
+    #[test]
+    fn create_and_edit_send_only_what_was_given() {
+        assert_eq!(create_body(" taxes ", None, &[]), json!({"name": "taxes"}));
+        assert_eq!(
+            create_body("site", Some("Be brief."), &["acme/web", "acme/api"]),
+            json!({"name": "site", "instructions": "Be brief.", "repositories": ["acme/web", "acme/api"]})
+        );
+        assert_eq!(
+            edit_body(Some("books"), None, None),
+            json!({"name": "books"})
+        );
+        assert_eq!(
+            edit_body(None, Some(""), Some("only_me")),
+            json!({"instructions": null, "protection": "only_me"})
+        );
+        assert!(repository_name("AtlantisPleb/finances"));
+        assert!(!repository_name("finances"));
+        assert!(!repository_name("a/b/c"));
+        assert!(!repository_name("../x"));
+    }
+
+    #[test]
     fn a_move_says_where_the_chat_went() {
         let into = json!({"thread": {"title": "Taxes"}, "project": projects()[0]});
         assert_eq!(moved_text(&into), "Moved Taxes to finances.");
@@ -1128,7 +1558,7 @@ mod tests {
             "finances  chris/finances  2 chats  last activity 2026-10-09  (prj_aaaaaaaaaaaaaaaa)\n\
              openagents  OpenAgentsInc/openagents  1 chat  last activity 2026-10-12  (prj_bbbbbbbbbbbbbbbb)"
         );
-        assert!(list_text(&json!({"data": []})).contains("openagents projects add"));
+        assert!(list_text(&json!({"data": []})).contains("openagents projects create NAME"));
     }
 
     #[test]

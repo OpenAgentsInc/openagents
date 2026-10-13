@@ -248,7 +248,7 @@ async fn ready(app: &App, headers: &HeaderMap, id: &str) -> Result<Ready, Respon
         .as_deref()
         .and_then(|project| sidebar.project(project))
         .or_else(|| (projects.len() == 1).then(|| &projects[0]))
-        .map(|project| project.repository.clone())
+        .and_then(|project| project.repository().map(str::to_owned))
         .unwrap_or_default();
     Ok(Ready {
         owner: chat.owner.clone(),

@@ -468,9 +468,13 @@ pub(crate) fn projects(status: &oa_auth::repos::Status) -> Value {
             json!({
                 "id": project.id,
                 "name": project.name,
-                "repository": project.repository,
-                "default_branch": project.default_branch,
-                "private": project.private,
+                "instructions": project.instructions,
+                "repositories": project.repositories.iter().map(|r| json!({
+                    "repository": r.repository,
+                    "primary": r.primary,
+                    "default_branch": r.default_branch,
+                    "private": r.private,
+                })).collect::<Vec<_>>(),
                 "added": when(project.created_unix),
             })
         })

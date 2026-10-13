@@ -2,8 +2,11 @@
 //! agents (#11471, `docs/api/projects.md`): `openagents projects`, Coder,
 //! and any script holding the account's own sign-in.
 //!
-//! A project is one connected GitHub repository; the left panel groups
-//! chats (threads) under it, and Drive sources attach to it
+//! A project is a named home for chats (threads), instructions, files,
+//! and zero or more connected GitHub repositories, one of them the primary
+//! when there are any. The same repository may be in several projects and
+//! names may repeat. The left panel groups chats under it, and Drive
+//! sources attach to it
 //! (`/projects/{id}/sources`). Every route takes the same credential as the
 //! other `/v1` app routes (`Authorization: Bearer sess_…` from `openagents
 //! login` or `coder login`, or a sign-in key `oa_sk_…`) and answers only
@@ -13,17 +16,23 @@
 //! | Route | What |
 //! | --- | --- |
 //! | `GET /v1/projects` | `{data: [Project], next}`, oldest first (`?limit`, `?after`) |
-//! | `POST /v1/projects` `{repository}` | Add a project from a connected repository (`owner/name`): `201 Project` |
-//! | `GET /v1/projects/{id}` | One `Project`; `{id}` may be `name:NAME` |
-//! | `PATCH /v1/projects/{id}` `{protection}` | The default for new files: `standard` or `only_me` ([`super::files`]) |
+//! | `POST /v1/projects` `{name, instructions?, repositories?, protection?}` | A new project (always new); `{repository}` alone is the older form, named after it: `201 Project` |
+//! | `GET /v1/projects/{id}` | One `Project`; `{id}` may be `name:NAME` (`409 ambiguous_name` names the choices when several share it) |
+//! | `PATCH /v1/projects/{id}` `{name?, instructions?, primary_repository?, protection?}` | Rename, set or clear (`null`) instructions, make one of its repositories the primary, or set the default for new files (`standard`, `only_me`; [`super::files`]) |
+//! | `POST /v1/projects/{id}/repositories` `{repository, primary?}` | Add a connected repository (the first one is the primary): `Project` |
+//! | `DELETE /v1/projects/{id}/repositories/{owner}/{name}` | Remove one; removing the primary makes the first one left the primary: `Project` |
 //! | `DELETE /v1/projects/{id}` | `{id, object: "project.deleted"}`; `409 project_has_threads` while threads are in it, unless `?detach_threads=true` (the threads stay, outside any project) |
 //! | `GET /v1/threads?project=ID\|name:NAME\|none` | `{data: [Thread], next}`, by last activity, oldest first (`?limit`, `?after`) |
 //! | `PATCH /v1/threads/{id}` `{project}` | Move the thread into a project (its id or `name:NAME`), or out of any (`null`): `Thread`. Sync then leaves it where the person put it (#11541) |
 //! | `GET /v1/threads/{id}/messages` | `{data: [Message], next}`, oldest first (`?limit`, `?after`) |
 //!
-//! `Project` is `{id, object: "project", name, instructions, repository,
-//! default_branch, private, created_at, updated_at, counts: {threads,
-//! files, documents, sources}}`; times are RFC 3339 UTC. Errors are
+//! `Project` is `{id, object: "project", name, instructions, repositories:
+//! [{repository, primary, default_branch, private}], repository,
+//! default_branch, private, created_at, updated_at, protection, counts:
+//! {threads, files, documents, sources}}`; times are RFC 3339 UTC.
+//! `repository`, `default_branch`, and `private` are the primary's (null,
+//! null, false without one), kept for apps from before 2026-10-13 until
+//! the next app release, and deprecated. Errors are
 //! `{error: {code, message}}`. The account service keeps the projects; this
 //! server reads them with the caller's own credential.
 
@@ -55,6 +64,14 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(API, get(list).post(add))
         .route("/v1/projects/{id}", get(show).delete(remove).patch(edit))
+        .route(
+            "/v1/projects/{id}/repositories",
+            axum::routing::post(add_repository),
+        )
+        .route(
+            "/v1/projects/{id}/repositories/{owner}/{name}",
+            axum::routing::delete(remove_repository),
+        )
 }
 
 /// Whether `path` is one of these routes, so the site answers it itself.
@@ -147,10 +164,10 @@ pub(crate) fn named<'a>(projects: &'a [Project], reference: &str) -> Result<&'a 
         return match found.as_slice() {
             [project] => Ok(project),
             [] => Err(not_yours()),
-            _ => Err(refused(
+            several => Err(refused(
                 StatusCode::CONFLICT,
                 "ambiguous_name",
-                "More than one of your projects has that name. Use its id.",
+                &ambiguous(name, several),
             )),
         };
     }
@@ -158,6 +175,21 @@ pub(crate) fn named<'a>(projects: &'a [Project], reference: &str) -> Result<&'a 
         .iter()
         .find(|project| project.id == reference)
         .ok_or_else(not_yours)
+}
+
+/// The plain choice when several projects share `name`: "2 projects are
+/// called finances: prj_… (AtlantisPleb/finances), prj_… (no repository).
+/// Use its id."
+pub(crate) fn ambiguous(name: &str, several: &[&Project]) -> String {
+    let choices: Vec<String> = several
+        .iter()
+        .map(|p| format!("{} ({})", p.id, p.repository().unwrap_or("no repository")))
+        .collect();
+    format!(
+        "{} projects are called {name}: {}. Use its id.",
+        several.len(),
+        choices.join(", ")
+    )
 }
 
 /// A Unix time as RFC 3339 UTC, `2026-10-12T20:41:09Z`.
@@ -208,10 +240,17 @@ pub(crate) fn object(
         "id": project.id,
         "object": "project",
         "name": project.name,
-        "instructions": null,
-        "repository": project.repository,
-        "default_branch": project.default_branch,
-        "private": project.private,
+        "instructions": project.instructions,
+        "repositories": project.repositories.iter().map(|r| json!({
+            "repository": r.repository,
+            "primary": r.primary,
+            "default_branch": r.default_branch,
+            "private": r.private,
+        })).collect::<Vec<_>>(),
+        // Deprecated: the primary's, for apps from before 2026-10-13.
+        "repository": project.repository(),
+        "default_branch": project.primary().map(|r| r.default_branch.clone()),
+        "private": project.primary().is_some_and(|r| r.private),
         "created_at": rfc3339(project.created_unix),
         "updated_at": rfc3339(updated),
         "protection": kept.protection.word(),
@@ -319,34 +358,181 @@ async fn list(State(app): State<App>, headers: HeaderMap, Query(page): Query<Pag
 #[derive(Deserialize)]
 struct AddBody {
     #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    instructions: Option<String>,
+    #[serde(default)]
+    repositories: Vec<String>,
+    /// The older form: one repository, the project named after it.
+    #[serde(default)]
     repository: Option<String>,
+    #[serde(default)]
+    protection: Option<String>,
 }
 
-/// `POST /v1/projects` `{repository}`.
+/// `POST /v1/projects` `{name, instructions?, repositories?, protection?}`
+/// (or the older `{repository}`): always a new project.
 async fn add(
     State(app): State<App>,
     headers: HeaderMap,
     body: Result<axum::Json<AddBody>, JsonRejection>,
 ) -> Response {
-    let (service, token, _) = match caller(&app, &headers).await {
+    let (service, token, account) = match caller(&app, &headers).await {
         Ok(found) => found,
         Err(response) => return response,
     };
-    let Ok(axum::Json(AddBody {
-        repository: Some(repository),
-    })) = body
-    else {
+    let Ok(axum::Json(body)) = body else {
+        return invalid_new();
+    };
+    let mut repositories: Vec<String> = body
+        .repository
+        .iter()
+        .chain(&body.repositories)
+        .map(|r| r.trim().to_owned())
+        .collect();
+    repositories.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+    let name = body
+        .name
+        .map(|n| n.trim().to_owned())
+        .filter(|n| !n.is_empty());
+    if name.is_none() && repositories.is_empty() {
+        return invalid_new();
+    }
+    let new = oa_auth::repos::NewProject {
+        name,
+        instructions: body.instructions,
+        repositories,
+    };
+    let project = match service.create_project_as(&token, &new).await {
+        Ok(project) => project,
+        Err(error) => return failed(error),
+    };
+    if let Some(protection) = body.protection.as_deref()
+        && let Err(response) = super::files::edit(&app, &account, &project.id, protection).await
+    {
+        return response;
+    }
+    let summary = match kept(&app, &account, &project.id).await {
+        Ok(summary) => summary,
+        Err(response) => return response,
+    };
+    answer(StatusCode::CREATED, object(&project, &[], 0, &summary))
+}
+
+fn invalid_new() -> Response {
+    refused(
+        StatusCode::BAD_REQUEST,
+        "invalid_request",
+        "Send {\"name\": \"…\"} as JSON, with \"instructions\" and \"repositories\": [\"owner/name\"] if you like. A project needs no repository.",
+    )
+}
+
+/// The project as the API shows it, after a change.
+async fn shown(app: &App, account: &str, project: &Project) -> Response {
+    let chats = match account_chats(app, account).await {
+        Ok(chats) => chats,
+        Err(response) => return response,
+    };
+    let sources = source_count(app, account, &project.id);
+    let summary = match kept(app, account, &project.id).await {
+        Ok(summary) => summary,
+        Err(response) => return response,
+    };
+    answer(StatusCode::OK, object(project, &chats, sources, &summary))
+}
+
+#[derive(Deserialize)]
+struct RepositoryBody {
+    repository: String,
+    #[serde(default)]
+    primary: bool,
+}
+
+/// `POST /v1/projects/{id}/repositories` `{repository, primary?}`.
+async fn add_repository(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    body: Result<axum::Json<RepositoryBody>, JsonRejection>,
+) -> Response {
+    let Ok(axum::Json(body)) = body else {
         return refused(
             StatusCode::BAD_REQUEST,
             "invalid_request",
-            "A project is one GitHub repository. Send {\"repository\": \"owner/name\"} as JSON.",
+            "Send {\"repository\": \"owner/name\"} as JSON, with \"primary\": true to make it the primary.",
         );
     };
-    match service.add_project_as(&token, repository.trim()).await {
-        Ok(project) => answer(
-            StatusCode::CREATED,
-            object(&project, &[], 0, &Summary::default()),
-        ),
+    change(
+        &app,
+        &headers,
+        &id,
+        oa_auth::repos::ProjectChange {
+            add_repository: Some(body.repository.trim().to_owned()),
+            primary: body.primary,
+            ..Default::default()
+        },
+    )
+    .await
+}
+
+/// `DELETE /v1/projects/{id}/repositories/{owner}/{name}`.
+async fn remove_repository(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((id, owner, name)): Path<(String, String, String)>,
+) -> Response {
+    change(
+        &app,
+        &headers,
+        &id,
+        oa_auth::repos::ProjectChange {
+            remove_repository: Some(format!("{owner}/{name}")),
+            ..Default::default()
+        },
+    )
+    .await
+}
+
+/// Apply `change` to the caller's project `reference` at the account
+/// service and answer the Project.
+async fn change(
+    app: &App,
+    headers: &HeaderMap,
+    reference: &str,
+    change: oa_auth::repos::ProjectChange,
+) -> Response {
+    let (service, token, account) = match caller(app, headers).await {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let status = match status(service, &token).await {
+        Ok(status) => status,
+        Err(response) => return response,
+    };
+    let project = match named(&status.projects, reference) {
+        Ok(project) => project.id.clone(),
+        Err(response) => return response,
+    };
+    for repository in [&change.remove_repository, &change.primary_repository]
+        .into_iter()
+        .flatten()
+    {
+        if status
+            .projects
+            .iter()
+            .find(|p| p.id == project)
+            .and_then(|p| p.holding(repository))
+            .is_none()
+        {
+            return refused(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                &format!("{repository} isn't in this project."),
+            );
+        }
+    }
+    match service.edit_project_as(&token, &project, &change).await {
+        Ok(changed) => shown(app, &account, &changed).await,
         Err(error) => failed(error),
     }
 }
@@ -377,13 +563,51 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
     answer(StatusCode::OK, object(project, &chats, sources, &summary))
 }
 
-/// `PATCH /v1/projects/{id}` `{"protection": "standard"|"only_me"}`.
+#[derive(Deserialize)]
+struct EditBody {
+    #[serde(default)]
+    protection: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    /// A string sets them; `null` clears them.
+    #[serde(default, deserialize_with = "present")]
+    instructions: Option<Option<String>>,
+    #[serde(default)]
+    primary_repository: Option<String>,
+    /// Repositories change through `/v1/projects/{id}/repositories`.
+    #[serde(default)]
+    repository: Option<Value>,
+}
+
+/// A field that may be `null` (`Some(None)`) as well as absent (`None`).
+fn present<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Option<String>>, D::Error> {
+    Option::<String>::deserialize(deserializer).map(Some)
+}
+
+/// `PATCH /v1/projects/{id}` `{name?, instructions?, primary_repository?,
+/// protection?}`.
 async fn edit(
     State(app): State<App>,
     headers: HeaderMap,
     Path(id): Path<String>,
-    body: Result<axum::Json<super::files::EditBody>, JsonRejection>,
+    body: Result<axum::Json<EditBody>, JsonRejection>,
 ) -> Response {
+    let Ok(axum::Json(body)) = body else {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Send any of {\"name\", \"instructions\", \"primary_repository\", \"protection\"} as JSON.",
+        );
+    };
+    if body.repository.is_some() {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Add a repository with POST /v1/projects/{id}/repositories, remove one with DELETE /v1/projects/{id}/repositories/{owner}/{name}, and pick the primary with {\"primary_repository\": \"owner/name\"}.",
+        );
+    }
     let (service, token, account) = match caller(&app, &headers).await {
         Ok(found) => found,
         Err(response) => return response,
@@ -393,29 +617,31 @@ async fn edit(
         Err(response) => return response,
     };
     let project = match named(&status.projects, &id) {
-        Ok(project) => project,
+        Ok(project) => project.clone(),
         Err(response) => return response,
     };
-    let Ok(axum::Json(body)) = body else {
-        return refused(
-            StatusCode::BAD_REQUEST,
-            "invalid_request",
-            "Send {\"protection\": \"standard\"} or {\"protection\": \"only_me\"} as JSON.",
-        );
-    };
-    if let Err(response) = super::files::edit(&app, &account, &project.id, body).await {
+    if let Some(protection) = body.protection.as_deref()
+        && let Err(response) = super::files::edit(&app, &account, &project.id, protection).await
+    {
         return response;
     }
-    let chats = match account_chats(&app, &account).await {
-        Ok(chats) => chats,
-        Err(response) => return response,
+    let edit = oa_auth::repos::ProjectChange {
+        name: body.name.map(|n| n.trim().to_owned()),
+        instructions: body.instructions,
+        primary_repository: body.primary_repository.map(|r| r.trim().to_owned()),
+        ..Default::default()
     };
-    let sources = source_count(&app, &account, &project.id);
-    let summary = match kept(&app, &account, &project.id).await {
-        Ok(summary) => summary,
-        Err(response) => return response,
-    };
-    answer(StatusCode::OK, object(project, &chats, sources, &summary))
+    if edit == oa_auth::repos::ProjectChange::default() {
+        if body.protection.is_none() {
+            return refused(
+                StatusCode::BAD_REQUEST,
+                "invalid_request",
+                "Send any of {\"name\", \"instructions\", \"primary_repository\", \"protection\"} as JSON.",
+            );
+        }
+        return shown(&app, &account, &project).await;
+    }
+    change(&app, &headers, &project.id, edit).await
 }
 
 #[derive(Deserialize, Default)]

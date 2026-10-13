@@ -62,25 +62,271 @@ const SCHEMA: &str = "openagents.github-access.v1";
 pub const MAX_PROJECTS: usize = 200;
 const FILE_MAX: u64 = 1024 * 1024;
 
-/// An account's project: one connected GitHub repository.
+/// An account's project: a named home for chats, instructions, files, and
+/// zero or more connected GitHub repositories. When it has repositories,
+/// exactly one is the primary (a chat started in the project works in it).
+/// The same repository may be in any number of projects, and names may
+/// repeat (projects have ids).
+///
+/// A project kept before 2026-10-13 had one `repository` and no
+/// `repositories`; it reads back with that repository as its primary
+/// ([`StoredProject`]), and is written in the new shape the next time the
+/// account's record changes.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(from = "StoredProject")]
 pub struct Project {
     /// `prj_` and 16 hex characters.
     pub id: String,
-    /// Shown in the sidebar: the repository's name.
+    /// Shown in the sidebar.
     pub name: String,
+    /// What a chat in the project starts from, as the person wrote it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+    pub created_unix: u64,
+    /// Its repositories, in the order they were added.
+    #[serde(default)]
+    pub repositories: Vec<ProjectRepository>,
+}
+
+/// One repository in a project.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectRepository {
     /// GitHub's numeric repository id (stable across renames).
     pub repository_id: u64,
     /// `owner/name`.
     pub repository: String,
     pub default_branch: String,
     pub private: bool,
-    pub created_unix: u64,
-    /// The GitHub App installation that reaches the repository, for a
-    /// project added through the App.
+    /// The project's primary repository.
+    #[serde(default)]
+    pub primary: bool,
+    /// The GitHub App installation that reaches the repository, for one
+    /// added through the App.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub installation_id: Option<u64>,
+}
+
+/// A project as kept or sent: the current shape, or the older one-repository
+/// shape (`repository_id`, `repository`, `default_branch`, `private`,
+/// `installation_id` at the top level).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredProject {
+    id: String,
+    name: String,
+    #[serde(default)]
+    instructions: Option<String>,
+    created_unix: u64,
+    #[serde(default)]
+    repositories: Vec<ProjectRepository>,
+    #[serde(default)]
+    repository_id: Option<u64>,
+    #[serde(default)]
+    repository: Option<String>,
+    #[serde(default)]
+    default_branch: Option<String>,
+    #[serde(default)]
+    private: Option<bool>,
+    #[serde(default)]
+    installation_id: Option<u64>,
+}
+
+impl From<StoredProject> for Project {
+    fn from(stored: StoredProject) -> Self {
+        let mut repositories = stored.repositories;
+        if repositories.is_empty()
+            && let (Some(repository_id), Some(repository)) =
+                (stored.repository_id, stored.repository)
+        {
+            repositories.push(ProjectRepository {
+                repository_id,
+                repository,
+                default_branch: stored.default_branch.unwrap_or_else(|| "main".into()),
+                private: stored.private.unwrap_or(false),
+                primary: true,
+                installation_id: stored.installation_id,
+            });
+        }
+        let mut project = Self {
+            id: stored.id,
+            name: stored.name,
+            instructions: stored.instructions,
+            created_unix: stored.created_unix,
+            repositories,
+        };
+        project.settle_primary();
+        project
+    }
+}
+
+impl Project {
+    /// The primary repository, when the project has any.
+    #[must_use]
+    pub fn primary(&self) -> Option<&ProjectRepository> {
+        self.repositories.iter().find(|r| r.primary)
+    }
+
+    /// The primary repository's `owner/name`.
+    #[must_use]
+    pub fn repository(&self) -> Option<&str> {
+        self.primary().map(|r| r.repository.as_str())
+    }
+
+    /// The project's entry for `repository` (`owner/name`, without regard
+    /// to case, as GitHub treats it).
+    #[must_use]
+    pub fn holding(&self, repository: &str) -> Option<&ProjectRepository> {
+        self.repositories
+            .iter()
+            .find(|r| r.repository.eq_ignore_ascii_case(repository))
+    }
+
+    /// Exactly one primary when there are repositories: the first marked
+    /// one, else the first added.
+    fn settle_primary(&mut self) {
+        let first = self
+            .repositories
+            .iter()
+            .position(|r| r.primary)
+            .unwrap_or(0);
+        for (at, repository) in self.repositories.iter_mut().enumerate() {
+            repository.primary = at == first;
+        }
+    }
+}
+
+/// The project a chat whose repository is `repository` files under
+/// (#11541): the one project holding it; when several do, the one where it
+/// is the primary; when that is still not one project, none.
+#[must_use]
+pub fn filing_project<'a>(projects: &'a [Project], repository: &str) -> Option<&'a Project> {
+    let holding: Vec<&Project> = projects
+        .iter()
+        .filter(|p| p.holding(repository).is_some())
+        .collect();
+    if let [only] = holding.as_slice() {
+        return Some(only);
+    }
+    let primary: Vec<&Project> = holding
+        .into_iter()
+        .filter(|p| p.holding(repository).is_some_and(|r| r.primary))
+        .collect();
+    match primary.as_slice() {
+        [only] => Some(only),
+        _ => None,
+    }
+}
+
+/// The most characters a project's name keeps.
+pub const MAX_NAME: usize = 100;
+/// The most characters a project's instructions keep.
+pub const MAX_INSTRUCTIONS: usize = 8_000;
+/// The most repositories one project holds.
+pub const MAX_PROJECT_REPOSITORIES: usize = 20;
+
+/// A new project: a name (or the repository's name), optional
+/// instructions, and the repositories it starts with (the first is the
+/// primary).
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct NewProject {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub instructions: Option<String>,
+    #[serde(default)]
+    pub repositories: Vec<String>,
+}
+
+/// Read the account service's `POST /v1/projects` body: `{name?,
+/// instructions?, repositories?: [owner/name]}`, or the older
+/// `{repository}`. A name or at least one repository is needed.
+#[must_use]
+pub fn new_project(body: &Value) -> Option<NewProject> {
+    let mut new: NewProject = serde_json::from_value(json!({
+        "name": body.get("name").cloned().unwrap_or(Value::Null),
+        "instructions": body.get("instructions").cloned().unwrap_or(Value::Null),
+        "repositories": body.get("repositories").cloned().unwrap_or(json!([])),
+    }))
+    .ok()?;
+    match body.get("repository") {
+        None | Some(Value::Null) => {}
+        Some(Value::String(repository)) => new.repositories.insert(0, repository.clone()),
+        Some(_) => return None,
+    }
+    (new.name.is_some() || !new.repositories.is_empty()).then_some(new)
+}
+
+/// A change to a project. `instructions: Some(None)` clears them.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ProjectChange {
+    pub name: Option<String>,
+    pub instructions: Option<Option<String>>,
+    /// Add this repository (`owner/name`); `primary` makes it the primary.
+    pub add_repository: Option<String>,
+    pub primary: bool,
+    /// Remove this repository; when it was the primary, the first one left
+    /// becomes the primary.
+    pub remove_repository: Option<String>,
+    /// Make this repository, already in the project, the primary.
+    pub primary_repository: Option<String>,
+}
+
+impl ProjectChange {
+    /// Read the account service's `PATCH /v1/projects/{id}` body:
+    /// `{name?, instructions? (null clears), add_repository?, primary?,
+    /// remove_repository?, primary_repository?}`.
+    #[must_use]
+    pub fn from_body(body: &Value) -> Option<Self> {
+        let text = |key: &str| -> Option<Option<String>> {
+            match body.get(key) {
+                None => Some(None),
+                Some(Value::String(value)) => Some(Some(value.clone())),
+                Some(_) => None,
+            }
+        };
+        let instructions = match body.get("instructions") {
+            None => None,
+            Some(Value::Null) => Some(None),
+            Some(Value::String(value)) => Some(Some(value.clone())),
+            Some(_) => return None,
+        };
+        let change = Self {
+            name: text("name")?,
+            instructions,
+            add_repository: text("add_repository")?,
+            primary: match body.get("primary") {
+                None => false,
+                Some(value) => value.as_bool()?,
+            },
+            remove_repository: text("remove_repository")?,
+            primary_repository: text("primary_repository")?,
+        };
+        Some(change)
+    }
+
+    /// The body [`Self::from_body`] reads.
+    #[must_use]
+    pub fn body(&self) -> Value {
+        let mut body = json!({});
+        if let Some(name) = &self.name {
+            body["name"] = json!(name);
+        }
+        if let Some(instructions) = &self.instructions {
+            body["instructions"] = json!(instructions);
+        }
+        if let Some(repository) = &self.add_repository {
+            body["add_repository"] = json!(repository);
+            body["primary"] = json!(self.primary);
+        }
+        if let Some(repository) = &self.remove_repository {
+            body["remove_repository"] = json!(repository);
+        }
+        if let Some(repository) = &self.primary_repository {
+            body["primary_repository"] = json!(repository);
+        }
+        body
+    }
 }
 
 /// One repository the person can connect.
@@ -361,8 +607,11 @@ pub enum Call {
     /// `POST /v1/account/github/token`: the token, for this deployment's
     /// own web server to read GitHub as the person.
     Token,
-    /// `POST /v1/account/projects` `{repository}`
-    AddProject(String),
+    /// `POST /v1/projects` `{name?, instructions?, repositories?}` (or
+    /// the older `{repository}`): always a new project.
+    CreateProject(NewProject),
+    /// `PATCH /v1/projects/{id}` ([`ProjectChange::from_body`]).
+    EditProject { id: String, change: ProjectChange },
     /// `DELETE /v1/account/projects/{id}`
     RemoveProject(String),
     /// `POST /v1/account/github/app/grant` `{code, code_verifier}`: the
@@ -400,6 +649,7 @@ pub async fn answer_with(
     call: Call,
 ) -> (u16, Value) {
     let result = async {
+        let oauth = github;
         let github = || github.ok_or(RepoError::NotConfigured);
         let app_ready = || app.ok_or(RepoError::NotConfigured);
         let via_app = match app {
@@ -434,12 +684,21 @@ pub async fn answer_with(
                 };
                 json!({"token": token.as_str(), "private": private})
             }
-            Call::AddProject(repository) => {
-                let project = match via_app {
-                    Some(app) => installed::add_project(dir, app, account, &repository).await?,
-                    None => add_project(dir, github()?, account, &repository).await?,
+            Call::CreateProject(new) => {
+                let mut found = Vec::with_capacity(new.repositories.len());
+                for repository in &new.repositories {
+                    found.push(look_up(dir, oauth, via_app, account, repository).await?);
+                }
+                json!({"project": create_project(dir, account, &new, &found)?})
+            }
+            Call::EditProject { id, change } => {
+                let found = match &change.add_repository {
+                    Some(repository) => {
+                        Some(look_up(dir, oauth, via_app, account, repository).await?)
+                    }
+                    None => None,
                 };
-                json!({"project": project})
+                json!({"project": edit_project(dir, account, &id, &change, found.as_ref())?})
             }
             Call::AppGrant(request) => installed::grant(dir, app_ready()?, account, &request)
                 .await?
@@ -670,14 +929,37 @@ pub(crate) fn token(
     Ok((token, grant.private()))
 }
 
-/// Add `repository` (`owner/name`) as a project, or return the project
-/// that already holds it.
-pub async fn add_project(
+/// `repository` (`owner/name`) as GitHub shows it to the person, and the
+/// GitHub App installation that reaches it when the account uses the App.
+async fn look_up(
+    dir: &Path,
+    github: Option<&Github>,
+    app: Option<&AppClient>,
+    account: &str,
+    repository: &str,
+) -> Result<(Repository, Option<u64>), RepoError> {
+    match app {
+        Some(app) => installed::look_up(dir, app, account, repository).await,
+        None => Ok((
+            found_repository(
+                dir,
+                github.ok_or(RepoError::NotConfigured)?,
+                account,
+                repository,
+            )
+            .await?,
+            None,
+        )),
+    }
+}
+
+/// `repository` (`owner/name`) read with the account's OAuth token.
+pub async fn found_repository(
     dir: &Path,
     github: &Github,
     account: &str,
     repository: &str,
-) -> Result<Project, RepoError> {
+) -> Result<Repository, RepoError> {
     if !full_name(repository) {
         return Err(RepoError::Invalid);
     }
@@ -689,56 +971,223 @@ pub async fn add_project(
     if body["disabled"].as_bool() == Some(true) {
         return Err(RepoError::Forbidden);
     }
-    let found = listed(&body).ok_or(RepoError::BadAnswer)?;
-    keep_project(dir, account, &found, None)
+    listed(&body).ok_or(RepoError::BadAnswer)
 }
 
-/// Keep `found` as a project (through `installation` when the GitHub App
-/// reaches it), or update the project that already holds it.
-fn keep_project(
+/// Add `repository` (`owner/name`) as a new project named after it (the
+/// older one-step form; there is no reuse of a project that holds it).
+pub async fn add_project(
     dir: &Path,
+    github: &Github,
     account: &str,
-    found: &Repository,
-    installation: Option<u64>,
+    repository: &str,
 ) -> Result<Project, RepoError> {
-    let mut id = [0u8; 8];
-    OsRng.fill_bytes(&mut id);
-    let fresh = Project {
-        id: format!("prj_{}", hex(&id)),
-        name: found
-            .full_name
-            .split_once('/')
-            .map_or(found.full_name.as_str(), |(_, name)| name)
-            .to_string(),
+    let found = found_repository(dir, github, account, repository).await?;
+    create_project(
+        dir,
+        account,
+        &NewProject {
+            repositories: vec![repository.to_string()],
+            ..NewProject::default()
+        },
+        &[(found, None)],
+    )
+}
+
+/// A name or instructions as kept: trimmed, bounded, without control
+/// characters (instructions keep their line breaks).
+fn clean(value: &str, max: usize, lines: bool) -> Result<String, RepoError> {
+    let value = value.trim();
+    if value.chars().count() > max
+        || value
+            .chars()
+            .any(|c| c.is_control() && !(lines && matches!(c, '\n' | '\t' | '\r')))
+    {
+        return Err(RepoError::Invalid);
+    }
+    Ok(value.to_string())
+}
+
+fn entry(found: &Repository, installation: Option<u64>) -> ProjectRepository {
+    ProjectRepository {
         repository_id: found.id,
         repository: found.full_name.clone(),
         default_branch: found.default_branch.clone(),
         private: found.private,
-        created_unix: now(),
+        primary: false,
         installation_id: installation,
+    }
+}
+
+/// A rename, a new default branch or visibility on GitHub follows into
+/// every project that holds the repository.
+fn follow(record: &mut Record, found: &Repository, installation: Option<u64>) {
+    for held in record
+        .projects
+        .iter_mut()
+        .flat_map(|p| p.repositories.iter_mut())
+        .filter(|r| r.repository_id == found.id)
+    {
+        held.repository.clone_from(&found.full_name);
+        held.default_branch.clone_from(&found.default_branch);
+        held.private = found.private;
+        if installation.is_some() {
+            held.installation_id = installation;
+        }
+    }
+}
+
+/// Make a new project: always new, even when another project has the same
+/// name or repositories. `found` are `new.repositories` as GitHub showed
+/// them, in order; the first is the primary.
+pub fn create_project(
+    dir: &Path,
+    account: &str,
+    new: &NewProject,
+    found: &[(Repository, Option<u64>)],
+) -> Result<Project, RepoError> {
+    if found.len() > MAX_PROJECT_REPOSITORIES {
+        return Err(RepoError::Invalid);
+    }
+    let name = match new.name.as_deref().map(|n| clean(n, MAX_NAME, false)) {
+        Some(name) => name?,
+        None => found
+            .first()
+            .map(|(r, _)| {
+                r.full_name
+                    .split_once('/')
+                    .map_or(r.full_name.as_str(), |(_, name)| name)
+                    .to_string()
+            })
+            .unwrap_or_default(),
     };
+    if name.is_empty() {
+        return Err(RepoError::Invalid);
+    }
+    let instructions = match new.instructions.as_deref() {
+        Some(text) => Some(clean(text, MAX_INSTRUCTIONS, true)?).filter(|t| !t.is_empty()),
+        None => None,
+    };
+    let mut repositories: Vec<ProjectRepository> = Vec::new();
+    for (repository, installation) in found {
+        if !repositories
+            .iter()
+            .any(|r| r.repository_id == repository.id)
+        {
+            repositories.push(entry(repository, *installation));
+        }
+    }
+    let mut id = [0u8; 8];
+    OsRng.fill_bytes(&mut id);
+    let mut fresh = Project {
+        id: format!("prj_{}", hex(&id)),
+        name,
+        instructions,
+        created_unix: now(),
+        repositories,
+    };
+    fresh.settle_primary();
     forget(dir, account);
     mutate(dir, account, |record| {
-        if let Some(existing) = record
-            .projects
-            .iter_mut()
-            .find(|p| p.repository_id == found.id)
-        {
-            // A rename or a new default branch on GitHub follows.
-            existing.repository.clone_from(&fresh.repository);
-            existing.name.clone_from(&fresh.name);
-            existing.default_branch.clone_from(&fresh.default_branch);
-            existing.private = fresh.private;
-            if installation.is_some() {
-                existing.installation_id = installation;
-            }
-            return Ok(existing.clone());
-        }
         if record.projects.len() >= MAX_PROJECTS {
             return Err(RepoError::Full);
         }
+        for (repository, installation) in found {
+            follow(record, repository, *installation);
+        }
         record.projects.push(fresh.clone());
         Ok(fresh.clone())
+    })
+}
+
+/// Change a project: its name, instructions, and repositories. `found` is
+/// `change.add_repository` as GitHub showed it. A repository to remove or
+/// make primary that isn't in the project is [`RepoError::NotFound`].
+pub fn edit_project(
+    dir: &Path,
+    account: &str,
+    id: &str,
+    change: &ProjectChange,
+    found: Option<&(Repository, Option<u64>)>,
+) -> Result<Project, RepoError> {
+    if !project_id(id) {
+        return Err(RepoError::Invalid);
+    }
+    let name = match change.name.as_deref() {
+        Some(name) => Some(clean(name, MAX_NAME, false)?).filter(|n| !n.is_empty()),
+        None => None,
+    };
+    if change.name.is_some() && name.is_none() {
+        return Err(RepoError::Invalid);
+    }
+    let instructions = match &change.instructions {
+        Some(Some(text)) => {
+            Some(Some(clean(text, MAX_INSTRUCTIONS, true)?).filter(|t| !t.is_empty()))
+        }
+        Some(None) => Some(None),
+        None => None,
+    };
+    if change.add_repository.is_some() != found.is_some() {
+        return Err(RepoError::Invalid);
+    }
+    forget(dir, account);
+    mutate(dir, account, |record| {
+        if let Some((repository, installation)) = found {
+            follow(record, repository, *installation);
+        }
+        let project = record
+            .projects
+            .iter_mut()
+            .find(|p| p.id == id)
+            .ok_or(RepoError::NotFound)?;
+        if let Some(name) = &name {
+            project.name.clone_from(name);
+        }
+        if let Some(instructions) = &instructions {
+            project.instructions.clone_from(instructions);
+        }
+        if let Some((repository, installation)) = found {
+            let at = match project
+                .repositories
+                .iter()
+                .position(|r| r.repository_id == repository.id)
+            {
+                Some(at) => at,
+                None => {
+                    if project.repositories.len() >= MAX_PROJECT_REPOSITORIES {
+                        return Err(RepoError::Full);
+                    }
+                    project.repositories.push(entry(repository, *installation));
+                    project.repositories.len() - 1
+                }
+            };
+            if change.primary || project.repositories.len() == 1 {
+                for (n, held) in project.repositories.iter_mut().enumerate() {
+                    held.primary = n == at;
+                }
+            }
+        }
+        if let Some(repository) = &change.remove_repository {
+            let before = project.repositories.len();
+            project
+                .repositories
+                .retain(|r| !r.repository.eq_ignore_ascii_case(repository));
+            if project.repositories.len() == before {
+                return Err(RepoError::NotFound);
+            }
+        }
+        if let Some(repository) = &change.primary_repository {
+            let at = project
+                .repositories
+                .iter()
+                .position(|r| r.repository.eq_ignore_ascii_case(repository))
+                .ok_or(RepoError::NotFound)?;
+            for (n, held) in project.repositories.iter_mut().enumerate() {
+                held.primary = n == at;
+            }
+        }
+        project.settle_primary();
+        Ok(project.clone())
     })
 }
 

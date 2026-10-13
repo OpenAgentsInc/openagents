@@ -1597,7 +1597,7 @@
     "/v1/projects": {
       "post": {
         "operationId": "addProject",
-        "summary": "Add a project (one repository).",
+        "summary": "Create a project: a name, optional instructions, and zero or more repositories (the first is the primary). Always a new project.",
         "tags": [
           "Projects"
         ],
@@ -1745,6 +1745,91 @@
             }
           }
         ]
+      },
+      "patch": {
+        "operationId": "changeProject",
+        "summary": "Rename a project, set its instructions, or add, remove, or make primary one of its repositories.",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Done.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request isn't valid (`invalid_request`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No key or session, or it was rejected (`authentication`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed here (`permission`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing with that id here (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The id id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
       }
     },
     "/v1/account/projects": {

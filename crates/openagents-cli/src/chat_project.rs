@@ -5,10 +5,13 @@
 //! The chat is the account's, not this computer's: it starts through the
 //! same server path the website's composer takes when a chat starts in a
 //! project (`POST /v1/threads {request_id, text, project}`), so it is
-//! answered by OpenAgents on openagents.com, reads the project's
-//! repository, and shows in the project in the website's left panel, in
+//! answered by OpenAgents on openagents.com with the project's
+//! instructions and files, reads its primary repository when it has one
+//! (a project with no repository is a plain chat with that context), and
+//! shows in the project in the website's left panel, in
 //! `openagents projects threads PROJECT`, and on the phone. PROJECT is a
-//! name, repository, or id, found as `openagents projects show` finds it.
+//! name, repository, or id, found as `openagents projects show` finds it;
+//! a name two projects share is refused with the choices.
 //! The reply streams by reading the chat until OpenAgents has answered.
 
 use std::io::Write;

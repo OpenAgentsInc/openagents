@@ -9,12 +9,16 @@ fn project(id: &str, repository: &str) -> Project {
     Project {
         id: id.into(),
         name: repository.split('/').nth(1).unwrap().into(),
-        repository_id: 7,
-        repository: repository.into(),
-        default_branch: "main".into(),
-        private: false,
+        instructions: None,
         created_unix: 1,
-        installation_id: None,
+        repositories: vec![oa_auth::repos::ProjectRepository {
+            repository_id: 7,
+            repository: repository.into(),
+            default_branch: "main".into(),
+            private: false,
+            primary: true,
+            installation_id: None,
+        }],
     }
 }
 
@@ -109,12 +113,12 @@ fn signed_in_without_projects_offers_only_the_project_selector() {
             "{name}: {html}"
         );
     }
-    // The panel's one item connects a repository.
+    // The panel's one item makes a project.
     let panel = project_panel(&choices, &picked, &|_: &dyn Fn(&mut Picked), _: &str| {
         String::new()
     })
     .into_string();
-    assert!(panel.contains("Connect a GitHub repository"), "{panel}");
+    assert!(panel.contains("Make a project"), "{panel}");
     assert!(panel.contains(r#"href="/projects""#), "{panel}");
     crate::copy_guard::assert_plain("/composer/row/project", &panel);
 }

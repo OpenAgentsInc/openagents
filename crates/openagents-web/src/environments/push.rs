@@ -110,9 +110,14 @@ async fn own_access(
         .await
     {
         Ok(ticket) => ticket,
-        // Not one of the person's projects yet: add it, then ask again.
+        // In none of the person's projects yet: start one with it (named
+        // after it), then ask again.
         Err(RepoCallError::Repo(RepoError::NotFound)) => {
-            service.add_project(headers, &repository).await.ok()?;
+            let new = oa_auth::repos::NewProject {
+                repositories: vec![repository.clone()],
+                ..Default::default()
+            };
+            service.create_project(headers, &new).await.ok()?;
             service
                 .github_broker_ticket(headers, &repository, TICKET_SECONDS)
                 .await

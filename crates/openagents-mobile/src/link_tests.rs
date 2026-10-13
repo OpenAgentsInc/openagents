@@ -311,7 +311,7 @@ fn chats_list_every_chat_newest_first_with_its_project() {
         json!({
             "threads": [
                 {"id": "w1", "title": "Plan the launch", "surface": "web", "updated_unix": 10,
-                 "can_reply": true},
+                 "can_reply": true, "project": "prj_fedcba9876543210"},
                 {"id": "t1", "title": "Fix the build", "surface": "terminal", "computer": "Studio",
                  "session": "s1", "updated_unix": 20, "online": true, "can_reply": true,
                  "project": "prj_0123456789abcdef"},
@@ -331,8 +331,14 @@ fn chats_list_every_chat_newest_first_with_its_project() {
     f.site.answer(
         "GET /v1/projects",
         200,
-        json!({"data": [{"id": "prj_0123456789abcdef", "object": "project", "name": "openagents",
-                         "repository": "OpenAgentsInc/openagents"}], "next": null}),
+        // A project needs no repository: "taxes" has none.
+        json!({"data": [
+            {"id": "prj_0123456789abcdef", "object": "project", "name": "openagents",
+             "repository": "OpenAgentsInc/openagents",
+             "repositories": [{"repository": "OpenAgentsInc/openagents", "primary": true}]},
+            {"id": "prj_fedcba9876543210", "object": "project", "name": "taxes",
+             "repository": null, "repositories": []},
+        ], "next": null}),
     );
     signed(&mut f);
     until(|| f.link.lock().threads_read && !f.link.lock().projects.is_empty());
@@ -352,7 +358,7 @@ fn chats_list_every_chat_newest_first_with_its_project() {
                 "openagents · Terminal · Studio".into()
             ),
             ("Old notes".into(), "Terminal · Laptop".into()),
-            ("Plan the launch".into(), "openagents.com".into()),
+            ("Plan the launch".into(), "taxes · openagents.com".into()),
         ]
     );
     f.link.act(Action::Show {
@@ -369,7 +375,7 @@ fn chats_list_every_chat_newest_first_with_its_project() {
             "Mine\nPhone · Pixel Test",
             "Fix the build\nopenagents · Terminal · Studio",
             "Old notes\nTerminal · Laptop · Offline",
-            "Plan the launch\nopenagents.com",
+            "Plan the launch\ntaxes · openagents.com",
         ],
         "{words:?}"
     );

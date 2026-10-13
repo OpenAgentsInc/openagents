@@ -108,7 +108,7 @@ pub(super) fn repository<'a>(
     chat.project
         .as_deref()
         .and_then(|id| projects?.project(id))
-        .map(|project| project.repository.as_str())
+        .and_then(|project| project.repository())
         .or_else(|| {
             chat.selection
                 .as_ref()?

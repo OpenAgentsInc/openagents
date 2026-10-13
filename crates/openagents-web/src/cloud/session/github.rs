@@ -5,7 +5,7 @@
 //! as the person, and it is never stored or logged here.
 
 use axum::http::HeaderMap;
-use oa_auth::repos::{Listing, Project, RepoError, Status};
+use oa_auth::repos::{Listing, NewProject, Project, ProjectChange, RepoError, Status};
 use reqwest::Method;
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -230,26 +230,27 @@ impl CloudSession {
         }
     }
 
-    /// Add `repository` (`owner/name`) as a project.
-    pub(crate) async fn add_project(
+    /// Make a new project (always new: names and repositories may repeat).
+    pub(crate) async fn create_project(
         &self,
         headers: &HeaderMap,
-        repository: &str,
+        new: &NewProject,
     ) -> Result<Project> {
-        if !oa_auth::repos::full_name(repository) {
-            return Err(RepoCallError::Repo(RepoError::Invalid));
-        }
-        let body = self
-            .account_call_or(
-                headers,
-                Method::POST,
-                "/v1/projects",
-                Some("/v1/account/projects"),
-                Some(json!({"repository": repository})),
-            )
-            .await?;
-        serde_json::from_value(body["project"].clone())
-            .map_err(|_| RepoCallError::Session(SessionError::Unavailable))
+        self.request_host(headers)?;
+        let token = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)?;
+        self.create_project_as(&token, new).await
+    }
+
+    /// Change a project: name, instructions, repositories.
+    pub(crate) async fn edit_project(
+        &self,
+        headers: &HeaderMap,
+        id: &str,
+        change: &ProjectChange,
+    ) -> Result<Project> {
+        self.request_host(headers)?;
+        let token = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)?;
+        self.edit_project_as(&token, id, change).await
     }
 
     /// Remove a project.
@@ -268,11 +269,23 @@ impl CloudSession {
         .map(|_| ())
     }
 
-    /// [`Self::add_project`] under a signed-in app's own token (`openagents
-    /// projects add`, #11471).
-    pub(crate) async fn add_project_as(&self, token: &str, repository: &str) -> Result<Project> {
-        if !oa_auth::repos::full_name(repository) {
+    /// [`Self::create_project`] under a signed-in app's own token
+    /// (`openagents projects create`, #11471). An account service from
+    /// before 2026-10-13 takes only `{repository}`: a project with one
+    /// repository still works there.
+    pub(crate) async fn create_project_as(&self, token: &str, new: &NewProject) -> Result<Project> {
+        if new
+            .repositories
+            .iter()
+            .any(|repository| !oa_auth::repos::full_name(repository))
+        {
             return Err(RepoCallError::Repo(RepoError::Invalid));
+        }
+        let mut body =
+            serde_json::to_value(new).map_err(|_| RepoCallError::Repo(RepoError::Invalid))?;
+        if let [repository] = new.repositories.as_slice() {
+            body["repository"] = json!(repository);
+            body.as_object_mut().map(|o| o.remove("repositories"));
         }
         let body = self
             .account_call_as(
@@ -280,7 +293,30 @@ impl CloudSession {
                 Method::POST,
                 "/v1/projects",
                 Some("/v1/account/projects"),
-                Some(json!({"repository": repository})),
+                Some(body),
+            )
+            .await?;
+        serde_json::from_value(body["project"].clone())
+            .map_err(|_| RepoCallError::Session(SessionError::Unavailable))
+    }
+
+    /// [`Self::edit_project`] under a signed-in app's own token.
+    pub(crate) async fn edit_project_as(
+        &self,
+        token: &str,
+        id: &str,
+        change: &ProjectChange,
+    ) -> Result<Project> {
+        if !oa_auth::repos::project_id(id) {
+            return Err(RepoCallError::Repo(RepoError::Invalid));
+        }
+        let body = self
+            .account_call_as(
+                token,
+                Method::PATCH,
+                &format!("/v1/projects/{id}"),
+                None,
+                Some(change.body()),
             )
             .await?;
         serde_json::from_value(body["project"].clone())

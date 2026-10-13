@@ -34,8 +34,8 @@ The owner's ask: "our CLI needs to interact with that via api first class".
 
 | Piece | Where | State |
 | --- | --- | --- |
-| A project is one repository that groups the owner's chats | `crates/openagents-web/src/projects/`, gateway `crates/gateway/src/github_repos.rs` | Live on the website (sidebar: Projects) |
-| Add and remove a project | gateway `POST /v1/projects`, `DELETE /v1/projects/{id}` (older `/v1/account/projects`) | Built, first-party |
+| A project groups the owner's chats, with a name, instructions, and zero or more repositories (one primary) | `crates/openagents-web/src/projects/`, gateway `crates/gateway/src/github_repos.rs`, `oa_auth::repos` | Live on the website (sidebar: Projects); repositories as a list since 2026-10-13 |
+| Create, change, and remove a project | gateway `POST /v1/projects`, `PATCH /v1/projects/{id}`, `DELETE /v1/projects/{id}` (older `/v1/account/projects`) | Built, first-party |
 | List projects | gateway `GET /v1/account/github` ("connected GitHub access and projects") | Built, first-party |
 | Drive sources on a project | web `/projects/{id}/sources` (`crates/openagents-web/src/connections/sources.rs`) | Website pages only |
 | A chat's project | web `/chat/{id}/project`; `Conversation::project` | Website only |
@@ -62,14 +62,16 @@ from the code, this is how it works today:
 | Route (served by the website, `https://openagents.com/v1/...`) | Answer |
 | --- | --- |
 | `GET /v1/projects` | `{data: [Project], next}`, oldest first, `?limit` (default 100, at most 200) and `?after` |
-| `POST /v1/projects` `{"repository": "owner/name"}` | `201` Project. A project is one connected GitHub repository, so `repository` is required and the name is the repository's |
-| `GET /v1/projects/{id}` | One Project; `{id}` is its id or `name:NAME` |
+| `POST /v1/projects` `{"name", "instructions"?, "repositories"?: ["owner/name", …], "protection"?}` | `201` Project. Always a new project, even when another has the same name or repository. A name is enough; the first repository is the primary. `{"repository": "owner/name"}` alone (the older form) makes a project named after it |
+| `POST /v1/projects/{id}/repositories` `{"repository": "owner/name", "primary"?: true}` | The Project. Adds a connected repository; the first one a project gets is its primary |
+| `DELETE /v1/projects/{id}/repositories/{owner}/{name}` | The Project. Removing the primary makes the first one left the primary; removing the last leaves a project with no repository. `404 not_found` when it isn't in the project |
+| `GET /v1/projects/{id}` | One Project; `{id}` is its id or `name:NAME`. When several projects share the name: `409 ambiguous_name`, whose message names each (`2 projects are called money: prj_… (owner/repo), prj_… (no repository). Use its id.`) |
 | `DELETE /v1/projects/{id}` | `{id, object: "project.deleted"}`; `409 project_has_threads` while chats are in it, unless `?detach_threads=true` |
 | `GET /v1/threads?project=ID\|name:NAME\|none` | `{data: [Thread], next}`, by last activity, oldest first, `?limit`, `?after` |
 | `GET /v1/threads/{id}/messages` | `{data: [Message], next}`, oldest first; each message's `content` is one `text` block |
-| `POST /v1/threads` `{"request_id": UUID, "text", "project": ID\|"name:NAME"}` | `201 {id, answering: true}`: a new chat inside the project, answered by OpenAgents with the project's repository, as starting a chat in a project on the website does ([#11542](https://github.com/OpenAgentsInc/openagents/issues/11542)). `404 not_found` when the project isn't yours. Read the reply with `GET /v1/threads/{id}` |
-| `PATCH /v1/threads/{id}` `{"project": ID \| "name:NAME" \| null}` | Move the chat into one of your projects, or out of any (`null`): the Thread. Coder's sync files a synced chat under the project whose repository is the chat's own GitHub repository (from its folder's git remote) until the person moves it; after a move it stays put (#11541) |
-| `PATCH /v1/projects/{id}` `{"protection": "standard"\|"only_me"}` | The Project, with `protection`. `sealed` answers `400 not_available`; name, instructions, and repository can't change yet |
+| `POST /v1/threads` `{"request_id": UUID, "text", "project": ID\|"name:NAME"}` | `201 {id, answering: true}`: a new chat inside the project, answered by OpenAgents with the project's instructions and its primary repository (a project with no repository: a plain chat with its instructions), as starting a chat in a project on the website does ([#11542](https://github.com/OpenAgentsInc/openagents/issues/11542)). `404 not_found` when the project isn't yours. Read the reply with `GET /v1/threads/{id}` |
+| `PATCH /v1/threads/{id}` `{"project": ID \| "name:NAME" \| null}` | Move the chat into one of your projects, or out of any (`null`): the Thread. Coder's sync files a synced chat under the project holding the chat's own GitHub repository (from its folder's git remote): the one project holding it, else the one where it is the primary; when several have it as primary (or none does), the chat stays unfiled. A person's move stays put (#11541) |
+| `PATCH /v1/projects/{id}` `{"name"?, "instructions"?, "primary_repository"?, "protection"?}` | The Project. `instructions: null` clears them; `primary_repository` must already be in the project. `protection`: `standard` or `only_me` (`sealed` answers `400 not_available`). Repositories are added and removed with the routes above |
 | `POST /v1/files?purpose=project&filename=NAME`, the file's bytes as the body | `201` File: `{id: "file_…", object: "file", filename, mime_type, size_bytes, sha256, created_at, stored_as: "original", project}`. 10 MB at most. Not multipart |
 | `GET /v1/files/{id}`, `GET /v1/files/{id}/content`, `DELETE /v1/files/{id}` | The File; its bytes (`Content-Disposition`, `Digest: sha-256=…`); `{id, object: "file.deleted"}` |
 | `GET /v1/projects/{id}/attachments` | `{data: [Attachment], next, protection}`, oldest first: `file`, `document`, `source` (the project's Drive sources), and `vault` |
@@ -84,10 +86,19 @@ from the code, this is how it works today:
   `openagents.com/api/v1`.
 - **Ids.** Projects are `prj_` and 16 hex characters; threads keep their
   chat ids (UUIDs); messages are `msg_` and their position in the thread.
-- **Project object.** `{id, object: "project", name, instructions (null),
-  repository, default_branch, private, created_at, updated_at, counts:
-  {threads, files, documents, sources}}`. `updated_at` is the latest
-  activity in its chats.
+- **Project object.** `{id, object: "project", name, instructions,
+  repositories: [{repository, primary, default_branch, private}],
+  repository, default_branch, private, created_at, updated_at, protection,
+  counts: {threads, files, documents, sources}}`. `updated_at` is the
+  latest activity in its chats. A project has zero or more repositories;
+  when it has any, exactly one is `primary`. The same repository may be in
+  any number of projects, and project names may repeat.
+- **Deprecated (2026-10-13): `repository`, `default_branch`, `private`.**
+  They are the primary repository's (`null`, `null`, `false` for a project
+  without one), kept for apps built before projects held several
+  repositories. Read `repositories` instead; the three fields go away with
+  the app release after the next one. Projects kept before 2026-10-13 read
+  with their one repository as the primary, without a migration step.
 - **Files.** A project holds up to 200 files, documents, and vault files.
   A `standard` file or document is kept in the account's own folder of the
   chat store (the private chat bucket, encrypted at rest by Google);
@@ -102,8 +113,7 @@ from the code, this is how it works today:
   name and type stay in the index. A vault file removed from the vault
   itself leaves the listing. Removing a project forgets its files and its
   record of vault files; the vault files themselves stay in the vault.
-- **Not yet:** renaming and instructions in `PATCH` (the account service
-  has to keep them), `sealed`, multipart uploads, connecting Drive sources
+- **Not yet:** `sealed`, multipart uploads, connecting Drive sources
   through the API, `oak_` keys with `projects:*` scopes, and `GET
   /v1/threads` filters other than `project` (without `project` it still
   answers the apps' older shape).
@@ -127,7 +137,7 @@ member role ([workspace rules](calling.md#workspace)).
 
 | Object | Id prefix | What it is |
 | --- | --- | --- |
-| Project | `proj_` | A named home for chats, instructions, files, and documents. Optionally bound to one repository (today every project is one). |
+| Project | `proj_` | A named home for chats, instructions, files, and documents, with zero or more repositories (one primary when any). |
 | Thread | `thr_` | One chat: web, terminal (Coder), or phone. Belongs to at most one project. |
 | Message | `msg_` | One turn in a thread, with content blocks (`text`, `tool_use`, `tool_result`, `image`) and any files, generated files, and artifacts. |
 | File | `file_` | Bytes you uploaded: to a message or to a project. The same object the [Model calls](model-calls.md) and [Managed Agents](managed-agents.md) pages use. |
@@ -145,9 +155,10 @@ empty `title`, and messages without content until it is purged.
 | Route | Does |
 | --- | --- |
 | `GET /v1/projects` | List your projects, oldest first. `?limit`, `?after`. |
-| `POST /v1/projects` | Create one: `{"name", "instructions"?, "repository"?, "protection"?}` (the repository form replaces today's add-a-repository). |
+| `POST /v1/projects` | Create one: `{"name", "instructions"?, "repositories"?, "protection"?}`. A name is enough. |
 | `GET /v1/projects/{id}` | One project, with counts of its threads, files, documents, and sources. |
-| `PATCH /v1/projects/{id}` | Rename, set instructions, bind or unbind a repository, or change `protection` for new files. |
+| `PATCH /v1/projects/{id}` | Rename, set instructions, pick the primary repository, or change `protection` for new files. |
+| `POST /v1/projects/{id}/repositories`, `DELETE /v1/projects/{id}/repositories/{owner}/{name}` | Add or remove a repository. |
 | `DELETE /v1/projects/{id}` | Delete it. `409 project_has_threads` while threads are attached, unless `?detach_threads=true` (threads stay and lose their project). |
 
 ```bash
@@ -163,6 +174,9 @@ curl -sS https://api.openagents.com/v1/projects \
       "object": "project",
       "name": "finances",
       "instructions": null,
+      "repositories": [
+        {"repository": "AtlantisPleb/finances", "primary": true, "default_branch": "main", "private": true}
+      ],
       "repository": "AtlantisPleb/finances",
       "created_at": "2026-10-01T15:02:11Z",
       "updated_at": "2026-10-12T20:41:09Z",
@@ -179,7 +193,8 @@ curl -sS https://api.openagents.com/v1/projects \
 
 A project may also be named in the path by its exact name when it is unique
 for the caller (`/v1/projects/name:finances`), so the CLI and Coder can use
-the name a person says.
+the name a person says. Names may repeat; when one is shared, the answer is
+`409 ambiguous_name` naming each project, never a guess.
 
 ## Threads and messages
 
@@ -407,7 +422,7 @@ answers `404`, never `403`, so ids don't leak. Data class: Account
 openagents projects list [--json]
 openagents projects show NAME|ID [--json]
 openagents projects threads NAME|ID [--json]
-openagents projects add NAME [--repository OWNER/REPO] [--instructions TEXT]
+openagents projects create NAME [--repo OWNER/REPO]... [--instructions TEXT]
 openagents projects remove NAME|ID [--detach-threads]
 openagents projects files list NAME|ID
 openagents projects files add NAME|ID PATH...
@@ -417,12 +432,17 @@ openagents projects notes add NAME|ID --title T (--text TEXT | --file PATH)
 ```
 
 Built today, each with `--json`; a project is found by its name, its
-repository, or its id:
+repository, or its id. When a name or repository matches more than one
+project, the command names each and asks for the id instead of guessing:
 
 ```text
 openagents projects list | show PROJECT | threads PROJECT
-openagents projects add OWNER/REPO [--protection standard|only_me]
-openagents projects edit PROJECT --protection standard|only_me
+openagents projects create NAME [--repo OWNER/REPO]... [--instructions TEXT] [--protection standard|only_me]
+openagents projects add OWNER/REPO            # older: a project named after the repository
+openagents projects repo add PROJECT OWNER/REPO [--primary]
+openagents projects repo remove PROJECT OWNER/REPO
+openagents projects repo primary PROJECT OWNER/REPO
+openagents projects edit PROJECT [--name NAME] [--instructions TEXT] [--protection standard|only_me]
 openagents projects move CHAT PROJECT | move CHAT --none
 openagents projects remove PROJECT [--detach-threads]
 openagents projects files list PROJECT
@@ -434,7 +454,8 @@ openagents chat send MESSAGE --project PROJECT
 ```
 
 `chat send --project` starts a new chat inside the project on openagents.com
-and streams OpenAgents's reply; it then shows in `projects threads PROJECT`,
+(working in its primary repository, or a plain chat with its instructions
+when it has none) and streams OpenAgents's reply; it then shows in `projects threads PROJECT`,
 on the website, and on the phone.
 
 `files list` names only-me files from the vault's index on this computer
@@ -453,7 +474,10 @@ Coder reaches projects through its `openagents_cli` tool on every engine,
 and Claude Code gets it through Coder's tool server. The tool's description
 says that "the person's projects" are openagents.com projects
 (`openagents projects`), and that "make a new chat in my finances project"
-is `openagents chat send MESSAGE --project finances`. It is the description
+is `openagents chat send MESSAGE --project finances`. It also says that a
+project needs no repository (`openagents projects create NAME`), can hold
+several with one primary, that a repository can be in several projects,
+and that a shared name means asking which project. It is the description
 that steers the model; no keyword routing. A Coder chat in a project's repository reads that project's
 instructions and documents as part of its context, once the context layer
 lands ([#11451](https://github.com/OpenAgentsInc/openagents/issues/11451), phase 3).

@@ -1,6 +1,6 @@
 //! The composer's selector row through the whole site
 //! (`crate::composer_row`): nothing for a signed-out visitor; Project
-//! (with Connect a GitHub repository) once signed in; Branch from GitHub
+//! (with Make a project) once signed in; Branch from GitHub
 //! with a project; Where it runs for an account, offering Coder on a
 //! computer while it is online for a new chat only (#11319): a chat that
 //! already exists stays where it is; and a message sent with each pick
@@ -85,7 +85,7 @@ async fn the_row_offers_only_what_works_and_sending_uses_each_pick() {
     crate::copy_guard::assert_plain("/composer/row/target", &panel.body);
     let panel = quiet.get(&world, "/composer/row/project").await;
     assert_eq!(panel.status, StatusCode::OK, "{}", panel.body);
-    assert!(panel.body.contains("Connect a GitHub repository"));
+    assert!(panel.body.contains("Make a project"));
     assert!(panel.body.contains(r#"href="/projects""#));
     crate::copy_guard::assert_plain("/composer/row/project", &panel.body);
 
@@ -452,12 +452,16 @@ async fn serve_for_screenshots() {
         projects: vec![oa_auth::repos::Project {
             id: project.clone(),
             name: "hello-world".into(),
-            repository_id: 7001,
-            repository: "octo-local/hello-world".into(),
-            default_branch: "main".into(),
-            private: false,
+            instructions: None,
             created_unix: 1,
-            installation_id: None,
+            repositories: vec![oa_auth::repos::ProjectRepository {
+                repository_id: 7001,
+                repository: "octo-local/hello-world".into(),
+                default_branch: "main".into(),
+                private: false,
+                primary: true,
+                installation_id: None,
+            }],
         }],
         connected: true,
         environments: vec![crate::composer_row::Environment {

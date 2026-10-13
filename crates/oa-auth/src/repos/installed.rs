@@ -23,9 +23,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::{
-    Listing, MAX_PAGE, PAGE_SIZE, Project, RepoError, SCHEMA, Status, answered, check_account,
-    full_name, keep_project, listed, load, mutate, now, open_bound, same_person, seal_bound,
-    status,
+    Listing, MAX_PAGE, PAGE_SIZE, RepoError, Repository, SCHEMA, Status, answered, check_account,
+    full_name, listed, load, mutate, now, open_bound, same_person, seal_bound, status,
 };
 use crate::AuthError;
 use crate::app::AppClient;
@@ -263,15 +262,15 @@ pub(super) async fn repositories(
     Ok(listing)
 }
 
-/// Add `repository` (`owner/name`) as a project through the App: the
-/// person's user token must reach it, and the App must be installed on
-/// its account.
-pub(super) async fn add_project(
+/// `repository` (`owner/name`) for a project through the App, and the
+/// installation that reaches it: the person's user token must reach it,
+/// and the App must be installed on its account.
+pub(super) async fn look_up(
     dir: &Path,
     app: &AppClient,
     account: &str,
     repository: &str,
-) -> Result<Project, RepoError> {
+) -> Result<(Repository, Option<u64>), RepoError> {
     if !full_name(repository) {
         return Err(RepoError::Invalid);
     }
@@ -301,7 +300,7 @@ pub(super) async fn add_project(
     if installation.suspended {
         return Err(RepoError::Suspended);
     }
-    keep_project(dir, account, &found, Some(installation.id))
+    Ok((found, Some(installation.id)))
 }
 
 fn installation_for(

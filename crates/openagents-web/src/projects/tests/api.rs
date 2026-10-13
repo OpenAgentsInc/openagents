@@ -119,10 +119,8 @@ async fn the_sign_in_token_reads_and_changes_its_own_projects_only() {
     assert_eq!(body["object"], "project");
     assert_eq!(body["name"], "hello-world");
     assert!(body["created_at"].as_str().unwrap().ends_with('Z'));
-    let (status, body) = me
-        .json(&world, "POST", "/v1/projects", json!({"name": "finances"}))
-        .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(body["repository"], "octo-local/hello-world");
+    assert_eq!(body["repositories"][0]["primary"], true);
 
     // Chats: two in the project, one outside it, one of someone else's.
     let owner = account_owner_of(&world, "octo-local");
@@ -492,4 +490,152 @@ async fn synced_chats_file_under_their_repository_and_move_with_the_token() {
         )
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+/// 2026-10-13: a project needs no repository; it can hold several, one the
+/// primary; the same repository can be in several projects; names may
+/// repeat, and a name two projects share asks which one.
+#[tokio::test]
+async fn projects_need_no_repository_and_share_them() {
+    let world = world().await;
+    let mut browser = Browser::default();
+    browser.sign_in(&world, "octo-local").await;
+    let me = Api::of(&browser);
+
+    // A name is enough, even before GitHub is connected.
+    let (status, body) = me
+        .json(
+            &world,
+            "POST",
+            "/v1/projects",
+            json!({"name": "finances", "instructions": "Keep it short."}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let bare = body["id"].as_str().unwrap().to_owned();
+    assert_eq!(body["repositories"], json!([]));
+    assert_eq!(body["repository"], Value::Null);
+    assert_eq!(body["default_branch"], Value::Null);
+    assert_eq!(body["instructions"], "Keep it short.");
+    let (status, body) = me.json(&world, "POST", "/v1/projects", json!({})).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+    // A chat started in it is a plain chat in the project.
+    let chat = "88888888-8888-4888-8888-888888888888";
+    let (status, body) = me
+        .json(
+            &world,
+            "POST",
+            "/v1/threads",
+            json!({"request_id": chat, "text": "Hello", "project": "name:finances"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let owner = account_owner_of(&world, "octo-local");
+    let saved = world.store.load(&owner, chat).await.unwrap().unwrap();
+    assert_eq!(saved.conversation.project.as_deref(), Some(bare.as_str()));
+
+    // Two repositories: the first is the primary until another is made it.
+    connect_private(&mut browser, &world, "octo-local").await;
+    let me = Api::of(&browser);
+    let add = |repository: &'static str, primary: bool| {
+        let (me, world, bare) = (&me, &world, &bare);
+        async move {
+            me.json(
+                world,
+                "POST",
+                &format!("/v1/projects/{bare}/repositories"),
+                json!({"repository": repository, "primary": primary}),
+            )
+            .await
+        }
+    };
+    let (status, body) = add("octo-local/hello-world", false).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["repository"], "octo-local/hello-world");
+    let (status, body) = add("acme/storefront", false).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let primaries = |body: &Value| -> Vec<(String, bool)> {
+        body["repositories"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| {
+                (
+                    r["repository"].as_str().unwrap().to_owned(),
+                    r["primary"].as_bool().unwrap(),
+                )
+            })
+            .collect()
+    };
+    assert_eq!(
+        primaries(&body),
+        [
+            ("octo-local/hello-world".to_owned(), true),
+            ("acme/storefront".to_owned(), false)
+        ]
+    );
+    let (status, body) = me
+        .json(
+            &world,
+            "PATCH",
+            &format!("/v1/projects/{bare}"),
+            json!({"primary_repository": "acme/storefront", "name": "money"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["name"], "money");
+    assert_eq!(body["repository"], "acme/storefront");
+    // Removing the primary makes the first one left the primary.
+    let (status, body) = me
+        .json(
+            &world,
+            "DELETE",
+            &format!("/v1/projects/{bare}/repositories/acme/storefront"),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        primaries(&body),
+        [("octo-local/hello-world".to_owned(), true)]
+    );
+    let (status, body) = me
+        .json(
+            &world,
+            "DELETE",
+            &format!("/v1/projects/{bare}/repositories/acme/storefront"),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+
+    // The same repository again, in a new project with the same name:
+    // creating never reuses one.
+    let (status, body) = me
+        .json(
+            &world,
+            "POST",
+            "/v1/projects",
+            json!({"name": "money", "repositories": ["octo-local/hello-world"]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let second = body["id"].as_str().unwrap().to_owned();
+    assert_ne!(second, bare);
+    let (status, body) = me
+        .json(&world, "GET", "/v1/projects/name:money", Value::Null)
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["error"]["code"], "ambiguous_name");
+    let message = body["error"]["message"].as_str().unwrap();
+    assert!(
+        message.starts_with("2 projects are called money:")
+            && message.contains(&bare)
+            && message.contains(&second),
+        "{message}"
+    );
+    let (status, body) = me.json(&world, "GET", "/v1/projects", Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["data"].as_array().unwrap().len(), 2);
 }

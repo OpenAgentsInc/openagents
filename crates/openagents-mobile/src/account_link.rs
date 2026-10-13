@@ -927,7 +927,8 @@ pub struct State {
     pub threads_wanted: usize,
     /// The website has older chats than the list holds.
     pub threads_more: bool,
-    /// The account's projects, id and name (`GET /v1/projects`), to name
+    /// The account's projects, id and name (`GET /v1/projects`; a project
+    /// may have no repository, and only these two fields are read), to name
     /// the project a chat is filed under (#11541).
     pub projects: BTreeMap<String, String>,
     pub agents: Vec<Agents>,

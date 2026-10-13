@@ -148,8 +148,8 @@ pub const ROUTES: &[Route] = &[
     route("/v1/account/github/app/refresh", FirstParty, "GitHub", &[op("post", "refreshGithubApp", "Read the GitHub App's installations again.")]),
     route("/v1/account/github/broker", FirstParty, "GitHub", &[op("post", "issueGitTicket", "A ticket for a machine to fetch or push one project's repository.")]),
     route("/v1/github/git-credential", FirstParty, "GitHub", &[op("post", "redeemGitTicket", "Git's credential helper redeems a ticket.")]),
-    route("/v1/projects", FirstParty, "Projects", &[op("post", "addProject", "Add a project (one repository).")]),
-    route("/v1/projects/{id}", FirstParty, "Projects", &[op("delete", "removeProject", "Remove a project.")]),
+    route("/v1/projects", FirstParty, "Projects", &[op("post", "addProject", "Create a project: a name, optional instructions, and zero or more repositories (the first is the primary). Always a new project.")]),
+    route("/v1/projects/{id}", FirstParty, "Projects", &[op("delete", "removeProject", "Remove a project."), op("patch", "changeProject", "Rename a project, set its instructions, or add, remove, or make primary one of its repositories.")]),
     route("/v1/account/projects", FirstParty, "Projects", &[op("post", "addAccountProject", "Older path of `POST /v1/projects` (answers with `Deprecation` and `Link`).")]),
     route("/v1/account/projects/{id}", FirstParty, "Projects", &[op("delete", "removeAccountProject", "Older path of `DELETE /v1/projects/{id}` (answers with `Deprecation` and `Link`).")]),
     // ---- FIRST-PARTY: purchase authority, billing, earnings.

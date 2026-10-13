@@ -19,7 +19,7 @@ pub(super) fn router(service: LocalService) -> Router {
         .route("/v1/account/github/repositories", get(repositories))
         .route("/v1/account/github/token", post(token))
         .route("/v1/projects", post(add))
-        .route("/v1/projects/{id}", delete(remove))
+        .route("/v1/projects/{id}", delete(remove).patch(edit))
         // The older paths (#11158).
         .route("/v1/account/projects", post(add))
         .route("/v1/account/projects/{id}", delete(remove))
@@ -114,13 +114,28 @@ async fn add(
     headers: HeaderMap,
     body: Result<axum::Json<Value>, axum::extract::rejection::JsonRejection>,
 ) -> Response {
-    let Some(repository) = body
+    match body
         .ok()
-        .and_then(|axum::Json(body)| body["repository"].as_str().map(str::to_string))
-    else {
-        return invalid();
-    };
-    run(&state, &headers, Call::AddProject(repository)).await
+        .and_then(|axum::Json(body)| repos::new_project(&body))
+    {
+        Some(new) => run(&state, &headers, Call::CreateProject(new)).await,
+        None => invalid(),
+    }
+}
+
+async fn edit(
+    State(state): State<LocalService>,
+    headers: HeaderMap,
+    UrlPath(id): UrlPath<String>,
+    body: Result<axum::Json<Value>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    match body
+        .ok()
+        .and_then(|axum::Json(body)| repos::ProjectChange::from_body(&body))
+    {
+        Some(change) => run(&state, &headers, Call::EditProject { id, change }).await,
+        None => invalid(),
+    }
 }
 
 async fn remove(

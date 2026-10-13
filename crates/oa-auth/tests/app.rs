@@ -313,8 +313,11 @@ async fn installing_lists_only_chosen_repositories_and_adds_projects_through_the
     )
     .await;
     assert_eq!(status, 200, "{body}");
-    assert_eq!(body["project"]["installation_id"], installation);
-    assert_eq!(body["project"]["private"], true);
+    assert_eq!(
+        body["project"]["repositories"][0]["installation_id"],
+        installation
+    );
+    assert_eq!(body["project"]["repositories"][0]["private"], true);
 
     // The web server's own GitHub reads get the App's user token.
     let (status, body) = call(

@@ -5,9 +5,10 @@ A one-time backfill for chats synced before Coder named each chat's
 repository. For every chat on your openagents.com account that came from
 this computer and is in no project, it reads the chat's folder from the
 saved chat here (`extra.repository`), that folder's GitHub remote
-(`owner/name`), and files the chat under your project whose repository is
-the same `owner/name`. It matches only on that typed repository, never on
-names. Chats already in a project are left alone, so running it again
+(`owner/name`), and files the chat under the project holding that
+`owner/name`: the one project holding it, else the one where it is the
+primary; when that is still not one project, the chat stays where it is.
+It matches only on that typed repository, never on names. Chats already in a project are left alone, so running it again
 changes nothing.
 
     scripts/coder/file-chats-under-projects.py           # say what it would move
@@ -103,6 +104,28 @@ class Site:
         return status in (200, 303)
 
 
+def repositories_of(project):
+    """A project's repositories as (owner/name, primary); an older site
+    names only `repository`."""
+    if "repositories" in project:
+        return [(r["repository"], bool(r.get("primary"))) for r in project["repositories"]]
+    return [(project["repository"], True)] if project.get("repository") else []
+
+
+def filing_project(projects, repo):
+    """The project a chat on `repo` files under, as the website does: the
+    one project holding it, else the one where it is the primary, else
+    none (never a guess)."""
+    if not repo:
+        return None
+    repo = repo.lower()
+    holding = [p for p in projects if any(r.lower() == repo for r, _ in repositories_of(p))]
+    if len(holding) == 1:
+        return holding[0]
+    primary = [p for p in holding if any(r.lower() == repo and first for r, first in repositories_of(p))]
+    return primary[0] if len(primary) == 1 else None
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--apply", action="store_true", help="move the chats (otherwise only list them)")
@@ -112,7 +135,7 @@ def main():
     status, body = site.call("GET", "/v1/projects?limit=200")
     if status != 200:
         sys.exit(f"Couldn't read your projects (the website answered {status}).")
-    projects = {p["repository"].lower(): p for p in body["data"]}
+    listed = body["data"]
     status, body = site.call("GET", "/v1/threads?limit=200")
     if status != 200:
         sys.exit(f"Couldn't read your chats (the website answered {status}).")
@@ -148,7 +171,7 @@ def main():
         except (OSError, ValueError):
             continue
         repo = repository(folder)
-        project = projects.get((repo or "").lower())
+        project = filing_project(listed, repo)
         if not project:
             continue
         title = thread["title"].splitlines()[0][:70] if thread["title"] else "New chat"

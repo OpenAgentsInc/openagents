@@ -278,7 +278,13 @@ async fn a_runs_ticket_trades_for_one_repositorys_token_at_the_site() {
         "{missing:?}"
     );
     session
-        .add_project(&headers, "octo-local/hello-world")
+        .create_project(
+            &headers,
+            &oa_auth::repos::NewProject {
+                repositories: vec!["octo-local/hello-world".into()],
+                ..Default::default()
+            },
+        )
         .await
         .unwrap();
     let ticket = session

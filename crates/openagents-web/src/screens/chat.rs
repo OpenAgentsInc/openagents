@@ -387,12 +387,16 @@ fn project(id: &str, name: &str) -> oa_auth::repos::Project {
     oa_auth::repos::Project {
         id: id.to_owned(),
         name: name.to_owned(),
-        repository_id: 1,
-        repository: format!("sample-org/{name}"),
-        default_branch: "main".to_owned(),
-        private: false,
+        instructions: None,
         created_unix: now() - 86_400 * 30,
-        installation_id: None,
+        repositories: vec![oa_auth::repos::ProjectRepository {
+            repository_id: 1,
+            repository: format!("sample-org/{name}"),
+            default_branch: "main".to_owned(),
+            private: false,
+            primary: true,
+            installation_id: None,
+        }],
     }
 }
 

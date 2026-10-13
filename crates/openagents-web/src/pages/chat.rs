@@ -418,7 +418,8 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
             picked.branch.as_deref(),
         )
         .await;
-        spawn_answer(app.clone(), loaded, admitted_at, repo);
+        let instructions = picked.project.as_ref().and_then(|p| p.instructions.clone());
+        spawn_answer(app.clone(), loaded, admitted_at, repo, instructions);
     }
     crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
 }
@@ -478,13 +479,15 @@ pub(crate) async fn start_from_app(
         }
     }
     let mut record = first_record(owner, id, text, digest, files);
-    let repo = project.map(|(project, token)| {
+    let mut instructions = None;
+    let repo = project.and_then(|(project, token)| {
         record.project = Some(project.id.clone());
+        instructions.clone_from(&project.instructions);
         repo_read_with(app, token, &project, None)
     });
     match store.create(&record).await {
         Ok(loaded) => {
-            spawn_answer(app.clone(), loaded, admitted_at, repo);
+            spawn_answer(app.clone(), loaded, admitted_at, repo, instructions);
             AppSent::Answering
         }
         Err(Error::Conflict) => AppSent::Answering,
@@ -1420,7 +1423,8 @@ async fn follow(
             .as_deref()
             .or(loaded.conversation.branch.as_deref());
         let repo = repo_read(&app, &headers, project, branch).await;
-        spawn_answer(app.clone(), loaded.clone(), admitted_at, repo);
+        let instructions = project.and_then(|p| p.instructions.clone());
+        spawn_answer(app.clone(), loaded.clone(), admitted_at, repo, instructions);
     }
     accepted(&app, &headers, &loaded.conversation).await
 }
@@ -1544,7 +1548,7 @@ pub(crate) async fn follow_from_app(
     match store.compare_and_swap(&loaded, &next).await {
         Ok(saved) => {
             // An app's own token reaches no GitHub connection here.
-            spawn_answer(app.clone(), saved, admitted_at, None);
+            spawn_answer(app.clone(), saved, admitted_at, None, None);
             AppSent::Answering
         }
         Err(e) => {
@@ -1697,9 +1701,10 @@ fn spawn_answer(
     loaded: Loaded,
     admitted_at: u64,
     repo: Option<crate::repo_snapshot::RepoRead>,
+    instructions: Option<String>,
 ) {
     tokio::spawn(async move {
-        answer(app, loaded, admitted_at, repo).await;
+        answer(app, loaded, admitted_at, repo, instructions).await;
     });
 }
 
@@ -1715,35 +1720,39 @@ async fn repo_read(
     branch: Option<&str>,
 ) -> Option<crate::repo_snapshot::RepoRead> {
     let project = project?;
+    project.primary()?;
     let token = match app.config.cloud.as_deref() {
         Some(service) => service.github_token(headers).await.ok(),
         None => None,
     };
-    Some(repo_read_with(app, token, project, branch))
+    repo_read_with(app, token, project, branch)
 }
 
-/// How to read `project`'s repository at `branch` (its default branch when
-/// none) with the GitHub `token`, if any.
+/// How to read `project`'s primary repository at `branch` (its default
+/// branch when none) with the GitHub `token`, if any. `None` for a project
+/// without a repository: its chats are plain chats with the project's
+/// instructions and files.
 pub(crate) fn repo_read_with(
     app: &App,
     token: Option<String>,
     project: &oa_auth::repos::Project,
     branch: Option<&str>,
-) -> crate::repo_snapshot::RepoRead {
+) -> Option<crate::repo_snapshot::RepoRead> {
+    let primary = project.primary()?;
     let base = app.config.github.as_ref().map_or_else(
         || "https://api.github.com".to_string(),
         |github| github.endpoints.api_url.trim_end_matches('/').to_string(),
     );
-    crate::repo_snapshot::RepoRead {
+    Some(crate::repo_snapshot::RepoRead {
         base,
         token,
-        repository: project.repository.clone(),
+        repository: primary.repository.clone(),
         branch: branch
             .filter(|branch| !branch.is_empty())
-            .unwrap_or(&project.default_branch)
+            .unwrap_or(&primary.default_branch)
             .to_string(),
-        private: project.private,
-    }
+        private: primary.private,
+    })
 }
 
 async fn answer(
@@ -1751,6 +1760,7 @@ async fn answer(
     mut loaded: Loaded,
     admitted_at: u64,
     repo: Option<crate::repo_snapshot::RepoRead>,
+    instructions: Option<String>,
 ) {
     let chat = &loaded.conversation;
     let owner = chat.owner.clone();
@@ -1841,11 +1851,23 @@ async fn answer(
     };
     // The person's memory notes from their account (#11182), so the
     // answer knows what Coder knows; none for a visitor not signed in.
-    let memory = if door.is_some() {
+    let mut memory = if door.is_some() {
         crate::account_memory::chat_notes(&app.config.chat_store, &owner).await
     } else {
         Vec::new()
     };
+    // The chat's project's instructions, as the person wrote them, first.
+    if let Some(instructions) = instructions.filter(|_| door.is_some()) {
+        memory.insert(
+            0,
+            openagents_chat::router::MemoryNote {
+                name: "Project instructions".into(),
+                kind: "project".into(),
+                description: "What the person asked every chat in this project to follow".into(),
+                body: instructions,
+            },
+        );
+    }
     // A signed-in person with Coder online (#11318): the answer here
     // knows Coder is theirs. The message stays in this chat: nothing here
     // starts another chat for it.

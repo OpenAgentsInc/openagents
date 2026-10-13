@@ -997,34 +997,16 @@ async fn document(
 
 // ---------------------------------------------------------------- edits
 
-#[derive(Deserialize)]
-pub(crate) struct EditBody {
-    #[serde(default)]
-    protection: Option<String>,
-    #[serde(default)]
-    name: Option<Value>,
-    #[serde(default)]
-    instructions: Option<Value>,
-    #[serde(default)]
-    repository: Option<Value>,
-}
-
-/// Apply `PATCH /v1/projects/{id}` to the project's settings kept here.
-/// Renaming, instructions, and the repository aren't changeable yet.
+/// Apply `protection` from `PATCH /v1/projects/{id}` to the project's
+/// settings kept here (the account service keeps its name, instructions,
+/// and repositories).
 pub(crate) async fn edit(
     app: &App,
     account: &str,
     project: &str,
-    body: EditBody,
+    protection: &str,
 ) -> Result<(), Response> {
-    if body.name.is_some() || body.instructions.is_some() || body.repository.is_some() {
-        return Err(refused(
-            StatusCode::BAD_REQUEST,
-            "not_available",
-            "Only a project's protection can be changed so far.",
-        ));
-    }
-    let protection = match body.protection.as_deref() {
+    let protection = match Some(protection) {
         Some("standard") => Protection::Standard,
         Some("only_me") => Protection::OnlyMe,
         Some("sealed") => {

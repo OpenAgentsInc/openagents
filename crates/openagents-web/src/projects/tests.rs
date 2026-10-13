@@ -569,7 +569,7 @@ async fn connecting_github_adds_a_project_that_groups_chats_for_its_owner_only()
     other.sign_in(&world, "quiet-local").await;
     let home = other.get(&world, "/").await;
     assert!(!home.body.contains("storefront"), "{}", home.body);
-    assert!(home.body.contains("Connect a GitHub repository"));
+    assert!(home.body.contains("Make a project"));
 
     // Revoked on GitHub: projects stay and say Reconnect GitHub.
     world.fake.revoke("octo-local");
@@ -675,7 +675,7 @@ fn closed_groups_come_from_their_cookie_and_the_page_reads_plainly() {
     };
     // One page, newest first, with Show more when GitHub has more.
     let page: Vec<Repository> = (1..=30).map(repo).collect();
-    let html = repos_page(&status, listing(page.clone(), true), "t", "", 1).into_string();
+    let html = repos_page(listing(page.clone(), true), "t", "", 1, None).into_string();
     assert!(html.contains("octo/repo-1") && html.contains("octo/repo-30"));
     assert!(
         html.contains(r#"hx-get="/projects/repositories?page=2""#),
@@ -685,27 +685,19 @@ fn closed_groups_come_from_their_cookie_and_the_page_reads_plainly() {
     assert!(html.contains("Archived"));
     assert!(!html.contains("single sign-on"));
     crate::copy_guard::assert_plain(PAGE, &html);
-    let html = repos_page(&status, listing(page.clone(), false), "t", "", 2).into_string();
+    let html = repos_page(listing(page.clone(), false), "t", "", 2, None).into_string();
     assert!(!html.contains("Show more"));
-    let html = repos_page(&status, listing(page.clone(), false), "t", "zzz", 1).into_string();
+    let html = repos_page(listing(page.clone(), false), "t", "zzz", 1, None).into_string();
     assert!(html.contains("No repositories match."));
-    let html = repos_page(&status, listing(vec![repo(1)], true), "t", "my app", 1).into_string();
+    let html = repos_page(listing(vec![repo(1)], true), "t", "my app", 1, None).into_string();
     assert!(html.contains("page=2&amp;q=my+app"), "{html}");
     // A repository not on the pages can be added by owner/name; one that
     // is listed is not offered twice.
-    let html = repos_page(
-        &status,
-        listing(page.clone(), true),
-        "t",
-        "acme/far-away",
-        1,
-    )
-    .into_string();
+    let html = repos_page(listing(page.clone(), true), "t", "acme/far-away", 1, None).into_string();
     assert!(html.contains("Add acme/far-away"), "{html}");
     assert!(!html.contains("No repositories match."));
     crate::copy_guard::assert_plain(PAGE, &html);
-    let html =
-        repos_page(&status, listing(page.clone(), true), "t", "octo/repo-3", 1).into_string();
+    let html = repos_page(listing(page.clone(), true), "t", "octo/repo-3", 1, None).into_string();
     assert!(!html.contains("Add octo/repo-3"));
     // Single sign-on hiding repositories is said once.
     let hidden = Ok(Listing {
@@ -713,12 +705,12 @@ fn closed_groups_come_from_their_cookie_and_the_page_reads_plainly() {
         more: false,
         sso_hidden: true,
     });
-    let html = repos_page(&status, hidden, "t", "", 1).into_string();
+    let html = repos_page(hidden, "t", "", 1, None).into_string();
     assert!(html.contains("single sign-on"), "{html}");
     crate::copy_guard::assert_plain(PAGE, &html);
     // A rate limit says so, not that GitHub isn't answering.
     let limited = Err(RepoCallError::Repo(RepoError::RateLimited));
-    let html = repos_page(&status, limited, "t", "", 1).into_string();
+    let html = repos_page(limited, "t", "", 1, None).into_string();
     assert!(
         html.contains("limiting") && !html.contains("answering"),
         "{html}"
@@ -727,8 +719,17 @@ fn closed_groups_come_from_their_cookie_and_the_page_reads_plainly() {
 
 /// Connect GitHub (public repositories) for a signed-in browser.
 pub(crate) async fn connect_public(browser: &mut Browser, world: &World, login: &str) {
+    connect(browser, world, login, "public").await;
+}
+
+/// Connect GitHub with private repositories for a signed-in browser.
+pub(crate) async fn connect_private(browser: &mut Browser, world: &World, login: &str) {
+    connect(browser, world, login, "private").await;
+}
+
+async fn connect(browser: &mut Browser, world: &World, login: &str, access: &str) {
     let callback = browser
-        .through_github(world, "/auth/github/repos?access=public", login)
+        .through_github(world, &format!("/auth/github/repos?access={access}"), login)
         .await;
     assert_eq!(callback.status, StatusCode::OK, "{}", callback.body);
     let next = callback.body[callback.body.find(FINISH).unwrap()..]

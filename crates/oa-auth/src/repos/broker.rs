@@ -60,7 +60,8 @@ pub fn credential_value(service_origin: &str, ticket: &str) -> String {
     format!("{}{PATH} {ticket}", service_origin.trim_end_matches('/'))
 }
 
-/// Issue a ticket for the project holding `repository` (`owner/name`).
+/// Issue a ticket for `repository` (`owner/name`), one of the account's
+/// projects' repositories.
 /// `seconds` 0 means [`DEFAULT_SECONDS`].
 pub(super) fn ticket(
     dir: &Path,
@@ -95,12 +96,12 @@ pub(super) fn ticket(
         if grant.revoked_unix.is_some() {
             return Err(RepoError::Reconnect);
         }
-        let project = record
+        let repository_id = record
             .projects
             .iter()
-            .find(|p| p.repository.eq_ignore_ascii_case(repository))
-            .ok_or(RepoError::NotFound)?;
-        let repository_id = project.repository_id;
+            .find_map(|p| p.holding(repository))
+            .ok_or(RepoError::NotFound)?
+            .repository_id;
         record.tickets.retain(|t| t.expires_unix > now);
         if record.tickets.len() >= MAX_TICKETS {
             record.tickets.sort_by_key(|t| t.expires_unix);
@@ -209,7 +210,8 @@ async fn answer(dir: &Path, app: Option<&AppClient>, form: &[u8]) -> Result<Stri
     let project = record
         .projects
         .iter()
-        .find(|p| p.repository_id == held.repository_id)
+        .flat_map(|p| p.repositories.iter())
+        .find(|r| r.repository_id == held.repository_id)
         .ok_or(Refused::Repository)?;
     if !project.repository.eq_ignore_ascii_case(path) {
         return Err(Refused::Repository);

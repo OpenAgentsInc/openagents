@@ -133,7 +133,7 @@ pub(crate) fn screens() -> Vec<Screen> {
             id: "projects",
             title: "Projects",
             group: Group::Page,
-            routes: &["/projects", "/projects/{id}/sources"],
+            routes: &["/projects", "/projects/{id}", "/projects/{id}/sources"],
             states: vec![
                 state("no-github", "No GitHub connection", projects_no_github),
                 state(
@@ -143,6 +143,16 @@ pub(crate) fn screens() -> Vec<Screen> {
                 ),
                 state("search", "Repositories with search", projects_search),
                 state("sources", "Project with sources", projects_sources),
+                state(
+                    "project-bare",
+                    "A project with no repository",
+                    project_no_repository,
+                ),
+                state(
+                    "project-two",
+                    "A project with two repositories",
+                    project_two_repositories,
+                ),
                 state("install", "Install the app", projects_install),
                 state("choose", "App installed, nothing picked", projects_choose),
                 state("disconnected", "Disconnected", projects_disconnected),
@@ -820,13 +830,47 @@ fn project() -> oa_auth::repos::Project {
     oa_auth::repos::Project {
         id: "prj_0123456789abcdef".into(),
         name: "sample-app".into(),
-        repository_id: 101,
-        repository: REPO.into(),
-        default_branch: "main".into(),
-        private: true,
+        instructions: Some("Answer in plain words.".into()),
         created_unix: NOW - 20 * DAY,
-        installation_id: None,
+        repositories: vec![oa_auth::repos::ProjectRepository {
+            repository_id: 101,
+            repository: REPO.into(),
+            default_branch: "main".into(),
+            private: true,
+            primary: true,
+            installation_id: None,
+        }],
     }
+}
+
+fn project_page(headers: &HeaderMap, project: oa_auth::repos::Project) -> Response {
+    let status = oa_auth::repos::Status {
+        access: connected(),
+        projects: vec![project.clone()],
+    };
+    let listed = listing(vec![repository(102, "sample-org/sample-site", false)]);
+    let list = crate::projects::repos_page(Ok(listed), CSRF, "", 1, Some(&project));
+    let body = crate::projects::page::view(&status, &project, CSRF, "", None, false, Some(list));
+    crate::projects::page_for(headers, StatusCode::OK, body)
+}
+
+fn project_no_repository(headers: &HeaderMap) -> Response {
+    let mut bare = project();
+    bare.repositories.clear();
+    project_page(headers, bare)
+}
+
+fn project_two_repositories(headers: &HeaderMap) -> Response {
+    let mut two = project();
+    two.repositories.push(oa_auth::repos::ProjectRepository {
+        repository_id: 103,
+        repository: "sample-org/sample-docs".into(),
+        default_branch: "main".into(),
+        private: false,
+        primary: false,
+        installation_id: None,
+    });
+    project_page(headers, two)
 }
 
 fn repository(id: u64, name: &str, private: bool) -> oa_auth::repos::Repository {
@@ -856,7 +900,7 @@ fn projects(
     listed: Option<Result<oa_auth::repos::Listing, crate::cloud::session::github::RepoCallError>>,
 ) -> Response {
     let status = oa_auth::repos::Status { access, projects };
-    let list = listed.map(|listed| crate::projects::repos_page(&status, listed, CSRF, q, 1));
+    let list = listed.map(|listed| crate::projects::repos_page(listed, CSRF, q, 1, None));
     let body = crate::projects::view_with(&status, CSRF, q, None, install, list);
     crate::projects::page_for(headers, StatusCode::OK, body)
 }

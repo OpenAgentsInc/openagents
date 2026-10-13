@@ -24,7 +24,7 @@ pub(crate) fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/v1/account/github/repositories", get(repositories)),
         ("/v1/account/github/token", post(token)),
         ("/v1/projects", post(add)),
-        ("/v1/projects/{id}", delete(remove)),
+        ("/v1/projects/{id}", delete(remove).patch(edit)),
         // Older paths of the two above (#11158), until the two newest
         // website releases stop calling them.
         (
@@ -150,8 +150,20 @@ async fn add(
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> Response {
-    match body["repository"].as_str() {
-        Some(repository) => run(&state, &headers, Call::AddProject(repository.into())).await,
+    match oa_auth::repos::new_project(&body) {
+        Some(new) => run(&state, &headers, Call::CreateProject(new)).await,
+        None => invalid(),
+    }
+}
+
+async fn edit(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<Value>,
+) -> Response {
+    match oa_auth::repos::ProjectChange::from_body(&body) {
+        Some(change) => run(&state, &headers, Call::EditProject { id, change }).await,
         None => invalid(),
     }
 }

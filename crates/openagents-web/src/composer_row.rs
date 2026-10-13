@@ -6,7 +6,7 @@
 //!
 //! - **Project**: signed in. The person's projects (connected GitHub
 //!   repositories, [`crate::projects`]) and No project; with none, the
-//!   panel's one item is Connect a GitHub repository (`/projects`).
+//!   panel's one item is Make a project (`/projects`).
 //! - **Branch**: a project is picked. That repository's branches, read from
 //!   GitHub as the person ([`crate::composer::branch_names`], kept); the
 //!   default branch is picked first.
@@ -213,11 +213,12 @@ impl Choices {
     }
 
     /// The environment Claude Code runs in for `project`: the newest saved
-    /// one for its repository.
+    /// one for its primary repository (none without one).
     pub(crate) fn environment(&self, project: &Project) -> Option<&Environment> {
+        let repository = project.repository()?;
         self.environments
             .iter()
-            .find(|env| env.repository.eq_ignore_ascii_case(&project.repository))
+            .find(|env| env.repository.eq_ignore_ascii_case(repository))
     }
 
     /// Where a message can run with `project` picked, Chat first.
@@ -240,12 +241,12 @@ impl Choices {
     /// asked), and a place to run only when it is offered.
     pub(crate) fn resolve(&self, wanted: &Wanted) -> Picked {
         let project = self.project(wanted.project.trim()).cloned();
-        let branch = project.as_ref().map(|project| {
+        let branch = project.as_ref().and_then(Project::primary).map(|primary| {
             let asked = wanted.branch.trim();
             if !asked.is_empty() && coder_access::cloud::branch(asked).is_ok() {
                 asked.to_owned()
             } else {
-                project.default_branch.clone()
+                primary.default_branch.clone()
             }
         });
         let asked = Target::parse(&wanted.target);
@@ -401,10 +402,12 @@ pub(crate) async fn checked(
             _ => "Claude Code can't run there now. Pick where it runs again.",
         });
     }
-    if let (Some(project), Some(branch)) = (&picked.project, &picked.branch)
-        && *branch != project.default_branch
+    if let (Some(primary), Some(branch)) = (
+        picked.project.as_ref().and_then(Project::primary),
+        &picked.branch,
+    ) && *branch != primary.default_branch
     {
-        let (names, _) = crate::composer::branch_names(app, headers, &project.repository).await?;
+        let (names, _) = crate::composer::branch_names(app, headers, &primary.repository).await?;
         if !names.iter().any(|name| name == branch) {
             return Err("That branch isn't in the repository anymore. Pick another one.");
         }
@@ -735,19 +738,21 @@ pub(crate) fn panel(kind: &str, choices: &Choices, picked: &Picked, chat: Option
 type With<'a> = dyn Fn(&dyn Fn(&mut Picked), &str) -> String + Sync + 'a;
 
 fn project_panel(choices: &Choices, picked: &Picked, with: &With<'_>) -> Markup {
-    let add = if choices.connected {
-        "Add a repository"
-    } else {
-        "Connect a GitHub repository"
-    };
+    let add = "New project";
     crate::composer::panel(
         "Project",
         html! {
             @if choices.projects.is_empty() {
-                p { "Work in one of your GitHub repositories." }
+                p { "Keep chats, instructions, and files together in a project." }
                 a.oa-composer-choice href=(crate::projects::PAGE) autofocus {
-                    strong { "Connect a GitHub repository" }
-                    small { "Pick the repositories OpenAgents can use." }
+                    strong { "Make a project" }
+                    small {
+                        @if choices.connected {
+                            "A name is enough. Add your GitHub repositories if you like."
+                        } @else {
+                            "A name is enough. Connect GitHub to add repositories if you like."
+                        }
+                    }
                 }
             } @else {
                 (choice(
@@ -763,7 +768,7 @@ fn project_panel(choices: &Choices, picked: &Picked, with: &With<'_>) -> Markup 
                             next.branch = None;
                         }, "project"),
                         &project.name,
-                        Some(&project.repository),
+                        Some(project.repository().unwrap_or("No repository")),
                         picked.project.as_ref().is_some_and(|p| p.id == project.id),
                     ))
                 }
@@ -776,6 +781,9 @@ fn project_panel(choices: &Choices, picked: &Picked, with: &With<'_>) -> Markup 
 async fn branch_panel(app: &App, headers: &HeaderMap, picked: &Picked, with: &With<'_>) -> Markup {
     let Some(project) = &picked.project else {
         return crate::composer::panel("Branch", html! { p { "Pick a project first." } });
+    };
+    let Some(project) = project.primary() else {
+        return crate::composer::panel("Branch", html! { p { "This project has no repository." } });
     };
     let listed = crate::composer::branch_names(app, headers, &project.repository).await;
     let (mut names, more) = match listed {

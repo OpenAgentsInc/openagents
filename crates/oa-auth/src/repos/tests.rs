@@ -61,12 +61,16 @@ fn records_are_per_account_private_files_and_projects_survive_disconnecting() {
         record.projects.push(Project {
             id: "prj_0123456789abcdef".into(),
             name: "storefront".into(),
-            repository_id: 7,
-            repository: "acme/storefront".into(),
-            default_branch: "main".into(),
-            private: true,
+            instructions: None,
             created_unix: 1,
-            installation_id: None,
+            repositories: vec![ProjectRepository {
+                repository_id: 7,
+                repository: "acme/storefront".into(),
+                default_branch: "main".into(),
+                private: true,
+                primary: true,
+                installation_id: None,
+            }],
         });
         Ok(())
     })
@@ -80,7 +84,10 @@ fn records_are_per_account_private_files_and_projects_survive_disconnecting() {
         }
     );
     assert_eq!(found.body()["github"]["state"], "connected");
-    assert_eq!(found.body()["projects"][0]["repository"], "acme/storefront");
+    assert_eq!(
+        found.body()["projects"][0]["repositories"][0]["repository"],
+        "acme/storefront"
+    );
     assert_eq!(Status::from_body(&found.body()), Some(found.clone()));
     assert_eq!(
         Status::from_body(&json!({"github": {"state": "odd"}})),
@@ -318,12 +325,9 @@ fn github_access_round_trips_through_the_account_database() {
                     record.projects.push(Project {
                         id: format!("prj_{n:016x}"),
                         name: format!("r{n}"),
-                        repository_id: n,
-                        repository: format!("ada/r{n}"),
-                        default_branch: "main".into(),
-                        private: false,
+                        instructions: None,
                         created_unix: 1,
-                        installation_id: None,
+                        repositories: Vec::new(),
                     });
                     Ok(())
                 })
@@ -337,4 +341,120 @@ fn github_access_round_trips_through_the_account_database() {
         status(dir.path(), "acct_a").unwrap().access,
         Access::Connected { .. }
     ));
+}
+
+/// A project kept in the one-repository shape reads back with that
+/// repository as its primary, and is written in the new shape.
+#[test]
+fn an_older_project_migrates_to_its_primary_repository() {
+    let old = json!({
+        "id": "prj_0123456789abcdef",
+        "name": "finances",
+        "repository_id": 9,
+        "repository": "AtlantisPleb/finances",
+        "default_branch": "main",
+        "private": true,
+        "created_unix": 5,
+        "installation_id": 77
+    });
+    let project: Project = serde_json::from_value(old).unwrap();
+    assert_eq!(project.repository(), Some("AtlantisPleb/finances"));
+    assert_eq!(
+        project.repositories,
+        vec![ProjectRepository {
+            repository_id: 9,
+            repository: "AtlantisPleb/finances".into(),
+            default_branch: "main".into(),
+            private: true,
+            primary: true,
+            installation_id: Some(77),
+        }]
+    );
+    let written = serde_json::to_value(&project).unwrap();
+    assert!(written.get("repository").is_none());
+    assert_eq!(serde_json::from_value::<Project>(written).unwrap(), project);
+    // An unknown field is still refused.
+    assert!(
+        serde_json::from_value::<Project>(json!({
+            "id": "prj_0123456789abcdef", "name": "x", "created_unix": 1, "colour": "red"
+        }))
+        .is_err()
+    );
+    // No repository at all, and two marked primary settle to one.
+    let bare: Project = serde_json::from_value(
+        json!({"id": "prj_0123456789abcdef", "name": "x", "created_unix": 1}),
+    )
+    .unwrap();
+    assert!(bare.repositories.is_empty() && bare.repository().is_none());
+}
+
+fn held(name: &str, primary: bool) -> ProjectRepository {
+    ProjectRepository {
+        repository_id: name.len() as u64,
+        repository: name.into(),
+        default_branch: "main".into(),
+        private: false,
+        primary,
+        installation_id: None,
+    }
+}
+
+fn project_with(id: &str, repositories: Vec<ProjectRepository>) -> Project {
+    Project {
+        id: id.into(),
+        name: "p".into(),
+        instructions: None,
+        created_unix: 1,
+        repositories,
+    }
+}
+
+/// Auto-filing (#11541): the one project holding the repository; among
+/// several, the one where it's primary; when still not one, none.
+#[test]
+fn a_synced_chat_files_under_one_project_or_none() {
+    let a = project_with("prj_000000000000000a", vec![held("acme/site", true)]);
+    let b = project_with(
+        "prj_000000000000000b",
+        vec![held("acme/docs", true), held("acme/site", false)],
+    );
+    let c = project_with("prj_000000000000000c", vec![]);
+    let pick =
+        |projects: &[Project], repo: &str| filing_project(projects, repo).map(|p| p.id.clone());
+    // One holds it (any case): there.
+    assert_eq!(
+        pick(&[b.clone(), c.clone()], "ACME/site").as_deref(),
+        Some("prj_000000000000000b")
+    );
+    // Several hold it: where it's primary.
+    assert_eq!(
+        pick(&[a.clone(), b.clone(), c.clone()], "acme/site").as_deref(),
+        Some("prj_000000000000000a")
+    );
+    // Primary in two: none.
+    let a2 = project_with("prj_00000000000000a2", vec![held("acme/site", true)]);
+    assert_eq!(pick(&[a.clone(), a2, b.clone()], "acme/site"), None);
+    // Held by two, primary in neither: none.
+    let b2 = project_with(
+        "prj_00000000000000b2",
+        vec![held("acme/docs", true), held("acme/site", false)],
+    );
+    assert_eq!(pick(&[b, b2], "acme/site"), None);
+    assert_eq!(pick(&[c], "acme/site"), None);
+}
+
+#[test]
+fn project_bodies_read_back() {
+    let new = new_project(&json!({"repository": "a/b"})).unwrap();
+    assert_eq!(new.repositories, vec!["a/b".to_string()]);
+    assert!(new_project(&json!({})).is_none());
+    assert!(new_project(&json!({"name": 3})).is_none());
+    let change = ProjectChange {
+        add_repository: Some("a/b".into()),
+        primary: true,
+        instructions: Some(None),
+        ..ProjectChange::default()
+    };
+    assert_eq!(ProjectChange::from_body(&change.body()), Some(change));
+    assert!(ProjectChange::from_body(&json!({"name": 1})).is_none());
 }
