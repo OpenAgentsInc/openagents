@@ -71,7 +71,10 @@ fn web_chat(owner: &str, id: &str) -> Conversation {
 async fn terminal_chat(store: &Store) -> String {
     let upload: crate::coder_sync::Upload = serde_json::from_value(json!({
         "computer": "Studio", "title": "Fix it",
-        "messages": [{"role": "user", "text": "Fix it"}]
+        "messages": [
+            {"role": "user", "text": "Fix it"},
+            {"role": "thinking", "text": "I'll run the build first."},
+        ]
     }))
     .unwrap();
     match crate::coder_sync::save(store, &account_owner("alice"), "s1", &upload)
@@ -99,6 +102,9 @@ async fn no_token_is_signed_out_and_another_account_sees_nothing() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["threads"][0]["id"], chat.as_str());
     assert_eq!(body["threads"][0]["line"], "Terminal · Studio");
+    // The list counts its messages and names its project (#11543).
+    assert_eq!(body["threads"][0]["messages"], 2);
+    assert_eq!(body["threads"][0]["project"], Value::Null);
     let (status, body) = call(site, Method::GET, "/v1/threads", Some(&bob), None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["threads"], json!([]));
@@ -108,6 +114,8 @@ async fn no_token_is_signed_out_and_another_account_sees_nothing() {
     let (status, body) = call(site, Method::GET, &path, Some(&alice), None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["messages"][0]["text"], "Fix it");
+    // The model's thinking stays thinking (#11543).
+    assert_eq!(body["messages"][1]["role"], "thinking");
     let reply = json!({"request_id": "00000000-0000-4000-8000-000000000001", "text": "Go on"});
     let (status, _) = call(
         site,

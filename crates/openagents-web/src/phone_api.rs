@@ -146,6 +146,10 @@ fn row(chat: &Conversation, computers: &Computers) -> Value {
         "pinned": chat.pinned_unix.is_some(),
         // The project it is filed under (#11541), for the apps to name.
         "project": chat.project,
+        // How many messages it holds, as the projects API counts them
+        // (`projects::api::thread_object`), so `chat threads --account`
+        // agrees with `projects show` (#11543).
+        "messages": chat.messages.len(),
     })
 }
 
