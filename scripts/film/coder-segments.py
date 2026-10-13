@@ -741,7 +741,7 @@ def seg_everywhere():
     CAPS = [
         (0.5, 4.6, ["Start in the terminal."]),
         (4.85, 8.85, ["Keep going on your phone."]),
-        (9.1, 12.6, ["Finish on the web."]),
+        (9.1, 12.6, ["Review on the web."]),
         (12.85, 99, ["One conversation,", "on every device."]),
     ]
     # The conversation (the episode 289 ask), each message written on one

@@ -395,7 +395,7 @@ g_cap = font("Geist-Regular.ttf", 34)
 g_msg = font("Geist-Regular.ttf", 22)
 g_small = font("Geist-Regular.ttf", 17)
 g_tiny = font("Geist-Regular.ttf", 15)
-g_core = font("Geist-Regular.ttf", 21)
+g_core = font("Geist-Regular.ttf", 23)
 g_hook = font("Geist-Regular.ttf", 15)
 g_fut = font("Geist-Regular.ttf", 13)
 m_big = font("BerkeleyMono-Regular.ttf", 50)
@@ -632,6 +632,11 @@ def glow_bg():
 
 
 BG = glow_bg()
+_yy, _xx = np.mgrid[0:H, 0:W].astype(np.float32)
+_rr = np.hypot(_xx - CORE[0], _yy - CORE[1]) / R_CORE
+# Light trails stop at the core's face (the label sits there); the glow
+# around it stays.
+CORE_CLEAR = np.clip((_rr - 0.55) / 0.3, 0, 1) ** 1.5
 vig = Image.new("L", (W // 4, H // 4), 0)
 ImageDraw.Draw(vig).ellipse([-W * .2 / 4, -H * .3 / 4, W * 1.2 / 4, H * 1.3 / 4], fill=255)
 VIG = np.asarray(vig.filter(ImageFilter.GaussianBlur(50)).resize((W, H), Image.BICUBIC), np.float32)[..., None] / 255.0
@@ -644,6 +649,32 @@ def over(dst, layer_rgba, k=1.0):
     return dst * (1 - a) + layer_rgba[..., :3] * 255.0 * a
 
 
+class CamDraw:
+    """Draws text given in scene coordinates straight onto the screen, at
+    TEXT_SS times the screen size with the font scaled by the camera's zoom,
+    so labels the camera magnifies stay crisp (they used to be drawn at 1x
+    and scaled up with the frame). Downscaled with LANCZOS in layer()."""
+
+    def __init__(self, ox, oy, z):
+        self.ox, self.oy, self.k = ox, oy, z * TEXT_SS
+        self.im = Image.new("RGBA", (W * TEXT_SS, H * TEXT_SS), (0, 0, 0, 0))
+        self.d = ImageDraw.Draw(self.im)
+
+    def text(self, xy, s, font, fill):
+        key = (font.path, font.size, round(self.k, 3))
+        f = _FONTS.get(key)
+        if f is None:
+            f = _FONTS[key] = font.font_variant(size=max(1, round(font.size * self.k)))
+        self.d.text(((xy[0] - self.ox) * self.k, (xy[1] - self.oy) * self.k), s, font=f, fill=fill)
+
+    def layer(self):
+        return np.asarray(self.im.resize((W, H), Image.LANCZOS), np.float32) / 255.0
+
+
+TEXT_SS = 2
+_FONTS = {}
+
+
 def text_layer(draw_fn):
     im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     draw_fn(ImageDraw.Draw(im))
@@ -652,8 +683,8 @@ def text_layer(draw_fn):
 
 def caption(d, t):
     caps = [
-        (*B1_CAPTION, ["Most coding agents loop a big model over its tools:", "every small step goes through the model."]),
-        (*B2_CAPTION, ["OpenAgents puts System 1 in front.", "Only the hard parts reach the model."]),
+        (*B1_CAPTION, ["Most coding agents loop a big model over its tools:", "every small step goes through the big model."]),
+        (*B2_CAPTION, ["OpenAgents puts System 1 in front: small, fast models.", "Only the hard parts reach the big model."]),
         (*B3_CAPTION, ["Anyone can add to the map,", "and gets paid when it's used."]),
         (*B4_CAPTION, ["System 1 in front.", "System 2 for the hard parts."]),
     ]
@@ -786,8 +817,8 @@ def core_labels(d, t):
         line1, line2 = "System 2", "the big model"
         w1, w2 = g_core.getlength(line1), g_tiny.getlength(line2)
         dark = 1 - fade(t, B2, B2 + 1.4) * 0.2
-        d.text((cx - w1 / 2, cy - 15), line1, font=g_core, fill=(14, 14, 14, int(255 * a * dark)))
-        d.text((cx - w2 / 2, cy + 10), line2, font=g_tiny, fill=(40, 40, 40, int(255 * a * dark)))
+        d.text((cx - w1 / 2, cy - 19), line1, font=g_core, fill=(14, 14, 14, int(255 * a * dark)))
+        d.text((cx - w2 / 2, cy + 9), line2, font=g_tiny, fill=(44, 44, 44, int(255 * a * dark)))
     hk = fade(t, 0.6, 1.4) * (1 - fade(t, HARNESS_OUT[0], HARNESS_OUT[0] + 0.6))
     if hk > 0:
         for (x, y), ang, name in zip(tool_pos, tool_ang, TOOLS):
@@ -800,9 +831,10 @@ def core_labels(d, t):
         side_label(d, x, y, ang, name, g_hook, (*CONTENT, int(235 * kk)))
     kk = fade(t, S1_SWEEP + 1.0, S1_SWEEP + 1.6)
     if kk > 0:
-        tag = "System 1"
-        tw = g_core.getlength(tag)
-        d.text((CORE[0] - tw / 2, CORE[1] - R_S1 - 40), tag, font=g_core, fill=(*CONTENT, int(255 * kk)))
+        tag, sub = "System 1", "small, fast models"
+        tw, sw = g_core.getlength(tag), g_tiny.getlength(sub)
+        d.text((CORE[0] - tw / 2, CORE[1] - R_S1 - 60), tag, font=g_core, fill=(*CONTENT, int(255 * kk)))
+        d.text((CORE[0] - sw / 2, CORE[1] - R_S1 - 33), sub, font=g_tiny, fill=(*SECONDARY, int(255 * kk)))
 
 
 def future_layer(d, t):
@@ -914,11 +946,11 @@ def render(i):
         l.draw(ld, t)
     frame = over(frame, np.asarray(hi.resize((W, H), Image.LANCZOS), np.float32) / 255.0)
     lit_a = np.asarray(lit.resize((W, H), Image.LANCZOS), np.float32) / 255.0
+    lit_a[..., 3] *= CORE_CLEAR
     rgb = lit_a[..., :3] * lit_a[..., 3:4] * 255.0
     small = Image.fromarray(rgb.clip(0, 255).astype(np.uint8)).resize((W // 4, H // 4), Image.BILINEAR)
     bloom = np.asarray(small.filter(ImageFilter.GaussianBlur(5)).resize((W, H), Image.BILINEAR), np.float32)
     frame = frame + rgb + bloom * 1.6
-    frame = over(frame, text_layer(lambda d: (core_labels(d, t), future_labels(d, t, list(PLACED_1X)))))
     # the camera: zoom about the map's center, and pan it to the middle in the hold
     img = Image.fromarray(frame.clip(0, 255).astype(np.uint8))
     z = zcam(t)
@@ -926,8 +958,13 @@ def render(i):
     cw, ch = W / z, H / z
     ox, oy = CX - (CX - pan) / z, CY - CY / z
     img = img.transform((W, H), Image.EXTENT, (ox, oy, ox + cw, oy + ch), Image.BICUBIC, fillcolor=CANVAS)
-    # the words on screen, over the camera
     arr = np.asarray(img, np.float32)
+    # the map's labels, after the bloom and the camera, so they stay sharp
+    cam = CamDraw(ox, oy, z)
+    core_labels(cam, t)
+    future_labels(cam, t, list(PLACED_1X))
+    arr = over(arr, cam.layer())
+    # the words on screen, over the camera
     if args.grid:  # under the scene: it shows only where the frame is dark
         lum = arr.max(axis=2, keepdims=True)
         arr = arr + grid_layer(t) * np.clip(1 - (lum - 14) / 40, 0, 1)
