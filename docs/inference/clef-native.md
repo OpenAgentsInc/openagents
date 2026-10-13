@@ -1548,6 +1548,78 @@ The saving grows with the schema. With a 12-question schema on a 4k state
 Cost of this round: about 40 minutes of one spot H100 (about $4) and three
 Cloud Builds.
 
+### Round 12 (2026-10-13): the unattributed request time was host row decoding (#11479)
+
+Production timings showed a median 8-10 ms per request (up to 19 ms) in
+`total_ms` that no phase counted; a single-model bench showed none. The
+bench ran with batching off. Production runs `PSIONIC_CLEF_BATCH_REQUESTS=2`,
+and the batched lane decoded every prompt row from the host `token_embd` on
+the request's thread before it queued (`prepare_inputs`), outside every
+reported phase, then uploaded the f32 rows per chunk. The serial lane had
+gathered rows on the device since Round 7, on sm_90 only.
+
+**What changed** (`acd7aa9cc1`):
+
+- The batched lane uploads the checked token ids and gathers the Q4_K rows
+  on the device, like the serial lane.
+- The device gather is on for every arch, the A100 included (about 0.6-0.7
+  GB more device memory per model). `PSIONIC_CLEF_DEVICE_EMBED=0` keeps the
+  host decode. The server logs `clef cuda: token rows gathered on the device`
+  at load.
+- `psionic.timing` names every phase: `inputs_ms` (host inputs before the
+  request queues), `setup_ms` (the session's buffers, inside `prefill_ms`),
+  `reply_ms`, `answer_ms` and `other_ms`, which is what no phase covers.
+
+**Accounting** (spot H100, both services at once with batching 2, the e2e
+set of 40 requests on each, median / max ms):
+
+| | not in any phase, before | after (`other_ms`) |
+| --- | ---: | ---: |
+| Flash | 8.0 / 16.2 | 0.0 / 0.1 |
+| 27B | 9.0 / 18.3 | 0.0 / 0.0 |
+
+On the production machines after the swap, `other_ms` is 0.0-0.1 ms and
+`inputs_ms` 0.3-0.5 ms (1.1 ms max).
+
+**Parity.** Against `80d8a5c292` with the same settings, both models: 100 %
+top answers, max |Δp| **0** (40 requests, 104 questions, alone and with both
+services busy). Flash vs the CPU goldens: 100 %, max 0.0010 (H100), 0.0049
+(A100), both unchanged. `cuda_batch_check.py`: bitwise identical to serial on
+both models. `cuda_prefix_check.py`: max |Δlogit| 0 on both.
+
+**Latency, batching 2** (`bench_latency.py`, fresh nonce, client median
+seconds; test VM: two interleaved rounds; production: one run against the
+live services):
+
+| | Flash 0.8k | Flash 1.1k | Flash 3.9k | 27B 0.8k | 27B 1.1k | 27B 3.9k |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| test H100, before | 0.0588 | 0.0714 | 0.2179 | 0.1492 | 0.1727 | 0.5700 |
+| test H100, after | **0.0448** | **0.0565** | **0.1574** | **0.1344** | **0.1538** | **0.5019** |
+| change | −24 % | −21 % | −28 % | −10 % | −11 % | −12 % |
+| production H100, before | 0.0570 | 0.0710 | 0.2198 | 0.1513 | 0.1766 | 0.5809 |
+| production H100, after | **0.0461** | **0.0550** | **0.1605** | **0.1343** | **0.1553** | **0.5062** |
+| production A100, before | 0.191 | 0.147 | 0.486 | 0.519 | 0.412 | 1.345 |
+| production A100, after | **0.176** | **0.131** | **0.419** | **0.497** | **0.392** | **1.273** |
+
+**The other items in #11479, measured and left:**
+
+- **Session setup** (`setup_ms`, inside `prefill_ms`): 1.6-2.4 ms for Flash
+  and 3-5 ms for 27B per batched request. An Nsight runtime trace shows
+  about 62 `cudaMalloc` (3.1 ms of host time) and 12 `cudaFree` per request:
+  the K/V caches and memory rows are reused only for the same prompt length.
+  Turning prefix reuse off changes it by under 1 ms. Reusing buffers across
+  lengths needs the memory admission to count the larger buffers; worth
+  about 3-4 % of a 0.8k Flash request.
+- **Host span means before the head** (about 0.5 ms) and the request's
+  separate memsets (about 0.6 ms): about 1 % each of a 0.8k Flash request.
+- **Launch gaps in the trunk** (about 780 of 1-2 µs): not launch-bound
+  (Round 9).
+
+Cost: one spot H100 (`clef-11479-dev`) for 47 minutes, about $5; three Cloud
+Builds, about $4. Raw rows:
+`gs://openagentsgemini-decision-throughput/clef-11479/` (`out/wip-a/` test
+VM, `prod/` production before and after).
+
 ## M3 status (closed 2026-10-13)
 
 The [October 10 Mac performance audit](../audits/2026-10-10-clef-mac-performance/README.md)

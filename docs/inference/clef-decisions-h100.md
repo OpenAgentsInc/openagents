@@ -24,7 +24,7 @@ them ([below](#the-pool-and-how-a-decision-picks-a-machine)).
 | Machine | `a3-highgpu-1g`: 1 × H100 80 GB, 26 vCPU, 234 GB RAM | `a2-highgpu-1g`: 1 × A100 40 GB, 12 vCPU, 85 GB RAM |
 | Pricing model | Spot, termination action **STOP** (a preemption stops it and keeps its disk) | On-demand (standard), never preempted; host maintenance stops it and GCE restarts it (`--restart-on-failure`) |
 | Internal IP | `10.128.0.61`, the reserved address `clef-decisions-h100` | `10.128.0.75`, the reserved address `clef-decisions-a100` |
-| Psionic bundle | pinned by metadata `clef-bundle=80d8a5c292` (an sm_90 build) | pinned by metadata `clef-bundle=80d8a5c292-sm80` (an sm_80 build) |
+| Psionic bundle | pinned by metadata `clef-bundle=acd7aa9cc1` (an sm_90 build) | pinned by metadata `clef-bundle=acd7aa9cc1-sm80` (an sm_80 build) |
 
 Both: project `openagentsgemini`, the `default` subnet, Deep Learning VM
 image `common-cu129-ubuntu-2404-nvidia-580`, a 200 GB pd-ssd boot disk,
@@ -238,7 +238,42 @@ default (exact; a 32nd of the device, at most 2 GiB per service; clef-native.md
 Round 9). Responses report `usage.cached_input_tokens`. The A100's sm_80
 build keeps it off.
 
-**Status 2026-10-13, 03:30 UTC (applied): the head in one round trip.**
+**Status 2026-10-13, 04:40 UTC (applied): the batched lane gathers token
+rows on the device.** Both machines run `acd7aa9cc1` (clef-native.md Round
+12, #11479). The 8-10 ms per request that no timing phase counted was the
+batched lane decoding prompt rows on the host; it now gathers them on the
+device, on both arches. `psionic.timing` names every phase (`inputs_ms`,
+`setup_ms`, `reply_ms`, `answer_ms`, `other_ms`). Rolled out A100 first.
+
+| Machine | `clef-bundle` | Batching | Prefix reuse |
+| --- | --- | --- | --- |
+| `clef-decisions-a100` | `acd7aa9cc1-sm80` | 2 | off |
+| `clef-decisions-h100` | `acd7aa9cc1` | 2 | on (2 GiB) |
+
+- e2e (40 requests, 104 questions) on each machine against its previous
+  bundle: identical answers on both models (max |Δp| 0). Flash vs the CPU
+  goldens: A100 100 %, max 0.0049; H100 100 %, max 0.0010 (both unchanged).
+- Fresh-nonce latency against the live services (client median, before →
+  after): H100 Flash 0.8k 57.0 → 46.1 ms, 3.9k 220 → 161 ms; 27B 0.8k 151
+  → 134 ms, 3.9k 581 → 506 ms. A100 Flash 1.1k 147 → 131 ms, 3.9k 486 →
+  419 ms; 27B 1.1k 412 → 392 ms, 3.9k 1,345 → 1,273 ms.
+- `other_ms` after the swap: 0.0-0.1 ms on both machines.
+- The A100 uses about 1.4 GB more device memory (25.3 of 40 GB), the
+  device token tables.
+- Production bursts (16 `clef-flash` + 16 `clef` at once, three rounds after
+  each machine, nine rounds in all): 0 errors. Median
+  `openagents.latency_ms` after both: Flash H100 156-210 ms, Flash A100
+  695-750 ms, 27B H100 346-397 ms, 27B A100 1,392-1,537 ms; before: 141-204,
+  677-737, 364-408 and 1,329-1,550 ms. A burst's short inputs leave little
+  host decoding to remove, and the live pool is noisy.
+
+Rollback to the previous bundles (one machine at a time, then rerun the
+startup script): A100 `add-metadata clef-bundle=80d8a5c292-sm80`, H100
+`add-metadata clef-bundle=80d8a5c292`. Without a rollback,
+`PSIONIC_CLEF_DEVICE_EMBED=0` in a unit's environment brings back the host
+decode.
+
+**Status 2026-10-13, 03:30 UTC (superseded above): the head in one round trip.**
 Both machines run `80d8a5c292`, whose CUDA head runs in one submission
 (clef-native.md Round 11; `PSIONIC_CLEF_CUDA_HEAD=staged` in a unit's
 environment would bring back the old path). Rolled out A100 first.
