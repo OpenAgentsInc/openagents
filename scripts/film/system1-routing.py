@@ -650,8 +650,8 @@ def text_layer(draw_fn):
 
 def caption(d, t):
     caps = [
-        (*B1_CAPTION, ["Today, every step goes", "through the big model."]),
-        (*B2_CAPTION, ["Put System 1 in front.", "Send only the hard parts on."]),
+        (*B1_CAPTION, ["Most coding agents loop a big model over its tools:", "every small step goes through the model."]),
+        (*B2_CAPTION, ["OpenAgents puts System 1 in front.", "Only the hard parts reach the model."]),
         (*B3_CAPTION, ["Anyone can add to the map,", "and gets paid when it's used."]),
         (*B4_CAPTION, ["System 1 in front.", "System 2 for the hard parts."]),
     ]
