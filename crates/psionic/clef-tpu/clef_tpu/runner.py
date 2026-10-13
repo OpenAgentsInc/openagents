@@ -37,12 +37,14 @@ def _bucket(n, least):
 
 
 class Runner:
-    def __init__(self, path: str, *, chunk=0, prefix_budget=0, precision="bf16", scan="jax", cache_buckets=(2048, 4096, 8192, 16384)):
+    def __init__(self, path: str, *, chunk=0, prefix_budget=0, precision="bf16", scan="jax", cache_buckets=(2048, 4096, 8192, 16384),
+                 calib=None):
         self.path = Path(path)
         self.cfg = M.Config.load(self.path)
         t = time.time()
         self.params, self.embed, self.lm_head = M.load_backbone(
-            self.path, self.cfg, quant="int8" if precision == "int8" else None)
+            self.path, self.cfg, quant="int8" if precision == "int8" else None, calib=calib)
+        self.calib = calib
         # the embedding table on the device (2 GB bf16): a 16k prompt's rows
         # would otherwise cross from the host as 268 MB of f32
         self.embed_dev = jnp.asarray(self.embed, jnp.bfloat16)

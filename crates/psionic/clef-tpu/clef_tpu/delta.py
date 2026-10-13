@@ -11,6 +11,7 @@ Semantics follow transformers' `torch_chunk_gated_delta_rule` with
 `use_qk_l2norm_in_kernel=True`.
 """
 
+import functools
 import os
 
 import jax
@@ -204,3 +205,115 @@ def step_ref(q, k, v, g, beta, S0):
     xs = (q.transpose(1, 0, 2), k.transpose(1, 0, 2), v.transpose(1, 0, 2), g.T, beta.T)
     S, o = jax.lax.scan(one, S0, xs)
     return o.transpose(1, 0, 2), S
+
+
+# ------------------------------------------------------------------ fused kernel
+#
+# One Pallas kernel per prefill chunk does the whole gated delta rule: the
+# l2 norms, the cumulative decay, the UT transform, the intra-chunk
+# attention and the state update, one delta sub-chunk per grid step, all
+# heads at once (batched matmuls: on a v6e a single small matmul is ~1 us of
+# latency, 32 independent ones cost little more), with the [Hv, dk, dv]
+# state in f32 in VMEM across the steps.
+#
+# The UT transform needs (I + L)^-1 for the strictly lower L. It is formed
+# explicitly by forward substitution on the VPU (column elimination,
+# C - 1 steps over all heads), which is as stable as a triangular solve and
+# needs no matmul chain.
+
+FUSED_PREC = getattr(jax.lax.Precision, os.environ.get("CLEF_TPU_FUSED_PRECISION", "HIGHEST"))
+
+
+def _bdot(a, b, ca, cb, prec):
+    return jax.lax.dot_general(a, b, (((ca,), (cb,)), ((0,), (0,))), preferred_element_type=jnp.float32,
+                               precision=prec)
+
+
+def _rep(x, rep):
+    """[Hk, ...] -> [Hk * rep, ...], each key head repeated for its value heads."""
+    if rep == 1:
+        return x
+    return jnp.broadcast_to(x[:, None], (x.shape[0], rep) + x.shape[1:]).reshape((x.shape[0] * rep,) + x.shape[1:])
+
+
+def _fused_kernel(q_ref, k_ref, v_ref, g_ref, b_ref, s0_ref, o_ref, s_out_ref, s_ref, x_ref, *, C, rep, dk, prec):
+    f32 = jnp.float32
+    n = pl.program_id(0)
+
+    @pl.when(n == 0)
+    def _():
+        s_ref[...] = s0_ref[...]
+
+    q = q_ref[...]                                                   # [Hk, C, dk]
+    k = k_ref[...]
+    q = q * jax.lax.rsqrt(jnp.sum(q * q, -1, keepdims=True) + 1e-6) * (dk ** -0.5)
+    k = k * jax.lax.rsqrt(jnp.sum(k * k, -1, keepdims=True) + 1e-6)
+    KK = _rep(_bdot(k, k, 2, 2, prec), rep)                          # [Hv, C, C]
+    QK = _rep(_bdot(q, k, 2, 2, prec), rep)
+    q = _rep(q, rep)
+    k = _rep(k, rep)
+    g = g_ref[0]                                                     # [Hv, C]
+    beta = b_ref[0]
+    r = jax.lax.broadcasted_iota(jnp.int32, (C, C), 0)
+    c = jax.lax.broadcasted_iota(jnp.int32, (C, C), 1)
+    gc = jax.lax.dot_general(g, (r <= c).astype(f32), (((1,), (0,)), ((), ())),
+                             preferred_element_type=f32, precision=jax.lax.Precision.HIGHEST)   # [Hv, C] cumsum
+    gcol = gc[:, :, None]                                            # [Hv, C, 1]
+    bcol = beta[:, :, None]
+    tril = (r >= c)[None]
+    strict = (r > c)[None]
+    D = jnp.exp(jnp.where(tril, gcol - gc[:, None, :], -jnp.inf))   # [Hv, C, C] decay
+    Lm = jnp.where(strict, bcol * KK * D, 0.0)
+    # X = (I + Lm)^-1 by forward substitution: row j is final before it is used
+    # rows above j never change at step j; start each update at j's 8-row tile
+    x_ref[...] = jnp.broadcast_to((r == c).astype(f32)[None], Lm.shape)
+    for j in range(int(os.environ.get("CLEF_TPU_FS_STEPS", C - 1))):
+        r0 = (j + 1) // 8 * 8
+        x_ref[:, r0:, :] = x_ref[:, r0:, :] - Lm[:, r0:, j:j + 1] * x_ref[:, j:j + 1, :]
+    X = x_ref[...]
+    egc = jnp.exp(gcol)
+    UW = _bdot(X, jnp.concatenate([v_ref[...] * bcol, k * (bcol * egc)], -1), 2, 1, prec)   # [Hv, C, dv + dk]
+    dv = UW.shape[-1] - dk
+    u, w = UW[..., :dv], UW[..., dv:]
+    S = s_ref[...]
+    WQ = _bdot(jnp.concatenate([w, q * egc], 1), S, 2, 1, prec)     # [Hv, 2C, dv]
+    vn = u - WQ[:, :C]
+    Aq = jnp.where(tril, QK * D, 0.0)
+    o_ref[...] = WQ[:, C:] + _bdot(Aq, vn, 2, 1, prec)
+    gl = gc[:, C - 1:C][:, :, None]                                  # [Hv, 1, 1]
+    S = S * jnp.exp(gl) + _bdot(k * jnp.exp(gl - gcol), vn, 1, 1, prec)
+    s_ref[...] = S
+    s_out_ref[...] = S
+
+
+def fused(conv, g, beta, S0, *, Hk, Hv, dk, dv, C=64):
+    """conv [T, 2 Hk dk + Hv dv] (q | k | v after the causal conv and SiLU),
+    g, beta [T, Hv] (pad rows: g = beta = 0), S0 [Hv, dk, dv] f32.
+    Returns (o [T, Hv dv] f32, S [Hv, dk, dv])."""
+    T = conv.shape[0]
+    C = SUBCHUNK or C
+    N = T // C
+    kd = Hk * dk
+    q = conv[:, :kd].reshape(T, Hk, dk).transpose(1, 0, 2)
+    k = conv[:, kd:2 * kd].reshape(T, Hk, dk).transpose(1, 0, 2)
+    v = conv[:, 2 * kd:].reshape(T, Hv, dv).transpose(1, 0, 2)
+    gT = g.reshape(N, C, Hv).transpose(0, 2, 1)                      # [N, Hv, C]
+    bT = beta.reshape(N, C, Hv).transpose(0, 2, 1)
+    kern = functools.partial(_fused_kernel, C=C, rep=Hv // Hk, dk=dk, prec=FUSED_PREC)
+    o, S = pl.pallas_call(
+        kern,
+        grid=(N,),
+        in_specs=[pl.BlockSpec((Hk, C, dk), lambda n: (0, n, 0)),
+                  pl.BlockSpec((Hk, C, dk), lambda n: (0, n, 0)),
+                  pl.BlockSpec((Hv, C, dv), lambda n: (0, n, 0)),
+                  pl.BlockSpec((1, Hv, C), lambda n: (n, 0, 0)),
+                  pl.BlockSpec((1, Hv, C), lambda n: (n, 0, 0)),
+                  pl.BlockSpec((Hv, dk, dv), lambda n: (0, 0, 0))],
+        out_specs=[pl.BlockSpec((Hv, C, dv), lambda n: (0, n, 0)),
+                   pl.BlockSpec((Hv, dk, dv), lambda n: (0, 0, 0))],
+        out_shape=[jax.ShapeDtypeStruct((Hv, T, dv), jnp.float32),
+                   jax.ShapeDtypeStruct((Hv, dk, dv), jnp.float32)],
+        scratch_shapes=[pltpu.VMEM((Hv, dk, dv), jnp.float32), pltpu.VMEM((Hv, C, C), jnp.float32)],
+        compiler_params=pltpu.CompilerParams(dimension_semantics=("arbitrary",), vmem_limit_bytes=100 << 20),
+    )(q, k, v, gT, bT, S0)
+    return o.transpose(1, 0, 2).reshape(T, Hv * dv), S

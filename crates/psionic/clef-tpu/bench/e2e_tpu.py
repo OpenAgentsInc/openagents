@@ -32,9 +32,10 @@ def main():
     ap.add_argument("--chunk", type=int, default=0)
     ap.add_argument("--chunks", default="", help="extra chunk sizes for the invariance check, e.g. 512,64")
     ap.add_argument("--precision", default="bf16")
+    ap.add_argument("--calib", default=None, help="int8 calibration map (calibrate.py)")
     ap.add_argument("--scan", default="jax")
     a = ap.parse_args()
-    r = Runner(a.model, chunk=a.chunk, precision=a.precision, scan=a.scan)
+    r = Runner(a.model, chunk=a.chunk, precision=a.precision, scan=a.scan, calib=a.calib)
     print("loaded", round(r.load_seconds, 1), "s", r.identity(), file=sys.stderr, flush=True)
     inv = {"chunks": [int(c) for c in a.chunks.split(",") if c], "max_abs_dlogit": 0.0, "argmax_flips": 0}
     with open(a.out, "w", encoding="utf-8") as sink:

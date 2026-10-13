@@ -84,18 +84,36 @@ def _open_all(path: Path):
                 yield name, h
 
 
-def quantize_int8(w):
-    """Per-output-channel symmetric int8 of a [in, out] weight: (q int8, scale f32 [out])."""
+def quantize_int8(w, act_max=None, alpha=0.5):
+    """Per-output-channel symmetric int8 of a [in, out] weight: (q int8, scale f32 [out]).
+
+    With `act_max` (the calibrated per-input-channel |x| maximum of the
+    activation this weight multiplies), SmoothQuant migration: each input
+    channel j is scaled by s_j = act_max_j^alpha / w_max_j^(1-alpha), the
+    weight row by s_j and the activation by 1/s_j (`inv`, applied before the
+    activation is quantized), so activation outliers move into the weights,
+    which are quantized per output channel."""
     w = np.asarray(w, np.float32)
+    out = {}
+    if act_max is not None:
+        a = np.maximum(np.asarray(act_max, np.float32), 1e-5)
+        wm = np.maximum(np.abs(w).max(1), 1e-5)
+        sm = np.clip(a ** alpha / wm ** (1.0 - alpha), 1e-4, 1e4)
+        w = w * sm[:, None]
+        out["inv"] = jnp.asarray(1.0 / sm, jnp.float32)
     scale = np.maximum(np.abs(w).max(0), 1e-12) / 127.0
     q = np.clip(np.rint(w / scale), -127, 127).astype(np.int8)
-    return {"q": jnp.asarray(q), "s": jnp.asarray(scale, jnp.float32)}
+    out.update(q=jnp.asarray(q), s=jnp.asarray(scale, jnp.float32))
+    return out
 
 
-def load_backbone(path: Path, cfg: Config, quant: str | None = None):
+def load_backbone(path: Path, cfg: Config, quant: str | None = None, calib: str | None = None):
     """Returns (device params, host embed table, host lm_head table).
     `quant="int8"` stores the layer projections as per-channel int8 (our own
-    int8 artifact, built from the BF16 release at load)."""
+    int8 artifact, built from the BF16 release at load). `calib` is a
+    calibration map (`calibrate.py`: per layer and projection, the input
+    channels' |x| maxima); with it the int8 projections are SmoothQuant-scaled
+    (CLEF_TPU_SMOOTH_ALPHA, default 0.5)."""
     import ml_dtypes  # noqa: F401  (bf16 numpy dtype for safetensors)
     from safetensors import safe_open
 
@@ -115,13 +133,21 @@ def load_backbone(path: Path, cfg: Config, quant: str | None = None):
     # which projections go int8 (CLEF_TPU_INT8: comma-separated names; the
     # ones fed by a normed hidden row have the fewest activation outliers)
     int8_names = set(os.environ.get("CLEF_TPU_INT8", "gate_up,in_qkv,in_z,qkv").split(","))
+    # layers kept in bf16 whatever the projection (CLEF_TPU_INT8_SKIP_LAYERS: comma-separated indexes)
+    skip_layers = {int(x) for x in os.environ.get("CLEF_TPU_INT8_SKIP_LAYERS", "").split(",") if x}
+    alpha = float(os.environ.get("CLEF_TPU_SMOOTH_ALPHA", "0.5"))
+    stats = dict(np.load(calib)) if calib else {}
+    cur = {"layer": 0}
     def dev(a, name=None):
-        if quant == "int8" and name in int8_names:
-            return quantize_int8(a)
+        i = cur["layer"]
+        if quant == "int8" and name in int8_names and i not in skip_layers:
+            al = float(stats[f"alpha.{i}.{name}"]) if f"alpha.{i}.{name}" in stats else alpha
+            return quantize_int8(a, stats.get(f"{i}.{name}"), al)
         return bf(a)
     devf = lambda a: jnp.asarray(np.asarray(a, np.float32))
     layers = []
     for i in range(cfg.layers):
+        cur["layer"] = i
         p = f"{prefix}layers.{i}."
         L = {
             "in_norm": devf(get(p + "input_layernorm.weight")),
@@ -165,16 +191,30 @@ def rms(x, w, eps):
     return x * jax.lax.rsqrt(jnp.mean(x * x, -1, keepdims=True) + eps) * (1.0 + w)
 
 
-def mm(x, w, precision):
+MM_BARRIER = os.environ.get("CLEF_TPU_MM_BARRIER", "0") == "1"
+
+
+def mm(x, w, precision, tap=None, name=None):
+    if tap is not None:
+        tap(name, x)
     if isinstance(w, dict):
         # w8a8: activations quantized per row on the fly, int8 x int8 -> int32 on the MXU
+        if "inv" in w:
+            x = x * w["inv"][None, :]
         ax = jnp.maximum(jnp.max(jnp.abs(x), -1, keepdims=True), 1e-12) / 127.0
         xq = jnp.clip(jnp.round(x / ax), -127, 127).astype(jnp.int8)
+        if MM_BARRIER:
+            xq, ax = jax.lax.optimization_barrier((xq, ax))
         y = jnp.dot(xq, w["q"], preferred_element_type=jnp.int32)
         return y.astype(jnp.float32) * ax * w["s"][None, :]
     if precision == "f32":
         return jnp.dot(x, w.astype(jnp.float32), precision=jax.lax.Precision.HIGHEST)
-    return jnp.dot(x.astype(jnp.bfloat16), w, preferred_element_type=jnp.float32)
+    xb = x.astype(jnp.bfloat16)
+    if MM_BARRIER:
+        # materialize the bf16 operand: XLA otherwise fuses the norm (or the
+        # gating) producing it into the matmul, which recomputes it per tile
+        xb = jax.lax.optimization_barrier(xb)
+    return jnp.dot(xb, w, preferred_element_type=jnp.float32)
 
 
 def rope_tables(cfg: Config, positions):
@@ -209,16 +249,16 @@ def init_state(cfg: Config, cache_len: int, batch: int = 1):
     return st
 
 
-def deltanet(cfg, L, st, x, precision, scan, real=None):
+def deltanet(cfg, L, st, x, precision, scan, real=None, tap=None):
     """`real` [C, 1] marks the prompt's rows; pad rows leave the delta state
     and the conv tail untouched, so a state snapshot at a prefix boundary is
     the same as stopping there."""
     C = x.shape[0]
     Hk, Hv, dk, dv = cfg.lin_k_heads, cfg.lin_v_heads, cfg.lin_k_dim, cfg.lin_v_dim
     kd, vd = Hk * dk, Hv * dv
-    qkv = mm(x, L["in_qkv"], precision)
-    z = mm(x, L["in_z"], precision)
-    ba = mm(x, L["in_ba"], precision)
+    qkv = mm(x, L["in_qkv"], precision, tap, "in_qkv")
+    z = mm(x, L["in_z"], precision, tap, "in_z")
+    ba = mm(x, L["in_ba"], precision, tap, "in_ba")
     b, a = ba[:, :Hv], ba[:, Hv:]
     K = cfg.conv_kernel
     full = jnp.concatenate([st["conv"], qkv], 0)                    # [K-1+C, conv_dim]
@@ -230,25 +270,30 @@ def deltanet(cfg, L, st, x, precision, scan, real=None):
     else:
         n_real = jnp.sum(real.astype(jnp.int32))
         new_conv = jax.lax.dynamic_slice_in_dim(full, n_real, K - 1, 0)
-    q, k, v = jnp.split(conv, [kd, 2 * kd], -1)
-    q = q.reshape(C, Hk, dk)
-    k = k.reshape(C, Hk, dk)
-    v = v.reshape(C, Hv, dv)
     beta = jax.nn.sigmoid(b)                                        # [C, Hv]
     g = -jnp.exp(L["A_log"]) * jax.nn.softplus(a + L["dt_bias"])   # [C, Hv]
     if real is not None:
         beta = jnp.where(real, beta, 0.0)
         g = jnp.where(real, g, 0.0)
-    rep = Hv // Hk
-    q = jnp.repeat(q, rep, axis=1)
-    k = jnp.repeat(k, rep, axis=1)
-    o, S = delta.chunked(q.transpose(1, 0, 2), k.transpose(1, 0, 2), v.transpose(1, 0, 2),
-                         g.T, beta.T, st["S"], scan=scan)
-    o = o.transpose(1, 0, 2)                                        # [C, Hv, dv]
+    if scan == "fused":
+        # one Pallas kernel reads q | k | v from the conv output and writes o as [C, Hv dv]
+        o, S = delta.fused(conv, g, beta, st["S"], Hk=Hk, Hv=Hv, dk=dk, dv=dv)
+        o = o.reshape(C, Hv, dv)
+    else:
+        q, k, v = jnp.split(conv, [kd, 2 * kd], -1)
+        q = q.reshape(C, Hk, dk)
+        k = k.reshape(C, Hk, dk)
+        v = v.reshape(C, Hv, dv)
+        rep = Hv // Hk
+        q = jnp.repeat(q, rep, axis=1)
+        k = jnp.repeat(k, rep, axis=1)
+        o, S = delta.chunked(q.transpose(1, 0, 2), k.transpose(1, 0, 2), v.transpose(1, 0, 2),
+                             g.T, beta.T, st["S"], scan=scan)
+        o = o.transpose(1, 0, 2)                                    # [C, Hv, dv]
     z = z.reshape(C, Hv, dv)
     o = o * jax.lax.rsqrt(jnp.mean(o * o, -1, keepdims=True) + cfg.eps) * L["gnorm"]
     o = o * jax.nn.silu(z)
-    out = mm(o.reshape(C, vd), L["out"], precision)
+    out = mm(o.reshape(C, vd), L["out"], precision, tap, "out")
     return out, {"conv": new_conv, "S": S}
 
 
@@ -295,10 +340,10 @@ def causal_attention(qh, kc, vc, pos0, precision):
     return (acc / l[..., None]).transpose(2, 0, 1, 3)
 
 
-def attention(cfg, L, st, x, pos0, cos, sin, precision):
+def attention(cfg, L, st, x, pos0, cos, sin, precision, tap=None):
     C = x.shape[0]
     H, Hkv, D = cfg.heads, cfg.kv_heads, cfg.head_dim
-    proj = mm(x, L["qkv"], precision)
+    proj = mm(x, L["qkv"], precision, tap, "qkv")
     qg, k, v = jnp.split(proj, [H * D * 2, H * D * 2 + Hkv * D], -1)
     qg = qg.reshape(C, H, 2 * D)
     q, gate = qg[..., :D], qg[..., D:].reshape(C, H * D)
@@ -314,13 +359,15 @@ def attention(cfg, L, st, x, pos0, cos, sin, precision):
     qh = q.reshape(C, Hkv, rep, D)
     o = causal_attention(qh, kc, vc, pos0, precision)
     o = o.reshape(C, H * D) * jax.nn.sigmoid(gate)
-    return mm(o, L["o"], precision), {"k": kc, "v": vc}
+    return mm(o, L["o"], precision, tap, "o"), {"k": kc, "v": vc}
 
 
-@functools.partial(jax.jit, static_argnames=("cfg", "precision", "scan"), donate_argnums=(2,))
-def prefill_chunk(cfg: Config, params, state, x, pos0, n_valid, *, precision="bf16", scan="jax"):
+@functools.partial(jax.jit, static_argnames=("cfg", "precision", "scan", "calib"), donate_argnums=(2,))
+def prefill_chunk(cfg: Config, params, state, x, pos0, n_valid, *, precision="bf16", scan="jax", calib=False):
     """x [C, d] f32 embeddings at positions pos0..pos0+C; rows at or past
-    `n_valid` are padding. Returns (state, final-normed rows [C, d]).
+    `n_valid` are padding. Returns (state, final-normed rows [C, d]); with
+    `calib`, also {"<layer>.<projection>": max |input| per input channel}
+    over the real rows, for int8 calibration.
 
     Pad rows are held at zero after every layer: causal attention gives them
     zero weight in real rows, but a pad row that overflowed would still turn
@@ -330,18 +377,28 @@ def prefill_chunk(cfg: Config, params, state, x, pos0, n_valid, *, precision="bf
     x = jnp.where(real, x, 0.0)
     cos, sin = rope_tables(cfg, pos0 + jnp.arange(C))
     new_state = []
+    stats = {}
     for i, L in enumerate(params["layers"]):
+        tap = None
+        if calib == "inputs":
+            def tap(name, v, i=i):
+                stats[f"{i}.{name}"] = jnp.where(real, v, 0.0).astype(jnp.bfloat16)
+        elif calib:
+            def tap(name, v, i=i):
+                stats[f"{i}.{name}"] = jnp.max(jnp.abs(jnp.where(real, v, 0.0)), 0)
         h = rms(x, L["in_norm"], cfg.eps)
         if cfg.layer_types[i] == "linear_attention":
-            y, s = deltanet(cfg, L, state[i], h, precision, scan, real)
+            y, s = deltanet(cfg, L, state[i], h, precision, scan, real, tap)
         else:
-            y, s = attention(cfg, L, state[i], h, pos0, cos, sin, precision)
+            y, s = attention(cfg, L, state[i], h, pos0, cos, sin, precision, tap)
         new_state.append(s)
         x = jnp.where(real, x + y, 0.0)
         h = rms(x, L["post_norm"], cfg.eps)
-        gu = mm(h, L["gate_up"], precision)
-        x = x + mm(jax.nn.silu(gu[:, :cfg.ffn]) * gu[:, cfg.ffn:], L["down"], precision)
+        gu = mm(h, L["gate_up"], precision, tap, "gate_up")
+        x = x + mm(jax.nn.silu(gu[:, :cfg.ffn]) * gu[:, cfg.ffn:], L["down"], precision, tap, "down")
         x = jnp.where(real, x, 0.0)
+    if calib:
+        return new_state, rms(x, params["norm"], cfg.eps), stats
     return new_state, rms(x, params["norm"], cfg.eps)
 
 

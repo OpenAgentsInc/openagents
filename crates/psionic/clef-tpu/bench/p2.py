@@ -22,9 +22,10 @@ def main():
     ap.add_argument("--chunk", type=int, default=0)
     ap.add_argument("--scan", default="jax")
     ap.add_argument("--precision", default="bf16")
+    ap.add_argument("--calib", default=None, help="int8 calibration map (calibrate.py)")
     ap.add_argument("--reps", type=int, default=3)
     a = ap.parse_args()
-    r = Runner(a.model, chunk=a.chunk, precision=a.precision, scan=a.scan)
+    r = Runner(a.model, chunk=a.chunk, precision=a.precision, scan=a.scan, calib=a.calib)
     rng = np.random.default_rng(0)
     for L in [int(x) for x in a.lengths.split(",")]:
         ids = rng.integers(1000, 200000, L).tolist()
