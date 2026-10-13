@@ -565,7 +565,7 @@ impl Recorder {
             tokens: outcome.tokens,
             checks_passed: outcome.checks_passed,
             redone: outcome.redone,
-            model: outcome.model.map(|model| scrub(&model)),
+            model: outcome.model.map(|model| scrub_model(&model)),
             harness_version: version(open.harness),
             diagnostic: outcome.error.as_deref().map(scrub),
         });
@@ -650,6 +650,26 @@ pub fn scrub(text: &str) -> String {
         cut.push('…');
         cut
     }
+}
+
+/// A model name as the record keeps it: a provider/model slug such as
+/// `google/gemini-3.8-flash` or `openrouter/free` stays whole (#11521);
+/// anything else (a real path, a sentence, a key) is scrubbed like a
+/// diagnostic.
+#[must_use]
+pub fn scrub_model(model: &str) -> String {
+    let model = model.trim();
+    let slug = !model.is_empty()
+        && model.len() <= 128
+        && !model.starts_with(['/', '~', '.'])
+        && model.matches('/').count() <= 2
+        && !model.contains("//")
+        && !model.ends_with('/')
+        && model.chars().all(|c| {
+            c.is_ascii_alphanumeric() || matches!(c, '/' | '.' | '-' | '_' | ':' | '@' | '+')
+        })
+        && !looks_like_secret(model);
+    if slug { model.to_owned() } else { scrub(model) }
 }
 
 fn looks_like_path(word: &str) -> bool {
@@ -1168,6 +1188,22 @@ mod tests {
             scrub("HTTP 429 (resets in 30 s)"),
             "HTTP 429 (resets in 30 s)"
         );
+    }
+
+    #[test]
+    fn model_slugs_survive_and_paths_and_keys_do_not() {
+        for model in [
+            "google/gemini-3.8-flash",
+            "openrouter/free",
+            "claude-opus-5-5",
+            "codex:gpt-6.1-sol:high",
+            "anthropic/claude-fable-5.1",
+        ] {
+            assert_eq!(scrub_model(model), model);
+        }
+        assert_eq!(scrub_model("/Users/someone/.claude/x.json"), "[path]");
+        assert_eq!(scrub_model("~/models/q.gguf"), "[path]");
+        assert_eq!(scrub_model("sk-ant-abcdef123456"), "[redacted]");
     }
 
     #[test]

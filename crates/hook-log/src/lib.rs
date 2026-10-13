@@ -109,14 +109,24 @@ pub fn log_var(hook: &str) -> String {
     format!("CODER_{name}_LOG")
 }
 
-/// Where `hook` logs: the override variable, else
-/// `~/.openagents/decisions/<hook>.jsonl`.
+/// The variable that moves every hook's log into one folder: a run with
+/// its own state (`--state DIR`) sets it to `DIR/decisions`, so test and
+/// audit runs stay out of the person's real logs (#11521).
+pub const DIR_VAR: &str = "CODER_DECISIONS_DIR";
+
+/// Where `hook` logs: the override variable, else `<hook>.jsonl` in
+/// [`DIR_VAR`], else `~/.openagents/decisions/<hook>.jsonl`.
 #[must_use]
 pub fn default_path(hook: &str) -> Option<PathBuf> {
     if let Ok(path) = std::env::var(log_var(hook))
         && !path.trim().is_empty()
     {
         return Some(PathBuf::from(path));
+    }
+    if let Ok(dir) = std::env::var(DIR_VAR)
+        && !dir.trim().is_empty()
+    {
+        return Some(PathBuf::from(dir).join(format!("{hook}.jsonl")));
     }
     let home = std::env::var_os("HOME")?;
     Some(PathBuf::from(home).join(format!(".openagents/decisions/{hook}.jsonl")))

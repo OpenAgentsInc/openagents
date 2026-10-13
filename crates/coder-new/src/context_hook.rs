@@ -557,13 +557,9 @@ pub fn on_tool(input: &Value, cwd: &Path, judge: &dyn Judge) -> Option<Value> {
 }
 
 fn log_path() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var(LOG_VAR)
-        && !path.trim().is_empty()
-    {
-        return Some(PathBuf::from(path));
-    }
-    let home = std::env::var_os("HOME")?;
-    Some(PathBuf::from(home).join(".openagents/decisions/context.jsonl"))
+    // `CODER_CONTEXT_LOG`, else the shared folder `--state` moves (#11521).
+    debug_assert_eq!(hook_log::log_var("context"), LOG_VAR);
+    hook_log::default_path("context")
 }
 
 fn append_log(line: &Value) {

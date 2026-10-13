@@ -262,12 +262,9 @@ fn record(
 }
 
 fn log_path() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var(LOG_VAR)
-        && !path.trim().is_empty()
-    {
-        return Some(PathBuf::from(path));
-    }
-    Some(PathBuf::from(std::env::var_os("HOME")?).join(".openagents/decisions/gate.jsonl"))
+    // `CODER_GATE_LOG`, else the shared folder `--state` moves (#11521).
+    debug_assert_eq!(hook_log::log_var("gate"), LOG_VAR);
+    hook_log::default_path("gate")
 }
 
 fn append_log(line: &Value) {

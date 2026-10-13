@@ -233,6 +233,9 @@ fn run() -> io::Result<()> {
             }
         }
     }
+    if let Some(dir) = &state {
+        coder_new::home::keep_records_under(dir);
+    }
     if capture {
         if models {
             app.plugins.enabled = true;

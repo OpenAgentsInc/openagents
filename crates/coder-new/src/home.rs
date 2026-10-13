@@ -26,6 +26,34 @@ pub fn data_path(child: &str) -> Option<PathBuf> {
     data_dir().map(|dir| dir.join(child))
 }
 
+/// For a run with its own state (`--state DIR`): routing records go to
+/// `DIR/routing` and System One decision logs to `DIR/decisions`, unless
+/// their own variables already say where (#11521). Set in the process
+/// environment, before any thread starts, so the hooks Claude Code and
+/// Codex run as child processes log there too.
+pub fn keep_records_under(state: &Path) {
+    for (name, dir) in record_dirs(state, &|name| std::env::var_os(name)) {
+        // SAFETY: called at startup, before this process starts threads.
+        unsafe { std::env::set_var(name, dir) };
+    }
+}
+
+/// The variables [`keep_records_under`] sets for `state`: each one the
+/// environment (`variable`) leaves unset or empty.
+fn record_dirs(
+    state: &Path,
+    variable: &dyn Fn(&str) -> Option<std::ffi::OsString>,
+) -> Vec<(&'static str, PathBuf)> {
+    [
+        (crate::routing_record::DIR_ENV, "routing"),
+        (hook_log::DIR_VAR, "decisions"),
+    ]
+    .into_iter()
+    .filter(|(name, _)| variable(name).is_none_or(|value| value.is_empty()))
+    .map(|(name, child)| (name, state.join(child)))
+    .collect()
+}
+
 /// Moves `ROOT/coder-new` into `ROOT/coder` once. Entries are renamed, so
 /// chats, the sign-in, sync state, locks, and the build folder keep their
 /// bytes; a directory both sides have is merged, and a file both sides have
@@ -86,6 +114,24 @@ fn restrict(_dir: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_run_with_its_own_state_keeps_its_records_there() {
+        // #11521.
+        let state = Path::new("/tmp/audit-state");
+        assert_eq!(
+            super::record_dirs(state, &|_| None),
+            [
+                ("CODER_ROUTING_DIR", state.join("routing")),
+                ("CODER_DECISIONS_DIR", state.join("decisions")),
+            ]
+        );
+        let routing_set = |name: &str| (name == "CODER_ROUTING_DIR").then(|| "/elsewhere".into());
+        assert_eq!(
+            super::record_dirs(state, &routing_set),
+            [("CODER_DECISIONS_DIR", state.join("decisions"))]
+        );
+    }
 
     #[test]
     fn moves_coder_new_into_coder_and_leaves_a_link() {

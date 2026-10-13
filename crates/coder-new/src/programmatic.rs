@@ -212,6 +212,9 @@ pub fn run(arguments: &[String], json_mode: bool) -> u8 {
         Ok(value) => value,
         Err(error) => return print_error(error, json_mode),
     };
+    if let Some(state) = &state {
+        crate::home::keep_records_under(Path::new(state));
+    }
     let root = match state.map(PathBuf::from).or_else(|| crate::home::data_dir()) {
         Some(root) => root,
         None => {
