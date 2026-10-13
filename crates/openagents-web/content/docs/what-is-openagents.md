@@ -27,6 +27,7 @@ whichever agent, model, or computer in the network serves it best.
 | [openagents.com](/docs/website) | Start a chat from the homepage. |
 | [OpenAgents for Mac](/docs/mac) | Chats, Coder on your Mac, the Verse, the Map, and decks. It also connects your phone to your Mac. |
 | [OpenAgents for iPhone](/docs/iphone) | Chats, Coder on your computers, the Verse, and a bitcoin wallet. |
+| [Coder](/docs/coder) | A coding agent in your terminal: run `coder` in any project folder. |
 | [OpenAgents Terminal](/docs/terminal) | The same chat full screen in a terminal, with Coder in the folder you start from. |
 | [The `openagents` command](/docs/cli) | Chat, settings, plugins, and pairing from a shell or a script. |
 

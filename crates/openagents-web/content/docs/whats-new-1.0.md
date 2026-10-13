@@ -32,18 +32,21 @@ irm https://openagents.com/cli/install.ps1 | iex
 ```
 
 - **Sign in to your account:** run `coder login`, then approve the code at
-  [openagents.com/device](/device). Inside Coder, type `/login`.
-- **Sync your chats to the website:** type `/sync on` in Coder. Add your 150
-  newest earlier chats with `/sync all`. Stop with `/sync off`. Remove this
+  [openagents.com/device](https://openagents.com/device). Inside Coder, type `/login`.
+- **Sync your chats to the website and phone:** type `/sync on` in Coder;
+  it saves your earlier chats too. Stop with `/sync off`. Remove this
   computer's chats from your account with `/sync delete`.
-- **Reply from the website:** open a synced chat in the sidebar and type
+- **Reply from the website or your phone:** open a synced chat and type
   your reply while Coder is open on that computer.
-- **Let OpenAgents pick the model:** the input says `auto`. Press Tab to
-  switch to `flash`, a fast model on your own OpenRouter key. Add the key
-  with F2.
-- **Use Coder free each day:** when you're signed in, `auto` is free up to
-  about $1 of model use a day. It starts again at midnight UTC. See
-  [Pricing](/docs/pricing).
+- **Choose who answers:** the input says `Auto`. Press `Shift+Tab` to pick
+  Claude Code, Codex, OpenCode, or another agent on your computer, and
+  type `/models` to pick the model. See [Choose who answers](/docs/coder-agents).
+- **Use Coder free each day:** when you're signed in, Coder's own loop on
+  `auto` is free up to about $1 of model use a day. It starts again at
+  midnight UTC. See [Pricing](/docs/pricing).
+- **Undo a turn:** `/rewind` puts back the files a turn changed.
+- **Solve an issue:** ask Coder to solve `owner/repo#42`, or run
+  `coder solver 42 --github owner/repo`. See [Solve an issue](/docs/coder-solver).
 - **See what each model call cost:** Coder records the tokens, cost, and
   time of every call. Save them with the chat using `/export`.
 - **Scroll a command's output** on the left edge of its box. Scroll

@@ -1,7 +1,9 @@
 # Coding agents
 
-Coder doesn't bring its own model account. It runs the coding agents you
-already use, on your computer, under your own sign-in with each one.
+Coder runs the coding agents you already use, on your computer, under
+your own sign-in with each one. This page covers Coder tasks started from
+the Mac app, OpenAgents Terminal, the phone, or `openagents chat`; for
+the `coder` terminal app, see [Choose who answers](/docs/coder-agents).
 
 | Agent | Order | Model when you don't name one |
 | --- | --- | --- |
@@ -42,9 +44,11 @@ on that computer. If it can't use it, because it isn't signed in, is
 turned off, or has no room right now, the start says why and names the one
 running instead. This works from the phone too.
 
-There's no model picker in the apps yet. To choose a model, name it in the
-settings (`codex:MODEL`, `opencode:PROVIDER/MODEL`); see the
-[settings reference](/docs/settings).
+In the `coder` terminal app, `Shift+Tab` and `/models` choose the agent
+and its model; see [Choose who answers](/docs/coder-agents). The Mac app
+and OpenAgents Terminal have no model picker yet. To choose a model
+there, name it in the settings (`codex:MODEL`, `opencode:PROVIDER/MODEL`);
+see the [settings reference](/docs/settings).
 
 ## Failover
 

@@ -28,7 +28,7 @@ pub(crate) const TERMS: &str = include_str!("../../content/legal/terms.md");
 pub(crate) const PRIVACY: &str = include_str!("../../content/legal/privacy.md");
 
 /// The docs, by slug, in reading order.
-pub(crate) const DOCS: [(&str, &str); 33] = [
+pub(crate) const DOCS: [(&str, &str); 40] = [
     (
         "what-is-openagents",
         include_str!("../../content/docs/what-is-openagents.md"),
@@ -45,6 +45,34 @@ pub(crate) const DOCS: [(&str, &str); 33] = [
         include_str!("../../content/docs/privacy-and-security.md"),
     ),
     ("coder", include_str!("../../content/docs/coder.md")),
+    (
+        "coder-terminal",
+        include_str!("../../content/docs/coder-terminal.md"),
+    ),
+    (
+        "coder-agents",
+        include_str!("../../content/docs/coder-agents.md"),
+    ),
+    (
+        "coder-plugins",
+        include_str!("../../content/docs/coder-plugins.md"),
+    ),
+    (
+        "coder-solver",
+        include_str!("../../content/docs/coder-solver.md"),
+    ),
+    (
+        "coder-safety",
+        include_str!("../../content/docs/coder-safety.md"),
+    ),
+    (
+        "coder-sync",
+        include_str!("../../content/docs/coder-sync.md"),
+    ),
+    (
+        "coder-scripts",
+        include_str!("../../content/docs/coder-scripts.md"),
+    ),
     (
         "coding-agents",
         include_str!("../../content/docs/coding-agents.md"),

@@ -112,7 +112,9 @@ secure, do see IP addresses; they're deleted after 30 days.
   agent's model provider, under your sign-in there.
 - By default Coder approves its own steps, including a push, so it can
   finish without stopping to ask. To run it inside a stricter boundary, see
-  `coder.access` in the [settings reference](/docs/settings).
+  `coder.access` in the [settings reference](/docs/settings). In the
+  `coder` terminal app, production deploys, merges, secrets, payments, and
+  DNS changes always wait for you; see [Safety](/docs/coder-safety).
 
 ## Your phone's keys
 

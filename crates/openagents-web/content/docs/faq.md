@@ -3,23 +3,24 @@
 ## What does it cost?
 
 Chatting with OpenAgents is free, and we don't count your messages. Coder
-runs on your own computer with the coding agents you already use there, so
-it doesn't bill you through us; each agent's own provider bills you as it
-normally does. Pro, for cloud environments, will be $20 a month with 100
+runs on your own computer with the coding agents you already use there,
+such as Claude Code and Codex, and each one's own plan covers it. Coder's
+own loop on OpenAgents models is free up to a daily allowance when you're
+signed in. Pro, for cloud environments, will be $20 a month with 100
 machine-hours; it isn't on sale yet. See [Pricing](/docs/pricing).
 
 ## Do I need a computer?
 
-Not to chat. You need your own computer to run Coder: a Mac with
-OpenAgents for Mac, or a computer with OpenAgents Terminal. We don't offer
-a hosted computer yet.
+Not to chat. You need your own computer to run Coder: a Mac, Linux, or
+Windows computer with Coder installed ([Download and install](/docs/download)).
+We don't offer a hosted computer yet.
 
 ## Do I need an account?
 
 Not for the apps or Coder: each device makes its own key the first time it
 runs. An account ([log in](https://openagents.com/login)) keeps your
-website chats, and with `coder login` it shows Coder's chats from a
-[connected computer](/docs/connect-a-computer).
+website chats, and with `coder login` and `/sync on` it shows Coder's
+chats from your computer. See [Sync, share, and export](/docs/coder-sync).
 
 ## Which model answers the chat?
 
@@ -40,12 +41,15 @@ opt you out, and we set that up with you. See [Privacy and security](/docs/priva
 
 ## Can I pick the model Coder uses?
 
-Not from the apps yet. Name a model for an agent in the settings, such as
-`codex:MODEL`; see the [settings reference](/docs/settings).
+Yes. In Coder, `Shift+Tab` chooses who answers (Auto, Claude Code, Codex,
+OpenCode, or another agent), and `/models` chooses the model. See
+[Choose who answers](/docs/coder-agents).
 
 ## Can I attach a photo or a file?
 
-Not yet. Chats are text only on every surface for now.
+In Coder, yes: paste a screenshot, drop in the path of an image or a PDF,
+or write `@path/to/file` in your message. Chats on the website and in the
+apps are text only for now.
 
 ## Do I need Tailscale?
 
@@ -54,9 +58,11 @@ Tailscale is an optional extra route if you already use it.
 
 ## Does Coder change my files?
 
-Not in your checkout. Coder works in its own worktree, a separate copy of
-your project, and you choose whether to publish the change. See
-[Worktrees and changes](/docs/worktrees-and-changes).
+In the `coder` terminal app, yes: a chat works in the folder you open it
+in, like any coding agent, and `/rewind` puts back the files a turn
+changed. Background agents, Solver, and chats run from scripts work in
+their own copy of your project instead. Commands that would throw away
+uncommitted work are refused everywhere. See [Safety](/docs/coder-safety).
 
 ## Do plugin authors get paid?
 
@@ -72,8 +78,9 @@ under the Apache License 2.0.
 
 ## When is version 1.0 out?
 
-The Mac app and OpenAgents Terminal are at release candidate 1.0.0-rc.2 on
-the [download page](/download). Stable releases come after testing.
+Coder 1.0 is in release candidates now; the [download page](/download)
+shows the latest. Stable releases come after testing, and Coder updates
+itself when they're out.
 
 ## How do I see what changed in a build?
 

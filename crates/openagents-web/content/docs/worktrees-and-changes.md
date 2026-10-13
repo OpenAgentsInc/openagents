@@ -1,8 +1,11 @@
 # Worktrees and changes
 
-Coder never works in your checkout. Each task gets its own Git worktree: a
-separate folder with a copy of your project at its last commit. Your
-files, your branch, and any uncommitted changes stay as they were.
+A Coder task started from the Mac app, OpenAgents Terminal, the phone, or
+`openagents chat` never works in your checkout. Each task gets its own Git
+worktree: a separate folder with a copy of your project at its last
+commit. Your files, your branch, and any uncommitted changes stay as they
+were. (In the `coder` terminal app, a chat works in the folder you open;
+see [Safety](/docs/coder-safety).)
 
 ## Where the work is
 

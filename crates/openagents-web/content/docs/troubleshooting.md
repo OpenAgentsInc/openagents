@@ -13,6 +13,33 @@ helper (the host) doesn't answer. The app keeps trying on its own.
    quit OpenAgents and open it again.
 4. Still stuck? Report a problem (below) with what the screen says.
 
+## `coder` isn't found after installing
+
+Open a new terminal: the installer added `~/.openagents/bin` to your
+`PATH`, and only new terminals see it. Or run it by its full path,
+`~/.openagents/bin/coder`. If you installed with
+`CODER_NO_PATH_UPDATE=1`, add this line to your shell's startup file:
+
+```sh
+export PATH="$HOME/.openagents/bin:$PATH"
+```
+
+## Coder has nobody to answer
+
+Coder needs at least one of these on the computer: Claude Code or Codex
+signed in (run `claude` or `codex` once and sign in), OpenCode installed,
+your openagents.com sign-in (`coder login`), or an OpenRouter key
+([how](/docs/coder-plugins)). Then press `Shift+Tab` in Coder to see who
+can answer.
+
+## "Today's free allowance on OpenAgents is used up"
+
+Coder's own loop on OpenAgents models is free up to a daily allowance.
+Until it resets, press `Shift+Tab` to answer with Claude Code or Codex
+on your own plan, or turn on OpenRouter BYOK and pick a model on your own
+key in `/models`. The allowance starts again
+at midnight UTC.
+
 ## My computer's chats don't show on the website
 
 1. Run `coder login` on that computer and approve the code at

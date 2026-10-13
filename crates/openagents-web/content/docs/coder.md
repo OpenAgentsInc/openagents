@@ -1,155 +1,117 @@
 # Coder quick start
 
-Coder is an AI coding assistant in your terminal. Ask it to explain code,
-change files, or run commands in the folder you open. You can follow its work
-in the chat and open a delegated agent's conversation below the input bar.
+Coder is a coding agent in your terminal. Run `coder` in a project folder
+and ask in plain words: explain this code, fix that test, add a feature. It
+reads, edits, and runs commands in that folder, and shows each step as it
+goes.
 
-The new **1.0.0-rc.7** release ships Coder, with the `openagents` command, for
-macOS, Linux, and Windows. It includes plugin settings, an OpenRouter model
-picker, agent conversations, Markdown replies, code diffs, and saved chats
-that you can resume or export.
+Coder works with the coding agents you already have. It can answer
+through Claude Code, Codex, or OpenCode on your own sign-in, hand work to
+other agents on your computer, or use its own coding loop on OpenAgents
+models. You don't need an API key to start.
 
-You do not need an API key to start. Coder uses an available Codex or Claude
-Code login, then falls back to the **OpenAgents AI Gateway**. Connecting
-OpenRouter is optional.
+## 1. Install
 
-## Playtest: follow these steps in order
-
-Allow about 15 minutes. Use a new, empty folder so the test stays separate
-from your projects.
-
-### 1. Install Coder
-
-On macOS or Linux, run:
+On macOS or Linux:
 
 ```sh
 curl -fsSL https://openagents.com/cli/install.sh | bash
 ```
 
-On Windows, open PowerShell and run:
+On Windows, in PowerShell:
 
 ```powershell
 irm https://openagents.com/cli/install.ps1 | iex
 ```
 
-Open a new terminal, then check the version:
+Open a new terminal and check the version:
 
 ```sh
 coder --version
 ```
 
-It should report `1.0.0-rc.7`. The [download page](/download) also has manual
-downloads. Run the installer again when you want to update.
+Updates install themselves. See [Download and install](/docs/download)
+for what gets installed, updating, and uninstalling.
 
-### 2. Open a test folder
-
-These commands work in a macOS/Linux terminal or Windows PowerShell:
+## 2. Sign in
 
 ```sh
-mkdir coder-playtest
-cd coder-playtest
+coder login
+```
+
+Coder opens [openagents.com/device](https://openagents.com/device) in
+your browser, or prints that address and a code when it can't (over SSH,
+for example). Check that the page shows the same code as your terminal,
+then approve. Coder then asks once where this computer's chats should live:
+
+1. **Sync all my chats:** they show on openagents.com and in the phone
+   app, earlier ones too.
+2. **Keep chats on this computer:** nothing is sent.
+
+Type `1` or `2`, or answer on the website. You can change it later with
+`/sync`; see [Sync, share, and export](/docs/coder-sync).
+
+Signing in is optional. Without it, Coder answers through Claude Code,
+Codex, or OpenCode if one of them is set up on this computer. Signed in,
+it can also use OpenAgents models, with a free daily allowance (see
+[Pricing](/docs/pricing)).
+
+## 3. Open a project
+
+```sh
+cd my-project
 coder
 ```
 
-You should see an empty chat, the working folder at the top right, and an
-input bar at the bottom. Type a message and press Enter to send it. Use
-Alt+Enter for a new line. Type `/` to see the available commands.
+You see the input at the bottom, with **Auto** at its top right (who
+answers) and your folder and Git branch at its bottom right. Type a
+message and press `Enter` to send. `/` lists every command.
 
-### 3. Send your first message
+## 4. Ask for something
 
-Enter:
-
-```text
-Say hello, then give me three bullet points about what you can do
-in this folder. Do not change any files yet.
-```
-
-Check that the reply appears in the chat and the bullet points render
-normally. Notice the connection or model information near the input bar.
-If a reply needs stopping, press Esc. Ctrl+C quits Coder.
-
-### 4. Make one small change
-
-Enter:
+Try a question first:
 
 ```text
-Create hello.txt in this folder containing exactly: Hello from Coder.
-Read it back and confirm its contents. Do not change any other files.
+What does this project do? Name the three files I should read first.
 ```
 
-Wait for it to finish, then enter:
+Then a small change:
 
 ```text
-Change hello.txt to say: Hello from Coder RC4.
-Show me the before and after. Do not change any other files.
+Add a short "Getting started" section to the README. Show me the diff.
 ```
 
-Check the file in your editor or file browser. It should contain the second
-greeting. Follow the commands and results in the chat.
+Each step shows as a line: files read, searches, edits with their diff,
+and commands with their output. Press `Ctrl+O` to show each step in
+full. Press `Esc` to stop a reply.
 
-If a delegated agent appears below the input bar, clear any draft and use
-`Up`/`Down` to select its conversation. Check its task, elapsed time, and
-token count. Press `Up` from the first agent to return to the main chat. Trackpad or
-mouse scrolling should scroll the chat without changing the selected agent.
-Some requests run entirely in the main chat and have no separate agent row.
+If you don't like a change, type `/rewind`, pick the message, and Coder
+puts the files back as they were before it.
 
-### 5. Try the plugin screen
+## 5. Keep going
 
-Enter `/plugins` or press F2. Up/Down selects a plugin, Space turns it on or
-off, and Enter opens its settings. Esc returns to the previous screen.
+- `Ctrl+N` starts a new chat; `/resume` opens an earlier one.
+- `Shift+Tab` chooses who answers: Auto, Claude Code, Codex, OpenCode,
+  or another agent on this computer.
+- `/models` picks the model; `/plugins` (or `Ctrl+P`) turns plugins on
+  and off.
+- `Ctrl+C` quits. Your chat is saved.
 
-Coder loop, Jev, OpenAgents CLI, and ACP Subagents ship enabled. OpenRouter
-BYOK starts off unless a key is already configured. Try turning Jev off and
-back on. In `/plugins`, open **ACP Subagents** to see detected local agents and their
-checkboxes; an empty list is normal if none are installed.
+## The Coder guides
 
-### 6. Optional: connect OpenRouter and choose a model
+| Guide | What it covers |
+| --- | --- |
+| [Use Coder in the terminal](/docs/coder-terminal) | The screen, keys, commands, chats, memory, and attachments. |
+| [Choose who answers](/docs/coder-agents) | Auto, `Shift+Tab`, models, preferences, handing work to other agents, and background agents. |
+| [Coder's plugins](/docs/coder-plugins) | What each built-in plugin does, and how to set up keys. |
+| [Solve an issue](/docs/coder-solver) | From a GitHub issue to a pull request. |
+| [Safety](/docs/coder-safety) | What Coder asks you before doing, and how it protects your work. |
+| [Sync, share, and export](/docs/coder-sync) | Your chats on openagents.com and your phone, and saving them to files. |
+| [Coder from scripts](/docs/coder-scripts) | `openagents coder` for scripts and other agents. |
 
-Skip this step if you do not have an OpenRouter API key.
+Found a problem? [Report it on GitHub](https://github.com/OpenAgentsInc/openagents/issues)
+with your system, Coder's version (from the version command above), and
+what you saw. Leave out keys and
+private code.
 
-1. In `/plugins`, select **OpenRouter BYOK** and press Enter.
-2. Enter your key in **OpenRouter API key**. Use `Tab` to select **Save**,
-   then press `Enter`. Check that the key is verified.
-3. Return to the plugin list and ensure OpenRouter is on.
-4. Enter `/models`. Type to search, then use Up/Down and Enter to choose
-   `openrouter/free` for the default free router or another listed model.
-   Fixed models offer their supported reasoning levels; the free router skips
-   that step. Confirm the output limit to save.
-5. Send another greeting. Check **OpenRouter connected** near the input bar,
-   the selected model, and the actual model above the reply. A fixed model's
-   label includes its reasoning setting, such as `:low`.
-
-Plugin settings persist when you quit and reopen Coder. Turning OpenRouter
-off retains its saved key and returns to the other available providers.
-
-### 7. Export and resume
-
-Enter `/export` after the reply finishes. Coder saves an **ATIF** file: a
-record of the conversation and its calls. It shows the file path and copies
-the path to your clipboard when clipboard access is available.
-
-Press Ctrl+C, run `coder` again in the same folder, and enter `/resume`.
-Select your test chat with Up/Down, then press Enter. The messages should
-return without repeating earlier commands. Send:
-
-```text
-What did we change in hello.txt?
-```
-
-### 8. Share your results
-
-Report your operating system, Coder version, provider and model, the step
-you tried, and what happened. Include a screenshot or the exported test chat
-if helpful. Keep API keys and private project content out of your report.
-You can [report a problem on GitHub](https://github.com/OpenAgentsInc/openagents/issues).
-
-## Use Coder from a script
-
-The companion CLI exposes the same chat runtime:
-
-```sh
-openagents coder chat -p "Explain the files in this folder. Do not change anything." --session first-test --json
-```
-
-Reuse `--session first-test` to continue that chat. Run
-`openagents coder --help` for the other commands.
+Next: [Use Coder in the terminal](/docs/coder-terminal).

@@ -1,9 +1,9 @@
 # The openagents command
 
-`openagents` is the command-line program behind OpenAgents Terminal. Use it
-to chat from a script, change Coder's settings, work with plugins, and
-connect phones to a computer without a screen. It installs with
-OpenAgents Terminal; see [Download](/docs/download).
+`openagents` is the command-line program that comes with Coder. Use it
+to run Coder from a script, chat from a script, change settings, work
+with plugins, and connect phones to a computer without a screen. It
+installs with Coder; see [Download and install](/docs/download).
 
 Every command takes `--json` for machine-readable output and `--help` for
 its syntax. `openagents doctor` shows which identities, stores, and relays
@@ -43,6 +43,21 @@ When the Mac app (or another host) runs on this computer, these are the
 same threads it shows. Without one, the command keeps its threads in
 `~/.openagents/chat/`, and they move into the host's store the first time a
 host runs. `--scratch` uses a throwaway identity and thread.
+
+## Coder
+
+`openagents coder` runs Coder's chat without the screen, and manages its
+models, plugins, agents, and saved chats:
+
+```sh
+openagents coder chat -p "Explain this folder." --session first   # a chat
+openagents coder delegate --to codex --task "Review the last commit"
+openagents coder models list
+openagents coder plugins list
+openagents coder sessions list
+```
+
+See [Coder from scripts](/docs/coder-scripts).
 
 ## Settings
 
