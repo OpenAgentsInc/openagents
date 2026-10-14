@@ -5,12 +5,9 @@
 FROM rust:1.97.1-slim-trixie AS builder
 
 WORKDIR /build
-COPY Cargo.toml Cargo.lock ./
-COPY migrations ./migrations
-COPY crates ./crates
-COPY nips ./nips
-COPY tests ./tests
-COPY vendor ./vendor
+# The whole checkout: the lifecycle crates pull in build scripts that read
+# repository data (knowledge/, …).
+COPY . .
 RUN cargo build --release -p oa-computers \
     && strip target/release/oa-computers
 
