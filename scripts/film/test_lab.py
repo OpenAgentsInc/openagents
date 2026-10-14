@@ -169,6 +169,67 @@ class LabTest(unittest.TestCase):
         self.assertFalse(lab.superseded({**old, "edit": False}), "a look at an old version still renders")
         self.assertFalse(lab.superseded({**old, "quality": "review"}), "an asked-for render always runs")
 
+    def test_a_voiceover_clip_goes_over_its_lines_and_their_captions_follow_it(self):
+        voice = TMP / "290-test-voice.wav"  # 2.4 s
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=330:duration=2.4",
+                        str(voice)], check=True)
+        lab.create("voiced", "cut.v1", "Voiced film", {**self.cut, "captions": []}, "First", "test")
+        lab.call("lab_lines", {"document": "voiced", "lines": "One two three. Four five six seven eight.",
+                               "at": "0.5", "render": False})
+        heard = [{"w": "One", "from": 0.1, "to": 0.3}, {"w": "two", "from": 0.3, "to": 0.5},
+                 {"w": "three.", "from": 0.5, "to": 0.8}, {"w": "Four", "from": 1.2, "to": 1.4},
+                 {"w": "five", "from": 1.4, "to": 1.6}, {"w": "six", "from": 1.6, "to": 1.8},
+                 {"w": "seven", "from": 1.8, "to": 2.0}, {"w": "eight.", "from": 2.0, "to": 2.3}]
+        real = lab.whisper_words
+        lab.whisper_words = lambda wav, log=None: [dict(w) for w in heard]
+        try:
+            out = lab.call("lab_voice", {"document": "voiced", "clip": str(voice), "at": "0.5", "render": False})
+        finally:
+            lab.whisper_words = real
+        self.assertNotIn("refused", out, out.get("text"))
+        new = lab.body("voiced", out["version"])
+        self.assertEqual(new["voices"], [{"src": str(voice), "at": 0.5}])
+        caps = new["captions"]
+        self.assertAlmostEqual(caps[0]["at"], 0.6, places=2, msg="the first line when it's said")
+        self.assertAlmostEqual(caps[1]["at"], 1.7, places=2, msg="the second line when 'Four' is said")
+        self.assertIn("re-timed to when each line is said", out["text"])
+        self.assertIn("shorter by", out["text"])
+        problems, _ = lab.check("cut.v1", new)
+        self.assertFalse([p for p in problems if "voiceover" in p], problems)
+        with self.assertRaises(lab.Refused):  # over the voice already there
+            lab.call("lab_voice", {"document": "voiced", "clip": str(voice), "at": "1.0", "render": False})
+        with self.assertRaises(lab.Refused):  # past the end
+            lab.call("lab_voice", {"document": "voiced", "clip": str(voice), "at": "8.0", "render": False})
+        talk = {**self.cut, "captions": [], "shots": [dict(s) for s in self.cut["shots"]]}
+        talk["shots"][1]["sound"] = {"gain": 1.0}
+        lab.create("voiced2", "cut.v1", "Voiced talk", talk, "First", "test")
+        with self.assertRaises(lab.Refused) as e:  # into the shot where someone speaks
+            lab.call("lab_voice", {"document": "voiced2", "clip": str(voice), "at": "0.5", "render": False})
+        self.assertIn("more picture", str(e.exception))
+        # spread over the clip when there's no transcript
+        self.assertEqual(lab.said_at(["ab", "cd"], None, 2.0)[1][0], 1.0)
+
+    def test_a_cut_with_voiceover_clips_renders_with_them_mixed_in(self):
+        voice = TMP / "290-test-voice2.wav"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=1.0",
+                        str(voice)], check=True)
+        music = TMP / "voiced-music.wav"  # its own file: tone() rewrites the shared one
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=220:duration=8",
+                        str(music)], check=True)
+        cut = {"fps": 30, "size": [320, 180], "bpm": 120, "music": str(music), "out": str(TMP / "voiced.mp4"),
+               "cache": str(TMP / "cache"), "sheets": str(TMP / "sheets"),
+               "shots": [{"name": "open", "src": self.cut["shots"][0]["src"], "in": 0.0, "dur": 2.0},
+                         {"name": "end", "src": self.cut["shots"][2]["src"], "in": 2.0, "dur": 2.0}],
+               "voices": [{"src": str(voice), "at": 0.5}, {"src": str(voice), "at": 2.5, "gain": 0.8}]}
+        spec = TMP / "voiced.json"
+        spec.write_text(json.dumps(cut))
+        r = subprocess.run([sys.executable, str(lab.FILM / "cut.py"), "render", str(spec), "--force"],
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr[-1500:])
+        loud = lab.cutmod().mean_db(TMP / "voiced.mp4", 0.6, 0.8)
+        quiet = lab.cutmod().mean_db(TMP / "voiced.mp4", 1.8, 0.4)
+        self.assertGreater(loud, quiet, "the voice is in the mix over ducked music")
+
     def test_new_copies_a_version_and_leaves_the_old_document_alone(self):
         before = len(lab.versions("film"))
         out = lab.call("lab_new", {"name": "Film take two", "copy": "film", "version": "1", "render": False})

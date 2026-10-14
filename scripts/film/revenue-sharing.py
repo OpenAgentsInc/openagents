@@ -53,6 +53,8 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 ap = argparse.ArgumentParser()
 ap.add_argument("out")
 ap.add_argument("--frames-dir", help="also save a PNG every second here")
+ap.add_argument("--no-headlines", action="store_true",
+                help="leave out the headline at the top left (for a cut whose voiceover or captions say it)")
 ap.add_argument("--only", help="render only these seconds to PNGs (comma list), no video")
 args = ap.parse_args()
 
@@ -368,6 +370,8 @@ def pulse_labels(d, t):
 
 
 def caption(d, t):
+    if args.no_headlines:
+        return
     for a, b, lines in CAPS:
         k = fade(t, a, a + 0.6) * (1 - fade(t, b - 0.5, b)) if b < SECONDS else fade(t, a, a + 0.6)
         if k <= 0:

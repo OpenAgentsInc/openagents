@@ -53,6 +53,8 @@ ap.add_argument("out")
 ap.add_argument("--frames-dir", help="also save a PNG every second here")
 ap.add_argument("--grid", action="store_true",
                 help="a faint Verse Grid floor behind the shot, moving with the camera")
+ap.add_argument("--no-headlines", action="store_true",
+                help="leave out the headline at the top left (for a cut whose voiceover or captions say it)")
 ap.add_argument("--only", help="render only these seconds to PNGs (comma list), no video")
 args = ap.parse_args()
 
@@ -682,6 +684,8 @@ def text_layer(draw_fn):
 
 
 def caption(d, t):
+    if args.no_headlines:
+        return
     caps = [
         (*B1_CAPTION, ["Most coding agents loop a big model over its tools:", "every small step goes through the big model."]),
         (*B2_CAPTION, ["OpenAgents puts System 1 in front: small, fast models.", "Only the hard parts reach the big model."]),

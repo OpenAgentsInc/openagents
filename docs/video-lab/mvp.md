@@ -133,6 +133,15 @@ Sources live in `~/work/film-out/lab/sources/<id>/` (`source.json`,
    shot where someone speaks, over another caption, or past the end are
    refused with how much time they need. They're marked `"vo": true`, so
    they can be swapped for the recorded voice later.
+3. **put the Bella clip 290-bella-s3 over those lines** (`lab_voice`): a
+   recorded voiceover clip goes on from a time (or just after a shot's
+   start) at its own length, kept in the cut's `voices`, with the music
+   ducked under it as under the whiteboard. The captions of the lines it says
+   are re-timed to when each is said (from whisper.cpp's word times, or
+   spread over the clip without them), and the answer says how much longer or
+   shorter the voice is than the captions were. A clip that would run into a
+   shot where someone speaks is refused with how much more picture its lines
+   need.
 
 ## An edit that's refused
 

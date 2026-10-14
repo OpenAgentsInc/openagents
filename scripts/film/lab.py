@@ -1546,6 +1546,147 @@ def vo_captions(text: str, start: float, wpm: float) -> list[dict]:
     return caps
 
 
+AUDIO_EXT = {".mp3", ".wav", ".m4a", ".aac", ".flac"}
+
+
+def find_audio(what: str) -> Path:
+    """An audio file from a path, or a file name (with or without its
+    extension) under Downloads, Movies, Desktop or ~/work/film-out."""
+    if not isinstance(what, str) or not what.strip():
+        raise Refused("say which voiceover clip: a path, or a file name like 290-bella-s3")
+    p = expand(what.strip())
+    if p.is_file():
+        return p
+    want = Path(what.strip()).name.lower()
+    stem = Path(want).stem if Path(want).suffix.lower() in AUDIO_EXT else want
+    found = [f for base in SOURCE_DIRS if base.exists() for depth in ("*", "*/*", "*/*/*")
+             for f in base.glob(depth) if f.suffix.lower() in AUDIO_EXT and f.is_file() and f.stem.lower() == stem]
+    if not found:
+        raise Refused(f"there's no audio file called {what} in Downloads, Movies, Desktop or ~/work/film-out; "
+                      "give its path")
+    return max(found, key=lambda f: f.stat().st_mtime)
+
+
+def passage(caps: list[dict], start: float, gap: float = 0.6) -> list[int]:
+    """The voiceover captions (lab_lines) of one passage: the first at or after
+    `start`, and the ones that follow it with no more than `gap` between."""
+    idx = sorted((i for i, c in enumerate(caps) if c.get("vo") and c["at"] >= start - 0.05),
+                 key=lambda i: caps[i]["at"])
+    out = []
+    for i in idx:
+        if out and caps[i]["at"] - (caps[out[-1]]["at"] + caps[out[-1]]["dur"]) > gap:
+            break
+        out.append(i)
+    return out
+
+
+def said_at(texts: list[str], words: list[dict] | None, length: float) -> list[tuple[float, float]]:
+    """When each of a passage's captions is said in its clip: the caption's
+    share of the passage's letters found in the transcript's words (so a
+    mis-heard number doesn't throw the rest off), or spread over the clip's
+    length when there's no transcript."""
+    letters = lambda s: len(re.sub(r"[^a-z0-9]", "", s.lower()))
+    total = sum(letters(t) for t in texts) or 1
+    marks, acc = [], 0
+    for t in texts:
+        marks.append(acc / total)
+        acc += letters(t)
+    if words:
+        heard = [letters(w["w"]) for w in words]
+        whole = sum(heard) or 1
+        cum, starts = 0, []
+        for w, n in zip(words, heard):
+            starts.append((cum / whole, w["from"]))
+            cum += n
+        at = []
+        for m in marks:
+            at.append(next((t for frac, t in starts if frac >= m - 1e-6), words[-1]["from"]))
+        end_all = words[-1]["to"]
+    else:
+        at = [m * length for m in marks]
+        end_all = length
+    out = []
+    for k, a in enumerate(at):
+        b = (at[k + 1] - 0.08) if k + 1 < len(at) else min(end_all + 0.3, length)
+        out.append((a, max(b, a + 0.6)))
+    return out
+
+
+def tool_voice(args) -> dict:
+    """A recorded voiceover clip over its lines: placed from a time at its own
+    length, with the music ducked under it, and the lines' captions re-timed
+    to when each is said."""
+    doc = resolve(args.get("document"))
+    parent = version(doc, args.get("version"))
+    if parent["kind"] != "cut.v1":
+        raise Refused(f"{doc} is a {parent['kind']} document; a voiceover goes on a cut")
+    old = body(doc, parent["n"])
+    clip = find_audio(args.get("clip"))
+    length_s = probe_duration(clip)
+    if length_s <= 0:
+        raise Refused(f"{clip.name} isn't an audio file the Lab can read")
+    at = args.get("at")
+    if at in (None, ""):
+        raise Refused("say where the voice starts: a time like 0:27, or a shot's name")
+    tl = timeline(old)
+    named = isinstance(at, str) and at.strip() in {s["name"] for s in tl}
+    start = seconds(at, old) + (0.4 if named else 0.0)
+    end = start + length_s
+    total = length("cut.v1", old)
+    if end > total + 1e-3:
+        raise Refused(f"{clip.name} is {length_s:.1f}s; from {clock(start)} it runs past the end at {clock(total)}")
+    for s in tl:
+        shot = old["shots"][s["i"]]
+        if shot.get("sound") and s["start"] < end - 1e-3 and start < s["end"] - 1e-3:
+            over = end - s["start"]
+            raise Refused(f"{clip.name} is {length_s:.1f}s; from {clock(start)} it runs {over:.1f}s into "
+                          f"{s['name']} ({clock(s['start'])}), where someone is speaking. Give its lines "
+                          f"{over:.1f}s more picture before {s['name']} (on the beat grid), or start it earlier")
+    for v in old.get("voices", []):
+        b = v["at"] + probe_duration(expand(v["src"]))
+        if v["at"] < end - 1e-3 and start < b - 1e-3:
+            raise Refused(f"{clip.name} ({clock(start)}-{clock(end)}) would play over {Path(v['src']).name} "
+                          f"({clock(v['at'])}-{clock(b)})")
+    caps = old.get("captions", [])
+    lines = passage(caps, start)
+    after = [c for i, c in enumerate(caps) if i not in lines and c["at"] >= start - 1e-3]
+    if after and min(c["at"] for c in after) < end - 1e-3:
+        nxt = min(after, key=lambda c: c["at"])
+        raise Refused(f"{clip.name} runs to {clock(end)}, over the caption '{nxt['text'][:40]}' at "
+                      f"{clock(nxt['at'])}; move or remove that caption first")
+    new = copy.deepcopy(old)
+    said = []
+    if lines:
+        texts = [caps[i]["text"] for i in lines]
+        words = None
+        wav = Path(tempfile.mkdtemp(prefix="lab-voice-")) / "voice.wav"
+        try:
+            run(["ffmpeg", "-v", "error", "-y", "-i", str(clip), "-ar", "16000", "-ac", "1", str(wav)])
+            words = whisper_words(wav)
+        except Exception:
+            words = None
+        finally:
+            shutil.rmtree(wav.parent, ignore_errors=True)
+        times = said_at(texts, words, length_s)
+        for i, (a, b) in zip(lines, times):
+            new["captions"][i] = {**caps[i], "at": round(start + a, 3), "dur": round(b - a, 3)}
+        said.append(f"{len(lines)} captions re-timed to when each line is said"
+                    + ("" if words else " (spread over the clip; no transcript)") + ".")
+    else:
+        said.append("No voiceover captions start there, so none were re-timed.")
+    new["captions"] = sorted(new.get("captions", []), key=lambda c: c["at"])
+    src = tilde(clip) if str(clip).startswith(str(HOME)) else str(clip)
+    new["voices"] = sorted(new.get("voices", []) + [{"src": src, "at": round(start, 3)}
+                                                   | ({"gain": float(args["gain"])} if args.get("gain") else {})],
+                           key=lambda v: v["at"])
+    slot = (caps[lines[-1]]["at"] + caps[lines[-1]]["dur"] - caps[lines[0]]["at"]) if lines else None
+    if slot:
+        said.append(f"The voice is {length_s:.1f}s; its lines' captions took {slot:.1f}s "
+                    f"({'longer' if length_s > slot else 'shorter'} by {abs(length_s - slot):.1f}s).")
+    summary = (args.get("summary") or "").strip() or f"Voiceover {clip.name} from {clock(start)}"
+    return commit(doc, parent, old, new, summary, args.get("author") or "chat", args.get("render", True), said)
+
+
 def tool_lines(args) -> dict:
     """Voiceover lines not yet recorded, shown as captions from a time at a
     speaking pace, so the film can be read as it will sound."""
@@ -2083,6 +2224,14 @@ TOOLS = {
                               "another caption, or past the end. Checked like lab_edit; a preview renders.",
                   {"document": "string", "lines": "string", "at": "string", "wpm": "string?", "summary": "string?",
                    "version": "string?"}),
+    "lab_voice": (tool_voice, "Put a recorded voiceover clip (an audio file, by path or name like 290-bella-s3) on a "
+                              "cut from a time or just after a shot's start, at its own length, with the music "
+                              "ducked under it. The voiceover captions of the lines it says (lab_lines) are "
+                              "re-timed to when each is said. Refused if it would run into a shot where someone "
+                              "speaks (it says how much more picture the lines need), over another voice or "
+                              "caption, or past the end. Checked like lab_edit; a preview renders.",
+                  {"document": "string", "clip": "string", "at": "string", "gain": "string?", "summary": "string?",
+                   "version": "string?"}),
     "lab_framing": (tool_framing, "Two stills of a source side by side: whole over a blurred, dimmed copy of "
                                   "itself (fit blur) and cropped to fill (fit crop), for choosing how a clip of "
                                   "another shape sits in the film. Set the choice on the shot with lab_edit "
@@ -2114,7 +2263,7 @@ PARAM_DOCS = {
     "patch": 'a JSON Patch as a JSON string, e.g. [{"op":"replace","path":"/shots/@s4-delegation/dur","value":12.5}]',
     "summary": "one line in plain words saying what the edit changes",
     "quality": "preview, review or master",
-    "clip": "a video file's path, or its name like IMG_4135 (found in Downloads, Movies, Desktop or ~/work/film-out)",
+    "clip": "a file's path, or its name like IMG_4135 or 290-bella-s3 (found in Downloads, Movies, Desktop or ~/work/film-out)",
     "name": "a short name for the new source or shot, e.g. wb-hook",
     "source": "a source's id or its clip's file name (lab_sources lists them)",
     "after": "the name of the shot the new one goes after",
@@ -2127,6 +2276,7 @@ PARAM_DOCS = {
     "copy": "the document to copy, its id or title",
     "title": "the new document's title",
     "lines": "the voiceover text, sentences in order (several sentences are fine)",
+    "gain": "the voice's level, 1 is as recorded",
     "wpm": "speaking pace in words a minute (default 150)",
     "over": "speech (the shots where someone speaks, keeping their own sound) or shot names separated by commas",
 }

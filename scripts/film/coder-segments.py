@@ -68,6 +68,8 @@ ap = argparse.ArgumentParser()
 ap.add_argument("segment", choices=["harnesses", "safety", "everywhere", "delegation", "metaharness", "savings", "devday"])
 ap.add_argument("out")
 ap.add_argument("--only", help="render only these seconds to PNGs (comma list) in OUT as a dir")
+ap.add_argument("--no-headlines", action="store_true",
+                help="leave out the headline at the top left (for a cut whose voiceover or captions say it)")
 ap.add_argument("--beats", action="store_true",
                 help="only write OUT's .beats.json (the animation beats cut.py check reads)")
 args = ap.parse_args()
@@ -304,6 +306,8 @@ def centered(d, p, text, f, fill):
 
 
 def captions(d, t, caps, y0=150):
+    if args.no_headlines:
+        return
     for a, b, lines in caps:
         k = window(t, a, b)
         if k <= 0:
@@ -1331,7 +1335,8 @@ def seg_savings():
         # beat 2's counters, as the routing shot leaves them
         k0 = 1 - fade(t, 0.2, 0.8)
         if k0 > 0:
-            for j, ln in enumerate(["OpenAgents puts System 1 in front: small, fast models.",
+            for j, ln in enumerate([] if args.no_headlines else
+                                   ["OpenAgents puts System 1 in front: small, fast models.",
                                     "Only the hard parts reach the big model."]):
                 d.text((LEFT, 150 + j * 46), ln, font=g_cap, fill=(*CONTENT, int(255 * k0)))
             for x, label, value, old, word in ((LEFT, "cost per fix", "$1.84", "$4.00", "cheaper"),

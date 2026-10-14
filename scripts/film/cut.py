@@ -24,7 +24,7 @@ it on every edit.
   - no shot goes black or freezes
 It exits 1 when a check fails. `render` runs `inspect` first and refuses to run
 on a failing cut unless --force is given. It then cuts and crossfades the
-shots, mixes the music (and the voice, if the cut has one, with the music
+shots, mixes the music (and the voice, if the cut has one, or its `voices`, with the music
 ducked under it), and writes H.264 (plus a ProRes master with --master).
 
 In the cut list, paths starting with ~ expand. Each shot is one of:
@@ -670,6 +670,26 @@ def check(cut, w, h, allow_missing):
                     problems.append(f"caption '{c['text'][:40]}' over {shot['name']} doesn't match what's said "
                                     f"there ('{spoken[:60]}')")
 
+    vs = []
+    for v in ([cut["voice"]] if cut.get("voice") else []) + list(cut.get("voices", [])):
+        src = expand(v["src"])
+        if not src.exists():
+            problems.append(f"voiceover missing: {v['src']}")
+            continue
+        a = v.get("at", 0.0)
+        b = a + audio_length(src)
+        vs.append((a, b, src.name))
+        if b > cut["total"] + 1e-3:
+            problems.append(f"voiceover {src.name} runs to {b:.2f}s, past the end at {cut['total']:.2f}s")
+        for shot in cut["shots"]:
+            if shot.get("sound") and shot["start"] < b - 1e-3 and a < shot["start"] + shot["dur"] - 1e-3:
+                problems.append(f"voiceover {src.name} ({a:.2f}s to {b:.2f}s) plays over {shot['name']}, "
+                                f"where someone is speaking")
+    vs.sort()
+    for x, y in zip(vs, vs[1:]):
+        if y[0] < x[1] - 1e-3:
+            problems.append(f"voiceover {y[2]} starts at {y[0]:.2f}s, before {x[2]} ends at {x[1]:.2f}s")
+
     music = cut.get("music")
     if music and expand(music).exists():
         mdur = float(run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
@@ -738,6 +758,23 @@ def contact_sheets(cut, segs, cut_path):
 
 
 # ---- render -------------------------------------------------------------------
+
+def voice_slots(cut):
+    """(voice, start, length) for each voiceover clip: the cut's `voice` and
+    each of its `voices` ([{"src", "at", "gain"?}], placed by Video Lab's
+    lab_voice), with the music ducked under each."""
+    out = []
+    for v in ([cut["voice"]] if cut.get("voice") else []) + list(cut.get("voices", [])):
+        src = expand(v["src"])
+        if src.exists():
+            out.append((v, v.get("at", 0.0), audio_length(src)))
+    return out
+
+
+def audio_length(path):
+    return float(run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                      str(path)]).stdout)
+
 
 def sound_slots(cut):
     """(shot, start, dur) for each shot that keeps its own sound, on the timeline."""
@@ -829,22 +866,22 @@ def assemble(cut, segs, w, h, out, master):
     a = f"[{n}:a]atrim=end={total},asetpts=PTS-STARTPTS,volume={cut.get('music_gain', 1.0)}"
     nxt = n + 1
     spoken = sound_slots(cut)
-    if spoken:
-        # The music ducks under every shot that keeps its own speech.
-        a += f",volume='{duck_expr(spoken, cut.get('music_duck', 0.2))}':eval=frame"
+    voices = voice_slots(cut)
+    if spoken or voices:
+        # The music ducks under every shot that keeps its own speech and every voiceover clip.
+        a += f",volume='{duck_expr(spoken + [(None, v[1], v[2]) for v in voices], cut.get('music_duck', 0.2))}':eval=frame"
     if fout:
         a += f",afade=t=out:st={total - fout}:d={fout}"
     beds = []
-    voice = cut.get("voice")
-    if voice:
-        inputs += ["-itsoffset", str(voice.get("at", 0.0)), "-i", str(expand(voice["src"]))]
-        audio.append(a + "[m0]")
-        audio.append(f"[{nxt}:a]volume={voice.get('gain', 1.0)},asplit=2[vo][key]")
-        audio.append("[m0][key]sidechaincompress=threshold=0.04:ratio=6:attack=20:release=400[m]")
-        beds.append("[vo]")
+    audio.append(a + "[m]")
+    for j, (v, at, dur) in enumerate(voices):
+        # A voiceover clip, from its time, at its own length.
+        inputs += ["-i", str(expand(v["src"]))]
+        ms = int(round(at * 1000))
+        audio.append(f"[{nxt}:a:0]aresample=48000,aformat=channel_layouts=stereo,"
+                     f"volume={v.get('gain', 1.0)},adelay={ms}|{ms}[vo{j}]")
+        beds.append(f"[vo{j}]")
         nxt += 1
-    else:
-        audio.append(a + "[m]")
     for j, (shot, start, dur) in enumerate(spoken):
         # The shot's own sound, exactly its slot, with short fades so a cut in a pause doesn't click.
         inputs += ["-ss", str(shot.get("in", 0.0)), "-t", f"{dur:.3f}", "-i", str(expand(shot["src"]))]

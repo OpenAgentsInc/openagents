@@ -20,6 +20,12 @@
       "type": "object", "required": ["src"], "additionalProperties": false,
       "properties": {"src": {"type": "string"}, "at": {"type": "number", "minimum": 0}, "gain": {"type": "number", "minimum": 0}}
     },
+    "voices": {
+      "description": "Voiceover clips placed by Video Lab's lab_voice, each from its time at its own length, with the music ducked under it.",
+      "type": "array",
+      "items": {"type": "object", "required": ["src", "at"], "additionalProperties": false,
+                "properties": {"src": {"type": "string"}, "at": {"type": "number", "minimum": 0}, "gain": {"type": "number", "minimum": 0}}}
+    },
     "caption_style": {
       "type": "object", "additionalProperties": false,
       "properties": {"size": {"type": "number", "exclusiveMinimum": 0}, "y": {"type": "number"}, "width": {"type": "number", "exclusiveMinimum": 0}}
