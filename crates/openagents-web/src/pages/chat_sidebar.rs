@@ -54,6 +54,9 @@ pub(crate) struct View<'a> {
     pub archived: Option<&'a str>,
     /// The signed-in person's projects ([`crate::projects::sidebar`]).
     pub projects: Option<&'a Sidebar>,
+    /// Chats other people started in shared projects (#11586), listed in
+    /// those projects' groups, and who started each by chat id.
+    pub others: &'a [(Conversation, String)],
 }
 
 /// The list for `owner`; see [`super::chat_list`].
@@ -85,11 +88,43 @@ pub(super) async fn render_working(
         .map(|chat| chat.id.clone())
         .collect();
     let projects = crate::projects::sidebar(app).await;
+    let others = match (&projects, crate::projects::request_headers()) {
+        (Some(sidebar), Some(headers)) => {
+            others(app, &headers, &sidebar.status.projects, owner).await
+        }
+        _ => Vec::new(),
+    };
     let view = View {
         projects: projects.as_deref(),
+        others: &others,
         ..view
     };
     (build(list, &rows, &csrf(app, owner), view), working)
+}
+
+/// Chats other people started in the shared projects `owner` is in, with
+/// who started each (#11586).
+async fn others(
+    app: &App,
+    headers: &HeaderMap,
+    projects: &[oa_auth::repos::Project],
+    owner: &str,
+) -> Vec<(Conversation, String)> {
+    let mut found = Vec::new();
+    for project in projects
+        .iter()
+        .filter(|p| crate::projects::shared_chats::shared(p))
+    {
+        let names = crate::projects::shared_chats::starters(app, headers, project).await;
+        if let Ok(chats) = crate::projects::shared_chats::chats_in(app, project, owner, &[]).await {
+            for chat in chats.into_iter().filter(|chat| chat.owner != owner) {
+                let by = crate::projects::shared_chats::started_by(&chat, owner, &names);
+                found.push((chat, by));
+            }
+        }
+    }
+    found.sort_by(|a, b| b.0.updated_unix.cmp(&a.0.updated_unix));
+    found
 }
 
 /// The chat's project, when it is one of the viewer's.
@@ -128,12 +163,23 @@ pub(crate) fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: Vie
                 .copied()
                 .filter(|chat| chat.project.as_deref() == Some(project.id.as_str()))
                 .collect();
-            if !q.is_empty() && chats.is_empty() {
+            let theirs: Vec<&(Conversation, String)> = view
+                .others
+                .iter()
+                .filter(|(chat, _)| {
+                    chat.project.as_deref() == Some(project.id.as_str())
+                        && chat.archived_unix.is_none()
+                        && matches(chat, q)
+                })
+                .collect();
+            if !q.is_empty() && chats.is_empty() && theirs.is_empty() {
                 continue;
             }
             // The open chat always stays visible, even in a closed group.
             let at = chats
                 .iter()
+                .copied()
+                .chain(theirs.iter().map(|(chat, _)| chat))
                 .position(|chat| view.current == Some(chat.id.as_str()));
             let mut group = ChatGroup::new(
                 project.id.clone(),
@@ -148,7 +194,12 @@ pub(crate) fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: Vie
                 .edit(crate::projects::page::href(&project.id))
                 .open(at.is_some() || !q.is_empty() || !sidebar.closed.contains(&project.id))
                 .more_open(at.is_some_and(|at| at >= GROUP_ROWS))
-                .items(chats.iter().map(|chat| row(chat, csrf, view, true)));
+                .items(
+                    chats
+                        .iter()
+                        .map(|chat| row(chat, csrf, view, true))
+                        .chain(theirs.iter().map(|(chat, by)| their_row(chat, by, view))),
+                );
             if sidebar.reconnect() {
                 group = group.note("Reconnect GitHub", crate::projects::PAGE);
             }
@@ -305,6 +356,24 @@ fn row(chat: &Conversation, csrf: &str, view: View<'_>, grouped: bool) -> NavIte
     )
 }
 
+/// A chat someone else started in a shared project: who started it, and
+/// no menu (its starter pins, renames, moves, archives, and deletes it).
+fn their_row(chat: &Conversation, by: &str, view: View<'_>) -> NavItem {
+    let id = &chat.id;
+    let mut item = NavItem::new(chat.title.clone(), format!("/chat/{id}"))
+        .current(view.current == Some(id.as_str()))
+        .row_id(format!("chat-project-row-{id}"))
+        .detail(format!("Started by {by}"))
+        .trailing(row_status_slot(chat, false));
+    if view.hx {
+        item = item.hx(HxGet::new(format!("/chat/{id}/workspace"))
+            .target("#chat-content")
+            .swap("innerHTML")
+            .sync("#chat-content:replace"));
+    }
+    item
+}
+
 /// "Move to …" entries for the viewer's projects, and leaving the chat's
 /// project; a link to the Move to project page when there are many.
 fn move_actions(chat: &Conversation, csrf: &str, view: View<'_>) -> Vec<RowAction> {
@@ -319,6 +388,7 @@ fn move_actions(chat: &Conversation, csrf: &str, view: View<'_>) -> Vec<RowActio
         .projects
         .iter()
         .filter(|p| inside.is_none_or(|inside| inside.id != p.id))
+        .filter(|p| crate::projects::api::role_of(p).edits())
         .collect();
     let post = |label: String, project: &str| {
         RowAction::post(label, format!("/chat/{id}/project"))
@@ -432,6 +502,7 @@ async fn changed(
             q: "",
             archived,
             projects: None,
+            others: &[],
         };
         let list = render(app, owner, view, false).await;
         return crate::chat_html::protect(html! { (list) (extra) }.into_response());
@@ -643,6 +714,7 @@ async fn list(
         q: &search.q,
         archived: None,
         projects: projects.as_deref(),
+        others: &[],
     };
     if hx(&headers) {
         return crate::chat_html::protect(
@@ -779,12 +851,21 @@ async fn move_chat(
         Err(r) => return r,
     };
     let target = form.project.trim();
+    let mut shared = None;
     let project = if target.is_empty() {
         None
     } else {
         let sidebar = crate::projects::sidebar(&app).await;
-        match sidebar.as_deref().and_then(|s| s.project(target)) {
-            Some(project) => Some(project.id.clone()),
+        // A viewer adds no chats to a shared project (#11586).
+        match sidebar
+            .as_deref()
+            .and_then(|s| s.project(target))
+            .filter(|p| crate::projects::api::role_of(p).edits())
+        {
+            Some(project) => {
+                shared = Some(project.clone());
+                Some(project.id.clone())
+            }
             None => {
                 return refusal(StatusCode::BAD_REQUEST, "Pick one of your projects.");
             }
@@ -801,7 +882,10 @@ async fn move_chat(
     })
     .await;
     match result {
-        Ok(_) => changed(&app, &headers, &owner, &form, None, html! {}).await,
+        Ok(chat) => {
+            crate::pages::chat::note_shared(&app, shared.as_ref(), &owner, &chat).await;
+            changed(&app, &headers, &owner, &form, None, html! {}).await
+        }
         Err(r) => r,
     }
 }

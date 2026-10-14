@@ -80,7 +80,12 @@ pub(crate) struct Options {
         Arc<crate::cloud::connections::Store>,
         Arc<crate::connections::Google>,
     )>,
+    /// The chat worker (answers with [`CHAT_SALT`] as the salt).
+    pub chat: Option<Arc<dyn crate::ask::Chat>>,
 }
+
+/// The `ask_salt` a world with its own [`Options::chat`] uses.
+pub(crate) const CHAT_SALT: [u8; 32] = [9; 32];
 
 pub(crate) async fn world() -> World {
     world_on(4300).await
@@ -164,6 +169,10 @@ async fn world_at(port: u16, options: Options) -> World {
         config.public_hosts = vec![host.clone()];
     }
     config.environments = options.environments.into();
+    if let Some(chat) = options.chat {
+        config.chat = chat;
+        config.ask_salt = CHAT_SALT;
+    }
     if let Some((store, google)) = options.connections {
         config.connections = Some(store);
         config.google = Some(google);

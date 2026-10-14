@@ -415,6 +415,13 @@ async fn accept(
         ));
     };
     let home = super::api::home_of(&project, &account).to_owned();
+    // The chats already in the project move in with it (#11586).
+    let home_owner = crate::chat_store::account_owner(&home);
+    if let Err(error) =
+        super::shared_chats::take_in(&app, &project.id, &home_owner, &home_owner).await
+    {
+        eprintln!("openagents-web: shared project chats: {error}");
+    }
     let summary: Summary = super::files::summary(&app, &home, &project.id)
         .await
         .unwrap_or_default();

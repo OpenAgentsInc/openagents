@@ -648,6 +648,11 @@ pub(crate) struct Pending {
     pub started_unix: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub job_id: Option<String>,
+    /// Whose allowance answers this request, when it isn't the chat's
+    /// owner: a member replying in a shared project's chat someone else
+    /// started (#11586). Each sender pays for their own messages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payer: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

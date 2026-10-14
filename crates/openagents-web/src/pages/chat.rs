@@ -383,6 +383,7 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
             request_id: id.clone(),
             started_unix: now(),
             job_id: None,
+            payer: None,
         }),
         requests: vec![Request {
             id: id.clone(),
@@ -406,7 +407,10 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         filed: false,
     };
     let loaded = match app.config.chat_store.create(&record).await {
-        Ok(v) => v,
+        Ok(v) => {
+            note_shared(&app, picked.project.as_ref(), &owner, &v.conversation).await;
+            v
+        }
         Err(Error::Conflict) => {
             return crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response());
         }
@@ -485,6 +489,7 @@ pub(crate) async fn start_from_app(
     }
     let mut record = first_record(owner, id, text, digest, files);
     let mut instructions = None;
+    let shared = project.as_ref().map(|(project, _)| project.clone());
     let repo = project.and_then(|(project, token)| {
         record.project = Some(project.id.clone());
         instructions.clone_from(&project.instructions);
@@ -492,6 +497,7 @@ pub(crate) async fn start_from_app(
     });
     match store.create(&record).await {
         Ok(loaded) => {
+            note_shared(app, shared.as_ref(), owner, &loaded.conversation).await;
             spawn_answer(app.clone(), loaded, admitted_at, repo, instructions);
             AppSent::Answering
         }
@@ -501,6 +507,20 @@ pub(crate) async fn start_from_app(
             eprintln!("openagents-web: conversation storage: {e}");
             AppSent::Unavailable
         }
+    }
+}
+
+/// A new chat started in a shared project: every member finds it (#11586).
+pub(crate) async fn note_shared(
+    app: &App,
+    project: Option<&oa_auth::repos::Project>,
+    owner: &str,
+    chat: &Conversation,
+) {
+    if let Some(project) = project
+        && let Err(error) = crate::projects::shared_chats::note(app, project, owner, chat).await
+    {
+        eprintln!("openagents-web: shared project chat: {error}");
     }
 }
 
@@ -534,6 +554,7 @@ pub(crate) fn first_record(
             request_id: id.to_owned(),
             started_unix: now(),
             job_id: None,
+            payer: None,
         }),
         requests: vec![Request {
             id: id.to_owned(),
@@ -722,7 +743,7 @@ async fn start_claude(
         work::record_work(&mut record, tasks);
     }
     match app.config.chat_store.create(&record).await {
-        Ok(_) => {}
+        Ok(_) => note_shared(app, picked.project.as_ref(), owner, &record).await,
         Err(Error::Conflict) => {
             if let Some(task) = &task {
                 work::abandon(app, task);
@@ -850,7 +871,7 @@ async fn start_solver(
     };
     work::record_work(&mut record, tasks.clone());
     match app.config.chat_store.create(&record).await {
-        Ok(_) => {}
+        Ok(_) => note_shared(app, picked.project.as_ref(), owner, &record).await,
         Err(Error::Conflict) => {
             abandon_work(app, owner, &tasks).await;
             return crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response());
@@ -941,7 +962,50 @@ pub(crate) async fn load(app: &App, headers: &HeaderMap, id: &str) -> Result<Loa
     let Some(owner) = reader(app, headers).await else {
         return Err(missing());
     };
-    load_owned(app, &owner, id).await
+    match load_owned(app, &owner, id).await {
+        Err(response) if response.status() == StatusCode::NOT_FOUND => {
+            // A chat someone else started in a shared project the person
+            // is in (#11586).
+            match shared_chat(app, &owner, id).await {
+                Some((starter, _)) => load_owned(app, &starter, id).await,
+                None => Err(response),
+            }
+        }
+        found => found,
+    }
+}
+
+/// The store owner of chat `id` started by someone else in a shared
+/// project `viewer` is in, with the project as `viewer` sees it.
+pub(crate) async fn shared_chat(
+    app: &App,
+    viewer: &str,
+    id: &str,
+) -> Option<(String, oa_auth::repos::Project)> {
+    if !crate::chat_store::is_account_owner(viewer) || !valid_id(id) {
+        return None;
+    }
+    let sidebar = crate::projects::sidebar(app).await?;
+    let (loaded, project) =
+        crate::projects::shared_chats::find(app, &sidebar.status.projects, viewer, id)
+            .await
+            .ok()??;
+    Some((loaded.conversation.owner, project))
+}
+
+/// The project `chat` (someone else's) is in, as `viewer` sees it, when
+/// it is a shared project `viewer` is in.
+pub(crate) async fn shared_project_of(
+    app: &App,
+    viewer: &str,
+    chat: &Conversation,
+) -> Option<oa_auth::repos::Project> {
+    if chat.owner == viewer {
+        return None;
+    }
+    shared_chat(app, viewer, &chat.id)
+        .await
+        .map(|(_, project)| project)
 }
 
 /// [`load`] for an owner already resolved: a chat's live updates resolve
@@ -1055,7 +1119,20 @@ async fn show_page(app: &App, headers: &HeaderMap, id: &str, notice: Option<&Not
     if let Some(terminal) = &chat.terminal {
         return show_terminal(&app, &headers, chat, &terminal.computer, notice).await;
     }
-    let row = crate::composer_row::for_chat(&app, &headers, chat, false).await;
+    // Someone else's chat in a shared project (#11586): read by every
+    // member, continued by editors and the owner, and its starter's alone
+    // to delete, share, or move.
+    let viewer = reader(&app, &headers)
+        .await
+        .unwrap_or_else(|| chat.owner.clone());
+    let member = match shared_project_of(&app, &viewer, chat).await {
+        Some(project) => Some(crate::projects::api::role_of(&project).edits()),
+        None => None,
+    };
+    let row = match member {
+        Some(_) => None,
+        None => Some(crate::composer_row::for_chat(&app, &headers, chat, false).await),
+    };
     let dock = html! {
         (ticket(&app, chat, false))
         p #chat-feedback.oa-composer-feedback role="status" aria-live="polite" {}
@@ -1068,20 +1145,26 @@ async fn show_page(app: &App, headers: &HeaderMap, id: &str, notice: Option<&Not
     let sidebar = if crate::chat_html::main_only(&headers) {
         None
     } else {
-        Some(chat_list(&app, &chat.owner, Some(&chat.id), true, false).await)
+        Some(chat_list(&app, &viewer, Some(&chat.id), true, false).await)
     };
     let parts = Parts {
         breadcrumb: work::breadcrumb(chat, offer.as_ref()),
-        actions: Some(work::actions(chat, offer.as_ref(), shared, false)),
+        actions: member
+            .is_none()
+            .then(|| work::actions(chat, offer.as_ref(), shared, false)),
         sidebar,
         thread: content(chat, None, chips, links),
-        dock: composer_with(
-            &format!("/chat/{id}"),
-            "Continue this chat",
-            Some(row),
-            dock,
-            notice,
-        ),
+        dock: if member == Some(false) {
+            html! { p.oa-composer-feedback { (VIEWER_REPLY) } }
+        } else {
+            composer_with(
+                &format!("/chat/{id}"),
+                "Continue this chat",
+                row,
+                dock,
+                notice,
+            )
+        },
     };
     chat_page(&headers, chat, parts)
 }
@@ -1451,6 +1534,12 @@ fn not_deleted(id: &str, status: StatusCode, text: &str) -> Response {
     ))
 }
 
+/// A viewer's refused reply in a shared project's chat (#11586).
+pub(crate) const VIEWER_REPLY: &str =
+    "You can read this project's chats. Ask its owner to make you an editor to send messages.";
+/// A member's reply in a chat someone else started takes words only.
+pub(crate) const MEMBER_WORDS_ONLY: &str = "In a chat someone else started, you can send messages here. Start your own chat to add files or work on a computer.";
+
 async fn follow(
     State(app): State<App>,
     headers: HeaderMap,
@@ -1465,6 +1554,22 @@ async fn follow(
         Ok(v) => v,
         Err(r) => return r,
     };
+    // Replying in a chat someone else started in a shared project
+    // (#11586): editors and the owner, in words only, each answered under
+    // the sender's own allowance.
+    let member = loaded.conversation.owner != owner;
+    if member {
+        let Some(project) = shared_project_of(&app, &owner, &loaded.conversation).await else {
+            return missing();
+        };
+        if !crate::projects::api::role_of(&project).edits() {
+            return refusal(StatusCode::FORBIDDEN, VIEWER_REPLY);
+        }
+        if loaded.conversation.terminal.is_some() || !prompt.files.trim().is_empty() {
+            return refusal(StatusCode::BAD_REQUEST, MEMBER_WORDS_ONLY);
+        }
+    }
+    let store_owner = loaded.conversation.owner.clone();
     if loaded.conversation.terminal.is_some() {
         if !prompt.files.trim().is_empty() {
             return refusal(StatusCode::BAD_REQUEST, crate::chat_files::CODER_CHAT);
@@ -1521,8 +1626,12 @@ async fn follow(
         Ok(picked) => picked,
         Err(message) => return refusal(StatusCode::CONFLICT, message),
     };
-    // The row's project and branch, recorded when the composer has the row.
-    let place = prompt.project.is_some().then(|| {
+    if member && picked.target != crate::composer_row::Target::Chat {
+        return refusal(StatusCode::CONFLICT, MEMBER_WORDS_ONLY);
+    }
+    // The row's project and branch, recorded when the composer has the row
+    // (the chat's starter only: a member's reply doesn't move it).
+    let place = (prompt.project.is_some() && !member).then(|| {
         (
             picked.project.as_ref().map(|project| project.id.clone()),
             picked.branch.clone(),
@@ -1586,12 +1695,17 @@ async fn follow(
         match app
             .config
             .chat_store
-            .claim(&owner, &prompt.request_id, admitted_at + LEASE_SECONDS)
+            .claim(
+                &store_owner,
+                &prompt.request_id,
+                admitted_at + LEASE_SECONDS,
+            )
             .await
         {
             Ok(true) => {}
             Ok(false) => {
-                if let Some(saved) = saved_soon(&app, &owner, &id, &prompt.request_id, &hash).await
+                if let Some(saved) =
+                    saved_soon(&app, &store_owner, &id, &prompt.request_id, &hash).await
                 {
                     return accepted(&app, &headers, &saved.conversation).await;
                 }
@@ -1626,6 +1740,7 @@ async fn follow(
         request_id: prompt.request_id.clone(),
         started_unix: now(),
         job_id: None,
+        payer: member.then(|| owner.clone()),
     });
     next.requests.push(Request {
         id: prompt.request_id.clone(),
@@ -1642,14 +1757,20 @@ async fn follow(
             let _ = app
                 .config
                 .chat_store
-                .release(&owner, &prompt.request_id)
+                .release(&store_owner, &prompt.request_id)
                 .await;
             if matches!(e, Error::Conflict) {
                 // The same message sent twice (a double click): the other
                 // send saved it first, so this one shows it too.
                 let sent = next.requests.last().map(|r| r.digest.as_str());
-                if let Some(saved) =
-                    saved_soon(&app, &owner, &id, &prompt.request_id, sent.unwrap_or("")).await
+                if let Some(saved) = saved_soon(
+                    &app,
+                    &store_owner,
+                    &id,
+                    &prompt.request_id,
+                    sent.unwrap_or(""),
+                )
+                .await
                 {
                     return accepted(&app, &headers, &saved.conversation).await;
                 }
@@ -1658,6 +1779,9 @@ async fn follow(
             return unavailable(e);
         }
     };
+    if !member {
+        note_shared(&app, picked.project.as_ref(), &owner, &loaded.conversation).await;
+    }
     if cloud.is_none() {
         // The chat's project: the row's, else the one the chat is in.
         let sidebar = match &picked.project {
@@ -1696,9 +1820,12 @@ pub(crate) enum AppSent {
 /// A follow-up sent from an app with its own token (#11107): the web's
 /// [`follow`] without the composer's form or selector row. The chat keeps
 /// its repository and environment; the same `request_id` is taken once.
+/// `owner` is the chat's; `payer` the sender's, when a member replies in
+/// a shared project's chat someone else started (#11586).
 pub(crate) async fn follow_from_app(
     app: &App,
     owner: &str,
+    payer: Option<&str>,
     id: &str,
     request_id: &str,
     text: &str,
@@ -1785,6 +1912,7 @@ pub(crate) async fn follow_from_app(
         request_id: request_id.to_owned(),
         started_unix: now(),
         job_id: None,
+        payer: payer.filter(|payer| *payer != owner).map(str::to_owned),
     });
     next.requests.push(Request {
         id: request_id.to_owned(),
@@ -2023,6 +2151,14 @@ async fn answer(
 ) {
     let chat = &loaded.conversation;
     let owner = chat.owner.clone();
+    // Whose allowance, memory, and connections answer: the sender's
+    // (#11586); the chat's owner's unless a member sent it.
+    let payer = chat
+        .pending
+        .as_ref()
+        .and_then(|p| p.payer.clone())
+        .filter(|payer| crate::chat_store::is_account_owner(payer))
+        .unwrap_or_else(|| owner.clone());
     let request_id = chat
         .pending
         .as_ref()
@@ -2103,7 +2239,7 @@ async fn answer(
     let door = if now().saturating_sub(admitted_at) <= 30 {
         app.config
             .chat
-            .door(crate::ask::key(&app.config.ask_salt, &owner))
+            .door(crate::ask::key(&app.config.ask_salt, &payer))
             .ok()
     } else {
         None
@@ -2111,7 +2247,7 @@ async fn answer(
     // The person's memory notes from their account (#11182), so the
     // answer knows what Coder knows; none for a visitor not signed in.
     let mut memory = if door.is_some() {
-        crate::account_memory::chat_notes(&app.config.chat_store, &owner).await
+        crate::account_memory::chat_notes(&app.config.chat_store, &payer).await
     } else {
         Vec::new()
     };
@@ -2132,15 +2268,15 @@ async fn answer(
     // starts another chat for it.
     let coder_here = door.is_some()
         && chat.terminal.is_none()
-        && crate::chat_store::is_account_owner(&owner)
-        && !crate::composer_row::online_computers(&app, &owner)
+        && crate::chat_store::is_account_owner(&payer)
+        && !crate::composer_row::online_computers(&app, &payer)
             .await
             .is_empty();
     // In a project with Google Drive sources, Gemini answers from them,
     // or hands the message to the hosted chat (#11238).
     let drive = match (&door, parts.is_empty()) {
         (Some(_), true) => {
-            crate::connections::chat::door(&app, &owner, chat.project.as_deref()).await
+            crate::connections::chat::door(&app, &payer, chat.project.as_deref()).await
         }
         _ => None,
     };
@@ -2151,7 +2287,7 @@ async fn answer(
         (Some(_), true) => {
             crate::connections::mail::door(
                 &app,
-                &owner,
+                &payer,
                 chat.project.as_deref(),
                 format!("/chat/{}", chat.id),
             )
@@ -2162,13 +2298,13 @@ async fn answer(
     // In a project with a repository, Gemini reads its GitHub issues and
     // pull requests as the person, or hands the message on (#11600).
     let issues = match (&door, parts.is_empty()) {
-        (Some(_), true) => crate::github_tools::issues::door(&owner, repo.as_ref()),
+        (Some(_), true) => crate::github_tools::issues::door(&payer, repo.as_ref()),
         _ => None,
     };
     // With a Video Lab on this Mac, Gemini works on the owner's films with
     // the Lab's tools, or hands the message on (docs/video-lab/mvp.md).
     let lab = match (&door, parts.is_empty()) {
-        (Some(_), true) => crate::lab::door(&app, &owner).await,
+        (Some(_), true) => crate::lab::door(&app, &payer).await,
         _ => None,
     };
     // Images or PDFs go to the door that takes them; the hosted chat
@@ -2791,13 +2927,13 @@ async fn events(
     Path(id): Path<String>,
     Query(window): Query<Window>,
 ) -> Response {
-    let Some(owner) = reader(&app, &headers).await else {
-        return missing();
-    };
-    let loaded = match load_owned(&app, &owner, &id).await {
+    // The viewer's own chat, or one in a shared project they're in
+    // (#11586): either way the stream reads the chat's own store.
+    let loaded = match load(&app, &headers, &id).await {
         Ok(v) => v,
         Err(r) => return r,
     };
+    let owner = loaded.conversation.owner.clone();
     let cursor = match headers.get("Last-Event-ID") {
         None => window.after.unwrap_or(0),
         Some(value) => match value

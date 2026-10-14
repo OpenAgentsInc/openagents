@@ -451,6 +451,7 @@ fn list(rows: &[Conversation], current: Option<&str>, q: &str) -> Markup {
         q,
         archived: None,
         projects: Some(&sidebar),
+        others: &[],
     };
     let list = chat::sidebar::build(ChatList::new().id("chat-sidebar"), rows, CSRF, view);
     html! { (list) }

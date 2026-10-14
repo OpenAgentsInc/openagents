@@ -234,6 +234,16 @@ many people are in it), and `shared`.
 - Drive sources stay with the account that connected them.
 - Chats synced from Coder file themselves only under projects you own
   alone.
+- Chats ([#11586](https://github.com/OpenAgentsInc/openagents/issues/11586)):
+  every member lists and reads every chat in a shared project
+  (`GET /v1/threads?project=`, `GET /v1/threads/{id}/messages`, the
+  website's sidebar and chat page); each thread carries `started_by:
+  {name, you}`. Editors and the owner start chats there and reply in any
+  of them (`POST /v1/threads/{id}/messages`), in words: files and Coder
+  stay with the chat's starter. Each message is answered under its
+  sender's own allowance. A chat already in the project when someone
+  joins moves in with it; a chat outside any project stays private.
+  Viewers read only (`403 project_role`).
 
 Storage: `identity.projects` and `identity.project_members`
 ([schema](../data/schema.md)); migration 3 copied every project the

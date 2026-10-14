@@ -567,6 +567,7 @@ mod tests {
                 request_id: id.into(),
                 started_unix: now(),
                 job_id: None,
+                payer: None,
             }),
             requests: vec![Request {
                 id: id.into(),

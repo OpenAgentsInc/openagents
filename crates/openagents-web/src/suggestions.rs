@@ -320,6 +320,7 @@ mod tests {
             request_id: "r".into(),
             started_unix: 1,
             job_id: None,
+            payer: None,
         });
         assert!(settled(&pending).is_none());
         assert!(settled(&chat(None)).is_none());

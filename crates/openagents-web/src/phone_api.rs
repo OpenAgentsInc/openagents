@@ -284,7 +284,13 @@ async fn thread(State(app): State<App>, headers: HeaderMap, Path(id): Path<Strin
     let store = &app.config.chat_store;
     let chat = match store.load(&owner, &id).await {
         Ok(Some(loaded)) if !loaded.conversation.deleted() => loaded.conversation,
-        Ok(_) | Err(Error::Invalid(_)) => return not_found(),
+        // A chat someone else started in a shared project (#11586).
+        Ok(_) | Err(Error::Invalid(_)) => {
+            match crate::projects::api::shared_thread(&app, &headers, &owner, &id).await {
+                Some((loaded, _)) => loaded.conversation,
+                None => return not_found(),
+            }
+        }
         Err(error) => return stored(&error),
     };
     let computers = match store.computers(&owner).await {
@@ -369,7 +375,50 @@ async fn reply(
     let store = &app.config.chat_store;
     let chat = match store.load(&owner, &id).await {
         Ok(Some(loaded)) if !loaded.conversation.deleted() => loaded.conversation,
-        Ok(_) | Err(Error::Invalid(_)) => return not_found(),
+        Ok(_) | Err(Error::Invalid(_)) => {
+            // A reply in a chat someone else started in a shared project
+            // (#11586): editors and the owner, words only, under the
+            // sender's own allowance.
+            let Some((loaded, project)) =
+                crate::projects::api::shared_thread(&app, &headers, &owner, &id).await
+            else {
+                return not_found();
+            };
+            if !crate::projects::api::role_of(&project).edits() {
+                return refused(
+                    StatusCode::FORBIDDEN,
+                    "project_role",
+                    crate::pages::chat::VIEWER_REPLY,
+                );
+            }
+            if loaded.conversation.terminal.is_some() || !sent.files.is_empty() {
+                return refused(
+                    StatusCode::BAD_REQUEST,
+                    "words_only",
+                    crate::pages::chat::MEMBER_WORDS_ONLY,
+                );
+            }
+            if secret_screen::credential_in(text).is_some() {
+                return refused(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "secret",
+                    "This looks like it holds a password or key, so it wasn't sent.",
+                );
+            }
+            let starter = loaded.conversation.owner.clone();
+            return sent_answer(
+                follow_from_app(
+                    &app,
+                    &starter,
+                    Some(&owner),
+                    &id,
+                    &sent.request_id,
+                    text,
+                    Vec::new(),
+                )
+                .await,
+            );
+        }
         Err(error) => return stored(&error),
     };
     if let Some(terminal) = &chat.terminal {
@@ -419,7 +468,12 @@ async fn reply(
         Ok(files) => files,
         Err(message) => return refused(StatusCode::BAD_REQUEST, "files", message),
     };
-    match follow_from_app(&app, &owner, &id, &sent.request_id, text, files).await {
+    sent_answer(follow_from_app(&app, &owner, None, &id, &sent.request_id, text, files).await)
+}
+
+/// The answer to a reply an app sent.
+fn sent_answer(sent: AppSent) -> Response {
+    match sent {
         AppSent::Answering => answer(StatusCode::ACCEPTED, json!({"answering": true})),
         AppSent::Busy(message) => refused(StatusCode::CONFLICT, "busy", message),
         AppSent::Invalid => refused(

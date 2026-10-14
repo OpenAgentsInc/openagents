@@ -65,6 +65,7 @@ pub(crate) mod api;
 pub(crate) mod files;
 pub(crate) mod members;
 pub(crate) mod page;
+pub(crate) mod shared_chats;
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
@@ -156,6 +157,12 @@ pub(crate) async fn sidebar(app: &App) -> Option<Arc<Sidebar>> {
         })
         .await
         .clone()
+}
+
+/// The signed-in request's headers, inside [`scope`] (who started each
+/// chat in a shared project is read with them).
+pub(crate) fn request_headers() -> Option<HeaderMap> {
+    REQUEST.try_with(|context| context.headers.clone()).ok()
 }
 
 /// The project a new chat starts in: `value` when it is one of the

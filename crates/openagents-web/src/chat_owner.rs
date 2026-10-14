@@ -265,6 +265,7 @@ mod tests {
                 request_id: id.into(),
                 started_unix: crate::chat_store::now_unix(),
                 job_id: None,
+                payer: None,
             }),
             requests: vec![Request {
                 id: id.into(),

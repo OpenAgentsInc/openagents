@@ -239,6 +239,21 @@ pub(crate) async fn access(
     })
 }
 
+/// A chat someone else started in a shared project the app's caller
+/// (`owner`) is in, with that project (#11586).
+pub(crate) async fn shared_thread(
+    app: &App,
+    headers: &HeaderMap,
+    owner: &str,
+    id: &str,
+) -> Option<(crate::chat_store::Loaded, Project)> {
+    let (service, token, _) = caller(app, headers).await.ok()?;
+    let status = service.github_status_as(&token).await.ok()?;
+    super::shared_chats::find(app, &status.projects, owner, id)
+        .await
+        .ok()?
+}
+
 fn not_yours() -> Response {
     refused(
         StatusCode::NOT_FOUND,
@@ -373,6 +388,23 @@ async fn kept(app: &App, account: &str, project: &str) -> Result<Summary, Respon
         .map_err(|error| stored(&error))
 }
 
+/// A shared project's chats, everyone's (#11586); `None` for a project
+/// only the caller is in, whose chats are their own.
+async fn shared_chats_of(
+    app: &App,
+    project: &Project,
+    owner: &str,
+    own: &[Conversation],
+) -> Result<Option<Vec<Conversation>>, Response> {
+    if !shared(project) {
+        return Ok(None);
+    }
+    super::shared_chats::chats_in(app, project, owner, own)
+        .await
+        .map(Some)
+        .map_err(|error| stored(&error))
+}
+
 async fn account_chats(app: &App, account: &str) -> Result<Vec<Conversation>, Response> {
     app.config
         .chat_store
@@ -436,13 +468,23 @@ async fn list(State(app): State<App>, headers: HeaderMap, Query(page): Query<Pag
     let mut projects = status.projects;
     projects.sort_by(|a, b| a.created_unix.cmp(&b.created_unix).then(a.id.cmp(&b.id)));
     let mut rows = Vec::with_capacity(projects.len());
+    let owner = account_owner(&account);
     for p in &projects {
         let home = home_of(p, &account);
         let summary = match kept(&app, home, &p.id).await {
             Ok(summary) => summary,
             Err(response) => return response,
         };
-        rows.push(object(p, &chats, source_count(&app, home, &p.id), &summary));
+        let theirs = match shared_chats_of(&app, p, &owner, &chats).await {
+            Ok(theirs) => theirs,
+            Err(response) => return response,
+        };
+        rows.push(object(
+            p,
+            theirs.as_deref().unwrap_or(&chats),
+            source_count(&app, home, &p.id),
+            &summary,
+        ));
     }
     match paged(rows, &page) {
         Ok(body) => answer(StatusCode::OK, body),
@@ -657,7 +699,19 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
         Ok(summary) => summary,
         Err(response) => return response,
     };
-    answer(StatusCode::OK, object(project, &chats, sources, &summary))
+    let theirs = match shared_chats_of(&app, project, &account_owner(&account), &chats).await {
+        Ok(theirs) => theirs,
+        Err(response) => return response,
+    };
+    answer(
+        StatusCode::OK,
+        object(
+            project,
+            theirs.as_deref().unwrap_or(&chats),
+            sources,
+            &summary,
+        ),
+    )
 }
 
 #[derive(Deserialize)]
@@ -883,17 +937,43 @@ pub(crate) async fn threads_in(
             Err(response) => return response,
         };
         match named(&status.projects, reference) {
-            Ok(project) => Some(project.id.clone()),
+            Ok(project) => Some(project.clone()),
             Err(response) => return response,
         }
     };
-    let mut chats: Vec<Conversation> = match account_chats(app, &account).await {
+    let own: Vec<Conversation> = match account_chats(app, &account).await {
         Ok(chats) => chats,
         Err(response) => return response,
     };
-    chats.retain(|chat| chat.project == project);
+    let owner = account_owner(&account);
+    let (mut chats, names) = match &project {
+        // Every member's chats in a shared project (#11586).
+        Some(project) => match super::shared_chats::chats_in(app, project, &owner, &own).await {
+            Ok(chats) => (
+                chats,
+                super::shared_chats::starters(app, headers, project).await,
+            ),
+            Err(error) => return stored(&error),
+        },
+        None => (
+            own.into_iter()
+                .filter(|chat| chat.project.is_none())
+                .collect(),
+            Default::default(),
+        ),
+    };
     chats.sort_by(|a, b| a.updated_unix.cmp(&b.updated_unix).then(a.id.cmp(&b.id)));
-    let rows = chats.iter().map(thread_object).collect();
+    let rows = chats
+        .iter()
+        .map(|chat| {
+            let mut row = thread_object(chat);
+            row["started_by"] = json!({
+                "name": super::shared_chats::started_by(chat, &owner, &names),
+                "you": chat.owner == owner,
+            });
+            row
+        })
+        .collect();
     match paged(rows, page) {
         Ok(body) => answer(StatusCode::OK, body),
         Err(response) => response,
@@ -934,11 +1014,13 @@ pub(crate) async fn move_thread(
             };
             match named(&status.projects, &reference) {
                 Ok(project) if !role_of(project).edits() => return role_refused(),
-                Ok(project) => Some(project.id.clone()),
+                Ok(project) => Some(project.clone()),
                 Err(response) => return response,
             }
         }
     };
+    let target = project.clone();
+    let project = project.map(|p| p.id);
     let owner = account_owner(&account);
     let store = &app.config.chat_store;
     for _ in 0..3 {
@@ -961,7 +1043,10 @@ pub(crate) async fn move_thread(
         moved.filed = true;
         moved.revision += 1;
         match store.compare_and_swap(&loaded, &moved).await {
-            Ok(_) => return answer(StatusCode::OK, thread_object(&moved)),
+            Ok(_) => {
+                crate::pages::chat::note_shared(&app, target.as_ref(), &owner, &moved).await;
+                return answer(StatusCode::OK, thread_object(&moved));
+            }
             Err(Error::Conflict) => continue,
             Err(error) => return stored(&error),
         }
@@ -982,9 +1067,10 @@ pub(crate) async fn messages(
     };
     let chat = match app.config.chat_store.load(&owner, &id).await {
         Ok(Some(loaded)) if !loaded.conversation.deleted() => loaded.conversation,
-        Ok(_) | Err(Error::Invalid(_)) => {
-            return refused(StatusCode::NOT_FOUND, "not_found", "No such chat.");
-        }
+        Ok(_) | Err(Error::Invalid(_)) => match shared_thread(&app, &headers, &owner, &id).await {
+            Some((loaded, _)) => loaded.conversation,
+            None => return refused(StatusCode::NOT_FOUND, "not_found", "No such chat."),
+        },
         Err(error) => return stored(&error),
     };
     let rows = chat

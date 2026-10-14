@@ -542,6 +542,7 @@ fn sidebar_rows_show_the_repository_and_a_plain_status() {
         request_id: NEXT.into(),
         started_unix: 2,
         job_id: None,
+        payer: None,
     });
     assert_eq!(row_status(&chat), Some(ChatStatus::Working));
 }
@@ -746,6 +747,7 @@ fn pinned_chats_keep_pin_order_and_archived_chats_leave_the_list() {
         request_id: NEXT.into(),
         started_unix: 2,
         job_id: None,
+        payer: None,
     });
     let mut gone = chat("42345678-1234-4234-8234-123456789abc", "Archived one");
     gone.archived_unix = Some(3);
@@ -845,6 +847,7 @@ async fn delete_waits_for_a_running_answer() {
         request_id: NEXT.into(),
         started_unix: now(),
         job_id: None,
+        payer: None,
     });
     fixture
         .app
@@ -945,6 +948,7 @@ async fn delete_all_leaves_a_chat_still_being_answered() {
         request_id: NEXT.into(),
         started_unix: now(),
         job_id: None,
+        payer: None,
     });
     let store = fixture.app.config.chat_store.clone();
     store.compare_and_swap(&loaded, &next).await.unwrap();
@@ -1612,6 +1616,7 @@ fn a_streaming_reply_never_shows_half_written_markdown() {
             request_id: CHAT.into(),
             started_unix: 1,
             job_id: None,
+            payer: None,
         }),
         requests: vec![Request {
             id: CHAT.into(),
@@ -1742,6 +1747,7 @@ impl Fixture {
             request_id: request.into(),
             started_unix: now(),
             job_id: None,
+            payer: None,
         });
         next.requests.push(Request {
             id: request.into(),
@@ -2084,6 +2090,7 @@ async fn work_in_a_chat_stays_in_the_chat_with_coder_online() {
             request_id: id.into(),
             started_unix: now(),
             job_id: None,
+            payer: None,
         }),
         requests: vec![Request {
             id: id.into(),

@@ -485,3 +485,266 @@ async fn leaving_giving_away_and_only_me_projects() {
         .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 }
+
+/// Records whose key each answer is asked under: the sender's allowance.
+struct Payers(Arc<std::sync::Mutex<Vec<String>>>);
+
+impl crate::ask::Chat for Payers {
+    fn door(
+        &self,
+        secret: secp256k1::SecretKey,
+    ) -> Result<Box<dyn openagents_chat::basic_coder::Door>, String> {
+        let public = secp256k1::PublicKey::from_secret_key(&secp256k1::Secp256k1::new(), &secret);
+        self.0.lock().unwrap().push(public.to_string());
+        Err("This test worker only notes who pays.".into())
+    }
+}
+
+fn payer_of(owner: &str) -> String {
+    let secret = crate::ask::key(&CHAT_SALT, owner);
+    secp256k1::PublicKey::from_secret_key(&secp256k1::Secp256k1::new(), &secret).to_string()
+}
+
+async fn paid_by(payers: &std::sync::Mutex<Vec<String>>, owner: &str) -> bool {
+    let want = payer_of(owner);
+    for _ in 0..100 {
+        if payers.lock().unwrap().contains(&want) {
+            return true;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    false
+}
+
+/// #11586: every member lists and reads the project's chats with who
+/// started each; a viewer can't send; an editor's reply is answered under
+/// the editor's own allowance; a removed member gets 404.
+#[tokio::test]
+async fn members_see_the_projects_chats_and_each_sender_pays() {
+    let payers = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let world = world_with(Options {
+        chat: Some(Arc::new(Payers(payers.clone()))),
+        ..Options::default()
+    })
+    .await;
+    let owner = signed_in(&world, "octo-local").await;
+    let other = signed_in(&world, "quiet-local").await;
+    let owner_store = account_owner_of(&world, "octo-local");
+    let other_store = account_owner_of(&world, "quiet-local");
+    let (_, made) = owner
+        .json(&world, "POST", "/v1/projects", json!({"name": "household"}))
+        .await;
+    let id = made["id"].as_str().unwrap().to_owned();
+    // A chat started before sharing moves in with the project.
+    let early = "6f0c3c40-6a7e-4f43-9d55-5a1f3f7c4b11";
+    let (status, body) = owner
+        .json(
+            &world,
+            "POST",
+            "/v1/threads",
+            json!({"request_id": early, "text": "Plan the week.", "project": id}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert!(paid_by(&payers, &owner_store).await);
+    // One outside any project stays private.
+    let private = "6f0c3c40-6a7e-4f43-9d55-5a1f3f7c4b12";
+    owner
+        .json(
+            &world,
+            "POST",
+            "/v1/threads",
+            json!({"request_id": private, "text": "Just mine."}),
+        )
+        .await;
+
+    let (_, invited) = owner
+        .json(
+            &world,
+            "POST",
+            &format!("/v1/projects/{id}/invitations"),
+            json!({"role": "viewer"}),
+        )
+        .await;
+    other
+        .json(
+            &world,
+            "POST",
+            "/v1/projects/invitations/accept",
+            json!({"code": invited["code"]}),
+        )
+        .await;
+    let (status, threads) = other
+        .json(
+            &world,
+            "GET",
+            &format!("/v1/threads?project={id}"),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{threads}");
+    let rows = threads["data"].as_array().unwrap();
+    assert_eq!(rows.len(), 1, "{threads}");
+    assert_eq!(rows[0]["id"], early);
+    assert_eq!(rows[0]["started_by"]["you"], false);
+    assert_ne!(rows[0]["started_by"]["name"], "A former member");
+    let (status, messages) = other
+        .json(
+            &world,
+            "GET",
+            &format!("/v1/threads/{early}/messages"),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{messages}");
+    assert_eq!(messages["data"][0]["content"][0]["text"], "Plan the week.");
+    let (status, _) = other
+        .json(
+            &world,
+            "GET",
+            &format!("/v1/threads/{private}/messages"),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = other
+        .json(&world, "GET", &format!("/v1/threads/{early}"), Value::Null)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // A viewer reads only.
+    let (status, body) = other
+        .json(
+            &world,
+            "POST",
+            &format!("/v1/threads/{early}/messages"),
+            json!({"request_id": "6f0c3c40-6a7e-4f43-9d55-5a1f3f7c4b13", "text": "Add milk."}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    let (status, _) = other
+        .json(&world, "POST", "/v1/threads", json!({"request_id": "6f0c3c40-6a7e-4f43-9d55-5a1f3f7c4b14", "text": "x", "project": id}))
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // An editor replies in the owner's chat and pays for it.
+    let (_, people) = owner
+        .json(
+            &world,
+            "GET",
+            &format!("/v1/projects/{id}/members"),
+            Value::Null,
+        )
+        .await;
+    let them = people["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["you"] == false)
+        .unwrap()["account"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    owner
+        .json(
+            &world,
+            "PATCH",
+            &format!("/v1/projects/{id}/members/{them}"),
+            json!({"role": "editor"}),
+        )
+        .await;
+    // Wait for the first answer to settle (the test worker refuses it).
+    for _ in 0..100 {
+        let chat = world
+            .store
+            .load(&owner_store, early)
+            .await
+            .unwrap()
+            .unwrap();
+        if chat.conversation.pending.is_none() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    let (status, body) = other
+        .json(
+            &world,
+            "POST",
+            &format!("/v1/threads/{early}/messages"),
+            json!({"request_id": "6f0c3c40-6a7e-4f43-9d55-5a1f3f7c4b15", "text": "Add milk."}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+    assert!(
+        paid_by(&payers, &other_store).await,
+        "the editor's message is answered under the editor's key"
+    );
+    let kept = world
+        .store
+        .load(&owner_store, early)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        kept.conversation
+            .messages
+            .iter()
+            .any(|m| m.text == "Add milk.")
+    );
+    // The editor's own new chat shows to the owner.
+    let theirs = "6f0c3c40-6a7e-4f43-9d55-5a1f3f7c4b16";
+    let (status, body) = other
+        .json(
+            &world,
+            "POST",
+            "/v1/threads",
+            json!({"request_id": theirs, "text": "Groceries?", "project": id}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (_, threads) = owner
+        .json(
+            &world,
+            "GET",
+            &format!("/v1/threads?project={id}"),
+            Value::Null,
+        )
+        .await;
+    let ids: Vec<&str> = threads["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["id"].as_str().unwrap())
+        .collect();
+    assert!(ids.contains(&theirs) && ids.contains(&early), "{threads}");
+    let (_, listed) = owner.json(&world, "GET", "/v1/projects", Value::Null).await;
+    assert_eq!(listed["data"][0]["counts"]["threads"], 2, "{listed}");
+
+    // Removed: nothing on the next request.
+    owner
+        .json(
+            &world,
+            "DELETE",
+            &format!("/v1/projects/{id}/members/{them}"),
+            Value::Null,
+        )
+        .await;
+    let (status, _) = other
+        .json(
+            &world,
+            "GET",
+            &format!("/v1/threads/{early}/messages"),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = other
+        .json(
+            &world,
+            "GET",
+            &format!("/v1/threads?project={id}"),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
