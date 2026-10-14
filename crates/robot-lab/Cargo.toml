@@ -7,13 +7,17 @@ publish.workspace = true
 description = "Checked Robot Lab documents, private project storage, and typed operations"
 
 [dependencies]
-fs2 = "0.4.3"
 schemars = "1.2.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 sha2 = "0.10"
-tempfile = "3"
 thiserror = "2"
+
+# The private project file store is native-only: the browser Verse build
+# (wasm32) reads checked documents and never opens a lab on disk.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+fs2 = "0.4.3"
+tempfile = "3"
 
 [dev-dependencies]
 oa-copy = { path = "../oa-copy" }
