@@ -780,7 +780,7 @@ class Renders:
     def job_id(self, doc, n, quality):
         return f"{doc}-v{n}-{quality}"
 
-    def submit(self, doc: str, n: int, quality: str, auto: bool = True) -> dict:
+    def submit(self, doc: str, n: int, quality: str, auto: bool = True, edit: bool = False) -> dict:
         """Queue a render; `auto` renders (the ones a look asks for) wait for
         `lab render` when no service is running, so a CLI look returns at once."""
         v = version(doc, n)
@@ -795,7 +795,7 @@ class Renders:
                 return job
             est = estimate(doc, quality)
             job = {"id": jid, "doc": doc, "version": n, "quality": quality, "state": "queued",
-                   "queued": now(), "estimate": est}
+                   "queued": now(), "estimate": est, "edit": edit}
             self.jobs[jid] = job
         self.q.put(jid)
         return job
@@ -811,6 +811,11 @@ class Renders:
         while True:
             jid = self.q.get()
             job = self.jobs[jid]
+            if superseded(job):
+                # A preview an edit asked for, of a version a later edit already replaced:
+                # a run of edits renders only its last version.
+                job["state"], job["finished"] = "skipped", now()
+                continue
             job["state"], job["started"] = "running", now()
             logp = ROOT / "logs" / f"{jid}.log"
             logp.parent.mkdir(parents=True, exist_ok=True)
@@ -821,6 +826,17 @@ class Renders:
             except Exception as e:  # a failed render is reported, never retried silently
                 job["state"], job["error"] = "failed", str(e)[:600]
             job["finished"] = now()
+
+
+def superseded(job: dict) -> bool:
+    """Whether a queued render is a preview made on its own after an edit, of a
+    version that isn't the document's latest any more."""
+    if job.get("quality") != "preview" or not job.get("edit"):
+        return False
+    try:
+        return len(versions(job["doc"])) > job["version"]
+    except Exception:
+        return False
 
 
 class render_lock:
@@ -1910,7 +1926,7 @@ def commit(doc: str, parent: dict, old: dict, new: dict, summary: str, author: s
         lines.append(f"Length {clock(length('cut.v1', old))} -> {clock(length('cut.v1', new))}.")
     if new.get("score") and length(parent["kind"], new) != length(parent["kind"], old):
         lines.append("The music is remade to the new length; its hits stay on their shots.")
-    job = renders().submit(doc, v["n"], "preview") if render else None
+    job = renders().submit(doc, v["n"], "preview", edit=True) if render else None
     if job:
         lines.append("A preview is rendering.")
     return {"text": "\n".join(lines), "version": v["n"], "card": card(doc, v, "preview", job=job)}

@@ -160,6 +160,15 @@ class LabTest(unittest.TestCase):
         self.assertAlmostEqual(found[0]["to"], 3.5, delta=0.1)
         self.assertIn("pauses mid-shot 1 times", lab.pauses_text(found))
 
+    def test_a_preview_an_edit_queued_is_skipped_once_a_later_edit_replaces_it(self):
+        lab.create("queue", "cut.v1", "Queue film", self.cut, "First", "test")
+        lab.save_version("queue", "cut.v1", self.cut, "Second", "test", parent=1)
+        old = {"doc": "queue", "version": 1, "quality": "preview", "edit": True}
+        self.assertTrue(lab.superseded(old))
+        self.assertFalse(lab.superseded({**old, "version": 2}), "the latest version still renders")
+        self.assertFalse(lab.superseded({**old, "edit": False}), "a look at an old version still renders")
+        self.assertFalse(lab.superseded({**old, "quality": "review"}), "an asked-for render always runs")
+
     def test_new_copies_a_version_and_leaves_the_old_document_alone(self):
         before = len(lab.versions("film"))
         out = lab.call("lab_new", {"name": "Film take two", "copy": "film", "version": "1", "render": False})
