@@ -56,6 +56,8 @@ V_FRONT = 0.0
 ROBE_OPEN_X = 0.075
 ROBE_FLARE = 0.0
 FACING_W = 0.03
+# The tie's stripes: repeats per metre along the diagonal.
+TIE_STRIPES = 8.0
 COLLAR_BAND = 0.026
 COLLAR_GAP = 0.24
 
@@ -384,8 +386,24 @@ def build(body, marks):
     def cut_x(z):
         return ROBE_OPEN_X + 0.02 * (chest.z - z) + ROBE_FLARE * max(0.0, z - chest.z)
 
+    # (Round 17: with ROBE_NECK_R the robe's top follows the neckline, all
+    # faces further than that from the neck's axis, instead of stopping at
+    # one height, which on MetaHuman's body cut it below the shoulders'
+    # line and left a shelf.)
+    if ROBE_NECK_R:
+        nring = [v.co for v in body.data.vertices if abs(v.co.z - (neck_base_z + 0.02)) < 0.004 and abs(v.co.x) < 0.075]
+        nys = [p.y for p in nring] or [neck.y + 0.06]
+        n_y = (min(nys) + max(nys)) / 2
+
+    def above_top(c):
+        if ROBE_NECK_R:
+            if c.z > neck_base_z + 0.1 or (c.z > neck_base_z and c.y < n_y - 0.02):
+                return True
+            return c.z > neck_base_z - 0.05 and math.hypot(c.x - neck.x, c.y - n_y) < ROBE_NECK_R
+        return c.z > neck_base_z + 0.012
+
     def robe_keep(c):
-        if c.z > neck_base_z + 0.012:
+        if above_top(c):
             return False
         if c.z < hip_z - 0.25:
             return False
@@ -398,6 +416,10 @@ def build(body, marks):
     def robe_body(c):
         # The shell runs a little past the top edge; the straight cut
         # below trims it.
+        if ROBE_NECK_R:
+            if above_top(c) or c.z < hip_z - 0.25 or (abs(c.x) > 0.16 and c.z < hand_z + 0.05):
+                return False
+            return True
         if neck_base_z + 0.012 < c.z <= neck_base_z + 0.03 and not (abs(c.x) > 0.16 and c.z < hand_z + 0.05):
             return True
         return robe_keep(c) or (c.y < neck.y + 0.02 + V_FRONT and c.z < neck_base_z - 0.02 and c.z > hip_z - 0.25 and not (abs(c.x) > 0.16 and c.z < hand_z + 0.05))
@@ -416,7 +438,8 @@ def build(body, marks):
                 planes.append((Vector((side * (ROBE_OPEN_X + w - k * chest.z), 0, 0)), n))
     # A straight top edge round the neck (round 13: it stepped along the
     # body's faces and read jagged in the medium shots).
-    _cut(robe, [(Vector((0, 0, neck_base_z + 0.012)), Vector((0, 0, 1)))])
+    if not ROBE_NECK_R:
+        _cut(robe, [(Vector((0, 0, neck_base_z + 0.012)), Vector((0, 0, 1)))])
     _cut(robe, planes, drop=lambda c: not robe_keep(c), front_y=neck.y + 0.02 + V_FRONT)
     # Split the facing as its own material by distance to the opening edge.
     me = robe.data
@@ -440,17 +463,20 @@ def build(body, marks):
 
     # Hood: a soft roll lying around the back of the neck and over the
     # shoulders, its green lining toward the neck.
-    pts = []
-    for k in range(29):
-        a = math.pi * (k / 28)  # 0 her left front, pi her right front
-        r = 0.095 + 0.02 * math.sin(a)
-        x = math.cos(a) * r
-        y = neck.y + 0.01 + math.sin(a) * 0.075
-        z = neck_base_z - 0.035 + 0.01 * math.sin(a) - 0.03 * (1 - math.sin(a))
-        pts.append(Vector((x, y, z)))
-    hood = _tube("hood", pts, lambda t: 0.022 + 0.01 * math.sin(math.pi * t), segs=14, flatten=0.6)
-    hood.data.materials.append(_mat("draconia_hood", BLACK, rough=0.9, sheen=0.55))
-    out.append(hood)
+    if HOOD_DRAPE:
+        out.extend(_hood_drape(body, robe, neck, neck_base_z))
+    else:
+        pts = []
+        for k in range(29):
+            a = math.pi * (k / 28)  # 0 her left front, pi her right front
+            r = 0.095 + 0.02 * math.sin(a)
+            x = math.cos(a) * r
+            y = neck.y + 0.01 + math.sin(a) * 0.075
+            z = neck_base_z - 0.035 + 0.01 * math.sin(a) - 0.03 * (1 - math.sin(a))
+            pts.append(Vector((x, y, z)))
+        hood = _tube("hood", pts, lambda t: 0.022 + 0.01 * math.sin(math.pi * t), segs=14, flatten=0.6)
+        hood.data.materials.append(_mat("draconia_hood", BLACK, rough=0.9, sheen=0.55))
+        out.append(hood)
 
     if COLLAR_STYLE == "shell":
         out.extend(_shell_collar(body, neck, neck_base_z, [shirt, sweater]))
@@ -516,7 +542,7 @@ def build(body, marks):
     else:
         knot = _tube("tie_knot", [front + Vector((0, -0.006 - ko, 0.012)), front + Vector((0, -0.009 - ko, -0.006))], lambda t: 0.012 + kr - 0.004 * t, segs=12, flatten=0.55)
         knot.data.materials.append(tie_mat)
-        _diag_uv(knot, 8.0)
+        _diag_uv(knot, TIE_STRIPES)
         out.append(knot)
     left, right = [], []
     for k in range(16):
@@ -530,7 +556,7 @@ def build(body, marks):
         right.append(c + Vector((-hw, 0, 0)))
     blade = _strip("tie_blade", left, right)
     _solidify(blade, 0.0025)
-    _diag_uv(blade, 8.0)
+    _diag_uv(blade, TIE_STRIPES)
     blade.data.materials.append(tie_mat)
     out.append(blade)
     return out
@@ -709,10 +735,56 @@ def _shell_collar(body, neck, neck_base_z, under):
         right.append(c + Vector((-hw, 0, 0)))
     blade = _strip("tie_blade", left, right)
     _solidify(blade, 0.0025)
-    _diag_uv(blade, 8.0)
+    _diag_uv(blade, TIE_STRIPES)
     blade.data.materials.append(tie_mat)
     out.append(blade)
     return out
+
+
+# The hood (round 17): a soft roll lying on the robe round the back of the
+# neck and forward over the shoulders, with a green lining showing along
+# its edge toward the neck (0: the CC0 builds' roll).
+HOOD_DRAPE = False
+HOOD_R = 0.105  # its distance out from the neck's centre (m)
+HOOD_A0 = 0.2  # where its ends lie, from straight out at the sides toward the back (rad)
+HOOD_COLOR = BLACK
+# The robe's top round the neck: faces nearer the neck's axis than this
+# are cut away (0: one height, the CC0 builds').
+ROBE_NECK_R = 0.0
+
+
+def _hood_drape(body, robe, neck, neck_base_z):
+    deps = bpy.context.evaluated_depsgraph_get()
+    ring = [v.co for v in body.data.vertices if abs(v.co.z - (neck_base_z + 0.02)) < 0.004 and abs(v.co.x) < 0.075]
+    ys = [p.y for p in ring] or [neck.y + 0.06]
+    ny = (min(ys) + max(ys)) / 2
+    # On the body's shoulders, out by the robe's 2 cm shell and thickness
+    # (the robe's own top is open by the neck, so rays fell through it).
+    tree = BVHTree.FromObject(body, deps)
+    pts, lin, rads = [], [], []
+    n = 33
+    for k in range(n):
+        t = k / (n - 1)
+        a = HOOD_A0 + (math.pi - 2 * HOOD_A0) * t  # her left side, round the back, to her right side
+        back = max(0.0, math.sin(a))
+        d = Vector((math.cos(a), math.sin(a) * 0.95, 0))
+        o = Vector((neck.x, ny, 0)) + d * (HOOD_R + 0.03 * back)
+        # On the body's nearest point to a ring at the neck's base (rays
+        # down met the head, or started inside the thick back of the neck).
+        hit = tree.find_nearest(Vector((o.x, o.y, neck_base_z - 0.01 * back)))
+        rad = (0.012 + 0.018 * back) * min(1.0, 0.4 + 3.0 * min(t, 1 - t))
+        base = (hit[0] + hit[1] * (0.02 + ROBE_THICK + rad * 0.55)) if hit[0] is not None else Vector((o.x, o.y, neck_base_z))
+        p = base
+        pts.append(p)
+        rads.append(rad)
+        lin.append(p - d * rad * 0.85 + Vector((0, 0, rad * 0.3)))
+    hood = _tube("hood", pts, lambda t: rads[min(int(t * (n - 1) + 0.5), n - 1)], segs=16, flatten=0.55)
+    hood.data.materials.append(_mat("draconia_hood", HOOD_COLOR, rough=0.9, sheen=0.6, weave="twill"))
+    lining = _tube("hood_lining", lin, lambda t: 0.0045 + 0.004 * math.sin(math.pi * t), segs=8, flatten=0.6)
+    lining.data.materials.append(_mat("draconia_hood_lining", GREEN, rough=0.75, sheen=0.7, weave="twill"))
+    for o in (hood, lining):
+        _box_uv(o)
+    return [hood, lining]
 
 
 def _settle(flap, nu, colliders, frames):
@@ -861,7 +933,7 @@ def _tie_knot(front, mat):
     for p in knot.data.polygons:
         p.use_smooth = True
     knot.data.materials.append(mat)
-    _diag_uv(knot, 8.0)
+    _diag_uv(knot, TIE_STRIPES)
     return knot
 
 

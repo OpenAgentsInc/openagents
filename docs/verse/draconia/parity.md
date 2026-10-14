@@ -62,7 +62,7 @@ with 4096-pixel maps, `Prepared::load` with a raised `Budget`, then
 | Eyes | Round 14: MetaHuman eyeballs, a refracting sage-green iris (soft-shouldered, darker centre), cornea shell for the catchlight, limbal ring | Lids about 4% too open; no tear line or wet rim yet |
 | Brows | Round 10: MetaHuman `Eyebrows_M_Full` cards over a feathered painted brow and 700 strand brows | Close in shape; slightly darker and more even than the reference |
 | Lips | Round 13: rig upper-lip roll-in over a sculpt layer; MetaHuman lip albedo | Upper lip within 5%, lower lip +9% when speaking; mouth width within 6% |
-| Hair (updo, strands) | Round 13: MetaHuman `Hair_S_UpdoBuns` cards, our body layer and lifted flyaways, platinum | Crown still reads smooth and capped from the front; the reference is loose and full |
+| Hair (updo, strands) | Round 16: MetaHuman `Hair_S_UpdoBuns` cards under our grown strands: a centre part with curtains over the temples, clumped locks, heavier face-framing locks, flyaways; platinum | A fine haze up close, not glossy separated locks; too little root-to-length contrast; the cards' warmer blonde shows through |
 | Uniform | Round 15: cut from MetaHuman's body and neck (arms lowered): a collar band that is a shell of the neck, a fall with points laid on the chest, a seated knot, striped tie, sweater V with trim, open robe with green facing; fabric weave normals | Points wider and flatter than the reference's; tie stripes too coarse; robe reads flat black, ragged over the shoulders, no hood lining |
 | Lighting response | Measured against 0:54: warm key screen left, warm fill, short teal rim, near-black background, soft shadows from moving area lights; f/2 bokeh of glowing jars | No Unreal-grade skin shadowing (screen-space scattering) |
 | Expressions | Round 6: her full rig through OpenRigLogic (joints and blend shapes; smile, speaking, neutral) | Built per expression, not live in Verse; wrinkle and blood-flow maps not yet driven |
@@ -898,6 +898,35 @@ $B -b --factory-startup --python scripts/blender/draconia_set.py -- ~/work/film-
   - the robe's top edge over the shoulders is ragged and the robe reads
     flat black, where the reference's has a green-lined hood;
   - the crown is unchanged.
+
+### Round 16, 2026-10-14: a centre part with curtains, clumped locks, finer tie stripes
+
+- **Direction.** After the collar, the crown: from the front the hair was
+  combed straight back from a high hairline (a smooth cap, the forehead
+  bare), where the reference's falls from a centre part over the temples
+  in loose curtains, with heavier locks in front of the ears.
+- **What changed** (`draconia_hair.py`, set in `metahuman_import.py`).
+  - Curtains (`CURTAIN`): strands rooted within a radian of the front
+    first comb sideways and down from the part to a point above the ear,
+    then turn back to the knot.
+  - Clumps (`CLUMPS`, `CLUMP`): 160 guide strands are combed; every other
+    strand follows its nearest guide, drawn in toward it along its length
+    (95% by the tip), so the hair falls in locks with gaps between them
+    rather than as an even haze; ribbons 3.5x wider.
+  - Face-framing locks: 7 a side of 18-34 hairs each, 16-30 cm, so they
+    read as locks, not single hairs.
+  - Tie: stripes about 3 cm a repeat (`TIE_STRIPES`), on the knot too.
+- **Measured.** Face unchanged (within 7.4%).
+- **Artifacts.** `~/Downloads/draconia-fullface-mh-v14.png` (reference |
+  round 15 | round 16), `~/Downloads/draconia-parity-round-16.png`, the
+  progress sheet, and a clip of the rounds so far,
+  `~/Downloads/draconia-parity-round-16.mp4`;
+  `~/work/film-out/draconia/parity/round-16/`.
+- **Honest state.** The hair's silhouette is closer: parted in the middle,
+  over the temples, locks to the collar. Up close it is still a fine haze
+  rather than the reference's glossy, separated locks, with less contrast
+  between ash roots and bright lengths; MetaHuman's cards (warmer) show
+  through the gaps. The robe is unchanged (round 17).
 
 ## Peacock scene
 

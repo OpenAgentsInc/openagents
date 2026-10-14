@@ -924,7 +924,7 @@ def main():
         # Round 11: the crown in clumped sections with gaps (fewer, wider,
         # messier strands over the cards), not one smooth sheen.
         draconia_hair.BODY_ROOTS = 5000
-        draconia_hair.BODY_WIDTH = 2.4
+        draconia_hair.BODY_WIDTH = float(os.environ.get("MH_BODY_WIDTH", "3.5"))
         draconia_hair.MESS = (0.35, 1.0)
         # Round 13: loose loops and pieces lifting off the crown, with dark
         # gaps under them (more lift; longer, springier flyaways).
@@ -939,10 +939,21 @@ def main():
         # Round 9: more of them, some from the front of the hairline, not
         # only behind the ears; the grown body a shade darker than the
         # cards so the crown has depth.
-        draconia_hair.LOCKS_PER_SIDE = 8
-        draconia_hair.LOCK_HAIRS = (3, 7)
+        draconia_hair.LOCKS_PER_SIDE = int(os.environ.get("MH_LOCKS", "7"))
+        draconia_hair.LOCK_HAIRS = tuple(int(x) for x in os.environ.get("MH_LOCK_HAIRS", "18 34").split())
+        draconia_hair.LOCK_LENGTH = tuple(float(x) for x in os.environ.get("MH_LOCK_LENGTH", "0.16 0.30").split())
         # In front of the ears, not across the eyes.
         draconia_hair.LOCK_AZ = (0.7, 1.3)
+        # Round 16: a centre part with curtains: the front of the combed
+        # body falls sideways over the temples to above the ears before
+        # turning back to the knot (MH_CURTAIN etc. for tuning).
+        draconia_hair.CURTAIN = float(os.environ.get("MH_CURTAIN", "1.0"))
+        draconia_hair.CURTAIN_AZ = float(os.environ.get("MH_CURTAIN_AZ", "1.0"))
+        draconia_hair.CURTAIN_X = float(os.environ.get("MH_CURTAIN_X", "0.11"))
+        draconia_hair.CURTAIN_Z = float(os.environ.get("MH_CURTAIN_Z", "0.01"))
+        # Round 16: in clumped locks with gaps, not an even haze.
+        draconia_hair.CLUMPS = int(os.environ.get("MH_CLUMPS", "160"))
+        draconia_hair.CLUMP = float(os.environ.get("MH_CLUMP", "0.95"))
         draconia_hair.HAIR_ROOT, draconia_hair.HAIR_MID, draconia_hair.HAIR_TIP = (tuple(c * 0.85 for c in col) for col in hair_cols)
         hair = groom_objs + draconia_hair.grow(head, marks, seed=7, style=HAIR_STYLE)[0]
     else:
@@ -990,6 +1001,8 @@ def main():
         draconia_cloth.FACING_W = 0.02
         draconia_cloth.KNOT_DROP = 0.007
         draconia_cloth.KNOT_SIZE = 1.15
+        # Round 16: finer stripes (about 3 cm a repeat, the reference's).
+        draconia_cloth.TIE_STRIPES = 32.0
         draconia_cloth.COLLAR_GAP = 0.7
         draconia_cloth.ROBE_OPEN_TOP = -0.03
         # Round 14: the sweater stops 3 cm under the neck's base, so the

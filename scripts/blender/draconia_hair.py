@@ -31,6 +31,7 @@ import bpy
 import numpy as np
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
+from mathutils.kdtree import KDTree
 
 VARIANTS = 8
 
@@ -279,12 +280,38 @@ def grow(skin, marks, seed=7, style="updo"):
     # Extra roots along the hairline, so the edge is dense and soft.
     edge = [f for f in scalp if _angles(me.polygons[f].center, centre)[1] < _hairline_el(_angles(me.polygons[f].center, centre)[0]) + 0.12]
     roots += _sample_surface(me, edge, EDGE_ROOTS, rng)
+    # Clumps (round 16): CLUMPS guide strands are combed; every other
+    # strand follows its nearest guide, offset by where its root lies from
+    # the guide's and drawn in toward the guide along its length, so the
+    # hair falls in locks with gaps between them rather than as an even
+    # haze.
+    guides = []
+    if CLUMPS and "body" in PARTS:
+        for root, rn in roots[:CLUMPS]:
+            layer = rng.random()
+            lift = 0.0015 + LIFT * layer**1.4
+            pts, nrms = comb(root, rn, lift, mess=MESS[0] + MESS[1] * layer**2, wander=wander)
+            if len(pts) >= 2:
+                guides.append((root, pts, nrms, layer))
+        gk = KDTree(len(guides))
+        for i, g in enumerate(guides):
+            gk.insert(g[0], i)
+        gk.balance()
     for idx, (root, rn) in enumerate(roots if "body" in PARTS else []):
         layer = rng.random()
         # A loose updo: the outer layers ride well off the scalp (up to
         # 2 cm over the sides), the inner ones close.
         lift = 0.0015 + LIFT * layer**1.4
-        pts, nrms = comb(root, rn, lift, mess=MESS[0] + MESS[1] * layer**2, wander=wander)
+        if guides:
+            _, gi, _ = gk.find(root)
+            g_root, g_pts, g_n, layer = guides[gi]
+            off = root - g_root
+            jit = Vector((rng.gauss(0, 1), rng.gauss(0, 1), rng.gauss(0, 1))) * 0.0006
+            n_ = len(g_pts)
+            pts = [q + off * (1.0 - CLUMP * (k / max(n_ - 1, 1)) ** 0.6) + jit * (k / max(n_ - 1, 1)) for k, q in enumerate(g_pts)]
+            nrms = g_n
+        else:
+            pts, nrms = comb(root, rn, lift, mess=MESS[0] + MESS[1] * layer**2, wander=wander)
         if len(pts) < 2:
             continue
         loops = wrap(pts[-1], rng.uniform(0.6, 1.8), knot_r * rng.uniform(0.6, 1.25), rng)
@@ -678,6 +705,10 @@ PART_JITTER = 0.0
 # CURTAIN_Y forward and CURTAIN_Z up (m; above the ear), then to the knot;
 # CURTAIN weighs that pull against the part's push.
 CURTAIN = 0.0
+# Clumped locks: guide strands combed (0: every strand combed on its own)
+# and how far toward its guide a strand is drawn by its tip.
+CLUMPS = 0
+CLUMP = 0.8
 CURTAIN_AZ = 1.0
 CURTAIN_X = 0.11
 CURTAIN_Y = 0.0
