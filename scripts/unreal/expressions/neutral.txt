@@ -1,7 +1,4 @@
-# Neutral. Round 9: the lids relaxed a little (the tracker measured the
-# eyes 12% more open than the reference's at 0:24 in round 8).
-CTRL_expressions.eyeRelaxL 0.15
-CTRL_expressions.eyeRelaxR 0.15
-# Round 13: the upper lip rolled in a touch (11% tall at rest).
-CTRL_expressions.mouthUpperLipRollInL 0.15
-CTRL_expressions.mouthUpperLipRollInR 0.15
+# Neutral. Round 18: the lids fully open and the upper lip no longer
+# rolled in (rounds 9 and 13 had relaxed the lids 0.15 and rolled the lip
+# in 0.15 toward the tracker's numbers; the owner read the eyes as small
+# and the lips as thin).

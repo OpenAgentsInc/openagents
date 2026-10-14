@@ -56,12 +56,12 @@ with 4096-pixel maps, `Prepared::load` with a raised `Budget`, then
 
 | Area | State | Gap |
 | --- | --- | --- |
-| Face shape | Round 7: a blend of the three best-scoring Creator presets with small edits, fitted and rigged by MetaHuman Creator (joints and 782 blend shapes) | Young and slim at last; jaw and cheeks still fuller than the reference; eyes a little too open, upper lip a little tall |
-| Skin | Round 6: MetaHuman's own albedo and normal (texture sources), graded paler and less saturated toward the reference, our micro normal and roughness | Creator's palest tone is still warm; wrinkle maps not applied per expression yet |
+| Face shape | Round 18: MetaHuman Creator's rig of a preset blend (round 7) under a structural sculpt layer (`face_v`): shorter tapered lower face, slimmer jaw angles and neck, cheekbones with hollows, narrower sides, slimmer nose; eyes 14% larger | Chin less pointed and cheek hollows shallower than the reference's; 5% narrow in the neutral and 15% narrow at the jaw in the smile |
+| Skin | Round 18: MetaHuman's albedo graded paler, 30% evened toward its blur; its normal eased 45% toward flat with our micro normal over | Creator's palest tone is still warm; wrinkle maps not applied per expression yet |
 | Freckles | Round 7: MetaHuman's freckles at density and strength 0.25, small dark spots lifted 85% | Fine and sparse; close to the reference |
-| Eyes | Round 14: MetaHuman eyeballs, a refracting sage-green iris (soft-shouldered, darker centre), cornea shell for the catchlight, limbal ring | Lids about 4% too open; no tear line or wet rim yet |
+| Eyes | Round 18: 14% larger across the face; refracting light grey-green iris (larger in the eye), cornea shell, limbal ring; lids fully open at rest | 12% more open than the reference's; under-eye shadow ring; lower lashes spiky up close |
 | Brows | Round 10: MetaHuman `Eyebrows_M_Full` cards over a feathered painted brow and 700 strand brows | Close in shape; slightly darker and more even than the reference |
-| Lips | Round 13: rig upper-lip roll-in over a sculpt layer; MetaHuman lip albedo | Upper lip within 5%, lower lip +9% when speaking; mouth width within 6% |
+| Lips | Round 18: rose vermilion drawn on MetaHuman's lip outline in UV over its mauve-grey; fuller, less projecting; no roll-in at rest | Lower lip +9% when speaking; the bow less crisp than the reference's |
 | Hair (updo, strands) | Round 16: MetaHuman `Hair_S_UpdoBuns` cards under our grown strands: a centre part with curtains over the temples, clumped locks, heavier face-framing locks, flyaways; platinum | A fine haze up close, not glossy separated locks; too little root-to-length contrast; the cards' warmer blonde shows through |
 | Uniform | Round 15: cut from MetaHuman's body and neck (arms lowered): a collar band that is a shell of the neck, a fall with points laid on the chest, a seated knot, striped tie, sweater V with trim, open robe with green facing; fabric weave normals | Points wider and flatter than the reference's; tie stripes too coarse; robe reads flat black, ragged over the shoulders, no hood lining |
 | Lighting response | Measured against 0:54: warm key screen left, warm fill, short teal rim, near-black background, soft shadows from moving area lights; f/2 bokeh of glowing jars | No Unreal-grade skin shadowing (screen-space scattering) |
@@ -950,6 +950,79 @@ $B -b --factory-startup --python scripts/blender/draconia_set.py -- ~/work/film-
   black where the reference's is a dark teal-green with a visible hood
   roll. Round 18 turns to the face (the owner: it does not read as
   Draconia).
+
+### Round 18, 2026-10-14: a structural face rebuild (outline measures, a slimmer, younger face)
+
+- **Direction.** The owner: "the face looks totally different than
+  Draconia… eyes must be light green but the facial structure… is so
+  completely not 'attractive girl'". The coordinator's read: hers is a
+  slim heart/V face with high cheekbones and hollows, a defined jaw, a
+  slender neck, large almond eyes, a slim nose and full but compact lips.
+  Ours read broad, round-cheeked, soft-jawed and older. Every inner
+  feature was within 7% on MetaHuman's tracker, so those numbers no
+  longer guide the work alone.
+- **A new measure** (`scripts/verse/draconia_outline.py`). MediaPipe's
+  face landmarker (Apache-2.0, run from a local virtualenv, not a repo
+  dependency) gives the face's outline, which MetaHuman's tracker does
+  not. It reads the outline's width from the eye line to the chin, the
+  chin's taper and the vertical segments, all over the eye spacing.
+  - Against 0:24 it found the mouth-to-chin length **18.9% long**, the
+    chin 5% wide, the nose 8% wide and the mouth 9% wide.
+  - The tracker had missed all of these: a long, heavy lower face is
+    what read as "older" and "broad".
+- **What changed.**
+  - `metahuman_import.face_v` is a sculpt layer over the rigged head
+    (`MH_FACE_V`; added to every expression, like round 12's lip layer;
+    Blender only, no Unreal run). It includes:
+    - the lower face shortened 15%, with a V taper to the chin;
+    - the jowls and the jaw's angles drawn in, and the neck slimmed 10%;
+    - the area under the chin tucked;
+    - cheekbones forward, with a deeper hollow under them;
+    - the temples, cheekbones and cheeks 7% narrower;
+    - the nose's wings 30% narrower, the bridge 15% slimmer and a
+      smaller tip;
+    - a softer brow ridge and slightly lower brows.
+  - Eyes 14% larger (`eye_scale`), across the face only: the eyeball,
+    shells, lids and lashes within 1.2 cm, fading by 3.6 cm.
+    - Scaled in depth too, the lids came forward and the skin bunched in
+      a ring under the eyes.
+    - The iris is larger in the eye (UV radius 0.175) and lighter
+      (tint 0.50,0.64,0.55 at gain 5).
+  - The neutral's lids are fully open and its upper lip no longer rolled
+    in (rounds 9 and 13 had tuned both toward the tracker's numbers).
+  - Lips: MetaHuman's vermilion is a dull mauve-grey, so the lips read
+    thin. It is recoloured rose inside the lip outline, drawn once on
+    MetaHuman's shared head UV (`LIP_UV`), at 35%.
+  - Skin: 30% of the albedo is replaced by its blur, for an even tone,
+    and MetaHuman's normal is eased 45% toward flat (fewer creases), with
+    the pores laid over after.
+  - A face-only before/after (front and 3/4) went to the owner first:
+    `~/Downloads/draconia-face-r18-before-after.png`.
+- **Measured** (outline, ours against the reference, round 16 → round 18):
+
+  | Measure | 0:24 neutral | 0:54 smile |
+  | --- | --- | --- |
+  | Mouth to chin | +18.9% → +1.9% | +16.3% → -0.9% |
+  | Eye line to chin | +7.9% → +2.2% | +7.0% → +1.3% |
+  | Width at the jaw (0.75) | +2.1% → -4.8% | -8.7% → -14.9% |
+  | Width at the chin (0.90) | +5.1% → -4.6% | -7.5% → -14.8% |
+  | Nose width | +8.3% → +2.4% | +1.0% → -5.3% |
+  | Mouth width | +8.7% → +1.5% | +5.7% → -1.3% |
+  | Eye opening | -0.7% → +12.1% | -2.8% → +11.9% |
+
+- **Artifacts.** `~/Downloads/draconia-fullface-mh-v15.png` (reference |
+  round 16 | round 18), `~/Downloads/draconia-parity-round-18.png`, the
+  progress sheet, the face-only before/after above;
+  `~/work/film-out/draconia/parity/round-18/`.
+- **Honest state.** She now reads as a slim young woman of the
+  reference's type: shorter, tapered lower face, slimmer nose, larger
+  light eyes, defined rose lips. She is not yet the same person:
+  - the reference's chin is more pointed and her cheek hollows deeper;
+  - the reference's brows are finer and more arched;
+  - the face is now 5% narrow in the neutral and 15% narrow at the jaw
+    in the smile (the reference's smile widens her cheeks), so the width
+    edits overshoot there;
+  - the eyes are 12% more open than the reference's.
 
 ## Peacock scene
 

@@ -50,8 +50,8 @@ import draconia_paint  # noqa: E402
 
 HAIR_STYLE = os.environ.get("MH_HAIR", "updo")
 # The composed iris's tint and gain (round 12: muted olive grey-green).
-IRIS_TINT = (0.46, 0.64, 0.50)
-IRIS_GAIN = 4.4
+IRIS_TINT = (0.50, 0.64, 0.55)
+IRIS_GAIN = 5.0
 
 ROLES = {
     "head": "skin",
@@ -185,6 +185,115 @@ def lip_post(vs, marks):
     meet = np.exp(-(((z - m.z) / 0.0035) ** 2))
     d = np.zeros_like(vs)
     d[:, 2] += 0.0016 * meet * across * front
+    return d
+
+
+# Round 18's structural sculpt (MH_FACE_V, factor; 0 off): the owner read
+# the face as broad, round-cheeked, soft-jawed and older. The outline
+# measures (`scripts/verse/draconia_outline.py`) put the mouth-to-chin
+# length 18-19% long for the eye spacing, the chin 5% wide and the nose
+# 8-14% wide.
+FACE_V = {
+    "short": 0.15,  # the lower face shortened by this share of mouth-to-chin
+    "taper": 0.12,  # the face's width under the mouth narrowed, most at the chin
+    "jowl": 0.0035,  # the jowls drawn in (m)
+    "cheekbone": 0.003,  # cheekbones forward and out (m)
+    "hollow": 0.005,  # the hollow under them (m, inward)
+    "nose": 0.3,  # the nostril wings narrowed
+    "bridge": 0.15,  # the bridge slimmer
+    "width": 0.07,  # the face's sides (temples, cheekbones, cheeks) narrower
+    "tip": 0.0015,  # the nose tip smaller (m, back)
+    "lip": 0.0008,  # the upper lip forward (m)
+    "lower_lip": 0.0003,  # the lower lip forward (m)
+    "gonial": 0.14,  # the jaw's angles (under the ears) drawn in
+    "neck": 0.1,  # the neck slimmer (x; half that in depth)
+    "brow": 0.0015,  # the brows lower (m), as the larger eyes rise toward them
+    "tuck": 0.004,  # under the chin drawn back (m), a crisp jaw-to-neck angle
+    "ridge": 0.0025,  # the brow ridge back (m)
+}
+
+
+def face_v(vs, marks, k=1.0):
+    """A slimmer, younger structure over the rigged head: a shorter lower
+    face tapering to a narrower chin, the jowls drawn in, high cheekbones
+    with a hollow below, a slimmer nose with a smaller tip and a fuller
+    upper lip. Offsets in metres, Blender frame (x her left, -y forward,
+    z up), fading out before the neck, the ears and the skull."""
+    f = {n: v * k for n, v in FACE_V.items()}
+    e = (marks.eye_l + marks.eye_r) / 2
+    m = marks.mouth
+    nt = marks.nose_tip
+    x, y, z = vs[:, 0], vs[:, 1], vs[:, 2]
+    d = np.zeros_like(vs)
+    sel = (np.abs(x - m.x) < 0.006) & (y < m.y + 0.03) & (z < m.z) & (z > m.z - 0.09)
+    chin_z = float(z[sel].min()) if sel.any() else m.z - 0.045
+    L = m.z - chin_z
+    # Toward the back of the jaw (the ears) the edits fade.
+    front = 1 - smooth(m.y + 0.055, m.y + 0.1, y)
+    under = 1 - smooth(chin_z - 0.02, chin_z - 0.06, z)  # below the chin, into the neck
+    # 1. A shorter lower face: from the mouth down, everything rises, up to
+    # `short` of mouth-to-chin at the chin (and under it, fading).
+    t = np.clip((m.z - z) / L, 0.0, 1.0)
+    d[:, 2] += f["short"] * L * t * under * front
+    # 2. A V taper: narrower under the mouth, most at the chin.
+    v = smooth(m.z + 0.005, chin_z + 0.005, z) * under * front
+    d[:, 0] += -(x - m.x) * f["taper"] * v
+    # 3. The jowls in: either side of the mouth's corners, below them.
+    for s_ in (1, -1):
+        g = np.exp(-(((x - (m.x + s_ * 0.042)) / 0.016) ** 2) - (((z - (m.z - 0.022)) / 0.018) ** 2) - (((y - (m.y + 0.03)) / 0.025) ** 2))
+        d[:, 0] += -s_ * f["jowl"] * g
+        d[:, 1] += 0.4 * f["jowl"] * g
+    # 4. High cheekbones, forward and a little out, and the hollow below.
+    for s_ in (1, -1):
+        g = np.exp(-(((x - (e.x + s_ * 0.05)) / 0.015) ** 2) - (((y - (e.y + 0.018)) / 0.02) ** 2) - (((z - (e.z - 0.024)) / 0.012) ** 2))
+        d[:, 1] += -f["cheekbone"] * g
+        d[:, 0] += s_ * 0.6 * f["cheekbone"] * g
+        g = np.exp(-(((x - (e.x + s_ * 0.046)) / 0.014) ** 2) - (((y - (e.y + 0.02)) / 0.022) ** 2) - (((z - (e.z - 0.055)) / 0.014) ** 2))
+        d[:, 1] += f["hollow"] * g
+        d[:, 0] += -s_ * 0.5 * f["hollow"] * g
+    # 5. A slimmer nose: the wings and lower sides in; a smaller tip.
+    nose = np.exp(-(((z - (nt.z - 0.006)) / 0.012) ** 2)) * np.exp(-(((x - nt.x) / 0.025) ** 2)) * (1 - smooth(nt.y + 0.02, nt.y + 0.035, y))
+    d[:, 0] += -(x - nt.x) * f["nose"] * nose
+    tip = np.exp(-(((x - nt.x) / 0.009) ** 2) - (((y - nt.y) / 0.008) ** 2) - (((z - nt.z) / 0.008) ** 2))
+    d[:, 1] += f["tip"] * tip
+    d[:, 2] += 0.5 * f["tip"] * tip
+    # 7. The jaw's angles in: the lower face's back corners, under the
+    # ears, narrower (the taper above fades out toward them).
+    back = 1 - smooth(m.y + 0.11, m.y + 0.14, y)
+    gz = smooth(m.z + 0.025, m.z - 0.005, z) * (1 - smooth(chin_z - 0.005, chin_z - 0.03, z))
+    d[:, 0] += -(x - m.x) * f["gonial"] * gz * back * (1 - front * 0.5)
+    # 8. A slimmer neck, between the jaw and the collar (fading out at the
+    # body's seam and under the chin).
+    nk = smooth(marks.neck.z + 0.005, marks.neck.z + 0.025, z) * (1 - smooth(chin_z - 0.025, chin_z + 0.005, z))
+    ny_ = float(np.median(y[(np.abs(z - (marks.neck.z + 0.03)) < 0.004)])) if (np.abs(z - (marks.neck.z + 0.03)) < 0.004).any() else m.y + 0.06
+    d[:, 0] += -(x - m.x) * f["neck"] * nk
+    d[:, 1] += -(y - ny_) * 0.5 * f["neck"] * nk
+    # 9. Lower brows.
+    for s_ in (1, -1):
+        g = np.exp(-(((x - (e.x + s_ * 0.032)) / 0.02) ** 2) - (((z - (e.z + 0.02)) / 0.008) ** 2)) * (1 - smooth(e.y + 0.01, e.y + 0.03, y))
+        d[:, 2] += -f["brow"] * g
+    # 10. Under the chin drawn back and up: a crisp angle between the jaw
+    # and the neck (soft and full, it read as a double chin in 3/4).
+    chin_y = float(y[sel].min()) if sel.any() else m.y
+    g = np.exp(-(((x - m.x) / 0.03) ** 2) - (((y - (chin_y + 0.035)) / 0.02) ** 2) - (((z - (chin_z - 0.012)) / 0.012) ** 2))
+    d[:, 1] += f["tuck"] * g
+    d[:, 2] += 0.5 * f["tuck"] * g
+    # 11. A softer brow ridge.
+    for s_ in (1, -1):
+        g = np.exp(-(((x - (e.x + s_ * 0.028)) / 0.018) ** 2) - (((z - (e.z + 0.024)) / 0.01) ** 2)) * (1 - smooth(e.y + 0.005, e.y + 0.025, y))
+        d[:, 1] += f["ridge"] * g
+    # 12. A slimmer bridge, and the face's sides narrower: the temples,
+    # cheekbones and cheeks drawn toward the middle (not the middle itself,
+    # so the eyes and nose keep their spacing).
+    br = np.exp(-(((x - nt.x) / 0.012) ** 2)) * smooth(nt.z + 0.002, nt.z + 0.012, z) * (1 - smooth(e.z - 0.005, e.z + 0.01, z)) * (1 - smooth(nt.y + 0.015, nt.y + 0.03, y))
+    d[:, 0] += -(x - nt.x) * f["bridge"] * br
+    side = smooth(0.03, 0.05, np.abs(x - m.x)) * smooth(m.z - 0.01, m.z + 0.02, z) * (1 - smooth(e.z + 0.05, e.z + 0.08, z))
+    d[:, 0] += -(x - m.x) * f["width"] * side
+    # 6. A fuller upper lip.
+    ul = np.exp(-(((x - m.x) / 0.02) ** 2) - (((z - (m.z + 0.005)) / 0.005) ** 2)) * (1 - smooth(m.y + 0.008, m.y + 0.025, y))
+    d[:, 1] += -f["lip"] * ul
+    ll = np.exp(-(((x - m.x) / 0.02) ** 2) - (((z - (m.z - 0.006)) / 0.005) ** 2)) * (1 - smooth(m.y + 0.008, m.y + 0.025, y))
+    d[:, 1] += -f["lower_lip"] * ll
     return d
 
 
@@ -458,12 +567,46 @@ def sample(img, u, v):
     return img[y, x]
 
 
-def compose_eye(tex_dir, out_dir, size=2048, iris_r=0.163, tint=(0.52, 0.62, 0.56)):
+# The iris's radius in the eye's UV (round 18: larger, 0.163 before).
+IRIS_R = 0.175
+# The eyes' scale about each eyeball's centre (round 18: larger eyes, the
+# lids, lashes and eye shells with them, fading out over the brow and
+# cheek; MH_EYE_SCALE).
+EYE_SCALE = 1.14
+
+
+def eye_scale(objs, k):
+    """Each eye region scaled by k across the face about its eyeball's
+    centre: everything within 1.2 cm fully (the eyeball, its shells, the
+    lids), fading to nothing by 3.6 cm."""
+    if k == 1.0:
+        return
+    cs = [np.array([v.co for v in objs[n].data.vertices]).mean(0) for n in ("eyeLeft", "eyeRight") if n in objs]
+    for name, o in objs.items():
+        co = np.array([v.co for v in o.data.vertices])
+        out = co.copy()
+        for c in cs:
+            r = np.linalg.norm(co - c, axis=1)
+            w = 1 - smooth(0.012, 0.036, r)
+            # Across the face only (x, z), not in depth: scaled in depth too
+            # the lids came forward and the eyes bulged, and the skin bunched
+            # into a ring under them.
+            dlt = (co - c) * (k - 1) * w[:, None]
+            dlt[:, 1] = 0
+            out += dlt
+        if np.abs(out - co).max() > 0:
+            for v, p in zip(o.data.vertices, out):
+                v.co = Vector(p)
+            o.data.update()
+
+
+def compose_eye(tex_dir, out_dir, size=2048, iris_r=None, tint=(0.52, 0.62, 0.56)):
     """The eye's albedo on MetaHuman's eye UV, as MetaHuman's eye material
     composes it: the sclera map (veins, the pink back) across the ball, the
     iris photo scaled into the iris disc and turned grey-green (luminance
     times a tint, keeping its fibres), a dark limbal ring at the iris edge,
     and the pupil."""
+    iris_r = iris_r or IRIS_R
     sclera = load_px(os.path.join(tex_dir, "T_EyeSclera_D.tga"))[..., :3]
     iris = load_px(os.path.join(tex_dir, "T_Iris001_01_D.tga"))[..., :3]
     yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
@@ -528,6 +671,33 @@ def teeth_rgba(tex_dir, out_dir):
     return draconia_paint.save("mh_teeth", np.concatenate([rgb, np.ones_like(lum)], -1), out_dir)
 
 
+# The vermilion's outline on MetaHuman's head UV (shared by every
+# MetaHuman; read off the albedo at 2048, top row first): the upper lip's
+# border with its bow, then the lower lip's.
+LIP_UV = [(860, 1195), (885, 1165), (910, 1145), (950, 1133), (985, 1130), (1013, 1137), (1025, 1140), (1040, 1135), (1070, 1128), (1105, 1133), (1140, 1145), (1165, 1165), (1190, 1195),
+          (1165, 1222), (1135, 1242), (1090, 1260), (1040, 1265), (990, 1262), (945, 1255), (900, 1240), (875, 1220)]
+
+
+def lip_mask_uv(shape):
+    """LIP_UV filled (even-odd rule, numpy only: Blender's Python has no
+    PIL) and softened by a few pixels."""
+    h, w = shape
+    poly = np.array([(x * w / 2048, y * h / 2048) for x, y in LIP_UV], np.float32)
+    x0, y0 = poly.min(0).astype(int) - 2
+    x1, y1 = poly.max(0).astype(int) + 3
+    yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32) + 0.5
+    inside = np.zeros(xx.shape, bool)
+    for (ax, ay), (bx, by) in zip(poly, np.roll(poly, -1, 0)):
+        cross = (ay > yy) != (by > yy)
+        xi = ax + (yy - ay) * (bx - ax) / np.where(by == ay, 1e-6, by - ay)
+        inside ^= cross & (xx < xi)
+    m = np.zeros((h, w), np.float32)
+    m[y0:y1, x0:x1] = inside
+    for _ in range(3):
+        m = (np.roll(m, 2, 0) + np.roll(m, -2, 0) + np.roll(m, 2, 1) + np.roll(m, -2, 1) + m) / 5
+    return m
+
+
 def dcc_skin(dcc, maps, out_dir, size):
     """MetaHuman's own skin from the character's DCC export (`Maps/`): its
     albedo as the base colour; its normal (Unreal's Y-down convention,
@@ -553,6 +723,18 @@ def dcc_skin(dcc, maps, out_dir, size):
         keep = np.clip((chroma[..., None] - 0.3) / 0.15, 0, 1)
         k = sat + (min(1.0, sat + 0.4) - sat) * keep
         rgb = np.clip((lum + (rgb - lum) * k) * gain, 0, 1)
+        # Round 18: the lips a deeper rose (MH_LIP_TONE, default 0.35):
+        # MetaHuman's vermilion is a mauve grey, duller than the skin around
+        # it, so the lips read thin; the outline is drawn in UV.
+        lt = float(os.environ.get("MH_LIP_TONE", "0.35"))
+        if lt > 0:
+            ml = lip_mask_uv(rgb.shape[:2])[..., None]
+            # Rose over MetaHuman's mauve-grey vermilion, keeping its
+            # shading (its luminance, rescaled).
+            l_ = rgb.mean(-1, keepdims=True)
+            rose = np.array([0.66, 0.38, 0.38], np.float32) * (l_ / 0.5)
+            w_ = ml * lt
+            rgb = np.clip(rgb * (1 - w_) + rose * w_, 0, 1)
         # Soften the freckles (MH_FRECKLE_SOFTEN, default 0.85): a dark
         # spot up to a few millimetres across, darker than its blurred
         # surroundings, is lifted that share toward them. Broad shading is
@@ -566,6 +748,16 @@ def dcc_skin(dcc, maps, out_dir, size):
                 blur = (np.roll(blur, 6, 0) + np.roll(blur, -6, 0) + np.roll(blur, 6, 1) + np.roll(blur, -6, 1) + blur) / 5
             spot = np.clip(blur - l2, 0, 0.25)[..., None]
             rgb = np.clip(rgb + spot * soften * (rgb / np.maximum(l2[..., None], 1e-4)), 0, 1)
+        # Round 18: an even, younger tone (MH_SKIN_EVEN, default 0.3): that
+        # share of the albedo replaced by its blur (a few millimetres), so
+        # blotches and pores fade at a medium distance; the normal map keeps
+        # the fine relief.
+        even = float(os.environ.get("MH_SKIN_EVEN", "0.3"))
+        if even > 0:
+            b_ = rgb.copy()
+            for _ in range(4):
+                b_ = (np.roll(b_, 4, 0) + np.roll(b_, -4, 0) + np.roll(b_, 4, 1) + np.roll(b_, -4, 1) + b_) / 5
+            rgb = rgb * (1 - even) + b_ * even
         # Round 9: our painted brow over MetaHuman's albedo, dark ash-brown
         # (the groom's brow cards alone read almost invisible). Strands
         # thick at the inner head, the arch defined; MH_PAINTED_BROW is its
@@ -576,7 +768,7 @@ def dcc_skin(dcc, maps, out_dir, size):
             lu = draconia_paint.LAST_UNDER
             h, w = rgb.shape[:2]
             mu = lu[np.arange(h) * lu.shape[0] // h][:, np.arange(w) * lu.shape[1] // w][..., None]
-            rgb = np.clip(rgb * (1 + 0.18 * np.clip(mu, 0, 1)), 0, 1)
+            rgb = np.clip(rgb * (1 + 0.28 * np.clip(mu, 0, 1)), 0, 1)
         bs = float(os.environ.get("MH_PAINTED_BROW", "0.5"))
         if bs > 0 and draconia_paint.LAST_BROW is not None:
             lb = draconia_paint.LAST_BROW
@@ -592,6 +784,12 @@ def dcc_skin(dcc, maps, out_dir, size):
         base = draconia_paint.save("mh_skin_base", np.concatenate([rgb, np.ones_like(lum)], -1), out_dir)
     n = load_px(os.path.join(dcc, "Maps", "Head_Normal.png"))[..., :3] * 2 - 1
     n[..., 1] *= -1
+    # Round 18: MetaHuman's normal (its folds and creases) eased by
+    # MH_NORMAL_EASE (default 0.3) toward flat, the pores laid over after:
+    # the nasolabial folds and under-eye creases read older than the
+    # reference's smooth young skin.
+    ease = float(os.environ.get("MH_NORMAL_EASE", "0.45"))
+    n[..., :2] *= 1 - ease
     if draconia_paint.DETAIL_TILE:
         tile_path, repeats, strength = draconia_paint.DETAIL_TILE
         t = load_px(tile_path)[..., :3] * 2 - 1
@@ -733,6 +931,10 @@ def main():
             # barely survived it). The same offsets on the rest head and
             # every expression, as a corrective sculpt.
             delta = lip_post(rv, marks)
+            # Round 18: the structural sculpt (MH_FACE_V, default 1).
+            kv = float(os.environ.get("MH_FACE_V", "1"))
+            if kv:
+                delta += face_v(rv + delta, marks, kv)
         elif shape == "blend":
             # A blend of preset heads (MH_BLEND_HEAD: DNA centimetres, one
             # vertex a line, from draconia_preset_blend.py) plus round 7's
@@ -772,6 +974,7 @@ def main():
             with open(target, "w") as f:
                 for v in rest.data.vertices:
                     f.write(f"{v.co.x * 100:.5f} {v.co.z * 100:.5f} {-v.co.y * 100:.5f}\n")
+    eye_scale(objs, float(os.environ.get("MH_EYE_SCALE", str(EYE_SCALE))))
     t = lambda n: os.path.join(tex_dir, n)  # noqa: E731
     draconia_paint.DETAIL_TILE = (t("T_SkinMicro3_N.tga"), 48, 1.0) if os.path.exists(t("T_SkinMicro3_N.tga")) else None
     draconia_paint.CAVITY_TILE = (t("T_skinMicro3_CAV.tga"), 48) if os.path.exists(t("T_skinMicro3_CAV.tga")) else None
@@ -820,7 +1023,7 @@ def main():
         teeth_base = image(os.path.join(dcc, "Maps", "Teeth_Color.png")) or teeth_base
     teeth = draconia.material("mh_teeth", "standard", rough=0.35, images={"base": teeth_base, "normal": image(t("T_Teeth_Normal.tga"), "Non-Color")})
     objs["teeth"].data.materials.append(teeth)
-    eye = draconia.material("mh_eye", "eye", rough=0.15, images={"base": eye_base or compose_eye(tex_dir, out_dir), "normal": image(t("T_Eye_N.tga"), "Non-Color")}, extras={"verse_shading_params": [0.0, 0.163, 0.0, 0.0]})
+    eye = draconia.material("mh_eye", "eye", rough=0.15, images={"base": eye_base or compose_eye(tex_dir, out_dir), "normal": image(t("T_Eye_N.tga"), "Non-Color")}, extras={"verse_shading_params": [0.0, IRIS_R, 0.0, 0.0]})
     for n in ("eyeLeft", "eyeRight"):
         objs[n].data.materials.append(eye)
     wet = draconia.material("mh_wet", "cornea", rough=0.08)

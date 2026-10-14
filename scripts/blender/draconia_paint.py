@@ -48,6 +48,9 @@ LAST_BROW = None
 # The under-eye region's mask (as LAST_BROW), for lifting another albedo's
 # dark under-eye band.
 LAST_UNDER = None
+# The lips' vermilion mask (as LAST_BROW), for deepening another albedo's
+# lip colour (round 18).
+LAST_LIPS = None
 # The painted nasolabial folds' depth (a head whose mesh has its own folds
 # wants none: painted on top they age the face).
 FOLD_DEPTH = 1.2
@@ -344,6 +347,9 @@ def paint_skin(skin, marks, size, out):
         # reach, stored by the build), so colour follows the lips' shape.
         lm = _bake_attribute(skin, size, "lipmask")[:, :, 0][cover]
         lips = smooth(0.35, 0.7, lm)
+    global LAST_LIPS
+    LAST_LIPS = np.zeros((size, size), np.float32)
+    LAST_LIPS[cover] = lips
     lip_c = np.array([0.42, 0.22, 0.20], np.float32) * (1 + 0.08 * (fbm(P, 0.002, 2, seed=9)[:, None] - 0.5))
     # The lips' natural rose-brown, a little darker where they meet.
     col = mix(col, lip_c, lips * 0.78)
