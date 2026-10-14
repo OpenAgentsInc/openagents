@@ -2351,6 +2351,9 @@ async fn answer(
     // Whether the Drive door answers: it may look at videos, which takes
     // longer than a plain answer (#11579).
     let mut drive_door = false;
+    // Whether the Labs answer: a CAD edit rebuilds and checks the model, and
+    // a turn may make several (#11627).
+    let mut labs_door = false;
     let door: Option<Box<dyn openagents_chat::basic_coder::Door>> = match (door, vision) {
         (Some(door), Some(doors)) if !parts.is_empty() => {
             Some(Box::new(crate::chat_vision::VisionDoor {
@@ -2382,6 +2385,7 @@ async fn answer(
                 }
                 None => door,
             };
+            labs_door = labs.is_some();
             match labs {
                 Some(mut labs) => {
                     labs.fallback = Some(door);
@@ -2438,6 +2442,8 @@ async fn answer(
     let deadline = tokio::time::Instant::now()
         + if drive_door {
             crate::connections::chat::DRIVE_DEADLINE
+        } else if labs_door {
+            crate::labs::DEADLINE
         } else {
             Duration::from_secs(130)
         };

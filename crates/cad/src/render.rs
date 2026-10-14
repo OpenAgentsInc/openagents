@@ -20,6 +20,9 @@ pub struct View {
     pub yaw: f64,
     /// Zoom: 1 frames the subject; more is closer.
     pub zoom: f64,
+    /// A box (min, max) to frame instead of the subject's own, so pictures
+    /// of different versions keep one camera.
+    pub frame: Option<([f64; 3], [f64; 3])>,
 }
 
 impl View {
@@ -30,6 +33,7 @@ impl View {
             focus: Vec::new(),
             yaw: 0.0,
             zoom: 1.0,
+            frame: None,
         }
     }
 }
@@ -75,6 +79,11 @@ fn rgb(c: [u8; 3]) -> Rgb {
 #[must_use]
 pub fn camera(built: &Built, view: &View) -> Camera {
     let mut b = bounds(built, &view.focus);
+    if let Some((lo, hi)) = view.frame {
+        b = Aabb3::default();
+        b.add(Vec3::new(lo[0], lo[1], lo[2]));
+        b.add(Vec3::new(hi[0], hi[1], hi[2]));
+    }
     if b.is_empty() {
         b = bounds(built, &[]);
     }
@@ -85,7 +94,8 @@ pub fn camera(built: &Built, view: &View) -> Camera {
     cam.fov = 30f64.to_radians();
     if !b.is_empty() {
         cam.fit(&b);
-        cam.distance /= view.zoom.max(0.05);
+        // The kernel's fit leaves room for any turn; a still can sit closer.
+        cam.distance *= 0.74 / view.zoom.max(0.05);
     }
     cam
 }

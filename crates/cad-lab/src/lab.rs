@@ -513,6 +513,21 @@ impl Lab {
                 remove_instances(document, &gone);
                 return Ok(format!("Removed part {part}"));
             }
+            if let Some(n) = arg_u64(args, "from_version") {
+                let part = arg_str(args, "part")
+                    .ok_or("Name the part (part).")?
+                    .to_owned();
+                let old = self
+                    .load(&id_of(args), n)
+                    .ok_or_else(|| format!("There's no version {n}."))?
+                    .0;
+                let earlier = old["parts"]
+                    .get(&part)
+                    .cloned()
+                    .ok_or_else(|| format!("Version {n} has no part {part}."))?;
+                document["parts"][&part] = earlier;
+                return Ok(format!("{part}: back to how it was in v{n}"));
+            }
             let (part, found) = Self::part_of(document, args)?;
             for key in ["title", "material", "color"] {
                 if let Some(v) = arg_str(args, key) {
@@ -690,6 +705,7 @@ impl Lab {
             focus: focus.clone(),
             yaw: args["yaw"].as_f64().unwrap_or(0.0),
             zoom: args["zoom"].as_f64().unwrap_or(1.0),
+            frame: None,
         };
         let png = cad::render::png(&eval.built, &view, width, height)?;
         let file = format!(
@@ -748,6 +764,10 @@ impl Lab {
         }
         Ok(card)
     }
+}
+
+fn id_of(args: &Value) -> String {
+    arg_str(args, "doc").unwrap_or_default().to_owned()
 }
 
 fn remove_instances(document: &mut Value, gone: &[String]) {
@@ -951,6 +971,7 @@ fn takes(name: &str) -> &'static [&'static str] {
             "color",
             "parameters",
             "remove",
+            "from_version",
             "summary",
             "author",
         ],
@@ -1034,10 +1055,12 @@ pub fn tools() -> Value {
             "params": {"type": "string", "description": "a JSON object of params to change"},
             "op": {"type": "string"}, "suppressed": {"type": "boolean"}, "remove": {"type": "boolean"},
             "summary": summary}}},
-        {"name": "cad_set_part", "description": "Change a part's title, material or colour, or remove the part and its instances (remove: true).",
+        {"name": "cad_set_part", "description": "Change a part's title, material or colour, bring a part back to how it was in an earlier version (from_version), or remove the part and its instances (remove: true).",
          "parameters": {"type": "object", "required": ["doc", "part", "summary"], "properties": {
             "doc": doc, "part": part, "title": {"type": "string"}, "material": {"type": "string"}, "color": {"type": "string"},
-            "remove": {"type": "boolean"}, "summary": summary}}},
+            "remove": {"type": "boolean"},
+            "from_version": {"type": "integer", "description": "bring the part back to how it was in this version"},
+            "summary": summary}}},
         {"name": "cad_assemble", "description": "Place, move or remove instances of parts, add or set joints (revolute, slider, cylindrical, fastened; a joint's value opens a lid or turns a wheel), and declare contacts between instances that are meant to touch. Instances and joints with an existing id are updated (only the fields given). Checked like every edit: overlaps between instances that aren't declared contacts or joined by a joint are refused.",
          "parameters": {"type": "object", "required": ["doc", "summary"], "properties": {
             "doc": doc,
@@ -1119,6 +1142,10 @@ mod tests {
             text.contains("Placed w1") && text.contains("changed plate") && text.contains("Mass"),
             "{text}"
         );
+        let back = lab.run("cad_set_part", &json!({"doc": "cart", "part": "deck", "from_version": 3, "summary": "Back to the thin deck"}));
+        assert_eq!(back["version"], 5, "{back}");
+        let (doc5, _) = lab.load("cart", 5).unwrap();
+        assert_eq!(doc5["parts"]["deck"]["features"][0]["params"]["height"], 10);
         let same = lab.run("cad_compare", &json!({"doc": "cart", "a": 4, "b": 4}));
         assert!(same["error"].is_string());
         let missing = lab.run("cad_open", &json!({"doc": "cart", "version": 9}));
@@ -1126,7 +1153,7 @@ mod tests {
             missing["error"]
                 .as_str()
                 .unwrap()
-                .contains("versions 1 to 4")
+                .contains("versions 1 to 5")
         );
         let exported = lab.run("cad_export", &json!({"doc": "cart"}));
         assert_eq!(exported["files"].as_array().unwrap().len(), 3, "{exported}");

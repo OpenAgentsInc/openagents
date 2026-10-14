@@ -14,8 +14,8 @@ use axum::{Json, Router};
 use cad_lab::lab::{FILES, Lab};
 use serde_json::{Value, json};
 
-const USAGE: &str =
-    "usage: cad-lab serve [--port PORT] [--dir DIR] | cad-lab schema | cad-lab tool NAME [JSON]";
+const USAGE: &str = "usage: cad-lab serve [--port PORT] [--dir DIR] | cad-lab schema | cad-lab tool NAME [JSON]\n       \
+     cad-lab frames DOC OUT [--from N] [--to N] [--frames F] [--turn DEG] [--width W] [--height H] [--view V]";
 
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -54,6 +54,13 @@ fn main() -> std::process::ExitCode {
                 std::process::ExitCode::SUCCESS
             }
         }
+        Some("frames") => match frames(&args[1..]) {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(why) => {
+                eprintln!("cad-lab: {why}");
+                std::process::ExitCode::FAILURE
+            }
+        },
         Some("serve") => match serve(&args[1..]) {
             Ok(()) => std::process::ExitCode::SUCCESS,
             Err(why) => {
@@ -66,6 +73,89 @@ fn main() -> std::process::ExitCode {
             std::process::ExitCode::from(2)
         }
     }
+}
+
+/// Pictures of a document's versions turning, for a build film: each
+/// version is built once and drawn from the view turning by `--turn`
+/// degrees over `--frames` frames (`OUT/vNNN-FFFF.png`), with
+/// `OUT/versions.json` holding each version's summary and mass.
+fn frames(args: &[String]) -> Result<(), String> {
+    let (Some(doc), Some(out)) = (args.first(), args.get(1)) else {
+        return Err(USAGE.into());
+    };
+    let lab = Lab::open(Lab::default_root())?;
+    let versions = lab.versions(doc);
+    let latest = *versions
+        .last()
+        .ok_or(format!("there's no document {doc}"))?;
+    let mut from = 1;
+    let mut to = latest;
+    let mut count = 60usize;
+    let mut turn = 40.0;
+    let (mut width, mut height) = (1920usize, 1080usize);
+    let mut view = "hero".to_owned();
+    let mut words = args[2..].iter();
+    while let Some(word) = words.next() {
+        let value = words.next().ok_or(format!("{word} needs a value"))?;
+        let number = || {
+            value
+                .parse::<f64>()
+                .map_err(|_| format!("{word} needs a number"))
+        };
+        match word.as_str() {
+            "--from" => from = number()? as u64,
+            "--to" => to = number()? as u64,
+            "--frames" => count = number()?.max(1.0) as usize,
+            "--turn" => turn = number()?,
+            "--width" => width = number()? as usize,
+            "--height" => height = number()? as usize,
+            "--view" => view = value.clone(),
+            _ => return Err(USAGE.into()),
+        }
+    }
+    let out = PathBuf::from(out);
+    std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+    // One camera for every version: the last one's box.
+    let (last, _) = lab
+        .load(doc, to.min(latest))
+        .ok_or(format!("{doc} v{to} can't be read"))?;
+    let last = cad::evaluate_with(&last, &lab.root.join(".parts")).map_err(|p| p.join(" "))?;
+    let b = cad::render::bounds(&last.built, &[]);
+    let frame = Some(([b.min.x, b.min.y, b.min.z], [b.max.x, b.max.y, b.max.z]));
+    drop(last);
+    let mut summaries = Vec::new();
+    for n in versions.into_iter().filter(|n| (from..=to).contains(n)) {
+        let (document, record) = lab
+            .load(doc, n)
+            .ok_or(format!("{doc} v{n} can't be read"))?;
+        let eval =
+            cad::evaluate_with(&document, &lab.root.join(".parts")).map_err(|p| p.join(" "))?;
+        for f in 0..count {
+            let t = if count > 1 {
+                f as f64 / (count - 1) as f64
+            } else {
+                0.0
+            };
+            let v = cad::render::View {
+                name: view.clone(),
+                focus: Vec::new(),
+                yaw: turn * (t - 0.5),
+                zoom: 1.0,
+                frame,
+            };
+            let png = cad::render::png(&eval.built, &v, width, height)?;
+            std::fs::write(out.join(format!("v{n:03}-{f:04}.png")), png)
+                .map_err(|e| e.to_string())?;
+        }
+        eprintln!("cad-lab: v{n} drawn");
+        summaries
+            .push(json!({"n": n, "summary": record["summary"], "mass": record["report"]["mass"]}));
+    }
+    std::fs::write(
+        out.join("versions.json"),
+        serde_json::to_string_pretty(&summaries).unwrap_or_default(),
+    )
+    .map_err(|e| e.to_string())
 }
 
 fn serve(args: &[String]) -> Result<(), String> {
@@ -121,9 +211,13 @@ async fn tool(
     let args = body.map_or(json!({}), |Json(v)| v);
     let args = if args.is_object() { args } else { json!({}) };
     eprintln!("cad-lab: {name}");
+    let tool = name.clone();
     let result = tokio::task::spawn_blocking(move || lab.run(&name, &args))
         .await
         .unwrap_or_else(|e| json!({"error": e.to_string()}));
+    if let Some(why) = result["error"].as_str() {
+        eprintln!("cad-lab: {tool} refused: {why}");
+    }
     Json(result)
 }
 

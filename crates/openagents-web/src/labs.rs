@@ -29,7 +29,9 @@ use crate::chat_vision::{Gemini, gemini_text};
 use crate::connections::chat::{HANDOFF, gemini_call};
 
 /// The most model steps (tool rounds) one answer takes.
-const MAX_STEPS: usize = 8;
+const MAX_STEPS: usize = 12;
+/// How long a Labs turn may take: its tool steps rebuild and check models.
+pub(crate) const DEADLINE: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// Which Lab a tool, a document or a card belongs to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -386,7 +388,17 @@ async fn converse(
                 }
                 Err(why) => json!({"error": why}),
             };
-            eprintln!("openagents-web: labs: {name}");
+            match response["result"]["error"]
+                .as_str()
+                .or(response["error"].as_str())
+            {
+                // A refusal, so a failed turn can be read back from the log.
+                Some(why) => eprintln!(
+                    "openagents-web: labs: {name} refused: {}",
+                    why.chars().take(300).collect::<String>()
+                ),
+                None => eprintln!("openagents-web: labs: {name}"),
+            }
             let mut part = json!({"functionResponse": {"name": name, "response": response}});
             if let Some(id) = call["id"].as_str() {
                 part["functionResponse"]["id"] = json!(id);

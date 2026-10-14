@@ -145,6 +145,7 @@ How the model works (millimetres and degrees; X forward, Y left, Z up; the groun
 - Materials: Aluminum, Titanium, Steel, Stainless Steel, Brass, Copper, ABS Plastic, PLA, Nylon, Polycarbonate, Glass, Carbon Fibre, Rubber, Circuit Board, Solar Cell, Gold, Foam, Kapton. Mass comes from the material's density, so hollow big boxes (solid.shell) the way they'd really be built.
 - Instances may not overlap. Parts that are meant to touch or sit in each other (a shaft in a boss, a board on a floor) go in contacts [["a","b"]]; a joint's parent and child may touch.
 - Joints (cad_assemble joints): {"id","type":"revolute"|"slider"|"cylindrical"|"fastened","parent","child","origin":[x,y,z],"axis":[x,y,z],"value":deg or mm,"limits":[[min,max]]}. origin and axis are in the parent's frame and the parent must be the child's parent instance. To open a lid, set its hinge's value (cad_assemble with the same joint id and a new value).
+- Make each change in as few calls as you can: one cad_assemble can move instances and set joints together. When a check refuses an edit, change only what it names (move the instance it names, or declare the contact), not the parts' histories. To undo changes to a part, cad_set_part with from_version (the version whose part to bring back).
 - Work it out as numbers first: where each part sits, where it touches its neighbours. When a check refuses an overlap, it says which instances and where; move one, or declare the contact if they are meant to touch.
 - To look at it: cad_render {view: hero|rear|plan|front|side|iso|under|detail, focus?: [instance ids]}. To compare: cad_compare (a = the earlier version). Exports: cad_export (glb for the web and Verse, 3mf, step: exact solids).
 "##;
@@ -193,12 +194,15 @@ fn counts_line(card: &Value) -> String {
         let d = |i: usize| size[i].as_f64().unwrap_or(0.0);
         line.push_str(&format!("{:.0} × {:.0} × {:.0} mm · ", d(0), d(1), d(2)));
     }
+    let plural = |count: u64, one: &str, many: &str| {
+        format!("{count} {}", if count == 1 { one } else { many })
+    };
     line.push_str(&format!(
-        "{} parts, {} placed, {} features, {} joints",
-        n("parts"),
+        "{}, {} placed, {}, {}",
+        plural(n("parts"), "part", "parts"),
         n("instances"),
-        n("features"),
-        n("joints")
+        plural(n("features"), "feature", "features"),
+        plural(n("joints"), "joint", "joints")
     ));
     line
 }
