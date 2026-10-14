@@ -270,6 +270,11 @@ pub struct Build {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Controller {
+    Manual {
+        build: Build,
+        robot: String,
+        joints: Vec<String>,
+    },
     Scripted {
         build: Build,
         robot: String,
@@ -794,12 +799,16 @@ impl Build {
 impl Controller {
     pub fn robot(&self) -> &str {
         match self {
-            Self::Scripted { robot, .. } | Self::Policy { robot, .. } => robot,
+            Self::Manual { robot, .. }
+            | Self::Scripted { robot, .. }
+            | Self::Policy { robot, .. } => robot,
         }
     }
     pub fn joints(&self) -> &[String] {
         match self {
-            Self::Scripted { joints, .. } | Self::Policy { joints, .. } => joints,
+            Self::Manual { joints, .. }
+            | Self::Scripted { joints, .. }
+            | Self::Policy { joints, .. } => joints,
         }
     }
 }
@@ -856,7 +865,9 @@ impl Experiment {
         )?;
         unique(self.controller.joints().iter().map(String::as_str), 64)?;
         match &self.controller {
-            Controller::Scripted { build, .. } => build.validate()?,
+            Controller::Manual { build, .. } | Controller::Scripted { build, .. } => {
+                build.validate()?
+            }
             Controller::Policy {
                 build,
                 weights,

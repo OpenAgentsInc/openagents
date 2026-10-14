@@ -6,9 +6,15 @@ rust-version.workspace = true
 publish.workspace = true
 description = "Checked LeRobot episode data, joint mappings, and synchronized replay"
 
+[[example]]
+name = "export_fixture"
+required-features = ["export"]
+
 [features]
 default = []
 video = ["dep:supervise", "dep:tempfile"]
+export = ["dep:tempfile", "dep:png"]
+publish = ["export", "dep:reqwest", "dep:base64"]
 
 [dependencies]
 arrow-array = "=60.0.0"
@@ -21,11 +27,15 @@ sha2 = "0.10"
 thiserror = "2"
 supervise = { path = "../supervise", optional = true }
 tempfile = { version = "3", optional = true }
+png = { version = "0.18", optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"], optional = true }
+base64 = { version = "0.22", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
 oa-copy = { path = "../oa-copy" }
-tokio = { version = "1", features = ["rt", "macros"] }
+tokio = { version = "1", features = ["rt", "macros", "net", "sync"] }
+axum = "0.8"
 
 [lints]
 workspace = true

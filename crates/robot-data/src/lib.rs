@@ -2,8 +2,12 @@
 //! A replay owns no simulator or policy and cannot start a controller.
 
 pub mod dataset;
+#[cfg(feature = "export")]
+pub mod export;
 pub mod mapping;
 mod page_bounds;
+#[cfg(feature = "publish")]
+pub mod publish;
 pub mod replay;
 mod table;
 #[cfg(feature = "video")]

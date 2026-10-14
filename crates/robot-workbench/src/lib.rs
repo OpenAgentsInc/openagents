@@ -7,4 +7,6 @@ pub mod view;
 #[cfg(all(feature = "host", not(target_arch = "wasm32")))]
 pub mod host;
 #[cfg(all(feature = "host", not(target_arch = "wasm32")))]
+pub mod record;
+#[cfg(all(feature = "host", not(target_arch = "wasm32")))]
 pub mod server;

@@ -112,7 +112,7 @@ impl Dataset {
         }
         for (key, feature) in &info.features {
             name(key)?;
-            if feature.dtype == "video" {
+            if matches!(feature.dtype.as_str(), "video" | "image") {
                 require(
                     feature.shape.len() == 3
                         && feature.shape[2] == 3
@@ -225,6 +225,91 @@ impl Dataset {
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+    /// Embedded LeRobot image columns use their recorded row, including a
+    /// missing image. External image paths are refused instead of followed.
+    pub fn images(&self, index: u64) -> Result<BTreeMap<String, Vec<Option<Vec<u8>>>>> {
+        use arrow_array::{Array, BinaryArray, LargeBinaryArray, StringArray, StructArray};
+        let location = self
+            .episodes
+            .get(&index)
+            .ok_or_else(|| Error::Invalid("Choose an episode in this recording.".into()))?;
+        let names: Vec<&str> = self
+            .info
+            .features
+            .iter()
+            .filter_map(|(name, f)| (f.dtype == "image").then_some(name.as_str()))
+            .collect();
+        if names.is_empty() {
+            return Ok(BTreeMap::new());
+        }
+        let mut columns = vec!["episode_index", "frame_index"];
+        columns.extend(&names);
+        let mut images: BTreeMap<String, Vec<Option<Vec<u8>>>> = names
+            .iter()
+            .map(|name| ((*name).into(), Vec::new()))
+            .collect();
+        let mut total = 0_usize;
+        for batch in table::batches(&resolve(&self.root, &location.file)?, &columns)? {
+            for row in 0..batch.num_rows() {
+                if table::integer(table::column(&batch, "episode_index")?, row)? != index {
+                    continue;
+                }
+                let frame = table::integer(table::column(&batch, "frame_index")?, row)?;
+                for name in &names {
+                    let output = images.get_mut(*name).unwrap();
+                    require(
+                        frame == output.len() as u64 && output.len() < 100_000,
+                        "Keep recorded camera images in frame order.",
+                    )?;
+                    let column = table::column(&batch, name)?
+                        .as_any()
+                        .downcast_ref::<StructArray>()
+                        .ok_or_else(|| {
+                            Error::Invalid("Use embedded LeRobot images in this recording.".into())
+                        })?;
+                    if column.is_null(row) {
+                        output.push(None);
+                        continue;
+                    }
+                    if let Some(paths) = column
+                        .column_by_name("path")
+                        .and_then(|a| a.as_any().downcast_ref::<StringArray>())
+                    {
+                        require(
+                            paths.is_null(row) || paths.value(row).is_empty(),
+                            "Embed camera images before opening this dataset.",
+                        )?;
+                    }
+                    let bytes = column.column_by_name("bytes").ok_or_else(|| {
+                        Error::Invalid("This recorded image has no bytes.".into())
+                    })?;
+                    if bytes.is_null(row) {
+                        output.push(None);
+                        continue;
+                    }
+                    let value = if let Some(array) = bytes.as_any().downcast_ref::<BinaryArray>() {
+                        array.value(row)
+                    } else if let Some(array) = bytes.as_any().downcast_ref::<LargeBinaryArray>() {
+                        array.value(row)
+                    } else {
+                        return Err(Error::Invalid("Use embedded camera image bytes.".into()));
+                    };
+                    total = total.checked_add(value.len()).unwrap_or(usize::MAX);
+                    require(
+                        value.len() <= 16 << 20 && total <= 256 << 20,
+                        "This episode has too many camera images to open.",
+                    )?;
+                    output.push(Some(value.to_vec()));
+                }
+            }
+        }
+        let frames = self.episode(index)?.frames.len();
+        require(
+            images.values().all(|values| values.len() == frames),
+            "Record one image entry for every camera frame.",
+        )?;
+        Ok(images)
     }
     pub fn episode_indices(&self) -> Vec<u64> {
         self.episodes.keys().copied().collect()

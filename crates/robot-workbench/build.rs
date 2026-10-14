@@ -23,6 +23,8 @@ fn main() {
         "crates/verse-pbr/src",
         "crates/verse-gfx/src",
         "crates/robot-workbench/src/server.rs",
+        "crates/robot-workbench/src/record.rs",
+        "crates/robot-workbench/src/view.rs",
     ] {
         files(&workspace.join(path), &mut sources);
     }

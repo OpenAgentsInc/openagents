@@ -1,6 +1,6 @@
 //! DOM events and GPU handles. Portable viewing behavior stays in the shared
 //! workbench; this adapter never owns a simulator or controller.
-use glam::{Mat4, Vec3};
+use glam::Mat4;
 use robot_workbench::view::{Bundle, Effect, Intent, State};
 use serde_json::{Value, json};
 use std::cell::RefCell;
@@ -246,22 +246,7 @@ fn world(
             vertex.pos[0] += shift;
         }
     }
-    let sun = Vec3::new(0.45, 0.8, 0.4).normalize();
-    let faces = lit
-        .iter()
-        .map(|v| {
-            let light = 0.28 + 0.72 * Vec3::from_array(v.normal).dot(sun).max(0.0);
-            verse::mesh::Vertex {
-                pos: v.pos,
-                color: v.color.map(|c| c * light),
-                fog: 0.0,
-            }
-        })
-        .collect();
-    Ok(verse::mesh::Mesh {
-        faces,
-        ..Default::default()
-    })
+    Ok(verse::robot_lab::shaded_mesh(&lit))
 }
 fn combined(app: &App) -> Result<verse::mesh::Mesh, String> {
     let robot = app.robot.as_ref().ok_or("The robot is still opening")?;
@@ -467,7 +452,11 @@ fn lifecycle(app: &Shared) {
             let _ = poster.set_attribute("hidden", "");
         }
         readout(&data);
+        notify(&data, "resources", json!({"gpu":false}));
         drop(data);
+        if !was_active {
+            persist_selection(app);
+        }
         request_frame(app);
         return;
     }

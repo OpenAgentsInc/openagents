@@ -232,6 +232,34 @@
             },
             "kind": {
               "type": "string",
+              "const": "manual"
+            },
+            "robot": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "build",
+            "robot",
+            "joints"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "build": {
+              "$ref": "#/$defs/Build"
+            },
+            "joints": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "kind": {
+              "type": "string",
               "const": "scripted"
             },
             "robot": {

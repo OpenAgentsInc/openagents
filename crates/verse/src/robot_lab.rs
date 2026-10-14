@@ -42,6 +42,26 @@ pub struct Scene {
     pub cube: Vec3,
 }
 
+/// The shared preview/camera profile shades checked robot triangles before
+/// drawing. It uses no orbit-specific state or policy preprocessing.
+pub fn shaded_mesh(vertices: &[LitVertex]) -> crate::mesh::Mesh {
+    let sun = Vec3::new(0.45, 0.8, 0.4).normalize();
+    crate::mesh::Mesh {
+        faces: vertices
+            .iter()
+            .map(|v| {
+                let light = 0.28 + 0.72 * Vec3::from_array(v.normal).dot(sun).max(0.0);
+                crate::mesh::Vertex {
+                    pos: v.pos,
+                    color: v.color.map(|c| c * light),
+                    fog: 0.0,
+                }
+            })
+            .collect(),
+        ..Default::default()
+    }
+}
+
 /// The robot's base frame in Verse: on the table's center, Z-up made Y-up.
 #[must_use]
 pub fn base_frame() -> DMat4 {

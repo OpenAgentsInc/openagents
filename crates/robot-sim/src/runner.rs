@@ -128,7 +128,8 @@ impl<B: Backend, C: Controller> Runner<B, C> {
             "Use the simulator and step size saved with this experiment.",
         )?;
         let expected = match &experiment.controller {
-            robot_lab::document::Controller::Scripted { build, .. }
+            robot_lab::document::Controller::Manual { build, .. }
+            | robot_lab::document::Controller::Scripted { build, .. }
             | robot_lab::document::Controller::Policy { build, .. } => build,
         };
         require(

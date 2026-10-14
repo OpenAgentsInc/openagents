@@ -3,7 +3,17 @@
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
-    if args.next().as_deref() != Some("serve") {
+    let command = args.next();
+    if command.as_deref() == Some("publish") {
+        return robot_workbench::record::publish_cli(args.collect()).await;
+    }
+    if command.as_deref() == Some("export") {
+        return robot_workbench::record::export_cli(args.collect());
+    }
+    if command.as_deref() == Some("record") {
+        return robot_workbench::record::cli(args.collect());
+    }
+    if command.as_deref() != Some("serve") {
         return Err("Use: robot-workbench serve --root FOLDER --project PROJECT --build FOLDER [--port PORT] [--catalog FOLDER]".into());
     }
     let mut root = None;
