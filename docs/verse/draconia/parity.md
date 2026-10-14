@@ -716,6 +716,50 @@ $B -b --factory-startup --python scripts/blender/draconia_set.py -- ~/work/film-
   round 10 | round 11), `~/Downloads/draconia-parity-round-11.png`, the
   progress sheet; `~/work/film-out/draconia/parity/round-11/`.
 
+### Round 12, 2026-10-14: a muted iris, white cloth that stays white
+
+- **Direction.** The coordinator's read of round 11: the catchlight works
+  but the iris glowed cartoon teal; the upper lip; the eyes in the smile
+  and speaking; the collar; the front hairline.
+- **What changed.**
+  - Iris: sampled from the reference at 1:22 (its iris reads about 32,41,29
+    sRGB, green over red 1.28, blue over red 0.91): a muted olive
+    grey-green at about half round 11's saturation and darker, lighter
+    flecks round the pupil, a softer limbal ring; the sclera slightly
+    off-white. The cornea catchlight stays. Ours now reads about
+    24,40,29 (green over red 1.7): closer, still a little green.
+  - Upper lip: a sculpt layer over the rigged head (`MH_SHAPE=post`,
+    `lip_post`: the line where the lips meet raised 1.6 mm), since
+    Creator's fit smooths small local edits away. It moved the smile to
+    +3.9% and the neutral to +11% (from +13%); speaking still +17.6%.
+  - Eyes: the eye-relax control at 0.35 smiling and 0.3 speaking; the
+    opening is now within 1% in all three rows.
+  - Cloth: the bug behind round 11's grey shirt and collar was ours, in
+    `draconia_cloth._weave`: Blender drops an image's pixels when its
+    colour space changes after they are written, so the packed weave
+    normal map came out black (every normal tilted). Set Non-Color first;
+    the plain weave is back on the white shirt and collar, and they stay
+    white. The collar's points reach further over the sweater.
+  - Hairline: the grown layer's front hairline lower (0.16 rad).
+- **Measured** (MetaHuman's tracker; ours against the reference):
+
+  | Feature (over eye spacing) | 0:54 smile | 0:24 neutral | 0:29 speaking |
+  | --- | --- | --- | --- |
+  | Eye width | -4.7% | -1.8% | -2.5% |
+  | Eye opening | -0.8% | +1.0% | 0.0% |
+  | Eye line to nose base (midface) | +0.9% | -3.1% | -1.6% |
+  | Nose base to upper lip | +1.9% | +5.5% | +3.1% |
+  | Upper lip height | +3.9% | +11.0% | +17.6% |
+  | Lower lip height | -4.6% | -3.9% | +9.3% |
+  | Mouth width | +3.9% | +3.9% | -5.3% |
+
+- **Artifacts.** `~/Downloads/draconia-fullface-mh-v10.png` (reference |
+  round 11 | round 12), `~/Downloads/draconia-parity-round-12.png`, the
+  progress sheet; `~/work/film-out/draconia/parity/round-12/`.
+- **Honest state.** The iris no longer glows; the eyes open as hers in
+  every pose; white cloth is white. Still off: the upper lip at rest and
+  speaking; the hairline; the robe and collar's shapes.
+
 ## Peacock scene
 
 The peacock guardian (reference 113.0–118.0 s, [shots.md](shots.md)),

@@ -49,6 +49,9 @@ import draconia  # noqa: E402
 import draconia_paint  # noqa: E402
 
 HAIR_STYLE = os.environ.get("MH_HAIR", "updo")
+# The composed iris's tint and gain (round 12: muted olive grey-green).
+IRIS_TINT = (0.50, 0.64, 0.46)
+IRIS_GAIN = 2.6
 
 ROLES = {
     "head": "skin",
@@ -167,6 +170,21 @@ def draconia_shape(vs, marks):
     for s_ in (1, -1):
         g = np.exp(-(((x - (m.x + s_ * 0.024)) / 0.011) ** 2) - (((z - m.z) / 0.009) ** 2)) * (1 - smooth(m.y + 0.012, m.y + 0.03, y))
         d[:, 0] += -s_ * 0.0025 * g
+    return d
+
+
+def lip_post(vs, marks):
+    """Round 12's sculpt over the rigged head: the upper lip's height
+    (13-19% tall, MetaHuman's tracker) brought down by raising the line
+    where the lips meet 1.6 mm, so the upper lip shortens, the lower one
+    (5% short) gains, and the philtrum and the upper border stay put."""
+    m = marks.mouth
+    x, y, z = vs[:, 0], vs[:, 1], vs[:, 2]
+    front = 1 - smooth(m.y + 0.008, m.y + 0.025, y)
+    across = np.exp(-(((x - m.x) / 0.024) ** 2))
+    meet = np.exp(-(((z - m.z) / 0.0035) ** 2))
+    d = np.zeros_like(vs)
+    d[:, 2] += 0.0016 * meet * across * front
     return d
 
 
@@ -454,7 +472,8 @@ def compose_eye(tex_dir, out_dir, size=2048, iris_r=0.163, tint=(0.52, 0.62, 0.5
     r = np.sqrt((u - 0.5) ** 2 + (v - 0.5) ** 2)
     # The sclera brighter than the map and near white (round 11: the
     # reference's at 1:22 is bright white; round 5's pink read tired).
-    col = np.clip(sample(sclera, u, v) * np.array([1.16, 1.15, 1.15], np.float32), 0, 1)
+    # (Round 12: slightly off-white, as the reference's.)
+    col = np.clip(sample(sclera, u, v) * np.array([1.08, 1.07, 1.05], np.float32), 0, 1)
     k = 0.48 / iris_r
     iu, iv = 0.5 + (u - 0.5) * k, 0.5 + (v - 0.5) * k
     ic = sample(iris, iu, iv)
@@ -464,15 +483,22 @@ def compose_eye(tex_dir, out_dir, size=2048, iris_r=0.163, tint=(0.52, 0.62, 0.5
     # 5's grey-green (round 11: the reference's iris is light sea green
     # with a dark limbal ring).
     lum = np.clip(lum + (lum - lum.mean()) * 0.7, 0, 1)
-    sea = np.array((0.36, 0.70, 0.58), np.float32)
-    green = np.clip(lum * sea * 3.8, 0, 1)
-    grey = lum * 3.8 * float(np.mean(sea))
-    green = np.clip(green * 0.8 + grey * 0.2, 0, 1)
+    # Round 12: muted grey-green, sampled from the reference at 1:22 (its
+    # iris reads about 32,41,29 sRGB: green over red 1.28, blue over red
+    # 0.91), half round 11's saturation and darker; round 11's sea green
+    # glowed teal.
+    sea = np.array(IRIS_TINT, np.float32)
+    green = np.clip(lum * sea * IRIS_GAIN, 0, 1)
+    grey = lum * IRIS_GAIN * float(np.mean(sea))
+    green = np.clip(green * 0.55 + grey * 0.45, 0, 1)
     # Keep the pupil black and the fibres' contrast.
     green = np.where(lum < 0.08, ic, green)
     t = np.clip(r / iris_r, 0, 2)[..., None]
     limbal = np.clip((t - 0.8) / 0.16, 0, 1)
-    green = green * (1 - 0.8 * limbal)
+    green = green * (1 - 0.6 * limbal)
+    # Lighter flecks around the pupil (the reference's).
+    fleck = np.exp(-(((t - 0.42) / 0.12) ** 2))
+    green = np.clip(green * (1 + 0.35 * fleck), 0, 1)
     blend = np.clip((r - iris_r) / 0.006, 0, 1)[..., None]
     col = green * (1 - blend) + col * blend
     rgba = np.concatenate([col, np.ones((size, size, 1), np.float32)], -1)
@@ -653,9 +679,15 @@ def main():
     # `fit`: MetaHuman Creator's fit of them; `archetype`: MetaHuman's),
     # computed on the rest head, added to the posed one.
     shape = os.environ.get("MH_SHAPE", "draconia")
-    if shape in ("draconia", "fit", "blend"):
+    if shape in ("draconia", "fit", "blend", "post"):
         rv = np.array([v.co for v in rest.data.vertices])
-        if shape == "blend":
+        if shape == "post":
+            # A sculpt layer over the rigged head (Creator's fit smooths
+            # small local edits away: round 11's 1 mm upper-lip change
+            # barely survived it). The same offsets on the rest head and
+            # every expression, as a corrective sculpt.
+            delta = lip_post(rv, marks)
+        elif shape == "blend":
             # A blend of preset heads (MH_BLEND_HEAD: DNA centimetres, one
             # vertex a line, from draconia_preset_blend.py) plus round 7's
             # refinements.
@@ -848,7 +880,8 @@ def main():
         draconia_hair.BODY_ROOTS = 5000
         draconia_hair.BODY_WIDTH = 2.4
         draconia_hair.MESS = (0.35, 1.0)
-        draconia_hair.HAIRLINE_DROP = (0.08, 0.36)
+        # (Round 12: the front lower too: it still sat high.)
+        draconia_hair.HAIRLINE_DROP = (0.16, 0.38)
         draconia_hair.LOCK_WAVE = 0.25
         draconia_hair.LOCK_CURL = 0.0
         # Round 9: more of them, some from the front of the hairline, not
@@ -886,7 +919,7 @@ def main():
         # Round 7: the robe hangs in soft vertical folds.
         draconia_cloth.FOLDS = 0.006
         # (1.0 read as a stiff white bib in round 8.)
-        draconia_cloth.COLLAR_POINTS = 0.8
+        draconia_cloth.COLLAR_POINTS = 1.0
         # Round 11: fabric normals, a thicker robe and collar, deeper folds.
         draconia_cloth.FABRIC = True
         draconia_cloth.ROBE_THICK = 0.007

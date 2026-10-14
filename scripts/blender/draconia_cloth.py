@@ -76,9 +76,12 @@ def _weave(name, kind, size=256):
     n = np.stack([-gx * s, -gy * s, np.ones_like(h)], -1)
     n /= np.linalg.norm(n, axis=-1, keepdims=True)
     rgba = np.concatenate([n * 0.5 + 0.5, np.ones((size, size, 1), np.float32)], -1)
+    # Non-Color before the pixels go in: set after, Blender had stored the
+    # flat normal's 0.5 sRGB-encoded (about 0.73 once read back as data),
+    # which tilted every normal some 25 degrees and turned white cloth grey.
     img = bpy.data.images.new(name, size, size, alpha=True)
-    img.pixels.foreach_set(rgba[::-1].astype(np.float32).ravel())
     img.colorspace_settings.name = "Non-Color"
+    img.pixels.foreach_set(rgba[::-1].astype(np.float32).ravel())
     img.pack()
     return img
 
@@ -94,9 +97,7 @@ def _mat(name, color, rough=0.85, sheen=0.5, image=None, weave=None):
     bsdf = m.node_tree.nodes["Principled BSDF"]
     bsdf.inputs["Base Color"].default_value = color
     bsdf.inputs["Roughness"].default_value = rough
-    # (The plain weave stays off: on the white shirt and collar the cloth
-    # shading turned them grey with it, round 11.)
-    if FABRIC and weave and weave != "plain":
+    if FABRIC and weave:
         tex = m.node_tree.nodes.new("ShaderNodeTexImage")
         tex.image = _weave(f"{name}_weave", weave)
         nm = m.node_tree.nodes.new("ShaderNodeNormalMap")
