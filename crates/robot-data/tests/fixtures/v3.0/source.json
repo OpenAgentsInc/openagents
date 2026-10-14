@@ -1,0 +1,40 @@
+{
+  "repository": "https://huggingface.co/datasets/avishekjana/so101-dataset-v2",
+  "revision": "73c13ed578e293bd08ec0b368216ae66caa272e6",
+  "license": "Apache-2.0",
+  "notice": "NOTICE",
+  "files": {
+    "SOURCE.md": {
+      "sha256": "fc62cf67e62899ad67cb231d7912dab759239afddc32f3f473788da45d86144b",
+      "bytes": 4359
+    },
+    "LICENSE": {
+      "sha256": "751b8c583c0b0d5bca39d318f80b6706a95cb690afd3650065deedcde1fe402e",
+      "bytes": 11346
+    },
+    "NOTICE": {
+      "sha256": "ff46219f8de9f9544bd9062cdb4f21aa7e56e85d325c3c6970267f0390f11aa0",
+      "bytes": 425
+    },
+    "meta/tasks.parquet": {
+      "sha256": "728a84eb994be0a9220d04189a6fe5b64bbbc2362efda9fe1ed4da3689340570",
+      "bytes": 2139
+    },
+    "meta/info.json": {
+      "sha256": "a5bd18ee177081db78abe956432199188b64bc181f15c8d0bb489963c5b13fbd",
+      "bytes": 2958
+    },
+    "meta/stats.json": {
+      "sha256": "296ae31b5e373440bd51b8ee7c9b14d34d9dfdf41997b136c77dd61eabe5e658",
+      "bytes": 2378
+    },
+    "meta/episodes/chunk-000/file-000.parquet": {
+      "sha256": "59f671a3f524029b687008f8f4d1fcd41bb6fbbd5c1c322a8f17bdba705cae99",
+      "bytes": 8279
+    },
+    "data/chunk-000/file-000.parquet": {
+      "sha256": "481638ffd77f8a3c6ddf1a67559613706af94745e398ab62c906f146e07f6261",
+      "bytes": 3960
+    }
+  }
+}

@@ -1,0 +1,31 @@
+[package]
+name = "robot-data"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Checked LeRobot episode data, joint mappings, and synchronized replay"
+
+[features]
+default = []
+video = ["dep:supervise", "dep:tempfile"]
+
+[dependencies]
+arrow-array = "=60.0.0"
+arrow-schema = "=60.0.0"
+bytes = "1"
+parquet = { version = "=60.0.0", default-features = false, features = ["arrow", "snap", "zstd"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+sha2 = "0.10"
+thiserror = "2"
+supervise = { path = "../supervise", optional = true }
+tempfile = { version = "3", optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+oa-copy = { path = "../oa-copy" }
+tokio = { version = "1", features = ["rt", "macros"] }
+
+[lints]
+workspace = true
