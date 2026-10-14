@@ -462,12 +462,6 @@ pub(crate) fn card_markup(chat: &str, card: &Value) -> Markup {
     let image = card["image"].as_str().and_then(|p| media(chat, p));
     let compare = card["compare"].is_object().then_some(&card["compare"]);
     let state = card["job"]["state"].as_str().unwrap_or_default();
-    let private: Vec<&str> = card["private"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .collect();
     let estimate = card["job"]["estimate"].as_f64();
     html! {
         div.oa-lab-card
@@ -534,11 +528,6 @@ pub(crate) fn card_markup(chat: &str, card: &Value) -> Markup {
                     button.oa-lab-button type="submit" { "Note at this time" }
                 }
             }
-            @if !private.is_empty() {
-                p.oa-lab-private {
-                    "Stays on this Mac, not for training: " (private.join("; "))
-                }
-            }
         }
     }
 }
@@ -564,7 +553,7 @@ const CSS: &str = r".oa-lab-card{margin:12px 0;padding:12px;border:1px solid rgb
 .oa-lab-caption{margin:4px 0 0;opacity:.7;font-size:13px}
 .oa-lab-strip{width:100%;margin-top:8px;border-radius:8px;display:block}
 .oa-lab-meta{margin:8px 0 0;font-size:13px;opacity:.8}
-.oa-lab-private{margin:6px 0 0;font-size:12px;opacity:.6}
+
 .oa-lab-note{display:flex;gap:6px;margin-top:8px}
 .oa-lab-note input[type=text]{flex:1;min-width:0;padding:6px 10px;border-radius:8px;border:1px solid rgba(127,127,127,.35);background:transparent;color:inherit;font:inherit}
 .oa-lab-button{margin-top:8px;padding:6px 12px;border-radius:8px;border:1px solid rgba(127,127,127,.35);background:transparent;color:inherit;font:inherit}

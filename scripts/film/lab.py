@@ -1029,8 +1029,6 @@ def tool_open(args) -> dict:
     problems, notes = check(v["kind"], data)
     lines = [f"{doc_meta(doc)['title']} v{v['n']} of {len(versions(doc))}: {v['summary']}",
              f"{v['kind']}, {clock(length(v['kind'], data))} long"]
-    if private(v["kind"], data):
-        lines.append("Private: " + "; ".join(private(v["kind"], data)) + ". Renders stay on this Mac and are not for training.")
     if v["kind"] == "cut.v1":
         lines.append("Shots:")
         lines += shots_text(data, 0, 1e9)
