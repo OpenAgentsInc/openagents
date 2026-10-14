@@ -47,6 +47,7 @@ import re
 import shlex
 import shutil
 import sqlite3
+import urllib.request
 import subprocess
 import sys
 import tempfile
@@ -1517,17 +1518,40 @@ def plugins_run(coder, root, path, evidence) -> dict:
         tui.stop()
 
 
-REPO = re.compile(r"\b(repo|repository|repositories)\b", re.I)
-NEEDS = re.compile(r"\b(need|needs|needed|require|requires|required|must|created from|made from)\b", re.I)
-NEGATED = re.compile(r"(don.t|do not|doesn.t|does not|no|not|without|optional|optionally|if you like|later)[^.?!\n]{0,40}\b(repo|repository)|\b(repo|repository)[^.?!\n]{0,40}(optional|isn.t (needed|required)|is not (needed|required)|later|if you (like|want))", re.I)
 
 
-def claims_repo_required(answer: str) -> bool:
-    """Whether a reply says a project needs a repository: it names what
-    is needed and a repository is among it, never as optional."""
-    if NEGATED.search(answer):
-        return False
-    return bool(REPO.search(answer) and NEEDS.search(answer))
+def claims_repo_required(answer: str) -> bool | None:
+    """Whether a reply says a new project needs a repository, judged by the
+    Decisions API (Clef first) rather than by matching words: a correct
+    answer such as "a name is required, plus any repos you want" names both
+    words without claiming it (rc.11 gate run 2026-10-14). None when the
+    judge can't be reached, so the check is skipped rather than guessed."""
+    token = os.environ.get("OPENAGENTS_TOKEN") or os.environ.get("GATE_OPENAGENTS_TOKEN")
+    body = {
+        "model": "openagents/decide",
+        "input": answer,
+        "questions": [{
+            "type": "predicate",
+            "name": "repo_required",
+            "instructions": "Does this reply say that creating a new project requires a GitHub "
+                            "repository (a project can't be made without one)?",
+            "true": "It says a repository is needed or required to make a project.",
+            "false": "It says only a name is needed, or that repositories are optional or can be added.",
+        }],
+    }
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(
+        os.environ.get("OPENAGENTS_ORIGIN", "https://openagents.com") + "/api/v1/decisions",
+        data=json.dumps(body).encode(), headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            answers = json.loads(resp.read()).get("answers") or []
+    except Exception:
+        return None
+    probability = next((a.get("probability") for a in answers if a.get("type") == "predicate"), None)
+    return None if probability is None else probability >= 0.5
 
 
 def no_home_run(coder, root, path, signin, evidence, turn_timeout) -> dict:
@@ -1579,7 +1603,9 @@ def projects_run(coder, root, path, signin, evidence, turn_timeout) -> dict:
             ans = " ".join(a for a in answers(t["final"]) if not a.startswith("mcp__"))
             if not t["ended"] or not ans:
                 out["projects-chat"] = ["fail", f"no answer in {t['secs']}s"]
-            elif claims_repo_required(ans):
+            elif (verdict := claims_repo_required(ans)) is None:
+                out["projects-chat"] = ["skipped", "the Decisions judge couldn't be reached"]
+            elif verdict:
                 out["projects-chat"] = ["fail", f"claims a repository is required: “{ans[:160]}”"]
             else:
                 out["projects-chat"] = ["pass", f"“{ans[:120]}”"]
