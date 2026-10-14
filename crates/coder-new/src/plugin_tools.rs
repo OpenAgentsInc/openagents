@@ -293,7 +293,36 @@ pub fn load_tools_definition(available: &[Family]) -> Value {
     }})
 }
 
+/// A short line in the chat, such as why Microcoder left its door.
+fn notice(text: &str) -> RuntimeEvent {
+    RuntimeEvent::Tool {
+        name: crate::claude_stream::NOTICE.to_owned(),
+        input: Value::Null,
+        output: json!({"text": text}),
+        running: false,
+    }
+}
+
 impl ExecutionSettings {
+    /// The OpenAgents sign-in Microcoder's own door runs on (#11593), or
+    /// why it can't: signed out, the sign-in expired, or OpenAgents is
+    /// turned off on this computer.
+    pub(crate) fn microcoder_door(&self) -> Result<openagents_login::Saved, String> {
+        if std::env::var("CODER_CLOUD").as_deref() == Ok("off") {
+            return Err("OpenAgents is turned off on this computer (CODER_CLOUD=off)".into());
+        }
+        let Some(account) = &self.connections else {
+            return Err("You're not signed in to OpenAgents".into());
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_secs());
+        if account.expired(now) {
+            return Err("Your OpenAgents sign-in has expired".into());
+        }
+        Ok(account.clone())
+    }
+
     /// Whether the Drive tools are offered: signed in, and the website
     /// allows this account Connections with Google connected (#11574).
     fn drive_offered(&self) -> bool {
@@ -1063,8 +1092,37 @@ impl ExecutionSettings {
                         }
                         Ok(output)
                     }
+                    // Microcoder's own door (#11593): Gemini 4 Argon
+                    // through the OpenAgents gateway while signed in;
+                    // this computer's logins only when it can't run, said
+                    // in the chat.
                     None => {
                         let mut child = |event| emit(event);
+                        let door = self.microcoder_door();
+                        if let Ok(account) = &door {
+                            let mut output = bundled_runtime::microcoder_argon(
+                                &args.task,
+                                &self.cwd,
+                                args.read_only,
+                                account,
+                                self.claude,
+                                judge,
+                                &keys,
+                                cancel,
+                                &mut child,
+                            )
+                            .await?;
+                            if let Some(said) = output["fallback"].as_str() {
+                                child(notice(said));
+                            }
+                            output["harness"] = json!("microcoder");
+                            return Ok(output);
+                        }
+                        if let Err(why) = &door {
+                            child(notice(&format!(
+                                "{why}, so Microcoder runs without Gemini 4 Argon: on this computer's Codex or Claude Code login, else the free OpenAgents cloud."
+                            )));
+                        }
                         bundled_runtime::microcoder_local(
                             &args.task,
                             &self.cwd,

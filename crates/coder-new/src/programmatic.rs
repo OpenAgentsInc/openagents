@@ -1496,6 +1496,8 @@ fn delegate_to(
     }
     let mut execution = app.plugins.execution_settings(context.cwd.clone());
     execution.boundary = app.boundary.clone();
+    // The account in the state: Microcoder's own door runs on it (#11593).
+    execution.connections = app.connections();
     // A one-shot command has no agent tray to outlive it: the same refusal
     // a chat without a tray gives.
     execution.fleet = None;
@@ -1563,6 +1565,7 @@ fn delegate(
     let agent = args.remove(0);
     let mut execution = app.plugins.execution_settings(context.cwd.clone());
     execution.boundary = app.boundary.clone();
+    execution.connections = app.connections();
     let provider = app
         .plugins
         .key_for_request()

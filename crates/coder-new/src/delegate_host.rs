@@ -139,7 +139,7 @@ fn available_with(
     if execution.microcoder {
         harnesses.push(Available {
             id: CODER.into(),
-            name: "Coder".into(),
+            name: "Microcoder".into(),
             models: Some(if provider {
                 crate::models::SHORTLIST
                     .iter()
@@ -240,9 +240,24 @@ impl Host for CoderHost {
                 )
             });
         }
+        // Microcoder with no model named runs on its own door, Gemini 4
+        // Argon through the OpenAgents gateway, when signed in (#11593):
+        // its card says so from the start.
+        let name = if harness.id == CODER
+            && request.model.is_none()
+            && self.execution.microcoder_door().is_ok()
+        {
+            format!(
+                "{} ({})",
+                harness.name,
+                crate::ui::rail_model_name(crate::bundled_runtime::MICROCODER_MODEL)
+            )
+        } else {
+            harness.name.clone()
+        };
         Ok(Target {
             harness: harness.id.clone(),
-            name: harness.name.clone(),
+            name,
             model: request.model.clone(),
         })
     }
@@ -572,8 +587,19 @@ pub async fn run_child(
         vars.push((name.into(), value.into()));
     }
     crate::bundled_runtime::set_child_env(vars);
-    let mut transcript = vec![json!({"role": "user", "text": child.briefing})];
+    // Who ran it, first (#11593): the transcript, its export and the
+    // card name the same agent and model.
+    let mut transcript = vec![
+        json!({"role": "agent", "harness": child.target.harness, "name": label(&child.target)}),
+        json!({"role": "user", "text": child.briefing}),
+    ];
+    let mut ran_model: Option<String> = None;
     let mut record = |event: RuntimeEvent| {
+        if let RuntimeEvent::Model(model) = &event
+            && !model.is_empty()
+        {
+            ran_model = Some(model.clone());
+        }
         if let Some(line) = transcript_line(&event) {
             transcript.push(line);
         }
@@ -595,6 +621,11 @@ pub async fn run_child(
         .summarized(&summary)
         .with_checks(checks)
         .with_files(files);
+    // The model that answered last, as the child's own events named it
+    // (#11593), over the one the call asked for.
+    if let Some(model) = ran_model {
+        report.model = Some(model);
+    }
     // The model the child actually ran on, and why, when Coder moved it
     // off the configured one (#11575).
     if let Some(fallback) = ran_on {
@@ -785,12 +816,15 @@ async fn engine_once(
             let mut execution = execution.clone();
             execution.cwd = cwd.to_owned();
             execution.fleet = None;
+            // A model the call named runs on the chat's own door; else
+            // Microcoder runs on its own, Gemini 4 Argon through the
+            // OpenAgents gateway (#11593), not the parent chat's model.
             let provider = match (provider, model) {
                 (Some(mut provider), Some(model)) => {
                     model.clone_into(&mut provider.model);
                     Some(provider)
                 }
-                (provider, _) => provider,
+                _ => None,
             };
             execution
                 .execute(

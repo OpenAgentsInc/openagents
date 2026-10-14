@@ -758,3 +758,30 @@ async fn a_child_that_ends_without_an_answer_failed() {
         "{report:?}"
     );
 }
+
+/// #11593: a `microcoder` call runs Microcoder, and with no model named
+/// its card says the model it runs on while signed in: Gemini 4 Argon
+/// through the OpenAgents gateway. Signed out, it says only Microcoder.
+#[test]
+fn a_microcoder_call_names_microcoder_on_gemini_4_argon() {
+    let mut signed_in = execution();
+    signed_in.connections = Some(openagents_login::Saved::with_token(
+        "https://openagents.com",
+        "acct",
+        "Fixture",
+        u64::MAX,
+        "fixture-token",
+    ));
+    let target = host(signed_in)
+        .target(&request("microcoder", None))
+        .unwrap();
+    assert_eq!(target.harness, CODER);
+    assert_eq!(target.name, "Microcoder (Gemini 4 Argon)");
+    assert_eq!(label(&target), "Microcoder (Gemini 4 Argon)");
+    let mut signed_out = execution();
+    signed_out.connections = None;
+    let target = host(signed_out)
+        .target(&request("microcoder", None))
+        .unwrap();
+    assert_eq!(target.name, "Microcoder");
+}

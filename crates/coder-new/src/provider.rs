@@ -193,6 +193,12 @@ impl Provider {
         Ok(provider)
     }
 
+    /// The chat client, for a caller that runs its own loop on this door
+    /// (Microcoder on the gateway, #11593).
+    pub(crate) fn client(&self) -> Client {
+        self.chat.clone()
+    }
+
     /// The Gemini API's OpenAI-compatible endpoint at `base_url` on the
     /// person's own key (#11548): the no-harness model's door before the
     /// gateway lists it, or while signed out.

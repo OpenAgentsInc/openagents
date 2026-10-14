@@ -2582,10 +2582,14 @@ pub async fn microcoder_openrouter(
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Value, String> {
     validate_task(task)?;
-    let generator = OpenRouterGenerator {
-        client,
-        model,
-        effort,
+    let runs_on = crate::ui::rail_model_name(&model);
+    let generator = Stated {
+        inner: OpenRouterGenerator {
+            client,
+            model,
+            effort,
+        },
+        runs_on,
     };
     let mut result = run_microcoder_with(
         task,
@@ -2602,6 +2606,205 @@ pub async fn microcoder_openrouter(
     result["usage"] = json!({"cost": result["outcome"]["model_usd"]});
     result["provider"] = json!("openrouter");
     Ok(result)
+}
+
+/// A generator that tells its model which model it is (#11593): the
+/// loop's identity line names `runs_on`, so the agent states the real
+/// model instead of guessing.
+pub(crate) struct Stated<G> {
+    pub inner: G,
+    pub runs_on: String,
+}
+
+impl<G: Generate> Generate for Stated<G> {
+    async fn generate(&self, system: &str, prompt: &str) -> microcoder_loop::models::Generated {
+        let system = format!("{system}{}", microcoder_loop::run::runs_on(&self.runs_on));
+        self.inner.generate(&system, prompt).await
+    }
+
+    fn out_of_capacity(&self) -> Option<microcoder_loop::models::Exhausted> {
+        self.inner.out_of_capacity()
+    }
+}
+
+/// Microcoder's model when nobody names one (#11593): Gemini 4 Argon
+/// through the OpenAgents gateway, Google first.
+pub const MICROCODER_MODEL: &str = coder_sdk::auto_policy::ARGON;
+
+/// Gateway calls in a row that come back with no reply before Microcoder
+/// leaves the gateway for this computer's logins.
+const GATEWAY_MISSES: u32 = 2;
+
+/// Microcoder's default door (#11593): every step on [`MICROCODER_MODEL`]
+/// through the OpenAgents gateway as the signed-in account. When the
+/// gateway stops answering ([`GATEWAY_MISSES`] calls in a row with no
+/// reply), the rest of the task runs on `fallback`'s generator (this
+/// computer's logins, Codex first), without replaying completed steps,
+/// and [`GatewayFirst::left`] says why. A reply the model got wrong is the
+/// loop's to recover, never a reason to leave.
+pub(crate) struct GatewayFirst<G, F> {
+    gateway: G,
+    fallback: Box<dyn Fn() -> Result<F, String>>,
+    local: std::cell::OnceCell<F>,
+    misses: Cell<u32>,
+    left: RefCell<Option<String>>,
+}
+
+impl<G: Generate, F: Generate> GatewayFirst<G, F> {
+    pub(crate) fn new(gateway: G, fallback: Box<dyn Fn() -> Result<F, String>>) -> Self {
+        GatewayFirst {
+            gateway,
+            fallback,
+            local: std::cell::OnceCell::new(),
+            misses: Cell::new(0),
+            left: RefCell::new(None),
+        }
+    }
+
+    /// Why the task left the gateway, once it did.
+    pub(crate) fn left(&self) -> Option<String> {
+        self.left.borrow().clone()
+    }
+
+    /// The generator the task fell back to, once it did.
+    pub(crate) fn fallback(&self) -> Option<&F> {
+        self.local.get()
+    }
+}
+
+impl<G: Generate, F: Generate> Generate for GatewayFirst<G, F> {
+    async fn generate(&self, system: &str, prompt: &str) -> microcoder_loop::models::Generated {
+        if let Some(local) = self.local.get() {
+            return local.generate(system, prompt).await;
+        }
+        let stated = format!(
+            "{system}{}",
+            microcoder_loop::run::runs_on(&format!(
+                "{} through the OpenAgents gateway",
+                crate::ui::rail_model_name(MICROCODER_MODEL)
+            ))
+        );
+        let generated = self.gateway.generate(&stated, prompt).await;
+        let unanswered = generated.action.is_err()
+            && generated.prompt_tokens == 0
+            && generated.completion_tokens == 0;
+        if !unanswered {
+            self.misses.set(0);
+            return generated;
+        }
+        self.misses.set(self.misses.get().saturating_add(1));
+        if self.misses.get() < GATEWAY_MISSES {
+            return generated;
+        }
+        let why = generated.action.as_ref().err().cloned().unwrap_or_default();
+        match (self.fallback)() {
+            Ok(local) => {
+                let local = self.local.get_or_init(|| local);
+                *self.left.borrow_mut() = Some(why);
+                let next = local.generate(system, prompt).await;
+                microcoder_loop::failover::merge(Some(generated), next)
+            }
+            Err(error) => {
+                *self.left.borrow_mut() = Some(format!("{why}; and {error}"));
+                generated
+            }
+        }
+    }
+
+    fn out_of_capacity(&self) -> Option<microcoder_loop::models::Exhausted> {
+        self.local.get().and_then(Generate::out_of_capacity)
+    }
+}
+
+/// Microcoder on its default door (#11593): Gemini 4 Argon through the
+/// OpenAgents gateway as `account`, falling back to this computer's
+/// logins when the gateway stops answering. The result's `provider` is
+/// `openagents`, or the login it ended on with `fell_back_from` and
+/// `fallback` saying why.
+#[allow(clippy::too_many_arguments)]
+pub async fn microcoder_argon(
+    task: &str,
+    cwd: &Path,
+    read_only: bool,
+    account: &openagents_login::Saved,
+    claude: bool,
+    jev: Option<jev::Client>,
+    redaction_keys: &[ApiKey],
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Value, String> {
+    validate_task(task)?;
+    let client = crate::provider::Provider::gateway(account)?.client();
+    let mut keys = redaction_keys.to_vec();
+    keys.push(ApiKey::new(account.token()));
+    let session = format!("coder-new-{}", std::process::id());
+    let fallback: Box<dyn Fn() -> Result<coder::local_chain::LocalGenerator, String>> =
+        Box::new(move || {
+            #[cfg(test)]
+            {
+                let _ = (&session, claude);
+                Err("The local model logins are unavailable in tests.".to_owned())
+            }
+            #[cfg(not(test))]
+            {
+                coder::local_chain::local_generator_for(&session, None, None, claude, None)
+            }
+        });
+    let gateway = OpenRouterGenerator {
+        client,
+        model: MICROCODER_MODEL.to_owned(),
+        effort: None,
+    };
+    let generator = GatewayFirst::new(gateway, fallback);
+    let mut result = run_microcoder_with(
+        task, cwd, read_only, &generator, jev, &keys, cancel, emit, None,
+    )
+    .await?;
+    match (generator.left(), generator.fallback()) {
+        (Some(why), Some(local)) => {
+            result["provider"] = json!(local.provider());
+            result["fell_back_from"] = json!(["openagents"]);
+            result["fallback"] = json!(gateway_left(&why, Some(local.provider())));
+        }
+        (Some(why), None) => {
+            result["provider"] = json!("openagents");
+            result["fallback"] = json!(gateway_left(&why, None));
+        }
+        (None, _) => {
+            result["provider"] = json!("openagents");
+            result["usage"] = json!({"cost": result["outcome"]["model_usd"]});
+        }
+    }
+    Ok(result)
+}
+
+/// The sentence a task that left the gateway shows (#11593).
+pub(crate) fn gateway_left(why: &str, to: Option<&str>) -> String {
+    let why = why.trim().trim_end_matches('.');
+    let why = if why.is_empty() {
+        "it stopped answering"
+    } else {
+        why
+    };
+    match to {
+        Some(to) => format!(
+            "The OpenAgents gateway couldn't be reached ({why}), so Microcoder finished on this computer's {} login instead of Gemini 4 Argon.",
+            login_name(to)
+        ),
+        None => format!(
+            "The OpenAgents gateway couldn't be reached ({why}), and this computer has no login to fall back to."
+        ),
+    }
+}
+
+/// A local chain provider's name, as a person reads it.
+pub(crate) fn login_name(provider: &str) -> &'static str {
+    match provider {
+        "codex" => "Codex",
+        "claude" => "Claude Code",
+        "openagents" => "OpenAgents cloud",
+        _ => "own",
+    }
 }
 
 #[cfg(test)]
@@ -5454,6 +5657,111 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         assert_eq!(
             std::fs::read_to_string(dir.path().join("result.txt")).unwrap(),
             "once\n"
+        );
+    }
+
+    /// #11593: Microcoder's own door answers every step on Gemini 4
+    /// Argon and tells the model which model it is; a wrong reply stays on
+    /// the door; two calls in a row with no reply move the rest of the
+    /// task to this computer's logins and say why.
+    #[tokio::test]
+    async fn microcoder_runs_on_argon_and_leaves_the_gateway_only_when_it_stops_answering() {
+        use microcoder_loop::models::{Ask, Basis, Generated, NextAction};
+        fn reply(model: &str, tokens: u32, action: Result<NextAction, String>) -> Generated {
+            Generated {
+                action,
+                model: model.into(),
+                prompt_tokens: tokens.into(),
+                completion_tokens: 0,
+                usd: Some(0.0),
+                known_usd: 0.0,
+                cost_unknown: None,
+                usd_upper: Some(0.0),
+                cost_basis: Basis::Billed,
+                milliseconds: 1,
+            }
+        }
+        fn done() -> NextAction {
+            NextAction {
+                rationale: "Done.".into(),
+                commands: vec![],
+                view: vec![],
+                freeze_tests: false,
+                expand: vec![],
+                finished: true,
+                reply: "ok".into(),
+                ask: Ask::None,
+            }
+        }
+        /// The gateway: its scripted answers in order, and the systems
+        /// it was sent.
+        struct Door(RefCell<Vec<Generated>>, RefCell<Vec<String>>);
+        impl Generate for Door {
+            async fn generate(&self, system: &str, _prompt: &str) -> Generated {
+                self.1.borrow_mut().push(system.to_owned());
+                self.0.borrow_mut().remove(0)
+            }
+        }
+        struct Login;
+        impl Generate for Login {
+            async fn generate(&self, _system: &str, _prompt: &str) -> Generated {
+                reply("codex:gpt-6.1-sol", 5, Ok(done()))
+            }
+        }
+        let argon = MICROCODER_MODEL;
+        assert_eq!(argon, "google/gemini-4-argon");
+        assert_eq!(crate::ui::rail_model_name(argon), "Gemini 4 Argon");
+        let gateway = Door(
+            RefCell::new(vec![
+                reply(argon, 9, Err("next_action's arguments didn't parse".into())),
+                reply(argon, 0, Err("HTTP 503".into())),
+                reply(argon, 9, Ok(done())),
+                reply(argon, 0, Err("connection refused".into())),
+                reply(argon, 0, Err("connection refused".into())),
+            ]),
+            RefCell::new(vec![]),
+        );
+        let first = GatewayFirst::new(gateway, Box::new(|| Ok(Login)));
+        // A wrong reply and one miss stay on the door.
+        assert!(first.generate("SYSTEM", "p").await.action.is_err());
+        assert!(first.generate("SYSTEM", "p").await.action.is_err());
+        assert_eq!(first.generate("SYSTEM", "p").await.model, argon);
+        assert!(first.left().is_none());
+        assert!(
+            first
+                .gateway
+                .1
+                .borrow()
+                .iter()
+                .all(|system| system.starts_with("SYSTEM")
+                    && system
+                        .contains("You run on Gemini 4 Argon through the OpenAgents gateway."))
+        );
+        // Two misses in a row: the same step runs on the login.
+        let moved = first.generate("SYSTEM", "p").await;
+        assert!(first.generate("SYSTEM", "p").await.action.is_ok());
+        assert!(moved.action.is_err(), "one miss is still the door's");
+        let after = first.generate("SYSTEM", "p").await;
+        assert_eq!(after.model, "codex:gpt-6.1-sol");
+        assert_eq!(first.left().as_deref(), Some("connection refused"));
+        assert!(first.fallback().is_some());
+        assert_eq!(
+            gateway_left("connection refused", Some("codex")),
+            "The OpenAgents gateway couldn't be reached (connection refused), so Microcoder finished on this computer's Codex login instead of Gemini 4 Argon."
+        );
+    }
+
+    /// #11593: the loop says who it is, and each door adds the model.
+    #[test]
+    fn microcoder_says_it_is_microcoder_on_the_model_it_runs() {
+        assert!(
+            microcoder_loop::run::SYSTEM.contains("You are Microcoder, OpenAgents' coding agent.")
+        );
+        assert!(microcoder_loop::run::SYSTEM.contains("never say you are ChatGPT"));
+        assert!(!microcoder_loop::run::SYSTEM.contains("You are Coder"));
+        assert_eq!(
+            microcoder_loop::run::runs_on("Gemini 4 Argon through the OpenAgents gateway"),
+            " You run on Gemini 4 Argon through the OpenAgents gateway. Asked which model runs you, say exactly that; never guess."
         );
     }
 }

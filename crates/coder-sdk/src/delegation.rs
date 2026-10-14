@@ -736,7 +736,9 @@ impl Delegator {
             parent_harness: self.lineage.harness.clone(),
             child: child.lineage.id.clone(),
             harness: child.target.harness.clone(),
-            model: child.target.model.clone(),
+            // The model the child ran on, as its report says (#11593),
+            // else the one the call named.
+            model: report.model.clone().or_else(|| child.target.model.clone()),
             depth: child.lineage.depth,
             chain: child.lineage.path(),
             read_only: child.request.read_only,

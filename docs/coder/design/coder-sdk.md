@@ -555,7 +555,8 @@ prints the child's events, then the report).
   other chat's whole cached prefix, so the tools and system prompt are
   the same bytes. A free model can claim a change it never made; the
   report's empty `changed_files` shows it.
-- The bundled Microcoder loop with no model provider (on a Codex login)
+- The bundled Microcoder loop with no model provider (on Gemini 4 Argon
+  through the gateway, or a Codex login, #11593)
   has only shell commands, not `delegate`; there it uses `openagents coder
   delegate --to`.
 

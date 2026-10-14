@@ -31,6 +31,23 @@ Coder's terminal and `coder -p` answer every turn through this loop by
 default, in process, on the first connected provider with capacity; see
 [the delegate door](../runtime/delegate-door.md#a-microcoder-turn).
 
+## Microcoder as a delegate (#11593)
+
+A `delegate` call to `microcoder` (or `coder`, its harness id) with no
+model named runs Microcoder on Gemini 4 Argon (`google/gemini-4-argon`)
+through the OpenAgents gateway (`openagents.com/api/v1`, served from
+Vertex), as the person's OpenAgents sign-in. Its card, transcript, report
+and delegation record read "Microcoder (Gemini 4 Argon)" and the model
+the steps ran on. When the person isn't signed in, the sign-in expired,
+or `CODER_CLOUD=off`, the chat says so and Microcoder runs on this
+computer's Codex or Claude Code login, else the free OpenAgents cloud.
+When the gateway stops answering mid-task (two calls in a row with no
+reply), the rest of the task moves to those logins and the chat says why.
+The agent says it is Microcoder, OpenAgents' coding agent, and names the
+model it runs on. A model the call names runs on the chat's own door;
+`microcoder --provider codex` and the other explicit providers are
+unchanged.
+
 ## Run a Terminal-Bench 4 task
 
 ```sh

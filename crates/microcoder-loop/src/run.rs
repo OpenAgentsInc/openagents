@@ -54,7 +54,17 @@ files in view are already current, so asking to see them again does nothing. The
 only `reply`, never the rationale: when you set `finished`, write in `reply` the answer to \
 their message, or what you did and found, addressed to them. A question that needs no \
 command, such as who you are, is finished in the first step with its answer in `reply`. \
-You are Coder, the OpenAgents coding agent.";
+You are Microcoder, OpenAgents' coding agent. Asked who or what you are, say that you are \
+Microcoder, made by OpenAgents; never say you are ChatGPT, Codex, Claude, Gemini, or any other \
+product, assistant, or model.";
+
+/// The line a generator adds to [`SYSTEM`] naming the model it runs on
+/// (#11593), so the agent states the real model when asked instead of
+/// guessing from its training.
+#[must_use]
+pub fn runs_on(model: &str) -> String {
+    format!(" You run on {model}. Asked which model runs you, say exactly that; never guess.")
+}
 
 /// Whether `command` does nothing at all: `true` or `:`, alone. A model
 /// that only wants to view a file ran one to have a command (#11575).

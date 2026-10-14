@@ -136,22 +136,43 @@ impl Lane for LocalProvider {
     }
 }
 
+impl LocalProvider {
+    /// The model this provider runs, as the agent states it (#11593).
+    fn runs_on(&self) -> String {
+        match self {
+            Self::Codex(generator) => format!(
+                "OpenAI's {} through this computer's Codex login",
+                generator.model
+            ),
+            Self::Claude(lane) => format!(
+                "Anthropic's {} through this computer's Claude Code login",
+                lane.inner.model
+            ),
+            Self::Gateway(_) => "Gemini Flash through the OpenAgents cloud".to_owned(),
+        }
+    }
+}
+
 impl Generate for LocalProvider {
     async fn generate(&self, system: &str, prompt: &str) -> Generated {
+        let system = format!("{system}{}", microcoder_loop::run::runs_on(&self.runs_on()));
         match self {
             Self::Codex(generator) => {
-                let mut generated = generator.generate(system, prompt).await;
+                let mut generated = generator.generate(&system, prompt).await;
                 generated.model = codex_model_label(&generated.model);
                 generated
             }
-            Self::Claude(lane) => lane.generate(system, prompt).await,
-            Self::Gateway(generator) => generator.generate(system, &gateway_prompt(prompt)).await,
+            Self::Claude(lane) => lane.generate(&system, prompt).await,
+            Self::Gateway(generator) => generator.generate(&system, &gateway_prompt(prompt)).await,
         }
     }
 
     fn warm(&self, system: &str) {
         if let Self::Claude(lane) = self {
-            lane.warm(system);
+            lane.warm(&format!(
+                "{system}{}",
+                microcoder_loop::run::runs_on(&self.runs_on())
+            ));
         }
     }
 }
