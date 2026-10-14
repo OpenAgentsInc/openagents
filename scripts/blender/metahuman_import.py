@@ -207,7 +207,7 @@ FACE_V = {
     "lower_lip": 0.0003,  # the lower lip forward (m)
     "gonial": 0.1,  # the jaw's angles (under the ears) drawn in
     "neck": 0.1,  # the neck slimmer (x; half that in depth)
-    "brow": 0.0015,  # the brows lower (m), as the larger eyes rise toward them
+    "brow": 0.003,  # the brows lower (m), as the larger eyes rise toward them (round 21: 7% high at 1.5 mm)
     "tuck": 0.004,  # under the chin drawn back (m), a crisp jaw-to-neck angle
     "ridge": 0.0025,  # the brow ridge back (m)
     "point": 0.12,  # the chin's tip narrower still, a pointed chin
@@ -841,6 +841,42 @@ def image(path, colorspace="sRGB"):
     return im
 
 
+def scalp_from_cards(head, cards, reach=0.008):
+    """The head's faces lying under hair cards (a card within `reach`)."""
+    from mathutils.bvhtree import BVHTree
+
+    deps = bpy.context.evaluated_depsgraph_get()
+    trees = [BVHTree.FromObject(o, deps) for o in cards]
+    out = set()
+    for f in head.data.polygons:
+        c = f.center
+        if any(t.find_nearest(c, reach)[0] is not None for t in trees):
+            out.add(f.index)
+    print("SCALP faces under the cards", len(out), "of", len(head.data.polygons))
+    return out
+
+
+def check_roots(head, scalp, roots):
+    """Every grown root projected onto the head must land on the scalp:
+    prints the count outside and fails the build if there are any."""
+    from mathutils.bvhtree import BVHTree
+
+    me = head.data
+    vs = [v.co.copy() for v in me.vertices]
+    polys = [list(f.vertices) for f in me.polygons if f.index in scalp]
+    tree = BVHTree.FromPolygons(vs, polys)
+    outside = 0
+    for r in roots:
+        loc, _, _, d = tree.find_nearest(r)
+        # On the scalp's own surface (a root is sampled on a face; 1 mm
+        # allows for the sampling).
+        if loc is None or d > 0.001:
+            outside += 1
+    print(f"HAIRLINE roots checked {len(roots)}, outside the scalp {outside}")
+    if outside:
+        raise SystemExit(f"HAIRLINE: {outside} hair roots lie outside the scalp")
+
+
 def drop_covered(body, bib, gap=0.004):
     """Deletes the body's faces lying within `gap` of the head's bib
     (round 15): where the two overlap, garment shells cut from both came
@@ -1112,7 +1148,10 @@ def main():
     if grooms and not fast:
         arch = read_obj(os.path.join(os.environ.get("MH_ARCHETYPE_DIR", os.path.join(os.path.dirname(mesh_dir), "archetype")), "head_lod0_mesh.obj"), "archetype_rest")
         gdir = os.environ.get("MH_GROOM_DIR", os.path.join(os.path.dirname(mesh_dir), "grooms"))
-        hair_cols = ((0.28, 0.21, 0.13), (0.80, 0.70, 0.52), (0.90, 0.84, 0.70))
+        # Round 21: cooler, paler lengths (the cards' warm blonde showed
+        # through our platinum strands) over darker ash roots, for the
+        # reference's contrast at the part.
+        hair_cols = ((0.20, 0.16, 0.11), (0.82, 0.76, 0.62), (0.92, 0.88, 0.76))
         brow_cols = ((0.045, 0.035, 0.026), (0.07, 0.055, 0.04), (0.10, 0.08, 0.06))
         groom_objs += groom_cards(head, arch, gdir, [g for g in grooms if not g.startswith("Eyebrows")], out_dir, hair_cols, push=0.0025)
         groom_objs += groom_cards(head, arch, gdir, [g for g in grooms if g.startswith("Eyebrows")], out_dir, brow_cols)
@@ -1157,7 +1196,7 @@ def main():
         # Round 16: a centre part with curtains: the front of the combed
         # body falls sideways over the temples to above the ears before
         # turning back to the knot (MH_CURTAIN etc. for tuning).
-        draconia_hair.CURTAIN = float(os.environ.get("MH_CURTAIN", "1.0"))
+        draconia_hair.CURTAIN = float(os.environ.get("MH_CURTAIN", "0"))
         draconia_hair.CURTAIN_AZ = float(os.environ.get("MH_CURTAIN_AZ", "1.0"))
         draconia_hair.CURTAIN_X = float(os.environ.get("MH_CURTAIN_X", "0.11"))
         draconia_hair.CURTAIN_Z = float(os.environ.get("MH_CURTAIN_Z", "0.01"))
@@ -1165,7 +1204,16 @@ def main():
         draconia_hair.CLUMPS = int(os.environ.get("MH_CLUMPS", "160"))
         draconia_hair.CLUMP = float(os.environ.get("MH_CLUMP", "0.95"))
         draconia_hair.HAIR_ROOT, draconia_hair.HAIR_MID, draconia_hair.HAIR_TIP = (tuple(c * 0.85 for c in col) for col in hair_cols)
+        draconia_hair.ROOT_SPAN = 0.3
+        # Round 21: the scalp is where MetaHuman's hair cards lie (within
+        # 8 mm of the skin), so every grown root sits at or above the real
+        # hairline; the owner saw hair "coming out of her forehead" from the
+        # lowered estimated hairline.
+        scalp = scalp_from_cards(head, [o for o in groom_objs if "Eyebrows" not in o.name])
+        draconia_hair.SCALP_FACES = scalp
+        draconia_hair.HAIRLINE_DROP = 0.0
         hair = groom_objs + draconia_hair.grow(head, marks, seed=7, style=HAIR_STYLE)[0]
+        check_roots(head, scalp, draconia_hair.ROOT_LOG)
     else:
         hair = [] if fast else draconia_hair.grow(head, marks, seed=7, style=HAIR_STYLE)[0]
     extra = list(hair)

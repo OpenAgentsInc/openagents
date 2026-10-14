@@ -5,8 +5,10 @@
 # wide).
 CTRL_expressions.mouthCornerPullL 0.55
 CTRL_expressions.mouthCornerPullR 0.52
-CTRL_expressions.eyeCheekRaiseL 0.06
-CTRL_expressions.eyeCheekRaiseR 0.05
+# Round 21: the cheeks raised more (the reference's smile bunches and
+# widens them; ours measured 13% narrow at the jaw).
+CTRL_expressions.eyeCheekRaiseL 0.2
+CTRL_expressions.eyeCheekRaiseR 0.18
 # Round 19: no lip press and lighter dimples (the lips read thin and the
 # corners pinched next to the reference's full, soft smile).
 CTRL_expressions.mouthDimpleL 0.1

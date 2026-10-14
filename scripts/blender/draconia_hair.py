@@ -74,14 +74,34 @@ def _angles(p, centre):
 
 
 def _scalp_faces(skin, centre):
-    faces = []
     me = skin.data
+    if SCALP_FACES is not None:
+        # The real scalp (round 21: from MetaHuman's hair cards), not an
+        # elevation above an estimated hairline.
+        return [f.index for f in me.polygons if f.index in SCALP_FACES]
+    faces = []
     for f in me.polygons:
         c = f.center
         az, el = _angles(c, centre)
         if el > _hairline_el(az):
             faces.append(f.index)
     return faces
+
+
+def _scalp_edge(me, scalp, band):
+    """The scalp's faces within `band` (m) of its edge, the hairline."""
+    from mathutils.kdtree import KDTree as _KD
+
+    inside = set(scalp)
+    vin, vout = set(), set()
+    for f in me.polygons:
+        (vin if f.index in inside else vout).update(f.vertices)
+    edge_v = list(vin & vout)
+    kd = _KD(len(edge_v))
+    for i, v in enumerate(edge_v):
+        kd.insert(me.vertices[v].co, i)
+    kd.balance()
+    return [f for f in scalp if kd.find(me.polygons[f].center)[2] < band]
 
 
 def _sample_surface(me, faces, n, rng):
@@ -194,6 +214,7 @@ def grow(skin, marks, seed=7, style="updo"):
         return grow_long(skin, marks, seed)
     rng = random.Random(seed)
     nrng = np.random.default_rng(seed)
+    ROOT_LOG.clear()
     centre, lo, hi, eye_z = _head_frame(skin, marks)
     me = skin.data
     bvh = BVHTree.FromObject(skin, bpy.context.evaluated_depsgraph_get())
@@ -278,8 +299,12 @@ def grow(skin, marks, seed=7, style="updo"):
     wander = _noise3(rng)
     roots = _sample_surface(me, scalp, BODY_ROOTS, rng)
     # Extra roots along the hairline, so the edge is dense and soft.
-    edge = [f for f in scalp if _angles(me.polygons[f].center, centre)[1] < _hairline_el(_angles(me.polygons[f].center, centre)[0]) + 0.12]
+    if SCALP_FACES is not None:
+        edge = _scalp_edge(me, scalp, 0.012)
+    else:
+        edge = [f for f in scalp if _angles(me.polygons[f].center, centre)[1] < _hairline_el(_angles(me.polygons[f].center, centre)[0]) + 0.12]
     roots += _sample_surface(me, edge, EDGE_ROOTS, rng)
+    ROOT_LOG.extend(r for r, _ in roots)
     # Clumps (round 16): CLUMPS guide strands are combed; every other
     # strand follows its nearest guide, offset by where its root lies from
     # the guide's and drawn in toward the guide along its length, so the
@@ -331,7 +356,12 @@ def grow(skin, marks, seed=7, style="updo"):
     # Locks leave the hairline at the temples (azimuth 0.45-1.25 rad from
     # the front), never the middle of the forehead, so they fall beside the
     # face rather than across it.
-    front_roots = [(r, n) for (r, n) in _sample_surface(me, scalp, 8000, rng) if LOCK_AZ[0] < abs(_angles(r, centre)[0]) < LOCK_AZ[1] and _angles(r, centre)[1] < _hairline_el(_angles(r, centre)[0]) + 0.16]
+    if SCALP_FACES is not None:
+        # At the hairline itself (the scalp's edge), within LOCK_AZ.
+        front_roots = [(r, n) for (r, n) in _sample_surface(me, _scalp_edge(me, scalp, 0.008), 8000, rng) if LOCK_AZ[0] < abs(_angles(r, centre)[0]) < LOCK_AZ[1]]
+    else:
+        front_roots = [(r, n) for (r, n) in _sample_surface(me, scalp, 8000, rng) if LOCK_AZ[0] < abs(_angles(r, centre)[0]) < LOCK_AZ[1] and _angles(r, centre)[1] < _hairline_el(_angles(r, centre)[0]) + 0.16]
+    ROOT_LOG.extend(r for r, _ in front_roots)
     rng.shuffle(front_roots)
     clumps = []
     for side in (1, -1):
@@ -400,7 +430,9 @@ def grow(skin, marks, seed=7, style="updo"):
 
     # Flyaways: single hairs arcing off the top and sides.
     fly = Ribbons()
-    for root, rn in _sample_surface(me, scalp, FLY_COUNT if "fly" in PARTS else 0, rng):
+    fly_roots = _sample_surface(me, scalp, FLY_COUNT if "fly" in PARTS else 0, rng)
+    ROOT_LOG.extend(r for r, _ in fly_roots)
+    for root, rn in fly_roots:
         pts = []
         loc, nrm = surface(root)
         p = loc + nrm * 0.008
@@ -704,6 +736,12 @@ PART_JITTER = 0.0
 # of the front first comb to a point CURTAIN_X out from the head's centre,
 # CURTAIN_Y forward and CURTAIN_Z up (m; above the ear), then to the knot;
 # CURTAIN weighs that pull against the part's push.
+# The scalp's faces (a set of the skin's face indices), when known from a
+# real hair mask (round 21: MetaHuman's cards); None: everything above the
+# estimated hairline (`_hairline_el`). ROOT_LOG collects every root grown,
+# for checking against it.
+SCALP_FACES = None
+ROOT_LOG = []
 CURTAIN = 0.0
 # Clumped locks: guide strands combed (0: every strand combed on its own)
 # and how far toward its guide a strand is drawn by its tip.

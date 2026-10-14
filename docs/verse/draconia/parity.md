@@ -62,7 +62,7 @@ with 4096-pixel maps, `Prepared::load` with a raised `Budget`, then
 | Eyes | Round 18: 14% larger across the face; refracting light grey-green iris (larger in the eye), cornea shell, limbal ring; lids fully open at rest | 12% more open than the reference's; under-eye shadow ring; lower lashes spiky up close |
 | Brows | Round 10: MetaHuman `Eyebrows_M_Full` cards over a feathered painted brow and 700 strand brows | Close in shape; slightly darker and more even than the reference |
 | Lips | Round 18: rose vermilion drawn on MetaHuman's lip outline in UV over its mauve-grey; fuller, less projecting; no roll-in at rest | Lower lip +9% when speaking; the bow less crisp than the reference's |
-| Hair (updo, strands) | Round 16: MetaHuman `Hair_S_UpdoBuns` cards under our grown strands: a centre part with curtains over the temples, clumped locks, heavier face-framing locks, flyaways; platinum | A fine haze up close, not glossy separated locks; too little root-to-length contrast; the cards' warmer blonde shows through |
+| Hair (updo, strands) | Round 21: MetaHuman `Hair_S_UpdoBuns` cards under our grown strands, every root on the real scalp (under the cards; checked per build), combed back to the knot; fine wavy face-framing strands from the temple hairline | Coarse, chalky, parallel streaks with hard ends at the hairline; dark gaps between cards at the sides |
 | Uniform | Round 15: cut from MetaHuman's body and neck (arms lowered): a collar band that is a shell of the neck, a fall with points laid on the chest, a seated knot, striped tie, sweater V with trim, open robe with green facing; fabric weave normals | Points wider and flatter than the reference's; tie stripes too coarse; robe reads flat black, ragged over the shoulders, no hood lining |
 | Lighting response | Measured against 0:54: warm key screen left, warm fill, short teal rim, near-black background, soft shadows from moving area lights; f/2 bokeh of glowing jars | No Unreal-grade skin shadowing (screen-space scattering) |
 | Expressions | Round 6: her full rig through OpenRigLogic (joints and blend shapes; smile, speaking, neutral) | Built per expression, not live in Verse; wrinkle and blood-flow maps not yet driven |
@@ -1100,6 +1100,53 @@ $B -b --factory-startup --python scripts/blender/draconia_set.py -- ~/work/film-
     bunches and widens her cheeks, and ours barely raises them; round 7
     kept the cheek raise low so her eyes stay open.
   - The brows sit 7% high for the eye spacing.
+
+### Round 21, 2026-10-14: hair only from the scalp (no roots on the forehead), the stable export
+
+- **Direction.** The owner: "looks like hair is coming out of her
+  forehead". Two causes:
+  - Roots were sampled above an *estimated* hairline that rounds 10-12
+    had lowered (`HAIRLINE_DROP`), so baby hairs, wisps and lock roots
+    sat on forehead skin.
+  - Round 16's curtains rooted at the part but were combed sideways
+    down across the forehead skin, so they read as growing from it.
+- **What changed.**
+  - `draconia_hair.SCALP_FACES` sets the real scalp: here, the head faces
+    lying under MetaHuman's own hair cards (within 8 mm,
+    `metahuman_import.scalp_from_cards`). Every root is sampled from it:
+    - the body and the guides;
+    - the hairline edge (its outer 12 mm, `_scalp_edge`);
+    - the face-framing locks and baby hairs (its outer 8 mm);
+    - the flyaways.
+  - `HAIRLINE_DROP` no longer applies, and the curtains are off.
+  - Check: `check_roots` projects every root onto the scalp's surface and
+    fails the build if any lies more than 1 mm off it. All three
+    expressions report about 11,670 roots checked, **0 outside the
+    scalp**.
+  - Smile: cheeks raised 0.2 (0.06) for the reference's bunched, wider
+    smile. Brows 3 mm lower in `face_v` (they measured 7% high).
+  - Hair colour: darker ash roots, paler lengths (`hair_cols`), and the
+    root shade over 30% of each strand.
+  - **Stable export** for other scenes (the castle world loads it):
+    `~/work/film-out/draconia/metahuman/latest/` holds `mh.neutral.glb`,
+    `mh.smile.glb` and `mh.speak.glb` (self-contained), plus
+    `draconia.landmarks.json` and `ROUND`. Each round's pipeline
+    overwrites it. It is private MetaHuman data under the no-training
+    rule.
+- **Artifacts.**
+  - `~/Downloads/draconia-hairline-r21.png`: the hairline close-up
+    (round 20 | now, front | now, 3/4).
+  - `~/Downloads/draconia-fullface-mh-v18.png` (reference | round 20 |
+    round 21), `~/Downloads/draconia-parity-round-21.png` and the
+    progress sheet.
+- **Honest state.** The forehead is clear, and the hair grows from the
+  real hairline back to the knot. But the coordinator's read of the
+  close-up stands:
+  - the grown hair reads as coarse, chalky brush strokes, thick,
+    parallel and hard-ended at the hairline;
+  - dark gaps between the cards show at the sides;
+  - the hairline looks painted on.
+  - Round 22 is the hair's quality.
 
 ## Peacock scene
 
