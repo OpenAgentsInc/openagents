@@ -2106,6 +2106,30 @@ deferred request.
 To roll back: `sudo ln -sfn /opt/coder-worker/releases/cba18936e3
 /opt/coder-worker/chat && sudo systemctl restart coder-worker-chat`.
 
+Release `48045c51d3` (2026-10-14 UTC, #11600) speaks as "I". The live
+worker was `9f2a916688`, whose model note still said "always speak as
+\"we\"", so web chats answered "We cannot access your GitHub issues…"
+even after the site sent the first-person instructions. This release
+carries `7f2ede0734` (the chat prompts in the first person) and
+`48045c51d3` (the last "we" in model instructions: the product notes'
+no-answer line, the grounded and no-docs notes, the Gym news
+instructions, and the computer and Coder-run notes). Built on this Mac
+with `cargo zigbuild --locked --release -p coder --bin coder-worker
+--target x86_64-unknown-linux-musl` (sha256 `d09826f821357b50…`),
+installed with `knowledge/` from `git archive 48045c51d3 knowledge/` and
+`codebase-kb.gz` copied from `9f2a916688`, checked with `--check`, and
+put live by moving the `chat` symlink and restarting `coder-worker-chat`;
+the environment file, unit, and `current` did not change. On
+openagents.com as the test account (`X-OpenAgents-Test: 1`, chats
+deleted), "can you review my GitHub issues?" went from "We cannot access
+your GitHub issues…" to "I cannot access your GitHub issues…", and "can
+you open a video?" from "No, we cannot open videos." to "I cannot open
+videos…". The prepared answers in `chat-answers-v1` and the product notes
+are still written in the plural voice, which their lints enforce.
+
+To roll back: `sudo ln -sfn /opt/coder-worker/releases/9f2a916688
+/opt/coder-worker/chat && sudo systemctl restart coder-worker-chat`.
+
 Staged routing (#11247 stage B, #11297) asks each turn in two requests: a
 coarse `route_hint` with the other main questions, then `route` and
 `answer` over the hint's shortlist, with the dispatch questions
