@@ -1,0 +1,1587 @@
+{
+  "schema_version": "ATIF-v1.8",
+  "session_id": "42ceed0c-4012-4247-8a7a-e77ed03f36ad",
+  "trajectory_id": "42ceed0c-4012-4247-8a7a-e77ed03f36ad",
+  "agent": {
+    "name": "openagents-coder",
+    "version": "1.0.0-rc.13",
+    "model_name": "auto",
+    "extra": {
+      "door": "openagents-web"
+    }
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "open episode 290"
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I have opened Episode 290 (v2, 3:58.5 long across 25 shots). \n\nThere is one flagged issue on `s4-delegation` (1:17–1:27): it cuts off the report card animation mid-way. There are also 5 review notes available to read.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 2,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=2",
+          "versions": [
+            1,
+            2
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 3,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "first fix that: make the delegation report card play to the end of its animation before the cut"
+    },
+    {
+      "step_id": 4,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I have updated `s4-delegation` by extending its duration from 10.0s to 12.5s (snapped to the 120 BPM beat grid), allowing the report card animation to finish cleanly before the cut. \n\nAll subsequent captions and music hits have moved accordingly, bringing the cut's total length to 4:01.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 3,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=3",
+          "versions": [
+            1,
+            2,
+            3
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 5,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "add the whiteboard clip IMG_4135 as a source for episode 290, and tell me what I say in it and where the pauses are"
+    },
+    {
+      "step_id": 6,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "",
+      "model_name": "auto"
+    },
+    {
+      "step_id": 7,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "the site restarted while you were on that, so again: add the whiteboard clip IMG_4135 as a source for episode 290, and tell me what I say in it and where the pauses are"
+    },
+    {
+      "step_id": 8,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I have imported `IMG_4135.MOV` as source **`wb-clip`** (2:20.1 long, 1080p landscape).\n\n### What You Say\n- **0:00 – 0:18**: \"Well, folks, I've got good news and bad news for you. Bad news is if you're using any of these products, you're leaving money on the table, you're lighting money on fire, you're wasting money, OK? The good news is that you now have the alternative, which is Coder from OpenAgents.\"\n- **0:18 – 0:43**: Explaining the decision engine and routing between models (Claude Code, Haiku, Sonnet, Opus, Fable, Codex, Microcoder).\n- **0:43 – 1:00**: Plugins, enterprise ERP systems, and developers earning a percentage of paid usage.\n- **1:00 – 1:23**: Building network effects into AI products rather than using heavy System 2 harnesses.\n- **1:27 – 1:41**: Bringing back determinism, composability, and lower cost for users.\n- **1:41 – 2:03**: Production code vs. social engineering / convincing the Pope.\n- **2:10 – 2:20**: Outro / call to action: \"Coder version 1 is available now for Windows, Mac, and Linux. Let's try it.\"\n\n### Key Cut Pauses\n- **Opening hook**: `12.80 – 13.47s` (after \"wasting money, OK?\") and `18.46 – 18.63s` (after \"Coder from OpenAgents\")\n- **Routing section**: `24.44 – 24.99s`, `31.50 – 31.63s`, `42.73 – 43.02s`\n- **Network effects section**: `60.00 – 60.55s`, `82.90 – 87.48s` (long ~4.5s breath/pause)\n- **Production engineering**: `122.69 – 130.25s` (long ~7.5s pause before outro takes)\n- **Outro takes**: `133.80 – 135.75s` and `139.60 – 140.07s`",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 3,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=3",
+          "versions": [
+            1,
+            2,
+            3
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 9,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "I shot it on my phone. Show me both ways to frame it in the film at 0:30: over a blurred copy, and cropped"
+    },
+    {
+      "step_id": 10,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I checked both framings at 0:30. Since the clip was shot in 1920×1080 landscape, it already matches the film's 16:9 aspect ratio directly—both `fit blur` and `fit crop` fill the entire frame identically without letterboxing or cropping.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 3,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=3",
+          "versions": [
+            1,
+            2,
+            3
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 11,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "splice 0:00 to 0:19.3 of the whiteboard (through 'Look at this.') in after the cold open, after s1-macbook-chat, as wb-hook. Keep my voice."
+    },
+    {
+      "step_id": 12,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I have spliced the whiteboard hook into Episode 290 as shot `wb-hook` immediately after `s1-macbook-chat`. \n\nThe in and out points snapped cleanly to natural pauses at 0:00.25 to 0:19.25 (19.0 seconds, exactly on the beat grid), keeping your original voice with the music ducked underneath. Captions were generated in the film's style, downstream shots moved along smoothly, and the total runtime is now 4:20.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 4,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=4",
+          "versions": [
+            1,
+            2,
+            3,
+            4
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 13,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "s2-routing-beat1 right after it now repeats what I just said on the whiteboard. Remove its three captions (Tired of lighting money on fire..., waiting on a model..., The labs won't fix it...) and make the shot 8.5 seconds so it plays its 8 s and goes on"
+    },
+    {
+      "step_id": 14,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "",
+      "model_name": "auto"
+    },
+    {
+      "step_id": 15,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "system",
+      "message": "We couldn't answer this time. Try again."
+    },
+    {
+      "step_id": 16,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "let's try that again. s2-routing-beat1 right after wb-hook repeats what I just said on the whiteboard. Remove its three captions (Tired of lighting money on fire..., waiting on a model..., The labs won't fix it...) and make the shot 8.5 seconds so it plays its 8 s and moves on"
+    },
+    {
+      "step_id": 17,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I removed the three redundant captions from `s2-routing-beat1` and shortened the shot from 14.5s to 8.5s (17 beats at 120 BPM). \n\nThe clip now plays its 8-second animation, holds briefly for half a second on the beat, and cuts right into `s3-routing-map`. All subsequent shots and captions shifted forward cleanly, the music adjusted to the new 4:14 total runtime, and a preview is now rendering.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 6,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=6",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 18,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "now splice the routing explanation, 0:19.3 to 0:42.9 of the whiteboard (from 'So we take a super cheap, fast decision engine' to 'the even cheaper Microcoder from OpenAgents.'), after s2-routing-beat1 as wb-routing"
+    },
+    {
+      "step_id": 19,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I spliced the routing explanation into Episode 290 as `wb-routing` right after `s2-routing-beat1`.\n\nThe clip was cut cleanly at 19.35s to 42.85s on the pauses—preserving your speech from \"So we take a super cheap, fast decision engine\" through \"the even cheaper Microcoder from OpenAgents.\" without cutting any words. It runs for 23.5 seconds (47 beats), keeps your voice with ducked music, adds 12 matching captions, and shifts downstream shots so the total film length is now 4:37.5.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 7,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=7",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 20,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "next, the plugins, revenue share and network part: 0:42.9 to 1:18.5 of the whiteboard (from 'Oh, wait a second' through 'No, it's just a route,'), before s7-routing-beat3 as wb-network, so it leads into the map getting filled in"
+    },
+    {
+      "step_id": 21,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I spliced the network and plugin segment into Episode 290 as `wb-network` right before `s7-routing-beat3`.\n\nThe cut snapped cleanly to pauses at 42.90s to 78.40s (35.5 seconds, exactly 71 beats at 120 BPM), capturing from \"Oh, wait a second\" through \"No, it's just a route,\" without clipping any dialogue. It preserves your voice with ducked music, generates 11 captions matching the film's style, shifts subsequent shots and their captions into place, and extends the total runtime to 5:13.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 8,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=8",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 22,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "that's over 5 minutes, so tighten it: remove the shots s6-sync-terminal-web, s6-sync-web-back, s8-rev-savings, s8-routing-gold and s9-routing-hold, with the captions over them. My whiteboard close will replace the routing hold."
+    },
+    {
+      "step_id": 23,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "",
+      "model_name": "auto"
+    },
+    {
+      "step_id": 24,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "system",
+      "message": "We couldn't answer this time. Try again."
+    },
+    {
+      "step_id": 25,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "try the trim again now: remove s6-sync-terminal-web, s6-sync-web-back, s8-rev-savings, s8-routing-gold and s9-routing-hold. The captions over them and their music hits go with them now."
+    },
+    {
+      "step_id": 26,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "",
+      "model_name": "auto"
+    },
+    {
+      "step_id": 27,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "The site restarted again, so once more: remove s6-sync-terminal-web, s6-sync-web-back, s8-rev-savings, s8-routing-gold and s9-routing-hold. The captions over them and their music hits go with them."
+    },
+    {
+      "step_id": 28,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "",
+      "model_name": "auto"
+    },
+    {
+      "step_id": 29,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "system",
+      "message": "We couldn't answer this time. Try again."
+    },
+    {
+      "step_id": 30,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "Let's do the trim one shot at a time. First remove the shot s9-routing-hold; the captions over it and its music hit go with it."
+    },
+    {
+      "step_id": 31,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I have removed `s9-routing-hold` from Episode 290 (now version 9).\n\nThe two captions over it (`\"We aim to solve software once and for all: in the open,\"` and `\"by everyone, with the benefits broadly distributed.\"`) and its music hit were removed automatically, later shots and captions shifted up, and the music was rebuilt to match the new 5:04.5 duration.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 9,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=9",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 32,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "Good. Now remove s6-sync-terminal-web, s6-sync-web-back, s8-rev-savings and s8-routing-gold the same way, in one edit."
+    },
+    {
+      "step_id": 33,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I have removed `s6-sync-terminal-web`, `s6-sync-web-back`, `s8-rev-savings`, and `s8-routing-gold` in one edit (now version 10). \n\nThe 6 captions across those shots and their music hits were automatically removed, the remaining shots and 23 captions shifted into place, and the music track was rebuilt to fit the new total length of **4:37**.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 10,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=10",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 34,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "Last splice: the close, 2:10.0 to 2:14.5 of the whiteboard ('Coder version 1 is available now for all platforms. Let's try it.'), before s9-portal-walk as wb-close. Use only that first take, not the Windows, Mac and Linux one."
+    },
+    {
+      "step_id": 35,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I have spliced the whiteboard close into Episode 290 right before `s9-portal-walk` as `wb-close` (now version 11).\n\nThe cut runs from 2:10.0 to 2:15.5 of `IMG_4135.MOV` (snapped to pauses at 130.0s–135.5s, 5.5s / 11 beats long), keeping just the first take (\"Coder version 1 is available now for all platforms. Let's try it.\") with its original audio ducking the music. It created 2 captions matching the speech, pushed `s9-portal-walk` to 4:22, and brought the total cut length to **4:42.5**.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 11,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=11",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 36,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "Some whiteboard captions drop words at the edges ('Look at', 'No, it's just a', 'Let's try'). I fixed how the Lab places words. Remake the captions over wb-hook, wb-routing, wb-network and wb-close."
+    },
+    {
+      "step_id": 37,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I have remade the captions across all four whiteboard shots (now version 15):\n\n- **`wb-hook`**: Updated 6 captions, restoring edge phrases including `\"Look at this.\"`\n- **`wb-routing`**: Updated 7 captions across the routing discussion.\n- **`wb-network`**: Updated 8 captions, restoring the trailing `\"No, it's just a route,\"` edge phrase.\n- **`wb-close`**: Updated 2 captions, properly capturing `\"Coder version 1 is available now for all platforms.\"` and `\"Let's try it.\"`",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 15,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=15",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 38,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "Now render a preview of the latest version and show me the first minute."
+    },
+    {
+      "step_id": 39,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I queued the preview render for version 15 and brought up the first minute (`0:00` to `1:00`). Look for `wb-hook` starting at `0:20.5`—including `\"Look at this.\"` right before the cut at `0:39.5`—and the opening of `wb-routing` at `0:48` once the render finishes in the card below.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 15,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=15",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 40,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "Compare the latest version with v2 at 0:25, where my whiteboard hook now comes in."
+    },
+    {
+      "step_id": 41,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I set up a comparison between version 2 and version 15 at `0:25`, with a `0:15`–`0:45` playback window.\n\nAt **0:25**, version 2 was still playing `s1-teaser-install` (`\"Install Coder.\"`), whereas version 15 is right in the middle of your new `wb-hook` (`\"OpenAgents has two flagship\"`), with `s1-teaser-install` pushed back to `0:39.5`. Across the whole cut, the version goes from 29 shots and 25 captions (5:00.0) in v2 to 29 shots and 46 captions (4:42.5) in v15.",
+      "model_name": "auto",
+      "extra": {
+        "route": "game_lab"
+      }
+    },
+    {
+      "step_id": 42,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "Compare the latest with v2 at 0:55 (the routing explanation)."
+    },
+    {
+      "step_id": 43,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I put version 2 and version 15 side by side at `0:55`. At that point, version 2 was near the end of `s3-routing-counters` (which starts at `1:11.5` in the new cut), while version 15 is in `wb-routing` (`0:48`–`1:11.5`) as you explain routing at the whiteboard before the counters come in.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 15,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=15&t=55.00",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ],
+          "compare": {
+            "a": 2,
+            "b": 15
+          }
+        }
+      }
+    },
+    {
+      "step_id": 44,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "Compare the latest with v2 at 3:05 (the plugins and network part)."
+    },
+    {
+      "step_id": 45,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I set up version 2 and version 15 side by side at `3:05`. At that point, version 2 was playing `s8-rev-bonus` (`3:01.5`–`3:08`), while version 15 is inside `wb-network` (`2:58`–`3:33.5`) as you explain plugins and the network at the whiteboard.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 15,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=15&t=185.00",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ],
+          "compare": {
+            "a": 2,
+            "b": 15
+          }
+        }
+      }
+    },
+    {
+      "step_id": 46,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "Compare the latest with v2 at 4:18 (my close)."
+    },
+    {
+      "step_id": 47,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "Version 2 already ends at `3:58.5`, so a side-by-side comparison at `4:18` can't be extracted from v2. Instead, I pulled up version 15 starting at `4:16.5` in the card below: at `4:18` you're in `wb-close` (`4:16.5`–`4:22`, `\"Coder version 1 is available now for all platforms. Let's try it.\"`) right before `s9-portal-walk` (`4:22`–`4:34.5`), whereas in version 2 that pre-portal slot was `s9-routing-hold` at `3:29.5`–`3:38`.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 15,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=15&t=256.50",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 48,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "That answer came from the wrong place. In the Episode 290 film, compare the latest version with v2 at 0:25, where my whiteboard hook now comes in."
+    },
+    {
+      "step_id": 49,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I put version 2 and version 15 side by side at `0:25`. At `0:20.5`, version 2 cuts into `s2-routing-beat1`, while version 15 cuts into your whiteboard hook (`wb-hook`) from `0:20.5` to `0:39.5` with the music ducked under your voice.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 15,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=15&t=25.00",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ],
+          "compare": {
+            "a": 2,
+            "b": 15
+          }
+        }
+      }
+    },
+    {
+      "step_id": 50,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "Looks right. Render the review version (1080p) of Episode 290's latest version; that's take 3."
+    },
+    {
+      "step_id": 51,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I queued the 1080p review render for Episode 290 v15 (take 3). You'll see it in the card below once it finishes.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 15,
+          "quality": "review",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=15",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 52,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "Take 4 of episode 290. First: remove the captions for everything other than my voice. Keep only the captions over the whiteboard shots where I'm speaking, and remove every other caption. The title card and the labels inside the shots aren't captions, leave them."
+    },
+    {
+      "step_id": 53,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I saved version 16 of Episode 290, removing the 39 non-speech captions and keeping only the 23 captions over your whiteboard shots (`wb-hook`, `wb-routing`, `wb-network`, and `wb-close`) while leaving the title card and in-shot labels untouched. A preview is rendering in the card below.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 16,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=16",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 54,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "Next, my note at 0:02.2: the camera moves for a second and then stops and just sits there. Fix the opening so the camera never sits still: the opening shot s1-suite-boot's camera move runs from 0.0 s to about 2.1 s of its clip and then the picture stops. Cut to the next scene right as the move ends: set s1-suite-boot's in to 0.1 and its length to 2.0 s, so the move ends exactly on the cut and on the beat grid. Leave the title overlay on it."
+    },
+    {
+      "step_id": 55,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I saved version 17 of Episode 290 with `s1-suite-boot` starting at `0.1s` and lasting `2.0s` (leaving its title overlay untouched), so the cut to `s1-sync-phone` lands right as the camera move finishes at `0:02`. All 23 captions shifted earlier with their shots, bringing the cut to `4:40`, and a preview is rendering in the card below.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 17,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=17",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 56,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "Same note further into the opening: s1-macbook-chat's camera move eases out by about 8.4 s of its clip, and then the shot holds that last frame for a second (play 8.5 in a 9.5 s slot). Make it quit when the move does: length 8.5 s and no hold (remove its play), so it cuts to wb-hook as the move ends."
+    },
+    {
+      "step_id": 57,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I saved version 18 of Episode 290 with `s1-macbook-chat` shortened to `8.5s` and its `play` hold removed, so it cuts straight to `wb-hook` at `0:17` right as the camera move finishes. All 23 captions shifted earlier with their shots, bringing the cut to `4:39`, and a preview is rendering in the card below.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 18,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=18",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 58,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "Render the review version (1080p) of the latest, v18."
+    },
+    {
+      "step_id": 59,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I queued the 1080p review render for Episode 290 v18. The last one took about 4 minutes 40 seconds, and you'll see it in the card below once it's ready.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 18,
+          "quality": "review",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=18",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 60,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "Take 5. Take 4 is good, except the animation pauses: in the System 1 routing shot the 'Why is the build failing?' line stops partway to the ring and floats there for seconds, and around 3:59 the revenue-sharing animation pauses too. Get every pause out of the film. Open episode 290 and list every shot the checks now say pauses (holds a still frame or plays a still stretch of its clip)."
+    },
+    {
+      "step_id": 61,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I opened Episode 290 v18. Here are all 10 shots that the checks say pause (plus the cut-off animation warning on `s3-routing-map`):\n\n1. **`s2-routing-beat1`** (`0:36–0:44.5`, `8.5s`): holds a still frame for `0.5s` (plays `8.0s` of `system1-routing-v3.mp4` from `0.0s`).\n2. **`s3-routing-map`** (`1:08–1:17`, `9.0s`): holds a still frame for `6.2s` (plays `2.8s` of `system1-routing-v3.mp4` from `9.0s`), and cuts a request travelling into the System 1 ring off at `11.80s` (it runs `11.70s` to `12.50s`, so the shot needs at least `3.50s` of the clip or should end before `11.70s`).\n3. **`s3-routing-counters`** (`1:17–1:29.5`, `12.5s`): holds a still frame for `7.8s` (plays `4.7s` of `system1-routing-v3.mp4` from `11.8s`).\n4. **`s4-tray`** (`2:02.5–2:08.5`, `6.0s`): holds a still frame for `2.0s` (plays `4.0s` of `macbook-tray.mp4` from `0.0s`).\n5. **`s4-plugins`** (`2:08.5–2:13`, `4.5s`): holds a still frame for `0.5s` (plays `4.0s` of `macbook-plugins.mp4` from `0.0s`).\n6. **`s4-rewind`** (`2:13–2:18`, `5.0s`): holds a still frame for `0.5s` (plays `4.5s` of `macbook-rewind.mp4` from `0.0s`).\n7. **`s7-routing-beat3`** (`3:30–3:45`, `15.0s`): holds a still frame for `8.0s` (plays `7.0s` of `system1-routing-v3.mp4` from `16.5s`).\n8. **`s8-rev-open`** (`3:45–3:51`, `6.0s`): holds a still frame for `5.5s` (plays `0.5s` of `revenue-sharing.mp4` from `0.0s`).\n9. **`s8-rev-request-pay`** (`3:51–4:06.5`, `15.5s`): holds a still frame for `6.5s` (plays `9.0s` of `revenue-sharing.mp4` from `0.5s`).\n10. **`s8-rev-bonus`** (`4:06.5–4:13`, `6.5s`): holds a still frame for `1.0s` (plays `5.5s` of `revenue-sharing.mp4` from `9.5s`).",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 18,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=18",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 62,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "Fix them all in one edit, so every shot ends when its clip's move does and nothing holds. The clips are continuous, so let them play straight on: remove 'play' and 'push' from every shot that has them, and: s2-routing-beat1 length 8.0; s3-routing-map plays the clip straight from 9.0 to 16.5 (length 7.5) and remove s3-routing-counters (the map shot now covers it, so the request line goes into the ring and the counters fall); s4-tray 4.0; s4-plugins 4.0; s4-rewind 4.5; s7-routing-beat3 7.0; s8-rev-open plays the revenue clip straight from 0.0 to 10.5 (length 10.5) and remove s8-rev-request-pay; s8-rev-bonus in 10.5, length 5.0. Also trim s1-sync-phone to 6.0, its clip's last half second is nearly still."
+    },
+    {
+      "step_id": 63,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I saved version 19 of Episode 290 with every pause and cut-off animation resolved: I removed `play` from all pausing shots, merged `s3-routing-map` (`7.5s` from `9.0s`) and `s8-rev-open` (`10.5s` from `0.0s`) into continuous plays while removing `s3-routing-counters` and `s8-rev-request-pay`, set `s8-rev-bonus` to start at `10.5s` for `5.0s`, trimmed `s1-sync-phone` to `6.0s`, `s2-routing-beat1` to `8.0s`, `s4-tray` and `s4-plugins` to `4.0s`, and `s7-routing-beat3` to `7.0s`, and set `s4-rewind` to `4.0s` (since `s5-safety` has a `0.5s` crossfade in, `s4-rewind` needs `4.0s` + `0.5s` = `4.5s` of `macbook-rewind.mp4`, which is `4.50s` long). The cut is now `4:00` long with zero check warnings, and a preview is rendering in the card below.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 19,
+          "quality": "preview",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=19",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 64,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "user",
+      "message": "Render the review version (1080p) of v19."
+    },
+    {
+      "step_id": 65,
+      "timestamp": "2026-10-14T17:46:40.000Z",
+      "source": "agent",
+      "message": "I queued the 1080p review render for Episode 290 v19. The last one took about 4 minutes 53 seconds, and you'll see it in the card below once it's ready.",
+      "model_name": "auto",
+      "extra": {
+        "route": "video_lab",
+        "video_lab": {
+          "doc": "episode-290",
+          "title": "Episode 290",
+          "kind": "cut.v1",
+          "version": 19,
+          "quality": "review",
+          "player": "http://127.0.0.1:8792/player?doc=episode-290&v=19",
+          "versions": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19
+          ]
+        }
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 0,
+    "total_completion_tokens": 0,
+    "total_steps": 65,
+    "extra": {
+      "door": "openagents-web",
+      "calls_total": 0,
+      "tool_calls_total": 0,
+      "tool_calls_failed": 0,
+      "decision_calls": {
+        "total": 0,
+        "by_name": []
+      },
+      "reads_total": 0,
+      "search_calls_total": 0,
+      "largest_tool_result_chars": 0,
+      "median_inter_round_text_chars": 297,
+      "wall_seconds": 0,
+      "waste": {
+        "repeated_calls": 0,
+        "wasted_ms": 0,
+        "repeated": []
+      }
+    }
+  },
+  "extra": {
+    "exporter": "openagents.atif.v1",
+    "exported_at": "2026-10-14T17:46:40.000Z",
+    "repository": "",
+    "directive": "open episode 290",
+    "state": "ended",
+    "timestamps": "export-time",
+    "title": "open episode 290",
+    "video_lab": [
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 2,
+        "quality": "preview",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=2",
+        "versions": [
+          1,
+          2
+        ]
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 3,
+        "quality": "preview",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=3",
+        "versions": [
+          1,
+          2,
+          3
+        ]
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 4,
+        "quality": "preview",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=4",
+        "versions": [
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 6,
+        "quality": "preview",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=6",
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 7,
+        "quality": "preview",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=7",
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 8,
+        "quality": "preview",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=8",
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ]
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 9,
+        "quality": "preview",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=9",
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ]
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 10,
+        "quality": "preview",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=10",
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 11,
+        "quality": "preview",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=11",
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ]
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 15,
+        "quality": "preview",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=15",
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ]
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 15,
+        "quality": "preview",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=15&t=55.00",
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "compare": {
+          "a": 2,
+          "b": 15
+        }
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 15,
+        "quality": "preview",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=15&t=185.00",
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "compare": {
+          "a": 2,
+          "b": 15
+        }
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 15,
+        "quality": "preview",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=15&t=256.50",
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ]
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 15,
+        "quality": "preview",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=15&t=25.00",
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "compare": {
+          "a": 2,
+          "b": 15
+        }
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 15,
+        "quality": "review",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=15",
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ]
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 16,
+        "quality": "preview",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=16",
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16
+        ]
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 17,
+        "quality": "preview",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=17",
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17
+        ]
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 18,
+        "quality": "preview",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=18",
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18
+        ]
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 18,
+        "quality": "review",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=18",
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18
+        ]
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 19,
+        "quality": "preview",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=19",
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+        ]
+      },
+      {
+        "doc": "episode-290",
+        "title": "Episode 290",
+        "kind": "cut.v1",
+        "version": 19,
+        "quality": "review",
+        "player": "http://127.0.0.1:8792/player?doc=episode-290&v=19",
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+        ]
+      }
+    ]
+  }
+}

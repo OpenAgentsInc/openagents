@@ -6,7 +6,7 @@ use axum::http::HeaderMap;
 use axum::response::Response;
 use serde_json::{Value, json};
 
-use super::{Group, Screen, state};
+use super::{Group, Screen, recorded, state};
 use crate::traces::{Agent, PAGE, PUBLIC, Stats, Summary};
 
 const TICKET: (&str, &str) = ("sample-ticket", "sample-request");
@@ -34,11 +34,29 @@ pub(super) fn screens() -> Vec<Screen> {
             state("agent", "One of its agents", agent),
             state("public", "Shared page", public),
             state("public-agent", "Shared page: an agent", public_agent),
-            state("run", "Shared page: a real run with agents", run_folded),
-            state(
+            recorded(
+                "run",
+                "Shared page: a real run with agents",
+                run_folded,
+                RUN_NOTE,
+            ),
+            recorded(
                 "run-open",
                 "Shared page: a real run, every step open",
                 run_open,
+                RUN_NOTE,
+            ),
+            recorded(
+                "lab",
+                "Shared page: a real Video Lab chat",
+                lab_folded,
+                LAB_NOTE,
+            ),
+            recorded(
+                "lab-open",
+                "Shared page: a real Video Lab chat, every step open",
+                lab_open,
+                LAB_NOTE,
             ),
         ],
     }]
@@ -186,10 +204,29 @@ fn public_agent(headers: &HeaderMap) -> Response {
 /// read-only; two fail, one answers, and Microcoder answers too
 /// (`delegation.atif.json`, #11621).
 const RUN: &str = include_str!("delegation.atif.json");
+const RUN_NOTE: &str = "Recorded Coder run, shown as a share. Buttons and forms do nothing.";
+
+/// A real Video Lab chat on the local stack, exported with `/export`:
+/// the owner edits Episode 290's cut (`video-lab.atif.json`, #11621).
+const LAB: &str = include_str!("video-lab.atif.json");
+const LAB_NOTE: &str = "Recorded Video Lab chat, shown as a share. Buttons and forms do nothing.";
+
+fn lab_folded(headers: &HeaderMap) -> Response {
+    shown(headers, LAB, "sample-lab", false)
+}
+
+fn lab_open(headers: &HeaderMap) -> Response {
+    shown(headers, LAB, "sample-lab", true)
+}
 
 fn run(headers: &HeaderMap, expand: bool) -> Response {
-    let (document, mut summary) = crate::traces::check(RUN.as_bytes()).expect("the sample run");
-    summary.id = "sample-run".into();
+    shown(headers, RUN, "sample-run", expand)
+}
+
+fn shown(headers: &HeaderMap, recording: &str, id: &str, expand: bool) -> Response {
+    let (document, mut summary) =
+        crate::traces::check(recording.as_bytes()).expect("a recorded trace");
+    summary.id = id.into();
     summary.uploaded_unix = NOW - 3_600;
     summary.shared = true;
     crate::traces::public_response(

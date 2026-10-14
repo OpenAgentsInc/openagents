@@ -12,8 +12,9 @@ use std::collections::{HashMap, HashSet};
 use maud::{Markup, PreEscaped, Render, html};
 use openagents_ui::actions::{ButtonVariant, Color, ControlSize, CopyButton};
 use openagents_ui::content::{
-    Attachment, Attachments, Bubble, CodeBlock, CodeSize, MarkdownRoot, MarkdownSize, Marker,
-    MessageScroller, Question, Questionnaire, Trace, TraceKind, TraceStatus, TraceStep, Turn,
+    Attachment, AttachmentKind, Attachments, Bubble, CodeBlock, CodeSize, MarkdownRoot,
+    MarkdownSize, Marker, MessageScroller, Question, Questionnaire, Trace, TraceKind, TraceStatus,
+    TraceStep, Turn,
 };
 use openagents_ui::icons::Icon;
 use serde_json::Value;
@@ -102,6 +103,7 @@ fn agent_name(raw: &str) -> String {
         "microcoder" => "Microcoder".into(),
         "gemini" | "gemini-cli" => "Gemini".into(),
         name if name.contains("coder") => "Coder".into(),
+        "openagents" | "openagents-web" | "openagents.com" => "OpenAgents".into(),
         _ => raw.trim().to_owned(),
     }
 }
@@ -867,6 +869,14 @@ fn day_and_time(iso: &str) -> Option<(String, String, String)> {
 
 /// The author shown on the document's turns.
 fn author(document: &Value) -> String {
+    // The web chat speaks as OpenAgents.
+    if document
+        .pointer("/agent/extra/door")
+        .and_then(Value::as_str)
+        == Some("openagents-web")
+    {
+        return "OpenAgents".into();
+    }
     let name = document
         .pointer("/agent/name")
         .and_then(Value::as_str)
@@ -942,6 +952,8 @@ fn agent_turn<'d>(
                 .and_then(Value::as_str)
         })
         .unwrap_or_default();
+    // "auto" names the router, not a model.
+    let model = if model == "auto" { "" } else { model };
     let mut turn = Turn::new(author(document))
         .icon(Icon::Agent)
         .model(line(model, 60))
@@ -957,6 +969,7 @@ fn agent_turn<'d>(
         .iter()
         .filter(|l| l.current_status() == TraceStatus::Error)
         .count();
+    let empty = lines.is_empty() && answer.is_none() && cards.is_empty();
     if lines.len() == 1 && answer.is_some() {
         turn = turn.part(Trace::new(lines).label("What it did"));
     } else if !lines.is_empty() {
@@ -985,6 +998,10 @@ fn agent_turn<'d>(
     if !files.0.is_empty() {
         turn = turn.part(files_list(&files));
     }
+    let made: Vec<Attachment> = run.iter().filter_map(|s| lab_card(s)).collect();
+    if !made.is_empty() {
+        turn = turn.part(Attachments::new(made.clone()).label("What it made"));
+    }
     if let Some(answer) = &answer {
         turn = turn.action(
             CopyButton::new(answer.clone())
@@ -996,6 +1013,12 @@ fn agent_turn<'d>(
                 .color(Color::Secondary),
         );
     }
+    if empty && files.0.is_empty() && made.is_empty() {
+        return html! {
+            (turn)
+            (Marker::note("No answer came back"))
+        };
+    }
     let mut meta = Vec::new();
     if let Some(ms) = duration {
         meta.push(crate::traces::duration_words(ms));
@@ -1004,6 +1027,26 @@ fn agent_turn<'d>(
         meta.push(format!("{} tokens", crate::traces::tokens_words(tokens)));
     }
     turn.meta(meta.join(" · ")).render()
+}
+
+/// A Lab card an answer carried (`extra.video_lab`, `extra.game_lab`):
+/// the document and its version. The card's player lives on the person's
+/// own computer, so it is named, not linked.
+fn lab_card(step: &Value) -> Option<Attachment> {
+    let (lab, card) = [
+        ("Video Lab", "/extra/video_lab"),
+        ("Game Lab", "/extra/game_lab"),
+    ]
+    .into_iter()
+    .find_map(|(lab, pointer)| step.pointer(pointer).map(|card| (lab, card)))?;
+    let title = field(card, &["title", "doc"])?;
+    let version = card.get("version").and_then(Value::as_u64);
+    let meta = version.map_or_else(|| lab.to_owned(), |v| format!("{lab} · version {v}"));
+    Some(
+        Attachment::new(line(title, 80))
+            .kind(AttachmentKind::Image)
+            .meta(meta),
+    )
 }
 
 /// Files a person's step carries: image and file content parts.
@@ -1029,9 +1072,7 @@ fn sent_files(step: &Value) -> Vec<Attachment> {
                 });
             let mut attachment = Attachment::new(name);
             if kind.contains("image") {
-                attachment = attachment
-                    .kind(openagents_ui::content::AttachmentKind::Image)
-                    .meta("Picture");
+                attachment = attachment.kind(AttachmentKind::Image).meta("Picture");
             }
             Some(attachment)
         })

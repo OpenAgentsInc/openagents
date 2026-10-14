@@ -70,6 +70,9 @@ pub(crate) struct State {
     pub(crate) id: &'static str,
     pub(crate) label: &'static str,
     pub(crate) render: Render,
+    /// What the strip on top says: [`SAMPLE_NOTE`] for made-up data, or
+    /// what a recorded page really is.
+    pub(crate) strip: &'static str,
 }
 
 /// One screen: a page or organism, its live routes, and its states.
@@ -183,7 +186,28 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
 ];
 
 pub(crate) const fn state(id: &'static str, label: &'static str, render: Render) -> State {
-    State { id, label, render }
+    State {
+        id,
+        label,
+        render,
+        strip: SAMPLE_NOTE,
+    }
+}
+
+/// A state drawn from a real recording rather than made-up data: its strip
+/// says what it is (`strip`) instead of calling the data made up.
+pub(crate) const fn recorded(
+    id: &'static str,
+    label: &'static str,
+    render: Render,
+    strip: &'static str,
+) -> State {
+    State {
+        id,
+        label,
+        render,
+        strip,
+    }
 }
 
 /// Every screen, in gallery order. Each area module adds its own list.
@@ -360,8 +384,8 @@ fn sample_note() -> Markup {
     }
 }
 
-/// The strip at the top of every sample page.
-const SAMPLE_STRIP: &str = "<p class=\"oa-sample-strip\" role=\"note\">Sample page. Made-up data; buttons and forms do nothing.</p>";
+/// What the strip at the top of a made-up sample page says.
+pub(crate) const SAMPLE_NOTE: &str = "Sample page. Made-up data; buttons and forms do nothing.";
 
 /// `policy` with no form posts and no requests, framable by this site.
 pub(crate) fn inert_policy(policy: Option<&str>) -> String {
@@ -415,12 +439,13 @@ pub(crate) async fn render(state: &State, headers: &HeaderMap, theme: Option<The
         .insert("X-Robots-Tag", HeaderValue::from_static("noindex"));
     let bytes = to_bytes(body, usize::MAX).await.unwrap_or_default();
     let html = String::from_utf8_lossy(&bytes);
+    let strip = html! { p class="oa-sample-strip" role="note" { (state.strip) } }.into_string();
     let marked = match html
         .find("<body")
         .and_then(|at| html[at..].find('>').map(|end| at + end + 1))
     {
-        Some(at) => format!("{}{SAMPLE_STRIP}{}", &html[..at], &html[at..]),
-        None => format!("{SAMPLE_STRIP}{html}"),
+        Some(at) => format!("{}{strip}{}", &html[..at], &html[at..]),
+        None => format!("{strip}{html}"),
     };
     parts.headers.remove(header::CONTENT_LENGTH);
     Response::from_parts(parts, Body::from(marked))

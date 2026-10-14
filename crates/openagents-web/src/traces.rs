@@ -1392,7 +1392,7 @@ fn about(trace: &Summary) -> String {
     if !trace.agent.is_empty() {
         parts.push(trace.agent.clone());
     }
-    if !trace.model.is_empty() {
+    if !trace.model.is_empty() && trace.model != "auto" {
         parts.push(trace.model.clone());
     }
     parts.join(" · ")
