@@ -1,0 +1,27 @@
+# Build the solver container (#11560) from a commit on GitHub (no local upload):
+#   gcloud builds submit --no-source --config deploy/solver-box/cloudbuild.yaml \
+#     --substitutions _COMMIT=$(git rev-parse HEAD) --project openagentsgemini --region us-central1 \
+#     --service-account projects/openagentsgemini/serviceAccounts/oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com \
+#     --gcs-log-dir gs://openagentsgemini-oa-mvp-cloud-build-logs/oa-solver-box
+substitutions:
+  _COMMIT: ''
+  _IMAGE: us-central1-docker.pkg.dev/openagentsgemini/openagents/oa-solver-box
+steps:
+  - name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -e
+        git init -q src && cd src
+        git fetch -q --depth 1 https://github.com/OpenAgentsInc/openagents.git ${_COMMIT}
+        git checkout -q FETCH_HEAD
+        rm -rf .git
+  - name: gcr.io/cloud-builders/docker
+    dir: src
+    args: [build, -f, deploy/solver-box/Dockerfile, --build-arg, 'CODER_BUILD_COMMIT=${_COMMIT}', -t, '${_IMAGE}:${_COMMIT}', -t, '${_IMAGE}:latest', .]
+images: ['${_IMAGE}:${_COMMIT}', '${_IMAGE}:latest']
+options:
+  machineType: E2_HIGHCPU_32
+  diskSizeGb: 200
+timeout: 5400s
