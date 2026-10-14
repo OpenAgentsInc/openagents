@@ -264,6 +264,7 @@ impl Lab {
             "cad_render" => self.render(args),
             "cad_from_json" => self.from_json(args),
             "cad_faces" => self.faces(args),
+            "cad_solid" => self.solid(args),
             other => Err(format!("{other} isn't a CAD Lab tool.")),
         };
         result.unwrap_or_else(|why| json!({"error": why}))
@@ -818,6 +819,45 @@ impl Lab {
         self.saved(id, n, &record)
     }
 
+    /// The Solid API: direct operations measured and checked with no
+    /// document or history; exports land in `ROOT/.solid/<digest>/`.
+    fn solid(&self, args: &Value) -> Result<Value, String> {
+        let ops = arg_list(args, "ops")?;
+        if ops.is_empty() {
+            return Err(
+                "Give ops: a list of direct steps like [{\"op\":\"solid.box\",\"params\":{...}}]."
+                    .into(),
+            );
+        }
+        let sketches = arg_list(args, "sketches")?;
+        let material = arg_str(args, "material").unwrap_or(doc::DEFAULT_MATERIAL);
+        let mut eval = cad::solid(&ops, &sketches, material, &self.root.join(".parts"))
+            .map_err(|p| format!("Those operations don't make a valid solid: {}", p.join(" ")))?;
+        let key = digest(&json!({"ops": ops, "sketches": sketches, "material": material}));
+        let mut files = Vec::new();
+        for format in arg_list(args, "formats")?
+            .iter()
+            .filter_map(Value::as_str)
+            .map(|f| f.trim_start_matches('.').to_lowercase())
+        {
+            let path = self
+                .root
+                .join(".solid")
+                .join(&key)
+                .join(format!("solid.{format}"));
+            let bytes = cad::export::write(&mut eval.built, &format, &path)?;
+            files.push(json!({"format": format, "path": path, "bytes": bytes}));
+        }
+        Ok(json!({
+            "saved": false,
+            "mass": eval.report["mass"],
+            "size_mm": eval.report["size_mm"],
+            "solids": eval.report["solids"],
+            "checks": eval.report["checks"],
+            "files": files,
+        }))
+    }
+
     /// A part's faces and edges by the names features can use for them.
     fn faces(&self, args: &Value) -> Result<Value, String> {
         let (id, n, document, _) = self.pick(args)?;
@@ -1189,6 +1229,7 @@ fn takes(name: &str) -> &'static [&'static str] {
         ],
         "cad_from_json" => &["doc", "document", "summary", "author"],
         "cad_faces" => &["doc", "version", "part", "after"],
+        "cad_solid" => &["ops", "sketches", "material", "formats"],
         "cad_versions" => &["doc"],
         "cad_compare" => &["doc", "a", "b"],
         "cad_export" => &["doc", "version", "formats"],
@@ -1290,6 +1331,12 @@ pub fn tools() -> Value {
         {"name": "cad_faces", "description": "A part's faces and edges by the names features use to pick them (stable through edits, unlike points): faces like body:top, body:start, body:side:l3 (the side swept from sketch curve l3), boss:+z, round:blend:...; edges as the two faces they join. Use it before a fillet, chamfer, shell or draft to name what it works on.",
          "parameters": {"type": "object", "required": ["doc", "part"], "properties": {"doc": doc, "version": version, "part": part,
             "after": {"type": "string", "description": "list them as they stand after this feature (default: after the whole history)"}}}},
+        {"name": "cad_solid", "description": "Direct solid modelling with no document: run direct operations (boxes, cylinders, booleans, moves, extrudes of the sketches given, ...) and get the solid's mass, size and checks back, optionally as files. Nothing is saved as a version. A step may repeat: {\"op\":\"solid.cylinder\",\"repeat\":{\"var\":\"i\",\"from\":0,\"to\":7},\"params\":{\"base\":[\"{i} * 12\",0,0],...}}.",
+         "parameters": {"type": "object", "required": ["ops"], "properties": {
+            "ops": {"type": "string", "description": "a JSON array of direct steps: [{\"op\":\"solid.box\",\"params\":{...}}, ...]"},
+            "sketches": {"type": "string", "description": "a JSON array of sketch features the steps extrude or revolve"},
+            "material": {"type": "string", "description": materials},
+            "formats": {"type": "string", "description": "a JSON array of files to write: step, 3mf, glb, stl"}}}},
         {"name": "cad_check", "description": "Run the checks on a version again: every feature rebuilds, every solid is closed, no undeclared overlaps; with its mass, centre of mass and inertia.",
          "parameters": {"type": "object", "required": ["doc"], "properties": {"doc": doc, "version": version}}},
         {"name": "cad_versions", "description": "The versions of a CAD document: each one's summary, author, mass and part count.",
@@ -1423,6 +1470,18 @@ mod tests {
             &json!({"doc": "cube", "document": cube, "summary": "A cube"}),
         );
         assert_eq!(made["saved"], true, "{made}");
+        // The Solid API: measured and exported, with no version saved.
+        let direct = lab.run("cad_solid", &json!({"material": "Steel", "formats": ["step"],
+            "ops": [{"op": "solid.box", "params": {"length": 10, "width": 10, "height": 10, "center": [0, 0, 0]}}]}));
+        assert!(
+            (direct["mass"]["volume_cm3"].as_f64().unwrap_or_default() - 1.0).abs() < 1e-3,
+            "{direct}"
+        );
+        assert!(
+            direct["files"][0]["bytes"].as_u64().unwrap_or_default() > 100,
+            "{direct}"
+        );
+        assert_eq!(lab.latest("solid"), None);
         let faces = lab.run("cad_faces", &json!({"doc": "cube", "part": "cube"}));
         assert!(faces.to_string().contains("\"b:+z\""), "{faces}");
         // Its top edges rounded by name.

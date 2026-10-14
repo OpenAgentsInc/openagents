@@ -130,6 +130,34 @@ pub fn evaluate_with(document: &Value, cache: &std::path::Path) -> Result<Evalua
     Ok(Evaluation { built, report })
 }
 
+/// The Solid API: direct operations on solids with no history kept. Runs
+/// `ops` (direct steps, each `{op, params, repeat?}`) after any `sketches`
+/// they extrude or revolve, in a scratch part of `material`, and checks and
+/// measures the result like any edit; nothing is saved.
+///
+/// # Errors
+/// Why the operations don't make a valid solid.
+pub fn solid(
+    ops: &[Value],
+    sketches: &[Value],
+    material: &str,
+    cache: &std::path::Path,
+) -> Result<Evaluation, Vec<String>> {
+    let mut part = doc::new_part("solid", "Solid", material, None);
+    let mut features: Vec<Value> = sketches.to_vec();
+    features.push(json!({"id": "ops", "op": "block", "params": {"ops": ops}}));
+    part["features"] = Value::Array(features);
+    for f in part["features"].as_array().into_iter().flatten() {
+        if f["op"] != "sketch" && f["id"] != "ops" {
+            return Err(vec![format!(
+                "{} isn't a sketch; the Solid API takes sketches and direct steps.",
+                f["id"]
+            )]);
+        }
+    }
+    evaluate_with(&part, cache)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,6 +247,58 @@ mod tests {
         }
         assert_eq!(listed["solids"][0]["faces"].as_array().unwrap().len(), 6);
         assert_eq!(listed["solids"][0]["edges"].as_array().unwrap().len(), 12);
+    }
+
+    #[test]
+    fn a_direct_block_repeats_steps_and_recomputes_when_its_inputs_change() {
+        // Eight holes along a sine wave, cut by one repeated direct step
+        // sized by a parameter: change the parameter and the block follows.
+        let strip = |d: f64| {
+            let mut part = doc::new_part("strip", "Strip", "Aluminum", None);
+            part["parameters"] = json!([{"name": "hole_d", "expression": format!("{d} mm")}]);
+            part["features"] = json!([
+                {"id": "base", "op": "solid.box", "params": {"length": 100, "width": 30, "height": 5, "center": [0, 0, 2.5]}},
+                {"id": "holes", "op": "block", "params": {"inputs": ["base", "hole_d"], "ops": [
+                    {"op": "solid.cylinder", "repeat": {"var": "i", "from": 0, "to": 7},
+                     "params": {"diameter": "hole_d", "height": 9, "operation": "cut",
+                                "base": ["-42 + {i} * 12", "8 * sin({i} * 45)", -2]}}]}}
+            ]);
+            part
+        };
+        let pi = std::f64::consts::PI;
+        for d in [4.0, 6.0] {
+            let eval = evaluate(&strip(d)).unwrap_or_else(|p| panic!("{p:?}"));
+            let v = eval.report["mass"]["volume_cm3"].as_f64().unwrap() * 1000.0;
+            let expected = 100.0 * 30.0 * 5.0 - 8.0 * pi * (d / 2.0) * (d / 2.0) * 5.0;
+            assert!(
+                (v - expected).abs() / expected < 0.003,
+                "{d}: {v} vs {expected}"
+            );
+        }
+        // An input that isn't there is refused before anything builds.
+        let mut bad = strip(4.0);
+        bad["features"][1]["params"]["inputs"] = json!(["base", "hole_size"]);
+        let why = evaluate(&bad).err().unwrap().join(" ");
+        assert!(why.contains("reads hole_size"), "{why}");
+        bad["features"][1]["params"]["inputs"] = json!([]);
+        bad["features"][1]["params"]["ops"][0]["repeat"] = json!({"from": 0, "to": 5000});
+        let why = evaluate(&bad).err().unwrap().join(" ");
+        assert!(why.contains("500 is the most"), "{why}");
+        // The Solid API: the same steps with no history, measured, not saved.
+        let ops = json!([
+            {"op": "solid.box", "params": {"length": 20, "width": 20, "height": 20, "center": [0, 0, 0]}},
+            {"op": "solid.cylinder", "params": {"radius": 5, "height": 30, "base": [0, 0, -15], "operation": "cut"}}
+        ]);
+        let eval = solid(
+            ops.as_array().unwrap(),
+            &[],
+            "Steel",
+            &build::default_cache(),
+        )
+        .unwrap_or_else(|p| panic!("{p:?}"));
+        let v = eval.report["mass"]["volume_cm3"].as_f64().unwrap() * 1000.0;
+        let expected = 8000.0 - pi * 25.0 * 20.0;
+        assert!((v - expected).abs() / expected < 0.01, "{v} vs {expected}");
     }
 
     #[test]

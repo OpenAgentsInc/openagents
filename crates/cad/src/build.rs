@@ -171,15 +171,34 @@ fn feature(s: &mut Session, part: &str, f: &Value) -> Result<(), String> {
         "block" => {
             for (i, step) in params["ops"].as_array().into_iter().flatten().enumerate() {
                 let sop = step["op"].as_str().unwrap_or_default();
-                let mut sparams =
-                    scope_params(part, &step.get("params").cloned().unwrap_or(json!({})));
-                if sparams.get("name").is_none() {
-                    sparams["name"] = json!(scoped(part, &format!("{id}-{}", i + 1)));
+                let base = step.get("params").cloned().unwrap_or(json!({}));
+                // A repeated step runs once per value, `{var}` replaced.
+                let runs: Vec<(Value, String)> = if step["repeat"].is_null() {
+                    vec![(base, format!("{id}-{}", i + 1))]
+                } else {
+                    let (var, values) = doc::repeat_values(&step["repeat"])
+                        .map_err(|e| fail(format!("direct step {}: {e}", i + 1)))?;
+                    values
+                        .iter()
+                        .enumerate()
+                        .map(|(k, v)| {
+                            (
+                                doc::substitute(&base, &var, *v),
+                                format!("{id}-{}-{}", i + 1, k + 1),
+                            )
+                        })
+                        .collect()
+                };
+                for (raw, name) in runs {
+                    let mut sparams = scope_params(part, &raw);
+                    if sparams.get("name").is_none() {
+                        sparams["name"] = json!(scoped(part, &name));
+                    }
+                    let sparams = crate::refs::resolve(s, part, &sparams)
+                        .map_err(|e| fail(format!("direct step {} ({sop}): {e}", i + 1)))?;
+                    run(s, sop, &sparams)
+                        .map_err(|e| fail(format!("direct step {} ({sop}): {e}", i + 1)))?;
                 }
-                let sparams = crate::refs::resolve(s, part, &sparams)
-                    .map_err(|e| fail(format!("direct step {} ({sop}): {e}", i + 1)))?;
-                run(s, sop, &sparams)
-                    .map_err(|e| fail(format!("direct step {} ({sop}): {e}", i + 1)))?;
             }
         }
         _ => {

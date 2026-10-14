@@ -65,7 +65,13 @@ Z up.
   `solid.revolve`, `solid.fillet`, `solid.shell`, `solid.pattern.circular`,
   booleans through each feature's `operation`: join, cut, intersect, new),
   or a **block** (`op: "block"`): direct operations on solids run as one
-  feature of the history and recomputed with it. A part has a material
+  feature of the history and recomputed with it whenever an earlier
+  feature or a parameter changes. A block declares the `inputs` it reads
+  (earlier features and parameters, checked before the build), and a step
+  may `repeat` (`{"var": "i", "from": 0, "to": 7}`: `{i}` in its params is
+  replaced by each value, so `"8 * sin({i} * 45)"` becomes an expression):
+  code-like generators in plain JSON. The same steps run with no document
+  at all through `cad_solid` (the Solid API). A part has a material
   (density), a colour and optionally a finish (`gloss`, `satin`, `matte`:
   the glTF's roughness and the card's highlight); a solid of its own colour
   is one `appearance.assign` feature. Copies a pattern or mirror makes keep
@@ -176,6 +182,7 @@ message (workspace rule: no keyword routing).
 | `cad_versions(doc)` | Each version's summary, author, mass and parts |
 | `cad_compare(doc, a?, b?)` | What changed: parts, features, instances, joints, mass and centre of mass |
 | `cad_export(doc, version?, formats?)` | glTF binary (`.glb`, for the web and Verse), 3MF, STEP (exact solids) and STL |
+| `cad_solid(ops, sketches?, material?, formats?)` | Direct operations with no document: mass, size and checks, and files if asked; nothing saved |
 | `cad_faces(doc, part, after?)` | A part's faces and edges by the names features pick them with |
 | `cad_render(doc, version?, view, focus?, yaw?, pitch?)` | A picture: hero, rear, plan, front, side, iso, under or detail, framing some instances; yaw and pitch turn and raise the camera to match a photograph |
 

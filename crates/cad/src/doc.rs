@@ -101,21 +101,82 @@ pub const OPERATIONS: [&str; 31] = [
     "appearance.assign",
 ];
 
-/// The direct operations a block may run.
-pub const DIRECT: [&str; 12] = [
-    "solid.box",
-    "solid.cylinder",
-    "solid.sphere",
-    "solid.torus",
-    "solid.combine",
-    "solid.move",
-    "solid.scale",
-    "solid.mirror",
-    "solid.fillet",
-    "solid.chamfer",
-    "solid.remove",
-    "solid.split_body",
-];
+/// The direct operations a block may run: every modelling operation.
+pub const DIRECT: [&str; 31] = OPERATIONS;
+
+/// The most copies one repeated block step may make.
+pub const MAX_REPEAT: usize = 500;
+
+/// A block step's repeat: `{"var": "i", "from": 0, "to": 9, "by": 1}` runs
+/// the step once for each value, with `{i}` in its parameters replaced by
+/// the value (so `"{i} * 12"` or `"5 * sin({i} * 36)"` become expressions
+/// the kernel works out). Returns the values, or why it can't.
+///
+/// # Errors
+/// A repeat that isn't well formed or makes too many copies.
+pub fn repeat_values(repeat: &Value) -> Result<(String, Vec<f64>), String> {
+    let var = repeat["var"].as_str().unwrap_or("i");
+    if var.is_empty() || !var.chars().all(|c| c.is_ascii_alphabetic() || c == '_') {
+        return Err(format!(
+            "a repeat's var is a name of letters (got \"{var}\")"
+        ));
+    }
+    let (Some(from), Some(to)) = (repeat["from"].as_f64(), repeat["to"].as_f64()) else {
+        return Err("a repeat needs from and to (numbers; to is included)".into());
+    };
+    let by = repeat["by"].as_f64().unwrap_or(1.0);
+    if !(by.is_finite() && by != 0.0 && from.is_finite() && to.is_finite())
+        || (to - from) * by < 0.0
+    {
+        return Err("a repeat's by must step from toward to".into());
+    }
+    let count = ((to - from) / by + 1e-9).floor() as usize + 1;
+    if count > MAX_REPEAT {
+        return Err(format!(
+            "a repeat makes {count} copies; {MAX_REPEAT} is the most"
+        ));
+    }
+    Ok((
+        var.to_owned(),
+        (0..count).map(|k| from + by * k as f64).collect(),
+    ))
+}
+
+/// `params` with `{var}` replaced by `value` in every string.
+#[must_use]
+pub fn substitute(params: &Value, var: &str, value: f64) -> Value {
+    let token = format!("{{{var}}}");
+    let text = if value.fract() == 0.0 && value.abs() < 1e15 {
+        format!("{}", value as i64)
+    } else {
+        format!("{value}")
+    };
+    match params {
+        Value::String(s) if s.contains(&token) => {
+            let wrapped = if value < 0.0 {
+                format!("({text})")
+            } else {
+                text.clone()
+            };
+            let replaced = s.replace(&token, &wrapped);
+            // A plain number stays a number (an id or a count, not an expression).
+            if s == &token {
+                serde_json::Number::from_f64(value).map_or(Value::String(replaced), Value::Number)
+            } else {
+                Value::String(replaced)
+            }
+        }
+        Value::Array(items) => {
+            Value::Array(items.iter().map(|v| substitute(v, var, value)).collect())
+        }
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(k, v)| (k.clone(), substitute(v, var, value)))
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
 
 /// Sketch drawing operations a sketch feature may not use: they read or
 /// write files on this computer.
@@ -501,6 +562,34 @@ fn feature_problems(part: &str, feature: &Value, seen: &BTreeSet<String>) -> Vec
                             DIRECT.join(", ")
                         ));
                     }
+                    for key in step.as_object().into_iter().flatten().map(|(k, _)| k) {
+                        if !matches!(key.as_str(), "op" | "params" | "repeat" | "note") {
+                            out.push(format!(
+                                "A step of block {part}.{id} has an unknown field {key} (a step is {{op, params, repeat?}})."
+                            ));
+                        }
+                    }
+                    if !step["repeat"].is_null()
+                        && let Err(why) = repeat_values(&step["repeat"])
+                    {
+                        out.push(format!("Block {part}.{id}: {why}."));
+                    }
+                }
+                for key in params.as_object().into_iter().flatten().map(|(k, _)| k) {
+                    if !matches!(key.as_str(), "ops" | "inputs") {
+                        out.push(format!(
+                            "Block {part}.{id} has an unknown param {key} (a block has ops and inputs)."
+                        ));
+                    }
+                }
+                if params["inputs"]
+                    .as_array()
+                    .is_some_and(|l| l.iter().any(|i| !i.is_string()))
+                    || !(params["inputs"].is_null() || params["inputs"].is_array())
+                {
+                    out.push(format!(
+                        "Block {part}.{id}'s inputs are a list of names: earlier features and parameters."
+                    ));
                 }
             }
             _ => out.push(format!(
@@ -669,6 +758,28 @@ pub fn check_assembly(doc: &Value) -> Vec<String> {
             &part["parameters"],
             &mut names,
         ));
+    }
+    // A block's declared inputs: earlier features of its part, or parameters.
+    for (key, part) in parts {
+        let mut earlier = BTreeSet::new();
+        for f in part["features"].as_array().into_iter().flatten() {
+            let fid = f["id"].as_str().unwrap_or_default();
+            if f["op"] == "block" {
+                for input in f["params"]["inputs"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                {
+                    if !earlier.contains(input) && !names.contains(input) {
+                        out.push(format!(
+                            "Block {key}.{fid} reads {input}, which isn't an earlier feature of {key} or a parameter."
+                        ));
+                    }
+                }
+            }
+            earlier.insert(fid);
+        }
     }
     let mut instances: BTreeMap<String, Option<String>> = BTreeMap::new();
     for instance in doc["instances"].as_array().into_iter().flatten() {
@@ -991,7 +1102,7 @@ pub fn schema() -> Value {
                 "properties": {
                     "id": id,
                     "op": {"enum": ops},
-                    "params": {"type": "object", "description": "the operation's parameters; a sketch has plane, offset? and draw: [{op: sketch.*, params}]; a block has ops: [{op, params}] (direct operations)"},
+                    "params": {"type": "object", "description": "the operation's parameters; a sketch has plane, offset? and draw: [{op: sketch.*, params}]; a block has ops: [{op, params, repeat?: {var, from, to, by?}}] (direct operations; {var} in a param is replaced by each value) and inputs?: [earlier features and parameters it reads]"},
                     "suppressed": {"type": "boolean"},
                     "note": {"type": "string"}
                 }
