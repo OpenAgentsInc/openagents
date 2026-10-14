@@ -424,13 +424,7 @@ impl Set {
                 };
                 for (i, &(at, size)) in set.iter().enumerate() {
                     // Facing us, leaning back as they recoil.
-                    wraith(
-                        &mut mesh.lit,
-                        at,
-                        0.0,
-                        size,
-                        2.3 + i as f32 * 0.4 - k,
-                    );
+                    wraith(&mut mesh.lit, at, 0.0, size, 2.3 + i as f32 * 0.4 - k);
                     wisps(&mut mesh.sprites, at, size, t, i as u32 + 500);
                     // The hood's opening: a void with nothing in it.
                     mesh.sprites.push(Sprite {
