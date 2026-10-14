@@ -472,6 +472,14 @@ impl App {
             self.game.keep_playing();
             self.game.events.clear();
         }
+        if self.options.cone {
+            let at = self.game.player.pos + self.game.player.facing * 2.0;
+            self.game.drops.push(icecream_rules::Drop {
+                at,
+                kind: DropKind::Cone,
+                age: 0.0,
+            });
+        }
         if let Some(name) = &self.options.tool
             && let Some(tool) = Tool::ALL
                 .iter()

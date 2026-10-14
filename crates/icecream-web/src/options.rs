@@ -28,6 +28,9 @@ pub struct Options {
     pub free_roam: bool,
     /// Start in first person, whatever the version says (captures).
     pub first_person: bool,
+    /// An edible cone on the floor two steps ahead at the start
+    /// (captures).
+    pub cone: bool,
     /// Pick this hot-bar tool at the start, by name (captures).
     pub tool: Option<String>,
     /// Game Lab's version of the game (`docs/game-lab/README.md`): its
@@ -121,6 +124,7 @@ impl Options {
                     options.skip = true;
                 }
                 "fp" => options.first_person = true,
+                "cone" => options.cone = true,
                 "tool" => options.tool = Some(value.to_owned()),
                 _ => {
                     if let Some(name) = key.strip_prefix("t.") {
@@ -142,11 +146,11 @@ mod tests {
     #[test]
     fn options_read_from_the_fragment() {
         let o = Options::parse(
-            "#seed=7&bot&speed=4&calm&nofarts&watch&portrait&arm&freeroam&fp&tool=spear",
+            "#seed=7&bot&speed=4&calm&nofarts&watch&portrait&arm&freeroam&fp&tool=spear&cone",
         );
         assert_eq!(o.seed, Some(7));
         assert!(o.bot && o.skip && o.calm && o.no_farts && o.watch && o.portrait);
-        assert!(o.arm && o.free_roam && o.first_person);
+        assert!(o.arm && o.free_roam && o.first_person && o.cone);
         assert_eq!(o.tool.as_deref(), Some("spear"));
         assert_eq!(o.speed, 4);
         let none = Options::parse("");

@@ -337,7 +337,7 @@ impl Hud {
             &boss,
             &[
                 ("left", "50%"),
-                ("top", "12px"),
+                ("top", "64px"),
                 ("transform", "translateX(-50%)"),
                 ("display", "none"),
                 ("align-items", "center"),
