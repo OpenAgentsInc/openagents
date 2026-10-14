@@ -38,6 +38,10 @@ pub const JUMP: &str = "Jump";
 pub const FIRE: &str = "Fire";
 pub const SPRINT: &str = "Sprint";
 pub const USE: &str = "Use";
+/// Switches first and third person, like V.
+pub const VIEW: &str = "View";
+pub const FIRST_PERSON_TOUCH: &str = "First person. Tap View for third person.";
+pub const THIRD_PERSON_TOUCH: &str = "Third person. Tap View for first person.";
 
 /// Short lines that pop up during a run.
 pub const FOUND_ALL: &str = "All three keys! Get to the front door.";
@@ -199,13 +203,13 @@ pub const TOUR: [TourStep; 4] = [
         ],
         touch: &[
             "Drag on the right side of the screen to look around.",
-            "Your tools aim at him when he's in front of you.",
+            "Your tools aim at him when he's in front of you. Tap View to switch between first person and third person.",
         ],
     },
     TourStep {
         title: "Shoot",
         keys: &[
-            "Click to use your tool. Press 1 for Hot Fudge, 2 for the Fart Launcher, 3 for the Key Ring.",
+            "Click to use your tool. Press 1 for Hot Fudge, 2 for the Fart Launcher, 3 for the Key Ring, and 4 and up for weapons you earn.",
             "Fudge slows him down, and enough of it freezes him. A fart cloud knocks him back and he forgets where you are.",
         ],
         touch: &[
@@ -280,6 +284,9 @@ mod tests {
             FIRE,
             SPRINT,
             USE,
+            VIEW,
+            FIRST_PERSON_TOUCH,
+            THIRD_PERSON_TOUCH,
             FOUND_ALL,
             FROZEN,
             FART_HIT,

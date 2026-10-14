@@ -546,24 +546,25 @@ impl App {
         self.hud.toast(note, self.now());
     }
 
-    /// V: first person or third person.
+    /// V, or the View button: first person or third person.
     fn toggle_view(&mut self) {
         let first = self.camera.toggle_view();
         let document = self.window.document().expect("a document");
-        if first {
+        if self.touch {
+            // A finger looks around by dragging; no pointer lock.
+        } else if first {
             self.canvas.request_pointer_lock();
         } else if !self.camera.shift_lock && document.pointer_lock_element().is_some() {
             document.exit_pointer_lock();
         }
         let now = self.now();
-        self.hud.toast(
-            if first {
-                copy::FIRST_PERSON_ON
-            } else {
-                copy::THIRD_PERSON_ON
-            },
-            now,
-        );
+        let line = match (first, self.touch) {
+            (true, false) => copy::FIRST_PERSON_ON,
+            (false, false) => copy::THIRD_PERSON_ON,
+            (true, true) => copy::FIRST_PERSON_TOUCH,
+            (false, true) => copy::THIRD_PERSON_TOUCH,
+        };
+        self.hud.toast(line, now);
     }
 
     fn now(&self) -> f64 {
@@ -643,6 +644,7 @@ impl App {
                 }
             }
             Action::SprintToggle => self.sprint_toggle = !self.sprint_toggle,
+            Action::ToggleView => self.toggle_view(),
             Action::Held(hold, down) => match hold {
                 Hold::Jump => self.touch_jump = down,
                 Hold::Fire => self.touch_fire = down,

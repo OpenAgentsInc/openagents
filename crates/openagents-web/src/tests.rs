@@ -548,6 +548,16 @@ async fn the_blue_rush_guide_teaches_the_ice_cream_man() {
         "10 seconds",
         "Shift Lock",
         "fudge",
+        // The designer's revision (#11626), which the page plays.
+        "the Backrooms",
+        "minions",
+        "ice cream cone",
+        "Candy Cane Sword",
+        "Waffle Cone Spear",
+        "Cone Pistol",
+        "Sugar Launcher",
+        "Keep playing with the Sprinkle Staff",
+        "The View button",
     ] {
         assert!(html.contains(words), "{words}");
     }

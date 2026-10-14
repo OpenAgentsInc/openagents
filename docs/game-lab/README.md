@@ -73,10 +73,11 @@ Each number has bounds and a plain-words description, generated from one
 table in `tuning.rs`, so the schema, the validation and the game can't
 disagree.
 
-Every new thing is off at its default, so the defaults are the game as it
-was. A version saved before the code gained a setting is read with that
-setting at its default (`doc::upgrade`), so it plays and measures exactly
-as it did.
+The defaults are the game the public page plays: since #11626 shipped,
+version 4 of `the-ice-cream-man` (the designer's revision with the
+Backrooms). A version saved before the code gained a setting is read with
+that setting as the original game had it (`Tuning::original`, via
+`doc::upgrade`), so version 1 still plays and measures exactly as it did.
 
 Every change makes a new **version**: the document, a one-line summary in
 plain words, who made it, a digest, and the bot-run stats measured when it

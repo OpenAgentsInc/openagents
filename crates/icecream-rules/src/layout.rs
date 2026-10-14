@@ -487,10 +487,11 @@ impl House {
         props
     }
 
-    /// Builds the house for `seed`.
+    /// Builds the Airbnb for `seed`, as the original game did (the game
+    /// itself plays [`House::of`] its tuning).
     #[must_use]
     pub fn new(seed: u64) -> Self {
-        Self::build(seed, crate::tuning::LOOPS as usize, false)
+        Self::build(seed, crate::tuning::AIRBNB_LOOPS as usize, false)
     }
 
     /// Builds the house for `seed` with `loops` extra doorways, as the
@@ -1104,7 +1105,7 @@ mod tests {
         }
         // Off, the house is the same as ever.
         assert_eq!(
-            House::build(5, crate::tuning::LOOPS as usize, false),
+            House::build(5, crate::tuning::AIRBNB_LOOPS as usize, false),
             House::new(5)
         );
     }

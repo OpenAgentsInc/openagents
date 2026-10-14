@@ -968,10 +968,10 @@ mod tests {
     #[test]
     fn an_edit_makes_a_version_and_compares_with_the_original() {
         let (_dir, lab) = lab();
-        let patch = "[{\"op\":\"replace\",\"path\":\"/man/man_chase\",\"value\":4.48},{\"op\":\"replace\",\"path\":\"/man/man_wander\",\"value\":1.92},{\"op\":\"replace\",\"path\":\"/layout/extra_closets\",\"value\":2}]";
+        let patch = "[{\"op\":\"replace\",\"path\":\"/man/man_chase\",\"value\":5.6},{\"op\":\"replace\",\"path\":\"/man/man_wander\",\"value\":2.4},{\"op\":\"replace\",\"path\":\"/layout/extra_closets\",\"value\":0}]";
         let edited = lab.run(
             "game_edit",
-            &json!({"game": ICE_CREAM_MAN, "patch": patch, "summary": "He's 20% slower; two more closets"}),
+            &json!({"game": ICE_CREAM_MAN, "patch": patch, "summary": "He's 25% faster; two fewer closets"}),
         );
         assert_eq!(edited["saved"], true, "{edited}");
         assert_eq!(edited["version"], 2);
@@ -979,7 +979,7 @@ mod tests {
             edited["card"]["fragment"]
                 .as_str()
                 .unwrap()
-                .contains("t.man_chase=4.48")
+                .contains("t.man_chase=5.6")
         );
         let compared = lab.run("game_compare", &json!({"game": ICE_CREAM_MAN, "a": 1}));
         assert_eq!(
@@ -989,7 +989,7 @@ mod tests {
         );
         let differences = compared["differences"].to_string();
         assert!(
-            differences.contains("Hiding spots: 5 → 7") || differences.contains("Hiding spots"),
+            differences.contains("Hiding spots: 7 → 5") || differences.contains("Hiding spots"),
             "{differences}"
         );
         assert_eq!(compared["card"]["compare"]["a"]["version"], 1);
@@ -1008,7 +1008,8 @@ mod tests {
                 "Coder",
             ),
             (
-                "[{\"op\":\"replace\",\"path\":\"/rules/unlock\",\"value\":600}]",
+                // With the weapons he can still be melted: take them away too.
+                "[{\"op\":\"replace\",\"path\":\"/rules/unlock\",\"value\":600},{\"op\":\"replace\",\"path\":\"/weapons/earned_weapons\",\"value\":0}]",
                 "unwinnable",
             ),
             (

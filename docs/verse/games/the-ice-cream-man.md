@@ -187,9 +187,11 @@ state run by the host and mirrored to the others.
 Asked for by the game's designer after playing it in Game Lab, and steered
 through Game Lab's chat (#11626). Every number below is a setting in the
 version's document (`game.v1`; the sections `weapons`, `minions`, `look`,
-`layout` and `rules`), and every new thing is off by default, so the
-original plays as it did. In the chat, "add the new items and minions" and
-"make it feel like the Backrooms" switch them on as versions.
+`layout` and `rules`). In the chat, "add the new items and minions" and
+"make it feel like the Backrooms" switched them on as versions; the owner
+approved v4, and its numbers are now the game's defaults, so
+openagents.com/games/the-ice-cream-man plays it. The original stays in
+Game Lab as v1 (`Tuning::original`).
 
 ### Earned weapons
 

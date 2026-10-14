@@ -226,21 +226,21 @@
       "additionalProperties": false,
       "properties": {
         "backrooms": {
-          "default": 0,
+          "default": 1,
           "description": "build the house as the Backrooms (1): wide empty yellow rooms with wall stubs among the Airbnb's own; 0 keeps the Airbnb's rooms",
           "maximum": 1,
           "minimum": 0,
           "type": "integer"
         },
         "extra_closets": {
-          "default": 0,
+          "default": 2,
           "description": "hiding spots (closets) added to the house",
           "maximum": 4,
           "minimum": 0,
           "type": "integer"
         },
         "loops": {
-          "default": 4,
+          "default": 10,
           "description": "extra doorways beyond the ones that join every room; more make the house loop like the Backrooms",
           "maximum": 24,
           "minimum": 0,
@@ -265,7 +265,7 @@
       "additionalProperties": false,
       "properties": {
         "buzz": {
-          "default": 0.0,
+          "default": 0.8,
           "description": "how loud the fluorescent lights buzz, from 0 to 1",
           "maximum": 1.0,
           "minimum": 0.0,
@@ -279,28 +279,28 @@
           "type": "integer"
         },
         "flicker": {
-          "default": 0.03,
+          "default": 0.35,
           "description": "how often the lights flicker, from 0 (never) to 1 (often): above 0.05 they dip for half a second at a time, two a second at most, so they never strobe",
           "maximum": 1.0,
           "minimum": 0.0,
           "type": "number"
         },
         "fog_far": {
-          "default": 34.0,
+          "default": 18.0,
           "description": "where the fog is thickest, metres from the camera",
           "maximum": 120.0,
           "minimum": 1.0,
           "type": "number"
         },
         "fog_near": {
-          "default": 9.0,
+          "default": 3.0,
           "description": "where the fog starts, metres from the camera",
           "maximum": 100.0,
           "minimum": 0.0,
           "type": "number"
         },
         "yellow": {
-          "default": 0.0,
+          "default": 1.0,
           "description": "how yellowed the rooms look, from 0 (pastel ice cream) to 1 (Backrooms: monotone yellow wallpaper, damp carpet, fluorescent panels)",
           "maximum": 1.0,
           "minimum": 0.0,
@@ -356,28 +356,28 @@
           "type": "number"
         },
         "man_chase": {
-          "default": 5.6,
+          "default": 4.48,
           "description": "his speed chasing you",
           "maximum": 14.0,
           "minimum": 0.5,
           "type": "number"
         },
         "man_investigate": {
-          "default": 3.6,
+          "default": 2.88,
           "description": "his speed going to look at a noise",
           "maximum": 12.0,
           "minimum": 0.5,
           "type": "number"
         },
         "man_search": {
-          "default": 3.2,
+          "default": 2.56,
           "description": "his speed searching where he last saw you",
           "maximum": 12.0,
           "minimum": 0.5,
           "type": "number"
         },
         "man_wander": {
-          "default": 2.4,
+          "default": 1.92,
           "description": "his speed wandering the rooms",
           "maximum": 12.0,
           "minimum": 0.5,
@@ -539,7 +539,7 @@
           "type": "number"
         },
         "minion_count": {
-          "default": 0,
+          "default": 3,
           "description": "how many minions (mini Ice Cream Men) can hunt you at once; 0 for none",
           "maximum": 12,
           "minimum": 0,
@@ -753,7 +753,7 @@
       "additionalProperties": false,
       "properties": {
         "free_roam": {
-          "default": 0,
+          "default": 1,
           "description": "after you win (escape, or melt him), keep playing in free roam with the sprinkle staff (1), or end the run (0)",
           "maximum": 1,
           "minimum": 0,
@@ -809,7 +809,7 @@
       "additionalProperties": false,
       "properties": {
         "earned_weapons": {
-          "default": 0,
+          "default": 1,
           "description": "whether the four earned weapons are in the game (1) or not (0): the candy cane sword, the waffle cone spear, the cone pistol and the sugar launcher",
           "maximum": 1,
           "minimum": 0,

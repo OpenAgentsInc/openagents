@@ -156,8 +156,8 @@ mod tests {
 
     #[test]
     fn a_slower_ice_cream_man_is_easier_to_escape() {
-        let base = measure(Tuning::default(), 7);
-        let mut slow = Tuning::default();
+        let base = measure(Tuning::original(), 7);
+        let mut slow = Tuning::original();
         for name in ["man_wander", "man_investigate", "man_search", "man_chase"] {
             let value = slow.get(name).unwrap() * 0.8;
             slow.set(name, value).unwrap();
@@ -168,7 +168,7 @@ mod tests {
         assert!(slower.escaped >= base.escaped, "{base:?} {slower:?}");
         assert_eq!(slower.hiding_spots, base.hiding_spots + 2);
         assert_eq!(
-            measure(Tuning::default(), 7),
+            measure(Tuning::original(), 7),
             base,
             "the same runs every time"
         );
@@ -178,7 +178,7 @@ mod tests {
     /// The designer's revision (#11626): the earned weapons, minions and
     /// free roam, in the Backrooms.
     pub(crate) fn revision() -> Tuning {
-        let mut t = Tuning::default();
+        let mut t = Tuning::original();
         for (name, value) in [
             ("earned_weapons", 1.0),
             ("minion_count", 3.0),
@@ -199,7 +199,7 @@ mod tests {
     #[test]
     fn the_original_numbers_measure_as_before() {
         // Version 1 as Game Lab measured it before the revision's code.
-        let base = measure(Tuning::default(), 7);
+        let base = measure(Tuning::original(), 7);
         eprintln!("original: {}", base.line());
         assert_eq!((base.escaped, base.melted), (24, 0), "{base:?}");
         assert!(
@@ -213,8 +213,26 @@ mod tests {
     }
 
     #[test]
+    fn the_game_plays_version_4_by_default() {
+        // Version 4 of the-ice-cream-man, approved for the public page.
+        let today = measure(Tuning::default(), 7);
+        eprintln!("today: {}", today.line());
+        assert_eq!(
+            (today.escaped + today.melted, today.runs),
+            (24, 24),
+            "{today:?}"
+        );
+        assert!(
+            today.median_escape.is_some_and(|t| (t - 42.2).abs() < 0.05),
+            "{today:?}"
+        );
+        assert!((today.hits - 1.9).abs() < 0.05, "{today:?}");
+        assert_eq!(today.hiding_spots, 7, "{today:?}");
+    }
+
+    #[test]
     fn the_designers_revision_is_winnable() {
-        let mut items = Tuning::default();
+        let mut items = Tuning::original();
         for (name, value) in [
             ("earned_weapons", 1.0),
             ("minion_count", 3.0),

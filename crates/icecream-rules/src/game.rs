@@ -1382,7 +1382,8 @@ mod tests {
 
     #[test]
     fn walls_stop_the_player() {
-        let mut game = calm(1);
+        // The Airbnb's bedroom, whose north wall has no doorway.
+        let mut game = Game::tuned(1, Options { man: false }, Tuning::original());
         for _ in 0..30 * 6 {
             game.step(Input {
                 walk: v(0.0, 1.0),
@@ -1709,7 +1710,7 @@ mod tests {
 
     #[test]
     fn the_original_game_has_none_of_the_new_things() {
-        let mut game = Game::new(7, Options::default());
+        let mut game = Game::tuned(7, Options::default(), Tuning::original());
         assert!(!game.weapons_on());
         assert_eq!(game.player.owned, Tool::START.to_vec());
         for _ in 0..30 * 120 {
@@ -1948,7 +1949,7 @@ mod tests {
         assert_ne!(game.prompt(), Some(Prompt::Unlock));
         assert_eq!(game.won, Some(Status::Melted));
         // Without free roam in the version, a win ends the run.
-        let mut plain = Game::new(3, Options::default());
+        let mut plain = Game::tuned(3, Options::default(), Tuning::original());
         plain.status = Status::Escaped;
         assert!(!plain.keep_playing());
         assert_eq!(plain.status, Status::Escaped);

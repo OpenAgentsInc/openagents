@@ -37,6 +37,8 @@ pub enum Action {
     TourEnd(bool),
     Select(Tool),
     SprintToggle,
+    /// First or third person (V on a keyboard).
+    ToggleView,
     /// After a win: play on in free roam with the sprinkle staff.
     KeepPlaying,
     Held(Hold, bool),
@@ -610,10 +612,13 @@ impl Hud {
             let jump = round(copy::JUMP, "118px", "104px", "64px");
             let use_button = round(copy::USE, "34px", "216px", "62px");
             let sprint = round(copy::SPRINT, "120px", "186px", "58px");
+            let view = round(copy::VIEW, "40px", "292px", "50px");
+            css(&view, &[("font-size", "13px")]);
             on_hold(&fire, &actions, Hold::Fire);
             on_hold(&jump, &actions, Hold::Jump);
             on_hold(&use_button, &actions, Hold::Use);
             on_click(&sprint, &actions, Action::SprintToggle);
+            on_click(&view, &actions, Action::ToggleView);
             Touch {
                 knob,
                 sprint,

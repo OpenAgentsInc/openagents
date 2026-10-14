@@ -83,13 +83,15 @@ pub fn original() -> Value {
 }
 
 /// Fills in what a document saved before the game's code gained a setting
-/// doesn't have: each new section and value at its default, which plays
-/// the game as it was (the new things are off by default). Returns
-/// whether anything was added.
+/// doesn't have: each new section and value as the original game played
+/// it ([`Tuning::original`]: the designer's revision off), so a version
+/// saved before the revision still plays as it did. Returns whether
+/// anything was added.
 pub fn upgrade(doc: &mut Value) -> bool {
     let Some(top) = doc.as_object_mut() else {
         return false;
     };
+    let before = Tuning::original();
     let mut added = false;
     for f in FIELDS {
         let section = top
@@ -98,7 +100,8 @@ pub fn upgrade(doc: &mut Value) -> bool {
         if let Some(values) = section.as_object_mut()
             && !values.contains_key(f.name)
         {
-            values.insert(f.name.into(), number(f.default, f.whole));
+            let value = before.get(f.name).unwrap_or(f.default);
+            values.insert(f.name.into(), number(value, f.whole));
             added = true;
         }
     }
@@ -478,6 +481,31 @@ mod tests {
     }
 
     #[test]
+    fn a_version_saved_before_the_revision_still_plays_the_original() {
+        // Version 1 as Game Lab saved it: no weapons, minions or look yet.
+        let mut doc = original();
+        let top = doc.as_object_mut().unwrap();
+        for section in ["weapons", "minions", "look"] {
+            top.remove(section);
+        }
+        for name in ["backrooms", "loops"] {
+            doc["layout"].as_object_mut().unwrap().remove(name);
+        }
+        doc["rules"].as_object_mut().unwrap().remove("free_roam");
+        for (name, value) in [
+            ("man_wander", 2.4),
+            ("man_investigate", 3.6),
+            ("man_search", 3.2),
+            ("man_chase", 5.6),
+        ] {
+            doc["man"][name] = json!(value);
+        }
+        doc["layout"]["extra_closets"] = json!(0);
+        assert!(upgrade(&mut doc));
+        assert_eq!(read(&doc).unwrap().tuning, Tuning::original());
+    }
+
+    #[test]
     fn a_locked_front_door_breaks_the_rules() {
         let mut doc = original();
         doc["rules"]["front_door"] = json!(DOOR_LOCKED);
@@ -488,13 +516,13 @@ mod tests {
     #[test]
     fn a_version_plays_from_its_fragment() {
         let mut doc = original();
-        doc["man"]["man_chase"] = json!(4.48);
-        doc["layout"]["extra_closets"] = json!(2);
+        doc["man"]["man_chase"] = json!(5.6);
+        doc["layout"]["extra_closets"] = json!(0);
         doc["copy"]["title"] = json!("The Slow Man & Co");
         let game = read(&doc).unwrap();
         let fragment = fragment(&game);
-        assert!(fragment.contains("t.man_chase=4.48"), "{fragment}");
-        assert!(fragment.contains("t.extra_closets=2"), "{fragment}");
+        assert!(fragment.contains("t.man_chase=5.6"), "{fragment}");
+        assert!(fragment.contains("t.extra_closets=0"), "{fragment}");
         assert!(
             fragment.contains("c.title=The%20Slow%20Man%20%26%20Co"),
             "{fragment}"

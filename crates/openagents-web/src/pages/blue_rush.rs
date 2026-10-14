@@ -790,21 +790,24 @@ fn render_guide(site: &Site) -> Markup {
 }
 
 /// The Ice Cream Man guide's sections: their anchors and titles.
-const ICECREAM_SECTIONS: [(&str, &str); 9] = [
+const ICECREAM_SECTIONS: [(&str, &str); 12] = [
     ("goal", "The goal"),
     ("controls", "Controls"),
     ("house", "The house"),
     ("keys", "Find the keys"),
     ("man", "The Ice Cream Man"),
     ("tools", "Hot fudge and farts"),
+    ("minions", "Minions and cones"),
+    ("weapons", "Earn weapons"),
     ("hide", "Hide"),
-    ("escape", "Escape, or get scooped"),
+    ("escape", "Escape, melt him, or get scooped"),
+    ("staff", "The Sprinkle Staff"),
     ("tips", "Tips"),
 ];
 
 fn render_icecream_guide(site: &Site) -> Markup {
     let step = |id, number, body, picture| step_in(&ICECREAM_SECTIONS, id, number, body, picture);
-    let control_rows: [(&str, Markup, Markup); 10] = [
+    let control_rows: [(&str, Markup, Markup); 11] = [
         (
             "Move",
             html! { (key("W")) " " (key("A")) " " (key("S")) " " (key("D")) " or the arrow keys" },
@@ -819,6 +822,11 @@ fn render_icecream_guide(site: &Site) -> Markup {
             "Shift Lock (aim)",
             html! { (key("Ctrl")) " locks the camera over your shoulder, with a crosshair" },
             html! { "Not needed: Fire aims at him when he's in front of you" },
+        ),
+        (
+            "First or third person",
+            html! { (key("V")) },
+            html! { "The View button" },
         ),
         (
             "Jump",
@@ -837,7 +845,7 @@ fn render_icecream_guide(site: &Site) -> Markup {
         ),
         (
             "Pick a tool",
-            html! { (key("1")) " " (key("2")) " " (key("3")) ", or click the hot bar" },
+            html! { (key("1")) " to " (key("7")) ", or click the hot bar" },
             html! { "Tap the hot bar" },
         ),
         (
@@ -855,7 +863,7 @@ fn render_icecream_guide(site: &Site) -> Markup {
     html! {
         (DOCTYPE)
         html lang="en" {
-            (head(site, "How to play The Ice Cream Man \u{b7} Blue Rush Studios", "How to play The Ice Cream Man: the controls, the keys, hot fudge and fart clouds, hiding, and how to get out of the Airbnb.", false))
+            (head(site, "How to play The Ice Cream Man \u{b7} Blue Rush Studios", "How to play The Ice Cream Man: the controls, the keys, hot fudge and fart clouds, minions, the weapons you earn, hiding, and how to get out of the Airbnb.", false))
             body class="br" {
                 (nav(site, &[("Games", &format!("{}#games", site.home)), ("How to play", site.icecream_guide)], ICECREAM))
                 main id="main" {
@@ -867,7 +875,7 @@ fn render_icecream_guide(site: &Site) -> Markup {
                             }
                             h1 class="br-guide-title" { "How to play The Ice Cream Man" }
                             p class="br-guide-lede" {
-                                "You wake up in an Airbnb that keeps going. Somewhere inside is the Ice Cream Man, and he wants you in a cone. Find three keys and get out the front door. Here's how, with pictures from the game."
+                                "You wake up in an Airbnb that keeps going. Somewhere inside is the Ice Cream Man, and he wants you in a cone. Find three keys and get out the front door, or earn weapons and melt him. Here's how, with pictures from the game."
                             }
                             div class="br-guide-actions" {
                                 a class="br-cta" href=(ICECREAM) { "Play The Ice Cream Man" }
@@ -908,7 +916,8 @@ fn render_icecream_guide(site: &Site) -> Markup {
                             p { "The first time you play, four quick cards show these controls. Skip them if you like, and open them again with " (key("?")) " or " strong { "How to play" } " in the menu." }
                         }, Some(shot(site, "icecream-tour.jpg", "The game's tutorial card about looking around, with Back, Skip and Next buttons", "The tutorial in the game."))))
                         (step("house", 3, html! {
-                            p { "The house has a bedroom, a kitchen, a living room, a bathroom, a laundry, hallways, a stairwell, and the freezer room. Some rooms show up again, and some hallways are longer than they should be." }
+                            p { "You wake up in the bedroom. The house has a kitchen, a living room, a bathroom, a laundry, hallways, a stairwell, and the freezer room. Some rooms show up again, and some hallways are longer than they should be." }
+                            p { "Past them are the Backrooms: wide, empty rooms of yellow wallpaper and damp carpet under buzzing lights that flicker. Extra doorways loop back on themselves, and the fog hides what's ahead." }
                             p { "Every run shuffles the rooms, so it's a new house every time." }
                         }, None))
                         (step("keys", 4, html! {
@@ -920,7 +929,7 @@ fn render_icecream_guide(site: &Site) -> Markup {
                             ul class="br-list" {
                                 li { strong { "Sprinkles" } ": from far away he fires sprinkles. Each one costs 5 health. Jump to dodge them." }
                                 li { strong { "Grab" } ": up close he grabs you. That costs 30 health and shoves you back." }
-                                li { strong { "Speed" } ": he's a bit slower than you sprinting, and faster than you walking." }
+                                li { strong { "Speed" } ": he's about as fast as you walking, so sprinting gets you away." }
                             }
                             p { "Listen for the ice cream truck jingle. The louder it gets, the closer he is." }
                         }, Some(shot(site, "icecream-man.jpg", "The Ice Cream Man: a waffle-cone body with a vanilla scoop head, a huge bald forehead and a big grin", "He's coming. Hear the jingle?"))))
@@ -931,21 +940,41 @@ fn render_icecream_guide(site: &Site) -> Markup {
                                 li { strong { "2. Fart Launcher" } " (3 clouds): knocks him back, and he forgets where you are for 4 seconds." }
                                 li { strong { "3. Key Ring" } ": shows your keys. Click to jingle them and lure him somewhere." }
                             }
-                            p { "Running low? Press " (key("E")) " at a fridge for more fudge or a fart cloud. Each fridge opens once." }
+                            p { "Running low? Press " (key("E")) " at a fridge for more fudge or a fart cloud, and ammo for any weapons you've earned. Each fridge opens once." }
                         }, Some(shot(site, "icecream-fudge.jpg", "The Ice Cream Man frozen solid in hardened hot fudge, next to your avatar", "Six quick hits and he's frozen solid."))))
-                        (step("hide", 7, html! {
+                        (step("minions", 7, html! {
+                            p { "Soon after you start, his " strong { "minions" } " come for you: mini Ice Cream Men that hunt you down and bite. Up to three roam the house at once." }
+                            p { "Hot fudge, fart clouds, and your weapons melt them. A melted minion sometimes drops an " strong { "ice cream cone" } ". Walk over it to eat it: 50% more health for 10 seconds." }
+                        }, None))
+                        (step("weapons", 8, html! {
+                            p { "Four weapons are hidden in the house. Each one is earned, and each one hurts him. They go in the hot bar after your tools, on " (key("4")) " and up." }
+                            ul class="br-list" {
+                                li { strong { "Candy Cane Sword" } ": the first minion you melt drops it. Swing it up close." }
+                                li { strong { "Waffle Cone Spear" } ": press the three sprinkle buttons in order, pink, blue, then yellow, and the cone cabinet opens. It reaches a long way." }
+                                li { strong { "Cone Pistol" } ": freeze him with hot fudge once and it's yours. It fires cones from far away." }
+                                li { strong { "Sugar Launcher" } ": melt four minions to earn it. Its sugar bursts hurt everything nearby." }
+                            }
+                            p { "A bar at the top shows his health. Wear it down and he melts." }
+                        }, None))
+                        (step("hide", 9, html! {
                             p { "Press " (key("E")) " next to a closet to hide inside, and " (key("E")) " again to come out. He can't open your closet, unless he saw you get in." }
                         }, Some(shot(site, "icecream-hide.jpg", "The view from inside a closet, peeking out at the room", "Hiding in a closet."))))
-                        (step("escape", 8, html! {
+                        (step("escape", 10, html! {
                             p { "With all three keys, go to the front door and hold " (key("E")) " for 2 seconds. Rattling the door makes noise, so he may come running." }
+                            p { "Or melt him with your weapons. That's a win too." }
                             p { "You have 100 health. It slowly comes back once you haven't been hit for 10 seconds. If it runs out, you're " strong { "scooped" } ": he plops you in a cone and the run is over. Press " strong { "Try again" } "." }
                             p { "After every run you get a card with your time, your keys, the hits you took, and how well you aimed your fudge." }
                         }, Some(shot(site, "icecream-door.jpg", "The run card after escaping, with the time, keys, hits taken and fudge accuracy", "Out! Your run card."))))
-                        (step("tips", 9, html! {
+                        (step("staff", 11, html! {
+                            p { "After you win, press " strong { "Keep playing with the Sprinkle Staff" } " to stay in the house as long as you like. The staff shoots one super long sprinkle that hurts whatever it touches, and makes minions of your own that fight for you." }
+                        }, None))
+                        (step("tips", 12, html! {
                             ul class="br-list" {
                                 li { "Sprint to get out of his sight, then hide." }
                                 li { "Save a fart cloud for when he's close." }
                                 li { "Fudge him from far away, before he can grab you." }
+                                li { "Freeze him, then hit him with your weapons while he can't move." }
+                                li { "Hurt? Melt a minion and hope for a cone." }
                                 li { "Jingle your keys in one room, then sneak off to another." }
                             }
                             div class="br-guide-actions" {

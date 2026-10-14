@@ -22,11 +22,12 @@ pub const REGEN_RATE: f32 = 4.0;
 
 /// The Ice Cream Man.
 pub const MAN_RADIUS: f32 = 0.5;
-pub const MAN_WANDER: f32 = 2.4;
-pub const MAN_INVESTIGATE: f32 = 3.6;
-pub const MAN_SEARCH: f32 = 3.2;
-/// Between a walk and a sprint, so sprinting matters.
-pub const MAN_CHASE: f32 = 5.6;
+pub const MAN_WANDER: f32 = 1.92;
+pub const MAN_INVESTIGATE: f32 = 2.88;
+pub const MAN_SEARCH: f32 = 2.56;
+/// Just under a walk, so the minions and the Backrooms' loops are the
+/// danger, and a sprint gets you clear.
+pub const MAN_CHASE: f32 = 4.48;
 pub const SIGHT: f32 = 22.0;
 /// Half his field of view while not chasing, as a cosine (70 degrees).
 pub const SIGHT_COS: f32 = 0.342;
@@ -98,7 +99,7 @@ pub const SHOVE_FADE: f32 = 6.0;
 
 /// Hiding spots added to the house beyond its rooms' own closets
 /// (`House::tuned`).
-pub const EXTRA_CLOSETS: u32 = 0;
+pub const EXTRA_CLOSETS: u32 = 2;
 /// The most spare closets a house can take: one in each bedroom, kitchen
 /// and bathroom, and every house has at least four of those.
 pub const MAX_EXTRA_CLOSETS: u32 = 4;
@@ -106,8 +107,9 @@ pub const MAX_EXTRA_CLOSETS: u32 = 4;
 /// he faces ([`SIGHT_COS`] is its cosine).
 pub const SIGHT_ANGLE: f32 = 70.0;
 
-/// Earned weapons (all off in the original game: `EARNED_WEAPONS` 0).
-pub const EARNED_WEAPONS: u32 = 0;
+/// Earned weapons (1: in the game; the original game had none, see
+/// [`ORIGINAL`]).
+pub const EARNED_WEAPONS: u32 = 1;
 /// The Ice Cream Man's health against the earned weapons.
 pub const MAN_HEALTH: f32 = 400.0;
 pub const SWORD_DAMAGE: f32 = 25.0;
@@ -138,9 +140,9 @@ pub const SUGAR_PICKUP: u32 = 2;
 /// Minions you must melt to earn the sugar launcher.
 pub const SUGAR_TASK: u32 = 4;
 
-/// Minions (none in the original game: `MINION_COUNT` 0).
+/// Minions (none in the original game, see [`ORIGINAL`]).
 pub const MINION_RADIUS: f32 = 0.3;
-pub const MINION_COUNT: u32 = 0;
+pub const MINION_COUNT: u32 = 3;
 pub const MINION_FIRST: f32 = 25.0;
 pub const MINION_EVERY: f32 = 15.0;
 pub const MINION_SPEED: f32 = 3.4;
@@ -164,20 +166,44 @@ pub const STAFF_WAIT: f32 = 2.0;
 pub const STAFF_MINIONS: u32 = 3;
 pub const STAFF_MINION_LIFE: f32 = 20.0;
 /// After a win, play on in free roam with the staff (1) or end (0).
-pub const FREE_ROAM: u32 = 0;
+pub const FREE_ROAM: u32 = 1;
 
 /// The house as the Backrooms (0: the Airbnb's rooms), and the doorways
 /// added beyond the ones that join every room.
-pub const BACKROOMS: u32 = 0;
-pub const LOOPS: u32 = 4;
+pub const BACKROOMS: u32 = 1;
+pub const LOOPS: u32 = 10;
+/// The Airbnb's own extra doorways, as the original game built it.
+pub const AIRBNB_LOOPS: u32 = 4;
 /// The look: how yellowed the rooms are, the fog, the lights' flicker and
 /// buzz, and the camera a run starts with.
-pub const YELLOW: f32 = 0.0;
-pub const FOG_NEAR: f32 = 9.0;
-pub const FOG_FAR: f32 = 34.0;
-pub const FLICKER: f32 = 0.03;
-pub const BUZZ: f32 = 0.0;
+pub const YELLOW: f32 = 1.0;
+pub const FOG_NEAR: f32 = 3.0;
+pub const FOG_FAR: f32 = 18.0;
+pub const FLICKER: f32 = 0.35;
+pub const BUZZ: f32 = 0.8;
 pub const FIRST_PERSON: u32 = 0;
+
+/// The game as it played before the designer's revision (#11626), which
+/// Game Lab keeps as version 1: the values that differ from today's
+/// defaults. A game document saved before a setting existed plays that
+/// setting at its value here.
+pub const ORIGINAL: &[(&str, f64)] = &[
+    ("man_wander", 2.4),
+    ("man_investigate", 3.6),
+    ("man_search", 3.2),
+    ("man_chase", 5.6),
+    ("extra_closets", 0.0),
+    ("earned_weapons", 0.0),
+    ("minion_count", 0.0),
+    ("free_roam", 0.0),
+    ("backrooms", 0.0),
+    ("loops", AIRBNB_LOOPS as f64),
+    ("yellow", 0.0),
+    ("fog_near", 9.0),
+    ("fog_far", 34.0),
+    ("flicker", 0.03),
+    ("buzz", 0.0),
+];
 
 /// One value a game document may change: its section, name, default,
 /// bounds, and what it does, in plain words.
@@ -389,6 +415,17 @@ tunables! {
 }
 
 impl Tuning {
+    /// The game as it played before the designer's revision ([`ORIGINAL`]).
+    #[must_use]
+    pub fn original() -> Self {
+        let mut t = Self::default();
+        for (name, value) in ORIGINAL {
+            t.set(name, *value)
+                .expect("the original values are in bounds");
+        }
+        t
+    }
+
     /// The cosine of [`Tuning::sight_angle`].
     #[must_use]
     pub fn sight_cos(&self) -> f32 {
@@ -406,6 +443,14 @@ mod tests {
         assert_eq!(t.man_chase, MAN_CHASE);
         assert_eq!(t.fudge_start, FUDGE_START);
         assert!((t.sight_cos() - SIGHT_COS).abs() < 0.001);
+        // The revision Game Lab measured as version 4 of the-ice-cream-man.
+        assert_eq!((t.earned_weapons, t.minion_count, t.free_roam), (1, 3, 1));
+        assert_eq!((t.backrooms, t.loops, t.extra_closets), (1, 10, 2));
+        assert_eq!((t.yellow, t.fog_near, t.fog_far), (1.0, 3.0, 18.0));
+        assert_eq!((t.flicker, t.buzz, t.first_person), (0.35, 0.8, 0));
+        let original = Tuning::original();
+        assert_eq!((original.man_chase, original.minion_count), (5.6, 0));
+        assert_eq!((original.backrooms, original.yellow), (0, 0.0));
         for f in FIELDS {
             assert_eq!(t.get(f.name), Some(f.default), "{}", f.name);
             assert!(f.min <= f.default && f.default <= f.max, "{}", f.name);
