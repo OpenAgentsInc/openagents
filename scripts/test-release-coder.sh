@@ -141,4 +141,48 @@ else
   grep -q 'skip-acceptance needs a written reason' "$work/skip.log" && pass "skipping the acceptance gate needs a reason" || fail "skipping the acceptance gate needs a reason"
 fi
 
+# --reuse-dist/--publish-only/--gate-only (#11641): a staged build is reused
+# only when it is this version at this commit with intact checksums.
+version=1.0.0-rc.3
+sha=0123456789abcdef0123456789abcdef01234567
+dist="$work/reuse"
+mkdir -p "$dist"
+: >"$dist/$(sums_file_name)"
+manifest_digests=''
+for platform in macos-aarch64 linux-x86_64; do
+  printf 'archive %s\n' "$platform" >"$dist/$(archive_name "$platform")"
+  digest=$(shasum -a 256 "$dist/$(archive_name "$platform")" | awk '{print $1}')
+  printf '%s  %s\n' "$digest" "$(archive_name "$platform")" >>"$dist/$(sums_file_name)"
+  manifest_digests="$manifest_digests \"sha256\": \"$digest\","
+done
+printf '{"version": "%s", "git_sha": "%s", %s}\n' "$version" "$sha" "$manifest_digests" | sed 's/{"version"/{\n"version"/; s/, "git_sha"/,\n"git_sha"/' >"$dist/release-manifest.json"
+printf 'version=%s\nsha=%s\nbuilt= macos-aarch64 linux-x86_64\nmissing= windows-x86_64\n' "$version" "$sha" >"$dist/.build-state"
+if out=$(verify_staged 2>&1; printf '|%s|%s' "$built" "$missing"); then
+  case "$out" in *'| macos-aarch64 linux-x86_64| windows-x86_64') pass "a finished staged build is reused" ;; *) fail "a finished staged build is reused: $out" ;; esac
+else
+  fail "a finished staged build is reused: $out"
+fi
+if (sha=fedcba9876543210fedcba9876543210fedcba98; verify_staged) >"$work/reuse.log" 2>&1; then
+  fail "a staged build of another commit is refused"
+else
+  grep -q 'was built from' "$work/reuse.log" && pass "a staged build of another commit is refused" || fail "a staged build of another commit is refused"
+fi
+if (version=1.0.0-rc.4; verify_staged) >"$work/reuse.log" 2>&1; then
+  fail "a staged build of another version is refused"
+else
+  pass "a staged build of another version is refused"
+fi
+printf 'tampered\n' >>"$dist/$(archive_name linux-x86_64)"
+if (verify_staged) >"$work/reuse.log" 2>&1; then
+  fail "a staged archive that differs from its checksum is refused"
+else
+  grep -q "doesn't match its checksum" "$work/reuse.log" && pass "a staged archive that differs from its checksum is refused" || fail "a staged archive that differs from its checksum is refused"
+fi
+rm -f "$dist/.build-state"
+if (verify_staged) >"$work/reuse.log" 2>&1; then
+  fail "an unfinished build is not reused"
+else
+  grep -q 'no finished build' "$work/reuse.log" && pass "an unfinished build is not reused" || fail "an unfinished build is not reused"
+fi
+
 exit "$failures"

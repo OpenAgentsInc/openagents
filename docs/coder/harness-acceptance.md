@@ -18,8 +18,12 @@ Without `--coder` it tests `~/.openagents/bin/coder`. `--only codex,cursor`
 runs some harnesses, and `--list` names them all. Results go to
 `~/work/harness-acceptance/<version>-<commit>/`: `report.md` holds the matrix,
 `report.json` holds the same data, and `evidence/<harness>/` holds every
-screen, the export and the `/models` lists. The script exits 1 when any check
-fails. The full run takes 10 to 20 minutes and a few cents of usage.
+screen, the export and the `/models` lists. The script exits 1 when a blocking
+check fails: real Coder behaviour on a required harness (the turn runs, the
+model rail, tools, safety, sync, export). Other failures are warnings, listed
+under "Warnings" in the report and never fatal: polish checks, optional
+harnesses, projects-live, and the gate's own setup and cleanup errors. The
+`SEVERITY` table in `harness_acceptance.py` decides (#11641). The full run takes 10 to 20 minutes and a few cents of usage.
 
 ## What it does
 
@@ -112,8 +116,10 @@ Coder could fix. Each skip names the owner's step:
 ## Where it is required
 
 - **Releases.** Before it uploads anything, `scripts/release/coder.sh
-  --publish` runs the gate on the macOS archive it just built. A failing
-  check refuses the publish. `--skip-acceptance "REASON"` publishes without
+  --publish` runs the gate on the macOS archive it just built. A blocking
+  failure refuses the publish; warnings go into the published report.
+  `--gate-only` re-runs just the gate and `--publish-only` publishes the
+  staged build, both without rebuilding. `--skip-acceptance "REASON"` publishes without
   the gate. The reason is required, and it is published as
   `coder-<version>.acceptance.md` next to the archives. When the gate runs,
   its report is published there instead.

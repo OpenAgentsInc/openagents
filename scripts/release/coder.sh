@@ -29,6 +29,8 @@
 #   scripts/release/coder.sh --version 1.0.0-rc.4 --publish
 #   scripts/release/coder.sh --version 1.0.0 --publish --channel stable --publish-installers
 #   scripts/release/coder.sh --publish-installers
+#   scripts/release/coder.sh --version 1.0.0-rc.4 --gate-only      # re-run the gate on the staged build
+#   scripts/release/coder.sh --version 1.0.0-rc.4 --publish-only   # publish the staged build, no rebuild
 #
 # Options:
 #   --version VERSION       X.Y.Z or X.Y.Z-rc.N; required for a build.
@@ -47,9 +49,29 @@
 #                           Publish without the harness acceptance gate. The
 #                           gate (scripts/coder/harness-acceptance.sh, #11549)
 #                           otherwise runs on the macOS archive before any
-#                           upload and a failing check refuses to publish.
+#                           upload. Only a blocking failure (real Coder
+#                           behaviour: the turn runs, the model rail, tools,
+#                           safety, sync, export) or a gate that can't start
+#                           refuses to publish. Warnings (polish checks,
+#                           optional harnesses, not installed/skipped,
+#                           projects-live and other live-account housekeeping,
+#                           the gate's own setup/cleanup errors) are printed
+#                           and kept in the acceptance record, never fatal
+#                           (#11641; the SEVERITY table in
+#                           scripts/coder/harness_acceptance.py decides).
 #                           REASON is required, printed, and published as the
 #                           version's acceptance record.
+#   --reuse-dist            Don't wipe dist or rebuild: use the build already
+#                           staged in dist/releases/coder/VERSION. Refused
+#                           unless it is a finished build of VERSION at
+#                           --commit (default HEAD) whose archives match the
+#                           staged SHA256SUMS and release manifest.
+#   --publish-only          --reuse-dist --publish: run the gate (unless
+#                           --skip-acceptance) and publish the staged build.
+#                           Objects of this version already in the bucket
+#                           (an interrupted upload) must match byte for byte.
+#   --gate-only             --reuse-dist, then run only the acceptance gate
+#                           and write dist/.../acceptance.md; never publishes.
 #
 # Environment:
 #   CODER_RELEASES_BUCKET   Default openagentsgemini-cli-releases.
@@ -124,6 +146,8 @@ skip_notarization=0
 point_channel_name=''
 publish_installers=0
 skip_acceptance=''
+reuse_dist=0
+gate_only=0
 
 assess_attempts=${CODER_RELEASE_ASSESS_ATTEMPTS:-45}
 assess_delay=${CODER_RELEASE_ASSESS_DELAY:-60}
@@ -417,6 +441,76 @@ source_matches() {
   return 1
 }
 
+# Checks that `$dist` holds a finished build of exactly `$version` at `$sha`
+# for --reuse-dist (#11641): the build state the build wrote last, every
+# built platform's archive with a sums entry equal to its digest, the sums
+# file naming nothing else, and the manifest recording the same commit and
+# digests. Sets `built` and `missing` from the state. Dies, naming the
+# problem, when anything is absent or differs; nothing is rebuilt.
+verify_staged() {
+  _state="$dist/.build-state"
+  _redo="build it again without --reuse-dist/--publish-only/--gate-only"
+  [ -f "$_state" ] || die "no finished build of $version in $dist (no .build-state); $_redo"
+  _v=$(sed -n 's/^version=//p' "$_state")
+  _s=$(sed -n 's/^sha=//p' "$_state")
+  [ "$_v" = "$version" ] || die "$dist holds a build of '$_v', not $version; $_redo"
+  [ "$_s" = "$sha" ] || die "$dist was built from ${_s:-an unknown commit}, not $sha; pass --commit $_s or $_redo"
+  built=$(sed -n 's/^built=//p' "$_state")
+  missing=$(sed -n 's/^missing=//p' "$_state")
+  [ -n "$(printf '%s' "$built" | tr -d ' ')" ] || die "the build in $dist built no platform; $_redo"
+  _sums="$dist/$(sums_file_name)"
+  _manifest="$dist/release-manifest.json"
+  [ -f "$_sums" ] || die "$dist has no $(sums_file_name); $_redo"
+  [ -f "$_manifest" ] || die "$dist has no release-manifest.json; $_redo"
+  grep -q "\"version\": \"$version\"" "$_manifest" && grep -q "\"git_sha\": \"$sha\"" "$_manifest" ||
+    die "release-manifest.json in $dist doesn't name $version at $sha; $_redo"
+  _count=0
+  for _platform in $built; do
+    _archive=$(archive_name "$_platform")
+    [ -f "$dist/$_archive" ] || die "$_archive is missing from $dist; $_redo"
+    _want=$(sums_entry "$_sums" "$(sums_name_for "$_archive" "$_platform")")
+    [ -n "$_want" ] || die "$(sums_file_name) has no entry for $_archive; $_redo"
+    _got=$(shasum -a 256 "$dist/$_archive" | awk '{print $1}')
+    [ "$_got" = "$_want" ] || die "$_archive in $dist doesn't match its checksum ($_got, sums say $_want); $_redo"
+    grep -q "\"sha256\": \"$_got\"" "$_manifest" ||
+      die "release-manifest.json doesn't record $_archive's digest $_got; $_redo"
+    _count=$((_count + 1))
+  done
+  [ "$(grep -c . "$_sums")" = "$_count" ] ||
+    die "$(sums_file_name) in $dist lists archives the build state doesn't; $_redo"
+}
+
+# The harness acceptance gate on the staged native archive (#11549,
+# #11641). Writes `$acceptance_record` (the report, warnings included).
+# Only a blocking failure (exit 1) or a gate that can't run at all (exit 2)
+# refuses; warnings are printed and never stop a publish.
+run_acceptance_gate() {
+  case " $built " in *" $native_platform "*) ;; *)
+    die "the harness acceptance gate runs on this Mac's archive ($native_platform), which wasn't built; build it, or pass --skip-acceptance REASON" ;;
+  esac
+  _accept_bin=$(mktemp -d "${TMPDIR:-/tmp}/coder-accept.XXXXXX")
+  tar -xzf "$dist/$(archive_name "$native_platform")" -C "$_accept_bin"
+  _accept_out=${CODER_ACCEPTANCE_OUT:-$HOME/work/harness-acceptance}
+  _gate=0
+  "$repo_root/scripts/coder/harness-acceptance.sh" --coder "$_accept_bin/coder" --out "$_accept_out" || _gate=$?
+  rm -rf "$_accept_bin"
+  _report_dir=$(ls -dt "$_accept_out"/*/ 2>/dev/null | head -1)
+  if [ -n "$_report_dir" ] && [ -f "${_report_dir}report.md" ]; then
+    cp "${_report_dir}report.md" "$acceptance_record"
+  fi
+  case "$_gate" in
+    0) ;;
+    1) die "the harness acceptance gate has blocking failures on $version; read $acceptance_record (or ${_report_dir:-$_accept_out}), fix them and re-run with --gate-only or --publish-only, or pass --skip-acceptance REASON" ;;
+    *) die "the harness acceptance gate couldn't run (exit $_gate); fix its setup and re-run with --gate-only or --publish-only, or pass --skip-acceptance REASON" ;;
+  esac
+  [ -f "$acceptance_record" ] || die "the gate passed but wrote no report under $_accept_out"
+  if grep -q '^## Warnings' "$acceptance_record"; then
+    echo "Harness acceptance warnings (recorded, not blocking):" >&2
+    awk '/^## Warnings/ { on = 1; next } on && /^(## |\|)/ { exit } on && NF' "$acceptance_record" >&2
+  fi
+  echo "Harness acceptance passed: $acceptance_record"
+}
+
 # `scripts/test-release-coder.sh` sources the functions above and stops
 # here.
 if [ "${CODER_RELEASE_LIBRARY:-}" = 1 ]; then
@@ -434,6 +528,9 @@ while [ $# -gt 0 ]; do
     --skip-notarization) skip_notarization=1; shift ;;
     --point-channel) point_channel_name=${2:-}; shift 2 ;;
     --publish-installers) publish_installers=1; shift ;;
+    --reuse-dist) reuse_dist=1; shift ;;
+    --publish-only) reuse_dist=1; publish=1; shift ;;
+    --gate-only) reuse_dist=1; gate_only=1; shift ;;
     --skip-acceptance)
       skip_acceptance=${2:-}
       [ "$(printf '%s' "$skip_acceptance" | tr -d '[:space:]' | wc -c)" -ge 10 ] ||
@@ -446,6 +543,10 @@ done
 
 check_channel "$channel"
 [ -z "$point_channel_name" ] || check_channel "$point_channel_name"
+
+if [ "$gate_only" = 1 ] && { [ "$publish" = 1 ] || [ -n "$skip_acceptance" ]; }; then
+  die "--gate-only runs only the gate; it takes neither --publish nor --skip-acceptance"
+fi
 
 if [ "$publish" = 1 ] && [ "$skip_notarization" = 1 ]; then
   die "--skip-notarization is refused with --publish: Gatekeeper refuses a macOS artifact that is not notarized"
@@ -503,7 +604,9 @@ fi
 # The listing is a prefix match (`1.0.0-*` also lists `1.0.0-rc.1-*`), so
 # each name this version would publish is matched whole.
 existing=$(bucket_objects)
-for platform in $all_platforms; do
+# A --reuse-dist publish may follow one an upload cut short: objects already
+# there are compared with the staged archives before uploading instead.
+[ "$reuse_dist" = 1 ] || for platform in $all_platforms; do
   for name in $(archive_name "$platform") $(for executable in $(products_for "$platform"); do artifact_name "$executable" "$platform"; done); do
     if printf '%s\n' "$existing" | grep -qxF "$name"; then
       die "refusing to build: $root/$name already exists; take the next version"
@@ -523,11 +626,19 @@ done
 
 [ -n "$targets" ] || targets=$all_platforms
 
+dist="$repo_root/dist/releases/$prefix/$version"
+
+if [ "$reuse_dist" = 1 ]; then
+  # --reuse-dist/--publish-only/--gate-only (#11641): no wipe, no build;
+  # the staged artifacts must be this version at this commit, checksums intact.
+  verify_staged
+  echo "Reusing the build of $version at $short in $dist:$built"
+else
+
 for command_name in cargo file shasum git tar zip; do
   command -v "$command_name" >/dev/null 2>&1 || die "$command_name is required to build a release"
 done
 
-dist="$repo_root/dist/releases/$prefix/$version"
 rm -rf "$dist"
 mkdir -p "$dist"
 
@@ -864,10 +975,24 @@ cat >"$dist/release-manifest.json" <<EOF
 }
 EOF
 
+# Written last, so its presence means the build finished; --reuse-dist
+# reads it (verify_staged).
+printf 'version=%s\nsha=%s\nbuilt=%s\nmissing=%s\n' "$version" "$sha" "$built" "$missing" >"$dist/.build-state"
+
 echo "Built:  $(printf '%s' "$built" | tr -s ' ')"
 [ -z "$missing" ] || echo "Missing:$missing"
 echo "Staged in $dist"
 echo
+
+fi
+sums="$dist/$(sums_file_name)"
+acceptance_record="$dist/acceptance.md"
+
+if [ "$gate_only" = 1 ]; then
+  run_acceptance_gate
+  echo "Gate only: nothing published. Publish this build with --publish-only."
+  exit 0
+fi
 
 if [ -n "$missing" ] && [ "$allow_partial" = 0 ]; then
   echo "This release is missing:$missing" >&2
@@ -883,25 +1008,29 @@ fi
 
 # The harness acceptance gate (#11549, docs/coder/harness-acceptance.md): a
 # real chat on every harness installed here, on the exact macOS archive
-# about to be published. A failing check refuses the publish.
-acceptance_record="$dist/acceptance.md"
+# about to be published. A blocking failure refuses the publish; warnings
+# are recorded in the acceptance record and printed, never fatal (#11641).
 if [ -n "$skip_acceptance" ]; then
   echo "Skipping the harness acceptance gate: $skip_acceptance" >&2
   printf '# Coder %s: harness acceptance skipped\n\n%s\n' "$version" "$skip_acceptance" >"$acceptance_record"
 else
-  case " $built " in *" $native_platform "*) ;; *)
-    die "the harness acceptance gate runs on this Mac's archive ($native_platform), which wasn't built; build it, or pass --skip-acceptance REASON" ;;
-  esac
-  accept_bin=$(mktemp -d "${TMPDIR:-/tmp}/coder-accept.XXXXXX")
-  tar -xzf "$dist/$(archive_name "$native_platform")" -C "$accept_bin"
-  accept_out=${CODER_ACCEPTANCE_OUT:-$HOME/work/harness-acceptance}
-  if ! "$repo_root/scripts/coder/harness-acceptance.sh" --coder "$accept_bin/coder" --out "$accept_out"; then
-    rm -rf "$accept_bin"
-    die "the harness acceptance gate failed on $version; read its report under $accept_out, fix the failures, or pass --skip-acceptance REASON"
-  fi
-  report_dir=$(ls -dt "$accept_out"/*/ 2>/dev/null | head -1)
-  cp "${report_dir}report.md" "$acceptance_record"
-  rm -rf "$accept_bin"
+  run_acceptance_gate
+fi
+
+# A --reuse-dist publish after an interrupted one: whatever of this version
+# is already in the bucket must be byte-identical to what is staged.
+if [ "$reuse_dist" = 1 ] && [ -n "$existing" ]; then
+  check_dir=$(mktemp -d "${TMPDIR:-/tmp}/coder-reuse-check.XXXXXX")
+  for platform in $built; do
+    archive=$(archive_name "$platform")
+    printf '%s\n' "$existing" | grep -qxF "$archive" || continue
+    gs cp "$root/$archive" "$check_dir/$archive" --quiet >/dev/null 2>&1 ||
+      die "couldn't read back $root/$archive to compare it"
+    [ "$(shasum -a 256 "$check_dir/$archive" | awk '{print $1}')" = "$(shasum -a 256 "$dist/$archive" | awk '{print $1}')" ] ||
+      die "$root/$archive is already published and differs from the staged one; take the next version"
+    echo "  $archive is already published and matches"
+  done
+  rm -rf "$check_dir"
 fi
 
 echo "Publishing to $root"

@@ -30,6 +30,18 @@ session logs where it keeps them, and checks:
   billing         a Claude model picked in the Coder loop, with a Claude
                   login here, runs on the Claude plan, not gateway credit
 
+Blocking and warning (#11641): only a failing *blocking* check on a
+required harness fails the gate (exit 1). Blocking means real Coder
+behaviour: the turn runs (answer, projects-chat, no-home), the model rail,
+tools (plugins-toggle), safety (clean, billing), one-lane, and export. Every
+other result is a warning: polish checks, optional harnesses (anything not
+in REQUIRED_HARNESSES), "not installed", "skipped", live-account
+housekeeping (projects-live), the website (web-chat), and the gate's own
+setup and cleanup errors ("gate error"). Warnings print in the report's
+"Warnings" section and the release's acceptance record, and never stop a
+publish. The SEVERITY table below is the one place that decides;
+`--self-test` checks it offline.
+
 Nothing here writes to the real ~/.openagents or to a harness's own config
 directory: each harness gets a private copy of only the login it needs
 (account.json and sync.json are never copied), and Claude Code reads the
@@ -80,6 +92,92 @@ CHECKS = [
     "prompt-tokens",
     "billing",
 ]
+# Which checks may stop a release (#11641). A `blocking` check is real Coder
+# behaviour on a harness: the turn runs, the model rail, tools, safety,
+# sync, export. A `warning` check is reported (here, in report.md/json, and
+# in the release's acceptance record) but never fails the gate: polish, the
+# gate's own setup and cleanup, and live-account housekeeping. A check not
+# in this table is a warning, so a new check never blocks by accident.
+SEVERITY = {
+    # per-harness checks
+    "answer": "blocking",          # the turn runs and ends with an answer
+    "rail": "blocking",            # the model rail names harness and model
+    "clean": "blocking",           # safety: no raw HTTP errors or log paths
+    "one-lane": "blocking",        # every turn on one harness/model/payer
+    "export": "blocking",          # the export matches the screen
+    "billing": "blocking",         # a Claude model runs on the Claude plan
+    "default-model": "warning",
+    "thinking": "warning",
+    "models-new": "warning",
+    "models-turn": "warning",
+    "shift-tab": "warning",
+    "ctrl-n": "warning",
+    "click-model": "warning",
+    "usage": "warning",
+    "model-calls": "warning",
+    "prompt-tokens": "warning",
+    # scenarios
+    "plugins-toggle": "blocking",  # tools: plugins turn off and on
+    "projects-chat": "blocking",   # a turn runs without a repository
+    "no-home": "blocking",         # a turn runs with only USERPROFILE
+    "plugins-details": "warning",
+    "projects-live": "warning",    # live-account housekeeping
+    "web-chat": "warning",         # the website, not a Coder harness
+    "click-model-manual": "warning",
+}
+# Harnesses whose failures block. The rest are optional: their failures,
+# like "not installed" and "skipped", are warnings.
+REQUIRED_HARNESSES = {"auto", "coder-loop", "claude-code", "codex", "opencode"}
+# A failure that is the gate's own problem (an exception in its setup or
+# cleanup), not something Coder did: always a warning.
+GATE_ERROR = "gate error"
+
+
+def blocks(harness: str | None, check: str, status: str) -> bool:
+    """Whether this result stops a release: a failing blocking check on a
+    required harness (or a blocking scenario, `harness` None)."""
+    if status != "fail":
+        return False
+    if harness is not None and harness not in REQUIRED_HARNESSES:
+        return False
+    return SEVERITY.get(check, "warning") == "blocking"
+
+
+def tally(rows: list[dict], scenarios: dict) -> tuple[list[str], list[str]]:
+    """The blocking failures and the warnings, as `harness/check: evidence`."""
+    blocking, warnings = [], []
+    def put(where, check, status, evidence):
+        line = f"{where}/{check}: {status}{'. ' + evidence if evidence else ''}"
+        if blocks(None if where == "scenario" else where, check, status):
+            blocking.append(line)
+        elif status in ("fail", GATE_ERROR):
+            warnings.append(line)
+    for r in rows:
+        for c, (st, ev) in r["results"].items():
+            put(r["harness"], c, st, ev)
+    for c, (st, ev) in scenarios.items():
+        put("scenario", c, st, ev)
+    return blocking, warnings
+
+
+def self_test() -> int:
+    """Offline check of the classification; runs no harness."""
+    rows = [
+        {"harness": "codex", "results": {"answer": ["fail", "no answer"], "usage": ["fail", "0d"]}},
+        {"harness": "goose", "results": {"answer": ["fail", "optional"]}},
+        {"harness": "auto", "results": {"rail": ["pass", ""], "thinking": [GATE_ERROR, "boom"]}},
+        {"harness": "grok-build", "results": {"answer": ["not installed", ""]}},
+    ]
+    scen = {"projects-live": ["fail", "list exited 1"], "no-home": ["fail", "no answer"], "web-chat": ["fail", "x"]}
+    blocking, warnings = tally(rows, scen)
+    want_b = ["codex/answer: fail. no answer", "scenario/no-home: fail. no answer"]
+    assert blocking == want_b, blocking
+    assert len(warnings) == 5, warnings
+    assert all(c in SEVERITY for c in CHECKS), [c for c in CHECKS if c not in SEVERITY]
+    print("self-test: ok")
+    return 0
+
+
 # Text that must never be inside a reply or the transcript.
 FORBIDDEN = [
     (re.compile(r"doesn.t ask before every step", re.I), "Coder's permissions notice"),
@@ -1843,8 +1941,10 @@ def web_run(evidence) -> dict:
 
 
 def write_report(out: Path, build: str, coder: str, rows: list[dict], exp: dict, extra: dict) -> tuple[int, int]:
-    fails = sum(1 for r in rows for v in r["results"].values() if v[0] == "fail")
-    fails += sum(1 for v in extra.get("scenarios", {}).values() if v[0] == "fail")
+    """Writes report.md/json; returns (blocking failures, passes). Only a
+    blocking failure fails the gate; warnings are listed, never fatal."""
+    blocking, warnings = tally(rows, extra.get("scenarios", {}))
+    fails = len(blocking)
     passes = sum(1 for r in rows for v in r["results"].values() if v[0] == "pass")
     doc = {
         "build": build,
@@ -1856,33 +1956,53 @@ def write_report(out: Path, build: str, coder: str, rows: list[dict], exp: dict,
         "harnesses": rows,
         "missing_beside_coder": [n for n in ("openagents", "microcoder") if not os.access(Path(coder).parent / n, os.X_OK)],
         **extra,
+        "severity": SEVERITY,
+        "required_harnesses": sorted(REQUIRED_HARNESSES),
+        "blocking_failures": blocking,
+        "warnings": warnings,
         "passed": fails == 0,
     }
     (out / "report.json").write_text(json.dumps(doc, indent=2))
-    mark = {"pass": "pass", "fail": "**FAIL**", "n/a": "n/a", "not installed": "not installed", "skipped": "skipped"}
+    mark = {"pass": "pass", "fail": "**FAIL**", "n/a": "n/a", "not installed": "not installed", "skipped": "skipped", GATE_ERROR: "warn (gate error)"}
+
+    def shown(harness, check, st):
+        # A failure that doesn't block reads as a warning.
+        if st == "fail" and not blocks(harness, check, st):
+            return "warn"
+        return mark.get(st, st)
+
     lines = [
         f"# Coder harness acceptance: {build}",
         "",
-        f"`{coder}`, {doc['at']}. {'PASSED' if fails == 0 else f'FAILED: {fails} failing checks'} ({passes} passing)."
+        f"`{coder}`, {doc['at']}. {'PASSED' if fails == 0 else f'FAILED: {fails} blocking failures'} ({passes} passing"
+        + (f", {len(warnings)} warnings" if warnings else "") + ")."
         + (f" Not beside it: {', '.join(doc['missing_beside_coder'])}." if doc["missing_beside_coder"] else ""),
         "",
+    ]
+    if blocking:
+        lines += ["## Blocking failures", ""] + [f"- {b}" for b in blocking] + [""]
+    if warnings:
+        lines += ["## Warnings (never stop a release)", ""] + [f"- {w}" for w in warnings] + [""]
+    lines += [
         "| check | " + " | ".join(r["harness"] for r in rows) + " |",
         "|---|" + "---|" * len(rows),
     ]
     for c in CHECKS:
-        lines.append(f"| {c} | " + " | ".join(mark.get(r["results"][c][0], r["results"][c][0]) for r in rows) + " |")
+        tag = "" if SEVERITY.get(c) == "blocking" else " (warning)"
+        lines.append(f"| {c}{tag} | " + " | ".join(shown(r["harness"], c, r["results"][c][0]) for r in rows) + " |")
     scen = extra.get("scenarios", {})
     if scen:
         lines += ["", "| scenario | result | evidence |", "|---|---|---|"]
         for k, (st, ev) in scen.items():
-            lines.append(f"| {k} | {mark.get(st, st)} | {ev.replace('|', '/')[:220]} |")
+            tag = "" if SEVERITY.get(k) == "blocking" else " (warning)"
+            lines.append(f"| {k}{tag} | {shown(None, k, st)} | {ev.replace('|', '/')[:220]} |")
     lines += ["", "## Evidence", ""]
     for r in rows:
         lines.append(f"### {r['harness']}")
         lines.append("")
         for c in CHECKS:
             st, ev = r["results"][c]
-            lines.append(f"- {c}: {mark.get(st, st)}. {ev}")
+            lines.append(f"- {c}: {shown(r['harness'], c, st)}. {ev}")
         lines.append("")
     lines += ["## Expected defaults", ""]
     for k, v in exp.items():
@@ -1911,7 +2031,10 @@ def main() -> int:
     ap.add_argument("--prompt-budget", type=int, default=int(os.environ.get("HACC_PROMPT_BUDGET", "5000")))
     ap.add_argument("--turn-timeout", type=int, default=240)
     ap.add_argument("--fresh-state", action="store_true", help="don't start from the owner's harness facts")
+    ap.add_argument("--self-test", action="store_true", help="check the blocking/warning classification offline and exit")
     a = ap.parse_args()
+    if a.self_test:
+        return self_test()
     global SEED_FACTS
     SEED_FACTS = not a.fresh_state
     if a.list:
@@ -1982,10 +2105,12 @@ def main() -> int:
         t0 = time.time()
         try:
             r = Run(h, coder, root, path, exp, signin, a.prompt_budget, a.turn_timeout, evidence).go()
-        except Exception as e:  # a gate bug is a failed row, never a pass
-            r = {"harness": h["key"], "results": {c: ["fail", f"gate error: {e!r}"] for c in CHECKS}, "facts": {}}
-        bad = [c for c, v in r["results"].items() if v[0] == "fail"]
-        say(f"{h['key']}: {'pass' if not bad else 'FAIL ' + ','.join(bad)} ({int(time.time() - t0)}s)")
+        except Exception as e:  # a gate bug is a warning row (#11641), never a pass
+            r = {"harness": h["key"], "results": {c: [GATE_ERROR, f"{e!r}"] for c in CHECKS}, "facts": {}}
+        bad = [c for c, v in r["results"].items() if blocks(h["key"], c, v[0])]
+        warn = [c for c, v in r["results"].items() if v[0] in ("fail", GATE_ERROR) and c not in bad]
+        say(f"{h['key']}: {'pass' if not bad else 'FAIL ' + ','.join(bad)}"
+            + (f"; warn {','.join(warn)}" if warn else "") + f" ({int(time.time() - t0)}s)")
         return r
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, a.jobs)) as pool:
@@ -2005,25 +2130,25 @@ def main() -> int:
         try:
             scenarios.update(plugins_run(coder, root, path, evidence))
         except Exception as e:
-            scenarios["plugins-toggle"] = ["fail", f"gate error: {e!r}"]
+            scenarios["plugins-toggle"] = [GATE_ERROR, f"{e!r}"]
     if not only or "projects" in only:
         say("projects: start")
         try:
             scenarios.update(projects_run(coder, root, path, signin, evidence, a.turn_timeout))
         except Exception as e:
-            scenarios["projects-chat"] = ["fail", f"gate error: {e!r}"]
+            scenarios["projects-chat"] = [GATE_ERROR, f"{e!r}"]
     if not only or "no-home" in only:
         say("no-home: start")
         try:
             scenarios.update(no_home_run(coder, root, path, signin, evidence, a.turn_timeout))
         except Exception as e:
-            scenarios["no-home"] = ["fail", f"gate error: {e!r}"]
+            scenarios["no-home"] = [GATE_ERROR, f"{e!r}"]
     if not only or "web" in only:
         say("web: start")
         try:
             scenarios.update(web_run(evidence))
         except Exception as e:
-            scenarios["web-chat"] = ["fail", f"gate error: {e!r}"]
+            scenarios["web-chat"] = [GATE_ERROR, f"{e!r}"]
     scenarios["click-model-manual"] = ["n/a", "also look once: click a reply, its model shows right-aligned in gray for ~3 s"]
     extra = {"scenarios": scenarios}
     fails, passes = write_report(out, build, coder, rows, exp, extra)

@@ -72,7 +72,9 @@ of `main`:
    `CARGO_TARGET_DIR=~/work/openagents-target-release scripts/release/coder.sh --version 1.0.0`
 3. **Publish, point stable and rc, publish the installers** (the one
    command). It runs the [harness acceptance gate](../coder/harness-acceptance.md)
-   on the macOS archive first and refuses to publish on a failing check;
+   on the macOS archive first and refuses to publish on a blocking failure
+   (warnings are recorded, never fatal; `--gate-only` and `--publish-only`
+   re-run the gate or publish the staged build without rebuilding);
    `--skip-acceptance "REASON"` overrides it, and the reason is published:
    `CARGO_TARGET_DIR=~/work/openagents-target-release scripts/release/coder.sh --version 1.0.0 --publish --channel stable --publish-installers`
 4. **Read it back and install it:**

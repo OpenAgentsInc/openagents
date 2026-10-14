@@ -266,6 +266,25 @@ In this order. Stop at the first step that fails and roll that platform back.
    back, install on one Mac with the one-line installer, run `coder --version`,
    then set `CODER_VERSION` to `1.0.0` and deploy the website again
    ([terminal release](../../release/terminal.md#publishing-100)).
+
+   The harness acceptance gate runs before any upload. Only a **blocking**
+   failure stops the publish: real Coder behaviour on a required harness
+   (the turn runs, the model rail, tools, safety, sync, export). Everything
+   else is a **warning**, printed and kept in the published acceptance
+   record but never stopping the release: polish checks, optional
+   harnesses, "not installed" and "skipped", live-account housekeeping such
+   as `projects-live`, and the gate's own setup and cleanup errors. The
+   `SEVERITY` table in `scripts/coder/harness_acceptance.py` decides
+   (#11641). If the gate or the upload stops a release, don't rebuild:
+
+   ```sh
+   scripts/release/coder.sh --version 1.0.0 --gate-only      # re-run only the gate
+   scripts/release/coder.sh --version 1.0.0 --publish-only --channel stable --publish-installers
+   ```
+
+   Both reuse `dist/releases/coder/1.0.0` without wiping it, and refuse
+   unless it is a finished build of that version at that commit (`--commit`,
+   default HEAD) whose archives match their checksums.
 7. **Desktop**: publish per OS, read each manifest back, download each file
    from `/download`.
 8. **Android**: put the APK on `/download`, install it on a phone.
