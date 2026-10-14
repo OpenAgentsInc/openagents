@@ -1766,8 +1766,9 @@ impl App {
             player.cones,
             player.sugar,
         );
+        let room = self.canvas.client_width() as f32;
         self.hud
-            .hot_bar(player.tool, &player.owned, |tool| match tool {
+            .hot_bar(player.tool, &player.owned, room, |tool| match tool {
                 Tool::Fudge => fudge.to_string(),
                 Tool::Fart => farts.to_string(),
                 Tool::Keys => format!("{keys}/3"),

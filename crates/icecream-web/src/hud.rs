@@ -57,6 +57,14 @@ pub struct Card {
     pub scooped: bool,
 }
 
+/// A hot-bar slot's width in pixels for `count` slots in `room` pixels:
+/// 84 when there's room, down to 44.
+#[must_use]
+pub fn slot_width(room: f32, count: usize) -> u32 {
+    let n = count.max(1) as f32;
+    ((room - 24.0) / n - 8.0).clamp(44.0, 84.0) as u32
+}
+
 pub fn element(document: &Document, tag: &str) -> HtmlElement {
     document
         .create_element(tag)
@@ -766,13 +774,25 @@ impl Hud {
 
     /// The hot bar: a slot for each tool the player has, numbered in
     /// order, with `count`'s text under its name.
-    pub fn hot_bar(&self, selected: Tool, owned: &[Tool], count: impl Fn(Tool) -> String) {
+    /// The slots narrow to fit `room` pixels across (a small frame, like
+    /// a chat card).
+    pub fn hot_bar(
+        &self,
+        selected: Tool,
+        owned: &[Tool],
+        room: f32,
+        count: impl Fn(Tool) -> String,
+    ) {
+        let width = slot_width(room, owned.len());
+        let size = format!("{width}px");
+        let font = if width < 70 { "10px" } else { "13px" };
         for (tool, (slot, number, count_text)) in Tool::ALL.iter().zip(&self.slots) {
             let Some(place) = owned.iter().position(|t| t == tool) else {
                 show(slot, false);
                 continue;
             };
             show(slot, true);
+            css(slot, &[("width", &size), ("font-size", font)]);
             number.set_text_content(Some(&(place + 1).to_string()));
             count_text.set_text_content(Some(&count(*tool)));
             let on = *tool == selected;
