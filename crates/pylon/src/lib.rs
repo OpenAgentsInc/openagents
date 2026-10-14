@@ -25,16 +25,20 @@
 pub mod attested;
 #[cfg(feature = "broker")]
 pub mod broker;
+pub mod calibrate;
 pub mod check;
+pub mod check_decide;
 pub mod cli;
 pub mod client;
 pub mod decide;
+pub mod decide_client;
 pub mod engine;
 pub mod field;
 #[cfg(feature = "fixture")]
 pub mod fixture;
 pub mod identity;
 pub mod inflight;
+pub mod items;
 pub mod job;
 pub mod league;
 pub mod lease;
@@ -44,7 +48,9 @@ pub mod pool;
 pub mod provider;
 pub mod relay;
 pub mod route;
+pub mod setup;
 pub mod share;
+pub mod verify;
 
 /// The production relay.
 pub const DEFAULT_RELAY: &str = "wss://relay.openagents.com";

@@ -83,6 +83,34 @@ with no free slots, admitted jobs finish, new ones are refused
 or queued. `--dedicated` skips the lease table on a box that runs no owner
 work.
 
+### Set up a decision pylon in one command
+
+```sh
+openagents pylon doctor                # what this computer has, and what blocks serving
+openagents pylon setup                 # fetch Clef-Flash Q4_K_M (6.5 GB, pinned sha256)
+openagents pylon start --allow-any     # run Psionic on loopback, self-check, serve decisions
+openagents pylon update                # re-hash the model; fetch again when the pin moved
+openagents pylon selfcheck             # compare this computer's answers with the reference
+```
+
+`doctor` reads the system, memory, GPU (Apple Silicon for Metal with 24 GB
+or more; NVIDIA through `nvidia-smi`, 12 GB or more for CUDA; the CPU
+otherwise, at seconds a decision), free disk, the pinned model and its
+digest, the `psionic-openai-server` program, outbound reach to the relay,
+and the last self-check. Every block comes with the command that fixes it,
+and it writes nothing. A pylon needs no inbound port: it dials out to the
+relay. `setup` downloads `ggml-org/Clef-Flash-GGUF` at revision `6b4fe4c5`
+and checks its size and sha256 (`36261166…6868a2`) before the file takes
+its name in `~/.openagents/models`. `start` runs Psionic's decision lane
+on `127.0.0.1:18096` (or uses one already answering there), self-checks it
+when this model has no passing self-check, and then serves decisions only
+with `serve`'s options. `selfcheck` answers the 128 reference decisions
+that ship in the CLI (measured on Metal) and passes when at least 99 % of
+simulated checker rounds would pass and none would strike; `serve --decide`
+refuses to start after a failed self-check for the same artifact. The
+idea comes from REAX's miner kit; see
+`docs/research/decisionmodels/reax.md`.
+
 ### Answer decisions (Clef)
 
 OpenAgents decisions (the chat router, Coder's judges, file relevance, the
@@ -242,6 +270,20 @@ fails, and no majority is inconclusive. `--award` publishes the suite's
 NIP-XP `pylon-check` quest, refereed by the checker, and one award to a
 pylon whose canary passed, once per suite version. XP never converts to
 sats.
+
+**Decision pylons.** `openagents pylon check decide --pylon npub1...
+--reference http://127.0.0.1:18096 [--rounds N]` checks a decision pylon
+against a reference Clef server running the same pinned artifact. Each
+round sends eight fresh decision items (a new seed every round, so nothing
+can be cached) as ordinary decision jobs from the buyer key, draws which
+items to recompute only after every answer is in, compares each answer
+with the reference in centred-log space, and publishes the round's
+receipt plus one verdict: `check-pass`, `check-fail` (a strike: a round
+mean above 0.15, any item above 0.5, or a missing, inconsistent or
+mislabelled answer), or `check-inconclusive` (a mean between 0.05 and
+0.15). The limits come from the calibration in
+`docs/research/decisionmodels/calibration.md`; `openagents pylon calibrate
+run|compare|reference` reproduces it on any machine.
 
 Readers trust this computer's own checker key, the keys in
 `OPENAGENTS_PYLON_CHECKERS` (comma-separated npubs), and `--checker NPUB`.

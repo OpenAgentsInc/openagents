@@ -335,6 +335,10 @@ A reader refuses:
 | **Replay**: republishing old receipts or beacons. | One receipt per `(buyer, request)`; beacons obey generation and freshness rules. |
 | **Aggregate inflation**: an aggregator overstates totals. | Readers recompute from the listed inputs. An aggregate that doesn't recompute is refused, and the reader can drop that aggregator. |
 | **Griefing the world**: flooding beacons to clutter a shared scene. | The 256-per-pool draw bound, the per-address relay rate limit, and pool admission. |
+| **Cheaper decisions**: a decision pylon answers with another model, a coarser quantisation, or made-up probabilities. | A checker recomputes fresh seeded items on the same pinned artifact and compares answers in centred-log space; the limits come from measured honest noise across backends. A miss is a `check-fail` on the round's receipt. Which items are recomputed is drawn after every answer is in, so a pylon can't do real work only on checked items, and an answer whose choice or score disagrees with its own probabilities fails before any recompute. |
+| **Relaying decisions upstream**: a pylon forwards decision jobs to a hosted API instead of computing. | A full-precision upstream answers measurably differently from the pinned 4-bit artifact and fails the same recompute check; an upstream serving the same artifact is unprofitable while the provider's share stays below the cheapest public price for it. |
+| **Decision identity**: answers that name another model than the beacon. | The answer's model and artifact must match the beacon's decision service; a mismatch is a `check-fail`. |
+| **Many keys, one GPU**: one machine answers decisions under several keys. | Decision work is paid per verified decision, never per key or per beacon, so extra keys earn nothing extra. Token counts come from the gateway that sold the work, never from the pylon. |
 | **Content disclosure**: a receipt leaks what a buyer asked. | Receipts carry only digests. Private work travels encrypted over CJ; the NIP-90 lane is for content the buyer accepts as public. |
 
 ## Privacy and disclosure

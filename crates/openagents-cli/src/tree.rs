@@ -94,6 +94,16 @@ const CAPABILITIES: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
 const MCP: &[Declared] = &[Declared::computer("serve", Effect::LongRunning)];
 const COMPLETIONS: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
 const PYLON: &[Declared] = &[
+    // Decision serving setup (#11635): doctor only reads; setup and update
+    // fetch the pinned model; start runs Psionic and serves.
+    Declared::computer("doctor", Effect::ReadOnly),
+    Declared::computer("setup", Effect::LocalWrite),
+    Declared::computer("update", Effect::LocalWrite),
+    Declared::computer("start", Effect::LongRunning),
+    Declared::computer("selfcheck", Effect::LocalWrite),
+    Declared::computer("calibrate run", Effect::LocalWrite),
+    Declared::computer("calibrate compare", Effect::ReadOnly),
+    Declared::computer("calibrate reference", Effect::LocalWrite),
     Declared::computer("whoami", Effect::LocalWrite),
     Declared::computer("serve", Effect::LongRunning),
     Declared::computer("link", Effect::LocalWrite),
@@ -105,6 +115,7 @@ const PYLON: &[Declared] = &[
     // (and, with --award, NIP-XP).
     Declared::computer("check canary", Effect::Publishes),
     Declared::computer("check redundant", Effect::Publishes),
+    Declared::computer("check decide", Effect::Publishes),
     Declared::computer("league", Effect::LocalWrite),
     Declared::computer("status", Effect::LocalWrite),
     Declared::computer("pool", Effect::Publishes),

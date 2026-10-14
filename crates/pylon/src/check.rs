@@ -412,7 +412,41 @@ impl Checker {
         checked
     }
 
-    async fn beacon(&self, pylon: &str) -> Result<Beacon, String> {
+    /// Publish `receipt` as the buyer's signed `3201` event.
+    ///
+    /// # Errors
+    ///
+    /// When the receipt doesn't validate or the relay refuses it.
+    pub async fn publish_receipt(&self, receipt: &Receipt) -> Result<Event, String> {
+        let event = nostr::pylon::receipt_event(self.buyer.signer(), receipt, now())?;
+        let mut conn = relay::connect(&self.relay, &self.buyer, LIFETIME).await?;
+        let published = relay::publish(&mut conn, &event).await;
+        let _ = conn.close().await;
+        published.map(|()| event)
+    }
+
+    /// Sign and publish a verdict on `receipt`; `own` is the checker's own
+    /// result plaintext (its digest goes in the label).
+    ///
+    /// # Errors
+    ///
+    /// When the label cannot be signed or the relay refuses it.
+    pub async fn verdict_on(
+        &self,
+        verdict: Verdict,
+        receipt: &Event,
+        own: &str,
+        method: &str,
+    ) -> Result<Event, String> {
+        self.label(verdict, receipt, own, method).await
+    }
+
+    /// The pylon's newest beacon.
+    ///
+    /// # Errors
+    ///
+    /// When the relay cannot be reached or the pylon has none.
+    pub async fn beacon(&self, pylon: &str) -> Result<Beacon, String> {
         let mut conn = relay::connect(&self.relay, &self.buyer, LIFETIME).await?;
         let book = client::beacons(&mut conn, Some(&[pylon.to_string()])).await?;
         let _ = conn.close().await;

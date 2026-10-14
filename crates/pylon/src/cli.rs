@@ -30,6 +30,47 @@ NIP-44 encrypted to the pylon. Jobs are free unless the pylon names a price;
 a priced job is bought first under NIP-X402 from this computer's wallet.
 
 Commands:
+  doctor                    Read this computer (memory, GPU, disk, the pinned
+                            decision model and its digest, the Psionic server,
+                            outbound reach to the relay, the last self-check)
+                            and name what blocks serving decisions, each with
+                            the command that fixes it. Writes nothing.
+      --decide URL          The local decision server (default
+                            http://127.0.0.1:18096).
+      --rehash              Re-hash the model instead of the remembered digest.
+  setup                     Download the pinned decision model (Clef-Flash
+                            Q4_K_M, 6.5 GB, sha256-checked) and self-check a
+                            decision server that is already running.
+      --decide URL          The local decision server (default
+                            http://127.0.0.1:18096).
+  update                    As setup, but re-hash the model and fetch it again
+                            when it is not the file this build pins.
+      --decide URL          The local decision server (default
+                            http://127.0.0.1:18096).
+  start                     Start Psionic's decision lane on loopback, self-check
+                            it, and serve decisions only. Takes serve's options
+                            (--allow NPUB or --allow-any, --slots, --rate, ...).
+                            Nothing listens beyond loopback; the pylon dials out.
+      --port N              Psionic's loopback port (default 18096).
+      --device NAME         metal, cuda, or cpu (default: what doctor picks).
+  selfcheck                 Answer the shipped reference decisions on this
+                            computer and compare them with the reference; serve
+                            refuses decisions after a failed self-check.
+      --decide URL          The local decision server (default
+                            http://127.0.0.1:18096).
+      --items N             How many reference items (default 64).
+  calibrate run             Answer seeded decision items and write them as JSON
+                            lines, for comparing machines or models.
+      --decide URL          The decision server (default http://127.0.0.1:18096).
+      --decide-model NAME   The model to ask for (default clef-flash).
+      --seed N              The item seed (default 20261014).
+      --count N             How many items (default 200).
+      --out FILE            Append the answers to FILE.
+  calibrate compare REF CAND
+                            Distances, top-answer agreement, and simulated round
+                            pass and strike shares between two runs.
+  calibrate reference RUN --measured-on TEXT --out FILE
+                            Make a self-check reference set from a run.
   whoami                    Print this computer's pylon, buyer, and aggregator keys.
   serve                     Publish beacons and answer jobs from a local Psionic server.
       --engine URL          The Psionic server (default http://127.0.0.1:18080).
@@ -102,6 +143,14 @@ Commands:
   check redundant PROMPT --pylon NPUB --pylon NPUB [--pylon NPUB]
                             Send one prompt to several pylons and sign verdicts
                             from the majority answer.
+  check decide --pylon NPUB Send the pylon fresh decision items (a new seed each
+                            round) as ordinary decision jobs, recompute the items
+                            drawn after the answers arrive on a reference server
+                            running the same pinned model, and sign a verdict:
+                            pass, fail (a strike), or inconclusive (a small miss).
+      --reference URL       The reference decision server (default
+                            http://127.0.0.1:18096).
+      --rounds N            Rounds to run (default 1).
   league                    The pylon league: per class, pass rates on the
                             pinned suites, jobs, median time, and cost.
   status                    The Pylon Field: every verified pylon's state.
@@ -222,6 +271,12 @@ pub fn run_with(json_out: bool, words: &[String], wallet: &dyn Wallet) -> u8 {
             "pool" => pool(json_out, &mut args, &relay, checkers).await,
             "check" => check(json_out, &mut args, &relay).await,
             "league" => league(json_out, &relay, checkers).await,
+            "calibrate" => calibrate(json_out, &mut args).await,
+            "selfcheck" => selfcheck(json_out, &mut args).await,
+            "doctor" => doctor(json_out, &mut args, &relay).await,
+            "setup" => setup(json_out, &mut args, false).await,
+            "update" => setup(json_out, &mut args, true).await,
+            "start" => start(json_out, &mut args, &relay, wallet).await,
             other => Err(format!(
                 "unknown command `{other}`; see `openagents pylon --help`"
             )),
@@ -396,7 +451,24 @@ async fn serve(
         }
         let clef = crate::decide::Clef::new(url, decide_model.as_deref())?;
         match clef.refresh().await {
-            Ok(found) => eprintln!("pylon: decisions from {} at {url}", found.advertised()),
+            Ok(found) => {
+                eprintln!("pylon: decisions from {} at {url}", found.advertised());
+                if let Some(digest) = &found.artifact_digest {
+                    match crate::calibrate::may_serve(&home(), digest)? {
+                        Some(check) => eprintln!(
+                            "pylon: self-check passed at {} ({:.1}% of simulated rounds)",
+                            check.at,
+                            check.round_pass * 100.0
+                        ),
+                        None if crate::calibrate::shipped_reference(digest).is_some() => {
+                            eprintln!(
+                                "pylon: no self-check for this model yet; run `openagents pylon selfcheck --decide {url}` so checkers' rounds pass"
+                            );
+                        }
+                        None => {}
+                    }
+                }
+            }
             Err(why) => eprintln!("pylon: {why}; the beacon says draining until it answers"),
         }
         let text: Option<Arc<dyn crate::engine::Engine>> =
@@ -968,6 +1040,46 @@ async fn check(json_out: bool, args: &mut Args, relay: &str) -> Result<(), Strin
         home: home(),
         wait: Duration::from_secs(args.number("--wait", 90)?.clamp(1, 600)),
     };
+    if mode == "decide" {
+        let [pylon] = pylons.as_slice() else {
+            return Err("check decide takes one --pylon NPUB".into());
+        };
+        let reference = args
+            .value("--reference")?
+            .unwrap_or_else(|| DEFAULT_DECIDE.into());
+        let rounds = args.number("--rounds", 1)?.clamp(1, 100);
+        let clef = crate::decide::Clef::new(&reference, None)?;
+        clef.refresh().await?;
+        let mut results = Vec::new();
+        let mut text = String::new();
+        for _ in 0..rounds {
+            let c = crate::check_decide::round(&checker, pylon, &clef, &crate::verify::CLEF_FLASH)
+                .await?;
+            text.push_str(&format!(
+                "{:<18} {}  mean {:.4}  worst {:.4}  verified {}/{}  label {}{}\n",
+                c.verdict.label(),
+                c.pylon,
+                c.round.mean,
+                c.round.worst,
+                c.round.verified,
+                c.items.len(),
+                c.label.as_deref().unwrap_or("not published"),
+                c.items
+                    .iter()
+                    .find_map(|i| i.problem.as_ref())
+                    .map(|p| format!("  ({p})"))
+                    .unwrap_or_default()
+            ));
+            results.push(c);
+        }
+        text.push_str(&format!("checker {}", checker.checker.npub()));
+        emit(
+            json_out,
+            &json!({"checker": checker.checker.npub(), "rounds": results}),
+            &text,
+        );
+        return Ok(());
+    }
     let checked = match mode.as_str() {
         "canary" => {
             let [pylon] = pylons.as_slice() else {
@@ -982,7 +1094,7 @@ async fn check(json_out: bool, args: &mut Args, relay: &str) -> Result<(), Strin
             }
             checker.redundant(&prompt, &pylons).await?
         }
-        _ => return Err("check takes `canary` or `redundant`".into()),
+        _ => return Err("check takes `canary`, `redundant`, or `decide`".into()),
     };
     let awarded = if award {
         checker.award(&checked).await?
@@ -1034,4 +1146,376 @@ impl NoTerm {
     async fn recv(&mut self) -> Option<()> {
         std::future::pending().await
     }
+}
+
+/// The default local decision server: Psionic's Clef lane on loopback.
+pub const DEFAULT_DECIDE: &str = "http://127.0.0.1:18096";
+
+/// `calibrate run|compare|reference`.
+async fn calibrate(json_out: bool, args: &mut Args) -> Result<(), String> {
+    let Some(sub) = (!args.words.is_empty()).then(|| args.words.remove(0)) else {
+        return Err("calibrate needs run, compare, or reference".into());
+    };
+    let limits = crate::verify::CLEF_FLASH;
+    match sub.as_str() {
+        "run" => {
+            let url = args
+                .value("--decide")?
+                .unwrap_or_else(|| DEFAULT_DECIDE.into());
+            let model = args
+                .value("--decide-model")?
+                .unwrap_or_else(|| "clef-flash".into());
+            let seed = args.number("--seed", 20_261_014)?;
+            let count =
+                u32::try_from(args.number("--count", 200)?.clamp(1, 100_000)).unwrap_or(200);
+            let out = args.value("--out")?.map(PathBuf::from);
+            if let Some(extra) = args.words.first() {
+                return Err(format!("unexpected argument `{extra}`"));
+            }
+            let server = crate::calibrate::Server::new(&url, &model)?;
+            let mut done = 0u32;
+            let run = crate::calibrate::run(&server, seed, count, out.as_deref(), |a| {
+                done += 1;
+                if !json_out && (done % 25 == 0 || a.problem.is_some()) {
+                    eprintln!(
+                        "{done}/{count}{}",
+                        a.problem
+                            .as_ref()
+                            .map(|p| format!(" item {}: {p}", a.index))
+                            .unwrap_or_default()
+                    );
+                }
+            })
+            .await?;
+            let unusable = run.iter().filter(|a| a.probabilities.is_none()).count();
+            let ms: u64 = run.iter().map(|a| a.ms).sum();
+            emit(
+                json_out,
+                &json!({"items": run.len(), "unusable": unusable, "seed": seed,
+                        "artifact_digest": run.first().and_then(|a| a.artifact_digest.clone()),
+                        "backend": run.first().and_then(|a| a.backend.clone()),
+                        "mean_ms": ms / run.len().max(1) as u64, "out": out}),
+                &format!(
+                    "{} items answered ({unusable} unusable), mean {} ms each{}",
+                    run.len(),
+                    ms / run.len().max(1) as u64,
+                    out.map(|p| format!(", written to {}", p.display()))
+                        .unwrap_or_default()
+                ),
+            );
+            Ok(())
+        }
+        "compare" => {
+            if args.words.len() != 2 {
+                return Err("calibrate compare REFERENCE.jsonl CANDIDATE.jsonl".into());
+            }
+            let reference = crate::calibrate::load(std::path::Path::new(&args.words[0]))?;
+            let candidate = crate::calibrate::load(std::path::Path::new(&args.words[1]))?;
+            let c = crate::calibrate::compare(&reference, &candidate, &limits);
+            emit(
+                json_out,
+                &serde_json::to_value(&c).map_err(|e| e.to_string())?,
+                &format!(
+                    "{} items paired, {} unusable\ndistance median {:.4}, p90 {:.4}, p99 {:.4}, max {:.4}\ntop answer agrees on {:.1}%\nsimulated rounds ({} verified, limits {}/{}/{}): {:.2}% pass, {:.2}% strike",
+                    c.paired,
+                    c.unusable,
+                    c.distance.median,
+                    c.distance.p90,
+                    c.distance.p99,
+                    c.distance.max,
+                    c.top_agree * 100.0,
+                    limits.verified,
+                    limits.mean,
+                    limits.strike,
+                    limits.item,
+                    c.round_pass * 100.0,
+                    c.round_strike * 100.0
+                ),
+            );
+            Ok(())
+        }
+        "reference" => {
+            let measured_on = args
+                .value("--measured-on")?
+                .ok_or("calibrate reference RUN.jsonl --measured-on TEXT --out FILE")?;
+            let out = args
+                .value("--out")?
+                .ok_or("calibrate reference needs --out FILE")?;
+            let [run] = args.words.as_slice() else {
+                return Err("calibrate reference RUN.jsonl --measured-on TEXT --out FILE".into());
+            };
+            let run = crate::calibrate::load(std::path::Path::new(run))?;
+            let reference = crate::calibrate::Reference::from_run("clef-flash", &measured_on, &run)
+                .ok_or("the run is empty")?;
+            let text = serde_json::to_string(&reference).map_err(|e| e.to_string())?;
+            std::fs::write(&out, text).map_err(|e| format!("cannot write {out}: {e}"))?;
+            emit(
+                json_out,
+                &json!({"items": reference.items.len(), "out": out}),
+                &format!("{} reference items written to {out}", reference.items.len()),
+            );
+            Ok(())
+        }
+        other => Err(format!("unknown calibrate command `{other}`")),
+    }
+}
+
+/// `selfcheck`: answer the shipped reference set on this computer's
+/// decision server and keep the result; `serve --decide` reads it.
+async fn selfcheck(json_out: bool, args: &mut Args) -> Result<(), String> {
+    let url = args
+        .value("--decide")?
+        .unwrap_or_else(|| DEFAULT_DECIDE.into());
+    let limit = usize::try_from(args.number("--items", 64)?.clamp(8, 10_000)).unwrap_or(64);
+    if let Some(extra) = args.words.first() {
+        return Err(format!("unexpected argument `{extra}`"));
+    }
+    let check = run_selfcheck(&url, limit, json_out).await?;
+    let text = format!(
+        "{}: {} items on {} ({}), distance median {:.4}, max {:.4}; simulated rounds {:.2}% pass, {:.2}% strike; {:.2} decisions/s",
+        if check.pass { "PASS" } else { "FAIL" },
+        check.items,
+        check.model,
+        check.backend.as_deref().unwrap_or("unknown backend"),
+        check.median,
+        check.max,
+        check.round_pass * 100.0,
+        check.round_strike * 100.0,
+        check.decisions_per_second
+    );
+    emit(
+        json_out,
+        &serde_json::to_value(&check).map_err(|e| e.to_string())?,
+        &text,
+    );
+    if check.pass {
+        Ok(())
+    } else {
+        Err("this computer's answers differ from the reference; it should not serve decisions until the self-check passes".into())
+    }
+}
+
+/// Run and keep a self-check of the decision server at `url`.
+pub(crate) async fn run_selfcheck(
+    url: &str,
+    limit: usize,
+    quiet: bool,
+) -> Result<crate::calibrate::SelfCheck, String> {
+    let clef = crate::decide::Clef::new(url, None)?;
+    let found = clef.refresh().await?;
+    let digest = found.artifact_digest.clone().ok_or(
+        "the decision server names no artifact digest, so there is nothing to check it against",
+    )?;
+    let reference = crate::calibrate::shipped_reference(&digest).ok_or_else(|| {
+        format!(
+            "no reference set ships for {digest}; the pinned model is Clef-Flash Q4_K_M ({})",
+            crate::setup::CLEF_FLASH_SHA256
+        )
+    })?;
+    let server = crate::calibrate::Server::new(url, &found.model)?;
+    let total = limit.min(reference.items.len());
+    let mut done = 0usize;
+    let check = crate::calibrate::selfcheck(
+        &server,
+        &reference,
+        limit,
+        &crate::verify::CLEF_FLASH,
+        |_| {
+            done += 1;
+            if !quiet && done % 16 == 0 {
+                eprintln!("self-check {done}/{total}");
+            }
+        },
+    )
+    .await;
+    crate::calibrate::save(&home(), &check)?;
+    Ok(check)
+}
+
+/// `doctor`: what this computer has and what blocks serving decisions.
+async fn doctor(json_out: bool, args: &mut Args, relay: &str) -> Result<(), String> {
+    let decide = args
+        .value("--decide")?
+        .unwrap_or_else(|| DEFAULT_DECIDE.into());
+    let rehash = args.flag("--rehash");
+    if let Some(extra) = args.words.first() {
+        return Err(format!("unexpected argument `{extra}`"));
+    }
+    let report = crate::setup::doctor(relay, &decide, rehash).await;
+    emit(
+        json_out,
+        &serde_json::to_value(&report).map_err(|e| e.to_string())?,
+        &crate::setup::render(&report),
+    );
+    Ok(())
+}
+
+/// `setup` and `update`: fetch the pinned model when it is missing or not
+/// the pinned file, then self-check a running decision server.
+async fn setup(json_out: bool, args: &mut Args, update: bool) -> Result<(), String> {
+    let decide = args
+        .value("--decide")?
+        .unwrap_or_else(|| DEFAULT_DECIDE.into());
+    if let Some(extra) = args.words.first() {
+        return Err(format!("unexpected argument `{extra}`"));
+    }
+    let path = crate::setup::model_path();
+    let mut state = crate::setup::model_state(&path, crate::setup::CLEF_FLASH_SHA256, update);
+    let fetched = !state.verified;
+    if fetched {
+        if !json_out {
+            eprintln!(
+                "downloading Clef-Flash Q4_K_M ({:.1} GB) to {}",
+                crate::setup::CLEF_FLASH_BYTES as f64 / 1e9,
+                path.display()
+            );
+        }
+        let mut shown = 0u64;
+        crate::setup::fetch(
+            crate::setup::CLEF_FLASH_URL,
+            &path,
+            crate::setup::CLEF_FLASH_BYTES,
+            crate::setup::CLEF_FLASH_SHA256,
+            |got| {
+                if !json_out && got >= shown + 500_000_000 {
+                    shown = got;
+                    eprintln!(
+                        "{:.1} of {:.1} GB",
+                        got as f64 / 1e9,
+                        crate::setup::CLEF_FLASH_BYTES as f64 / 1e9
+                    );
+                }
+            },
+        )
+        .await?;
+        state = crate::setup::model_state(&path, crate::setup::CLEF_FLASH_SHA256, false);
+    }
+    let server = crate::setup::find_server();
+    let check = if crate::setup::serving(&decide).await.is_some() {
+        Some(run_selfcheck(&decide, 64, json_out).await?)
+    } else {
+        None
+    };
+    let mut next = Vec::new();
+    if server.is_none() {
+        next.push(crate::setup::BUILD_SERVER.to_string());
+    }
+    next.push("openagents pylon start --allow-any".to_string());
+    emit(
+        json_out,
+        &json!({"model": state, "fetched": fetched, "server": server, "selfcheck": check, "next": next}),
+        &format!(
+            "model {} ({})\nserver {}\n{}next: {}",
+            path.display(),
+            if fetched {
+                "downloaded and verified"
+            } else {
+                "already the pinned file"
+            },
+            server
+                .as_ref()
+                .map_or_else(|| "not installed".into(), |p| p.display().to_string()),
+            check
+                .as_ref()
+                .map(|c| format!(
+                    "self-check {}: {:.2}% of rounds pass\n",
+                    if c.pass { "passed" } else { "failed" },
+                    c.round_pass * 100.0
+                ))
+                .unwrap_or_default(),
+            next.join("\nnext: ")
+        ),
+    );
+    Ok(())
+}
+
+/// `start`: run Psionic's decision lane on loopback (unless one already
+/// answers), self-check it when this model has no passing self-check, and
+/// serve decisions only. Takes `serve`'s options (`--allow`, `--slots`, …).
+async fn start(
+    json_out: bool,
+    args: &mut Args,
+    relay: &str,
+    wallet: &dyn Wallet,
+) -> Result<(), String> {
+    let port = u16::try_from(args.number("--port", u64::from(crate::setup::DECIDE_PORT))?)
+        .map_err(|_| "--port takes a port number")?;
+    let device = args.value("--device")?;
+    let url = format!("http://127.0.0.1:{port}");
+    let mut child = None;
+    if crate::setup::serving(&url).await.is_none() {
+        let server = crate::setup::find_server().ok_or_else(|| {
+            format!(
+                "{} is not installed; build it with: {}",
+                crate::setup::SERVER,
+                crate::setup::BUILD_SERVER
+            )
+        })?;
+        let model = crate::setup::model_path();
+        if !crate::setup::model_state(&model, crate::setup::CLEF_FLASH_SHA256, false).verified {
+            return Err("the decision model is missing or not the pinned file; run `openagents pylon setup`".into());
+        }
+        let device = device.unwrap_or_else(|| crate::setup::fit(&crate::setup::host()).device);
+        let log = home().join("psionic-decide.log");
+        std::fs::create_dir_all(home()).map_err(|e| e.to_string())?;
+        let out = std::fs::File::create(&log).map_err(|e| e.to_string())?;
+        let err = out.try_clone().map_err(|e| e.to_string())?;
+        eprintln!(
+            "pylon: starting Psionic on {device} at {url} (log {})",
+            log.display()
+        );
+        let spawned = tokio::process::Command::new(&server)
+            .arg("-m")
+            .arg(&model)
+            .args(["--host", "127.0.0.1", "--port", &port.to_string()])
+            .args([
+                "--decision-device",
+                &device,
+                "--mesh-coordination",
+                "disabled",
+            ])
+            .stdout(out)
+            .stderr(err)
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|e| format!("Psionic did not start: {e}"))?;
+        child = Some(spawned);
+        let started = std::time::Instant::now();
+        while crate::setup::serving(&url).await.is_none() {
+            if let Some(c) = child.as_mut()
+                && let Ok(Some(status)) = c.try_wait()
+            {
+                return Err(format!(
+                    "Psionic exited ({status}) before it served; see {}",
+                    log.display()
+                ));
+            }
+            if started.elapsed() > Duration::from_secs(900) {
+                return Err(format!("Psionic never served; see {}", log.display()));
+            }
+            tokio::time::sleep(Duration::from_secs(3)).await;
+        }
+    }
+    let digest = crate::setup::serving(&url)
+        .await
+        .and_then(|s| s["artifact_digest"].as_str().map(str::to_string))
+        .unwrap_or_default();
+    if crate::calibrate::shipped_reference(&digest).is_some()
+        && crate::calibrate::may_serve(&home(), &digest)?.is_none()
+    {
+        eprintln!("pylon: self-checking this computer before it serves");
+        let check = run_selfcheck(&url, 64, json_out).await?;
+        if !check.pass {
+            return Err(format!(
+                "the self-check failed ({:.1}% of rounds pass, worst item {:.3}); not serving",
+                check.round_pass * 100.0,
+                check.max
+            ));
+        }
+    }
+    args.words
+        .extend(["--decide".to_string(), url, "--decisions-only".to_string()]);
+    let served = serve(json_out, args, relay, wallet).await;
+    drop(child);
+    served
 }

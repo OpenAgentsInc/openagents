@@ -32482,6 +32482,250 @@
       "summary": "Share this computer's model as a NIP-PYLON pylon, or use one.",
       "children": [
         {
+          "name": "doctor",
+          "leaf": {
+            "path": [
+              "pylon",
+              "doctor"
+            ],
+            "usage": [
+              "doctor"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "doctor"
+                  }
+                ]
+              }
+            ],
+            "summary": "Read this computer (memory, GPU, disk, the pinned decision model and its digest, the Psionic server, outbound reach to the relay, the last self-check) and name what blocks serving decisions, each with the command that fixes it. Writes nothing. --decide URL          The local decision server (default http://127.0.0.1:18096). --rehash              Re-hash the model instead of the remembered digest.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "setup",
+          "leaf": {
+            "path": [
+              "pylon",
+              "setup"
+            ],
+            "usage": [
+              "setup"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "setup"
+                  }
+                ]
+              }
+            ],
+            "summary": "Download the pinned decision model (Clef-Flash Q4_K_M, 6.5 GB, sha256-checked) and self-check a decision server that is already running. --decide URL          The local decision server (default http://127.0.0.1:18096).",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "update",
+          "leaf": {
+            "path": [
+              "pylon",
+              "update"
+            ],
+            "usage": [
+              "update"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "update"
+                  }
+                ]
+              }
+            ],
+            "summary": "As setup, but re-hash the model and fetch it again when it is not the file this build pins. --decide URL          The local decision server (default http://127.0.0.1:18096).",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "start",
+          "leaf": {
+            "path": [
+              "pylon",
+              "start"
+            ],
+            "usage": [
+              "start"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "start"
+                  }
+                ]
+              }
+            ],
+            "summary": "Start Psionic's decision lane on loopback, self-check it, and serve decisions only. Takes serve's options (--allow NPUB or --allow-any, --slots, --rate, ...). Nothing listens beyond loopback; the pylon dials out. --port N              Psionic's loopback port (default 18096). --device NAME         metal, cuda, or cpu (default: what doctor picks).",
+            "effect": "long_running",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "selfcheck",
+          "leaf": {
+            "path": [
+              "pylon",
+              "selfcheck"
+            ],
+            "usage": [
+              "selfcheck"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "selfcheck"
+                  }
+                ]
+              }
+            ],
+            "summary": "Answer the shipped reference decisions on this computer and compare them with the reference; serve refuses decisions after a failed self-check. --decide URL          The local decision server (default http://127.0.0.1:18096). --items N             How many reference items (default 64).",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "calibrate",
+          "children": [
+            {
+              "name": "run",
+              "leaf": {
+                "path": [
+                  "pylon",
+                  "calibrate",
+                  "run"
+                ],
+                "usage": [
+                  "calibrate run"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "calibrate"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "run"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Answer seeded decision items and write them as JSON lines, for comparing machines or models. --decide URL          The decision server (default http://127.0.0.1:18096). --decide-model NAME   The model to ask for (default clef-flash). --seed N              The item seed (default 20261014). --count N             How many items (default 200). --out FILE            Append the answers to FILE.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "compare",
+              "leaf": {
+                "path": [
+                  "pylon",
+                  "calibrate",
+                  "compare"
+                ],
+                "usage": [
+                  "calibrate compare REF CAND"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "calibrate"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "compare"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "REF"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "CAND"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Distances, top-answer agreement, and simulated round pass and strike shares between two runs.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "reference",
+              "leaf": {
+                "path": [
+                  "pylon",
+                  "calibrate",
+                  "reference"
+                ],
+                "usage": [
+                  "calibrate reference RUN --measured-on TEXT --out FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "calibrate"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "reference"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "RUN"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "measured-on",
+                        "value": "TEXT",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "out",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Make a self-check reference set from a run.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "whoami",
           "leaf": {
             "path": [
@@ -32814,6 +33058,42 @@
                 "effect": "publishes",
                 "runs_on": "connected_computer"
               }
+            },
+            {
+              "name": "decide",
+              "leaf": {
+                "path": [
+                  "pylon",
+                  "check",
+                  "decide"
+                ],
+                "usage": [
+                  "check decide --pylon NPUB"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "check"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "decide"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "pylon",
+                        "value": "NPUB",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Send the pylon fresh decision items (a new seed each round) as ordinary decision jobs, recompute the items drawn after the answers arrive on a reference server running the same pinned model, and sign a verdict: pass, fail (a strike), or inconclusive (a small miss). --reference URL       The reference decision server (default http://127.0.0.1:18096). --rounds N            Rounds to run (default 1).",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
             }
           ]
         },
@@ -32939,6 +33219,114 @@
       "options": [
         {
           "kind": "option",
+          "name": "decide",
+          "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "rehash",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "allow",
+          "value": "NPUB",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "allow-any",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "slots",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "rate",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "port",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "device",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "items",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "decide-model",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "seed",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "count",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "out",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "measured-on",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "engine",
           "value": "URL",
           "open": true,
@@ -32948,22 +33336,6 @@
         {
           "kind": "option",
           "name": "model",
-          "value": "NAME",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "decide",
-          "value": "URL",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "decide-model",
           "value": "NAME",
           "open": true,
           "optional": true,
@@ -33104,36 +33476,6 @@
         },
         {
           "kind": "option",
-          "name": "slots",
-          "value": "N",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "allow",
-          "value": "NPUB",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "allow-any",
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "rate",
-          "value": "N",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
           "name": "max-tokens",
           "value": "N",
           "open": true,
@@ -33225,6 +33567,22 @@
         {
           "kind": "option",
           "name": "award",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "reference",
+          "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "rounds",
+          "value": "N",
+          "open": true,
           "optional": true,
           "repeated": true
         },
