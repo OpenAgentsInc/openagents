@@ -1,4 +1,6 @@
 //! Conversation content: the Markdown root and its elements, code blocks,
+//! the transcript (trace, turns, bubbles, markers, attachments,
+//! questionnaires; `trace.rs`, `transcript.rs`),
 //! the table family, source chips with favicons, the sticky action bar, and
 //! agent activity (tool calls, progress steps, result cards, file changes;
 //! `static/components/activity.css`).
@@ -24,10 +26,12 @@ mod plan_card;
 mod plugin_card;
 mod source;
 mod table;
+mod trace;
+mod transcript;
 
 pub use activity::{ActivityStatus, FileChanges, ResultCard, Step, Steps, ToolCall, ToolGroup};
 pub use answer::{AnswerCard, AnswerColumns, AnswerSteps, MAX_TABS, Tabs};
-pub use code::{CodeBlock, StickyActionBar};
+pub use code::{CodeBlock, CodeSize, StickyActionBar};
 pub use link_card::{LinkCard, LinkCards};
 pub use markdown::{Heading, InlineCode, List, ListItem, MarkdownRoot, MarkdownSize, Paragraph};
 pub use page::{Facts, PageColumn};
@@ -35,6 +39,11 @@ pub use plan_card::{PlanCard, PlanCards};
 pub use plugin_card::{PluginCard, PluginCards};
 pub use source::{Favicon, Source, SourceVariant};
 pub use table::{ColSize, Table};
+pub use trace::{Trace, TraceKind, TraceStatus, TraceStep};
+pub use transcript::{
+    Attachment, AttachmentKind, Attachments, Bubble, Marker, MarkerTone, MessageScroller, Question,
+    Questionnaire, Turn,
+};
 
 /// Where a link may point, or `None` when it must draw as plain text:
 /// `http`, `https`, `mailto`, a site path (`/x`, not `//x`), or an anchor.

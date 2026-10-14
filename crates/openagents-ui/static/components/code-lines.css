@@ -1,0 +1,157 @@
+/* Code block lines, diffs, the Wrap switch and the small size
+   (src/content/code.rs, #11621). The surface itself lives in content.css.
+   Values come from the Apps SDK UI tokens (MIT, see NOTICE). */
+
+/* One span per line when the block numbers, diffs or marks lines. The
+   numbers come from data-line, so selecting the code never copies them. */
+.oa-code-line {
+  display: block;
+  margin: 0 -16px;
+  padding: 0 16px;
+}
+
+.oa-code-block[data-numbered] .oa-code-line {
+  padding-left: calc(16px + 5ch);
+  text-indent: -5ch;
+}
+
+.oa-code-block[data-numbered] .oa-code-line::before {
+  content: attr(data-line);
+  display: inline-block;
+  width: 3.5ch;
+  margin-right: 1.5ch;
+  color: var(--color-text-tertiary);
+  text-align: right;
+  text-indent: 0;
+  user-select: none;
+}
+
+.oa-code-line[data-diff="add"] {
+  background: var(--color-background-success-soft);
+  color: var(--color-text-success);
+}
+
+.oa-code-line[data-diff="del"] {
+  background: var(--color-background-danger-soft);
+  color: var(--color-text-danger);
+}
+
+.oa-code-line[data-diff="hunk"] {
+  color: var(--color-text-info);
+}
+
+.oa-code-line[data-diff="file"] {
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.oa-code-line[data-highlight] {
+  background: var(--color-background-warning-soft);
+  box-shadow: inset 2px 0 0 var(--color-text-warning);
+}
+
+/* The Wrap switch: a checkbox, so it works without script. */
+.oa-code-block:has(.oa-code-block__wrap-input:checked) .oa-code-block__code {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.oa-code-block__wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  height: calc(var(--spacing) * 7);
+  padding: 0 calc(var(--spacing) * 2);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: var(--font-text-sm-size);
+}
+
+.oa-code-block__wrap:hover {
+  background: var(--color-background-primary-ghost-hover);
+  color: var(--color-text);
+}
+
+.oa-code-block__wrap:has(:focus-visible) {
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+
+.oa-code-block__wrap-input {
+  position: relative;
+  flex: none;
+  width: 24px;
+  height: 14px;
+  margin: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-border-strong);
+  appearance: none;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 120ms ease;
+}
+
+.oa-code-block__wrap-input::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  transition: translate 120ms ease;
+}
+
+.oa-code-block__wrap-input:checked {
+  background: var(--color-background-primary-solid);
+}
+
+.oa-code-block__wrap-input:checked::before {
+  translate: 10px 0;
+}
+
+/* The small size, for tool output inside a trace. */
+.oa-code-block[data-size="sm"] {
+  --code-block-radius: var(--radius-lg);
+  --code-block-bar-height: calc(var(--spacing) * 8);
+
+  margin: calc(var(--spacing) * 1.5) 0;
+}
+
+.oa-code-block[data-size="sm"] > .oa-sticky-action-bar {
+  padding-left: calc(var(--spacing) * 3);
+  font-size: var(--font-text-xs-size);
+}
+
+.oa-code-block[data-size="sm"] .oa-code-block__wrap {
+  height: calc(var(--spacing) * 6);
+  font-size: var(--font-text-xs-size);
+}
+
+.oa-code-block[data-size="sm"] .oa-code-block__pane {
+  max-height: 22rem;
+  overflow: auto;
+}
+
+.oa-code-block[data-size="sm"] .oa-code-block__code {
+  padding: 8px 12px;
+  font-size: var(--font-text-xs-size);
+}
+
+.oa-code-block[data-size="sm"] .oa-code-line {
+  margin: 0 -12px;
+  padding: 0 12px;
+}
+
+.oa-code-block[data-size="sm"][data-numbered] .oa-code-line {
+  padding-left: calc(12px + 5ch);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-code-block__wrap-input,
+  .oa-code-block__wrap-input::before {
+    transition: none;
+  }
+}

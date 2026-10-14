@@ -19,7 +19,11 @@ use std::collections::BTreeSet;
 /// about 3 KB; #11543).
 /// Raised to 330,000 the same day for the pricing page's plan cards
 /// (`plan-card.css`, about 3 KB).
-pub const STYLESHEET_BUDGET_BYTES: usize = 330_000;
+/// Raised to 345,000 on 2026-10-14 for the transcript components (#11621):
+/// the trace, code lines and diffs, turns, bubbles, markers, attachments
+/// and questionnaires (`trace.css`, `code-lines.css`, `transcript.css`,
+/// about 13 KB).
+pub const STYLESHEET_BUDGET_BYTES: usize = 345_000;
 
 /// Classes that components emit on purpose with no rule of their own:
 /// script hooks (`querySelector`, Alpine roots) and structural wrappers

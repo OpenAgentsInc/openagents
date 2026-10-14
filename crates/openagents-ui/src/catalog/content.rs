@@ -3,6 +3,7 @@
 use maud::{Markup, html};
 
 use super::{Pane, row, specimen, stack};
+use crate::actions::CopyButton;
 use crate::actions::{Button, ButtonVariant, Color, ControlSize};
 use crate::content::{
     ActivityStatus, CodeBlock, ColSize, Facts, Favicon, FileChanges, Heading, InlineCode, LinkCard,
@@ -10,7 +11,14 @@ use crate::content::{
     PlanCards, PluginCard, PluginCards, ResultCard, Source, SourceVariant, Step, Steps,
     StickyActionBar, Table, ToolCall, ToolGroup,
 };
+use crate::content::{
+    Attachment, Attachments, Bubble, CodeSize, Marker, MarkerTone, MessageScroller, Question,
+    Questionnaire, Trace, TraceKind, TraceStatus, TraceStep, Turn,
+};
 use crate::icons::Icon;
+use crate::overlays::Dialog;
+
+const DIFF: &str = "@@ -12,4 +12,4 @@ fn login_button() {\n     let page = open(\"/login\");\n-    page.click(\"#login\");\n+    page.click(\"[data-test=login]\");\n     assert!(page.signed_in());\n";
 
 const RUST: &str = "fn main() {\n    let catalog = openagents_ui::catalog::render();\n    println!(\"{}\", catalog.into_string());\n}";
 
@@ -53,6 +61,11 @@ pub(super) fn code(_pane: Pane) -> Markup {
         (specimen("CodeBlock", "Not copyable, no language", CodeBlock::new("plain output\nsecond line").copyable(false)))
         (specimen("CodeBlock", "Pre-highlighted markup", CodeBlock::new("let x = 1;").language("rust")
             .highlighted(html! { span class="hljs-keyword" { "let" } " x = " span class="hljs-number" { "1" } ";" })))
+        (specimen("CodeBlock", "Title, line numbers, a marked line, Wrap switch", CodeBlock::new(RUST)
+            .title("src/main.rs").language("rust").line_numbers(true).highlight_lines([2]).wrap_toggle(true)))
+        (specimen("CodeBlock", "Diff", CodeBlock::new(DIFF).title("crates/web/src/login.rs").language("diff").diff(true).line_numbers(true)))
+        (specimen("CodeBlock", "Small, terminal output", CodeBlock::new("$ cargo test -p sample-app\ntest result: ok. 48 passed; 0 failed")
+            .title("cargo test -p sample-app").size(CodeSize::Sm)))
         (specimen("StickyActionBar", "Sticky action bar", StickyActionBar::new().label("diff.patch")
             .aria_label("Patch actions")
             .action(Button::icon(Icon::Copy, "Copy patch").size(ControlSize::Xs).variant(ButtonVariant::Ghost).color(Color::Secondary))
@@ -269,5 +282,80 @@ pub(super) fn answers(pane: Pane) -> Markup {
         .child(AnswerCard::new("On your computer").child(steps));
     html! {
         (specimen("AnswerColumns AnswerCard AnswerSteps Tabs", "Connect a codebase", MarkdownRoot::new(columns)))
+    }
+}
+
+pub(super) fn trace(pane: Pane) -> Markup {
+    let dialog = pane.id("trace-plan");
+    let steps = [
+        TraceStep::new(TraceKind::Reasoning, "Thought for 4s")
+            .description("The button moved, so the selector is stale.")
+            .body(MarkdownRoot::new(html! { p { "The login button moved into the header, so the test clicks nothing. Update the selector, then run the suite." } })),
+        TraceStep::new(TraceKind::Read, "Read").detail("tests/login.rs").meta("42 lines"),
+        TraceStep::new(TraceKind::Edit, "Edited").detail("tests/login.rs").meta("+1 −1")
+            .body(CodeBlock::new(DIFF).language("diff").diff(true).size(CodeSize::Sm)),
+        TraceStep::new(TraceKind::Command, "Ran").detail("cargo test -p sample-app").meta("12s")
+            .body(CodeBlock::new("test result: ok. 48 passed; 0 failed").title("Output").size(CodeSize::Sm)),
+        TraceStep::new(TraceKind::Agent, "Asked Claude Code")
+            .description("Check the other login tests for the same selector")
+            .meta("3 steps")
+            .child(TraceStep::new(TraceKind::Search, "Searched").detail("#login").meta("2 files"))
+            .child(TraceStep::new(TraceKind::Command, "Ran").detail("cargo test -p sample-web").status(TraceStatus::Error)
+                .description("2 tests failed").body(CodeBlock::new("test result: FAILED. 10 passed; 2 failed").size(CodeSize::Sm)))
+            .child(TraceStep::new(TraceKind::Reasoning, "Thinking").status(TraceStatus::Running)),
+        TraceStep::new(TraceKind::Source, "Read the testing guide").detail("example.com/testing").href("https://example.com/testing"),
+        TraceStep::new(TraceKind::Plan, "Plan").meta("3 steps").dialog(dialog.clone()),
+        TraceStep::new(TraceKind::Command, "Run the full suite").status(TraceStatus::Pending),
+    ];
+    html! {
+        (specimen("Trace TraceStep", "Collapsed", Trace::new(steps.clone()).label("What the agent did")))
+        (specimen("Trace TraceStep", "A summary opened to its steps", Trace::new([
+            TraceStep::new(TraceKind::Summary, "Worked for 1m 12s").meta("8 steps").open(true).children(steps),
+        ])))
+        (Dialog::new(dialog, "Plan", Trace::new([
+            TraceStep::new(TraceKind::Plan, "Update the selector"),
+            TraceStep::new(TraceKind::Plan, "Run the suite").status(TraceStatus::Running),
+            TraceStep::new(TraceKind::Plan, "Push").status(TraceStatus::Pending),
+        ])))
+    }
+}
+
+pub(super) fn transcript(pane: Pane) -> Markup {
+    let questions = |id: &str| {
+        Questionnaire::new(pane.id(id), "A few questions first")
+            .question(
+                Question::new("scope", "Which tests should I fix?")
+                    .option("Only the login test", Some("Fastest"))
+                    .option("Every test that uses the old button", None)
+                    .answer(["Every test that uses the old button"]),
+            )
+            .question(
+                Question::new("push", "Push when they pass?")
+                    .option("Yes", None)
+                    .option("No", None)
+                    .other(true),
+            )
+    };
+    html! {
+        (specimen("MessageScroller Turn Bubble Marker Attachment Attachments", "A conversation", MessageScroller::new()
+            .label("Conversation")
+            .turn(Marker::divider("October 14"))
+            .turn(Bubble::new("The login test fails since the redesign. Can you fix it?")
+                .attachment(Attachment::new("failure.png").meta("Picture"))
+                .attachment(Attachment::new("tests/login.rs").meta("Code")))
+            .turn(Turn::new("Coder")
+                .model("sample-model")
+                .time("2026-10-14T13:02:00Z", "13:02")
+                .part(Trace::new([
+                    TraceStep::new(TraceKind::Summary, "Worked for 1m 12s").meta("4 steps"),
+                ]))
+                .part(MarkdownRoot::new(html! { p { "The button moved, so the test clicked nothing. I updated the selector. " strong { "All 48 tests pass." } } }))
+                .part(Attachments::new([Attachment::new("tests/login.rs").meta("+1 −1")]).label("Files changed"))
+                .action(CopyButton::new("All 48 tests pass.").label("Copy").aria_label("Copy answer").size(ControlSize::Xs).variant(ButtonVariant::Ghost).color(Color::Secondary))
+                .meta("1m 12s · 28K tokens"))
+            .turn(Marker::note("This chat was shortened here").icon(Icon::InfoCircle))
+            .turn(Marker::note("The agent stopped before it finished").tone(MarkerTone::Danger))))
+        (specimen("Questionnaire Question", "Questions, answered", questions("questions-shown")))
+        (specimen("Questionnaire Question", "Questions, to answer", questions("questions-form").action("#")))
     }
 }

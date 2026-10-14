@@ -80,6 +80,7 @@ mod tasks;
 mod terminal_connect;
 pub mod test_runs;
 pub mod theme;
+mod trace_view;
 mod traces;
 pub mod ui_page;
 pub mod upstream;

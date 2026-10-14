@@ -1,0 +1,460 @@
+/* A conversation as a transcript (src/content/transcript.rs, #11621): the
+   message scroller, agent turns, the person's bubbles, markers,
+   attachments and questionnaires. Values come from the Apps SDK UI tokens
+   (MIT, see NOTICE). */
+
+.oa-message-scroller {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.oa-message-scroller__turns {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 8);
+  min-width: 0;
+}
+
+/* Turns never anchor the view; the anchor under the last one does, so a
+   reader at the bottom stays there while words arrive. */
+.oa-message-scroller__turns > * {
+  overflow-anchor: none;
+  scroll-margin-top: calc(var(--spacing) * 16);
+}
+
+.oa-message-scroller__anchor {
+  height: 1px;
+  overflow-anchor: auto;
+}
+
+.oa-message-scroller__earlier {
+  align-self: center;
+  margin-bottom: calc(var(--spacing) * 6);
+  padding: calc(var(--spacing) * 1) calc(var(--spacing) * 3);
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+  text-decoration: none;
+}
+
+.oa-message-scroller__earlier:hover {
+  background: var(--color-background-primary-ghost-hover);
+  color: var(--color-text);
+}
+
+/* One turn. */
+.oa-turn {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 2.5);
+  min-width: 0;
+}
+
+.oa-turn[data-from="person"] {
+  align-items: flex-end;
+  gap: calc(var(--spacing) * 1.5);
+}
+
+.oa-turn__header {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  min-width: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+  line-height: var(--font-text-sm-line-height);
+}
+
+.oa-turn__avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  background: var(--color-background-secondary-soft);
+  color: var(--color-text);
+}
+
+.oa-turn__author {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-text-sm-size);
+  font-weight: var(--font-weight-semibold);
+  line-height: inherit;
+}
+
+.oa-turn__model {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-turn__time,
+.oa-bubble__time {
+  flex: none;
+  margin-left: auto;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-text-xs-size);
+  font-variant-numeric: tabular-nums;
+}
+
+.oa-turn__body {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 3);
+  min-width: 0;
+}
+
+.oa-turn__body > .oa-markdown > :first-child {
+  margin-top: 0;
+}
+
+.oa-turn__body > .oa-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.oa-turn__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  min-height: calc(var(--spacing) * 7);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-text-xs-size);
+}
+
+.oa-turn__actions {
+  display: flex;
+  gap: 2px;
+  margin-left: calc(var(--spacing) * -1.5);
+}
+
+.oa-turn__meta {
+  font-variant-numeric: tabular-nums;
+}
+
+/* What the person sent. */
+.oa-bubble {
+  box-sizing: border-box;
+  max-width: min(75%, 100%);
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 4);
+  border-radius: var(--radius-3xl);
+  background: var(--color-background-user-message);
+  color: var(--color-text-user-message);
+  font-size: var(--font-text-md-size);
+  line-height: var(--font-text-md-line-height);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.oa-bubble__time {
+  margin-left: 0;
+}
+
+.oa-turn[data-from="person"] > .oa-attachments {
+  justify-content: flex-end;
+}
+
+/* Markers between turns. */
+.oa-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--spacing) * 1.5);
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-text-xs-size);
+  line-height: var(--font-text-xs-line-height);
+  text-align: center;
+}
+
+.oa-marker[data-kind="divider"] {
+  gap: calc(var(--spacing) * 3);
+}
+
+.oa-marker[data-kind="divider"]::before,
+.oa-marker[data-kind="divider"]::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--color-border-subtle);
+}
+
+.oa-marker__text {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+}
+
+.oa-marker__icon {
+  display: inline-flex;
+}
+
+.oa-marker[data-tone="danger"] {
+  color: var(--color-text-danger);
+}
+
+.oa-marker[data-tone="info"] {
+  color: var(--color-text-info);
+}
+
+/* Attachments. */
+.oa-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--spacing) * 2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oa-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2.5);
+  box-sizing: border-box;
+  max-width: 280px;
+  padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 3) calc(var(--spacing) * 1.5) calc(var(--spacing) * 1.5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+a.oa-attachment:hover {
+  background: var(--color-background-primary-ghost-hover);
+}
+
+a.oa-attachment:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+
+.oa-attachment__tile {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--color-background-secondary-soft);
+  color: var(--color-text-secondary);
+}
+
+.oa-attachment[data-kind="code"] .oa-attachment__tile {
+  background: var(--color-background-info-soft);
+  color: var(--color-text-info);
+}
+
+.oa-attachment[data-kind="image"] .oa-attachment__tile {
+  background: var(--color-background-discovery-soft);
+  color: var(--color-text-discovery);
+}
+
+.oa-attachment__preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.oa-attachment__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.oa-attachment__name {
+  overflow: hidden;
+  font-size: var(--font-text-sm-size);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--font-text-sm-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-attachment__meta {
+  overflow: hidden;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-text-xs-size);
+  line-height: var(--font-text-xs-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Questionnaire. */
+.oa-questionnaire {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 4);
+  margin: 0;
+  padding: calc(var(--spacing) * 4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2xl);
+  background: var(--color-surface);
+}
+
+.oa-questionnaire__title {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-text-sm-size);
+  font-weight: var(--font-weight-semibold);
+}
+
+.oa-questionnaire__title > span {
+  display: inline-flex;
+  color: var(--color-text-info);
+}
+
+.oa-questionnaire__question {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.oa-questionnaire__prompt {
+  margin: 0 0 calc(var(--spacing) * 1);
+  padding: 0;
+  color: var(--color-text);
+  font-size: var(--font-text-sm-size);
+  font-weight: var(--font-weight-medium);
+}
+
+.oa-questionnaire__option {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--spacing) * 2.5);
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+
+.oa-questionnaire__option:hover {
+  background: var(--color-background-primary-ghost-hover);
+}
+
+.oa-questionnaire__option:has(input:checked) {
+  border-color: var(--color-border-strong);
+  background: var(--color-background-secondary-soft);
+}
+
+.oa-questionnaire__option:has(:focus-visible) {
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+
+.oa-questionnaire__option input {
+  flex: none;
+  margin: 2px 0 0;
+  accent-color: var(--color-background-primary-solid);
+}
+
+.oa-questionnaire__option-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.oa-questionnaire__option-label {
+  color: var(--color-text);
+  font-size: var(--font-text-sm-size);
+}
+
+.oa-questionnaire__option-description {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-text-xs-size);
+}
+
+.oa-questionnaire__other {
+  display: block;
+}
+
+.oa-questionnaire__other-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-text-sm-size);
+}
+
+.oa-questionnaire__other-input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+
+.oa-questionnaire__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.oa-questionnaire__answers {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oa-questionnaire__answer {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-text-sm-size);
+}
+
+.oa-questionnaire__answer[data-chosen] {
+  color: var(--color-text);
+}
+
+.oa-questionnaire__mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+}
+
+.oa-questionnaire__answer[data-chosen] .oa-questionnaire__mark {
+  border-color: transparent;
+  background: var(--color-background-primary-solid);
+  color: var(--color-text-inverse);
+}
+
+.oa-questionnaire__unanswered {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-text-sm-size);
+}
+
+@media (max-width: 640px) {
+  .oa-bubble {
+    max-width: 88%;
+  }
+
+  .oa-message-scroller__turns {
+    gap: calc(var(--spacing) * 6);
+  }
+}

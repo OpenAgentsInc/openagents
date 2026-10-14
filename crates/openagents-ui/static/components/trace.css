@@ -1,0 +1,223 @@
+/* Trace: what an agent did, one line per step (src/content/trace.rs,
+   #11621). A rail joins the icons; a line opens in place, links out, or
+   opens a dialog. Values come from the Apps SDK UI tokens (MIT, see
+   NOTICE). */
+
+.oa-trace {
+  --trace-icon: 20px;
+  --trace-pad-x: calc(var(--spacing) * 2);
+  --trace-gap: calc(var(--spacing) * 2.5);
+
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+  line-height: var(--font-text-sm-line-height);
+  list-style: none;
+}
+
+.oa-trace-step {
+  position: relative;
+  min-width: 0;
+}
+
+/* The rail: from under this line's icon to the next line's. */
+.oa-trace > .oa-trace-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: calc(var(--trace-icon) + 10px);
+  bottom: -4px;
+  left: calc(var(--trace-pad-x) + var(--trace-icon) / 2 - 0.5px);
+  width: 1px;
+  background: var(--color-border-subtle);
+  pointer-events: none;
+}
+
+.oa-trace-step__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--trace-gap);
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 5px var(--trace-pad-x);
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: none;
+  color: inherit;
+  font: inherit;
+  list-style: none;
+  text-align: start;
+  text-decoration: none;
+}
+
+.oa-trace-step__disclosure {
+  min-width: 0;
+}
+
+.oa-trace-step__row::-webkit-details-marker {
+  display: none;
+}
+
+:is(summary, a, button).oa-trace-step__row {
+  cursor: pointer;
+}
+
+:is(summary, a, button).oa-trace-step__row:hover {
+  background: var(--color-background-primary-ghost-hover);
+}
+
+.oa-trace-step__row:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+
+.oa-trace-step__icon {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--trace-icon);
+  height: var(--trace-icon);
+  color: var(--color-text-tertiary);
+}
+
+.oa-trace-step[data-kind="agent"] > * > .oa-trace-step__icon,
+.oa-trace-step[data-kind="agent"] > details > summary > .oa-trace-step__icon {
+  border-radius: var(--radius-full);
+  background: var(--color-background-discovery-soft);
+  color: var(--color-text-discovery);
+}
+
+.oa-trace-step[data-status="error"] > .oa-trace-step__row > .oa-trace-step__icon,
+.oa-trace-step[data-status="error"] > details > summary > .oa-trace-step__icon {
+  color: var(--color-text-danger);
+}
+
+.oa-trace-step__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.oa-trace-step__heading {
+  display: block;
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+details[open] > summary .oa-trace-step__heading {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.oa-trace-step__title {
+  color: var(--color-text);
+  font-weight: var(--font-weight-medium);
+}
+
+.oa-trace-step[data-status="pending"] .oa-trace-step__title {
+  color: var(--color-text-tertiary);
+}
+
+.oa-trace-step__detail {
+  padding: 0;
+  background: none;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-text-xs-size);
+}
+
+.oa-trace-step__description {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-text-xs-size);
+  line-height: var(--font-text-xs-line-height);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
+.oa-trace-step[data-status="error"]:not([data-kind="agent"]) > .oa-trace-step__row .oa-trace-step__description,
+.oa-trace-step[data-status="error"]:not([data-kind="agent"]) > details > summary .oa-trace-step__description {
+  color: var(--color-text-danger);
+}
+
+details[open] > summary .oa-trace-step__description {
+  -webkit-line-clamp: unset;
+}
+
+.oa-trace-step__meta {
+  flex: none;
+  padding-top: 1px;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-text-xs-size);
+  font-variant-numeric: tabular-nums;
+}
+
+.oa-trace-step__affordance {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: var(--trace-icon);
+  color: var(--color-text-tertiary);
+  transition: rotate 120ms ease;
+}
+
+details[open] > summary > .oa-trace-step__chevron {
+  rotate: 180deg;
+}
+
+/* What a line opens to sits under its text, past the icon. */
+.oa-trace-step__content {
+  padding: 2px 0 calc(var(--spacing) * 2) calc(var(--trace-pad-x) + var(--trace-icon) + var(--trace-gap));
+}
+
+.oa-trace-step__content > .oa-trace[data-nested] {
+  margin-left: calc(-1 * var(--trace-pad-x));
+}
+
+.oa-trace-step__body {
+  min-width: 0;
+  color: var(--color-text-secondary);
+}
+
+.oa-trace-step__body > :first-child {
+  margin-top: 0;
+}
+
+.oa-trace-step__body > :last-child {
+  margin-bottom: 0;
+}
+
+.oa-trace-step__body .oa-markdown {
+  color: var(--color-text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-trace .oa-shimmer-text {
+    animation: none;
+    background: none;
+    -webkit-text-fill-color: unset;
+  }
+
+  .oa-trace-step__affordance {
+    transition: none;
+  }
+}
+
+/* The trace page's toolbar: open or fold every step. */
+.oa-trace-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin: calc(var(--spacing) * 2) 0 calc(var(--spacing) * 4);
+}

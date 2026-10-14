@@ -34,6 +34,12 @@ pub(super) fn screens() -> Vec<Screen> {
             state("agent", "One of its agents", agent),
             state("public", "Shared page", public),
             state("public-agent", "Shared page: an agent", public_agent),
+            state("run", "Shared page: a real run with agents", run_folded),
+            state(
+                "run-open",
+                "Shared page: a real run, every step open",
+                run_open,
+            ),
         ],
     }]
 }
@@ -114,6 +120,7 @@ fn one_with(headers: &HeaderMap, shared: bool) -> Response {
         &format!("https://openagents.com{PUBLIC}/{}", summary.id),
         TICKET,
         TICKET,
+        false,
     );
     page(headers, &summary.title, &path, body)
 }
@@ -130,8 +137,15 @@ fn agent_body(base: &str) -> (Agent, maud::Markup) {
     let (summary, root) = trace("Fix the failing login test", true, 1);
     let agents = [helper(Stats::of(&root))];
     let own = document("Find where the login button moved");
-    let body =
-        crate::traces::agent_content(&summary, &Stats::of(&root), &agents, &agents[0], &own, base);
+    let body = crate::traces::agent_content(
+        &summary,
+        &Stats::of(&root),
+        &agents,
+        &agents[0],
+        &own,
+        base,
+        false,
+    );
     (agents[0].clone(), body)
 }
 
@@ -153,7 +167,7 @@ fn public(headers: &HeaderMap) -> Response {
         headers,
         &summary.title,
         &format!("{PUBLIC}/{}", summary.id),
-        crate::traces::public_content(&summary, &document, &agents),
+        crate::traces::public_content(&summary, &document, &agents, false),
     )
 }
 
@@ -166,4 +180,30 @@ fn public_agent(headers: &HeaderMap) -> Response {
         &format!("{base}/agents/{}", agent.id),
         body,
     )
+}
+
+/// A real export from Coder: a person asks it to try three agents
+/// read-only; two fail, one answers, and Microcoder answers too
+/// (`delegation.atif.json`, #11621).
+const RUN: &str = include_str!("delegation.atif.json");
+
+fn run(headers: &HeaderMap, expand: bool) -> Response {
+    let (document, mut summary) = crate::traces::check(RUN.as_bytes()).expect("the sample run");
+    summary.id = "sample-run".into();
+    summary.uploaded_unix = NOW - 3_600;
+    summary.shared = true;
+    crate::traces::public_response(
+        headers,
+        &summary.title,
+        &format!("{PUBLIC}/{}", summary.id),
+        crate::traces::public_content(&summary, &document, &[], expand),
+    )
+}
+
+fn run_folded(headers: &HeaderMap) -> Response {
+    run(headers, false)
+}
+
+fn run_open(headers: &HeaderMap) -> Response {
+    run(headers, true)
 }

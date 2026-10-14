@@ -16,6 +16,9 @@ fn allowed(route: &str) -> &'static [&'static str] {
         "/ui" => &["cursor"],
         // The pricing page names the Cursor coding agent.
         "/pricing" => &["cursor"],
+        // The traces gallery's real sample run quotes an agent naming the
+        // Cursor provider it ran on (#11621).
+        "/settings/traces" => &["cursor"],
         _ => &[],
     }
 }

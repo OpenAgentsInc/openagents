@@ -51,8 +51,8 @@ use axum::extract::{DefaultBodyLimit, Form, Path, RawQuery, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
-use maud::{Markup, PreEscaped, html};
-use openagents_ui::actions::{Button, ButtonType, ButtonVariant, Color};
+use maud::{Markup, html};
+use openagents_ui::actions::{Button, ButtonLink, ButtonType, ButtonVariant, Color, ControlSize};
 use openagents_ui::content::{MarkdownRoot, PageColumn};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -64,6 +64,7 @@ use crate::cloud::byo::fresh_request;
 use crate::cloud::protect;
 use crate::cloud::session::{SessionError, Viewer};
 use crate::settings::{page, viewer};
+use crate::trace_view::AgentLinks;
 use crate::ui_page::{UiPage, action_link};
 
 /// The API.
@@ -78,10 +79,6 @@ pub(crate) const PUBLIC: &str = "/trace";
 pub(crate) const MAX_BODY: usize = 8 * 1024 * 1024;
 /// The most traces one account keeps.
 pub(crate) const MAX_TRACES: usize = 100;
-/// The most steps a page draws.
-const MAX_SHOWN_STEPS: usize = 400;
-/// The longest tool result a page draws.
-const MAX_SHOWN_RESULT: usize = 4000;
 
 const INDEX: &str = "traces/index.json";
 const INDEX_SCHEMA: &str = "openagents.web.traces.v1";
@@ -1348,10 +1345,6 @@ pub(crate) fn list_content(traces: &[Summary]) -> Markup {
     }
 }
 
-/// The agents a trace's steps started, by the tool call that started
-/// each: where its page is and its title.
-type AgentLinks = HashMap<String, (String, String)>;
-
 fn agent_links(agents: &[Agent], base: &str) -> AgentLinks {
     agents
         .iter()
@@ -1364,59 +1357,31 @@ fn agent_links(agents: &[Agent], base: &str) -> AgentLinks {
         .collect()
 }
 
-/// The trace's steps, drawn plainly.
-fn steps_content(document: &Value, links: &AgentLinks) -> Markup {
-    let all = steps(document);
-    let shown = &all[..all.len().min(MAX_SHOWN_STEPS)];
+/// The trace's steps as a conversation ([`crate::trace_view`]), with the
+/// link that opens or folds every step. `page` is this page's address.
+fn steps_content(document: &Value, links: &AgentLinks, page: &str, expand: bool) -> Markup {
+    let (label, href) = if expand {
+        ("Fold steps", page.to_owned())
+    } else {
+        ("Show every step", format!("{page}?{STEPS_QUERY}"))
+    };
     html! {
-        @for step in shown {
-            @let source = step.get("source").and_then(Value::as_str).unwrap_or("agent");
-            @let text = message_text(step.get("message").unwrap_or(&Value::Null));
-            @let calls = step.get("tool_calls").and_then(Value::as_array).map_or(&[][..], Vec::as_slice);
-            @let results = step.pointer("/observation/results").and_then(Value::as_array).map_or(&[][..], Vec::as_slice);
-            section class="oa-trace-step" {
-                h3 {
-                    @match source {
-                        "user" => { "You" }
-                        "system" => { "System" }
-                        _ => {
-                            "Agent"
-                            @if let Some(model) = step.get("model_name").and_then(Value::as_str) {
-                                " · " (line(model, 80))
-                            }
-                        }
-                    }
-                }
-                @if !text.trim().is_empty() {
-                    (PreEscaped(crate::markdown::render(&text)))
-                }
-                @for call in calls {
-                    @let name = call.get("function_name").and_then(Value::as_str).unwrap_or("tool");
-                    @let arguments = call.get("arguments").map(|a| a.as_str().map_or_else(|| a.to_string(), str::to_owned)).unwrap_or_default();
-                    @let started = call.get("tool_call_id").and_then(Value::as_str).and_then(|id| links.get(id));
-                    p { strong { (line(name, 80)) } }
-                    @if !arguments.is_empty() && arguments != "null" && arguments != "{}" {
-                        pre { code { (secret_screen::head_and_tail(&arguments, MAX_SHOWN_RESULT)) } }
-                    }
-                    @if let Some((href, title)) = started {
-                        p { "Started " a href=(href) { (title) } }
-                    }
-                }
-                @for result in results {
-                    @let content = message_text(result.get("content").unwrap_or(&Value::Null));
-                    @if !content.trim().is_empty() {
-                        details {
-                            summary { "Result" }
-                            pre { code { (secret_screen::head_and_tail(&content, MAX_SHOWN_RESULT)) } }
-                        }
-                    }
-                }
-            }
+        div class="oa-trace-tools" {
+            (ButtonLink::new(label, href)
+                .size(ControlSize::Sm)
+                .variant(ButtonVariant::Ghost)
+                .color(Color::Secondary))
         }
-        @if all.len() > shown.len() {
-            p { "The first " (shown.len()) " of " (all.len()) " steps are shown." }
-        }
+        (crate::trace_view::transcript(document, links, expand))
     }
+}
+
+/// The query that opens every step of a trace page.
+pub(crate) const STEPS_QUERY: &str = "steps=all";
+
+/// Whether a trace page's query asks for every step open.
+pub(crate) fn expanded(query: Option<&str>) -> bool {
+    query.is_some_and(|q| q.split('&').any(|pair| pair == STEPS_QUERY))
 }
 
 fn about(trace: &Summary) -> String {
@@ -1643,6 +1608,7 @@ pub(crate) fn trace_content(
     share_url: &str,
     share: (&str, &str),
     delete: (&str, &str),
+    expand: bool,
 ) -> Markup {
     let base = format!("{PAGE}/{}", trace.id);
     html! {
@@ -1687,12 +1653,17 @@ pub(crate) fn trace_content(
         @if !agents.is_empty() {
             (tree_content(trace, &Stats::of(document), agents, &base, None))
         }
-        (MarkdownRoot::new(steps_content(document, &agent_links(agents, &base))))
+        (steps_content(document, &agent_links(agents, &base), &base, expand))
     }
 }
 
 /// A shared trace's public page.
-pub(crate) fn public_content(trace: &Summary, document: &Value, agents: &[Agent]) -> Markup {
+pub(crate) fn public_content(
+    trace: &Summary,
+    document: &Value,
+    agents: &[Agent],
+    expand: bool,
+) -> Markup {
     let base = format!("{PUBLIC}/{}", trace.id);
     html! {
         (MarkdownRoot::new(html! {
@@ -1702,7 +1673,7 @@ pub(crate) fn public_content(trace: &Summary, document: &Value, agents: &[Agent]
         @if !agents.is_empty() {
             (tree_content(trace, &Stats::of(document), agents, &base, None))
         }
-        (MarkdownRoot::new(steps_content(document, &agent_links(agents, &base))))
+        (steps_content(document, &agent_links(agents, &base), &base, expand))
     }
 }
 
@@ -1715,6 +1686,7 @@ pub(crate) fn agent_content(
     agent: &Agent,
     document: &Value,
     base: &str,
+    expand: bool,
 ) -> Markup {
     let parent = agent
         .parent
@@ -1732,7 +1704,7 @@ pub(crate) fn agent_content(
             p { (stats_words(&agent.model, agent.steps, &agent.stats)) }
         }))
         (tree_content(trace, root_stats, agents, base, Some(&agent.id)))
-        (MarkdownRoot::new(steps_content(document, &agent_links(agents, base))))
+        (steps_content(document, &agent_links(agents, base), &format!("{base}/agents/{}", agent.id), expand))
     }
 }
 
@@ -1780,6 +1752,7 @@ async fn trace_page(
     State(app): State<App>,
     headers: HeaderMap,
     Path(id): Path<String>,
+    RawQuery(query): RawQuery,
 ) -> Response {
     let back = format!("{PAGE}/{id}");
     let (service, viewer) = match viewer(&app, &headers, &back).await {
@@ -1812,6 +1785,7 @@ async fn trace_page(
         &share_url,
         (&tickets[0].0, &tickets[0].1),
         (&tickets[1].0, &tickets[1].1),
+        expanded(query.as_deref()),
     );
     page(&headers, service, &viewer, &trace.title, &back, body)
 }
@@ -1820,6 +1794,7 @@ async fn agent_page(
     State(app): State<App>,
     headers: HeaderMap,
     Path((id, agent_id)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
 ) -> Response {
     let base = format!("{PAGE}/{id}");
     let back = format!("{base}/agents/{agent_id}");
@@ -1849,7 +1824,15 @@ async fn agent_page(
         Ok(None) => return problem(StatusCode::NOT_FOUND, "You have no trace at that address."),
         Err(error) => return unavailable_page(&error),
     };
-    let body = agent_content(&trace, &Stats::of(&root), &agents, &agent, &document, &base);
+    let body = agent_content(
+        &trace,
+        &Stats::of(&root),
+        &agents,
+        &agent,
+        &document,
+        &base,
+        expanded(query.as_deref()),
+    );
     page(&headers, service, &viewer, &agent.title, &back, body)
 }
 
@@ -1862,7 +1845,6 @@ pub(crate) fn public_response(
     let mut response = UiPage::new(title.to_owned())
         .path(path)
         .description("An agent's work, step by step, shared from OpenAgents.")
-        .scriptless()
         .content(PageColumn::new(body))
         .respond(headers);
     response.headers_mut().insert(
@@ -1899,6 +1881,7 @@ async fn public_agent_page(
     State(app): State<App>,
     headers: HeaderMap,
     Path((id, agent_id)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
 ) -> Response {
     let store = &app.config.chat_store;
     let found = async {
@@ -1919,7 +1902,15 @@ async fn public_agent_page(
     match found.await {
         Ok(Some((trace, root, agent, document, agents))) => {
             let base = format!("{PUBLIC}/{id}");
-            let body = agent_content(&trace, &Stats::of(&root), &agents, &agent, &document, &base);
+            let body = agent_content(
+                &trace,
+                &Stats::of(&root),
+                &agents,
+                &agent,
+                &document,
+                &base,
+                expanded(query.as_deref()),
+            );
             public_response(
                 &headers,
                 &agent.title,
@@ -2012,6 +2003,7 @@ async fn public_page(
     State(app): State<App>,
     headers: HeaderMap,
     Path(id): Path<String>,
+    RawQuery(query): RawQuery,
 ) -> Response {
     let store = &app.config.chat_store;
     let found = async {
@@ -2025,7 +2017,7 @@ async fn public_page(
             &headers,
             &trace.title,
             &format!("{PUBLIC}/{id}"),
-            public_content(&trace, &document, &agents),
+            public_content(&trace, &document, &agents, expanded(query.as_deref())),
         ),
         Ok(None) => public_missing(),
         Err(error) => public_unavailable(&error),
@@ -2211,6 +2203,7 @@ mod tests {
             "https://openagents.com/trace/x",
             ("a", "b"),
             ("c", "d"),
+            false,
         )
         .into_string();
         crate::copy_guard::assert_plain(&format!("{PAGE}/x"), &page);
@@ -2226,12 +2219,13 @@ mod tests {
             "https://openagents.com/trace/x",
             ("a", "b"),
             ("c", "d"),
+            false,
         )
         .into_string();
         assert!(
             shared.contains(">Stop sharing<") && shared.contains("https://openagents.com/trace/x")
         );
-        let public = public_content(&summary, &document, &[]).into_string();
+        let public = public_content(&summary, &document, &[], false).into_string();
         crate::copy_guard::assert_plain("/trace/x", &public);
         assert!(!public.contains("Delete"));
     }
@@ -2411,6 +2405,7 @@ mod tests {
             "https://openagents.com/trace/x",
             ("a", "b"),
             ("c", "d"),
+            false,
         )
         .into_string();
         crate::copy_guard::assert_plain(&base, &page);
@@ -2431,9 +2426,10 @@ mod tests {
         assert_eq!(page.matches("<details class=\"oa-trace-node\"").count(), 2);
         // The call that started an agent links to it.
         assert!(page.contains(&format!(
-            "Started <a href=\"{base}/agents/{}\">Agent a</a>",
+            "<a class=\"oa-trace-step__row\" href=\"{base}/agents/{}\">",
             agents[0].id
         )));
+        assert!(page.contains("Started Agent a"), "{page}");
         let page = agent_content(
             &summary,
             &Stats::default(),
@@ -2441,6 +2437,7 @@ mod tests {
             &agents[3],
             &document,
             &format!("{PUBLIC}/{}", summary.id),
+            false,
         )
         .into_string();
         crate::copy_guard::assert_plain("/trace/x/agents/y", &page);
@@ -2451,7 +2448,7 @@ mod tests {
                 .count(),
             2
         );
-        let public = public_content(&summary, &document, &agents).into_string();
+        let public = public_content(&summary, &document, &agents, false).into_string();
         assert!(public.contains(&format!("{PUBLIC}/{}/agents/", summary.id)));
         assert!(!public.contains(PAGE));
         assert_eq!(duration_words(45_000), "45s");
