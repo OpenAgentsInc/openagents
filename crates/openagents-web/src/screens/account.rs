@@ -133,7 +133,12 @@ pub(crate) fn screens() -> Vec<Screen> {
             id: "projects",
             title: "Projects",
             group: Group::Page,
-            routes: &["/projects", "/projects/{id}", "/projects/{id}/sources", "/projects/join/{code}"],
+            routes: &[
+                "/projects",
+                "/projects/{id}",
+                "/projects/{id}/sources",
+                "/projects/join/{code}",
+            ],
             states: vec![
                 state("no-github", "No GitHub connection", projects_no_github),
                 state(

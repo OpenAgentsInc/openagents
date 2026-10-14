@@ -715,6 +715,78 @@ async fn members_see_the_projects_chats_and_each_sender_pays() {
             .iter()
             .any(|m| m.text == "Add milk.")
     );
+
+    // The same from the website's chat page: the form is signed for the
+    // member, and the reply is theirs to pay for.
+    for _ in 0..100 {
+        let chat = world
+            .store
+            .load(&owner_store, early)
+            .await
+            .unwrap()
+            .unwrap();
+        if chat.conversation.pending.is_none() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    let mut page_browser = Browser::default();
+    page_browser.sign_in(&world, "quiet-local").await;
+    let page = page_browser.get(&world, &format!("/chat/{early}")).await;
+    assert_eq!(page.status, StatusCode::OK);
+    assert!(page.body.contains("Plan the week."));
+    assert!(
+        !page.body.contains(&format!("/chat/{early}/delete")),
+        "no starter-only actions"
+    );
+    let token = chat_csrf(&page.body);
+    let sealed = {
+        let at = page.body.find("id=\"composer-state\"").unwrap();
+        let rest = &page.body[at..];
+        let rest = &rest[rest.find("value=\"").unwrap() + 7..];
+        rest[..rest.find('"').unwrap()].to_owned()
+    };
+    let before = payers.lock().unwrap().len();
+    let sent = page_browser
+        .post(
+            &world,
+            &format!("/chat/{early}"),
+            &[
+                ("q", "From the page."),
+                ("request_id", "6f0c3c40-6a7e-4f43-9d55-5a1f3f7c4b17"),
+                ("csrf", &token),
+                ("selection", &sealed),
+            ],
+        )
+        .await;
+    assert!(
+        sent.status.is_redirection() || sent.status == StatusCode::OK,
+        "{}: {}",
+        sent.status,
+        sent.body
+    );
+    let kept = world
+        .store
+        .load(&owner_store, early)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        kept.conversation
+            .messages
+            .iter()
+            .any(|m| m.text == "From the page.")
+    );
+    for _ in 0..100 {
+        if payers.lock().unwrap().len() > before {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert_eq!(
+        payers.lock().unwrap().last().cloned(),
+        Some(payer_of(&other_store))
+    );
     // The editor's own new chat shows to the owner.
     let theirs = "6f0c3c40-6a7e-4f43-9d55-5a1f3f7c4b16";
     let (status, body) = other

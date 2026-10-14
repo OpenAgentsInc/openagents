@@ -1142,7 +1142,7 @@ async fn show_page(app: &App, headers: &HeaderMap, id: &str, notice: Option<&Not
         None => Some(crate::composer_row::for_chat(&app, &headers, chat, false).await),
     };
     let dock = html! {
-        (ticket(&app, chat, false))
+        (ticket_for(&app, chat, &viewer, false))
         p #chat-feedback.oa-composer-feedback role="status" aria-live="polite" {}
     };
     let chips = crate::suggestions::reply_chips(&app, chat).await;
@@ -2085,9 +2085,14 @@ async fn accepted(app: &App, headers: &HeaderMap, chat: &Conversation) -> Respon
             return response;
         }
 
+        // The sender's own fields and list: a member replying in a shared
+        // project's chat isn't its starter (#11586).
+        let viewer = reader(app, headers)
+            .await
+            .unwrap_or_else(|| chat.owner.clone());
         crate::chat_html::protect(
             html! {
-                (ticket(app,chat,true)) (chat_list(app,&chat.owner,Some(&chat.id),true,true).await)
+                (ticket_for(app,chat,&viewer,true)) (chat_list(app,&viewer,Some(&chat.id),true,true).await)
                 div #chat-form-status.oa-composer-status role="status" aria-live="polite" hx-swap-oob="true" {}
             }
                 .into_response(),
@@ -2679,13 +2684,19 @@ fn row_status(chat: &Conversation) -> Option<ChatStatus> {
 /// The chat's hidden composer fields. With `oob` they replace the page's
 /// copies.
 pub(crate) fn ticket(app: &App, chat: &Conversation, oob: bool) -> Markup {
+    ticket_for(app, chat, &chat.owner, oob)
+}
+
+/// [`ticket`] signed for `sender`: a member replying in a shared project's
+/// chat someone else started sends as themselves (#11586).
+pub(crate) fn ticket_for(app: &App, chat: &Conversation, sender: &str, oob: bool) -> Markup {
     let selection = chat.selection.clone().unwrap_or_default();
     html! { div #chat-ticket hx-swap-oob=[oob.then_some("outerHTML")] {
         input type="hidden" id="chat-selected" name="chat" value=(chat.id) form="chat-form";
         input type="hidden" name="request_id" value=(new_id()) form="chat-form";
-        input type="hidden" name="csrf" value=(csrf(app,&chat.owner)) form="chat-form";
+        input type="hidden" name="csrf" value=(csrf(app,sender)) form="chat-form";
 
-    } (crate::composer::state_field(app, &chat.owner, &selection, oob)) }
+    } (crate::composer::state_field(app, sender, &selection, oob)) }
 }
 
 /// The thread, its suggestion chips, and the scroll-to-bottom button over
