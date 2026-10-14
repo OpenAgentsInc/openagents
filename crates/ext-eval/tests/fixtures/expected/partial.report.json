@@ -2,7 +2,7 @@
   "v": "openagents.eval-report.v1",
   "requires": [],
   "suite": {
-    "digest": "sha256:0de3056d7c225bdeb7e672b31056d152bd0d94fa8f00a6fe7eec8ceb3cfc757e",
+    "digest": "sha256:7de26af9a2ce888afb100d7896c1411ece1e5079ed99d441ef12f78bad8b53a1",
     "size": 1783,
     "media_type": "application/json",
     "schema": "openagents.eval-suite.v1"
@@ -548,9 +548,9 @@
         "host": null,
         "door": "fixture-door",
         "model": null,
-        "agent": "ext-eval@0.1.0",
+        "agent": "ext-eval@VERSION",
         "selector": "fake-decision",
-        "graders": "ext-eval@0.1.0"
+        "graders": "ext-eval@VERSION"
       },
       "identity": "content"
     }

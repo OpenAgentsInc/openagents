@@ -16,11 +16,22 @@ fn run(name: &str) -> Evaluation {
     let scenario = common::scenario(name);
     let (gate, gate_file) = load_gate().expect("the committed gate loads");
     let door = common::decision_door();
+    // The default environment names this crate's version, and the suite
+    // records its digest, so every digest above it would change at each
+    // release bump. The fixtures name the engine without one (#11623).
+    let identity = ext_eval::Identity {
+        environment: Some(serde_json::json!({
+            "v": "openagents.ext-eval-environment.v1",
+            "requires": [],
+            "engine": "ext-eval VERSION",
+        })),
+        ..common::identity()
+    };
     evaluate(
         &common::suite(),
         &common::plan(scenario.runs),
         scenario.records,
-        &common::identity(),
+        &identity,
         (&gate, &gate_file),
         Doors {
             decision: Some(&door),
@@ -34,14 +45,28 @@ fn bless() -> bool {
     std::env::var_os("EXT_EVAL_BLESS").is_some()
 }
 
+/// The engine's version, as the report records it (`ext-eval@1.2.3`,
+/// `ext-eval 1.2.3`), becomes `VERSION`, so the expected files don't go
+/// stale at every release bump (#11623).
+fn without_version(bytes: &[u8]) -> Vec<u8> {
+    let version = env!("CARGO_PKG_VERSION");
+    String::from_utf8_lossy(bytes)
+        .replace(&format!("ext-eval@{version}"), "ext-eval@VERSION")
+        .replace(&format!("ext-eval {version}"), "ext-eval VERSION")
+        .into_bytes()
+}
+
 /// Compares `actual` with the committed expected file, or rewrites it.
+/// The engine's version is compared as `VERSION` ([`without_version`]).
 fn expect_file(name: &str, actual: &[u8]) {
+    let actual = &without_version(actual)[..];
     let path = common::fixtures().join("expected").join(name);
     if bless() {
         std::fs::write(&path, actual).expect("the expected file writes");
         return;
     }
     let expected = std::fs::read(&path)
+        .map(|bytes| without_version(&bytes))
         .unwrap_or_else(|error| panic!("{}: {error}; run with EXT_EVAL_BLESS=1", path.display()));
     assert!(
         expected == actual,
@@ -373,7 +398,16 @@ fn another_gate_is_refused() {
 #[test]
 fn the_html_is_self_contained() {
     let evaluation = run("better");
-    let html = &evaluation.html;
+    // The page carries Paper Mono inline, as a data: URL; that is the one
+    // `url(` it may hold. The font's bytes stay out of the expected file.
+    let font = paper_mono::font_face_inline();
+    assert!(evaluation.html.contains(&font));
+    // The report's digest covers the engine's version, so the expected
+    // file names it without its hex (#11623).
+    let html = &evaluation
+        .html
+        .replace(&font, "/* Paper Mono */")
+        .replace(&evaluation.report_ref.digest, "sha256:REPORT");
     for forbidden in [
         "http://", "https://", "//cdn", "<script", "<link", "<img", "<iframe", "@import", "url(",
         " src=",
