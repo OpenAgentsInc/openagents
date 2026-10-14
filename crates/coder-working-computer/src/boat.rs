@@ -517,10 +517,12 @@ impl Provider for BoatProvider {
             Ok(u) => Outcome::done(Meter {
                 running: u.running,
                 evidence: format!("seconds={} dollars={}", u.seconds, u.dollars),
+                seconds: u64::try_from(u.seconds).ok(),
             }),
             Err(e) if status(&e) == Some(404) => Outcome::done(Meter {
                 running: false,
                 evidence: "sandbox gone".into(),
+                seconds: None,
             }),
             Err(e) => Outcome::unknown(format!("usage: {e}")),
         }

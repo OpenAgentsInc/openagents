@@ -1608,10 +1608,56 @@ fi
         let t = req.timeout_seconds.unwrap_or(600).clamp(1, 3600);
         let q = boat::shell_quote(&req.command);
         format!(
-            "{}{}if command -v timeout >/dev/null 2>&1; then timeout -k 5 {t} bash -c {q}; else bash -c {q}; fi\nc=$?\nprintf '\\037OA-BOAT-EXIT %d\\n' \"$c\" >&2\nexit 0\n",
+            "{}{}{}if command -v timeout >/dev/null 2>&1; then timeout -k 5 {t} bash -c {q}; else bash -c {q}; fi\nc=$?\nprintf '\\037OA-BOAT-EXIT %d\\n' \"$c\" >&2\nexit 0\n",
             self.prelude(),
+            Self::stdin_env(req),
             Self::cd(req.cwd.as_deref()),
         )
+    }
+
+    /// The per-command environment a caller sent in `env` (#11624): read
+    /// from this script's standard input and exported for this command
+    /// only. It is never written to the VM's disk or to the per-boot env.
+    fn stdin_env(req: &CommandRequest) -> &'static str {
+        if req.extra.get("env").is_some() {
+            "set -a\n. /dev/stdin\nset +a\n"
+        } else {
+            ""
+        }
+    }
+
+    /// The `env` object of a command request as shell assignments, the
+    /// script's standard input. Empty when there is none.
+    fn command_env(req: &CommandRequest) -> Res<Vec<u8>> {
+        let Some(env) = req.extra.get("env") else {
+            return Ok(Vec::new());
+        };
+        let Some(map) = env.as_object() else {
+            return Err(ApiErr::new(
+                400,
+                "invalid_env",
+                "A command's env is an object of strings.",
+            ));
+        };
+        let mut vars = BTreeMap::new();
+        for (k, v) in map {
+            let Some(v) = v.as_str() else {
+                return Err(ApiErr::new(
+                    400,
+                    "invalid_env",
+                    "A command's env is an object of strings.",
+                ));
+            };
+            vars.insert(k.clone(), v.to_owned());
+        }
+        let text = env_file(&vars, "command")?;
+        // The sandbox ID line env_file adds is the per-boot one's job.
+        Ok(text
+            .split_once('\n')
+            .map(|(_, rest)| rest)
+            .unwrap_or_default()
+            .as_bytes()
+            .to_vec())
     }
 
     fn detached_script(&self, req: &CommandRequest) -> String {
@@ -1620,8 +1666,9 @@ fi
             r#"p=$$; d="$HOME/.oa-boat/proc/$p"; mkdir -p "$d"; date -u +%s > "$d/start"; cat /proc/sys/kernel/random/boot_id > "$d/boot" 2>/dev/null; printf %s "$PWD" > "$d/cwd"; bash -c "$1" > "$d/out" 2> "$d/err" < /dev/null; c=$?; date -u +%s > "$d/end"; echo "$c" > "$d/exit.tmp"; mv "$d/exit.tmp" "$d/exit""#,
         );
         format!(
-            "{}mkdir -p \"$HOME/.oa-boat/proc\"\n{}if command -v setsid >/dev/null 2>&1; then s=setsid; else s=; fi\n$s nohup bash -c {wrapper} oa-boat {q} >/dev/null 2>&1 </dev/null &\np=$!\ni=0; while [ ! -d \"$HOME/.oa-boat/proc/$p\" ] && [ $i -lt 100 ]; do sleep 0.05; i=$((i+1)); done\necho \"$p\"\necho \"$HOME\"\n",
+            "{}{}mkdir -p \"$HOME/.oa-boat/proc\"\n{}if command -v setsid >/dev/null 2>&1; then s=setsid; else s=; fi\n$s nohup bash -c {wrapper} oa-boat {q} >/dev/null 2>&1 </dev/null &\np=$!\ni=0; while [ ! -d \"$HOME/.oa-boat/proc/$p\" ] && [ $i -lt 100 ]; do sleep 0.05; i=$((i+1)); done\necho \"$p\"\necho \"$HOME\"\n",
             self.prelude(),
+            Self::stdin_env(req),
             Self::cd(req.cwd.as_deref()),
         )
     }
@@ -1629,6 +1676,14 @@ fi
     pub async fn command(self: &Arc<Self>, id: &str, req: CommandRequest) -> Res<Reply> {
         if req.command.trim().is_empty() {
             return Err(ApiErr::new(400, "invalid_command", "The command is empty."));
+        }
+        let stdin = Self::command_env(&req)?;
+        if !stdin.is_empty() && req.stream == Some(true) {
+            return Err(ApiErr::new(
+                400,
+                "invalid_env",
+                "A streamed command cannot take env; run it synchronously or detached.",
+            ));
         }
         let (suffix, ip) = self.ready_vm(id).await?;
         let started = time::format(time::now());
@@ -1638,7 +1693,7 @@ fi
                 .run(
                     &ip,
                     &self.detached_script(&req),
-                    vec![],
+                    stdin,
                     Duration::from_secs(60),
                     4096,
                 )
@@ -1745,7 +1800,7 @@ fi
         }
         let o = self
             .remote
-            .run(&ip, &self.sync_script(&req), vec![], limit, OUTPUT_CAP)
+            .run(&ip, &self.sync_script(&req), stdin, limit, OUTPUT_CAP)
             .await;
         self.touch(&suffix);
         let (stderr, exit) = take_exit(&o.stderr_with_tail());

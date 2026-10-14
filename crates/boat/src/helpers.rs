@@ -389,3 +389,24 @@ impl EventStream {
             .await
     }
 }
+
+impl Client {
+    /// `GET /capabilities`: an OpenAgents extension served by `oa-boat`
+    /// (`computer-driver`), naming the driver and the conformance profiles
+    /// it declares. Hosted Boat does not serve it.
+    pub async fn capabilities(&self) -> Result<serde_json::Value> {
+        let path = self.path(&["capabilities"])?;
+        self.json(
+            crate::client::Op {
+                retry: crate::client::Retry::Read,
+                org: false,
+            },
+            reqwest::Method::GET,
+            path,
+            &[],
+            &[],
+            None,
+        )
+        .await
+    }
+}

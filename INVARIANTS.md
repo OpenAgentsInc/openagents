@@ -276,6 +276,17 @@ path, limits, and refusals are in `docs/coder/runtime/cloud-fallback.md`.
 | The cloud is always the last provider in Microcoder's lineup, so a host with no provider configured still answers a turn through it, and a host with a provider that has capacity never spends the cloud's quota: a signed-in Claude Code or Codex CLI is chosen over Microcoder on the cloud, and an own door key takes the cloud off the lineup. | New on 2026-09-28. | `the_cloud_is_always_the_last_provider_and_needs_no_configuration`, `the_cloud_answers_only_when_nothing_on_the_host_can`, `a_fresh_host_completes_a_turn_through_the_cloud_fallback` in `crates/coder` |
 | The cloud worker's `rate_limited`, `busy`, and `quota_exhausted` are capacity refusals held until the worker's `retry_after_ms` (else one minute, one minute, and the next UTC midnight), so the loop fails over and the no-capacity sentence names the reset; any other refusal is the step's plain error and holds nothing. | New on 2026-09-28. | `the_cloud_worker_codes_are_capacity_refusals_with_their_waits` in `crates/microcoder-loop`; `a_quota_refusal_is_a_typed_capacity_refusal_with_its_wait`, `a_rate_limit_holds_a_minute_and_a_too_large_step_is_only_an_error`, `a_cloud_refusal_mid_turn_is_recorded_and_the_next_provider_finishes` in `crates/coder` |
 
+## Computer drivers
+
+Every computer backend is a `computer-driver` driver; the design is
+`docs/research/factory/README.md`, "Our version, now" (#11624).
+
+| Invariant | Status | Checked by |
+| --- | --- | --- |
+| A driver declares its conformance profiles (Core always; Suspend, Snapshot, Fork optional) and a request needing an undeclared profile is refused before any state is written: callers check with `computer_driver::admit`, and the driver itself answers an undeclared operation with a definite `Failed` ("unsupported") that changes nothing. The chat lifecycle (`coder_working_computer::on_driver`) needs Core and Suspend and refuses any other driver up front. | New on 2026-10-14 ([#11624](https://github.com/OpenAgentsInc/openagents/issues/11624)). | `admit_refuses_an_undeclared_profile_by_name` in `crates/computer-driver`; `a_core_only_driver_refuses_the_rest_without_changing_anything`, `a_driver_that_lies_about_a_profile_fails_its_case` in `crates/computer-conformance/tests/fake.rs`; `a_driver_without_suspend_is_refused_up_front` in `crates/coder-working-computer/tests/on_driver.rs` |
+| A per-command secret (`Exec::secret_env`) reaches that one command's process environment and nothing else: not a later command, not a file in the computer, not the per-boot env. On `oa-boat` it travels in the command request's `env` and over the SSH channel's standard input. The value never prints (`Secret` debug is redacted) and is zeroed on drop. | New on 2026-10-14 ([#11624](https://github.com/OpenAgentsInc/openagents/issues/11624)). | conformance case "secrets reach one command only" (`crates/computer-conformance`), run against the fake driver and against `oa-boat` on loopback in `oa_boat_declares_every_profile_and_passes_them` (`crates/oa-boat/tests/conformance.rs`, which also scans every fake VM's disk for the secret); `a_secret_never_prints` in `crates/computer-driver` |
+| `oa-boat` serves `GET /api/v1/capabilities` and passes every conformance profile it declares (Core, Suspend, Snapshot, Fork). | New on 2026-10-14 ([#11624](https://github.com/OpenAgentsInc/openagents/issues/11624)). | `oa_boat_declares_every_profile_and_passes_them` in `crates/oa-boat/tests/conformance.rs` |
+
 ## Cloud pool SSH
 
 | Invariant | Status | Checked by |

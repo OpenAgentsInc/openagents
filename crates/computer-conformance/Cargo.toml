@@ -1,0 +1,19 @@
+[package]
+name = "computer-conformance"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Black-box conformance cases for computer drivers, per profile (Core, Suspend, Snapshot, Fork), as a library and a binary that takes a Boat endpoint."
+
+[dependencies]
+computer-driver = { path = "../computer-driver", features = ["boat"] }
+boat = { path = "../boat" }
+tokio = { version = "1", features = ["macros", "rt", "time"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time"] }
+
+[lints]
+workspace = true

@@ -317,6 +317,13 @@ async fn named_delete<C: Compute, R: Remote>(
     ok(s.delete_named(&name).await)
 }
 
+/// `GET /capabilities`: the driver declaration `computer-driver` reads
+/// (#11624). oa-boat supports all four profiles: create/observe/exec/files/
+/// meter/delete, stop and resume on the same disk, named snapshots, fork.
+async fn capabilities() -> Response {
+    axum::Json(crate::capabilities()).into_response()
+}
+
 async fn environments() -> Response {
     axum::Json(json!({"ok": true, "type": "environments", "environments": []})).into_response()
 }
@@ -338,6 +345,7 @@ async fn missing() -> Response {
 pub fn router<C: Compute, R: Remote>(service: Arc<Service<C, R>>, token: Token) -> Router {
     let v1 = Router::new()
         .route("/limits", get(limits::<C, R>))
+        .route("/capabilities", get(capabilities))
         .route("/environments", get(environments))
         .route("/sandboxes", get(list::<C, R>).post(create::<C, R>))
         .route(

@@ -30,9 +30,10 @@ run unchanged. Hosted Boat is now opt-in only (`BOAT_HOSTED=1`).
 | Boat operation | Here |
 | --- | --- |
 | `GET /limits` | active count against `OA_BOAT_MAX_ACTIVE` (50); no start budget |
+| `GET /capabilities` (ours) | the `computer-driver` declaration: driver `oa-boat`, profiles `core`, `suspend`, `snapshot`, `fork`, and the size classes with `default` first (#11624) |
 | `GET/POST /sandboxes`, `GET/PATCH/DELETE /sandboxes/{id}` | GCE instances. Create takes `type`, `ttlSeconds`, `env`, `from`, `setupScript`, `Idempotency-Key`, and our extras `provisioning` (`standard`/`spot`, or header `X-OA-Provisioning`) and `idleStopSeconds`. Delete needs `X-Ascii-Confirm-Delete` |
 | `POST /sandboxes/{id}/stop`, `resume`, `fork` | stop keeps the boot disk; resume starts the same VM with fresh `env`; fork copies the disk through a snapshot into a new VM |
-| `POST /sandboxes/{id}/commands` | synchronous, `stream: true` (NDJSON `started`/`stdout`/`stderr`/`exit`/`error`), or `detached: true` under `~/.oa-boat/proc/<pid>` |
+| `POST /sandboxes/{id}/commands` | synchronous, `stream: true` (NDJSON `started`/`stdout`/`stderr`/`exit`/`error`), or `detached: true` under `~/.oa-boat/proc/<pid>`. Our extra `env` (an object of strings) is a per-command secret: it goes to the command over the SSH channel's standard input and is exported for that one process, never written to the VM's disk or to the per-boot env file. Not with `stream: true` |
 | `GET /sandboxes/{id}/commands/{pid}` | status, exit code, output tails, log paths (so the SDK's follower works) |
 | `GET/PUT /sandboxes/{id}/files` | `cat` over SSH; utf8 or base64; 48 MiB per call |
 | `GET /sandboxes/{id}/usage` | run seconds and dollars, plus `dollarsPerHour`, `diskDollarsPerHour`, `totalDollarsPerHour`, `machineType`, `provisioning` |
@@ -134,6 +135,16 @@ Settings (environment): `OA_BOAT_ZONES`, `OA_BOAT_BASE_FAMILY`
 (`oa-coder-host`), `OA_BOAT_TTL_SECONDS` (3600), `OA_BOAT_IDLE_SECONDS`
 (1800), `OA_BOAT_PROVISIONING` (`standard`), `OA_BOAT_MAX_ACTIVE` (50),
 `OA_BOAT_MAX_RUN_SECONDS` (86400), `OA_BOAT_REAP_SECONDS` (60).
+
+## Conformance
+
+`oa-boat` is a `computer-driver` driver (`computer_driver::boat::BoatDriver`)
+and passes every profile of `computer-conformance`:
+`cargo test -p oa-boat --test conformance` runs the suite against this
+service on loopback (real HTTP and client, Compute Engine faked, each VM a
+local shell). Against a deployed instance:
+`BOAT_API_KEY=… cargo run -p computer-conformance -- --boat https://HOST/api/v1 --size small`
+(it deletes every computer and snapshot it makes).
 
 ## Limits and follow-ups
 

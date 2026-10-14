@@ -22,6 +22,10 @@ pub enum Trigger {
     Prompt,
     /// A timer or observer visit; no prompt is waiting.
     Tick,
+    /// Someone wants the computer up (a reconciler driving a "running"
+    /// intent, #11624): create or restore it like a prompt would, but
+    /// dispatch no turn.
+    Wake,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -106,11 +110,13 @@ fn live_create(c: &Computer) -> Option<&CreateAttempt> {
 /// The next lifecycle effect for `trigger` at `now_ms`.
 pub fn decide(c: &Computer, trigger: Trigger, now_ms: u64) -> Decision {
     let prompt = trigger == Trigger::Prompt;
+    // Create and restore answer a prompt or a wake alike.
+    let wake = trigger != Trigger::Tick;
     let boot = c.boot();
     let absolute_passed = boot.is_some_and(|b| now_ms >= b.absolute_deadline_ms);
     match &c.phase {
         Phase::Deleted => Decision::Refuse("The computer was deleted.".into()),
-        Phase::New if prompt => Decision::Create {
+        Phase::New if wake => Decision::Create {
             operation: create_operation(c),
         },
         Phase::New => Decision::Skip,
@@ -159,6 +165,8 @@ pub fn decide(c: &Computer, trigger: Trigger, now_ms: u64) -> Decision {
                 Decision::Dispatch {
                     generation: c.turn.dispatched + 1,
                 }
+            } else if wake {
+                Decision::Skip
             } else if now_ms >= b.idle_deadline_ms {
                 Decision::Stop {
                     reason: StopReason::Idle,
@@ -193,9 +201,9 @@ pub fn decide(c: &Computer, trigger: Trigger, now_ms: u64) -> Decision {
         }
         Phase::Stopped => {
             let b = boot.expect("stopped has a boot");
-            if prompt && let Some(message) = breaker_message(c, now_ms) {
+            if wake && let Some(message) = breaker_message(c, now_ms) {
                 Decision::Refuse(message)
-            } else if prompt {
+            } else if wake {
                 Decision::Restore {
                     checkpoint: c.latest_checkpoint().map(|k| k.id.clone()),
                 }
@@ -225,10 +233,10 @@ pub fn decide(c: &Computer, trigger: Trigger, now_ms: u64) -> Decision {
         }
         Phase::Failed { .. } => {
             let Some(a) = live_create(c) else {
-                if prompt && let Some(message) = breaker_message(c, now_ms) {
+                if wake && let Some(message) = breaker_message(c, now_ms) {
                     return Decision::Refuse(message);
                 }
-                return if prompt {
+                return if wake {
                     Decision::Create {
                         operation: create_operation(c),
                     }

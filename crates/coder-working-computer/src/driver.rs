@@ -44,6 +44,25 @@ impl Settled {
 
 const MAX_STEPS: usize = 64;
 
+/// An exclusive hold on one computer's record: the file [`Lease`] here, a
+/// Postgres row lease in `oa-computers` (#11624). Every observation is
+/// retained through [`Held::apply`] before the next decision.
+#[allow(async_fn_in_trait)]
+pub trait Held {
+    async fn read(&self) -> Result<Computer>;
+    /// Apply one command and retain the result before returning it.
+    async fn apply(&self, command: &Command, now_ms: u64) -> Result<Computer>;
+}
+
+impl Held for Lease {
+    async fn read(&self) -> Result<Computer> {
+        Lease::read(self)
+    }
+    async fn apply(&self, command: &Command, now_ms: u64) -> Result<Computer> {
+        Lease::apply(self, command, now_ms)
+    }
+}
+
 pub struct Driver<P> {
     pub store: Store,
     pub provider: P,
@@ -59,260 +78,335 @@ impl<P: Provider> Driver<P> {
     /// dispatch the next generation.
     pub async fn prompt(&self, id: &str, now_ms: u64) -> Result<Settled> {
         let lease = self.store.lease(id)?;
-        self.settle(&lease, Trigger::Prompt, now_ms).await
+        settle(&self.provider, &lease, Trigger::Prompt, now_ms).await
     }
 
     /// The dispatched turn completed: fence its checkpoint and take it
     /// before any queued prompt can run.
     pub async fn turn_finished(&self, id: &str, generation: u64, now_ms: u64) -> Result<Settled> {
         let lease = self.store.lease(id)?;
-        lease.apply(&Command::FinishTurn { generation }, now_ms)?;
-        self.settle(&lease, Trigger::Tick, now_ms).await
+        turn_finished(&self.provider, &lease, generation, now_ms).await
     }
 
     /// A timer or observer visit. `observed` extends the idle bound.
     pub async fn tick(&self, id: &str, observed: bool, now_ms: u64) -> Result<Settled> {
         let lease = self.store.lease(id)?;
-        if observed {
-            lease.apply(&Command::Observed, now_ms)?;
-        }
-        self.settle(&lease, Trigger::Tick, now_ms).await
+        tick(&self.provider, &lease, observed, now_ms).await
     }
 
     /// The running turn's owner is alive ([`HEARTBEAT_EVERY_MS`]). Refused
     /// when this generation's turn is not the one running.
     pub async fn heartbeat(&self, id: &str, generation: u64, now_ms: u64) -> Result<()> {
         let lease = self.store.lease(id)?;
-        lease.apply(&Command::Heartbeat { generation }, now_ms)?;
+        Held::apply(&lease, &Command::Heartbeat { generation }, now_ms).await?;
         Ok(())
     }
 
     /// Stop the computer now (owner request), keeping its checkpoint.
     pub async fn stop(&self, id: &str, now_ms: u64) -> Result<Settled> {
         let lease = self.store.lease(id)?;
-        let c = lease.read()?;
-        if matches!(
-            c.phase,
-            Phase::Awake | Phase::Turn { .. } | Phase::Booting | Phase::Checkpointing { .. }
-        ) {
-            lease.apply(
-                &Command::RequestStop {
-                    reason: StopReason::Owner,
-                },
-                now_ms,
-            )?;
-        }
-        self.settle(&lease, Trigger::Tick, now_ms).await
+        stop(&self.provider, &lease, now_ms).await
     }
 
     /// Delete the computer: stop it, check the meter, delete the resource.
     pub async fn delete(&self, id: &str, now_ms: u64) -> Result<Settled> {
         let lease = self.store.lease(id)?;
-        let c = lease.read()?;
-        if matches!(
-            c.phase,
-            Phase::Awake | Phase::Turn { .. } | Phase::Booting | Phase::Checkpointing { .. }
-        ) {
-            lease.apply(
+        delete(&self.provider, &lease, now_ms).await
+    }
+}
+
+/// [`Driver::turn_finished`] on any held record.
+pub async fn turn_finished<P: Provider, H: Held>(
+    provider: &P,
+    lease: &H,
+    generation: u64,
+    now_ms: u64,
+) -> Result<Settled> {
+    lease
+        .apply(&Command::FinishTurn { generation }, now_ms)
+        .await?;
+    settle(provider, lease, Trigger::Tick, now_ms).await
+}
+
+/// [`Driver::tick`] on any held record.
+pub async fn tick<P: Provider, H: Held>(
+    provider: &P,
+    lease: &H,
+    observed: bool,
+    now_ms: u64,
+) -> Result<Settled> {
+    if observed {
+        lease.apply(&Command::Observed, now_ms).await?;
+    }
+    settle(provider, lease, Trigger::Tick, now_ms).await
+}
+
+fn running(c: &Computer) -> bool {
+    matches!(
+        c.phase,
+        Phase::Awake | Phase::Turn { .. } | Phase::Booting | Phase::Checkpointing { .. }
+    )
+}
+
+/// [`Driver::stop`] on any held record.
+pub async fn stop<P: Provider, H: Held>(provider: &P, lease: &H, now_ms: u64) -> Result<Settled> {
+    let c = lease.read().await?;
+    if running(&c) {
+        lease
+            .apply(
                 &Command::RequestStop {
                     reason: StopReason::Owner,
                 },
                 now_ms,
-            )?;
-        }
-        let settled = self.settle(&lease, Trigger::Tick, now_ms).await?;
-        let c = settled.computer();
-        if !matches!(c.phase, Phase::Stopped | Phase::Failed { .. } | Phase::New) {
-            return Ok(settled);
-        }
-        lease.apply(&Command::RequestDelete, now_ms)?;
-        self.settle(&lease, Trigger::Tick, now_ms).await
+            )
+            .await?;
     }
+    settle(provider, lease, Trigger::Tick, now_ms).await
+}
 
-    async fn settle(&self, lease: &Lease, trigger: Trigger, now: u64) -> Result<Settled> {
-        let mut last: Option<(Decision, Phase)> = None;
-        let mut boots = 0;
-        for _ in 0..MAX_STEPS {
-            let c = lease.read()?;
-            let d = decide(&c, trigger, now);
-            match d {
-                Decision::Skip => return Ok(Settled::Idle(c)),
-                Decision::Wait(reason) => return Ok(Settled::Waiting(reason, c)),
-                Decision::Refuse(m) => return Ok(Settled::Refused(m, c)),
-                Decision::Dispatch { generation } => {
-                    let computer = lease.apply(&Command::StartTurn { generation }, now)?;
-                    return Ok(Settled::Dispatch {
-                        generation,
-                        computer,
-                    });
-                }
-                _ => {}
-            }
-            let starts_boot = match &d {
-                Decision::Create { .. } => matches!(c.phase, Phase::New | Phase::Failed { .. }),
-                Decision::Restore { .. } => matches!(c.phase, Phase::Stopped),
-                _ => false,
-            };
-            if starts_boot {
-                if boots > 0 {
-                    return Ok(Settled::BootFailed(c));
-                }
-                boots += 1;
-            }
-            let key = (d, c.phase.clone());
-            if last.as_ref() == Some(&key) {
-                return Ok(Settled::Stuck(key.0, c));
-            }
-            self.execute(lease, &c, &key.0, now).await?;
-            last = Some(key);
-        }
-        Err(StoreError::Io("The computer did not settle."))
+/// [`Driver::delete`] on any held record.
+pub async fn delete<P: Provider, H: Held>(provider: &P, lease: &H, now_ms: u64) -> Result<Settled> {
+    let c = lease.read().await?;
+    if matches!(c.phase, Phase::Deleted) {
+        return Ok(Settled::Idle(c));
     }
+    if running(&c) {
+        lease
+            .apply(
+                &Command::RequestStop {
+                    reason: StopReason::Owner,
+                },
+                now_ms,
+            )
+            .await?;
+    }
+    let settled = settle(provider, lease, Trigger::Tick, now_ms).await?;
+    let c = settled.computer();
+    if !matches!(c.phase, Phase::Stopped | Phase::Failed { .. } | Phase::New) {
+        return Ok(settled);
+    }
+    lease.apply(&Command::RequestDelete, now_ms).await?;
+    settle(provider, lease, Trigger::Tick, now_ms).await
+}
 
-    async fn execute(&self, lease: &Lease, c: &Computer, d: &Decision, now: u64) -> Result<()> {
-        let p = &self.provider;
-        let resource = |c: &Computer| -> Result<String> {
-            c.resource()
-                .map(str::to_owned)
-                .ok_or(StoreError::Refused(Refusal::NoResource))
-        };
+/// Decide, perform one effect, retain its observation, and decide again
+/// until there is nothing more to do now.
+pub async fn settle<P: Provider, H: Held>(
+    provider: &P,
+    lease: &H,
+    trigger: Trigger,
+    now: u64,
+) -> Result<Settled> {
+    let mut last: Option<(Decision, Phase)> = None;
+    let mut boots = 0;
+    for _ in 0..MAX_STEPS {
+        let c = lease.read().await?;
+        let d = decide(&c, trigger, now);
         match d {
-            Decision::Create { operation } => {
-                if !matches!(c.phase, Phase::Creating | Phase::Unknown { .. }) {
-                    lease.apply(
+            Decision::Skip => return Ok(Settled::Idle(c)),
+            Decision::Wait(reason) => return Ok(Settled::Waiting(reason, c)),
+            Decision::Refuse(m) => return Ok(Settled::Refused(m, c)),
+            Decision::Dispatch { generation } => {
+                let computer = lease.apply(&Command::StartTurn { generation }, now).await?;
+                return Ok(Settled::Dispatch {
+                    generation,
+                    computer,
+                });
+            }
+            _ => {}
+        }
+        let starts_boot = match &d {
+            Decision::Create { .. } => matches!(c.phase, Phase::New | Phase::Failed { .. }),
+            Decision::Restore { .. } => matches!(c.phase, Phase::Stopped),
+            _ => false,
+        };
+        if starts_boot {
+            if boots > 0 {
+                return Ok(Settled::BootFailed(c));
+            }
+            boots += 1;
+        }
+        let key = (d, c.phase.clone());
+        if last.as_ref() == Some(&key) {
+            return Ok(Settled::Stuck(key.0, c));
+        }
+        execute(provider, lease, &c, &key.0, now).await?;
+        last = Some(key);
+    }
+    Err(StoreError::Io("The computer did not settle."))
+}
+
+pub(crate) async fn execute<P: Provider, H: Held>(
+    p: &P,
+    lease: &H,
+    c: &Computer,
+    d: &Decision,
+    now: u64,
+) -> Result<()> {
+    let resource = |c: &Computer| -> Result<String> {
+        c.resource()
+            .map(str::to_owned)
+            .ok_or(StoreError::Refused(Refusal::NoResource))
+    };
+    match d {
+        Decision::Create { operation } => {
+            if !matches!(c.phase, Phase::Creating | Phase::Unknown { .. }) {
+                lease
+                    .apply(
                         &Command::RequestCreate {
                             operation: operation.clone(),
                         },
                         now,
-                    )?;
-                }
-                let c = lease.read()?;
-                let outcome = p.create(&c, operation).await;
-                lease.apply(
+                    )
+                    .await?;
+            }
+            let c = lease.read().await?;
+            let outcome = p.create(&c, operation).await;
+            lease
+                .apply(
                     &Command::ObserveCreate {
                         operation: operation.clone(),
                         outcome,
                     },
                     now,
-                )?;
-            }
-            Decision::Restore { checkpoint } => {
-                let c = if matches!(c.phase, Phase::Stopped) {
-                    lease.apply(
+                )
+                .await?;
+        }
+        Decision::Restore { checkpoint } => {
+            let c = if matches!(c.phase, Phase::Stopped) {
+                lease
+                    .apply(
                         &Command::RequestRestore {
                             checkpoint: checkpoint.clone(),
                         },
                         now,
-                    )?
-                } else {
-                    c.clone()
-                };
-                let boot = c.boot().expect("restore boot").number;
-                let k = checkpoint
-                    .as_ref()
-                    .and_then(|id| c.checkpoints.iter().find(|k| &k.id == id));
-                let outcome = p.restore(&c, &resource(&c)?, k).await;
-                lease.apply(&Command::ObserveRestore { boot, outcome }, now)?;
-            }
-            Decision::ApplyCredentials { boot } => {
-                let outcome = p.apply_credentials(c, &resource(c)?).await;
-                lease.apply(
+                    )
+                    .await?
+            } else {
+                c.clone()
+            };
+            let boot = c.boot().expect("restore boot").number;
+            let k = checkpoint
+                .as_ref()
+                .and_then(|id| c.checkpoints.iter().find(|k| &k.id == id));
+            let outcome = p.restore(&c, &resource(&c)?, k).await;
+            lease
+                .apply(&Command::ObserveRestore { boot, outcome }, now)
+                .await?;
+        }
+        Decision::ApplyCredentials { boot } => {
+            let outcome = p.apply_credentials(c, &resource(c)?).await;
+            lease
+                .apply(
                     &Command::ObserveCredentials {
                         boot: *boot,
                         outcome,
                     },
                     now,
-                )?;
-            }
-            Decision::StartService { boot, name } => {
-                let s = c
-                    .services
-                    .iter()
-                    .find(|s| &s.name == name)
-                    .expect("declared");
-                let outcome = p.start_service(c, &resource(c)?, s).await;
-                lease.apply(
+                )
+                .await?;
+        }
+        Decision::StartService { boot, name } => {
+            let s = c
+                .services
+                .iter()
+                .find(|s| &s.name == name)
+                .expect("declared");
+            let outcome = p.start_service(c, &resource(c)?, s).await;
+            lease
+                .apply(
                     &Command::ObserveService {
                         boot: *boot,
                         name: name.clone(),
                         outcome,
                     },
                     now,
-                )?;
-            }
-            Decision::Checkpoint { generation } => {
-                let outcome = p.checkpoint(c, &resource(c)?, *generation).await;
-                lease.apply(
+                )
+                .await?;
+        }
+        Decision::Checkpoint { generation } => {
+            let outcome = p.checkpoint(c, &resource(c)?, *generation).await;
+            lease
+                .apply(
                     &Command::ObserveCheckpoint {
                         generation: *generation,
                         outcome,
                     },
                     now,
-                )?;
-            }
-            Decision::Stop { reason } => {
-                lease.apply(&Command::RequestStop { reason: *reason }, now)?;
-            }
-            Decision::ShutdownProcesses { boot } => {
-                let outcome = p.shutdown_processes(c, &resource(c)?).await;
-                lease.apply(
+                )
+                .await?;
+        }
+        Decision::Stop { reason } => {
+            lease
+                .apply(&Command::RequestStop { reason: *reason }, now)
+                .await?;
+        }
+        Decision::ShutdownProcesses { boot } => {
+            let outcome = p.shutdown_processes(c, &resource(c)?).await;
+            lease
+                .apply(
                     &Command::ObserveShutdown {
                         boot: *boot,
                         outcome,
                     },
                     now,
-                )?;
-            }
-            Decision::StopResource { boot } => {
-                let outcome = p.stop(c, &resource(c)?).await;
-                lease.apply(
+                )
+                .await?;
+        }
+        Decision::StopResource { boot } => {
+            let outcome = p.stop(c, &resource(c)?).await;
+            lease
+                .apply(
                     &Command::ObserveStop {
                         boot: *boot,
                         outcome,
                     },
                     now,
-                )?;
-            }
-            Decision::CheckMeter { boot } => {
-                let outcome = p.meter(c, &resource(c)?).await;
-                lease.apply(
+                )
+                .await?;
+        }
+        Decision::CheckMeter { boot } => {
+            let outcome = p.meter(c, &resource(c)?).await;
+            lease
+                .apply(
                     &Command::ObserveMeter {
                         boot: *boot,
                         outcome,
                     },
                     now,
-                )?;
+                )
+                .await?;
+        }
+        Decision::DeleteResource { operation } => {
+            let requested = c
+                .creates
+                .iter()
+                .any(|a| &a.operation == operation && a.deletion.is_some());
+            if !requested {
+                lease.apply(&Command::RequestDeleteResource, now).await?;
             }
-            Decision::DeleteResource { operation } => {
-                let requested = c
-                    .creates
-                    .iter()
-                    .any(|a| &a.operation == operation && a.deletion.is_some());
-                if !requested {
-                    lease.apply(&Command::RequestDeleteResource, now)?;
-                }
-                let c = lease.read()?;
-                let outcome = p.delete(&c, &resource(&c)?).await;
-                lease.apply(
+            let c = lease.read().await?;
+            let outcome = p.delete(&c, &resource(&c)?).await;
+            lease
+                .apply(
                     &Command::ObserveDeleteResource {
                         operation: operation.clone(),
                         outcome,
                     },
                     now,
-                )?;
-            }
-            Decision::Inspect => {
-                let outcome = match c.resource() {
-                    Some(r) => p.inspect(c, r).await,
-                    None => Outcome::failed("no resource to inspect"),
-                };
-                lease.apply(&Command::ObserveInspection { outcome }, now)?;
-            }
-            Decision::Skip
-            | Decision::Wait(_)
-            | Decision::Refuse(_)
-            | Decision::Dispatch { .. } => {}
+                )
+                .await?;
         }
-        Ok(())
+        Decision::Inspect => {
+            let outcome = match c.resource() {
+                Some(r) => p.inspect(c, r).await,
+                None => Outcome::failed("no resource to inspect"),
+            };
+            lease
+                .apply(&Command::ObserveInspection { outcome }, now)
+                .await?;
+        }
+        Decision::Skip | Decision::Wait(_) | Decision::Refuse(_) | Decision::Dispatch { .. } => {}
     }
+    Ok(())
 }

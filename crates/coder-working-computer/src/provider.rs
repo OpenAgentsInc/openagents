@@ -11,8 +11,13 @@
 
 use crate::{Checkpoint, Computer, ServiceDecl};
 use coder_environment::{ImagePin, Provider as ProviderKind};
-use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+/// The driver contract's shared value types (#11624). They live in
+/// `computer-driver`, the one contract every backend implements; this
+/// trait is the chat lifecycle's view of a driver.
+pub use computer_driver::{
+    CheckpointEvidence, CommandCursor, CommandProgress, CommandRead, CommandSpec, ImageRecord,
+    ImageState, Inspection, Meter, Outcome,
+};
 
 /// Reads a selected credential's current value when it is applied. A
 /// provider holding one re-reads values when it applies them (GCE: before
@@ -35,65 +40,6 @@ pub fn resolve_from(dir: Option<std::path::PathBuf>) -> Resolve {
         });
         from_file.or_else(|| std::env::var(name).ok())
     })
-}
-
-/// One command, identified before it is started. The provider runs a given
-/// `id` at most once on a resource: repeating a start with the same `id`
-/// never runs the command again, so a lost start reply can be retried
-/// safely after a read reports it [`CommandProgress::Absent`].
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct CommandSpec {
-    pub id: String,
-    /// Exact shell text, run with `sh -c`.
-    pub command: String,
-    /// Source-relative working directory.
-    pub cwd: String,
-    /// The only computer credentials this command may see, by name. Every
-    /// other selected credential is removed from its environment.
-    pub credential_names: BTreeSet<String>,
-    /// Additional non-secret environment (for example ephemeral Git auth
-    /// configuration that names a credential variable, never its value).
-    pub env: BTreeMap<String, String>,
-    pub timeout_seconds: u64,
-    /// Digest of everything above; a read reports it back so a reconciled
-    /// command is proven to be this one.
-    pub digest: String,
-}
-
-/// Bytes of each output stream already delivered.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct CommandCursor {
-    pub stdout: u64,
-    pub stderr: u64,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
-pub enum CommandProgress {
-    /// No command with this identity ever started on the resource.
-    Absent,
-    Running,
-    Exited {
-        code: i64,
-    },
-    /// The process is gone without a recorded exit (machine stopped or
-    /// restarted underneath it).
-    Lost,
-}
-
-/// One read of a command: its state first, then output from the cursor.
-/// When `progress` is `Exited`, the bytes are the end of the output.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct CommandRead {
-    pub progress: CommandProgress,
-    /// The spec digest the provider retained for this identity.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub digest: Option<String>,
-    pub stdout: Vec<u8>,
-    pub stderr: Vec<u8>,
 }
 
 /// Identified commands on a provider resource.
@@ -120,32 +66,6 @@ pub trait Commands: Provider {
     async fn stop_command(&self, computer: &Computer, resource: &str, id: &str) -> Outcome<String>;
 }
 
-/// A provider's readiness for a captured image. Exit codes and request
-/// acknowledgements are not readiness: only `Ready` with an immutable
-/// snapshot identity is.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
-pub enum ImageState {
-    Pending,
-    Ready,
-    Failed { reason: String },
-}
-
-/// One captured output image under an owned name.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ImageRecord {
-    pub name: String,
-    /// The resource the provider captured it from.
-    pub source: String,
-    pub state: ImageState,
-    /// The immutable snapshot behind the name, once known.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub snapshot: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub size_bytes: Option<u64>,
-}
-
 /// Immutable output images for a dedicated builder (ENV-04). There is no
 /// replace or rename: a name, once captured, always means the same
 /// snapshot. An image nothing will use again can be deleted; its name is
@@ -170,70 +90,6 @@ pub trait Images: Provider {
     /// Delete the image named `name`. `Done(false)` when the provider has
     /// none by that name.
     async fn delete_image(&self, name: &str) -> Outcome<bool>;
-}
-
-/// The result of one provider effect.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Outcome<T> {
-    Done {
-        value: T,
-    },
-    /// The provider definitely did not perform the effect.
-    Failed {
-        reason: String,
-    },
-    /// The owner could not learn whether the effect happened.
-    Unknown {
-        reason: String,
-    },
-}
-impl<T> Outcome<T> {
-    pub fn done(value: T) -> Self {
-        Self::Done { value }
-    }
-    pub fn failed(reason: impl Into<String>) -> Self {
-        Self::Failed {
-            reason: reason.into(),
-        }
-    }
-    pub fn unknown(reason: impl Into<String>) -> Self {
-        Self::Unknown {
-            reason: reason.into(),
-        }
-    }
-}
-
-/// A completed filesystem checkpoint: provider snapshot identity only, never
-/// file contents or credential values.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct CheckpointEvidence {
-    pub snapshot: String,
-    /// The provider stop operation when the checkpoint quiesced by stopping
-    /// the resource (Boat). `None` leaves the resource running.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stopped: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Meter {
-    pub running: bool,
-    pub evidence: String,
-}
-
-/// A read-only provider view used to reconcile an unknown outcome.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Inspection {
-    /// `None` when the provider reports the resource gone.
-    pub running: Option<bool>,
-    /// The completed stop operation, if the provider reports one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stop: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub latest_snapshot: Option<String>,
 }
 
 #[allow(async_fn_in_trait)]
@@ -807,6 +663,7 @@ pub mod fake {
                 Outcome::done(Meter {
                     running: m.meter_running,
                     evidence: format!("usage:{r}"),
+                    seconds: None,
                 })
             });
             Self::finish(inject, || out)

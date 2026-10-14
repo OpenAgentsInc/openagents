@@ -1,0 +1,25 @@
+[package]
+name = "computer-driver"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The one driver contract for every computer: Core, Suspend, Snapshot and Fork profiles, declared capabilities, refusal before state changes, and the in-memory and Boat drivers."
+
+[features]
+default = []
+# The Boat API driver (our oa-boat on GCE, or any Boat-shaped service).
+boat = ["dep:boat"]
+
+[dependencies]
+boat = { path = "../boat", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["process", "time", "io-util", "fs"] }
+zeroize = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "process", "time"] }
+
+[lints]
+workspace = true

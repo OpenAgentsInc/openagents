@@ -4009,6 +4009,7 @@ dependencies = [
  "boat",
  "coder-cloud",
  "coder-environment",
+ "computer-driver",
  "serde",
  "serde_json",
  "tempfile",
@@ -4165,6 +4166,27 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "workbench",
+]
+
+[[package]]
+name = "computer-conformance"
+version = "1.0.0-rc.13"
+dependencies = [
+ "boat",
+ "computer-driver",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "computer-driver"
+version = "1.0.0-rc.13"
+dependencies = [
+ "boat",
+ "serde",
+ "serde_json",
+ "tokio",
+ "zeroize",
 ]
 
 [[package]]
@@ -10475,6 +10497,8 @@ dependencies = [
  "base64 0.22.1",
  "boat",
  "bytes",
+ "computer-conformance",
+ "computer-driver",
  "futures-util",
  "hex",
  "rand 0.9.5",

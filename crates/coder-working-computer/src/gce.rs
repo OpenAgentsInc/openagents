@@ -1272,6 +1272,7 @@ impl<T: Compute> Provider for GceProvider<T> {
             Ok(None) => Outcome::done(Meter {
                 running: false,
                 evidence: "instance gone".into(),
+                seconds: None,
             }),
             Ok(Some(i)) => {
                 let disk = match self.compute.describe_disk(resource).await {
@@ -1288,6 +1289,7 @@ impl<T: Compute> Provider for GceProvider<T> {
                         i.last_start.as_deref().unwrap_or("-"),
                         i.last_stop.as_deref().unwrap_or("-"),
                     ),
+                    seconds: None,
                 })
             }
             Err(e) => Outcome::unknown(format!("usage: {}", e.message)),
@@ -1482,7 +1484,7 @@ impl<T: Compute> Images for GceProvider<T> {
         match self.instance(resource).await {
             Ok(i) if i.stopped() => {}
             Ok(_) => return Outcome::failed("The builder must be stopped before capture."),
-            Err(o) => return o.map_failed(),
+            Err(o) => return map_outcome(o),
         }
         let request = CreateImage {
             name: image_resource(name),
@@ -1554,7 +1556,7 @@ impl<T: Compute> Images for GceProvider<T> {
     async fn hydration(&self, c: &Computer, resource: &str) -> Outcome<bool> {
         let i = match self.instance(resource).await {
             Ok(i) => i,
-            Err(o) => return o.map_failed(),
+            Err(o) => return map_outcome(o),
         };
         if i.stopped() || i.status == "SUSPENDED" {
             return Outcome::failed(format!("the instance is {}", i.status));
@@ -1589,12 +1591,6 @@ impl<T: Compute> Images for GceProvider<T> {
             Ok(o) => Outcome::done(o.code == 0),
             Err(_) => Outcome::done(false),
         }
-    }
-}
-
-impl<T> Outcome<T> {
-    fn map_failed<U>(self) -> Outcome<U> {
-        map_outcome(self)
     }
 }
 

@@ -14,3 +14,11 @@ pub mod sizes;
 pub mod time;
 
 pub use service::{Config, Service};
+
+/// This service's driver declaration (`GET /api/v1/capabilities`, #11624):
+/// every conformance profile, and its size classes with the default first.
+pub fn capabilities() -> computer_driver::Capabilities {
+    let mut names: Vec<&str> = sizes::SIZES.iter().map(|s| s.name).collect();
+    names.sort_by_key(|n| *n != "default");
+    computer_driver::Capabilities::new("oa-boat", computer_driver::Profile::ALL, &names)
+}
