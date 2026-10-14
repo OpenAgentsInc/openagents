@@ -33,6 +33,8 @@ mod grove_tests;
 mod grove_tower_tests;
 #[cfg(test)]
 mod lab_tests;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod meteor_rover;
 pub mod meteor_showcase;
 #[cfg(test)]
 mod meteor_showcase_tests;
@@ -423,6 +425,10 @@ pub(crate) struct State {
     private_signer: Option<nostr::domain::RelaySigner>,
     #[cfg(not(target_arch = "wasm32"))]
     private_loader: Option<Box<everglade_pack::private_assets::PrivateLoader>>,
+    /// The CAD Lab rover on the Meteor Showcase's lot, when one stands there
+    /// ([`meteor_rover`]).
+    #[cfg(not(target_arch = "wasm32"))]
+    rover: Option<Box<meteor_rover::Rover>>,
 }
 impl Default for State {
     fn default() -> Self {
@@ -461,6 +467,8 @@ impl Default for State {
             private_signer: None,
             #[cfg(not(target_arch = "wasm32"))]
             private_loader: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            rover: None,
         }
     }
 }

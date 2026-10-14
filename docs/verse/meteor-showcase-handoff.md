@@ -311,3 +311,26 @@ since B3 (#10907), over its offline-baked layers.
 - Frame budgets:
   `~/.openagents/scratch/claude-code-d187dc74-0ea6-4000-9d57-3fe96d6cca18/live-before/capture.json`
   and `.../live-after/capture.json`.
+
+## The CAD Lab rover in the swarm (#11644)
+
+`verse::zones::meteor_rover` stands the rover built in CAD Lab (#11627) on
+the lawn in front of the houses: its own glTF and mass properties
+(`assets/verse/cad/rover.{glb,json}`, exported from CAD Lab rover v38) as 14
+rigid bodies in a `physics::World` of its own, the arms on hinges, the
+wheels, mast and solar wings on joints that break at a force or torque
+limit. Each meteor that lands near it pushes every part by its exposed area,
+falling off across the blast; one that lands on it also gives up its
+momentum (18 kg at 32 m/s). Sparks where a joint breaks and dust where a
+part lands hard come from the fx library (`scorch_embers`, `debris_dust`).
+`WorldRuntime::add_meteor_rover` and `stage_meteor_rover` set it up; the
+staged volley sends the third meteor onto the rover and the sixth beside it.
+Native only (the glTF is built into the binary).
+
+Film: `cargo run --release -p verse --example meteor_rover_capture -- OUT_DIR
+--video PATH` (with `VERSE_QUALITY=high`): establishing, low, tracking and
+aftermath shots, then the scene replayed from the start to just before the
+hardest hit and filmed four times slower. On 2026-10-14 the hardest hit came
+at 4.95 s (10.4 m/s); the wings, the mast and all six wheels broke off.
+Limits: the rover's parts collide with the ground only, not with each other
+or the houses' debris.

@@ -214,6 +214,49 @@ pub fn targets() -> Vec<Vec3> {
     ]
 }
 
+/// Where the CAD Lab rover stands ([`super::meteor_rover`]): on the lawn
+/// well in front of the houses, clear of where their debris falls, x and
+/// z, m.
+#[must_use]
+pub fn rover_at() -> [f32; 2] {
+    on_lot(-3.0, 24.0)
+}
+
+/// Which way the rover faces, radians about Y (0 faces +X): across the
+/// lot, side on to the caster, so the meteors strike its flank.
+pub const ROVER_HEADING: f32 = 1.2;
+
+/// The staged volley with the rover in it: the houses' eight targets, of
+/// which the third lands on the rover and the sixth just beside it.
+#[must_use]
+pub fn rover_targets() -> Vec<Vec3> {
+    let mut out = targets();
+    let [x, z] = rover_at();
+    let [cx, cz] = CASTER;
+    // Toward the caster, so the meteor comes down on the rover's near flank.
+    let toward = Vec3::new(cx - x, 0.0, cz - z).normalize_or_zero();
+    out[2] = Vec3::new(x, 0.0, z) + toward * 0.35;
+    out[5] = Vec3::new(x, 0.0, z) - toward * 2.2 + Vec3::new(toward.z, 0.0, -toward.x) * 1.0;
+    out
+}
+
+/// Stages the cast as [`stage`] does, with [`rover_targets`].
+pub fn stage_rover(glade: &mut Everglade, delay: f32) -> Result<(), String> {
+    let town = glade
+        .town_mut()
+        .ok_or("The showcase has no destructible houses")?;
+    let [x, z] = CASTER;
+    town.start_showcase(
+        Vec3::new(x, everglade::land(x, z), z),
+        aim(),
+        rover_targets(),
+        Volley::SHOWCASE,
+        delay,
+        REBUILD,
+    );
+    Ok(())
+}
+
 /// The circle the caster's targeting ring lies on: the ground between the
 /// houses.
 #[must_use]

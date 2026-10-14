@@ -396,6 +396,44 @@ impl WorldRuntime {
             .is_some_and(|glade| super::meteor_showcase::stage(glade, delay).is_ok())
     }
 
+    /// Stands the CAD Lab rover on the Meteor Showcase's lot
+    /// ([`super::meteor_rover`]). Returns whether it stands there.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn add_meteor_rover(&mut self) -> bool {
+        use super::meteor_showcase as showcase;
+        if self.zone != ZoneId::MeteorShowcase {
+            return false;
+        }
+        let [x, z] = showcase::rover_at();
+        let [cx, cz] = showcase::CASTER;
+        self.zone_state.rover = Some(Box::new(super::meteor_rover::Rover::new(
+            Vec3::new(x, super::everglade::land(x, z), z),
+            showcase::ROVER_HEADING,
+            Vec3::new(cx, 0.0, cz),
+        )));
+        true
+    }
+
+    /// Stages the showcase's cast with the rover among its targets
+    /// ([`super::meteor_showcase::stage_rover`]).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn stage_meteor_rover(&mut self, delay: f32) -> bool {
+        if self.zone != ZoneId::MeteorShowcase || self.zone_state.rover.is_none() {
+            return false;
+        }
+        self.zone_state
+            .everglade
+            .as_deref_mut()
+            .is_some_and(|glade| super::meteor_showcase::stage_rover(glade, delay).is_ok())
+    }
+
+    /// The rover on the showcase's lot, when one stands there.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[must_use]
+    pub fn meteor_rover(&self) -> Option<&super::meteor_rover::Rover> {
+        self.zone_state.rover.as_deref()
+    }
+
     /// Triangles hidden, vertices and probes relit by the last relighting
     /// of what destruction broke, in a zone that relights.
     #[must_use]
@@ -1121,6 +1159,11 @@ impl WorldRuntime {
                     .as_deref_mut()
                     .ok_or("Enter Everglade first")?
                     .demolish(intent == Intent::Rebuild)?;
+                // Rebuilding the houses stands the rover up again too.
+                #[cfg(not(target_arch = "wasm32"))]
+                if intent == Intent::Rebuild && self.zone_state.rover.is_some() {
+                    self.add_meteor_rover();
+                }
                 self.zone_state.error = None;
             }
             Intent::MeteorSwarm => {
@@ -2862,6 +2905,21 @@ impl WorldRuntime {
                     Vec::new()
                 };
                 glade.tick(dt, &self.player, &figures);
+                // The rover takes every strike that landed: a push from
+                // each blast, a meteor's momentum when one landed on it,
+                // and then its own physics.
+                #[cfg(not(target_arch = "wasm32"))]
+                if let (Some(rover), Some(town)) = (state.rover.as_deref_mut(), glade.town_mut()) {
+                    let mut landed = town.take_impacts();
+                    landed.extend(town.take_showcase_impacts());
+                    for impact in landed {
+                        rover.blast(impact.at, impact.radius);
+                    }
+                    rover.step(dt);
+                    for event in rover.take_events() {
+                        town.burst(event.effect, event.at);
+                    }
+                }
             }
         } else if let Some(everglade) = &mut state.everglade {
             // The seats move first, so the characters pose where they stand.
@@ -2959,6 +3017,11 @@ impl WorldRuntime {
             // Carries the lit stage the textured glade draws on, with its
             // water seen from the eye: from below when the eye is in it.
             mesh.extend(everglade.dynamic());
+            // The CAD Lab rover on the Meteor Showcase's lot.
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Some(rover) = &self.zone_state.rover {
+                mesh.lit.extend(rover.lit());
+            }
             everglade.see_water_from(&mut mesh, self.view(1.0).eye);
             // The player, and the seats when the pack's character draws them.
             // In first person the player's own character is not drawn.

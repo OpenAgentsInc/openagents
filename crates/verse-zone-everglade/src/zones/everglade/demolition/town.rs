@@ -904,6 +904,9 @@ struct Plan {
     delay: f32,
 }
 
+/// The most staged strikes [`Town`] keeps for [`Town::take_showcase_impacts`].
+pub const SHOWCASE_IMPACTS: usize = 32;
+
 /// Everglade's destructible town: its buildings, the rules over the raised
 /// ones, the hammer and the spells, and what they draw.
 pub struct Town {
@@ -947,6 +950,9 @@ pub struct Town {
     wield: f32,
     swarm: Swarm,
     bombardiers: Vec<Bombardier>,
+    /// Where the staged casters' strikes landed since the last
+    /// [`Town::take_showcase_impacts`], at most [`SHOWCASE_IMPACTS`].
+    showcase_impacts: Vec<meteor::Impact>,
     /// How long the bombarded buildings stand broken before they rebuild,
     /// s.
     rebuild_every: f32,
@@ -1339,6 +1345,7 @@ impl Town {
             wield: 0.0,
             swarm: Swarm::default(),
             bombardiers: Vec::new(),
+            showcase_impacts: Vec::new(),
             rebuild_every: 180.0,
             rebuild: 180.0,
             numbers: true,
@@ -1665,6 +1672,17 @@ impl Town {
         self.swarm.take_impacts()
     }
 
+    /// Where the staged casters' strikes landed since the last call.
+    pub fn take_showcase_impacts(&mut self) -> Vec<meteor::Impact> {
+        std::mem::take(&mut self.showcase_impacts)
+    }
+
+    /// Starts `effect` at `at` among the swarm's particles: dust or sparks
+    /// from something else the swarm hit.
+    pub fn burst(&mut self, effect: &str, at: Vec3) {
+        self.swarm.burst(effect, at);
+    }
+
     /// An explosion of `damage` within `radius` of `center` from another
     /// spell, such as a lightning bolt: it chips what it reaches and lets
     /// tall buildings topple. Returns the blows.
@@ -1797,8 +1815,12 @@ impl Town {
                 player.pos,
                 &mut self.wreck,
             ));
-            // NPC impacts have no separate combat log; drain them every frame.
-            caster.swarm.take_impacts();
+            // NPC impacts have no combat log; keep the last few for what else
+            // stands in the blast, such as the Meteor Showcase's rover.
+            let landed = caster.swarm.take_impacts();
+            self.showcase_impacts.extend(landed);
+            let excess = self.showcase_impacts.len().saturating_sub(SHOWCASE_IMPACTS);
+            self.showcase_impacts.drain(..excess);
         }
         self.number(&npc_blows);
         let now = self.clock;
