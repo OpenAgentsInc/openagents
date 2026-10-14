@@ -29,6 +29,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Build agent labor | [Market infrastructure](agents/market-infrastructure.md), [free labor host](coder/runtime/free-labor.md) |
 | Inspect decision and coding evidence | [Gym](gym/README.md), [Terminal-Bench](terminal-bench/README.md) |
 | Design robot experiments inside chat | [Robot Lab proposal](lab/README.md) |
+| Design the Lagrange 2 spacecraft and its orbit | [Spacecraft design knowledge](spacecraft-design/README.md) |
 | Make delegated runs cheaper and faster than raw Codex or Claude Code | [System One cost efficiency audit](cost/2026-10-02-system-one-cost-efficiency-audit.md) |
 | Run everything on your own OpenRouter, Vercel AI Gateway, or TypeSafe key (BYOK) | [BYOK design](byok/README.md) |
 | Put OpenAgents itself behind an API for partner apps, websites, other agents, and self-hosters | [OpenAgents API](api/README.md): plain HTTP, x402 payment |
