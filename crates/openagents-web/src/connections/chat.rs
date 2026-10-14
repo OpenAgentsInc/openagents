@@ -262,13 +262,12 @@ fn request(instructions: &str, turns: &[Turn]) -> Value {
     })
 }
 
-/// Which model saw the files, in the vault spec's words for the Fast route
-/// (docs/security/sensitive-data-vault.md, "The model step").
-pub(crate) const FAST: &str =
-    "Fast: processed by Google Gemini. Google doesn't train on it, but can see it while answering.";
+/// Who reads a project's sources when the chat answers from them, said once
+/// on the Sources and Connections pages, never stamped on every answer (the
+/// reply's model already shows beside it).
+pub(crate) const WHO_READS: &str = "Answers from these are written by Google Gemini, which reads the files and mail it uses while it answers. Google doesn't train on them.";
 
-/// The answer's closing lines: the files read, linked, and which model saw
-/// them.
+/// The answer's closing line: the files read, linked.
 pub(crate) fn citations(read: &[File]) -> String {
     if read.is_empty() {
         return String::new();
@@ -284,7 +283,7 @@ pub(crate) fn citations(read: &[File]) -> String {
             format!("[{}]({})", name.trim(), file.link())
         })
         .collect();
-    format!("\n\nFiles read: {}\n\n{FAST}", links.join(", "))
+    format!("\n\nFiles read: {}", links.join(", "))
 }
 
 /// A count with thousands separated by commas.

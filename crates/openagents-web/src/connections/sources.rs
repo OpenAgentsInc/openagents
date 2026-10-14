@@ -190,7 +190,7 @@ pub(crate) fn view(
                 "Google Drive folders and files the chat in " strong { (project.name) }
                 " reads from to answer. Read only."
             }
-            p { (super::chat::FAST) }
+            p { (super::chat::WHO_READS) }
         }))
         @if let Some(problem) = problem {
             (Alert::new().color(Color::Danger).description(problem))
