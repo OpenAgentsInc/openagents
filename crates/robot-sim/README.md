@@ -25,6 +25,17 @@ owns robot, table, cube, and self contacts. Neighboring links are excluded from
 self collisions. The backend uses implicit position servos with declared gain,
 damping, effort, and speed. Soft-limit violations remain in saved observations.
 
+MuJoCo collides a mesh as its convex hull, and the SO-101 jaw hulls fill the
+gap between the jaws. For a robot with a `gripper` joint and a
+`gripper_frame_link`, `arm_scene` turns off collision for the two jaw meshes
+(their visual meshes and mass stay) and gives each jaw two 4 mm capsule pads
+across its inner face, at the tip and 2 cm back, placed from the mesh bounds
+along the closing axis at the closed pose. Pads use friction 1.5 with
+torsional friction, and the gripper servo is capped at 0.25 N·m and 0.3 rad/s,
+so it pinches a light object instead of knocking it away. The native test
+`so101_jaw_pads_pick_up_the_table_cube_with_key_presses` lifts the table cube
+at least 5 cm and holds it for 2 s.
+
 `Runner` pins backend/controller builds, timestep, rates, scene, and seed. A
 scripted sequence is hashed and immutable. Control and sensor sampling use
 step intervals; the controller sees the latest sampled image. State-only

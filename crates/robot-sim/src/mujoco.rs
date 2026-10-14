@@ -345,6 +345,15 @@ impl Runtime {
         }
         contents.push_str("</worldbody>");
         let mut converted = format!("{}{}{}", &xml[..range.start], contents, &xml[range.end..]);
+        let pads = gripper_pads(&description, &mut converted)?;
+        let joint_servo = |name: &str| {
+            let mut servo = servo.clone();
+            if pads && name == "gripper" {
+                servo.effort = servo.effort.min(GRIP_EFFORT);
+                servo.speed = servo.speed.min(GRIP_SPEED);
+            }
+            servo
+        };
         let mut actuators = String::from("<actuator>");
         for joint in description.movable() {
             require(
@@ -354,6 +363,7 @@ impl Runtime {
                     .all(|b| b.is_ascii_alphanumeric() || b"_-.:".contains(&b)),
                 "Use short joint names for native simulation.",
             )?;
+            let servo = joint_servo(&joint.name);
             actuators.push_str(&format!("<position name=\"robotlab:{}\" joint=\"{}\" kp=\"{}\" kv=\"{}\" forcelimited=\"true\" forcerange=\"-{} {}\"/>", joint.name, joint.name, servo.kp, servo.kd, servo.effort, servo.effort));
         }
         actuators.push_str("</actuator>");
@@ -389,7 +399,7 @@ impl Runtime {
         let mut model = self.load(generated.path(), "robot-scene.xml", timestep)?;
         model.robot_root = Some(model.id(1, "robot-mount")?);
         for joint in description.movable() {
-            model.control_joint(&joint.name, servo.clone())?;
+            model.control_joint(&joint.name, joint_servo(&joint.name))?;
         }
         let initial = &scene.robots[0].joints;
         require(
@@ -415,6 +425,154 @@ impl Runtime {
         model.reset(0)?;
         Ok(model)
     }
+}
+
+/// The SO-101 gripper's servo effort in N·m: a modest squeeze that holds a
+/// small object without pushing it out of the pads.
+const GRIP_EFFORT: f64 = 0.25;
+/// The SO-101 gripper's closing speed in rad/s. A jaw that arrives fast
+/// knocks a light object up and out instead of pinching it.
+const GRIP_SPEED: f64 = 0.3;
+const PAD_RADIUS: f64 = 0.004;
+/// The second pad's distance back from the jaw tip, in meters.
+const PAD_SPACING: f64 = 0.02;
+/// How much of each jaw, back from its tip, is measured for its pads, in meters.
+const FINGER_LENGTH: f64 = 0.045;
+const PAD_FRICTION: f64 = 1.5;
+/// Torsional friction in meters, like a soft pad's contact patch: a pinch
+/// on two pads otherwise lets an object spin about the line between them
+/// when the wrist turns.
+const PAD_TORSION: f64 = 0.03;
+
+/// Give the SO-101 jaws capsule pads on their inner faces and stop the jaw
+/// meshes' convex hulls from colliding. MuJoCo collides a mesh as its hull,
+/// which fills the gap between the fixed and moving jaw, so nothing could sit
+/// between them. Pads are placed and sized from each jaw's mesh bounds near
+/// its tip, along the closing axis at the closed pose. Visual meshes are
+/// unchanged.
+/// Returns false, changing nothing, for robots without this gripper.
+fn gripper_pads(robot: &robot_description::Robot, xml: &mut String) -> Result<bool> {
+    let (Some(joint), Some(tool)) = (
+        robot.joints().iter().find(|j| j.name == "gripper"),
+        robot.link("gripper_frame_link"),
+    ) else {
+        return Ok(false);
+    };
+    let (fixed, moving) = (joint.parent, joint.child);
+    let frames = robot
+        .forward(&robot.home())
+        .map_err(|e| Error::Invalid(e.to_string()))?;
+    let to_tool = frames[tool].inverse();
+    let top = |points: &[DVec3]| points.iter().map(|p| p.z).fold(f64::MIN, f64::max);
+    // The jaw is the link's collision mesh reaching furthest toward the tip,
+    // which is +Z in the tool frame; its points are in that frame.
+    let jaw = |link: usize| {
+        robot.links()[link]
+            .collisions
+            .iter()
+            .filter_map(|shape| match &shape.geometry {
+                robot_description::Geometry::Mesh { file, scale, mesh } => {
+                    let place = to_tool * frames[link] * shape.origin;
+                    let points: Vec<DVec3> = mesh
+                        .triangles
+                        .iter()
+                        .flatten()
+                        .map(|p| place.transform_point3(DVec3::from(p.map(f64::from)) * *scale))
+                        .collect();
+                    Some((file.clone(), points))
+                }
+                _ => None,
+            })
+            .max_by(|a, b| top(&a.1).total_cmp(&top(&b.1)))
+    };
+    let (Some((fixed_file, fixed_points)), Some((moving_file, moving_points))) =
+        (jaw(fixed), jaw(moving))
+    else {
+        return Ok(false);
+    };
+    let tip = |points: &[DVec3]| {
+        let end = top(points);
+        points
+            .iter()
+            .copied()
+            .filter(|p| p.z >= end - FINGER_LENGTH)
+            .collect::<Vec<_>>()
+    };
+    let (fixed_tip, moving_tip) = (tip(&fixed_points), tip(&moving_points));
+    let centroid = |p: &[DVec3]| p.iter().sum::<DVec3>() / p.len().max(1) as f64;
+    let mut axis = centroid(&fixed_tip) - centroid(&moving_tip);
+    axis.z = 0.0;
+    let axis = axis
+        .try_normalize()
+        .ok_or_else(|| Error::Invalid("This gripper's jaws couldn't be measured.".into()))?;
+    let side = DVec3::Z.cross(axis);
+    let range = |p: &[DVec3], d: DVec3| {
+        p.iter()
+            .map(|v| v.dot(d))
+            .fold((f64::MAX, f64::MIN), |(lo, hi), x| (lo.min(x), hi.max(x)))
+    };
+    let (fixed_inner, moving_inner) = (range(&fixed_tip, axis).0, range(&moving_tip, axis).1);
+    require(
+        moving_inner < fixed_inner,
+        "This gripper's jaws overlap when closed.",
+    )?;
+    for (link, file, points, inner) in [
+        (fixed, &fixed_file, &fixed_tip, fixed_inner + PAD_RADIUS),
+        (moving, &moving_file, &moving_tip, moving_inner - PAD_RADIUS),
+    ] {
+        let (s0, s1) = range(points, side);
+        let (_, z1) = range(points, DVec3::Z);
+        let local = (to_tool * frames[link]).inverse();
+        let name = &robot.links()[link].name;
+        // Two capsules across the jaw's inner face, at its tip and 2 cm
+        // back. A rounded pad takes its contact normal from the object's
+        // face, so a jaw that closes along an arc squeezes instead of
+        // wedging; staying near the tip keeps the moving jaw's two contacts
+        // close to parallel when it meets a wide object.
+        let mut pad = String::new();
+        for (index, z) in [z1 - PAD_RADIUS * 1.5, z1 - PAD_SPACING]
+            .into_iter()
+            .enumerate()
+        {
+            let end = |s: f64| local.transform_point3(axis * inner + side * s + DVec3::Z * z);
+            pad.push_str(&format!(
+                "<geom name=\"robotlab:{name}-pad{index}\" type=\"capsule\" size=\"{PAD_RADIUS}\" fromto=\"{} {}\" friction=\"{PAD_FRICTION} {PAD_TORSION} 0.001\" condim=\"4\" density=\"0\" group=\"3\"/>",
+                numbers(&end(s0 + PAD_RADIUS).to_array()),
+                numbers(&end(s1 - PAD_RADIUS).to_array()),
+            ));
+        }
+        // Stop only this jaw mesh's colliding copy; its visual copy and mass stay.
+        let stem = Path::new(file)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| Error::Invalid("This gripper's jaw mesh has no name.".into()))?;
+        let marker = format!("mesh=\"{stem}\"");
+        let mut found = 0;
+        let mut at = 0;
+        while let Some(offset) = xml[at..].find("<geom ") {
+            let start = at + offset;
+            let end = start
+                + xml[start..].find("/>").ok_or_else(|| {
+                    Error::Invalid("This robot's geometry couldn't be read.".into())
+                })?;
+            let geom = &xml[start..end];
+            if geom.contains(&marker) && !geom.contains("contype=") {
+                xml.insert_str(start + 6, "contype=\"0\" conaffinity=\"0\" ");
+                found += 1;
+            }
+            at = start + 6;
+        }
+        let body = format!("<body name=\"{name}\"");
+        let open = xml
+            .find(&body)
+            .and_then(|start| xml[start..].find('>').map(|end| start + end + 1));
+        require(
+            found == 1 && open.is_some(),
+            "This gripper's jaw couldn't be converted.",
+        )?;
+        xml.insert_str(open.unwrap(), &pad);
+    }
+    Ok(true)
 }
 
 fn source_pose(pose: &Pose) -> ([f64; 3], [f64; 4]) {

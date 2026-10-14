@@ -49,6 +49,29 @@ with 8 steps (1/30 s) about every 33 ms, and draws the arm and cube from the
 returned step. Reset pose restarts the physics. Nothing is saved; use `record`
 for an episode.
 
+The SO-101 jaws collide through capsule pads on their inner faces (the jaw
+meshes' hulls would fill the gap between them), with a gentle, slow grip; see
+`robot-sim`'s README. To pick up the cube, turn on Simulate, press Reset pose,
+and press each key the given number of times, about ten a second. Wait where
+shown.
+
+| Step | Keys |
+| --- | --- |
+| Raise and open | S ×3, O ×20 |
+| Turn the jaws to the cube's faces | T ×23 |
+| Point the jaws down | R ×27 |
+| Reach out | E ×2 |
+| Swing over the cube, then wait ½ s | A ×8 |
+| Lower around the cube, then wait ½ s | W ×8 |
+| Close, then wait 2½ s while the jaws close slowly | C ×24 |
+| Lift (about 6 cm) | S ×8 |
+| Set it down, then open and wait 2½ s | W ×8, O ×20 |
+| Raise clear | S ×8 |
+
+`robot-sim`'s native test `so101_jaw_pads_pick_up_the_table_cube_with_key_presses`
+replays this sequence and checks that the cube rises at least 5 cm and stays
+held for 2 s.
+
 Keep `CARGO_TARGET_DIR` outside the checkout. The service listens on loopback;
 `--port 0` chooses an available port. Its SO-101 catalog defaults to the licensed,
 pinned files in `robot-description/assets/so101`. Imports copy checked files into

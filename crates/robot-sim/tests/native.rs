@@ -301,3 +301,119 @@ fn so101_table_scene_shares_contacts_and_preserves_the_imported_link_frames() {
             < 0.01
     );
 }
+
+#[test]
+#[ignore = "requires the configured MuJoCo 3.3.7 library"]
+fn so101_jaw_pads_pick_up_the_table_cube_with_key_presses() {
+    use robot_lab::document::{
+        Camera, Geometry, Object, Pose, Reference, RobotInstance, Scene, Shape,
+    };
+    let scratch = tempfile::tempdir().unwrap();
+    let runtime = Runtime::open(&library(), scratch.path()).unwrap();
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../robot-description/assets/so101");
+    let (pin, robot) = robot_description::pin::load_pinned(&source).unwrap();
+    let object = |id: &str, position, size, mass| Object {
+        id: id.into(),
+        geometry: Geometry {
+            pose: Pose {
+                position,
+                ..Pose::default()
+            },
+            shape: Shape::Box { size },
+            rgba: [0.8, 0.1, 0.1, 1.0],
+        },
+        mesh: None,
+        collider: Some(Shape::Box { size }),
+        mass,
+        friction: 0.7,
+    };
+    // The Robot Lab import scene: the arm on a table with a 5 cm cube.
+    let scene = Scene {
+        name: "SO-101 table".into(),
+        robots: vec![RobotInstance {
+            id: "arm".into(),
+            robot: Reference {
+                document: "so101".into(),
+                version: "a".repeat(64),
+            },
+            pose: Pose {
+                position: [0.0, 0.75, 0.0],
+                ..Pose::default()
+            },
+            joints: robot.movable().map(|j| (j.name.clone(), 0.0)).collect(),
+        }],
+        objects: vec![
+            object("table", [0.0, 0.73, 0.0], [1.2, 0.04, 0.75], 0.0),
+            object("cube", [0.22, 0.775, -0.1], [0.05; 3], 0.05),
+        ],
+        lights: vec![],
+        cameras: vec![Camera {
+            id: "front".into(),
+            pose: Pose::default(),
+            width: 64,
+            height: 64,
+            intrinsics: [50.0, 50.0, 32.0, 32.0],
+            robot_link: None,
+        }],
+    };
+    let mut model = runtime
+        .arm_scene(
+            &source,
+            &pin.description,
+            &scene,
+            1.0 / 240.0,
+            Servo {
+                kp: 100.0,
+                kd: 4.0,
+                effort: 2.4,
+                speed: 2.0,
+            },
+        )
+        .unwrap();
+    let mut target: BTreeMap<String, f64> =
+        robot.movable().map(|j| (j.name.clone(), 0.0)).collect();
+    let height = |model: &robot_sim::mujoco::Model| {
+        model.snapshot().unwrap().objects["cube"].pose.position[1] - 0.775
+    };
+    // The player's keys: each press moves one joint target 0.05 rad, about
+    // ten presses a second; a pause holds the targets. This is the grasp in
+    // robot-workbench's README.
+    for (joint, presses, pause) in [
+        ("shoulder_lift", -3, 0.0),
+        ("gripper", 20, 0.0),
+        ("wrist_roll", 23, 0.0),
+        ("wrist_flex", 27, 0.0),
+        ("elbow_flex", 2, 0.0),
+        ("shoulder_pan", -8, 0.5),
+        ("shoulder_lift", 8, 0.5),
+        ("gripper", -24, 2.5),
+        ("shoulder_lift", -8, 0.0),
+    ] {
+        let mut hold = |target: &BTreeMap<String, f64>, seconds: f64| {
+            for _ in 0..(seconds * 240.0_f64).round() as usize {
+                model.apply(target).unwrap();
+                model.step().unwrap();
+            }
+        };
+        for _ in 0..i32::abs(presses) {
+            let limit = robot
+                .movable()
+                .find(|j| j.name == joint)
+                .and_then(|j| j.limit)
+                .unwrap();
+            let value = target[joint] + 0.05 * f64::from(presses.signum());
+            target.insert(joint.into(), value.clamp(limit.lower, limit.upper));
+            hold(&target, 0.1);
+        }
+        hold(&target, pause);
+    }
+    let lifted = height(&model);
+    assert!(lifted >= 0.05, "the cube rose {lifted} m");
+    for _ in 0..480 {
+        model.apply(&target).unwrap();
+        let snapshot = model.step().unwrap();
+        assert!(snapshot.objects["cube"].held, "the cube slipped out");
+    }
+    let held = height(&model);
+    assert!(held >= 0.05, "after two seconds the cube is {held} m up");
+}
