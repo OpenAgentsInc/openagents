@@ -822,6 +822,11 @@ impl ExecutionSettings {
                 if let Some(refusal) = crate::git_guard::refusal(&args.command) {
                     return Err(refusal);
                 }
+                // A recursive grep over the whole checkout walks its build
+                // output; Grep and rg skip it (#11580).
+                if let Some(refusal) = coder_sdk::search_guard::refusal(&args.command) {
+                    return Err(refusal);
+                }
                 if let Some(refusal) = self
                     .boundary
                     .as_ref()

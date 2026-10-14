@@ -70,8 +70,12 @@ pub enum ContextPolicy {
 }
 /// How long to pause when a usage limit names no reset time.
 const DEFAULT_PAUSE_SECS: u64 = 60;
-/// Waits shorter than this inside a reply are not shown as a pause.
+/// Usage-limit waits shorter than this inside a reply are not shown as a
+/// pause.
 const SHOWN_PAUSE: Duration = Duration::from_secs(5);
+/// Any other wait inside a reply this long or longer shows as a row
+/// (#11580).
+const SHOWN_RETRY: Duration = Duration::from_secs(30);
 /// The summary request's transcript allowance, in bytes.
 const SUMMARY_INPUT_BYTES: usize = 400 * 1024;
 /// One message's allowance inside the summary request.
@@ -385,19 +389,39 @@ pub(crate) fn pause_seconds(error: &str) -> Option<u64> {
     Some(seconds.clamp(1, 86_400))
 }
 
-/// The row a reply shows while it waits out a usage limit, or `None` for
-/// a short wait or any other failure.
-pub(crate) fn pause_event(error: &openrouter::Error, wait: Duration) -> Option<RuntimeEvent> {
-    let openrouter::Error::Api { status: 429, .. } = error else {
-        return None;
-    };
-    if wait < SHOWN_PAUSE {
+/// The row a reply shows while it waits out a usage limit (a 429 of five
+/// seconds or more), or any other wait of [`SHOWN_RETRY`] or more, whatever
+/// the status (#11580): with the reason and when it goes on. `None` for a
+/// shorter wait.
+pub(crate) fn pause_event(
+    error: &openrouter::Error,
+    wait: Duration,
+    whose: &str,
+) -> Option<RuntimeEvent> {
+    let limit = matches!(error, openrouter::Error::Api { status: 429, .. });
+    if wait < if limit { SHOWN_PAUSE } else { SHOWN_RETRY } {
         return None;
     }
     let until = atif::now_ms().saturating_add(u64::try_from(wait.as_millis()).unwrap_or(u64::MAX));
+    if limit {
+        return Some(RuntimeEvent::Tool {
+            name: LIMIT_TOOL.into(),
+            input: json!({"limit": "rate"}),
+            output: json!({"paused_until_ms": until}),
+            running: true,
+        });
+    }
+    let reason = match error {
+        openrouter::Error::Api { status, .. } => {
+            format!("{whose} model service didn't answer (HTTP {status})")
+        }
+        openrouter::Error::Timeout => format!("{whose} model service timed out"),
+        openrouter::Error::Connection(_) => format!("{whose} model service couldn't be reached"),
+        _ => format!("{whose} reply was incomplete"),
+    };
     Some(RuntimeEvent::Tool {
         name: LIMIT_TOOL.into(),
-        input: json!({"limit": "rate"}),
+        input: json!({"limit": "retry", "reason": reason}),
         output: json!({"paused_until_ms": until}),
         running: true,
     })
@@ -443,12 +467,15 @@ pub(crate) fn paused_until(app: &App) -> Option<u64> {
                 return None;
             }
             app.live.entries.iter().rev().find_map(|entry| match entry {
+                // A provider's asked-for wait is its own row, not a pause.
                 Entry::Tool {
                     name,
+                    input,
                     output,
                     running: true,
-                    ..
-                } if name == LIMIT_TOOL => output["paused_until_ms"].as_u64(),
+                } if name == LIMIT_TOOL && input["limit"] != "retry" => {
+                    output["paused_until_ms"].as_u64()
+                }
                 _ => None,
             })
         })
@@ -606,6 +633,54 @@ pub(crate) fn entry_lines(
                 ]));
             }
             Some(lines)
+        }
+        LIMIT_TOOL if input["limit"] == "retry" => {
+            // A provider's asked-for wait inside a reply (#11580).
+            let reason = input["reason"]
+                .as_str()
+                .unwrap_or("The model service didn't answer");
+            let line = if running {
+                let until = output["paused_until_ms"]
+                    .as_u64()
+                    .map(clock)
+                    .unwrap_or_else(|| "it answers".into());
+                Line::from(vec![
+                    styled(format!("{} ", crate::tools::spinner(phase)), t::COMMAND),
+                    bold("Waiting", t::COMMAND),
+                    styled(
+                        crate::ui::truncate(
+                            &format!(" until {until}: {reason}; Coder tries again then"),
+                            width.saturating_sub(11),
+                        ),
+                        t::GRAY_BRIGHT,
+                    ),
+                ])
+            } else if output.get("error").is_some() {
+                Line::from(vec![
+                    styled("× ".into(), t::DIFF_DELETE_FG),
+                    bold("Waited", t::DIFF_DELETE_FG),
+                    styled(
+                        crate::ui::truncate(
+                            &format!(": {reason}, then stopped"),
+                            width.saturating_sub(10),
+                        ),
+                        t::GRAY_BRIGHT,
+                    ),
+                ])
+            } else {
+                Line::from(vec![
+                    styled("● ".into(), t::ACCENT_SUCCESS),
+                    bold("Tried again", t::ACCENT_SUCCESS),
+                    styled(
+                        crate::ui::truncate(
+                            &format!(" after a wait: {reason}"),
+                            width.saturating_sub(15),
+                        ),
+                        t::GRAY_BRIGHT,
+                    ),
+                ])
+            };
+            Some(vec![line])
         }
         LIMIT_TOOL => {
             let line = if running {
@@ -1281,13 +1356,13 @@ mod tests {
             retry_after: Some(300),
             body: String::new(),
         };
-        assert!(pause_event(&error, Duration::from_secs(1)).is_none());
+        assert!(pause_event(&error, Duration::from_secs(1), "OpenRouter's").is_none());
         let Some(RuntimeEvent::Tool {
             name,
             input,
             output,
             running,
-        }) = pause_event(&error, Duration::from_secs(300))
+        }) = pause_event(&error, Duration::from_secs(300), "OpenRouter's")
         else {
             panic!("a long wait shows a pause")
         };
@@ -1300,6 +1375,7 @@ mod tests {
             input,
             output,
             running,
+            at: None,
         });
         assert!(status(&app).unwrap().starts_with("Paused until "));
         // The model never reads the pause row.
@@ -1319,6 +1395,7 @@ mod tests {
             input,
             output,
             running,
+            at: None,
         });
         assert!(status(&app).is_none());
     }
@@ -1334,6 +1411,7 @@ mod tests {
             input: serde_json::json!({"command":"ls"}),
             output: serde_json::Value::Null,
             running,
+            at: None,
         };
         app.apply_update(live::Update::Delta {
             id,
@@ -1399,6 +1477,7 @@ mod tests {
             input: serde_json::json!({"command":"ls"}),
             output: serde_json::Value::Null,
             running,
+            at: None,
         };
         app.apply_update(live::Update::Delta {
             id,
@@ -1488,6 +1567,7 @@ mod tests {
                 serde_json::json!({"exit":0})
             },
             running,
+            at: None,
         };
         app.apply_update(tool(true));
         app.apply_update(tool(false));

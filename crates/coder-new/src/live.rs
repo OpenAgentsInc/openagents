@@ -48,6 +48,15 @@ pub struct Chat {
     pub stamps: Vec<u64>,
     /// How long each finished tool call ran, by entry index.
     pub tool_ms: std::collections::BTreeMap<usize, u64>,
+    /// When each finished tool call ended, by entry index, in milliseconds
+    /// since the epoch (#11580).
+    pub tool_ends: std::collections::BTreeMap<usize, u64>,
+    /// The model attempts that failed, and the one still open (#11580),
+    /// newest last: the export's record of a turn that stopped answering.
+    pub attempts: Vec<crate::bundled_runtime::ModelAttempt>,
+    /// The newest moment anything happened in this chat, in milliseconds
+    /// since the epoch: the end of its wall time (#11580).
+    pub last_ms: u64,
     pub open_tools: std::collections::BTreeSet<usize>,
     /// The model's thinking is streaming in now, so the input's rail says
     /// `Thinking` beside `Working`.
@@ -266,6 +275,37 @@ impl Chat {
     }
 
     /// Record one model call's usage against the entries it produces.
+    /// A model attempt started or ended (#11580). An open one and a failed
+    /// one are kept for the export; an answered one leaves, since its
+    /// usage is already a round.
+    pub fn attempt(&mut self, attempt: crate::bundled_runtime::ModelAttempt) {
+        /// The export keeps this many, newest last.
+        const KEPT: usize = 64;
+        if let Some(ended) = attempt.ended_ms {
+            self.last_ms = self.last_ms.max(ended);
+        }
+        self.attempts
+            .retain(|kept| kept.started_ms != attempt.started_ms || kept.model != attempt.model);
+        if attempt.outcome != crate::bundled_runtime::AttemptOutcome::Answered {
+            self.attempts.push(attempt);
+        }
+        let over = self.attempts.len().saturating_sub(KEPT);
+        self.attempts.drain(..over);
+    }
+
+    /// Any attempt still open ends as failed, with `reason`: the turn
+    /// stopped without its answer.
+    pub fn close_attempts(&mut self, reason: &str) {
+        let now = atif::now_ms();
+        for attempt in &mut self.attempts {
+            if attempt.outcome == crate::bundled_runtime::AttemptOutcome::InFlight {
+                attempt.outcome = crate::bundled_runtime::AttemptOutcome::Failed;
+                attempt.ended_ms = Some(now);
+                attempt.reason = Some(reason.to_owned());
+            }
+        }
+    }
+
     pub fn round(&mut self, usage: crate::bundled_runtime::RoundUsage) {
         // A call's usage that arrives after its reply was already written
         // (a reply after thinking is written when the thinking ends)
@@ -285,7 +325,14 @@ impl Chat {
     /// Stamp entries that appeared since the last stamp, and time tool
     /// calls from when they appeared to when they finished.
     pub fn stamp(&mut self) {
-        let now = atif::now_ms();
+        self.stamp_at(atif::now_ms());
+    }
+
+    /// [`Chat::stamp`] at `now`: the moment the worker saw what changed
+    /// (#11580), so calls a reply ran one after another each keep their own
+    /// start and end even when the screen took them in together.
+    pub fn stamp_at(&mut self, now: u64) {
+        self.last_ms = self.last_ms.max(now);
         self.stamps.truncate(self.entries.len());
         self.rounds
             .retain(|(index, _)| *index <= self.entries.len());
@@ -301,10 +348,13 @@ impl Chat {
                 } else if self.open_tools.remove(&index) {
                     self.tool_ms
                         .insert(index, now.saturating_sub(self.stamps[index]));
+                    self.tool_ends.insert(index, now.max(self.stamps[index]));
                 }
             }
         }
         self.tool_ms.retain(|index, _| *index < self.entries.len());
+        self.tool_ends
+            .retain(|index, _| *index < self.entries.len());
         self.open_tools.retain(|index| *index < self.entries.len());
     }
 
@@ -677,6 +727,14 @@ pub enum Update {
         input: serde_json::Value,
         output: serde_json::Value,
         running: bool,
+        /// When the worker saw it, in milliseconds since the epoch; `None`
+        /// stamps it when the screen takes it in (#11580).
+        at: Option<u64>,
+    },
+    /// A model attempt started or ended (#11580).
+    Attempt {
+        id: u64,
+        attempt: crate::bundled_runtime::ModelAttempt,
     },
     Delegation {
         id: u64,
@@ -725,12 +783,25 @@ pub enum Update {
 }
 
 impl Update {
+    /// Whether this update is the model or a tool getting somewhere: the
+    /// stall watchdog's clock (#11580). An attempt starting or failing,
+    /// a wait row and a model's name are not.
+    #[must_use]
+    pub fn progress(&self) -> bool {
+        match self {
+            Self::Attempt { .. } | Self::Model { .. } => false,
+            Self::Tool { name, .. } => name != crate::long_session::LIMIT_TOOL,
+            _ => true,
+        }
+    }
+
     pub fn id(&self) -> u64 {
         match self {
             Self::Checked { id, .. }
             | Self::BrainstormFinished { id, .. }
             | Self::CheckedJev { id, .. }
             | Self::Tool { id, .. }
+            | Self::Attempt { id, .. }
             | Self::Delegation { id, .. }
             | Self::Delta { id, .. }
             | Self::Usage { id, .. }
@@ -769,10 +840,22 @@ fn route_note(
     }
 }
 
+/// How long a turn may go without model or tool progress before Coder
+/// ends it (#11580): a reply that stopped coming, a call that never
+/// returns, or a worker nobody hears from no longer leaves "Working" up.
+pub const STALL: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+
+/// The error a stalled turn ends with.
+pub const STALLED: &str = "Nothing came back from the model or a tool for 10 minutes, so Coder stopped this turn. Try again: send your message again.";
+
 /// One active request. Cancellation also waits for child process cleanup.
 #[derive(Default)]
 pub struct Background {
     active: Option<(u64, oneshot::Sender<()>, mpsc::Receiver<Update>)>,
+    /// When the active request last made progress (#11580).
+    progressed: Option<std::time::Instant>,
+    /// [`STALL`], unless a test shortens it.
+    stall: Option<std::time::Duration>,
     /// The claude chat's long-lived Claude Code process (#11447).
     claude: Option<crate::claude_chat::Chat>,
     /// The claude turn on screen: its request id and the process's number
@@ -877,12 +960,16 @@ impl Background {
                 .stack_size(crate::issue_run::RUN_STACK)
                 .spawn(move || run(request, sender, canceled));
             self.active = Some((id, cancel, receiver));
+            self.progressed = Some(std::time::Instant::now());
         }
         let mut finished = false;
         if let Some((id, _, receiver)) = &self.active {
             loop {
                 match receiver.try_recv() {
                     Ok(update) => {
+                        if update.progress() {
+                            self.progressed = Some(std::time::Instant::now());
+                        }
                         finished |= matches!(
                             update,
                             Update::Checked { .. }
@@ -928,7 +1015,9 @@ impl Background {
         }
         if finished {
             self.active = None;
+            self.progressed = None;
         }
+        self.watch(app);
         self.poll_claude(app);
         self.poll_codex(app);
         self.show_question(app);
@@ -961,9 +1050,59 @@ impl Background {
     }
 
     fn cancel(&mut self) {
+        self.progressed = None;
         if let Some((_, sender, _)) = self.active.take() {
             let _ = sender.send(());
         }
+    }
+
+    /// The stall watchdog (#11580): a turn with no model or tool progress
+    /// for [`STALL`] ends, visibly, whatever it was waiting on. It runs on
+    /// the screen's side, so a worker that hangs anywhere — a reply that
+    /// never ends, a call that never returns — cannot hold it off.
+    fn watch(&mut self, app: &mut crate::App) {
+        let stall = self.stall.unwrap_or(STALL);
+        let Some((id, _, _)) = &self.active else {
+            return;
+        };
+        let id = *id;
+        if !app.live.busy
+            || app.checking_key
+            || app.checking_jev
+            || app.brainstorm_job.is_some()
+            || self
+                .progressed
+                .is_none_or(|progressed| progressed.elapsed() < stall)
+        {
+            return;
+        }
+        // The worker is told to stop; whatever it still sends is dropped.
+        self.cancel();
+        app.live
+            .stop_tools("Nothing came back from this call for 10 minutes.");
+        app.apply_update(Update::Finished {
+            id,
+            result: Err(STALLED.into()),
+        });
+    }
+
+    /// A shorter [`STALL`], for a test.
+    #[cfg(test)]
+    pub(crate) fn stalling_after(&mut self, stall: std::time::Duration) {
+        self.stall = Some(stall);
+    }
+
+    /// An active request whose worker is `receiver`'s sender, for a test.
+    #[cfg(test)]
+    pub(crate) fn adopt(
+        &mut self,
+        id: u64,
+        receiver: mpsc::Receiver<Update>,
+    ) -> oneshot::Receiver<()> {
+        let (cancel, canceled) = oneshot::channel();
+        self.active = Some((id, cancel, receiver));
+        self.progressed = Some(std::time::Instant::now());
+        canceled
     }
 
     /// Hands a claude message to the chat's process: sent at once to the
@@ -1209,6 +1348,7 @@ impl Background {
                         input,
                         output,
                         running,
+                        at: None,
                     },
                     RuntimeEvent::Delegation {
                         id: delegation,
@@ -1436,7 +1576,10 @@ fn run_with_provider(
         };
         let mut event_callback = |event| match event {
             RuntimeEvent::Tool { name, input, output, running } => {
-                let _ = sender.send(Update::Tool { id, name, input, output, running });
+                let _ = sender.send(Update::Tool { id, name, input, output, running, at: Some(atif::now_ms()) });
+            },
+            RuntimeEvent::Attempt(attempt) => {
+                let _ = sender.send(Update::Attempt { id, attempt: *attempt });
             },
             RuntimeEvent::Delegation { id: delegation, name, task, event } => {
                 let _ = sender.send(Update::Delegation { id, delegation, name, task, event: *event });
@@ -2110,6 +2253,7 @@ async fn local_turn(
         | RuntimeEvent::Harness(_)
         | RuntimeEvent::Progress { .. }
         | RuntimeEvent::Plan(_)
+        | RuntimeEvent::Attempt(_)
         | RuntimeEvent::Thinking(_) => event_callback(event),
     };
     let result = async {
@@ -2954,5 +3098,113 @@ mod tests {
             false,
         );
         assert_eq!(app.program_status().0, "working");
+    }
+
+    /// #11580: a turn whose worker goes quiet — a reply that never ends,
+    /// a call that never returns, a worker nobody hears from — ends after
+    /// the stall time with a plain error, the "Working" rail gone, and the
+    /// worker told to stop. Progress resets the clock; an attempt starting
+    /// or a wait row does not.
+    #[test]
+    fn a_turn_with_no_progress_for_the_stall_time_ends_visibly() {
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.submit("work", std::path::Path::new("."));
+        let id = app.request.take().unwrap().id;
+        assert!(app.live.busy);
+        let mut background = Background::default();
+        background.stalling_after(Duration::from_millis(300));
+        let (sender, receiver) = mpsc::channel();
+        let mut canceled = background.adopt(id, receiver);
+        // A call starts and the worker goes quiet with it open.
+        sender
+            .send(Update::Tool {
+                id,
+                name: "Run".into(),
+                input: json!({"command":"sleep 99999"}),
+                output: Value::Null,
+                running: true,
+                at: None,
+            })
+            .unwrap();
+        background.sync(&mut app);
+        thread::sleep(Duration::from_millis(200));
+        // An attempt and a wait row are no progress.
+        sender
+            .send(Update::Attempt {
+                id,
+                attempt: crate::bundled_runtime::ModelAttempt::started(
+                    "fixture/model",
+                    atif::now_ms(),
+                ),
+            })
+            .unwrap();
+        sender
+            .send(Update::Tool {
+                id,
+                name: crate::long_session::LIMIT_TOOL.into(),
+                input: json!({"limit":"retry","reason":"fixture"}),
+                output: json!({"paused_until_ms": atif::now_ms() + 60_000}),
+                running: true,
+                at: None,
+            })
+            .unwrap();
+        background.sync(&mut app);
+        assert!(app.live.busy, "the stall time has not passed");
+        thread::sleep(Duration::from_millis(150));
+        background.sync(&mut app);
+        assert!(!app.live.busy, "the stalled turn ended");
+        assert_eq!(app.live.notice.as_deref(), Some(STALLED));
+        assert!(canceled.try_recv().is_ok(), "the worker was told to stop");
+        assert!(background.active.is_none());
+        // Nothing is left looking busy, and the open attempt is on the
+        // record as one that never answered.
+        assert!(
+            !app.live
+                .entries
+                .iter()
+                .any(|entry| matches!(entry, Entry::Tool { running: true, .. }))
+        );
+        assert!(app.live.attempts.iter().all(|attempt| attempt.outcome
+            == crate::bundled_runtime::AttemptOutcome::Failed
+            && attempt.ended_ms.is_some()));
+        assert_eq!(app.live.attempts.len(), 1);
+        // What the worker still sends goes nowhere.
+        drop(sender);
+        background.sync(&mut app);
+        assert!(!app.live.busy);
+    }
+
+    /// #11580: progress keeps a long turn going past the stall time.
+    #[test]
+    fn progress_keeps_a_turn_past_the_stall_time() {
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.submit("work", std::path::Path::new("."));
+        let id = app.request.take().unwrap().id;
+        let mut background = Background::default();
+        background.stalling_after(Duration::from_millis(200));
+        let (sender, receiver) = mpsc::channel();
+        let _canceled = background.adopt(id, receiver);
+        for _ in 0..4 {
+            thread::sleep(Duration::from_millis(100));
+            sender
+                .send(Update::Delta {
+                    id,
+                    text: "more ".into(),
+                })
+                .unwrap();
+            background.sync(&mut app);
+        }
+        assert!(app.live.busy, "a turn that keeps answering keeps going");
+        sender
+            .send(Update::Finished {
+                id,
+                result: Ok(Streamed::default()),
+            })
+            .unwrap();
+        background.sync(&mut app);
+        assert!(!app.live.busy);
+        assert_eq!(app.live.notice, None);
     }
 }

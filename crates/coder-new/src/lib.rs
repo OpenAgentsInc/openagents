@@ -697,6 +697,7 @@ impl App {
                     *progress = Some((step, complete));
                 }
             }
+            bundled_runtime::RuntimeEvent::Attempt(attempt) => child.chat.attempt(*attempt),
             bundled_runtime::RuntimeEvent::Delegation { .. }
             | bundled_runtime::RuntimeEvent::Plan(_) => {}
         }
@@ -981,6 +982,8 @@ impl App {
         self.checking_key = false;
         self.checking_jev = false;
         if self.live.busy {
+            self.live
+                .close_attempts("the turn was stopped before this attempt answered");
             // A stopped turn's files can be undone too (#11515).
             self.finish_turn_record();
             if !self.live.partial.is_empty() {
@@ -1076,8 +1079,16 @@ impl App {
         }
         self.live.stamp();
         let finished = matches!(update, live::Update::Finished { result: Ok(_), .. });
+        // A call's own start and end, as the worker saw them (#11580).
+        let at = match &update {
+            live::Update::Tool { at: Some(at), .. } => Some(*at),
+            _ => None,
+        };
         self.apply_live_update(update);
-        self.live.stamp();
+        match at {
+            Some(at) => self.live.stamp_at(at),
+            None => self.live.stamp(),
+        }
         // The Intaker named the issue: the solver run starts on it.
         if finished && self.mode == Mode::Solver && self.issue_run.is_none() {
             let chosen = self
@@ -1223,6 +1234,9 @@ impl App {
                     self.live.entries.push(live::Entry::Tool { name, input, output, running });
                 }
             }
+            live::Update::Attempt { attempt, .. } if self.live.busy => {
+                self.live.attempt(attempt);
+            }
             live::Update::Usage { usage, .. } if self.live.busy => {
                 // The totals move as each call ends, not only when the turn
                 // finishes.
@@ -1275,6 +1289,8 @@ impl App {
                 self.live.busy = false;
                 self.live.thinking = false;
                 self.live.close_thinking();
+                self.live
+                    .close_attempts("the turn ended before this attempt answered");
                 let text_streamed = std::mem::take(&mut self.live.text_streamed);
                 if let Some(id) = self.active_delegation.take() {
                     if let Some(child) = self.delegations.iter_mut().find(|child| child.id == id) {

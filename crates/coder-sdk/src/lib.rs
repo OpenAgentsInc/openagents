@@ -37,6 +37,7 @@ pub mod outcome;
 pub mod plugin_hooks;
 pub mod registry;
 pub mod scripted;
+pub mod search_guard;
 pub mod system_one;
 pub mod tools;
 pub mod worktree;

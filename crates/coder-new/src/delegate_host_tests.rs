@@ -481,6 +481,7 @@ async fn a_finished_child_closes_its_card_and_is_one_result() {
         input: arguments.clone(),
         output: Value::Null,
         running: true,
+        at: None,
     });
     for event in events {
         let RuntimeEvent::Delegation {
@@ -506,6 +507,7 @@ async fn a_finished_child_closes_its_card_and_is_one_result() {
         input: arguments,
         output: output.clone(),
         running: false,
+        at: None,
     });
     app.apply_update(crate::live::Update::Finished {
         id,

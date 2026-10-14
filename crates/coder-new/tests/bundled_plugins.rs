@@ -332,6 +332,7 @@ fn live_tool_progress_survives_typing_and_canceled_updates_cannot_revive_it() {
         input: json!({"state":"fixture"}),
         output,
         running,
+        at: None,
     };
     app.apply_update(tool(true, json!(null)));
     app.tick();

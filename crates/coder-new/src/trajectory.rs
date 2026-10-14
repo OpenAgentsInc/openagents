@@ -94,6 +94,14 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
                 if let Some(card) = folded_card(chat, &reported, output) {
                     extra.insert("delegation".into(), card);
                 }
+                // Each call's own start and end (#11580): calls a reply
+                // ran one after another no longer share one time.
+                if let Some(started) = chat.stamps.get(index) {
+                    extra.insert("started_at".into(), json!(atif::iso(*started)));
+                }
+                if let Some(ended) = chat.tool_ends.get(&index) {
+                    extra.insert("ended_at".into(), json!(atif::iso(*ended)));
+                }
                 Step::called(Call {
                     id: format!("call-{}", index + 1),
                     name: name.clone(),
@@ -201,9 +209,30 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
             .sum::<u64>() as f64
             / 1000.0
     );
-    if let (Some(first), Some(last)) = (chat.stamps.first(), chat.stamps.last()) {
+    // From the first entry to the last thing that happened — a call's
+    // end, a failed attempt — or to now while the turn is still working
+    // (#11580): not the last entry's start.
+    if let Some(first) = chat.stamps.first() {
+        let last = chat
+            .stamps
+            .iter()
+            .chain(chat.tool_ends.values())
+            .copied()
+            .chain([chat.last_ms])
+            .chain(chat.busy.then(atif::now_ms))
+            .max()
+            .unwrap_or(*first);
         result["final_metrics"]["extra"]["wall_seconds"] =
             json!(last.saturating_sub(*first) as f64 / 1000.0);
+    }
+    // The failed model attempts and the one still open (#11580).
+    if !chat.attempts.is_empty() {
+        result["extra"]["model_attempts"] = json!(
+            chat.attempts
+                .iter()
+                .map(crate::bundled_runtime::ModelAttempt::record)
+                .collect::<Vec<_>>()
+        );
     }
     if let Some(notice) = &chat.notice {
         result["extra"]["notice"] = json!(notice);
@@ -1204,6 +1233,121 @@ mod tests {
         assert_eq!(selected["session_id"], "child");
         assert_eq!(selected["steps"][1]["model_name"], "model/actual:low");
         assert!(selected.get("subagent_trajectories").is_none());
+    }
+
+    /// #11580: calls a reply ran one after another keep their own start
+    /// and end, as the worker saw them, even when the screen took their
+    /// updates in together; wall time runs to the last call's end, or to
+    /// now while the turn still works; failed and open model attempts are
+    /// on the record.
+    #[test]
+    fn sequential_calls_keep_their_own_times_and_wall_time_reaches_the_end() {
+        let mut app = App {
+            mode: crate::Mode::Live,
+            ..App::default()
+        };
+        let opened = atif::now_ms();
+        app.submit("Look around", Path::new("."));
+        let id = app.request.take().unwrap().id;
+        let call = |command: &str, running: bool, at: u64| crate::live::Update::Tool {
+            id,
+            name: "Run".into(),
+            input: json!({"command": command}),
+            output: if running {
+                Value::Null
+            } else {
+                json!({"exit":0})
+            },
+            running,
+            at: Some(at),
+        };
+        // Four calls in a row; the last, a long search, runs 92 seconds.
+        // The screen takes every update in at once, afterwards.
+        let start = opened + 1_000;
+        for update in [
+            call("git status", true, start),
+            call("git status", false, start + 20),
+            call("git log -n 3", true, start + 21),
+            call("git log -n 3", false, start + 40),
+            call("git log -n 1 -p", true, start + 41),
+            call("git log -n 1 -p", false, start + 90),
+            call("grep -rn needle src", true, start + 91),
+            call("grep -rn needle src", false, start + 92_091),
+        ] {
+            app.apply_update(update);
+        }
+        let mut attempt = crate::bundled_runtime::ModelAttempt::started(
+            "google/gemini-3.8-flash",
+            start + 92_100,
+        );
+        app.apply_update(crate::live::Update::Attempt {
+            id,
+            attempt: attempt.clone(),
+        });
+        let exported = document(&app.live, "stamps", "auto", Path::new("/workspace"));
+        let steps = exported["steps"].as_array().unwrap();
+        let calls: Vec<&Value> = steps
+            .iter()
+            .filter(|step| step.get("tool_calls").is_some())
+            .collect();
+        assert_eq!(calls.len(), 4);
+        let starts: Vec<&str> = calls
+            .iter()
+            .map(|step| {
+                step["tool_calls"][0]["extra"]["started_at"]
+                    .as_str()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(
+            starts,
+            [
+                atif::iso(start),
+                atif::iso(start + 21),
+                atif::iso(start + 41),
+                atif::iso(start + 91)
+            ]
+        );
+        assert_eq!(calls[3]["timestamp"], atif::iso(start + 91));
+        assert_eq!(
+            calls[3]["tool_calls"][0]["extra"]["ended_at"],
+            atif::iso(start + 92_091)
+        );
+        // Still working: wall time runs to now, past the search's end.
+        let wall = exported["final_metrics"]["extra"]["wall_seconds"]
+            .as_f64()
+            .unwrap();
+        assert!(wall >= 93.0, "{wall}");
+        // The attempt that never answered is on the record as open.
+        assert_eq!(
+            exported["extra"]["model_attempts"][0]["outcome"],
+            "in_flight"
+        );
+        assert_eq!(
+            exported["extra"]["model_attempts"][0]["started_at"],
+            atif::iso(start + 92_100)
+        );
+        // Once it fails and the turn ends, it is a failed attempt, and wall
+        // time stops at the turn's last moment.
+        attempt.ended_ms = Some(start + 95_000);
+        attempt.outcome = crate::bundled_runtime::AttemptOutcome::Failed;
+        attempt.status = Some(503);
+        attempt.retry_after = Some(7200);
+        app.apply_update(crate::live::Update::Attempt { id, attempt });
+        app.apply_update(crate::live::Update::Finished {
+            id,
+            result: Err("stopped".into()),
+        });
+        let exported = document(&app.live, "stamps", "auto", Path::new("/workspace"));
+        assert_eq!(exported["extra"]["model_attempts"][0]["status"], 503);
+        assert_eq!(
+            exported["extra"]["model_attempts"][0]["retry_after_seconds"],
+            7200
+        );
+        let wall = exported["final_metrics"]["extra"]["wall_seconds"]
+            .as_f64()
+            .unwrap();
+        assert!(wall >= 95.0, "{wall}");
     }
 
     /// A foreground delegation records how long it ran, and each step of

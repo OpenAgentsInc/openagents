@@ -652,6 +652,7 @@ fn microcoder_work_stays_in_its_selectable_child_chat_and_trackpad_keeps_the_sel
         input: json!({"query":"parent"}),
         output: Value::Null,
         running: true,
+        at: None,
     });
     assert_eq!(
         app.scroll, 3,

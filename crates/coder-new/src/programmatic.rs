@@ -1699,6 +1699,7 @@ fn delegate(
                     // A step of this chat's own loop: the JSON event above
                     // carries it; a delegation's step reaches its row.
                     RuntimeEvent::Progress { .. } | RuntimeEvent::Plan(_) => {}
+                    RuntimeEvent::Attempt(attempt) => app.live.attempt(*attempt),
                     RuntimeEvent::Delegation {
                         id,
                         name,
@@ -1781,6 +1782,11 @@ fn runtime_value(event: &RuntimeEvent) -> Value {
         RuntimeEvent::Model(model) => json!({"event":"model","model":model}),
         RuntimeEvent::Progress { step, complete } => {
             json!({"event":"progress","step":step,"complete":complete})
+        }
+        RuntimeEvent::Attempt(attempt) => {
+            let mut event = attempt.record();
+            event["event"] = json!("model_attempt");
+            event
         }
         RuntimeEvent::Tool {
             name,

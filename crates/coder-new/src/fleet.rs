@@ -816,6 +816,7 @@ fn record(chat: &mut Chat, event: &RuntimeEvent) {
             output,
             running,
         } => chat.tool(name.clone(), input.clone(), output.clone(), *running),
+        RuntimeEvent::Attempt(attempt) => chat.attempt(*attempt.clone()),
         RuntimeEvent::Delegation { .. } | RuntimeEvent::Progress { .. } | RuntimeEvent::Plan(_) => {
         }
     }

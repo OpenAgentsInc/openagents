@@ -210,6 +210,76 @@ pub enum RuntimeEvent {
     /// ([`crate::claude_stream::THINKING`], `running: false`) then closes.
     /// See [`crate::claude_stream::Thought`].
     ThinkingText(String),
+    /// One model attempt, when it starts and when it ends (#11580): a
+    /// failed or still-open attempt goes into the export, so a turn that
+    /// stopped answering can be diagnosed.
+    Attempt(Box<ModelAttempt>),
+}
+
+/// How one model attempt ended, or that it is still open.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AttemptOutcome {
+    InFlight,
+    Answered,
+    Failed,
+}
+
+/// One request to a model inside a turn (#11580).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModelAttempt {
+    pub model: String,
+    /// When the request went out, in milliseconds since the epoch; it
+    /// names the attempt.
+    pub started_ms: u64,
+    pub ended_ms: Option<u64>,
+    pub outcome: AttemptOutcome,
+    /// The HTTP status of a refused attempt.
+    pub status: Option<u16>,
+    /// The `Retry-After` seconds the provider asked for.
+    pub retry_after: Option<u64>,
+    /// What went wrong, in fixed words.
+    pub reason: Option<String>,
+}
+
+impl ModelAttempt {
+    /// An attempt that just went out.
+    #[must_use]
+    pub fn started(model: &str, started_ms: u64) -> Self {
+        Self {
+            model: model.to_owned(),
+            started_ms,
+            ended_ms: None,
+            outcome: AttemptOutcome::InFlight,
+            status: None,
+            retry_after: None,
+            reason: None,
+        }
+    }
+
+    /// The export's record of it, times as ISO 8601.
+    #[must_use]
+    pub fn record(&self) -> Value {
+        let mut record = json!({
+            "model": self.model,
+            "started_at": atif::iso(self.started_ms),
+            "outcome": self.outcome,
+        });
+        if let Some(ended) = self.ended_ms {
+            record["ended_at"] = json!(atif::iso(ended));
+            record["duration_ms"] = json!(ended.saturating_sub(self.started_ms));
+        }
+        if let Some(status) = self.status {
+            record["status"] = json!(status);
+        }
+        if let Some(seconds) = self.retry_after {
+            record["retry_after_seconds"] = json!(seconds);
+        }
+        if let Some(reason) = &self.reason {
+            record["reason"] = json!(reason);
+        }
+        record
+    }
 }
 
 /// What one model call used and how long it took.
@@ -249,6 +319,7 @@ impl RuntimeEvent {
             | Self::Usage(_)
             | Self::Harness(_)
             | Self::Plan(_)
+            | Self::Attempt(_)
             | Self::Thinking(_) => {}
             Self::Text(text) | Self::Model(text) | Self::ThinkingText(text) => {
                 *text = redact_text(text, keys);
@@ -293,7 +364,7 @@ pub fn cli_tool_definition() -> Value {
 pub fn run_tool_definition() -> Value {
     json!({"type":"function","function":{
         "name":"Run",
-        "description":"Run one shell command in the working directory and return its exit status and output. Commands have full filesystem and network access by default. Follow the user's instructions. An explicitly gated host can require CONFIRM or REJECT for changes. Never start an interactive program or a pager.",
+        "description":"Run one shell command in the working directory and return its exit status and output. Commands have full filesystem and network access by default. Follow the user's instructions. An explicitly gated host can require CONFIRM or REJECT for changes. Never start an interactive program or a pager. To search file contents, use the Grep tool, or rg in a shell: both skip build output and other files .gitignore ignores. A recursive grep over the whole checkout (grep -r PATTERN .) is refused; to grep one folder, name it.",
         "parameters":{"type":"object","properties":{"command":{"type":"string","minLength":1,"maxLength":8192}},"required":["command"],"additionalProperties":false}
     }})
 }
@@ -3095,6 +3166,7 @@ mod tests {
                     input,
                     output,
                     running,
+                    at: None,
                 });
             }
         };
