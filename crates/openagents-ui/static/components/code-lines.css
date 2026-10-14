@@ -26,13 +26,15 @@
   user-select: none;
 }
 
+/* The soft tints are light-theme colors; in the dark theme the lines take
+   the see-through tints so their text stays readable. */
 .oa-code-line[data-diff="add"] {
-  background: var(--color-background-success-soft);
+  background: light-dark(var(--color-background-success-soft), var(--color-background-success-soft-alpha));
   color: var(--color-text-success);
 }
 
 .oa-code-line[data-diff="del"] {
-  background: var(--color-background-danger-soft);
+  background: light-dark(var(--color-background-danger-soft), var(--color-background-danger-soft-alpha));
   color: var(--color-text-danger);
 }
 
