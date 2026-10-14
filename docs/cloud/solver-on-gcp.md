@@ -88,7 +88,7 @@ and the box is deleted. Nothing runs on the person's computer.
 
 | What fails | What the person sees | What happens |
 | --- | --- | --- |
-| No dispatcher running | the row stays "Waiting for a computer" | the run is cancelled after 6 hours, as every work run |
+| No dispatcher running (`oa-solver-dispatch-1` down) | the row stays "Waiting for a computer" | the run is cancelled after 6 hours, as every work run |
 | oa-boat has no capacity or refuses | "No computer was free" | the run fails; no box to delete |
 | Box never reachable | "The computer did not start" | the box is deleted, the run fails |
 | Container pull fails | "The solver could not start" | box deleted, run fails |
@@ -108,6 +108,62 @@ and the box is deleted. Nothing runs on the person's computer.
   disk; a 10-minute run is about $0.06.
 - The run's result names the model cost the solver counted and the box's
   billed dollars from oa-boat's usage; unknown stays unknown, never zero.
+
+## The dispatcher host
+
+Production's dispatcher runs on **`oa-solver-dispatch-1`** (GCE, project
+`openagentsgemini`, zone `us-central1-a`, `e2-small`, Debian 13), as the
+systemd service **`oa-solver-dispatch`**: `oa-solver-box --serve
+--metadata-token --site https://openagents.com --name oa-solver-dispatch-1
+--slots 2`. It takes up to two Solver runs at a time from openagents.com
+and makes their boxes on oa-boat. The service restarts 10 s after any
+exit, forever, and is enabled at boot.
+
+- **Its account** is `oa-solver-dispatch@openagentsgemini.iam.gserviceaccount.com`:
+  it reads the three secrets below, pulls the binary from the
+  `openagentsgemini-coder-artifacts` bucket, and its metadata-server tokens
+  are the boxes' Vertex AI token (`roles/aiplatform.user`) and Artifact
+  Registry pull token (`roles/artifactregistry.reader` on `openagents`).
+- **Secrets** (Secret Manager, project `openagentsgemini`), read at each
+  start by `oa-solver-dispatch-start` into the process's environment only,
+  never a file: `oa-boat-api-key` (`BOAT_API_KEY`, the same key the website
+  uses for oa-boat), `openagents-work-host-token` (`OA_WORK_HOST_TOKEN`, the
+  site's `OPENAGENTS_WORK_HOST_TOKEN`), and `coder-pool-git-token`
+  (`OA_SOLVER_GH_TOKEN`, the pool's GitHub token, used only for a run whose
+  requester has no GitHub token in the claim). A new secret version is
+  picked up at the next restart.
+- **Files** ([`deploy/solver-box/dispatcher/`](../../deploy/solver-box/dispatcher)):
+  `cloudbuild.yaml` builds `oa-solver-box` on Debian trixie from a commit
+  and puts it, the unit and the start script at
+  `gs://openagentsgemini-coder-artifacts/oa-solver-box/COMMIT/`;
+  `startup.sh` is the instance's startup script: on every boot it installs
+  the commit named by the instance metadata `oa-solver-box-commit` into
+  `/opt/oa-solver` and (re)starts the service.
+
+```sh
+export CLOUDSDK_CONFIG=/Users/christopherdavid/work/.secrets/gcloud-sa-config
+H="oa-solver-dispatch-1 --zone us-central1-a --project openagentsgemini"
+# Logs (journald; also on the serial console)
+gcloud compute ssh $H --tunnel-through-iap --command 'sudo journalctl -u oa-solver-dispatch -n 100 --no-pager'
+gcloud compute instances get-serial-port-output $H | grep oa-solver-dispatch
+# Restart
+gcloud compute ssh $H --tunnel-through-iap --command 'sudo systemctl restart oa-solver-dispatch'
+# Move to another commit: build it, point the host at it, rerun the startup script
+gcloud builds submit --no-source --config deploy/solver-box/dispatcher/cloudbuild.yaml \
+  --substitutions _COMMIT=$(git rev-parse origin/main) --project openagentsgemini --region us-central1 \
+  --service-account projects/openagentsgemini/serviceAccounts/oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com \
+  --gcs-log-dir gs://openagentsgemini-oa-mvp-cloud-build-logs/oa-solver-box
+gcloud compute instances add-metadata $H --metadata oa-solver-box-commit=$(git rev-parse origin/main)
+gcloud compute ssh $H --tunnel-through-iap --command 'sudo google_metadata_script_runner startup'
+# Stop taking runs (runs already taken finish or are stopped by the site)
+gcloud compute ssh $H --tunnel-through-iap --command 'sudo systemctl stop oa-solver-dispatch'
+```
+
+Each run logs one line when it is taken, naming which GitHub token it
+uses ("with the requester's GitHub token" or "with the pool's GitHub
+token", never the token), then its progress and its pull request or why
+it ended. The solver image is the binary's `solver_box::IMAGE`; moving the
+image means a new commit and the steps above.
 
 ## Operate
 

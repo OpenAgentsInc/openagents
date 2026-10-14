@@ -5,6 +5,8 @@
 Description=Solver in the cloud dispatcher (oa-solver-box --serve)
 Wants=network-online.target
 After=network-online.target
+# Restart forever: never give up after a burst of failures.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -17,7 +19,6 @@ Environment=BOAT_API_BASE=https://oa-boat-157437760789.us-central1.run.app/api/v
 ExecStart=/opt/oa-solver/oa-solver-dispatch-start
 Restart=always
 RestartSec=10
-StartLimitIntervalSec=0
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
