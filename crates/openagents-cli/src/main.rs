@@ -27,6 +27,7 @@ mod boat_run;
 #[cfg(unix)]
 mod brainstorm_pilot;
 mod browser;
+mod cad;
 mod capacity;
 mod catalog;
 #[cfg(feature = "verse")]
@@ -235,6 +236,7 @@ Coder:
     film_help!(),
     "  lab          Video Lab: see and edit films, shots and scenes on this computer
                (open, show, frame, edit, versions, render, compare, notes).
+  cad          CAD Lab: design parts and assemblies on this computer, checked and measured
   game         Game Lab: change games on this computer by editing their settings
                (open, play, edit, versions, compare, notes).
   scratch      Make and print this session's durable scratch directory, under
@@ -490,6 +492,7 @@ fn main() -> ExitCode {
         "sales" => sales::run(&output, &rest),
         "customer" => customer::run(&output, &rest),
         "lab" => lab::run(&output, &rest),
+        "cad" => cad::run(&output, &rest),
         "game" => game::run(&output, &rest),
         "scratch" => scratch::run(&output, &rest),
         #[cfg(feature = "verse")]

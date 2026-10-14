@@ -26,7 +26,7 @@ pub(crate) fn head() -> Markup {
         // `/export` in the composer (#11615).
         script src=(crate::chat_export::SCRIPT_PATH) defer {}
         script src=(crate::analytics::SCRIPT) defer {}
-        // The Video Lab and Game Lab cards' buttons (Play, Play both, a
+        // The Video Lab, Game Lab and CAD Lab cards' buttons (Play, Play both, a
         // note at a time): an answer's card arrives as a fragment, whose
         // scripts HTMX doesn't run, so the page loads them up front.
         script src=(crate::lab::ASSET_JS) defer {}
@@ -34,6 +34,7 @@ pub(crate) fn head() -> Markup {
         @if crate::robot_lab::configured() {
             script type="module" src=(crate::robot_lab::START_JS) {}
         }
+        script src=(crate::cad_lab::ASSET_JS) defer {}
     }
 }
 

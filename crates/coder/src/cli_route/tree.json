@@ -15705,6 +15705,415 @@
       ]
     },
     {
+      "name": "cad",
+      "summary": "CAD Lab: design parts and assemblies on this computer, checked and measured",
+      "children": [
+        {
+          "name": "list",
+          "leaf": {
+            "path": [
+              "cad",
+              "list"
+            ],
+            "usage": [
+              "list"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "list"
+                  }
+                ]
+              }
+            ],
+            "summary": "The CAD documents.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "open",
+          "leaf": {
+            "path": [
+              "cad",
+              "open"
+            ],
+            "usage": [
+              "open DOC [--version N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "open"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "DOC"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "version",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Its parts, instances, joints, mass and checks.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "check",
+          "leaf": {
+            "path": [
+              "cad",
+              "check"
+            ],
+            "usage": [
+              "check DOC [--version N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "check"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "DOC"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "version",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Rebuild it and run the checks again.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "versions",
+          "leaf": {
+            "path": [
+              "cad",
+              "versions"
+            ],
+            "usage": [
+              "versions DOC"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "versions"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "DOC"
+                  }
+                ]
+              }
+            ],
+            "summary": "Who made each version and what it changed.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "compare",
+          "leaf": {
+            "path": [
+              "cad",
+              "compare"
+            ],
+            "usage": [
+              "compare DOC [--a N] [--b N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "compare"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "DOC"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "a",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "b",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "What changed between two versions.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "render",
+          "leaf": {
+            "path": [
+              "cad",
+              "render"
+            ],
+            "usage": [
+              "render DOC [--view hero|rear|plan|front|side|iso|under|detail] [--focus ID,ID] [--version N] [--width W] [--height H]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "render"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "DOC"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "view",
+                    "value": "hero|rear|plan|front|side|iso|under|detail",
+                    "choices": [
+                      "hero",
+                      "rear",
+                      "plan",
+                      "front",
+                      "side",
+                      "iso",
+                      "under",
+                      "detail"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "focus",
+                    "value": "ID,ID",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "version",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "width",
+                    "value": "W",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "height",
+                    "value": "H",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "A picture of a version.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "export",
+          "leaf": {
+            "path": [
+              "cad",
+              "export"
+            ],
+            "usage": [
+              "export DOC [--formats glb,3mf,step,stl] [--version N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "export"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "DOC"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "formats",
+                    "value": "glb,3mf,step,stl",
+                    "choices": [
+                      "glb,3mf,step,stl"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "version",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Files of a version.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "tool",
+          "leaf": {
+            "path": [
+              "cad",
+              "tool"
+            ],
+            "usage": [
+              "tool NAME --json ARGS"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "tool"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "json",
+                    "value": "ARGS",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Any cad_* tool with its JSON arguments (new_part, add_feature, edit_feature, set_part, assemble ...).",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "version",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "a",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "b",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "view",
+          "value": "hero|rear|plan|front|side|iso|under|detail",
+          "choices": [
+            "hero",
+            "rear",
+            "plan",
+            "front",
+            "side",
+            "iso",
+            "under",
+            "detail"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "focus",
+          "value": "ID,ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "width",
+          "value": "W",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "height",
+          "value": "H",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "formats",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "json",
+          "value": "ARGS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "game",
       "summary": "Game Lab: change games on this computer by editing their settings (open, play, edit, versions, compare, notes).",
       "children": [

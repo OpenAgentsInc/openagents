@@ -2,7 +2,7 @@
 # The whole 1.0 web stack on this Mac, wired the way production runs it
 # (docs/dev/full-local.md):
 #
-#   scripts/dev/full-local.sh start [--no-build] [--lab] [--game]
+#   scripts/dev/full-local.sh start [--no-build] [--lab] [--game] [--cad]
 #                                                  build, start everything, return
 #   scripts/dev/full-local.sh stop                 stop what start started
 #   scripts/dev/full-local.sh status               what runs, where
@@ -41,6 +41,11 @@
 #                  (GAME_LAB_PORT), and the website's chat gets its game_*
 #                  tools the same way (docs/game-lab/mvp.md). --game alone
 #                  leaves Video Lab off.
+#   cad lab        with --lab or --cad: cad-lab serve on 127.0.0.1:8794
+#                  (CAD_LAB_PORT), built in release (its kernel is slow
+#                  unoptimised), and the website's chat gets its cad_* tools
+#                  the same way (docs/cad-lab/mvp.md). --cad alone leaves
+#                  Video Lab off.
 #
 # Everything persists under $FULL_LOCAL (default ~/.openagents/full-local):
 # accounts, sessions, chats, saved keys, the gateway registry, logs.
@@ -156,9 +161,10 @@ build() {
 
 status() {
     any=0
-    for name in gateway worker web lab game; do
+    for name in gateway worker web lab game cad; do
         [ "$name" = lab ] && [ "${lab:-0}" != 1 ] && continue
         [ "$name" = game ] && [ "${game:-0}" != 1 ] && continue
+        [ "$name" = cad ] && [ "${cad:-0}" != 1 ] && continue
         if p=$(pid "$name"); then
             any=1
             printf '%-8s running (pid %s)\n' "$name" "$p"
@@ -178,12 +184,15 @@ status() {
         if [ "${game:-0}" = 1 ]; then
             echo "Game Lab:  http://127.0.0.1:${game_port:-8793} (the chat's games; log in $logs/game.log)"
         fi
+        if [ "${cad:-0}" = 1 ]; then
+            echo "CAD Lab:   http://127.0.0.1:${cad_port:-8794} (the chat's CAD models; log in $logs/cad.log)"
+        fi
         echo "Logs:      $logs/{gateway,worker,web}.log"
     fi
 }
 
 stop() {
-    for name in web worker gateway lab game; do
+    for name in web worker gateway lab game cad; do
         if p=$(pid "$name"); then
             kill "$p" 2>/dev/null || true
             i=0
@@ -202,11 +211,13 @@ start() {
     build_first=1
     lab=0
     game=0
+    cad=0
     for arg in "$@"; do
         case "$arg" in
         --no-build) build_first=0 ;;
-        --lab) lab=1 game=1 ;;
+        --lab) lab=1 game=1 cad=1 ;;
         --game) game=1 ;;
+        --cad) cad=1 ;;
         *) usage ;;
         esac
     done
@@ -215,6 +226,7 @@ start() {
     fi
     lab_port=${VIDEO_LAB_PORT:-8792}
     game_port=${GAME_LAB_PORT:-8793}
+    cad_port=${CAD_LAB_PORT:-8794}
     if pid gateway > /dev/null || pid worker > /dev/null || pid web > /dev/null; then
         echo "Already running; 'stop' first to restart."
         status
@@ -234,8 +246,8 @@ start() {
 
     mkdir -p "$state" "$run" "$logs"
     chmod 700 "$state"
-    printf 'web_port=%s\ngateway_port=%s\nrelay=%s\nlab=%s\nlab_port=%s\ngame=%s\ngame_port=%s\n' \
-        "$web_port" "$gateway_port" "$relay" "$lab" "$lab_port" "$game" "$game_port" > "$run/ports"
+    printf 'web_port=%s\ngateway_port=%s\nrelay=%s\nlab=%s\nlab_port=%s\ngame=%s\ngame_port=%s\ncad=%s\ncad_port=%s\n' \
+        "$web_port" "$gateway_port" "$relay" "$lab" "$lab_port" "$game" "$game_port" "$cad" "$cad_port" > "$run/ports"
     if [ "$build_first" = 1 ]; then
         build
     elif [ ! -s "$state/build/chat/coder_chat_web_bg.wasm" ] \
@@ -466,8 +478,37 @@ EOF
         [ -n "$google_credentials" ] || echo "No Google credential, so the chat can't use Game Lab's tools (Gemini)." >&2
     fi
 
+    # CAD Lab (docs/cad-lab/mvp.md): the service that keeps the CAD
+    # documents' versions and builds and checks every edit; the website's
+    # chat gets its tools the same way.
+    cad_url=""
+    if [ "$cad" = 1 ]; then
+        cad_url="http://127.0.0.1:$cad_port"
+        if curl -fsS -o /dev/null "$cad_url/healthz" 2>/dev/null; then
+            echo "CAD Lab is already running on $cad_url."
+        else
+            if [ ! -x "$target/release/cad-lab" ] || [ "$build_first" = 1 ]; then
+                cargo_build --release -p cad-lab --bin cad-lab >> "$logs/build.log" 2>&1 \
+                    || { echo "The CAD Lab build failed; see $logs/build.log" >&2; stop > /dev/null; exit 1; }
+            fi
+            nohup "$target/release/cad-lab" serve --port "$cad_port" \
+                > "$logs/cad.log" 2>&1 &
+            echo $! > "$run/cad.pid"
+            if ! wait_http "$cad_url/healthz" 30; then
+                echo "CAD Lab didn't start; see $logs/cad.log" >&2
+                stop > /dev/null
+                exit 1
+            fi
+        fi
+        [ -n "$google_credentials" ] || echo "No Google credential, so the chat can't use CAD Lab's tools (Gemini)." >&2
+    fi
+
     # The website.
     (
+        if [ -n "$cad_url" ]; then
+            export OPENAGENTS_CAD_LAB="$cad_url"
+            [ -n "$google_credentials" ] && export GOOGLE_APPLICATION_CREDENTIALS="$google_credentials"
+        fi
         if [ -n "$game_url" ]; then
             export OPENAGENTS_GAME_LAB="$game_url"
             [ -n "$google_credentials" ] && export GOOGLE_APPLICATION_CREDENTIALS="$google_credentials"

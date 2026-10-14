@@ -1,0 +1,140 @@
+{
+  "$id": "https://openagents.com/schemas/cad/part.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "color": {
+      "pattern": "^#[0-9a-fA-F]{6}$",
+      "type": "string"
+    },
+    "features": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "sketch",
+              "block",
+              "solid.extrude",
+              "solid.revolve",
+              "solid.sweep",
+              "solid.loft",
+              "solid.pipe",
+              "solid.box",
+              "solid.cylinder",
+              "solid.sphere",
+              "solid.torus",
+              "solid.coil",
+              "solid.fillet",
+              "solid.chamfer",
+              "solid.shell",
+              "solid.draft",
+              "solid.hole",
+              "solid.combine",
+              "solid.pattern.rectangular",
+              "solid.pattern.circular",
+              "solid.pattern.path",
+              "solid.mirror",
+              "solid.move",
+              "solid.scale",
+              "solid.offset_face",
+              "solid.press_pull",
+              "solid.split_body",
+              "solid.emboss",
+              "solid.rib",
+              "solid.web",
+              "solid.remove",
+              "solid.thread",
+              "appearance.assign"
+            ]
+          },
+          "params": {
+            "description": "the operation's parameters; a sketch has plane, offset? and draw: [{op: sketch.*, params}]; a block has ops: [{op, params}] (direct operations)",
+            "type": "object"
+          },
+          "suppressed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "op"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "id": {
+      "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+      "type": "string"
+    },
+    "kind": {
+      "const": "part.v1"
+    },
+    "material": {
+      "enum": [
+        "Aluminum",
+        "Titanium",
+        "Steel",
+        "Stainless Steel",
+        "Brass",
+        "Copper",
+        "ABS Plastic",
+        "PLA",
+        "Nylon",
+        "Polycarbonate",
+        "Glass",
+        "Carbon Fibre",
+        "Rubber",
+        "Circuit Board",
+        "Solar Cell",
+        "Gold",
+        "Foam",
+        "Kapton"
+      ]
+    },
+    "note": {
+      "type": "string"
+    },
+    "parameters": {
+      "items": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "expression": {
+            "type": [
+              "string",
+              "number"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "expression"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "title": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "id",
+    "features"
+  ],
+  "title": "part.v1: a part as a feature history",
+  "type": "object"
+}

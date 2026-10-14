@@ -150,3 +150,12 @@ debug = false
 boltz-client = { path = "vendor/boltz-client/crates/lib" }
 macros = { path = "vendor/boltz-client/crates/macros" }
 platform-utils = { path = "vendor/boltz-client/crates/platform-utils" }
+
+# SolidCraft's fixed copies of Truck crates (cad-core's kernel; see
+# docs/cad-lab/README.md), from the same pinned commit as cad-core's
+# solidcraft-engine.
+[patch.crates-io]
+truck-shapeops = { git = "https://github.com/bherbruck/solidcraft", rev = "229de1484ce7c4df3c28df5e5c111078ca9e53a3" }
+truck-stepio = { git = "https://github.com/bherbruck/solidcraft", rev = "229de1484ce7c4df3c28df5e5c111078ca9e53a3" }
+truck-meshalgo = { git = "https://github.com/bherbruck/solidcraft", rev = "229de1484ce7c4df3c28df5e5c111078ca9e53a3" }
+matext4cgmath = { git = "https://github.com/bherbruck/solidcraft", rev = "229de1484ce7c4df3c28df5e5c111078ca9e53a3" }

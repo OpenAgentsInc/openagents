@@ -1,0 +1,17 @@
+[package]
+name = "cad-lab"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "CAD Lab: build parts and assemblies by talking. Versioned part.v1/assembly.v1 documents, checked edits (valid solids, interference, mass properties), and the local service the web chat's cad tools call."
+
+[dependencies]
+cad = { path = "../cad" }
+axum = "0.8"
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["fs", "macros", "net", "rt-multi-thread"] }
+
+[lints]
+workspace = true

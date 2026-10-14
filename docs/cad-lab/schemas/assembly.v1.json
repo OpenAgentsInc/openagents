@@ -1,0 +1,193 @@
+{
+  "$id": "https://openagents.com/schemas/cad/assembly.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "contacts": {
+      "items": {
+        "items": {
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+          "type": "string"
+        },
+        "maxItems": 2,
+        "minItems": 2,
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "id": {
+      "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+      "type": "string"
+    },
+    "instances": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "id": {
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "parent": {
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+            "type": "string"
+          },
+          "part": {
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+            "type": "string"
+          },
+          "rotate": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "part"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "joints": {
+      "items": {
+        "properties": {
+          "axis": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "child": {
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+            "type": "string"
+          },
+          "driver": {
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+            "type": "string"
+          },
+          "id": {
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+            "type": "string"
+          },
+          "limits": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "origin": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "parent": {
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+            "type": "string"
+          },
+          "ratio": {
+            "description": "gear: turns of the child per turn of the driver",
+            "type": "number"
+          },
+          "type": {
+            "enum": [
+              "fastened",
+              "revolute",
+              "slider",
+              "cylindrical",
+              "planar",
+              "spherical",
+              "gear"
+            ]
+          },
+          "value": {
+            "type": [
+              "number",
+              "array"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "child"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "kind": {
+      "const": "assembly.v1"
+    },
+    "note": {
+      "type": "string"
+    },
+    "parameters": {
+      "items": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "expression": {
+            "type": [
+              "string",
+              "number"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "expression"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "parts": {
+      "additionalProperties": {
+        "$ref": "part.v1.json"
+      },
+      "type": "object"
+    },
+    "title": {
+      "type": "string"
+    },
+    "units": {
+      "const": "mm"
+    }
+  },
+  "required": [
+    "kind",
+    "id",
+    "parts",
+    "instances"
+  ],
+  "title": "assembly.v1: parts, their instances, joints and contacts",
+  "type": "object"
+}

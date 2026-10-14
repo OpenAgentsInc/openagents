@@ -1,0 +1,225 @@
+//! OpenAgents CAD: typed part and assembly documents, built on an open
+//! B-rep kernel, checked on every edit, measured and exported
+//! (docs/cad-lab/README.md).
+//!
+//! - [`doc`]: `part.v1` (a feature history) and `assembly.v1` (parts,
+//!   instances, joints, contacts), with plain-words validation and schemas.
+//! - [`build`]: replays the documents in the kernel (SolidCraft's crates on
+//!   Truck, pinned), places instances and moves joints.
+//! - [`evaluate`]: a build plus the checks every edit must pass (each
+//!   feature rebuilds, every solid closes, no undeclared overlaps) and the
+//!   mass properties.
+//! - [`export`]: STEP, 3MF, STL and glTF; [`render`]: PNG views.
+//!
+//! Callers see our documents and JSON reports; only [`build`], [`render`]
+//! and [`export`] touch the kernel, so it can be swapped.
+
+pub mod build;
+pub mod doc;
+pub mod export;
+pub mod mass;
+pub mod overlap;
+pub mod render;
+pub mod xf;
+
+use std::collections::BTreeMap;
+
+use serde_json::{Value, json};
+
+pub use build::Built;
+
+/// A built, checked and measured document.
+pub struct Evaluation {
+    pub built: Built,
+    /// The checks, the mass properties and the counts, as JSON.
+    pub report: Value,
+}
+
+/// Builds `document`, checks it and measures it. The error lists, in plain
+/// words, every reason it can't be accepted: a feature that fails, a solid
+/// that doesn't close, an overlap nobody declared.
+pub fn evaluate(document: &Value) -> Result<Evaluation, Vec<String>> {
+    evaluate_with(document, &build::default_cache())
+}
+
+/// [`evaluate`], keeping built parts in `cache`.
+pub fn evaluate_with(document: &Value, cache: &std::path::Path) -> Result<Evaluation, Vec<String>> {
+    let started = std::time::Instant::now();
+    let mut built = build::build_with(document, cache)?;
+    let (problems, contacts) = build::interference(&mut built, document);
+    if !problems.is_empty() {
+        return Err(problems);
+    }
+    let assembly = doc::as_assembly(document);
+    let density_of = |part: &str| {
+        doc::density(
+            assembly["parts"][part]["material"]
+                .as_str()
+                .unwrap_or(doc::DEFAULT_MATERIAL),
+        )
+        .unwrap_or(2.7)
+    };
+    let mut per_instance: BTreeMap<String, mass::Sum> = BTreeMap::new();
+    let mut triangles = 0usize;
+    for solid in &built.solids {
+        per_instance
+            .entry(solid.instance.clone())
+            .or_default()
+            .add(&solid.mesh, density_of(&solid.part));
+        triangles += solid.mesh.triangles.len();
+    }
+    let mut total = mass::Sum::default();
+    let mut instances = Vec::new();
+    for instance in assembly["instances"].as_array().into_iter().flatten() {
+        let id = instance["id"].as_str().unwrap_or_default();
+        let Some(sum) = per_instance.get(id) else {
+            continue;
+        };
+        total.merge(sum);
+        let mut entry = sum.mass().json();
+        entry["id"] = json!(id);
+        entry["part"] = instance["part"].clone();
+        instances.push(entry);
+    }
+    let mut parts = Vec::new();
+    for (key, part) in assembly["parts"].as_object().into_iter().flatten() {
+        let count = instances
+            .iter()
+            .filter(|i| i["part"] == key.as_str())
+            .count();
+        let one = instances.iter().find(|i| i["part"] == key.as_str());
+        parts.push(json!({
+            "id": key,
+            "title": part["title"],
+            "material": part["material"].as_str().unwrap_or(doc::DEFAULT_MATERIAL),
+            "features": part["features"].as_array().map_or(0, Vec::len),
+            "instances": count,
+            "mass_kg": one.map(|i| i["mass_kg"].clone()),
+        }));
+    }
+    let bounds = render::bounds(&built, &[]);
+    let size = if bounds.is_empty() {
+        json!(null)
+    } else {
+        let s = bounds.size();
+        json!([s.x.round(), s.y.round(), s.z.round()])
+    };
+    let features: usize = parts
+        .iter()
+        .filter_map(|p| p["features"].as_u64())
+        .sum::<u64>() as usize;
+    let report = json!({
+        "checks": {
+            "rebuilt": true,
+            "closed_solids": built.solids.len(),
+            "interference": "none beyond declared contacts",
+            "contacts": contacts,
+        },
+        "mass": total.mass().json(),
+        "parts": parts,
+        "instances": instances,
+        "joints": assembly["joints"].as_array().map_or(0, Vec::len),
+        "features": features,
+        "solids": built.solids.len(),
+        "triangles": triangles,
+        "size_mm": size,
+        "warnings": built.warnings,
+        "build_ms": started.elapsed().as_millis() as u64,
+    });
+    Ok(Evaluation { built, report })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A plate with rounded corners and four holes; the analytic volume is
+    /// 80·50·6 − 4·5²(1−π/4)·6 − 4·π·1.7²·6.
+    fn plate() -> Value {
+        let mut part = doc::new_part("plate", "Plate", "Aluminum", Some("#8899aa"));
+        part["features"] = json!([
+            {"id": "outline", "op": "sketch", "params": {"plane": "XY", "draw": [
+                {"op": "sketch.rectangle.center", "params": {"center": [0, 0], "corner": [40, 25]}}]}},
+            {"id": "body", "op": "solid.extrude", "params": {"sketch": "outline", "distance": 6}},
+            {"id": "corners", "op": "solid.fillet", "params": {"edges": [[40, 25, 3], [-40, 25, 3], [40, -25, 3], [-40, -25, 3]], "radius": 5}},
+            {"id": "hole", "op": "solid.cylinder", "params": {"diameter": 3.4, "height": 10, "base": [32, 17, -2], "operation": "cut"}},
+            {"id": "holes", "op": "solid.pattern.rectangular", "params": {"features": ["hole"], "dir1": [-1, 0, 0], "count1": 2, "spacing1": 64, "dir2": [0, -1, 0], "count2": 2, "spacing2": 34}}
+        ]);
+        part
+    }
+
+    #[test]
+    fn a_filleted_plate_with_holes_measures_its_analytic_volume() {
+        let eval = evaluate(&plate()).unwrap_or_else(|p| panic!("{p:?}"));
+        let pi = std::f64::consts::PI;
+        let expected =
+            80.0 * 50.0 * 6.0 - 4.0 * 25.0 * (1.0 - pi / 4.0) * 6.0 - 4.0 * pi * 1.7 * 1.7 * 6.0;
+        let cm3 = eval.report["mass"]["volume_cm3"].as_f64().unwrap() * 1000.0;
+        assert!(
+            (cm3 - expected).abs() / expected < 0.005,
+            "{cm3} vs {expected}"
+        );
+        let kg = eval.report["mass"]["mass_kg"].as_f64().unwrap();
+        assert!((kg - expected * 2.7e-6).abs() < 0.001, "{kg}");
+        assert_eq!(eval.report["checks"]["closed_solids"], 1);
+    }
+
+    #[test]
+    fn exports_step_3mf_and_glb_and_reads_step_back() {
+        let mut eval = evaluate(&plate()).unwrap();
+        let dir = std::env::temp_dir().join(format!("cad-test-{}", std::process::id()));
+        for format in ["step", "3mf", "glb"] {
+            let path = dir.join(format!("plate.{format}"));
+            let bytes = export::write(&mut eval.built, format, &path).unwrap();
+            assert!(bytes > 100, "{format}");
+        }
+        let glb = std::fs::read(dir.join("plate.glb")).unwrap();
+        assert_eq!(&glb[..4], b"glTF");
+        let step = std::fs::read_to_string(dir.join("plate.step")).unwrap();
+        assert!(step.contains("ISO-10303-21"));
+        // The STEP file comes back as a solid of the same volume.
+        let mut back = solidcraft_engine::Session::default();
+        back.execute(
+            "file.insert_step",
+            &json!({"path": dir.join("plate.step").to_string_lossy()}),
+        )
+        .unwrap();
+        let measured = back.execute("inspect.measure", &json!({})).unwrap();
+        let v = measured["total"]["volume_mm3"].as_f64().unwrap();
+        let ours = eval.report["mass"]["volume_cm3"].as_f64().unwrap() * 1000.0;
+        assert!((v - ours).abs() / ours < 0.005, "{v} vs {ours}");
+        let png = render::png(&eval.built, &render::View::named("hero"), 320, 200).unwrap();
+        assert_eq!(&png[1..4], b"PNG");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn overlaps_are_refused_unless_declared_and_joints_move_children() {
+        let mut a = doc::new_assembly("pair", "Pair");
+        a["parts"]["block"] = doc::new_part("block", "Block", "Steel", None);
+        a["parts"]["block"]["features"] = json!([{"id": "b", "op": "solid.box", "params": {"length": 40, "width": 40, "height": 40, "center": [0, 0, 20]}}]);
+        a["instances"] = json!([{"id": "one", "part": "block"}, {"id": "two", "part": "block", "at": [30, 0, 0]}]);
+        let why = evaluate(&a).err().unwrap().join(" ");
+        assert!(
+            why.contains("one and two overlap") || why.contains("two and one overlap"),
+            "{why}"
+        );
+        a["contacts"] = json!([["one", "two"]]);
+        let eval = evaluate(&a).unwrap_or_else(|p| panic!("{p:?}"));
+        assert_eq!(
+            eval.report["checks"]["contacts"].as_array().unwrap().len(),
+            1
+        );
+        // A hinge turns the second block up and away: no contact needed.
+        a["contacts"] = json!([]);
+        a["instances"][1]["at"] = json!([60, 0, 0]);
+        a["instances"][1]["parent"] = json!("one");
+        a["joints"] = json!([{"id": "hinge", "type": "revolute", "parent": "one", "child": "two",
+            "origin": [20, 0, 40], "axis": [0, -1, 0], "value": 90, "limits": [[0, 120]]}]);
+        let eval = evaluate(&a).unwrap_or_else(|p| panic!("{p:?}"));
+        let com = &eval.report["instances"][1]["center_of_mass_mm"];
+        // Turned 90° about the hinge at (20, 0, 40): the centre (60, 0, 20) → (40, 0, 80).
+        assert!((com[0].as_f64().unwrap() - 40.0).abs() < 0.5, "{com}");
+        assert!((com[2].as_f64().unwrap() - 80.0).abs() < 0.5, "{com}");
+    }
+}
