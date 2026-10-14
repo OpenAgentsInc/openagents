@@ -31,6 +31,10 @@ FOLDS = 0.0
 # How far the shirt collar's points reach (1: long spread points, round 8;
 # the CC0 builds keep their shorter ones at 0.6).
 COLLAR_POINTS = 0.6
+# Thickness (m) of the robe's shell and of the shirt collar's band and
+# points.
+ROBE_THICK = 0.003
+COLLAR_THICK = 0.0015
 
 
 def _folds(obj, top_z, depth):
@@ -51,12 +55,53 @@ def _folds(obj, top_z, depth):
     me.update()
 
 
-def _mat(name, color, rough=0.85, sheen=0.5, image=None):
+def _weave(name, kind, size=256):
+    """A tiling fabric normal map: `twill` (the robe's wool: diagonal
+    ribs), `knit` (the sweater: rows of V stitches), `plain` (the shirt:
+    a fine square weave)."""
+    import numpy as np
+
+    y, x = np.mgrid[0:size, 0:size].astype(np.float32) / size * 2 * math.pi
+    if kind == "twill":
+        h = np.sin((x + y) * 24) * 0.6 + np.sin(x * 48) * 0.15
+    elif kind == "knit":
+        h = np.abs(np.sin(x * 16 + np.abs(np.sin(y * 32)) * 1.2)) * 0.8 + np.sin(y * 32) * 0.2
+    else:
+        h = np.sin(x * 64) * np.sin(y * 64) * 0.5
+    gx = (np.roll(h, -1, 1) - np.roll(h, 1, 1)) * 0.5
+    gy = (np.roll(h, -1, 0) - np.roll(h, 1, 0)) * 0.5
+    # Gentle: at 2.5x the plain weave tilted the shirt and collar's normals
+    # some 45 degrees and turned them grey (round 11's first build).
+    s = 0.25 if kind == "plain" else 0.6
+    n = np.stack([-gx * s, -gy * s, np.ones_like(h)], -1)
+    n /= np.linalg.norm(n, axis=-1, keepdims=True)
+    rgba = np.concatenate([n * 0.5 + 0.5, np.ones((size, size, 1), np.float32)], -1)
+    img = bpy.data.images.new(name, size, size, alpha=True)
+    img.pixels.foreach_set(rgba[::-1].astype(np.float32).ravel())
+    img.colorspace_settings.name = "Non-Color"
+    img.pack()
+    return img
+
+
+# Fabric normal maps on the uniform (round 11): twill on the robe, a knit on
+# the sweater, a fine weave on the shirt. Off by default for the CC0 builds.
+FABRIC = False
+
+
+def _mat(name, color, rough=0.85, sheen=0.5, image=None, weave=None):
     m = bpy.data.materials.new(name)
     m.use_nodes = True
     bsdf = m.node_tree.nodes["Principled BSDF"]
     bsdf.inputs["Base Color"].default_value = color
     bsdf.inputs["Roughness"].default_value = rough
+    # (The plain weave stays off: on the white shirt and collar the cloth
+    # shading turned them grey with it, round 11.)
+    if FABRIC and weave and weave != "plain":
+        tex = m.node_tree.nodes.new("ShaderNodeTexImage")
+        tex.image = _weave(f"{name}_weave", weave)
+        nm = m.node_tree.nodes.new("ShaderNodeNormalMap")
+        m.node_tree.links.new(tex.outputs["Color"], nm.inputs["Color"])
+        m.node_tree.links.new(nm.outputs["Normal"], bsdf.inputs["Normal"])
     if image is not None:
         tex = m.node_tree.nodes.new("ShaderNodeTexImage")
         tex.image = image
@@ -254,7 +299,7 @@ def build(body, marks):
     # Shirt: only shows at the collar and in the V; the body is close.
     # Shirt: only the front panel the sweater's V shows.
     shirt = _shell(body, "shirt", 0.0025, lambda c: torso(c) and c.z > chest.z - 0.1 and abs(c.x) < 0.1 and c.y < neck.y, smooth_iters=4)
-    shirt.data.materials.append(_mat("draconia_shirt", WHITE, rough=0.9, sheen=0.2))
+    shirt.data.materials.append(_mat("draconia_shirt", WHITE, rough=0.9, sheen=0.2, weave="plain"))
     out.append(shirt)
 
     # Sweater: charcoal knit, V-neck from the collar to mid-chest.
@@ -276,7 +321,7 @@ def build(body, marks):
         n = Vector((dz, 0, -dx)).normalized() * side
         v_planes.append((Vector((side * 0.004, 0, v_bottom)), n))
     _cut(sweater, v_planes, drop=v_open, front_y=neck.y - 0.01)
-    sweater.data.materials.append(_mat("draconia_sweater", CHARCOAL, rough=0.95, sheen=0.6))
+    sweater.data.materials.append(_mat("draconia_sweater", CHARCOAL, rough=0.95, sheen=0.6, weave="knit"))
     out.append(sweater)
 
     # The V's trim: a band along each edge of the V, green with a silver
@@ -336,8 +381,8 @@ def build(body, marks):
     _cut(robe, planes, drop=lambda c: not robe_keep(c), front_y=neck.y + 0.02)
     # Split the facing as its own material by distance to the opening edge.
     me = robe.data
-    me.materials.append(_mat("draconia_robe", BLACK, rough=0.9, sheen=0.55))
-    me.materials.append(_mat("draconia_robe_facing", GREEN, rough=0.75, sheen=0.7))
+    me.materials.append(_mat("draconia_robe", BLACK, rough=0.9, sheen=0.55, weave="twill"))
+    me.materials.append(_mat("draconia_robe_facing", GREEN, rough=0.75, sheen=0.7, weave="twill"))
     bm = bmesh.new()
     bm.from_mesh(me)
     # The facing: a 4 cm band beside the opening, rising around the neck.
@@ -349,7 +394,9 @@ def build(body, marks):
     bm.free()
     if FOLDS:
         _folds(robe, chest.z + 0.08, FOLDS)
-    _solidify(robe, 0.003)
+    # (Round 11: a thicker robe on request, so its opening edge reads as
+    # wool with a lapel, not a card.)
+    _solidify(robe, ROBE_THICK)
     out.append(robe)
 
     # Hood: a soft roll lying around the back of the neck and over the
@@ -384,8 +431,8 @@ def build(body, marks):
     lo = [p for p, d in ring]
     hi = [p + Vector((0, 0, 0.026)) + d * 0.001 for p, d in ring]
     stand = _strip("collar_stand", lo, hi)
-    _solidify(stand, 0.0015)
-    stand.data.materials.append(_mat("draconia_collar", WHITE, rough=0.85, sheen=0.15))
+    _solidify(stand, COLLAR_THICK)
+    stand.data.materials.append(_mat("draconia_collar", WHITE, rough=0.85, sheen=0.15, weave="plain"))
     out.append(stand)
     # Fall: from the top of the stand folding out and down to the points.
     fall_top = [top + d * 0.002 for (p0, d), top in zip(ring, hi)]
@@ -399,7 +446,7 @@ def build(body, marks):
         drop = 0.03 + COLLAR_POINTS * 0.06 * front**7
         fall_bot.append(top + d * (0.008 + COLLAR_POINTS * 0.03 * front**7) - Vector((0, 0, drop)))
     fall = _strip("collar_fall", fall_top, fall_bot)
-    _solidify(fall, 0.0015)
+    _solidify(fall, COLLAR_THICK)
     fall.data.materials.append(bpy.data.materials["draconia_collar"])
     out.append(fall)
 

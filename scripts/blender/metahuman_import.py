@@ -194,6 +194,10 @@ def draconia_refine(vs, marks):
     # lifted the upper lip alone: its vermilion grew 17-22% too tall.)
     ul = np.exp(-(((x - m.x) / 0.03) ** 2) - (((z - m.z) / 0.012) ** 2)) * (1 - smooth(m.y + 0.008, m.y + 0.025, y))
     d[:, 2] += 0.001 * ul
+    # Round 11: the upper lip less tall (+13-20% when speaking): its top
+    # edge, the vermilion border, 1 mm down.
+    vb = np.exp(-(((x - m.x) / 0.022) ** 2) - (((z - (m.z + 0.007)) / 0.004) ** 2)) * (1 - smooth(m.y + 0.008, m.y + 0.025, y))
+    d[:, 2] += -0.001 * vb
     # Longer, almond eyes (they measured 7% short for their spacing): each
     # eye's outer corner 1.8 mm out and a touch up, the lids following.
     for eye, s_ in ((marks.eye_l, 1.0), (marks.eye_r, -1.0)):
@@ -448,25 +452,27 @@ def compose_eye(tex_dir, out_dir, size=2048, iris_r=0.163, tint=(0.52, 0.62, 0.5
     u = (xx + 0.5) / size
     v = 1 - (yy + 0.5) / size
     r = np.sqrt((u - 0.5) ** 2 + (v - 0.5) ** 2)
-    # The sclera a touch brighter than the map and faintly pink, as the
-    # reference's at 1:22.
-    col = np.clip(sample(sclera, u, v) * np.array([1.09, 1.05, 1.05], np.float32), 0, 1)
+    # The sclera brighter than the map and near white (round 11: the
+    # reference's at 1:22 is bright white; round 5's pink read tired).
+    col = np.clip(sample(sclera, u, v) * np.array([1.16, 1.15, 1.15], np.float32), 0, 1)
     k = 0.48 / iris_r
     iu, iv = 0.5 + (u - 0.5) * k, 0.5 + (v - 0.5) * k
     ic = sample(iris, iu, iv)
     lum = ic.mean(-1, keepdims=True)
     # The fibres' pattern pushed up, so the iris reads textured rather than
-    # flat; then a grey-green, mostly grey with a green cast (the
-    # reference's iris is light and desaturated, not emerald).
+    # flat; then a clear sea green, brighter and more saturated than round
+    # 5's grey-green (round 11: the reference's iris is light sea green
+    # with a dark limbal ring).
     lum = np.clip(lum + (lum - lum.mean()) * 0.7, 0, 1)
-    green = np.clip(lum * np.array(tint, np.float32) * 3.3, 0, 1)
-    grey = lum * 3.3 * float(np.mean(tint))
-    green = np.clip(green * 0.55 + grey * 0.45, 0, 1)
+    sea = np.array((0.36, 0.70, 0.58), np.float32)
+    green = np.clip(lum * sea * 3.8, 0, 1)
+    grey = lum * 3.8 * float(np.mean(sea))
+    green = np.clip(green * 0.8 + grey * 0.2, 0, 1)
     # Keep the pupil black and the fibres' contrast.
     green = np.where(lum < 0.08, ic, green)
     t = np.clip(r / iris_r, 0, 2)[..., None]
-    limbal = np.clip((t - 0.82) / 0.16, 0, 1)
-    green = green * (1 - 0.65 * limbal)
+    limbal = np.clip((t - 0.8) / 0.16, 0, 1)
+    green = green * (1 - 0.8 * limbal)
     blend = np.clip((r - iris_r) / 0.006, 0, 1)[..., None]
     col = green * (1 - blend) + col * blend
     rgba = np.concatenate([col, np.ones((size, size, 1), np.float32)], -1)
@@ -743,6 +749,24 @@ def main():
     for n in ("saliva", "eyeEdge"):
         if n in objs:
             objs[n].data.materials.append(wet)
+    # Round 11: a cornea shell over each eye (MetaHuman's eyeball carries
+    # the cornea's bulge but shades as one surface): the eyeball scaled out
+    # 0.4 mm about its centre, specular only and very smooth, so the key
+    # light leaves a sharp catchlight and the eye reads wet.
+    cornea = draconia.material("mh_cornea", "cornea", rough=0.03)
+    for n in ("eyeLeft", "eyeRight"):
+        e = objs[n]
+        sh = e.copy()
+        sh.data = e.data.copy()
+        sh.name = f"{n}_cornea"
+        bpy.context.collection.objects.link(sh)
+        c = sum((v.co for v in sh.data.vertices), Vector()) / len(sh.data.vertices)
+        for v in sh.data.vertices:
+            d = v.co - c
+            v.co = c + d * ((d.length + 0.0004) / max(d.length, 1e-6))
+        sh.data.materials.clear()
+        sh.data.materials.append(cornea)
+        objs[f"{n}_cornea"] = sh
     lash = draconia.material("mh_lashes", "hair", color=(1, 1, 1, 1), rough=0.45, images={"base": lash_rgba(tex_dir, out_dir)}, alpha="MASK")
     if "eyelashes" in objs:
         objs["eyelashes"].data.materials.append(lash)
@@ -819,6 +843,11 @@ def main():
         draconia_hair.PARTS = tuple(os.environ.get("MH_GROW_PARTS", "body locks fly").split())
         draconia_hair.FLY_COUNT = 320
         draconia_hair.WISPS = 900
+        # Round 11: the crown in clumped sections with gaps (fewer, wider,
+        # messier strands over the cards), not one smooth sheen.
+        draconia_hair.BODY_ROOTS = 5000
+        draconia_hair.BODY_WIDTH = 2.4
+        draconia_hair.MESS = (0.35, 1.0)
         draconia_hair.HAIRLINE_DROP = (0.08, 0.36)
         draconia_hair.LOCK_WAVE = 0.25
         draconia_hair.LOCK_CURL = 0.0
@@ -858,6 +887,11 @@ def main():
         draconia_cloth.FOLDS = 0.006
         # (1.0 read as a stiff white bib in round 8.)
         draconia_cloth.COLLAR_POINTS = 0.8
+        # Round 11: fabric normals, a thicker robe and collar, deeper folds.
+        draconia_cloth.FABRIC = True
+        draconia_cloth.ROBE_THICK = 0.007
+        draconia_cloth.COLLAR_THICK = 0.0025
+        draconia_cloth.FOLDS = 0.009
         extra += draconia_cloth.build(body, marks)
         bpy.data.objects.remove(body)
     # Fewer strands than the CC0 head: the reference's brows are soft, and

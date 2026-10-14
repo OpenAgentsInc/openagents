@@ -265,7 +265,7 @@ def grow(skin, marks, seed=7, style="updo"):
 
     body = Ribbons()
     wander = _noise3(rng)
-    roots = _sample_surface(me, scalp, 14000, rng)
+    roots = _sample_surface(me, scalp, BODY_ROOTS, rng)
     # Extra roots along the hairline, so the edge is dense and soft.
     edge = [f for f in scalp if _angles(me.polygons[f].center, centre)[1] < _hairline_el(_angles(me.polygons[f].center, centre)[0]) + 0.12]
     roots += _sample_surface(me, edge, EDGE_ROOTS, rng)
@@ -656,6 +656,9 @@ ROOT_SPAN = 0.15
 # Scale of the updo body's ribbon widths (wider ribbons cover the scalp
 # with fewer gaps, so the crown averages smooth rather than grainy).
 BODY_WIDTH = 1.0
+# How many strands the combed body grows (fewer, wider ones read as clumped
+# sections with gaps between them).
+BODY_ROOTS = 14000
 # The centre part: how hard strands near it comb away, and how much the
 # line wanders (the side a root falls to is decided with this much noise).
 PART = 0.8

@@ -670,6 +670,52 @@ $B -b --factory-startup --python scripts/blender/draconia_set.py -- ~/work/film-
   hairline high; the upper lip is full and tall; the lower lids keep a
   faint band; the collar and robe are shells.
 
+### Round 11, 2026-10-14: wet eyes, a clumped crown, a shorter upper lip, fabric
+
+- **Direction.** The coordinator's read of round 10 (a clear step up; the
+  brows and the shadow good): the eyes matte (no catchlight, a grey-dark
+  iris, pinkish lid edges); the crown a smooth cap; the upper lip's shape
+  change in Creator; the collar, tie and robe the most "CG" part left.
+- **What changed.**
+  - Eyes: a cornea shell over each eyeball (the eyeball scaled out 0.4 mm,
+    specular only, roughness 0.03), so the key light leaves a sharp
+    catchlight; the iris a clear sea green with a darker limbal ring; the
+    sclera near white. The wet strips at the lid margins and inside the
+    lips stay.
+  - Crown: fewer, wider, messier strands in our body layer (5,000 at 2.4x
+    width) over MetaHuman's buns cards, so it breaks into clumped sections
+    with gaps and highlights instead of one sheen.
+  - Upper lip: `draconia_refine` lowers the upper lip's top edge 1 mm; the
+    blend refitted by Creator, rigged and textured again headless.
+  - Uniform: fabric normal maps (`draconia_cloth.FABRIC`: twill on the
+    robe and its facing, a knit on the sweater, a fine weave on the shirt
+    and collar), a 7 mm robe (its opening edge reads as wool), a 2.5 mm
+    collar, deeper folds (9 mm). The shirt's and collar's plain weave is
+    left off: through the cloth shading it turned the white parts grey.
+- **Measured** (MetaHuman's tracker; ours against the reference):
+
+  | Feature (over eye spacing) | 0:54 smile | 0:24 neutral | 0:29 speaking |
+  | --- | --- | --- | --- |
+  | Eye width | -3.3% | -3.1% | -2.3% |
+  | Eye opening | +11.3% | +2.2% | +8.4% |
+  | Eye line to nose base (midface) | +1.9% | -1.6% | -0.9% |
+  | Nose base to upper lip | +2.2% | +5.1% | +2.8% |
+  | Upper lip height | +5.8% | +13.2% | +18.5% |
+  | Lower lip height | -5.8% | -4.5% | +6.4% |
+  | Mouth width | +3.0% | +4.0% | -5.6% |
+
+  The 1 mm upper-lip edit barely survived Creator's fit (its identity
+  space regularizes small local edits): the lip is still tall. The next
+  try must be larger or go through Creator's own sculpting landmarks
+  (`translate_face_landmarks`).
+- **Honest state.** The eyes are wetter and greener with a catchlight
+  (perhaps now a touch too saturated); the crown breaks up more; the robe
+  has twill and a thicker edge. Still off: the upper lip; the eyes a
+  little open in the smile; the hairline high; the collar a stiff band.
+- **Artifacts.** `~/Downloads/draconia-fullface-mh-v9.png` (reference |
+  round 10 | round 11), `~/Downloads/draconia-parity-round-11.png`, the
+  progress sheet; `~/work/film-out/draconia/parity/round-11/`.
+
 ## Peacock scene
 
 The peacock guardian (reference 113.0–118.0 s, [shots.md](shots.md)),
