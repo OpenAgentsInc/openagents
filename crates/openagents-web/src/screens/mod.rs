@@ -157,6 +157,42 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
         "/chat/{id}/lab/media/{*path}",
         "a Video Lab render or frame, played inside a chat's card",
     ),
+    (
+        "/chat/{id}/cad/card",
+        "a CAD Lab card in a chat, redrawn for Compare or the 3D view",
+    ),
+    (
+        "/chat/{id}/cad/file",
+        "a CAD Lab version's 3D model or picture, shown inside a chat's card",
+    ),
+    (
+        "/chat/{id}/cad/out",
+        "a CAD Lab render or export of a version, from a chat's card",
+    ),
+    (
+        "/chat/{id}/robot/play",
+        "a Robot Lab version, shown inside a chat's card",
+    ),
+    (
+        "/chat/{id}/robot/build/{file}",
+        "the Robot Lab's code for a chat's card",
+    ),
+    (
+        "/chat/robot/build/{file}",
+        "the Robot Lab's code, loaded by every chat page",
+    ),
+    (
+        "/chat/{id}/robot/api/view",
+        "a Robot Lab version's data, for a chat's card",
+    ),
+    (
+        "/chat/{id}/robot/api/poster",
+        "a Robot Lab version's picture, for a chat's card",
+    ),
+    (
+        "/chat/{id}/robot/api/asset/{hash}",
+        "a Robot Lab file, for a chat's card",
+    ),
     ("/chat/{id}/workspace", "part of a chat page"),
     ("/chat/{id}/rename", "part of the chat list"),
     ("/chat/{id}/agents", "part of a chat page"),

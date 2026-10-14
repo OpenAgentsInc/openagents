@@ -229,13 +229,15 @@ async fn every_public_page_answers_in_development() {
         // its own single script. The home and download pages also load the
         // site's own counting script (`/static/a.js`, #11153), and the
         // home composer its files script (`/chat/files.js`, #11174) and its
-        // `/export` script (`/chat/export.js`, #11615), and the Video Lab
-        // and Game Lab cards' scripts (`/chat/lab/card.js`,
-        // `/chat/game/card.js`), since an answer's card arrives as a fragment.
+        // `/export` script (`/chat/export.js`, #11615), and the Video Lab,
+        // Game Lab and CAD Lab cards' scripts (`/chat/lab/card.js`,
+        // `/chat/game/card.js`, `/chat/cad/card.js`, #11627), since an
+        // answer's card arrives as a fragment. (The Robot Lab's script loads
+        // only where a Robot Lab is set up, which this test's server isn't.)
         let script = uri == "/" || uri == "/live" || uri == "/download";
         assert_eq!(
             scripts(&lower),
-            if uri == "/" { 11 } else { usize::from(script) },
+            if uri == "/" { 12 } else { usize::from(script) },
             "{uri} runs a script"
         );
         if uri == "/" || uri == "/download" {

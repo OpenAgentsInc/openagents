@@ -54,17 +54,18 @@ fn problem(status: StatusCode, text: &str) -> Response {
     ))
 }
 
-const UNREACHABLE: &str = "Your agents can't be reached right now. Try again in a minute.";
+pub(crate) const UNREACHABLE: &str =
+    "Your agents can't be reached right now. Try again in a minute.";
 
 /// One agent, as the lists show it.
-struct Row {
+pub(crate) struct Row {
     id: String,
     name: String,
     hint: String,
     revoked: bool,
 }
 
-fn rows(document: &Value) -> Vec<Row> {
+pub(crate) fn rows(document: &Value) -> Vec<Row> {
     document["agents"]
         .as_array()
         .map(|agents| {
@@ -134,7 +135,12 @@ fn list(title: &str, id: &str, empty: &str, rows: &[Row], revoke: (&str, &str)) 
 
 /// The page: what agents are, the claim form, the person's agents, and
 /// for a site admin every agent.
-fn content(mine: &[Row], all: Option<&[Row]>, claim: (&str, &str), revoke: (&str, &str)) -> Markup {
+pub(crate) fn content(
+    mine: &[Row],
+    all: Option<&[Row]>,
+    claim: (&str, &str),
+    revoke: (&str, &str),
+) -> Markup {
     let code = Field::new("agent-claim-code", "Claim code")
         .description("The code your agent got when it signed up. It starts with clm_.");
     html! {

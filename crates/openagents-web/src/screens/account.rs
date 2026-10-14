@@ -76,6 +76,23 @@ pub(crate) fn screens() -> Vec<Screen> {
             ],
         },
         Screen {
+            id: "agent-accounts",
+            title: "Agent accounts",
+            group: Group::Page,
+            routes: &[crate::agent_accounts::PAGE],
+            states: vec![
+                state("none", "No agents", agent_accounts_none),
+                state("mine", "With agents", agent_accounts_mine),
+                state("admin", "Admin: every agent", agent_accounts_admin),
+                state("signed-out", "Signed out", signed_out),
+                state(
+                    "unreachable",
+                    "Service unreachable",
+                    agent_accounts_unreachable,
+                ),
+            ],
+        },
+        Screen {
             id: "computers",
             title: "Computers",
             group: Group::Organism,
@@ -639,6 +656,55 @@ fn api_keys_unreachable(headers: &HeaderMap) -> Response {
         "API keys",
         crate::api_keys::UNREACHABLE,
         (API_KEYS, "API keys"),
+    )
+}
+
+// Agent accounts.
+
+fn sample_agents() -> serde_json::Value {
+    json!({"agents": [
+        {"id": "agt_sample_1", "name": "Sample research agent",
+         "registered": "2026-10-01T09:00:00Z", "claimed": "2026-10-02T10:00:00Z",
+         "revoked": null, "balance_usd": "1.25"},
+        {"id": "agt_sample_2", "name": "Sample helper",
+         "registered": "2026-09-20T09:00:00Z", "claimed": "2026-09-21T10:00:00Z",
+         "revoked": "2026-10-05T12:00:00Z"},
+    ]})
+}
+
+fn agent_accounts(headers: &HeaderMap, mine: serde_json::Value, admin: bool) -> Response {
+    let mine = crate::agent_accounts::rows(&mine);
+    let all = admin.then(|| {
+        let mut every = sample_agents();
+        every["agents"].as_array_mut().unwrap().push(json!({
+            "id": "agt_sample_3", "name": "Sample unclaimed agent",
+            "registered": "2026-10-10T09:00:00Z", "claimed": null, "revoked": null,
+        }));
+        crate::agent_accounts::rows(&every)
+    });
+    let body = crate::agent_accounts::content(&mine, all.as_deref(), TICKET, TICKET);
+    settings_page(headers, "Agents", crate::agent_accounts::PAGE, body)
+}
+
+fn agent_accounts_none(headers: &HeaderMap) -> Response {
+    agent_accounts(headers, json!({"agents": []}), false)
+}
+
+fn agent_accounts_mine(headers: &HeaderMap) -> Response {
+    agent_accounts(headers, sample_agents(), false)
+}
+
+fn agent_accounts_admin(headers: &HeaderMap) -> Response {
+    agent_accounts(headers, sample_agents(), true)
+}
+
+fn agent_accounts_unreachable(headers: &HeaderMap) -> Response {
+    crate::ui_page::problem(
+        headers,
+        StatusCode::BAD_GATEWAY,
+        "Agents",
+        crate::agent_accounts::UNREACHABLE,
+        (crate::agent_accounts::PAGE, "Agents"),
     )
 }
 

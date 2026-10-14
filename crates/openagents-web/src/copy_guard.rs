@@ -113,6 +113,8 @@ const ALLOW_IN: &[(&str, &[&str])] = &[
     ("agent_ready.rs", &["canonical"]),
     // The pricing page names the Cursor coding agent.
     ("pages/pricing.rs", &["cursor"]),
+    // The CAD Lab card's stylesheet uses the CSS `cursor` property.
+    ("cad_lab.rs", &["cursor"]),
 ];
 
 /// #11031: no string in this site's sources that reads like words, and no
