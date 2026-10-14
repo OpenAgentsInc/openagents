@@ -1037,11 +1037,13 @@ pub(crate) async fn admit(
     let mut allowance_used_up = false;
     if let (Some(allowance), Some(account)) = (allowance, &public.account) {
         let mut book = book.lock().await;
-        // Site admins have no daily cap: their allowance use is metered
-        // and recorded the same way, only never cut off. The admin read
+        // Site admins and the configured uncapped accounts (our test
+        // account) have no daily cap: their allowance use is metered and
+        // recorded the same way, only never cut off. The admin read
         // happens only once the day's cap would refuse.
         let reserved = book.reserve_allowance(account, worst, allowance.usd_micros_per_day, day)
-            || (crate::accounts::account_is_site_admin(state, account)
+            || ((allowance.uncapped_accounts.iter().any(|id| id == account)
+                || crate::accounts::account_is_site_admin(state, account))
                 && book.reserve_allowance(account, worst, u64::MAX, day));
         if reserved {
             book.record_charge(

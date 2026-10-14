@@ -344,7 +344,9 @@ impl Plan {
             .iter()
             .enumerate()
             .map(|(index, reason)| {
-                let reason = reason.trim();
+                // A door's reason is often a whole sentence; the list adds
+                // its own full stop (no "in /models.. Connect").
+                let reason = reason.trim().trim_end_matches('.').trim_end();
                 if reason.is_empty() {
                     self.lanes.get(index).map_or_else(
                         || "a connected door".to_owned(),
@@ -555,6 +557,19 @@ mod tests {
         let none = plan(&settings, true, BALANCED);
         assert!(none.lanes.is_empty());
         assert!(none.explain(&none.notes).contains("GEMINI_API_KEY"));
+    }
+
+    /// A door's reason that is a whole sentence ends the list once, not
+    /// with "..": the gateway's 402 reads "... in /models. Connect ...".
+    #[test]
+    fn a_sentence_reason_does_not_double_the_full_stop() {
+        let plan = Plan {
+            lanes: vec![Lane::Gateway],
+            notes: vec![],
+        };
+        let said = plan.explain(&["Today's free allowance on OpenAgents is used up (HTTP 402). Add credit at openagents.com, or choose a model in /models.".to_owned()]);
+        assert!(!said.contains(".."), "{said}");
+        assert!(said.contains("in /models. Connect another"), "{said}");
     }
 
     #[test]

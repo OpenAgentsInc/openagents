@@ -360,6 +360,12 @@ pub struct PublicInference {
 pub struct FreeAllowance {
     pub usd_micros_per_day: u64,
     pub models: Vec<String>,
+    /// Accounts with no daily cap, like site admins: our own production
+    /// test account (#11601), which the release gate, smokes, and agents'
+    /// checks sign in as and which has no balance. Their use is still
+    /// metered and recorded on the allowance.
+    #[serde(default)]
+    pub uncapped_accounts: Vec<String>,
 }
 
 /// The free tier: a fixed number of requests a day, only on the models

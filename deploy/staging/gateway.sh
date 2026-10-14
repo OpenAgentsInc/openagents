@@ -300,7 +300,7 @@ cat > "$private/gateway.json" << EOF
     "journal": "$state/gateway/attempts",
     "public": {
       "free_tier": {"requests_per_day": 20, "models": ["google/gemini-2.5-flash-lite"]},
-      "free_allowance": {"usd_micros_per_day": ${GATEWAY_FREE_ALLOWANCE_MICROS:-1000000}, "models": ["openagents/auto", "openagents/fast", "google/gemini-4-argon"]}
+      "free_allowance": {"usd_micros_per_day": ${GATEWAY_FREE_ALLOWANCE_MICROS:-1000000}, "models": ["openagents/auto", "openagents/fast", "google/gemini-4-argon"], "uncapped_accounts": ["acct_83d16a35955ef908"]}
     },
     "accounts": [
       {"id": "google-credit", "upstream": "vertex", "granted": 30000000000, "balance": 30000000000, "basis": "prepaid"},

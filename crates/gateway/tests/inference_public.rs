@@ -162,7 +162,16 @@ async fn deploy_with_accounts(
     book: Option<Value>,
     accounts: Option<Value>,
 ) -> Deployment {
-    let dir = tempfile::tempdir().unwrap();
+    deploy_in(tempfile::tempdir().unwrap(), terms, book, accounts).await
+}
+
+/// [`deploy_with_accounts`] in a directory the test already prepared.
+async fn deploy_in(
+    dir: tempfile::TempDir,
+    terms: Option<Value>,
+    book: Option<Value>,
+    accounts: Option<Value>,
+) -> Deployment {
     let mut manifest = common::manifest(&common::artifact('a'), None);
     let acme = manifest.tenants["acme"].clone();
     for tenant in ["house", "poor"] {
@@ -890,4 +899,51 @@ async fn a_site_admin_has_no_daily_cap_on_the_allowance() {
         body["error"]["message"],
         "Today's free allowance is used up. Add credit or use your own key."
     );
+}
+
+/// #11601: an account named in `free_allowance.uncapped_accounts` (our
+/// production test account, which the gate and agents' checks sign in as)
+/// has no daily cap, like a site admin: answered past the cap, metered; an
+/// account not named is still refused.
+#[tokio::test]
+async fn a_listed_uncapped_account_has_no_daily_cap_on_the_allowance() {
+    use tenancy::accounts::WorkspaceKind;
+    let dir = tempfile::tempdir().unwrap();
+    let accounts = tenancy::Accounts::install(dir.path()).unwrap();
+    let tester = accounts.create_account("Tester", &[]).unwrap();
+    accounts
+        .create_workspace(
+            &tester.id,
+            &tester.label,
+            WorkspaceKind::Personal,
+            "acme",
+            None,
+        )
+        .unwrap();
+    let mut terms = allowance(1);
+    terms["free_allowance"]["uncapped_accounts"] = json!([tester.id]);
+    let d = deploy_in(dir, Some(terms), None, None).await;
+    let signed = sign_in(&d);
+    let token = tenancy::sessions::Sessions::open(d._dir.path())
+        .unwrap()
+        .mutate(|book, _, now| {
+            book.issue(tenancy::workspaces::UserId::from(tester.id.as_str()), now)
+        })
+        .unwrap()
+        .once;
+    for _ in 0..2 {
+        let (status, body, _) =
+            call(&d, &token, "/v1/chat/completions", chat("openagents/auto")).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+    }
+    assert!(allowance_used(&d)[&tester.id]["micros"].as_u64().unwrap() > 1);
+    // An account not listed is still refused at the cap.
+    let (status, body, _) = call(
+        &d,
+        &signed.user,
+        "/v1/chat/completions",
+        chat("openagents/auto"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::PAYMENT_REQUIRED, "{body}");
 }
