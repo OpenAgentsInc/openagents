@@ -9,7 +9,10 @@ changes", with a short list of `file:line` rows.
 - Coder plugin: [`crates/coder-new/src/code_graph_plugin.rs`](../../crates/coder-new/src/code_graph_plugin.rs)
 - Publisher: [`deploy/code-graph/`](../../deploy/code-graph/)
 - A/B harness: [`scripts/bench/code-graph-ab/ab.py`](../../scripts/bench/code-graph-ab/ab.py)
-- A/B results: [ab-2026-10-14.md](ab-2026-10-14.md)
+- A/B results: [ab-2026-10-14.md](ab-2026-10-14.md). With the tools, Coder
+  used 63% fewer tokens to find every caller of a function, at the same
+  correctness, and the same tokens as without them to find the files an
+  issue's fix changes.
 
 ## What the graph holds
 

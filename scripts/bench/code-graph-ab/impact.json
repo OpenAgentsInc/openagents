@@ -1,0 +1,17 @@
+[
+ {"id": "impact-saved-enabled", "commit": "d0dc736500c42d18836b86c3e79f81d2f4a1cb3d",
+  "symbol": "saved_enabled", "file": "crates/coder-new/src/bundled_settings.rs",
+  "callers": ["crates/coder-new/src/bundled_settings.rs", "crates/coder-new/src/second_look.rs", "crates/coder-new/src/solver_plugin.rs", "crates/coder-new/src/solver/mod.rs", "crates/coder-new/src/token_savers.rs"]},
+ {"id": "impact-gateway-open", "commit": "d0dc736500c42d18836b86c3e79f81d2f4a1cb3d",
+  "symbol": "gateway_open", "file": "crates/coder-new/src/provider.rs",
+  "callers": ["crates/coder-new/src/gateway_models.rs", "crates/coder-new/src/live.rs", "crates/coder-new/src/route.rs"]},
+ {"id": "impact-tools-allowed", "commit": "d0dc736500c42d18836b86c3e79f81d2f4a1cb3d",
+  "symbol": "tools_allowed", "file": "crates/coder-new/src/approval.rs",
+  "callers": ["crates/coder-new/src/bundled_runtime.rs", "crates/coder-new/src/claude_print.rs", "crates/coder-new/src/claude_tools.rs", "crates/coder-new/src/claude.rs", "crates/coder-new/src/codex_chat.rs", "crates/coder-new/src/plugin_tools.rs"]},
+ {"id": "impact-acp-tool-definition", "commit": "d0dc736500c42d18836b86c3e79f81d2f4a1cb3d",
+  "symbol": "acp_tool_definition", "file": "crates/coder-new/src/bundled_runtime.rs",
+  "callers": ["crates/coder-new/src/bundled_runtime.rs", "crates/coder-new/src/fleet/tests.rs", "crates/coder-new/src/plugin_tools.rs"]},
+ {"id": "impact-resolve-composer-rails", "commit": "d0dc736500c42d18836b86c3e79f81d2f4a1cb3d",
+  "symbol": "resolve_composer_rails", "file": "crates/coder-new/src/plugin_definition.rs",
+  "callers": ["crates/coder-new/src/plugin_definition.rs", "crates/coder-new/src/plugins.rs", "crates/coder-new/src/ui.rs"]}
+]

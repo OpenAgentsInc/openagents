@@ -1,0 +1,1816 @@
+[
+ {
+  "issue": 10078,
+  "arm": "A",
+  "rep": 0,
+  "exit": "timeout",
+  "wall_s": 900.0,
+  "model": "gemini-4-argon",
+  "tokens": 5870634,
+  "cached_tokens": 5581098,
+  "cost_usd": 1.168,
+  "tokens_to_first_fix_file": 96633,
+  "files_read": 27,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 6,
+   "Read": 42,
+   "Glob": 6,
+   "Run": 8
+  },
+  "truth": [
+   "crates/coder-boundary/src/snapshot/observe.rs",
+   "crates/coder/src/task.rs",
+   "crates/coder/src/task/adapter.rs",
+   "crates/coder/src/task/remote.rs"
+  ],
+  "answer": [],
+  "recall": 0.0,
+  "precision": 0.0,
+  "correct": false,
+  "set": "main"
+ },
+ {
+  "issue": 10078,
+  "arm": "A",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 614.0,
+  "model": "gemini-4-argon",
+  "tokens": 13682554,
+  "cached_tokens": 13260687,
+  "cost_usd": 2.201,
+  "tokens_to_first_fix_file": 48053,
+  "files_read": 27,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 7,
+   "Read": 38,
+   "Glob": 4,
+   "Run": 14
+  },
+  "truth": [
+   "crates/coder-boundary/src/snapshot/observe.rs",
+   "crates/coder/src/task.rs",
+   "crates/coder/src/task/adapter.rs",
+   "crates/coder/src/task/remote.rs"
+  ],
+  "answer": [
+   "crates/coder-boundary/src/snapshot/observe.rs",
+   "crates/coder/src/task/adapter.rs",
+   "crates/coder/src/task/owner.rs",
+   "crates/coder/src/task.rs",
+   "crates/coder/src/task/local.rs",
+   "crates/microcoder/src/repository/tests.rs"
+  ],
+  "recall": 0.75,
+  "precision": 0.5,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10078,
+  "arm": "B",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 373.1,
+  "model": "gemini-4-argon",
+  "tokens": 5700940,
+  "cached_tokens": 4974477,
+  "cost_usd": 1.979,
+  "tokens_to_first_fix_file": 3235,
+  "files_read": 21,
+  "graph_calls": 1,
+  "tools": {
+   "Read": 32,
+   "Grep": 9,
+   "graph_symbol": 1,
+   "Glob": 6,
+   "Run": 10
+  },
+  "truth": [
+   "crates/coder-boundary/src/snapshot/observe.rs",
+   "crates/coder/src/task.rs",
+   "crates/coder/src/task/adapter.rs",
+   "crates/coder/src/task/remote.rs"
+  ],
+  "answer": [
+   "crates/coder-boundary/src/snapshot/observe.rs",
+   "crates/coder/src/task/adapter.rs",
+   "crates/coder/src/task.rs",
+   "crates/coder/src/task/remote.rs"
+  ],
+  "recall": 1.0,
+  "precision": 1.0,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10078,
+  "arm": "B",
+  "rep": 1,
+  "exit": "timeout",
+  "wall_s": 900.0,
+  "model": "gemini-4-argon",
+  "tokens": 4583447,
+  "cached_tokens": 4161496,
+  "cost_usd": 1.287,
+  "tokens_to_first_fix_file": 3235,
+  "files_read": 18,
+  "graph_calls": 1,
+  "tools": {
+   "Read": 31,
+   "Grep": 5,
+   "graph_symbol": 1,
+   "Glob": 9,
+   "Run": 13
+  },
+  "truth": [
+   "crates/coder-boundary/src/snapshot/observe.rs",
+   "crates/coder/src/task.rs",
+   "crates/coder/src/task/adapter.rs",
+   "crates/coder/src/task/remote.rs"
+  ],
+  "answer": [],
+  "recall": 0.0,
+  "precision": 0.0,
+  "correct": false,
+  "set": "main"
+ },
+ {
+  "issue": 10188,
+  "arm": "A",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 91.0,
+  "model": "gemini-4-argon",
+  "tokens": 444166,
+  "cached_tokens": 351403,
+  "cost_usd": 0.229,
+  "tokens_to_first_fix_file": 21945,
+  "files_read": 7,
+  "graph_calls": 0,
+  "tools": {
+   "Glob": 1,
+   "Grep": 5,
+   "Read": 15
+  },
+  "truth": [
+   "crates/nostr/src/ext.rs",
+   "crates/nostr/src/nip19.rs",
+   "crates/openagents-cli/src/plugin_registry.rs"
+  ],
+  "answer": [
+   "crates/nostr/src/ext.rs",
+   "crates/openagents-cli/src/plugin_registry.rs",
+   "crates/openagents-cli/src/catalog.rs"
+  ],
+  "recall": 0.667,
+  "precision": 0.667,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10188,
+  "arm": "A",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 80.9,
+  "model": "gemini-4-argon",
+  "tokens": 455798,
+  "cached_tokens": 359597,
+  "cost_usd": 0.237,
+  "tokens_to_first_fix_file": 20466,
+  "files_read": 8,
+  "graph_calls": 0,
+  "tools": {
+   "Glob": 1,
+   "Grep": 6,
+   "Read": 16
+  },
+  "truth": [
+   "crates/nostr/src/ext.rs",
+   "crates/nostr/src/nip19.rs",
+   "crates/openagents-cli/src/plugin_registry.rs"
+  ],
+  "answer": [
+   "crates/nostr/src/ext.rs",
+   "crates/openagents-cli/src/plugin_registry.rs",
+   "crates/openagents-cli/src/catalog.rs",
+   "crates/nostr/src/eval_ext.rs"
+  ],
+  "recall": 0.667,
+  "precision": 0.5,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10188,
+  "arm": "B",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 129.1,
+  "model": "gemini-4-argon",
+  "tokens": 1725827,
+  "cached_tokens": 1279704,
+  "cost_usd": 1.029,
+  "tokens_to_first_fix_file": 145374,
+  "files_read": 13,
+  "graph_calls": 0,
+  "tools": {
+   "Glob": 3,
+   "Grep": 5,
+   "Read": 18
+  },
+  "truth": [
+   "crates/nostr/src/ext.rs",
+   "crates/nostr/src/nip19.rs",
+   "crates/openagents-cli/src/plugin_registry.rs"
+  ],
+  "answer": [
+   "crates/nostr/src/ext.rs",
+   "crates/openagents-cli/src/plugin_registry.rs",
+   "crates/openagents-cli/src/catalog.rs",
+   "crates/nostr/src/eval_ext.rs"
+  ],
+  "recall": 0.667,
+  "precision": 0.5,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10188,
+  "arm": "B",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 128.0,
+  "model": "gemini-4-argon",
+  "tokens": 679997,
+  "cached_tokens": 555734,
+  "cost_usd": 0.313,
+  "tokens_to_first_fix_file": 31506,
+  "files_read": 10,
+  "graph_calls": 4,
+  "tools": {
+   "Glob": 2,
+   "Grep": 5,
+   "graph_module": 2,
+   "Read": 15,
+   "graph_callers": 2
+  },
+  "truth": [
+   "crates/nostr/src/ext.rs",
+   "crates/nostr/src/nip19.rs",
+   "crates/openagents-cli/src/plugin_registry.rs"
+  ],
+  "answer": [
+   "crates/nostr/src/ext.rs",
+   "crates/openagents-cli/src/plugin_registry.rs",
+   "crates/openagents-cli/src/catalog.rs"
+  ],
+  "recall": 0.667,
+  "precision": 0.667,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10248,
+  "arm": "A",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 261.8,
+  "model": "gemini-4-argon",
+  "tokens": 3477090,
+  "cached_tokens": 3261281,
+  "cost_usd": 0.777,
+  "tokens_to_first_fix_file": 8096,
+  "files_read": 13,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 8,
+   "Read": 48
+  },
+  "truth": [
+   "crates/coder/src/task/issue_run.rs",
+   "crates/coder/src/task/local.rs",
+   "crates/coder/src/task/owner.rs",
+   "crates/openagents-chat/src/coder_events.rs"
+  ],
+  "answer": [
+   "crates/coder/src/task/local.rs",
+   "crates/openagents-chat/src/coder_events.rs",
+   "crates/coder/src/task/issue_run.rs",
+   "crates/openagents-chat/src/client.rs",
+   "crates/coder/src/task/chat_client.rs",
+   "crates/coder/src/task/owner.rs"
+  ],
+  "recall": 1.0,
+  "precision": 0.667,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10248,
+  "arm": "A",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 326.1,
+  "model": "gemini-4-argon",
+  "tokens": 4118575,
+  "cached_tokens": 3872448,
+  "cost_usd": 0.897,
+  "tokens_to_first_fix_file": 31246,
+  "files_read": 15,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 12,
+   "Read": 41
+  },
+  "truth": [
+   "crates/coder/src/task/issue_run.rs",
+   "crates/coder/src/task/local.rs",
+   "crates/coder/src/task/owner.rs",
+   "crates/openagents-chat/src/coder_events.rs"
+  ],
+  "answer": [
+   "crates/coder/src/task/local.rs",
+   "crates/openagents-chat/src/coder_events.rs",
+   "crates/coder/src/task/owner.rs",
+   "crates/coder/src/task/issue_run.rs",
+   "crates/openagents-chat/src/client.rs",
+   "crates/coder/src/task/chat_client.rs"
+  ],
+  "recall": 1.0,
+  "precision": 0.667,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10248,
+  "arm": "B",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 260.4,
+  "model": "gemini-4-argon",
+  "tokens": 3601810,
+  "cached_tokens": 3394555,
+  "cost_usd": 0.768,
+  "tokens_to_first_fix_file": 470825,
+  "files_read": 11,
+  "graph_calls": 10,
+  "tools": {
+   "Grep": 4,
+   "Glob": 2,
+   "graph_module": 5,
+   "Read": 24,
+   "graph_callers": 4,
+   "graph_symbol": 1
+  },
+  "truth": [
+   "crates/coder/src/task/issue_run.rs",
+   "crates/coder/src/task/local.rs",
+   "crates/coder/src/task/owner.rs",
+   "crates/openagents-chat/src/coder_events.rs"
+  ],
+  "answer": [
+   "crates/coder/src/task/local.rs",
+   "crates/openagents-chat/src/client.rs",
+   "crates/coder/src/task/issue_run.rs",
+   "crates/coder/src/task/owner.rs",
+   "crates/coder/src/task/chat_client.rs",
+   "crates/openagents-chat/src/coder_events.rs"
+  ],
+  "recall": 1.0,
+  "precision": 0.667,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10248,
+  "arm": "B",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 338.1,
+  "model": "gemini-4-argon",
+  "tokens": 2932590,
+  "cached_tokens": 2714651,
+  "cost_usd": 0.725,
+  "tokens_to_first_fix_file": 10200,
+  "files_read": 12,
+  "graph_calls": 7,
+  "tools": {
+   "Grep": 4,
+   "graph_module": 1,
+   "Read": 41,
+   "graph_symbol": 4,
+   "graph_callers": 2,
+   "Glob": 1
+  },
+  "truth": [
+   "crates/coder/src/task/issue_run.rs",
+   "crates/coder/src/task/local.rs",
+   "crates/coder/src/task/owner.rs",
+   "crates/openagents-chat/src/coder_events.rs"
+  ],
+  "answer": [
+   "crates/coder/src/task/local.rs",
+   "crates/openagents-chat/src/coder_events.rs",
+   "crates/coder/src/task/owner.rs",
+   "crates/openagents-chat/src/client.rs",
+   "crates/coder/src/task/issue_run.rs",
+   "crates/coder/src/task/chat_client.rs"
+  ],
+  "recall": 1.0,
+  "precision": 0.667,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10256,
+  "arm": "A",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 144.1,
+  "model": "gemini-4-argon",
+  "tokens": 1529487,
+  "cached_tokens": 1115728,
+  "cost_usd": 0.951,
+  "tokens_to_first_fix_file": 29505,
+  "files_read": 13,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 9,
+   "Read": 23,
+   "Glob": 2
+  },
+  "truth": [
+   "crates/coder/src/lib.rs",
+   "crates/coder/src/task/issue_run.rs",
+   "crates/openagents-cli/src/chat_boat.rs",
+   "crates/openagents-cli/src/chat_gce.rs"
+  ],
+  "answer": [
+   "crates/coder/src/task/issue_run.rs",
+   "crates/coder/src/task/issue_run_tests.rs",
+   "crates/openagents-cli/src/chat_boat.rs",
+   "crates/openagents-cli/src/chat_gce.rs",
+   "crates/openagents-cli/src/chat_work.rs",
+   "crates/openagents-cli/src/chat_placement.rs"
+  ],
+  "recall": 0.75,
+  "precision": 0.5,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10256,
+  "arm": "A",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 120.9,
+  "model": "gemini-4-argon",
+  "tokens": 1319245,
+  "cached_tokens": 1196740,
+  "cost_usd": 0.373,
+  "tokens_to_first_fix_file": 48807,
+  "files_read": 8,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 5,
+   "Read": 17
+  },
+  "truth": [
+   "crates/coder/src/lib.rs",
+   "crates/coder/src/task/issue_run.rs",
+   "crates/openagents-cli/src/chat_boat.rs",
+   "crates/openagents-cli/src/chat_gce.rs"
+  ],
+  "answer": [
+   "crates/coder/src/task/issue_run.rs",
+   "crates/coder/src/task/issue_run_tests.rs",
+   "crates/openagents-cli/src/chat_boat.rs",
+   "crates/openagents-cli/src/chat_gce.rs",
+   "crates/openagents-cli/src/chat_work.rs",
+   "crates/openagents-cli/src/chat_placement.rs"
+  ],
+  "recall": 0.75,
+  "precision": 0.5,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10256,
+  "arm": "B",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 93.2,
+  "model": "gemini-4-argon",
+  "tokens": 922045,
+  "cached_tokens": 793657,
+  "cost_usd": 0.345,
+  "tokens_to_first_fix_file": 80172,
+  "files_read": 8,
+  "graph_calls": 2,
+  "tools": {
+   "Grep": 7,
+   "Read": 17,
+   "graph_callers": 2
+  },
+  "truth": [
+   "crates/coder/src/lib.rs",
+   "crates/coder/src/task/issue_run.rs",
+   "crates/openagents-cli/src/chat_boat.rs",
+   "crates/openagents-cli/src/chat_gce.rs"
+  ],
+  "answer": [
+   "crates/coder/src/task/issue_run.rs",
+   "crates/coder/src/task/issue_run_tests.rs",
+   "crates/openagents-cli/src/chat_boat.rs",
+   "crates/openagents-cli/src/chat_gce.rs",
+   "crates/openagents-cli/src/chat_work.rs",
+   "crates/openagents-cli/src/chat_placement.rs"
+  ],
+  "recall": 0.75,
+  "precision": 0.5,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10256,
+  "arm": "B",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 148.8,
+  "model": "gemini-4-argon",
+  "tokens": 1003360,
+  "cached_tokens": 839042,
+  "cost_usd": 0.421,
+  "tokens_to_first_fix_file": 109397,
+  "files_read": 11,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 4,
+   "Glob": 1,
+   "Read": 19
+  },
+  "truth": [
+   "crates/coder/src/lib.rs",
+   "crates/coder/src/task/issue_run.rs",
+   "crates/openagents-cli/src/chat_boat.rs",
+   "crates/openagents-cli/src/chat_gce.rs"
+  ],
+  "answer": [
+   "crates/coder/src/task/issue_run.rs",
+   "crates/coder/src/task/issue_run_tests.rs",
+   "crates/openagents-cli/src/chat_boat.rs",
+   "crates/openagents-cli/src/chat_gce.rs",
+   "crates/openagents-cli/src/chat_work.rs",
+   "crates/openagents-cli/src/chat_placement.rs"
+  ],
+  "recall": 0.75,
+  "precision": 0.5,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10281,
+  "arm": "A",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 62.6,
+  "model": "gemini-4-argon",
+  "tokens": 341626,
+  "cached_tokens": 269738,
+  "cost_usd": 0.181,
+  "tokens_to_first_fix_file": 11723,
+  "files_read": 10,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 4,
+   "Read": 25
+  },
+  "truth": [
+   "crates/coder/src/task/adapter.rs",
+   "crates/openagents-chat/src/coder_events.rs"
+  ],
+  "answer": [
+   "crates/coder/src/task/adapter.rs",
+   "crates/openagents-chat/src/coder_events.rs",
+   "crates/microcoder/src/repository.rs",
+   "crates/microcoder/src/repository/devin.rs",
+   "crates/coder/src/task/adapter/container.rs",
+   "crates/supervise/src/live.rs"
+  ],
+  "recall": 1.0,
+  "precision": 0.333,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10281,
+  "arm": "A",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 140.8,
+  "model": "gemini-4-argon",
+  "tokens": 907079,
+  "cached_tokens": 799772,
+  "cost_usd": 0.303,
+  "tokens_to_first_fix_file": 40372,
+  "files_read": 10,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 2,
+   "Read": 19,
+   "Glob": 1
+  },
+  "truth": [
+   "crates/coder/src/task/adapter.rs",
+   "crates/openagents-chat/src/coder_events.rs"
+  ],
+  "answer": [
+   "crates/coder/src/task/adapter.rs",
+   "crates/openagents-chat/src/coder_events.rs",
+   "crates/microcoder/src/repository.rs",
+   "crates/coder/src/task/owner.rs",
+   "crates/microcoder/src/repository/devin.rs",
+   "crates/supervise/src/live.rs"
+  ],
+  "recall": 1.0,
+  "precision": 0.333,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10281,
+  "arm": "B",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 102.5,
+  "model": "gemini-4-argon",
+  "tokens": 418029,
+  "cached_tokens": 338055,
+  "cost_usd": 0.203,
+  "tokens_to_first_fix_file": 9320,
+  "files_read": 10,
+  "graph_calls": 2,
+  "tools": {
+   "graph_symbol": 2,
+   "Grep": 4,
+   "Read": 21
+  },
+  "truth": [
+   "crates/coder/src/task/adapter.rs",
+   "crates/openagents-chat/src/coder_events.rs"
+  ],
+  "answer": [
+   "crates/coder/src/task/adapter.rs",
+   "crates/openagents-chat/src/coder_events.rs",
+   "crates/microcoder/src/repository.rs",
+   "crates/coder/src/task/owner.rs",
+   "crates/coder-history/src/project.rs",
+   "crates/supervise/src/live.rs"
+  ],
+  "recall": 1.0,
+  "precision": 0.333,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10281,
+  "arm": "B",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 252.0,
+  "model": "gemini-4-argon",
+  "tokens": 1362927,
+  "cached_tokens": 1247512,
+  "cost_usd": 0.37,
+  "tokens_to_first_fix_file": 9328,
+  "files_read": 13,
+  "graph_calls": 6,
+  "tools": {
+   "graph_symbol": 2,
+   "Grep": 10,
+   "Read": 27,
+   "Glob": 1,
+   "graph_callers": 4
+  },
+  "truth": [
+   "crates/coder/src/task/adapter.rs",
+   "crates/openagents-chat/src/coder_events.rs"
+  ],
+  "answer": [
+   "crates/coder/src/task/adapter.rs",
+   "crates/openagents-chat/src/coder_events.rs",
+   "crates/microcoder/src/repository.rs",
+   "crates/microcoder/src/repository/devin.rs",
+   "crates/coder/src/task/owner.rs",
+   "crates/supervise/src/live.rs"
+  ],
+  "recall": 1.0,
+  "precision": 0.333,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10304,
+  "arm": "A",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 247.0,
+  "model": "gemini-4-argon",
+  "tokens": 645065,
+  "cached_tokens": 554355,
+  "cost_usd": 0.243,
+  "tokens_to_first_fix_file": 64561,
+  "files_read": 8,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 6,
+   "Read": 11
+  },
+  "truth": [
+   "crates/background/src/git.rs",
+   "crates/background/src/lib.rs",
+   "crates/coder/src/task/worktrees.rs",
+   "crates/openagents-cli/src/worktree.rs"
+  ],
+  "answer": [
+   "crates/background/src/git.rs",
+   "crates/openagents-cli/src/worktree.rs",
+   "crates/coder/src/task/worktrees.rs",
+   "crates/openagents-cli/src/screen.rs",
+   "crates/openagents-terminal/src/screen.rs",
+   "crates/openagents-terminal/src/lib.rs"
+  ],
+  "recall": 0.75,
+  "precision": 0.5,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10304,
+  "arm": "A",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 144.4,
+  "model": "gemini-4-argon",
+  "tokens": 660319,
+  "cached_tokens": 563283,
+  "cost_usd": 0.258,
+  "tokens_to_first_fix_file": 65735,
+  "files_read": 10,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 6,
+   "Read": 16
+  },
+  "truth": [
+   "crates/background/src/git.rs",
+   "crates/background/src/lib.rs",
+   "crates/coder/src/task/worktrees.rs",
+   "crates/openagents-cli/src/worktree.rs"
+  ],
+  "answer": [
+   "crates/openagents-cli/src/worktree.rs",
+   "crates/background/src/git.rs",
+   "crates/coder/src/task/worktrees.rs",
+   "crates/openagents-cli/src/screen.rs",
+   "crates/openagents-terminal/src/screen.rs",
+   "crates/openagents-terminal/src/lib.rs"
+  ],
+  "recall": 0.75,
+  "precision": 0.5,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10304,
+  "arm": "B",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 135.1,
+  "model": "gemini-4-argon",
+  "tokens": 614518,
+  "cached_tokens": 521303,
+  "cost_usd": 0.245,
+  "tokens_to_first_fix_file": 119215,
+  "files_read": 9,
+  "graph_calls": 2,
+  "tools": {
+   "Grep": 3,
+   "Glob": 1,
+   "Read": 12,
+   "graph_symbol": 1,
+   "graph_callers": 1
+  },
+  "truth": [
+   "crates/background/src/git.rs",
+   "crates/background/src/lib.rs",
+   "crates/coder/src/task/worktrees.rs",
+   "crates/openagents-cli/src/worktree.rs"
+  ],
+  "answer": [
+   "crates/background/src/git.rs",
+   "crates/openagents-cli/src/worktree.rs",
+   "crates/coder/src/task/worktrees.rs",
+   "crates/openagents-cli/src/screen.rs",
+   "crates/openagents-terminal/src/screen.rs",
+   "crates/openagents-terminal/src/lib.rs"
+  ],
+  "recall": 0.75,
+  "precision": 0.5,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10304,
+  "arm": "B",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 153.4,
+  "model": "gemini-4-argon",
+  "tokens": 688426,
+  "cached_tokens": 608226,
+  "cost_usd": 0.227,
+  "tokens_to_first_fix_file": 74010,
+  "files_read": 6,
+  "graph_calls": 1,
+  "tools": {
+   "Grep": 4,
+   "Read": 8,
+   "graph_callers": 1
+  },
+  "truth": [
+   "crates/background/src/git.rs",
+   "crates/background/src/lib.rs",
+   "crates/coder/src/task/worktrees.rs",
+   "crates/openagents-cli/src/worktree.rs"
+  ],
+  "answer": [
+   "crates/background/src/git.rs",
+   "crates/openagents-cli/src/worktree.rs",
+   "crates/coder/src/task/worktrees.rs",
+   "crates/openagents-terminal/src/screen.rs",
+   "crates/openagents-terminal/src/lib.rs",
+   "crates/openagents-cli/src/screen.rs"
+  ],
+  "recall": 0.75,
+  "precision": 0.5,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 10368,
+  "arm": "A",
+  "rep": 0,
+  "exit": "timeout",
+  "wall_s": 900.0,
+  "model": "gemini-4-argon",
+  "tokens": 14216063,
+  "cached_tokens": 13132181,
+  "cost_usd": 3.509,
+  "tokens_to_first_fix_file": 5661,
+  "files_read": 46,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 17,
+   "Read": 69,
+   "Glob": 4,
+   "Run": 2
+  },
+  "truth": [
+   "crates/openagents-cli/src/computer.rs",
+   "crates/openagents-cli/src/reach.rs"
+  ],
+  "answer": [],
+  "recall": 0.0,
+  "precision": 0.0,
+  "correct": false,
+  "set": "main"
+ },
+ {
+  "issue": 10368,
+  "arm": "A",
+  "rep": 1,
+  "exit": "timeout",
+  "wall_s": 900.0,
+  "model": "gemini-4-argon",
+  "tokens": 9717649,
+  "cached_tokens": 9269125,
+  "cost_usd": 1.842,
+  "tokens_to_first_fix_file": 5594,
+  "files_read": 26,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 11,
+   "Read": 37,
+   "Glob": 2,
+   "Run": 4
+  },
+  "truth": [
+   "crates/openagents-cli/src/computer.rs",
+   "crates/openagents-cli/src/reach.rs"
+  ],
+  "answer": [],
+  "recall": 0.0,
+  "precision": 0.0,
+  "correct": false,
+  "set": "main"
+ },
+ {
+  "issue": 10368,
+  "arm": "B",
+  "rep": 0,
+  "exit": "timeout",
+  "wall_s": 900.0,
+  "model": "gemini-4-argon",
+  "tokens": 16258710,
+  "cached_tokens": 15648442,
+  "cost_usd": 2.815,
+  "tokens_to_first_fix_file": 7630,
+  "files_read": 42,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 16,
+   "Read": 74,
+   "Glob": 3
+  },
+  "truth": [
+   "crates/openagents-cli/src/computer.rs",
+   "crates/openagents-cli/src/reach.rs"
+  ],
+  "answer": [],
+  "recall": 0.0,
+  "precision": 0.0,
+  "correct": false,
+  "set": "main"
+ },
+ {
+  "issue": 10368,
+  "arm": "B",
+  "rep": 1,
+  "exit": "timeout",
+  "wall_s": 900.0,
+  "model": "gemini-4-argon",
+  "tokens": 16363949,
+  "cached_tokens": 15764921,
+  "cost_usd": 2.797,
+  "tokens_to_first_fix_file": 8813,
+  "files_read": 38,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 16,
+   "Read": 54,
+   "Glob": 5,
+   "Run": 2
+  },
+  "truth": [
+   "crates/openagents-cli/src/computer.rs",
+   "crates/openagents-cli/src/reach.rs"
+  ],
+  "answer": [],
+  "recall": 0.0,
+  "precision": 0.0,
+  "correct": false,
+  "set": "main"
+ },
+ {
+  "issue": 11190,
+  "arm": "A",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 71.0,
+  "model": "gemini-4-argon",
+  "tokens": 267695,
+  "cached_tokens": 209084,
+  "cost_usd": 0.146,
+  "tokens_to_first_fix_file": 5555,
+  "files_read": 5,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 5,
+   "Read": 16
+  },
+  "truth": [
+   "crates/gateway/src/serve.rs",
+   "crates/tenancy/src/quota.rs"
+  ],
+  "answer": [
+   "crates/gateway/src/serve.rs",
+   "crates/tenancy/src/quota.rs",
+   "crates/gateway/src/inference_public.rs",
+   "crates/gateway/src/jobs.rs",
+   "crates/gateway/tests/inference_byok.rs"
+  ],
+  "recall": 1.0,
+  "precision": 0.4,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 11190,
+  "arm": "A",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 113.9,
+  "model": "gemini-4-argon",
+  "tokens": 460110,
+  "cached_tokens": 376337,
+  "cost_usd": 0.214,
+  "tokens_to_first_fix_file": 7080,
+  "files_read": 6,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 3,
+   "Read": 20
+  },
+  "truth": [
+   "crates/gateway/src/serve.rs",
+   "crates/tenancy/src/quota.rs"
+  ],
+  "answer": [
+   "crates/gateway/src/serve.rs",
+   "crates/tenancy/src/quota.rs",
+   "crates/gateway/tests/inference_byok.rs",
+   "crates/gateway/src/jobs.rs",
+   "crates/gateway/src/inference_public.rs"
+  ],
+  "recall": 1.0,
+  "precision": 0.4,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 11190,
+  "arm": "B",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 66.4,
+  "model": "gemini-4-argon",
+  "tokens": 224011,
+  "cached_tokens": 172012,
+  "cost_usd": 0.129,
+  "tokens_to_first_fix_file": 8031,
+  "files_read": 4,
+  "graph_calls": 3,
+  "tools": {
+   "graph_symbol": 3,
+   "Grep": 4,
+   "Read": 16
+  },
+  "truth": [
+   "crates/gateway/src/serve.rs",
+   "crates/tenancy/src/quota.rs"
+  ],
+  "answer": [
+   "crates/gateway/src/serve.rs",
+   "crates/tenancy/src/quota.rs",
+   "crates/gateway/tests/inference_byok.rs",
+   "crates/gateway/src/inference_public.rs"
+  ],
+  "recall": 1.0,
+  "precision": 0.5,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": 11190,
+  "arm": "B",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 173.6,
+  "model": "gemini-4-argon",
+  "tokens": 494559,
+  "cached_tokens": 422289,
+  "cost_usd": 0.197,
+  "tokens_to_first_fix_file": 8610,
+  "files_read": 6,
+  "graph_calls": 4,
+  "tools": {
+   "Grep": 6,
+   "Read": 20,
+   "graph_symbol": 2,
+   "graph_callers": 2
+  },
+  "truth": [
+   "crates/gateway/src/serve.rs",
+   "crates/tenancy/src/quota.rs"
+  ],
+  "answer": [
+   "crates/gateway/src/serve.rs",
+   "crates/tenancy/src/quota.rs",
+   "crates/gateway/tests/inference_byok.rs",
+   "crates/gateway/src/inference_public.rs"
+  ],
+  "recall": 1.0,
+  "precision": 0.5,
+  "correct": true,
+  "set": "main"
+ },
+ {
+  "issue": "impact-acp-tool-definition",
+  "arm": "A",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 41.4,
+  "model": "gemini-4-argon",
+  "tokens": 23614,
+  "cached_tokens": 7483,
+  "cost_usd": 0.037,
+  "tokens_to_first_fix_file": 4758,
+  "files_read": 3,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 1,
+   "Read": 6
+  },
+  "truth": [
+   "crates/coder-new/src/bundled_runtime.rs",
+   "crates/coder-new/src/fleet/tests.rs",
+   "crates/coder-new/src/plugin_tools.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/plugin_tools.rs",
+   "crates/coder-new/src/fleet/tests.rs",
+   "crates/coder-new/src/bundled_runtime.rs"
+  ],
+  "recall": 1.0,
+  "precision": 1.0,
+  "correct": true,
+  "set": "impact"
+ },
+ {
+  "issue": "impact-acp-tool-definition",
+  "arm": "A",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 47.5,
+  "model": "gemini-4-argon",
+  "tokens": 23074,
+  "cached_tokens": 7123,
+  "cost_usd": 0.036,
+  "tokens_to_first_fix_file": 4758,
+  "files_read": 3,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 1,
+   "Read": 6
+  },
+  "truth": [
+   "crates/coder-new/src/bundled_runtime.rs",
+   "crates/coder-new/src/fleet/tests.rs",
+   "crates/coder-new/src/plugin_tools.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/plugin_tools.rs",
+   "crates/coder-new/src/fleet/tests.rs",
+   "crates/coder-new/src/bundled_runtime.rs"
+  ],
+  "recall": 1.0,
+  "precision": 1.0,
+  "correct": true,
+  "set": "impact"
+ },
+ {
+  "issue": "impact-acp-tool-definition",
+  "arm": "B",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 71.8,
+  "model": "gemini-4-argon",
+  "tokens": 20247,
+  "cached_tokens": 4649,
+  "cost_usd": 0.034,
+  "tokens_to_first_fix_file": 14668,
+  "files_read": 1,
+  "graph_calls": 1,
+  "tools": {
+   "graph_callers": 1,
+   "Grep": 2,
+   "Read": 1
+  },
+  "truth": [
+   "crates/coder-new/src/bundled_runtime.rs",
+   "crates/coder-new/src/fleet/tests.rs",
+   "crates/coder-new/src/plugin_tools.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/plugin_tools.rs",
+   "crates/coder-new/src/fleet/tests.rs",
+   "crates/coder-new/src/bundled_runtime.rs"
+  ],
+  "recall": 1.0,
+  "precision": 1.0,
+  "correct": true,
+  "set": "impact"
+ },
+ {
+  "issue": "impact-acp-tool-definition",
+  "arm": "B",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 40.0,
+  "model": "gemini-4-argon",
+  "tokens": 17807,
+  "cached_tokens": 4196,
+  "cost_usd": 0.03,
+  "tokens_to_first_fix_file": 10147,
+  "files_read": 3,
+  "graph_calls": 1,
+  "tools": {
+   "graph_callers": 1,
+   "Grep": 1,
+   "Read": 3
+  },
+  "truth": [
+   "crates/coder-new/src/bundled_runtime.rs",
+   "crates/coder-new/src/fleet/tests.rs",
+   "crates/coder-new/src/plugin_tools.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/plugin_tools.rs",
+   "crates/coder-new/src/fleet/tests.rs",
+   "crates/coder-new/src/bundled_runtime.rs"
+  ],
+  "recall": 1.0,
+  "precision": 1.0,
+  "correct": true,
+  "set": "impact"
+ },
+ {
+  "issue": "impact-gateway-open",
+  "arm": "A",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 50.1,
+  "model": "gemini-4-argon",
+  "tokens": 57793,
+  "cached_tokens": 29892,
+  "cost_usd": 0.066,
+  "tokens_to_first_fix_file": 5148,
+  "files_read": 7,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 1,
+   "Read": 13
+  },
+  "truth": [
+   "crates/coder-new/src/gateway_models.rs",
+   "crates/coder-new/src/live.rs",
+   "crates/coder-new/src/route.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/gateway_models.rs",
+   "crates/coder-new/src/live.rs",
+   "crates/coder-new/src/long_session.rs",
+   "crates/coder-new/src/prompt_budget.rs",
+   "crates/coder-new/src/route.rs",
+   "crates/coder-new/src/routing_record.rs"
+  ],
+  "recall": 1.0,
+  "precision": 0.5,
+  "correct": true,
+  "set": "impact"
+ },
+ {
+  "issue": "impact-gateway-open",
+  "arm": "A",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 66.4,
+  "model": "gemini-4-argon",
+  "tokens": 110957,
+  "cached_tokens": 74299,
+  "cost_usd": 0.089,
+  "tokens_to_first_fix_file": 5212,
+  "files_read": 7,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 1,
+   "Read": 17
+  },
+  "truth": [
+   "crates/coder-new/src/gateway_models.rs",
+   "crates/coder-new/src/live.rs",
+   "crates/coder-new/src/route.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/gateway_models.rs",
+   "crates/coder-new/src/route.rs",
+   "crates/coder-new/src/routing_record.rs",
+   "crates/coder-new/src/prompt_budget.rs",
+   "crates/coder-new/src/live.rs",
+   "crates/coder-new/src/long_session.rs"
+  ],
+  "recall": 1.0,
+  "precision": 0.5,
+  "correct": true,
+  "set": "impact"
+ },
+ {
+  "issue": "impact-gateway-open",
+  "arm": "B",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 45.4,
+  "model": "gemini-4-argon",
+  "tokens": 14323,
+  "cached_tokens": 2646,
+  "cost_usd": 0.028,
+  "tokens_to_first_fix_file": 7541,
+  "files_read": 1,
+  "graph_calls": 1,
+  "tools": {
+   "graph_callers": 1,
+   "Grep": 1,
+   "Read": 1
+  },
+  "truth": [
+   "crates/coder-new/src/gateway_models.rs",
+   "crates/coder-new/src/live.rs",
+   "crates/coder-new/src/route.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/gateway_models.rs",
+   "crates/coder-new/src/live.rs",
+   "crates/coder-new/src/long_session.rs",
+   "crates/coder-new/src/prompt_budget.rs",
+   "crates/coder-new/src/route.rs",
+   "crates/coder-new/src/routing_record.rs"
+  ],
+  "recall": 1.0,
+  "precision": 0.5,
+  "correct": true,
+  "set": "impact"
+ },
+ {
+  "issue": "impact-gateway-open",
+  "arm": "B",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 66.6,
+  "model": "gemini-4-argon",
+  "tokens": 13687,
+  "cached_tokens": 2814,
+  "cost_usd": 0.027,
+  "tokens_to_first_fix_file": null,
+  "files_read": 1,
+  "graph_calls": 2,
+  "tools": {
+   "graph_symbol": 1,
+   "graph_callers": 1,
+   "Grep": 1,
+   "Read": 1
+  },
+  "truth": [
+   "crates/coder-new/src/gateway_models.rs",
+   "crates/coder-new/src/live.rs",
+   "crates/coder-new/src/route.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/gateway_models.rs",
+   "crates/coder-new/src/live.rs",
+   "crates/coder-new/src/long_session.rs",
+   "crates/coder-new/src/prompt_budget.rs",
+   "crates/coder-new/src/route.rs",
+   "crates/coder-new/src/routing_record.rs"
+  ],
+  "recall": 1.0,
+  "precision": 0.5,
+  "correct": true,
+  "set": "impact"
+ },
+ {
+  "issue": "impact-resolve-composer-rails",
+  "arm": "A",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 42.6,
+  "model": "gemini-4-argon",
+  "tokens": 33455,
+  "cached_tokens": 13707,
+  "cost_usd": 0.045,
+  "tokens_to_first_fix_file": 5273,
+  "files_read": 6,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 1,
+   "Read": 9
+  },
+  "truth": [
+   "crates/coder-new/src/plugin_definition.rs",
+   "crates/coder-new/src/plugins.rs",
+   "crates/coder-new/src/ui.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/plugin_definition.rs",
+   "crates/coder-new/src/plugins.rs",
+   "crates/coder-new/src/ui.rs"
+  ],
+  "recall": 1.0,
+  "precision": 1.0,
+  "correct": true,
+  "set": "impact"
+ },
+ {
+  "issue": "impact-resolve-composer-rails",
+  "arm": "A",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 39.2,
+  "model": "gemini-4-argon",
+  "tokens": 35981,
+  "cached_tokens": 15511,
+  "cost_usd": 0.047,
+  "tokens_to_first_fix_file": 5312,
+  "files_read": 6,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 1,
+   "Read": 10
+  },
+  "truth": [
+   "crates/coder-new/src/plugin_definition.rs",
+   "crates/coder-new/src/plugins.rs",
+   "crates/coder-new/src/ui.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/plugin_definition.rs",
+   "crates/coder-new/src/plugins.rs",
+   "crates/coder-new/src/ui.rs"
+  ],
+  "recall": 1.0,
+  "precision": 1.0,
+  "correct": true,
+  "set": "impact"
+ },
+ {
+  "issue": "impact-resolve-composer-rails",
+  "arm": "B",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 82.1,
+  "model": "gemini-4-argon",
+  "tokens": 28349,
+  "cached_tokens": 10876,
+  "cost_usd": 0.04,
+  "tokens_to_first_fix_file": 10581,
+  "files_read": 5,
+  "graph_calls": 2,
+  "tools": {
+   "graph_callers": 2,
+   "Grep": 1,
+   "Read": 5
+  },
+  "truth": [
+   "crates/coder-new/src/plugin_definition.rs",
+   "crates/coder-new/src/plugins.rs",
+   "crates/coder-new/src/ui.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/plugin_definition.rs",
+   "crates/coder-new/src/plugins.rs",
+   "crates/coder-new/src/ui.rs"
+  ],
+  "recall": 1.0,
+  "precision": 1.0,
+  "correct": true,
+  "set": "impact"
+ },
+ {
+  "issue": "impact-resolve-composer-rails",
+  "arm": "B",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 60.1,
+  "model": "gemini-4-argon",
+  "tokens": 34413,
+  "cached_tokens": 17443,
+  "cost_usd": 0.04,
+  "tokens_to_first_fix_file": 7453,
+  "files_read": 5,
+  "graph_calls": 2,
+  "tools": {
+   "graph_callers": 2,
+   "Grep": 1,
+   "Read": 7
+  },
+  "truth": [
+   "crates/coder-new/src/plugin_definition.rs",
+   "crates/coder-new/src/plugins.rs",
+   "crates/coder-new/src/ui.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/plugin_definition.rs",
+   "crates/coder-new/src/plugins.rs",
+   "crates/coder-new/src/ui.rs"
+  ],
+  "recall": 1.0,
+  "precision": 1.0,
+  "correct": true,
+  "set": "impact"
+ },
+ {
+  "issue": "impact-saved-enabled",
+  "arm": "A",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 34.0,
+  "model": "gemini-4-argon",
+  "tokens": 18697,
+  "cached_tokens": 4058,
+  "cost_usd": 0.034,
+  "tokens_to_first_fix_file": 4911,
+  "files_read": 5,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 1,
+   "Read": 7
+  },
+  "truth": [
+   "crates/coder-new/src/bundled_settings.rs",
+   "crates/coder-new/src/second_look.rs",
+   "crates/coder-new/src/solver_plugin.rs",
+   "crates/coder-new/src/solver/mod.rs",
+   "crates/coder-new/src/token_savers.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/bundled_settings.rs",
+   "crates/coder-new/src/second_look.rs",
+   "crates/coder-new/src/solver/mod.rs",
+   "crates/coder-new/src/solver_plugin.rs",
+   "crates/coder-new/src/token_savers.rs"
+  ],
+  "recall": 1.0,
+  "precision": 1.0,
+  "correct": true,
+  "set": "impact"
+ },
+ {
+  "issue": "impact-saved-enabled",
+  "arm": "A",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 61.2,
+  "model": "gemini-4-argon",
+  "tokens": 25703,
+  "cached_tokens": 8662,
+  "cost_usd": 0.039,
+  "tokens_to_first_fix_file": 4933,
+  "files_read": 5,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 1,
+   "Read": 7
+  },
+  "truth": [
+   "crates/coder-new/src/bundled_settings.rs",
+   "crates/coder-new/src/second_look.rs",
+   "crates/coder-new/src/solver_plugin.rs",
+   "crates/coder-new/src/solver/mod.rs",
+   "crates/coder-new/src/token_savers.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/bundled_settings.rs",
+   "crates/coder-new/src/second_look.rs",
+   "crates/coder-new/src/solver/mod.rs",
+   "crates/coder-new/src/solver_plugin.rs",
+   "crates/coder-new/src/token_savers.rs"
+  ],
+  "recall": 1.0,
+  "precision": 1.0,
+  "correct": true,
+  "set": "impact"
+ },
+ {
+  "issue": "impact-saved-enabled",
+  "arm": "B",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 44.5,
+  "model": "gemini-4-argon",
+  "tokens": 17991,
+  "cached_tokens": 4495,
+  "cost_usd": 0.032,
+  "tokens_to_first_fix_file": 10791,
+  "files_read": 5,
+  "graph_calls": 2,
+  "tools": {
+   "graph_symbol": 1,
+   "graph_callers": 1,
+   "Grep": 1,
+   "Read": 5
+  },
+  "truth": [
+   "crates/coder-new/src/bundled_settings.rs",
+   "crates/coder-new/src/second_look.rs",
+   "crates/coder-new/src/solver_plugin.rs",
+   "crates/coder-new/src/solver/mod.rs",
+   "crates/coder-new/src/token_savers.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/bundled_settings.rs",
+   "crates/coder-new/src/second_look.rs",
+   "crates/coder-new/src/solver/mod.rs",
+   "crates/coder-new/src/solver_plugin.rs",
+   "crates/coder-new/src/token_savers.rs"
+  ],
+  "recall": 1.0,
+  "precision": 1.0,
+  "correct": true,
+  "set": "impact"
+ },
+ {
+  "issue": "impact-saved-enabled",
+  "arm": "B",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 49.7,
+  "model": "gemini-4-argon",
+  "tokens": 16414,
+  "cached_tokens": 2454,
+  "cost_usd": 0.031,
+  "tokens_to_first_fix_file": 10634,
+  "files_read": 1,
+  "graph_calls": 2,
+  "tools": {
+   "graph_symbol": 1,
+   "graph_callers": 1,
+   "Grep": 1,
+   "Read": 1
+  },
+  "truth": [
+   "crates/coder-new/src/bundled_settings.rs",
+   "crates/coder-new/src/second_look.rs",
+   "crates/coder-new/src/solver_plugin.rs",
+   "crates/coder-new/src/solver/mod.rs",
+   "crates/coder-new/src/token_savers.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/bundled_settings.rs",
+   "crates/coder-new/src/second_look.rs",
+   "crates/coder-new/src/solver/mod.rs",
+   "crates/coder-new/src/solver_plugin.rs",
+   "crates/coder-new/src/token_savers.rs"
+  ],
+  "recall": 1.0,
+  "precision": 1.0,
+  "correct": true,
+  "set": "impact"
+ },
+ {
+  "issue": "impact-tools-allowed",
+  "arm": "A",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 56.5,
+  "model": "gemini-4-argon",
+  "tokens": 98521,
+  "cached_tokens": 60238,
+  "cost_usd": 0.091,
+  "tokens_to_first_fix_file": 5578,
+  "files_read": 7,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 2,
+   "Read": 18
+  },
+  "truth": [
+   "crates/coder-new/src/bundled_runtime.rs",
+   "crates/coder-new/src/claude_print.rs",
+   "crates/coder-new/src/claude_tools.rs",
+   "crates/coder-new/src/claude.rs",
+   "crates/coder-new/src/codex_chat.rs",
+   "crates/coder-new/src/plugin_tools.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/bundled_runtime.rs",
+   "crates/coder-new/src/claude.rs",
+   "crates/coder-new/src/claude_print.rs",
+   "crates/coder-new/src/claude_tools.rs",
+   "crates/coder-new/src/codex_chat.rs",
+   "crates/coder-new/src/plugin_tools.rs"
+  ],
+  "recall": 1.0,
+  "precision": 1.0,
+  "correct": true,
+  "set": "impact"
+ },
+ {
+  "issue": "impact-tools-allowed",
+  "arm": "A",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 41.2,
+  "model": "gemini-4-argon",
+  "tokens": 67541,
+  "cached_tokens": 36832,
+  "cost_usd": 0.073,
+  "tokens_to_first_fix_file": 5362,
+  "files_read": 7,
+  "graph_calls": 0,
+  "tools": {
+   "Grep": 1,
+   "Read": 17
+  },
+  "truth": [
+   "crates/coder-new/src/bundled_runtime.rs",
+   "crates/coder-new/src/claude_print.rs",
+   "crates/coder-new/src/claude_tools.rs",
+   "crates/coder-new/src/claude.rs",
+   "crates/coder-new/src/codex_chat.rs",
+   "crates/coder-new/src/plugin_tools.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/bundled_runtime.rs",
+   "crates/coder-new/src/claude.rs",
+   "crates/coder-new/src/claude_print.rs",
+   "crates/coder-new/src/claude_tools.rs",
+   "crates/coder-new/src/codex_chat.rs",
+   "crates/coder-new/src/plugin_tools.rs"
+  ],
+  "recall": 1.0,
+  "precision": 1.0,
+  "correct": true,
+  "set": "impact"
+ },
+ {
+  "issue": "impact-tools-allowed",
+  "arm": "B",
+  "rep": 0,
+  "exit": 0,
+  "wall_s": 26.3,
+  "model": "gemini-4-argon",
+  "tokens": 11555,
+  "cached_tokens": 0,
+  "cost_usd": 0.027,
+  "tokens_to_first_fix_file": null,
+  "files_read": 0,
+  "graph_calls": 2,
+  "tools": {
+   "graph_symbol": 1,
+   "graph_callers": 1,
+   "Grep": 1
+  },
+  "truth": [
+   "crates/coder-new/src/bundled_runtime.rs",
+   "crates/coder-new/src/claude_print.rs",
+   "crates/coder-new/src/claude_tools.rs",
+   "crates/coder-new/src/claude.rs",
+   "crates/coder-new/src/codex_chat.rs",
+   "crates/coder-new/src/plugin_tools.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/bundled_runtime.rs",
+   "crates/coder-new/src/claude.rs",
+   "crates/coder-new/src/claude_print.rs",
+   "crates/coder-new/src/claude_tools.rs",
+   "crates/coder-new/src/codex_chat.rs",
+   "crates/coder-new/src/plugin_tools.rs"
+  ],
+  "recall": 1.0,
+  "precision": 1.0,
+  "correct": true,
+  "set": "impact"
+ },
+ {
+  "issue": "impact-tools-allowed",
+  "arm": "B",
+  "rep": 1,
+  "exit": 0,
+  "wall_s": 48.4,
+  "model": "gemini-4-argon",
+  "tokens": 10627,
+  "cached_tokens": 0,
+  "cost_usd": 0.024,
+  "tokens_to_first_fix_file": null,
+  "files_read": 0,
+  "graph_calls": 1,
+  "tools": {
+   "graph_callers": 1,
+   "Grep": 1
+  },
+  "truth": [
+   "crates/coder-new/src/bundled_runtime.rs",
+   "crates/coder-new/src/claude_print.rs",
+   "crates/coder-new/src/claude_tools.rs",
+   "crates/coder-new/src/claude.rs",
+   "crates/coder-new/src/codex_chat.rs",
+   "crates/coder-new/src/plugin_tools.rs"
+  ],
+  "answer": [
+   "crates/coder-new/src/bundled_runtime.rs",
+   "crates/coder-new/src/claude.rs",
+   "crates/coder-new/src/claude_print.rs",
+   "crates/coder-new/src/claude_tools.rs",
+   "crates/coder-new/src/codex_chat.rs",
+   "crates/coder-new/src/plugin_tools.rs"
+  ],
+  "recall": 1.0,
+  "precision": 1.0,
+  "correct": true,
+  "set": "impact"
+ }
+]
