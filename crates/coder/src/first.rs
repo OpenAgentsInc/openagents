@@ -54,11 +54,12 @@ pub const PROGRESS_OPENER: &str = "explain";
 /// turn (the judge is absent, failed, or ran past [`LATE`]) the model
 /// answers alone, and this keeps it answering as OpenAgents about our own
 /// products. It is an instruction, never a router: it reads nothing.
-pub const UNROUTED_NOTE: &str = "OpenAgents' own products have plain names: the Gym (where we \
-test plugins for Coder and trainers add and check results), the Verse, Coder (our coding agent), \
-plugins, and Jev (the small, fast model from TypeSafe that reads each message first). When the \
-user names one of these, they mean ours, not an outside project with a similar name (the Gym is \
-not OpenAI Gym or Gymnasium). Answer a question about them here, about ours, and say plainly when \
+pub const UNROUTED_NOTE: &str = "OpenAgents' own products have plain names: the Gym (where \
+OpenAgents tests plugins for Coder and trainers add and check results), the Verse, Coder (the \
+OpenAgents coding agent), plugins, and Jev (the small, fast model from TypeSafe that reads each \
+message first). When the user names one of these, they mean the OpenAgents one, not an outside \
+project with a similar name (the Gym is not OpenAI Gym or Gymnasium). Answer a question about \
+them here, about the OpenAgents ones, and say plainly when \
 you do not know a specific detail; do not offer to run Coder or check a repository to answer a \
 question.";
 

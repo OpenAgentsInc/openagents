@@ -936,7 +936,7 @@ impl CoderRun {
             RunEnding::Running | RunEnding::Waiting => return self.going_note(),
         };
         let mut note = format!(
-            "Coder, our coding agent, already ran in this chat: its turn {} {how}",
+            "Coder, the OpenAgents coding agent, already ran in this chat: its turn {} {how}",
             self.turn
         );
         if let Some(engine) = engine {
@@ -985,7 +985,7 @@ impl CoderRun {
     /// computer's headline says on what.
     fn going_note(&self) -> String {
         let mut note = String::from(
-            "Coder, our coding agent, was started from this chat and its task is still open: ",
+            "Coder, the OpenAgents coding agent, was started from this chat and its task is still open: ",
         );
         note.push_str(match self.ending {
             RunEnding::Waiting => "it is waiting for the user's answer or approval",
@@ -1019,12 +1019,12 @@ impl CoderRun {
 
 /// [`CoderRun::marker`] for a run that finished.
 pub const MARKER_FINISHED: &str =
-    "(Coder, our coding agent, finished its run in this chat and reported what it did.)";
+    "(Coder, the OpenAgents coding agent, finished its run in this chat and reported what it did.)";
 /// [`CoderRun::marker`] for a run that ended without finishing.
 pub const MARKER_FAILED: &str =
-    "(Coder, our coding agent, ended its run in this chat without finishing it.)";
+    "(Coder, the OpenAgents coding agent, ended its run in this chat without finishing it.)";
 /// [`CoderRun::marker`] for a run that was stopped.
-pub const MARKER_STOPPED: &str = "(Coder, our coding agent, was stopped in this chat.)";
+pub const MARKER_STOPPED: &str = "(Coder, the OpenAgents coding agent, was stopped in this chat.)";
 
 /// The bounded context a request may carry. It holds no credential, key,
 /// host address, or amount, and it never reaches a seam: the computer's
@@ -1452,10 +1452,11 @@ impl Context {
                     note.push_str(&format!(" (named {name:?})"));
                 }
                 note.push_str(
-                    ", and that computer is where Coder, our coding agent, works. Our replies \
-                     are written by our chat worker's models over the network, so each message \
-                     leaves the computer: never say the chat runs locally. Never tell \
-                     the user to connect a computer and never say we can't reach their \
+                    ", and that computer is where Coder, the OpenAgents coding agent, works. \
+                     Your replies are written by the OpenAgents chat worker's models over the \
+                     network, so each message leaves the computer: never say the chat runs \
+                     locally. Never tell the user to connect a computer and never say you can't \
+                     reach their \
                      computer; explain connecting another computer or a phone only when they \
                      ask about that.",
                 );
@@ -1472,7 +1473,7 @@ impl Context {
             Computer::Paired { name, engines } => {
                 let mut note = format!(
                     "About this chat: it runs in the OpenAgents app on the user's phone, which \
-                     is paired with their computer {name:?}. Coder, our coding agent, works on \
+                     is paired with their computer {name:?}. Coder, the OpenAgents coding agent, works on \
                      {name:?} when the user starts it from this chat, so never tell them to \
                      connect a computer; explain connecting another computer only when they ask \
                      about that."
@@ -1480,7 +1481,7 @@ impl Context {
                 if self.computer_away() {
                     note.push_str(&format!(
                         " {name:?} is offline right now, so this turn runs here on OpenAgents, \
-                         from this conversation: help as far as we can without running commands \
+                         from this conversation: help as far as you can without running commands \
                          or reading their files, say plainly that nothing has started on \
                          {name:?}, and never ask them to bring it online or connect a computer. \
                          Work goes back to {name:?} when it is online."
@@ -1520,7 +1521,7 @@ impl Context {
         }
         if self.here() {
             note.push_str(
-                " Our replies in this chat don't run commands or read files themselves: when \
+                " Your replies in this chat don't run commands or read files themselves: when \
                  an answer needs the folder's contents or a command run, say in one short \
                  sentence that Coder can do that here on this computer. This replaces anything \
                  earlier in these instructions about connecting a computer.",
@@ -2327,7 +2328,7 @@ pub fn grounded(
 }
 
 /// The instruction a model gets when retrieval found nothing relevant.
-pub const NO_DOCS_NOTE: &str = "We have no documented answer to this question. Say so plainly, \
+pub const NO_DOCS_NOTE: &str = "There is no documented answer to this question. Say so plainly, \
 answer only what you are sure of, and do not invent OpenAgents product facts, screens, or \
 commands.";
 
@@ -2335,7 +2336,7 @@ commands.";
 /// description of a document a passage links, such as one of our essays,
 /// gives that link.
 pub const PRODUCT_LINKS: &str = " When you summarize or describe a document a passage \
-links, such as one of our essays, give its link from the passage.";
+links, such as one of the OpenAgents essays, give its link from the passage.";
 
 /// What else the product note lets a grounded reply say, and what it
 /// must never invent (#10135, #10136): the facts about this chat in its
@@ -2356,7 +2357,7 @@ pub fn grounded_note(corpus: Corpus, passages: &[seams::Passage], commit: Option
     };
     let mut note = format!(
         "Answer only from the reference passages below, from {what}. If they do not answer \
-         the question, say we have no documented answer. Cite the passages you use by id in \
+         the question, say you have no documented answer. Cite the passages you use by id in \
          square brackets, like [{}].",
         passages.first().map_or("id", |passage| passage.id.as_str())
     );
@@ -2581,7 +2582,7 @@ mod tests {
         assert_eq!(run.files, vec![("NOTE.md".into(), "added".into())]);
         assert_eq!(run.commands, vec!["ls", "cargo metadata --no-deps"]);
         let note = context.note().unwrap();
-        assert!(note.contains("Coder, our coding agent, already ran in this chat"));
+        assert!(note.contains("Coder, the OpenAgents coding agent, already ran in this chat"));
         assert!(note.contains("on Codex (gpt-6-luna)"));
         assert!(note.contains("40 crates"));
         assert!(note.contains("NOTE.md (added)"));

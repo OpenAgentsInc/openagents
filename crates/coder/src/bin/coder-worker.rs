@@ -7423,7 +7423,7 @@ mod tests {
         let seen = seen.lock().unwrap();
         let instructions = seen[0]["instructions"].as_str().unwrap();
         for words in [
-            "Coder, our coding agent, already ran in this chat: its turn 1 finished on Codex \
+            "Coder, the OpenAgents coding agent, already ran in this chat: its turn 1 finished on Codex \
              (gpt-6-luna).",
             "It holds a Rust workspace with 40 crates.",
             "Files it changed: NOTE.md (added).",

@@ -404,9 +404,10 @@ impl Reference {
 
 /// What the model is told when retrieval kept nothing, so it says what it
 /// does not know instead of inventing product facts.
-pub const NO_DOCUMENTED_ANSWER: &str = "We have no documented answer to this question about \
-OpenAgents in our product notes. If the user asks about the OpenAgents app or its services, say \
-plainly that we don't have that documented yet; do not guess or state product facts, features, \
+pub const NO_DOCUMENTED_ANSWER: &str = "There is no documented answer to this question about \
+OpenAgents in the OpenAgents product notes. Speak as yourself in the first person singular \
+(\"I\", \"me\"), never \"we\" or \"us\". If the user asks about the OpenAgents app or its \
+services, say plainly that you don't have that documented yet; do not guess or state product facts, features, \
 prices, or dates that are not already in this conversation.";
 
 /// What every grounded reply is told about whose products are whose
@@ -415,8 +416,9 @@ prices, or dates that are not already in this conversation.";
 /// ours.
 pub const OURS_ONLY: &str = "When you list or describe what OpenAgents offers, name only \
 OpenAgents' own products: the website and apps, Coder, plugins, the Verse, and the API. Never \
-list another company's model or service as ours, such as TypeSafe's Jev, Gemini, GLM, \
-OpenRouter, or the Vercel AI Gateway; name one only when asked, as a partner we use.";
+list another company's model or service as an OpenAgents product, such as TypeSafe's Jev, \
+Gemini, GLM, OpenRouter, or the Vercel AI Gateway; name one only when asked, as a partner \
+OpenAgents uses.";
 
 /// The grounded model's instructions: answer only from `references`, cite
 /// each one used by its id in square brackets, and say so when they do not
@@ -429,12 +431,12 @@ pub fn instructions(references: &[Reference]) -> String {
     let mut out = String::from(
         "I am OpenAgents, answering in the OpenAgents app's chat. Always speak as yourself in the \
 first person singular (\"I\", \"me\"), never \"we\" or \"us\". Answer the user's latest message using only the reference entries \
-below, which are our reviewed product notes. After each sentence that uses an entry, cite it by \
+below, which are the reviewed OpenAgents product notes. After each sentence that uses an entry, cite it by \
 its id in square brackets, such as [openagents.wallet-send]. Do not add facts about OpenAgents, \
 its app, prices, dates, or plans that the entries do not state. If the entries do not answer what \
-the user asked, say plainly that we don't have that documented yet, and give only what the \
-entries do say. When you summarize or describe a document an entry links, such as one of our \
-essays, give its link from the entry. When you tell the user to do something, give the exact \
+the user asked, say plainly that you don't have that documented yet, and give only what the \
+entries do say. When you summarize or describe a document an entry links, such as one of the \
+OpenAgents essays, give its link from the entry. When you tell the user to do something, give the exact \
 https:// link or the command to run that the entries give, with a command in a code span. Keep it short for a phone screen, and use Markdown only when \
 it helps. ",
     );
