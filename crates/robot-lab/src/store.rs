@@ -730,3 +730,55 @@ fn sync_directory(path: &Path) -> Result<()> {
     let _ = path;
     Ok(())
 }
+
+impl Store {
+    pub fn view(&self, reference: &Reference) -> std::result::Result<crate::view::Bundle, String> {
+        let subject = self.get(reference).map_err(|e| e.to_string())?;
+        self.validate_dependencies(&subject.content)
+            .map_err(|e| e.to_string())?;
+        let (scene_reference, episode) = match subject.content {
+            Document::Scene(_) => (reference.clone(), None),
+            Document::Episode(episode) => {
+                let Document::Experiment(experiment) = self
+                    .get(&episode.experiment)
+                    .map_err(|e| e.to_string())?
+                    .content
+                else {
+                    return Err("This attempt is missing its experiment".into());
+                };
+                (experiment.scene, Some(episode))
+            }
+            _ => return Err("Open a robot scene or a saved attempt".into()),
+        };
+        let Document::Scene(scene) = self
+            .get(&scene_reference)
+            .map_err(|e| e.to_string())?
+            .content
+        else {
+            return Err("This attempt is missing its scene".into());
+        };
+        if scene.robots.len() != 1 {
+            return Err("Open a scene with one robot".into());
+        }
+        let robot_reference = scene.robots[0].robot.clone();
+        let Document::Robot(robot) = self
+            .get(&robot_reference)
+            .map_err(|e| e.to_string())?
+            .content
+        else {
+            return Err("This scene is missing its robot".into());
+        };
+        let bundle = crate::view::Bundle {
+            schema: "robot-view.v1".into(),
+            subject: reference.clone(),
+            number: subject.number,
+            scene_reference,
+            scene,
+            robot_reference,
+            robot,
+            episode,
+        };
+        bundle.validate()?;
+        Ok(bundle)
+    }
+}

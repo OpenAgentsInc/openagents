@@ -125,6 +125,12 @@ fn main() -> ExitCode {
     }
     let result = match parse(args.into_iter()) {
         Ok((None, options)) => verse::app::run(&options),
+        Ok((Some(shot), options)) if options.robot_lab => verse::app::capture_robot_room(
+            &shot.path,
+            shot.width,
+            shot.height,
+            options.robot_lab_config.as_deref(),
+        ),
         Ok((Some(shot), options)) => {
             let xp = verse::app::CaptureXp {
                 relay: options.xp_relay.clone(),
@@ -315,6 +321,8 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--terminal-reference" => options.terminal_reference = Some(value()?),
             "--studio-mute" => options.studio_muted = true,
             "--everglade" => options.everglade = true,
+            "--robot-lab" => options.robot_lab = true,
+            "--robot-lab-config" => options.robot_lab_config = Some(value()?.into()),
             "--grove" => options.grove = true,
             "--meteor-stress-test" => {
                 options.meteor_stress_test = true;

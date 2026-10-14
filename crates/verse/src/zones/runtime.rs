@@ -4,7 +4,7 @@
 use super::{
     Control, Everglade, Intent, Lab, Lagrange, LoadState, PortalProjection, Snapshot, ZoneId,
     everglade::studio::{PanelKind, Source, Studio},
-    everglade_pack,
+    everglade_pack, robotlab,
 };
 use crate::{
     controller::{InputState, PlayerController},
@@ -215,6 +215,41 @@ impl WorldRuntime {
         self.zone_revision = self.zone_revision.saturating_add(1);
         let _ = self.set_spawn(Lab::spawn(), Lab::spawn_yaw());
         self.camera = crate::camera::FollowCamera::default();
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn configure_robot_lab(&mut self, config: robotlab::local::Config) {
+        self.zone_state.robot_lab_config = Some(config);
+    }
+    pub fn install_robot_room(&mut self, room: robotlab::Room) -> Result<(), String> {
+        if self.is_hosted() || !self.is_plaza() {
+            return Err("Return to the plaza before opening Robot Lab".into());
+        }
+        let world = room.world_scene()?;
+        self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
+        self.zone_cancel_loading();
+        self.world = world;
+        self.zone_state.robot_lab = Some(Box::new(room));
+        self.zone = ZoneId::RobotLab;
+        self.zone_state.progress = 1.;
+        self.zone_revision = self.zone_revision.saturating_add(1);
+        self.set_spawn(robotlab::SPAWN, robotlab::SPAWN_YAW)?;
+        self.camera = crate::camera::FollowCamera::default();
+        Ok(())
+    }
+    pub fn install_robot_lab(&mut self) -> Result<(), String> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let room = if let Some(config) = &self.zone_state.robot_lab_config {
+                robotlab::Room::local(config)?
+            } else {
+                robotlab::Room::catalog()?
+            };
+            self.install_robot_room(room)
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            Err("Open a saved robot scene before entering Robot Lab".into())
+        }
     }
     /// Enter Everglade with its verified pack. Offline tools use the same
     /// decoder ([`everglade_pack::ZonePack::load_local`]).
@@ -949,6 +984,11 @@ impl WorldRuntime {
             self.zone_state.error = None;
             return Ok(());
         }
+        if let Some(room) = &mut self.zone_state.robot_lab {
+            if matches!(intent, Intent::Grab | Intent::Release) {
+                return room.intent(intent);
+            }
+        }
         match intent {
             Intent::Enter | Intent::Retry => {
                 let walked_in = intent == Intent::Retry && self.grid_retry_allowed();
@@ -976,6 +1016,10 @@ impl WorldRuntime {
                     self.install_lab();
                     return Ok(());
                 }
+                if destination == ZoneId::RobotLab {
+                    self.install_robot_lab()?;
+                    return Ok(());
+                }
                 self.start_zone_load(destination)?;
             }
             Intent::Cancel => self.zone_cancel_loading(),
@@ -990,6 +1034,7 @@ impl WorldRuntime {
                 // Dropping a zone releases its decoded frames and simulation.
                 self.zone_state.lagrange = None;
                 self.zone_state.lab = None;
+                self.zone_state.robot_lab = None;
                 self.zone_state.everglade = None;
                 #[cfg(not(target_arch = "wasm32"))]
                 {
@@ -1094,6 +1139,10 @@ impl WorldRuntime {
             | Intent::Reset
             | Intent::Pause
             | Intent::Step => {
+                if let Some(room) = &mut self.zone_state.robot_lab {
+                    room.intent(intent)?;
+                    return Ok(());
+                }
                 let lab = self
                     .zone_state
                     .lab
@@ -1911,6 +1960,23 @@ impl WorldRuntime {
                 s.speed_m_s,
                 status
             )
+        } else if let Some(room) = &self.zone_state.robot_lab {
+            for (index, (label, intent)) in room.controls().into_iter().enumerate() {
+                let ids = [
+                    "robot_prev",
+                    "robot_next",
+                    "robot_down",
+                    "robot_up",
+                    "robot_reset",
+                    "robot_play",
+                    "robot_step",
+                    "robot_stop",
+                    "robot_return",
+                    "robot_extra",
+                ];
+                add(ids[index], label, intent, true);
+            }
+            room.caption()
         } else if let Some(lab) = &self.zone_state.lab {
             add("knob_prev", "Prev", Intent::KnobPrev, true);
             add("knob_next", "Next", Intent::KnobNext, true);
@@ -2060,6 +2126,9 @@ impl WorldRuntime {
             if nearest == Some(ZoneId::Lagrange1) {
                 add("enter", "Enter L1", Intent::Enter, true);
                 "Lagrange 1 · Sun–Earth L1 station".into()
+            } else if nearest == Some(ZoneId::RobotLab) {
+                add("enter", "Enter Robot Lab", Intent::Enter, true);
+                "Robot Lab · inspect robots and replay attempts".into()
             } else if nearest == Some(ZoneId::PhysicsLab) {
                 add("enter", "Enter Lab", Intent::Enter, true);
                 "Physics Lab · live rigid-body sandbox".into()
@@ -2113,6 +2182,11 @@ impl WorldRuntime {
                 .as_deref()
                 .map(|l| l.station.snapshot()),
             lab: self.zone_state.lab.as_deref().map(Lab::snapshot),
+            robot_lab: self
+                .zone_state
+                .robot_lab
+                .as_deref()
+                .map(robotlab::Room::snapshot),
             caption,
         }
     }
@@ -2846,6 +2920,9 @@ impl WorldRuntime {
         if let Some(lab) = &mut self.zone_state.lab {
             lab.tick(dt);
         }
+        if let Some(room) = &mut self.zone_state.robot_lab {
+            room.tick(dt);
+        }
         let state = &mut self.zone_state;
         if let (Some(glade), Some(coast)) = (&mut state.everglade, &mut state.coast) {
             coast.tick = unix_water_tick();
@@ -2954,6 +3031,9 @@ impl WorldRuntime {
         };
         if let Some(lagrange) = &self.zone_state.lagrange {
             mesh.extend(lagrange.dynamic());
+        }
+        if let Some(room) = &self.zone_state.robot_lab {
+            mesh.extend(room.dynamic());
         }
         if let Some(lab) = &self.zone_state.lab {
             mesh.extend(lab.dynamic());

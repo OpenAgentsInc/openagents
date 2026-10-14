@@ -44,3 +44,5 @@ pub(crate) fn require(ok: bool, message: &str) -> Result<()> {
         Err(Error::Invalid(message.into()))
     }
 }
+
+pub mod view;

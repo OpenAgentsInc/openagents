@@ -12,6 +12,7 @@ pub mod gate;
 pub use verse_zone_grove::zones::grove;
 pub mod hud;
 pub use verse_zone_lab as lab;
+pub use verse_zone_robotlab as robotlab;
 #[cfg(not(target_arch = "wasm32"))]
 mod private_assets;
 #[cfg(test)]
@@ -40,6 +41,8 @@ pub mod meteor_showcase;
 mod meteor_showcase_tests;
 pub mod meteor_stress;
 pub mod operators;
+#[cfg(test)]
+mod robotlab_tests;
 mod runtime;
 mod sight;
 #[cfg(test)]
@@ -80,6 +83,7 @@ pub enum ZoneId {
     Plaza,
     Lagrange1,
     PhysicsLab,
+    RobotLab,
     Everglade,
     /// The druid training field on Everglade's pack
     /// ([`grove`], `docs/verse/druid-demo.md`).
@@ -98,10 +102,11 @@ pub enum ZoneId {
     MeteorShowcase,
 }
 impl ZoneId {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::Plaza,
         Self::Lagrange1,
         Self::PhysicsLab,
+        Self::RobotLab,
         Self::Everglade,
         Self::Grove,
         Self::Crypt,
@@ -136,6 +141,7 @@ impl ZoneId {
             Self::Plaza => "verse-plaza",
             Self::Lagrange1 => "verse-lagrange-1",
             Self::PhysicsLab => "physics-lab-v1",
+            Self::RobotLab => "robot-lab-v1",
             Self::Everglade => "verse-everglade",
             Self::Grove => "verse-grove",
             Self::Crypt => "verse-crypt",
@@ -150,6 +156,7 @@ impl ZoneId {
             Self::Plaza => "Amber plaza",
             Self::Lagrange1 => "Lagrange 1",
             Self::PhysicsLab => "Physics Lab",
+            Self::RobotLab => "Robot Lab",
             Self::Everglade => "Everglade",
             Self::Grove => "Grove",
             Self::Crypt => "Crypt",
@@ -164,6 +171,7 @@ impl ZoneId {
             Self::Plaza => crate::world::HALF,
             Self::Lagrange1 => 150.0,
             Self::PhysicsLab => lab::HALF_EXTENT,
+            Self::RobotLab => robotlab::HALF_EXTENT,
             Self::Everglade | Self::Grove | Self::MeteorStressTest | Self::MeteorShowcase => {
                 everglade::HALF_EXTENT
             }
@@ -184,6 +192,7 @@ impl ZoneId {
                 let mut portals = vec![
                     (Self::Lagrange1, glam::Vec3::new(12.0, 0.0, 12.0)),
                     (Self::PhysicsLab, glam::Vec3::new(0.0, 0.0, -22.0)),
+                    (Self::RobotLab, glam::Vec3::new(12., 0., -22.)),
                     (Self::Everglade, glam::Vec3::new(-24.0, 0.0, -24.0)),
                     (Self::WaterLab, WATER_ARCH),
                     (Self::Coast, COAST_ARCH),
@@ -197,6 +206,7 @@ impl ZoneId {
             }
             Self::Lagrange1 => vec![(Self::Plaza, lagrange::RETURN_PORTAL)],
             Self::PhysicsLab => vec![(Self::Plaza, lab::RETURN_PORTAL)],
+            Self::RobotLab => vec![(Self::Plaza, robotlab::RETURN_PORTAL)],
             // Everglade has no arch back; its zone panel's return control
             // leaves.
             Self::Everglade => Vec::new(),
@@ -217,6 +227,7 @@ impl ZoneId {
             Self::Plaza => "PLAZA",
             Self::Lagrange1 => "LAGRANGE 1",
             Self::PhysicsLab => "PHYSICS LAB",
+            Self::RobotLab => "ROBOT LAB",
             Self::Everglade => "EVERGLADE",
             Self::Grove => "GROVE",
             Self::Crypt => "CRYPT",
@@ -254,7 +265,7 @@ pub fn atmosphere(zone: ZoneId) -> Atmosphere {
             height_fog: None,
         },
         // A dark blueprint hall; fog only softens the far floor grid.
-        ZoneId::PhysicsLab => Atmosphere {
+        ZoneId::PhysicsLab | ZoneId::RobotLab => Atmosphere {
             color: [0.006, 0.01, 0.018],
             fog_start: 30.0,
             fog_end: 90.0,
@@ -326,6 +337,7 @@ pub struct Snapshot {
     pub station: Option<verse_lagrange::Snapshot>,
     /// Physics Lab scenario, knobs, and readouts.
     pub lab: Option<lab::Snapshot>,
+    pub robot_lab: Option<robotlab::Snapshot>,
     pub caption: String,
 }
 impl Default for Snapshot {
@@ -346,6 +358,7 @@ impl Default for Snapshot {
             controls: vec![],
             station: None,
             lab: None,
+            robot_lab: None,
             caption: String::new(),
         }
     }
@@ -361,6 +374,9 @@ pub(crate) struct State {
     error: Option<String>,
     lagrange: Option<Box<Lagrange>>,
     lab: Option<Box<Lab>>,
+    robot_lab: Option<Box<robotlab::Room>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    robot_lab_config: Option<robotlab::local::Config>,
     everglade: Option<Box<Everglade>>,
     /// The Grove's training field. The Grove also fills `everglade`, whose
     /// movement, spells, and character it walks with.
@@ -439,6 +455,9 @@ impl Default for State {
             error: None,
             lagrange: None,
             lab: None,
+            robot_lab: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            robot_lab_config: None,
             everglade: None,
             grove: None,
             crypt: None,
@@ -530,7 +549,7 @@ fn arch_rings(mesh: &mut crate::mesh::Mesh, zone: ZoneId, at: glam::Vec3, elapse
     let color = match zone {
         ZoneId::Plaza => crate::palette::amber(coder_ui::theme::Intensity::Half),
         ZoneId::Lagrange1 => [0.35, 0.7, 1.0],
-        ZoneId::PhysicsLab => [0.3, 0.85, 1.0],
+        ZoneId::PhysicsLab | ZoneId::RobotLab => [0.3, 0.85, 1.0],
         ZoneId::Everglade | ZoneId::Grove | ZoneId::MeteorStressTest | ZoneId::MeteorShowcase => {
             [0.95, 0.85, 0.4]
         }

@@ -19,6 +19,11 @@ separately loaded **zones**:
   from the OpenAgents web origin. Committed proxies draw when the kit is
   unavailable ([Licensed kits](private-assets.md#licensed-kits)).
 
+The **Robot Lab** portal opens a local inspection room with SO-101 benches,
+blocks, cups, and the same saved scenes and attempts as chat. Its
+[crate guide](../../crates/verse-zone-robotlab/README.md) covers the private lab
+configuration, replay controls, and explicitly configured simulation host.
+
 The Ruins zone, which ran the original Ruins of Atlantis Wizard Woods combat
 behind the plaza's west arch, was removed on 2026-10-05, with its arch, its
 pack, and the retained `verse-ruins` source.

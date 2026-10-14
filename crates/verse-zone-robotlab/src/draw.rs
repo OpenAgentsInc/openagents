@@ -9,7 +9,7 @@
 use glam::{DMat4, DQuat, DVec3, Mat4, Vec3};
 use robot_description::{Error, Geometry, Robot, z_up_to_y_up};
 
-use crate::pbr::{LitVertex, Material};
+use verse_pbr::pbr::{LitVertex, Material};
 
 /// Height of the table top above the floor, in meters.
 pub const TABLE_HEIGHT: f32 = 0.75;
@@ -44,14 +44,14 @@ pub struct Scene {
 
 /// The shared preview/camera profile shades checked robot triangles before
 /// drawing. It uses no orbit-specific state or policy preprocessing.
-pub fn shaded_mesh(vertices: &[LitVertex]) -> crate::mesh::Mesh {
+pub fn shaded_mesh(vertices: &[LitVertex]) -> verse_pbr::mesh::Mesh {
     let sun = Vec3::new(0.45, 0.8, 0.4).normalize();
-    crate::mesh::Mesh {
+    verse_pbr::mesh::Mesh {
         faces: vertices
             .iter()
             .map(|v| {
                 let light = 0.28 + 0.72 * Vec3::from_array(v.normal).dot(sun).max(0.0);
-                crate::mesh::Vertex {
+                verse_pbr::mesh::Vertex {
                     pos: v.pos,
                     color: v.color.map(|c| c * light),
                     fog: 0.0,
@@ -171,6 +171,21 @@ pub fn document_scene(
     scene: &robot_lab::document::Scene,
     step: Option<&robot_lab::document::Step>,
 ) -> Result<Scene, String> {
+    document_scene_geometry(robot, scene, step, true)
+}
+pub fn props_scene(
+    robot: &Robot,
+    scene: &robot_lab::document::Scene,
+    step: Option<&robot_lab::document::Step>,
+) -> Result<Scene, String> {
+    document_scene_geometry(robot, scene, step, false)
+}
+fn document_scene_geometry(
+    robot: &Robot,
+    scene: &robot_lab::document::Scene,
+    step: Option<&robot_lab::document::Step>,
+    visuals: bool,
+) -> Result<Scene, String> {
     scene.validate().map_err(|e| e.to_string())?;
     if scene.robots.len() != 1 {
         return Err("Open a scene with one robot".into());
@@ -201,7 +216,7 @@ pub fn document_scene(
         let start = out.robot.len();
         out.links
             .push((base * *frame).transform_point3(DVec3::ZERO).as_vec3());
-        for shape in &link.visuals {
+        for shape in link.visuals.iter().filter(|_| visuals) {
             let triangles = match &shape.geometry {
                 Geometry::Box { size } => cuboid(Mat4::from_scale(size.as_vec3())),
                 Geometry::Cylinder { radius, length } => cylinder(*radius as f32, *length as f32),
@@ -311,7 +326,7 @@ fn push(
 }
 
 /// The unit cube centered on the origin, mapped by `scale`, wound outward.
-fn cuboid(scale: Mat4) -> Vec<[Vec3; 3]> {
+pub(crate) fn cuboid(scale: Mat4) -> Vec<[Vec3; 3]> {
     let c = |x: f32, y: f32, z: f32| scale.transform_point3(Vec3::new(x, y, z) * 0.5);
     let quads = [
         // -X, +X, -Y, +Y, -Z, +Z
@@ -564,5 +579,115 @@ mod tests {
             low >= TABLE_HEIGHT - 0.2 && high < TABLE_HEIGHT + 1.0,
             "robot Y extent: {low}..{high}"
         );
+    }
+}
+
+/// Each visual mesh uploads once; changing a pose updates only link matrices.
+pub struct RobotMeshes {
+    scene: std::sync::Arc<verse_pbr::pbr::textured::TexturedScene>,
+    visuals: Vec<(usize, DMat4)>,
+    lights: std::sync::Arc<Vec<[u8; 4]>>,
+}
+impl RobotMeshes {
+    pub fn new(robot: &Robot) -> Result<Self, String> {
+        use verse_pbr::pbr::textured::{
+            Primitive, TexturedMaterial, TexturedMesh, TexturedScene, TexturedVertex, UNBAKED,
+        };
+        let mut scene = TexturedScene::default();
+        let mut visuals = Vec::new();
+        let mut lights = Vec::new();
+        for (index, link) in robot.links().iter().enumerate() {
+            for shape in &link.visuals {
+                let triangles = match &shape.geometry {
+                    Geometry::Box { size } => cuboid(Mat4::from_scale(size.as_vec3())),
+                    Geometry::Cylinder { radius, length } => {
+                        cylinder(*radius as f32, *length as f32)
+                    }
+                    Geometry::Sphere { radius } => sphere(*radius as f32),
+                    Geometry::Mesh { scale, mesh, .. } => mesh
+                        .triangles
+                        .iter()
+                        .map(|t| t.map(|p| Vec3::from(p) * scale.as_vec3()))
+                        .collect(),
+                };
+                let mut vertices = Vec::with_capacity(triangles.len() * 3);
+                for t in triangles {
+                    let normal = (t[1] - t[0]).cross(t[2] - t[0]).normalize_or_zero();
+                    if normal.length_squared() < 0.5 {
+                        continue;
+                    }
+                    for p in t {
+                        vertices.push(TexturedVertex::new(p, normal, [0., 0.]));
+                    }
+                }
+                let rgba = shape.rgba.unwrap_or([0.8, 0.8, 0.8, 1.]);
+                let material = scene.materials.len();
+                scene.materials.push(TexturedMaterial {
+                    base_color: [linear(rgba[0]), linear(rgba[1]), linear(rgba[2]), rgba[3]],
+                    roughness: 0.5,
+                    ..Default::default()
+                });
+                lights.extend(std::iter::repeat_n(UNBAKED, vertices.len()));
+                let indices = (0..vertices.len() as u32).collect();
+                scene.meshes.push(TexturedMesh {
+                    primitives: vec![Primitive {
+                        vertices,
+                        indices,
+                        material,
+                    }],
+                });
+                visuals.push((index, shape.origin));
+            }
+        }
+        scene.validate()?;
+        Ok(Self {
+            scene: std::sync::Arc::new(scene),
+            visuals,
+            lights: std::sync::Arc::new(lights),
+        })
+    }
+    pub fn frame(
+        &self,
+        robot: &Robot,
+        scene: &robot_lab::document::Scene,
+        step: Option<&robot_lab::document::Step>,
+        offset: Vec3,
+    ) -> Result<verse_pbr::pbr::textured::Instances, String> {
+        let instance = scene.robots.first().ok_or("Choose a scene with a robot")?;
+        let values = step.map_or(&instance.joints, |s| &s.joints);
+        let pose = robot
+            .movable()
+            .map(|j| {
+                values
+                    .get(&j.name)
+                    .copied()
+                    .ok_or("A robot joint is missing")
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let frames = if step.is_some() {
+            robot.forward_observed(&pose)
+        } else {
+            robot.forward(&pose)
+        }
+        .map_err(|e| e.to_string())?;
+        let base = DMat4::from_translation(offset.as_dvec3())
+            * saved_pose(&instance.pose)
+            * z_up_to_y_up();
+        let records = self
+            .visuals
+            .iter()
+            .enumerate()
+            .map(
+                |(mesh, (link, origin))| verse_pbr::pbr::textured::InstanceOf {
+                    mesh: mesh as u32,
+                    transform: (base * frames[*link] * *origin).as_mat4(),
+                },
+            )
+            .collect();
+        Ok(verse_pbr::pbr::textured::Instances {
+            scene: self.scene.clone(),
+            records: std::sync::Arc::new(records),
+            lights: self.lights.clone(),
+        })
     }
 }

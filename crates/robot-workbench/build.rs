@@ -19,7 +19,7 @@ fn main() {
     let mut sources = Vec::new();
     for path in [
         "crates/verse/src/render.rs",
-        "crates/verse/src/robot_lab.rs",
+        "crates/verse-zone-robotlab/src/draw.rs",
         "crates/verse-pbr/src",
         "crates/verse-gfx/src",
         "crates/robot-workbench/src/server.rs",

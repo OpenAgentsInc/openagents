@@ -1,22 +1,20 @@
 # Robot Lab: robots and experiments inside chat
 
-Status: proposed design, 2026-10-14. This document specifies a Robot Lab;
-the document and private-storage foundation is implemented in
-[`robot-lab`](../../crates/robot-lab/README.md), and the pinned SO-101 importer,
-Verse inspection capture, LeRobot reader, and [native simulation runner](../../crates/robot-sim/README.md)
-are implemented. The [interactive workbench](../../crates/robot-workbench/README.md)
-now provides local chat cards, inspection, version comparisons, notes, and saved
-episode playback. [ACT inference](../../crates/robot-policy/README.md) now has
-reference checks and a compatible simulated-state checkpoint; task scoring,
-policy services, and device integration remain tracked below. The first delivery is local robot
-inspection and motion replay in an inline chat card. Simulation and learned
-control follow as separately testable additions.
-[LeRobot data, the Verse room, and a Rust physics path](lerobot-in-verse.md)
-fills in dataset reading, a physics alternative to MuJoCo, and the Verse room.
+Status: local implementation, 2026-10-14. The [private document store](../../crates/robot-lab/README.md),
+SO-101 import and inspection, [LeRobot reader and export](../../crates/robot-data/README.md),
+[MuJoCo runner](../../crates/robot-sim/README.md), [chat workbench](../../crates/robot-workbench/README.md),
+[ACT, SmolVLA, and policy services](../../crates/robot-policy/README.md),
+[robotics Gym results](../gym/README.md#inspect-robot-experiments), and
+[Verse room](../../crates/verse-zone-robotlab/README.md) are implemented.
+Phone presentation and authorized remote execution remain tracked below.
+The [LeRobot companion](lerobot-in-verse.md) covers the data, vision gap,
+Rust articulated-joint spike, and room. Controlled recordings and numerical
+policy checks establish integration; the current trajectory-imitation policy
+and scripted baseline both scored 0/10 on the cube-placement validation task.
 
 Robot Lab lets you bring an open robot into an environment, see it in 3D,
 change the experiment by talking, and compare what happens. The chat is the
-workbench. A lab can later open as a room in Verse, using the same documents,
+workbench. A lab opens as a room in Verse, using the same documents,
 robot definitions, and saved runs.
 
 Example: “Put an SO-101 on a table with a red cube.” The conversation shows a

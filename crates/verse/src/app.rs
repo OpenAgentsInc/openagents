@@ -108,6 +108,8 @@ pub struct Options {
     /// Open straight into Everglade once the window shows, as
     /// `openagents studio up` asks, rather than in the plaza.
     pub everglade: bool,
+    pub robot_lab: bool,
+    pub robot_lab_config: Option<std::path::PathBuf>,
     /// Open straight into the Grove, the druid training field, once the
     /// window shows (`verse --grove`).
     pub grove: bool,
@@ -195,6 +197,8 @@ impl Default for Options {
             workbench_screen_bounds: [40, 60, 900, 600],
             studio_muted: false,
             everglade: false,
+            robot_lab: false,
+            robot_lab_config: None,
             grove: false,
             meteor_stress_test: false,
             meteor_showcase: false,
@@ -5174,6 +5178,17 @@ impl ApplicationHandler for App {
             }
         }
         self.window = Some(window);
+        if let Some(path) = &self.connection_options.robot_lab_config {
+            match load_robot_config(path) {
+                Ok(config) => self.runtime.configure_robot_lab(config),
+                Err(error) => self.error = Some(error),
+            }
+        }
+        if std::mem::take(&mut self.connection_options.robot_lab) {
+            if let Err(error) = self.runtime.install_robot_lab() {
+                self.error = Some(error);
+            }
+        }
         // `--everglade` enters once, from the first window; a later resume
         // leaves the player where they are.
         if std::mem::take(&mut self.connection_options.everglade) {
@@ -5910,4 +5925,53 @@ fn ui_atlas(scale: f32) -> Atlas {
         eprintln!("verse: the terminal has no room for fallback glyphs: {error}");
     }
     atlas
+}
+
+fn load_robot_config(
+    path: &std::path::Path,
+) -> Result<crate::zones::robotlab::local::Config, String> {
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|_| "The robot room settings couldn't be opened")?;
+    if !metadata.is_file() || metadata.len() > 65536 {
+        return Err("Choose a small robot room settings file".into());
+    }
+    serde_json::from_slice(
+        &std::fs::read(path).map_err(|_| "The robot room settings couldn't be read")?,
+    )
+    .map_err(|_| "Check the robot room settings".into())
+}
+pub fn capture_robot_room(
+    path: &std::path::Path,
+    width: u32,
+    height: u32,
+    config: Option<&std::path::Path>,
+) -> Result<(), String> {
+    let mut runtime = crate::runtime::WorldRuntime::new();
+    if let Some(path) = config {
+        runtime.configure_robot_lab(load_robot_config(path)?);
+    }
+    runtime.install_robot_lab()?;
+    let center = crate::zones::robotlab::STAGE + glam::Vec3::new(1.05, 0.9, 0.);
+    let eye = center + glam::Vec3::new(2.2, 1.35, -3.3);
+    let view = crate::render::View {
+        view_proj: glam::Mat4::perspective_rh(0.75, width as f32 / height as f32, 0.02, 100.)
+            * glam::Mat4::look_at_rh(eye, center, glam::Vec3::Y),
+        eye,
+    };
+    let atlas = crate::ui::Atlas::new(16.);
+    let snapshot = runtime.zone_snapshot(width as f32 / height as f32);
+    let hud = crate::zones::hud::Hud::default();
+    let layout = hud.snapshot([width as f32, height as f32], &snapshot, true);
+    let ui = hud.draw(&atlas, &layout, 1.);
+    crate::render::capture_with_atmosphere(
+        path,
+        width,
+        height,
+        &runtime.world.mesh,
+        view,
+        &runtime.dynamic_mesh(),
+        &ui,
+        &atlas,
+        crate::zones::atmosphere(crate::zones::ZoneId::RobotLab),
+    )
 }

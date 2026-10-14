@@ -17745,6 +17745,7 @@ dependencies = [
  "verse-zone-grove",
  "verse-zone-lab",
  "verse-zone-lagrange",
+ "verse-zone-robotlab",
  "verse-zone-water",
  "web-time",
  "webpki-roots 1.0.9",
@@ -18158,6 +18159,25 @@ dependencies = [
  "glam",
  "verse-core",
  "verse-lagrange",
+ "verse-pbr",
+ "verse-world",
+]
+
+[[package]]
+name = "verse-zone-robotlab"
+version = "1.0.0-rc.13"
+dependencies = [
+ "glam",
+ "oa-copy",
+ "reqwest 0.12.28",
+ "robot-description",
+ "robot-lab",
+ "robot-sim",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "url",
+ "verse-core",
  "verse-pbr",
  "verse-world",
 ]
