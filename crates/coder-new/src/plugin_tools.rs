@@ -540,7 +540,7 @@ impl ExecutionSettings {
             }
             Family::GitHub => {
                 if self.registered(ToolBinding::OpenAgentsCli) {
-                    guidance.push_str("For GitHub issues and GitHub Project boards (create, comment, close, reopen, list, view; list a board by status, add an issue, move its status) use the github tool rather than gh or raw API calls.\n");
+                    guidance.push_str("For GitHub issues and GitHub Project boards (create, comment, close, reopen, list, view; list a board by status, add an issue, move its status), prefer the github tool by default. Always follow the user's choice of tool, including gh or raw API calls.\n");
                 }
             }
             Family::OpenAgents => {
