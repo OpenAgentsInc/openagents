@@ -125,6 +125,28 @@ class LabTest(unittest.TestCase):
         for s in lab.tool_specs():
             self.assertEqual(s["parameters"]["type"], "object")
 
+    def test_keep_captions_removes_every_caption_but_those_over_the_named_or_speaking_shots(self):
+        lab.create("caps", "cut.v1", "Caption film", self.cut, "First", "test")
+        out = lab.call("lab_keep_captions", {"document": "caps", "over": "card", "render": False})
+        self.assertNotIn("refused", out, out.get("text"))
+        new = lab.body("caps", out["version"])
+        self.assertEqual([c["text"] for c in new["captions"]], ["Over the card."])
+        self.assertEqual(new["shots"], self.cut["shots"], "only captions change")
+        self.assertIn("Removed 1 captions", out["text"])
+        again = lab.call("lab_keep_captions", {"document": "caps", "over": "card", "render": False})
+        self.assertNotIn("version", again, "nothing to remove is no new version")
+        with self.assertRaises(lab.Refused):
+            lab.call("lab_keep_captions", {"document": "caps", "over": "nope", "render": False})
+        with self.assertRaises(lab.Refused):
+            lab.call("lab_keep_captions", {"document": "caps", "over": "speech", "render": False})
+        talk = {**self.cut, "shots": [dict(s) for s in self.cut["shots"]]}
+        talk["shots"][2]["sound"] = {"gain": 1.0}
+        lab.create("caps2", "cut.v1", "Speaking film", talk, "First", "test")
+        out = lab.call("lab_keep_captions", {"document": "caps2", "over": "speech", "render": False})
+        self.assertNotIn("refused", out, out.get("text"))
+        self.assertEqual([c["text"] for c in lab.body("caps2", out["version"])["captions"]], ["At the end."])
+        self.assertIn("lab_keep_captions", {t["name"] for t in lab.tool_specs()})
+
 
 def talking(name, w=180, h=320, rotate=None):
     """A clip with "speech": three tone bursts with pauses between, 6 s."""

@@ -1464,6 +1464,41 @@ def tool_captions(args) -> dict:
                   [f"{len(made)} captions over {name}: " + " / ".join(c["text"] for c in made)])
 
 
+def tool_keep_captions(args) -> dict:
+    """Keep only the captions over some shots and remove the rest, in one
+    edit: over every shot that keeps its own sound (a person speaking), or
+    over shots named."""
+    doc = resolve(args.get("document"))
+    parent = version(doc, args.get("version"))
+    if parent["kind"] != "cut.v1":
+        raise Refused(f"{doc} is a {parent['kind']} document; only a cut has captions")
+    old = body(doc, parent["n"])
+    over = str(args.get("over") or "").strip()
+    if not over:
+        raise Refused("say which captions stay: over the shots where someone speaks (speech), or shot names")
+    tl = timeline(old)
+    if over.lower() == "speech":
+        keep = [s["name"] for s in tl if old["shots"][s["i"]].get("sound")]
+        if not keep:
+            raise Refused(f"no shot in {doc} keeps its own sound, so no caption is of someone speaking")
+    else:
+        keep = [n for n in re.split(r"[,\s]+", over) if n]
+        missing = [n for n in keep if n not in {s["name"] for s in tl}]
+        if missing:
+            raise Refused(f"there's no shot called {', '.join(missing)} in {doc}")
+    slots = [s for s in tl if s["name"] in keep]
+    kept = lambda c: any(s["start"] - 1e-3 <= c["at"] < s["end"] - 1e-3 for s in slots)
+    caps = old.get("captions", [])
+    new = copy.deepcopy(old)
+    new["captions"] = [c for c in caps if kept(c)]
+    gone = len(caps) - len(new["captions"])
+    if not gone:
+        return {"text": f"Every caption in {doc} is already over {', '.join(keep)}; nothing to remove."}
+    summary = (args.get("summary") or "").strip() or f"Captions only over {', '.join(keep)}"
+    return commit(doc, parent, old, new, summary, args.get("author") or "chat", args.get("render", True),
+                  [f"Removed {gone} captions; kept {len(new['captions'])} over {', '.join(keep)}."])
+
+
 def tool_framing(args) -> dict:
     """The two ways to put a clip of another shape in the frame, side by side."""
     sid = resolve_source(args.get("source"))
@@ -1877,6 +1912,12 @@ TOOLS = {
     "lab_captions": (tool_captions, "Remake the captions over a shot that keeps its own sound from what's said in "
                                     "it (after its in or length changed).",
                      {"document": "string", "shot": "string", "summary": "string?", "version": "string?"}),
+    "lab_keep_captions": (tool_keep_captions, "Keep only the captions over some shots of a cut and remove every "
+                                              "other caption, in one edit: over the shots where someone speaks "
+                                              "(over: speech, the shots that keep their own sound) or over the "
+                                              "shots named. Titles and text inside the shots' pictures aren't "
+                                              "captions and stay. Checked like lab_edit; a preview renders.",
+                          {"document": "string", "over": "string", "summary": "string?", "version": "string?"}),
     "lab_framing": (tool_framing, "Two stills of a source side by side: whole over a blurred, dimmed copy of "
                                   "itself (fit blur) and cropped to fill (fit crop), for choosing how a clip of "
                                   "another shape sits in the film. Set the choice on the shot with lab_edit "
@@ -1918,6 +1959,7 @@ PARAM_DOCS = {
     "captions": "yes (default) makes captions of what's said; no makes none",
     "xfade": "a crossfade into the new shot, in seconds (default none)",
     "shot": "a shot's name",
+    "over": "speech (the shots where someone speaks, keeping their own sound) or shot names separated by commas",
 }
 
 
