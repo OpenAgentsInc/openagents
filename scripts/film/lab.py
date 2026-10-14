@@ -1489,6 +1489,113 @@ def tool_captions(args) -> dict:
                   [f"{len(made)} captions over {name}: " + " / ".join(c["text"] for c in made)])
 
 
+def spoken_words(text: str) -> float:
+    """About how many words a line takes to say: numbers and symbols take
+    longer to say than to write ("$4.00" is "four dollars", "284" is "two
+    hundred eighty-four")."""
+    n = 0.0
+    for tok in text.split():
+        digits = re.sub(r"\D", "", tok)
+        if digits:
+            n += 1 + min(len(digits.lstrip("0") or "0"), 4) * 0.6
+        else:
+            n += 1 + 0.5 * tok.count("/")
+    return n
+
+
+def vo_chunks(text: str, max_chars: int = 92) -> list[tuple[str, bool]]:
+    """A voiceover passage as caption-sized pieces: sentences, a long one split
+    at its last comma, semicolon or colon that fits. Each piece says whether
+    a sentence ends there (a slightly longer breath after it)."""
+    out = []
+    for sent in re.split(r"(?<=[.?!])\s+", " ".join(text.split())):
+        rest = sent
+        while len(rest) > max_chars:
+            cut = max((m.end() for m in re.finditer(r"[,;:]\s", rest[:max_chars + 1])), default=0)
+            if not cut:
+                cut = rest.rfind(" ", 0, max_chars) + 1 or max_chars
+            out.append((rest[:cut].strip(), False))
+            rest = rest[cut:].strip()
+        if rest:
+            out.append((rest, True))
+    return out
+
+
+def vo_captions(text: str, start: float, wpm: float) -> list[dict]:
+    caps, t = [], start
+    for piece, ends in vo_chunks(text):
+        dur = max(1.2, spoken_words(piece) * 60.0 / wpm)
+        caps.append({"text": piece, "at": round(t, 3), "dur": round(dur, 3), "vo": True})
+        t += dur + (0.3 if ends else 0.12)
+    return caps
+
+
+def tool_lines(args) -> dict:
+    """Voiceover lines not yet recorded, shown as captions from a time at a
+    speaking pace, so the film can be read as it will sound."""
+    doc = resolve(args.get("document"))
+    parent = version(doc, args.get("version"))
+    if parent["kind"] != "cut.v1":
+        raise Refused(f"{doc} is a {parent['kind']} document; voiceover lines go on a cut")
+    old = body(doc, parent["n"])
+    text = (args.get("lines") or "").strip()
+    if not text:
+        raise Refused("give the voiceover lines to place")
+    at = args.get("at")
+    if at in (None, ""):
+        raise Refused("say where the lines start: a time like 0:27, or a shot's name")
+    tl = timeline(old)
+    named = isinstance(at, str) and at.strip() in {s["name"] for s in tl}
+    start = seconds(at, old) + (0.4 if named else 0.0)
+    try:
+        wpm = float(args.get("wpm") or 150)
+    except ValueError:
+        raise Refused("wpm is a number of words a minute, like 150")
+    if not 80 <= wpm <= 240:
+        raise Refused("a speaking pace is between 80 and 240 words a minute")
+    made = vo_captions(text, start, wpm)
+    end = made[-1]["at"] + made[-1]["dur"]
+    total = length("cut.v1", old)
+    if end > total + 1e-3:
+        raise Refused(f"the lines take {end - start:.1f}s from {clock(start)}, past the film's end at {clock(total)}")
+    for s in tl:
+        shot = old["shots"][s["i"]]
+        if shot.get("sound") and s["start"] < end - 1e-3 and start < s["end"] - 1e-3:
+            raise Refused(f"the lines take {end - start:.1f}s from {clock(start)} to {clock(end)}, which runs into "
+                          f"{s['name']} ({clock(s['start'])}-{clock(s['end'])}), where someone is speaking; start "
+                          f"earlier, place fewer lines, or give them more picture")
+    for c in old.get("captions", []):
+        if c["at"] < end - 1e-3 and start < c["at"] + c["dur"] - 1e-3:
+            raise Refused(f"the lines ({clock(start)}-{clock(end)}) would overlap the caption "
+                          f"'{c['text'][:40]}' at {clock(c['at'])}; remove it first or start elsewhere")
+    new = copy.deepcopy(old)
+    new["captions"] = sorted(new.get("captions", []) + made, key=lambda c: c["at"])
+    summary = (args.get("summary") or "").strip() or f"Voiceover lines from {clock(start)}"
+    return commit(doc, parent, old, new, summary, args.get("author") or "chat", args.get("render", True),
+                  [f"{len(made)} voiceover captions, {clock(start)} to {clock(end)} at {wpm:g} words a minute: "
+                   + " / ".join(c["text"] for c in made)])
+
+
+def tool_new(args) -> dict:
+    """A new document that starts as a copy of a version of another, so a new
+    cut can be made without touching the old one's versions."""
+    name = (args.get("name") or "").strip()
+    new_id = slug(name)
+    if not new_id:
+        raise Refused("give the new document a name, e.g. episode-290-metaharness")
+    if new_id in {d["id"] for d in documents()}:
+        raise Refused(f"there's already a document called {new_id}")
+    src = resolve(args.get("copy"))
+    v = version(src, args.get("version"))
+    title = (args.get("title") or "").strip() or name
+    summary = (args.get("summary") or "").strip() or f"Started from {src} v{v['n']}"
+    nv = create(new_id, v["kind"], title, copy.deepcopy(body(src, v["n"])), summary,
+                args.get("author") or "chat", copied_from={"doc": src, "version": v["n"]})
+    job = renders().submit(new_id, nv["n"], "preview") if args.get("render", True) else None
+    return {"text": f"Made {new_id} ({title}), v1 a copy of {src} v{v['n']}. {src}'s versions are unchanged.",
+            "version": nv["n"], "card": card(new_id, nv, "preview", job=job)}
+
+
 def tool_keep_captions(args) -> dict:
     """Keep only the captions over some shots and remove the rest, in one
     edit: over every shot that keeps its own sound (a person speaking), or
@@ -1950,6 +2057,16 @@ TOOLS = {
                                               "shots named. Titles and text inside the shots' pictures aren't "
                                               "captions and stay. Checked like lab_edit; a preview renders.",
                           {"document": "string", "over": "string", "summary": "string?", "version": "string?"}),
+    "lab_new": (tool_new, "Start a new document as a copy of a version of another (default its latest), for a "
+                          "new cut or a new take; the old document and its versions are left as they are.",
+                {"name": "string", "copy": "string", "title": "string?", "version": "string?", "summary": "string?"}),
+    "lab_lines": (tool_lines, "Put voiceover lines that aren't recorded yet on a cut as captions, timed at a "
+                              "speaking pace from a time or a shot's start, so the film reads as it will sound. "
+                              "Sentences become captions (long ones split at a comma); numbers count as the words "
+                              "they take to say. Refused if they'd run into a shot where someone speaks, over "
+                              "another caption, or past the end. Checked like lab_edit; a preview renders.",
+                  {"document": "string", "lines": "string", "at": "string", "wpm": "string?", "summary": "string?",
+                   "version": "string?"}),
     "lab_framing": (tool_framing, "Two stills of a source side by side: whole over a blurred, dimmed copy of "
                                   "itself (fit blur) and cropped to fill (fit crop), for choosing how a clip of "
                                   "another shape sits in the film. Set the choice on the shot with lab_edit "
@@ -1976,7 +2093,7 @@ PARAM_DOCS = {
     "document": "the document's id or title, e.g. episode-290",
     "version": "a version number like 3 (default: the latest)",
     "from": "start time, m:ss or seconds", "to": "end time, m:ss or seconds",
-    "at": "a time, m:ss or seconds (lab_splice: the shot boundary nearest it)", "a": "the first version to compare (default: the one before b)",
+    "at": "a time, m:ss or seconds (lab_splice: the shot boundary nearest it; lab_lines: a time or a shot's name)", "a": "the first version to compare (default: the one before b)",
     "b": "the second version (default: the latest)",
     "patch": 'a JSON Patch as a JSON string, e.g. [{"op":"replace","path":"/shots/@s4-delegation/dur","value":12.5}]',
     "summary": "one line in plain words saying what the edit changes",
@@ -1991,6 +2108,10 @@ PARAM_DOCS = {
     "captions": "yes (default) makes captions of what's said; no makes none",
     "xfade": "a crossfade into the new shot, in seconds (default none)",
     "shot": "a shot's name",
+    "copy": "the document to copy, its id or title",
+    "title": "the new document's title",
+    "lines": "the voiceover text, sentences in order (several sentences are fine)",
+    "wpm": "speaking pace in words a minute (default 150)",
     "over": "speech (the shots where someone speaks, keeping their own sound) or shot names separated by commas",
 }
 

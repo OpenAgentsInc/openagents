@@ -120,6 +120,20 @@ Sources live in `~/work/film-out/lab/sources/<id>/` (`source.json`,
 `speech.json`, the poster and strip). `cut.py check` also reads a
 `<clip>.speech.json` beside a clip.
 
+## A new cut, with voiceover lines to read
+
+1. **start a new document episode-290-metaharness from episode-290**
+   (`lab_new`): v1 is a copy of the latest version; episode-290 and its
+   versions are left as they are.
+2. **put these voiceover lines over s3-routing-beat1: ...** (`lab_lines`):
+   lines that aren't recorded yet become captions, one sentence each (a long
+   one split at a comma), timed at a speaking pace (150 words a minute; say
+   another pace if you like) from a time or just after a shot's start.
+   Numbers count as the words they take to say. Lines that would run into a
+   shot where someone speaks, over another caption, or past the end are
+   refused with how much time they need. They're marked `"vo": true`, so
+   they can be swapped for the recorded voice later.
+
 ## An edit that's refused
 
 Ask for something the checks won't take, for example **now make the

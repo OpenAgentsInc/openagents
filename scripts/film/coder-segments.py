@@ -24,6 +24,21 @@ SEGMENT is one of:
               between a terminal, a phone and the web; every message shows
               up on all three. Mac, Windows and Linux, the web, iPhone and
               Android.
+  metaharness (21.5 s) What a metaharness is (episode 290 take "Metaharness",
+              section 3). Opens on the routing shot's close-up of the big
+              model in its tools, pulls back to three harnesses (Claude Code,
+              Codex, OpenCode), each a model in its tools with every step
+              going into the model; then Coder, a System 1 ring, comes in
+              front: small steps go to a small model or Microcoder, only the
+              hard parts reach a harness.
+  savings     (20.5 s) What it saves (section 5). Opens on the routing shot's
+              beat 2 counters, then the two runs side by side: cost per fix
+              $4.00 vs $1.84, time per fix 284 s vs 121 s, 19 of 63 fixes
+              accepted both ways (docs/inference/briefed-agent-ab.md, #11211).
+  devday      (10.5 s) The promise and the payout (section 8's close): a
+              timeline from OpenAI's DevDay (2023-11-06, revenue sharing
+              promised) and Episode 1 the next day to October 2026, "Shared
+              with developers: zero", then gold running out to plugin authors.
   delegation  (18.5 s) Delegation across agents. Claude Code hands a piece to
               Codex, Codex hands one to OpenCode (nesting is bounded at 2),
               each in its own worktree; short reports come back (the Report
@@ -50,7 +65,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ap = argparse.ArgumentParser()
-ap.add_argument("segment", choices=["harnesses", "safety", "everywhere", "delegation"])
+ap.add_argument("segment", choices=["harnesses", "safety", "everywhere", "delegation", "metaharness", "savings", "devday"])
 ap.add_argument("out")
 ap.add_argument("--only", help="render only these seconds to PNGs (comma list) in OUT as a dir")
 ap.add_argument("--beats", action="store_true",
@@ -318,6 +333,11 @@ def over(dst, layer, k=1.0):
     return dst * (1 - a) + layer[..., :3] * 255.0 * a
 
 
+# Segments that open on the last frame of the shot before them (a match cut),
+# so they don't fade up from black.
+MATCHED = {"metaharness", "savings"}
+
+
 def compose(i, t, bg, draw_hi, draw_lit, draw_words, seconds, focus=(CX, CY)):
     hi = Image.new("RGBA", (W * S, H * S), (0, 0, 0, 0))
     lit = Image.new("RGBA", (W * S, H * S), (0, 0, 0, 0))
@@ -340,7 +360,7 @@ def compose(i, t, bg, draw_hi, draw_lit, draw_words, seconds, focus=(CX, CY)):
     ox, oy = fx - fx / z, fy - fy / z
     img = img.transform((W, H), Image.EXTENT, (ox, oy, ox + W / z, oy + H / z), Image.BICUBIC,
                         fillcolor=CANVAS)
-    k = fade(t, 0.0, 0.5)
+    k = 1.0 if args.segment in MATCHED else fade(t, 0.0, 0.5)
     arr = np.asarray(img, np.float32) * VIG * k
     noise = np.random.default_rng(i).normal(0, 3.2, (H, W, 1)).astype(np.float32)
     return Image.fromarray((arr + noise).clip(0, 255).astype(np.uint8))
@@ -1047,8 +1067,385 @@ def seg_delegation():
     return SECONDS, glow_bg(1280, 500, 620, 480), hi, lit, words, (1280, 500)
 
 
+# =============================================================================
+# metaharness: a harness wraps a model in tools; Coder sits in front of them
+# =============================================================================
+# It opens on the frame system1-routing.py's beat 1 ends on (the big model in a
+# thin ring of its tools, the counters at $4.00 and 284 s), so a short
+# crossfade from that shot reads as one camera pulling back.
+def routing_beat1_words(d, t, k):
+    """The counters system1-routing.py still shows at 8.5 s (its caption and
+    messages have faded by then), faded by k."""
+    if k <= 0:
+        return
+    for x, label, value in ((LEFT, "cost per fix", "$4.00"), (LEFT + 250, "time per fix", "284 s")):
+        d.text((x, 690), label, font=g_small, fill=(*SECONDARY, int(255 * k)))
+        d.text((x, 718), value, font=m_big, fill=(*CONTENT, int(255 * k)))
+
+
+def seg_metaharness():
+    SECONDS = 21.5
+    TOOLS = ["Bash", "Read", "Edit", "Write", "Grep", "Web"]
+    t_ang = [-math.pi / 2 + math.pi / 6 + i * 2 * math.pi / 6 for i in range(6)]
+    NAMES = ["Claude Code", "Codex", "OpenCode"]
+    C0, R0, RT0 = (1238.0, 540.0), 78.0, 154.0       # the routing shot's close-up
+    HOME = [(1010.0, 560.0), (1340.0, 560.0), (1670.0, 560.0)]
+    SC = 0.42                                         # each harness after the pull-back
+    PULL = (0.5, 2.9)
+    BORN = [None, 1.9, 2.3]
+    CODER, R_C, R_S1 = (680.0, 600.0), 44.0, 98.0
+    HOOKS = ["route", "brief", "squeeze", "gate", "watch", "verify"]
+    h_ang = [-math.pi / 2 + i * 2 * math.pi / 6 for i in range(6)]
+    T_CODER = 11.0
+    SMALL = [((550.0, 850.0), "small model"), ((810.0, 850.0), "Microcoder")]
+    CAPS = [
+        (1.0, 10.7, ["A harness wraps a model in its tools.", "Every step goes through the big model."]),
+        (11.0, 99, ["Coder is a metaharness: it sits in front", "and decides what each step needs."]),
+    ]
+    STEPS = [("Read the failing test", 0), ("Which file next?", 1), ("Is this command safe?", 0),
+             ("Fix the parser bug", None), ("Rename the helper", 1), ("Refactor the module", None)]
+    T_STEP0, T_STEP = 12.9, 1.15
+    LIST_Y0, LIST_DY = 352, 52
+
+    def place(i, t):
+        """A harness's center and scale at time t."""
+        if i == 0:
+            k = ease((t - PULL[0]) / (PULL[1] - PULL[0]))
+            return lerp(C0, HOME[0], k), 1 + (SC - 1) * k
+        k = out_cubic((t - BORN[i]) / 0.9)
+        return lerp((HOME[i][0] + 260, HOME[i][1]), HOME[i], k), SC * (0.6 + 0.4 * k)
+
+    def alpha(i, t):
+        return 1.0 if i == 0 else fade(t, BORN[i], BORN[i] + 0.6)
+
+    rng = random.Random(2903)
+    chatter = []  # (t, harness, tool): a step out to a tool and back into the model
+    for j in range(300):
+        t = rng.random() * SECONDS
+        h = rng.randrange(3)
+        if h and t < BORN[h] + 0.6:
+            continue
+        if t > T_CODER + 1.5 and rng.random() < 0.7:  # Coder keeps small steps away from them
+            continue
+        chatter.append((t, h, rng.randrange(6)))
+    feed = []  # every step straight into a model, before Coder
+    for j in range(20):
+        t = 1.4 + j * 0.47
+        feed.append((t, j % 3, rng.uniform(300, 760)))
+    ticks = []  # after Coder: steady small work, now and then a hard part to a harness
+    for j in range(48):
+        t = T_CODER + 1.6 + rng.random() * (SECONDS - T_CODER - 1.6)
+        ticks.append((t, rng.random() < 0.18, rng.randrange(6), rng.randrange(3), rng.randrange(2)))
+
+    def tool_pos(i, k, t):
+        c, s = place(i, t)
+        return polar(RT0 * s, t_ang[k], c)
+
+    def core(i, t):
+        return place(i, t)
+
+    def hi(d, t):
+        for i in range(3):
+            a = alpha(i, t)
+            if a <= 0:
+                continue
+            c, s = place(i, t)
+            ring(d, c, RT0 * s, (255, 255, 255), (EDGE_A + 30) * a, 1.0)
+            for k in range(6):
+                p = polar(RT0 * s, t_ang[k], c)
+                line(d, [polar(R0 * s, t_ang[k], c), p], (255, 255, 255), (EDGE_A + 10) * a)
+                disc(d, p, 7.5 * max(s, 0.55), 215, 255 * a)
+            disc(d, c, R0 * s, 236, 255 * a)
+        ka = fade(t, T_CODER, T_CODER + 0.8)
+        if ka > 0:
+            for i in range(3):
+                c, s = place(i, t)
+                k = out_cubic((t - T_CODER - 0.4 - 0.15 * i) / 0.6)
+                if k > 0:
+                    line(d, [CODER, lerp(CODER, c, k)], (255, 255, 255), EDGE_A * ka)
+            for (p, _) in SMALL:
+                line(d, [CODER, p], (255, 255, 255), EDGE_A * ka)
+                disc(d, p, 12 * ka, 190)
+            disc(d, CODER, R_C * ka, 236)
+            sweep = out_cubic((t - T_CODER - 0.2) / 1.2)
+            if sweep > 0:
+                box = [(CODER[0] - R_S1) * S, (CODER[1] - R_S1) * S, (CODER[0] + R_S1) * S, (CODER[1] + R_S1) * S]
+                d.arc(box, -90, -90 + 360 * sweep, fill=(255, 255, 255, 120), width=2 * S)
+            for j, a_ in enumerate(h_ang):
+                kk = fade(t, T_CODER + 0.4 + 0.12 * j, T_CODER + 0.8 + 0.12 * j)
+                if kk > 0:
+                    disc(d, polar(R_S1, a_, CODER), 7 * kk, 230)
+
+    lights = []
+    for t0, h, y in feed:
+        lights.append(("feed", t0, h, y))
+
+    def lit(ld, t):
+        for i in range(3):
+            a = alpha(i, t)
+            if a > 0:
+                c, s = place(i, t)
+                glow(ld, c, R0 * s * 1.05, 110 * a)
+        for t0, h, k in chatter:
+            if not (t0 <= t <= t0 + 1.2):
+                continue
+            c, s = place(h, t)
+            p = polar(RT0 * s, t_ang[k], c)
+            Light([polar(R0 * s, t_ang[k], c), p], t0, 0.22, width=1.4, glow_r=6, hold=0.2, head=0.5,
+                  land=False).draw(ld, t)
+            Light([p, polar(R0 * s, t_ang[k], c)], t0 + 0.26, 0.22, width=1.4, glow_r=R0 * s, hold=0.2,
+                  head=0.5, land=False).draw(ld, t)
+        for t0, h, y in feed:
+            if t0 <= t <= t0 + 1.4:
+                c, s = place(h, t)
+                Light([(-40, y), c], t0, 0.75, width=2.2, glow_r=R0 * s + 4, hold=0.5, head=0.8).draw(ld, t)
+        if t >= T_CODER:
+            glow(ld, CODER, R_C * 1.05, 120 * fade(t, T_CODER, T_CODER + 0.8))
+        for j, (text, small) in enumerate(STEPS):
+            t0 = T_STEP0 + j * T_STEP
+            a = (LEFT + g_msg.getlength(text) + 22, LIST_Y0 + j * LIST_DY + 14)
+            entry = math.atan2(a[1] - CODER[1], a[0] - CODER[0])
+            Light([a, polar(R_S1, entry, CODER)], t0 + 0.1, 0.45, width=2.6, glow_r=12, hold=0.4).draw(ld, t)
+            if small is not None:
+                p = SMALL[small][0]
+                Light([polar(R_S1, entry, CODER), p], t0 + 0.6, 0.35, width=2.2, glow_r=18, hold=0.5,
+                      head=0.8).draw(ld, t)
+            else:
+                h = 0 if j == 3 else 1
+                c, s = place(h, t)
+                Light([polar(R_S1, entry, CODER), c], t0 + 0.6, 0.5, width=2.6, glow_r=R0 * s + 5, hold=0.6).draw(ld, t)
+        for t0, hard, hook, h, sm in ticks:
+            if not (t0 <= t <= t0 + 1.0):
+                continue
+            src = polar(R_S1, h_ang[hook], CODER)
+            if hard:
+                Dot([src, place(h, t)[0]], t0, 0.7, r=2.6).draw(ld, t)
+            else:
+                Dot([src, SMALL[sm][0]], t0, 0.5, r=2.2).draw(ld, t)
+
+    def words(d, t):
+        routing_beat1_words(d, t, 1 - fade(t, 0.15, 0.75))
+        captions(d, t, CAPS)
+        for i in range(3):
+            a = alpha(i, t)
+            c, s = place(i, t)
+            k_in = (1 - fade(t, PULL[0], PULL[0] + 0.6)) if i == 0 else 0
+            if k_in > 0:
+                centered(d, (c[0], c[1] - 10), "System 2", g_core, (14, 14, 14, int(255 * k_in)))
+                centered(d, (c[0], c[1] + 16), "the big model", g_tiny, (40, 40, 40, int(255 * k_in)))
+                for k in range(6):
+                    label_side(d, polar(RT0 * s, t_ang[k], c), 8, t_ang[k], TOOLS[k], g_small,
+                               (*SECONDARY, int(255 * k_in)))
+            kl = a * fade(t, (BORN[i] or PULL[1] - 0.8) + 0.3, (BORN[i] or PULL[1] - 0.8) + 0.9)
+            if kl > 0:
+                y = c[1] + RT0 * s + 26
+                centered(d, (c[0], y), NAMES[i], g_node, (*CONTENT, int(255 * kl)))
+                centered(d, (c[0], y + 26), "a model in its tools", g_tiny, (*SECONDARY, int(255 * kl)))
+        ka = fade(t, T_CODER + 0.3, T_CODER + 0.9)
+        if ka > 0:
+            centered(d, CODER, "Coder", g_core, (14, 14, 14, int(255 * ka)))
+            centered(d, (CODER[0], CODER[1] - R_S1 - 66), "System 1", g_node, (*CONTENT, int(255 * ka)))
+            centered(d, (CODER[0], CODER[1] - R_S1 - 44), "small, fast models", g_tiny, (*SECONDARY, int(255 * ka)))
+            for j, a_ in enumerate(h_ang):
+                kk = fade(t, T_CODER + 0.5 + 0.12 * j, T_CODER + 0.9 + 0.12 * j)
+                if kk > 0:
+                    label_side(d, polar(R_S1, a_, CODER), 7, a_, HOOKS[j], g_tiny, (*SECONDARY, int(255 * kk)))
+            for p, name in SMALL:
+                centered(d, (p[0], p[1] + 30), name, g_small, (*SECONDARY, int(255 * ka)))
+        for j, (text, small) in enumerate(STEPS):
+            t0 = T_STEP0 + j * T_STEP
+            a = fade(t, t0 - 0.2, t0 + 0.2)
+            if a <= 0:
+                continue
+            y = LIST_Y0 + j * LIST_DY + 8 * (1 - fade(t, t0 - 0.2, t0 + 0.25))
+            done = fade(t, t0 + 1.0, t0 + 2.0)
+            d.text((LEFT, y), text, font=g_msg, fill=(*mix(CONTENT, SECONDARY, done), int(255 * a)))
+            ax, ay = LEFT + g_msg.getlength(text) + 22, LIST_Y0 + j * LIST_DY + 14
+            d.ellipse([ax - 3.2, ay - 3.2, ax + 3.2, ay + 3.2], fill=(*LIGHT, int(255 * a)))
+            if done > 0.5:
+                tag = "small model" if small == 0 else "Microcoder" if small == 1 else NAMES[0 if j == 3 else 1]
+                d.text((ax + 14, ay - 9), tag, font=g_tiny, fill=(*TERTIARY, int(255 * a * (done - 0.5) * 2)))
+
+    return SECONDS, glow_bg(1240, 560, 760, 520), hi, lit, words, (1100, 560)
+
+
+# =============================================================================
+# savings: the measured numbers, side by side
+# =============================================================================
+# Opens on the counters system1-routing.py's beat 2 ends on ($1.84 and 121 s,
+# the struck-out $4.00 and 284 s, "Same model. 21 real issues, 3 runs each."),
+# then lays the two runs side by side. docs/inference/briefed-agent-ab.md
+# (#11211): per accepted fix $4.00 (bare Claude Code) vs $1.84 (briefed),
+# median 284 s vs 121 s, 19 of 63 accepted each way.
+def seg_savings():
+    SECONDS = 20.5
+    m_mid = font("BerkeleyMono-Regular.ttf", 30)
+    m_old = font("BerkeleyMono-Regular.ttf", 24)
+    CAPS = [
+        (0.9, 11.3, ["We measured it: the same big model,", "21 real issues, three runs each."]),
+        (11.6, 99, ["Half the cost, more than twice as fast,", "and nothing worse."]),
+    ]
+    X0, BAR = 520.0, 960.0
+    # (label, on its own, with System 1, their labels, full scale, when each bar grows)
+    ROWS = [("cost per fix", 4.00, 1.84, "$4.00", "$1.84", 4.00, (0.6, 5.2)),
+            ("time per fix", 284, 121, "284 s", "121 s", 284, (1.6, 6.2)),
+            ("fixes accepted", 19, 19, "19 of 63", "19 of 63", 63, (8.6, 9.0))]
+    TAGS = 10.6
+    Y0, DY = 360, 150
+
+    def bar_w(v, full, t, t0):
+        return BAR * v / full * out_cubic((t - t0) / 1.1)
+
+    rng = random.Random(2904)
+    pulses = [(0.6 + rng.random() * (SECONDS - 0.6), rng.randrange(3), rng.randrange(2)) for _ in range(110)]
+
+    def hi(d, t):
+        for r, (_, a_, b_, _, _, full, ts) in enumerate(ROWS):
+            y = Y0 + r * DY
+            k = fade(t, ts[0] - 0.4, ts[0])
+            if k <= 0:
+                continue
+            for j, (v, g) in enumerate(((a_, 110), (b_, 225))):
+                w = bar_w(v, full, t, ts[j])
+                yy = y + 34 + j * 40
+                rrect(d, (X0, yy, X0 + BAR, yy + 22), 5, outline=(255, 255, 255, 26), k=k)
+                if w > 1:
+                    rrect(d, (X0, yy, X0 + w, yy + 22), 5, fill=(g, g, g, 255), k=k)
+
+    def lit(ld, t):
+        for t0, r, j in pulses:
+            name, a_, b_, _, _, full, ts = ROWS[r]
+            if t0 < ts[j] + 1.2 or not (t0 <= t <= t0 + 1.6):
+                continue
+            v = (a_, b_)[j]
+            y = Y0 + r * DY + 34 + j * 40 + 11
+            Dot([(X0 + 4, y), (X0 + BAR * v / full - 4, y)], t0, 1.4 * v / full + 0.3, r=2.6).draw(ld, t)
+        for r, (_, a_, b_, _, _, full, ts) in enumerate(ROWS):
+            for j, v in enumerate((a_, b_)):
+                k = clamp((t - ts[j]) / 1.1)
+                if 0 < k < 1:
+                    x = X0 + BAR * v / full * out_cubic(k)
+                    glow(ld, (x, Y0 + r * DY + 34 + j * 40 + 11), 9, 160)
+
+    def words(d, t):
+        # beat 2's counters, as the routing shot leaves them
+        k0 = 1 - fade(t, 0.2, 0.8)
+        if k0 > 0:
+            for j, ln in enumerate(["OpenAgents puts System 1 in front: small, fast models.",
+                                    "Only the hard parts reach the big model."]):
+                d.text((LEFT, 150 + j * 46), ln, font=g_cap, fill=(*CONTENT, int(255 * k0)))
+            for x, label, value, old, word in ((LEFT, "cost per fix", "$1.84", "$4.00", "cheaper"),
+                                               (LEFT + 250, "time per fix", "121 s", "284 s", "faster")):
+                d.text((x, 690), label, font=g_small, fill=(*SECONDARY, int(255 * k0)))
+                d.text((x, 718), value, font=m_big, fill=(*CONTENT, int(255 * k0)))
+                d.text((x, 788), old, font=m_old, fill=(*TERTIARY, int(255 * k0)))
+                ow = m_old.getlength(old)
+                d.line([(x - 2, 803), (x + ow + 2, 803)], fill=(*TERTIARY, int(255 * k0)), width=2)
+                nw = m_mid.getlength("2×")
+                d.text((x + 100, 786), "2×", font=m_mid, fill=(*CONTENT, int(255 * k0)))
+                d.text((x + 100 + nw + 9, 792), word, font=g_core, fill=(*CONTENT, int(255 * k0)))
+        captions(d, t, CAPS)
+        for j, (name, g, tl) in enumerate((("Claude Code on its own", 110, 0.4), ("With System 1 in front", 225, 5.0))):
+            kl = fade(t, tl, tl + 0.6)
+            if kl > 0:
+                x = X0 + j * 360
+                d.rounded_rectangle([x, 292, x + 26, 306], radius=3, fill=(g, g, g, int(255 * kl)))
+                d.text((x + 38, 288), name, font=g_small, fill=(*SECONDARY, int(255 * kl)))
+        for r, (name, a_, b_, la, lb, full, ts) in enumerate(ROWS):
+            y = Y0 + r * DY
+            k = fade(t, ts[0] - 0.4, ts[0] + 0.2)
+            if k <= 0:
+                continue
+            d.text((LEFT, y + 52), name, font=g_msg, fill=(*CONTENT, int(255 * k)))
+            for j, (v, lab) in enumerate(((a_, la), (b_, lb))):
+                kk = fade(t, ts[j] + 0.8, ts[j] + 1.2)
+                if kk > 0:
+                    x = X0 + BAR * v / full + 16
+                    d.text((x, y + 30 + j * 40), lab, font=m_old,
+                           fill=(*(CONTENT if j else SECONDARY), int(255 * kk)))
+        for r, tag in ((0, "half the cost"), (1, "2.3× faster"), (2, "the same")):
+            k = fade(t, TAGS + 0.35 * r, TAGS + 0.35 * r + 0.6)
+            if k > 0:
+                d.text((X0 + BAR + 150, Y0 + r * DY + 70), tag, font=g_core, fill=(*CONTENT, int(255 * k)))
+        # the small print stays from the routing shot to the end
+        d.text((LEFT, 850), "Same model. 21 real issues, 3 runs each.", font=g_small, fill=(*SECONDARY, 255))
+
+    return SECONDS, glow_bg(1100, 540, 900, 520), hi, lit, words, (1000, 560)
+
+
+# =============================================================================
+# devday: they promised revenue sharing; we pay the people
+# =============================================================================
+# The series began on 2023-11-07, the day after OpenAI's DevDay, where revenue
+# sharing for builders was announced (docs/transcripts/230.md, 288.md). A
+# timeline: the promise, the first episode, three years of nothing shared,
+# then gold running out to plugin authors.
+def seg_devday():
+    SECONDS = 10.5
+    CAPS = [
+        (0.5, 5.3, ["They promised developers", "revenue sharing."]),
+        (5.6, 99, ["We're paying the people."]),
+    ]
+    Y, XA, XB = 560.0, 360.0, 1560.0
+    MARKS = [(XA, "Nov 6, 2023", "OpenAI DevDay: revenue sharing promised", 0.8),
+             (XA + 120, "Nov 7, 2023", "Episode 1", 1.6),
+             (XB, "Oct 2026", "Shared with developers: zero", 3.6)]
+    AUTHORS = [(1300.0 + 170 * math.cos(a), 330.0 + 120 * math.sin(a)) for a in
+               [-2.9, -2.3, -1.7, -1.1, -0.5, 0.1]]
+    rng = random.Random(2905)
+    gold = [(5.8 + rng.random() * (SECONDS - 5.8), rng.randrange(len(AUTHORS))) for _ in range(46)]
+
+    def hi(d, t):
+        k = out_cubic((t - 0.5) / 3.2)
+        if k > 0:
+            line(d, [(XA, Y), (XA + (XB - XA) * k, Y)], (255, 255, 255), 90, 1.5)
+        for x, _, _, tm in MARKS:
+            kk = fade(t, tm, tm + 0.4)
+            if kk > 0:
+                disc(d, (x, Y), 8 * kk, 225)
+        ka = fade(t, 5.6, 6.3)
+        if ka > 0:
+            hub = (1300.0, 330.0)
+            line(d, [(XB, Y), hub], (255, 255, 255), EDGE_A * 2 * ka)
+            disc(d, hub, 26 * ka, 236)
+            for p in AUTHORS:
+                line(d, [hub, p], (255, 255, 255), EDGE_A * ka)
+                disc(d, p, 9 * ka, 205)
+
+    def lit(ld, t):
+        k = out_cubic((t - 0.5) / 3.2)
+        if 0 < k < 1:
+            glow(ld, (XA + (XB - XA) * k, Y), 10, 170)
+        for x, _, _, tm in MARKS:
+            kk = 1 - fade(t, tm, tm + 1.0)
+            if 0 < kk < 1:
+                ring(ld, (x, Y), 8 + 18 * (1 - kk), LIGHT, 200 * kk, 1.5)
+        if t > 5.6:
+            glow(ld, (1300.0, 330.0), 28, 110 * fade(t, 5.6, 6.3))
+        for t0, a in gold:
+            if t0 <= t <= t0 + 0.9:
+                Dot([(1300.0, 330.0), AUTHORS[a]], t0, 0.8, GOLD, r=3.4).draw(ld, t)
+
+    def words(d, t):
+        captions(d, t, CAPS)
+        for j, (x, date, what, tm) in enumerate(MARKS):
+            kk = fade(t, tm + 0.1, tm + 0.6)
+            if kk <= 0:
+                continue
+            dy = 34 if j != 1 else -74
+            d.text((x - 8, Y + dy), date, font=g_small, fill=(*SECONDARY, int(255 * kk)))
+            d.text((x - 8, Y + dy + 24), what, font=g_msg if j != 1 else g_small,
+                   fill=(*CONTENT, int(255 * kk)))
+        ka = fade(t, 5.9, 6.5)
+        if ka > 0:
+            centered(d, (1300.0, 395.0), "plugin authors, paid in Bitcoin", g_msg, (*SECONDARY, int(255 * ka)))
+
+    return SECONDS, glow_bg(1000, 540, 900, 520), hi, lit, words, (1000, 540)
+
+
 SEGMENTS = {"harnesses": seg_harnesses, "safety": seg_safety, "everywhere": seg_everywhere,
-            "delegation": seg_delegation}
+            "delegation": seg_delegation, "metaharness": seg_metaharness, "savings": seg_savings,
+            "devday": seg_devday}
 SECONDS, BG, HI, LIT, WORDS, FOCUS = SEGMENTS[args.segment]()
 
 

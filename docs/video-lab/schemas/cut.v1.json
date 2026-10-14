@@ -28,7 +28,7 @@
       "type": "array",
       "items": {
         "type": "object", "required": ["text", "at", "dur"], "additionalProperties": false,
-        "properties": {"text": {"type": "string"}, "at": {"type": "number", "minimum": 0}, "dur": {"type": "number", "exclusiveMinimum": 0}, "shot": {"type": "string", "description": "Made from this shot's own speech (lab_splice, lab_captions)."}}
+        "properties": {"text": {"type": "string"}, "at": {"type": "number", "minimum": 0}, "dur": {"type": "number", "exclusiveMinimum": 0}, "shot": {"type": "string", "description": "Made from this shot's own speech (lab_splice, lab_captions)."}, "vo": {"type": "boolean", "description": "A voiceover line not yet recorded, shown at a speaking pace (lab_lines)."}}
       }
     },
     "score": {

@@ -160,6 +160,50 @@ class LabTest(unittest.TestCase):
         self.assertAlmostEqual(found[0]["to"], 3.5, delta=0.1)
         self.assertIn("pauses mid-shot 1 times", lab.pauses_text(found))
 
+    def test_new_copies_a_version_and_leaves_the_old_document_alone(self):
+        before = len(lab.versions("film"))
+        out = lab.call("lab_new", {"name": "Film take two", "copy": "film", "version": "1", "render": False})
+        self.assertEqual(out["version"], 1)
+        self.assertEqual(lab.body("film-take-two", 1), lab.body("film", 1))
+        self.assertEqual(lab.doc_meta("film-take-two")["title"], "Film take two")
+        self.assertEqual(len(lab.versions("film")), before, "the old document gets no new version")
+        with self.assertRaises(lab.Refused):
+            lab.call("lab_new", {"name": "film-take-two", "copy": "film", "render": False})
+        with self.assertRaises(lab.Refused):
+            lab.call("lab_new", {"name": "x", "copy": "nope", "render": False})
+
+    def test_voiceover_lines_become_captions_at_a_speaking_pace(self):
+        caps = lab.vo_captions("Coder 1.0 is out today. On its own, a fix cost $4.00, took 284 seconds, and "
+                               "solved the same number of the twenty-one issues we measured on the same model.",
+                               10.0, 150)
+        self.assertEqual(caps[0]["text"], "Coder 1.0 is out today.")
+        self.assertEqual(caps[0]["at"], 10.0)
+        self.assertTrue(all(c["vo"] for c in caps))
+        self.assertTrue(all(len(c["text"]) <= 92 for c in caps), caps)
+        self.assertGreater(len(caps), 2, "a long sentence splits at a comma")
+        for a, b in zip(caps, caps[1:]):
+            self.assertGreater(b["at"], a["at"] + a["dur"] - 1e-6, "in order, never overlapping")
+        self.assertGreater(lab.spoken_words("$4.00"), lab.spoken_words("four"), "numbers take longer to say")
+        self.assertAlmostEqual(caps[0]["dur"], lab.spoken_words("Coder 1.0 is out today.") * 60 / 150, places=2)
+        lab.create("vo", "cut.v1", "VO film", {**self.cut, "captions": []}, "First", "test")
+        out = lab.call("lab_lines", {"document": "vo", "lines": "Some things always wait for you.",
+                                     "at": "end", "render": False})
+        self.assertNotIn("refused", out, out.get("text"))
+        caps = lab.body("vo", out["version"])["captions"]
+        self.assertEqual(caps[0]["text"], "Some things always wait for you.")
+        self.assertAlmostEqual(caps[0]["at"], 6.4, places=2, msg="a shot's name starts just after its start")
+        with self.assertRaises(lab.Refused):  # past the end
+            lab.call("lab_lines", {"document": "vo", "lines": "word " * 60, "at": "open", "render": False})
+        with self.assertRaises(lab.Refused):  # over the caption just placed
+            lab.call("lab_lines", {"document": "vo", "lines": "Again.", "at": "6.5", "render": False})
+        talk = {**self.cut, "captions": [], "shots": [dict(s) for s in self.cut["shots"]]}
+        talk["shots"][1]["sound"] = {"gain": 1.0}
+        lab.create("vo2", "cut.v1", "VO talk film", talk, "First", "test")
+        with self.assertRaises(lab.Refused) as e:  # into the shot where someone speaks
+            lab.call("lab_lines", {"document": "vo2", "lines": "One two three four five six seven.", "at": "1.0",
+                                   "render": False})
+        self.assertIn("where someone is speaking", str(e.exception))
+
     def test_keep_captions_removes_every_caption_but_those_over_the_named_or_speaking_shots(self):
         lab.create("caps", "cut.v1", "Caption film", self.cut, "First", "test")
         out = lab.call("lab_keep_captions", {"document": "caps", "over": "card", "render": False})
