@@ -44,7 +44,17 @@ struct Scripted {
     most: Arc<AtomicUsize>,
     log: Arc<Mutex<Vec<String>>>,
     seen: Arc<Mutex<Vec<(String, Vec<String>)>>>,
+    /// The first `together` parts to start wait (up to [`RENDEZVOUS`]) until
+    /// that many have started, so parts the fan-out really runs at once
+    /// overlap however slow each one's `git worktree add` is (#11570). A
+    /// fan-out that ran them one after another still shows one at a time:
+    /// the first part's wait runs out before the second can start.
+    together: usize,
+    started: Arc<AtomicUsize>,
 }
+
+/// How long a part waits for the others to start before it goes on alone.
+const RENDEZVOUS: Duration = Duration::from_secs(5);
 
 impl Scripted {
     fn new(repo: &Path, pause: Duration) -> Self {
@@ -55,7 +65,15 @@ impl Scripted {
             most: Arc::default(),
             log: Arc::default(),
             seen: Arc::default(),
+            together: 1,
+            started: Arc::default(),
         }
+    }
+
+    /// The first `parts` to start wait for each other ([`Scripted::together`]).
+    fn together(mut self, parts: usize) -> Self {
+        self.together = parts;
+        self
     }
 
     fn log(&self) -> Vec<String> {
@@ -116,6 +134,15 @@ impl Scripted {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push(format!("start {number}"));
+        let order = self.started.fetch_add(1, Ordering::SeqCst) + 1;
+        if order <= self.together {
+            let until = std::time::Instant::now() + RENDEZVOUS;
+            while self.started.load(Ordering::SeqCst) < self.together
+                && std::time::Instant::now() < until
+            {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
         std::thread::sleep(self.pause);
         let result = if part == "fail" {
             Err("the scripted part failed".to_owned())
@@ -268,7 +295,8 @@ fn states(summary: &Summary) -> Vec<State> {
 
 #[test]
 fn independent_parts_run_at_the_same_time_and_come_back_together() {
-    let fixture = fixture("parallel", Duration::from_millis(400));
+    let mut fixture = fixture("parallel", Duration::from_millis(400));
+    fixture.host = fixture.host.clone().together(2);
     let run = run_for(
         &fixture.repo,
         &["write a.txt alpha", "write b.txt beta"],
@@ -338,7 +366,8 @@ fn independent_parts_run_at_the_same_time_and_come_back_together() {
 
 #[test]
 fn a_dependent_part_waits_and_starts_from_its_inputs_work() {
-    let fixture = fixture("ordered", Duration::from_millis(150));
+    let mut fixture = fixture("ordered", Duration::from_millis(150));
+    fixture.host = fixture.host.clone().together(2);
     let run = run_for(
         &fixture.repo,
         &["write a.txt alpha", "write b.txt beta", "write c.txt gamma"],
