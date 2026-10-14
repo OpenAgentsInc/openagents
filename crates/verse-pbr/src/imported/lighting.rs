@@ -20,6 +20,9 @@ pub(super) struct Frame {
     pub fog_shape: [f32; 4],
     /// What this tier's water draws ([`crate::water::control`]).
     pub water_control: [f32; 4],
+    /// Per-frame switches: x is hair alpha to coverage
+    /// ([`super::Renderer::hair_coverage`]).
+    pub options: [f32; 4],
 }
 /// The frame uniform. `shadowed` names the lights that get the cube shadow
 /// maps, in map order ([`select_shadowed`]): they are written first, then the

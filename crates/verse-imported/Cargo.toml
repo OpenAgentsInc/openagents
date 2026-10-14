@@ -49,5 +49,11 @@ verse-pbr = { path = "../verse-pbr", features = ["diagnostics"] }
 tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "io-util"] }
 
+# Draconia in the castle, walkable, from the private MetaHuman pipeline's
+# exports in ~/work/film-out (`scripts/verse/draconia-world.sh`).
+[[example]]
+name = "draconia_world"
+required-features = ["imported-desktop", "crypt-fight"]
+
 [lints]
 workspace = true

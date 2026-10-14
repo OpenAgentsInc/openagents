@@ -72,7 +72,9 @@ fn is_zero4(v: &[f32; 4]) -> bool {
 ///   lighting with two shifted lobes (Marschner R and TRT) along the
 ///   strand direction, which is the surface's +v (root to tip), and light
 ///   transmitted through backlit hair (TT). Cutout coverage is stochastic,
-///   so averaged sub-frames give soft strand edges.
+///   so averaged sub-frames give soft strand edges; a real-time view can
+///   turn on the imported renderer's `hair_coverage` (alpha to coverage)
+///   instead.
 /// - `Cloth`: sheen strength, sheen roughness, unused, unused. A Charlie
 ///   sheen lobe over a softly wrapped diffuse.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -2,7 +2,7 @@
 // fog: rgb color, w density at the base height (1/m). fog_shape: base height
 // (m), falloff with height (1/m), start distance (m), and opacity cap.
 // water_control: what this tier's water draws (`verse_pbr::water::control`).
-struct Frame { view:mat4x4<f32>,eye:vec4<f32>,ambient:vec4<f32>,fog:vec4<f32>,settings:vec4<f32>,lights:array<vec4<f32>,64>,shadow:array<mat4x4<f32>,24>,fog_shape:vec4<f32>,water_control:vec4<f32> };
+struct Frame { view:mat4x4<f32>,eye:vec4<f32>,ambient:vec4<f32>,fog:vec4<f32>,settings:vec4<f32>,lights:array<vec4<f32>,64>,shadow:array<mat4x4<f32>,24>,fog_shape:vec4<f32>,water_control:vec4<f32>,options:vec4<f32> };
 struct Pose { model:mat4x4<f32>,params:vec4<f32>,bones:array<mat4x4<f32>,256> };
 // shading: x the model (0 standard, 1 skin, 2 eye, 3 cornea, 4 hair,
 // 5 cloth; verse_engine::material::Shading), yzw and shading_more.x its
@@ -306,7 +306,10 @@ fn portal(v:Out,t:f32,x_axis:vec3<f32>,z_axis:vec3<f32>,center:vec3<f32>)->vec4<
  // Hair's cutout is stochastic, so the mean of jittered sub-frames gives
  // each strand its true soft coverage instead of a hard edge.
  var cutoff=material.channels.w;
- if model==4u {cutoff=max(stochastic(v.clip.xy,frame.settings.y*60.0),0.04);}
+ // In real time (options.x) a strand's coverage is its alpha, through
+ // alpha to coverage on the multisampled target.
+ let hair_coverage=model==4u && frame.options.x>0.5;
+ if model==4u {cutoff=select(max(stochastic(v.clip.xy,frame.settings.y*60.0),0.04),0.03,hair_coverage);}
  if material.params.y==1.0 && alpha<cutoff{discard;}
  let albedo=tex.rgb*v.tint;
  var lit=albedo*(1.0-metallic)*frame.ambient.rgb*ao;
@@ -351,7 +354,7 @@ fn portal(v:Out,t:f32,x_axis:vec3<f32>,z_axis:vec3<f32>,center:vec3<f32>)->vec4<
  // output pass (pbr/post.wgsl) adds bloom, grades, and tone-maps it, as it
  // does for the physical path; the cap keeps half floats finite.
  let fog=fog_amount(v.pos);let color=min(mix(lit,frame.fog.rgb,fog)*frame.ambient.w,vec3(60000.0));
- return vec4(color,verse_coverage(alpha,material.params.y));
+ return vec4(color,select(verse_coverage(alpha,material.params.y),clamp(alpha*1.25,0.0,1.0),hair_coverage));
 }
 // The water pass (`verse_pbr::water`): vs_water, fs_water_transmit, and fs_water.
 // VERSE_WATER_IMPORTED

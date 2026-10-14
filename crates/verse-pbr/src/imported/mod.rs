@@ -359,6 +359,11 @@ impl Gpu {
 pub struct Renderer {
     /// Enables bounded optical integration for fire effects.
     pub fire_volumes: bool,
+    /// Draws hair-shaded cutouts with alpha to coverage (multisampled
+    /// targets only) instead of a stochastic cutoff: a soft strand in one
+    /// frame, for real-time views. Off by default: film renders average
+    /// the stochastic cutoff over sub-frames.
+    pub hair_coverage: bool,
     /// This frame's water ([`crate::water::Water`]), drawn over the surface
     /// [`Renderer::set_water_surface`] uploaded.
     pub water: Option<crate::water::Water>,
@@ -424,6 +429,9 @@ pub struct Renderer {
     evaluated_poses: Vec<Pose>,
     animation_controllers:
         HashMap<(verse_engine::core::LifeId, String), verse_engine::locomotion::Controller>,
+    /// Bone palettes the application poses itself, by model
+    /// ([`Renderer::set_pose_override`]).
+    pose_overrides: HashMap<String, Vec<Mat4>>,
     pub animation_diagnostics: Vec<verse_engine::locomotion::Diagnostic>,
     grounding: HashMap<(Option<verse_engine::core::LifeId>, String), Grounding>,
     bounds: HashMap<String, Option<culling::BoneBounds>>,
@@ -645,6 +653,33 @@ impl Renderer {
     #[cfg(feature = "diagnostics")]
     pub fn evaluated_pose(&self, index: usize) -> Option<([[f32; 4]; 4], [[[f32; 4]; 4]; 256])> {
         self.evaluated_poses.get(index).map(|p| (p.model, p.bones))
+    }
+    /// Poses every non-actor instance of `model` with `bones` (model-space
+    /// skinning matrices, as [`verse_engine::animation::pose`] returns)
+    /// instead of its clip, from the next frame on; `None` returns it to its
+    /// clip. For a procedural pose the application computes each frame: a
+    /// character's breathing, blinks, and gaze.
+    ///
+    /// # Errors
+    /// The model is not in the pack, or `bones` is not finite or has more
+    /// joints than a palette holds.
+    pub fn set_pose_override(
+        &mut self,
+        model: &str,
+        bones: Option<Vec<Mat4>>,
+    ) -> Result<(), String> {
+        let Some(bones) = bones else {
+            self.pose_overrides.remove(model);
+            return Ok(());
+        };
+        if !self.pack.models.contains_key(model) {
+            return Err(format!("No model {model} to pose"));
+        }
+        if bones.len() > 256 || bones.iter().any(|b| !b.is_finite()) {
+            return Err("A posed palette holds at most 256 finite matrices".into());
+        }
+        self.pose_overrides.insert(model.into(), bones);
+        Ok(())
     }
     /// Consumes this frame's presentation events; these grant no gameplay authority.
     pub fn take_marker_events(&mut self) -> Vec<MarkerEvent> {
@@ -1245,7 +1280,7 @@ impl Renderer {
             } else {
                 Default::default()
             };
-            pipelines.push(device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{label:Some("Verse textured skin"),layout:Some(&layout),vertex:wgpu::VertexState{module:&shader,entry_point:Some("vs"),compilation_options:Default::default(),buffers:&[Some(wgpu::VertexBufferLayout{array_stride:std::mem::size_of::<GpuVertex>() as u64,step_mode:wgpu::VertexStepMode::Vertex,attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3]})]},primitive:wgpu::PrimitiveState{cull_mode:None,topology:if lines{wgpu::PrimitiveTopology::LineList}else{wgpu::PrimitiveTopology::TriangleList},..Default::default()},depth_stencil:Some(wgpu::DepthStencilState{format:wgpu::TextureFormat::Depth32Float,depth_write_enabled:Some(blend<2),depth_compare:Some(wgpu::CompareFunction::LessEqual),stencil:Default::default(),bias}),multisample:wgpu::MultisampleState{count:samples,..Default::default()},fragment:Some(wgpu::FragmentState{module:&shader,entry_point:Some("fs"),compilation_options:Default::default(),targets:&[Some(wgpu::ColorTargetState{format:scene_format,blend:match blend{2=>Some(wgpu::BlendState::ALPHA_BLENDING),3=>Some(wgpu::BlendState{color:wgpu::BlendComponent{src_factor:wgpu::BlendFactor::SrcAlpha,dst_factor:wgpu::BlendFactor::One,operation:wgpu::BlendOperation::Add},alpha:wgpu::BlendComponent::OVER}),_=>None},write_mask:wgpu::ColorWrites::ALL})]}),multiview_mask:None,cache:None}));
+            pipelines.push(device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{label:Some("Verse textured skin"),layout:Some(&layout),vertex:wgpu::VertexState{module:&shader,entry_point:Some("vs"),compilation_options:Default::default(),buffers:&[Some(wgpu::VertexBufferLayout{array_stride:std::mem::size_of::<GpuVertex>() as u64,step_mode:wgpu::VertexStepMode::Vertex,attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3]})]},primitive:wgpu::PrimitiveState{cull_mode:None,topology:if lines{wgpu::PrimitiveTopology::LineList}else{wgpu::PrimitiveTopology::TriangleList},..Default::default()},depth_stencil:Some(wgpu::DepthStencilState{format:wgpu::TextureFormat::Depth32Float,depth_write_enabled:Some(blend<2),depth_compare:Some(wgpu::CompareFunction::LessEqual),stencil:Default::default(),bias}),multisample:wgpu::MultisampleState{count:samples,alpha_to_coverage_enabled:blend==1&&samples>1&&!lines,..Default::default()},fragment:Some(wgpu::FragmentState{module:&shader,entry_point:Some("fs"),compilation_options:Default::default(),targets:&[Some(wgpu::ColorTargetState{format:scene_format,blend:match blend{2=>Some(wgpu::BlendState::ALPHA_BLENDING),3=>Some(wgpu::BlendState{color:wgpu::BlendComponent{src_factor:wgpu::BlendFactor::SrcAlpha,dst_factor:wgpu::BlendFactor::One,operation:wgpu::BlendOperation::Add},alpha:wgpu::BlendComponent::OVER}),_=>None},write_mask:wgpu::ColorWrites::ALL})]}),multiview_mask:None,cache:None}));
         }
         let shadow_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -1445,6 +1480,7 @@ impl Renderer {
             #[cfg(any(test, feature = "diagnostics"))]
             evaluated_poses: Vec::new(),
             animation_controllers: HashMap::new(),
+            pose_overrides: HashMap::new(),
             animation_diagnostics: Vec::new(),
             grounding: HashMap::new(),
             bounds,
@@ -1457,6 +1493,7 @@ impl Renderer {
             last_device_loss: None,
             last_timings: FrameTimings::default(),
             fire_volumes: true,
+            hair_coverage: false,
             water: None,
             water_pass,
             last_lighting: Default::default(),
@@ -1878,6 +1915,7 @@ impl Renderer {
             0.0
         };
         frame.water_control = crate::water::control(self.admission.quality.tier);
+        frame.options[0] = f32::from(u8::from(self.hair_coverage && self.admission.samples > 1));
         let water_on = self
             .water_pass
             .prepare(&self.queue, self.water.as_ref(), view, self.height);
@@ -1946,6 +1984,13 @@ impl Renderer {
         let mut frozen = Vec::with_capacity(instances.len());
         for instance in instances {
             let mut palette = make_pose(&self.pack, Some(instance))?;
+            if instance.actor.is_none()
+                && let Some(bones) = self.pose_overrides.get(&instance.model)
+            {
+                for (dst, bone) in palette.bones.iter_mut().zip(bones) {
+                    *dst = bone.to_cols_array_2d();
+                }
+            }
             if let Some(id) = instance.actor {
                 let (bones, events) = if let Some(graph) = self.graphs.get(&instance.model) {
                     graph_instances += 1;
