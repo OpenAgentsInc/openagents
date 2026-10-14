@@ -61,7 +61,11 @@ Z up.
   `{id, op, params}`, replayed from the top on every build. A feature is a
   **sketch** (`op: "sketch"`, a plane and drawing steps such as
   `sketch.rectangle.center`, `sketch.slot.center_to_center`,
-  `sketch.text`), a **modelling operation** (`solid.extrude`,
+  `sketch.text`, then optional `constraints` such as
+  `{"type": "tangent", "a": "l1", "b": "a1"}` and `dimensions` such as
+  `{"entities": ["l1"], "value": "width"}`, which the kernel's solver holds
+  the drawing to; each sketch's remaining degrees of freedom are in the
+  report), a **modelling operation** (`solid.extrude`,
   `solid.revolve`, `solid.fillet`, `solid.shell`, `solid.pattern.circular`,
   booleans through each feature's `operation`: join, cut, intersect, new),
   or a **block** (`op: "block"`): direct operations on solids run as one

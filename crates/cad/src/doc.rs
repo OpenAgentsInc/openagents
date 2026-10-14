@@ -104,6 +104,52 @@ pub const OPERATIONS: [&str; 31] = [
 /// The direct operations a block may run: every modelling operation.
 pub const DIRECT: [&str; 31] = OPERATIONS;
 
+/// The constraints a sketch may hold between its entities (curve ids such
+/// as `l1`, point ids such as `p2`, or `l1.start`, `c1.center`, and `x` or
+/// `y` for the sketch's own axes).
+pub const CONSTRAINTS: [&str; 14] = [
+    "coincident",
+    "tangent",
+    "equal",
+    "parallel",
+    "perpendicular",
+    "concentric",
+    "collinear",
+    "fix",
+    "midpoint",
+    "symmetry",
+    "curvature",
+    "polygon",
+    "horizontal",
+    "vertical",
+];
+
+/// A sketch constraint `{"type": "tangent", "a": "l1", "b": "a1"}` as the
+/// kernel step that adds it.
+///
+/// # Errors
+/// An unknown type.
+pub fn constraint_step(c: &Value) -> Result<(String, Value), String> {
+    let kind = c["type"].as_str().unwrap_or_default();
+    if !CONSTRAINTS.contains(&kind) {
+        return Err(format!(
+            "a constraint's type is one of {} (got \"{kind}\")",
+            CONSTRAINTS.join(", ")
+        ));
+    }
+    let mut params = c.clone();
+    if let Some(o) = params.as_object_mut() {
+        o.remove("type");
+    }
+    Ok(match kind {
+        "horizontal" | "vertical" => {
+            params["mode"] = json!(kind);
+            ("sketch.constraint.horizontal_vertical".into(), params)
+        }
+        other => (format!("sketch.constraint.{other}"), params),
+    })
+}
+
 /// The most copies one repeated block step may make.
 pub const MAX_REPEAT: usize = 500;
 
@@ -531,6 +577,26 @@ fn feature_problems(part: &str, feature: &Value, seen: &BTreeSet<String>) -> Vec
                 out.push(format!(
                     "Sketch {part}.{id} needs a plane (XY, XZ, YZ, or {{origin, x_dir, y_dir}})."
                 ));
+            }
+            for c in params["constraints"].as_array().into_iter().flatten() {
+                if let Err(why) = constraint_step(c) {
+                    out.push(format!("Sketch {part}.{id}: {why}."));
+                }
+            }
+            for d in params["dimensions"].as_array().into_iter().flatten() {
+                let ok = d["entities"]
+                    .as_array()
+                    .is_some_and(|e| (1..=2).contains(&e.len()) && e.iter().all(Value::is_string));
+                if !ok {
+                    out.push(format!(
+                        "Sketch {part}.{id}: a dimension names one or two entities, like {{\"entities\": [\"l1\"], \"value\": \"width\"}}."
+                    ));
+                }
+            }
+            for key in ["constraints", "dimensions"] {
+                if !params[key].is_null() && !params[key].is_array() {
+                    out.push(format!("Sketch {part}.{id}'s {key} must be a list."));
+                }
             }
             let draw = params.get("draw").and_then(Value::as_array);
             match draw {
@@ -1102,7 +1168,7 @@ pub fn schema() -> Value {
                 "properties": {
                     "id": id,
                     "op": {"enum": ops},
-                    "params": {"type": "object", "description": "the operation's parameters; a sketch has plane, offset? and draw: [{op: sketch.*, params}]; a block has ops: [{op, params, repeat?: {var, from, to, by?}}] (direct operations; {var} in a param is replaced by each value) and inputs?: [earlier features and parameters it reads]"},
+                    "params": {"type": "object", "description": "the operation's parameters; a sketch has plane, offset?, draw: [{op: sketch.*, params}], constraints?: [{type, ...entities}] and dimensions?: [{entities, value?, type?}]; a block has ops: [{op, params, repeat?: {var, from, to, by?}}] (direct operations; {var} in a param is replaced by each value) and inputs?: [earlier features and parameters it reads]"},
                     "suppressed": {"type": "boolean"},
                     "note": {"type": "string"}
                 }

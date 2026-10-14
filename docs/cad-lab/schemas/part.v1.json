@@ -55,7 +55,7 @@
             ]
           },
           "params": {
-            "description": "the operation's parameters; a sketch has plane, offset? and draw: [{op: sketch.*, params}]; a block has ops: [{op, params, repeat?: {var, from, to, by?}}] (direct operations; {var} in a param is replaced by each value) and inputs?: [earlier features and parameters it reads]",
+            "description": "the operation's parameters; a sketch has plane, offset?, draw: [{op: sketch.*, params}], constraints?: [{type, ...entities}] and dimensions?: [{entities, value?, type?}]; a block has ops: [{op, params, repeat?: {var, from, to, by?}}] (direct operations; {var} in a param is replaced by each value) and inputs?: [earlier features and parameters it reads]",
             "type": "object"
           },
           "suppressed": {

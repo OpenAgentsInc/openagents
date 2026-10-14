@@ -125,6 +125,7 @@ pub fn evaluate_with(document: &Value, cache: &std::path::Path) -> Result<Evalua
         "triangles": triangles,
         "size_mm": size,
         "warnings": built.warnings,
+        "sketches": built.sketches,
         "build_ms": started.elapsed().as_millis() as u64,
     });
     Ok(Evaluation { built, report })
@@ -299,6 +300,40 @@ mod tests {
         let v = eval.report["mass"]["volume_cm3"].as_f64().unwrap() * 1000.0;
         let expected = 8000.0 - pi * 25.0 * 20.0;
         assert!((v - expected).abs() / expected < 0.01, "{v} vs {expected}");
+    }
+
+    #[test]
+    fn sketch_constraints_and_dimensions_drive_the_profile() {
+        // An outline drawn roughly, then held square and sized by
+        // dimensions, one of them a parameter: the solid follows it.
+        let block = |w: f64| {
+            let mut part = doc::new_part("block", "Block", "Aluminum", None);
+            part["parameters"] = json!([{"name": "w", "expression": format!("{w} mm")}]);
+            part["features"] = json!([
+                {"id": "outline", "op": "sketch", "params": {"plane": "XY",
+                    "draw": [{"op": "sketch.line", "params": {"points": [[0, 0], [12, 1], [11, 9], [-1, 10]], "closed": true,
+                              "infer": false, "ids": ["bottom", "right", "top", "left"]}}],
+                    "constraints": [
+                        {"type": "fix", "entity": "bottom.start"},
+                        {"type": "horizontal", "line": "bottom"}, {"type": "horizontal", "line": "top"},
+                        {"type": "vertical", "line": "left"}, {"type": "vertical", "line": "right"}],
+                    "dimensions": [{"entities": ["bottom"], "value": "w"}, {"entities": ["left"], "value": 20}]}},
+                {"id": "body", "op": "solid.extrude", "params": {"sketch": "outline", "distance": 5}}
+            ]);
+            part
+        };
+        for w in [30.0, 45.0] {
+            let eval = evaluate(&block(w)).unwrap_or_else(|p| panic!("{p:?}"));
+            let v = eval.report["mass"]["volume_cm3"].as_f64().unwrap() * 1000.0;
+            assert!((v - w * 20.0 * 5.0).abs() < 0.5, "{w}: {v}");
+            let sketch = &eval.report["sketches"][0];
+            assert_eq!(sketch["sketch"], "outline", "{sketch}");
+            assert_eq!(sketch["dof"], 0, "{sketch}");
+        }
+        let mut bad = block(30.0);
+        bad["features"][0]["params"]["constraints"][1]["type"] = json!("level");
+        let why = evaluate(&bad).err().unwrap().join(" ");
+        assert!(why.contains("\"level\""), "{why}");
     }
 
     #[test]

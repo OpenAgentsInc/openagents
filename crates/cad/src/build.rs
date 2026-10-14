@@ -47,6 +47,9 @@ pub struct Built {
     /// Things worth saying that don't stop the build (a kernel retry, a
     /// part nothing places).
     pub warnings: Vec<String>,
+    /// Each sketch of each placed part and the degrees of freedom its
+    /// constraints and dimensions leave (`{part, sketch, dof, status}`).
+    pub sketches: Vec<Value>,
 }
 
 fn run(s: &mut Session, op: &str, params: &Value) -> Result<Value, String> {
@@ -145,7 +148,7 @@ const MAKERS: [&str; 10] = [
 ];
 
 /// Runs one feature of `part`; the error names the feature.
-fn feature(s: &mut Session, part: &str, f: &Value) -> Result<(), String> {
+fn feature(s: &mut Session, part: &str, f: &Value) -> Result<Value, String> {
     let id = f["id"].as_str().unwrap_or_default();
     let op = f["op"].as_str().unwrap_or_default();
     let params = f.get("params").cloned().unwrap_or(json!({}));
@@ -158,15 +161,44 @@ fn feature(s: &mut Session, part: &str, f: &Value) -> Result<(), String> {
             }
             let create = scope_params(part, &create);
             run(s, "sketch.create", &create).map_err(&fail)?;
+            // The drawing, then its constraints, then its dimensions; the
+            // kernel's solver settles the sketch after each.
+            let mut steps: Vec<(String, String, Value)> = Vec::new();
             for (i, step) in params["draw"].as_array().into_iter().flatten().enumerate() {
-                let sop = step["op"].as_str().unwrap_or_default();
+                let sop = step["op"].as_str().unwrap_or_default().to_owned();
                 let sparams = step.get("params").cloned().unwrap_or(json!({}));
-                if let Err(e) = run(s, sop, &sparams) {
+                steps.push((format!("drawing step {}", i + 1), sop, sparams));
+            }
+            for (i, c) in params["constraints"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .enumerate()
+            {
+                let (sop, sparams) = doc::constraint_step(c).map_err(&fail)?;
+                steps.push((format!("constraint {}", i + 1), sop, sparams));
+            }
+            for (i, d) in params["dimensions"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .enumerate()
+            {
+                steps.push((
+                    format!("dimension {}", i + 1),
+                    "sketch.dimension".into(),
+                    d.clone(),
+                ));
+            }
+            for (what, sop, sparams) in steps {
+                if let Err(e) = run(s, &sop, &sparams) {
                     let _ = run(s, "sketch.finish", &json!({}));
-                    return Err(fail(format!("drawing step {} ({sop}): {e}", i + 1)));
+                    return Err(fail(format!("{what} ({sop}): {e}")));
                 }
             }
+            let solved = run(s, "sketch.solve", &json!({})).unwrap_or_default();
             run(s, "sketch.finish", &json!({})).map_err(&fail)?;
+            return Ok(json!({"sketch": id, "dof": solved["dof"], "status": solved["status"]}));
         }
         "block" => {
             for (i, step) in params["ops"].as_array().into_iter().flatten().enumerate() {
@@ -221,7 +253,7 @@ fn feature(s: &mut Session, part: &str, f: &Value) -> Result<(), String> {
             run(s, op, &p).map_err(&fail)?;
         }
     }
-    Ok(())
+    Ok(Value::Null)
 }
 
 /// Operations whose new solids are copies of others.
@@ -527,8 +559,8 @@ pub const KERNEL: &str = "solidcraft@229de148";
 
 /// What a cached part records, versioned: 2 added the colours pattern and
 /// mirror copies take from their sources; 3 matches congruent sources by
-/// the kernel's order.
-const BUILD: u32 = 3;
+/// the kernel's order; 4 records each sketch's degrees of freedom.
+const BUILD: u32 = 4;
 
 /// Builds one part from its history, or takes it from the cache.
 fn build_part(
@@ -550,13 +582,18 @@ fn build_part(
     let mut s = session(parameters)?;
     // Each copy a pattern or mirror made → the solid it copies.
     let mut copy_of: BTreeMap<String, String> = BTreeMap::new();
+    // Each sketch: how many degrees of freedom its constraints leave.
+    let mut sketches: Vec<Value> = Vec::new();
     for f in part["features"].as_array().into_iter().flatten() {
         if f["suppressed"] == true {
             continue;
         }
         let copies = COPIES.contains(&f["op"].as_str().unwrap_or_default());
         let before = copies.then(|| volumes(&s));
-        feature(&mut s, key, f).map_err(|e| vec![e])?;
+        let info = feature(&mut s, key, f).map_err(|e| vec![e])?;
+        if info.is_object() {
+            sketches.push(info);
+        }
         if let Some(before) = before {
             copy_of.extend(copies_made(key, &f["params"], &before, &volumes(&s)));
         }
@@ -624,7 +661,7 @@ fn build_part(
     )
     .map_err(|e| vec![format!("Part {key} couldn't be written: {e}")])?;
     std::fs::rename(&temporary, &step).map_err(|e| vec![e.to_string()])?;
-    let meta = json!({"bodies": bodies, "warnings": warnings});
+    let meta = json!({"bodies": bodies, "warnings": warnings, "sketches": sketches});
     let _ = std::fs::write(&meta_path, meta.to_string());
     Ok(PartBuild { step, meta })
 }
@@ -660,7 +697,7 @@ pub fn faces_of(document: &Value, key: &str, upto: Option<&str>) -> Result<Value
     let mut s = session(&parameters)?;
     for f in &features {
         if f["suppressed"] != true {
-            feature(&mut s, key, f).map_err(|e| vec![e])?;
+            let _ = feature(&mut s, key, f).map_err(|e| vec![e])?;
         }
         if upto.is_some_and(|u| f["id"] == u) {
             break;
@@ -688,6 +725,7 @@ pub fn build_with(document: &Value, cache: &Path) -> Result<Built, Vec<String>> 
         return Err(problems);
     }
     let mut warnings = Vec::new();
+    let mut sketches = Vec::new();
     let fail = |e: String| vec![e];
     let empty = Map::new();
     let parts = assembly["parts"].as_object().unwrap_or(&empty);
@@ -743,6 +781,11 @@ pub fn build_with(document: &Value, cache: &Path) -> Result<Built, Vec<String>> 
     let mut colors: BTreeMap<String, [u8; 3]> = BTreeMap::new();
     let mut finishes: BTreeMap<String, Option<String>> = BTreeMap::new();
     for (key, part, b) in &built_parts {
+        for sk in b.meta["sketches"].as_array().into_iter().flatten() {
+            let mut sk = sk.clone();
+            sk["part"] = json!(key);
+            sketches.push(sk);
+        }
         for w in b.meta["warnings"].as_array().into_iter().flatten() {
             warnings.push(w.as_str().unwrap_or_default().to_owned());
         }
@@ -902,6 +945,7 @@ pub fn build_with(document: &Value, cache: &Path) -> Result<Built, Vec<String>> 
         placements,
         occurrences,
         warnings,
+        sketches,
     })
 }
 
