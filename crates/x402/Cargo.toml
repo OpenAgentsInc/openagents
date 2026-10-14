@@ -1,6 +1,6 @@
 [package]
 name = "openagents-x402"
-version = "1.0.0"
+version = "1.0.0-rc.13"
 edition = "2024"
 license = "CC-0"
 publish = false
