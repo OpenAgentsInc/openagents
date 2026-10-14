@@ -2061,7 +2061,14 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if u.path.startswith("/api/tool/"):
                 name = u.path[len("/api/tool/"):].replace(".", "_")
-                return self.send_json(call(name, args))
+                try:
+                    out = call(name, args)
+                except Refused as e:
+                    print(f"{name} {json.dumps(args)[:600]}\n  refused: {e}", flush=True)
+                    raise
+                # One line per call in the service's log, so a chat that goes in circles can be read.
+                print(f"{name} {json.dumps(args)[:600]}\n  -> {(out.get('text') or '')[:400]!r}", flush=True)
+                return self.send_json(out)
             if u.path == "/api/note":
                 doc = resolve(args.get("doc"))
                 return self.send_json(add_note(doc, args.get("v"), args.get("q") or "preview",
