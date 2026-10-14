@@ -220,8 +220,8 @@ Coder:
                claim, release, and pick up (the claim record every agent and
                Coder share).
   projects     Your openagents.com projects (the Projects list on the
-               website): list, show one with its chats, add, remove, and
-               private files.
+               website): list, show one with its chats, add, remove,
+               private files, and sharing with other people.
   connections  Services connected to your openagents.com account: connect
                Google, browse Drive, search Gmail, and see your calendar.
   board        GitHub Project boards: list items by status, add an issue, and

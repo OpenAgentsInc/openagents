@@ -72,6 +72,27 @@ pub(crate) const USAGE: &str = "usage: openagents projects COMMAND [--account-di
   remove PROJECT [--detach-threads]
               Remove a project. With chats in it, --detach-threads keeps them,
               outside any project.
+  members PROJECT
+              Who is in the project and what each can do. The owner also
+              sees the invitations nobody has used yet.
+  invite PROJECT [--role editor|viewer] [--ttl DURATION]
+              Make a link that lets one person join, shown only this once.
+              An editor (the default) adds chats, files, and notes; a viewer
+              reads them. --ttl is how long the link works, like 30m, 12h,
+              or 7d (the default), from 10 minutes to 30 days. Only the
+              owner invites.
+  join LINK
+              Join a project with the invitation link (or its code)
+              someone sent you.
+  role PROJECT ACCOUNT ROLE
+              Change what a member can do: ROLE is editor, viewer, or owner.
+              ACCOUNT is their account id, or their login or name as members
+              shows it. owner gives them the project, and you become an
+              editor.
+  remove PROJECT ACCOUNT
+              Take a member out of the project.
+  leave PROJECT
+              Leave a project someone shared with you.
   files list PROJECT
               The project's files, notes, and Drive sources.
   files add PROJECT PATH... [--protection standard|only_me]
@@ -101,7 +122,8 @@ can be in several projects; when a name matches more than one project, use
 the id.
 These are the projects in the left panel of openagents.com, signed in as
 openagents login or coder login saved them, or OPENAGENTS_TOKEN. Ask about
-only-me files with openagents vault ask FILE --project ID. GitHub Project
+only-me files with openagents vault ask FILE --project ID. Projects
+someone shared with you list here too, with your role. GitHub Project
 boards are openagents board.";
 
 /// What each command does, for the chat router's command tree.
@@ -119,6 +141,14 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("repo primary", Effect::Publishes),
     Declared::computer("move", Effect::Publishes),
     Declared::computer("remove", Effect::Publishes),
+    // Sharing changes who may open the project. These are `Publishes`,
+    // not `Grants`: on the phone a grant opens the computers screen,
+    // which has nothing to do with projects.
+    Declared::computer("members", Effect::ReadOnly),
+    Declared::computer("invite", Effect::Publishes),
+    Declared::computer("join", Effect::Publishes),
+    Declared::computer("role", Effect::Publishes),
+    Declared::computer("leave", Effect::Publishes),
     Declared::computer("files list", Effect::ReadOnly),
     Declared::computer("files add", Effect::Publishes),
     Declared::computer("files get", Effect::LocalWrite),
@@ -180,7 +210,12 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "repo remove" | "repo primary" => (&["account-dir"], 2, 2),
         "move" if args.switch("none") => (&["account-dir", "none"], 1, 1),
         "move" => (&["account-dir"], 2, 2),
+        "remove" if positional.len() > 2 => (&["account-dir"], 2, 2),
         "remove" => (&["account-dir", "detach-threads"], 1, 1),
+        "members" | "leave" => (&["account-dir"], 1, 1),
+        "invite" => (&["account-dir", "role", "ttl"], 1, 1),
+        "join" => (&["account-dir"], 1, 1),
+        "role" => (&["account-dir"], 3, 3),
         "files list" => (&["account-dir"], 1, 1),
         "files add" => (&["account-dir", "protection"], 2, usize::MAX),
         "files get" => (&["account-dir", "output", "out"], 2, 2),
@@ -206,6 +241,8 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             (2, 2) if command.starts_with("repo ") => "a project and a repository".to_owned(),
             (2, 2) if command == "sources add" => "a project and a Drive link".to_owned(),
             (2, 2) if command == "sources remove" => "a project and a source".to_owned(),
+            (2, 2) if command == "remove" => "a project and a member's account".to_owned(),
+            (3, 3) => "a project, a member's account, and editor, viewer, or owner".to_owned(),
             (2, 2) => "a project and a file".to_owned(),
             _ => "a project and one or more files".to_owned(),
         };
@@ -222,6 +259,28 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             );
         }
     };
+    let invite_role = match args.option("role") {
+        None => None,
+        Some(word @ ("editor" | "viewer")) => Some(word),
+        Some(other) => {
+            return output.usage(
+                "projects",
+                &format!("--role is editor or viewer, not `{other}`"),
+                USAGE,
+            );
+        }
+    };
+    let ttl = match args.option("ttl").map(duration_seconds).transpose() {
+        Ok(ttl) => ttl,
+        Err(message) => return output.usage("projects", &message, USAGE),
+    };
+    if command == "role" && !matches!(rest[2].as_str(), "editor" | "viewer" | "owner") {
+        return output.usage(
+            "projects",
+            &format!("The role is editor, viewer, or owner, not `{}`", rest[2]),
+            USAGE,
+        );
+    }
     if args.switch("primary") && command != "repo add" {
         return output.usage("projects", "--primary goes with repo add", USAGE);
     }
@@ -351,6 +410,38 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             .map(|moved| {
                 output.emit(&moved, moved_text);
             }),
+        "members" => projects.members(target).map(|listed| {
+            output.emit(&listed, members_text);
+        }),
+        "invite" => projects.invite(target, invite_role, ttl).map(|made| {
+            output.emit(&made, invited_text);
+        }),
+        "join" => projects.join(target).map(|joined| {
+            output.emit(&joined, joined_text);
+        }),
+        "role" => projects
+            .set_role(target, &rest[1], &rest[2])
+            .map(|(changed, member)| {
+                output.emit(&changed, |value| role_text(value, &member, &rest[2]));
+            }),
+        "remove" if rest.len() == 2 => {
+            projects
+                .remove_member(target, &rest[1])
+                .map(|(removed, member, project)| {
+                    output.emit(&removed, |_| {
+                        format!(
+                            "Took {} out of {}.",
+                            member_name(&member),
+                            project["name"].as_str().unwrap_or(target)
+                        )
+                    });
+                })
+        }
+        "leave" => projects.leave(target).map(|(left, project)| {
+            output.emit(&left, |_| {
+                format!("You left {}.", project["name"].as_str().unwrap_or(target))
+            });
+        }),
         "remove" => {
             projects
                 .remove(target, args.switch("detach-threads"))
@@ -1112,6 +1203,365 @@ impl Projects<'_> {
     }
 }
 
+/// Sharing (#11590): who is in a project, invitations, roles, leaving.
+impl Projects<'_> {
+    /// Every member of the project the caller is in, following the
+    /// pages; the first page's `role` and `invitations` are kept, and the
+    /// project rides along for the text.
+    fn members(&self, target: &str) -> Result<Value, String> {
+        let project = self.find(target)?;
+        let id = id(&project)?.to_owned();
+        let mut data = Vec::new();
+        let mut first: Option<Value> = None;
+        let mut after: Option<String> = None;
+        loop {
+            let path = match &after {
+                Some(after) => format!("/v1/projects/{id}/members?after={after}"),
+                None => format!("/v1/projects/{id}/members"),
+            };
+            let page = self.get(&path).map_err(not_shared)?;
+            data.extend(page["data"].as_array().cloned().unwrap_or_default());
+            let next = page["next"].as_str().map(str::to_owned);
+            if first.is_none() {
+                first = Some(page);
+            }
+            match next {
+                Some(next) if !next.is_empty() && after.as_deref() != Some(next.as_str()) => {
+                    after = Some(safe(&next)?.to_owned());
+                }
+                _ => break,
+            }
+        }
+        let mut listed = first.unwrap_or_else(|| json!({}));
+        listed["data"] = json!(data);
+        listed["next"] = Value::Null;
+        listed["project"] = project;
+        Ok(listed)
+    }
+
+    /// The one member `who` names: their account id, else their login,
+    /// else their name. More than one match is refused with each named.
+    fn member(&self, target: &str, who: &str) -> Result<(Value, Value), String> {
+        let listed = self.members(target)?;
+        let members = listed["data"].as_array().cloned().unwrap_or_default();
+        let found = find_member(&members, who)?.clone();
+        Ok((found, listed["project"].clone()))
+    }
+
+    fn invite(&self, target: &str, role: Option<&str>, ttl: Option<u64>) -> Result<Value, String> {
+        let project = self.find(target)?;
+        let mut body = json!({});
+        if let Some(role) = role {
+            body["role"] = json!(role);
+        }
+        if let Some(seconds) = ttl {
+            body["expires_in"] = json!(seconds);
+        }
+        let site = self.0;
+        let mut made = self
+            .send(
+                site.http
+                    .post(site.url(&format!("/v1/projects/{}/invitations", id(&project)?)))
+                    .json(&body),
+            )
+            .map_err(not_shared)?;
+        if made["project_name"].is_null() {
+            made["project_name"] = project["name"].clone();
+        }
+        Ok(made)
+    }
+
+    /// Preview the invitation, then accept it.
+    fn join(&self, link: &str) -> Result<Value, String> {
+        let code = json!({"code": link.trim()});
+        let site = self.0;
+        let preview = self
+            .send(
+                site.http
+                    .post(site.url("/v1/projects/invitations/preview"))
+                    .json(&code),
+            )
+            .map_err(not_shared)?;
+        let project = self
+            .send(
+                site.http
+                    .post(site.url("/v1/projects/invitations/accept"))
+                    .json(&code),
+            )
+            .map_err(not_shared)?;
+        Ok(json!({"invitation": preview, "project": project}))
+    }
+
+    /// `PATCH /v1/projects/{id}/members/{account}`: the Project, and the
+    /// member it changed.
+    fn set_role(&self, target: &str, who: &str, role: &str) -> Result<(Value, Value), String> {
+        let (member, project) = self.member(target, who)?;
+        let account = member["account"].as_str().unwrap_or_default();
+        let site = self.0;
+        let changed = self
+            .send(
+                site.http
+                    .patch(site.url(&format!(
+                        "/v1/projects/{}/members/{}",
+                        id(&project)?,
+                        encode(account)
+                    )))
+                    .json(&json!({"role": role})),
+            )
+            .map_err(not_shared)?;
+        Ok((changed, member))
+    }
+
+    fn remove_member(&self, target: &str, who: &str) -> Result<(Value, Value, Value), String> {
+        let (member, project) = self.member(target, who)?;
+        let account = member["account"].as_str().unwrap_or_default();
+        let site = self.0;
+        let removed = self
+            .send(site.http.delete(site.url(&format!(
+                "/v1/projects/{}/members/{}",
+                id(&project)?,
+                encode(account)
+            ))))
+            .map_err(not_shared)?;
+        Ok((removed, member, project))
+    }
+
+    fn leave(&self, target: &str) -> Result<(Value, Value), String> {
+        let project = self.find(target)?;
+        let name = project["name"].as_str().unwrap_or(target).to_owned();
+        let owner_stays = || {
+            format!(
+                "You own {name}, so you can't leave it. Give it to another member first with: openagents projects role {name} ACCOUNT owner"
+            )
+        };
+        if project["role"] == "owner" {
+            return Err(owner_stays());
+        }
+        let site = self.0;
+        let left = self
+            .send(
+                site.http
+                    .post(site.url(&format!("/v1/projects/{}/leave", id(&project)?))),
+            )
+            .map_err(|message| {
+                if message.contains("answered 409") {
+                    owner_stays()
+                } else {
+                    not_shared(message)
+                }
+            })?;
+        Ok((left, project))
+    }
+}
+
+/// A website from before shared projects has none of these routes.
+fn not_shared(message: String) -> String {
+    if message.contains("answered 404") || message.contains("answered 405") {
+        "openagents.com can't share projects yet; it will once its next update is out.".to_owned()
+    } else {
+        message
+    }
+}
+
+/// `30m`, `12h`, `7d` (or `90s`) as seconds.
+fn duration_seconds(text: &str) -> Result<u64, String> {
+    let text = text.trim();
+    let wrong = || format!("--ttl is a length of time like 30m, 12h, or 7d, not `{text}`");
+    let split = text.len().saturating_sub(1);
+    let (number, unit) = text.split_at(split);
+    let unit = match unit {
+        "s" => 1,
+        "m" => 60,
+        "h" => 3_600,
+        "d" => 86_400,
+        _ => return Err(wrong()),
+    };
+    let number: u64 = number.parse().map_err(|_| wrong())?;
+    match number.checked_mul(unit) {
+        Some(0) | None => Err(wrong()),
+        Some(seconds) => Ok(seconds),
+    }
+}
+
+/// The member `who` names among `members`: their account id, else their
+/// login (an `@` in front is fine), else their name, without regard to
+/// case. A login or name more than one member has is never guessed.
+fn find_member<'a>(members: &'a [Value], who: &str) -> Result<&'a Value, String> {
+    let who = who.trim();
+    if let Some(member) = members.iter().find(|m| m["account"] == who) {
+        return Ok(member);
+    }
+    let bare = who.trim_start_matches('@');
+    let field = |key: &str| -> Vec<&'a Value> {
+        members
+            .iter()
+            .filter(|m| {
+                m[key]
+                    .as_str()
+                    .is_some_and(|value| value.trim().eq_ignore_ascii_case(bare))
+            })
+            .collect()
+    };
+    let by_login = field("login");
+    let found = if by_login.is_empty() {
+        field("name")
+    } else {
+        by_login
+    };
+    match found.as_slice() {
+        [member] => Ok(member),
+        [] => Err(format!(
+            "Nobody in this project is `{who}`. See who is with: openagents projects members PROJECT"
+        )),
+        many => Err(format!(
+            "{} members are called {who}: {}. Use the account id.",
+            count_word(many.len()),
+            many.iter()
+                .map(|m| member_choice(m))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+    }
+}
+
+/// A member's name as people read it: their name, else their login.
+fn member_name(member: &Value) -> String {
+    member["name"]
+        .as_str()
+        .filter(|name| !name.trim().is_empty())
+        .or_else(|| member["login"].as_str())
+        .unwrap_or("the member")
+        .to_owned()
+}
+
+/// One member among several a login or name matched.
+fn member_choice(member: &Value) -> String {
+    let login = member["login"]
+        .as_str()
+        .filter(|login| !login.is_empty())
+        .map(|login| format!(" @{login}"))
+        .unwrap_or_default();
+    format!(
+        "{} ({}{login})",
+        member["account"].as_str().unwrap_or_default(),
+        member_name(member)
+    )
+}
+
+/// `a`/`an` with the role, `an editor`.
+fn role_phrase(role: &str) -> String {
+    match role {
+        "owner" => "the owner".to_owned(),
+        "editor" => "an editor".to_owned(),
+        "viewer" => "a viewer".to_owned(),
+        other => other.to_owned(),
+    }
+}
+
+fn members_text(listed: &Value) -> String {
+    let name = listed["project"]["name"].as_str().unwrap_or_default();
+    let members = listed["data"].as_array().cloned().unwrap_or_default();
+    let mut lines = vec![format!(
+        "{name}: {} {}. You're {}.",
+        members.len(),
+        if members.len() == 1 {
+            "person"
+        } else {
+            "people"
+        },
+        role_phrase(listed["role"].as_str().unwrap_or_default())
+    )];
+    for member in &members {
+        let login = member["login"]
+            .as_str()
+            .filter(|login| !login.is_empty())
+            .map(|login| format!("  @{login}"))
+            .unwrap_or_default();
+        lines.push(format!(
+            "  {}{login}  {}  joined {}  ({}){}",
+            member_name(member),
+            member["role"].as_str().unwrap_or_default(),
+            day(&member["joined_at"]),
+            member["account"].as_str().unwrap_or_default(),
+            if member["you"] == json!(true) {
+                "  you"
+            } else {
+                ""
+            },
+        ));
+    }
+    let invitations = listed["invitations"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    if !invitations.is_empty() {
+        lines.push("Links nobody has used yet:".to_owned());
+        for invitation in &invitations {
+            lines.push(format!(
+                "  {}  works until {}  ({})",
+                invitation["role"].as_str().unwrap_or_default(),
+                day(&invitation["expires_at"]),
+                invitation["id"].as_str().unwrap_or_default(),
+            ));
+        }
+    }
+    if listed["role"] == "owner" {
+        lines.push(format!(
+            "Invite someone with: openagents projects invite {name}"
+        ));
+    }
+    lines.join("\n")
+}
+
+fn invited_text(made: &Value) -> String {
+    let link = made["url"]
+        .as_str()
+        .or_else(|| made["code"].as_str())
+        .unwrap_or_default();
+    format!(
+        "Send this link to the person you're inviting to {} as {}. It works once, until {}, and won't be shown again:\n{link}\nThey join with it on openagents.com, or with: openagents projects join LINK",
+        made["project_name"].as_str().unwrap_or("the project"),
+        role_phrase(made["role"].as_str().unwrap_or("editor")),
+        day(&made["expires_at"]),
+    )
+}
+
+fn joined_text(joined: &Value) -> String {
+    let invitation = &joined["invitation"];
+    let name = joined["project"]["name"]
+        .as_str()
+        .or_else(|| invitation["project"]["name"].as_str())
+        .unwrap_or("the project");
+    let role = joined["project"]["role"]
+        .as_str()
+        .or_else(|| invitation["role"].as_str())
+        .unwrap_or_default();
+    let inviter = invitation["invited_by"]
+        .as_str()
+        .or_else(|| invitation["invited_by"]["name"].as_str())
+        .filter(|who| !who.trim().is_empty());
+    let mut text = if invitation["member"] == json!(true) {
+        format!("You were already in {name}, as {}.", role_phrase(role))
+    } else {
+        format!("You joined {name} as {}.", role_phrase(role))
+    };
+    if let Some(inviter) = inviter {
+        text.push_str(&format!(" {inviter} invited you."));
+    }
+    text.push_str(&format!(" See it with: openagents projects show {name}"));
+    text
+}
+
+fn role_text(project: &Value, member: &Value, role: &str) -> String {
+    let name = project["name"].as_str().unwrap_or("the project");
+    let who = member_name(member);
+    if role == "owner" {
+        format!("{who} owns {name} now. You're an editor.")
+    } else {
+        format!("{who} is {} of {name} now.", role_phrase(role))
+    }
+}
+
 /// The website's `404` for an account Connections aren't open to yet.
 fn not_open(message: String) -> String {
     if message == "Not found." || message.contains("answered 404") {
@@ -1460,14 +1910,32 @@ fn day(value: &Value) -> String {
 fn project_line(project: &Value) -> String {
     let chats = project["counts"]["threads"].as_u64().unwrap_or(0);
     format!(
-        "{}  {}  {} chat{}  last activity {}  ({})",
+        "{}  {}  {} chat{}  last activity {}  ({}){}",
         project["name"].as_str().unwrap_or_default(),
         repositories_text(project),
         chats,
         if chats == 1 { "" } else { "s" },
         day(&project["updated_at"]),
         project["id"].as_str().unwrap_or_default(),
+        sharing_text(project),
     )
+}
+
+/// `  shared with 3 people, you're an editor` for a shared project (or
+/// one you aren't the owner of); nothing for a project only you are in.
+fn sharing_text(project: &Value) -> String {
+    let role = project["role"].as_str().unwrap_or("owner");
+    let shared = project["shared"] == json!(true);
+    if !shared && role == "owner" {
+        return String::new();
+    }
+    let people = project["members"].as_u64().unwrap_or(0);
+    let with = if people > 1 {
+        format!("shared with {people} people")
+    } else {
+        "shared".to_owned()
+    };
+    format!("  {with}, you're {}", role_phrase(role))
 }
 
 fn list_text(listed: &Value) -> String {
@@ -1513,6 +1981,16 @@ fn read_text(read: &Value) -> String {
 fn show_text(shown: &Value) -> String {
     let threads = shown["threads"].as_array().cloned().unwrap_or_default();
     let mut lines = vec![project_line(&shown["project"])];
+    if let Some(role) = shown["project"]["role"].as_str() {
+        let mut line = format!("You're {} of this project.", role_phrase(role));
+        if shown["project"]["shared"] == json!(true) {
+            line.push_str(&format!(
+                " See who else is in it with: openagents projects members {}",
+                shown["project"]["name"].as_str().unwrap_or_default()
+            ));
+        }
+        lines.push(line);
+    }
     let held = repositories(&shown["project"]);
     if held.len() > 1 {
         for (name, primary) in &held {
@@ -1796,6 +2274,70 @@ mod tests {
         assert_eq!(
             text,
             "  Finances  folder  https://drive.google.com/drive/folders/f1  (f1)"
+        );
+    }
+
+    #[test]
+    fn a_link_lasts_as_long_as_ttl_says() {
+        assert_eq!(duration_seconds("30m"), Ok(1_800));
+        assert_eq!(duration_seconds("12h"), Ok(43_200));
+        assert_eq!(duration_seconds("7d"), Ok(604_800));
+        assert_eq!(duration_seconds("90s"), Ok(90));
+        for wrong in ["", "7", "d", "0h", "7w", "-1d", "1.5h"] {
+            assert!(
+                duration_seconds(wrong)
+                    .unwrap_err()
+                    .contains("30m, 12h, or 7d"),
+                "{wrong}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_member_is_found_by_account_login_or_name_and_never_guessed() {
+        let members = vec![
+            json!({"account": "acct_1", "name": "Chris", "login": "chris", "role": "owner"}),
+            json!({"account": "acct_2", "name": "Sam", "login": "sam-a", "role": "editor"}),
+            json!({"account": "acct_3", "name": "Sam", "login": "sam-b", "role": "viewer"}),
+        ];
+        assert_eq!(find_member(&members, "acct_2").unwrap()["login"], "sam-a");
+        assert_eq!(
+            find_member(&members, "@SAM-B").unwrap()["account"],
+            "acct_3"
+        );
+        assert_eq!(find_member(&members, "chris").unwrap()["account"], "acct_1");
+        assert_eq!(
+            find_member(&members, "sam").unwrap_err(),
+            "Two members are called sam: acct_2 (Sam @sam-a), acct_3 (Sam @sam-b). Use the account id."
+        );
+        assert!(
+            find_member(&members, "pat")
+                .unwrap_err()
+                .contains("openagents projects members")
+        );
+    }
+
+    #[test]
+    fn a_shared_project_says_so_and_your_role() {
+        let mut shared = projects()[0].clone();
+        shared["role"] = json!("editor");
+        shared["shared"] = json!(true);
+        shared["members"] = json!(3);
+        assert!(
+            project_line(&shared)
+                .ends_with("(prj_aaaaaaaaaaaaaaaa)  shared with 3 people, you're an editor"),
+            "{}",
+            project_line(&shared)
+        );
+        let mut alone = projects()[0].clone();
+        alone["role"] = json!("owner");
+        alone["shared"] = json!(false);
+        alone["members"] = json!(1);
+        assert!(project_line(&alone).ends_with("(prj_aaaaaaaaaaaaaaaa)"));
+        let shown = show_text(&json!({"project": shared, "threads": []}));
+        assert!(
+            shown.contains("You're an editor of this project. See who else is in it with: openagents projects members finances"),
+            "{shown}"
         );
     }
 

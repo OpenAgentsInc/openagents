@@ -495,8 +495,28 @@ openagents projects files get PROJECT FILE [--output PATH]
 openagents projects files remove PROJECT FILE
 openagents projects notes add PROJECT --title T (--text TEXT | --file PATH)
 openagents projects sources list|add|remove PROJECT [LINK|ID]   # Drive sources (connections.md)
+openagents projects members PROJECT
+openagents projects invite PROJECT [--role editor|viewer] [--ttl 30m|12h|7d]
+openagents projects join LINK
+openagents projects role PROJECT ACCOUNT editor|viewer|owner
+openagents projects remove PROJECT ACCOUNT
+openagents projects leave PROJECT
 openagents chat send MESSAGE --project PROJECT
 ```
+
+Sharing ([#11590](https://github.com/OpenAgentsInc/openagents/issues/11590))
+uses the [members and invitations](#members-and-invitations) routes.
+`invite` prints the link once (`--ttl` becomes `expires_in`); `join`
+previews the link, then accepts it, and says who invited you. ACCOUNT is a
+member's account id, or their login or name as `members` prints it; a login
+or name two members share is refused with both named. `remove` with one
+argument removes the project; with a member's account it takes that member
+out. `list` marks shared projects with your role, and `show` prints your
+role. With `--json`, `members`, `invite`, `role`, `remove PROJECT ACCOUNT`,
+and `leave` print the website's answer (`members` with every page's
+members in `data` and the `project` beside them, `invite` with
+`project_name`); `join` prints
+`{invitation: <preview>, project: <Project>}`.
 
 `chat send --project` starts a new chat inside the project on openagents.com
 (working in its primary repository, or a plain chat with its instructions

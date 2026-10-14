@@ -7334,7 +7334,7 @@
     },
     {
       "name": "projects",
-      "summary": "Your openagents.com projects (the Projects list on the website): list, show one with its chats, add, remove, and private files.",
+      "summary": "Your openagents.com projects (the Projects list on the website): list, show one with its chats, add, remove, private files, and sharing with other people.",
       "children": [
         {
           "name": "list",
@@ -7781,7 +7781,8 @@
               "remove"
             ],
             "usage": [
-              "remove PROJECT [--detach-threads]"
+              "remove PROJECT [--detach-threads]",
+              "remove PROJECT ACCOUNT"
             ],
             "forms": [
               {
@@ -7800,9 +7801,195 @@
                     "optional": true
                   }
                 ]
+              },
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "remove"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PROJECT"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ACCOUNT"
+                  }
+                ]
               }
             ],
             "summary": "Remove a project. With chats in it, --detach-threads keeps them, outside any project.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "members",
+          "leaf": {
+            "path": [
+              "projects",
+              "members"
+            ],
+            "usage": [
+              "members PROJECT"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "members"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PROJECT"
+                  }
+                ]
+              }
+            ],
+            "summary": "Who is in the project and what each can do. The owner also sees the invitations nobody has used yet.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "invite",
+          "leaf": {
+            "path": [
+              "projects",
+              "invite"
+            ],
+            "usage": [
+              "invite PROJECT [--role editor|viewer] [--ttl DURATION]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "invite"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PROJECT"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "role",
+                    "value": "editor|viewer",
+                    "choices": [
+                      "editor",
+                      "viewer"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "ttl",
+                    "value": "DURATION",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Make a link that lets one person join, shown only this once. An editor (the default) adds chats, files, and notes; a viewer reads them. --ttl is how long the link works, like 30m, 12h, or 7d (the default), from 10 minutes to 30 days. Only the owner invites.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "join",
+          "leaf": {
+            "path": [
+              "projects",
+              "join"
+            ],
+            "usage": [
+              "join LINK"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "join"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "LINK"
+                  }
+                ]
+              }
+            ],
+            "summary": "Join a project with the invitation link (or its code) someone sent you.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "role",
+          "leaf": {
+            "path": [
+              "projects",
+              "role"
+            ],
+            "usage": [
+              "role PROJECT ACCOUNT ROLE"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "role"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PROJECT"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ACCOUNT"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ROLE"
+                  }
+                ]
+              }
+            ],
+            "summary": "Change what a member can do: ROLE is editor, viewer, or owner. ACCOUNT is their account id, or their login or name as members shows it. owner gives them the project, and you become an editor.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "leave",
+          "leaf": {
+            "path": [
+              "projects",
+              "leave"
+            ],
+            "usage": [
+              "leave PROJECT"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "leave"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PROJECT"
+                  }
+                ]
+              }
+            ],
+            "summary": "Leave a project someone shared with you.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -8212,6 +8399,25 @@
         {
           "kind": "option",
           "name": "detach-threads",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "role",
+          "value": "editor|viewer",
+          "choices": [
+            "editor",
+            "viewer"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "ttl",
+          "value": "DURATION",
+          "open": true,
           "optional": true,
           "repeated": true
         },
