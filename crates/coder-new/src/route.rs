@@ -205,8 +205,8 @@ pub fn plan(execution: &ExecutionSettings, has_key: bool, favor: Favor) -> Plan 
     if let Some(no_harness) = &execution.no_harness {
         let signed_in = match &execution.connections {
             Some(account) if crate::provider::gateway_open(account) => true,
-            Some(_) => {
-                notes.push("the OpenAgents account can't answer right now".to_owned());
+            Some(account) => {
+                notes.push(closed_gateway(account));
                 false
             }
             None => false,
@@ -254,7 +254,7 @@ pub fn plan(execution: &ExecutionSettings, has_key: bool, favor: Favor) -> Plan 
     let cheap = execution.cheap.is_some();
     match &execution.connections {
         Some(account) if crate::provider::gateway_open(account) => lanes.push(Lane::Gateway),
-        Some(_) => notes.push("the OpenAgents account can't answer right now".to_owned()),
+        Some(account) => notes.push(closed_gateway(account)),
         None => {}
     }
     lanes.push(Lane::Local);
@@ -280,6 +280,50 @@ pub fn plan(execution: &ExecutionSettings, has_key: bool, favor: Favor) -> Plan 
         lanes.sort_by_key(|lane| std::cmp::Reverse(lane.score(favor)));
     }
     Plan { lanes, notes }
+}
+
+/// Why the plan skipped `account`'s gateway: the 402's own "needs credit"
+/// sentence while a used-up allowance is held (#11640), else that the
+/// account can't answer.
+fn closed_gateway(account: &openagents_login::Saved) -> String {
+    crate::provider::gateway_needs_credit(account)
+        .unwrap_or_else(|| "the OpenAgents account can't answer right now".to_owned())
+}
+
+/// The variable that sets how long a fallback door may take to show its
+/// first sign of life, in seconds; `0` turns the limit off.
+pub const FIRST_EVENT_VAR: &str = "CODER_DOOR_FIRST_EVENT_SECS";
+
+/// The default for [`FIRST_EVENT_VAR`].
+pub const FIRST_EVENT_DEFAULT: u64 = 30;
+
+/// How long a fallback door (any door after the first) may take before
+/// its first sign of life — streamed text, thinking, a tool call, or
+/// usage — before `auto` stops it and tries the next one (#11640). A turn
+/// that can't run answers at once rather than waiting out a door that
+/// never starts. `None` when [`FIRST_EVENT_VAR`] is `0`.
+#[must_use]
+pub fn first_event_limit() -> Option<std::time::Duration> {
+    #[cfg(test)]
+    if let Some(limit) = TEST_FIRST_EVENT.with(std::cell::Cell::get) {
+        return limit;
+    }
+    first_event_limit_from(std::env::var(FIRST_EVENT_VAR).ok().as_deref())
+}
+
+#[cfg(test)]
+thread_local! {
+    /// A test's own first-event limit, on the thread that runs its turn,
+    /// so tests never set the process's environment.
+    pub(crate) static TEST_FIRST_EVENT: std::cell::Cell<Option<Option<std::time::Duration>>> =
+        const { std::cell::Cell::new(None) };
+}
+
+fn first_event_limit_from(value: Option<&str>) -> Option<std::time::Duration> {
+    let seconds = value
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .unwrap_or(FIRST_EVENT_DEFAULT);
+    (seconds > 0).then(|| std::time::Duration::from_secs(seconds))
 }
 
 /// The door a Coder-loop answer paid by `payer` came through.
@@ -338,8 +382,33 @@ impl Plan {
     /// `reasons` holds what each door said — skipped doors' notes first,
     /// then each tried door's failure — so a provider's own refusal text
     /// never reaches the person unframed.
+    /// When the OpenAgents gateway answered 402, its "needs credit"
+    /// sentence (how to pay included) leads, and the other doors follow
+    /// (#11640).
     #[must_use]
     pub fn explain(&self, reasons: &[String]) -> String {
+        if let Some(credit) = reasons
+            .iter()
+            .position(|reason| reason.contains(crate::provider::NEEDS_CREDIT))
+        {
+            let others: Vec<String> = reasons
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| *index != credit)
+                .map(|(_, reason)| reason.trim().trim_end_matches('.').trim_end().to_owned())
+                .filter(|reason| !reason.is_empty())
+                .collect();
+            let credit = reasons[credit].trim();
+            return if others.is_empty() {
+                credit.to_owned()
+            } else {
+                // Each door's reason may be a whole sentence of its own.
+                format!(
+                    "{credit} Nothing else here could answer either: {}.",
+                    others.join("; ")
+                )
+            };
+        }
         let reasons: Vec<String> = reasons
             .iter()
             .enumerate()
@@ -557,6 +626,45 @@ mod tests {
         let none = plan(&settings, true, BALANCED);
         assert!(none.lanes.is_empty());
         assert!(none.explain(&none.notes).contains("GEMINI_API_KEY"));
+    }
+
+    /// #11640: when the gateway answered 402, its needs-credit sentence
+    /// (with how to pay) leads the ending, and the other doors follow.
+    #[test]
+    fn a_402_leads_the_ending_with_how_to_pay() {
+        let plan = Plan {
+            lanes: vec![Lane::Gateway, Lane::OpenCode],
+            notes: vec![],
+        };
+        let credit = crate::provider::needs_credit(
+            "Today's free allowance is used up. Add credit or use your own key.",
+        );
+        let said = plan.explain(&[
+            credit.clone(),
+            "OpenCode didn't start answering within 30 seconds".to_owned(),
+        ]);
+        assert!(said.starts_with(&credit), "{said}");
+        assert!(said.contains("openagents.com"), "{said}");
+        assert!(said.contains("OpenCode didn't start answering"), "{said}");
+        assert!(!said.contains(".."), "{said}");
+        assert_eq!(plan.explain(std::slice::from_ref(&credit)), credit);
+    }
+
+    /// #11640: fallback doors get 30 s to their first sign of life by
+    /// default; the variable sets another limit, and `0` turns it off.
+    #[test]
+    fn the_first_event_limit_defaults_to_thirty_seconds() {
+        use std::time::Duration;
+        assert_eq!(first_event_limit_from(None), Some(Duration::from_secs(30)));
+        assert_eq!(
+            first_event_limit_from(Some("20")),
+            Some(Duration::from_secs(20))
+        );
+        assert_eq!(first_event_limit_from(Some("0")), None);
+        assert_eq!(
+            first_event_limit_from(Some("soon")),
+            Some(Duration::from_secs(30))
+        );
     }
 
     /// A door's reason that is a whole sentence ends the list once, not

@@ -1866,14 +1866,20 @@ async fn auto_route(
     let favor = execution.favor;
     let plan = crate::route::plan(&execution, !key.expose().is_empty(), favor);
     let mut reasons = plan.notes.clone();
-    for lane in plan.lanes.clone() {
+    let first_event = crate::route::first_event_limit();
+    for (index, lane) in plan.lanes.clone().into_iter().enumerate() {
         if cancel.load(Ordering::Relaxed) {
             break;
         }
         let started = AtomicBool::new(false);
+        // Any sign the door is working: its first words, thinking, a tool
+        // call, or usage. A fallback door without one in time is stopped
+        // (#11640).
+        let alive = AtomicBool::new(false);
         let mut text = |delta: &str| {
             if !delta.is_empty() {
                 started.store(true, Ordering::Relaxed);
+                alive.store(true, Ordering::Relaxed);
             }
             text_callback(delta);
         };
@@ -1884,17 +1890,39 @@ async fn auto_route(
             ) {
                 started.store(true, Ordering::Relaxed);
             }
+            if sign_of_life(&event) {
+                alive.store(true, Ordering::Relaxed);
+            }
             event_callback(event);
+        };
+        // The door runs on its own cancel flag, so a door stopped for
+        // showing no life doesn't cancel the turn's next door.
+        let door_cancel = Arc::new(AtomicBool::new(false));
+        let limit = first_event.filter(|_| index > 0);
+        let late = || {
+            let seconds = limit.map_or(0, |limit| limit.as_secs());
+            format!(
+                "{} didn't start answering within {seconds} second{}",
+                lane.name(),
+                if seconds == 1 { "" } else { "s" }
+            )
         };
         let result: Result<Streamed, String> = match lane {
             crate::route::Lane::Gateway => {
-                match gateway_turn(
-                    &messages,
-                    &execution,
+                match watched(
+                    gateway_turn(
+                        &messages,
+                        &execution,
+                        &door_cancel,
+                        &mut text,
+                        model_callback,
+                        &mut events,
+                    ),
                     cancel,
-                    &mut text,
-                    model_callback,
-                    &mut events,
+                    &door_cancel,
+                    &alive,
+                    limit,
+                    late,
                 )
                 .await
                 {
@@ -1929,48 +1957,72 @@ async fn auto_route(
                 }
             }
             crate::route::Lane::Local => {
-                match local_turn(
-                    id,
-                    messages.clone(),
-                    execution.clone(),
-                    None,
+                watched(
+                    async {
+                        match local_turn(
+                            id,
+                            messages.clone(),
+                            execution.clone(),
+                            None,
+                            &door_cancel,
+                            &mut text,
+                            model_callback,
+                            &mut events,
+                        )
+                        .await
+                        {
+                            Update::Finished { result, .. } => result,
+                            _ => unreachable!(),
+                        }
+                    },
                     cancel,
-                    &mut text,
-                    model_callback,
-                    &mut events,
+                    &door_cancel,
+                    &alive,
+                    limit,
+                    late,
                 )
                 .await
-                {
-                    Update::Finished { result, .. } => result,
-                    _ => unreachable!(),
-                }
             }
             crate::route::Lane::OpenCode => {
-                opencode_turn(
-                    &messages,
-                    &execution,
+                watched(
+                    opencode_turn(
+                        &messages,
+                        &execution,
+                        &door_cancel,
+                        &mut text,
+                        model_callback,
+                        &mut events,
+                    ),
                     cancel,
-                    &mut text,
-                    model_callback,
-                    &mut events,
+                    &door_cancel,
+                    &alive,
+                    limit,
+                    late,
                 )
                 .await
             }
             crate::route::Lane::GeminiKey => {
-                gemini_turn(
-                    &messages,
-                    &execution,
+                watched(
+                    gemini_turn(
+                        &messages,
+                        &execution,
+                        &door_cancel,
+                        &mut text,
+                        model_callback,
+                        &mut events,
+                    ),
                     cancel,
-                    &mut text,
-                    model_callback,
-                    &mut events,
+                    &door_cancel,
+                    &alive,
+                    limit,
+                    late,
                 )
                 .await
             }
             crate::route::Lane::OpenRouter => match create(openrouter::ApiKey::new(key.expose())) {
                 Ok(provider) => {
-                    provider
-                        .chat_with_plugins(
+                    watched(
+                        provider.chat_with_plugins(
                             crate::route::openrouter_model(favor, execution.cheap.is_some()),
                             &options,
                             messages.clone(),
@@ -1978,9 +2030,15 @@ async fn auto_route(
                             &mut text,
                             model_callback,
                             &mut events,
-                            cancel,
-                        )
-                        .await
+                            &door_cancel,
+                        ),
+                        cancel,
+                        &door_cancel,
+                        &alive,
+                        limit,
+                        late,
+                    )
+                    .await
                 }
                 Err(error) => Err(error),
             },
@@ -2004,6 +2062,70 @@ async fn auto_route(
     Update::Finished {
         id,
         result: Err(plan.explain(&reasons)),
+    }
+}
+
+/// Whether `event` shows a door working (#11640): its words or thinking,
+/// a tool call, a delegation, tokens spent, or a model attempt that
+/// answered. A door naming its model or harness, opening an attempt, or
+/// judging a step whose model never answered (the Coder loop retrying an
+/// unreachable cloud reports such steps with zero tokens) has not yet
+/// shown it can answer.
+fn sign_of_life(event: &RuntimeEvent) -> bool {
+    match event {
+        RuntimeEvent::Text(text) | RuntimeEvent::ThinkingText(text) => !text.is_empty(),
+        RuntimeEvent::Thinking(started) => *started,
+        RuntimeEvent::Tokens(tokens) => *tokens > 0,
+        RuntimeEvent::Usage(usage) => usage.prompt_tokens + usage.completion_tokens > 0,
+        RuntimeEvent::Tool { .. } | RuntimeEvent::Delegation { .. } => true,
+        RuntimeEvent::Attempt(attempt) => {
+            attempt.outcome == crate::bundled_runtime::AttemptOutcome::Answered
+        }
+        RuntimeEvent::Progress { .. }
+        | RuntimeEvent::Model(_)
+        | RuntimeEvent::Harness(_)
+        | RuntimeEvent::Plan(_) => false,
+    }
+}
+
+/// Runs one door's `work`, which watches `door_cancel`: the turn's
+/// `cancel` is passed on to it, and with `limit` (a fallback door,
+/// #11640) a door that shows no sign of life (`alive`) in time is
+/// stopped and answers `Err(late())`, so the route's next door, or the
+/// turn's ending, comes at once instead of after the door gives up.
+async fn watched<T>(
+    work: impl std::future::Future<Output = Result<T, String>>,
+    cancel: &AtomicBool,
+    door_cancel: &AtomicBool,
+    alive: &AtomicBool,
+    limit: Option<std::time::Duration>,
+    late: impl FnOnce() -> String,
+) -> Result<T, String> {
+    tokio::pin!(work);
+    let started = std::time::Instant::now();
+    loop {
+        tokio::select! {
+            result = &mut work => return result,
+            () = tokio::time::sleep(std::time::Duration::from_millis(50)) => {
+                if cancel.load(Ordering::Relaxed) {
+                    door_cancel.store(true, Ordering::Relaxed);
+                }
+                let silent = limit.is_some_and(|limit| {
+                    !alive.load(Ordering::Relaxed) && started.elapsed() >= limit
+                });
+                if silent && !cancel.load(Ordering::Relaxed) {
+                    door_cancel.store(true, Ordering::Relaxed);
+                    // A moment for the door to stop its process; then it
+                    // is dropped.
+                    if let Ok(Ok(answer)) =
+                        tokio::time::timeout(std::time::Duration::from_secs(5), &mut work).await
+                    {
+                        return Ok(answer);
+                    }
+                    return Err(late());
+                }
+            }
+        }
     }
 }
 
@@ -2265,8 +2387,10 @@ async fn local_turn(
                 &task, &execution.cwd, plan.login, &plan.model, plan.effort, client,
                 &execution.redaction_keys, &cancel, &mut events,
             ).await?,
+            // A Claude Code that isn't signed in is left out at once, never
+            // started to wait on a login (#11640).
             None => crate::bundled_runtime::microcoder_local(
-                &task, &execution.cwd, false, execution.claude, execution.cheap.is_some(), client, &execution.redaction_keys,
+                &task, &execution.cwd, false, execution.claude && (cfg!(test) || crate::claude::available()), execution.cheap.is_some(), client, &execution.redaction_keys,
                 &cancel, &mut events,
             ).await?,
         };
@@ -2854,10 +2978,12 @@ mod tests {
                 _ => None,
             })
             .expect("the turn ends with an error");
+        // The 402 leads, with how to pay (#11640).
         assert!(
-            error.contains("couldn't find a model that can answer"),
+            error.starts_with("Your OpenAgents account needs credit"),
             "{error}"
         );
+        assert!(error.contains("Add credit at openagents.com"), "{error}");
         assert!(error.contains("free allowance"), "{error}");
         assert!(error.contains("OpenRouter"), "{error}");
         // No vendor's own refusal text reaches the person.
@@ -2868,6 +2994,103 @@ mod tests {
             &origin,
             "sess_gateway_out"
         )));
+    }
+
+    /// #11640: the gateway answers 402 and the next door (an OpenCode
+    /// that never answers) shows no sign of life: the door is stopped at
+    /// its first-event limit, and the turn ends at once with the 402's
+    /// own "needs credit" sentence and how to pay — never a wait until
+    /// the door gives up.
+    #[test]
+    #[cfg(unix)]
+    fn a_402_then_a_silent_fallback_door_ends_at_once_with_how_to_pay() {
+        use std::os::unix::fs::PermissionsExt;
+        let (gateway, gateway_base) = fixture_listener();
+        let origin = gateway_base.trim_end_matches("/api/v1").to_owned();
+        let gateway_server = thread::spawn(move || {
+            let mut socket = accept(&gateway);
+            read_request(&mut socket);
+            let body = r#"{"error":{"code":402,"message":"Today's free allowance is used up. Add credit or use your own key."}}"#;
+            write!(
+                socket,
+                "HTTP/1.1 402 Payment Required\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+        });
+        // An OpenCode that starts and never says anything.
+        let bin = tempfile::tempdir().unwrap();
+        let silent = bin.path().join("opencode");
+        std::fs::write(&silent, "#!/bin/sh\nexec sleep 30\n").unwrap();
+        std::fs::set_permissions(&silent, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let mut turn = auto_turn("sess_gateway_402_silent", &origin);
+        if let Work::Chat { execution, .. } = &mut turn.kind {
+            execution.agents = vec![crate::bundled_runtime::AcpAgent {
+                id: "opencode".into(),
+                name: "OpenCode".into(),
+                program: silent.clone(),
+                transport: Default::default(),
+                arguments: vec![],
+                mode: None,
+                enabled: true,
+            }];
+        }
+        let (sender, receiver) = mpsc::channel();
+        let (_cancel, canceled) = oneshot::channel();
+        crate::route::TEST_FIRST_EVENT.with(|limit| limit.set(Some(Some(Duration::from_secs(1)))));
+        let began = Instant::now();
+        run_with_provider(turn, sender, canceled, |_| {
+            Err("No OpenRouter key here.".to_owned())
+        });
+        let took = began.elapsed();
+        crate::route::TEST_FIRST_EVENT.with(|limit| limit.set(None));
+        gateway_server.join().unwrap();
+        let error = receiver
+            .try_iter()
+            .find_map(|update| match update {
+                Update::Finished {
+                    result: Err(error), ..
+                } => Some(error),
+                _ => None,
+            })
+            .expect("the turn ends with an error");
+        assert!(took < Duration::from_secs(15), "the turn waited {took:?}");
+        assert!(
+            error.starts_with("Your OpenAgents account needs credit (HTTP 402)"),
+            "{error}"
+        );
+        assert!(error.contains("Add credit or use your own key"), "{error}");
+        assert!(error.contains("Add credit at openagents.com"), "{error}");
+        assert!(
+            error.contains("OpenCode didn't start answering within 1 second"),
+            "{error}"
+        );
+    }
+
+    /// #11640: a door that only names its model, or whose failed steps
+    /// report zero tokens (the cloud's retry loop), shows no life; words,
+    /// thinking, tools, and spent tokens do.
+    #[test]
+    fn only_real_output_is_a_sign_of_life() {
+        assert!(!sign_of_life(&RuntimeEvent::Tokens(0)));
+        assert!(!sign_of_life(&RuntimeEvent::Model(
+            "openagents-cloud".into()
+        )));
+        assert!(!sign_of_life(&RuntimeEvent::Text(String::new())));
+        assert!(!sign_of_life(&RuntimeEvent::Thinking(false)));
+        assert!(!sign_of_life(&RuntimeEvent::Progress {
+            step: 3,
+            complete: None,
+        }));
+        assert!(sign_of_life(&RuntimeEvent::Tokens(12)));
+        assert!(sign_of_life(&RuntimeEvent::Text("Hi".into())));
+        assert!(sign_of_life(&RuntimeEvent::Thinking(true)));
+        assert!(sign_of_life(&RuntimeEvent::Tool {
+            name: "Run".into(),
+            input: Value::Null,
+            output: Value::Null,
+            running: true,
+        }));
     }
 
     /// A gateway failure after the turn already streamed is handed off

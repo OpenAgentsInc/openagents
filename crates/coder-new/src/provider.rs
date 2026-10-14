@@ -68,8 +68,14 @@ static GATEWAY_REFUSED: std::sync::Mutex<std::collections::BTreeSet<String>> =
 /// instead of asking again every prompt. A short hold, not the day, so
 /// credit added mid-session takes effect on the next turns.
 /// Kept per sign-in, like [`GATEWAY_REFUSED`].
-static GATEWAY_EXHAUSTED: std::sync::Mutex<std::collections::BTreeMap<String, u64>> =
+/// Each hold keeps the sentence the 402 gave ([`needs_credit`]), so a
+/// later turn that skips the gateway still says why and how to pay.
+static GATEWAY_EXHAUSTED: std::sync::Mutex<std::collections::BTreeMap<String, (u64, String)>> =
     std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+/// The words every "needs credit" sentence carries, which
+/// [`crate::route::Plan::explain`] leads with when no door answered.
+pub(crate) const NEEDS_CREDIT: &str = "needs credit (HTTP 402)";
 
 /// How long a used-up allowance holds before the gateway is tried again.
 const GATEWAY_EXHAUSTED_HOLD: u64 = 30 * 60;
@@ -84,7 +90,7 @@ pub fn gateway_open(account: &openagents_login::Saved) -> bool {
         return false;
     }
     GATEWAY_EXHAUSTED.lock().map_or(true, |mut exhausted| {
-        match exhausted.get(account.token()).copied() {
+        match exhausted.get(account.token()).map(|(until, _)| *until) {
             Some(until) if until > gateway_now() => false,
             Some(_) => {
                 exhausted.remove(account.token());
@@ -93,6 +99,17 @@ pub fn gateway_open(account: &openagents_login::Saved) -> bool {
             None => true,
         }
     })
+}
+
+/// The sentence the gateway's 402 gave `account`, while the used-up
+/// allowance is held and `auto` skips the gateway.
+#[must_use]
+pub fn gateway_needs_credit(account: &openagents_login::Saved) -> Option<String> {
+    let exhausted = GATEWAY_EXHAUSTED.lock().ok()?;
+    exhausted
+        .get(account.token())
+        .filter(|(until, _)| *until > gateway_now())
+        .map(|(_, credit)| credit.clone())
 }
 
 fn gateway_now() -> u64 {
@@ -594,9 +611,15 @@ impl Provider {
                             }
                             if matches!(error, openrouter::Error::Api { status: 402, .. }) {
                                 if let Ok(mut exhausted) = GATEWAY_EXHAUSTED.lock() {
+                                    let credit = match &error {
+                                        openrouter::Error::Api { message, .. } => {
+                                            needs_credit(message)
+                                        }
+                                        _ => needs_credit(""),
+                                    };
                                     exhausted.insert(
                                         self.key.expose().to_owned(),
-                                        gateway_now() + GATEWAY_EXHAUSTED_HOLD,
+                                        (gateway_now() + GATEWAY_EXHAUSTED_HOLD, credit),
                                     );
                                 }
                             }
@@ -1698,11 +1721,37 @@ fn gemini_error(error: openrouter::Error) -> String {
         .replace("OpenRouter", "the Gemini API")
 }
 
+/// What a 402 from the OpenAgents gateway tells the person: the account
+/// needs credit, in the gateway's own words when it sent a sentence (such
+/// as "Today's free allowance is used up. Add credit or use your own
+/// key."), and how to pay. A bare code such as `insufficient_quota` is
+/// never shown.
+pub(crate) fn needs_credit(message: &str) -> String {
+    let said = message.trim();
+    let sentence = said.contains(' ')
+        && said.len() <= 300
+        && !said.contains(['{', '}', '<'])
+        && said.chars().next().is_some_and(char::is_alphabetic);
+    let said = if sentence {
+        said.trim_end_matches('.')
+    } else {
+        "Today's free allowance is used up"
+    };
+    format!(
+        "Your OpenAgents account {NEEDS_CREDIT}: {said}. Add credit at openagents.com, or choose a model on your own OpenRouter key in /models."
+    )
+}
+
 /// A failure from the OpenAgents gateway (`auto`), named as ours rather
 /// than OpenRouter's, which it is not.
 fn gateway_error(error: openrouter::Error) -> String {
-    if let openrouter::Error::Api { status: 402, .. } = error {
-        return "Today's free allowance on OpenAgents is used up (HTTP 402). Add credit at openagents.com, or choose a model on your own OpenRouter key in /models.".into();
+    if let openrouter::Error::Api {
+        status: 402,
+        message,
+        ..
+    } = &error
+    {
+        return needs_credit(message);
     }
     stream_error(error).replace("OpenRouter", "OpenAgents")
 }
@@ -4208,5 +4257,29 @@ mod gateway_error_tests {
             "{bad}"
         );
         assert!(super::gateway_error(error(402)).contains("free allowance"));
+    }
+
+    /// #11640: a 402 says the account needs credit, in the gateway's own
+    /// sentence when it sent one, and how to pay; a bare code never shows.
+    #[test]
+    fn a_402_says_the_account_needs_credit_and_how_to_pay() {
+        let refusal = |message: &str| openrouter::Error::Api {
+            kind: openrouter::ApiErrorKind::of(402),
+            status: 402,
+            message: message.into(),
+            retry_after: None,
+            body: String::new(),
+        };
+        let said = super::gateway_error(refusal(
+            "Today's free allowance is used up. Add credit or use your own key.",
+        ));
+        assert!(said.contains(super::NEEDS_CREDIT), "{said}");
+        assert!(said.contains("Add credit or use your own key"), "{said}");
+        assert!(said.contains("openagents.com"), "{said}");
+        assert!(!said.contains(".."), "{said}");
+        let coded = super::gateway_error(refusal("insufficient_quota"));
+        assert!(coded.contains(super::NEEDS_CREDIT), "{coded}");
+        assert!(coded.contains("free allowance"), "{coded}");
+        assert!(!coded.contains("insufficient_quota"), "{coded}");
     }
 }
