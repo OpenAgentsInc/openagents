@@ -5,14 +5,22 @@
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "sh \"$CLAUDE_PROJECT_DIR/scripts/dev/agent-run-hook.sh\" session-start", "timeout": 15 }
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/scripts/dev/agent-run-hook.sh\" session-start",
+            "timeout": 15
+          }
         ]
       }
     ],
     "SessionEnd": [
       {
         "hooks": [
-          { "type": "command", "command": "sh \"$CLAUDE_PROJECT_DIR/scripts/dev/agent-run-hook.sh\" session-end", "timeout": 15 }
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/scripts/dev/agent-run-hook.sh\" session-end",
+            "timeout": 15
+          }
         ]
       }
     ],
@@ -20,49 +28,11 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "sh \"$CLAUDE_PROJECT_DIR/scripts/dev/agent-run-hook.sh\" bash-post", "timeout": 15 }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Agent|Workflow",
-        "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/dev/agent-gate.sh\" pre",
-            "timeout": 20,
-            "statusMessage": "Checking the shared Claude login's capacity"
+            "command": "sh \"$CLAUDE_PROJECT_DIR/scripts/dev/agent-run-hook.sh\" bash-post",
+            "timeout": 15
           }
-        ]
-      }
-    ],
-    "SubagentStart": [
-      {
-        "hooks": [
-          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/dev/agent-gate.sh\" start", "timeout": 10 }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/dev/agent-gate.sh\" stop", "timeout": 10 }
-        ]
-      }
-    ],
-    "StopFailure": [
-      {
-        "hooks": [
-          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/dev/agent-gate.sh\" limit", "timeout": 20 }
-        ]
-      }
-    ],
-    "PostToolUseFailure": [
-      {
-        "matcher": "Agent|Workflow",
-        "hooks": [
-          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/dev/agent-gate.sh\" limit", "timeout": 20 }
         ]
       }
     ]
