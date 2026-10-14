@@ -1,0 +1,44 @@
+# Build the Solver dispatcher binary (`oa-solver-box`, crates/solver-box) for
+# the dispatcher host (#11559, docs/cloud/solver-on-gcp.md) from a
+# commit on GitHub, and put it at
+# gs://openagentsgemini-coder-artifacts/oa-solver-box/COMMIT/ with its
+# systemd unit and start script.
+#   gcloud builds submit --no-source --config deploy/solver-box/dispatcher/cloudbuild.yaml \
+#     --substitutions _COMMIT=$(git rev-parse origin/main) --project openagentsgemini --region us-central1 \
+#     --service-account projects/openagentsgemini/serviceAccounts/oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com \
+#     --gcs-log-dir gs://openagentsgemini-oa-mvp-cloud-build-logs/oa-solver-box
+# Built on Debian trixie, the host's release.
+substitutions:
+  _COMMIT: ''
+  _DEST: gs://openagentsgemini-coder-artifacts/oa-solver-box
+steps:
+  - name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -e
+        git init -q src && cd src
+        git fetch -q --depth 1 https://github.com/OpenAgentsInc/openagents.git ${_COMMIT}
+        git checkout -q FETCH_HEAD
+        rm -rf .git
+  - name: rust:1.97.1-slim-trixie
+    dir: src
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -e
+        apt-get update -qq
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends pkg-config libssl-dev protobuf-compiler clang cmake > /dev/null
+        cargo build --release -p solver-box --bin oa-solver-box
+        strip target/release/oa-solver-box
+        mkdir -p /workspace/out
+        cp target/release/oa-solver-box /workspace/out/oa-solver-box
+        cp deploy/solver-box/dispatcher/oa-solver-dispatch-start deploy/solver-box/dispatcher/oa-solver-dispatch.service /workspace/out/
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args: [storage, cp, '/workspace/out/*', '${_DEST}/${_COMMIT}/']
+options:
+  machineType: E2_HIGHCPU_32
+timeout: 3600s

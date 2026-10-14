@@ -1,0 +1,17 @@
+#!/bin/sh
+# Reads the dispatcher's secrets from Secret Manager (the host's service
+# account) into this process's environment only, never a file, and starts
+# the dispatcher. Run by oa-solver-dispatch.service.
+set -eu
+secret() {
+    gcloud secrets versions access latest --secret "$1" --project openagentsgemini --quiet
+}
+BOAT_API_KEY=$(secret oa-boat-api-key)
+OA_WORK_HOST_TOKEN=$(secret openagents-work-host-token)
+# The pool's GitHub token, only for requesters who have not connected GitHub.
+OA_SOLVER_GH_TOKEN=$(secret coder-pool-git-token)
+export BOAT_API_KEY OA_WORK_HOST_TOKEN OA_SOLVER_GH_TOKEN
+exec /opt/oa-solver/oa-solver-box --serve --metadata-token \
+    --site "${OA_SOLVER_SITE:-https://openagents.com}" \
+    --name "${OA_SOLVER_HOST_NAME:-$(hostname -s)}" \
+    --slots "${OA_SOLVER_SLOTS:-2}"

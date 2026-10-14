@@ -1,0 +1,27 @@
+# The Solver dispatcher (#11559): takes "Solver in the cloud" runs from
+# openagents.com and runs each on a box. Installed by startup.sh on the
+# dispatcher host; see docs/cloud/solver-on-gcp.md.
+[Unit]
+Description=Solver in the cloud dispatcher (oa-solver-box --serve)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+RuntimeDirectory=oa-solver-dispatch
+RuntimeDirectoryMode=0700
+Environment=HOME=/run/oa-solver-dispatch
+Environment=CLOUDSDK_CONFIG=/run/oa-solver-dispatch/gcloud
+Environment=BOAT_API_BASE=https://oa-boat-157437760789.us-central1.run.app/api/v1
+ExecStart=/opt/oa-solver/oa-solver-dispatch-start
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=0
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

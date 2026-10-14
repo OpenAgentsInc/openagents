@@ -294,9 +294,18 @@ impl Dispatcher {
             };
             match site.claim().await {
                 Ok(Some(claimed)) => {
+                    // Which GitHub token the run uses (never the token).
                     eprintln!(
-                        "{}: run {} ({}#{})",
-                        site.name, claimed.id, claimed.repo, claimed.issue
+                        "{}: run {} ({}#{}) with {}",
+                        site.name,
+                        claimed.id,
+                        claimed.repo,
+                        claimed.issue,
+                        if claimed.github_token.is_some() {
+                            "the requester's GitHub token"
+                        } else {
+                            "the pool's GitHub token"
+                        }
                     );
                     let (this, site) = (self.clone(), site.clone());
                     running.spawn(async move {
