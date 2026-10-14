@@ -6,7 +6,7 @@ const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIREC
 [--chat-store DIRECTORY | --chat-bucket BUCKET] [--vault-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--icecream DIRECTORY] [--att DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
 [--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR [--cloud-byo-keys PRIVATE_JSON]] [--pilot-config PRIVATE_JSON] \
 [--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-app PRIVATE_JSON] [--github-redirect URL] \
-[--plan-meter PRIVATE_FILE] [--plan-checkout PLAN] [--own-runs-token PRIVATE_FILE]";
+[--plan-meter PRIVATE_FILE] [--plan-checkout PLAN] [--own-runs-token PRIVATE_FILE] [--local-downloads ~/Downloads]";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -44,6 +44,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--chat-build" => config.chat_build = Some(PathBuf::from(value)),
             "--customer" => config.customer = Some(PathBuf::from(value)),
             "--listen" => listen = value.parse().map_err(|_| USAGE)?,
+            // A chat's /export saves into this computer's Downloads folder
+            // (#11615): the local stack only, and only that folder.
+            "--local-downloads" => {
+                let downloads = user_home::home_dir()
+                    .map_err(|_| "--local-downloads: no home folder")?
+                    .join("Downloads");
+                if value != "~/Downloads" && PathBuf::from(&value) != downloads {
+                    return Err("--local-downloads takes ~/Downloads only".into());
+                }
+                config.downloads = Some(downloads);
+            }
             "--public-host" => config.public_hosts.push(value),
             "--studio-host" => config.studio_hosts.push(value),
             "--pay-host" => pay_host = Some(value),
@@ -251,6 +262,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     config.chat = std::sync::Arc::new(worker);
     config.port = listen.port();
+    if config.downloads.is_some() && !listen.ip().is_loopback() {
+        return Err("--local-downloads needs a loopback --listen address".into());
+    }
     // A public deployment is served over HTTPS behind its proxy.
     config.secure_cookies = !config.public_hosts.is_empty();
     if config.secure_cookies && !shared_chats {

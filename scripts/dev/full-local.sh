@@ -26,7 +26,8 @@
 #                  the chat and component Wasm builds, and /environments when
 #                  ~/work/.secrets/boat.env and a Codex login exist
 #                  (FULL_LOCAL_ENVIRONMENTS=0 turns it off; real Boat
-#                  machines cost money).
+#                  machines cost money). A chat's /export saves into
+#                  ~/Downloads (--local-downloads) and copies the path.
 #   coder          $FULL_LOCAL/bin/coder: this checkout's coder-new, pointed at
 #                  the website (OPENAGENTS_ORIGIN) with its own state folder,
 #                  so `coder login` and /sync on never touch your real Coder.
@@ -458,7 +459,8 @@ EOF
             --store "$state/tasks" --chat-store "$state/chats" \
             --cloud-config "$state/cloud.json" --github-oauth "$oauth" \
             --cloud-byo "$state/byo" --cloud-byo-keys "$keyring" \
-            --plan-meter "$state/plan-meter.sqlite" "$@" > "$logs/web.log" 2>&1
+            --plan-meter "$state/plan-meter.sqlite" --local-downloads "$HOME/Downloads" \
+            "$@" > "$logs/web.log" 2>&1
     ) &
     echo $! > "$run/web.pid"
     if ! wait_http "http://127.0.0.1:$web_port/health" 120; then

@@ -228,11 +228,12 @@ async fn every_public_page_answers_in_development() {
         // (UI-09: the homepage renders through `UiPage`). The live map loads
         // its own single script. The home and download pages also load the
         // site's own counting script (`/static/a.js`, #11153), and the
-        // home composer its files script (`/chat/files.js`, #11174).
+        // home composer its files script (`/chat/files.js`, #11174) and its
+        // `/export` script (`/chat/export.js`, #11615).
         let script = uri == "/" || uri == "/live" || uri == "/download";
         assert_eq!(
             scripts(&lower),
-            if uri == "/" { 8 } else { usize::from(script) },
+            if uri == "/" { 9 } else { usize::from(script) },
             "{uri} runs a script"
         );
         if uri == "/" || uri == "/download" {

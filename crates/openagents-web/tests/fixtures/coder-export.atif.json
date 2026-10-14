@@ -1,0 +1,80 @@
+{
+  "schema_version": "ATIF-v1.8",
+  "session_id": "20261014T125648Z-db897880",
+  "trajectory_id": "20261014T125648Z-db897880",
+  "agent": {
+    "name": "openagents-coder",
+    "version": "1.0.0-rc.12",
+    "model_name": "google/gemini-4-argon",
+    "extra": { "door": "coder-new" }
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-10-14T12:56:48.916Z",
+      "source": "user",
+      "message": "who are you"
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-10-14T12:56:52.263Z",
+      "source": "agent",
+      "message": "I am Coder, made by OpenAgents.",
+      "model_name": "google/gemini-4-argon",
+      "metrics": { "prompt_tokens": 3712, "completion_tokens": 13 },
+      "extra": { "duration_ms": 3564 }
+    },
+    {
+      "step_id": 3,
+      "timestamp": "2026-10-14T13:00:20.563Z",
+      "source": "agent",
+      "message": "",
+      "model_name": "google/gemini-4-argon",
+      "tool_calls": [
+        {
+          "tool_call_id": "call-3",
+          "function_name": "read_file",
+          "arguments": { "path": "Cargo.toml" },
+          "extra": { "running": false }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call-3",
+            "content": "{\"text\":\"[workspace]\"}",
+            "extra": { "status": "completed", "duration_ms": 4 }
+          }
+        ]
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 3712,
+    "total_completion_tokens": 13,
+    "total_steps": 3,
+    "extra": {
+      "door": "coder-new",
+      "calls_total": 1,
+      "tool_calls_total": 1,
+      "tool_calls_failed": 0,
+      "decision_calls": { "total": 0, "by_name": [] },
+      "reads_total": 0,
+      "search_calls_total": 0,
+      "largest_tool_result_chars": 22,
+      "median_inter_round_text_chars": 31,
+      "wall_seconds": 4,
+      "waste": { "repeated_calls": 0, "wasted_ms": 0, "repeated": [] },
+      "reported_total_tokens": 3725,
+      "model_calls": 1
+    }
+  },
+  "extra": {
+    "exporter": "openagents.atif.v1",
+    "exported_at": "2026-10-14T13:02:17.357Z",
+    "repository": "/home/person/project",
+    "directive": "who are you",
+    "state": "ended",
+    "timestamps": "observed"
+  }
+}

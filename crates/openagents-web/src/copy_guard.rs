@@ -122,6 +122,7 @@ fn site_sources_have_no_machine_talk() {
     for script in [
         "chat.js",
         "chat-start.js",
+        "chat-export.js",
         "components-start.js",
         "flow.js",
         "everglade.js",

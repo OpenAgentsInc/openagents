@@ -23,6 +23,8 @@ pub(crate) fn head() -> Markup {
         // Files in the composer (#11174): paste, drop, or pick. Their
         // styles are in `/static/ui.css` (`openagents-ui`'s chat-files.css).
         script src=(crate::chat_files::SCRIPT_PATH) defer {}
+        // `/export` in the composer (#11615).
+        script src=(crate::chat_export::SCRIPT_PATH) defer {}
         script src=(crate::analytics::SCRIPT) defer {}
     }
 }

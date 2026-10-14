@@ -27,6 +27,7 @@ mod api_keys;
 pub mod ask;
 mod auth;
 pub mod backend;
+mod chat_export;
 mod chat_files;
 mod chat_html;
 mod chat_owner;
@@ -408,6 +409,11 @@ pub struct Config {
     /// its routes under `/v1/w/`, its workers, and with
     /// `OPENAGENTS_WEB_MAC_JOBS_ACTORS=1` the Mac jobs. Absent, none of it.
     pub actors: Option<Arc<actors_host::Host>>,
+    /// The local stack's Downloads folder (`--local-downloads`, loopback
+    /// only): a chat's `/export` saves there for a request to the local
+    /// address (#11615, [`chat_export`]). Absent, nothing is saved on the
+    /// server and the browser downloads the file.
+    pub downloads: Option<PathBuf>,
 }
 
 impl Config {
@@ -457,6 +463,7 @@ impl Config {
             staging_push: None,
             shutdown: shutdown::Shutdown::default(),
             actors: None,
+            downloads: None,
         }
     }
 }
@@ -516,6 +523,7 @@ pub fn router(config: Config) -> Router {
         .merge(components::routes())
         .merge(chat_html::routes())
         .merge(chat_files::routes())
+        .merge(chat_export::routes())
         .merge(composer::routes())
         .merge(composer_row::routes())
         .merge(demo::routes())

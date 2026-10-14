@@ -148,6 +148,8 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     ("/chat/{id}/work-offer/{index}", "part of a chat page"),
     ("/chat/{id}/messages/{index}/original", "a message as text"),
     ("/chat/{id}/files/{file}", "a file"),
+    ("/chat/{id}/export", "a download"),
+    ("/chat/export.js", "a script"),
     ("/chat/{id}/captures/{ask}", "an image"),
     ("/composer/*", "part of the composer"),
     ("/demo/{chat}/thread", "part of a demo page"),

@@ -1194,6 +1194,7 @@ pub(crate) fn terminal_composer(
         .autofocus(true)
         .after(html! {
             (hidden)
+            (crate::chat_export::panel())
             p #chat-feedback.oa-composer-feedback role="status" aria-live="polite" {}
         });
     match notice {
@@ -3095,7 +3096,9 @@ pub(crate) fn composer_with(
         //         .title("Voice input availability")
         //         .hx(crate::composer::load("voice")),
         // )
-        .after(html! { (composer_panel_host("composer-panel")) (after) });
+        .after(
+            html! { (composer_panel_host("composer-panel")) (crate::chat_export::panel()) (after) },
+        );
     if let Some(row) = row {
         composer = composer.selectors(row);
     }
