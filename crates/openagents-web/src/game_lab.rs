@@ -27,6 +27,7 @@ use axum::extract::{Form, Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
+use inference::upstream::vertex;
 use maud::{Markup, html};
 use openagents_chat::basic_coder::{self, Door, Failure, Reply, Role as TurnRole, Turn};
 use openagents_chat::router::Context;
@@ -34,7 +35,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::App;
-use crate::chat_vision::{GEMINI, Gemini, gemini_text};
+use crate::chat_vision::{Gemini, gemini_text};
 use crate::connections::chat::{HANDOFF, gemini_call};
 
 /// The most model steps (tool rounds) one answer takes.
@@ -117,9 +118,10 @@ pub(crate) struct GameDoor {
 /// server has Gemini. Like Video Lab's, a Game Lab is only ever configured
 /// on the computer it runs on, so whoever uses this site there is its
 /// owner, signed in or not.
-pub(crate) async fn door(app: &App) -> Option<GameDoor> {
+pub(crate) async fn door(_app: &App) -> Option<GameDoor> {
     let lab = lab_url()?;
-    let gemini = crate::chat_vision::doors(app).and_then(|doors| doors.gemini)?;
+    // Game Lab's turns run on Gemini 4 Argon (Vertex, global), the Labs' model.
+    let gemini = Gemini::from_env_for(vertex::ARGON)?;
     let (tools, documents) = match manifest(&lab).await {
         Ok(found) => found,
         Err(why) => {
@@ -199,7 +201,7 @@ fn request(instructions: &str, turns: &[Turn], tools: &[Value]) -> Value {
         })
         .collect();
     json!({
-        "model": GEMINI,
+        "model": vertex::ARGON,
         "instructions": instructions,
         "input": input,
         "tools": declarations(tools),
@@ -491,7 +493,7 @@ pub(crate) fn card_markup(chat: &str, card: &Value) -> Markup {
                     " · "
                 }
                 @if let Some(versions) = card["versions"].as_array() {
-                    (versions.len()) " versions"
+                    (versions.len()) @if versions.len() == 1 { " version" } @else { " versions" }
                 }
                 @if card["notes"].as_u64().unwrap_or(0) > 0 {
                     " · " (card["notes"].as_u64().unwrap_or(0)) " notes"
@@ -518,7 +520,7 @@ pub(crate) fn thread_entry(chat: &str, reply: Option<&openagents_chat::router::M
 }
 
 const ASSET_CSS: &str = "/chat/game/card.css";
-const ASSET_JS: &str = "/chat/game/card.js";
+pub(crate) const ASSET_JS: &str = "/chat/game/card.js";
 
 const CSS: &str = r".oa-game-card{margin:12px 0;padding:12px;border:1px solid rgba(127,127,127,.28);border-radius:12px;max-width:960px}
 .oa-game-frame{position:relative;width:100%;aspect-ratio:16/10;border-radius:8px;overflow:hidden;background:#000}

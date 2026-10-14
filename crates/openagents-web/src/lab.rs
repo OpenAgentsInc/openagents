@@ -548,7 +548,7 @@ pub(crate) fn thread_entry(chat: &str, reply: Option<&openagents_chat::router::M
 /// time), as files: the chat page runs only its own origin's scripts and
 /// styles.
 const ASSET_CSS: &str = "/chat/lab/card.css";
-const ASSET_JS: &str = "/chat/lab/card.js";
+pub(crate) const ASSET_JS: &str = "/chat/lab/card.js";
 
 const CSS: &str = r".oa-lab-card{margin:12px 0;padding:12px;border:1px solid rgba(127,127,127,.28);border-radius:12px;max-width:960px}
 .oa-lab-card video{width:100%;aspect-ratio:16/9;display:block;border-radius:8px;background:#000}

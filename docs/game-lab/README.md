@@ -143,8 +143,8 @@ tests. The next version then builds once and plays as data again.
   card at `/api/card`, the build at `/build/{file}` and its own play page at
   `/play`. It binds to loopback only.
 - **The web chat** (`crates/openagents-web/src/game_lab.rs`). With
-  `OPENAGENTS_GAME_LAB` set to a loopback URL, a `GameDoor` gives Gemini the
-  Lab's tools plus `general_chat`. Whatever isn't about a game is handed on
+  `OPENAGENTS_GAME_LAB` set to a loopback URL, a `GameDoor` gives Gemini 4 Argon
+  (Vertex, global) the Lab's tools plus `general_chat`. Whatever isn't about a game is handed on
   to Video Lab's door and then the general chat. The play page
   (`/chat/{id}/game/play`) and the build (`/chat/game/build/{file}`) are
   served through the site. Only this site may frame them, and the chat

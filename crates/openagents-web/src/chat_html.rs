@@ -26,6 +26,11 @@ pub(crate) fn head() -> Markup {
         // `/export` in the composer (#11615).
         script src=(crate::chat_export::SCRIPT_PATH) defer {}
         script src=(crate::analytics::SCRIPT) defer {}
+        // The Video Lab and Game Lab cards' buttons (Play, Play both, a
+        // note at a time): an answer's card arrives as a fragment, whose
+        // scripts HTMX doesn't run, so the page loads them up front.
+        script src=(crate::lab::ASSET_JS) defer {}
+        script src=(crate::game_lab::ASSET_JS) defer {}
     }
 }
 
