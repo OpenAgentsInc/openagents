@@ -1175,3 +1175,23 @@ sign-in).
 
 Rollback: `scripts/deploy/web.sh rollback coder-web-36ad21cd90-20261010181422`
 (the site without the vault; vault data stays in its bucket).
+
+### 2026-10-14 12:44 UTC: Solver runs push as the requester; Argon first
+
+`coder-web-b35151feb9-20261014124342` (`118b4e8c72`, web image
+`openagents-web@sha256:b35151fe…`, stack image
+`openagents-stack@sha256:154b0ffc…`) serves 100% of openagents.com. A
+Solver in the cloud run now carries a credential-broker ticket on the
+requester's own GitHub OAuth grant (`repo`, and push access to the
+repository), redeemed once for the claiming host (#11572); the gateway
+routes fast, chat, long, code and reason to Gemini 4 Argon first. Staging
+smoke 92 passed; candidate smoke 51 passed; openagents.com smoke 59 passed,
+0 failed, 2 skipped. Production run `wrkaaae84e61ef3008173394bbb`
+(AtlantisPleb/solver-box-smoke#12) was claimed "with the requester's GitHub
+token" and opened pull request #13. The automation account's actAs on the
+runtime account is refused by the deny policy
+`deny-legacy-livekit-privileged-impersonation` (the compute account carries
+the protected LiveKit tag), so the writes went through the script's chris@
+fallback.
+
+Rollback: `scripts/deploy/web.sh rollback coder-web-4be3621361-20261014085257`.
