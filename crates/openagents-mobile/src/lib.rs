@@ -18,10 +18,10 @@
 mod account;
 mod account_link;
 mod amounts;
-mod appearance;
 #[cfg(any(target_os = "android", test))]
 mod android;
 mod app;
+mod appearance;
 mod basic_chats;
 mod basic_coder;
 mod chat_invites;

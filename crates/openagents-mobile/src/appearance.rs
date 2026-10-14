@@ -261,7 +261,10 @@ mod tests {
         let tokens = oa_tokens::Palette::LIGHT;
         assert_eq!(HostPalette::LIGHT.background, token(tokens.canvas));
         assert_eq!(HostPalette::LIGHT.primary, token(tokens.content));
-        assert_eq!(HostPalette::LIGHT.secondary, token(tokens.content_secondary));
+        assert_eq!(
+            HostPalette::LIGHT.secondary,
+            token(tokens.content_secondary)
+        );
         assert_eq!(HostPalette::LIGHT.link, token(tokens.accent));
         assert_eq!(HostPalette::DARK.background, Color::rgb(0, 0, 0));
         assert_eq!(HostPalette::DARK.inline_code.alpha, 0x1A);

@@ -908,6 +908,7 @@ fn every_screen_draws_plain_words() {
         Screen::Chats,
         Screen::Running,
         Screen::Message,
+        Screen::Projects,
     ] {
         f.link.act(Action::Show {
             screen: screen.clone(),
@@ -940,6 +941,12 @@ fn every_screen_validates() {
         computer: "Studio".into(),
         ..Default::default()
     });
+    state.projects_read = true;
+    state.project_list = vec![crate::account_link::Project {
+        id: "prj_0123456789abcdef".into(),
+        name: "taxes".into(),
+        ..Default::default()
+    }];
     for screen in [
         Screen::Account,
         Screen::Chats,
@@ -947,6 +954,7 @@ fn every_screen_validates() {
         Screen::Message,
         Screen::Schedules,
         Screen::NewSchedule,
+        Screen::Projects,
     ] {
         state.screen = screen.clone();
         let root = crate::link_view::root(&state, 0);
@@ -1670,6 +1678,8 @@ fn every_screen_has_one_top_bar() {
         (Screen::Message, false, "Back"),
         (Screen::Memory, true, "Back"),
         (Screen::Schedules, true, "Back"),
+        (Screen::Projects, true, "Back"),
+        (Screen::Projects, false, "Open menu"),
     ] {
         state.screen = screen.clone();
         state.from_account = from_account;
@@ -1701,4 +1711,125 @@ fn every_screen_has_one_top_bar() {
             lines[0]
         );
     }
+}
+
+/// #11561: a cloud run (Solver in the cloud among them) takes Stop only,
+/// since the website refuses a message to one; Stop's answer names the
+/// run, not Coder on a computer called "OpenAgents Cloud".
+#[test]
+fn a_cloud_run_takes_stop_only() {
+    let mut f = fixture();
+    f.site.answer(
+        "GET /v1/agents",
+        200,
+        json!({"computers": [{"name": "OpenAgents Cloud", "online": true, "updated_unix": 1,
+            "items": [{"id": "0123456789abcdef0123456789abcdef", "kind": "agent",
+                       "title": "#12 Fix the parser", "engine": "Solver in the cloud",
+                       "status": "working", "started_unix": 1, "line": "coding"}]}]}),
+    );
+    f.site
+        .answer("POST /v1/agents/actions", 202, json!({"queued": true}));
+    signed(&mut f);
+    until(|| f.link.lock().agents_read);
+    f.link.act(Action::Show {
+        screen: Screen::Running,
+        id: None,
+    });
+    let packet = f.link.packet();
+    let mut words = vec![];
+    texts(packet.view.as_ref().unwrap(), &mut words);
+    assert!(words.iter().any(|w| w == "Stop"), "{words:?}");
+    assert!(!words.iter().any(|w| w == "Message"), "{words:?}");
+    assert!(words.iter().any(|w| w == "OpenAgents Cloud"), "{words:?}");
+    f.link.tap(Intent::Act {
+        computer: "OpenAgents Cloud".into(),
+        item: "0123456789abcdef0123456789abcdef".into(),
+        action: "stop".into(),
+        question: None,
+    });
+    until(|| f.link.lock().notice.as_deref() == Some("The run stops in a few seconds."));
+}
+
+/// #11558: the Projects screen lists the account's projects (one with no
+/// repository among them), makes a new one from a name alone, and a
+/// project opens a new chat that starts inside it (#11542).
+#[test]
+fn projects_list_make_by_name_and_start_a_chat_in_one() {
+    let mut f = fixture();
+    f.site.answer(
+        "GET /v1/projects?limit=200",
+        200,
+        json!({"data": [
+            {"id": "prj_0123456789abcdef", "object": "project", "name": "openagents",
+             "repository": "OpenAgentsInc/openagents",
+             "repositories": [
+                 {"repository": "OpenAgentsInc/openagents", "primary": true},
+                 {"repository": "OpenAgentsInc/coder", "primary": false}],
+             "counts": {"threads": 3}},
+            {"id": "prj_fedcba9876543210", "object": "project", "name": "taxes",
+             "repository": null, "repositories": [], "counts": {"threads": 0}},
+        ], "next": null}),
+    );
+    f.site.answer(
+        "POST /v1/projects",
+        201,
+        json!({"id": "prj_1111222233334444", "object": "project", "name": "Garden plans",
+               "repository": null, "repositories": [], "counts": {"threads": 0}}),
+    );
+    signed(&mut f);
+    f.link.act(Action::Show {
+        screen: Screen::Account,
+        id: None,
+    });
+    let view = f.link.packet().view.expect("the account draws");
+    let mut found = vec![];
+    find_keys(&view, &mut found);
+    assert!(found.iter().any(|(key, _)| key == "link-open-projects"));
+    f.link.act(Action::Show {
+        screen: Screen::Projects,
+        id: None,
+    });
+    until(|| f.link.lock().projects_read);
+    let mut words = vec![];
+    texts(f.link.packet().view.as_ref().unwrap(), &mut words);
+    for shown in [
+        "openagents\nOpenAgentsInc/openagents and 1 more · 3 chats",
+        "taxes\nNo repository",
+        "New project name",
+    ] {
+        assert!(words.iter().any(|w| w == shown), "{shown}: {words:?}");
+    }
+    // A name is enough.
+    let token = format!("link-project-{}", f.link.composer);
+    f.link.input(&token, "  Garden   plans ");
+    until(|| !f.site.calls("POST /v1/projects").is_empty());
+    assert_eq!(
+        f.site.calls("POST /v1/projects")[0].body,
+        Some(json!({"name": "Garden plans"}))
+    );
+    until(|| f.link.lock().notice.as_deref() == Some("Made Garden plans."));
+    // A project opens a new chat that starts inside it.
+    f.link.tap(Intent::ProjectChat {
+        id: "prj_fedcba9876543210".into(),
+    });
+    let id = f.link.lock().open.as_ref().expect("a new chat").id.clone();
+    let mut words = vec![];
+    texts(f.link.packet().view.as_ref().unwrap(), &mut words);
+    assert!(words.iter().any(|w| w == "In taxes"), "{words:?}");
+    f.site.answer(
+        "POST /v1/threads",
+        201,
+        json!({"id": id, "answering": true}),
+    );
+    let token = format!("link-reply-{id}-{}", f.link.composer);
+    f.link.input(&token, "What do I owe this year?");
+    until(|| !f.site.calls("POST /v1/threads").is_empty());
+    let body = f.site.calls("POST /v1/threads")[0].body.clone().unwrap();
+    assert_eq!(body["project"], json!("prj_fedcba9876543210"));
+    assert_eq!(body["request_id"], json!(id));
+    // A project that isn't the account's opens nothing.
+    f.link.tap(Intent::ProjectChat {
+        id: "prj_9999999999999999".into(),
+    });
+    assert_eq!(f.link.lock().open.as_ref().unwrap().id, id);
 }

@@ -4,7 +4,9 @@
 //! prompts. Rust Native views the hosts draw as they draw the Computers
 //! screens.
 
-use crate::account_link::{Agents, Item, MessageFile, Open, Screen, SignIn, State, Thread, detail};
+use crate::account_link::{
+    Agents, CLOUD_BOARD, Item, MessageFile, Open, Screen, SignIn, State, Thread, detail,
+};
 use openagents_chat::basic_coder::Turn;
 use openagents_chat_app::projection::{Appearance, Projection, Reply};
 use rust_native::style::{Color, Space, Style, TextWeight};
@@ -60,6 +62,7 @@ fn draw(state: &State, composer: u64, messages: usize, text: usize) -> Node<Inte
         Screen::Note => note(state, composer),
         Screen::Schedules => schedules(state),
         Screen::NewSchedule => new_schedule(state, composer),
+        Screen::Projects => projects(state, composer),
     }
 }
 
@@ -97,6 +100,14 @@ fn account(state: &State) -> Node<Intent> {
                 Some(Glyph::History),
                 Intent::Show {
                     screen: Screen::Chats,
+                },
+            ));
+            children.push(button(
+                "link-open-projects",
+                "Projects",
+                Some(Glyph::Folder),
+                Intent::Show {
+                    screen: Screen::Projects,
                 },
             ));
             children.push(button(
@@ -260,7 +271,7 @@ fn chats(state: &State) -> Node<Intent> {
     if state.threads.is_empty() {
         children.push(status(
             "link-chats-empty",
-            "No chats on your account yet. Chat on openagents.com, or run `coder login` then `/sync on` in Coder on a computer.",
+            "No chats on your account yet. Chat on openagents.com, or in Coder on a computer run coder login, then /sync on.",
             quiet(),
         ));
         return page(children);
@@ -330,7 +341,13 @@ fn chat(state: &State, open: &Open, composer: u64, limit: usize, cut_at: usize) 
                 "Chat".into()
             }
         });
-    let where_ = thread.map(|thread| detail(state, thread));
+    // A new chat in a project names it until the website has the chat.
+    let where_ = thread.map(|thread| detail(state, thread)).or_else(|| {
+        open.project
+            .as_ref()
+            .and_then(|id| state.projects.get(id))
+            .map(|name| format!("In {name}"))
+    });
     let mut children = vec![bar(
         "link-chat-header",
         Lead::of(state.from_list),
@@ -663,15 +680,19 @@ fn item_card(computer: &Agents, item: &Item, now: u64) -> Node<Intent> {
             Some(Glyph::Stop),
             act("stop", None),
         ));
-        controls.push(button(
-            &format!("{key}-message"),
-            "Message",
-            Some(Glyph::Ask),
-            Intent::Message {
-                computer: computer.name.clone(),
-                item: item.id.clone(),
-            },
-        ));
+        // A cloud run (Solver in the cloud, #11561, and the other work
+        // runs) takes Stop only: the website refuses a message to one.
+        if computer.name != CLOUD_BOARD {
+            controls.push(button(
+                &format!("{key}-message"),
+                "Message",
+                Some(Glyph::Ask),
+                Intent::Message {
+                    computer: computer.name.clone(),
+                    item: item.id.clone(),
+                },
+            ));
+        }
     }
     for (index, (label, url)) in github_refs(item).into_iter().enumerate() {
         controls.push(button(
@@ -701,7 +722,7 @@ fn item_card(computer: &Agents, item: &Item, now: u64) -> Node<Intent> {
 /// that isn't one computer (OpenAgents Cloud's runs, paused Environments
 /// runs) by its name alone.
 fn board_title(computer: &Agents) -> String {
-    if matches!(computer.name.as_str(), "OpenAgents Cloud" | "Environments") {
+    if !crate::account_link::is_computer(&computer.name) {
         return computer.name.clone();
     }
     format!(
@@ -818,6 +839,80 @@ pub(crate) fn github_refs(item: &Item) -> Vec<(String, String)> {
 
 /// The memory notes on the account (#11182): those that apply everywhere,
 /// then each project's, each opening to change or delete it.
+/// The account's projects (#11558): a name is enough to make one, and a
+/// project opens a new chat inside it.
+fn projects(state: &State, composer: u64) -> Node<Intent> {
+    let mut children = vec![bar(
+        "link-projects-header",
+        Lead::of(state.from_account),
+        "Projects",
+        None,
+        None,
+    )];
+    children.extend(notice(state));
+    children.push(Node {
+        key: "link-project-composer".into(),
+        style: Style::default(),
+        element: Element::Composer {
+            token: format!("link-project-{composer}"),
+            placeholder: "New project name".into(),
+            max_bytes: crate::account_link::MAX_PROJECT_NAME * 4,
+            enabled: !state.projects_busy,
+            busy: state.projects_busy,
+            stop: None,
+            choices: vec![],
+            draft: None,
+            focus: false,
+            attach: None,
+        },
+    });
+    if !state.projects_read {
+        children.push(working("link-projects-loading", "Loading your projects…"));
+        return page(children);
+    }
+    if state.project_list.is_empty() {
+        children.push(status(
+            "link-projects-empty",
+            "No projects yet. Type a name above to make one. You can add repositories later on openagents.com.",
+            quiet(),
+        ));
+        return page(children);
+    }
+    for project in &state.project_list {
+        let mut label = project.name.clone();
+        label.push('\n');
+        label.push_str(&project_line(project));
+        children.push(button(
+            &format!("link-project-{}", slug(&project.id)),
+            &label,
+            Some(Glyph::Folder),
+            Intent::ProjectChat {
+                id: project.id.clone(),
+            },
+        ));
+    }
+    children.push(status(
+        "link-projects-how",
+        "Tap a project to start a chat in it.",
+        quiet(),
+    ));
+    page(children)
+}
+
+/// A project row's second line: its repositories and its chats.
+fn project_line(project: &crate::account_link::Project) -> String {
+    let repositories = match (&project.primary, project.repositories) {
+        (None, _) | (_, 0) => "No repository".to_owned(),
+        (Some(primary), 1) => primary.clone(),
+        (Some(primary), n) => format!("{primary} and {} more", n - 1),
+    };
+    match project.chats {
+        0 => repositories,
+        1 => format!("{repositories} · 1 chat"),
+        n => format!("{repositories} · {n} chats"),
+    }
+}
+
 fn memory(state: &State) -> Node<Intent> {
     let mut children = vec![bar("link-memory-header", Lead::Back, "Memory", None, None)];
     children.push(status(
@@ -839,7 +934,7 @@ fn memory(state: &State) -> Node<Intent> {
     if state.memory.is_empty() {
         children.push(status(
             "link-memory-empty",
-            "No notes yet. Tell Coder \"remember …\" on a computer with sync on (`/sync on`), or add one here.",
+            "No notes yet. Tell Coder \"remember …\" on a computer with sync on (/sync on in Coder), or add one here.",
             quiet(),
         ));
         return page(children);

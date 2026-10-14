@@ -132,7 +132,10 @@ fn the_ios_text_styles_are_the_web_scale() {
     let mut sizes = 0;
     for line in source.lines() {
         let line = line.trim();
-        let Some(rest) = line.strip_prefix("case .").or(line.strip_prefix("default:")) else {
+        let Some(rest) = line
+            .strip_prefix("case .")
+            .or(line.strip_prefix("default:"))
+        else {
             continue;
         };
         let value = rest.rsplit(':').next().unwrap_or(rest);

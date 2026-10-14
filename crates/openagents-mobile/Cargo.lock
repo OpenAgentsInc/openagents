@@ -868,6 +868,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "user-home",
 ]
 
 [[package]]
@@ -1645,6 +1646,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tokio",
+ "user-home",
 ]
 
 [[package]]
@@ -1656,6 +1658,7 @@ dependencies = [
  "serde",
  "sha2 0.10.9",
  "tempfile",
+ "user-home",
  "windows-sys 0.61.2",
 ]
 
@@ -1696,6 +1699,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "url",
+ "user-home",
 ]
 
 [[package]]
@@ -1713,6 +1717,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "user-home",
 ]
 
 [[package]]
@@ -1740,6 +1745,7 @@ dependencies = [
  "sha2 0.11.0",
  "tokio",
  "tokio-tungstenite 0.30.0",
+ "user-home",
  "windows-sys 0.61.2",
 ]
 
@@ -1761,6 +1767,7 @@ dependencies = [
  "libc",
  "serde",
  "serde_json",
+ "user-home",
 ]
 
 [[package]]
@@ -3366,6 +3373,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "user-home",
 ]
 
 [[package]]
@@ -4758,6 +4766,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "user-home",
 ]
 
 [[package]]
@@ -5472,6 +5481,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tokio",
+ "user-home",
  "uuid",
  "workbench",
 ]
@@ -5520,6 +5530,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "tokio",
+ "user-home",
 ]
 
 [[package]]
@@ -5592,6 +5603,7 @@ dependencies = [
  "sha2 0.10.9",
  "tokio",
  "url",
+ "user-home",
  "uuid",
 ]
 
@@ -6258,6 +6270,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tokio",
+ "user-home",
 ]
 
 [[package]]
@@ -7977,6 +7990,7 @@ dependencies = [
  "serde_json",
  "terminal-core",
  "tokio",
+ "user-home",
  "windows-sys 0.61.2",
 ]
 
@@ -7990,6 +8004,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "user-home",
  "web-time",
  "workbench",
 ]
@@ -8008,6 +8023,7 @@ dependencies = [
  "swash",
  "terminal-core",
  "unicode-width",
+ "user-home",
  "verse-gfx",
  "windows-sys 0.61.2",
 ]
@@ -9228,6 +9244,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 
 [[package]]
+name = "user-home"
+version = "0.1.0"
+
+[[package]]
 name = "usvg"
 version = "0.48.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9334,6 +9354,7 @@ dependencies = [
  "toml",
  "town-clock",
  "townsfolk",
+ "user-home",
  "verse-content",
  "verse-core",
  "verse-engine",
@@ -9494,6 +9515,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-tungstenite 0.30.0",
+ "user-home",
  "wasm-bindgen",
  "web-sys",
  "web-time",
@@ -9626,6 +9648,7 @@ dependencies = [
  "sha2 0.10.9",
  "town-clock",
  "townsfolk",
+ "user-home",
  "verse-content",
  "verse-core",
  "verse-engine",
@@ -10499,6 +10522,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "user-home",
 ]
 
 [[package]]

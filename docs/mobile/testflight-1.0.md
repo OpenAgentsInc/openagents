@@ -5,16 +5,18 @@ App: `com.openagents.app`, App Store Connect app 6748620735, version 1.0.0.
 External group: **OpenAgents Beta Testers**, public link
 <https://testflight.apple.com/join/dvQdns5B>.
 
-The build is the streamlined three-tab app (Chat, Wallet, Account) from the
-[mobile 1.0 audit](1.0-audit.md), built without `OPENAGENTS_MOBILE_PREVIEW`,
-so the Verse, the Gym, Trainer, Playtest, and Tailnet are hidden and playtest
-logging is off.
+The build is the streamlined app (Coder, Wallet, Settings, and the plain
+Grid in the Verse) from the [mobile 1.0 audit](1.0-audit.md), built without
+`OPENAGENTS_MOBILE_PREVIEW`, so the Gym, Everglade, Trainer, Playtest, and
+Tailnet are hidden and playtest logging is off.
 
 ## Sign-in
 
-None. The app has no login: it makes its own device key on first launch, and
-chat, the wallet, and Account all work without an account. Apple's reviewer
-needs no demo account, and **Sign-in required** is **No**.
+Optional. The app makes its own device key on first launch, and chat, the
+wallet, the Verse, and Settings all work without an account. Settings has
+**Log in** for openagents.com accounts (by invitation only for now), which
+adds the account's chats, Projects, Running, Memory, and Scheduled prompts.
+Apple's reviewer needs no demo account, and **Sign-in required** is **No**.
 
 ## For testers (share this)
 
@@ -36,18 +38,22 @@ needs no demo account, and **Sign-in required** is **No**.
 ## What to Test (set on each build)
 
 The build's What to Test text is `whatToTest` in
-[`bins/openagents-ios/testflight.json`](../../bins/openagents-ios/testflight.json):
+[`bins/openagents-ios/testflight.json`](../../bins/openagents-ios/testflight.json)
+(build 59's, below):
 
 > Welcome to the OpenAgents beta. No sign-in is needed.
 >
-> 1. Chat: ask anything, or tap a suggested question. The answer streams in.
-> 2. Wallet: your balance, Receive, and Send. It is a real Bitcoin wallet, so
->    keep only small amounts in it during the beta.
-> 3. Account: open each row. To reach your own computer, open Account >
->    Computers > Connect a computer and follow the steps there.
+> New in this build:
+> - The app opens where you left off: the chat you were in, or the first time, a welcome with Start a chat. A new chat is a plain field, with no cards.
+> - Ask anything in Ask OpenAgents. The answer streams in, and the stop button stops it.
+> - With an openagents.com account (Settings > Log in; accounts are by invitation for now): your chats list newest first with their project, Projects makes a project from just a name and starts a chat in it, and Running shows what Coder and Solver in the cloud are doing, with Stop.
 >
-> Something wrong? Account > Report a problem, or take a screenshot and send
-> it as TestFlight feedback.
+> Also try:
+> 1. Wallet: your balance, Receive, and Send. It is a real Bitcoin wallet, so keep only small amounts in it during the beta.
+> 2. Verse: tap Verse at the top and walk around the Grid with your avatar; tap Coder to come back.
+> 3. Settings: open each row. To reach your own computer, open Computers > Connect a computer and follow the steps there.
+>
+> Something wrong? Settings > Report a problem, or take a screenshot and send it as TestFlight feedback.
 
 ## Beta App Review information
 
@@ -58,21 +64,15 @@ Set from the same file (`review`):
 - Sign-in required: **No** (no demo account).
 - Review notes:
 
-> No sign-in, account, or demo login is needed: the app has no login. On
-> first launch it makes its own device key.
+> No sign-in, account, or demo login is needed. On first launch the app makes its own device key, and everything below works without an account. Settings has an optional Log in for openagents.com accounts, which are by invitation only for now; reviewing the app does not need it.
 >
-> 1. Chat tab (opens first): type a question such as "What is OpenAgents?" or
->    tap a suggested question. The answer comes from our hosted assistant and
->    streams in.
-> 2. Wallet tab: a self-custody Bitcoin wallet created on the device.
->    Reviewing it needs no funds; Receive shows a request to be paid.
-> 3. Account tab: Report a problem, Computers, Appearance, Your keys, Identity
->    keys, About this device, Changelog, Source code, and Follow us on X.
+> 1. Coder (opens first): tap Start a chat, then type a question such as "What is OpenAgents?". The answer comes from our hosted assistant and streams in; the stop button stops it.
+> 2. Verse: the switch at the top opens the Grid, a shared 3D world where you walk around as an avatar with the on-screen sticks; Coder comes back.
+> 3. The menu button at the top left opens Computers, Wallet, Settings, and recent chats. Wallet is a self-custody Bitcoin wallet created on the device; reviewing it needs no funds, and Receive shows a request to be paid. Settings has Report a problem, Computers, Appearance, Your keys, Identity keys, About this device, Changelog, Source code, and Follow us on X.
 >
-> Computers is optional: it pairs the phone with a computer running our
-> command-line app (install: curl -fsSL https://openagents.com/cli/install.sh
-> | bash; then openagents connect invite shows a code to scan). Nothing else
-> in the app needs a computer.
+> Computers is optional: it pairs the phone with a computer running our command-line app (install: curl -fsSL https://openagents.com/cli/install.sh | bash; then openagents connect invite shows a code to scan). Nothing else in the app needs a computer.
+>
+> Contact: chris@openagents.com
 
 Test information for the app (also from the file): the beta description,
 feedback email chris@openagents.com, marketing URL https://openagents.com,

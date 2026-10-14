@@ -34,9 +34,16 @@
 //! names them by id (`files`). The website keeps them with the chat, and
 //! the answer reads them.
 //!
+//! **Projects** (#11558). The Projects screen lists `GET /v1/projects`
+//! (each with zero or more repositories, one primary), makes one from a
+//! name alone (`POST /v1/projects {name}`), and a tap on a project starts
+//! a chat inside it (`POST /v1/threads` with `project`, #11542).
+//!
 //! **Supervise.** `GET /v1/agents` lists what Coder runs on each computer
 //! (status, elapsed, cost, a pending question), and
-//! `POST /v1/agents/actions` approves, denies, stops, or messages one. A
+//! `POST /v1/agents/actions` approves, denies, stops, or messages one. The
+//! `OpenAgents Cloud` board's runs (Solver in the cloud among them,
+//! #11561) take Stop only, so they show no Message. A
 //! change to finished, failed, or asking becomes a notice the host shows
 //! as a local notification ([`Packet::notify`]).
 //!
@@ -78,6 +85,28 @@ pub const PRODUCTION: &str = "https://openagents.com";
 pub const APP_NAME: &str = "OpenAgents";
 /// A phone chat's session id on the account: `phone-` and the chat's id.
 pub const PHONE_SESSION: &str = "phone-";
+/// The `GET /v1/agents` board that lists the account's cloud work runs,
+/// Solver in the cloud's among them (#11561); they take Stop only.
+pub const CLOUD_BOARD: &str = "OpenAgents Cloud";
+/// The board that lists the person's environment runs (#11307).
+pub const ENVIRONMENTS_BOARD: &str = "Environments";
+
+/// Whether a `GET /v1/agents` board is one of the person's computers,
+/// rather than a list of runs elsewhere.
+#[must_use]
+pub fn is_computer(board: &str) -> bool {
+    board != CLOUD_BOARD && board != ENVIRONMENTS_BOARD
+}
+
+/// Who an action's answer names: Coder on a computer, or the run itself
+/// on a board that isn't a computer.
+fn runner(board: &str) -> String {
+    if is_computer(board) {
+        format!("Coder on {board}")
+    } else {
+        "The run".to_owned()
+    }
+}
 /// What a message that looked like it held a credential says instead
 /// (`coder_sync::LEFT_OUT`).
 pub const LEFT_OUT: &str = "(Left out: this looked like it held a password or key.)";
@@ -356,6 +385,45 @@ pub struct Thread {
     /// The project (`prj_…`) the chat is filed under (#11541).
     pub project: Option<String>,
 }
+
+/// One project on the account, as `GET /v1/projects` lists it (#11558):
+/// a name, and zero or more repositories with one primary.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Project {
+    pub id: String,
+    pub name: String,
+    /// The primary repository (`owner/name`), when it has any.
+    pub primary: Option<String>,
+    pub repositories: usize,
+    /// How many of the account's chats are filed under it.
+    pub chats: u64,
+}
+
+impl Project {
+    fn from_value(value: &Value) -> Option<Self> {
+        let repositories = value["repositories"].as_array();
+        let primary = repositories
+            .and_then(|repos| {
+                repos
+                    .iter()
+                    .find(|r| r["primary"].as_bool() == Some(true))
+                    .or_else(|| repos.first())
+            })
+            .and_then(|r| r["repository"].as_str())
+            .or_else(|| value["repository"].as_str())
+            .map(str::to_owned);
+        Some(Self {
+            id: value["id"].as_str()?.to_owned(),
+            name: value["name"].as_str()?.to_owned(),
+            repositories: repositories.map_or(usize::from(primary.is_some()), Vec::len),
+            primary,
+            chats: value["counts"]["threads"].as_u64().unwrap_or(0),
+        })
+    }
+}
+
+/// The most characters in a project's name.
+pub const MAX_PROJECT_NAME: usize = 80;
 
 /// A computer (or phone) on the account.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -698,6 +766,8 @@ pub enum Screen {
     Schedules,
     /// A new scheduled prompt.
     NewSchedule,
+    /// The account's projects, and a new one by name (#11558).
+    Projects,
 }
 
 /// An open chat.
@@ -722,6 +792,8 @@ pub struct Open {
     /// the first message's request id, and the first send makes it
     /// (`POST /v1/threads`); false once the website has it.
     pub new: bool,
+    /// The project a new chat starts in (`prj_…`, #11542).
+    pub project: Option<String>,
 }
 
 /// A local notification for the host to show once.
@@ -860,6 +932,10 @@ pub enum Intent {
     },
     /// Write a new memory note.
     NewNote,
+    /// Start a chat on openagents.com inside a project (#11542).
+    ProjectChat {
+        id: String,
+    },
     /// Delete a memory note everywhere.
     DeleteNote {
         id: String,
@@ -931,6 +1007,13 @@ pub struct State {
     /// may have no repository, and only these two fields are read), to name
     /// the project a chat is filed under (#11541).
     pub projects: BTreeMap<String, String>,
+    /// The account's projects in the website's order, for the Projects
+    /// screen.
+    pub project_list: Vec<Project>,
+    /// The projects were read at least once.
+    pub projects_read: bool,
+    /// A new project is on its way.
+    pub projects_busy: bool,
     pub agents: Vec<Agents>,
     pub agents_read: bool,
     pub screen: Screen,
@@ -1312,6 +1395,23 @@ impl Link {
                 state.changed();
             }
             Intent::DeleteNote { id } => self.delete_note(id),
+            Intent::ProjectChat { id } => {
+                let mut state = self.lock();
+                if state.signed() && state.project_list.iter().any(|p| p.id == id) {
+                    // Back goes to Your chats, where the new chat lists.
+                    state.from_list = true;
+                    state.open = Some(Open {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        loaded: true,
+                        new: true,
+                        project: Some(id),
+                        ..Open::default()
+                    });
+                    state.screen = Screen::Chat;
+                    state.notice = None;
+                    state.changed();
+                }
+            }
             Intent::NewSchedule => {
                 let mut state = self.lock();
                 let computer = state
@@ -1428,6 +1528,10 @@ impl Link {
             self.save_schedule(text.to_owned());
             return;
         }
+        if token.starts_with("link-project-") {
+            self.create_project(text.to_owned());
+            return;
+        }
         if text.len() > MAX_REPLY_BYTES {
             let mut state = self.lock();
             state.notice = Some("That message is too long to send.".into());
@@ -1534,6 +1638,8 @@ impl Link {
             state.sign_in = SignIn::Idle;
             state.threads.clear();
             state.projects.clear();
+            state.project_list.clear();
+            state.projects_read = false;
             state.computers.clear();
             state.agents.clear();
             state.threads_read = false;
@@ -1649,7 +1755,7 @@ impl Link {
             state.changed();
             return;
         }
-        let (origin, token, id, photos, new) = {
+        let (origin, token, id, photos, new, project) = {
             let mut state = self.lock();
             let Some(session) = state.session.clone() else {
                 return;
@@ -1664,9 +1770,17 @@ impl Link {
             let id = open.id.clone();
             let photos = open.photos.clone();
             let new = open.new;
+            let project = open.project.clone().filter(|_| new);
             state.notice = None;
             state.changed();
-            (state.origin.clone(), session.token, id, photos, new)
+            (
+                state.origin.clone(),
+                session.token,
+                id,
+                photos,
+                new,
+                project,
+            )
         };
         self.composer += 1;
         // A new chat's first message is the request the chat is named by.
@@ -1722,11 +1836,14 @@ impl Link {
                 }),
                 Some(Err(error)) => Err(error),
                 None => {
-                    let body = if files.is_empty() {
-                        json!({"request_id": request, "text": text})
-                    } else {
-                        json!({"request_id": request, "text": text, "files": files})
-                    };
+                    let mut body = json!({"request_id": request, "text": text});
+                    if !files.is_empty() {
+                        body["files"] = json!(files);
+                    }
+                    // A new chat in a project starts inside it (#11542).
+                    if let Some(project) = &project {
+                        body["project"] = json!(project);
+                    }
                     http.call(
                         "POST",
                         if new {
@@ -1759,6 +1876,7 @@ impl Link {
                             title: text.chars().take(64).collect(),
                             surface: "web".into(),
                             can_reply: true,
+                            project: project.clone(),
                             ..Thread::default()
                         });
                     }
@@ -1783,6 +1901,69 @@ impl Link {
                     }
                 }
                 state.notice = notice;
+                state.changed();
+            }
+            wake();
+            nudge.notify_one();
+        });
+    }
+
+    /// Make a project with only a name (`POST /v1/projects {name}`,
+    /// #11558); it lists at the top of the Projects screen.
+    fn create_project(&mut self, name: String) {
+        let name: String = name.split_whitespace().collect::<Vec<_>>().join(" ");
+        if name.chars().count() > MAX_PROJECT_NAME {
+            let mut state = self.lock();
+            state.notice = Some(format!(
+                "A project's name can be at most {MAX_PROJECT_NAME} characters."
+            ));
+            state.changed();
+            return;
+        }
+        let (origin, token) = {
+            let mut state = self.lock();
+            let Some(session) = state.session.clone() else {
+                return;
+            };
+            if state.projects_busy {
+                return;
+            }
+            state.projects_busy = true;
+            state.notice = None;
+            state.changed();
+            (state.origin.clone(), session.token)
+        };
+        self.composer += 1;
+        let http = self.http.clone();
+        let state = self.state.clone();
+        let wake = self.wake.clone();
+        let nudge = self.nudge.clone();
+        self.spawn(async move {
+            let reply = http
+                .call(
+                    "POST",
+                    format!("{origin}/v1/projects"),
+                    Some(token),
+                    Some(json!({"name": name})),
+                )
+                .await;
+            {
+                let mut state = lock(&state);
+                state.projects_busy = false;
+                state.notice = Some(match &reply {
+                    Ok(reply) if (200..300).contains(&reply.status) => {
+                        if let Some(project) = Project::from_value(&reply.body) {
+                            state
+                                .projects
+                                .insert(project.id.clone(), project.name.clone());
+                            state.project_list.retain(|p| p.id != project.id);
+                            state.project_list.insert(0, project);
+                        }
+                        format!("Made {name}.")
+                    }
+                    Ok(reply) => reply.message("That project wasn't made. Try again."),
+                    Err(error) => error.clone(),
+                });
                 state.changed();
             }
             wake();
@@ -1865,13 +2046,22 @@ impl Link {
                 let mut state = lock(&state);
                 state.notice = Some(match &reply {
                     Ok(reply) if (200..300).contains(&reply.status) => match action.as_str() {
-                        "approve" => format!("Approved. Coder on {computer} goes on."),
-                        "deny" => format!("Denied. Coder on {computer} won't run it."),
-                        "stop" => format!("Coder on {computer} stops in a few seconds."),
+                        "approve" => format!("Approved. {} goes on.", runner(&computer)),
+                        "deny" => format!("Denied. {} won't run it.", runner(&computer)),
+                        "stop" => format!("{} stops in a few seconds.", runner(&computer)),
                         _ => reply.body["message"]
                             .as_str()
                             .filter(|m| !m.is_empty())
-                            .map_or_else(|| format!("Sent to Coder on {computer}."), str::to_owned),
+                            .map_or_else(
+                                || {
+                                    if is_computer(&computer) {
+                                        format!("Sent to Coder on {computer}.")
+                                    } else {
+                                        "Sent.".to_owned()
+                                    }
+                                },
+                                str::to_owned,
+                            ),
                     },
                     Ok(reply) => reply.message("That didn't reach your computer. Try again."),
                     Err(error) => error.clone(),
@@ -2708,9 +2898,9 @@ impl Poller {
         }
     }
 
-    /// The account's projects by id, their names (`GET /v1/projects`);
-    /// `None` when they couldn't be read now.
-    async fn projects(&self, origin: &str, token: &str) -> Option<BTreeMap<String, String>> {
+    /// The account's projects (`GET /v1/projects`); `None` when they
+    /// couldn't be read now.
+    async fn projects(&self, origin: &str, token: &str) -> Option<Vec<Project>> {
         let reply = self
             .http
             .call(
@@ -2726,12 +2916,7 @@ impl Poller {
             reply.body["data"]
                 .as_array()?
                 .iter()
-                .filter_map(|project| {
-                    Some((
-                        project["id"].as_str()?.to_owned(),
-                        project["name"].as_str()?.to_owned(),
-                    ))
-                })
+                .filter_map(Project::from_value)
                 .collect(),
         )
     }
@@ -2898,18 +3083,26 @@ impl Poller {
         }
         // Name the projects the chats are filed under, read again when a
         // chat names one the list doesn't know (#11541).
+        // The Projects screen reads them each pass while it shows.
         let unknown = {
             let state = lock(&self.state);
-            state
-                .threads
-                .iter()
-                .filter_map(|t| t.project.as_ref())
-                .any(|id| !state.projects.contains_key(id))
+            (state.shown && state.screen == Screen::Projects && !state.projects_busy)
+                || state
+                    .threads
+                    .iter()
+                    .filter_map(|t| t.project.as_ref())
+                    .any(|id| !state.projects.contains_key(id))
         };
-        if unknown && let Some(projects) = self.projects(&origin, &token).await {
+        if unknown && let Some(list) = self.projects(&origin, &token).await {
             let mut state = lock(&self.state);
-            if state.projects != projects {
+            let projects: BTreeMap<String, String> = list
+                .iter()
+                .map(|p| (p.id.clone(), p.name.clone()))
+                .collect();
+            if state.projects != projects || state.project_list != list || !state.projects_read {
                 state.projects = projects;
+                state.project_list = list;
+                state.projects_read = true;
                 state.changed();
             }
         }
@@ -3129,6 +3322,8 @@ impl Poller {
             state.forget = true;
             state.threads.clear();
             state.projects.clear();
+            state.project_list.clear();
+            state.projects_read = false;
             state.agents.clear();
             state.memory.clear();
             state.memory_read = false;

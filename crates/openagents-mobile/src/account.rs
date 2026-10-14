@@ -36,6 +36,30 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "59",
+        title: "Where you left off",
+        what_to_test: "Everything from build 58 applies. Close the app and open it again: it opens on the chat you were in, or the first time, on a welcome with Start a chat. A new chat is a plain field with no cards. Ask a question and tap stop while the answer streams: it stops. Signed in under Settings, open Projects from your account: type a name to make a project, then tap it to start a chat in it. Your chats lists every chat newest first, each with its project. Running shows cloud runs with Stop.",
+        items: &[
+            Item {
+                title: "Where you left off",
+                detail: "The app opens on your last chat, or a welcome with Start a chat. No cards on a new chat.",
+            },
+            Item {
+                title: "Projects",
+                detail: "Make a project with just a name, and start a chat in one.",
+            },
+            Item {
+                title: "Every chat in one list",
+                detail: "Your chats lists every chat newest first, with its project and where it lives.",
+            },
+            Item {
+                title: "Cloud runs",
+                detail: "Running shows runs in OpenAgents Cloud, such as Solver in the cloud, with Stop.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "58",
         title: "Attach in the composer",
         what_to_test: "Everything from build 57 applies. Sign in under Settings, open one of your openagents.com chats from the menu, and tap the paperclip at the left of the reply field: attach a photo or a file (a PDF or a text file), ask about it, and send. The answer reads it. A new chat has no paperclip: it takes words only for now. The cards on a new chat are gray, in the app's own colors.",
