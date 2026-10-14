@@ -20,6 +20,9 @@ pub struct View {
     pub yaw: f64,
     /// Zoom: 1 frames the subject; more is closer.
     pub zoom: f64,
+    /// The camera's height in degrees above the floor, instead of the
+    /// named view's (to match a photograph's angle).
+    pub pitch: Option<f64>,
     /// A box (min, max) to frame instead of the subject's own, so pictures
     /// of different versions keep one camera.
     pub frame: Option<([f64; 3], [f64; 3])>,
@@ -33,6 +36,7 @@ impl View {
             focus: Vec::new(),
             yaw: 0.0,
             zoom: 1.0,
+            pitch: None,
             frame: None,
         }
     }
@@ -88,7 +92,8 @@ pub fn camera(built: &Built, view: &View) -> Camera {
         b = bounds(built, &[]);
     }
     let mut cam = Camera::default();
-    let (yaw, pitch) = angles(&view.name);
+    let (yaw, named_pitch) = angles(&view.name);
+    let pitch = view.pitch.unwrap_or(named_pitch);
     cam.yaw = (yaw + view.yaw).to_radians();
     cam.pitch = pitch.to_radians().clamp(-1.5707, 1.5707);
     cam.fov = 30f64.to_radians();

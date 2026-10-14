@@ -15,7 +15,7 @@ use cad_lab::lab::{FILES, Lab};
 use serde_json::{Value, json};
 
 const USAGE: &str = "usage: cad-lab serve [--port PORT] [--dir DIR] | cad-lab schema | cad-lab tool NAME [JSON]\n       \
-     cad-lab frames DOC OUT [--from N] [--to N] [--frames F] [--turn DEG] [--width W] [--height H] [--view V] [--offset DEG] [--fit N]";
+     cad-lab frames DOC OUT [--from N] [--to N] [--frames F] [--turn DEG] [--width W] [--height H] [--view V] [--offset DEG] [--pitch DEG] [--fit N]";
 
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -95,6 +95,7 @@ fn frames(args: &[String]) -> Result<(), String> {
     let (mut width, mut height) = (1920usize, 1080usize);
     let mut view = "hero".to_owned();
     let mut offset = 0.0;
+    let mut pitch: Option<f64> = None;
     let mut fit: Option<u64> = None;
     let mut words = args[2..].iter();
     while let Some(word) = words.next() {
@@ -113,16 +114,19 @@ fn frames(args: &[String]) -> Result<(), String> {
             "--height" => height = number()? as usize,
             "--view" => view = value.clone(),
             "--offset" => offset = number()?,
+            "--pitch" => pitch = Some(number()?),
             "--fit" => fit = Some(number()? as u64),
             _ => return Err(USAGE.into()),
         }
     }
     let out = PathBuf::from(out);
     std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
-    // One camera for every version: the last one's box.
+    // One camera for every version: the box of the last one drawn, or of
+    // version --fit (a film drawn in pieces keeps one camera).
+    let framed = fit.unwrap_or(to).min(latest);
     let (last, _) = lab
-        .load(doc, to.min(latest))
-        .ok_or(format!("{doc} v{to} can't be read"))?;
+        .load(doc, framed)
+        .ok_or(format!("{doc} v{framed} can't be read"))?;
     let last = cad::evaluate_with(&last, &lab.root.join(".parts")).map_err(|p| p.join(" "))?;
     let b = cad::render::bounds(&last.built, &[]);
     let frame = Some(([b.min.x, b.min.y, b.min.z], [b.max.x, b.max.y, b.max.z]));
@@ -145,6 +149,7 @@ fn frames(args: &[String]) -> Result<(), String> {
                 focus: Vec::new(),
                 yaw: offset + turn * (t - 0.5),
                 zoom: 1.0,
+                pitch,
                 frame,
             };
             let png = cad::render::png(&eval.built, &v, width, height)?;

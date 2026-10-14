@@ -66,8 +66,11 @@ Z up.
   booleans through each feature's `operation`: join, cut, intersect, new),
   or a **block** (`op: "block"`): direct operations on solids run as one
   feature of the history and recomputed with it. A part has a material
-  (density) and a colour; a solid of its own colour is one `appearance.assign`
-  feature.
+  (density), a colour and optionally a finish (`gloss`, `satin`, `matte`:
+  the glTF's roughness and the card's highlight); a solid of its own colour
+  is one `appearance.assign` feature. Copies a pattern or mirror makes keep
+  the colour of the solid they copy, even when it is coloured later (the
+  kernel names copies anew, so each is matched to its source by volume).
 - **`assembly.v1`** holds `parts` (by id), `instances` that place them
   (`at`, `rotate`, relative to a `parent` instance), `joints` (fastened,
   revolute, slider and cylindrical move today; planar, spherical and gear are
@@ -100,7 +103,8 @@ nothing is saved:
    parallel; the kernel's exact intersection took minutes on touching
    curved faces, so it isn't used for this.
 5. **Mass properties** for every instance and the whole assembly: volume,
-   mass from the material's density, centre of mass, and the inertia tensor
+   mass from the material's density (in kg and g, six significant digits,
+   so a 30 g toy keeps its inertia), centre of mass, and the inertia tensor
    about the centre of mass, by the divergence theorem over each solid's
    triangles (exact for the triangles; curved faces follow the kernel's
    display tolerance).
@@ -121,16 +125,16 @@ message (workspace rule: no keyword routing).
 | --- | --- |
 | `cad_list` | The documents |
 | `cad_open(doc, version?)` | The whole document, its report and the card |
-| `cad_new_part(doc, part, material, color, features, at?, rotate?, parent?, place?)` | A new part with its first features, placed once (makes the document if it's new) |
+| `cad_new_part(doc, part, material, color, finish?, features, at?, rotate?, parent?, place?)` | A new part with its first features, placed once (makes the document if it's new) |
 | `cad_add_feature(doc, part, features, after?)` | More of a part's history |
 | `cad_edit_feature(doc, part, feature, params? / op? / suppressed? / remove?)` | Change one feature; later ones rebuild from it |
-| `cad_set_part(doc, part, title? / material? / color? / remove?)` | A part's properties, or remove it and its instances |
+| `cad_set_part(doc, part, title? / material? / color? / finish? / remove?)` | A part's properties, or remove it and its instances |
 | `cad_assemble(doc, instances?, joints?, contacts?, remove?)` | Place, move or remove instances; add or move joints; declare contacts |
 | `cad_check(doc, version?)` | Rebuild and check a version again |
 | `cad_versions(doc)` | Each version's summary, author, mass and parts |
 | `cad_compare(doc, a?, b?)` | What changed: parts, features, instances, joints, mass and centre of mass |
 | `cad_export(doc, version?, formats?)` | glTF binary (`.glb`, for the web and Verse), 3MF, STEP (exact solids) and STL |
-| `cad_render(doc, version?, view, focus?)` | A picture: hero, rear, plan, front, side, iso, under or detail, framing some instances |
+| `cad_render(doc, version?, view, focus?, yaw?, pitch?)` | A picture: hero, rear, plan, front, side, iso, under or detail, framing some instances; yaw and pitch turn and raise the camera to match a photograph |
 
 ## Seeing it: the card
 

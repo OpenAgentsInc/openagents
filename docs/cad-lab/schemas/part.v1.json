@@ -70,6 +70,13 @@
       },
       "type": "array"
     },
+    "finish": {
+      "enum": [
+        "gloss",
+        "satin",
+        "matte"
+      ]
+    },
     "id": {
       "pattern": "^[a-z][a-z0-9_-]{0,47}$",
       "type": "string"
@@ -96,7 +103,8 @@
         "Solar Cell",
         "Gold",
         "Foam",
-        "Kapton"
+        "Kapton",
+        "PVC"
       ]
     },
     "note": {

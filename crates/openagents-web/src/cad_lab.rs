@@ -140,9 +140,10 @@ How the model works (millimetres and degrees; X forward, Y left, Z up; the groun
 - Drawing steps: sketch.rectangle.center {center, corner}; sketch.rectangle.rounded {p0, p1, radius}; sketch.circle.center {center, radius}; sketch.polygon.inscribed {center, radius, sides}; sketch.slot.center_to_center {p0, p1, width} (a rounded bar between two centres: good for arms and links); sketch.line {points:[[x,y],...], closed:true} (any outline); sketch.arc.three_point {start, end, through}; sketch.text {text, at:[x,y] (baseline start), height}.
 - solid.extrude {sketch, distance, direction?: "positive"|"negative"|"symmetric" (symmetric puts the distance on EACH side), operation?}; solid.revolve {sketch, axis: "x"|"y" (the sketch's own axes) or "X"|"Y"|"Z", angle? (default 360), operation?}; solid.loft {sections:[{sketch},{sketch}]}; solid.sweep and solid.pipe follow a path sketch.
 - Edges and faces are picked by a point on them [x,y,z] in the part's frame: solid.fillet {edges:[[x,y,z],...], radius}; solid.chamfer {edges, distance}; solid.shell {faces:[[x,y,z]] (the faces to remove, e.g. the top face's centre), thickness}: hollow boxes, trays and bays. Fillet outside edges before you shell. A box's vertical corner edge is at [±length/2, ±width/2, its middle height].
-- Repeats: solid.pattern.circular {features:[ids], axis:"X"|"Y"|"Z" or {origin, dir}, count}; solid.pattern.rectangular {features:[ids], dir1:[x,y,z], count1, spacing1, dir2?, count2?, spacing2?}; solid.mirror {features:[ids], plane:"XY"|"XZ"|"YZ"}. Pattern a small feature (a tread, a hole) right after you make it, before big cuts: it builds much faster.
+- Repeats: solid.pattern.circular {features:[ids], axis:"X"|"Y"|"Z" or {origin, dir}, count} (copies keep the colour of the solid they copy, even when it's coloured later); solid.pattern.rectangular {features:[ids], dir1:[x,y,z], count1, spacing1, dir2?, count2?, spacing2?}; solid.mirror {features:[ids], plane:"XY"|"XZ"|"YZ"}. Pattern a small feature (a tread, a hole) right after you make it, before big cuts: it builds much faster.
+- Finish: a part's finish is gloss, satin or matte (cad_new_part or cad_set_part finish); glossy moulded plastic is gloss.
 - Colour: the part's color (#rrggbb); a solid of its own colour: make it with "operation":"new" and a feature {"id":"..","op":"appearance.assign","params":{"bodies":["that feature's id"],"color":"#..."}}.
-- Materials: Aluminum, Titanium, Steel, Stainless Steel, Brass, Copper, ABS Plastic, PLA, Nylon, Polycarbonate, Glass, Carbon Fibre, Rubber, Circuit Board, Solar Cell, Gold, Foam, Kapton. Mass comes from the material's density, so hollow big boxes (solid.shell) the way they'd really be built.
+- Materials: Aluminum, Titanium, Steel, Stainless Steel, Brass, Copper, ABS Plastic, PLA, Nylon, Polycarbonate, Glass, Carbon Fibre, Rubber, Circuit Board, Solar Cell, Gold, Foam, Kapton, PVC. Mass comes from the material's density, so hollow big boxes (solid.shell) the way they'd really be built.
 - Instances may not overlap. Parts that are meant to touch or sit in each other (a shaft in a boss, a board on a floor) go in contacts [["a","b"]]; a joint's parent and child may touch.
 - Joints (cad_assemble joints): {"id","type":"revolute"|"slider"|"cylindrical"|"fastened","parent","child","origin":[x,y,z],"axis":[x,y,z],"value":deg or mm,"limits":[[min,max]]}. origin and axis are in the parent's frame and the parent must be the child's parent instance. To open a lid, set its hinge's value (cad_assemble with the same joint id and a new value).
 - Make each change in as few calls as you can: one cad_assemble can move instances and set joints together. When a check refuses an edit, change only what it names (move the instance it names, or declare the contact), not the parts' histories. To undo changes to a part, cad_set_part with from_version (the version whose part to bring back).
@@ -179,6 +180,19 @@ fn mass_line(mass: &Value) -> String {
     };
     let c = &mass["center_of_mass_mm"];
     let at = |i: usize| c[i].as_f64().unwrap_or(0.0);
+    // A small part reads in grams and tenths of a millimetre (a 30 g toy
+    // isn't "0.03 kg at (0, 0, 14) mm").
+    if kg < 1.0 {
+        // Never "-0.0".
+        let tenth = |i: usize| (at(i) * 10.0).round() / 10.0 + 0.0;
+        return format!(
+            "Mass {:.1} g · centre of mass ({:.1}, {:.1}, {:.1}) mm",
+            kg * 1000.0,
+            tenth(0),
+            tenth(1),
+            tenth(2)
+        );
+    }
     format!(
         "Mass {kg:.2} kg · centre of mass ({:.0}, {:.0}, {:.0}) mm",
         at(0),
@@ -327,7 +341,8 @@ const JS: &str = r"(function () {
         var acc = function (i, T, n) { var a = json.accessors[i], v = json.bufferViews[a.bufferView]; return new T(buf, bin + (v.byteOffset || 0), a.count * n); };
         var mat = json.materials[p.material] || {pbrMetallicRoughness: {baseColorFactor: [0.7, 0.7, 0.7, 1]}};
         var c = mat.pbrMetallicRoughness.baseColorFactor.map(function (x) { return Math.pow(x, 1 / 2.2); });
-        out.push({pos: acc(p.attributes.POSITION, Float32Array, 3), nor: acc(p.attributes.NORMAL, Float32Array, 3), idx: acc(p.indices, Uint32Array, 1), color: c});
+        var rough = mat.pbrMetallicRoughness.roughnessFactor;
+        out.push({pos: acc(p.attributes.POSITION, Float32Array, 3), nor: acc(p.attributes.NORMAL, Float32Array, 3), idx: acc(p.indices, Uint32Array, 1), color: c, gloss: 1 - (rough === undefined ? 0.6 : rough)});
       });
     });
     return out;
@@ -344,7 +359,7 @@ const JS: &str = r"(function () {
       if (!prims || !prims.length) return;
       var prog = gl.createProgram();
       gl.attachShader(prog, shader(gl, gl.VERTEX_SHADER, '#version 300 es\nin vec3 p;in vec3 n;uniform mat4 m;out vec3 vn;void main(){vn=n;gl_Position=m*vec4(p,1.0);}'));
-      gl.attachShader(prog, shader(gl, gl.FRAGMENT_SHADER, '#version 300 es\nprecision highp float;in vec3 vn;uniform vec3 c;uniform vec3 l;out vec4 o;void main(){vec3 nn=normalize(vn);float d=max(dot(nn,l),0.0);float f=max(dot(nn,normalize(vec3(-0.4,0.3,-0.6))),0.0);o=vec4(c*(0.38+0.55*d+0.18*f),1.0);}'));
+      gl.attachShader(prog, shader(gl, gl.FRAGMENT_SHADER, '#version 300 es\nprecision highp float;in vec3 vn;uniform vec3 c;uniform vec3 l;uniform vec3 e;uniform float g;out vec4 o;void main(){vec3 nn=normalize(vn);float d=max(dot(nn,l),0.0);float f=max(dot(nn,normalize(vec3(-0.4,0.3,-0.6))),0.0);float s=pow(max(dot(reflect(-l,nn),e),0.0),6.0+90.0*g*g)*0.6*g*g;o=vec4(c*(0.38+0.55*d+0.18*f)+vec3(s),1.0);}'));
       gl.linkProgram(prog);
       var lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
       var draws = prims.map(function (p) {
@@ -355,7 +370,7 @@ const JS: &str = r"(function () {
         var nb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, nb); gl.bufferData(gl.ARRAY_BUFFER, p.nor, gl.STATIC_DRAW);
         var ln = gl.getAttribLocation(prog, 'n'); gl.enableVertexAttribArray(ln); gl.vertexAttribPointer(ln, 3, gl.FLOAT, false, 0, 0);
         var ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, p.idx, gl.STATIC_DRAW);
-        return {vao: vao, count: p.idx.length, color: p.color};
+        return {vao: vao, count: p.idx.length, color: p.color, gloss: p.gloss};
       });
       var center = [0, 1, 2].map(function (k) { return (lo[k] + hi[k]) / 2; });
       var radius = Math.max(1e-3, Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) / 2);
@@ -381,7 +396,8 @@ const JS: &str = r"(function () {
         gl.uniformMatrix4fv(gl.getUniformLocation(prog, 'm'), false, m);
         var lx = -f[0] + u[0] * 0.6 + r[0] * 0.3, ly = -f[1] + u[1] * 0.6 + r[1] * 0.3, lz = -f[2] + u[2] * 0.6 + r[2] * 0.3, ll = Math.hypot(lx, ly, lz);
         gl.uniform3f(gl.getUniformLocation(prog, 'l'), lx / ll, ly / ll, lz / ll);
-        draws.forEach(function (d) { gl.uniform3f(gl.getUniformLocation(prog, 'c'), d.color[0], d.color[1], d.color[2]); gl.bindVertexArray(d.vao); gl.drawElements(gl.TRIANGLES, d.count, gl.UNSIGNED_INT, 0); });
+        gl.uniform3f(gl.getUniformLocation(prog, 'e'), -f[0], -f[1], -f[2]);
+        draws.forEach(function (d) { gl.uniform3f(gl.getUniformLocation(prog, 'c'), d.color[0], d.color[1], d.color[2]); gl.uniform1f(gl.getUniformLocation(prog, 'g'), d.gloss); gl.bindVertexArray(d.vao); gl.drawElements(gl.TRIANGLES, d.count, gl.UNSIGNED_INT, 0); });
       }
       canvas.hidden = false;
       var still = view.querySelector('img'); if (still) still.hidden = true;
@@ -569,6 +585,10 @@ mod tests {
             "{html}"
         );
         assert!(html.contains("1100 × 900 × 640 mm · 6 parts, 14 placed, 40 features, 10 joints"));
+        assert_eq!(
+            mass_line(&json!({"mass_kg": 0.031_42, "center_of_mass_mm": [0.0, -0.04, 13.86]})),
+            "Mass 31.4 g · centre of mass (0.0, 0.0, 13.9) mm"
+        );
         assert!(html.contains("Compare with v2"));
         assert!(!html.contains("style=") && !html.contains("onclick"));
         assert!(

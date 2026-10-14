@@ -194,6 +194,51 @@ mod tests {
     }
 
     #[test]
+    fn patterned_and_mirrored_copies_keep_their_solids_colour() {
+        // A red hub with a blue post, the post patterned four times round
+        // and mirrored below, and coloured only after: every copy is blue.
+        let mut part = doc::new_part("spinner", "Spinner", "ABS Plastic", Some("#cc2222"));
+        part["features"] = json!([
+            {"id": "hub", "op": "solid.cylinder", "params": {"radius": 10, "height": 5}},
+            {"id": "post", "op": "solid.box", "params": {"length": 4, "width": 4, "height": 10, "center": [20, 0, 5], "operation": "new"}},
+            {"id": "ring", "op": "solid.pattern.circular", "params": {"features": ["post"], "axis": "Z", "count": 4}},
+            {"id": "under", "op": "solid.mirror", "params": {"bodies": ["post"], "plane": "XY"}},
+            {"id": "paint", "op": "appearance.assign", "params": {"bodies": ["post"], "color": "#2244dd"}}
+        ]);
+        let eval = evaluate(&part).unwrap_or_else(|p| panic!("{p:?}"));
+        let count = |c: [u8; 3]| eval.built.solids.iter().filter(|s| s.color == c).count();
+        assert_eq!(eval.built.solids.len(), 6);
+        assert_eq!(count([0x22, 0x44, 0xdd]), 5);
+        assert_eq!(count([0xcc, 0x22, 0x22]), 1);
+        // A glossy part's glTF materials are smooth; a plain one keeps 0.6.
+        let text =
+            |solids: &[build::Solid]| String::from_utf8_lossy(&export::glb(solids)).into_owned();
+        assert!(text(&eval.built.solids).contains("\"roughnessFactor\":0.6"));
+        part["finish"] = json!("gloss");
+        let glossy = evaluate(&part).unwrap_or_else(|p| panic!("{p:?}"));
+        assert!(
+            glossy
+                .built
+                .solids
+                .iter()
+                .all(|s| s.finish.as_deref() == Some("gloss"))
+        );
+        let glb = text(&glossy.built.solids);
+        assert!(
+            glb.contains("\"roughnessFactor\":0.18") && glb.contains("#2244dd gloss"),
+            "{glb:.400}"
+        );
+        part["finish"] = json!("shiny");
+        assert!(
+            evaluate(&part)
+                .err()
+                .unwrap()
+                .join(" ")
+                .contains("finish must be one of gloss, satin, matte")
+        );
+    }
+
+    #[test]
     fn overlaps_are_refused_unless_declared_and_joints_move_children() {
         let mut a = doc::new_assembly("pair", "Pair");
         a["parts"]["block"] = doc::new_part("block", "Block", "Steel", None);

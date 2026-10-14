@@ -393,16 +393,23 @@ impl Lab {
             arg_str(args, "color"),
         );
         new["features"] = Value::Array(arg_list(args, "features")?);
+        if let Some(finish) = arg_str(args, "finish") {
+            new["finish"] = json!(finish);
+        }
         if let Some(params) = arg_json(args, "parameters")? {
             new["parameters"] = params;
         }
         document["parts"][part] = new;
         if args["place"] != false {
             let mut instance = json!({"id": part, "part": part});
-            for key in ["at", "rotate", "parent"] {
+            for key in ["at", "rotate"] {
                 if let Some(v) = arg_json(args, key)? {
                     instance[key] = v;
                 }
+            }
+            // The parent is an instance id, plain ("body") or quoted.
+            if let Some(parent) = arg_str(args, "parent") {
+                instance["parent"] = json!(parent.trim_matches('"'));
             }
             document["instances"]
                 .as_array_mut()
@@ -529,7 +536,7 @@ impl Lab {
                 return Ok(format!("{part}: back to how it was in v{n}"));
             }
             let (part, found) = Self::part_of(document, args)?;
-            for key in ["title", "material", "color"] {
+            for key in ["title", "material", "color", "finish"] {
                 if let Some(v) = arg_str(args, key) {
                     found[key] = json!(v);
                 }
@@ -705,6 +712,7 @@ impl Lab {
             focus: focus.clone(),
             yaw: args["yaw"].as_f64().unwrap_or(0.0),
             zoom: args["zoom"].as_f64().unwrap_or(1.0),
+            pitch: args["pitch"].as_f64(),
             frame: None,
         };
         let png = cad::render::png(&eval.built, &view, width, height)?;
@@ -919,7 +927,11 @@ pub fn differences(da: &Value, ra: &Value, db: &Value, rb: &Value) -> Vec<String
     if let (Some(x), Some(y)) = (m(ra), m(rb))
         && (x - y).abs() > 1e-6
     {
-        out.push(format!("Mass {x:.3} kg → {y:.3} kg"));
+        if x.max(y) < 1.0 {
+            out.push(format!("Mass {:.2} g → {:.2} g", x * 1000.0, y * 1000.0));
+        } else {
+            out.push(format!("Mass {x:.3} kg → {y:.3} kg"));
+        }
     }
     let c = |r: &Value| r["report"]["mass"]["center_of_mass_mm"].clone();
     if c(ra) != c(rb) {
@@ -942,6 +954,7 @@ fn takes(name: &str) -> &'static [&'static str] {
             "title",
             "material",
             "color",
+            "finish",
             "features",
             "parameters",
             "place",
@@ -969,6 +982,7 @@ fn takes(name: &str) -> &'static [&'static str] {
             "title",
             "material",
             "color",
+            "finish",
             "parameters",
             "remove",
             "from_version",
@@ -988,7 +1002,7 @@ fn takes(name: &str) -> &'static [&'static str] {
         "cad_compare" => &["doc", "a", "b"],
         "cad_export" => &["doc", "version", "formats"],
         "cad_render" => &[
-            "doc", "version", "view", "focus", "yaw", "zoom", "width", "height",
+            "doc", "version", "view", "focus", "yaw", "pitch", "zoom", "width", "height",
         ],
         _ => &[],
     }
@@ -1026,6 +1040,11 @@ pub fn tools() -> Value {
     let version =
         json!({"type": "integer", "description": "a version number; the latest when left out"});
     let summary = json!({"type": "string", "description": "one line in plain words saying what this step changes"});
+    let materials = format!("one of: {}", doc::MATERIALS.map(|(n, _)| n).join(", "));
+    let finish = json!({"type": "string", "description": format!(
+        "how the surface takes the light: {} (moulded toy plastic is gloss)",
+        doc::FINISHES.map(|(n, _)| n).join(", ")
+    )});
     json!({"tools": [
         {"name": "cad_list", "description": "List the CAD documents in CAD Lab on this computer.",
          "parameters": {"type": "object", "properties": {}}},
@@ -1035,8 +1054,9 @@ pub fn tools() -> Value {
          "parameters": {"type": "object", "required": ["doc", "part", "summary"], "properties": {
             "doc": doc, "doc_title": {"type": "string", "description": "the document's title, when making it"},
             "part": part, "title": {"type": "string"},
-            "material": {"type": "string", "description": "one of: Aluminum, Titanium, Steel, Stainless Steel, Brass, Copper, ABS Plastic, PLA, Nylon, Polycarbonate, Glass, Carbon Fibre, Rubber, Circuit Board, Solar Cell, Gold, Foam, Kapton"},
+            "material": {"type": "string", "description": materials},
             "color": {"type": "string", "description": "#rrggbb"},
+            "finish": finish,
             "features": {"type": "string", "description": "the part's features as a JSON array (see the feature guide)"},
             "place": {"type": "boolean", "description": "place an instance of it (default true)"},
             "at": {"type": "string", "description": "the instance's position [x,y,z] in mm, as JSON"},
@@ -1055,9 +1075,10 @@ pub fn tools() -> Value {
             "params": {"type": "string", "description": "a JSON object of params to change"},
             "op": {"type": "string"}, "suppressed": {"type": "boolean"}, "remove": {"type": "boolean"},
             "summary": summary}}},
-        {"name": "cad_set_part", "description": "Change a part's title, material or colour, bring a part back to how it was in an earlier version (from_version), or remove the part and its instances (remove: true).",
+        {"name": "cad_set_part", "description": "Change a part's title, material, colour or finish, bring a part back to how it was in an earlier version (from_version), or remove the part and its instances (remove: true).",
          "parameters": {"type": "object", "required": ["doc", "part", "summary"], "properties": {
-            "doc": doc, "part": part, "title": {"type": "string"}, "material": {"type": "string"}, "color": {"type": "string"},
+            "doc": doc, "part": part, "title": {"type": "string"}, "material": {"type": "string", "description": materials},
+            "color": {"type": "string", "description": "#rrggbb"}, "finish": finish,
             "remove": {"type": "boolean"},
             "from_version": {"type": "integer", "description": "bring the part back to how it was in this version"},
             "summary": summary}}},
@@ -1083,7 +1104,8 @@ pub fn tools() -> Value {
          "parameters": {"type": "object", "required": ["doc"], "properties": {"doc": doc, "version": version,
             "view": {"type": "string", "description": "hero, rear, plan, front, side, iso, under or detail"},
             "focus": {"type": "string", "description": "a JSON array of instance ids to frame"},
-            "zoom": {"type": "number"}, "yaw": {"type": "number", "description": "extra turn, degrees"}}}}
+            "zoom": {"type": "number"}, "yaw": {"type": "number", "description": "extra turn, degrees"},
+            "pitch": {"type": "number", "description": "the camera's height above the floor in degrees (0 level, 90 straight down), instead of the view's own"}}}}
     ]})
 }
 
@@ -1175,6 +1197,20 @@ mod tests {
             lab.run("cad_list", &json!({}))["documents"][0]["id"],
             "cart"
         );
+        // A parent named plainly, as the tool declares it (a string).
+        let cap = lab.run("cad_new_part", &json!({"doc": "cart", "part": "cap", "material": "ABS Plastic", "parent": "w1", "at": "[0,0,0]",
+            "features": [{"id": "disc", "op": "solid.cylinder", "params": {"radius": 10, "height": 2, "axis": "Y", "base": [0, 10, 0]}}],
+            "summary": "A hub cap on the first wheel"}));
+        assert_eq!(cap["saved"], true, "{cap}");
+        let (doc6, _) = lab.load("cart", 6).unwrap();
+        let placed = doc6["instances"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["id"] == "cap")
+            .cloned()
+            .unwrap();
+        assert_eq!(placed["parent"], "w1");
     }
 
     #[test]

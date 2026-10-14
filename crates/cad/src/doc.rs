@@ -31,7 +31,7 @@ pub const ASSEMBLY: &str = "assembly.v1";
 
 /// Materials and their densities (g/cm³). A part names one; the kernel's
 /// own materials keep their names, and the rest are made in the session.
-pub const MATERIALS: [(&str, f64); 18] = [
+pub const MATERIALS: [(&str, f64); 19] = [
     ("Aluminum", 2.70),
     ("Titanium", 4.43),
     ("Steel", 7.85),
@@ -50,6 +50,7 @@ pub const MATERIALS: [(&str, f64); 18] = [
     ("Gold", 19.30),
     ("Foam", 0.05),
     ("Kapton", 1.42),
+    ("PVC", 1.38),
 ];
 
 /// The default material.
@@ -144,6 +145,20 @@ pub const JOINTS_BUILT: [&str; 4] = ["fastened", "revolute", "slider", "cylindri
 pub const VIEWS: [&str; 8] = [
     "hero", "rear", "plan", "front", "side", "iso", "under", "detail",
 ];
+
+/// How a part's surface takes the light: glossy moulded plastic, a satin
+/// finish, or matte. Exports carry it (glTF roughness) and the card's view
+/// shows the highlight; without one a part keeps the plain look.
+pub const FINISHES: [(&str, f64); 3] = [("gloss", 0.18), ("satin", 0.45), ("matte", 0.85)];
+
+/// A finish's glTF roughness, by name.
+#[must_use]
+pub fn roughness(finish: &str) -> Option<f64> {
+    FINISHES
+        .iter()
+        .find(|(n, _)| n.eq_ignore_ascii_case(finish.trim()))
+        .map(|(_, r)| *r)
+}
 
 fn is_id(s: &str) -> bool {
     !s.is_empty()
@@ -319,7 +334,15 @@ pub fn part_problems(key: &str, part: &Value) -> Vec<String> {
         for field in object.keys() {
             if !matches!(
                 field.as_str(),
-                "kind" | "id" | "title" | "material" | "color" | "parameters" | "features" | "note"
+                "kind"
+                    | "id"
+                    | "title"
+                    | "material"
+                    | "color"
+                    | "finish"
+                    | "parameters"
+                    | "features"
+                    | "note"
             ) {
                 out.push(format!("Part {key} has an unknown field {field}."));
             }
@@ -337,6 +360,14 @@ pub fn part_problems(key: &str, part: &Value) -> Vec<String> {
     {
         out.push(format!(
             "Part {key}'s color must look like #a1b2c3 (got {color})."
+        ));
+    }
+    if let Some(finish) = part.get("finish").and_then(Value::as_str)
+        && roughness(finish).is_none()
+    {
+        out.push(format!(
+            "Part {key}'s finish must be one of {} (got {finish}).",
+            FINISHES.map(|(n, _)| n).join(", ")
         ));
     }
     let mut seen = BTreeSet::new();
@@ -635,6 +666,7 @@ pub fn schema() -> Value {
             "title": {"type": "string"},
             "material": {"enum": MATERIALS.map(|(n, _)| n)},
             "color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$"},
+            "finish": {"enum": FINISHES.map(|(n, _)| n)},
             "note": {"type": "string"},
             "parameters": parameters,
             "features": {"type": "array", "items": {

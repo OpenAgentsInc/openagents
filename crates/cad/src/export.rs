@@ -45,7 +45,8 @@ fn pad4(bytes: &mut Vec<u8>, with: u8) {
 }
 
 /// The solids as one binary glTF: a node per solid (named instance/body),
-/// in metres with Y up (glTF's convention), one material per colour.
+/// in metres with Y up (glTF's convention), one material per colour and
+/// finish (a finish sets the roughness: glossy plastic shines).
 #[must_use]
 pub fn glb(solids: &[Solid]) -> Vec<u8> {
     let mut bin: Vec<u8> = Vec::new();
@@ -53,16 +54,17 @@ pub fn glb(solids: &[Solid]) -> Vec<u8> {
     let mut accessors = Vec::new();
     let mut meshes = Vec::new();
     let mut nodes = Vec::new();
-    let mut materials: Vec<[u8; 3]> = Vec::new();
+    let mut materials: Vec<([u8; 3], Option<&str>)> = Vec::new();
     for solid in solids {
         let m = &solid.mesh;
         if m.triangles.is_empty() {
             continue;
         }
-        let material = match materials.iter().position(|c| *c == solid.color) {
+        let key = (solid.color, solid.finish.as_deref());
+        let material = match materials.iter().position(|m| *m == key) {
             Some(i) => i,
             None => {
-                materials.push(solid.color);
+                materials.push(key);
                 materials.len() - 1
             }
         };
@@ -117,10 +119,16 @@ pub fn glb(solids: &[Solid]) -> Vec<u8> {
     }
     let materials: Vec<Value> = materials
         .iter()
-        .map(|c| {
+        .map(|(c, finish)| {
             let lin = |x: u8| (f64::from(x) / 255.0).powf(2.2);
-            json!({"pbrMetallicRoughness": {"baseColorFactor": [lin(c[0]), lin(c[1]), lin(c[2]), 1.0], "metallicFactor": 0.1, "roughnessFactor": 0.6},
-                   "name": format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2])})
+            // Without a finish, the plain look the rover has always had.
+            let (metallic, rough) = match finish.and_then(crate::doc::roughness) {
+                Some(r) => (0.0, r),
+                None => (0.1, 0.6),
+            };
+            let name = format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2]);
+            json!({"pbrMetallicRoughness": {"baseColorFactor": [lin(c[0]), lin(c[1]), lin(c[2]), 1.0], "metallicFactor": metallic, "roughnessFactor": rough},
+                   "name": finish.map_or(name.clone(), |f| format!("{name} {f}"))})
         })
         .collect();
     let node_ids: Vec<usize> = (0..nodes.len()).collect();

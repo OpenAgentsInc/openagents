@@ -133,18 +133,30 @@ fn round(x: f64, places: i32) -> f64 {
     (x * k).round() / k
 }
 
+/// `x` to `digits` significant digits, so a 30 g toy and a 90 kg rover
+/// both keep their precision (fixed decimals rounded a toy's inertia to 0).
+fn significant(x: f64, digits: i32) -> f64 {
+    if x == 0.0 || !x.is_finite() {
+        return 0.0;
+    }
+    let places = digits - 1 - x.abs().log10().floor() as i32;
+    round(x, places.clamp(0, 15))
+}
+
 impl Mass {
-    /// As JSON in SI-ish units people read: kg, mm, kg·m².
+    /// As JSON in SI-ish units people read: kg (and g), mm, kg·m², each to
+    /// six significant digits.
     #[must_use]
     pub fn json(&self) -> Value {
         let inertia: Vec<Vec<f64>> = self
             .inertia
             .iter()
-            .map(|row| row.iter().map(|x| round(x * 1e-9, 6)).collect())
+            .map(|row| row.iter().map(|x| significant(x * 1e-9, 6)).collect())
             .collect();
         json!({
-            "volume_cm3": round(self.volume_mm3 / 1000.0, 3),
-            "mass_kg": round(self.mass_g / 1000.0, 4),
+            "volume_cm3": significant(self.volume_mm3 / 1000.0, 6),
+            "mass_kg": significant(self.mass_g / 1000.0, 6),
+            "mass_g": significant(self.mass_g, 6),
             "center_of_mass_mm": self.com.map(|x| round(x, 1)),
             "inertia_kg_m2": inertia,
         })
@@ -212,5 +224,22 @@ mod tests {
         assert!(m.inertia[0][1].abs() < 1e-6);
         let j = m.json();
         assert_eq!(j["mass_kg"], 0.216);
+        assert_eq!(j["mass_g"], 216.0);
+    }
+
+    #[test]
+    fn a_small_part_keeps_its_mass_and_inertia() {
+        // A 10 mm ABS cube: 1.04 g, Ixx = m(b² + c²)/12 ≈ 17.33 g·mm²,
+        // which fixed decimals of kg·m² rounded to 0.
+        let mesh = cuboid([0.0, 0.0, 0.0], [10.0, 10.0, 10.0]);
+        let mut sum = Sum::default();
+        sum.add(&mesh, 1.04);
+        let j = sum.mass().json();
+        assert_eq!(j["mass_g"], 1.04);
+        assert_eq!(j["mass_kg"], 0.00104);
+        let ixx = j["inertia_kg_m2"][0][0].as_f64().unwrap();
+        assert!((ixx - 1.733_33e-8).abs() < 1e-12, "{ixx}");
+        assert_eq!(significant(87.940_123_4, 6), 87.9401);
+        assert_eq!(significant(0.0, 6), 0.0);
     }
 }

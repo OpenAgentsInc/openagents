@@ -28,6 +28,8 @@ pub struct Solid {
     /// The kernel's name for it (unique in the build).
     pub body: String,
     pub color: [u8; 3],
+    /// Its part's finish (`gloss`, `satin`, `matte`), when it has one.
+    pub finish: Option<String>,
     /// Triangles in world millimetres.
     pub mesh: Arc<Mesh>,
     /// Whether every shell of it closes.
@@ -200,6 +202,79 @@ fn feature(s: &mut Session, part: &str, f: &Value) -> Result<(), String> {
     Ok(())
 }
 
+/// Operations whose new solids are copies of others.
+const COPIES: [&str; 4] = [
+    "solid.pattern.circular",
+    "solid.pattern.rectangular",
+    "solid.pattern.path",
+    "solid.mirror",
+];
+
+/// Every solid's volume (mm³), by name.
+fn volumes(s: &Session) -> BTreeMap<String, f64> {
+    let state = s.world_state();
+    state
+        .bodies
+        .iter()
+        .map(|b| (b.name.clone(), crate::mass::integrals(&b.mesh()).volume))
+        .collect()
+}
+
+/// The solids a pattern or mirror feature made, each with the solid it
+/// copies: the kernel names copies anew ("Body7") and doesn't carry their
+/// source's colour, so a patterned blue strut would come out the part's
+/// red. A copy is matched to the source (the feature's `bodies`, or the
+/// solids its `features` made) whose volume is nearest to its own: a copy
+/// is congruent to its source.
+fn copies_made(
+    part: &str,
+    params: &Value,
+    before: &BTreeMap<String, f64>,
+    after: &BTreeMap<String, f64>,
+) -> Vec<(String, String)> {
+    let named = |key: &str| -> Vec<String> {
+        params[key]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(|n| scoped(part, n))
+            .collect()
+    };
+    let sources: Vec<(String, f64)> = named("bodies")
+        .into_iter()
+        .chain(named("features"))
+        .filter_map(|n| before.get(&n).map(|v| (n, *v)))
+        .collect();
+    after
+        .iter()
+        .filter(|(name, _)| !before.contains_key(*name))
+        .filter_map(|(name, v)| {
+            sources
+                .iter()
+                .min_by(|a, b| (a.1 - v).abs().total_cmp(&(b.1 - v).abs()))
+                .map(|(source, _)| (name.clone(), source.clone()))
+        })
+        .collect()
+}
+
+/// A solid's own colour, or, for a copy without one, its source's.
+fn inherited(
+    name: &str,
+    own: &BTreeMap<String, Option<String>>,
+    copy_of: &BTreeMap<String, String>,
+) -> Option<String> {
+    let mut at = name;
+    // A chain of copies is at most as long as the history.
+    for _ in 0..=copy_of.len() {
+        if let Some(color) = own.get(at).cloned().flatten() {
+            return Some(color);
+        }
+        at = copy_of.get(at)?;
+    }
+    None
+}
+
 fn hex(color: &str) -> Option<[u8; 3]> {
     let c = color.strip_prefix('#')?;
     if c.len() != 6 {
@@ -337,13 +412,17 @@ struct PartBuild {
 /// The digest a built part is kept under: the part, the parameters it may
 /// use, and the kernel it was built with.
 fn part_digest(part: &Value, parameters: &[Value]) -> String {
-    let key = json!({"part": part, "parameters": parameters, "kernel": KERNEL});
+    let key = json!({"part": part, "parameters": parameters, "kernel": KERNEL, "build": BUILD});
     let hash = Sha256::digest(key.to_string().as_bytes());
     hash.iter().take(12).map(|b| format!("{b:02x}")).collect()
 }
 
 /// The kernel build this crate pins (part caches don't cross it).
 pub const KERNEL: &str = "solidcraft@229de148";
+
+/// What a cached part records, versioned: 2 added the colours pattern and
+/// mirror copies take from their sources.
+const BUILD: u32 = 2;
 
 /// Builds one part from its history, or takes it from the cache.
 fn build_part(
@@ -363,11 +442,18 @@ fn build_part(
         return Ok(PartBuild { step, meta });
     }
     let mut s = session(parameters)?;
+    // Each copy a pattern or mirror made → the solid it copies.
+    let mut copy_of: BTreeMap<String, String> = BTreeMap::new();
     for f in part["features"].as_array().into_iter().flatten() {
         if f["suppressed"] == true {
             continue;
         }
+        let copies = COPIES.contains(&f["op"].as_str().unwrap_or_default());
+        let before = copies.then(|| volumes(&s));
         feature(&mut s, key, f).map_err(|e| vec![e])?;
+        if let Some(before) = before {
+            copy_of.extend(copies_made(key, &f["params"], &before, &volumes(&s)));
+        }
     }
     let mut warnings = Vec::new();
     if let Ok(inspect) = run(&mut s, "document.inspect", &json!({"measure": false})) {
@@ -392,7 +478,8 @@ fn build_part(
         }
     }
     let state = s.world_state();
-    let mut bodies = Vec::new();
+    let mut own: BTreeMap<String, Option<String>> = BTreeMap::new();
+    let mut order = Vec::new();
     for body in state.bodies.iter().filter(|b| s.body_visible(&b.name)) {
         if body.body.is_surface() {
             return Err(vec![format!(
@@ -408,9 +495,14 @@ fn build_part(
                 (b * 255.0).round() as u8
             )
         });
-        bodies.push(json!({"name": body.name, "color": color}));
+        own.insert(body.name.clone(), color);
+        order.push(body.name.clone());
     }
     drop(state);
+    let bodies: Vec<Value> = order
+        .iter()
+        .map(|name| json!({"name": name, "color": inherited(name, &own, &copy_of)}))
+        .collect();
     if bodies.is_empty() {
         return Err(vec![format!(
             "Part {key} has no solid yet: add a feature that makes one (an extrude, a revolve, a box or a cylinder)."
@@ -498,6 +590,7 @@ pub fn build_with(document: &Value, cache: &Path) -> Result<Built, Vec<String>> 
     // Each part, read into its own component at the origin.
     let mut component_of: BTreeMap<String, (u64, u64)> = BTreeMap::new();
     let mut colors: BTreeMap<String, [u8; 3]> = BTreeMap::new();
+    let mut finishes: BTreeMap<String, Option<String>> = BTreeMap::new();
     for (key, part, b) in &built_parts {
         for w in b.meta["warnings"].as_array().into_iter().flatten() {
             warnings.push(w.as_str().unwrap_or_default().to_owned());
@@ -564,6 +657,10 @@ pub fn build_with(document: &Value, cache: &Path) -> Result<Built, Vec<String>> 
             }
         }
         colors.insert(key.clone(), color);
+        finishes.insert(
+            key.clone(),
+            part["finish"].as_str().map(|f| f.trim().to_lowercase()),
+        );
         run(&mut s, "component.activate", &json!({"component": "root"})).map_err(fail)?;
         component_of.insert(key.clone(), (component, occurrence));
     }
@@ -642,6 +739,7 @@ pub fn build_with(document: &Value, cache: &Path) -> Result<Built, Vec<String>> 
             part: part.clone(),
             body: body.name.clone(),
             color,
+            finish: finishes.get(part).cloned().flatten(),
             mesh: body.mesh(),
             closed: !body.body.is_surface() && !body.body.is_mesh(),
         });
