@@ -163,7 +163,7 @@ mod issues_door {
         );
         let guidance = guidance("OpenAgentsInc/openagents");
         assert!(guidance.contains("OpenAgentsInc/openagents"));
-        assert!(guidance.contains("first person singular (\"I\", never \"we\" or \"us\")"));
+        assert!(guidance.contains("first person plural (\"we\", never \"I\" or \"me\")"));
     }
 
     #[test]

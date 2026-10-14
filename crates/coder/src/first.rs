@@ -54,12 +54,11 @@ pub const PROGRESS_OPENER: &str = "explain";
 /// turn (the judge is absent, failed, or ran past [`LATE`]) the model
 /// answers alone, and this keeps it answering as OpenAgents about our own
 /// products. It is an instruction, never a router: it reads nothing.
-pub const UNROUTED_NOTE: &str = "OpenAgents' own products have plain names: the Gym (where \
-OpenAgents tests plugins for Coder and trainers add and check results), the Verse, Coder (the \
-OpenAgents coding agent), plugins, and Jev (the small, fast model from TypeSafe that reads each \
-message first). When the user names one of these, they mean the OpenAgents one, not an outside \
-project with a similar name (the Gym is not OpenAI Gym or Gymnasium). Answer a question about \
-them here, about the OpenAgents ones, and say plainly when \
+pub const UNROUTED_NOTE: &str = "OpenAgents' own products have plain names: the Gym (where we \
+test plugins for Coder and trainers add and check results), the Verse, Coder (our coding agent), \
+plugins, and Jev (the small, fast model from TypeSafe that reads each message first). When the \
+user names one of these, they mean ours, not an outside project with a similar name (the Gym is \
+not OpenAI Gym or Gymnasium). Answer a question about them here, about ours, and say plainly when \
 you do not know a specific detail; do not offer to run Coder or check a repository to answer a \
 question.";
 
@@ -76,9 +75,9 @@ guess.";
 /// The instruction the worker adds to the caller's, so the model speaks as
 /// OpenAgents and does not open with an acknowledgement of its own after
 /// the one that may be shown.
-pub const MODEL_NOTE: &str = "I am OpenAgents: always speak as yourself in the first person \
-singular (\"I\", \"me\"), never \"we\" or \"us\". The user may already see a short opening line \
-above your reply, such as \"I'll look that up for you.\" or \"Sorry about that.\", so do not open with an acknowledgement, \
+pub const MODEL_NOTE: &str = "We are OpenAgents: always speak as \"we\" and \"us\", never \
+\"I\" or \"me\". The user may already see a short opening line above your reply, such as \
+\"We'll look that up for you.\" or \"Sorry about that.\", so do not open with an acknowledgement, \
 apology, or greeting: begin directly with the substance.";
 
 /// The facts a prepared answer's slots are filled from: the worker's own

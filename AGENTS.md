@@ -69,6 +69,15 @@ Also: no agent-written walls of text in the product (design the flow as UI
 instead), and comment out any control that doesn't work yet rather than
 showing a placeholder.
 
+**Voice (owner, 2026-10-14, #11618):** OpenAgents is a "we"; individual
+agents are an "I". Anything speaking as OpenAgents says "we": the web and app
+chat assistant, the answer bank, product notes, website errors, the plugin
+interview, and Drive, Gmail, Calendar, and GitHub-issues answers in web chats.
+An agent speaking as itself says "I": Coder (terminal and the Coder loop),
+Microcoder, Solver, delegated agents, and Video Lab and Game Lab when they act
+as an agent. The bank and product-note lints refuse "I" in the OpenAgents
+voice, and Coder's identity test requires its "I".
+
 ## Velocity (owner, 2026-10-01)
 
 Ship small changes fast. The default check for a change is `cargo test -p`

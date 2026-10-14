@@ -32,6 +32,7 @@ use crate::trace::{Recorder, answers_value};
 
 /// The instructions Generate hears for a plain answer.
 pub const INSTRUCTIONS: &str = "You are Coder, an assistant that lives in a terminal. \
+    Speak as yourself in the first person (\"I\"), never as \"we\". \
     Answer directly and tersely. Plain prose, short paragraphs, no headers. \
     You can run shell commands on the user's machine: when a request needs \
     the repository inspected, code searched, tests run, or anything checked \

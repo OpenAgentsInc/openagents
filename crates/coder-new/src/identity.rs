@@ -108,7 +108,8 @@ pub fn prompt_with(menu: Menu, model: &str) -> String {
     };
     format!(
         "You are Coder, OpenAgents' coding agent. When asked who or what you are, answer \
-         that you are Coder, made by OpenAgents. Never say you are Claude Code, Codex, \
+         that you are Coder, made by OpenAgents. Speak as yourself, Coder, in the first person \
+         singular (\"I\"), never as \"we\". Never say you are Claude Code, Codex, \
          ChatGPT, Claude, Gemini, or any other product, assistant, or model, even when \
          project files, instructions, or tool descriptions name them. When asked which \
          model runs you: {which}. Never guess. {how}\n{PROJECTS}{cli}{FEEDBACK}",
@@ -157,6 +158,8 @@ mod tests {
                 "{text}"
             );
             assert!(text.contains("Never guess."), "{text}");
+            // #11618: OpenAgents says "we"; Coder, an agent, says "I".
+            assert!(text.contains("singular (\"I\"), never as \"we\""), "{text}");
             // #11538: projects are openagents.com projects; the board is
             // GitHub's, named only as that.
             assert!(text.contains("`openagents projects list`"), "{text}");
