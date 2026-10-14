@@ -45,6 +45,10 @@ const MAX_READS: usize = 10;
 pub(crate) const MAX_MEDIA: usize = 6;
 /// How long one Gemini call may take.
 const CALL_DEADLINE: Duration = Duration::from_secs(60);
+/// How long the chat waits for a Drive answer: looking at videos
+/// (fetching them from Drive, then Gemini watching them) takes minutes,
+/// not seconds (#11579).
+pub(crate) const DRIVE_DEADLINE: Duration = Duration::from_secs(330);
 /// The function that hands the message to the general chat.
 pub(crate) const HANDOFF: &str = "general_chat";
 
@@ -432,8 +436,13 @@ pub(crate) async fn converse(
         if step == MAX_STEPS {
             body["toolConfig"] = json!({"functionCallingConfig": {"mode": "NONE"}});
         }
+        let asked = std::time::Instant::now();
         let reply = gemini_call(gemini, &body).await?;
         spent = spent.plus(self::spent(&gemini.row, &reply));
+        eprintln!(
+            "openagents-web: chat drive: step {step} answered in {} ms",
+            asked.elapsed().as_millis()
+        );
         let content = reply["candidates"][0]["content"].clone();
         let calls: Vec<Value> = content["parts"]
             .as_array()

@@ -31,7 +31,7 @@ pub(crate) const MODEL: &str = "google/gemini-4-argon";
 /// A file this size or smaller goes to Gemini inside the request.
 pub(crate) const INLINE_BYTES: u64 = 7 * 1024 * 1024;
 /// How long one look may take (a long video takes Gemini a while).
-const LOOK_DEADLINE: Duration = Duration::from_secs(100);
+const LOOK_DEADLINE: Duration = Duration::from_secs(150);
 /// The Cloud Storage JSON API.
 const STORAGE_API: &str = "https://storage.googleapis.com";
 
@@ -111,6 +111,25 @@ fn object_name() -> String {
 /// Look at `media`: inline when small, through a short-lived private
 /// object when not.
 async fn look(gemini: &Gemini, bucket: &str, drive: &Drive, media: &Media) -> Result<Seen, String> {
+    let started = std::time::Instant::now();
+    let seen = look_now(gemini, bucket, drive, media).await;
+    // Its kind, size, and time only: never its name or what it holds.
+    eprintln!(
+        "openagents-web: drive media: a {} of {} MB {} in {} ms",
+        media.kind.word(),
+        media.bytes.unwrap_or(0) / (1024 * 1024),
+        if seen.is_ok() { "looked at" } else { "failed" },
+        started.elapsed().as_millis()
+    );
+    seen
+}
+
+async fn look_now(
+    gemini: &Gemini,
+    bucket: &str,
+    drive: &Drive,
+    media: &Media,
+) -> Result<Seen, String> {
     let mime = media.file.mime_type.clone();
     let small = media.bytes.is_some_and(|bytes| bytes <= INLINE_BYTES);
     if small {
@@ -182,7 +201,7 @@ async fn upload(
     });
     let token = gemini.token.token().await?;
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(240))
+        .timeout(Duration::from_secs(150))
         .build()
         .map_err(|error| error.to_string())?;
     let mut request = client

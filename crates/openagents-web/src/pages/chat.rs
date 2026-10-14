@@ -2137,6 +2137,9 @@ async fn answer(
     };
     // Images or PDFs go to the door that takes them; the hosted chat
     // answers with the words only when it can't (#11174).
+    // Whether the Drive door answers: it may look at videos, which takes
+    // longer than a plain answer (#11579).
+    let mut drive_door = false;
     let door: Option<Box<dyn openagents_chat::basic_coder::Door>> = match (door, vision) {
         (Some(door), Some(doors)) if !parts.is_empty() => {
             Some(Box::new(crate::chat_vision::VisionDoor {
@@ -2153,6 +2156,7 @@ async fn answer(
                 }
                 None => door,
             };
+            drive_door = drive.is_some();
             match drive {
                 Some(mut drive) => {
                     drive.fallback = Some(door);
@@ -2206,7 +2210,12 @@ async fn answer(
         ),
         None => None,
     };
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(130);
+    let deadline = tokio::time::Instant::now()
+        + if drive_door {
+            crate::connections::chat::DRIVE_DEADLINE
+        } else {
+            Duration::from_secs(130)
+        };
     let door_unavailable = job.is_none();
     let mut asked = door_unavailable;
     let mut shown = String::new();
