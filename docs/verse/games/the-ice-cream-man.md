@@ -1,6 +1,9 @@
 # The Ice Cream Man
 
-Status: design 2026-10-11; the browser MVP is built (`crates/icecream-rules`,
+Status: design 2026-10-11; the designer's revision (earned weapons,
+minions, the sprinkle staff and free roam, the Backrooms, V for first or
+third person) is in the code behind Game Lab settings (#11626); the browser
+MVP is built (`crates/icecream-rules`,
 `crates/icecream-web`, served at `/games/the-ice-cream-man`, guide at
 `/studios/blue-rush/the-ice-cream-man/how-to-play`, #11344), the way
 [Grow Little Bunny](grow-little-bunny.md) was. A Roblox version follows the
@@ -18,6 +21,11 @@ find the way out, and escape. It is meant to be funny, not scary: the
 It is the second community game, built on the same engine contract as Grow
 Little Bunny.
 
+The game's designer asked for a revision after playing it in
+[Game Lab](../../game-lab/README.md) (#11626): earned weapons, minions, a
+sprinkle staff to play with after you win, a Backrooms feel, and a first or
+third person camera. See [The designer's revision](#the-designers-revision).
+
 ## Contents
 
 - [Pillars](#pillars)
@@ -33,6 +41,7 @@ Little Bunny.
 - [Art direction](#art-direction)
 - [Audio](#audio)
 - [Multiplayer](#multiplayer)
+- [The designer's revision](#the-designers-revision)
 - [MVP scope](#mvp-scope)
 - [After the MVP](#after-the-mvp)
 - [Roblox version](#roblox-version)
@@ -134,9 +143,10 @@ hits taken, fudge accuracy.
 | Move | WASD / arrows | left thumbstick | left stick |
 | Camera | right-drag to orbit, wheel to zoom; Shift Lock toggle (Ctrl) for over-the-shoulder aim | drag right side | right stick |
 | Jump | Space | jump button | A |
+| First / third person | V | (third person) | later |
 | Sprint | hold Shift | sprint toggle | L3 |
 | Use tool | left click | fire button | RT |
-| Pick tool | 1 / 2 / 3, or click the hot bar | tap hot bar | LB / RB |
+| Pick tool | 1 to 8 (the tools you have, in order), or click the hot bar | tap hot bar | LB / RB |
 | Interact (doors, hide, pick up) | E | interact button | X |
 | Menu | Esc | menu button | Start |
 
@@ -148,7 +158,10 @@ find the keys), skippable and re-openable, like Grow Little Bunny's.
 Roblox default: third person behind the avatar, orbit with right-drag,
 zoom with the wheel (first person at closest zoom). Shift Lock locks the
 camera over the right shoulder with a crosshair for aiming tools. The
-camera pulls in when a wall is behind the avatar.
+camera pulls in when a wall is behind the avatar. V switches between first
+person (the tool in your hand at the bottom right, the mouse locked to look
+around) and third person (back at the zoom you had). A version can start in
+first person (`look.first_person`).
 
 ## Art direction
 
@@ -168,6 +181,77 @@ squelchy fudge shots; comic fart sounds; a "bloop" for sprinkles.
 MVP is single player. Next, 1–4 players in one Airbnb over NIP-MV presence
 (the same path as Grow Little Bunny's meadow), with the Ice Cream Man's
 state run by the host and mirrored to the others.
+
+## The designer's revision
+
+Asked for by the game's designer after playing it in Game Lab, and steered
+through Game Lab's chat (#11626). Every number below is a setting in the
+version's document (`game.v1`; the sections `weapons`, `minions`, `look`,
+`layout` and `rules`), and every new thing is off by default, so the
+original plays as it did. In the chat, "add the new items and minions" and
+"make it feel like the Backrooms" switch them on as versions.
+
+### Earned weapons
+
+None of them is in your hands at the start: you do something to get each
+one. They hurt the Ice Cream Man (400 health *tunable*); at none he melts
+into a puddle of vanilla, which wins the run like escaping does.
+
+| Weapon | What it does | How you get it |
+|---|---|---|
+| **Candy Cane Sword** | A quick wide swing up close (25 damage, 1.9 m) | The first minion you melt drops it; walk over it |
+| **Waffle Cone Spear** | A stretched-out waffle cone: a long narrow jab (35 damage, 3.4 m) | Behind a puzzle: three sprinkle buttons (pink, blue, yellow) in three rooms, pressed in that order, open the cone cabinet in a fourth. Out of order, they all go dark |
+| **Cone Pistol** | Fires cones (15 damage, 3 a second, 12 to start, fridges give 8 more) | Given for freezing him with hot fudge |
+| **Sugar Launcher** | Throws sugar that bursts, hurting everything in 2.5 m (60 damage, 4 to start) | Given for melting four minions |
+
+### Minions
+
+Mini Ice Cream Men (a third his size) that hunt you when you're within
+14 m and not hiding. They walk out of him when he's away from you (or a
+room two doorways off), one every 15 s up to three at once *tunable*, and
+bite (6 damage). Hot fudge (10), fart clouds (40) and the weapons melt
+them. A melted minion sometimes drops an **edible ice cream cone**
+(35% *tunable*): walk over it to eat it for **50% more health for 10
+seconds** (the health bar turns gold and can go past full; when it wears
+off, health comes back down to full).
+
+### The Sprinkle Staff and free roam
+
+One of the best: one super long sprinkle (10 m) that hurts whatever it
+touches and pops out three of **your own minions** where it ends. They're
+mint green and glow; they hunt his minions, then him, and stay by you
+otherwise, for 20 s each. You get it by winning: when you escape or melt
+him, the run card offers **Keep playing with the Sprinkle Staff**, and play
+goes on in free roam. Nobody gets scooped in free roam and the front door
+stays shut; if you escaped, he's still in the house for your minions to go
+after.
+
+### The Backrooms
+
+The house generator can build the Backrooms (`layout.backrooms`): most
+rooms are wide, empty and yellow, with L-shaped wall stubs in their
+corners, among a few of the Airbnb's own rooms (two bedrooms, the kitchen,
+the bathroom, the freezer room, the living room and the laundry, for their
+closets and fridges), with more doorways looping between them
+(`layout.loops`). The look (`look.yellow`) turns the pastel flavours into
+monotone striped yellow wallpaper, damp patches on the carpet, a grid of
+ceiling tiles and long fluorescent panels; the fog comes in closer and
+yellow-grey (`fog_near`, `fog_far`), the tubes flicker more (`flicker`)
+and buzz (`buzz`). He, his cones, the keys and the sprinkles stay ice
+cream: it's still The Ice Cream Man, lost in the Backrooms.
+
+### The bot
+
+The bot Game Lab measures versions with picks up dropped weapons, eats a
+dropped cone when it's hurt, solves the button puzzle after the keys,
+fights minions that come near (sword or spear in reach, else fudge, else
+the pistol), and hits him with what it has while he's frozen or confused.
+
+| Bot over 24 seeded houses | Wins | Middle escape | Hits | Spotted |
+|---|---|---|---|---|
+| The original (v1) | 24 of 24 | 0:26 | 1.7 | 2.0 |
+| Weapons, minions, free roam | 23 of 24 | 0:53 | 3.6 | 4.2 |
+| ... in the Backrooms | 24 of 24 | 0:42 | 1.8 | 3.8 |
 
 ## MVP scope
 

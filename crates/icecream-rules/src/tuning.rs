@@ -106,6 +106,79 @@ pub const MAX_EXTRA_CLOSETS: u32 = 4;
 /// he faces ([`SIGHT_COS`] is its cosine).
 pub const SIGHT_ANGLE: f32 = 70.0;
 
+/// Earned weapons (all off in the original game: `EARNED_WEAPONS` 0).
+pub const EARNED_WEAPONS: u32 = 0;
+/// The Ice Cream Man's health against the earned weapons.
+pub const MAN_HEALTH: f32 = 400.0;
+pub const SWORD_DAMAGE: f32 = 25.0;
+pub const SWORD_REACH: f32 = 1.9;
+pub const SWORD_WAIT: f32 = 0.45;
+/// Minions to melt before one drops the candy cane sword.
+pub const SWORD_TASK: u32 = 1;
+pub const SPEAR_DAMAGE: f32 = 35.0;
+pub const SPEAR_REACH: f32 = 3.4;
+pub const SPEAR_WAIT: f32 = 0.8;
+pub const PISTOL_DAMAGE: f32 = 15.0;
+pub const PISTOL_RATE: f32 = 3.0;
+pub const PISTOL_SPEED: f32 = 22.0;
+pub const PISTOL_RANGE: f32 = 18.0;
+pub const PISTOL_AMMO: u32 = 12;
+pub const PISTOL_MAX: u32 = 40;
+pub const PISTOL_PICKUP: u32 = 8;
+/// Times you must freeze him with hot fudge to earn the cone pistol.
+pub const PISTOL_TASK: u32 = 1;
+pub const SUGAR_DAMAGE: f32 = 60.0;
+pub const SUGAR_RADIUS: f32 = 2.5;
+pub const SUGAR_SPEED: f32 = 12.0;
+pub const SUGAR_RANGE: f32 = 14.0;
+pub const SUGAR_WAIT: f32 = 1.2;
+pub const SUGAR_AMMO: u32 = 4;
+pub const SUGAR_MAX: u32 = 10;
+pub const SUGAR_PICKUP: u32 = 2;
+/// Minions you must melt to earn the sugar launcher.
+pub const SUGAR_TASK: u32 = 4;
+
+/// Minions (none in the original game: `MINION_COUNT` 0).
+pub const MINION_RADIUS: f32 = 0.3;
+pub const MINION_COUNT: u32 = 0;
+pub const MINION_FIRST: f32 = 25.0;
+pub const MINION_EVERY: f32 = 15.0;
+pub const MINION_SPEED: f32 = 3.4;
+pub const MINION_HEALTH: f32 = 30.0;
+pub const MINION_DAMAGE: f32 = 6.0;
+pub const MINION_BITE_WAIT: f32 = 1.0;
+pub const MINION_SIGHT: f32 = 14.0;
+pub const FUDGE_MINION_DAMAGE: f32 = 10.0;
+pub const FART_MINION_DAMAGE: f32 = 40.0;
+/// The chance a melted minion drops an edible ice cream cone, and what a
+/// cone gives: extra health as a share of full health, for a while.
+pub const CONE_DROP: f32 = 0.35;
+pub const CONE_BOOST: f32 = 0.5;
+pub const CONE_TIME: f32 = 10.0;
+
+/// The sprinkle staff: one super long sprinkle that hurts what it touches
+/// and makes friendly minions where it ends.
+pub const STAFF_LENGTH: f32 = 10.0;
+pub const STAFF_DAMAGE: f32 = 30.0;
+pub const STAFF_WAIT: f32 = 2.0;
+pub const STAFF_MINIONS: u32 = 3;
+pub const STAFF_MINION_LIFE: f32 = 20.0;
+/// After a win, play on in free roam with the staff (1) or end (0).
+pub const FREE_ROAM: u32 = 0;
+
+/// The house as the Backrooms (0: the Airbnb's rooms), and the doorways
+/// added beyond the ones that join every room.
+pub const BACKROOMS: u32 = 0;
+pub const LOOPS: u32 = 4;
+/// The look: how yellowed the rooms are, the fog, the lights' flicker and
+/// buzz, and the camera a run starts with.
+pub const YELLOW: f32 = 0.0;
+pub const FOG_NEAR: f32 = 9.0;
+pub const FOG_FAR: f32 = 34.0;
+pub const FLICKER: f32 = 0.03;
+pub const BUZZ: f32 = 0.0;
+pub const FIRST_PERSON: u32 = 0;
+
 /// One value a game document may change: its section, name, default,
 /// bounds, and what it does, in plain words.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -260,6 +333,59 @@ tunables! {
     "rules" unlock: f32 = UNLOCK, 0.0, 600.0, "seconds holding E at the front door with every key to unlock it";
     "rules" reach: f32 = REACH, 0.5, 4.0, "how close you must be to use a closet, fridge or the front door";
     "rules" key_reach: f32 = KEY_REACH, 0.3, 4.0, "how close you must walk to pick up a key";
+    "layout" backrooms: u32 = BACKROOMS, 0, 1, "build the house as the Backrooms (1): wide empty yellow rooms with wall stubs among the Airbnb's own; 0 keeps the Airbnb's rooms";
+    "layout" loops: u32 = LOOPS, 0, 24, "extra doorways beyond the ones that join every room; more make the house loop like the Backrooms";
+    "weapons" earned_weapons: u32 = EARNED_WEAPONS, 0, 1, "whether the four earned weapons are in the game (1) or not (0): the candy cane sword, the waffle cone spear, the cone pistol and the sugar launcher";
+    "weapons" man_health: f32 = MAN_HEALTH, 10.0, 10000.0, "the Ice Cream Man's health against the earned weapons; at none he melts and you win";
+    "weapons" sword_damage: f32 = SWORD_DAMAGE, 0.0, 500.0, "a candy cane sword swing's damage";
+    "weapons" sword_reach: f32 = SWORD_REACH, 0.5, 6.0, "how far the candy cane sword reaches, metres";
+    "weapons" sword_wait: f32 = SWORD_WAIT, 0.1, 10.0, "seconds between candy cane sword swings";
+    "weapons" sword_task: u32 = SWORD_TASK, 1, 50, "minions you melt before one drops the candy cane sword";
+    "weapons" spear_damage: f32 = SPEAR_DAMAGE, 0.0, 500.0, "a waffle cone spear jab's damage";
+    "weapons" spear_reach: f32 = SPEAR_REACH, 1.0, 10.0, "how far the waffle cone spear reaches, metres";
+    "weapons" spear_wait: f32 = SPEAR_WAIT, 0.1, 10.0, "seconds between waffle cone spear jabs";
+    "weapons" pistol_damage: f32 = PISTOL_DAMAGE, 0.0, 500.0, "a cone from the cone pistol's damage";
+    "weapons" pistol_rate: f32 = PISTOL_RATE, 0.2, 20.0, "cones the cone pistol fires a second";
+    "weapons" pistol_speed: f32 = PISTOL_SPEED, 2.0, 60.0, "how fast the cone pistol's cones fly";
+    "weapons" pistol_range: f32 = PISTOL_RANGE, 1.0, 60.0, "how far the cone pistol's cones fly, metres";
+    "weapons" pistol_ammo: u32 = PISTOL_AMMO, 0, 500, "cones the cone pistol comes with";
+    "weapons" pistol_max: u32 = PISTOL_MAX, 1, 999, "the most cones you can carry for the cone pistol";
+    "weapons" pistol_pickup: u32 = PISTOL_PICKUP, 0, 500, "cones a fridge gives the cone pistol";
+    "weapons" pistol_task: u32 = PISTOL_TASK, 1, 50, "times you freeze him with hot fudge to earn the cone pistol";
+    "weapons" sugar_damage: f32 = SUGAR_DAMAGE, 0.0, 1000.0, "a sugar burst's damage to everything in it";
+    "weapons" sugar_radius: f32 = SUGAR_RADIUS, 0.5, 10.0, "how big a sugar burst is, metres";
+    "weapons" sugar_speed: f32 = SUGAR_SPEED, 2.0, 60.0, "how fast the sugar launcher's sugar flies";
+    "weapons" sugar_range: f32 = SUGAR_RANGE, 1.0, 60.0, "how far the sugar launcher throws, metres";
+    "weapons" sugar_wait: f32 = SUGAR_WAIT, 0.1, 20.0, "seconds between sugar launches";
+    "weapons" sugar_ammo: u32 = SUGAR_AMMO, 0, 200, "sugar the sugar launcher comes with";
+    "weapons" sugar_max: u32 = SUGAR_MAX, 1, 999, "the most sugar you can carry for the sugar launcher";
+    "weapons" sugar_pickup: u32 = SUGAR_PICKUP, 0, 200, "sugar a fridge gives the sugar launcher";
+    "weapons" sugar_task: u32 = SUGAR_TASK, 1, 100, "minions you melt to earn the sugar launcher";
+    "minions" minion_count: u32 = MINION_COUNT, 0, 12, "how many minions (mini Ice Cream Men) can hunt you at once; 0 for none";
+    "minions" minion_first: f32 = MINION_FIRST, 0.0, 600.0, "seconds before the first minion comes";
+    "minions" minion_every: f32 = MINION_EVERY, 1.0, 600.0, "seconds between new minions";
+    "minions" minion_speed: f32 = MINION_SPEED, 0.5, 12.0, "a minion's speed, metres a second";
+    "minions" minion_health: f32 = MINION_HEALTH, 1.0, 1000.0, "a minion's health";
+    "minions" minion_damage: f32 = MINION_DAMAGE, 0.0, 100.0, "a minion's bite's damage (your own minions bite as hard)";
+    "minions" minion_bite_wait: f32 = MINION_BITE_WAIT, 0.1, 20.0, "seconds between a minion's bites";
+    "minions" minion_sight: f32 = MINION_SIGHT, 1.0, 80.0, "how near you must be before a minion hunts you, metres";
+    "minions" fudge_minion_damage: f32 = FUDGE_MINION_DAMAGE, 0.0, 500.0, "a squirt of hot fudge's damage to a minion";
+    "minions" fart_minion_damage: f32 = FART_MINION_DAMAGE, 0.0, 500.0, "a fart cloud's damage to the minions in it";
+    "minions" cone_drop: f32 = CONE_DROP, 0.0, 1.0, "the chance a melted minion drops an edible ice cream cone, from 0 to 1";
+    "minions" cone_boost: f32 = CONE_BOOST, 0.0, 3.0, "extra health an eaten ice cream cone gives, as a share of full health (0.5 is 50% more)";
+    "minions" cone_time: f32 = CONE_TIME, 0.0, 120.0, "seconds an ice cream cone's extra health lasts";
+    "minions" staff_length: f32 = STAFF_LENGTH, 1.0, 40.0, "how long the sprinkle staff's one super long sprinkle reaches, metres";
+    "minions" staff_damage: f32 = STAFF_DAMAGE, 0.0, 1000.0, "the sprinkle staff's damage to what its sprinkle touches";
+    "minions" staff_wait: f32 = STAFF_WAIT, 0.2, 30.0, "seconds between sprinkle staff waves";
+    "minions" staff_minions: u32 = STAFF_MINIONS, 1, 12, "your own minions one wave of the sprinkle staff makes";
+    "minions" staff_minion_life: f32 = STAFF_MINION_LIFE, 1.0, 600.0, "seconds one of your own minions lasts";
+    "rules" free_roam: u32 = FREE_ROAM, 0, 1, "after you win (escape, or melt him), keep playing in free roam with the sprinkle staff (1), or end the run (0)";
+    "look" yellow: f32 = YELLOW, 0.0, 1.0, "how yellowed the rooms look, from 0 (pastel ice cream) to 1 (Backrooms: monotone yellow wallpaper, damp carpet, fluorescent panels)";
+    "look" fog_near: f32 = FOG_NEAR, 0.0, 100.0, "where the fog starts, metres from the camera";
+    "look" fog_far: f32 = FOG_FAR, 1.0, 120.0, "where the fog is thickest, metres from the camera";
+    "look" flicker: f32 = FLICKER, 0.0, 1.0, "how often the lights flicker, from 0 (never) to 1 (all the time)";
+    "look" buzz: f32 = BUZZ, 0.0, 1.0, "how loud the fluorescent lights buzz, from 0 to 1";
+    "look" first_person: u32 = FIRST_PERSON, 0, 1, "the camera a run starts with: 1 first person, 0 third person (V switches)";
 }
 
 impl Tuning {

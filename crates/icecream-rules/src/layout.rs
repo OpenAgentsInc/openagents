@@ -26,9 +26,8 @@ pub const COLS: usize = 4;
 pub const ROWS: usize = 4;
 /// How many keys a run hides.
 pub const KEYS: usize = 3;
-/// Loops added to the tree of doorways, so there is more than one way
-/// round.
-const LOOPS: usize = 4;
+/// Buttons in the spear puzzle (`House::buttons`).
+pub const BUTTONS: usize = 3;
 
 /// The room modules.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -41,9 +40,13 @@ pub enum Module {
     Hallway,
     Stairwell,
     FreezerRoom,
+    /// The Backrooms: a wide empty yellow room with wall stubs in its
+    /// corners (only in a house built as the Backrooms).
+    Backroom,
 }
 
 impl Module {
+    /// The Airbnb's own modules (not [`Module::Backroom`]).
     pub const ALL: [Self; 8] = [
         Self::Bedroom,
         Self::Kitchen,
@@ -66,6 +69,7 @@ impl Module {
             Self::Hallway => "Hallway",
             Self::Stairwell => "Stairwell",
             Self::FreezerRoom => "The freezer room",
+            Self::Backroom => "The Backrooms",
         }
     }
 
@@ -80,6 +84,7 @@ impl Module {
             Self::Hallway => &HALLWAY,
             Self::Stairwell => &STAIRWELL,
             Self::FreezerRoom => &FREEZER_ROOM,
+            Self::Backroom => &BACKROOM,
         }
     }
 }
@@ -117,6 +122,8 @@ pub enum PropKind {
     Freezer,
     Pillar,
     Plant,
+    /// A stub of wall, Backrooms style.
+    Partition,
 }
 
 /// A piece of furniture in room space (-5 to 5 on each axis).
@@ -253,6 +260,20 @@ static FREEZER_ROOM: ModuleDef = ModuleDef {
     spare_closet: None,
 };
 
+/// The Backrooms: four L-shaped wall stubs in the corners, the plus clear.
+static BACKROOM: ModuleDef = ModuleDef {
+    props: &[
+        prop(K::Partition, -3.6, -3.6, -1.9, -3.3, WALL_HEIGHT),
+        prop(K::Partition, -3.6, -3.3, -3.3, -1.9, WALL_HEIGHT),
+        prop(K::Partition, 1.9, 3.3, 3.6, 3.6, WALL_HEIGHT),
+        prop(K::Partition, 3.3, 1.9, 3.6, 3.3, WALL_HEIGHT),
+        prop(K::Partition, 2.4, -IN, 2.7, -2.6, WALL_HEIGHT),
+        prop(K::Partition, -IN, 2.4, -2.6, 2.7, WALL_HEIGHT),
+    ],
+    key_slots: &[v(0.0, -3.8), v(3.8, 0.0), v(0.0, 3.8), v(-3.8, 0.0)],
+    spare_closet: None,
+};
+
 /// A grid cell: column and row.
 pub type Cell = (usize, usize);
 
@@ -344,6 +365,13 @@ pub struct House {
     /// Furniture added beyond the rooms' modules (spare closets), by room,
     /// in room space.
     pub extras: Vec<(usize, Prop)>,
+    /// The spear puzzle's three sprinkle buttons, pressed in this order,
+    /// each in its own room (used when the earned weapons are in the game).
+    pub buttons: Vec<V2>,
+    /// The cone cabinet the buttons open, with the waffle cone spear in it.
+    pub cabinet: V2,
+    /// Built as the Backrooms.
+    pub backrooms: bool,
 }
 
 /// The centre of a cell in world space.
@@ -394,12 +422,26 @@ fn opposite(side: Side) -> Side {
 }
 
 impl House {
+    /// The house a run with `tuning` plays: its loops, the Backrooms or
+    /// not, and its extra closets.
+    #[must_use]
+    pub fn of(seed: u64, tuning: &crate::tuning::Tuning) -> Self {
+        Self::with_closets(
+            Self::build(seed, tuning.loops as usize, tuning.backrooms == 1),
+            tuning.extra_closets as usize,
+        )
+    }
+
     /// The house for `seed` with `extra` more closets to hide in (up to
     /// one in each room whose module has room for one): the same house
     /// otherwise.
     #[must_use]
     pub fn tuned(seed: u64, extra: usize) -> Self {
-        let mut house = Self::new(seed);
+        Self::with_closets(Self::new(seed), extra)
+    }
+
+    fn with_closets(mut house: Self, extra: usize) -> Self {
+        let seed = house.seed;
         if extra == 0 {
             return house;
         }
@@ -448,19 +490,42 @@ impl House {
     /// Builds the house for `seed`.
     #[must_use]
     pub fn new(seed: u64) -> Self {
+        Self::build(seed, crate::tuning::LOOPS as usize, false)
+    }
+
+    /// Builds the house for `seed` with `loops` extra doorways, as the
+    /// Backrooms or not.
+    #[must_use]
+    pub fn build(seed: u64, loops: usize, backrooms: bool) -> Self {
         let mut rng = Rng::new(seed);
         let count = COLS * ROWS;
         let corners = [(0, 0), (COLS - 1, 0), (0, ROWS - 1), (COLS - 1, ROWS - 1)];
         let spawn_cell = corners[rng.below(4)];
         let spawn_room = index(spawn_cell);
 
-        // Modules: every kind once, then repeats, hallways most (the
-        // house keeps going).
-        let mut kinds: Vec<Module> = Module::ALL.to_vec();
-        while kinds.len() < count - 1 {
-            let pick = rng.below(Module::ALL.len() + 3);
-            kinds.push(Module::ALL.get(pick).copied().unwrap_or(Module::Hallway));
-        }
+        let mut kinds: Vec<Module> = if backrooms {
+            // The Backrooms: a few of the Airbnb's rooms (closets and
+            // fridges to use) among empty yellow ones.
+            let mut kinds = vec![
+                Module::Bedroom,
+                Module::Kitchen,
+                Module::Bathroom,
+                Module::FreezerRoom,
+                Module::LivingRoom,
+                Module::Laundry,
+            ];
+            kinds.resize(count - 1, Module::Backroom);
+            kinds
+        } else {
+            // Modules: every kind once, then repeats, hallways most (the
+            // house keeps going).
+            let mut kinds: Vec<Module> = Module::ALL.to_vec();
+            while kinds.len() < count - 1 {
+                let pick = rng.below(Module::ALL.len() + 3);
+                kinds.push(Module::ALL.get(pick).copied().unwrap_or(Module::Hallway));
+            }
+            kinds
+        };
         rng.shuffle(&mut kinds);
         let mut kinds = kinds.into_iter();
         let mut rooms: Vec<Room> = (0..count)
@@ -505,7 +570,7 @@ impl House {
         }
         let mut added = 0;
         let mut tries = 0;
-        while added < LOOPS && tries < 100 {
+        while added < loops && tries < 100.max(loops * 25) {
             tries += 1;
             let cell = rooms[rng.below(count)].cell;
             let side = Side::ALL[rng.below(4)];
@@ -535,6 +600,9 @@ impl House {
                 stand: V2::ZERO,
             },
             extras: Vec::new(),
+            buttons: Vec::new(),
+            cabinet: V2::ZERO,
+            backrooms,
         };
         let distance = house.distances(spawn_cell);
 
@@ -588,7 +656,35 @@ impl House {
         house.man_start = centre(house.rooms[man_room].cell);
 
         house.build_blocks(&mut rng);
+        house.place_puzzle(front_room);
         house
+    }
+
+    /// The spear puzzle: three buttons and the cone cabinet, each in its
+    /// own room away from the bedroom and the front door, on a key spot
+    /// the room's key doesn't use. Its own stream, so the rest of the
+    /// house is the same with or without it.
+    fn place_puzzle(&mut self, front_room: usize) {
+        let mut rng = Rng::new(self.seed ^ 0x5b0a_7c0d_e5ea_3001);
+        let mut rooms: Vec<usize> = (0..self.rooms.len())
+            .filter(|i| *i != self.spawn_room && *i != front_room)
+            .collect();
+        rng.shuffle(&mut rooms);
+        let mut spots = Vec::new();
+        for room in rooms.into_iter().take(BUTTONS + 1) {
+            let c = centre(self.rooms[room].cell);
+            let slots: Vec<V2> = self.rooms[room]
+                .module
+                .def()
+                .key_slots
+                .iter()
+                .map(|s| c + *s)
+                .filter(|s| self.keys.iter().all(|k| k.distance(*s) > 1.0))
+                .collect();
+            spots.push(slots[rng.below(slots.len())]);
+        }
+        self.cabinet = spots.pop().unwrap_or(self.spawn);
+        self.buttons = spots;
     }
 
     /// Walls (with gaps for doorways) and furniture, and the closets and
@@ -785,7 +881,7 @@ mod tests {
 
     #[test]
     fn every_module_keeps_its_lanes_and_spots_reachable() {
-        for module in Module::ALL {
+        for module in Module::ALL.into_iter().chain([Module::Backroom]) {
             let def = module.def();
             // A spare closet, when a house asks for one, keeps them too.
             let props: Vec<Prop> = def.props.iter().copied().chain(def.spare_closet).collect();
@@ -958,6 +1054,81 @@ mod tests {
                 crate::tuning::MAX_EXTRA_CLOSETS as usize,
                 "seed {seed}"
             );
+        }
+    }
+
+    #[test]
+    fn a_backrooms_house_is_mostly_empty_yellow_rooms_and_still_works() {
+        for seed in 0..50 {
+            let house = House::build(seed, 10, true);
+            let backrooms = house
+                .rooms
+                .iter()
+                .filter(|r| r.module == Module::Backroom)
+                .count();
+            assert!(backrooms >= 8, "seed {seed}: {backrooms}");
+            assert_eq!(house.rooms[house.spawn_room].module, Module::Bedroom);
+            let from = house.rooms[house.spawn_room].cell;
+            assert!(house.distances(from).iter().all(|d| *d != usize::MAX));
+            assert_eq!(house.keys.len(), KEYS);
+            let doors = |h: &House| {
+                h.rooms
+                    .iter()
+                    .map(|r| r.doors.iter().filter(|d| **d).count())
+                    .sum::<usize>()
+            };
+            assert!(
+                doors(&house) > doors(&House::new(seed)),
+                "seed {seed}: more doorways"
+            );
+            for target in house.keys.iter().chain([&house.front.stand]) {
+                let route = house.route(house.spawn, *target, BODY);
+                let mut last = house.spawn;
+                for point in &route {
+                    assert!(
+                        first_hit(&house.blocks, last, *point, BODY - 0.05, 0.0).is_none(),
+                        "seed {seed}: {last:?} to {point:?}"
+                    );
+                    last = *point;
+                }
+            }
+            // Room for the most spare closets a document may ask for.
+            let mut tuning = crate::tuning::Tuning::default();
+            tuning.backrooms = 1;
+            tuning.extra_closets = crate::tuning::MAX_EXTRA_CLOSETS;
+            let closets = House::of(seed, &tuning);
+            assert_eq!(
+                closets.extras.len(),
+                crate::tuning::MAX_EXTRA_CLOSETS as usize
+            );
+        }
+        // Off, the house is the same as ever.
+        assert_eq!(
+            House::build(5, crate::tuning::LOOPS as usize, false),
+            House::new(5)
+        );
+    }
+
+    #[test]
+    fn the_spear_puzzle_sits_in_four_rooms_on_open_floor() {
+        for seed in 0..50 {
+            for house in [House::new(seed), House::build(seed, 10, true)] {
+                assert_eq!(house.buttons.len(), BUTTONS);
+                let mut rooms: Vec<Cell> = house
+                    .buttons
+                    .iter()
+                    .chain([&house.cabinet])
+                    .map(|p| cell_of(*p))
+                    .collect();
+                rooms.sort_unstable();
+                rooms.dedup();
+                assert_eq!(rooms.len(), BUTTONS + 1, "seed {seed}");
+                for spot in house.buttons.iter().chain([&house.cabinet]) {
+                    assert!(house.open(*spot, BODY), "seed {seed}: {spot:?}");
+                    assert_ne!(cell_of(*spot), house.rooms[house.spawn_room].cell);
+                    assert!(house.keys.iter().all(|k| k.distance(*spot) > 1.0));
+                }
+            }
         }
     }
 }

@@ -16,7 +16,9 @@ pub const KIND: &str = "game.v1";
 /// The one game so far.
 pub const ICE_CREAM_MAN: &str = "the-ice-cream-man";
 /// The sections that hold numbers, in order.
-pub const SECTIONS: [&str; 6] = ["layout", "player", "man", "items", "noise", "rules"];
+pub const SECTIONS: [&str; 9] = [
+    "layout", "player", "man", "items", "weapons", "minions", "noise", "rules", "look",
+];
 /// The front door's two rules.
 pub const DOOR_OPENS: &str = "opens_with_all_keys";
 pub const DOOR_LOCKED: &str = "locked";
@@ -64,8 +66,11 @@ pub fn original() -> Value {
         "player": {},
         "man": {},
         "items": {},
+        "weapons": {},
+        "minions": {},
         "noise": {},
         "rules": {"front_door": DOOR_OPENS, "keys": KEYS},
+        "look": {},
         "copy": {},
     });
     for f in FIELDS {
@@ -75,6 +80,29 @@ pub fn original() -> Value {
         doc["copy"][name] = json!(text);
     }
     doc
+}
+
+/// Fills in what a document saved before the game's code gained a setting
+/// doesn't have: each new section and value at its default, which plays
+/// the game as it was (the new things are off by default). Returns
+/// whether anything was added.
+pub fn upgrade(doc: &mut Value) -> bool {
+    let Some(top) = doc.as_object_mut() else {
+        return false;
+    };
+    let mut added = false;
+    for f in FIELDS {
+        let section = top
+            .entry(f.section)
+            .or_insert_with(|| Value::Object(Map::new()));
+        if let Some(values) = section.as_object_mut()
+            && !values.contains_key(f.name)
+        {
+            values.insert(f.name.into(), number(f.default, f.whole));
+            added = true;
+        }
+    }
+    added
 }
 
 /// A document read and checked: what a run plays by.
@@ -240,6 +268,30 @@ pub fn rule_problems(game: &Game) -> Vec<String> {
         problems.push(format!(
             "You'd start with more hot fudge ({}) than you can carry ({}).",
             t.fudge_start, t.fudge_max
+        ));
+    }
+    if t.pistol_ammo > t.pistol_max {
+        problems.push(format!(
+            "The cone pistol would come with more cones ({}) than you can carry ({}).",
+            t.pistol_ammo, t.pistol_max
+        ));
+    }
+    if t.sugar_ammo > t.sugar_max {
+        problems.push(format!(
+            "The sugar launcher would come with more sugar ({}) than you can carry ({}).",
+            t.sugar_ammo, t.sugar_max
+        ));
+    }
+    if t.earned_weapons == 1 && t.minion_count == 0 {
+        problems.push(
+            "The candy cane sword and the sugar launcher are earned by melting minions, so with no minions they could never be earned: give the house minions (minions.minion_count) as well."
+                .into(),
+        );
+    }
+    if t.fog_near >= t.fog_far {
+        problems.push(format!(
+            "The fog must start (fog_near, {}) nearer than where it's thickest (fog_far, {}).",
+            t.fog_near, t.fog_far
         ));
     }
     if t.farts_start > t.farts_max {

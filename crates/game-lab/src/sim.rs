@@ -18,6 +18,8 @@ pub const LIMIT: u32 = 600;
 pub struct Stats {
     pub runs: u32,
     pub escaped: u32,
+    /// Runs won by melting him with the earned weapons instead.
+    pub melted: u32,
     /// The middle escape time, seconds.
     pub median_escape: Option<f32>,
     /// Hits the player took, on average.
@@ -29,10 +31,16 @@ pub struct Stats {
 }
 
 impl Stats {
-    /// Escapes, in percent.
+    /// Runs won: escaped, or he melted.
+    #[must_use]
+    pub fn wins(&self) -> u32 {
+        self.escaped + self.melted
+    }
+
+    /// Wins, in percent.
     #[must_use]
     pub fn win_rate(&self) -> u32 {
-        (self.escaped * 100 + self.runs / 2) / self.runs.max(1)
+        (self.wins() * 100 + self.runs / 2) / self.runs.max(1)
     }
 
     #[must_use]
@@ -40,6 +48,7 @@ impl Stats {
         json!({
             "runs": self.runs,
             "escaped": self.escaped,
+            "melted": self.melted,
             "win_rate": self.win_rate(),
             "median_escape": self.median_escape.map(tenths),
             "hits": tenths(self.hits),
@@ -54,8 +63,13 @@ impl Stats {
         let escape = self
             .median_escape
             .map_or(String::new(), |s| format!(", in {} on average", clock(s)));
+        let melted = if self.melted > 0 {
+            format!(" and melted him in {} more", self.melted)
+        } else {
+            String::new()
+        };
         format!(
-            "The bot escaped {} of {} runs ({}%){escape}, took {:.1} hits and was spotted {:.1} times a run; the house has {} hiding spots.",
+            "The bot escaped {} of {} runs{melted} ({}% won){escape}, took {:.1} hits and was spotted {:.1} times a run; the house has {} hiding spots.",
             self.escaped,
             self.runs,
             self.win_rate(),
@@ -80,6 +94,7 @@ pub fn clock(seconds: f32) -> String {
 
 struct Run {
     escaped: bool,
+    melted: bool,
     seconds: f32,
     hits: u32,
     spotted: u32,
@@ -99,6 +114,7 @@ fn run(seed: u64, tuning: Tuning) -> Run {
     }
     Run {
         escaped: game.status == Status::Escaped,
+        melted: game.status == Status::Melted,
         seconds: game.seconds(),
         hits: game.stats.hits_taken,
         spotted,
@@ -116,6 +132,7 @@ pub fn measure(tuning: Tuning, seed: u64) -> Stats {
         handles.into_iter().filter_map(|h| h.join().ok()).collect()
     });
     let n = runs.len().max(1) as f32;
+    let melted = runs.iter().filter(|r| r.melted).count() as u32;
     let mut escapes: Vec<f32> = runs
         .iter()
         .filter(|r| r.escaped)
@@ -125,12 +142,11 @@ pub fn measure(tuning: Tuning, seed: u64) -> Stats {
     Stats {
         runs: runs.len() as u32,
         escaped: escapes.len() as u32,
+        melted,
         median_escape: (!escapes.is_empty()).then(|| escapes[escapes.len() / 2]),
         hits: runs.iter().map(|r| r.hits as f32).sum::<f32>() / n,
         spotted: runs.iter().map(|r| r.spotted as f32).sum::<f32>() / n,
-        hiding_spots: House::tuned(seed, tuning.extra_closets as usize)
-            .closets
-            .len(),
+        hiding_spots: House::of(seed, &tuning).closets.len(),
     }
 }
 
@@ -157,6 +173,61 @@ mod tests {
             "the same runs every time"
         );
         assert!(base.line().contains("of 24 runs"));
+    }
+
+    /// The designer's revision (#11626): the earned weapons, minions and
+    /// free roam, in the Backrooms.
+    pub(crate) fn revision() -> Tuning {
+        let mut t = Tuning::default();
+        for (name, value) in [
+            ("earned_weapons", 1.0),
+            ("minion_count", 3.0),
+            ("free_roam", 1.0),
+            ("backrooms", 1.0),
+            ("loops", 10.0),
+            ("yellow", 1.0),
+            ("fog_near", 4.0),
+            ("fog_far", 24.0),
+            ("flicker", 0.12),
+            ("buzz", 0.6),
+        ] {
+            t.set(name, value).unwrap();
+        }
+        t
+    }
+
+    #[test]
+    fn the_original_numbers_measure_as_before() {
+        // Version 1 as Game Lab measured it before the revision's code.
+        let base = measure(Tuning::default(), 7);
+        eprintln!("original: {}", base.line());
+        assert_eq!((base.escaped, base.melted), (24, 0), "{base:?}");
+        assert!(
+            base.median_escape.is_some_and(|t| (t - 25.6).abs() < 0.05),
+            "{base:?}"
+        );
+        assert!(
+            (base.hits - 1.7).abs() < 0.05 && (base.spotted - 2.0).abs() < 0.05,
+            "{base:?}"
+        );
+    }
+
+    #[test]
+    fn the_designers_revision_is_winnable() {
+        let mut items = Tuning::default();
+        for (name, value) in [
+            ("earned_weapons", 1.0),
+            ("minion_count", 3.0),
+            ("free_roam", 1.0),
+        ] {
+            items.set(name, value).unwrap();
+        }
+        let with_items = measure(items, 7);
+        eprintln!("items and minions: {}", with_items.line());
+        let revised = measure(revision(), 7);
+        eprintln!("the Backrooms too: {}", revised.line());
+        assert!(with_items.wins() >= 18, "{with_items:?}");
+        assert!(revised.wins() >= 18, "{revised:?}");
     }
 
     #[test]

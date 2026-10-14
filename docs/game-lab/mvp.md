@@ -58,6 +58,18 @@ Send these one at a time in the same chat:
        offers Coder);
      - numbers out of bounds.
 
+6. **give the Ice Cream Man minions** (or another change the game's code
+   doesn't have yet)
+   - The edit is refused as needing code, and the chat offers Coder.
+   - Say yes, and the chat records it as a code request (`game_propose_code`).
+     Nothing changes yet.
+   - When the commit that makes it (it carries
+     `Game-Lab-Request: the-ice-cream-man/rN`) is in the checkout, ask
+     "where's my code request?" and the chat links it
+     (`game_code_requests`). Its new settings can then be changed like any
+     other: "add the new items and minions", "make it feel like the
+     Backrooms".
+
 **Note at this time and place** under the game saves a note with the run's
 time and room. "Read my notes" in the chat reads them with `game_notes`.
 
@@ -89,7 +101,8 @@ the version in its own window.
 
 ## Not in this MVP
 
-- Coder making code-level changes from the chat. The chat offers it, and it's
+- Coder making code-level changes from the chat by itself. The chat records
+  the request and links the commit that makes it; opening the Coder task is
   the next slice.
 - The `game_*` tools in Coder in the terminal.
 - The phone card.

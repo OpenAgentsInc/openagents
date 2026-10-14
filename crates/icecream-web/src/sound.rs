@@ -35,6 +35,8 @@ pub struct Sound {
     noise: Option<web_sys::AudioBuffer>,
     next_note: f64,
     note: usize,
+    /// The fluorescent buzz, 0 to 1.
+    buzz: f32,
 }
 
 /// The effects.
@@ -67,7 +69,18 @@ impl Sound {
             noise: None,
             next_note: 0.0,
             note: 0,
+            buzz: 0.0,
         }
+    }
+
+    /// How loud the fluorescent lights buzz, 0 to 1, over the freezer hum.
+    pub fn set_buzz(&mut self, buzz: f32) {
+        self.buzz = buzz.clamp(0.0, 1.0);
+        self.quiet(false);
+    }
+
+    fn hum_level(&self) -> f32 {
+        0.025 + 0.11 * self.buzz
     }
 
     /// Starts the audio on a key press or tap.
@@ -92,11 +105,12 @@ impl Sound {
         // The freezer hum: a low, quiet buzz.
         let hum = ctx.create_gain().ok();
         if let Some(h) = &hum {
-            h.gain().set_value(0.025);
+            h.gain().set_value(0.025 + 0.11 * self.buzz);
             let _ = h.connect_with_audio_node(&master);
             for (freq, kind) in [
                 (60.0, OscillatorType::Sine),
                 (120.0, OscillatorType::Triangle),
+                (240.0, OscillatorType::Sawtooth),
             ] {
                 if let Ok(osc) = ctx.create_oscillator() {
                     osc.set_type(kind);
@@ -324,7 +338,7 @@ impl Sound {
     pub fn quiet(&mut self, quiet: bool) {
         if let (Some(ctx), Some(hum)) = (&self.ctx, &self.hum) {
             let _ = hum.gain().set_target_at_time(
-                if quiet { 0.0 } else { 0.025 },
+                if quiet { 0.0 } else { self.hum_level() },
                 ctx.current_time(),
                 0.2,
             );

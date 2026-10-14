@@ -25,6 +25,13 @@ pub const SCOOPED: &str = "Scooped!";
 pub const SCOOPED_LINE: &str = "He plopped you into a cone. Yuck.";
 pub const SHIFT_LOCK_ON: &str = "Shift Lock on";
 pub const SHIFT_LOCK_OFF: &str = "Shift Lock off";
+pub const FIRST_PERSON_ON: &str = "First person. Press V for third person.";
+pub const THIRD_PERSON_ON: &str = "Third person. Press V for first person.";
+pub const MELTED: &str = "You melted him!";
+pub const MELTED_LINE: &str = "He's a puddle of vanilla on the carpet. The house is yours.";
+pub const KEEP_PLAYING: &str = "Keep playing with the Sprinkle Staff";
+pub const FREE_ROAM: &str = "You got the Sprinkle Staff! Click to make your own minions.";
+pub const MAN_HEALTH: &str = "Ice Cream Man";
 
 /// The touch screen's buttons.
 pub const JUMP: &str = "Jump";
@@ -45,6 +52,21 @@ pub const EMPTY_FUDGE: &str = "Out of fudge. Check the fridges.";
 pub const EMPTY_FART: &str = "No fart clouds left.";
 pub const JINGLE: &str = "Jingle jingle. He heard that.";
 pub const UNLOCKING: &str = "Unlocking\u{2026}";
+pub const WEAPONS_HINT: &str = "Four weapons are hiding in here. Melt minions, freeze him, and press the sprinkle buttons in order.";
+pub const MINION_CAME: &str = "A minion is coming for you!";
+pub const MINION_MELTED: &str = "Minion melted!";
+pub const MINION_BITE: &str = "Ow! A minion bit you.";
+pub const CONE_DROPPED: &str = "It dropped an ice cream cone! Eat it.";
+pub const CONE_EATEN: &str = "Yum! 50% more health for a while.";
+pub const BOOST_OVER: &str = "The cone wore off.";
+pub const PUZZLE_WRONG: &str = "Wrong order. The buttons went dark.";
+pub const PUZZLE_SOLVED: &str = "Click! The cone cabinet opened.";
+pub const CABINET_LOCKED: &str =
+    "Locked. Press the three sprinkle buttons in order: pink, blue, yellow.";
+pub const MAN_HIT: &str = "Got him!";
+pub const FRIENDS: &str = "Your minions are here!";
+pub const EMPTY_CONES: &str = "Out of cones. Check the fridges.";
+pub const EMPTY_SUGAR: &str = "Out of sugar. Check the fridges.";
 
 /// The tutorial: its own buttons and the link to the written guide.
 pub const TOUR_NEXT: &str = "Next";
@@ -59,7 +81,33 @@ pub fn tool_name(tool: Tool) -> &'static str {
         Tool::Fudge => "Hot Fudge",
         Tool::Fart => "Fart Launcher",
         Tool::Keys => "Key Ring",
+        Tool::Sword => "Candy Cane Sword",
+        Tool::Spear => "Waffle Cone Spear",
+        Tool::Pistol => "Cone Pistol",
+        Tool::Sugar => "Sugar Launcher",
+        Tool::Staff => "Sprinkle Staff",
     }
+}
+
+/// How each weapon was earned, when it is.
+#[must_use]
+pub fn earned(tool: Tool) -> &'static str {
+    match tool {
+        Tool::Sword => "The minion dropped a Candy Cane Sword!",
+        Tool::Spear => "You got the Waffle Cone Spear! It reaches a long way.",
+        Tool::Pistol => "You froze him! Here's a Cone Pistol.",
+        Tool::Sugar => "You melted enough minions! Here's a Sugar Launcher.",
+        Tool::Staff => FREE_ROAM,
+        Tool::Fudge | Tool::Fart | Tool::Keys => "",
+    }
+}
+
+/// The puzzle's buttons, in the order they're pressed.
+pub const BUTTON_NAMES: [&str; 3] = ["pink", "blue", "yellow"];
+
+#[must_use]
+pub fn button_lit(count: u32) -> String {
+    format!("Button {count} of 3 is lit.")
 }
 
 #[must_use]
@@ -85,6 +133,8 @@ pub fn prompt(prompt: icecream_rules::Prompt) -> &'static str {
         Prompt::Fridge => "Open the fridge",
         Prompt::Unlock => "Hold to unlock the front door",
         Prompt::Locked => "The front door. Find all three keys",
+        Prompt::Button => "Press the sprinkle button",
+        Prompt::Cabinet => "The cone cabinet",
     }
 }
 
@@ -96,6 +146,14 @@ pub fn time_line(seconds: u32) -> String {
 /// The run card's lines.
 #[must_use]
 pub fn card_lines(card: &RunCard) -> Vec<String> {
+    let mut lines = card_lines_base(card);
+    if card.minions_melted > 0 {
+        lines.push(format!("Minions melted: {}", card.minions_melted));
+    }
+    lines
+}
+
+fn card_lines_base(card: &RunCard) -> Vec<String> {
     vec![
         time_line(card.seconds),
         format!("Keys: {} of 3", card.keys),
@@ -137,7 +195,7 @@ pub const TOUR: [TourStep; 4] = [
         title: "Look",
         keys: &[
             "Hold the right mouse button and drag to look around. Scroll to zoom in and out.",
-            "Press Ctrl for Shift Lock: the camera sits over your shoulder with a crosshair for aiming.",
+            "Press Ctrl for Shift Lock: the camera sits over your shoulder with a crosshair for aiming. Press V to switch between first person and third person.",
         ],
         touch: &[
             "Drag on the right side of the screen to look around.",
@@ -197,6 +255,27 @@ mod tests {
             SCOOPED_LINE,
             SHIFT_LOCK_ON,
             SHIFT_LOCK_OFF,
+            FIRST_PERSON_ON,
+            THIRD_PERSON_ON,
+            MELTED,
+            MELTED_LINE,
+            KEEP_PLAYING,
+            FREE_ROAM,
+            MAN_HEALTH,
+            WEAPONS_HINT,
+            MINION_CAME,
+            MINION_MELTED,
+            MINION_BITE,
+            CONE_DROPPED,
+            CONE_EATEN,
+            BOOST_OVER,
+            PUZZLE_WRONG,
+            PUZZLE_SOLVED,
+            CABINET_LOCKED,
+            MAN_HIT,
+            FRIENDS,
+            EMPTY_CONES,
+            EMPTY_SUGAR,
             JUMP,
             FIRE,
             SPRINT,
@@ -224,13 +303,18 @@ mod tests {
         .collect();
         for tool in Tool::ALL {
             all.push(tool_name(tool).to_owned());
+            all.push(earned(tool).to_owned());
         }
+        all.push(button_lit(2));
+        all.retain(|t| !t.is_empty());
         for p in [
             Prompt::Hide,
             Prompt::Leave,
             Prompt::Fridge,
             Prompt::Unlock,
             Prompt::Locked,
+            Prompt::Button,
+            Prompt::Cabinet,
         ] {
             all.push(prompt(p).to_owned());
         }
@@ -239,6 +323,8 @@ mod tests {
         all.push(pickup(Pickup::Fart).to_owned());
         all.extend(card_lines(&RunCard {
             escaped: true,
+            melted: false,
+            minions_melted: 3,
             seconds: 83,
             keys: 3,
             hits_taken: 4,
@@ -256,6 +342,8 @@ mod tests {
         assert!(
             card_lines(&RunCard {
                 escaped: false,
+                melted: false,
+                minions_melted: 0,
                 seconds: 5,
                 keys: 1,
                 hits_taken: 0,

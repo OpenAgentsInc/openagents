@@ -119,7 +119,10 @@ behaviour, its layout or its words, compare versions, notes), use the game_* too
 two, as \"I\", what you did and what changed. \
 To change a game, read its document first (game_open), then call game_edit with a JSON Patch on the document and a \
 one-line summary in plain words. Paths are /SECTION/NAME, e.g. /man/man_chase. Speeds are in man_wander, \
-man_investigate, man_search and man_chase; hiding spots are closets, added with /layout/extra_closets. Work numbers out \
+man_investigate, man_search and man_chase; hiding spots are closets, added with /layout/extra_closets. Some things are switched on by a number: the earned weapons \
+(/weapons/earned_weapons 1, which needs minions), minions (/minions/minion_count), play after a win (/rules/free_roam 1), \
+the Backrooms house (/layout/backrooms 1, /layout/loops) and its look (/look/yellow, fog_near, fog_far, flicker, buzz, \
+first_person). Work numbers out \
 from the document's current values. game_edit checks the edit with the game's rules and 24 seeded bot runs. If it \
 refuses, tell the owner why in plain words and don't save a different change instead without asking. If a request needs \
 the game's code changed rather than its settings (game_edit says so), say so and offer to have Coder make that change as a \
@@ -184,11 +187,20 @@ fn stats_line(stats: &Value) -> String {
     let Some(runs) = stats["runs"].as_u64() else {
         return String::new();
     };
-    let mut line = format!(
-        "Bot runs: {} of {runs} escaped ({}%)",
-        stats["escaped"].as_u64().unwrap_or(0),
-        stats["win_rate"].as_u64().unwrap_or(0)
-    );
+    let melted = stats["melted"].as_u64().unwrap_or(0);
+    let mut line = if melted > 0 {
+        format!(
+            "Bot runs: {} of {runs} escaped, {melted} melted him ({}% won)",
+            stats["escaped"].as_u64().unwrap_or(0),
+            stats["win_rate"].as_u64().unwrap_or(0)
+        )
+    } else {
+        format!(
+            "Bot runs: {} of {runs} escaped ({}%)",
+            stats["escaped"].as_u64().unwrap_or(0),
+            stats["win_rate"].as_u64().unwrap_or(0)
+        )
+    };
     if let Some(t) = stats["median_escape"].as_f64() {
         line.push_str(&format!(" in {} on average", clock(t)));
     }

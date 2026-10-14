@@ -21,6 +21,15 @@ pub struct Options {
     /// A still picture: the Ice Cream Man in the bedroom, facing you
     /// (captures).
     pub portrait: bool,
+    /// The run starts with every earned weapon (captures).
+    pub arm: bool,
+    /// The run starts as if just won, in free roam with the sprinkle
+    /// staff (captures; the version must allow free roam).
+    pub free_roam: bool,
+    /// Start in first person, whatever the version says (captures).
+    pub first_person: bool,
+    /// Pick this hot-bar tool at the start, by name (captures).
+    pub tool: Option<String>,
     /// Game Lab's version of the game (`docs/game-lab/README.md`): its
     /// numbers, `t.NAME=VALUE` (`icecream_rules::tuning::FIELDS`), played
     /// as data without building the game again.
@@ -106,6 +115,13 @@ impl Options {
                     options.portrait = true;
                     options.skip = true;
                 }
+                "arm" => options.arm = true,
+                "freeroam" => {
+                    options.free_roam = true;
+                    options.skip = true;
+                }
+                "fp" => options.first_person = true,
+                "tool" => options.tool = Some(value.to_owned()),
                 _ => {
                     if let Some(name) = key.strip_prefix("t.") {
                         options.tune.push((name.to_owned(), value.to_owned()));
@@ -125,9 +141,13 @@ mod tests {
 
     #[test]
     fn options_read_from_the_fragment() {
-        let o = Options::parse("#seed=7&bot&speed=4&calm&nofarts&watch&portrait");
+        let o = Options::parse(
+            "#seed=7&bot&speed=4&calm&nofarts&watch&portrait&arm&freeroam&fp&tool=spear",
+        );
         assert_eq!(o.seed, Some(7));
         assert!(o.bot && o.skip && o.calm && o.no_farts && o.watch && o.portrait);
+        assert!(o.arm && o.free_roam && o.first_person);
+        assert_eq!(o.tool.as_deref(), Some("spear"));
         assert_eq!(o.speed, 4);
         let none = Options::parse("");
         assert_eq!(none.seed, None);
@@ -140,11 +160,16 @@ mod tests {
     #[test]
     fn a_game_lab_version_comes_as_data() {
         let o = Options::parse(
-            "#seed=7&t.man_chase=4.48&t.extra_closets=2&t.unlock=1e9&c.title=The%20Slow%20Man&c.tagline=",
+            "#seed=7&t.man_chase=4.48&t.extra_closets=2&t.unlock=1e9&c.title=The%20Slow%20Man&c.tagline=&t.minion_count=3&t.earned_weapons=1&t.yellow=1&t.first_person=1",
         );
         let t = o.tuning();
         assert!((t.man_chase - 4.48).abs() < 1e-6);
         assert_eq!(t.extra_closets, 2);
+        assert_eq!(
+            (t.minion_count, t.earned_weapons, t.first_person),
+            (3, 1, 1)
+        );
+        assert!((t.yellow - 1.0).abs() < 1e-6);
         assert_eq!(
             t.unlock,
             icecream_rules::tuning::UNLOCK,

@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use glam::{Mat4, Quat, Vec3, Vec4};
 use icecream_rules::bot::Bot;
-use icecream_rules::game::ShotKind;
+use icecream_rules::game::{DropKind, ShotKind};
 use icecream_rules::layout::{cell_of, centre};
 use icecream_rules::{
     DT, Event, Game, HZ, Input, ManState, Options as RuleOptions, Pickup, Prompt, Status, Tool, V2,
@@ -74,11 +74,12 @@ uniform float u_flat;
 uniform vec3 u_light;
 uniform vec3 u_eye;
 uniform vec3 u_fog;
+uniform vec3 u_fog_range;
 uniform float u_shine;
 out vec4 o_colour;
 void main() {
   float dist = length(u_eye - v_world);
-  float fog = smoothstep(9.0, 34.0, dist) * 0.82;
+  float fog = smoothstep(u_fog_range.x, u_fog_range.y, dist) * u_fog_range.z;
   if (u_flat > 0.5) {
     o_colour = vec4(mix(u_tint, u_fog, fog * 0.6), 1.0);
     return;
@@ -102,6 +103,10 @@ const STEP: f64 = DT as f64;
 const MAX_FRAME: f64 = 0.1;
 /// Dim freezer-blue haze far down the hallways.
 const FOG: [f32; 3] = [0.30, 0.33, 0.46];
+/// The Backrooms' haze: yellow-grey.
+const BACK_FOG: [f32; 3] = [0.56, 0.52, 0.33];
+/// Fluorescent tubes, a little green-yellow.
+const FLUORESCENT: [f32; 3] = [1.0, 0.97, 0.80];
 const WARM: [f32; 3] = [1.0, 0.94, 0.86];
 const COLD: [f32; 3] = [0.74, 0.84, 1.0];
 const WHITE: [f32; 3] = [1.0, 1.0, 1.0];
@@ -127,8 +132,13 @@ struct Gpu {
     u_light: Option<WebGlUniformLocation>,
     u_eye: Option<WebGlUniformLocation>,
     u_fog: Option<WebGlUniformLocation>,
+    u_fog_range: Option<WebGlUniformLocation>,
     u_shine: Option<WebGlUniformLocation>,
     scale: f32,
+    /// The fog: its colour, and where it starts, is thickest, and how
+    /// thick.
+    fog: [f32; 3],
+    fog_range: [f32; 3],
     _buffers: Vec<WebGlBuffer>,
 }
 
@@ -180,9 +190,12 @@ impl Gpu {
             u_light: at("u_light"),
             u_eye: at("u_eye"),
             u_fog: at("u_fog"),
+            u_fog_range: at("u_fog_range"),
             u_shine: at("u_shine"),
             gl,
             scale: 1.0,
+            fog: FOG,
+            fog_range: [9.0, 34.0, 0.82],
             _buffers: Vec::new(),
         };
         gpu.gl.enable(Gl::DEPTH_TEST);
@@ -228,7 +241,9 @@ impl Gpu {
         );
         gl.uniform2f(self.u_viewport.as_ref(), width, height);
         gl.uniform3f(self.u_eye.as_ref(), eye.x, eye.y, eye.z);
-        gl.uniform3f(self.u_fog.as_ref(), FOG[0], FOG[1], FOG[2]);
+        gl.uniform3f(self.u_fog.as_ref(), self.fog[0], self.fog[1], self.fog[2]);
+        let r = self.fog_range;
+        gl.uniform3f(self.u_fog_range.as_ref(), r[0], r[1], r[2]);
     }
 
     /// Draws `mesh` in its colours times `tint` under `light`, glossy by
@@ -298,6 +313,12 @@ struct Meshes {
     splat: GpuMesh,
     drip: GpuMesh,
     cone: GpuMesh,
+    treat: GpuMesh,
+    cone_shot: GpuMesh,
+    sugar: GpuMesh,
+    buttons: Vec<GpuMesh>,
+    cabinet: GpuMesh,
+    puddle: GpuMesh,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -328,6 +349,10 @@ enum ParticleKind {
     Drip,
     /// A flying blob of fudge.
     Blob,
+    /// The sprinkle staff's long sprinkle: from `pos`, along `vel`.
+    Beam,
+    /// A puff of sugar.
+    Puff,
 }
 
 struct App {
@@ -380,6 +405,10 @@ struct App {
     frames: u32,
     /// How often he has spotted you this run, for browser checks.
     spotted: u32,
+    /// A swing of the sword or spear: time left.
+    swing: f32,
+    /// Minions' strides, by their place in the list.
+    minion_stride: f32,
 }
 
 fn yaw_of(dir: V2) -> f32 {
@@ -434,6 +463,23 @@ impl App {
         if self.options.no_farts {
             self.game.player.farts = 0;
         }
+        if self.options.arm {
+            self.game.arm();
+        }
+        if self.options.free_roam {
+            self.game.status = Status::Escaped;
+            self.game.won = Some(Status::Escaped);
+            self.game.keep_playing();
+            self.game.events.clear();
+        }
+        if let Some(name) = &self.options.tool
+            && let Some(tool) = Tool::ALL
+                .iter()
+                .find(|t| format!("{t:?}").eq_ignore_ascii_case(name))
+            && self.game.has(*tool)
+        {
+            self.game.player.tool = *tool;
+        }
         if self.options.portrait {
             self.game.man.pos = self.game.house.spawn + v(0.4, -3.4);
             self.game.man.facing = v(-0.1, 1.0).normalized();
@@ -444,6 +490,11 @@ impl App {
         self.camera = Camera::default();
         self.yaw = yaw_of(self.game.player.facing);
         self.camera.yaw = self.yaw;
+        if self.options.first_person || self.game.tuning.first_person == 1 {
+            self.camera.toggle_view();
+        }
+        let t = self.game.tuning;
+        self.sound.set_buzz(t.buzz);
         self.man_yaw = 0.0;
         self.particles.clear();
         self.spotted = 0;
@@ -455,12 +506,21 @@ impl App {
 
     fn rebuild_house(&mut self) {
         let house = &self.game.house;
+        let t = self.game.tuning;
+        let yellow = t.yellow;
         let rooms: Vec<Mesh> = (0..house.rooms.len())
-            .map(|i| scene::room(house, i))
+            .map(|i| scene::room(house, i, yellow))
             .collect();
         let lights: Vec<Mesh> = (0..house.rooms.len())
-            .map(|i| scene::lights(house, i))
+            .map(|i| scene::lights(house, i, yellow))
             .collect();
+        let blend = |a: [f32; 3], b: [f32; 3]| [0, 1, 2].map(|k| a[k] + (b[k] - a[k]) * yellow);
+        self.gpu.fog = blend(FOG, BACK_FOG);
+        self.gpu.fog_range = [
+            t.fog_near,
+            t.fog_far.max(t.fog_near + 0.5),
+            0.82 + 0.14 * yellow,
+        ];
         self.meshes.rooms = rooms.iter().map(|m| self.gpu.upload(m)).collect();
         self.meshes.lights = lights.iter().map(|m| self.gpu.upload(m)).collect();
     }
@@ -468,7 +528,34 @@ impl App {
     fn start_playing(&mut self) {
         self.phase = Phase::Playing;
         self.sound.quiet(false);
-        self.hud.toast(copy::NOTE, self.now());
+        let note = if self.game.free_roam {
+            copy::FREE_ROAM
+        } else if self.game.weapons_on() {
+            copy::WEAPONS_HINT
+        } else {
+            copy::NOTE
+        };
+        self.hud.toast(note, self.now());
+    }
+
+    /// V: first person or third person.
+    fn toggle_view(&mut self) {
+        let first = self.camera.toggle_view();
+        let document = self.window.document().expect("a document");
+        if first {
+            self.canvas.request_pointer_lock();
+        } else if !self.camera.shift_lock && document.pointer_lock_element().is_some() {
+            document.exit_pointer_lock();
+        }
+        let now = self.now();
+        self.hud.toast(
+            if first {
+                copy::FIRST_PERSON_ON
+            } else {
+                copy::THIRD_PERSON_ON
+            },
+            now,
+        );
     }
 
     fn now(&self) -> f64 {
@@ -538,6 +625,15 @@ impl App {
                 mark_tutorial_seen(&self.window);
             }
             Action::Select(tool) => self.select = Some(tool),
+            Action::KeepPlaying => {
+                if self.game.keep_playing() {
+                    self.daylight = 0.0;
+                    self.phase = Phase::Playing;
+                    self.sound.quiet(false);
+                    let now = self.now();
+                    self.hud.toast(copy::FREE_ROAM, now);
+                }
+            }
             Action::SprintToggle => self.sprint_toggle = !self.sprint_toggle,
             Action::Held(hold, down) => match hold {
                 Hold::Jump => self.touch_jump = down,
@@ -607,14 +703,27 @@ impl App {
         } else {
             player.facing
         };
-        // A little help: snap to him when he's nearly in line.
+        // A little help: snap to him, or a minion of his, when nearly in
+        // line.
+        let cone = if self.camera.aims() { 0.97 } else { 0.85 };
+        let mut targets: Vec<V2> = self
+            .game
+            .minions
+            .iter()
+            .filter(|m| !m.friendly)
+            .map(|m| m.pos)
+            .collect();
         if self.game.man_here() {
-            let to = self.game.man.pos - player.pos;
-            let reach = to.length();
-            let cone = if self.camera.aims() { 0.97 } else { 0.85 };
-            if reach < 18.0 && aim.dot(to.normalized()) > cone {
-                aim = to.normalized();
-            }
+            targets.push(self.game.man.pos);
+        }
+        let best = targets
+            .into_iter()
+            .filter(|at| at.distance(player.pos) < 18.0)
+            .map(|at| (at - player.pos).normalized())
+            .filter(|dir| aim.dot(*dir) > cone)
+            .max_by(|a, b| aim.dot(*a).total_cmp(&aim.dot(*b)));
+        if let Some(dir) = best {
+            aim = dir;
         }
         Input {
             walk,
@@ -741,7 +850,9 @@ impl App {
                 match tool {
                     Tool::Fudge => self.hud.toast(copy::EMPTY_FUDGE, now),
                     Tool::Fart => self.hud.toast(copy::EMPTY_FART, now),
-                    Tool::Keys => {}
+                    Tool::Pistol => self.hud.toast(copy::EMPTY_CONES, now),
+                    Tool::Sugar => self.hud.toast(copy::EMPTY_SUGAR, now),
+                    _ => {}
                 }
             }
             Event::Volley => self.sound.play(Effect::Bloop),
@@ -782,8 +893,95 @@ impl App {
                 self.hud.toast(copy::LOCKED, now);
             }
             Event::Jumped => self.sound.play(Effect::Jump),
-            Event::Escaped => self.sound.play(Effect::Escape),
+            Event::Escaped | Event::Melted => {
+                self.sound.play(Effect::Escape);
+                if event == Event::Melted && self.game.free_roam {
+                    self.hud.toast(copy::MELTED, now);
+                }
+            }
             Event::Scooped => self.sound.play(Effect::Scooped),
+            Event::Swing(_) => {
+                self.swing = 0.25;
+                self.sound.play(Effect::Jump);
+            }
+            Event::ConeFired => self.sound.play(Effect::Bloop),
+            Event::SugarFired => self.sound.play(Effect::Fudge),
+            Event::SugarBurst(at) => {
+                self.sound.play(Effect::Fart);
+                self.particles.push(Particle {
+                    pos: Vec3::new(at.x, 1.0, at.z),
+                    vel: Vec3::ZERO,
+                    age: 0.0,
+                    life: 0.8,
+                    size: self.game.tuning.sugar_radius,
+                    kind: ParticleKind::Puff,
+                });
+            }
+            Event::Staff(from, to) => {
+                self.sound.play(Effect::Frozen);
+                self.particles.push(Particle {
+                    pos: Vec3::new(from.x, 1.2, from.z),
+                    vel: Vec3::new(to.x - from.x, 0.0, to.z - from.z),
+                    age: 0.0,
+                    life: 0.7,
+                    size: 1.0,
+                    kind: ParticleKind::Beam,
+                });
+            }
+            Event::FriendsCame(_) => self.hud.toast(copy::FRIENDS, now),
+            Event::ManHit => {
+                self.man_hit = 0.25;
+                self.sound.play(Effect::Splat);
+            }
+            Event::MinionCame(_) => self.hud.toast(copy::MINION_CAME, now),
+            Event::MinionHit(_) => self.sound.play(Effect::Splat),
+            Event::MinionMelted(at) => {
+                self.sound.play(Effect::Pickup);
+                self.particles.push(Particle {
+                    pos: Vec3::new(at.x, 0.016, at.z),
+                    vel: Vec3::ZERO,
+                    age: 0.0,
+                    life: 6.0,
+                    size: 0.6,
+                    kind: ParticleKind::Drip,
+                });
+            }
+            Event::MinionBite => {
+                self.sound.play(Effect::Hit);
+                self.hurt = self.hurt.max(0.6);
+                self.hud.toast(copy::MINION_BITE, now);
+            }
+            Event::Earned(tool) => {
+                self.sound.play(Effect::Key);
+                let line = copy::earned(tool);
+                if !line.is_empty() {
+                    self.hud.toast(line, now);
+                }
+            }
+            Event::WeaponDropped(tool, _) => self.hud.toast(copy::earned(tool), now),
+            Event::ConeDropped(_) => self.hud.toast(copy::CONE_DROPPED, now),
+            Event::ConeEaten => {
+                self.sound.play(Effect::Pickup);
+                self.hud.toast(copy::CONE_EATEN, now);
+            }
+            Event::BoostOver => self.hud.toast(copy::BOOST_OVER, now),
+            Event::Button(count) => {
+                self.sound.play(Effect::Key);
+                self.hud.toast(&copy::button_lit(count), now);
+            }
+            Event::PuzzleWrong => {
+                self.sound.play(Effect::Locked);
+                self.hud.toast(copy::PUZZLE_WRONG, now);
+            }
+            Event::PuzzleSolved => {
+                self.sound.play(Effect::Escape);
+                self.hud.toast(copy::PUZZLE_SOLVED, now);
+            }
+            Event::CabinetLocked => {
+                self.sound.play(Effect::Locked);
+                self.hud.toast(copy::CABINET_LOCKED, now);
+            }
+            Event::FreeRoam => {}
         }
         let _ = player;
     }
@@ -830,6 +1028,8 @@ impl App {
         };
         self.hurt = (self.hurt - dt * 1.5).max(0.0);
         self.man_hit = (self.man_hit - dt).max(0.0);
+        self.swing = (self.swing - dt).max(0.0);
+        self.minion_stride += dt * 11.0;
         // He leaves vanilla drips behind him.
         if game.man_here() && man.moving && self.phase == Phase::Playing {
             self.drip_wait -= dt;
@@ -875,12 +1075,28 @@ impl App {
     /// A room's light now: warm or freezer blue, with a flicker.
     fn room_light(&self, index: usize) -> [f32; 3] {
         let room = &self.game.house.rooms[index];
-        let base = if scene::cold(room.module) { COLD } else { WARM };
+        let t = &self.game.tuning;
+        let backrooms = t.yellow >= 0.5;
+        let base = if backrooms {
+            FLUORESCENT
+        } else if scene::cold(room.module) {
+            COLD
+        } else {
+            WARM
+        };
         let tick = (self.time * 14.0) as u32;
-        let flicker = if hash(index as u32, tick) % 100 < 3 {
-            0.55
-        } else if scene::cold(room.module) && hash(index as u32 + 50, tick / 3) % 100 < 6 {
+        // How often the tubes flicker: the version's number (3% a tick in
+        // the original).
+        let chance = (t.flicker * 10_000.0) as u32;
+        let flicker = if hash(index as u32, tick) % 10_000 < chance {
+            if backrooms { 0.4 } else { 0.55 }
+        } else if !backrooms
+            && scene::cold(room.module)
+            && hash(index as u32 + 50, tick / 3) % 100 < 6
+        {
             0.8
+        } else if backrooms && hash(index as u32 + 70, tick / 9) % 10_000 < chance / 3 {
+            0.62
         } else {
             1.0
         };
@@ -891,7 +1107,8 @@ impl App {
         let (width, height) = self.resize();
         let gl = &self.gpu.gl;
         gl.viewport(0, 0, width as i32, height as i32);
-        gl.clear_color(FOG[0], FOG[1], FOG[2], 1.0);
+        let fog = self.gpu.fog;
+        gl.clear_color(fog[0], fog[1], fog[2], 1.0);
         gl.clear(Gl::COLOR_BUFFER_BIT | Gl::DEPTH_BUFFER_BIT);
         let game = &self.game;
         let player = &game.player;
@@ -974,6 +1191,82 @@ impl App {
             gpu.draw_flat(&m.sparkle, &model, [1.0, 0.86, 0.3]);
         }
 
+        // The spear puzzle: its buttons, lit ones glowing, and the cone
+        // cabinet with the spear inside until it's taken.
+        if game.weapons_on() {
+            for (i, at) in game.house.buttons.iter().enumerate() {
+                let model = Mat4::from_translation(Vec3::new(at.x, 0.0, at.z));
+                gpu.draw(
+                    &m.buttons[i % m.buttons.len()],
+                    &model,
+                    WHITE,
+                    light_at(*at).map(|c| c.max(0.9)),
+                    0.5,
+                    true,
+                );
+                if (i as u32) < game.lit || game.solved {
+                    let glow = Mat4::from_scale_rotation_translation(
+                        Vec3::splat(0.22 + 0.04 * (self.time * 6.0).sin()),
+                        Quat::IDENTITY,
+                        Vec3::new(at.x, 1.35, at.z),
+                    );
+                    let c = rgb(scene::BUTTON_COLOURS[i % 3]);
+                    gpu.draw_flat(&m.sparkle, &glow, c);
+                }
+            }
+            let at = game.house.cabinet;
+            let model = Mat4::from_translation(Vec3::new(at.x, 0.0, at.z));
+            gpu.draw(&m.cabinet, &model, WHITE, light_at(at), 0.6, true);
+            if !game.solved {
+                let spear = Mat4::from_translation(Vec3::new(at.x, 0.35, at.z))
+                    * Mat4::from_rotation_x(-FRAC_PI_2);
+                let index = Tool::ALL
+                    .iter()
+                    .position(|t| *t == Tool::Spear)
+                    .unwrap_or(0);
+                gpu.draw(&m.tools[index], &spear, WHITE, light_at(at), 0.4, true);
+            }
+        }
+        // Cones and weapons on the floor.
+        for (i, d) in game.drops.iter().enumerate() {
+            let bob = (self.time * 3.0 + i as f32).sin() * 0.08;
+            let turn = Quat::from_rotation_y(self.time * 1.8 + i as f32);
+            match d.kind {
+                DropKind::Cone => {
+                    let model = Mat4::from_scale_rotation_translation(
+                        Vec3::splat(1.2),
+                        turn,
+                        Vec3::new(d.at.x, 0.15 + bob, d.at.z),
+                    );
+                    gpu.draw(&m.treat, &model, WHITE, [1.1, 1.08, 1.0], 0.6, true);
+                }
+                DropKind::Weapon(tool) => {
+                    let index = Tool::ALL.iter().position(|t| *t == tool).unwrap_or(0);
+                    let model = Mat4::from_translation(Vec3::new(d.at.x, 0.9 + bob, d.at.z))
+                        * Mat4::from_quat(turn)
+                        * Mat4::from_rotation_x(-0.6);
+                    gpu.draw(&m.tools[index], &model, WHITE, [1.15, 1.1, 1.0], 0.8, true);
+                }
+            }
+            let a = self.time * 3.0 + i as f32;
+            let sparkle = Mat4::from_scale_rotation_translation(
+                Vec3::splat(0.1),
+                Quat::IDENTITY,
+                Vec3::new(d.at.x + a.cos() * 0.5, 1.0 + bob, d.at.z + a.sin() * 0.5),
+            );
+            gpu.draw_flat(&m.sparkle, &sparkle, [1.0, 1.0, 0.85]);
+        }
+        // He melted: a puddle of vanilla where he stood.
+        if game.man_melted {
+            let at = game.man.pos;
+            let model = Mat4::from_scale_rotation_translation(
+                Vec3::new(1.6, 1.0, 1.3),
+                Quat::IDENTITY,
+                Vec3::new(at.x, 0.02, at.z),
+            );
+            gpu.draw(&m.puddle, &model, WHITE, light_at(at), 0.8, false);
+        }
+
         // The floor's splats and drips.
         for p in &self.particles {
             let fade = 1.0 - (p.age / p.life).powi(3);
@@ -1006,11 +1299,47 @@ impl App {
                     );
                     gpu.draw(&m.fudge, &model, WHITE, WHITE, 0.8, false);
                 }
+                ParticleKind::Beam => {
+                    // One super long sprinkle, stretched from the staff.
+                    let length = p.vel.length().max(0.1);
+                    let mid = p.pos + p.vel * 0.5;
+                    let thick = 1.6 * (1.0 - p.age / p.life).max(0.2);
+                    let model = Mat4::from_scale_rotation_translation(
+                        Vec3::new(thick, thick, length / 0.26),
+                        Quat::from_rotation_y(p.vel.x.atan2(p.vel.z)),
+                        mid,
+                    );
+                    gpu.draw(&m.sprinkles[0], &model, WHITE, [1.3, 1.2, 1.25], 0.6, false);
+                }
+                ParticleKind::Puff => {
+                    // A ring of sugar puffs swelling out to the burst's
+                    // size, then shrinking away.
+                    let grow = (p.age / p.life).min(1.0);
+                    let fade = (1.0 - grow).max(0.0).sqrt();
+                    for i in 0..9 {
+                        let a = i as f32 / 9.0 * 2.0 * PI;
+                        let r = p.size * (0.3 + grow * 0.7);
+                        let at = p.pos
+                            + Vec3::new(
+                                a.cos() * r,
+                                ((i * 7) % 3) as f32 * 0.25 - 0.3,
+                                a.sin() * r,
+                            );
+                        let model = Mat4::from_scale_rotation_translation(
+                            Vec3::splat(0.55 * fade + 0.1),
+                            Quat::IDENTITY,
+                            at,
+                        );
+                        gpu.draw(&m.sugar, &model, WHITE, [1.2, 1.2, 1.2], 0.2, false);
+                    }
+                }
             }
         }
 
         self.draw_man();
+        self.draw_minions();
         self.draw_avatar(&view, scooped);
+        self.draw_held(&view);
 
         // Shots in the air.
         for shot in &game.shots {
@@ -1023,6 +1352,22 @@ impl App {
                         at,
                     );
                     gpu.draw(&m.fudge, &model, WHITE, WHITE, 0.9, true);
+                }
+                ShotKind::Cone => {
+                    let model = Mat4::from_scale_rotation_translation(
+                        Vec3::splat(1.3),
+                        Quat::from_rotation_y(yaw_of(shot.vel)),
+                        at,
+                    );
+                    gpu.draw(&m.cone_shot, &model, WHITE, WHITE, 0.5, true);
+                }
+                ShotKind::Sugar => {
+                    let model = Mat4::from_scale_rotation_translation(
+                        Vec3::splat(0.34),
+                        Quat::IDENTITY,
+                        at,
+                    );
+                    gpu.draw(&m.sugar, &model, WHITE, [1.2, 1.2, 1.2], 0.9, true);
                 }
                 ShotKind::Sprinkle(colour) => {
                     let model = Mat4::from_scale_rotation_translation(
@@ -1133,6 +1478,92 @@ impl App {
         }
     }
 
+    /// The minions: little Ice Cream Men. His are vanilla; yours are
+    /// mint and glow.
+    fn draw_minions(&self) {
+        let gpu = &self.gpu;
+        let m = &self.meshes;
+        for (i, minion) in self.game.minions.iter().enumerate() {
+            let room = self.room_light(icecream_rules::layout::index(cell_of(minion.pos)));
+            let light = room.map(|c| c.max(0.95));
+            let stride = self.minion_stride + i as f32 * 1.7;
+            let bob = if minion.moving {
+                (stride * 2.0).sin().abs() * 0.06
+            } else {
+                0.0
+            };
+            let scale = 0.34;
+            let base = Mat4::from_translation(Vec3::new(minion.pos.x, bob, minion.pos.z))
+                * Mat4::from_rotation_y(yaw_of(minion.facing))
+                * Mat4::from_scale(Vec3::splat(scale));
+            let tint = if minion.flash > 0.0 {
+                [1.0, 0.5, 0.5]
+            } else if minion.friendly {
+                [0.7, 1.05, 0.85]
+            } else {
+                WHITE
+            };
+            let swing = if minion.moving {
+                (stride * 2.0).sin() * 0.7
+            } else {
+                0.0
+            };
+            for side in [-1.0_f32, 1.0] {
+                let leg = base
+                    * Mat4::from_translation(Vec3::new(side * 0.17, 0.85, 0.0))
+                    * Mat4::from_rotation_x(swing * side);
+                gpu.draw(&m.man_leg, &leg, tint, light, 0.0, true);
+                let arm = base
+                    * Mat4::from_translation(Vec3::new(side * 0.62, 1.85, 0.0))
+                    * Mat4::from_rotation_z(side * 0.25)
+                    * Mat4::from_rotation_x(-1.2 + (stride * 3.0 + side).sin() * 0.2);
+                gpu.draw(&m.man_arm, &arm, tint, light, 0.0, true);
+            }
+            gpu.draw(&m.man_body, &base, tint, light, 0.0, true);
+            gpu.draw(&m.man_head, &base, tint, light, 0.0, true);
+            gpu.draw(&m.man_forehead, &base, tint, light, 1.0, true);
+            if minion.friendly {
+                let glow = Mat4::from_scale_rotation_translation(
+                    Vec3::splat(0.1),
+                    Quat::IDENTITY,
+                    Vec3::new(minion.pos.x, 1.35, minion.pos.z),
+                );
+                gpu.draw_flat(&m.sparkle, &glow, [0.6, 1.0, 0.75]);
+            }
+        }
+    }
+
+    /// In first person: the tool in your hand at the bottom right of the
+    /// view, jabbing when you swing.
+    fn draw_held(&self, view: &View) {
+        let game = &self.game;
+        if !view.first_person || game.player.hidden.is_some() || self.phase != Phase::Playing {
+            return;
+        }
+        let jab = (self.swing / 0.25).clamp(0.0, 1.0);
+        let jab = (jab * PI).sin();
+        let model = Mat4::from_translation(view.eye)
+            * Mat4::from_rotation_y(self.camera.yaw)
+            * Mat4::from_rotation_x(self.camera.pitch)
+            * Mat4::from_translation(Vec3::new(-0.3, -0.3, 0.5 + jab * 0.35))
+            * Mat4::from_rotation_x(-0.12 - jab * 0.3)
+            * Mat4::from_rotation_y(0.16)
+            * Mat4::from_scale(Vec3::splat(0.42));
+        let index = Tool::ALL
+            .iter()
+            .position(|t| *t == game.player.tool)
+            .unwrap_or(0);
+        let room = self.room_light(icecream_rules::layout::index(cell_of(game.player.pos)));
+        self.gpu.draw(
+            &self.meshes.tools[index],
+            &model,
+            WHITE,
+            room.map(|c| c.max(0.9)),
+            0.4,
+            true,
+        );
+    }
+
     fn draw_avatar(&self, view: &View, scooped: bool) {
         let game = &self.game;
         let player = &game.player;
@@ -1185,7 +1616,7 @@ impl App {
             // The right arm (x < 0 facing +z) holds the tool out.
             let holding = side < 0.0;
             let angle = if holding {
-                -FRAC_PI_2
+                -FRAC_PI_2 - (self.swing / 0.25).clamp(0.0, 1.0) * 0.9
             } else if air {
                 -2.6
             } else {
@@ -1264,7 +1695,14 @@ impl App {
             }),
             Phase::Over => {
                 let run = self.game.run_card();
-                let (title, line, again) = if run.escaped {
+                let won = run.escaped || self.game.status == Status::Melted;
+                let mut buttons = Vec::new();
+                if won && self.game.tuning.free_roam == 1 {
+                    buttons.push((copy::KEEP_PLAYING.to_owned(), Action::KeepPlaying, true));
+                }
+                let (title, line, again) = if self.game.status == Status::Melted {
+                    (copy::MELTED, copy::MELTED_LINE, copy::PLAY_AGAIN)
+                } else if run.escaped {
                     (
                         copy::ESCAPED,
                         self.options
@@ -1283,13 +1721,15 @@ impl App {
                 };
                 let mut lines = vec![line.to_owned()];
                 lines.extend(copy::card_lines(&run));
+                let main = buttons.is_empty();
+                buttons.insert(0, (again.to_owned(), Action::NewHouse, main));
                 Some(Card {
                     title: title.to_owned(),
                     lines,
-                    buttons: vec![(again.to_owned(), Action::NewHouse, true)],
+                    buttons,
                     links,
-                    sunny: run.escaped,
-                    scooped: !run.escaped,
+                    sunny: won,
+                    scooped: !won,
                     ..Card::default()
                 })
             }
@@ -1303,11 +1743,31 @@ impl App {
         let playing = matches!(self.phase, Phase::Playing | Phase::Menu | Phase::Ending(_));
         self.hud.set_playing(playing);
         // The bar is a share of full health, whatever full is in this version.
-        self.hud
-            .health(player.health * 100.0 / game.tuning.max_health.max(1.0));
+        self.hud.health(
+            player.health * 100.0 / game.tuning.max_health.max(1.0),
+            player.boost > 0.0,
+        );
         self.hud.keys(player.keys);
+        let (fudge, farts, keys, cones, sugar) = (
+            player.fudge,
+            player.farts,
+            player.keys,
+            player.cones,
+            player.sugar,
+        );
         self.hud
-            .hot_bar(player.tool, player.fudge, player.farts, player.keys);
+            .hot_bar(player.tool, &player.owned, |tool| match tool {
+                Tool::Fudge => fudge.to_string(),
+                Tool::Fart => farts.to_string(),
+                Tool::Keys => format!("{keys}/3"),
+                Tool::Pistol => cones.to_string(),
+                Tool::Sugar => sugar.to_string(),
+                Tool::Sword | Tool::Spear | Tool::Staff => String::new(),
+            });
+        let boss =
+            (game.weapons_on() && game.man_here() && game.man.health < game.tuning.man_health)
+                .then(|| game.man.health / game.tuning.man_health.max(1.0));
+        self.hud.boss(boss);
         self.hud
             .crosshair(self.phase == Phase::Playing && self.camera.aims());
         let prompt = if self.phase == Phase::Playing {
@@ -1352,6 +1812,7 @@ impl App {
         let status = match game.status {
             Status::Playing => "playing",
             Status::Escaped => "escaped",
+            Status::Melted => "melted",
             Status::Scooped => "scooped",
         };
         let state = format!("{:?}", game.man.state).to_lowercase();
@@ -1380,6 +1841,55 @@ impl App {
             ("data-hidden", game.player.hidden.is_some().to_string()),
             ("data-clouds", game.clouds.len().to_string()),
             ("data-spotted", self.spotted.to_string()),
+            (
+                "data-minions",
+                game.minions
+                    .iter()
+                    .filter(|m| !m.friendly)
+                    .count()
+                    .to_string(),
+            ),
+            (
+                "data-friends",
+                game.minions
+                    .iter()
+                    .filter(|m| m.friendly)
+                    .count()
+                    .to_string(),
+            ),
+            (
+                "data-tools",
+                game.player
+                    .owned
+                    .iter()
+                    .map(|t| format!("{t:?}").to_lowercase())
+                    .collect::<Vec<_>>()
+                    .join(","),
+            ),
+            ("data-boost", format!("{:.1}", game.player.boost)),
+            (
+                "data-minion-near",
+                format!(
+                    "{:.1}",
+                    game.minions
+                        .iter()
+                        .filter(|m| !m.friendly)
+                        .map(|m| m.pos.distance(game.player.pos))
+                        .fold(999.0_f32, f32::min)
+                ),
+            ),
+            ("data-man-health", format!("{:.0}", game.man.health)),
+            ("data-free-roam", game.free_roam.to_string()),
+            ("data-lit", game.lit.to_string()),
+            ("data-drops", game.drops.len().to_string()),
+            (
+                "data-camera",
+                if self.camera.first_person() {
+                    "first".to_owned()
+                } else {
+                    "third".to_owned()
+                },
+            ),
             // Game Lab's "note at this time and place".
             ("data-seconds", format!("{:.1}", game.seconds())),
             (
@@ -1530,6 +2040,15 @@ pub fn start() {
         splat: gpu.upload(&scene::splat(scene::FUDGE)),
         drip: gpu.upload(&scene::splat(scene::VANILLA)),
         cone: gpu.upload(&scene::big_cone()),
+        treat: gpu.upload(&scene::treat()),
+        cone_shot: gpu.upload(&scene::cone_shot()),
+        sugar: gpu.upload(&scene::ball(0xFFFFFF)),
+        buttons: scene::BUTTON_COLOURS
+            .iter()
+            .map(|c| gpu.upload(&scene::button(*c)))
+            .collect(),
+        cabinet: gpu.upload(&scene::cabinet()),
+        puddle: gpu.upload(&scene::splat(scene::VANILLA)),
     };
     let _ = rgb(0);
     let touch = window
@@ -1582,6 +2101,8 @@ pub fn start() {
         view: None,
         frames: 0,
         spotted: 0,
+        swing: 0.0,
+        minion_stride: 0.0,
     };
     app.new_run();
     if app.options.skip {
@@ -1634,9 +2155,15 @@ pub fn start() {
                         app.set_shift_lock(on);
                     }
                 }
-                "1" | "2" | "3" => {
+                "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" => {
                     let index = key.parse::<usize>().unwrap_or(1) - 1;
-                    app.select = Some(Tool::ALL[index]);
+                    app.select = app.game.player.owned.get(index).copied();
+                }
+                "v" => {
+                    event.prevent_default();
+                    if !event.repeat() {
+                        app.toggle_view();
+                    }
                 }
                 "w" | "a" | "s" | "d" | "arrowup" | "arrowdown" | "arrowleft" | "arrowright"
                 | " " | "shift" | "e" => {
@@ -1692,7 +2219,7 @@ pub fn start() {
                 0 => {
                     app.fire = true;
                     app.taps.push("click".to_owned());
-                    if app.camera.shift_lock {
+                    if app.camera.aims() {
                         let locked = app
                             .window
                             .document()

@@ -11,13 +11,15 @@ pub mod game;
 pub mod geom;
 pub mod layout;
 pub mod man;
+pub mod minion;
 pub mod rng;
 pub mod tuning;
 
-pub use game::{Event, Game, Input, Options, Prompt, RunCard, Status, Tool};
+pub use game::{Drop, DropKind, Event, Game, Input, Options, Prompt, RunCard, Status, Tool};
 pub use geom::{V2, v};
 pub use layout::{House, Module, Pickup};
 pub use man::{Man, ManState};
+pub use minion::Minion;
 pub use tuning::Tuning;
 
 /// Steps a second.

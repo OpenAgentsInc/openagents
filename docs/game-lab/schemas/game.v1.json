@@ -225,10 +225,24 @@
     "layout": {
       "additionalProperties": false,
       "properties": {
+        "backrooms": {
+          "default": 0,
+          "description": "build the house as the Backrooms (1): wide empty yellow rooms with wall stubs among the Airbnb's own; 0 keeps the Airbnb's rooms",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "integer"
+        },
         "extra_closets": {
           "default": 0,
           "description": "hiding spots (closets) added to the house",
           "maximum": 4,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "loops": {
+          "default": 4,
+          "description": "extra doorways beyond the ones that join every room; more make the house loop like the Backrooms",
+          "maximum": 24,
           "minimum": 0,
           "type": "integer"
         },
@@ -241,7 +255,65 @@
       },
       "required": [
         "seed",
-        "extra_closets"
+        "extra_closets",
+        "backrooms",
+        "loops"
+      ],
+      "type": "object"
+    },
+    "look": {
+      "additionalProperties": false,
+      "properties": {
+        "buzz": {
+          "default": 0.0,
+          "description": "how loud the fluorescent lights buzz, from 0 to 1",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "first_person": {
+          "default": 0,
+          "description": "the camera a run starts with: 1 first person, 0 third person (V switches)",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "flicker": {
+          "default": 0.03,
+          "description": "how often the lights flicker, from 0 (never) to 1 (all the time)",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "fog_far": {
+          "default": 34.0,
+          "description": "where the fog is thickest, metres from the camera",
+          "maximum": 120.0,
+          "minimum": 1.0,
+          "type": "number"
+        },
+        "fog_near": {
+          "default": 9.0,
+          "description": "where the fog starts, metres from the camera",
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "yellow": {
+          "default": 0.0,
+          "description": "how yellowed the rooms look, from 0 (pastel ice cream) to 1 (Backrooms: monotone yellow wallpaper, damp carpet, fluorescent panels)",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "yellow",
+        "fog_near",
+        "fog_far",
+        "flicker",
+        "buzz",
+        "first_person"
       ],
       "type": "object"
     },
@@ -421,6 +493,158 @@
       ],
       "type": "object"
     },
+    "minions": {
+      "additionalProperties": false,
+      "properties": {
+        "cone_boost": {
+          "default": 0.5,
+          "description": "extra health an eaten ice cream cone gives, as a share of full health (0.5 is 50% more)",
+          "maximum": 3.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "cone_drop": {
+          "default": 0.35,
+          "description": "the chance a melted minion drops an edible ice cream cone, from 0 to 1",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "cone_time": {
+          "default": 10.0,
+          "description": "seconds an ice cream cone's extra health lasts",
+          "maximum": 120.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "fart_minion_damage": {
+          "default": 40.0,
+          "description": "a fart cloud's damage to the minions in it",
+          "maximum": 500.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "fudge_minion_damage": {
+          "default": 10.0,
+          "description": "a squirt of hot fudge's damage to a minion",
+          "maximum": 500.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "minion_bite_wait": {
+          "default": 1.0,
+          "description": "seconds between a minion's bites",
+          "maximum": 20.0,
+          "minimum": 0.1,
+          "type": "number"
+        },
+        "minion_count": {
+          "default": 0,
+          "description": "how many minions (mini Ice Cream Men) can hunt you at once; 0 for none",
+          "maximum": 12,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "minion_damage": {
+          "default": 6.0,
+          "description": "a minion's bite's damage (your own minions bite as hard)",
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "minion_every": {
+          "default": 15.0,
+          "description": "seconds between new minions",
+          "maximum": 600.0,
+          "minimum": 1.0,
+          "type": "number"
+        },
+        "minion_first": {
+          "default": 25.0,
+          "description": "seconds before the first minion comes",
+          "maximum": 600.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "minion_health": {
+          "default": 30.0,
+          "description": "a minion's health",
+          "maximum": 1000.0,
+          "minimum": 1.0,
+          "type": "number"
+        },
+        "minion_sight": {
+          "default": 14.0,
+          "description": "how near you must be before a minion hunts you, metres",
+          "maximum": 80.0,
+          "minimum": 1.0,
+          "type": "number"
+        },
+        "minion_speed": {
+          "default": 3.4,
+          "description": "a minion's speed, metres a second",
+          "maximum": 12.0,
+          "minimum": 0.5,
+          "type": "number"
+        },
+        "staff_damage": {
+          "default": 30.0,
+          "description": "the sprinkle staff's damage to what its sprinkle touches",
+          "maximum": 1000.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "staff_length": {
+          "default": 10.0,
+          "description": "how long the sprinkle staff's one super long sprinkle reaches, metres",
+          "maximum": 40.0,
+          "minimum": 1.0,
+          "type": "number"
+        },
+        "staff_minion_life": {
+          "default": 20.0,
+          "description": "seconds one of your own minions lasts",
+          "maximum": 600.0,
+          "minimum": 1.0,
+          "type": "number"
+        },
+        "staff_minions": {
+          "default": 3,
+          "description": "your own minions one wave of the sprinkle staff makes",
+          "maximum": 12,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "staff_wait": {
+          "default": 2.0,
+          "description": "seconds between sprinkle staff waves",
+          "maximum": 30.0,
+          "minimum": 0.2,
+          "type": "number"
+        }
+      },
+      "required": [
+        "minion_count",
+        "minion_first",
+        "minion_every",
+        "minion_speed",
+        "minion_health",
+        "minion_damage",
+        "minion_bite_wait",
+        "minion_sight",
+        "fudge_minion_damage",
+        "fart_minion_damage",
+        "cone_drop",
+        "cone_boost",
+        "cone_time",
+        "staff_length",
+        "staff_damage",
+        "staff_wait",
+        "staff_minions",
+        "staff_minion_life"
+      ],
+      "type": "object"
+    },
     "noise": {
       "additionalProperties": false,
       "properties": {
@@ -528,6 +752,13 @@
     "rules": {
       "additionalProperties": false,
       "properties": {
+        "free_roam": {
+          "default": 0,
+          "description": "after you win (escape, or melt him), keep playing in free roam with the sprinkle staff (1), or end the run (0)",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "integer"
+        },
         "front_door": {
           "description": "how the front door, the only way out, opens; the rules refuse \"locked\", since nobody could escape",
           "enum": [
@@ -566,12 +797,229 @@
         "keys",
         "unlock",
         "reach",
-        "key_reach"
+        "key_reach",
+        "free_roam"
       ],
       "type": "object"
     },
     "schema": {
       "const": "game.v1"
+    },
+    "weapons": {
+      "additionalProperties": false,
+      "properties": {
+        "earned_weapons": {
+          "default": 0,
+          "description": "whether the four earned weapons are in the game (1) or not (0): the candy cane sword, the waffle cone spear, the cone pistol and the sugar launcher",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "man_health": {
+          "default": 400.0,
+          "description": "the Ice Cream Man's health against the earned weapons; at none he melts and you win",
+          "maximum": 10000.0,
+          "minimum": 10.0,
+          "type": "number"
+        },
+        "pistol_ammo": {
+          "default": 12,
+          "description": "cones the cone pistol comes with",
+          "maximum": 500,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pistol_damage": {
+          "default": 15.0,
+          "description": "a cone from the cone pistol's damage",
+          "maximum": 500.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "pistol_max": {
+          "default": 40,
+          "description": "the most cones you can carry for the cone pistol",
+          "maximum": 999,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "pistol_pickup": {
+          "default": 8,
+          "description": "cones a fridge gives the cone pistol",
+          "maximum": 500,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pistol_range": {
+          "default": 18.0,
+          "description": "how far the cone pistol's cones fly, metres",
+          "maximum": 60.0,
+          "minimum": 1.0,
+          "type": "number"
+        },
+        "pistol_rate": {
+          "default": 3.0,
+          "description": "cones the cone pistol fires a second",
+          "maximum": 20.0,
+          "minimum": 0.2,
+          "type": "number"
+        },
+        "pistol_speed": {
+          "default": 22.0,
+          "description": "how fast the cone pistol's cones fly",
+          "maximum": 60.0,
+          "minimum": 2.0,
+          "type": "number"
+        },
+        "pistol_task": {
+          "default": 1,
+          "description": "times you freeze him with hot fudge to earn the cone pistol",
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "spear_damage": {
+          "default": 35.0,
+          "description": "a waffle cone spear jab's damage",
+          "maximum": 500.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "spear_reach": {
+          "default": 3.4,
+          "description": "how far the waffle cone spear reaches, metres",
+          "maximum": 10.0,
+          "minimum": 1.0,
+          "type": "number"
+        },
+        "spear_wait": {
+          "default": 0.8,
+          "description": "seconds between waffle cone spear jabs",
+          "maximum": 10.0,
+          "minimum": 0.1,
+          "type": "number"
+        },
+        "sugar_ammo": {
+          "default": 4,
+          "description": "sugar the sugar launcher comes with",
+          "maximum": 200,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sugar_damage": {
+          "default": 60.0,
+          "description": "a sugar burst's damage to everything in it",
+          "maximum": 1000.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "sugar_max": {
+          "default": 10,
+          "description": "the most sugar you can carry for the sugar launcher",
+          "maximum": 999,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "sugar_pickup": {
+          "default": 2,
+          "description": "sugar a fridge gives the sugar launcher",
+          "maximum": 200,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sugar_radius": {
+          "default": 2.5,
+          "description": "how big a sugar burst is, metres",
+          "maximum": 10.0,
+          "minimum": 0.5,
+          "type": "number"
+        },
+        "sugar_range": {
+          "default": 14.0,
+          "description": "how far the sugar launcher throws, metres",
+          "maximum": 60.0,
+          "minimum": 1.0,
+          "type": "number"
+        },
+        "sugar_speed": {
+          "default": 12.0,
+          "description": "how fast the sugar launcher's sugar flies",
+          "maximum": 60.0,
+          "minimum": 2.0,
+          "type": "number"
+        },
+        "sugar_task": {
+          "default": 4,
+          "description": "minions you melt to earn the sugar launcher",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "sugar_wait": {
+          "default": 1.2,
+          "description": "seconds between sugar launches",
+          "maximum": 20.0,
+          "minimum": 0.1,
+          "type": "number"
+        },
+        "sword_damage": {
+          "default": 25.0,
+          "description": "a candy cane sword swing's damage",
+          "maximum": 500.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "sword_reach": {
+          "default": 1.9,
+          "description": "how far the candy cane sword reaches, metres",
+          "maximum": 6.0,
+          "minimum": 0.5,
+          "type": "number"
+        },
+        "sword_task": {
+          "default": 1,
+          "description": "minions you melt before one drops the candy cane sword",
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "sword_wait": {
+          "default": 0.45,
+          "description": "seconds between candy cane sword swings",
+          "maximum": 10.0,
+          "minimum": 0.1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "earned_weapons",
+        "man_health",
+        "sword_damage",
+        "sword_reach",
+        "sword_wait",
+        "sword_task",
+        "spear_damage",
+        "spear_reach",
+        "spear_wait",
+        "pistol_damage",
+        "pistol_rate",
+        "pistol_speed",
+        "pistol_range",
+        "pistol_ammo",
+        "pistol_max",
+        "pistol_pickup",
+        "pistol_task",
+        "sugar_damage",
+        "sugar_radius",
+        "sugar_speed",
+        "sugar_range",
+        "sugar_wait",
+        "sugar_ammo",
+        "sugar_max",
+        "sugar_pickup",
+        "sugar_task"
+      ],
+      "type": "object"
     }
   },
   "required": [
@@ -581,8 +1029,11 @@
     "player",
     "man",
     "items",
+    "weapons",
+    "minions",
     "noise",
     "rules",
+    "look",
     "copy"
   ],
   "title": "game.v1: a game's editable surface in Game Lab (docs/game-lab/README.md)",

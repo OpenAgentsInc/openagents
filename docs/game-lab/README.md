@@ -38,6 +38,21 @@ A game's editable surface is one typed JSON document, `game.v1`
   wanders, investigates, searches and chases, how far and how wide he sees,
   how long he searches, how often he sniffs you out, and his grabs and
   sprinkle volleys.
+- **weapons:** the four earned weapons (#11626), switched on by
+  `earned_weapons` (1): the candy cane sword, the waffle cone spear, the
+  cone pistol and the sugar launcher. Each one's damage, reach or range,
+  rate, ammo and fridge refills, the Ice Cream Man's health against them
+  (`man_health`: at none he melts, which wins the run), and what earns
+  each one (`sword_task`, `pistol_task`, `sugar_task`).
+- **minions:** the mini Ice Cream Men that hunt you (`minion_count`, 0 for
+  none): when they come, their speed, health, bite and sight, what fudge
+  and farts do to them, the chance a melted one drops an edible cone
+  (`cone_drop`), the cone's extra health and how long it lasts
+  (`cone_boost` 0.5 and `cone_time` 10: 50% more for 10 s), and the
+  sprinkle staff's long sprinkle and the friendly minions it makes.
+- **look:** how yellowed the rooms are (`yellow`, 0 to 1), the fog
+  (`fog_near`, `fog_far`), how often the lights flicker and how loud they
+  buzz, and the camera a run starts with (`first_person`).
 - **items:** hot fudge and the fart launcher. Ammo at the start and the most
   you can carry, fridge pickups, rate, range, how long fudge slows and
   freezes him, and how long a fart cloud confuses him. Also the key ring's
@@ -45,13 +60,23 @@ A game's editable surface is one typed JSON document, `game.v1`
 - **noise:** how far sprinting, fudge, fridges and the front door are heard.
 - **rules:** `front_door` (`opens_with_all_keys`, or `locked`, which the
   rules refuse), `keys` (three; fixed in the code), `unlock` (seconds holding
-  E at the door), and reach.
+  E at the door), reach, and `free_roam` (1: after a win, play on with the
+  sprinkle staff).
+- **layout** also has `backrooms` (1: build the house as the Backrooms,
+  mostly wide empty yellow rooms with wall stubs among a few of the
+  Airbnb's own) and `loops` (doorways added beyond the ones that join every
+  room).
 - **copy:** the title, the tagline, and the lines when you escape or get
   scooped.
 
 Each number has bounds and a plain-words description, generated from one
 table in `tuning.rs`, so the schema, the validation and the game can't
 disagree.
+
+Every new thing is off at its default, so the defaults are the game as it
+was. A version saved before the code gained a setting is read with that
+setting at its default (`doc::upgrade`), so it plays and measures exactly
+as it did.
 
 Every change makes a new **version**: the document, a one-line summary in
 plain words, who made it, a digest, and the bot-run stats measured when it
@@ -81,6 +106,8 @@ the message (workspace rule: no ad-hoc keyword routing).
 | `game_versions(game)` | Each version's summary, author and bot win rate |
 | `game_compare(game, a?, b?)` | Two versions side by side: what changed, and the measured differences over the same seeded bot runs. A version the game doesn't have, or a version with itself, is refused |
 | `game_notes(game, version?, text?, seconds?, room?)` | Reads the notes, or saves one at a time and place in a run |
+| `game_propose_code(game, request, version?)` | Records a change that needs the game's code changed, for Coder, once the owner agrees. It records; it doesn't change the game |
+| `game_code_requests(game)` | Each recorded code request and where it stands: waiting for Coder, or made in a commit, with its link |
 
 `game_edit` checks an edit in three steps before anything is saved:
 
@@ -91,10 +118,13 @@ the message (workspace rule: no ad-hoc keyword routing).
 2. **The rules.** These are the checks across values. A locked front door
    means nobody could ever escape, since the door is the only way out.
    Sprinkle volleys need a range where he'll fire. You can't start with more
-   ammo than you can carry.
+   ammo than you can carry. The earned weapons need minions (the sword and
+   the sugar launcher come from melting them), and the fog must start
+   nearer than where it's thickest.
 3. **The bot.** It plays 24 seeded houses with the new numbers, for up to 10
-   minutes each. If it never escapes, the edit is refused as unwinnable,
-   with the before and after counts.
+   minutes each. A run is won by escaping or by melting the Ice Cream Man.
+   If it never wins, the edit is refused as unwinnable, with the before and
+   after counts.
 
 A refused edit says why in plain words, and the chat tells the owner in its
 own words.
@@ -131,9 +161,27 @@ minutes, and the card says the game is getting ready until it's done.
 
 A request that needs new rules code is a code change, not an edit. Examples
 are a fourth key, a new item, or a door that opens another way. The edit is
-refused with a reason that says so. The chat offers to have Coder make the
-change as a separate step. Coder does this the usual way, with a branch and
-tests. The next version then builds once and plays as data again.
+refused with a reason that says so, and the chat offers to have Coder make
+the change as a separate step.
+
+When the owner agrees, the chat records it with `game_propose_code`:
+`ROOT/GAME/code-requests.json` keeps the request in plain words, the version
+it was about, and an id (`r1`, `r2`, ...). Nothing is built or changed by
+recording one. Coder (or an agent working as Coder) makes the change the
+usual way, as a commit with tests, and the commit carries a line naming the
+request:
+
+```
+Game-Lab-Request: the-ice-cream-man/r1
+```
+
+When that commit is in the checkout the Lab builds from, `game_code_requests`
+says the request is made and links the commit. The new code's settings are
+in the document from then on (off by default), so turning them on is a
+`game_edit` like any other, and the next version plays as data again on the
+one new build. The designer's revision (#11626) went this way: request `r1`
+recorded in the chat, the commit that made it, then versions that switched
+the weapons, minions, free roam and the Backrooms on.
 
 ## Where it runs
 
@@ -167,8 +215,9 @@ tests. The next version then builds once and plays as data again.
 1. **MVP (this):** `game.v1` for The Ice Cream Man, versions, the tools,
    checked edits with bot runs, the web card, the CLI, and the local stack.
 2. **Coder hand-off:** "make that change" from a refused code-level request
-   opens a Coder task with the request, the document and the notes, and the
-   next build follows from its merge.
+   is recorded (`game_propose_code`) and linked to the commit that makes it
+   (`game_code_requests`, #11626). Still to come: opening the Coder task
+   from the chat itself, with the request, the document and the notes.
 3. **Coder tools:** `game_*` in Coder's tools beside `lab_*` (as
    `crates/coder-new/src/video_lab.rs`), answering in words with the play
    link.

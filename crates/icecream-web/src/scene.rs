@@ -31,6 +31,30 @@ pub const SHIRT: u32 = 0x4F9DDE;
 pub const PANTS: u32 = 0x334E7A;
 pub const SPRINKLES: [u32; 5] = [0xFF6FA8, 0x5EC8F2, 0xFFE15C, 0x7EDB7A, 0xFFFFFF];
 
+/// The Backrooms: yellowed wallpaper, damp carpet, a grubby ceiling of
+/// tiles and fluorescent panels.
+pub const BACK_WALL: u32 = 0xD6C77C;
+pub const BACK_STRIPE: u32 = 0xC9B866;
+pub const BACK_CARPET: u32 = 0x9A8A4E;
+pub const BACK_DAMP: u32 = 0x7A6C3A;
+pub const BACK_TRIM: u32 = 0xB8A35A;
+pub const BACK_CEILING: u32 = 0xE4DCB8;
+pub const CANDY_RED: u32 = 0xE8384F;
+/// The puzzle's buttons, in order: pink, blue, yellow.
+pub const BUTTON_COLOURS: [u32; 3] = [0xFF6FA8, 0x5EC8F2, 0xFFE15C];
+
+/// Between two colours: `t` 0 is `a`, 1 is `b`.
+#[must_use]
+pub fn mix(a: u32, b: u32, t: f32) -> u32 {
+    let t = t.clamp(0.0, 1.0);
+    let channel = |shift: u32| {
+        let x = ((a >> shift) & 0xFF) as f32;
+        let y = ((b >> shift) & 0xFF) as f32;
+        ((x + (y - x) * t).round() as u32) << shift
+    };
+    channel(16) | channel(8) | channel(0)
+}
+
 /// A flavour's wall colour.
 #[must_use]
 pub fn wall(flavor: Flavor) -> u32 {
@@ -96,33 +120,69 @@ fn v3(p: V2, y: f32) -> Vec3 {
 
 /// One room: floor, ceiling, its side of each wall with doorways, trim,
 /// drips, the carpet's sprinkles, and its furniture. The front door is
-/// drawn in its room.
+/// drawn in its room. `yellow` (0 to 1) turns the pastel ice cream into
+/// the Backrooms' yellowed wallpaper and damp carpet.
 #[must_use]
-pub fn room(house: &House, index: usize) -> Mesh {
+pub fn room(house: &House, index: usize, yellow: f32) -> Mesh {
     let mut mesh = Mesh::new();
     let room = &house.rooms[index];
     let c = centre(room.cell);
     let x0 = c.x - CELL / 2.0;
     let z0 = c.z - CELL / 2.0;
-    let colour = wall(room.flavor);
+    let backrooms = yellow >= 0.5;
+    let colour = mix(wall(room.flavor), BACK_WALL, yellow);
+    let floor = mix(carpet(room.flavor), BACK_CARPET, yellow);
+    let trim = mix(WAFFLE, BACK_TRIM, yellow);
+    let frame = mix(WAFFLE_DARK, BACK_TRIM, yellow);
     let half = 0.15;
     // Floor and ceiling.
     boxed(
         &mut mesh,
         Vec3::new(x0, -0.1, z0),
         Vec3::new(x0 + CELL, 0.0, z0 + CELL),
-        carpet(room.flavor),
+        floor,
         0.0,
     );
     boxed(
         &mut mesh,
         Vec3::new(x0, WALL_HEIGHT, z0),
         Vec3::new(x0 + CELL, WALL_HEIGHT + 0.1, z0 + CELL),
-        CEILING,
+        mix(CEILING, BACK_CEILING, yellow),
         0.0,
     );
+    if backrooms {
+        // Damp patches on the carpet, and the ceiling's tile grid.
+        for i in 0..7 {
+            let x = x0 + 1.0 + noise(index as u32 + 31, i * 2) * (CELL - 2.0);
+            let z = z0 + 1.0 + noise(index as u32 + 31, i * 2 + 1) * (CELL - 2.0);
+            let size = 0.6 + noise(index as u32 + 77, i) * 1.4;
+            let transform = Mat4::from_scale_rotation_translation(
+                Vec3::new(size, 1.0, size * (0.6 + noise(index as u32, 90 + i) * 0.6)),
+                Quat::from_rotation_y(noise(index as u32 + 5, i) * PI),
+                Vec3::new(x, 0.008, z),
+            );
+            mesh.add(Shape::Disc { sides: 10 }, transform, BACK_DAMP, 0.0);
+        }
+        for i in 1..5 {
+            let along = i as f32 * CELL / 5.0;
+            boxed(
+                &mut mesh,
+                Vec3::new(x0 + along - 0.02, WALL_HEIGHT - 0.02, z0),
+                Vec3::new(x0 + along + 0.02, WALL_HEIGHT, z0 + CELL),
+                BACK_TRIM,
+                0.0,
+            );
+            boxed(
+                &mut mesh,
+                Vec3::new(x0, WALL_HEIGHT - 0.02, z0 + along - 0.02),
+                Vec3::new(x0 + CELL, WALL_HEIGHT, z0 + along + 0.02),
+                BACK_TRIM,
+                0.0,
+            );
+        }
+    }
     // Sprinkles on the carpet.
-    for i in 0..36 {
+    for i in 0..if backrooms { 0 } else { 36 } {
         let x = x0 + 0.4 + noise(index as u32, i * 2) * (CELL - 0.8);
         let z = z0 + 0.4 + noise(index as u32, i * 2 + 1) * (CELL - 0.8);
         let turn = noise(index as u32 + 99, i) * PI;
@@ -190,16 +250,32 @@ pub fn room(house: &House, index: usize) -> Mesh {
         for (s0, s1) in &spans {
             piece(&mut mesh, *s0, *s1, 0.0, WALL_HEIGHT, colour, 0.0);
             // Waffle-cone trim: a baseboard and a crown.
-            piece(&mut mesh, *s0, *s1, 0.0, 0.28, WAFFLE, 0.05);
+            piece(&mut mesh, *s0, *s1, 0.0, 0.28, trim, 0.05);
             piece(
                 &mut mesh,
                 *s0,
                 *s1,
                 WALL_HEIGHT - 0.22,
                 WALL_HEIGHT,
-                WAFFLE,
+                trim,
                 0.05,
             );
+            if backrooms {
+                // The monotone wallpaper: thin darker stripes.
+                let mut at = *s0 + 0.25;
+                while at < *s1 - 0.1 {
+                    piece(
+                        &mut mesh,
+                        at,
+                        (at + 0.07).min(*s1),
+                        0.28,
+                        WALL_HEIGHT - 0.22,
+                        BACK_STRIPE,
+                        0.01,
+                    );
+                    at += 0.5;
+                }
+            }
         }
         if open {
             piece(
@@ -218,7 +294,7 @@ pub fn room(house: &House, index: usize) -> Mesh {
                 mid - gap,
                 0.0,
                 2.45,
-                WAFFLE_DARK,
+                frame,
                 0.06,
             );
             piece(
@@ -227,7 +303,7 @@ pub fn room(house: &House, index: usize) -> Mesh {
                 mid + gap + 0.12,
                 0.0,
                 2.45,
-                WAFFLE_DARK,
+                frame,
                 0.06,
             );
             piece(
@@ -236,12 +312,12 @@ pub fn room(house: &House, index: usize) -> Mesh {
                 mid + gap + 0.12,
                 2.33,
                 2.45,
-                WAFFLE_DARK,
+                frame,
                 0.06,
             );
         }
         // Drips from the crown: melting flavour.
-        for i in 0..6 {
+        for i in 0..if backrooms { 0 } else { 6 } {
             let along = a0 + 0.6 + noise(index as u32 * 7 + side_index as u32, i) * (CELL - 1.2);
             if open && (along - mid).abs() < gap + 0.3 {
                 continue;
@@ -292,7 +368,7 @@ pub fn room(house: &House, index: usize) -> Mesh {
         }
     }
     // Ceiling drips in the middle of the room.
-    for i in 0..5 {
+    for i in 0..if backrooms { 0 } else { 5 } {
         let x = c.x - 3.5 + noise(index as u32 + 7, i) * 7.0;
         let z = c.z - 3.5 + noise(index as u32 + 9, i) * 7.0;
         let length = 0.2 + noise(index as u32 + 3, i) * 0.35;
@@ -315,7 +391,7 @@ pub fn room(house: &House, index: usize) -> Mesh {
         );
     }
     for (p, block) in props_of(house, index) {
-        prop(&mut mesh, p, &block, c, room.flavor);
+        prop(&mut mesh, p, &block, c, room.flavor, (colour, floor, trim));
     }
     if house.front.room == index {
         front_door(&mut mesh, house);
@@ -342,7 +418,16 @@ fn props_of(house: &House, index: usize) -> Vec<(PropKind, Block)> {
         .collect()
 }
 
-fn prop(mesh: &mut Mesh, kind: PropKind, b: &Block, room: V2, flavor: Flavor) {
+/// A piece of furniture; `tone` is the room's wall, carpet and trim.
+fn prop(
+    mesh: &mut Mesh,
+    kind: PropKind,
+    b: &Block,
+    room: V2,
+    flavor: Flavor,
+    tone: (u32, u32, u32),
+) {
+    let (wall_colour, carpet_colour, trim) = tone;
     let lo = v3(b.min, 0.0);
     let hi = v3(b.max, b.height);
     let mid = (lo + hi) * 0.5;
@@ -704,9 +789,9 @@ fn prop(mesh: &mut Mesh, kind: PropKind, b: &Block, room: V2, flavor: Flavor) {
                     a,
                     bnd,
                     if i % 2 == 0 {
-                        carpet(flavor)
+                        carpet_colour
                     } else {
-                        wall(flavor)
+                        wall_colour
                     },
                     w,
                 );
@@ -722,22 +807,23 @@ fn prop(mesh: &mut Mesh, kind: PropKind, b: &Block, room: V2, flavor: Flavor) {
                 w,
             );
         }
-        PropKind::Pillar => {
-            boxed(mesh, lo, hi, wall(flavor), 0.0);
+        PropKind::Pillar | PropKind::Partition => {
+            boxed(mesh, lo, hi, wall_colour, 0.0);
             boxed(
                 mesh,
                 lo - Vec3::new(0.05, 0.0, 0.05),
                 Vec3::new(hi.x + 0.05, 0.28, hi.z + 0.05),
-                WAFFLE,
+                trim,
                 0.0,
             );
             boxed(
                 mesh,
                 Vec3::new(lo.x - 0.05, hi.y - 0.22, lo.z - 0.05),
                 hi + Vec3::new(0.05, 0.0, 0.05),
-                WAFFLE,
+                trim,
                 0.0,
             );
+            let _ = flavor;
         }
         PropKind::Plant => {
             // An ice cream plant: a waffle pot with a scoop on top.
@@ -808,11 +894,31 @@ fn front_door(mesh: &mut Mesh, house: &House) {
     boxed(mesh, sign - half, sign + half, 0x3BB273, 1.0);
 }
 
-/// A room's ceiling lights: flat panels drawn in their own colour.
+/// A room's ceiling lights: flat panels drawn in their own colour. The
+/// Backrooms have a grid of long fluorescent panels.
 #[must_use]
-pub fn lights(house: &House, index: usize) -> Mesh {
+pub fn lights(house: &House, index: usize, yellow: f32) -> Mesh {
     let mut mesh = Mesh::new();
     let c = centre(house.rooms[index].cell);
+    if yellow >= 0.5 {
+        for (x, z) in [
+            (-3.0_f32, -2.0_f32),
+            (3.0, -2.0),
+            (-3.0, 2.0),
+            (3.0, 2.0),
+            (0.0, 0.0),
+        ] {
+            let at = Vec3::new(c.x + x, WALL_HEIGHT - 0.03, c.z + z);
+            boxed(
+                &mut mesh,
+                at - Vec3::new(0.3, 0.03, 0.95),
+                at + Vec3::new(0.3, 0.03, 0.95),
+                WHITE,
+                0.0,
+            );
+        }
+        return mesh;
+    }
     for offset in [-2.5_f32, 2.5] {
         let at = Vec3::new(c.x + offset, WALL_HEIGHT - 0.03, c.z);
         boxed(
@@ -1015,6 +1121,189 @@ pub fn tool(tool: icecream_rules::Tool) -> Mesh {
                     Vec3::new(0.0, 0.0, 0.58),
                 ),
                 0xB6E06A,
+                1.0,
+            );
+        }
+        icecream_rules::Tool::Sword => {
+            // A candy cane: red and white bands, with its hook at the tip.
+            for i in 0..8 {
+                let z0 = -0.1 + i as f32 * 0.13;
+                boxed(
+                    &mut mesh,
+                    Vec3::new(-0.045, -0.045, z0),
+                    Vec3::new(0.045, 0.045, z0 + 0.13),
+                    if i % 2 == 0 { CANDY_RED } else { WHITE },
+                    1.0,
+                );
+            }
+            for (i, (y, z)) in [(0.06, 1.0), (0.16, 1.04), (0.24, 0.98), (0.24, 0.88)]
+                .iter()
+                .enumerate()
+            {
+                boxed(
+                    &mut mesh,
+                    Vec3::new(-0.045, y - 0.05, z - 0.05),
+                    Vec3::new(0.045, y + 0.05, z + 0.05),
+                    if i % 2 == 0 { WHITE } else { CANDY_RED },
+                    1.0,
+                );
+            }
+        }
+        icecream_rules::Tool::Spear => {
+            // A waffle cone stretched out long: a grip, then the cone's
+            // point far ahead.
+            boxed(
+                &mut mesh,
+                Vec3::new(-0.05, -0.05, -0.35),
+                Vec3::new(0.05, 0.05, 0.25),
+                WAFFLE_DARK,
+                1.0,
+            );
+            mesh.add(
+                Shape::Frustum {
+                    sides: 10,
+                    bottom: 0.5,
+                    top: 0.02,
+                },
+                Mat4::from_scale_rotation_translation(
+                    Vec3::new(0.3, 2.4, 0.3),
+                    Quat::from_rotation_x(FRAC_PI_2),
+                    Vec3::new(0.0, 0.0, 1.45),
+                ),
+                WAFFLE,
+                1.0,
+            );
+            for i in 0..5 {
+                let z = 0.45 + i as f32 * 0.42;
+                let r = 0.15 * (1.0 - (z - 0.25) / 2.4) + 0.012;
+                mesh.add(
+                    Shape::Torus {
+                        segments: 10,
+                        sides: 3,
+                        radius: r,
+                        tube: 0.012,
+                    },
+                    Mat4::from_translation(Vec3::new(0.0, 0.0, z)),
+                    WAFFLE_DARK,
+                    0.0,
+                );
+            }
+            mesh.add(
+                Shape::Sphere {
+                    rings: 4,
+                    segments: 8,
+                },
+                Mat4::from_scale_rotation_translation(
+                    Vec3::splat(0.3),
+                    Quat::IDENTITY,
+                    Vec3::new(0.0, 0.0, 0.28),
+                ),
+                wall(Flavor::Strawberry),
+                1.0,
+            );
+        }
+        icecream_rules::Tool::Pistol => {
+            boxed(
+                &mut mesh,
+                Vec3::new(-0.06, -0.3, -0.12),
+                Vec3::new(0.06, 0.0, 0.05),
+                0x8A5A40,
+                1.0,
+            );
+            boxed(
+                &mut mesh,
+                Vec3::new(-0.08, -0.02, -0.15),
+                Vec3::new(0.08, 0.12, 0.25),
+                0xFF9DB8,
+                1.0,
+            );
+            mesh.add(
+                Shape::Frustum {
+                    sides: 8,
+                    bottom: 0.15,
+                    top: 0.5,
+                },
+                Mat4::from_scale_rotation_translation(
+                    Vec3::new(0.24, 0.35, 0.24),
+                    Quat::from_rotation_x(FRAC_PI_2),
+                    Vec3::new(0.0, 0.05, 0.42),
+                ),
+                WAFFLE,
+                1.0,
+            );
+        }
+        icecream_rules::Tool::Sugar => {
+            mesh.add(
+                Shape::Frustum {
+                    sides: 10,
+                    bottom: 0.5,
+                    top: 0.5,
+                },
+                Mat4::from_scale_rotation_translation(
+                    Vec3::new(0.26, 0.9, 0.26),
+                    Quat::from_rotation_x(FRAC_PI_2),
+                    Vec3::new(0.0, 0.0, 0.25),
+                ),
+                0x7FC8E8,
+                1.0,
+            );
+            boxed(
+                &mut mesh,
+                Vec3::new(-0.12, 0.1, -0.05),
+                Vec3::new(0.12, 0.35, 0.25),
+                WHITE,
+                1.0,
+            );
+            mesh.add(
+                Shape::Frustum {
+                    sides: 10,
+                    bottom: 0.5,
+                    top: 0.7,
+                },
+                Mat4::from_scale_rotation_translation(
+                    Vec3::new(0.3, 0.15, 0.3),
+                    Quat::from_rotation_x(FRAC_PI_2),
+                    Vec3::new(0.0, 0.0, 0.75),
+                ),
+                0xFF6FA8,
+                1.0,
+            );
+        }
+        icecream_rules::Tool::Staff => {
+            // One super long sprinkle.
+            boxed(
+                &mut mesh,
+                Vec3::new(-0.05, -0.05, -0.5),
+                Vec3::new(0.05, 0.05, 1.7),
+                SPRINKLES[0],
+                1.0,
+            );
+            for z in [-0.5, 1.7] {
+                mesh.add(
+                    Shape::Sphere {
+                        rings: 4,
+                        segments: 8,
+                    },
+                    Mat4::from_scale_rotation_translation(
+                        Vec3::splat(0.1),
+                        Quat::IDENTITY,
+                        Vec3::new(0.0, 0.0, z),
+                    ),
+                    SPRINKLES[0],
+                    1.0,
+                );
+            }
+            mesh.add(
+                Shape::Sphere {
+                    rings: 5,
+                    segments: 8,
+                },
+                Mat4::from_scale_rotation_translation(
+                    Vec3::splat(0.22),
+                    Quat::IDENTITY,
+                    Vec3::new(0.0, 0.0, 1.75),
+                ),
+                GOLD,
                 1.0,
             );
         }
@@ -1406,6 +1695,129 @@ pub fn splat(colour: u32) -> Mesh {
     mesh
 }
 
+/// An edible ice cream cone on the floor: a waffle cone with a pink
+/// scoop, point down.
+#[must_use]
+pub fn treat() -> Mesh {
+    let mut mesh = Mesh::new();
+    mesh.add(
+        Shape::Frustum {
+            sides: 10,
+            bottom: 0.03,
+            top: 0.5,
+        },
+        Mat4::from_scale_rotation_translation(
+            Vec3::new(0.32, 0.45, 0.32),
+            Quat::IDENTITY,
+            Vec3::new(0.0, 0.22, 0.0),
+        ),
+        WAFFLE,
+        1.0,
+    );
+    mesh.add(
+        Shape::Sphere {
+            rings: 5,
+            segments: 10,
+        },
+        Mat4::from_scale_rotation_translation(
+            Vec3::splat(0.36),
+            Quat::IDENTITY,
+            Vec3::new(0.0, 0.5, 0.0),
+        ),
+        wall(Flavor::Strawberry),
+        1.0,
+    );
+    for i in 0..5 {
+        let a = i as f32 * 1.25;
+        boxed(
+            &mut mesh,
+            Vec3::new(a.cos() * 0.12 - 0.015, 0.62, a.sin() * 0.12 - 0.015),
+            Vec3::new(a.cos() * 0.12 + 0.015, 0.66, a.sin() * 0.12 + 0.05),
+            SPRINKLES[i % 5],
+            0.0,
+        );
+    }
+    mesh
+}
+
+/// A cone in flight from the cone pistol, point first along +z.
+#[must_use]
+pub fn cone_shot() -> Mesh {
+    let mut mesh = Mesh::new();
+    mesh.add(
+        Shape::Frustum {
+            sides: 8,
+            bottom: 0.02,
+            top: 0.5,
+        },
+        Mat4::from_scale_rotation_translation(
+            Vec3::new(0.24, 0.35, 0.24),
+            Quat::from_rotation_x(-FRAC_PI_2),
+            Vec3::ZERO,
+        ),
+        WAFFLE,
+        1.0,
+    );
+    mesh
+}
+
+/// A puzzle button: a waffle post with a big round button on top.
+#[must_use]
+pub fn button(colour: u32) -> Mesh {
+    let mut mesh = Mesh::new();
+    boxed(
+        &mut mesh,
+        Vec3::new(-0.22, 0.0, -0.22),
+        Vec3::new(0.22, 0.9, 0.22),
+        WAFFLE_DARK,
+        1.0,
+    );
+    mesh.add(
+        Shape::Sphere {
+            rings: 4,
+            segments: 10,
+        },
+        Mat4::from_scale_rotation_translation(
+            Vec3::new(0.38, 0.18, 0.38),
+            Quat::IDENTITY,
+            Vec3::new(0.0, 0.92, 0.0),
+        ),
+        colour,
+        1.0,
+    );
+    mesh
+}
+
+/// The cone cabinet: a waffle frame with a glassy top and base.
+#[must_use]
+pub fn cabinet() -> Mesh {
+    let mut mesh = Mesh::new();
+    boxed(
+        &mut mesh,
+        Vec3::new(-0.5, 0.0, -0.5),
+        Vec3::new(0.5, 0.15, 0.5),
+        WAFFLE_DARK,
+        1.0,
+    );
+    boxed(
+        &mut mesh,
+        Vec3::new(-0.5, 2.45, -0.5),
+        Vec3::new(0.5, 2.6, 0.5),
+        WAFFLE_DARK,
+        1.0,
+    );
+    for (x, z) in [(-0.5, -0.5), (0.4, -0.5), (-0.5, 0.4), (0.4, 0.4)] {
+        boxed(
+            &mut mesh,
+            Vec3::new(x, 0.15, z),
+            Vec3::new(x + 0.1, 2.45, z + 0.1),
+            WAFFLE,
+            1.0,
+        );
+    }
+    mesh
+}
+
 /// The cone you end up in when scooped.
 #[must_use]
 pub fn big_cone() -> Mesh {
@@ -1435,10 +1847,12 @@ mod tests {
     fn every_room_of_a_house_has_walls_furniture_and_lights() {
         let house = House::new(7);
         for index in 0..house.rooms.len() {
-            let mesh = room(&house, index);
+            let mesh = room(&house, index, 0.0);
             assert!(mesh.vertices() > 500, "room {index}");
             assert!(mesh.vertices().is_multiple_of(3));
-            assert!(lights(&house, index).vertices() > 0);
+            assert!(lights(&house, index, 0.0).vertices() > 0);
+            assert!(room(&house, index, 1.0).vertices() > 500);
+            assert!(lights(&house, index, 1.0).vertices() > lights(&house, index, 0.0).vertices());
         }
     }
 
@@ -1469,6 +1883,10 @@ mod tests {
             sprinkle(SPRINKLES[0]),
             splat(FUDGE),
             big_cone(),
+            treat(),
+            cone_shot(),
+            button(BUTTON_COLOURS[0]),
+            cabinet(),
         ] {
             assert!(mesh.vertices() > 0);
         }
@@ -1480,5 +1898,33 @@ mod tests {
         assert!(strawberry >> 16 > 0xE0, "pink: lots of red");
         assert_ne!(wall(Flavor::Mint), wall(Flavor::Vanilla));
         assert!(cold(Module::FreezerRoom) && !cold(Module::Bedroom));
+    }
+
+    #[test]
+    fn the_backrooms_are_yellowed() {
+        assert_eq!(mix(0x000000, 0xFFFFFF, 0.0), 0x000000);
+        assert_eq!(mix(0x000000, 0xFFFFFF, 1.0), 0xFFFFFF);
+        assert_eq!(mix(wall(Flavor::Mint), BACK_WALL, 1.0), BACK_WALL);
+        let house = icecream_rules::layout::House::build(7, 12, true);
+        let backroom = (0..house.rooms.len())
+            .find(|i| house.rooms[*i].module == Module::Backroom)
+            .expect("a Backrooms room");
+        // The yellow walls are in the mesh; the pastel ones aren't.
+        let colours = |m: &Mesh| -> Vec<[u32; 3]> {
+            m.data
+                .chunks(crate::mesh::STRIDE)
+                .map(|v| {
+                    [
+                        (v[9] * 255.0).round() as u32,
+                        (v[10] * 255.0).round() as u32,
+                        (v[11] * 255.0).round() as u32,
+                    ]
+                })
+                .collect()
+        };
+        let yellow = colours(&room(&house, backroom, 1.0));
+        let to_rgb = |c: u32| [c >> 16, (c >> 8) & 0xFF, c & 0xFF];
+        assert!(yellow.contains(&to_rgb(BACK_WALL)), "yellow wallpaper");
+        assert!(yellow.contains(&to_rgb(BACK_STRIPE)), "wallpaper stripes");
     }
 }

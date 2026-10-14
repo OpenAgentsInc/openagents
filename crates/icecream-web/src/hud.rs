@@ -37,6 +37,8 @@ pub enum Action {
     TourEnd(bool),
     Select(Tool),
     SprintToggle,
+    /// After a win: play on in free roam with the sprinkle staff.
+    KeepPlaying,
     Held(Hold, bool),
 }
 
@@ -156,7 +158,10 @@ pub struct Hud {
     prompt_text: HtmlElement,
     unlock: HtmlElement,
     unlock_fill: HtmlElement,
-    slots: Vec<(HtmlElement, HtmlElement)>,
+    /// A hot-bar slot per tool: the button, its number and its count.
+    slots: Vec<(HtmlElement, HtmlElement, HtmlElement)>,
+    boss: HtmlElement,
+    boss_fill: HtmlElement,
     flash: HtmlElement,
     closet: HtmlElement,
     daylight: HtmlElement,
@@ -325,6 +330,49 @@ impl Hud {
             .collect();
         let _ = playing.append_child(&keys);
 
+        // The Ice Cream Man's health, once the earned weapons hurt him.
+        let boss = element(document, "div");
+        css(&boss, &PANEL);
+        css(
+            &boss,
+            &[
+                ("left", "50%"),
+                ("top", "12px"),
+                ("transform", "translateX(-50%)"),
+                ("display", "none"),
+                ("align-items", "center"),
+                ("gap", "8px"),
+                ("font-weight", "800"),
+            ],
+        );
+        let boss_label = element(document, "span");
+        boss_label.set_text_content(Some(copy::MAN_HEALTH));
+        let boss_bar = element(document, "div");
+        css(
+            &boss_bar,
+            &[
+                ("width", "160px"),
+                ("height", "12px"),
+                ("border", "2px solid #3a2418"),
+                ("border-radius", "8px"),
+                ("background", "#fff"),
+                ("overflow", "hidden"),
+            ],
+        );
+        let boss_fill = element(document, "div");
+        css(
+            &boss_fill,
+            &[
+                ("height", "100%"),
+                ("width", "100%"),
+                ("background", "#ff9db8"),
+            ],
+        );
+        let _ = boss_bar.append_child(&boss_fill);
+        let _ = boss.append_child(&boss_label);
+        let _ = boss.append_child(&boss_bar);
+        let _ = playing.append_child(&boss);
+
         let menu = button(document, &format!("\u{2261} {}", copy::MENU), false);
         css(
             &menu,
@@ -445,7 +493,7 @@ impl Hud {
                 ("gap", "8px"),
             ],
         );
-        let slots: Vec<(HtmlElement, HtmlElement)> = Tool::ALL
+        let slots: Vec<(HtmlElement, HtmlElement, HtmlElement)> = Tool::ALL
             .iter()
             .enumerate()
             .map(|(i, tool)| {
@@ -456,7 +504,7 @@ impl Hud {
                 css(
                     &slot,
                     &[
-                        ("width", if touch { "84px" } else { "96px" }),
+                        ("width", if touch { "72px" } else { "84px" }),
                         ("height", "76px"),
                         ("background", "rgba(255, 246, 236, 0.9)"),
                         ("padding", "4px"),
@@ -493,7 +541,7 @@ impl Hud {
                 }
                 on_click(&slot, &actions, Action::Select(*tool));
                 let _ = bar.append_child(&slot);
-                (slot, count)
+                (slot, number, count)
             })
             .collect();
         let _ = playing.append_child(&bar);
@@ -639,6 +687,8 @@ impl Hud {
             health_fill,
             health_text,
             key_dots,
+            boss,
+            boss_fill,
             toast,
             crosshair,
             prompt,
@@ -670,9 +720,14 @@ impl Hud {
         show(&self.playing, visible);
     }
 
-    pub fn health(&self, health: f32) {
+    /// The health bar: `health` as a share of full health in percent;
+    /// `boosted` while an eaten cone's extra health lasts (gold, and over
+    /// 100).
+    pub fn health(&self, health: f32, boosted: bool) {
         let percent = format!("{}%", health.clamp(0.0, 100.0).round());
-        let colour = if health > 60.0 {
+        let colour = if boosted {
+            "#f7c52b"
+        } else if health > 60.0 {
             "#7edb7a"
         } else if health > 30.0 {
             "#ffd34d"
@@ -697,14 +752,29 @@ impl Hud {
         }
     }
 
-    pub fn hot_bar(&self, selected: Tool, fudge: u32, farts: u32, keys: u32) {
-        for (tool, (slot, count)) in Tool::ALL.iter().zip(&self.slots) {
-            let text = match tool {
-                Tool::Fudge => fudge.to_string(),
-                Tool::Fart => farts.to_string(),
-                Tool::Keys => format!("{keys}/3"),
+    /// The Ice Cream Man's health bar, `None` to hide it.
+    pub fn boss(&self, share: Option<f32>) {
+        match share {
+            Some(share) => {
+                css(&self.boss, &[("display", "flex")]);
+                let percent = format!("{}%", (share * 100.0).clamp(0.0, 100.0).round());
+                css(&self.boss_fill, &[("width", &percent)]);
+            }
+            None => css(&self.boss, &[("display", "none")]),
+        }
+    }
+
+    /// The hot bar: a slot for each tool the player has, numbered in
+    /// order, with `count`'s text under its name.
+    pub fn hot_bar(&self, selected: Tool, owned: &[Tool], count: impl Fn(Tool) -> String) {
+        for (tool, (slot, number, count_text)) in Tool::ALL.iter().zip(&self.slots) {
+            let Some(place) = owned.iter().position(|t| t == tool) else {
+                show(slot, false);
+                continue;
             };
-            count.set_text_content(Some(&text));
+            show(slot, true);
+            number.set_text_content(Some(&(place + 1).to_string()));
+            count_text.set_text_content(Some(&count(*tool)));
             let on = *tool == selected;
             css(
                 slot,

@@ -79,6 +79,8 @@ pub struct Man {
     rng: Rng,
     /// The numbers he plays by.
     pub tuning: Tuning,
+    /// His health against the earned weapons; at none he melts.
+    pub health: f32,
 }
 
 impl Man {
@@ -112,6 +114,7 @@ impl Man {
             replan: 0.0,
             looking: false,
             rng: Rng::new(seed.wrapping_mul(31).wrapping_add(17)),
+            health: tuning.man_health,
             tuning,
         }
     }
@@ -151,6 +154,16 @@ impl Man {
             return true;
         }
         false
+    }
+
+    /// An earned weapon or one of your minions hurt him. Returns whether
+    /// that melted him.
+    pub fn hurt(&mut self, damage: f32) -> bool {
+        if self.health <= 0.0 {
+            return false;
+        }
+        self.health = (self.health - damage).max(0.0);
+        self.health <= 0.0
     }
 
     /// A fart cloud went off at `at` within reach: shoved away, and he

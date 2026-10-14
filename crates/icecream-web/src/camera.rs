@@ -1,8 +1,8 @@
 //! The Roblox-style camera: third person behind the avatar, orbited by a
 //! right-drag, zoomed with the wheel (first person all the way in), Shift
-//! Lock over the right shoulder with a crosshair, and pulled in when a
-//! wall is behind the avatar (`docs/verse/games/the-ice-cream-man.md`,
-//! Camera).
+//! Lock over the right shoulder with a crosshair, pulled in when a wall is
+//! behind the avatar, and V to switch between first person and third
+//! person (`docs/verse/games/the-ice-cream-man.md`, Camera).
 
 use glam::{Mat4, Vec3};
 use icecream_rules::geom::{Block, V2, first_hit, v};
@@ -30,15 +30,21 @@ pub struct Camera {
     pub pitch: f32,
     pub zoom: f32,
     pub shift_lock: bool,
+    /// The third-person zoom to go back to from first person.
+    pub third: f32,
 }
+
+/// The third-person zoom a run starts with.
+pub const THIRD_PERSON: f32 = 8.0;
 
 impl Default for Camera {
     fn default() -> Self {
         Self {
             yaw: std::f32::consts::PI,
             pitch: 0.35,
-            zoom: 8.0,
+            zoom: THIRD_PERSON,
             shift_lock: false,
+            third: THIRD_PERSON,
         }
     }
 }
@@ -85,6 +91,22 @@ impl Camera {
     #[must_use]
     pub fn first_person(&self) -> bool {
         self.zoom < FIRST_PERSON
+    }
+
+    /// V: into the avatar's head, or back out to where third person was.
+    /// Returns whether it's first person now.
+    pub fn toggle_view(&mut self) -> bool {
+        if self.first_person() {
+            self.zoom = self.third.max(FIRST_PERSON + 1.0);
+            if self.pitch < 0.1 {
+                self.pitch = 0.3;
+            }
+        } else {
+            self.third = self.zoom;
+            self.zoom = MIN_ZOOM;
+            self.pitch = self.pitch.min(0.15);
+        }
+        self.first_person()
     }
 
     /// Whether the crosshair shows and tools aim where the camera looks.
@@ -190,6 +212,7 @@ mod tests {
             pitch: 0.3,
             zoom: 8.0,
             shift_lock: false,
+            third: 8.0,
         };
         let open = camera.view(V2::ZERO, 0.0, &[]);
         assert!(open.eye.z < -6.0, "behind: {:?}", open.eye);
@@ -213,6 +236,23 @@ mod tests {
             camera.wheel(100.0);
         }
         assert_eq!(camera.zoom, MAX_ZOOM);
+    }
+
+    #[test]
+    fn v_switches_between_first_person_and_third_person() {
+        let mut camera = Camera::default();
+        camera.wheel(200.0);
+        let zoom = camera.zoom;
+        assert!(!camera.first_person());
+        assert!(camera.toggle_view());
+        assert!(camera.first_person() && camera.aims());
+        let view = camera.view(v(1.0, 1.0), 0.0, &wall_behind());
+        assert!(view.first_person);
+        assert!(!camera.toggle_view());
+        assert_eq!(camera.zoom, zoom, "back to the same third-person zoom");
+        let view = camera.view(v(1.0, 1.0), 0.0, &[]);
+        assert!(!view.first_person);
+        assert!(view.eye.distance(Vec3::new(1.0, HEAD, 1.0)) > 4.0);
     }
 
     #[test]

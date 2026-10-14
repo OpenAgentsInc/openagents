@@ -162,10 +162,10 @@ impl Lab {
     #[must_use]
     pub fn load(&self, game: &str, n: u64) -> Option<(Value, Value)> {
         let dir = self.doc_dir(game).join(format!("v{n}"));
-        Some((
-            read_json(&dir.join("doc.json"))?,
-            read_json(&dir.join("version.json"))?,
-        ))
+        let mut document = read_json(&dir.join("doc.json"))?;
+        // Saved before the game gained some settings: they're off.
+        doc::upgrade(&mut document);
+        Some((document, read_json(&dir.join("version.json"))?))
     }
 
     fn save(
@@ -571,12 +571,12 @@ impl Lab {
             return Ok(refuse(broken.join(" ")));
         }
         let measured = sim::measure(checked.tuning, checked.seed);
-        if measured.escaped == 0 {
+        if measured.wins() == 0 {
             let was = stats_of(&record["stats"]).map_or(String::new(), |s| {
-                format!(" Before the edit it escaped {} of {}.", s.escaped, s.runs)
+                format!(" Before the edit it won {} of {}.", s.wins(), s.runs)
             });
             return Ok(refuse(format!(
-                "That would make the game unwinnable: in {} seeded runs of up to {} minutes the bot never escaped.{was}",
+                "That would make the game unwinnable: in {} seeded runs of up to {} minutes the bot never escaped or melted him.{was}",
                 measured.runs,
                 sim::LIMIT / 60
             )));
@@ -801,6 +801,7 @@ fn stats_of(value: &Value) -> Option<Stats> {
     Some(Stats {
         runs: value["runs"].as_u64()? as u32,
         escaped: value["escaped"].as_u64()? as u32,
+        melted: value["melted"].as_u64().unwrap_or(0) as u32,
         median_escape: value["median_escape"].as_f64().map(|f| f as f32),
         hits: value["hits"].as_f64()? as f32,
         spotted: value["spotted"].as_f64()? as f32,
@@ -817,13 +818,17 @@ pub fn differences(a: &Value, b: &Value) -> Vec<String> {
     let escape = |s: &Stats| s.median_escape.map_or("none".to_owned(), sim::clock);
     vec![
         format!(
-            "Bot escapes: {} of {} ({}%) → {} of {} ({}%)",
-            x.escaped,
+            "Bot wins: {} of {} ({}%) → {} of {} ({}%)",
+            x.wins(),
             x.runs,
             x.win_rate(),
-            y.escaped,
+            y.wins(),
             y.runs,
             y.win_rate()
+        ),
+        format!(
+            "Escaped / melted him: {} / {} → {} / {}",
+            x.escaped, x.melted, y.escaped, y.melted
         ),
         format!("Middle escape time: {} → {}", escape(&x), escape(&y)),
         format!("Hits taken a run: {:.1} → {:.1}", x.hits, y.hits),
@@ -931,8 +936,11 @@ mod tests {
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_nanos();
-                let path =
-                    std::env::temp_dir().join(format!("game-lab-test-{n}-{}", std::process::id()));
+                // Tests run side by side: a counter keeps their folders apart.
+                static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+                let k = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let path = std::env::temp_dir()
+                    .join(format!("game-lab-test-{n}-{}-{k}", std::process::id()));
                 std::fs::create_dir_all(&path).unwrap();
                 Self { path }
             }
