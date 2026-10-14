@@ -231,6 +231,14 @@ start() {
     load OPENROUTER_API_KEY openrouter.env
     load AI_GATEWAY_API_KEY ai-gateway.env
     load TYPESAFE_API_KEY typesafe.env
+    # Google first (#11602): the gateway, the chat worker's product-note
+    # embeddings, and the website reach Vertex on the automation account's
+    # key when no Google credential is set; OpenRouter and the Vercel AI
+    # Gateway stay behind it as fallbacks.
+    if [ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}${VERTEX_ACCESS_TOKEN:-}" ] \
+        && [ -f "$secrets/gcp-mvp-automation.json" ]; then
+        export GOOGLE_APPLICATION_CREDENTIALS="$secrets/gcp-mvp-automation.json"
+    fi
 
     mkdir -p "$state/gateway/usage" "$state/gateway/attempts" "$state/worker-usage" \
         "$state/tasks" "$state/chats" "$state/byo" "$state/coder" "$state/bin"
@@ -314,7 +322,9 @@ EOF
         export CODER_RELAY="$relay" CODER_WORKER_OPEN=1 CODER_WORKER_JOBS=16
         export CODER_WORKER_USAGE_DIR="$state/worker-usage"
         export OPENAGENTS_PRODUCT_KNOWLEDGE="$root/knowledge/openagents"
-        export CODER_AI_GATEWAY_KEY="${AI_GATEWAY_API_KEY:-}" OPENAGENTS_PRODUCT_KB_EMBEDDINGS=gateway
+        # Product notes' embeddings take the house order: Vertex first,
+        # then OpenAI or OpenRouter, the Vercel AI Gateway last (#11602).
+        export CODER_AI_GATEWAY_KEY="${AI_GATEWAY_API_KEY:-}"
         cd "$state"
         exec nohup "$target/debug/coder-worker" > "$logs/worker.log" 2>&1
     ) &

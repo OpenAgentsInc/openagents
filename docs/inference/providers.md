@@ -120,7 +120,7 @@ Owners of a row update it when they change the path. The gateway spec's
 | Simulated users QA (**tool**) | `scripts/qa/simulated_users.py` `ask_model` | OpenRouter `google/gemini-3.8-flash` | The same model again, then `claude:haiku` via the Claude CLI |
 | Relevance and score benches (**tool**) | `scripts/bench/clef-relevance-bench.py`; `training/score-probe/probe.py`; `crates/gym/suites/eval_independence_v1.py`; `bench/jev-lifecycle/gateway.py` | Local Clef/Kev/Lev or TypeSafe `jev-latest`; Vercel `typesafe-ai/jev` (lifecycle) | None |
 | Delegation study broker (**tool**) | `bench/delegation-study/broker.py` | `api.anthropic.com` `/v1/messages` (metered forwarder) | None |
-| Local gateway and worker (**tool**) | `scripts/dev/inference-local.sh` | The local inference gateway (Vertex with `VERTEX_ACCESS_TOKEN`) | Its chain |
+| Local gateway and worker (**tool**) | `scripts/dev/inference-local.sh`, `scripts/dev/full-local.sh` | The local inference gateway, Vertex first on `GOOGLE_APPLICATION_CREDENTIALS` or `VERTEX_ACCESS_TOKEN`, else `~/work/.secrets/gcp-mvp-automation.json` (#11602) | Its chain |
 
 ## Embeddings
 
@@ -128,6 +128,7 @@ Owners of a row update it when they change the path. The gateway spec's
 | --- | --- | --- | --- |
 | Codebase index (**prod**, chat worker) | `crates/coder/src/codebase.rs` `embedder`, `embedder_for` | Vertex `text-embedding-005` for an index built with `CODER_CODEBASE_EMBEDDINGS=vertex` (questions read with the index's own model) | An index built with OpenAI vectors reads with the Vercel AI Gateway, then `Embedder::from_env` (OpenAI, then OpenRouter) |
 | Product KB (**prod**, chat worker) | `crates/coder/src/product_kb.rs` `embedder_from_env` | Prod (release `156b301714`): `OPENAGENTS_PRODUCT_KB_EMBEDDINGS=vertex`, `KB_VERTEX_MODEL=gemini-embedding-001` on the VM's metadata token. Unset: `Embedder::house` (Vertex on a Google credential) | Vertex has no same-model fallback (vectors cannot mix); unset with no Google credential: OpenAI, then OpenRouter; `gateway`: Vercel, OpenRouter, OpenAI |
+| Product KB (**tool**, local stacks) | `scripts/dev/full-local.sh`, `scripts/dev/inference-local.sh` | `Embedder::house`: Vertex on the Google credential those scripts set (#11602; they no longer pick `gateway`) | OpenAI, then OpenRouter, with the Vercel AI Gateway last |
 | Gym KB seam (**prod**, chat worker) | `crates/coder/src/gym_kb.rs` | As the product KB (`product_kb::embedder_from_env`) | As the product KB |
 | Seams on the person's keys (**prod**, **BYOK**) | `crates/coder/src/router/seams.rs` `TheirKeys::embedder`; `knowledge::search::Embedder::theirs` | Their OpenRouter key (`text-embedding-3-small`) | Their Vercel key; never ours |
 | Knowledge search, `kb` CLI and `microcoder --kb-embeddings` (**user machine** / **tool**) | `crates/knowledge/src/search.rs` `Embedder::chosen`, `Embedder::house`; `crates/knowledge/src/cli.rs` | **BYOK** first; then Vertex `text-embedding-005` when a Google credential is here (`Embedder::google`, project `openagentsgemini` unless named) | OpenAI (`OPENAI_API_KEY`), then OpenRouter; `KB_GOOGLE_FIRST=off` skips Vertex |
@@ -141,5 +142,12 @@ Owners of a row update it when they change the path. The gateway spec's
 - Hosted plugin-eval runner: its run door is pinned per run so results
   compare; moving it to Vertex is a change to the eval protocol, not a door
   swap.
+- `coder-serve`'s own lane words (`free`, `flash`, `pro`, `chat`) still go
+  through its `CODER_DOOR_URL=https://ai-gateway.vercel.sh` door on
+  openagents.com. That door goes away with the sidecar, which is being
+  retired (#11602), rather than being repointed.
+- `scripts/chat-goldens.sh` keeps `gateway` embeddings by default so a
+  golden run compares with earlier ones; `CHAT_GOLDENS_NO_GATEWAY=1` moves
+  them off Vercel.
 - User-machine paths stay on the person's sign-ins and keys: there is no
   Google credential of ours on their computer.

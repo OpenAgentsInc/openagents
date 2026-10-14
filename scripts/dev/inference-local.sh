@@ -49,6 +49,13 @@ load() {
 load OPENROUTER_API_KEY openrouter.env
 load AI_GATEWAY_API_KEY ai-gateway.env
 load TYPESAFE_API_KEY typesafe.env
+# Google first (#11602): Vertex answers Gemini and the product notes'
+# embeddings on the automation account's key when no Google credential is
+# set; OpenRouter and the Vercel AI Gateway stay behind it as fallbacks.
+if [ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}${VERTEX_ACCESS_TOKEN:-}" ] \
+    && [ -f "$secrets/gcp-mvp-automation.json" ]; then
+    export GOOGLE_APPLICATION_CREDENTIALS="$secrets/gcp-mvp-automation.json"
+fi
 
 build=1
 only=""
@@ -148,7 +155,9 @@ fi
     export OPENAGENTS_PRODUCT_KNOWLEDGE="$root/knowledge/openagents"
     # Generation goes through the gateway; these keys stay only for the
     # worker's other calls (Jev's doors, personalization, product search).
-    export CODER_AI_GATEWAY_KEY="${AI_GATEWAY_API_KEY:-}" OPENAGENTS_PRODUCT_KB_EMBEDDINGS=gateway
+    # Product notes' embeddings take the house order: Vertex first, then
+    # OpenAI or OpenRouter, the Vercel AI Gateway last (#11602).
+    export CODER_AI_GATEWAY_KEY="${AI_GATEWAY_API_KEY:-}"
     exec "$target/debug/coder-worker" > "$state/worker.log" 2>&1
 ) &
 pids="$pids $!"
