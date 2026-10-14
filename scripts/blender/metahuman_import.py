@@ -198,10 +198,10 @@ FACE_V = {
     "taper": 0.12,  # the face's width under the mouth narrowed, most at the chin
     "jowl": 0.0035,  # the jowls drawn in (m)
     "cheekbone": 0.003,  # cheekbones forward and out (m)
-    "hollow": 0.005,  # the hollow under them (m, inward)
+    "hollow": 0.007,  # the hollow under them (m, inward)
     "nose": 0.3,  # the nostril wings narrowed
     "bridge": 0.15,  # the bridge slimmer
-    "width": 0.07,  # the face's sides (temples, cheekbones, cheeks) narrower
+    "width": 0.0,  # the face's sides (temples, cheekbones, cheeks) narrower
     "tip": 0.0015,  # the nose tip smaller (m, back)
     "lip": 0.0008,  # the upper lip forward (m)
     "lower_lip": 0.0003,  # the lower lip forward (m)
@@ -210,6 +210,7 @@ FACE_V = {
     "brow": 0.0015,  # the brows lower (m), as the larger eyes rise toward them
     "tuck": 0.004,  # under the chin drawn back (m), a crisp jaw-to-neck angle
     "ridge": 0.0025,  # the brow ridge back (m)
+    "point": 0.12,  # the chin's tip narrower still, a pointed chin
 }
 
 
@@ -289,6 +290,9 @@ def face_v(vs, marks, k=1.0):
     d[:, 0] += -(x - nt.x) * f["bridge"] * br
     side = smooth(0.03, 0.05, np.abs(x - m.x)) * smooth(m.z - 0.01, m.z + 0.02, z) * (1 - smooth(e.z + 0.05, e.z + 0.08, z))
     d[:, 0] += -(x - m.x) * f["width"] * side
+    # 13. A pointed chin: its lowest third narrower again, toward its middle.
+    pt = smooth(chin_z + 0.018, chin_z + 0.002, z) * under * front
+    d[:, 0] += -(x - m.x) * f["point"] * pt
     # 6. A fuller upper lip.
     ul = np.exp(-(((x - m.x) / 0.02) ** 2) - (((z - (m.z + 0.005)) / 0.005) ** 2)) * (1 - smooth(m.y + 0.008, m.y + 0.025, y))
     d[:, 1] += -f["lip"] * ul
@@ -568,11 +572,11 @@ def sample(img, u, v):
 
 
 # The iris's radius in the eye's UV (round 18: larger, 0.163 before).
-IRIS_R = 0.175
+IRIS_R = 0.148
 # The eyes' scale about each eyeball's centre (round 18: larger eyes, the
 # lids, lashes and eye shells with them, fading out over the brow and
 # cheek; MH_EYE_SCALE).
-EYE_SCALE = 1.14
+EYE_SCALE = 1.1
 
 
 def eye_scale(objs, k):
@@ -769,7 +773,7 @@ def dcc_skin(dcc, maps, out_dir, size):
             h, w = rgb.shape[:2]
             mu = lu[np.arange(h) * lu.shape[0] // h][:, np.arange(w) * lu.shape[1] // w][..., None]
             rgb = np.clip(rgb * (1 + 0.28 * np.clip(mu, 0, 1)), 0, 1)
-        bs = float(os.environ.get("MH_PAINTED_BROW", "0.5"))
+        bs = float(os.environ.get("MH_PAINTED_BROW", "0.3"))
         if bs > 0 and draconia_paint.LAST_BROW is not None:
             lb = draconia_paint.LAST_BROW
             h, w = rgb.shape[:2]
@@ -1137,14 +1141,17 @@ def main():
         draconia_hair.FLY_DROOP = 0.12
         # (Round 12: the front lower too: it still sat high.)
         draconia_hair.HAIRLINE_DROP = (0.16, 0.38)
-        draconia_hair.LOCK_WAVE = 0.25
-        draconia_hair.LOCK_CURL = 0.0
+        # Round 19: fine, wavy face-framing strands of varied length that
+        # curl near the cheek and jaw (round 16's thick locks hung as two stiff
+        # ribbons).
+        draconia_hair.LOCK_WAVE = 0.8
+        draconia_hair.LOCK_CURL = 0.006
         # Round 9: more of them, some from the front of the hairline, not
         # only behind the ears; the grown body a shade darker than the
         # cards so the crown has depth.
-        draconia_hair.LOCKS_PER_SIDE = int(os.environ.get("MH_LOCKS", "7"))
-        draconia_hair.LOCK_HAIRS = tuple(int(x) for x in os.environ.get("MH_LOCK_HAIRS", "18 34").split())
-        draconia_hair.LOCK_LENGTH = tuple(float(x) for x in os.environ.get("MH_LOCK_LENGTH", "0.16 0.30").split())
+        draconia_hair.LOCKS_PER_SIDE = int(os.environ.get("MH_LOCKS", "10"))
+        draconia_hair.LOCK_HAIRS = tuple(int(x) for x in os.environ.get("MH_LOCK_HAIRS", "4 10").split())
+        draconia_hair.LOCK_LENGTH = tuple(float(x) for x in os.environ.get("MH_LOCK_LENGTH", "0.08 0.26").split())
         # In front of the ears, not across the eyes.
         draconia_hair.LOCK_AZ = (0.7, 1.3)
         # Round 16: a centre part with curtains: the front of the combed

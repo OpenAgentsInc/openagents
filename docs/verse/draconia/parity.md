@@ -1024,6 +1024,52 @@ $B -b --factory-startup --python scripts/blender/draconia_set.py -- ~/work/film-
     edits overshoot there;
   - the eyes are 12% more open than the reference's.
 
+### Round 19, 2026-10-14: calmer eyes, a pointed chin, finer brows, wavy face-framing strands
+
+- **Direction.** The coordinator on round 18:
+  - the eyes stared, with the iris too large and sclera all round;
+  - the smile's lips read thin, with pinched corners;
+  - the face-framing hair hung as two stiff, thick ribbons past the chin;
+  - also: ease the width overshoot, sharpen the chin's point, deepen the
+    hollows, and give her finer, arched brows.
+- **What changed.**
+  - Eyes:
+    - 10% larger, not 14%;
+    - the iris smaller in the eye (UV radius 0.148, about 11.5 mm
+      across);
+    - the lids relaxed 0.22 at rest, so the upper lid covers the iris's
+      top.
+  - `face_v`:
+    - the sides' narrowing off (`width` 0);
+    - the hollows deeper (7 mm);
+    - a pointed chin (`point`: the chin's lowest third 12% narrower).
+  - Smile: no lip press, lighter dimples.
+  - Brows: MetaHuman's `Eyebrows_M_Natural` cards (finer than `M_Full`),
+    with the painted brow under them at 0.3.
+  - Face-framing hair: 10 strands a side of 4-10 hairs, 8-26 cm long,
+    wavy (`LOCK_WAVE` 0.8) with a slight curl toward the ends.
+- **Measured** (outline, round 18 → round 19):
+
+  | Measure | 0:24 neutral | 0:54 smile |
+  | --- | --- | --- |
+  | Eye opening | +12.1% → -3.6% | +11.9% → +2.0% |
+  | Width at the cheekbones (0.20) | -4.0% → -0.6% | -6.7% → -7.1% |
+  | Width at the jaw (0.75) | -4.8% → -6.8% | -14.9% → -17.1% |
+  | Mouth to chin | +1.9% → -1.0% | -0.9% → -4.9% |
+  | Nose width | +2.4% → -1.2% | -5.3% → -4.4% |
+  | Mouth width | +1.5% → -2.5% | -1.3% → -7.4% |
+
+- **Artifacts.** `~/Downloads/draconia-fullface-mh-v16.png` (reference |
+  round 18 | round 19), `~/Downloads/draconia-parity-round-19.png`, the
+  progress sheet; `~/work/film-out/draconia/parity/round-19/`.
+- **Honest state.**
+  - The eyes no longer stare.
+  - The face-framing strands are finer and wavy.
+  - The lower face is now too narrow: 7% at the jaw in the neutral and
+    17% in the smile, where the reference's cheeks widen. The taper and
+    the jaw-angle edits overshoot; round 20 eases them.
+  - The smile's mouth is 7% narrow.
+
 ## Peacock scene
 
 The peacock guardian (reference 113.0–118.0 s, [shots.md](shots.md)),
