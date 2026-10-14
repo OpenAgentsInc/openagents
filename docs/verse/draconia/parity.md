@@ -784,3 +784,30 @@ one face close-up used is the face work's approved peacock-open v1.
   - The guardian's wings don't separate from the tail.
   - Her legs show Alice's bare skin rather than tights and boots.
   - The light wave over the courtyard (142 s) is a plain wide shot.
+
+## Scene: D7 (reference 150–192 s) and the whole film
+
+`~/work/film-out/draconia/d7-cut.sh` cuts D7 from earlier shots, slates,
+a white-out and two cards of our own. `~/work/film-out/draconia/film-cut.sh`
+assembles the latest cut of every scene (D1–D5, the peacock scene, D6, D7)
+in reference order into `~/Downloads/draconia-film-vN.mp4` (191.9 s) and a
+side-by-side over the full reference with its audio (192 s). Internal study
+only.
+
+### v1, 2026-10-13
+
+- **D7 (42.0 s):**
+  - her silhouette in the guardian's light;
+  - the wings;
+  - wraiths over the battlements;
+  - feathers;
+  - the white-out with her tiny figure (170–177 s);
+  - slates for the flashback cast (the ball, the umbrella, the laughing pair,
+    the sunlit room) and her face and hand;
+  - a plain parchment card where the reference names a character;
+  - our own end card ("Draconia, a Verse engine study, internal, not for
+    release") in place of the reference's credits.
+- **Gaps:**
+  - The flashbacks are a sunlit world with their own cast (the boy, the
+    friends, the ball). None of it is built; it waits on the cast.
+  - The tiny figure in the white-out is not drawn (plain white).
