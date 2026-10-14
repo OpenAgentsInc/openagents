@@ -509,7 +509,11 @@ impl Store {
                     "Keep the episode inside its experiment's seeds and run length.",
                 )?;
                 require(
-                    episode.wall_seconds <= f64::from(experiment.limits.wall_seconds),
+                    episode.wall_seconds <= f64::from(experiment.limits.wall_seconds)
+                        || matches!(
+                            episode.outcome,
+                            Outcome::Failed { .. } | Outcome::Stopped { .. }
+                        ),
                     "The episode exceeds its experiment's time limit.",
                 )?;
                 let scene = self.scene(&experiment.scene)?;
@@ -522,7 +526,23 @@ impl Store {
                 let mut asset_bytes = 0_u64;
                 let mut seen_assets = std::collections::BTreeSet::new();
                 for step in &episode.steps {
-                    robot.validate_pose(&step.joints)?;
+                    robot.validate_state(&step.joints)?;
+                    for (name, value) in &step.joints {
+                        let joint = robot
+                            .joints
+                            .iter()
+                            .find(|j| j.name == *name)
+                            .ok_or(Error::Corrupt)?;
+                        if joint
+                            .limits
+                            .is_some_and(|limits| *value < limits.lower || *value > limits.upper)
+                        {
+                            require(
+                                step.limit_violations.contains(name),
+                                "Record each joint position that exceeds its limits.",
+                            )?;
+                        }
+                    }
                     robot.validate_pose(&step.actions)?;
                     require(
                         step.actions

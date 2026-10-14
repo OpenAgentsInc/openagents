@@ -1,0 +1,6 @@
+Franka Emika Panda fixture from google-deepmind/mujoco_menagerie,
+revision d7b481bac63d3d600ab404ee74f7474c5efe8a67.
+
+The model directory supplies the Apache License, Version 2.0. Its original
+LICENSE and panda_nohand.xml are included unchanged. source.json pins every
+downloaded file. Meshes remain in the explicitly selected scratch folder.

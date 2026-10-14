@@ -252,6 +252,22 @@ impl Robot {
     /// A pose outside the limits is refused, not clamped.
     pub fn forward(&self, pose: &[f64]) -> Result<Vec<DMat4>, Error> {
         self.check(pose)?;
+        self.forward_observed(pose)
+    }
+
+    /// Place a recorded physical state without hiding a soft-limit violation.
+    /// Commands must use `check` or `forward`; this method checks only shape
+    /// and finiteness and is intended for saved observations.
+    pub fn forward_observed(&self, pose: &[f64]) -> Result<Vec<DMat4>, Error> {
+        if pose.len() != self.movable.len() {
+            return Err(Error::JointCount {
+                expected: self.movable.len(),
+                got: pose.len(),
+            });
+        }
+        if !pose.iter().all(|value| value.is_finite()) {
+            return Err(Error::Pose("Use finite recorded joint positions".into()));
+        }
         let mut value = vec![0.0; self.joints.len()];
         for (&joint, &q) in self.movable.iter().zip(pose) {
             value[joint] = q;

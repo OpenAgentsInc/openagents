@@ -201,6 +201,11 @@ fn poses_stay_within_the_declared_limits() {
     pose[0] = 1.92;
     assert!(robot.forward(&pose).is_ok(), "a limit itself is allowed");
     pose[0] = 1.920_001;
+    assert!(
+        robot.forward_observed(&pose).is_ok(),
+        "a saved violation remains visible"
+    );
+    assert!(robot.forward_observed(&[0.0]).is_err());
     assert_eq!(
         robot.forward(&pose).unwrap_err(),
         Error::Limit {
@@ -211,6 +216,7 @@ fn poses_stay_within_the_declared_limits() {
         }
     );
     pose[0] = f64::NAN;
+    assert!(robot.forward_observed(&pose).is_err());
     assert!(
         robot
             .forward(&pose)

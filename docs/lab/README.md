@@ -3,8 +3,8 @@
 Status: proposed design, 2026-10-14. This document specifies a Robot Lab;
 the document and private-storage foundation is implemented in
 [`robot-lab`](../../crates/robot-lab/README.md), and the pinned SO-101 importer,
-Verse inspection capture, and LeRobot reader are implemented. The interactive workbench,
-simulation, and learned control remain tracked below. The first delivery is local robot
+Verse inspection capture, LeRobot reader, and [native simulation runner](../../crates/robot-sim/README.md)
+are implemented. The interactive workbench and learned control remain tracked below. The first delivery is local robot
 inspection and motion replay in an inline chat card. Simulation and learned
 control follow as separately testable additions.
 [LeRobot data, the Verse room, and a Rust physics path](lerobot-in-verse.md)
@@ -191,20 +191,20 @@ flowchart LR
 
 Proposed ownership: `robot-lab` owns documents and orchestration;
 `robot-description` owns portable link, joint, and asset definitions;
-`robot-data` reads recorded motion. These crates exist; the proposed
-`robot-sim` owns the headless runner and backend interface. Keep renderer integration
+`robot-data` reads recorded motion. These crates exist.
+`robot-sim` owns the implemented headless runner and backend interface. Keep renderer integration
 in Verse adapters and result presentation in Gym adapters. Avoid making the
 generic physics crate depend on chat, projects, or Hugging Face.
 
 Inspection uses forward kinematics to place visual links. Replay uses recorded
 states. Neither requires pretending that rendered meshes have physical joints.
 
-For the first dynamic manipulation backend, propose MuJoCo through its C API,
+The first dynamic manipulation backend uses MuJoCo through its C API,
 behind a Rust wrapper with explicit model/data ownership. Its
 [modeling documentation](https://mujoco.readthedocs.io/en/stable/modeling.html)
 describes MJCF and URDF loading, including URDF's more limited expressiveness.
-This is a new dependency proposal; bindings, supported platforms, and model
-loading must be qualified before shipping. Native hosts run simulation first;
+The wrapper qualifies Linux x86-64 with pinned SO-101 and Franka inputs and
+refuses other platforms until tested. Native hosts run simulation first;
 web and phone can render recorded or streamed poses without linking MuJoCo.
 
 Verse draws each link from the backend's body transforms. One backend owns all

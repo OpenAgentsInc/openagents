@@ -27,8 +27,28 @@ fn main() -> Result<(), String> {
     let mut mapping = None;
     let mut episode = 0_u64;
     let mut frame = 0_usize;
+    let mut lab_store = None;
+    let mut project = None;
+    let mut saved_episode = None;
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            "--lab-store" => {
+                lab_store = Some(PathBuf::from(
+                    args.next().ok_or("--lab-store needs a folder")?,
+                ));
+                continue;
+            }
+            "--project" => {
+                project = Some(args.next().ok_or("--project needs a name")?);
+                continue;
+            }
+            "--saved-episode" => {
+                saved_episode = Some(
+                    args.next()
+                        .ok_or("--saved-episode needs DOCUMENT@VERSION")?,
+                );
+                continue;
+            }
             "--dataset" => {
                 dataset = Some(PathBuf::from(
                     args.next().ok_or("--dataset needs a folder")?,
@@ -70,6 +90,9 @@ fn main() -> Result<(), String> {
         joints.push((name.to_string(), value));
     }
     let robot = robot_description::load(&urdf).map_err(|e| e.to_string())?;
+    if saved_episode.is_some() && (dataset.is_some() || mapping.is_some() || !joints.is_empty()) {
+        return Err("Choose a saved attempt, recorded demonstration, or joint edits".into());
+    }
     match (dataset, mapping) {
         (Some(dataset), Some(mapping)) => {
             if !joints.is_empty() {
@@ -84,8 +107,37 @@ fn main() -> Result<(), String> {
         _ => return Err("Recorded poses need both --dataset and --mapping".into()),
     }
     let named: Vec<(&str, f64)> = joints.iter().map(|(n, v)| (n.as_str(), *v)).collect();
-    let pose = robot.named_pose(&named).map_err(|e| e.to_string())?;
-    let scene = robot_lab::scene(&robot, &pose).map_err(|e| e.to_string())?;
+    let (pose, scene) = if let Some(reference) = saved_episode {
+        let (scene, step) = saved_frame(
+            lab_store
+                .as_deref()
+                .ok_or("Choose --lab-store for this saved attempt")?,
+            project
+                .as_deref()
+                .ok_or("Choose --project for this saved attempt")?,
+            &reference,
+            &urdf,
+            frame,
+        )?;
+        let pose = robot
+            .movable()
+            .map(|j| {
+                step.joints
+                    .get(&j.name)
+                    .copied()
+                    .ok_or("This attempt is missing a robot joint")
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let drawn = robot_lab::document_scene(&robot, &scene, Some(&step))?;
+        (pose, drawn)
+    } else {
+        if lab_store.is_some() || project.is_some() {
+            return Err("Choose --saved-episode with this lab folder".into());
+        }
+        let pose = robot.named_pose(&named).map_err(|e| e.to_string())?;
+        let drawn = robot_lab::scene(&robot, &pose).map_err(|e| e.to_string())?;
+        (pose, drawn)
+    };
     eprintln!("{} at {}", robot.name(), urdf.display());
     for (joint, value) in robot.movable().zip(&pose) {
         let limit = joint.limit.map_or(String::new(), |l| {
@@ -149,6 +201,88 @@ fn main() -> Result<(), String> {
     )?;
     eprintln!("wrote {}", output.display());
     Ok(())
+}
+
+fn saved_frame(
+    root: &Path,
+    project: &str,
+    reference: &str,
+    urdf: &Path,
+    frame: usize,
+) -> Result<(::robot_lab::document::Scene, ::robot_lab::document::Step), String> {
+    use ::robot_lab::{Document, Reference, Store};
+    let (document, version) = reference
+        .split_once('@')
+        .ok_or("Use DOCUMENT@VERSION for a saved attempt")?;
+    let store = Store::open(root, project).map_err(|e| e.to_string())?;
+    let value = store
+        .get(&Reference {
+            document: document.into(),
+            version: version.into(),
+        })
+        .map_err(|e| e.to_string())?;
+    store
+        .validate_dependencies(&value.content)
+        .map_err(|e| e.to_string())?;
+    let Document::Episode(episode) = value.content else {
+        return Err("Choose a saved attempt".into());
+    };
+    let Document::Experiment(experiment) = store
+        .get(&episode.experiment)
+        .map_err(|e| e.to_string())?
+        .content
+    else {
+        return Err("This attempt is missing its experiment".into());
+    };
+    let Document::Scene(scene) = store
+        .get(&experiment.scene)
+        .map_err(|e| e.to_string())?
+        .content
+    else {
+        return Err("This attempt is missing its scene".into());
+    };
+    if scene.robots.len() != 1 {
+        return Err("Open an attempt with one robot".into());
+    }
+    let Document::Robot(robot) = store
+        .get(&scene.robots[0].robot)
+        .map_err(|e| e.to_string())?
+        .content
+    else {
+        return Err("This attempt is missing its robot".into());
+    };
+    let description = robot
+        .source
+        .files
+        .get(&robot.description)
+        .ok_or("This attempt is missing its robot description")?;
+    if robot_description::pin::sha256_hex(&std::fs::read(urdf).map_err(|e| e.to_string())?)
+        != description.sha256
+    {
+        return Err("Choose the robot description saved with this attempt".into());
+    }
+    let root = urdf.parent().ok_or("Choose the saved robot folder")?;
+    for (name, asset) in &robot.source.files {
+        let path = root.join(name);
+        let metadata = std::fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+        if !metadata.is_file()
+            || metadata.len() != asset.bytes
+            || metadata.len() > robot_description::MAX_MESH_BYTES
+        {
+            return Err("Choose the unchanged robot files saved with this attempt".into());
+        }
+        if robot_description::pin::sha256_hex(&std::fs::read(path).map_err(|e| e.to_string())?)
+            != asset.sha256
+        {
+            return Err("Choose the unchanged robot files saved with this attempt".into());
+        }
+    }
+    let step = episode
+        .steps
+        .get(frame)
+        .ok_or("Choose a frame in this saved attempt")?
+        .clone();
+    Ok((scene, step))
 }
 
 fn recorded_joints(

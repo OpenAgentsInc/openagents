@@ -13780,6 +13780,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "robot-sim"
+version = "1.0.0-rc.13"
+dependencies = [
+ "fs2",
+ "glam",
+ "libloading",
+ "oa-copy",
+ "robot-description",
+ "robot-lab",
+ "roxmltree",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "route-contract"
 version = "1.0.0-rc.13"
 dependencies = [
@@ -17174,6 +17192,7 @@ dependencies = [
  "resvg",
  "robot-data",
  "robot-description",
+ "robot-lab",
  "rtrb",
  "rust-native",
  "rust-native-desktop",

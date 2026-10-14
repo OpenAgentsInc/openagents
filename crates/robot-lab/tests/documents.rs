@@ -187,6 +187,7 @@ fn episode(experiment: &Reference) -> Episode {
             reason: "Stopped by you".into(),
         },
         wall_seconds: 0.05,
+        events: Vec::new(),
     }
 }
 
@@ -383,11 +384,74 @@ fn robot_tree_axes_and_inertia_are_checked() {
     let mut bad = content.clone();
     bad.links[1].inertial.as_mut().unwrap().tensor = [1.0, 1.0, 1.0, 2.0, 0.0, 0.0];
     assert!(bad.validate().is_err());
+    let mut marker = content.clone();
+    marker.joints[0].kind = JointKind::Fixed;
+    marker.joints[0].axis = [0.0; 3];
+    marker.joints[0].limits = None;
+    marker.links[1].inertial.as_mut().unwrap().mass = 1e-9;
+    marker.links[1].inertial.as_mut().unwrap().tensor = [0.0; 6];
+    assert!(marker.validate().is_ok());
+    marker.links[1].visuals.push(Geometry {
+        pose: Pose::default(),
+        shape: Shape::Sphere { radius: 0.1 },
+        rgba: [1.0; 4],
+    });
+    assert!(
+        marker.validate().is_err(),
+        "zero inertia is reserved for empty fixed markers"
+    );
     let mut bad = content;
     bad.source
         .files
         .insert("../escape".into(), bad.source.files["arm.urdf"].clone());
     assert!(bad.validate().is_err());
+}
+
+#[test]
+fn physical_limit_violations_are_saved_but_commands_stay_bounded() {
+    let (_dir, store, _, _, experiment) = fixture();
+    let mut observed = episode(&experiment);
+    observed.steps[1].joints.insert("shoulder".into(), 1.01);
+    observed.steps[1].limit_violations.push("shoulder".into());
+    assert!(
+        store
+            .save(
+                "observed",
+                None,
+                Document::Episode(observed.clone()),
+                "Test",
+                "Saved attempt",
+                5
+            )
+            .is_ok()
+    );
+    observed.steps[1].limit_violations.clear();
+    assert!(
+        store
+            .save(
+                "unreported",
+                None,
+                Document::Episode(observed.clone()),
+                "Test",
+                "Saved attempt",
+                6
+            )
+            .is_err()
+    );
+    observed.steps[1].limit_violations.push("shoulder".into());
+    observed.steps[1].actions.insert("shoulder".into(), 1.01);
+    assert!(
+        store
+            .save(
+                "command",
+                None,
+                Document::Episode(observed),
+                "Test",
+                "Saved attempt",
+                7
+            )
+            .is_err()
+    );
 }
 
 #[test]

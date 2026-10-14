@@ -316,6 +316,26 @@ pub struct Episode {
     pub steps: Vec<Step>,
     pub outcome: Outcome,
     pub wall_seconds: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<EpisodeEvent>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EpisodeEvent {
+    pub step: u32,
+    pub kind: EpisodeEventKind,
+    pub reason: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EpisodeEventKind {
+    ActionRejected,
+    InferenceTimeout,
+    BackendFailed,
+    Stopped,
+    Completed,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -328,6 +348,7 @@ pub enum EpisodeMode {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Outcome {
+    InProgress,
     Complete,
     Success,
     Failed { reason: String },
@@ -555,7 +576,23 @@ impl Robot {
         let mut parents = BTreeMap::new();
         for link in &self.links {
             if let Some(inertia) = &link.inertial {
-                inertia.validate()?;
+                let fixed_marker = link.visuals.is_empty()
+                    && link.collisions.is_empty()
+                    && self
+                        .joints
+                        .iter()
+                        .any(|joint| joint.child == link.name && joint.kind == JointKind::Fixed)
+                    && inertia.tensor == [0.0; 6]
+                    && inertia.mass <= 1e-8;
+                if fixed_marker {
+                    // URDF tool frames can carry a negligible placeholder mass
+                    // and zero inertia. Preserve it only on geometry-free,
+                    // fixed frames; moving bodies still require physical inertia.
+                    positive(inertia.mass, 1e-8)?;
+                    vector(&inertia.center, 1e6)?;
+                } else {
+                    inertia.validate()?;
+                }
             }
             require(
                 link.visuals.len() <= 64 && link.collisions.len() <= 64,
@@ -623,6 +660,7 @@ impl Robot {
     }
 
     pub fn validate_pose(&self, values: &BTreeMap<String, f64>) -> Result<()> {
+        self.validate_state(values)?;
         require(
             values.len() <= self.joints.len(),
             "Choose joints from this robot.",
@@ -645,6 +683,26 @@ impl Robot {
                     "Keep the joint inside its position limits.",
                 )?;
             }
+        }
+        Ok(())
+    }
+
+    /// Observed physics may exceed a soft limit. Preserve finite named values;
+    /// callers must separately record the violated limits.
+    pub fn validate_state(&self, values: &BTreeMap<String, f64>) -> Result<()> {
+        require(
+            values.len() <= self.joints.len(),
+            "Choose joints from this robot.",
+        )?;
+        for (name, value) in values {
+            require(
+                value.is_finite()
+                    && self
+                        .joints
+                        .iter()
+                        .any(|j| j.name == *name && j.kind != JointKind::Fixed),
+                "Record finite positions for this robot's movable joints.",
+            )?;
         }
         Ok(())
     }
@@ -827,6 +885,17 @@ impl Episode {
             "Save 1 to 100000 episode steps.",
         )?;
         nonnegative(self.wall_seconds, 86_400.0)?;
+        require(
+            self.events.len() <= 1_024,
+            "Save at most 1024 episode notices.",
+        )?;
+        for event in &self.events {
+            require(
+                (event.step as usize) < self.steps.len(),
+                "Attach episode notices to a saved step.",
+            )?;
+            text(&event.reason, 1_024)?;
+        }
         if let Outcome::Failed { reason } | Outcome::Stopped { reason } = &self.outcome {
             text(reason, 1_024)?;
         }

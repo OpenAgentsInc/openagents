@@ -6,7 +6,7 @@
 //! ([`robot_description::z_up_to_y_up`]); links are never turned again.
 //! A pose outside the joints' limits is refused, not clamped.
 
-use glam::{DMat4, DVec3, Mat4, Vec3};
+use glam::{DMat4, DQuat, DVec3, Mat4, Vec3};
 use robot_description::{Error, Geometry, Robot, z_up_to_y_up};
 
 use crate::pbr::{LitVertex, Material};
@@ -138,6 +138,110 @@ pub fn scene(robot: &Robot, pose: &[f64]) -> Result<Scene, Error> {
         0.45,
     );
     Ok(out)
+}
+
+/// Draw the exact saved scene and, optionally, a physical observation. This
+/// viewing path owns no simulator or controller and does not clamp observations.
+pub fn document_scene(
+    robot: &Robot,
+    scene: &robot_lab::document::Scene,
+    step: Option<&robot_lab::document::Step>,
+) -> Result<Scene, String> {
+    scene.validate().map_err(|e| e.to_string())?;
+    if scene.robots.len() != 1 {
+        return Err("Open a scene with one robot".into());
+    }
+    let instance = &scene.robots[0];
+    let values = step.map_or(&instance.joints, |step| &step.joints);
+    let pose: Vec<_> = robot
+        .movable()
+        .map(|joint| {
+            values
+                .get(&joint.name)
+                .copied()
+                .ok_or_else(|| format!("This pose is missing {}", joint.name))
+        })
+        .collect::<Result<_, _>>()?;
+    let frames = if step.is_some() {
+        robot.forward_observed(&pose)
+    } else {
+        robot.forward(&pose)
+    }
+    .map_err(|e| e.to_string())?;
+    let base = saved_pose(&instance.pose) * z_up_to_y_up();
+    let mut out = Scene {
+        base: Vec3::from_array(instance.pose.position.map(|v| v as f32)),
+        ..Scene::default()
+    };
+    for (link, frame) in robot.links().iter().zip(&frames) {
+        out.links
+            .push((base * *frame).transform_point3(DVec3::ZERO).as_vec3());
+        for shape in &link.visuals {
+            let triangles = match &shape.geometry {
+                Geometry::Box { size } => cuboid(Mat4::from_scale(size.as_vec3())),
+                Geometry::Cylinder { radius, length } => cylinder(*radius as f32, *length as f32),
+                Geometry::Sphere { radius } => sphere(*radius as f32),
+                Geometry::Mesh { scale, mesh, .. } => mesh
+                    .triangles
+                    .iter()
+                    .map(|t| t.map(|p| Vec3::from(p) * scale.as_vec3()))
+                    .collect(),
+            };
+            let rgba = shape.rgba.unwrap_or([0.8, 0.8, 0.8, 1.0]);
+            push(
+                &mut out.robot,
+                (base * *frame * shape.origin).as_mat4(),
+                &triangles,
+                [rgba[0], rgba[1], rgba[2]].map(linear),
+                Material::WhitePaint,
+                0.5,
+            );
+        }
+    }
+    for object in &scene.objects {
+        let pose = step
+            .and_then(|s| s.objects.get(&object.id))
+            .map_or(&object.geometry.pose, |o| &o.pose);
+        let triangles = match &object.geometry.shape {
+            robot_lab::document::Shape::Box { size } => {
+                cuboid(Mat4::from_scale(Vec3::from_array(size.map(|v| v as f32))))
+            }
+            robot_lab::document::Shape::Sphere { radius } => sphere(*radius as f32),
+            robot_lab::document::Shape::Cylinder { radius, length } => {
+                cylinder(*radius as f32, *length as f32)
+                    .into_iter()
+                    .map(|t| {
+                        t.map(|v| {
+                            Mat4::from_rotation_x(-std::f32::consts::FRAC_PI_2).transform_point3(v)
+                        })
+                    })
+                    .collect()
+            }
+            robot_lab::document::Shape::Mesh { .. } => {
+                return Err("Use primitive scene objects for this viewer".into());
+            }
+        };
+        let rgba = object.geometry.rgba;
+        push(
+            &mut out.props,
+            saved_pose(pose).as_mat4(),
+            &triangles,
+            [rgba[0], rgba[1], rgba[2]].map(|v| linear(v as f32)),
+            Material::WhitePaint,
+            0.5,
+        );
+        if object.id == "cube" {
+            out.cube = Vec3::from_array(pose.position.map(|v| v as f32));
+        }
+    }
+    Ok(out)
+}
+
+fn saved_pose(pose: &robot_lab::document::Pose) -> DMat4 {
+    DMat4::from_rotation_translation(
+        DQuat::from_array(pose.rotation),
+        DVec3::from_array(pose.position),
+    )
 }
 
 /// sRGB to linear light.
@@ -295,6 +399,89 @@ mod tests {
             .fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), v| {
                 (lo.min(v.pos[1]), hi.max(v.pos[1]))
             })
+    }
+
+    #[test]
+    fn saved_scene_draws_observed_violations_and_object_poses_without_clamping() {
+        use robot_lab::document::{
+            Geometry, Object, ObjectState, Pose, Reference, RobotInstance, Scene as DocumentScene,
+            Shape, Step,
+        };
+        let robot = so101();
+        let joints: std::collections::BTreeMap<_, _> =
+            robot.movable().map(|j| (j.name.clone(), 0.0)).collect();
+        let scene = DocumentScene {
+            name: "Recorded arm".into(),
+            robots: vec![RobotInstance {
+                id: "arm".into(),
+                robot: Reference {
+                    document: "arm".into(),
+                    version: "a".repeat(64),
+                },
+                pose: Pose {
+                    position: [0.0, 0.75, 0.0],
+                    ..Pose::default()
+                },
+                joints: joints.clone(),
+            }],
+            objects: vec![Object {
+                id: "cube".into(),
+                geometry: Geometry {
+                    pose: Pose::default(),
+                    shape: Shape::Box { size: [0.05; 3] },
+                    rgba: [1.0; 4],
+                },
+                mesh: None,
+                collider: Some(Shape::Box { size: [0.05; 3] }),
+                mass: 0.05,
+                friction: 0.7,
+            }],
+            lights: vec![],
+            cameras: vec![robot_lab::document::Camera {
+                id: "front".into(),
+                pose: Pose::default(),
+                width: 64,
+                height: 64,
+                intrinsics: [50.0, 50.0, 32.0, 32.0],
+                robot_link: None,
+            }],
+        };
+        let mut step = Step {
+            index: 0,
+            time_seconds: 0.0,
+            joints,
+            actions: Default::default(),
+            observation_step: None,
+            objects: Default::default(),
+            contacts: vec![],
+            sensors: Default::default(),
+            inference_ms: None,
+            limit_violations: vec![],
+        };
+        step.joints.insert("shoulder_pan".into(), 2.0);
+        step.limit_violations.push("shoulder_pan".into());
+        step.objects.insert(
+            "cube".into(),
+            ObjectState {
+                pose: Pose {
+                    position: [0.3, 0.775, 0.1],
+                    ..Pose::default()
+                },
+                linear_velocity: [0.0; 3],
+                angular_velocity: [0.0; 3],
+                held: false,
+            },
+        );
+        let saved = document_scene(&robot, &scene, Some(&step)).unwrap();
+        assert_eq!(saved.cube, Vec3::new(0.3, 0.775, 0.1));
+        assert!(!saved.robot.is_empty());
+        assert!(saved.links.iter().all(|v| v.is_finite()));
+        let mut invalid = scene;
+        invalid.robots[0].joints = step.joints;
+        assert!(
+            document_scene(&robot, &invalid, None).is_err(),
+            "pose edits still enforce limits"
+        );
     }
 
     #[test]

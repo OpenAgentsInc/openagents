@@ -1,0 +1,21 @@
+<mujoco model="contact-arm">
+  <compiler angle="radian"/>
+  <option timestep="0.004166666666666667" gravity="0 0 -9.81" integrator="implicitfast"/>
+  <size memory="16M"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 0.1"/>
+    <geom name="table" type="box" pos="0 0 0.7" size="0.6 0.4 0.05"/>
+    <body name="arm-base" pos="0 0 0.75">
+      <geom type="box" size="0.03 0.03 0.02"/>
+      <body name="arm-link" pos="0 0 0.08">
+        <joint name="hinge" type="hinge" axis="0 1 0" range="-0.5 0.5" damping="0.2"/>
+        <geom type="capsule" fromto="0 0 0 0.2 0 0" size="0.015" mass="0.1"/>
+      </body>
+    </body>
+    <body name="cube-body" pos="0.3 0 0.8">
+      <freejoint name="cube-free"/>
+      <geom name="cube" type="box" size="0.025 0.025 0.025" mass="0.05" friction="0.7 0.01 0.001"/>
+    </body>
+  </worldbody>
+  <actuator><position name="hinge-servo" joint="hinge" kp="4" kv="0.4" forcelimited="true" forcerange="-2.4 2.4"/></actuator>
+</mujoco>

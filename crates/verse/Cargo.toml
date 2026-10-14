@@ -51,6 +51,7 @@ browser-chamber = ["web", "verse-imported/chamber-client", "verse-world/reach-cl
 dev-destruction = ["verse-zone-everglade/dev-destruction"]
 
 [dependencies]
+robot-lab = { path = "../robot-lab" }
 user-home = { path = "../user-home" }
 openagents-chat = { path = "../openagents-chat", optional = true }
 contribution-workbench = { path = "../contribution-workbench", features = ["host"], optional = true }

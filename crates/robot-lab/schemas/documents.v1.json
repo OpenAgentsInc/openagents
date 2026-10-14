@@ -349,6 +349,12 @@
     "Episode": {
       "type": "object",
       "properties": {
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EpisodeEvent"
+          }
+        },
         "experiment": {
           "$ref": "#/$defs/Reference"
         },
@@ -382,6 +388,38 @@
         "steps",
         "outcome",
         "wall_seconds"
+      ]
+    },
+    "EpisodeEvent": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/EpisodeEventKind"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "step": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "step",
+        "kind",
+        "reason"
+      ]
+    },
+    "EpisodeEventKind": {
+      "type": "string",
+      "enum": [
+        "action_rejected",
+        "inference_timeout",
+        "backend_failed",
+        "stopped",
+        "completed"
       ]
     },
     "EpisodeMode": {
@@ -748,6 +786,19 @@
     },
     "Outcome": {
       "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "in_progress"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
         {
           "type": "object",
           "properties": {

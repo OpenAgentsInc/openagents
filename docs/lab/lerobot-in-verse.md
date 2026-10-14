@@ -1,7 +1,7 @@
 # Robot Lab: LeRobot data, the Verse room, and a Rust physics path
 
 **Status:** Implementation in progress, 2026-10-14. The document store and
-Rust articulated-joint spike are implemented; dataset, policy, and room work
+Rust articulated-joint spike are implemented; policy and room work
 are tracked in the [Robot Lab plan](README.md#delivery-slices-and-acceptance).
 The LeRobot reader now supports v2.1 and v3.0, with exact-value fixtures and
 optional supervised camera decoding in [`robot-data`](../../crates/robot-data/README.md).

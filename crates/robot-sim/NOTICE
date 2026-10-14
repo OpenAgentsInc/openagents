@@ -1,0 +1,4 @@
+The generated MuJoCo bindings derive from Google DeepMind MuJoCo 3.3.7 headers.
+Copyright 2021 DeepMind Technologies Limited.
+MuJoCo and its headers use Apache-2.0; see LICENSE-MUJOCO.
+The original contact-arm test model is CC0-1.0.
