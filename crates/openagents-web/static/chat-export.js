@@ -14,7 +14,8 @@
 
   const form = () => document.getElementById('chat-form');
   const input = () => document.getElementById('chat-input');
-  const part = (f, name) => (f ? f.querySelector('[data-oa-export-' + name + ']') : null);
+  // The hint and the result sit under the composer, outside the form.
+  const part = (_f, name) => document.querySelector('[data-oa-export-' + name + ']');
 
   function isCommand(text) {
     return text.trim() === COMMAND;
