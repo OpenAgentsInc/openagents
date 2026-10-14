@@ -3,8 +3,9 @@
 //! and, where the thread would be, a grid of "learn about" cards
 //! ([`learn`]). Sending a message starts a chat at `/chat/{uuid}`, which
 //! has no cards. The visitor's recent chats are in the left panel. The
-//! header links `/download`; the legal links sit centered under the composer
-//! (only here); the Grid's screenshot is on `/docs/the-grid`.
+//! header links `/download`; for a signed-out visitor the legal links sit
+//! centered under the composer (only here); the Grid's screenshot is on
+//! `/docs/the-grid`.
 
 use axum::Router;
 use axum::extract::{Query, State};
@@ -119,7 +120,7 @@ pub(crate) async fn page(
         (crate::composer::state_field(&app, &owner, &selection, false))
         input type="hidden" name="request_id" value=(super::chat::new_id()) form="chat-form";
         input type="hidden" name="csrf" value=(super::chat::csrf(&app,&owner)) form="chat-form";
-        (crate::ui_page::legal_links())
+        (crate::ui_page::legal_links(&crate::account::current()))
     };
     let mut page = stage(dock);
     // A visitor without the cookie has no chats yet; a move in place

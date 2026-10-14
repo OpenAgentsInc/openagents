@@ -204,6 +204,40 @@ async fn the_chat_states_show_their_sample_data() {
     }
 }
 
+/// The legal and project links (Docs, Pricing, Terms, ...) show only to a
+/// signed-out visitor: under the home composer and in the phone drawer.
+#[tokio::test]
+async fn legal_links_show_only_when_signed_out() {
+    let screens = super::screens();
+    let render = |screen: &str, id: &str| {
+        let state = screens
+            .iter()
+            .find(|s| s.id == screen)
+            .and_then(|s| s.states.iter().find(|st| st.id == id))
+            .unwrap_or_else(|| panic!("{screen}/{id}"));
+        (state.render)(&HeaderMap::new())
+    };
+    for (screen, id, shown) in [
+        ("home", "signed-out", true),
+        ("home", "signed-in", false),
+        ("app-shell", "signed-out", true),
+        ("app-shell", "signed-in", false),
+        ("app-shell", "admin", false),
+        ("composer", "typing", false),
+    ] {
+        let html = body(render(screen, id)).await;
+        assert_eq!(html.contains("href=\"/terms\""), shown, "{screen}/{id}");
+        assert_eq!(
+            html.contains("oa-sidebar-fine-print"),
+            shown,
+            "{screen}/{id} drawer"
+        );
+        if screen == "home" {
+            assert_eq!(html.contains("oa-home-legal"), shown, "{screen}/{id}");
+        }
+    }
+}
+
 /// Every live GET address in this crate's routers, read from the source:
 /// `.route(PATH, ...get(...)...)` where PATH is a literal, a const in the
 /// same file, or a `format!` of consts.

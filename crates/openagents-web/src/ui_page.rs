@@ -289,6 +289,7 @@ impl UiPage {
         // Signed out on a server that signs people in: Log in and Sign up
         // in the header, returning to this page (docs/auth).
         let signed_out = account == Account::SignedOut;
+        let show_legal = legal_shown(&account);
         let log_in = crate::auth::login_href(&self.return_to, false);
         let sign_up = crate::auth::login_href(&self.return_to, true);
         let toggle = self.toggle.then(|| {
@@ -338,15 +339,19 @@ impl UiPage {
             Account::Unknown => sidebar,
         };
         // At phone width the panel is a drawer and the header keeps one
-        // action, so Download and the legal links move into the drawer.
-        let sidebar = sidebar
-            .bottom(
-                NavItem::new("Download", DOWNLOAD)
-                    .icon(Icon::Download.size(IconSize::Md))
-                    .current(current == Some(DOWNLOAD))
-                    .phone_only(true),
-            )
-            .fine_print(legal());
+        // action, so Download and (for a signed-out visitor) the legal
+        // links move into the drawer.
+        let sidebar = sidebar.bottom(
+            NavItem::new("Download", DOWNLOAD)
+                .icon(Icon::Download.size(IconSize::Md))
+                .current(current == Some(DOWNLOAD))
+                .phone_only(true),
+        );
+        let sidebar = if show_legal {
+            sidebar.fine_print(legal())
+        } else {
+            sidebar
+        };
         // The theme toggle sits in the sidebar's bottom-right corner.
         let sidebar = match toggle {
             Some(toggle) => sidebar.corner(toggle),
@@ -438,12 +443,21 @@ impl UiPage {
 }
 
 /// The quiet legal and project links the home page centers under its
-/// docked composer (no other page shows them there; at phone width they
-/// sit in the drawer instead, on every page).
-pub fn legal_links() -> Markup {
+/// docked composer for a signed-out visitor (no other page shows them
+/// there; at phone width they sit in the drawer instead, on every page).
+/// Nothing for someone signed in.
+pub fn legal_links(account: &Account) -> Markup {
     html! {
-        div.oa-home-legal { (legal()) }
+        @if legal_shown(account) {
+            div.oa-home-legal { (legal()) }
+        }
     }
+}
+
+/// Whether the legal and project links show: only to someone not signed
+/// in (the owner, 2026-10-14).
+fn legal_shown(account: &Account) -> bool {
+    !matches!(account, Account::SignedIn { .. })
 }
 
 /// Docs, Roadmap, Promises, Terms, Privacy, the project's links, and the
@@ -656,7 +670,21 @@ mod tests {
 
     #[test]
     fn legal_links_list_terms_privacy_and_the_project() {
-        let html = legal_links().into_string();
+        // Someone signed in sees none of them.
+        let signed_in = Account::SignedIn {
+            name: "a".into(),
+            sign_out: None,
+            picture: false,
+            admin: false,
+        };
+        assert_eq!(legal_links(&signed_in).into_string(), "");
+        // A signed-out visitor (or one on a server without sign-in) does.
+        assert!(
+            legal_links(&Account::Unknown)
+                .into_string()
+                .starts_with("<div class=\"oa-home-legal\">")
+        );
+        let html = legal_links(&Account::SignedOut).into_string();
         assert!(html.starts_with("<div class=\"oa-home-legal\">"));
         let docs = html.find("href=\"/docs\">Docs</a>").unwrap();
         let roadmap = html.find("href=\"/roadmap\">Roadmap</a>").unwrap();
@@ -699,13 +727,13 @@ mod tests {
         let aside_end = html.find("</aside>").unwrap();
         assert!(!html[account..aside_end].contains(&format!("href=\"{DOWNLOAD}\"")));
         assert!(html[account..].contains(&format!("href=\"{SETTINGS}\"")));
-        // (They are footer links: at phone width in the drawer's fine print,
-        // after the account.)
-        let fine_print = html.find("oa-sidebar-fine-print").unwrap();
-        assert!(account < fine_print && fine_print < aside_end);
+        // (The footer links show only to someone signed out: no drawer
+        // fine print here.)
+        assert!(!html.contains("oa-sidebar-fine-print"));
+        assert!(!html.contains("href=\"/terms\"") && !html.contains(COPYRIGHT));
         for href in [DOCS, ROADMAP, PROMISES] {
             assert!(
-                !html[account..fine_print].contains(&format!("href=\"{href}\"")),
+                !html[account..].contains(&format!("href=\"{href}\"")),
                 "{href}"
             );
             assert!(
@@ -734,6 +762,10 @@ mod tests {
         // Signed out: a sign-in link.
         let html = page(Account::SignedOut);
         assert!(html.contains("href=\"/login\"") && html.contains(">Log in</span>"));
+        // ...and the footer links in the phone drawer's fine print.
+        let fine_print = html.find("oa-sidebar-fine-print").unwrap();
+        assert!(fine_print < html.find("href=\"/terms\"").unwrap());
+        assert!(html.contains(COPYRIGHT));
         // ...and Log in and Sign up beside Download in the header.
         let header = &html[html.find("Download").unwrap()..];
         assert!(header.contains(">Log in<") && header.contains("href=\"/signup\""));

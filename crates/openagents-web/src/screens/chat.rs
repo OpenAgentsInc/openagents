@@ -710,7 +710,6 @@ fn home(
 ) -> Response {
     let dock = html! {
         (chat::composer_with("/chat", "Start a chat", row, after, notice))
-        (crate::ui_page::legal_links())
     };
     crate::pages::home::stage(dock)
         .account(signed_in())
@@ -831,7 +830,6 @@ fn composer_suggestions(headers: &HeaderMap) -> Response {
     let dock = html! {
         (starters)
         (chat::composer("/chat", "Start a chat", None, html! {}))
-        (crate::ui_page::legal_links())
     };
     crate::pages::home::stage(dock)
         .account(signed_in())

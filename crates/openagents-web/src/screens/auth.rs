@@ -203,7 +203,7 @@ fn home(headers: &HeaderMap, account: Account) -> Response {
     };
     let dock = html! {
         (crate::pages::chat::composer_with("/chat", "Start a chat", None, html! {}, None))
-        (crate::ui_page::legal_links())
+        (crate::ui_page::legal_links(&account))
     };
     crate::chat_html::protect(
         UiPage::new("OpenAgents")
