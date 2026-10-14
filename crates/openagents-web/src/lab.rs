@@ -517,7 +517,7 @@ pub(crate) fn card_markup(chat: &str, card: &Value) -> Markup {
                 img.oa-lab-strip src=(image) alt="Frames from the video" loading="lazy";
             }
             p.oa-lab-meta {
-                a href=(s(card, "player")) target="_blank" rel="noopener" { "Open in the Lab player" }
+                a href=(s(card, "player")) target="_blank" rel="noopener" data-lab-player { "Open in the Lab player" }
                 @if let Some(versions) = card["versions"].as_array() {
                     " · " (versions.len()) " versions"
                 }
@@ -526,14 +526,7 @@ pub(crate) fn card_markup(chat: &str, card: &Value) -> Markup {
                 }
             }
             @if card["video"].is_string() && compare.is_none() {
-                form.oa-lab-note hx-post=(format!("/chat/{chat}/lab/note")) hx-swap="outerHTML" data-lab-note {
-                    input type="hidden" name="doc" value=(s(card, "doc"));
-                    input type="hidden" name="v" value=(version);
-                    input type="hidden" name="q" value=(s(card, "quality"));
-                    input type="hidden" name="t" value="0";
-                    input type="text" name="text" placeholder="A note at this time" required;
-                    button.oa-lab-button type="submit" { "Note at this time" }
-                }
+                (note_form(chat, &s(card, "doc"), &version.to_string(), &s(card, "quality"), None))
             }
         }
     }
@@ -576,6 +569,14 @@ const JS: &str = r"(function () {
     var vs = b.closest('.oa-lab-card').querySelectorAll('video');
     var t = vs[vs.length - 1].currentTime;
     vs.forEach(function (v) { v.currentTime = t; v.play(); });
+  });
+  // Opening the Lab player pauses this card's videos, so the film starts
+  // cleanly there instead of playing twice.
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[data-lab-player]');
+    if (!a) return;
+    var card = a.closest('.oa-lab-card');
+    if (card) card.querySelectorAll('video').forEach(function (v) { v.pause(); });
   });
   document.addEventListener('htmx:configRequest', function (e) {
     var f = e.detail.elt;
@@ -726,6 +727,24 @@ pub(crate) struct NoteForm {
     text: String,
 }
 
+/// The note box under a card's video. After a save it comes back empty with
+/// the saved line under it, so the next note can be written straight away.
+fn note_form(chat: &str, doc: &str, version: &str, quality: &str, saved: Option<&str>) -> Markup {
+    html! {
+        form.oa-lab-note hx-post=(format!("/chat/{chat}/lab/note")) hx-swap="outerHTML" data-lab-note {
+            input type="hidden" name="doc" value=(doc);
+            input type="hidden" name="v" value=(version);
+            input type="hidden" name="q" value=(quality);
+            input type="hidden" name="t" value="0";
+            input type="text" name="text" placeholder="A note at this time" required;
+            button.oa-lab-button type="submit" { "Note at this time" }
+            @if let Some(line) = saved {
+                p.oa-lab-meta { (line) }
+            }
+        }
+    }
+}
+
 /// A note at a time on the card's video: the same notes the review page keeps.
 async fn note(
     State(app): State<App>,
@@ -762,7 +781,8 @@ async fn note(
             .to_owned(),
         Err(_) => "Video Lab isn't answering, so the note wasn't saved.".to_owned(),
     };
-    Html(html! { p.oa-lab-meta { (line) } }.into_string()).into_response()
+    Html(note_form(&id, &form.doc, &form.v.to_string(), &form.q, Some(&line)).into_string())
+        .into_response()
 }
 
 #[cfg(test)]
