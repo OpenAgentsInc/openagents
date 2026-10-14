@@ -8,6 +8,7 @@ description = "The OpenAgents website: public pages, legal documents, the instal
 default-run = "openagents-web"
 
 [dependencies]
+robot-lab = { path = "../robot-lab" }
 user-home = { path = "../user-home" }
 openagents-ui = { path = "../openagents-ui" }
 # The actor runtime (#11253): the store, its workers, and its routes.

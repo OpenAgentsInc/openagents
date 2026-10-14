@@ -12,48 +12,7 @@ use tempfile::NamedTempFile;
 use crate::document::*;
 use crate::{Error, Result, require};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Version {
-    pub schema: String,
-    pub document: String,
-    pub number: u64,
-    pub parent: Option<Reference>,
-    pub author: String,
-    pub summary: String,
-    pub created_unix_ms: u64,
-    pub content_sha256: String,
-    pub content: Document,
-}
-
-impl Version {
-    pub fn reference(&self) -> Result<Reference> {
-        Ok(Reference {
-            document: self.document.clone(),
-            version: digest(&serde_json::to_vec(self)?),
-        })
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Note {
-    pub subject: Reference,
-    pub episode_step: Option<u32>,
-    pub author: String,
-    pub text: String,
-    pub created_unix_ms: u64,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Selection {
-    pub scene: Reference,
-    pub episode: Option<Reference>,
-    pub step: Option<u32>,
-    pub comparison: Option<Reference>,
-    pub camera: String,
-}
+pub use crate::version::{Note, Selection, Version};
 
 #[derive(Clone, Debug)]
 pub struct Store {
@@ -630,10 +589,29 @@ impl Store {
     }
 
     pub fn select(&self, chat: &str, selection: &Selection) -> Result<()> {
+        self.select_checked(chat, selection, None)
+    }
+
+    /// Compare the chat selection under the writer lock before replacing it.
+    /// `None` as the expected value requires a previously unselected chat.
+    pub fn select_if_unchanged(
+        &self,
+        chat: &str,
+        selection: &Selection,
+        expected: Option<&str>,
+    ) -> Result<()> {
+        self.select_checked(chat, selection, Some(expected))
+    }
+    fn select_checked(
+        &self,
+        chat: &str,
+        selection: &Selection,
+        expected: Option<Option<&str>>,
+    ) -> Result<()> {
         identifier(chat)?;
         let scene = self.scene(&selection.scene)?;
         require(
-            scene.cameras.iter().any(|c| c.id == selection.camera),
+            selection.camera == "orbit" || scene.cameras.iter().any(|c| c.id == selection.camera),
             "Choose a camera from this scene.",
         )?;
         if let Some(reference) = &selection.episode {
@@ -654,9 +632,26 @@ impl Store {
             )?;
         }
         if let Some(other) = &selection.comparison {
-            self.scene(other)?;
+            match (selection.episode.is_some(), self.get(other)?.content) {
+                (false, Document::Scene(_)) => (),
+                (true, Document::Episode(episode)) => {
+                    self.experiment(&episode.experiment)?;
+                }
+                _ => {
+                    return Err(Error::Invalid(
+                        "Compare two scenes or two recordings.".into(),
+                    ));
+                }
+            }
         }
         let _lock = self.lock()?;
+        if let Some(expected) = expected {
+            let current = self.selection(chat)?;
+            let digest = current.map(|value| value.sha256()).transpose()?;
+            if digest.as_deref() != expected {
+                return Err(Error::Conflict);
+            }
+        }
         self.replace(
             &self.root.join("selections").join(format!("{chat}.json")),
             selection,

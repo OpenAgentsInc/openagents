@@ -1,0 +1,45 @@
+[package]
+name = "robot-workbench"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Robot Lab cards, typed tools, local player, and shared viewing state"
+
+[features]
+default = ["host"]
+host = ["dep:robot-sim", "dep:robot-data", "dep:axum", "dep:tokio", "dep:tempfile", "dep:verse"]
+
+[[bin]]
+name = "robot-workbench"
+path = "src/main.rs"
+required-features = ["host"]
+
+[dependencies]
+robot-lab = { path = "../robot-lab" }
+robot-description = { path = "../robot-description" }
+glam = "0.30.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+schemars = "1.2.2"
+sha2 = "0.10"
+thiserror = "2"
+rust-native = { path = "../rust-native" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+robot-sim = { path = "../robot-sim", features = ["mujoco"], optional = true }
+robot-data = { path = "../robot-data", features = ["video"], optional = true }
+axum = { version = "0.8", optional = true }
+tokio = { version = "1", features = ["fs", "macros", "net", "rt-multi-thread"], optional = true }
+tempfile = { version = "3", optional = true }
+verse = { path = "../verse", default-features = false, features = ["capture"], optional = true }
+
+[dev-dependencies]
+oa-copy = { path = "../oa-copy" }
+tempfile = "3"
+
+[build-dependencies]
+sha2 = "0.10"
+
+[lints]
+workspace = true

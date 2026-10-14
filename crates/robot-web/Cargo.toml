@@ -1,0 +1,29 @@
+[package]
+name = "robot-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Robot Lab's Rust browser player with the shared Verse renderer"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+robot-workbench = { path = "../robot-workbench", default-features = false }
+robot-description = { path = "../robot-description" }
+robot-lab = { path = "../robot-lab" }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+glam = "0.30.10"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+verse = { path = "../verse", default-features = false, features = ["web"] }
+wgpu = { version = "30.0.1", features = ["webgl"] }
+wasm-bindgen = "0.2.128"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+console_error_panic_hook = "0.1.7"
+web-sys = { version = "0.3", features = ["Window","Document","Element","HtmlElement","Node","Event","EventTarget","HtmlCanvasElement","HtmlIFrameElement","NodeList","UrlSearchParams","HtmlInputElement","HtmlSelectElement","HtmlOptionElement","HtmlButtonElement","PointerEvent","WheelEvent","KeyboardEvent","Request","RequestInit","RequestMode","Response","Headers","Location","Performance","CssStyleDeclaration","DomRect","MessageEvent","IntersectionObserver","IntersectionObserverEntry","IntersectionObserverInit","Storage","AbortController","AbortSignal","console"] }
+
+[lints]
+workspace = true

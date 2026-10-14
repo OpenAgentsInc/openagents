@@ -71,6 +71,7 @@ mod projects;
 mod promises;
 mod purchases;
 mod repo_snapshot;
+mod robot_lab;
 pub mod sales_remote;
 mod screens;
 mod settings;
@@ -556,6 +557,7 @@ pub fn router(config: Config) -> Router {
         .merge(github_tools::routes())
         .merge(lab::routes())
         .merge(game_lab::routes())
+        .merge(robot_lab::routes())
         .merge(connections::routes())
         .merge(promises::routes())
         .merge(pilot::routes())

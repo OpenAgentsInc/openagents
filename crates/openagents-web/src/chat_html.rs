@@ -31,6 +31,9 @@ pub(crate) fn head() -> Markup {
         // scripts HTMX doesn't run, so the page loads them up front.
         script src=(crate::lab::ASSET_JS) defer {}
         script src=(crate::game_lab::ASSET_JS) defer {}
+        @if crate::robot_lab::configured() {
+            script type="module" src=(crate::robot_lab::START_JS) {}
+        }
     }
 }
 

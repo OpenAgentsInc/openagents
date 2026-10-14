@@ -517,10 +517,33 @@ impl Renderer {
         atlas: &Atlas,
         options: RenderOptions,
     ) -> Result<Self, String> {
+        let mut renderer =
+            Self::from_surface_color_async(instance, surface, width, height, world, atlas, options)
+                .await?;
+        renderer.physical_error = renderer
+            .scene
+            .prepare_photo_async(&renderer.device, &renderer.queue)
+            .await;
+        Ok(renderer)
+    }
+
+    /// Create the colored-triangle profile around an adapter-owned surface.
+    /// Browser previews can shade their vertices without allocating the
+    /// physical renderer's texture layouts or world effects.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn from_surface_color_async(
+        instance: wgpu::Instance,
+        surface: wgpu::Surface<'static>,
+        width: u32,
+        height: u32,
+        world: &Mesh,
+        atlas: &Atlas,
+        options: RenderOptions,
+    ) -> Result<Self, String> {
         let options = options.validate()?;
         validate_extent(width, height, options.max_extent)?;
         let opened = open_async(&instance, Some(&surface)).await?;
-        let mut renderer = Self::assemble(
+        let renderer = Self::assemble(
             instance,
             Arc::new(surface),
             opened,
@@ -530,10 +553,6 @@ impl Renderer {
             atlas,
             options,
         )?;
-        renderer.physical_error = renderer
-            .scene
-            .prepare_photo_async(&renderer.device, &renderer.queue)
-            .await;
         Ok(*renderer)
     }
 

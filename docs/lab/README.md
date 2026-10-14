@@ -4,7 +4,9 @@ Status: proposed design, 2026-10-14. This document specifies a Robot Lab;
 the document and private-storage foundation is implemented in
 [`robot-lab`](../../crates/robot-lab/README.md), and the pinned SO-101 importer,
 Verse inspection capture, LeRobot reader, and [native simulation runner](../../crates/robot-sim/README.md)
-are implemented. The interactive workbench and learned control remain tracked below. The first delivery is local robot
+are implemented. The [interactive workbench](../../crates/robot-workbench/README.md)
+now provides local chat cards, inspection, version comparisons, notes, and saved
+episode playback. Learned control and device integration remain tracked below. The first delivery is local robot
 inspection and motion replay in an inline chat card. Simulation and learned
 control follow as separately testable additions.
 [LeRobot data, the Verse room, and a Rust physics path](lerobot-in-verse.md)
@@ -313,7 +315,10 @@ and other devices [#11613](https://github.com/OpenAgentsInc/openagents/issues/11
 Initial UX targets, to measure on a named machine: a cached inspection opens
 within 2 seconds; orbiting reaches 30 frames per second at the default preview
 size; a cached pose edit updates within 200 ms. A cold import shows download
-and preparation progress. These are proposed targets, not measured claims.
+and preparation progress. On `coderos-4080`, headless Chromium 152 at a
+960 × 860 viewport measured a 0.44-second cached open, 39 frames per second,
+and a 108-ms pose update on 2026-10-14. This local walkthrough also checked
+saved notes, comparison restoration, and GPU release when a card is hidden.
 
 The owner walkthrough for the first MVP is: open a chat, load SO-101, orbit
 the table, move a joint, move the cube, compare the two scene versions, add a

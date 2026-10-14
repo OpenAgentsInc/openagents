@@ -67,6 +67,28 @@ pub fn load(path: &Path) -> Result<Robot, Error> {
 
 /// Reads URDF `text` whose meshes resolve under the folder `assets`.
 pub fn parse(text: &str, assets: &Path) -> Result<Robot, Error> {
+    parse_impl(text, Meshes::new(assets))
+}
+
+/// Read checked description data with an injected, bounded mesh reader. This
+/// supports browser/private-asset adapters without filesystem access.
+pub fn parse_with_reader(
+    text: &str,
+    reader: &dyn Fn(&str) -> Result<Vec<u8>, Error>,
+) -> Result<Robot, Error> {
+    parse_impl(
+        text,
+        Meshes {
+            folder: Path::new(""),
+            canonical: None,
+            loaded: HashMap::new(),
+            bytes: 0,
+            reader: Some(reader),
+        },
+    )
+}
+
+fn parse_impl(text: &str, mut meshes: Meshes<'_>) -> Result<Robot, Error> {
     if text.len() as u64 > MAX_DESCRIPTION_BYTES {
         return Err(Error::TooLarge {
             what: "the description in bytes".into(),
@@ -118,7 +140,6 @@ pub fn parse(text: &str, assets: &Path) -> Result<Robot, Error> {
         materials.insert(key.to_string(), color(node, at)?);
     }
 
-    let mut meshes = Meshes::new(assets);
     let mut links = Vec::new();
     let mut joints = Vec::new();
     for node in elements(robot) {
@@ -722,6 +743,7 @@ struct Meshes<'a> {
     canonical: Option<PathBuf>,
     loaded: HashMap<PathBuf, Arc<TriangleMesh>>,
     bytes: u64,
+    reader: Option<&'a dyn Fn(&str) -> Result<Vec<u8>, Error>>,
 }
 
 impl<'a> Meshes<'a> {
@@ -731,6 +753,7 @@ impl<'a> Meshes<'a> {
             canonical: None,
             loaded: HashMap::new(),
             bytes: 0,
+            reader: None,
         }
     }
 
@@ -779,6 +802,41 @@ impl<'a> Meshes<'a> {
                 feature: format!("mesh format {extension:?} (only STL is read)"),
                 at: file.into(),
             });
+        }
+        if let Some(reader) = self.reader {
+            let path = relative.to_path_buf();
+            if let Some(mesh) = self.loaded.get(&path) {
+                return Ok(mesh.clone());
+            }
+            if self.loaded.len() >= MAX_MESHES {
+                return Err(Error::TooLarge {
+                    what: "the number of robot meshes".into(),
+                    limit: MAX_MESHES as u64,
+                    actual: self.loaded.len() as u64 + 1,
+                });
+            }
+            let bytes = reader(file)?;
+            if bytes.len() as u64 > MAX_MESH_BYTES {
+                return Err(Error::TooLarge {
+                    what: format!("mesh {file} in bytes"),
+                    limit: MAX_MESH_BYTES,
+                    actual: bytes.len() as u64,
+                });
+            }
+            self.bytes += bytes.len() as u64;
+            if self.bytes > MAX_TOTAL_MESH_BYTES {
+                return Err(Error::TooLarge {
+                    what: "all robot meshes in bytes".into(),
+                    limit: MAX_TOTAL_MESH_BYTES,
+                    actual: self.bytes,
+                });
+            }
+            let mesh = Arc::new(crate::stl::parse(&bytes).map_err(|reason| Error::Mesh {
+                path: file.into(),
+                reason,
+            })?);
+            self.loaded.insert(path, mesh.clone());
+            return Ok(mesh);
         }
         let folder = match &self.canonical {
             Some(folder) => folder.clone(),

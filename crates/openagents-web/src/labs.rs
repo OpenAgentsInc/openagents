@@ -35,6 +35,7 @@ const MAX_STEPS: usize = 8;
 pub(crate) enum Kind {
     Video,
     Game,
+    Robot,
 }
 
 impl Kind {
@@ -44,6 +45,8 @@ impl Kind {
             Some(Kind::Video)
         } else if name.starts_with("game_") {
             Some(Kind::Game)
+        } else if name.starts_with("robot_") {
+            Some(Kind::Robot)
         } else {
             None
         }
@@ -54,6 +57,7 @@ impl Kind {
         match card["card"].as_str()? {
             crate::lab::CARD => Some(Kind::Video),
             crate::game_lab::CARD => Some(Kind::Game),
+            crate::robot_lab::CARD => Some(Kind::Robot),
             _ => None,
         }
     }
@@ -62,6 +66,7 @@ impl Kind {
         match self {
             Kind::Video => crate::lab::CARD,
             Kind::Game => crate::game_lab::CARD,
+            Kind::Robot => crate::robot_lab::CARD,
         }
     }
 
@@ -70,6 +75,7 @@ impl Kind {
         match self {
             Kind::Video => "document",
             Kind::Game => "game",
+            Kind::Robot => "document",
         }
     }
 
@@ -77,6 +83,7 @@ impl Kind {
         match self {
             Kind::Video => "Video Lab",
             Kind::Game => "Game Lab",
+            Kind::Robot => "Robot Lab",
         }
     }
 }
@@ -132,14 +139,20 @@ pub(crate) struct LabsDoor {
 }
 
 /// The Labs door, when at least one Lab is configured and answering and
-/// this server has Gemini. A Lab is only ever configured on the computer
-/// it runs on (loopback), so whoever uses this site there is its owner.
-pub(crate) async fn door(_app: &App, current: Option<Current>) -> Option<LabsDoor> {
-    let (video, game) = tokio::join!(
+/// this server has Gemini. Robot Lab also checks its configured owner and
+/// project before exposing private robot files and tools.
+pub(crate) async fn door(
+    _app: &App,
+    current: Option<Current>,
+    owner: &str,
+    project: Option<&str>,
+) -> Option<LabsDoor> {
+    let (video, game, robot) = tokio::join!(
         crate::lab::manifest_here(),
-        crate::game_lab::manifest_here()
+        crate::game_lab::manifest_here(),
+        crate::robot_lab::manifest_here(owner, project)
     );
-    let labs: Vec<Lab> = [video, game].into_iter().flatten().collect();
+    let labs: Vec<Lab> = [video, game, robot].into_iter().flatten().collect();
     if labs.is_empty() {
         return None;
     }
@@ -164,11 +177,12 @@ fn guidance(labs: &[Lab], current: Option<&Current>) -> String {
         out.push_str(&match lab.kind {
             Kind::Video => crate::lab::guidance(&lab.documents),
             Kind::Game => crate::game_lab::guidance(&lab.documents),
+            Kind::Robot => crate::robot_lab::guidance(&lab.documents),
         });
     }
     out.push_str(
         "\nFilms, cuts, shots, scenes and videos are Video Lab documents (lab_* tools); games are Game Lab documents \
-(game_* tools). Never use one Lab's tools on the other Lab's document. When the message is about neither Lab, call \
+(game_* tools); robot scenes and attempts are Robot Lab documents (robot_* tools). Never use one Lab's tools on another Lab's document. When the message is about none of these Labs, call \
 general_chat.\nSay only what the tool results in this turn say: every version, time, number and measurement you \
 mention comes from a tool result. When a tool refuses (a document or version that doesn't exist, an edit it won't \
 make), say so plainly in a sentence and don't guess an answer.\n",
@@ -207,7 +221,7 @@ fn declarations(labs: &[Lab]) -> Vec<Value> {
     out.push(json!({
         "type": "function",
         "name": HANDOFF,
-        "description": "Hand the message to OpenAgents' general chat, for anything that isn't about a film in Video Lab or a game in Game Lab.",
+        "description": "Hand the message to OpenAgents' general chat for topics outside the available Labs.",
         "parameters": {"type": "object", "properties": {}},
     }));
     out
@@ -254,6 +268,7 @@ fn misrouted(labs: &[Lab], name: &str, arguments: &Value) -> Option<String> {
             match other.kind {
                 Kind::Video => "lab_",
                 Kind::Game => "game_",
+                Kind::Robot => "robot_",
             }
         )
     })
@@ -270,6 +285,7 @@ async fn run_tool(labs: &[Lab], name: &str, arguments: &Value) -> Result<Value, 
     match lab.kind {
         Kind::Video => crate::lab::run_tool(&lab.url, name, arguments).await,
         Kind::Game => crate::game_lab::run_tool(&lab.url, name, arguments).await,
+        Kind::Robot => crate::robot_lab::run_tool(&lab.url, name, arguments).await,
     }
 }
 
@@ -448,6 +464,14 @@ mod tests {
                     json!({"id": "the-ice-cream-man", "title": "The Ice Cream Man", "kind": "game.v1", "versions": 3}),
                 ],
             },
+            Lab {
+                kind: Kind::Robot,
+                url: "http://127.0.0.1:8794".into(),
+                tools: vec![json!({"name":"robot_compare","description":"d","parameters":{}})],
+                documents: vec![
+                    json!({"id":"robot-table","title":"SO-101 table","kind":"robot-scene.v1","versions":2}),
+                ],
+            },
         ]
     }
 
@@ -459,12 +483,15 @@ mod tests {
     }
 
     #[test]
-    fn one_turn_sees_both_labs_tools_and_the_hand_off() {
+    fn one_turn_sees_each_labs_tools_and_the_hand_off() {
         let names: Vec<String> = declarations(&labs())
             .iter()
             .map(|d| d["name"].as_str().unwrap().to_owned())
             .collect();
-        assert_eq!(names, ["lab_compare", "game_compare", HANDOFF]);
+        assert_eq!(
+            names,
+            ["lab_compare", "game_compare", "robot_compare", HANDOFF]
+        );
     }
 
     #[test]
@@ -518,6 +545,17 @@ mod tests {
         )
         .unwrap();
         assert!(why.contains("Game Lab document"), "{why}");
+        assert!(
+            misrouted(&labs, "game_compare", &json!({"game":"robot-table"}))
+                .unwrap()
+                .contains("Robot Lab document")
+        );
+        assert!(
+            misrouted(&labs, "robot_compare", &json!({"document":"episode-290"}))
+                .unwrap()
+                .contains("Video Lab document")
+        );
+        assert!(misrouted(&labs, "robot_compare", &json!({"document":"robot-table"})).is_none());
         assert_eq!(
             misrouted(
                 &labs,
@@ -551,7 +589,7 @@ mod tests {
     fn the_model_is_told_to_say_only_what_tools_say() {
         let text = guidance(&labs(), None);
         assert!(text.contains("Say only what the tool results in this turn say"));
-        assert!(text.contains("Never use one Lab's tools on the other Lab's document"));
+        assert!(text.contains("Never use one Lab's tools on another Lab's document"));
         assert!(text.contains("no current Lab document"));
     }
 

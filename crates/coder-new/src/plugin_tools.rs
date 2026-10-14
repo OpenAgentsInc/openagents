@@ -258,6 +258,7 @@ impl Family {
             "web_search" | "web_fetch" => Family::Web,
             "media" => Family::Media,
             _ if crate::video_lab::is_tool(name) => Family::Media,
+            _ if crate::robot_lab::is_tool(name) => Family::Media,
             "remember" | "forget" | "recall" => Family::Memory,
             "github" | "pull_request" => Family::GitHub,
             "openagents_cli" | "computer" | "deploy" | crate::routing_preferences::TOOL | "jev" => {
@@ -444,6 +445,9 @@ impl ExecutionSettings {
             if crate::video_lab::available() {
                 definitions.extend(crate::video_lab::definitions());
             }
+            if crate::robot_lab::available() {
+                definitions.extend(crate::robot_lab::definitions());
+            }
         }
         if self.memory.is_some() {
             definitions.extend(crate::memory::Memory::tool_definitions());
@@ -574,6 +578,9 @@ impl ExecutionSettings {
                     guidance.push_str(crate::media::instructions());
                     if crate::video_lab::available() {
                         guidance.push_str(crate::video_lab::INSTRUCTIONS);
+                    }
+                    if crate::robot_lab::available() {
+                        guidance.push_str(crate::robot_lab::INSTRUCTIONS);
                     }
                 }
             }
@@ -899,6 +906,12 @@ impl ExecutionSettings {
                 tokio::select! {
                     result = crate::video_lab::execute(name, arguments) => result,
                     () = async { while !cancel.load(Ordering::Relaxed) { tokio::time::sleep(std::time::Duration::from_millis(50)).await; } } => Err("The Video Lab call was canceled.".into()),
+                }
+            }
+            name if self.shell && crate::robot_lab::is_tool(name) => {
+                tokio::select! {
+                    result=crate::robot_lab::execute(name,arguments)=>result,
+                    ()=async{while !cancel.load(Ordering::Relaxed){tokio::time::sleep(std::time::Duration::from_millis(50)).await;}}=>Err("The Robot Lab call was canceled".into()),
                 }
             }
             "boat_delegate" | "boat_job" if self.registered(ToolBinding::BoatDelegate) => {

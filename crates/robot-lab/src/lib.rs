@@ -4,6 +4,8 @@
 //! Stored references name immutable versions, including in cards and jobs.
 
 pub mod document;
+pub mod version;
+pub use version::{Note, Selection, Version};
 // Storage and its operations touch the disk; the browser build only reads
 // checked documents.
 #[cfg(not(target_arch = "wasm32"))]
@@ -15,7 +17,7 @@ pub use document::{Document, Reference};
 #[cfg(not(target_arch = "wasm32"))]
 pub use operations::{Operation, Reply};
 #[cfg(not(target_arch = "wasm32"))]
-pub use store::{Store, Version};
+pub use store::Store;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

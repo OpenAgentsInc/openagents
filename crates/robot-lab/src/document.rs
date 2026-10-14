@@ -754,6 +754,10 @@ impl Scene {
         }
         require(!self.cameras.is_empty(), "Add a camera to this scene.")?;
         unique(self.cameras.iter().map(|c| c.id.as_str()), 16)?;
+        require(
+            self.cameras.iter().all(|camera| camera.id != "orbit"),
+            "Choose a camera name other than orbit, which is the inspection view.",
+        )?;
         for camera in &self.cameras {
             camera.pose.validate()?;
             require(

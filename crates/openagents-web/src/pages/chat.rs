@@ -2336,7 +2336,13 @@ async fn answer(
                     .filter(|r| r.id != request_id)
                     .filter_map(|r| r.reply.as_ref()),
             );
-            crate::labs::door(&app, current).await
+            crate::labs::door(
+                &app,
+                current,
+                if payer == owner { &payer } else { "" },
+                chat.project.as_deref(),
+            )
+            .await
         }
         _ => None,
     };
@@ -2463,6 +2469,7 @@ async fn answer(
                         meta.cards = crate::lab::cards(&r.meta);
                         // A Game Lab answer's card (the game under it).
                         meta.cards.extend(crate::game_lab::cards(&r.meta));
+                        meta.cards.extend(crate::robot_lab::cards(&r.meta));
                         meta
                     })
                     .filter(|meta| !meta.is_empty()),
@@ -2837,6 +2844,7 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
             (crate::lab::thread_entry(&chat.id, crate::suggestions::message_reply(chat, message)))
             // A Game Lab answer: the game, playable inline (docs/game-lab/mvp.md).
             (crate::game_lab::thread_entry(&chat.id, crate::suggestions::message_reply(chat, message)))
+            (crate::robot_lab::thread_entry(&chat.id, crate::suggestions::message_reply(chat, message)))
             // A reply the router read as work on code, about an issue: "Work on this issue" (#11258).
             (crate::work_runs::thread_entry(&chat.id, index + start, crate::suggestions::message_reply(chat, message)))
             (work::rows(chat, index + start + 1, links))

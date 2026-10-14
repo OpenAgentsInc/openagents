@@ -3769,6 +3769,7 @@ dependencies = [
  "ratatui",
  "regex",
  "reqwest 0.12.28",
+ "robot-workbench",
  "route-contract",
  "secret-screen",
  "serde",
@@ -11544,6 +11545,7 @@ dependencies = [
  "retail-cloud",
  "retail-qualify",
  "retail-service",
+ "robot-lab",
  "route-contract",
  "rust-native",
  "rust-native-web",
@@ -13839,6 +13841,46 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "robot-web"
+version = "1.0.0-rc.13"
+dependencies = [
+ "console_error_panic_hook",
+ "glam",
+ "js-sys",
+ "robot-description",
+ "robot-lab",
+ "robot-workbench",
+ "serde_json",
+ "verse",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "wgpu",
+]
+
+[[package]]
+name = "robot-workbench"
+version = "1.0.0-rc.13"
+dependencies = [
+ "axum 0.8.9",
+ "glam",
+ "oa-copy",
+ "robot-data",
+ "robot-description",
+ "robot-lab",
+ "robot-sim",
+ "rust-native",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "verse",
 ]
 
 [[package]]

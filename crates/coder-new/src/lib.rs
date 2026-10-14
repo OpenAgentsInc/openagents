@@ -92,6 +92,7 @@ pub mod provider;
 pub mod resume;
 pub mod rewind;
 pub mod risk_policy;
+pub mod robot_lab;
 mod route;
 pub mod router;
 pub mod routing_preferences;

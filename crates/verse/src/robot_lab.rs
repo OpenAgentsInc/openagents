@@ -34,6 +34,8 @@ pub struct Scene {
     pub robot: Vec<LitVertex>,
     /// Each link's origin in Verse coordinates, indexed like the robot's links.
     pub links: Vec<Vec3>,
+    /// Vertex ranges for link selection in the robot's visual mesh.
+    pub link_ranges: Vec<std::ops::Range<usize>>,
     /// Where the robot's base stands on the table.
     pub base: Vec3,
     /// The cube's center.
@@ -61,6 +63,7 @@ pub fn scene(robot: &Robot, pose: &[f64]) -> Result<Scene, Error> {
         .map(|frame| (base * *frame).transform_point3(DVec3::ZERO).as_vec3())
         .collect();
     for (link, frame) in robot.links().iter().zip(&frames) {
+        let start = out.robot.len();
         for shape in &link.visuals {
             let place = (base * *frame * shape.origin).as_mat4();
             let rgba = shape.rgba.unwrap_or([0.8, 0.8, 0.8, 1.0]);
@@ -86,6 +89,7 @@ pub fn scene(robot: &Robot, pose: &[f64]) -> Result<Scene, Error> {
                 0.5,
             );
         }
+        out.link_ranges.push(start..out.robot.len());
     }
     // The floor, a wooden table on four legs, and a red cube.
     let (floor, _, _) = Material::Stage.parameters();
@@ -174,6 +178,7 @@ pub fn document_scene(
         ..Scene::default()
     };
     for (link, frame) in robot.links().iter().zip(&frames) {
+        let start = out.robot.len();
         out.links
             .push((base * *frame).transform_point3(DVec3::ZERO).as_vec3());
         for shape in &link.visuals {
@@ -197,6 +202,7 @@ pub fn document_scene(
                 0.5,
             );
         }
+        out.link_ranges.push(start..out.robot.len());
     }
     for object in &scene.objects {
         let pose = step

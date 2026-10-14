@@ -30,7 +30,7 @@ use glam::{DMat4, DVec3};
 
 pub use error::Error;
 pub use stl::TriangleMesh;
-pub use urdf::{load, parse};
+pub use urdf::{load, parse, parse_with_reader};
 
 /// The largest description file read, in bytes.
 pub const MAX_DESCRIPTION_BYTES: u64 = 1 << 20;
