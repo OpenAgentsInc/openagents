@@ -75,7 +75,10 @@ async fn home(
 /// The new chat's page around `dock`: the cards in the middle, the
 /// composer at the bottom.
 pub(crate) fn stage(dock: Markup) -> UiPage {
+    // The page's one heading, for readers and agents; the cards and the
+    // composer say the rest.
     let content = html! {
+        h1.oa-visually-hidden { "OpenAgents" }
         div.oa-thread-view {
             div.oa-thread {
                 div.oa-thread-column.oa-home-stage { (learn_cards()) }

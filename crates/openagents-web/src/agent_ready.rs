@@ -33,6 +33,9 @@ pub(crate) const SITE: &str = "https://openagents.com";
 pub(crate) const DESCRIPTION: &str = "OpenAgents is an open network of agents you work with \
 through one conversation, from anywhere: this website, your phone, or a terminal.";
 
+/// Where people write to OpenAgents (the terms and privacy policy name it).
+pub(crate) const CONTACT: &str = "chris@openagents.com";
+
 /// The API catalog's link relation for each way to pay per request the
 /// API takes now (an extension relation, RFC 8288).
 pub(crate) const PAYMENT_REL: &str = "https://openagents.com/rel/payment-method";
@@ -47,9 +50,12 @@ pub(crate) const WEBMCP_PATH: &str = "/static/webmcp.js";
 const API_SKILL_PATH: &str = "/.well-known/agent-skills/openagents-api/SKILL.md";
 const API_SKILL: &str = include_str!("../content/skills/openagents-api/SKILL.md");
 
+/// The same skill at the site root, where agentskills.io readers look.
+const SKILL_PATH: &str = "/skill.md";
+
 /// The Markdown twins and agent documents this module answers. The
 /// upstream guard treats them as the site's own ([`owns`]).
-const PATHS: [&str; 22] = [
+const PATHS: [&str; 23] = [
     "/robots.txt",
     "/sitemap.xml",
     "/llms.txt",
@@ -70,6 +76,7 @@ const PATHS: [&str; 22] = [
     "/.well-known/mcp/server-card.json",
     "/.well-known/mcp.json",
     API_SKILL_PATH,
+    SKILL_PATH,
     MCP_PATH,
     WEBMCP_PATH,
 ];
@@ -99,6 +106,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/.well-known/mcp/server-card.json", get(mcp_card))
         .route("/.well-known/mcp.json", get(mcp_card))
         .route(API_SKILL_PATH, get(api_skill))
+        .route(SKILL_PATH, get(api_skill))
         .route(WEBMCP_PATH, get(webmcp))
 }
 
@@ -131,13 +139,25 @@ pub(crate) fn twin(path: &str) -> Option<String> {
         .then(|| format!("{path}.md"))
 }
 
-/// Whether the client asks for Markdown at least as much as HTML.
-pub(crate) fn wants_markdown(headers: &HeaderMap) -> bool {
-    let Some(accept) = headers.get(header::ACCEPT).and_then(|v| v.to_str().ok()) else {
-        return false;
-    };
-    let mut markdown = None;
-    let mut html: Option<f32> = None;
+/// A type other than HTML that a client asks for by name, at least as
+/// much as HTML.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Wanted {
+    /// `text/markdown`: the page's Markdown twin.
+    Markdown,
+    /// `text/plain`: the same twin, labelled as plain text.
+    Plain,
+    /// `application/json`: the site index on `/`, JSON errors elsewhere.
+    Json,
+}
+
+/// What the client asks for instead of HTML, if anything: the named type
+/// with the highest `q` that is at least HTML's (Markdown first on a tie,
+/// then plain text, then JSON). `*/*` names nothing.
+pub(crate) fn preferred(headers: &HeaderMap) -> Option<Wanted> {
+    let accept = headers.get(header::ACCEPT).and_then(|v| v.to_str().ok())?;
+    let (mut markdown, mut plain, mut json, mut html) = (None, None, None, None::<f32>);
+    let most = |slot: &mut Option<f32>, q: f32| *slot = Some(slot.map_or(q, |s| s.max(q)));
     for item in accept.split(',') {
         let mut parts = item.split(';');
         let kind = parts.next().unwrap_or_default().trim().to_ascii_lowercase();
@@ -146,12 +166,34 @@ pub(crate) fn wants_markdown(headers: &HeaderMap) -> bool {
             .find_map(|q| q.trim().parse::<f32>().ok())
             .unwrap_or(1.0);
         match kind.as_str() {
-            "text/markdown" | "text/x-markdown" => markdown = Some(q),
-            "text/html" | "application/xhtml+xml" => html = Some(html.map_or(q, |h| h.max(q))),
+            "text/markdown" | "text/x-markdown" => most(&mut markdown, q),
+            "text/plain" => most(&mut plain, q),
+            "application/json" => most(&mut json, q),
+            "text/html" | "application/xhtml+xml" => most(&mut html, q),
             _ => {}
         }
     }
-    markdown.is_some_and(|m| m > 0.0 && m >= html.unwrap_or(0.0))
+    let floor = html.unwrap_or(0.0);
+    [
+        (Wanted::Markdown, markdown),
+        (Wanted::Plain, plain),
+        (Wanted::Json, json),
+    ]
+    .into_iter()
+    .filter_map(|(wanted, q)| q.filter(|q| *q > 0.0 && *q >= floor).map(|q| (wanted, q)))
+    .fold(
+        None,
+        |best: Option<(Wanted, f32)>, (wanted, q)| match best {
+            Some((_, top)) if top >= q => best,
+            _ => Some((wanted, q)),
+        },
+    )
+    .map(|(wanted, _)| wanted)
+}
+
+/// Whether the client asks for Markdown at least as much as HTML.
+pub(crate) fn wants_markdown(headers: &HeaderMap) -> bool {
+    preferred(headers) == Some(Wanted::Markdown)
 }
 
 /// The links every page of the site answers with (RFC 8288), for agents
@@ -164,17 +206,26 @@ const DISCOVERY_LINKS: &str = "</.well-known/api-catalog>; rel=\"api-catalog\", 
 </.well-known/ai-catalog.json>; rel=\"ai-catalog\"; type=\"application/json\"";
 
 /// The middleware in front of the site's routes, for requests to the
-/// site's own hosts (`site`): a `GET` that asks for Markdown and has a
-/// twin is answered by the twin, every page says it varies by `Accept`
-/// and where its twin and the agent documents are, and a `404` asked for
-/// as Markdown answers in Markdown.
+/// site's own hosts (`site`): a `GET` that asks for Markdown (or plain
+/// text) and has a twin is answered by the twin, `/` asked for as JSON
+/// answers the site index, every page says it varies by `Accept` and
+/// where its twin and the agent documents are, and a `404` asked for as
+/// Markdown or JSON answers in that type.
 pub(crate) async fn negotiate(site: bool, mut request: Request, next: Next) -> Response {
     let read = matches!(*request.method(), Method::GET | Method::HEAD);
     if !site || !read {
         return next.run(request).await;
     }
     let path = request.uri().path().to_owned();
-    let markdown = wants_markdown(request.headers());
+    let wanted = preferred(request.headers());
+    if wanted == Some(Wanted::Json) && path == "/" {
+        let mut response = json_response(&site_index_json(), "application/json; charset=utf-8");
+        response
+            .headers_mut()
+            .insert(header::VARY, HeaderValue::from_static("Accept"));
+        return response;
+    }
+    let markdown = matches!(wanted, Some(Wanted::Markdown | Wanted::Plain));
     let twin = twin(&path);
     if markdown && let Some(twin) = &twin {
         let target = match request.uri().query() {
@@ -191,10 +242,25 @@ pub(crate) async fn negotiate(site: bool, mut request: Request, next: Next) -> R
         .get(header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .is_some_and(|v| v.starts_with("text/html"));
-    if markdown && html && response.status() == StatusCode::NOT_FOUND {
-        return not_found_markdown(&path);
+    if html && response.status() == StatusCode::NOT_FOUND {
+        match wanted {
+            Some(Wanted::Markdown | Wanted::Plain) => return not_found_markdown(&path),
+            Some(Wanted::Json) => return not_found_json(&path),
+            None => {}
+        }
     }
     let headers = response.headers_mut();
+    if wanted == Some(Wanted::Plain)
+        && headers
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.starts_with("text/markdown"))
+    {
+        headers.insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("text/plain; charset=utf-8"),
+        );
+    }
     let varies = headers
         .get_all(header::VARY)
         .iter()
@@ -225,6 +291,53 @@ fn not_found_markdown(path: &str) -> Response {
     let mut response = markdown_response(body, &format!("{SITE}{path}"));
     *response.status_mut() = StatusCode::NOT_FOUND;
     response
+}
+
+/// A missing page asked for as JSON: a JSON error with where to start.
+fn not_found_json(path: &str) -> Response {
+    let mut response = json_response(
+        &json!({
+            "error": "not_found",
+            "message": format!("Nothing on openagents.com has the address {path}."),
+            "path": path,
+            "index": format!("{SITE}/llms.txt"),
+            "docs": format!("{SITE}/docs/api"),
+        }),
+        "application/json; charset=utf-8",
+    );
+    *response.status_mut() = StatusCode::NOT_FOUND;
+    response
+        .headers_mut()
+        .insert(header::VARY, HeaderValue::from_static("Accept"));
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
+
+/// `/` asked for as JSON: what the site is and where an agent goes next.
+pub(crate) fn site_index_json() -> Value {
+    json!({
+        "name": "OpenAgents",
+        "description": DESCRIPTION,
+        "url": format!("{SITE}/"),
+        "markdown": format!("{SITE}/index.md"),
+        "links": {
+            "llms_txt": format!("{SITE}/llms.txt"),
+            "llms_full_txt": format!("{SITE}/llms-full.txt"),
+            "docs": format!("{SITE}/docs.md"),
+            "api_docs": format!("{SITE}/docs/api.md"),
+            "api_catalog": format!("{SITE}/.well-known/api-catalog"),
+            "openapi": format!("{SITE}/openapi.json"),
+            "ai_catalog": format!("{SITE}/.well-known/ai-catalog.json"),
+            "mcp_server_card": format!("{SITE}/.well-known/mcp/server-card.json"),
+            "mcp_server": format!("{SITE}{MCP_PATH}"),
+            "agent_card": format!("{SITE}/.well-known/agent-card.json"),
+            "agent_skills": format!("{SITE}/.well-known/agent-skills/index.json"),
+            "skill": format!("{SITE}/skill.md"),
+            "auth": format!("{SITE}/auth.md"),
+        },
+    })
 }
 
 /// A Markdown answer: its type, a rough token count (four bytes a token),
@@ -969,7 +1082,9 @@ pub(crate) fn head(title: &str, description: Option<&str>, path: Option<&str>) -
 <meta name=\"twitter:card\" content=\"summary_large_image\">\
 <meta name=\"twitter:image\" content=\"{i}\">\
 <link rel=\"ai-catalog\" href=\"/.well-known/ai-catalog.json\">\
-<link rel=\"help\" type=\"text/plain\" href=\"/llms.txt\">",
+<link rel=\"help\" type=\"text/plain\" href=\"/llms.txt\">\
+<link rel=\"alternate\" type=\"text/plain\" href=\"/llms.txt\" title=\"llms.txt\">\
+<link rel=\"alternate\" type=\"text/plain\" href=\"/llms-full.txt\" title=\"llms-full.txt\">",
         d = escape(description),
         t = escape(title),
         i = escape(&image.url),
@@ -995,6 +1110,11 @@ pub(crate) fn head(title: &str, description: Option<&str>, path: Option<&str>) -
             "legalName": "OpenAgents, Inc.",
             "url": format!("{SITE}/"),
             "logo": format!("{SITE}/favicon.svg"),
+            "email": CONTACT,
+            "contactPoint": [
+                {"@type": "ContactPoint", "contactType": "customer support", "email": CONTACT, "url": format!("{SITE}/docs")},
+                {"@type": "ContactPoint", "contactType": "security", "email": crate::wellknown::SECURITY_CONTACT.trim_start_matches("mailto:")}
+            ],
             "sameAs": ["https://github.com/OpenAgentsInc", "https://x.com/OpenAgentsInc"]
         }),
         json!({
@@ -1074,6 +1194,29 @@ mod tests {
         assert!(!ask("text/html, text/markdown;q=0.5"));
         assert!(!ask("text/markdown;q=0"));
         assert!(!wants_markdown(&HeaderMap::new()));
+    }
+
+    #[test]
+    fn the_preferred_type_is_the_highest_named_one_at_least_html() {
+        let ask = |accept: &str| {
+            let mut headers = HeaderMap::new();
+            headers.insert(header::ACCEPT, HeaderValue::from_str(accept).unwrap());
+            preferred(&headers)
+        };
+        assert_eq!(ask("text/plain"), Some(Wanted::Plain));
+        assert_eq!(ask("application/json"), Some(Wanted::Json));
+        assert_eq!(
+            ask("application/json, text/plain, */*"),
+            Some(Wanted::Plain)
+        );
+        assert_eq!(
+            ask("text/plain;q=0.5, application/json"),
+            Some(Wanted::Json)
+        );
+        assert_eq!(ask("text/markdown, text/plain"), Some(Wanted::Markdown));
+        assert_eq!(ask("text/html, application/json;q=0.9"), None);
+        assert_eq!(ask("*/*"), None);
+        assert_eq!(ask("application/json;q=0"), None);
     }
 
     #[test]

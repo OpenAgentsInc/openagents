@@ -2,7 +2,131 @@
 
 What third-party agent-readiness checkers report for `https://openagents.com`,
 every check that failed, and where each fix lives. The umbrella issue is
-[#11083](https://github.com/OpenAgentsInc/openagents/issues/11083).
+[#11083](https://github.com/OpenAgentsInc/openagents/issues/11083); the
+2026-10-14 re-measure is
+[#11629](https://github.com/OpenAgentsInc/openagents/issues/11629).
+
+## 2026-10-14: re-measure
+
+All scans were read-only, against production. "Before" is revision
+`coder-web-577cc8118e-20261014191503` (the #11083 work deployed); "after"
+is the deploy of this change (below).
+
+| Checker | How it was run | Baseline 2026-10-09 | Before 2026-10-14 | After 2026-10-14 |
+| --- | --- | --- | --- | --- |
+| Is It Agent Ready (Cloudflare) | `POST https://isitagentready.com/api/scan` | Level 0, 2 pass / 14 fail / 6 neutral | **Level 5 "Agent-Native"**: 14 pass, 2 fail (dnsAid, authMd), 6 neutral (webBotAuth, 5 commerce) | AFTER_IIAR |
+| AgentReadyCheck | `GET https://www.agentreadycheck.com/api/check?url=` | 0 / 100 | **100 / 100 "agent-ready"**: llms, openapi pass; mcp skip | AFTER_ARC |
+| AG AgentReady | MCP `tools/call run_website_scan {"website_url": …, "force_rescan": true}` at `https://agagentready.com/mcp` | Overall 33 (agent 42, revenue 26, trust 36) | **Overall 48** (agent/WebMCP 65, revenue 34, trust 52); WebMCP Verified, 5 tools | AFTER_AG |
+| AgentGrade (new to this record) | MCP `tools/call scan_compact` / `scan_url` at `https://agentgrade.com/mcp` (no key) | Not run | **45 / 60 checks, 75 %, grade B** | AFTER_AGR |
+| Readiness.sh | Catalog `GET https://readiness.sh/api/v1/checks` (still criteria set v27, 124 checks), applied by hand; a scored scan still needs an account token (`POST /api/v1/scans`), and `GET /api/v1/scores/openagents.com` answers `scan_not_found` | Not scored | Not scored (hand pass below) | Not scored |
+
+Searched for checkers and standards that appeared since 2026-10-09. New
+with a public API: **AgentGrade** (`agentgrade.com/mcp`, run above). Found
+without a usable public API: AgentReady by WP Creative (form only), the
+Apify "AI Agent Readiness Audit" actor (needs an Apify token), Cloudflare's
+URL Scanner "Agent Readiness" tab (needs a Cloudflare API token; it runs
+the same checks as Is It Agent Ready), websiterating.com's checker (form
+only). New standard text: the Agent Discovery Protocol individual draft
+([draft-pro-adp-agent-discovery-02](https://datatracker.ietf.org/doc/draft-pro-adp-agent-discovery/),
+2026-06-18), which defaults to `/.well-known/agent.json`.
+
+### What failed before this change, and what happened to it
+
+Is It Agent Ready:
+
+- `dnsAid` (fail): no `_agents` SVCB/TXT records. openagents.com's DNS is
+  on Cloudflare (`alina`/`karl.ns.cloudflare.com`), not in our Cloud DNS
+  (the project's only zone is `fleet.internal.`), so the exact records are
+  in the workspace's `NEEDS_OWNER.md` for the owner to add.
+- `authMd` (fail): `/auth.md` and the `agent_auth` block are found, but the
+  checker counts a registration method as complete only for the auth.md
+  agent flows (ID-JAG identity assertion, verified email, or anonymous
+  registration with a `claim_uri`). We offer OAuth dynamic client
+  registration with a person approving in the browser, and API keys a
+  person makes; there is no endpoint where an agent gets its own account.
+  Advertising one we do not run would be false, so this stays failing
+  until the owner decides whether agents may register themselves
+  (an owner decision, not a code gap).
+- Neutral: `webBotAuth` (we do not send signed bot requests; a directory
+  would describe nothing), and x402, MPP, UCP, ACP, AP2 (the scanner does
+  not classify the site as commerce; paying per request is #11085, and
+  the rails are Bitcoin-only, so the EVM-based x402 and MPP defaults do
+  not apply).
+
+AgentReadyCheck: `mcp` is skipped because `llms.txt` names the docs MCP
+server in a way its parser does not read as an MCP endpoint; it is
+informational ("optional"), and the server card and `/.well-known/mcp.json`
+already pass in the other checkers. No change.
+
+AG AgentReady prerequisites that were missing:
+
+- Semantic structure: **0 `h1`** on the homepage (the intro with the old
+  heading was dropped in `aad36d0121`). Fixed: the homepage has one
+  visually hidden `h1`, "OpenAgents".
+- Machine-readable contact: no `mailto:` link. Fixed: the legal links under
+  the homepage composer (signed-out visitors) add **Contact**
+  (`mailto:chris@openagents.com`, the address the terms and privacy policy
+  already give), and the `Organization` JSON-LD carries `email` and
+  `contactPoint` (support, and security from `security.txt`).
+- Its free findings ("contact options are hard to find", "no obvious next
+  step", "contact details aren't complete") and the revenue score judge the
+  homepage as a sales page. The homepage is a chat on purpose (the owner's
+  design); no change.
+
+AgentGrade checks that failed (required unless marked optional):
+
+| Check | Before | Now |
+| --- | --- | --- |
+| llms.txt linked from HTML | No `<link rel="alternate" type="text/plain">` | Fixed: every page's `<head>` links `/llms.txt` and `/llms-full.txt` (optional check) that way |
+| Skill file found, frontmatter valid | `/skill.md` 404 | Fixed: `/skill.md` serves the OpenAgents API skill (agentskills.io frontmatter) |
+| Accept: text returns text | `/` with `Accept: text/plain` answered HTML | Fixed: plain text gets the Markdown twin as `text/plain` |
+| Accept: JSON returns JSON | `/` with `Accept: application/json` answered HTML | Fixed: `/` answers a JSON site index (name, description, every discovery document) |
+| Returns preferred Content-Type | Only Markdown was negotiated | Fixed: Markdown, plain text, and JSON by `q` against HTML (`agent_ready::preferred`) |
+| Structured errors (JSON 404) | HTML 404 for `Accept: application/json` | Fixed: a JSON `{"error": "not_found", …}` 404 |
+| Payments: live 402, x402, MPP, SPT, L402, Bazaar | Not on openagents.com's own pages | Not changed here: paying per request is the API's (#11085); x402/MPP/SPT examples are EVM/Stripe and out of scope (Bitcoin-only rails). The scanner probes `POST /`, which is a page |
+| Rate limit headers (optional) | None on pages | Not changed: the API sends `Retry-After` on `429`; pages are not rate-limited per client |
+| agents.txt (optional) | 404 | Not added: no format exists; `robots.txt` carries the policy |
+| RSS/Atom feed (optional) | None | Not added: the site has no posts to subscribe to |
+| WebMCP manifest `/.well-known/webmcp.json`, form `tool-name` attributes (optional) | None | Not added: not in the WebMCP spec; the five tools register through `document.modelContext`, which both WebMCP checkers verify live |
+| Web Bot Auth directory (optional) | None | Not applicable: we do not send signed bot traffic |
+| WebFinger, DID, NIP-05, AT Protocol DID (optional) | None | Owner decision: which identity keys to publish |
+| MCP auth discovery resolves, SSE transport (optional) | — | `/mcp/docs` needs no auth and is Streamable HTTP (a `GET` answers `405`, as the transport allows) |
+
+### Readiness.sh catalog, applied by hand again
+
+Of the checks that failed on 2026-10-09, these now pass on the evidence
+above (the other checkers' requests): `json-ld`, `metadata-completeness`,
+`org-schema-completeness`, `schema-type-breadth`, `json-ld-entity-linking`,
+`sitemap`, `sitemap-lastmod`, `llms-txt-exists`, `llms-txt-formatting`,
+`openapi-spec`, `api-catalog-rfc9727`, `link-headers-discovery`,
+`robots-agent-user-policy`, `robots-ai-policy-quality`, `pricing-md`,
+`markdown-link-alternate`, `markdown-negotiation`,
+`markdown-negotiation-vary`, `markdown-url-fallback`, `agent-ua-markdown`,
+`public-api-docs`, `content-no-js` (the cards and links render without
+scripts, and `/index.md` exists), `agent-discovery-file`, `ard-catalog`,
+`ai-catalog-published`, `oauth-protected-resource`, `oauth-support`,
+`mcp-oauth-metadata`, `auth-md-exists`, `agent-auth-discovery-metadata`,
+`mcp-server-card`, `mcp-well-known-discovery`, `mcp-streamable-http` (the
+public `/mcp/docs`), `mcp-pkce-s256`, `webmcp`; and with this change
+`json-error-responses` and `agent-friendly-404`.
+
+Still failing: `auth-md-structure` and `auth-md-walkthrough-simulation`
+(the same agent-registration decision as `authMd`), `rate-limit-headers`
+on pages, `web-bot-auth-directory` (not applicable), the payment checks
+(#11085), and the listings outside this repository: `mcp-registry-listed`,
+`wikipedia-presence`, `skills-sh-listed` (each needs an owner account or
+an independent article).
+
+### Decided not to add
+
+- `/.well-known/ai-plugin.json`: the retired ChatGPT plugin manifest. No
+  checker run above asks for it; MCP and the API catalog replace it.
+- `/.well-known/agent.json`: A2A moved its card to `agent-card.json`
+  (served, passing). The only live text that uses `agent.json` is the ADP
+  individual draft, which no checker probes and which needs an Ed25519
+  identity key and fingerprint for the site: adding one is an owner
+  decision about which key speaks for OpenAgents. Revisit if a checker
+  starts asking.
 
 ## Baseline: 2026-10-09 (production, before this work)
 

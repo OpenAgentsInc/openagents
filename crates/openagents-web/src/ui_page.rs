@@ -460,7 +460,7 @@ fn legal_shown(account: &Account) -> bool {
     !matches!(account, Account::SignedIn { .. })
 }
 
-/// Docs, Roadmap, Promises, Terms, Privacy, the project's links, and the
+/// Docs, Roadmap, Promises, Terms, Privacy, Contact, the project's links, and the
 /// copyright: under the home composer on wider screens, at the foot of the
 /// drawer at phone width.
 fn legal() -> LegalLinks {
@@ -471,6 +471,7 @@ fn legal() -> LegalLinks {
         .link("Promises", PROMISES)
         .link("Terms", "/terms")
         .link("Privacy", "/privacy")
+        .link("Contact", format!("mailto:{}", crate::agent_ready::CONTACT))
         .link("GitHub", GITHUB)
         .link("X", X)
         .note(COPYRIGHT)

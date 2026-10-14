@@ -517,3 +517,82 @@ async fn every_surface_lists_exactly_the_ways_to_pay_the_api_takes() {
         assert!(!page.contains("{{"));
     }
 }
+
+#[tokio::test]
+async fn plain_text_json_and_the_root_skill_answer_in_their_types() {
+    let root = tempfile::tempdir().unwrap();
+    // Plain text gets the Markdown twin, labelled as plain text.
+    let (status, headers, body) = fetch(site(root.path()), "/", Some("text/plain")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        kind(&headers).starts_with("text/plain"),
+        "{}",
+        kind(&headers)
+    );
+    assert!(body.contains("# OpenAgents"), "{body}");
+    // `/` as JSON is the site index, with no top-level error.
+    let (status, headers, body) = fetch(site(root.path()), "/", Some("application/json")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(kind(&headers).starts_with("application/json"));
+    let index: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(index["name"], "OpenAgents");
+    assert!(index.get("error").is_none());
+    assert_eq!(
+        index["links"]["api_catalog"],
+        "https://openagents.com/.well-known/api-catalog"
+    );
+    // Order and weights decide: HTML first stays HTML.
+    for accept in [
+        "text/html, application/json;q=0.9",
+        "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "*/*",
+    ] {
+        let (_, headers, _) = fetch(site(root.path()), "/", Some(accept)).await;
+        assert!(kind(&headers).starts_with("text/html"), "{accept}");
+    }
+    let (_, headers, _) = fetch(
+        site(root.path()),
+        "/",
+        Some("text/markdown, application/json;q=0.5"),
+    )
+    .await;
+    assert!(kind(&headers).starts_with("text/markdown"));
+    // A missing page asked for as JSON says so in JSON.
+    let (status, headers, body) = fetch(site(root.path()), "/nope", Some("application/json")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(kind(&headers).starts_with("application/json"));
+    let error: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(error["error"], "not_found");
+    assert_eq!(error["path"], "/nope");
+    // Other pages asked for as JSON stay HTML.
+    let (status, headers, _) = fetch(site(root.path()), "/docs", Some("application/json")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(kind(&headers).starts_with("text/html"));
+    // The API skill is also at the site root, with its frontmatter.
+    let (status, headers, body) = fetch(site(root.path()), "/skill.md", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(kind(&headers).starts_with("text/markdown"));
+    assert!(
+        body.starts_with("---\nname: openagents-api\ndescription: "),
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn the_homepage_has_one_heading_a_contact_and_links_to_llms_txt() {
+    let root = tempfile::tempdir().unwrap();
+    let (status, _, html) = fetch(site(root.path()), "/", Some("text/html")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(html.matches("<h1").count(), 1, "{html}");
+    assert!(html.contains("<h1 class=\"oa-visually-hidden\">OpenAgents</h1>"));
+    assert!(html.contains("href=\"mailto:chris@openagents.com\""));
+    for file in ["/llms.txt", "/llms-full.txt"] {
+        assert!(
+            html.contains(&format!(
+                "<link rel=\"alternate\" type=\"text/plain\" href=\"{file}\""
+            )),
+            "{file}"
+        );
+    }
+    assert!(html.contains("\"contactPoint\""));
+}
