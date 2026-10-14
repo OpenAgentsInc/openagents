@@ -4,12 +4,20 @@
 //! anything unasked. Its tools only read: the guides compiled into this
 //! binary and the API's rate card.
 //!
-//! The keyed `/mcp` stays with the server behind this site.
+//! The keyed MCP server at `/mcp` (#11084) is the same server for a signed-in
+//! person: MCP clients sign in through this site's OAuth authorization
+//! server ([`crate::oauth`]) and call it with the `sess_` bearer that
+//! returns. It lists the same tools plus `whoami`. Without a bearer, or
+//! with one the account service refuses, it answers `401` naming the
+//! path-form metadata ([`crate::oauth::challenge`]). It moved here from
+//! the retired coder-serve sidecar
+//! (docs/deployment/coder-serve-retirement.md, #11614); while that server still
+//! runs behind this site, the guard sends it `/mcp` first.
 
 use axum::Router;
 use axum::body::Bytes;
 use axum::extract::State;
-use axum::http::{HeaderValue, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use serde_json::{Value, json};
@@ -34,13 +42,66 @@ to read one guide as Markdown, and list_models for the API's models and prices."
 const MAX_RESULTS: usize = 20;
 
 pub(crate) fn routes() -> Router<App> {
-    Router::new().route(
-        MCP_PATH,
-        post(rpc)
-            .get(not_allowed)
-            .delete(not_allowed)
-            .options(preflight),
-    )
+    Router::new()
+        .route(
+            MCP_PATH,
+            post(rpc)
+                .get(not_allowed)
+                .delete(not_allowed)
+                .options(preflight),
+        )
+        .route(
+            KEYED_PATH,
+            post(keyed)
+                .get(keyed_get)
+                .delete(not_allowed)
+                .options(preflight),
+        )
+}
+
+/// The keyed server's address.
+pub(crate) const KEYED_PATH: &str = "/mcp";
+
+/// The account a keyed request's bearer belongs to, or the answer to
+/// send instead: `401` with the challenge for no bearer or a refused one.
+async fn signed_in(app: &App, headers: &HeaderMap) -> Result<String, Response> {
+    let challenge = || {
+        let mut response =
+            (StatusCode::UNAUTHORIZED, "Sign in to use this server.").into_response();
+        response.headers_mut().insert(
+            header::WWW_AUTHENTICATE,
+            crate::oauth::challenge(&crate::wellknown::origin(app)),
+        );
+        cors(&mut response);
+        response
+    };
+    let bearer = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .is_some_and(|token| !token.trim().is_empty());
+    if !bearer {
+        return Err(challenge());
+    }
+    match crate::coder_sync::account(app, headers).await {
+        Ok(account) => Ok(account),
+        Err(refused) if refused.status() == StatusCode::UNAUTHORIZED => Err(challenge()),
+        Err(refused) => Err(refused),
+    }
+}
+
+async fn keyed(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Response {
+    match signed_in(&app, &headers).await {
+        Ok(account) => serve(&app, &body, Some(&account)).await,
+        Err(response) => response,
+    }
+}
+
+async fn keyed_get(State(app): State<App>, headers: HeaderMap) -> Response {
+    match signed_in(&app, &headers).await {
+        Ok(_) => not_allowed().await,
+        Err(response) => response,
+    }
 }
 
 /// The tools, as `tools/list` and the server card list them.
@@ -174,7 +235,12 @@ impl Fault {
 }
 
 async fn rpc(State(app): State<App>, body: Bytes) -> Response {
-    let message: Value = match serde_json::from_slice(&body) {
+    serve(&app, &body, None).await
+}
+
+/// Answers one message or a batch, for `account` on the keyed server.
+async fn serve(app: &App, body: &[u8], account: Option<&str>) -> Response {
+    let message: Value = match serde_json::from_slice(body) {
         Ok(message) => message,
         Err(_) => {
             return answer(
@@ -187,7 +253,7 @@ async fn rpc(State(app): State<App>, body: Bytes) -> Response {
         Value::Array(batch) if !batch.is_empty() => {
             let mut replies = Vec::new();
             for message in batch {
-                if let Some(reply) = handle(&app, message).await {
+                if let Some(reply) = handle(app, message, account).await {
                     replies.push(reply);
                 }
             }
@@ -196,7 +262,7 @@ async fn rpc(State(app): State<App>, body: Bytes) -> Response {
             }
             answer(StatusCode::OK, Value::Array(replies))
         }
-        Value::Object(_) => match handle(&app, message).await {
+        Value::Object(_) => match handle(app, message, account).await {
             Some(reply) => answer(StatusCode::OK, reply),
             None => accepted(),
         },
@@ -211,7 +277,7 @@ async fn rpc(State(app): State<App>, body: Bytes) -> Response {
 }
 
 /// One message's reply, or `None` for a notification or a response.
-async fn handle(app: &App, message: Value) -> Option<Value> {
+async fn handle(app: &App, message: Value, account: Option<&str>) -> Option<Value> {
     let id = message.get("id").cloned();
     let Some(method) = message.get("method").and_then(Value::as_str) else {
         // A response to nothing we asked, or a malformed message.
@@ -222,8 +288,8 @@ async fn handle(app: &App, message: Value) -> Option<Value> {
     let result = match method {
         "initialize" => Ok(initialize(&params)),
         "ping" => Ok(json!({})),
-        "tools/list" => Ok(json!({"tools": tools()})),
-        "tools/call" => call(app, &params).await,
+        "tools/list" => Ok(json!({"tools": keyed_tools(account)})),
+        "tools/call" => call(app, &params, account).await,
         "resources/list" => Ok(resources()),
         "resources/read" => read_resource(app, &params).await,
         "resources/templates/list" => Ok(json!({"resourceTemplates": []})),
@@ -257,7 +323,24 @@ fn initialize(params: &Value) -> Value {
     })
 }
 
-async fn call(app: &App, params: &Value) -> Result<Value, Fault> {
+/// The tools, with `whoami` for a signed-in person.
+fn keyed_tools(account: Option<&str>) -> Value {
+    let mut tools = tools();
+    if account.is_some()
+        && let Some(list) = tools.as_array_mut()
+    {
+        list.push(json!({
+            "name": "whoami",
+            "title": "Who am I",
+            "description": "The OpenAgents account this connection is signed in as.",
+            "inputSchema": {"type": "object", "properties": {}},
+            "annotations": {"readOnlyHint": true}
+        }));
+    }
+    tools
+}
+
+async fn call(app: &App, params: &Value, account: Option<&str>) -> Result<Value, Fault> {
     let name = params
         .get("name")
         .and_then(Value::as_str)
@@ -272,6 +355,10 @@ async fn call(app: &App, params: &Value) -> Result<Value, Fault> {
         "read_doc" => read_doc(app, &arguments).await,
         "list_models" => Ok(list_models(app).await),
         "list_payment_methods" => Ok(list_payment_methods(app).await),
+        "whoami" if account.is_some() => Ok(format!(
+            "Signed in to OpenAgents ({SITE}) as account {}.",
+            account.unwrap_or_default()
+        )),
         other => return Err(Fault::new(-32602, format!("No tool named {other}."))),
     };
     Ok(match text {

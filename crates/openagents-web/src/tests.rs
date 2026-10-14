@@ -2416,6 +2416,65 @@ pub(crate) async fn echo_upstream() -> (String, Arc<std::sync::atomic::AtomicUsi
     (format!("http://{address}"), hits)
 }
 
+/// With coder-serve retired (no upstream), the gateway's PUBLIC `/v1`
+/// routes answer at `/v1/...` without the site's cookies, and every other
+/// path the site doesn't own is `404` here, never forwarded.
+#[tokio::test]
+async fn without_the_previous_server_v1_goes_to_the_gateway_and_the_rest_is_404() {
+    use std::sync::atomic::Ordering;
+    let root = tempfile::tempdir().unwrap();
+    let (gateway, hits) = echo_upstream().await;
+    let mut config = config(root.path().join("tasks"));
+    config.public_hosts.push("openagents.com".to_owned());
+    config.inference = Some(Arc::new(upstream::Upstream::new(&gateway).unwrap()));
+    let site = router(config);
+    for (method, uri) in [
+        ("GET", "/v1/models"),
+        ("POST", "/v1/responses"),
+        ("POST", "/v1/chat/completions"),
+    ] {
+        let response = site
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(uri)
+                    .header(header::HOST, "openagents.com")
+                    .header(header::AUTHORIZATION, "Bearer oak_1.secret")
+                    .body(Body::from("{\"model\":\"coder\"}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::IM_A_TEAPOT, "{method} {uri}");
+    }
+    assert_eq!(hits.load(Ordering::SeqCst), 3);
+    for uri in [
+        "/computers/seen",
+        "/releases/install-terminal.sh",
+        "/v1/token",
+        "/api/box-host/v1/heartbeat",
+        "/static/coder.css",
+    ] {
+        let (status, _, _) = get_with(site.clone(), uri, "openagents.com").await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+    }
+    assert_eq!(
+        hits.load(Ordering::SeqCst),
+        3,
+        "nothing else reached the gateway"
+    );
+}
+
+#[test]
+fn log_patterns_keep_only_the_first_segment() {
+    assert_eq!(upstream::pattern("/computers/seen"), "/computers/*");
+    assert_eq!(upstream::pattern("/mcp"), "/mcp");
+    assert_eq!(upstream::pattern("/u/someone"), "/u/*");
+    assert_eq!(upstream::pattern("/sess_abc123/x"), "/*/*");
+    assert_eq!(upstream::pattern("/"), "/");
+}
+
 /// A public openagents.com server whose unowned paths go to `upstream`.
 fn proxying(root: &std::path::Path, upstream: &str) -> Config {
     let mut config = config(root.join("tasks"));

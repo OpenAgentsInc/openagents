@@ -769,6 +769,29 @@ async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
         }
         return response;
     }
+    // With no previous server behind this site (coder-serve retired,
+    // docs/deployment/coder-serve-retirement.md), the gateway's PUBLIC
+    // `/v1` routes answer at `/v1/...` as they do at `/api/v1/...`, and
+    // every other path this site doesn't own and doesn't draw is `404`,
+    // counted by its first segment only (never a body, a token, or an id).
+    let mut retired = None;
+    if hosts.upstream.is_none()
+        && public
+        && !owned
+        && !browser
+        && !intake
+        && !cloud
+        && !chat
+        && !agent
+    {
+        if let Some(gateway) = &hosts.inference
+            && api_alias::forwards(request.method(), path, false)
+        {
+            request.headers_mut().remove(header::COOKIE);
+            return gateway.forward(request).await;
+        }
+        retired = Some(format!("{} {}", request.method(), upstream::pattern(path)));
+    }
     if !(local || (!browser && public)) {
         return (StatusCode::FORBIDDEN, "Use the local OpenAgents address").into_response();
     }
@@ -781,6 +804,11 @@ async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
             .insert(LOCAL_HEADER, HeaderValue::from_static("1"));
     }
     let mut response = next.run(request).await;
+    if let Some(retired) = retired
+        && response.status() == StatusCode::NOT_FOUND
+    {
+        eprintln!("retired: {retired}");
+    }
     let headers = response.headers_mut();
     if !headers.contains_key(header::CONTENT_SECURITY_POLICY) {
         headers.insert(

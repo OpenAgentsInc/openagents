@@ -8,8 +8,9 @@
 # inference gateway on the `gateway` sidecar (127.0.0.1:8791). Saved
 # own-Claude keys (sealed with OPENAGENTS_WEB_CLOUD_BYO_KEYS) are kept in
 # $WEB_STATE/byo on the account-store NFS disk
-# (docs/deployment/account-storage.md). Paths the site doesn't own still go
-# to the coder-serve sidecar (OPENAGENTS_WEB_UPSTREAM). Nothing is printed.
+# (docs/deployment/account-storage.md). There is no coder-serve sidecar
+# any more (docs/deployment/coder-serve-retirement.md): paths the site
+# doesn't own answer 404, /v1 goes to the gateway. Nothing is printed.
 set -eu
 umask 077
 p=/tmp/private

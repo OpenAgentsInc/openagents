@@ -3,7 +3,7 @@
 # to production (docs/deployment/2026-10-09-faster-deploys.md):
 #
 #   scripts/deploy/web.sh stage [--keep-spec] [REF]   # default origin/main
-#   scripts/deploy/web.sh promote [--stack DIGEST] [--serve DIGEST] DIGEST
+#   scripts/deploy/web.sh promote [--stack DIGEST] [--serve DIGEST] [--retire-serve] DIGEST
 #                                            # no-traffic revision at the `new` tag
 #   scripts/deploy/web.sh shift [REVISION]   # 100% of openagents.com to it
 #   scripts/deploy/web.sh rollback [REVISION]
@@ -31,7 +31,13 @@
 # `coder` digest (built by the coder repository's ops/deploy.sh --stage).
 # coder-serve always gets CODER_ACCOUNTS_URL=http://127.0.0.1:8791, the
 # gateway sidecar's account service, so /mcp admits the sessions
-# openagents.com's OAuth sign-in issues (#11084). JSON, not YAML, so CODER_CHAT_SYNC stays
+# openagents.com's OAuth sign-in issues (#11084). --retire-serve removes
+# the `coder-serve` sidecar instead (docs/deployment/coder-serve-retirement.md):
+# the container, the web's OPENAGENTS_WEB_UPSTREAM, the web's start-up
+# dependency on it, and its database (coder-pg) from the Cloud SQL list;
+# the site then answers /v1 from the gateway and the rest of the old
+# server's paths with 404. A no-op once the live spec has no coder-serve.
+# JSON, not YAML, so CODER_CHAT_SYNC stays
 # the string "on". promote then smokes the tag URL with --candidate:
 # production's gateway sidecar waits for its revision to serve traffic
 # before it takes the account store (GATEWAY_HOLD=serving, #11154), so the
@@ -218,10 +224,12 @@ print(json.dumps({"apiVersion": "serving.knative.dev/v1", "kind": "Service",
 promote() {
     stack_image=
     serve_image=
+    retire_serve=
     while [ $# -gt 1 ]; do
         case $1 in
             --stack) stack_image=$REPO/openagents-stack@${2##*@}; shift 2 ;;
             --serve) serve_image=$REPO/coder@${2##*@}; shift 2 ;;
+            --retire-serve) retire_serve=1; shift ;;
             *) break ;;
         esac
     done
@@ -243,11 +251,11 @@ promote() {
     g run revisions describe "$previous" --region "$REGION" --project "$PROJECT" --format=json > "$STATE/revision.json"
     python3 - "$STATE/service.json" "$STATE/revision.json" "$image" "$name" \
         "$ROOT/deploy/production/web.sh" "$stack_image" "$serve_image" \
-        "$ROOT/deploy/staging/gateway.sh" > "$spec" << 'PY'
+        "$ROOT/deploy/staging/gateway.sh" "$retire_serve" > "$spec" << 'PY'
 import json, sys
 
 service, revision = (json.load(open(p)) for p in sys.argv[1:3])
-image, name, launcher_path, stack_image, serve_image, gateway_launcher_path = sys.argv[3:9]
+image, name, launcher_path, stack_image, serve_image, gateway_launcher_path, retire_serve = sys.argv[3:10]
 # Our own Boat-compatible service on GCE (crates/oa-boat, #11256).
 OA_BOAT_BASE = "https://oa-boat-157437760789.us-central1.run.app/api/v1"
 
@@ -401,6 +409,28 @@ if "gateway" in names:
     if not any(e["name"] == "OPENAGENTS_WEB_API_OPERATOR_SIGNUP" for e in envs):
         envs.append({"name": "OPENAGENTS_WEB_API_OPERATOR_SIGNUP", "value": "1"})
         sys.stderr.write("  web env OPENAGENTS_WEB_API_OPERATOR_SIGNUP added\n")
+annotations = keep(revision["metadata"].get("annotations"), SYSTEM)
+# --retire-serve: no coder-serve sidecar (docs/deployment/coder-serve-retirement.md).
+if retire_serve and any(c["name"] == "coder-serve" for c in spec["containers"]):
+    if serve_image:
+        sys.exit("refusing: --serve and --retire-serve together")
+    spec["containers"] = [c for c in spec["containers"] if c["name"] != "coder-serve"]
+    web["env"] = [e for e in web.get("env", []) if e["name"] != "OPENAGENTS_WEB_UPSTREAM"]
+    depends = json.loads(annotations.get("run.googleapis.com/container-dependencies", "{}"))
+    depends = {k: [d for d in v if d != "coder-serve"] for k, v in depends.items()}
+    depends = {k: v for k, v in depends.items() if v}
+    if depends:
+        annotations["run.googleapis.com/container-dependencies"] = json.dumps(depends)
+    else:
+        annotations.pop("run.googleapis.com/container-dependencies", None)
+    instances = [i for i in annotations.get("run.googleapis.com/cloudsql-instances", "").split(",")
+                 if i.strip() and not i.strip().endswith(":coder-pg")]
+    if instances:
+        annotations["run.googleapis.com/cloudsql-instances"] = ",".join(instances)
+    else:
+        annotations.pop("run.googleapis.com/cloudsql-instances", None)
+    sys.stderr.write("  coder-serve sidecar removed (container, OPENAGENTS_WEB_UPSTREAM, "
+                     "dependency, coder-pg)\n")
 traffic = []
 for entry in service["spec"].get("traffic", []):
     if entry.get("latestRevision"):
@@ -426,7 +456,7 @@ out = {
             "metadata": {
                 "name": name,
                 "labels": keep(revision["metadata"].get("labels"), SYSTEM + ("cloud.googleapis.com/",)),
-                "annotations": keep(revision["metadata"].get("annotations"), SYSTEM),
+                "annotations": annotations,
             },
             "spec": spec,
         },

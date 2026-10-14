@@ -187,6 +187,24 @@ pub fn owned(path: &str) -> bool {
         })
 }
 
+/// A path's shape for a log line: its first segment, with `/*` when more
+/// follow, so ids and tokens later in the path never reach the log. A
+/// first segment that is long or carries digits is `*` too.
+#[must_use]
+pub fn pattern(path: &str) -> String {
+    let rest = path.trim_start_matches('/');
+    let (first, more) = match rest.split_once('/') {
+        Some((first, _)) => (first, true),
+        None => (rest, false),
+    };
+    let first = if first.len() > 32 || first.chars().any(|c| c.is_ascii_digit()) {
+        "*"
+    } else {
+        first
+    };
+    format!("/{first}{}", if more { "/*" } else { "" })
+}
+
 /// Headers that describe one connection, never forwarded (RFC 9110 7.6.1).
 const HOP_BY_HOP: [HeaderName; 7] = [
     header::CONNECTION,

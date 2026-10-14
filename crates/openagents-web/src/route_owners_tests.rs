@@ -16,6 +16,10 @@ use std::path::{Path, PathBuf};
 const NOT_OWNED: &[(&str, &str)] = &[
     ("/u/", "profiles: the previous server still draws them"),
     (
+        "/mcp",
+        "the keyed MCP server: the previous server answers it while it runs (docs/deployment/coder-serve-retirement.md)",
+    ),
+    (
         "/api/v1/",
         "the API alias: owned when the inference gateway is configured (`guard`)",
     ),

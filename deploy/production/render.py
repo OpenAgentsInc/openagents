@@ -33,11 +33,9 @@ INVITE_ONLY = json.dumps(
     {"github": [{"id": 14167547, "login": "AtlantisPleb", "admin": True}]},
     separators=(",", ":"),
 )
-# Third-party analytics settings the coder-serve sidecar must not carry
-# (privacy policy section 5: openagents.com measures use without
-# third-party analytics). The Secret Manager secret
-# openagents-posthog-project-token is no longer referenced.
-THIRD_PARTY_ANALYTICS = {"POSTHOG_PROJECT_TOKEN", "POSTHOG_HOST"}
+# The retired coder-serve sidecar's own database
+# (docs/deployment/coder-serve-retirement.md).
+RETIRED_DATABASE = "openagentsgemini:us-central1:coder-pg"
 SYSTEM = ("serving.knative.dev/", "client.knative.dev/", "run.googleapis.com/operation-id",
           "run.googleapis.com/ingress-status", "run.googleapis.com/urls",
           "run.googleapis.com/creator", "run.googleapis.com/lastModifier")
@@ -121,18 +119,11 @@ def main():
         {"name": "webstate", "mountPath": "/state"},
         {"name": "stack", "mountPath": "/stack", "readOnly": True},
     ]
-    # The coder-serve sidecar's secrets from Secret Manager, not plain values.
-    # No third-party analytics (privacy policy section 5): the sidecar gets
-    # no PostHog token or host, so it sends no PostHog events.
-    serve = next((c for c in containers if c["name"] == "coder-serve"), None)
-    if serve is not None:
-        serve["env"] = [e for e in serve.get("env", []) if e["name"] not in THIRD_PARTY_ANALYTICS]
-        set_env(serve, [
-            secret("coder-github-client-secret", "CODER_GITHUB_CLIENT_SECRET"),
-            # /mcp checks an MCP app's `sess_` bearer (OAuth sign-in on
-            # openagents.com, #11084) with the gateway's account service.
-            plain("CODER_ACCOUNTS_URL", "http://127.0.0.1:8791"),
-        ])
+    # No coder-serve sidecar (docs/deployment/coder-serve-retirement.md):
+    # the site answers /v1 from the gateway, the keyed /mcp itself, and
+    # every other path the old server had with 404.
+    web["env"] = [e for e in web.get("env", []) if e["name"] != "OPENAGENTS_WEB_UPSTREAM"]
+    containers = [c for c in containers if c["name"] != "coder-serve"]
 
     gateway = {
         "name": "gateway",
@@ -176,13 +167,13 @@ def main():
         "run.googleapis.com/network-interfaces": json.dumps(
             [{"network": "default", "subnetwork": EGRESS_SUBNET}]),
         "run.googleapis.com/vpc-access-egress": "private-ranges-only",
-        "run.googleapis.com/container-dependencies": json.dumps({"web": ["coder-serve"]}),
     })
-    # The service already connects coder-serve to its own instance
-    # (coder-pg): add the account database to the list, never replace it.
+    annotations.pop("run.googleapis.com/container-dependencies", None)
+    # Add the account database to the list, never replace it; the retired
+    # sidecar's coder-pg goes.
     instances = [
         name for name in annotations.get("run.googleapis.com/cloudsql-instances", "").split(",")
-        if name.strip() and name.strip() != DATABASE
+        if name.strip() and name.strip() not in (DATABASE, RETIRED_DATABASE)
     ]
     if not args.files:
         instances.append(DATABASE)

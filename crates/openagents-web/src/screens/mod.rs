@@ -94,6 +94,7 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     ("/v1/*", "the API"),
     ("/api/*", "the API"),
     ("/oauth/*", "sign-in for programs"),
+    ("/mcp", "the MCP server, for programs"),
     ("/health", "a check for the host"),
     ("/healthz", "a check for the host"),
     ("/favicon.ico", "a file"),

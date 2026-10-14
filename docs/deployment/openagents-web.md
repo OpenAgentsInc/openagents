@@ -5,6 +5,11 @@ repository (`bins/coder-serve`) into this repository's
 [`crates/openagents-web`](../../crates/openagents-web/README.md). Recorded
 2026-09-29.
 
+2026-10-14: the `coder-serve` sidecar is being retired (#11614,
+[coder-serve-retirement.md](coder-serve-retirement.md)). Without it, `/v1`
+goes to the gateway, `/mcp` is this site's, and every other unowned path
+answers 404. The history below describes the setup with the sidecar.
+
 ## Live (2026-10-01)
 
 openagents.com serves this site since 2026-10-02 02:20 UTC (#10128): Cloud
