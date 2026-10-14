@@ -895,7 +895,10 @@ def assemble(cut, segs, w, h, out, master):
         # A voiceover clip, from its time, at its own length.
         inputs += ["-i", str(expand(v["src"]))]
         ms = int(round(at * 1000))
+        # Lifted like the whiteboard's speech, so a voiceover sits at the same level as a person talking.
+        lift = level_db({"src": v["src"], "in": 0.0, "dur": dur}, music, cut)
         audio.append(f"[{nxt}:a:0]aresample=48000,aformat=channel_layouts=stereo,"
+                     f"acompressor=threshold=-26dB:ratio=3:attack=5:release=150,volume={lift:.1f}dB,"
                      f"volume={v.get('gain', 1.0)},adelay={ms}|{ms}[vo{j}]")
         beds.append(f"[vo{j}]")
         nxt += 1
