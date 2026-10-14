@@ -228,7 +228,9 @@ impl Family {
             Family::Core => "Run, files, plan",
             Family::Background => "background commands and monitors",
             Family::Web => "search the web, fetch a page",
-            Family::Media => "inspect audio, video and images (probe, frames, transcribe)",
+            Family::Media => {
+                "inspect audio, video and images (probe, frames, transcribe); Video Lab: open, show, edit, render and compare films"
+            }
             Family::Memory => "save, forget or read notes kept across sessions",
             Family::GitHub => "GitHub issues, project boards, pull requests",
             Family::OpenAgents => {
@@ -250,6 +252,7 @@ impl Family {
             _ if crate::shells::is_tool(name) => Family::Background,
             "web_search" | "web_fetch" => Family::Web,
             "media" => Family::Media,
+            _ if crate::video_lab::is_tool(name) => Family::Media,
             "remember" | "forget" | "recall" => Family::Memory,
             "github" | "pull_request" => Family::GitHub,
             "openagents_cli" | "computer" | "deploy" | crate::routing_preferences::TOOL | "jev" => {
@@ -432,6 +435,10 @@ impl ExecutionSettings {
             definitions.extend(crate::web_tools::definitions());
             // Media files on this computer (#11172), with the same access as Run.
             definitions.push(crate::media::definition());
+            // Video Lab (docs/video-lab/mvp.md), where a Lab is on this computer.
+            if crate::video_lab::available() {
+                definitions.extend(crate::video_lab::definitions());
+            }
         }
         if self.memory.is_some() {
             definitions.extend(crate::memory::Memory::tool_definitions());
@@ -560,6 +567,9 @@ impl ExecutionSettings {
             Family::Media => {
                 if self.shell {
                     guidance.push_str(crate::media::instructions());
+                    if crate::video_lab::available() {
+                        guidance.push_str(crate::video_lab::INSTRUCTIONS);
+                    }
                 }
             }
             Family::Memory => {
@@ -880,6 +890,12 @@ impl ExecutionSettings {
                     .await
             }
             "media" if self.shell => crate::media::execute(arguments, &self.cwd, cancel).await,
+            name if self.shell && crate::video_lab::is_tool(name) => {
+                tokio::select! {
+                    result = crate::video_lab::execute(name, arguments) => result,
+                    () = async { while !cancel.load(Ordering::Relaxed) { tokio::time::sleep(std::time::Duration::from_millis(50)).await; } } => Err("The Video Lab call was canceled.".into()),
+                }
+            }
             "boat_delegate" | "boat_job" if self.registered(ToolBinding::BoatDelegate) => {
                 crate::cloud_tools::execute(
                     coder_cloud::Placement::Boat,

@@ -1,0 +1,73 @@
+{
+  "$id": "https://openagents.com/schemas/video-lab/cut.v1.json",
+  "title": "cut.v1: a film's edit, the cut list scripts/film/cut.py reads",
+  "type": "object",
+  "required": ["fps", "size", "shots", "out"],
+  "additionalProperties": false,
+  "properties": {
+    "fps": {"type": "number", "exclusiveMinimum": 0},
+    "size": {"type": "array", "items": {"type": "integer", "minimum": 16}, "minItems": 2, "maxItems": 2},
+    "bpm": {"type": "number", "exclusiveMinimum": 0},
+    "music": {"type": "string"},
+    "music_gain": {"type": "number", "minimum": 0},
+    "out": {"type": "string"},
+    "sheets": {"type": "string"},
+    "cache": {"type": "string"},
+    "fade_in": {"type": "number", "minimum": 0},
+    "fade_out": {"type": "number", "minimum": 0},
+    "voice": {
+      "type": "object", "required": ["src"], "additionalProperties": false,
+      "properties": {"src": {"type": "string"}, "at": {"type": "number", "minimum": 0}, "gain": {"type": "number", "minimum": 0}}
+    },
+    "caption_style": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"size": {"type": "number", "exclusiveMinimum": 0}, "y": {"type": "number"}, "width": {"type": "number", "exclusiveMinimum": 0}}
+    },
+    "captions": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["text", "at", "dur"], "additionalProperties": false,
+        "properties": {"text": {"type": "string"}, "at": {"type": "number", "minimum": 0}, "dur": {"type": "number", "exclusiveMinimum": 0}}
+      }
+    },
+    "score": {
+      "description": "Video Lab: the music is made by scripts/film/music.py to the cut's length, with a whoosh at the start of each named shot and the end chord from end_at's start. Remade when the cut's length changes.",
+      "type": "object", "required": ["cuts_at"], "additionalProperties": false,
+      "properties": {"cuts_at": {"type": "array", "items": {"type": "string"}}, "end_at": {"type": "string"}}
+    },
+    "shots": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/shot"}}
+  },
+  "$defs": {
+    "shot": {
+      "type": "object",
+      "required": ["name", "dur"],
+      "anyOf": [{"required": ["src"]}, {"required": ["title"]}],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "src": {"type": "string"},
+        "in": {"type": "number", "minimum": 0},
+        "dur": {"type": "number", "exclusiveMinimum": 0},
+        "xfade": {"type": "number", "minimum": 0},
+        "xfade_kind": {"type": "string"},
+        "play": {"type": "number", "minimum": 0},
+        "push": {"type": "number", "minimum": 0, "maximum": 0.3},
+        "speed": {"type": "number", "exclusiveMinimum": 0},
+        "dark_ok": {"type": "boolean"},
+        "hold_ok": {"type": "number", "minimum": 0},
+        "label": {"type": "string"},
+        "over": {
+          "type": "object", "required": ["src"], "additionalProperties": false,
+          "properties": {"src": {"type": "string"}, "at": {"type": "number", "minimum": 0}}
+        },
+        "title": {
+          "type": "object", "required": ["lines"],
+          "properties": {
+            "lines": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["text", "size"]}},
+            "under": {"type": "object", "required": ["src"]}
+          }
+        }
+      }
+    }
+  }
+}

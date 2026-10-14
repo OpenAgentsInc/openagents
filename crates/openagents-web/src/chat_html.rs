@@ -9,7 +9,8 @@ use maud::{Markup, html};
 
 use crate::App;
 
-pub(crate) const POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+/// `media-src 'self'`: a Video Lab card's video plays through this site (docs/video-lab/mvp.md).
+pub(crate) const POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; media-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 /// HTMX never stores private HTML, evaluates expressions, or runs fragment scripts.
 /// The chat and composer styles come from `openagents-ui` (`/static/ui.css`).

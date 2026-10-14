@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
 """The launch film's edit, built from a cut list (#11432).
 
+  scripts/film/cut.py check   CUT.json [--json] [--allow-missing]
   scripts/film/cut.py inspect CUT.json [--allow-missing]
-  scripts/film/cut.py render  CUT.json [--preview] [--master] [--allow-missing] [--force]
+  scripts/film/cut.py render  CUT.json [--preview | --size WxH] [--out PATH] [--master] [--allow-missing] [--force]
+
+`check` runs the checks that need no rendering (everything below but black
+and freeze detection and the contact sheets), in about a second. It also reads
+`<clip>.beats.json` beside a source, when its renderer wrote one: the clip's
+animation beats (`[{"from", "to", "what"}]`, clip seconds), and fails a shot
+that ends inside one, so a cut never chops an animation off mid-move. Video
+Lab (scripts/film/lab.py) runs it on every edit.
 
 `inspect` writes contact sheets sized for a model to read, then checks the cut:
   - sources exist and are long enough
@@ -44,6 +52,7 @@ import argparse
 import hashlib
 import io
 import json
+import math
 import os
 import re
 import shutil
@@ -348,7 +357,22 @@ def render_caption(cap, st, w, h, path):
 
 # ---- inspect ------------------------------------------------------------------
 
-def inspect(cut, cut_path, work, w, h, allow_missing):
+def beats_for(src):
+    """The animation beats a source's renderer recorded beside it, if any:
+    `<clip>.beats.json` = [{"from": s, "to": s, "what": "..."}, ...] in the
+    clip's own seconds. A shot that ends inside one cuts an animation off."""
+    side = src.with_suffix(".beats.json")
+    if not side.exists():
+        return []
+    try:
+        return json.loads(side.read_text())
+    except (OSError, ValueError):
+        return []
+
+
+def check(cut, w, h, allow_missing):
+    """The checks that need no rendering: sources, lengths, the beat grid,
+    animation beats, titles, captions and music. Fast enough to run on every edit."""
     problems, notes = [], []
     beat = 60.0 / cut.get("bpm", 120)
     for shot in cut["shots"]:
@@ -387,6 +411,19 @@ def inspect(cut, cut_path, work, w, h, allow_missing):
             problems.append(f"{name}: {src.name} is {p['w']}x{p['h']}, not {w}:{h}; it would be letterboxed")
         if p["h"] < h:
             notes.append(f"{name}: {src.name} is {p['h']}p, upscaled to {h}p")
+        # The last source second on screen, and whether it lands inside an animation.
+        start_in = shot.get("in", 0.0)
+        end_in = start_in + played * shot.get("speed", 1.0)
+        for b in beats_for(src):
+            if b["from"] + 1e-3 < end_in < b["to"] - 1e-3:
+                need = (b["to"] - start_in) / shot.get("speed", 1.0)
+                on_grid = math.ceil(need / beat - 1e-6) * beat - shot["tail"]
+                problems.append(
+                    f"{name}: cuts {b['what']} off at {end_in:.2f}s of {src.name}; it runs {b['from']:.2f}s to "
+                    f"{b['to']:.2f}s, so the shot needs at least {need:.2f}s of the clip (now {played:.2f}s; "
+                    f"{max(on_grid, need):g}s on the beat grid), or should end before {b['from']:.2f}s")
+            if start_in - 1e-3 > b["from"] and start_in + 1e-3 < b["to"] and not b.get("enter_ok"):
+                notes.append(f"{name}: starts partway into {b['what']} ({b['from']:.2f}s to {b['to']:.2f}s)")
 
     caps = sorted(cut.get("captions", []), key=lambda c: c["at"])
     if caps:
@@ -413,6 +450,11 @@ def inspect(cut, cut_path, work, w, h, allow_missing):
             problems.append(f"music is {mdur:.2f}s, the cut is {cut['total']:.2f}s")
     elif music:
         problems.append(f"music missing: {music}")
+    return problems, notes
+
+
+def inspect(cut, cut_path, work, w, h, allow_missing):
+    problems, notes = check(cut, w, h, allow_missing)
 
     # Render the segments, then check each for black or frozen stretches.
     segs = []
@@ -540,18 +582,36 @@ def assemble(cut, segs, w, h, out, master):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["inspect", "render"])
+    ap.add_argument("cmd", choices=["check", "inspect", "render"])
     ap.add_argument("cut")
-    ap.add_argument("--preview", action="store_true", help="960x540, for quick looks")
+    ap.add_argument("--preview", action="store_true", help="half size, for quick looks")
+    ap.add_argument("--size", help="render at WxH instead (e.g. 960x540); overrides --preview")
+    ap.add_argument("--out", help="write here instead of the cut's `out`")
     ap.add_argument("--master", action="store_true", help="also write a ProRes 422 HQ .mov")
     ap.add_argument("--allow-missing", action="store_true", help="draw a card for sources not rendered yet")
     ap.add_argument("--force", action="store_true", help="render even when inspect fails")
+    ap.add_argument("--json", action="store_true", help="check: print the result as JSON")
     args = ap.parse_args()
 
     cut = load(args.cut)
     w, h = cut["size"]
     if args.preview:
         w, h = w // 2, h // 2
+    if args.size:
+        w, h = (int(v) for v in args.size.lower().split("x"))
+    if args.cmd == "check":
+        # No rendering: what Video Lab runs on every edit before saving it.
+        problems, notes = check(cut, w, h, args.allow_missing)
+        if args.json:
+            print(json.dumps({"problems": problems, "notes": notes, "shots": len(cut["shots"]),
+                              "total": cut["total"]}))
+        else:
+            for n in notes:
+                print(f"note   {n}")
+            for p in problems:
+                print(f"FAIL   {p}")
+            print(f"{len(cut['shots'])} shots, {cut['total']:.1f}s, {len(problems)} problem(s)")
+        sys.exit(1 if problems else 0)
     work = Path(tempfile.mkdtemp(prefix="film-cut-"))
     try:
         problems, notes, segs, sheets = inspect(cut, args.cut, work, w, h, args.allow_missing)
@@ -566,8 +626,8 @@ def main():
             sys.exit(1 if problems else 0)
         if problems and not args.force:
             sys.exit("inspect failed; fix the cut or pass --force")
-        out = expand(cut["out"])
-        if args.preview:
+        out = expand(args.out or cut["out"])
+        if args.preview and not args.out:
             out = out.with_name(out.stem + "-preview.mp4")
         assemble(cut, segs, w, h, out, args.master)
         print(out)

@@ -1,0 +1,18 @@
+{
+  "$id": "https://openagents.com/schemas/video-lab/shot.v1.json",
+  "title": "shot.v1: one generated shot, its renderer and its spec",
+  "type": "object",
+  "required": ["renderer"],
+  "additionalProperties": false,
+  "properties": {
+    "renderer": {"enum": ["studio", "film-script", "verse", "take"]},
+    "notes": {"type": "string"},
+    "spec": {"type": "object", "description": "studio: the shot JSON studio.py reads (scripts/film/studio/shots/*.json)"},
+    "video": {"type": "string", "description": "studio: screen footage instead of the spec's"},
+    "script": {"type": "string", "description": "film-script: the script, relative to the repository (scripts/film/*.py)"},
+    "inputs": {"type": "object", "additionalProperties": {"type": "string"}, "description": "film-script: named input files, used in args as {name}"},
+    "args": {"type": "array", "items": {"type": "string"}, "description": "film-script: the script's arguments; {out} is where the render goes"},
+    "out": {"type": "string", "description": "where the shot was written before Lab (for reference)"},
+    "duration": {"type": "number", "exclusiveMinimum": 0}
+  }
+}

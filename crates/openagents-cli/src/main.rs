@@ -59,6 +59,7 @@ mod jev_judge;
 mod kb;
 mod key;
 mod keys;
+mod lab;
 #[cfg(unix)]
 mod labor;
 mod land;
@@ -231,7 +232,9 @@ Coder:
   customer     Bind gateway customers, credentials, and exact approved purchases.
 ",
     film_help!(),
-    "  scratch      Make and print this session's durable scratch directory, under
+    "  lab          Video Lab: see and edit films, shots and scenes on this computer
+               (open, show, frame, edit, versions, render, compare, notes).
+  scratch      Make and print this session's durable scratch directory, under
                ~/.openagents/scratch, for files that must outlive a reboot.
   browser      Run a command beside a Chrome of its own: a fresh profile and
                debugging port, removed when the command ends.
@@ -478,6 +481,7 @@ fn main() -> ExitCode {
         "lease" | "leases" => lease::run(&output, &rest),
         "sales" => sales::run(&output, &rest),
         "customer" => customer::run(&output, &rest),
+        "lab" => lab::run(&output, &rest),
         "scratch" => scratch::run(&output, &rest),
         #[cfg(feature = "verse")]
         "film" => film::run(&output, &rest),

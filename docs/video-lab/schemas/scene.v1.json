@@ -1,0 +1,27 @@
+{
+  "$id": "https://openagents.com/schemas/video-lab/scene.v1.json",
+  "title": "scene.v1: a Verse scene captured by the verse film_shot example",
+  "type": "object",
+  "required": ["renderer", "shot"],
+  "additionalProperties": false,
+  "properties": {
+    "renderer": {"enum": ["verse-film-shot"]},
+    "notes": {"type": "string"},
+    "out": {"type": "string"},
+    "shot": {
+      "type": "object",
+      "required": ["name", "scene", "duration", "rig"],
+      "properties": {
+        "name": {"type": "string"},
+        "notes": {"type": "string"},
+        "scene": {"type": "object", "required": ["kind"]},
+        "duration": {"type": "number", "exclusiveMinimum": 0},
+        "subframes": {"type": "integer", "minimum": 1},
+        "rig": {
+          "type": "object", "required": ["keys"],
+          "properties": {"keys": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["t"]}}}
+        }
+      }
+    }
+  }
+}

@@ -88,3 +88,5 @@ Each step says what you should see. Start signed out.
   `curl -s -X POST http://127.0.0.1:8791/v1/accounts -H 'content-type:
   application/json' -d '{"label":"Test"}'` returns a `sess_` token; send it
   as the `oa_cloud_session` cookie to act signed in.
+  With `start --lab` (Video Lab, docs/video-lab/mvp.md) the gateway is on
+  8790 instead, since the film review page holds 8791.

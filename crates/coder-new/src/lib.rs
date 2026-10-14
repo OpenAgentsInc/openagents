@@ -116,6 +116,7 @@ pub mod trace_upload;
 pub mod trajectory;
 pub mod ui;
 pub mod update;
+pub mod video_lab;
 mod workflow;
 // Screenshots and files asked for on openagents.com (#11185).
 mod web_asks;

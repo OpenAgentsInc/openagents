@@ -2135,6 +2135,12 @@ async fn answer(
         }
         _ => None,
     };
+    // With a Video Lab on this Mac, Gemini works on the owner's films with
+    // the Lab's tools, or hands the message on (docs/video-lab/mvp.md).
+    let lab = match (&door, parts.is_empty()) {
+        (Some(_), true) => crate::lab::door(&app, &owner).await,
+        _ => None,
+    };
     // Images or PDFs go to the door that takes them; the hosted chat
     // answers with the words only when it can't (#11174).
     // Whether the Drive door answers: it may look at videos, which takes
@@ -2157,10 +2163,17 @@ async fn answer(
                 None => door,
             };
             drive_door = drive.is_some();
-            match drive {
+            let door: Box<dyn openagents_chat::basic_coder::Door> = match drive {
                 Some(mut drive) => {
                     drive.fallback = Some(door);
-                    Some(Box::new(drive))
+                    Box::new(drive)
+                }
+                None => door,
+            };
+            match lab {
+                Some(mut lab) => {
+                    lab.fallback = Some(door);
+                    Some(Box::new(lab))
                 }
                 None => Some(door),
             }
@@ -2240,6 +2253,8 @@ async fn answer(
                         meta.tier = r.meta.tier.clone();
                         meta.route = r.meta.route.clone();
                         meta.switched = r.meta.switched.clone();
+                        // A Video Lab answer's card (the video under it).
+                        meta.cards = crate::lab::cards(&r.meta);
                         meta
                     })
                     .filter(|meta| !meta.is_empty()),
@@ -2604,6 +2619,8 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
             (crate::chat_files::shown(&chat.id, crate::chat_files::of_message(chat, message)))
             // A reply that proposed a change on GitHub: its confirm card (#11167).
             (crate::github_tools::thread_entry(&chat.id, index + start, crate::suggestions::message_reply(chat, message)))
+            // A Video Lab answer: its video, inline (docs/video-lab/mvp.md).
+            (crate::lab::thread_entry(&chat.id, crate::suggestions::message_reply(chat, message)))
             // A reply the router read as work on code, about an issue: "Work on this issue" (#11258).
             (crate::work_runs::thread_entry(&chat.id, index + start, crate::suggestions::message_reply(chat, message)))
             (work::rows(chat, index + start + 1, links))

@@ -1,0 +1,11 @@
+{
+  "about": "Video Lab's private-asset guard (scripts/film/lab.py). A document that uses a file matching one of these (lowercase substrings of its path) renders here only, and each render is marked not for training. MetaHuman exports are licensed for use but not for raw redistribution, and never for training any model. Fab packs and Berkeley Mono are licensed to us, not to the public. Generated clips list the private fonts they draw with.",
+  "rules": [
+    {"match": ["metahuman"], "reason": "uses a MetaHuman export"},
+    {"match": ["/draconia/", "draconia-"], "reason": "uses Draconia's MetaHuman assets"},
+    {"match": ["/fab/", "fab-pack", "/fab-"], "reason": "uses a Fab pack"},
+    {"match": ["berkeley"], "reason": "uses Berkeley Mono"},
+    {"match": ["/film-out/segments/", "/film-out/routing/", "/film-out/titles/", "revenue-sharing", "system1-routing", "coder-segments", "title-overlay"],
+     "reason": "has Berkeley Mono in its picture", "why": "drawn by scripts/film/coder-segments.py, system1-routing.py, revenue-sharing.py or title-overlay.py"}
+  ]
+}

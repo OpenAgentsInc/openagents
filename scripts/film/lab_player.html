@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Video Lab</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: dark; --bg:#0b0b0c; --panel:#141416; --line:#26262a; --text:#ececee; --dim:#8a8a90; --accent:#e8ecff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 -apple-system, "Geist", system-ui, sans-serif; display:grid; grid-template-columns: 260px 1fr; height:100vh; }
+  aside { border-right:1px solid var(--line); overflow:auto; padding:14px; }
+  main { overflow:auto; padding:18px 22px; }
+  h1 { font-size:15px; margin:0 0 12px; font-weight:600; }
+  h2 { font-size:13px; color:var(--dim); font-weight:500; margin:18px 0 8px; text-transform:none; }
+  button, .doc { background:none; border:1px solid var(--line); color:var(--text); border-radius:8px; padding:6px 10px; font:inherit; cursor:pointer; }
+  button:hover, .doc:hover { border-color:#3a3a40; }
+  .doc { display:block; width:100%; text-align:left; margin-bottom:6px; }
+  .doc small, .ver small { color:var(--dim); display:block; }
+  .doc.on, .ver.on { border-color:var(--accent); }
+  .ver { display:block; width:100%; text-align:left; margin-bottom:6px; background:none; border:1px solid var(--line); color:var(--text); border-radius:8px; padding:6px 10px; font:inherit; cursor:pointer; }
+  .stage { display:grid; gap:12px; grid-template-columns: 1fr; }
+  .stage.two { grid-template-columns: 1fr 1fr; }
+  figure { margin:0; background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  figure video { width:100%; display:block; background:#000; aspect-ratio:16/9; }
+  figcaption { padding:8px 10px; color:var(--dim); font-size:13px; }
+  .wait { aspect-ratio:16/9; display:flex; align-items:center; justify-content:center; color:var(--dim); }
+  .bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:10px 0; }
+  .bar select, .bar input { background:var(--panel); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:6px 8px; font:inherit; }
+  .notes li { margin-bottom:8px; }
+  .notes a { color:var(--accent); cursor:pointer; text-decoration:none; font-variant-numeric: tabular-nums; }
+  .private { color:#d9c38a; font-size:13px; margin-top:6px; }
+  .empty { color:var(--dim); }
+</style>
+</head>
+<body>
+<aside>
+  <h1>Video Lab</h1>
+  <div id="docs"></div>
+  <h2>Versions</h2>
+  <div id="versions"></div>
+</aside>
+<main>
+  <div id="title"><h1>Pick a document</h1></div>
+  <div class="bar">
+    <label>Compare with <select id="compare"><option value="">nothing</option></select></label>
+    <button id="playboth" hidden>Play both</button>
+    <span id="clock" class="empty"></span>
+  </div>
+  <div id="stage" class="stage"></div>
+  <div class="bar">
+    <input id="note" placeholder="A note at this time" size="50">
+    <button id="addnote">Note at this time</button>
+    <span id="saved" class="empty"></span>
+  </div>
+  <h2>Notes</h2>
+  <ul id="notes" class="notes"></ul>
+</main>
+<script>
+const qs = new URLSearchParams(location.search);
+let state = { doc: qs.get("doc"), v: qs.get("v") ? +qs.get("v") : null, t: qs.get("t") ? +qs.get("t") : 0, data: null, cmp: qs.get("a") || "" };
+const $ = (id) => document.getElementById(id);
+const clock = (t) => { const m = Math.floor(t / 60), s = t - 60 * m; return m + ":" + (s < 10 ? "0" : "") + s.toFixed(1); };
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+async function docs() {
+  const r = await (await fetch("/api/docs")).json();
+  $("docs").innerHTML = r.documents.map((d) =>
+    `<button class="doc ${d.id === state.doc ? "on" : ""}" data-doc="${esc(d.id)}">${esc(d.title)}<small>${esc(d.kind)} · ${d.versions} versions</small></button>`).join("");
+  document.querySelectorAll(".doc").forEach((b) => b.onclick = () => { state.doc = b.dataset.doc; state.v = null; state.cmp = ""; load(); });
+  if (!state.doc && r.documents.length) { state.doc = r.documents[0].id; }
+  if (state.doc) load();
+}
+
+function videos() { return [...document.querySelectorAll("#stage video")]; }
+
+function figure(v, label) {
+  const src = v && v.renders && (v.renders.review || v.renders.preview || v.renders.master);
+  const body = src ? `<video controls preload="metadata" src="${src}#t=${state.t}"></video>`
+    : `<div class="wait">${v && v.job && v.job.state === "failed" ? "The render failed: " + esc(v.job.error || "") : "Rendering the preview…"}</div>`;
+  return `<figure>${body}<figcaption>${esc(label)}</figcaption></figure>`;
+}
+
+async function load() {
+  const r = await (await fetch("/api/doc?doc=" + encodeURIComponent(state.doc))).json();
+  state.data = r;
+  const vs = r.versions;
+  if (!state.v) state.v = vs[vs.length - 1].n;
+  const cur = vs.find((x) => x.n === state.v) || vs[vs.length - 1];
+  history.replaceState(null, "", `/player?doc=${encodeURIComponent(state.doc)}&v=${cur.n}` + (state.cmp ? `&a=${state.cmp}` : ""));
+  document.querySelectorAll(".doc").forEach((b) => b.classList.toggle("on", b.dataset.doc === state.doc));
+  $("title").innerHTML = `<h1>${esc(r.doc.title)} · v${cur.n}</h1><div class="empty">${esc(cur.summary)}</div>` +
+    (cur.private && cur.private.length ? `<div class="private">Stays on this Mac, not for training: ${esc(cur.private.join("; "))}</div>` : "");
+  $("versions").innerHTML = vs.slice().reverse().map((x) =>
+    `<button class="ver ${x.n === cur.n ? "on" : ""}" data-v="${x.n}">v${x.n} ${esc(x.summary)}<small>${esc(x.author)} · ${new Date(x.created * 1000).toLocaleString()}</small></button>`).join("");
+  document.querySelectorAll(".ver").forEach((b) => b.onclick = () => { keepTime(); state.v = +b.dataset.v; load(); });
+  $("compare").innerHTML = `<option value="">nothing</option>` + vs.filter((x) => x.n !== cur.n).map((x) =>
+    `<option value="${x.n}" ${String(x.n) === String(state.cmp) ? "selected" : ""}>v${x.n} ${esc(x.summary).slice(0, 50)}</option>`).join("");
+  const other = state.cmp ? vs.find((x) => String(x.n) === String(state.cmp)) : null;
+  $("stage").className = "stage" + (other ? " two" : "");
+  $("stage").innerHTML = (other ? figure(other, `v${other.n}: ${other.summary}`) : "") + figure(cur, `v${cur.n}: ${cur.summary}`);
+  $("playboth").hidden = !other;
+  videos().forEach((el) => el.addEventListener("timeupdate", () => { $("clock").textContent = clock(el.currentTime); }));
+  const ns = r.notes.slice().sort((a, b) => (b.version === cur.n) - (a.version === cur.n));
+  $("notes").innerHTML = ns.length ? ns.map((n) =>
+    `<li><a data-t="${n.t}">${clock(n.t)}</a> on v${n.version ?? "?"}${n.version === cur.n ? "" : " (times are into that version)"}: ${esc(n.text)}</li>`).join("") : `<li class="empty">No notes on this document yet.</li>`;
+  document.querySelectorAll(".notes a").forEach((a) => a.onclick = () => seek(+a.dataset.t));
+  const pending = vs.some((x) => (x.n === cur.n || (other && x.n === other.n)) && !Object.keys(x.renders).length && x.job && ["queued", "running"].includes(x.job.state));
+  if (pending) setTimeout(load, 3000);
+}
+
+function keepTime() { const v = videos()[0]; if (v) state.t = v.currentTime; }
+function seek(t) { state.t = t; videos().forEach((v) => { v.currentTime = t; }); }
+
+$("compare").onchange = (e) => { keepTime(); state.cmp = e.target.value; load(); };
+$("playboth").onclick = () => { const vs = videos(); const t = vs[vs.length - 1].currentTime; vs.forEach((v) => { v.currentTime = t; v.play(); }); };
+$("addnote").onclick = async () => {
+  const vs = videos(); const v = vs[vs.length - 1];
+  if (!v) { $("saved").textContent = "Wait for the render to note on it."; return; }
+  const text = $("note").value.trim(); if (!text) return;
+  const q = (v.currentSrc || v.src).includes("-review.") ? "review" : "preview";
+  const r = await (await fetch("/api/note", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ doc: state.doc, v: state.v, q, t: v.currentTime, text }) })).json();
+  $("saved").textContent = r.error ? r.error : "Saved at " + clock(v.currentTime);
+  if (!r.error) { $("note").value = ""; keepTime(); load(); }
+};
+docs();
+</script>
+</body>
+</html>

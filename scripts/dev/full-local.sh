@@ -2,7 +2,8 @@
 # The whole 1.0 web stack on this Mac, wired the way production runs it
 # (docs/dev/full-local.md):
 #
-#   scripts/dev/full-local.sh start [--no-build]   build, start everything, return
+#   scripts/dev/full-local.sh start [--no-build] [--lab]
+#                                                  build, start everything, return
 #   scripts/dev/full-local.sh stop                 stop what start started
 #   scripts/dev/full-local.sh status               what runs, where
 #
@@ -29,6 +30,12 @@
 #   coder          $FULL_LOCAL/bin/coder: this checkout's coder-new, pointed at
 #                  the website (OPENAGENTS_ORIGIN) with its own state folder,
 #                  so `coder login` and /sync on never touch your real Coder.
+#   video lab      with --lab: scripts/film/lab.py serve on 127.0.0.1:8792
+#                  (VIDEO_LAB_PORT), and the website's chat gets the Lab's tools
+#                  through Gemini (docs/video-lab/mvp.md). The gateway then
+#                  defaults to 8790, since the film review page holds 8791.
+#                  Gemini's credential is $GOOGLE_APPLICATION_CREDENTIALS, else
+#                  ~/work/.secrets/gcp-mvp-automation.json.
 #
 # Everything persists under $FULL_LOCAL (default ~/.openagents/full-local):
 # accounts, sessions, chats, saved keys, the gateway registry, logs.
@@ -56,7 +63,7 @@ if [ -f "$run/ports" ] && [ "${1:-}" != start ]; then
 fi
 
 usage() {
-    sed -n '5,7p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '5,8p' "$0" | sed 's/^# \{0,1\}//'
     exit 2
 }
 
@@ -144,7 +151,8 @@ build() {
 
 status() {
     any=0
-    for name in gateway worker web; do
+    for name in gateway worker web lab; do
+        [ "$name" = lab ] && [ "${lab:-0}" != 1 ] && continue
         if p=$(pid "$name"); then
             any=1
             printf '%-8s running (pid %s)\n' "$name" "$p"
@@ -158,12 +166,15 @@ status() {
         echo "Gateway:   http://127.0.0.1:$gateway_port (admin token in $state/admin.token)"
         echo "Relay:     $relay"
         echo "Coder:     $state/bin/coder login   (then: $state/bin/coder, /sync on)"
+        if [ "${lab:-0}" = 1 ]; then
+            echo "Video Lab: http://127.0.0.1:${lab_port:-8792} (the chat's films; log in $logs/lab.log)"
+        fi
         echo "Logs:      $logs/{gateway,worker,web}.log"
     fi
 }
 
 stop() {
-    for name in web worker gateway; do
+    for name in web worker gateway lab; do
         if p=$(pid "$name"); then
             kill "$p" 2>/dev/null || true
             i=0
@@ -179,6 +190,19 @@ stop() {
 }
 
 start() {
+    build_first=1
+    lab=0
+    for arg in "$@"; do
+        case "$arg" in
+        --no-build) build_first=0 ;;
+        --lab) lab=1 ;;
+        *) usage ;;
+        esac
+    done
+    if [ "$lab" = 1 ] && [ -z "${GATEWAY_PORT:-}" ]; then
+        gateway_port=8790
+    fi
+    lab_port=${VIDEO_LAB_PORT:-8792}
     if pid gateway > /dev/null || pid worker > /dev/null || pid web > /dev/null; then
         echo "Already running; 'stop' first to restart."
         status
@@ -198,8 +222,9 @@ start() {
 
     mkdir -p "$state" "$run" "$logs"
     chmod 700 "$state"
-    printf 'web_port=%s\ngateway_port=%s\nrelay=%s\n' "$web_port" "$gateway_port" "$relay" > "$run/ports"
-    if [ "${1:-}" != "--no-build" ]; then
+    printf 'web_port=%s\ngateway_port=%s\nrelay=%s\nlab=%s\nlab_port=%s\n' \
+        "$web_port" "$gateway_port" "$relay" "$lab" "$lab_port" > "$run/ports"
+    if [ "$build_first" = 1 ]; then
         build
     fi
 
@@ -350,8 +375,36 @@ EOF
         environments="$state/environments/environments.json"
     fi
 
+    # Video Lab (docs/video-lab/mvp.md): the Lab service, and the website's
+    # chat pointed at it with Gemini as the model that calls its tools.
+    lab_url=""
+    google_credentials=${GOOGLE_APPLICATION_CREDENTIALS:-}
+    if [ "$lab" = 1 ]; then
+        lab_url="http://127.0.0.1:$lab_port"
+        if curl -fsS -o /dev/null "$lab_url/healthz" 2>/dev/null; then
+            echo "Video Lab is already running on $lab_url."
+        else
+            VIDEO_LAB_PORT=$lab_port nohup python3 "$root/scripts/film/lab.py" serve --port "$lab_port" \
+                > "$logs/lab.log" 2>&1 &
+            echo $! > "$run/lab.pid"
+            if ! wait_http "$lab_url/healthz" 30; then
+                echo "Video Lab didn't start; see $logs/lab.log" >&2
+                stop > /dev/null
+                exit 1
+            fi
+        fi
+        if [ -z "$google_credentials" ] && [ -f "$secrets/gcp-mvp-automation.json" ]; then
+            google_credentials="$secrets/gcp-mvp-automation.json"
+        fi
+        [ -n "$google_credentials" ] || echo "No Google credential, so the chat can't use the Lab's tools (Gemini)." >&2
+    fi
+
     # The website.
     (
+        if [ -n "$lab_url" ]; then
+            export OPENAGENTS_VIDEO_LAB="$lab_url"
+            [ -n "$google_credentials" ] && export GOOGLE_APPLICATION_CREDENTIALS="$google_credentials"
+        fi
         if [ -n "$environments" ]; then
             set -a
             # shellcheck disable=SC1091

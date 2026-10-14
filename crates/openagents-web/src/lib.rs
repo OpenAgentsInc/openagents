@@ -46,6 +46,7 @@ mod environments;
 pub use environments::push::StandIn as StagingPush;
 mod github_refs;
 mod github_tools;
+mod lab;
 mod layout;
 mod link_preview;
 pub mod mac_jobs;
@@ -538,6 +539,7 @@ pub fn router(config: Config) -> Router {
         .merge(account_export::routes())
         .merge(projects::routes())
         .merge(github_tools::routes())
+        .merge(lab::routes())
         .merge(connections::routes())
         .merge(promises::routes())
         .merge(pilot::routes())

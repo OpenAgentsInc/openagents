@@ -53,7 +53,31 @@ ap = argparse.ArgumentParser()
 ap.add_argument("segment", choices=["harnesses", "safety", "everywhere", "delegation"])
 ap.add_argument("out")
 ap.add_argument("--only", help="render only these seconds to PNGs (comma list) in OUT as a dir")
+ap.add_argument("--beats", action="store_true",
+                help="only write OUT's .beats.json (the animation beats cut.py check reads)")
 args = ap.parse_args()
+
+# Animation beats, in the segment's own seconds: a cut that ends inside one
+# chops the animation off (cut.py check fails it). Written beside the video as
+# <out>.beats.json.
+BEATS = {
+    "delegation": [
+        {"from": 9.6, "to": 12.75, "what": "the report card"},
+        {"from": 13.4, "to": 15.9, "what": "the prompt cache numbers"},
+    ],
+}
+
+
+def write_beats(out):
+    import json
+    side = Path(out).with_suffix(".beats.json")
+    side.write_text(json.dumps(BEATS.get(args.segment, []), indent=1) + "\n")
+    return side
+
+
+if args.beats:
+    print(write_beats(args.out))
+    raise SystemExit
 
 GEIST = Path(os.path.expanduser(os.environ.get("FILM_FONTS", "~/work/film-out/fonts")))
 BERKELEY = Path(os.path.expanduser(os.environ.get("BERKELEY_FONTS", "~/Library/Fonts")))
@@ -1047,4 +1071,5 @@ for i in range(frames):
     ff.stdin.write(render(i).tobytes())
 ff.stdin.close()
 ff.wait()
+write_beats(args.out)
 print(f"{frames} frames, {frames / FPS:.2f} s -> {args.out}")
