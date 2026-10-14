@@ -145,6 +145,10 @@ phase_scoped() {
   case " $CARGO_SCOPED " in *" $1 "*) return 0 ;; *) return 1 ;; esac
 }
 
+# A crates/* folder without a Cargo.toml stops every cargo command; name
+# it and the fix before any phase runs (#11593).
+scripts/dev/check-crate-dirs.sh || exit 1
+
 if [[ -n $CHANGED ]]; then
   if ! git rev-parse --verify "$CHANGED" >/dev/null 2>&1; then
     echo "--changed: cannot resolve ref '$CHANGED'; pass --changed=REF" >&2

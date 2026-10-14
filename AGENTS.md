@@ -156,6 +156,10 @@ the worktree: a Coder run already has one in `CARGO_TARGET_DIR` (keep it; never
 point it at `$PWD/target`), because a target directory inside the workspace
 outgrows what the next task's admission can observe and every later task there
 is refused. Keep workspace formatting changes separate from behavior changes.
+The workspace takes every `crates/*` folder as a crate, so one without a
+`Cargo.toml` stops every cargo command; `scripts/dev/check-crate-dirs.sh`
+(run by `verify-rust.sh`) names it and the fix. Never delete such a folder:
+it may be another agent's work in progress (#11593).
 
 Deploy host builds only from a commit rebased on current `origin/main`, and
 give each checkout its own Cargo target directory, so an older checkout
