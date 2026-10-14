@@ -64,7 +64,7 @@ fn err(status: StatusCode, code: &str, message: &str) -> Response {
 }
 
 async fn auth(State(api): State<Arc<Api>>, req: Request, next: Next) -> Response {
-    if req.uri().path() == "/healthz" {
+    if matches!(req.uri().path(), "/health" | "/healthz") {
         return next.run(req).await;
     }
     let given = req
@@ -382,6 +382,8 @@ async fn healthz() -> Response {
 
 pub fn router(api: Arc<Api>) -> Router {
     Router::new()
+        // Google's front end keeps /healthz for itself on run.app hosts.
+        .route("/health", get(healthz))
         .route("/healthz", get(healthz))
         .route("/v1/capabilities", get(capabilities))
         .route("/v1/computers", get(list).post(create))

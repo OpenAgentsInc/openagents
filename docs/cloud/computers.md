@@ -145,6 +145,19 @@ gcloud run deploy oa-computers --project openagentsgemini --region us-central1 \
   --image us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-computers:$C
 ```
 
+Deploying as the automation account is refused `actAs` on the runtime
+account (the compute default, which already reaches the account database
+and the secrets); deploy with the owner's gcloud account, as
+`scripts/deploy/web.sh` does.
+
+Live check, 2026-10-14 (as the synthetic account `test-smoke-11624`, no
+person's data): `POST /v1/computers` answered in 0.21 s; the reconciler
+booted a `small` oa-boat VM from `oa-coder-host` (77 s to the first turn),
+ran a turn with a per-turn secret (the command saw its 22 characters) and
+found `coder-cloud-runtime`; the checkpoint stopped it; a second turn
+resumed the same VM in 52 s, read the first turn's file, and saw no
+secret; delete removed the VM (no `oa-boat` instance left).
+
 ## Not yet
 
 Warm pool, activity-based suspend beyond the idle bound, billing, the

@@ -228,6 +228,8 @@ impl<D: Driver + Clone + 'static> Reconciler<D> {
                         .await;
                 }
                 match s {
+                    // Deleted and settled: nothing went wrong.
+                    _ if done => (0, None, self.settings.revisit, true),
                     Settled::Stuck(d, _) => (
                         e.attempts + 1,
                         Some(format!("no progress on {d:?}")),

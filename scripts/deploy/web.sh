@@ -322,7 +322,13 @@ for e in ({"name": "STACK_STATE", "value": "/stack"},
            "valueFrom": {"secretKeyRef": {"name": "openagents-vertex-sa-key", "key": "latest"}}},
           # Work hosts that take "work on this issue" runs (#11258).
           {"name": "OPENAGENTS_WORK_HOST_TOKEN",
-           "valueFrom": {"secretKeyRef": {"name": "openagents-work-host-token", "key": "latest"}}}):
+           "valueFrom": {"secretKeyRef": {"name": "openagents-work-host-token", "key": "latest"}}},
+          # Chats on their own computers through oa-computers (#11624,
+          # docs/cloud/computers.md), behind the agent-work gate.
+          {"name": "OPENAGENTS_WEB_COMPUTERS_URL",
+           "value": "https://oa-computers-157437760789.us-central1.run.app"},
+          {"name": "OPENAGENTS_WEB_COMPUTERS_TOKEN",
+           "valueFrom": {"secretKeyRef": {"name": "oa-computers-token", "key": "latest"}}}):
     if e["name"] not in env:
         envs.append(e)
         sys.stderr.write(f"  web env {e['name']} added\n")
