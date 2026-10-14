@@ -210,8 +210,8 @@ const COPIES: [&str; 4] = [
     "solid.mirror",
 ];
 
-/// Every solid's volume (mm³), by name.
-fn volumes(s: &Session) -> BTreeMap<String, f64> {
+/// Every solid's name and volume (mm³), in the order the kernel made them.
+fn volumes(s: &Session) -> Vec<(String, f64)> {
     let state = s.world_state();
     state
         .bodies
@@ -220,17 +220,26 @@ fn volumes(s: &Session) -> BTreeMap<String, f64> {
         .collect()
 }
 
+/// Whether two volumes are the same solid's (a copy is congruent to its
+/// source; the triangles differ a little where it moved).
+fn same_volume(a: f64, b: f64) -> bool {
+    (a - b).abs() <= 0.02 * a.abs().max(b.abs()) + 0.5
+}
+
 /// The solids a pattern or mirror feature made, each with the solid it
-/// copies: the kernel names copies anew ("Body7") and doesn't carry their
-/// source's colour, so a patterned blue strut would come out the part's
-/// red. A copy is matched to the source (the feature's `bodies`, or the
-/// solids its `features` made) whose volume is nearest to its own: a copy
-/// is congruent to its source.
+/// copies, so a copy can take its source's colour (the kernel doesn't carry
+/// it, and names a feature pattern's copies anew, "Body7"). In order of
+/// trust:
+/// 1. a copy named after its source (`strut (2)`: a pattern of bodies);
+/// 2. the kernel's order: a feature pattern or mirror replays each source
+///    feature in turn, so its copies come in equal runs, one run per
+///    source, each run the source's volume;
+/// 3. the source of the nearest volume.
 fn copies_made(
     part: &str,
     params: &Value,
-    before: &BTreeMap<String, f64>,
-    after: &BTreeMap<String, f64>,
+    before: &[(String, f64)],
+    after: &[(String, f64)],
 ) -> Vec<(String, String)> {
     let named = |key: &str| -> Vec<String> {
         params[key]
@@ -241,19 +250,37 @@ fn copies_made(
             .map(|n| scoped(part, n))
             .collect()
     };
+    let had = |name: &str| before.iter().find(|(n, _)| n == name).map(|(_, v)| *v);
     let sources: Vec<(String, f64)> = named("bodies")
         .into_iter()
         .chain(named("features"))
-        .filter_map(|n| before.get(&n).map(|v| (n, *v)))
+        .filter_map(|n| had(&n).map(|v| (n, v)))
         .collect();
-    after
-        .iter()
-        .filter(|(name, _)| !before.contains_key(*name))
-        .filter_map(|(name, v)| {
-            sources
+    let made: Vec<&(String, f64)> = after.iter().filter(|(n, _)| had(n).is_none()).collect();
+    if sources.is_empty() || made.is_empty() {
+        return Vec::new();
+    }
+    let run = made.len() / sources.len();
+    let in_order = made.len() % sources.len() == 0
+        && made
+            .iter()
+            .enumerate()
+            .all(|(i, (_, v))| same_volume(*v, sources[i / run].1));
+    made.iter()
+        .enumerate()
+        .map(|(i, (name, v))| {
+            let by_name = sources
                 .iter()
-                .min_by(|a, b| (a.1 - v).abs().total_cmp(&(b.1 - v).abs()))
-                .map(|(source, _)| (name.clone(), source.clone()))
+                .find(|(source, _)| name.starts_with(&format!("{source} (")));
+            let source = by_name
+                .or(in_order.then(|| &sources[i / run]))
+                .or_else(|| {
+                    sources
+                        .iter()
+                        .min_by(|a, b| (a.1 - v).abs().total_cmp(&(b.1 - v).abs()))
+                })
+                .map_or_else(String::new, |(source, _)| source.clone());
+            (name.clone(), source)
         })
         .collect()
 }
@@ -421,8 +448,9 @@ fn part_digest(part: &Value, parameters: &[Value]) -> String {
 pub const KERNEL: &str = "solidcraft@229de148";
 
 /// What a cached part records, versioned: 2 added the colours pattern and
-/// mirror copies take from their sources.
-const BUILD: u32 = 2;
+/// mirror copies take from their sources; 3 matches congruent sources by
+/// the kernel's order.
+const BUILD: u32 = 3;
 
 /// Builds one part from its history, or takes it from the cache.
 fn build_part(

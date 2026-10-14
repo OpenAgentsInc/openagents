@@ -195,21 +195,40 @@ mod tests {
 
     #[test]
     fn patterned_and_mirrored_copies_keep_their_solids_colour() {
-        // A red hub with a blue post, the post patterned four times round
-        // and mirrored below, and coloured only after: every copy is blue.
+        // A red hub with a blue post and a green one of the same size, both
+        // patterned four times round, the blue one mirrored below too, and
+        // coloured only after: every copy takes its own source's colour,
+        // though the two sources can't be told apart by volume.
         let mut part = doc::new_part("spinner", "Spinner", "ABS Plastic", Some("#cc2222"));
         part["features"] = json!([
             {"id": "hub", "op": "solid.cylinder", "params": {"radius": 10, "height": 5}},
             {"id": "post", "op": "solid.box", "params": {"length": 4, "width": 4, "height": 10, "center": [20, 0, 5], "operation": "new"}},
-            {"id": "ring", "op": "solid.pattern.circular", "params": {"features": ["post"], "axis": "Z", "count": 4}},
+            {"id": "peg", "op": "solid.box", "params": {"length": 4, "width": 4, "height": 10, "center": [30, 0, 5], "operation": "new"}},
+            {"id": "ring", "op": "solid.pattern.circular", "params": {"features": ["post", "peg"], "axis": "Z", "count": 4}},
             {"id": "under", "op": "solid.mirror", "params": {"bodies": ["post"], "plane": "XY"}},
-            {"id": "paint", "op": "appearance.assign", "params": {"bodies": ["post"], "color": "#2244dd"}}
+            {"id": "paint", "op": "appearance.assign", "params": {"bodies": ["post"], "color": "#2244dd"}},
+            {"id": "paint_peg", "op": "appearance.assign", "params": {"bodies": ["peg"], "color": "#22aa44"}}
         ]);
         let eval = evaluate(&part).unwrap_or_else(|p| panic!("{p:?}"));
         let count = |c: [u8; 3]| eval.built.solids.iter().filter(|s| s.color == c).count();
-        assert_eq!(eval.built.solids.len(), 6);
+        assert_eq!(eval.built.solids.len(), 10);
         assert_eq!(count([0x22, 0x44, 0xdd]), 5);
+        assert_eq!(count([0x22, 0xaa, 0x44]), 4);
         assert_eq!(count([0xcc, 0x22, 0x22]), 1);
+        // Each green solid is where a peg is: 30 mm from the axis.
+        for s in eval
+            .built
+            .solids
+            .iter()
+            .filter(|s| s.color == [0x22, 0xaa, 0x44])
+        {
+            let mut b = solidcraft_engine::geom::Aabb3::default();
+            for p in &s.mesh.positions {
+                b.add(*p);
+            }
+            let m = b.center();
+            assert!(((m.x * m.x + m.y * m.y).sqrt() - 30.0).abs() < 0.5, "{m:?}");
+        }
         // A glossy part's glTF materials are smooth; a plain one keeps 0.6.
         let text =
             |solids: &[build::Solid]| String::from_utf8_lossy(&export::glb(solids)).into_owned();

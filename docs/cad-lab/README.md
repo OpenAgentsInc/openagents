@@ -70,7 +70,8 @@ Z up.
   the glTF's roughness and the card's highlight); a solid of its own colour
   is one `appearance.assign` feature. Copies a pattern or mirror makes keep
   the colour of the solid they copy, even when it is coloured later (the
-  kernel names copies anew, so each is matched to its source by volume).
+  kernel names copies anew, so each is matched to its source by name, by
+  the order the kernel replays the sources in, or by volume).
 - **`assembly.v1`** holds `parts` (by id), `instances` that place them
   (`at`, `rotate`, relative to a `parent` instance), `joints` (fastened,
   revolute, slider and cylindrical move today; planar, spherical and gear are
