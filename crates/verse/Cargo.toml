@@ -105,6 +105,8 @@ openagents-chat-app = { path = "../openagents-chat-app", optional = true }
 # The control protocol the studio reaches a host on this computer with.
 openagents-connect = { path = "../openagents-connect", optional = true }
 physics = { path = "../physics" }
+# Robot Lab's inspection scene: URDF import and forward kinematics.
+robot-description = { path = "../robot-description" }
 # Everglade's town clock (`docs/verse/generative-agents.md`).
 town-clock = { path = "../town-clock" }
 # Everglade's townsfolk: rumors and talking (`docs/verse/generative-agents.md`).
@@ -278,6 +280,10 @@ required-features = ["capture"]
 
 [[example]]
 name = "grove_light"
+required-features = ["capture"]
+
+[[example]]
+name = "robot_lab_capture"
 required-features = ["capture"]
 
 [[example]]

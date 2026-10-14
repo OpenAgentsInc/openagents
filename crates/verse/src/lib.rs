@@ -68,6 +68,7 @@ pub mod pillar;
 pub use verse_gfx::profiling;
 pub mod render;
 pub mod replay;
+pub mod robot_lab;
 pub use verse_imported::ritual;
 pub mod runtime;
 pub mod session;

@@ -13742,6 +13742,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "robot-description"
+version = "1.0.0-rc.13"
+dependencies = [
+ "glam",
+ "roxmltree",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+]
+
+[[package]]
 name = "robot-lab"
 version = "1.0.0-rc.13"
 dependencies = [
@@ -17148,6 +17160,7 @@ dependencies = [
  "rcgen",
  "reqwest 0.12.28",
  "resvg",
+ "robot-description",
  "rtrb",
  "rust-native",
  "rust-native-desktop",
