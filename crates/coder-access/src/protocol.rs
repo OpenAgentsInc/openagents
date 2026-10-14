@@ -553,6 +553,8 @@ pub struct TaskQueue {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
 pub enum Operation {
+    #[serde(rename = "robot.lab")]
+    RobotLab { robot: robot_lab::remote::Request },
     #[serde(rename = "cloud.projects")]
     CloudProjects { workspace: String },
     #[serde(rename = "project.list")]
@@ -1022,6 +1024,9 @@ impl Operation {
     /// exact retry reads again. Its answer changes as the thread does.
     #[must_use]
     pub fn reads_only(&self) -> bool {
+        if let Self::RobotLab { robot } = self {
+            return robot.reads_only();
+        }
         matches!(
             self,
             Self::RequestOperation { .. }
@@ -1275,6 +1280,7 @@ impl Operation {
             Self::ReviewTask { .. } => "task.review",
             Self::PublishTask { .. } => "task.publish",
             Self::PutArtifact { .. } => "artifact.put",
+            Self::RobotLab { .. } => "robot.lab",
             Self::Computer { .. } => "computer",
             Self::ListBackground {} => "background.list",
             Self::ShowBackground { .. } => "background.show",
@@ -1325,6 +1331,11 @@ impl Operation {
     /// capability instead of a grant, so it requires none.
     pub fn required(&self) -> Option<Right> {
         match self {
+            Self::RobotLab { robot } => Some(if robot.reads_only() {
+                Right::Observe
+            } else {
+                Right::Operate
+            }),
             Self::Redeem { .. } => None,
             Self::Approve { .. }
             | Self::Deny { .. }
@@ -1538,6 +1549,9 @@ impl Operation {
                 crate::media::validate_all(&task.images)?;
             }
             Self::PutArtifact { artifact } => artifact.validate()?,
+            Self::RobotLab { robot } => robot
+                .validate()
+                .map_err(|e| Error::new(Code::Malformed, e))?,
             Self::Computer { computer } => computer.validate()?,
             Self::ListBackground {} => {}
             Self::ShowBackground { rule }
@@ -1851,6 +1865,9 @@ pub struct Receipt {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Outcome {
+    RobotLab {
+        robot: robot_lab::remote::Answer,
+    },
     CloudProjects {
         projects: crate::cloud::Projects,
     },
@@ -2092,6 +2109,9 @@ impl Outcome {
             Self::Tasks { tasks } => tasks.validate()?,
             Self::Task { task } => task.validate()?,
             Self::TaskOriginal { original } => original.validate()?,
+            Self::RobotLab { robot } => robot
+                .validate()
+                .map_err(|e| Error::new(Code::Malformed, e))?,
             Self::Computer { computer } => computer.validate()?,
             _ => {}
         }
@@ -2120,6 +2140,7 @@ impl Outcome {
                                 | Self::QueueAtRevision { .. }
                                 | Self::Published { .. }
                                 | Self::Merged { .. }
+                                | Self::RobotLab { .. }
                                 | Self::Agent { .. }
                         ) =>
                     {
@@ -2445,6 +2466,9 @@ impl Outcome {
             (op, Self::Agent { .. }) if op.agent() => true,
             (Operation::PutArtifact { artifact }, Self::Artifact { artifact: state }) => {
                 state.digest == artifact.digest && state.received <= artifact.size
+            }
+            (Operation::RobotLab { robot }, Self::RobotLab { robot: answer }) => {
+                answer.answers(robot)
             }
             (Operation::Computer { computer }, Self::Computer { computer: answer }) => {
                 answer.answers(computer)

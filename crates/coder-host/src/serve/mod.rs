@@ -736,6 +736,13 @@ fn reach_events(shared: &Shared, device: &str, now: u64) -> Result<Vec<nostr::do
                         .iter()
                         .cloned(),
                 )
+                .chain(
+                    shared
+                        .config
+                        .robot_lab
+                        .as_ref()
+                        .map(|_| "robot-lab".to_owned()),
+                )
                 .collect(),
         ),
         observed_at: now,

@@ -10,6 +10,8 @@ description = "Rust-owned application state and native bridge for the OpenAgents
 crate-type = ["rlib", "staticlib", "cdylib"]
 
 [dependencies]
+robot-lab = { path = "../robot-lab" }
+robot-workbench = { path = "../robot-workbench", default-features = false }
 openagents-chat-app = { path = "../openagents-chat-app" }
 # The theme (#11028): Coder Light's roles for the hosts' own chrome.
 oa-tokens = { path = "../oa-tokens" }

@@ -257,6 +257,14 @@ pub trait Dispatch: Send {
     ) -> std::result::Result<crate::media::ArtifactState, Code> {
         Err(Code::Unsupported)
     }
+    /// Answer a robot request after admission for its current observe or operate right.
+    fn robot_lab(
+        &mut self,
+        _device: &str,
+        _request: &robot_lab::remote::Request,
+    ) -> std::result::Result<robot_lab::remote::Answer, Code> {
+        Err(Code::Unsupported)
+    }
     /// Answer a `computer` request for `device`, which holds `terminal`:
     /// a screenshot, the open apps, or a file chunk (`crate::computer`). A
     /// host that does not serve its computer answers `unsupported`.
@@ -1650,6 +1658,20 @@ impl Host {
                     }
                 }
                 Err(code) => Err(Error::new(code, "the host did not keep the image")),
+            },
+            Operation::RobotLab { robot } => match dispatch.robot_lab(&p.key, robot) {
+                Ok(answer) => {
+                    let outcome = Outcome::RobotLab { robot: answer };
+                    if outcome.validate().is_ok() && outcome.answers(&request.op) {
+                        Ok(outcome)
+                    } else {
+                        Err(Error::new(
+                            Code::Unavailable,
+                            "The robot reply couldn't be read",
+                        ))
+                    }
+                }
+                Err(code) => Err(Error::new(code, "The computer couldn't open Robot Lab")),
             },
             Operation::Computer { computer } => match dispatch.computer(&p.key, computer) {
                 Ok(answer) => {

@@ -343,3 +343,5 @@ pub(super) fn task() -> Operation {
 pub(super) fn terminal() -> Operation {
     Operation::OpenTerminal { cols: 80, rows: 24 }
 }
+
+mod robot_lab;

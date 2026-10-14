@@ -144,6 +144,7 @@ struct AppPacket: Decodable {
     let schema: String
     let device: String
     let device_npub: String
+    let robot: NativeView?
     let computers: NativeView?
     let computers_home: ComputersHome?
     let computers_input: ComputersInput?
@@ -671,6 +672,8 @@ final class MobileBridge: ObservableObject {
     }
     func refreshComputers() { send(["op": "computers_refresh"]) }
     func refreshTailnet() { send(["op": "tailnet_refresh"]) }
+    func sendRobotClose() { send(["op": "robot_close"]) }
+
     func snapshot() { send(["op": "snapshot"]) }
 
     func activate(_ surface: String, view: NativeView, node: String) {

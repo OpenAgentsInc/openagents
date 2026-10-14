@@ -181,6 +181,15 @@ pub enum Request {
     Lifecycle {
         active: bool,
     },
+    RobotActivate {
+        instance: String,
+        revision: u64,
+        node: String,
+    },
+    RobotOpen {
+        host: String,
+    },
+    RobotClose,
     ComputersActivate {
         instance: String,
         revision: u64,
@@ -713,6 +722,8 @@ pub struct QrModules {
 
 #[derive(Serialize)]
 pub struct Packet {
+    /// The shared Robot Lab preview card, while it is open.
+    pub robot: Option<serde_json::Value>,
     pub schema: &'static str,
     /// This build shows the preview features (`crate::preview`).
     pub preview: bool,
@@ -830,6 +841,9 @@ struct Admitted {
 const ADMISSION_LIMIT: Duration = Duration::from_secs(5);
 
 pub struct App {
+    robot: Option<crate::robot_lab::Lab>,
+    robot_host: String,
+    robot_visible: bool,
     runtime: tokio::runtime::Runtime,
     /// The link cards' page reads in flight (`link_fetch`).
     link_reads: Arc<tokio::sync::Semaphore>,
@@ -1126,6 +1140,9 @@ impl App {
             Cache::open(&config.state_dir.join("link"), &secret).ok(),
         );
         Ok(Self {
+            robot: None,
+            robot_host: String::new(),
+            robot_visible: false,
             link,
             link_open: None,
             link_photo: false,
@@ -1279,6 +1296,14 @@ impl App {
     /// the attachments code already decoded and bounded; empty when the
     /// open draft has no such image.
     pub fn image(&self, resource: &str) -> Vec<u8> {
+        if resource.starts_with("image:robot-") {
+            return self
+                .robot
+                .as_ref()
+                .and_then(|r| r.image(resource))
+                .map(<[u8]>::to_vec)
+                .unwrap_or_default();
+        }
         // A link card's picture, already re-encoded (`links::card_image`).
         if resource.starts_with("link:") {
             return self
@@ -1549,6 +1574,9 @@ impl App {
                 }
             }
             Request::Lifecycle { active } => {
+                if let Some(robot) = &mut self.robot {
+                    robot.active(active && self.robot_visible);
+                }
                 crate::wake::set_active(active);
                 self.link.set_active(active);
                 self.connect.set_active(active);
@@ -1569,6 +1597,29 @@ impl App {
                     self.chats.refresh();
                     self.chats.warm();
                     self.load_tailnet(None, TAILNET_REFRESH_LIMIT);
+                }
+            }
+            Request::RobotOpen { host } => self.open_robot(&host),
+            Request::RobotClose => {
+                self.robot_visible = false;
+                if let Some(robot) = &mut self.robot {
+                    robot.active(false);
+                }
+            }
+            Request::RobotActivate {
+                instance,
+                revision,
+                node,
+            } => {
+                if let Some(robot) = &mut self.robot {
+                    if robot.activate(Activation {
+                        instance,
+                        revision,
+                        node,
+                    }) {
+                        self.robot_visible = false;
+                        robot.active(false);
+                    }
                 }
             }
             Request::ComputersActivate {
@@ -1618,6 +1669,9 @@ impl App {
                 if let Some(computers) = self.computers.as_mut() {
                     let _ = computers_home::open(computers, &host);
                 }
+            }
+            Request::ComputersChoose { host, choice } if choice == ComputersChoice::RobotLab => {
+                self.open_robot(&host)
             }
             Request::ComputersChoose { host, choice } => {
                 if let Some(computers) = self.computers.as_mut() {
@@ -2276,7 +2330,16 @@ impl App {
             },
             self.coder.notice_shown(),
         );
-        let coder_live = self.coder.live(self.computers.as_ref())
+        let robot = self
+            .robot
+            .as_mut()
+            .filter(|_| self.robot_visible)
+            .and_then(|r| r.packet());
+        let coder_live = self
+            .robot
+            .as_ref()
+            .is_some_and(|r| self.robot_visible && r.live_poll())
+            || self.coder.live(self.computers.as_ref())
             || previews.pending()
             || self.spend.live()
             || self.wallet_link.live();
@@ -2315,6 +2378,7 @@ impl App {
         let coder_live = coder_live || link.live;
         crate::wake::set_live(coder_live);
         Packet {
+            robot,
             schema: "openagents.mobile.v1",
             preview: crate::preview::ON,
             device: self.device.clone(),
@@ -2616,5 +2680,27 @@ mod exit_vault_tests {
             saved_at: 1,
         };
         assert!(vault.save(&too_big).is_err());
+    }
+}
+
+impl App {
+    fn open_robot(&mut self, host: &str) {
+        if host.trim().is_empty() {
+            self.notices.push("Choose a computer for Robot Lab".into());
+            return;
+        }
+        if self.robot_host != host || self.robot.is_none() {
+            let Some((links, handle)) = self.studio_links(host) else {
+                self.notices
+                    .push("Connect a computer to open Robot Lab".into());
+                return;
+            };
+            self.robot = Some(crate::robot_lab::Lab::live(links, handle));
+            self.robot_host = host.into();
+        }
+        self.robot_visible = true;
+        if let Some(robot) = &mut self.robot {
+            robot.active(true);
+        }
     }
 }

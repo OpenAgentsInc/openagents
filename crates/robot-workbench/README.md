@@ -185,3 +185,32 @@ Policy configuration `id` selects `act`, `smolvla`, or `service`; the execute
 command exposes the same choice as `--policy-kind`. The study example accepts
 this optional final argument. Service experiments save their pinned manifest,
 including checkpoint hashes, rather than copying remote weights to the client.
+
+## Phone and paired-host access
+
+The OpenAgents phone app opens **Robot Lab** from an online computer's menu.
+The Rust-owned card shows checked saved-frame previews, joint positions and
+limits, frame playback, pose changes, saved experiments, and run controls.
+Scenes and runs are paged; images and views use checked 16 KiB chunks. Playback
+shows successive preview frames as they arrive, rather than promising real-time
+rendering. The browser and desktop retain their interactive 3D views.
+
+Start this workbench with an explicit private project and execution configuration
+as above. Create a small host configuration outside Git:
+
+```json
+{"url":"http://127.0.0.1:8795","project":"arm-demo"}
+```
+
+Start the paired host with `coder host serve --robot-lab-config /absolute/path/to/lab.json`
+(or set `OPENAGENTS_ROBOT_LAB_CONFIG` to that path). The host checks the workbench's
+project before every forwarded call, refuses redirects and remote URLs, and
+rechecks the device's current grant on every request. Observe permits reads;
+operate permits pose changes and explicit execution of saved pinned experiments.
+No host configuration means no remote lab access.
+
+**Run batch** starts one declared seed and continues when the card closes.
+**Open run** follows an existing job after reconnect or app restart. **Stop**
+saves partial work; it does not discard earlier states or images. Hidden cards
+stop playback and progress polling. The phone downloads no model checkpoint
+and opens no simulator.

@@ -46,3 +46,5 @@ pub(crate) fn require(ok: bool, message: &str) -> Result<()> {
 }
 
 pub mod view;
+
+pub mod remote;

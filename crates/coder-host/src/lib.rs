@@ -171,3 +171,5 @@ pub fn unix_time() -> Result<u64> {
         .map(|d| d.as_secs())
         .map_err(|_| Error::Config("the system clock is before 1970".into()))
 }
+
+pub mod robot_lab;

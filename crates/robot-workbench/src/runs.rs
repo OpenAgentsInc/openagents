@@ -29,12 +29,14 @@ struct Command {
 pub struct Runs {
     pub config: Config,
     active: Arc<Mutex<BTreeMap<String, mpsc::SyncSender<Command>>>>,
+    handles: Arc<Mutex<BTreeMap<String, String>>>,
 }
 impl Runs {
     pub fn new(config: Config) -> Self {
         Self {
             config,
             active: Arc::new(Mutex::new(BTreeMap::new())),
+            handles: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
     pub fn start(
@@ -60,6 +62,7 @@ impl Runs {
         host.runs = None;
         let config = self.config.clone();
         let active = self.active.clone();
+        let handles = self.handles.clone();
         let (ready_tx, ready_rx) = mpsc::channel();
         let key = job.clone();
         std::thread::spawn(move || {
@@ -104,6 +107,10 @@ impl Runs {
                                     // Keep routing under the original control handle;
                                     // the new durable attempt has its own name.
                                     session.reset(&next_job, seed)?;
+                                    if let Ok(mut handles) = handles.lock() {
+                                        handles.retain(|_, original| original != &key);
+                                        handles.insert(next_job, key.clone());
+                                    }
                                 }
                             }
                             if !session.runner.finished() {
@@ -125,6 +132,9 @@ impl Runs {
             if let Err(error) = result {
                 let _ = ready_tx.send(Err(error));
             }
+            if let Ok(mut handles) = handles.lock() {
+                handles.retain(|_, original| original != &key);
+            }
             if let Ok(mut map) = active.lock() {
                 map.remove(&key);
             }
@@ -142,11 +152,18 @@ impl Runs {
         }
     }
     pub fn control(&self, job: &str, action: Action) -> Result<serde_json::Value, String> {
+        let handle = self
+            .handles
+            .lock()
+            .map_err(|_| "The run controls couldn't be opened")?
+            .get(job)
+            .cloned()
+            .unwrap_or_else(|| job.to_owned());
         let sender = self
             .active
             .lock()
             .map_err(|_| "The run controls couldn't be opened")?
-            .get(job)
+            .get(&handle)
             .cloned()
             .ok_or("This run has finished or isn't running here")?;
         let (reply, receive) = mpsc::channel();

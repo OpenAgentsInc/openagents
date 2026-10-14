@@ -723,6 +723,12 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         coder_access::host::ensure_parent(&state)?;
         Host::new(&state, policy).init(&owner)?;
     }
+    let robot_lab = options
+        .one("--robot-lab-config")?
+        .or_else(|| std::env::var("OPENAGENTS_ROBOT_LAB_CONFIG").ok())
+        .map(|path| crate::robot_lab::Config::read(std::path::Path::new(&path)))
+        .transpose()
+        .map_err(Error::Config)?;
     let settings = ServeSettings::load(root)?;
     let mut relays = options.all("--relay");
     if relays.is_empty() {
@@ -914,6 +920,7 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     // home for: a host under another root, as a test runs it, never moves
     // the person's threads into a store it will throw away.
     config.chat_home = chat_home(root);
+    config.robot_lab = robot_lab;
     // The owner's private Verse placements, for paired phones.
     config.verse_home = verse_home(root);
     // Claude Code's own sign-in status, read by running the pinned binary

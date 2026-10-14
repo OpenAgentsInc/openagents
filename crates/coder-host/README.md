@@ -264,3 +264,9 @@ these requests. Build with `--features verse-assets` when this integration is ne
 OpenAgents CLI companion. CLI tools can still use an independently installed
 `openagents` executable; coderdev does not rebuild it. Run
 `scripts/test-coderdev-no-verse.sh` to verify the development dependency graph.
+
+Robot Lab is opt-in with `coder host serve --robot-lab-config FILE` or
+`OPENAGENTS_ROBOT_LAB_CONFIG`. The file binds a loopback workbench URL and exact
+project. `robot.lab` reuses current observe/operate admission, exact mutation
+retries, and the existing encrypted direct and relay bindings. See the
+[workbench setup](../robot-workbench/README.md#phone-and-paired-host-access).

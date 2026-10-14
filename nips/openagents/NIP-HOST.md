@@ -662,6 +662,8 @@ A request is `openagents.host-request.v1`:
 | `invite.cancel` | `access_admin` | `cancelled` |
 | `device.list` | `access_read` | `devices` |
 | `device.revoke` | `access_admin` | `revoked` |
+| `robot.lab` reads | `observe`; explicitly configured lab only | `robot_lab` |
+| `robot.lab` run, control, or pose | `operate`; explicitly configured lab only | `robot_lab` |
 | `task.create` | `operate` | `dispatched` |
 | `task.list` | `observe` | `tasks` |
 | `task.read` | `observe` | `task` |
@@ -1556,3 +1558,23 @@ a store the host does not serve comes back as `outside` with no link. The
 phone shows it as words, with no Open Coder or Stop Coder too control
 (`a_local_run_outside_the_computers_host_is_said_plainly_with_no_dead_controls`
 in `crates/openagents-mobile/src/coder_tab_tests.rs`).
+
+### Robot Lab profile
+
+`robot.lab` carries the closed `robot_lab::remote::Request` shape. Hosts opt in
+with a fixed loopback Workbench URL and project; clients cannot name a URL,
+filesystem path, checkpoint, backend, or unsaved experiment. Every request
+rechecks the grant, epoch, expiry, and required right. List, exact-version view,
+preview, hashed asset, and run status require observe. Starting a saved pinned
+experiment, changing a pose, and pause/resume/step/stop/reset require operate.
+Reading a view never starts or resumes execution.
+
+View and asset replies carry 16 KiB chunks, whole-file SHA-256, size, and offset;
+the client checks all chunks and the complete hash before use. Replies are
+bounded to 48 KiB. Run status contains at most the latest recorded step and
+sensor references; images are separate hashed chunks. Mutations retain exact
+NIP-HOST retry replies. Reconnect reads the existing job instead of starting
+another one. Stopping saves partial evidence at a simulation-step boundary.
+Closing or hiding a device card releases viewing resources and subscriptions;
+a batch continues. An interactive view it owns explicitly requests pause on
+close. This profile supplies no physical robot, wallet, or approval authority.

@@ -435,6 +435,19 @@ impl Dispatch for Dispatcher {
 
     /// A screenshot, the open apps, or a file chunk: the computer itself,
     /// for a device that holds `terminal` (`crate::computer`).
+    fn robot_lab(
+        &mut self,
+        _device: &str,
+        request: &robot_lab::remote::Request,
+    ) -> Result<robot_lab::remote::Answer, Code> {
+        let config = self
+            .shared
+            .config
+            .robot_lab
+            .as_ref()
+            .ok_or(Code::Unsupported)?;
+        crate::robot_lab::proxy(config, request).map_err(|_| Code::Unavailable)
+    }
     fn computer(
         &mut self,
         _device: &str,

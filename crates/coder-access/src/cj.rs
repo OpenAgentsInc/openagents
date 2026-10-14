@@ -53,7 +53,7 @@ pub const CALL_SCHEMA: &[u8] = include_bytes!("../../../nips/openagents/schemas/
 pub const ANSWER_SCHEMA: &[u8] =
     include_bytes!("../../../nips/openagents/schemas/host-answer.v1.json");
 /// Every NIP-HOST operation this binding carries.
-pub const OPERATIONS: [&str; 24] = [
+pub const OPERATIONS: [&str; 25] = [
     "enroll.redeem",
     "enroll.approve",
     "enroll.deny",
@@ -61,6 +61,7 @@ pub const OPERATIONS: [&str; 24] = [
     "invite.cancel",
     "device.list",
     "device.revoke",
+    "robot.lab",
     "task.create",
     "task.steer",
     "task.cancel",

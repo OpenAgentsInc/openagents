@@ -10,6 +10,7 @@
         "invite.cancel",
         "device.list",
         "device.revoke",
+        "robot.lab",
         "task.create",
         "task.steer",
         "task.cancel",

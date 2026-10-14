@@ -107,6 +107,9 @@ class MainActivity : ComponentActivity() {
     private var resumed = false
     private var ticks = 0
     /** The Coder tab's requests to open Account > Computers, as last handled. */
+    private var robotDialog: android.app.Dialog? = null
+    private var robotRenderer: NativeRenderer? = null
+    private var robotContent: FrameLayout? = null
     private var computersShown = 0
     private var screensShown = 0
     private var imagePicksShown = 0
@@ -946,10 +949,37 @@ class MainActivity : ComponentActivity() {
 
     // Rendering
 
+    private fun renderRobot() {
+        val view = bridge.packet?.objectOrNull("robot")
+        if (view == null) {
+            robotDialog?.setOnDismissListener(null)
+            robotDialog?.dismiss(); robotDialog = null
+            robotRenderer?.clear(); robotRenderer = null; robotContent = null
+            return
+        }
+        if (robotDialog == null) {
+            val content = FrameLayout(this)
+            robotContent = content
+            robotRenderer = NativeRenderer(this, { native, node -> bridge.activate("robot", native, node) },
+                scrolling = true, surfaces = { resource ->
+                    if (resource.startsWith("image:robot-")) ChatImages.capture(this, bridge, resource) else null
+                })
+            robotDialog = android.app.Dialog(this).apply {
+                setContentView(ScrollView(this@MainActivity).apply { addView(content) })
+                setOnDismissListener { robotRenderer?.clear(); robotRenderer = null; robotContent = null; robotDialog = null; bridge.robotClose() }
+                show()
+                window?.setLayout(-1, -1)
+            }
+        }
+        robotDialog?.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Palette.BACKGROUND))
+        robotContent?.let { it.setBackgroundColor(Palette.BACKGROUND); robotRenderer?.mount(it, view) }
+    }
+
     private fun render() {
         if (!::bridge.isInitialized) return
         // The theme Rust resolved changed: redraw in it.
         if (Palette.apply(bridge.packet?.objectOrNull("appearance"))) restyle()
+        renderRobot()
         // A chat asked to connect a computer: Account > Computers.
         if (bridge.computersRequested != computersShown) {
             computersShown = bridge.computersRequested

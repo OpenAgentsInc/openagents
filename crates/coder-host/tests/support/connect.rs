@@ -52,6 +52,8 @@ pub struct Host {
 
 /// Options for [`host_with`].
 pub struct Options {
+    pub robot_lab: Option<coder_host::robot_lab::Config>,
+    pub recheck_every: Duration,
     /// The user ID the control socket admits; the test's own by default.
     pub uid: u32,
     /// A workspace, for terminals.
@@ -74,6 +76,8 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
+            robot_lab: None,
+            recheck_every: Duration::from_secs(30),
             uid: coder_host::control::own_uid(),
             workspace: true,
             autostart: None,
@@ -107,10 +111,11 @@ pub async fn host_with(options: Options) -> Host {
         tasks: temp.path().join("tasks"),
         uid: options.uid,
     });
+    config.robot_lab = options.robot_lab;
     config.label = "Studio Mac".into();
     config.chat_door = options.chat_door;
     config.chat_home = options.chat_home;
-    config.recheck_every = Duration::from_secs(30);
+    config.recheck_every = options.recheck_every;
     if options.workspace {
         let checkout = temp.path().join("checkout");
         std::fs::create_dir_all(&checkout).unwrap();

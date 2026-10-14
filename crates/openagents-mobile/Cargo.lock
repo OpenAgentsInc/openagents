@@ -1641,6 +1641,7 @@ dependencies = [
  "nostr",
  "nostr-transport",
  "private-fs",
+ "robot-lab",
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
@@ -1738,6 +1739,8 @@ dependencies = [
  "nostr-transport",
  "openagents-connect",
  "private-fs",
+ "reqwest 0.12.28",
+ "robot-lab",
  "rustls",
  "secp256k1 0.31.1",
  "serde",
@@ -5575,6 +5578,8 @@ dependencies = [
  "playtest",
  "qrcodegen",
  "reqwest 0.12.28",
+ "robot-lab",
+ "robot-workbench",
  "route-contract",
  "rust-native",
  "rustls",
@@ -6765,6 +6770,7 @@ dependencies = [
 name = "robot-lab"
 version = "1.0.0-rc.13"
 dependencies = [
+ "base64 0.22.1",
  "fs2",
  "schemars 1.2.2",
  "serde",
@@ -6786,6 +6792,21 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "robot-workbench"
+version = "1.0.0-rc.13"
+dependencies = [
+ "glam",
+ "robot-description",
+ "robot-lab",
+ "rust-native",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
  "thiserror 2.0.20",
 ]
 

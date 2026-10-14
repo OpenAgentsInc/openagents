@@ -29,6 +29,7 @@ pub enum Tone {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Choice {
+    RobotLab,
     SwitchOn,
     SwitchOff,
     TryNow,
@@ -233,6 +234,21 @@ fn row(snapshot: &Snapshot, caps: Capabilities, host: &HostRecord) -> Row {
             );
         }
     }
+    if online
+        && host.presence.as_ref().is_some_and(|received| {
+            received
+                .presence
+                .capabilities
+                .iter()
+                .any(|flag| flag == "robot-lab")
+        })
+        && host
+            .enrollment
+            .rights(snapshot.now)
+            .is_some_and(|r| r.iter().any(|r| r.as_str() == "observe"))
+    {
+        offer(&mut menu, Choice::RobotLab, "Robot Lab", None, None);
+    }
     offer(&mut menu, Choice::Access, "Access", None, None);
     if !host.directory_only()
         && host.listing.is_none()
@@ -319,6 +335,9 @@ pub fn choose(computers: &mut Computers, host: &str, choice: Choice) -> Result<O
             enabled: choice == Choice::SwitchOn,
         }),
         Choice::TryNow => computers.perform(Intent::RetryNow { host }),
+        Choice::RobotLab => computers.perform(Intent::Show {
+            screen: Screen::Host { host },
+        }),
         Choice::Access => computers.perform(Intent::Show {
             screen: Screen::Access { host },
         }),

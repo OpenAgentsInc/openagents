@@ -35,6 +35,8 @@ host = [
 verse-assets = ["host", "dep:verse-private"]
 
 [dependencies]
+robot-lab = { path = "../robot-lab" }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json"] }
 user-home = { path = "../user-home" }
 coder-host-wire = { path = "../coder-host-wire" }
 openagents-chat = { path = "../openagents-chat", optional = true }
@@ -160,6 +162,10 @@ required-features = ["host"]
 
 [[test]]
 name = "idle"
+required-features = ["host"]
+
+[[test]]
+name = "robot_lab"
 required-features = ["host"]
 
 [lints]

@@ -51,6 +51,7 @@ mod payees;
 mod playtest;
 mod preview;
 mod provider_keys;
+mod robot_lab;
 mod router;
 mod spark;
 mod spend;

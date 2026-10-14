@@ -57,6 +57,13 @@ struct HomeScreen: View {
             .environment(\.appColors, bridge.colors)
             .background(SystemAppearanceWatcher { bridge.reportSystemAppearance() })
             .fullScreenCover(isPresented: Binding(
+                get: { bridge.packet?.robot != nil },
+                set: { shown in if !shown { bridge.sendRobotClose() } })) {
+                    SurfaceView(view: bridge.packet?.robot, surface: { resource, label in
+                        AnyView(CaptureImageSurface(resource: resource, label: label, bridge: bridge))
+                    }, activate: { view, node in bridge.activate("robot", view: view, node: node) })
+                }
+            .fullScreenCover(isPresented: Binding(
                 get: { bridge.packet?.terminal == true && !bridge.gpuTerminalVisible },
                 set: { _ in })) {
                 // A terminal is Coder Noir in both looks.

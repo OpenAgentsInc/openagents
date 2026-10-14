@@ -6,7 +6,7 @@ SO-101 import and inspection, [LeRobot reader and export](../../crates/robot-dat
 [ACT, SmolVLA, and policy services](../../crates/robot-policy/README.md),
 [robotics Gym results](../gym/README.md#inspect-robot-experiments), and
 [Verse room](../../crates/verse-zone-robotlab/README.md) are implemented.
-Phone presentation and authorized remote execution remain tracked below.
+The phone mounts shared Rust Native preview and playback cards through an explicitly configured paired host. Remote reads require observe; run and pose controls require operate. Physical iOS and Android checks remain in [NEEDS_OWNER.md](../../NEEDS_OWNER.md).
 The [LeRobot companion](lerobot-in-verse.md) covers the data, vision gap,
 Rust articulated-joint spike, and room. Controlled recordings and numerical
 policy checks establish integration; the current trajectory-imitation policy
@@ -126,8 +126,7 @@ the result. Examples of visible text: “Cube moved 10 cm to the right”,
 Do not show controls for unavailable operations.
 
 Web uses the Rust/WASM Verse renderer in an inline canvas, starting with
-the supported browser rendering profile. Desktop and phone use registered
-Rust Native surfaces with Verse's GPU renderer. Plain terminals show a poster
+the supported browser rendering profile. Desktop uses registered Rust Native surfaces with Verse's GPU renderer. The phone currently uses checked saved-frame previews and working playback controls through its native image adapter. Plain terminals show a poster
 and a link to a local player. An adapter without interactive 3D shows a saved
 preview and working playback controls instead.
 
@@ -309,7 +308,7 @@ and other devices [#11613](https://github.com/OpenAgentsInc/openagents/issues/11
    configured policy service. Run a pinned seed set against the scripted
    baseline, inspect failures, and compare recorded metrics in Gym.
 6. **Verse room and other devices.** Mount the same lab in a Verse room, then
-   qualify phone presentation and remote execution. Cloud training, fleet
+   provide phone previews and authorized remote execution. The shared phone state and Android adapter compile; physical device checks remain owner steps. Cloud training, fleet
    experiments, and physical hardware control are later projects.
 
 Initial UX targets, to measure on a named machine: a cached inspection opens

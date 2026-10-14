@@ -466,6 +466,8 @@ class MobileBridge(private val context: Context, private val computersFixture: B
     }
 
     /** An activation on a surface: `computers`, `coder`, `tailnet`, or `terminal`. */
+    fun robotClose() = send(json("op" to "robot_close"))
+
     fun activate(surface: String, view: JSONObject, node: String) =
         send(json("op" to "${surface}_activate", "instance" to view.getString("instance"),
             "revision" to view.getLong("revision"), "node" to node))

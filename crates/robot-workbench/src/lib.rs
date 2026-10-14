@@ -16,3 +16,5 @@ pub mod runs;
 pub mod server;
 #[cfg(all(feature = "host", not(target_arch = "wasm32")))]
 pub mod sim;
+
+pub mod device;

@@ -113,6 +113,8 @@ pub struct Control {
 /// One host's configuration.
 #[derive(Clone, Debug)]
 pub struct Config {
+    /// Explicit loopback Robot Lab workbench and the project it serves.
+    pub robot_lab: Option<crate::robot_lab::Config>,
     /// The `coder-access` store: the host key, owner, and grants.
     pub access: PathBuf,
     /// Relays the host serves. The first is the primary relay: grants and
@@ -245,6 +247,7 @@ impl Config {
     #[must_use]
     pub fn new(access: PathBuf, relays: Vec<String>, generation: u64) -> Self {
         Self {
+            robot_lab: None,
             access,
             relays,
             policy: RelayPolicy::Production,
@@ -298,6 +301,9 @@ impl Config {
         #[cfg(unix)]
         if let Some(control) = &self.control {
             crate::control::socket::validate_path(&control.path)?;
+        }
+        if let Some(lab) = &self.robot_lab {
+            lab.validate().map_err(Error::Config)?;
         }
         self.primary()?;
         if self.relays.len() > coder_reach::directory::MAX_RELAYS {

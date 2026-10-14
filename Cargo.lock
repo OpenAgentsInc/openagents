@@ -3211,6 +3211,7 @@ dependencies = [
  "nostr",
  "nostr-transport",
  "private-fs",
+ "robot-lab",
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
@@ -3658,6 +3659,8 @@ dependencies = [
  "openagents-connect",
  "private-fs",
  "pylon",
+ "reqwest 0.12.28",
+ "robot-lab",
  "rustls",
  "secp256k1 0.31.1",
  "security-framework",
@@ -13960,6 +13963,7 @@ dependencies = [
 name = "robot-lab"
 version = "1.0.0-rc.13"
 dependencies = [
+ "base64 0.22.1",
  "fs2",
  "oa-copy",
  "schemars 1.2.2",

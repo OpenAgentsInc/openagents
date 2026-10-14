@@ -118,7 +118,7 @@ where
     // The host records when it last saw the device: at admission, then at
     // most once per resolution interval while messages arrive.
     let seen_every = std::time::Duration::from_secs(coder_access::host::SEEN_RESOLUTION);
-    shared.authority.touch(&binding.client, &binding.grant);
+    touch(&shared, &binding).await;
     let mut seen = std::time::Instant::now();
     // Renewal is due at admission, then at most once per interval.
     let mut renewed_at: Option<std::time::Instant> = None;
@@ -134,7 +134,7 @@ where
             // before the device's next message is served.
             () = shared.grants_changed.notified() => None,
         };
-        if let Err(code) = recheck(&shared, &binding) {
+        if let Err(code) = recheck(&shared, &binding).await {
             let _ = outbound.send(ToDevice::Closing(code.into())).await;
             break;
         }
@@ -151,7 +151,7 @@ where
         }
         if let Some(bytes) = next {
             if seen.elapsed() >= seen_every {
-                shared.authority.touch(&binding.client, &binding.grant);
+                touch(&shared, &binding).await;
                 seen = std::time::Instant::now();
             }
             serve_message(&shared, &binding, &outbound, &bytes);
@@ -174,17 +174,28 @@ async fn renew(shared: &Arc<Shared>, binding: &Binding) -> Option<nostr::domain:
 }
 
 /// The channel's grant, at its epoch, must still admit it.
-fn recheck(shared: &Shared, binding: &Binding) -> Result<(), &'static str> {
-    let now = unix_time().map_err(|_| "unavailable")?;
-    shared
-        .authority
-        .check(&binding.client, &binding.grant, binding.epoch, now)
-        .map(|_| ())
-        .map_err(|refusal| match refusal {
-            GrantRefusal::Unknown => "not_admitted",
-            GrantRefusal::Revoked => "revoked",
-            GrantRefusal::EpochMismatch | GrantRefusal::Expired => "stale",
-        })
+async fn recheck(shared: &Arc<Shared>, binding: &Binding) -> Result<(), &'static str> {
+    let authority = shared.authority.clone();
+    let (device, grant, epoch) = (binding.client.clone(), binding.grant.clone(), binding.epoch);
+    tokio::task::spawn_blocking(move || {
+        let now = unix_time().map_err(|_| "unavailable")?;
+        authority
+            .check(&device, &grant, epoch, now)
+            .map(|_| ())
+            .map_err(|refusal| match refusal {
+                GrantRefusal::Unknown => "not_admitted",
+                GrantRefusal::Revoked => "revoked",
+                GrantRefusal::EpochMismatch | GrantRefusal::Expired => "stale",
+            })
+    })
+    .await
+    .map_err(|_| "unavailable")?
+}
+
+async fn touch(shared: &Arc<Shared>, binding: &Binding) {
+    let authority = shared.authority.clone();
+    let (device, grant) = (binding.client.clone(), binding.grant.clone());
+    let _ = tokio::task::spawn_blocking(move || authority.touch(&device, &grant)).await;
 }
 
 fn serve_message(

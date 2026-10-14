@@ -91,6 +91,37 @@ impl Book {
         Ok(job)
     }
 
+    /// List bounded saved run names without loading their recordings.
+    pub fn list(&self) -> Result<Vec<String>> {
+        let mut ids = Vec::new();
+        for entry in fs::read_dir(&self.root)? {
+            let entry = entry?;
+            if entry
+                .path()
+                .extension()
+                .is_some_and(|extension| extension == "json")
+            {
+                require(
+                    entry.file_type()?.is_file(),
+                    "Choose ordinary saved run files.",
+                )?;
+                let id = entry
+                    .path()
+                    .file_stem()
+                    .and_then(|name| name.to_str())
+                    .ok_or_else(|| crate::Error::Invalid("This run name couldn't be read.".into()))?
+                    .to_owned();
+                valid_id(&id)?;
+                ids.push(id);
+                require(
+                    ids.len() <= 10_000,
+                    "Use the workbench to browse this many robot runs.",
+                )?;
+            }
+        }
+        ids.sort();
+        Ok(ids)
+    }
     pub fn get(&self, id: &str) -> Result<Job> {
         valid_id(id)?;
         let path = self.path(id, "json");

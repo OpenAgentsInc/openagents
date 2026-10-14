@@ -273,3 +273,238 @@ fn native_run_controls_step_reset_and_stop_preserve_both_attempts() {
         1
     );
 }
+
+#[test]
+fn phone_preview_keeps_accessible_readouts_and_hides_unavailable_controls() {
+    use robot_workbench::device::{self, Card};
+    let (_root, host) = host();
+    let reference = imported(&host);
+    let state = State::new(host.bundle(&reference).unwrap()).unwrap();
+    let render = |operate| {
+        device::card(
+            Card {
+                previous: None,
+                next: None,
+                sensor_resource: None,
+                state: Some(&state),
+                resource: Some("image:robot-fixture"),
+                jobs: &[],
+                documents: &[],
+                experiments: &[(reference.clone(), 7)],
+                operate,
+                controllable: false,
+                execution: true,
+                playing: false,
+                busy: false,
+                job: None,
+                status: "",
+                saved: None,
+                error: None,
+            },
+            "phone-fixture",
+            1,
+        )
+        .unwrap()
+    };
+    let readonly = render(false);
+    let text = serde_json::to_string(readonly.view()).unwrap();
+    assert!(oa_copy::violations(&text, &[]).is_empty());
+    assert!(text.contains("shoulder_pan"));
+    assert!(text.contains("Version 1"));
+    assert!(!text.contains("Run batch"));
+    assert!(!text.contains("Orbit"));
+    assert!(
+        readonly
+            .activate(&rust_native::Activation {
+                instance: "phone-fixture".into(),
+                revision: 0,
+                node: "close".into()
+            })
+            .is_err()
+    );
+    assert!(
+        readonly
+            .activate(&rust_native::Activation {
+                instance: "phone-fixture".into(),
+                revision: 1,
+                node: "close".into()
+            })
+            .is_ok()
+    );
+    assert!(
+        serde_json::to_string(render(true).view())
+            .unwrap()
+            .contains("Run batch")
+    );
+}
+
+#[test]
+fn remote_lab_pages_checked_views_and_keeps_pose_versions_separate() {
+    use robot_lab::remote::{Answer, CHUNK_BYTES, Request, decode};
+    let (root, host) = host();
+    let reference = imported(&host);
+    let server = robot_workbench::server::Server::new(host, root.path());
+    let Answer::Data { value, .. } = server.remote(Request::List { offset: 0 }).unwrap() else {
+        panic!()
+    };
+    assert_eq!(value["execution"], false);
+    assert!(
+        value["documents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|doc| doc["reference"]["version"] == reference.version)
+    );
+    let mut bytes = Vec::new();
+    loop {
+        let offset = bytes.len() as u64;
+        let Answer::Chunk {
+            size, bytes: part, ..
+        } = server
+            .remote(Request::View {
+                reference: reference.clone(),
+                offset,
+            })
+            .unwrap()
+        else {
+            panic!()
+        };
+        bytes.extend(decode(&part).unwrap());
+        if bytes.len() as u64 == size {
+            break;
+        }
+        assert_eq!(bytes.len() % CHUNK_BYTES, 0);
+    }
+    let before: robot_lab::view::Bundle = serde_json::from_slice(&bytes).unwrap();
+    before.validate().unwrap();
+    assert_eq!(before.subject, reference);
+    let command = Request::Pose {
+        reference: reference.clone(),
+        joint: "shoulder_pan".into(),
+        position: "0.2".into(),
+    };
+    let Answer::Data { value, .. } = server.remote(command.clone()).unwrap() else {
+        panic!()
+    };
+    let updated: Reference = serde_json::from_value(value["card"]["reference"].clone()).unwrap();
+    assert_ne!(updated, reference);
+    assert!(server.remote(command).is_err());
+    assert_eq!(
+        server.host.bundle(&reference).unwrap().scene.robots[0].joints["shoulder_pan"],
+        0.0
+    );
+    assert_eq!(
+        server.host.bundle(&updated).unwrap().scene.robots[0].joints["shoulder_pan"],
+        0.2
+    );
+    assert!(
+        server
+            .remote(Request::Run {
+                experiment: reference,
+                seed: 7,
+                job: "forbidden".into(),
+                batch: true
+            })
+            .is_err()
+    );
+}
+
+#[test]
+fn remote_simulation_keeps_partial_evidence_and_reads_exact_saved_preview() {
+    use robot_lab::remote::{Answer, Control, Request};
+    let Some(library) = std::env::var_os("ROBOT_LAB_MUJOCO_LIBRARY") else {
+        return;
+    };
+    let (root, mut host) = host();
+    let scene = imported(&host);
+    let config = robot_workbench::experiments::Config {
+        library: robot_sim::mujoco::LibraryPin {
+            path: library.into(),
+            sha256: std::env::var("ROBOT_LAB_MUJOCO_SHA256").unwrap(),
+        },
+        policy: None,
+    };
+    let pose = host.bundle(&scene).unwrap().scene.robots[0].joints.clone();
+    let experiment = robot_workbench::experiments::scripted_experiment(
+        &host,
+        &scene,
+        vec![7],
+        241,
+        vec![pose],
+        1,
+        &config,
+        "remote-experiment",
+    )
+    .unwrap();
+    host.runs = Some(std::sync::Arc::new(robot_workbench::runs::Runs::new(
+        config,
+    )));
+    let server = robot_workbench::server::Server::new(host, root.path());
+    let run = Request::Run {
+        experiment,
+        seed: 7,
+        job: "remote-one".into(),
+        batch: false,
+    };
+    assert!(server.remote(run).is_ok());
+    let control = |job: &str, command| Request::Control {
+        job: job.into(),
+        command,
+    };
+    assert!(server.remote(control("remote-one", Control::Step)).is_ok());
+    let Answer::Data { value, .. } = server
+        .remote(Request::Status {
+            job: "remote-one".into(),
+        })
+        .unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!(value["latest"]["index"], 1);
+    assert!(
+        server
+            .remote(control(
+                "remote-one",
+                Control::Reset {
+                    next_job: "remote-reset".into(),
+                    seed: 7
+                }
+            ))
+            .is_ok()
+    );
+    // Reconnecting with the new durable job name still reaches the current worker.
+    let Answer::Data { value, .. } = server
+        .remote(control("remote-reset", Control::Stop))
+        .unwrap()
+    else {
+        panic!()
+    };
+    let reference: Reference = serde_json::from_value(value["episode"].clone()).unwrap();
+    let episode = server.host.bundle(&reference).unwrap().episode.unwrap();
+    assert_eq!(episode.steps.len(), 1);
+    let old = robot_sim::jobs::Book::open(server.host.store.clone())
+        .unwrap()
+        .get("remote-one")
+        .unwrap();
+    assert!(old.episode.is_some());
+    assert_eq!(old.recording.unwrap().episode.steps.len(), 2);
+    let Answer::Data { value, .. } = server
+        .remote(Request::Preview {
+            reference,
+            frame: 0,
+        })
+        .unwrap()
+    else {
+        panic!()
+    };
+    let asset: robot_lab::document::Asset = serde_json::from_value(value).unwrap();
+    assert_eq!(asset.media_type, "image/png");
+    assert!(
+        server
+            .remote(Request::Asset {
+                sha256: asset.sha256,
+                offset: 0
+            })
+            .is_ok()
+    );
+}

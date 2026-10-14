@@ -40,7 +40,14 @@ impl Server {
         Router::new()
             .route("/healthz", get(|| async { "ok" }))
             .route("/api/tools", get(tool_definitions))
+            .route("/api/remote", post(remote))
             .route("/api/docs", get(documents))
+            .route(
+                "/api/project",
+                get(|State(server): State<Arc<Server>>| async move {
+                    Json(json!({"project":server.host.store.project()}))
+                }),
+            )
             .route("/api/tool/{name}", post(tool))
             .route("/api/sim", post(simulate))
             .route("/api/view", get(view))
@@ -100,11 +107,28 @@ impl Server {
         Ok(robot)
     }
     pub fn poster(&self, reference: &Reference) -> Result<robot_lab::document::Asset, String> {
+        self.poster_at(reference, 0)
+    }
+    pub fn poster_at(
+        &self,
+        reference: &Reference,
+        frame: u32,
+    ) -> Result<robot_lab::document::Asset, String> {
         let bundle = self.host.bundle(reference)?;
+        let step = match &bundle.episode {
+            Some(e) => Some(
+                e.steps
+                    .get(frame as usize)
+                    .ok_or("Choose a recorded frame")?,
+            ),
+            None if frame == 0 => None,
+            _ => return Err("This scene has no recorded frames".into()),
+        };
         let key = robot_lab::store::digest(
             &serde_json::to_vec(&(
                 reference,
-                "robot-poster-v1",
+                "robot-poster-v2",
+                frame,
                 env!("ROBOT_RENDER_BUILD_SHA"),
                 640,
                 400,
@@ -148,11 +172,7 @@ impl Server {
             return Ok(asset);
         }
         let robot = self.robot(&bundle.robot)?;
-        let scene = verse::robot_lab::document_scene(
-            &robot,
-            &bundle.scene,
-            bundle.episode.as_ref().map(|e| &e.steps[0]),
-        )?;
+        let scene = verse::robot_lab::document_scene(&robot, &bundle.scene, step)?;
         let mut lit = scene.props;
         lit.extend(scene.robot);
         let world = verse::mesh::Mesh {
@@ -397,4 +417,141 @@ async fn build(State(server): State<Arc<Server>>, Path(file): Path<String>) -> R
 }
 async fn play() -> Html<&'static str> {
     Html(include_str!("player.html"))
+}
+
+async fn remote(
+    State(server): State<Arc<Server>>,
+    headers: HeaderMap,
+    Json(request): Json<robot_lab::remote::Request>,
+) -> Response {
+    if headers
+        .get(header::ORIGIN)
+        .is_some_and(|o| o.to_str().ok() != Some(&server.host.base))
+    {
+        return (StatusCode::FORBIDDEN, "Open this control in Robot Lab").into_response();
+    }
+    match tokio::task::spawn_blocking(move || server.remote(request)).await {
+        Ok(Ok(answer)) => Json(answer).into_response(),
+        Ok(Err(error)) => (StatusCode::BAD_REQUEST, Json(json!({"error":error}))).into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Robot Lab couldn't answer",
+        )
+            .into_response(),
+    }
+}
+impl Server {
+    pub fn remote(
+        &self,
+        request: robot_lab::remote::Request,
+    ) -> Result<robot_lab::remote::Answer, String> {
+        use robot_lab::remote::{Answer, Request as R, chunk};
+        request.validate()?;
+        let value = match &request {
+            R::List { offset } => {
+                let references = self.host.store.list().map_err(|e| e.to_string())?;
+                let jobs = robot_sim::jobs::Book::open(self.host.store.clone())
+                    .and_then(|b| b.list())
+                    .map_err(|e| e.to_string())?;
+                let next = if (*offset as usize + 16) < references.len().max(jobs.len()) {
+                    Some(*offset + 16)
+                } else {
+                    None
+                };
+                let mut documents = Vec::new();
+                let mut experiments = Vec::new();
+                for reference in references.into_iter().skip(*offset as usize).take(16) {
+                    let version = self.host.store.get(&reference).map_err(|e| e.to_string())?;
+                    match version.content {
+                        robot_lab::Document::Scene(scene) => documents.push(json!({"reference":reference,"title":scene.name})),
+                        robot_lab::Document::Episode(_) => documents.push(json!({"reference":reference,"title":"Robot attempt"})),
+                        robot_lab::Document::Experiment(experiment) if !matches!(experiment.controller,robot_lab::document::Controller::Manual{..}) => experiments.push(json!({"reference":reference,"seeds":experiment.seeds.into_iter().take(1).collect::<Vec<_>>(),"scene":experiment.scene})),
+                        _ => (),
+                    }
+                }
+                json!({"project":self.host.store.project(),"documents":documents,"experiments":experiments,"jobs":jobs.into_iter().skip(*offset as usize).take(16).collect::<Vec<_>>(),"next":next,"execution":self.host.runs.is_some()})
+            }
+            R::View { reference, offset } => {
+                return chunk(
+                    request.clone(),
+                    &serde_json::to_vec(&self.host.bundle(reference)?)
+                        .map_err(|e| e.to_string())?,
+                    *offset,
+                );
+            }
+            R::Asset { sha256, offset } => {
+                return chunk(
+                    request.clone(),
+                    &self
+                        .host
+                        .store
+                        .asset_contents(sha256, 256 << 20)
+                        .map_err(|e| e.to_string())?,
+                    *offset,
+                );
+            }
+            R::Preview { reference, frame } => {
+                serde_json::to_value(self.poster_at(reference, *frame)?)
+                    .map_err(|e| e.to_string())?
+            }
+            R::Run {
+                experiment,
+                seed,
+                job,
+                batch,
+            } => self.remote_tool(crate::tools::Tool::Run {
+                experiment: experiment.document.clone(),
+                version: experiment.version.clone(),
+                seed: *seed,
+                job: job.clone(),
+                batch: *batch,
+            })?,
+            R::Status { job } => {
+                let mut value = crate::runs::Runs::inspect(&self.host, job)?;
+                let saved = robot_sim::jobs::Book::open(self.host.store.clone())
+                    .and_then(|b| b.get(job))
+                    .map_err(|e| e.to_string())?;
+                value["latest"] = json!(
+                    saved
+                        .recording
+                        .as_ref()
+                        .and_then(|r| r.episode.steps.last())
+                );
+                value
+            }
+            R::Control { job, command } => self.remote_tool(crate::tools::Tool::RunControl {
+                job: job.clone(),
+                command_json: serde_json::to_string(command).map_err(|e| e.to_string())?,
+            })?,
+            R::Pose {
+                reference,
+                joint,
+                position,
+            } => self.remote_tool(crate::tools::Tool::Pose {
+                document: reference.document.clone(),
+                base: reference.version.clone(),
+                joint: joint.clone(),
+                position: position.parse().map_err(|_| "Enter a joint position")?,
+            })?,
+        };
+        let answer = Answer::Data { request, value };
+        answer.validate()?;
+        Ok(answer)
+    }
+}
+
+impl Server {
+    fn remote_tool(&self, tool: crate::tools::Tool) -> Result<Value, String> {
+        let mut arguments = serde_json::to_value(tool).map_err(|e| e.to_string())?;
+        let name = arguments
+            .as_object_mut()
+            .and_then(|m| m.remove("tool"))
+            .and_then(|v| v.as_str().map(str::to_owned))
+            .ok_or("Choose a robot control")?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_millis() as u64;
+        self.host.execute(&name, arguments, now)
+    }
 }
