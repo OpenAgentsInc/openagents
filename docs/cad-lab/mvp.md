@@ -13,6 +13,39 @@ openagents cad render rover --view rear
 openagents cad export rover --formats step,3mf,glb
 ```
 
+## The rover (2026-10-14)
+
+Built in one local web chat (`/chat/5ddd9179-cd96-4260-a245-a91c44f8ac69`
+on http://127.0.0.1:4301) with twelve plain messages; Gemini 4 Argon chose
+every `cad_*` call. 38 versions, each rebuilt and checked:
+
+- a hollow aluminium chassis (760 × 440 × 170 mm, 40 mm rounded corners,
+  5 mm walls) with a raised OA emblem on the rear;
+- rocker-bogie suspension: two titanium rockers on revolute pivots (±25°)
+  with steel shafts, two bogies on the rockers (±30°), six treaded wheels
+  with lightening holes on spin joints;
+- a mast with a stereo camera head on a pan joint;
+- an avionics bay with a flight computer board and two battery packs under
+  a hinged lid (v37 opens it 105°, v38 closes it);
+- a sample cassette with six capped sample tubes;
+- a high-gain dish, two solar wings, deck rails and two hazard cameras.
+
+When the open lid struck the antenna, the overlap check refused it and the
+chat moved the antenna (v36-v37); `cad_set_part from_version` brought the
+antenna back after earlier attempts.
+
+v38: 18 parts, 35 placed, 51 solids, 79 features, 12 joints,
+909 × 980 × 1122 mm, **87.94 kg**, centre of mass **(16.0, −9.7, 310.2) mm**
+(X forward, Y left, Z up from the ground), inertia about it
+Ixx 15.52, Iyy 11.85, Izz 14.28 kg·m². An edit rebuilds and checks the whole
+rover in about 1.5 s once its parts are built.
+
+Outputs (owner's machine): `~/Downloads/cad-lab-rover-build.mp4` (1080p),
+`cad-lab-rover-{hero,rear,plan,open-avionics,suspension,camera-head,sample-cassette}.png`,
+`cad-lab-rover.{step,3mf,glb}`. The film is drawn with
+`cad-lab frames rover OUT --from N --to N --fit 38`, one camera for every
+version.
+
 ## Shipped
 
 - `crates/cad`: `part.v1` and `assembly.v1` with plain-words validation and

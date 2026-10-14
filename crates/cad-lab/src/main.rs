@@ -15,7 +15,7 @@ use cad_lab::lab::{FILES, Lab};
 use serde_json::{Value, json};
 
 const USAGE: &str = "usage: cad-lab serve [--port PORT] [--dir DIR] | cad-lab schema | cad-lab tool NAME [JSON]\n       \
-     cad-lab frames DOC OUT [--from N] [--to N] [--frames F] [--turn DEG] [--width W] [--height H] [--view V]";
+     cad-lab frames DOC OUT [--from N] [--to N] [--frames F] [--turn DEG] [--width W] [--height H] [--view V] [--offset DEG] [--fit N]";
 
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -94,6 +94,8 @@ fn frames(args: &[String]) -> Result<(), String> {
     let mut turn = 40.0;
     let (mut width, mut height) = (1920usize, 1080usize);
     let mut view = "hero".to_owned();
+    let mut offset = 0.0;
+    let mut fit: Option<u64> = None;
     let mut words = args[2..].iter();
     while let Some(word) = words.next() {
         let value = words.next().ok_or(format!("{word} needs a value"))?;
@@ -110,6 +112,8 @@ fn frames(args: &[String]) -> Result<(), String> {
             "--width" => width = number()? as usize,
             "--height" => height = number()? as usize,
             "--view" => view = value.clone(),
+            "--offset" => offset = number()?,
+            "--fit" => fit = Some(number()? as u64),
             _ => return Err(USAGE.into()),
         }
     }
@@ -139,7 +143,7 @@ fn frames(args: &[String]) -> Result<(), String> {
             let v = cad::render::View {
                 name: view.clone(),
                 focus: Vec::new(),
-                yaw: turn * (t - 0.5),
+                yaw: offset + turn * (t - 0.5),
                 zoom: 1.0,
                 frame,
             };
