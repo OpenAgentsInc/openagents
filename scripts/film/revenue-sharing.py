@@ -235,6 +235,14 @@ lights.append(Light([YOU, s1(math.pi)], REQ, 0.7, width=3.0, glow_r=R_S1 + 4, ho
 lights.append(Light(ring(math.pi, -2.0) + ring(-2.0, -0.42)[1:] + [PLUGIN], REQ + 0.75, 0.9,
                     width=2.8, glow_r=24, hold=1.2))
 lights.append(Light([s1(-math.pi / 2), MODEL], REQ + 1.2, 0.5, width=1.3, glow_r=26, hold=0.6, head=0.6))
+# The answer comes back to you while the plugin's call is paid for, so the
+# picture never sits still between the request and the payment.
+lights.append(Light(via(PLUGIN, HUB, 12) + via(HUB, YOU, 38)[1:], REQ + 2.9, 1.3, width=2.2, glow_r=12,
+                    hold=0.8, head=0.8))
+# More calls come in while the split settles, before the bonus.
+for t0 in (9.8, 10.35, 10.9, 11.3):
+    lights.append(Dot(via(YOU, HUB, -38) + ring(math.pi, -2.0)[1:] + ring(-2.0, -0.42)[1:] + [PLUGIN], t0, 1.1, LIGHT,
+                      r=2.2))
 # Beat 2: the payment in, then the split.
 lights.append(Light(via(YOU, HUB, -38), PAY, 0.9, GOLD, width=3.0, glow_r=R_S1 + 4, hold=0.9))
 lights.append(Light(via(HUB, PLUGIN, -10) + via(PLUGIN, AUTHOR, 10)[1:], SPLIT, 1.1, GOLD,

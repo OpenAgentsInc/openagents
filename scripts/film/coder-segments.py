@@ -418,6 +418,10 @@ def seg_harnesses():
         else:  # back to Auto
             lights.append(Light([pos[STEPS[j - 1]], polar(R_CORE, ang[STEPS[j - 1]])], t0, 0.3,
                                 width=2.0, glow_r=R_CORE + 4, hold=0.5, head=0.7))
+    # While the ring settles, Coder reaches out to each agent in turn, so the
+    # picture keeps moving until Auto's first message.
+    for i in range(6):
+        lights.append(Dot([polar(R_CORE, ang[i]), pos[i]], 3.0 + 0.3 * i, 0.55, r=2.2))
     # The last beat: the same conversation goes round all of them.
     rng = random.Random(290)
     for j in range(46):
@@ -827,6 +831,9 @@ def seg_everywhere():
         for k in DEV:
             if k != src:
                 lights.append(Light(link(src, k), t0 + 0.15, 0.6, width=2.4, glow_r=10, hold=0.5))
+    # the hand-off to the next device before it writes, so the picture keeps moving
+    lights.append(Light(link("term", "phone"), 3.8, 0.9, width=1.6, glow_r=8, hold=0.5, head=0.6))
+    lights.append(Light(link("phone", "web"), 8.0, 0.9, width=1.6, glow_r=8, hold=0.5, head=0.6))
     # the closing loop: one thread through all three
     LOOP = link("term", "phone") + link("phone", "web") + link("web", "term", -40)
 
@@ -978,6 +985,9 @@ def seg_delegation():
     # the parent keeps working on its own chat
     for j in range(16):
         t = 1.0 + rng.random() * 16.5
+        a = rng.random() * 2 * math.pi
+        lights.append(Dot([polar(RP + 8, a, P), polar(RP + 70, a, P)], t, 0.6, r=1.8))
+    for t in (1.05, 1.35, 3.3, 3.6):  # and in the two lulls, so the picture never sits still
         a = rng.random() * 2 * math.pi
         lights.append(Dot([polar(RP + 8, a, P), polar(RP + 70, a, P)], t, 0.6, r=1.8))
 
@@ -1399,6 +1409,7 @@ def seg_devday():
                [-2.9, -2.3, -1.7, -1.1, -0.5, 0.1]]
     rng = random.Random(2905)
     gold = [(5.8 + rng.random() * (SECONDS - 5.8), rng.randrange(len(AUTHORS))) for _ in range(46)]
+    again = (3.9, 5.9)  # a second light along the three years, so nothing sits still
 
     def hi(d, t):
         k = out_cubic((t - 0.5) / 3.2)
@@ -1425,6 +1436,9 @@ def seg_devday():
             kk = 1 - fade(t, tm, tm + 1.0)
             if 0 < kk < 1:
                 ring(ld, (x, Y), 8 + 18 * (1 - kk), LIGHT, 200 * kk, 1.5)
+        u = (t - again[0]) / (again[1] - again[0])
+        if 0 < u < 1:
+            glow(ld, (XA + (XB - XA) * ease(u), Y), 7, 130 * math.sin(math.pi * u))
         if t > 5.6:
             glow(ld, (1300.0, 330.0), 28, 110 * fade(t, 5.6, 6.3))
         for t0, a in gold:
