@@ -3630,7 +3630,7 @@ dependencies = [
 
 [[package]]
 name = "coder-new"
-version = "1.0.0-rc.12"
+version = "1.0.0"
 dependencies = [
  "acp-client",
  "agent-fleet",
@@ -9336,7 +9336,7 @@ dependencies = [
 
 [[package]]
 name = "microcoder"
-version = "1.0.0-rc.12"
+version = "1.0.0"
 dependencies = [
  "acp-client",
  "atif",
@@ -11026,7 +11026,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-cli"
-version = "1.0.0-rc.12"
+version = "1.0.0"
 dependencies = [
  "acp-client",
  "actors",
