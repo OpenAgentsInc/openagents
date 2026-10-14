@@ -111,6 +111,9 @@ pub struct Account {
     pub connections: Vec<Stored>,
     #[serde(default)]
     pub sources: Vec<Source>,
+    /// Projects whose chats don't use Gmail and Calendar (#11578).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mail_off: Vec<String>,
 }
 
 impl Account {

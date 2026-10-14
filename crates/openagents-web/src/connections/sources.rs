@@ -442,7 +442,7 @@ pub(crate) fn source_object(source: &Source) -> serde_json::Value {
 
 /// The caller (who may use Connections) and their project `reference`
 /// (its id or `name:NAME`): the service, the account owner, the project id.
-async fn api_project<'a>(
+pub(crate) async fn api_project<'a>(
     app: &'a App,
     headers: &HeaderMap,
     reference: &str,
@@ -458,7 +458,7 @@ async fn api_project<'a>(
     ))
 }
 
-fn api_stored_failed() -> Response {
+pub(crate) fn api_stored_failed() -> Response {
     crate::coder_sync::refused(
         StatusCode::SERVICE_UNAVAILABLE,
         "unavailable",

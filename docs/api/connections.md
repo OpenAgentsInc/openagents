@@ -1,4 +1,4 @@
-# Connections and Drive sources (2026-10-14)
+# Connections: Drive sources, Gmail, and Calendar (2026-10-14)
 
 Connect Google Drive to your openagents.com account, attach Drive folders
 and files to a project, and ask that project's chat questions it answers
@@ -147,6 +147,62 @@ looked at, with its link.
 curl -s -X POST https://openagents.com/v1/threads \
   -H "Authorization: Bearer $OPENAGENTS_TOKEN" \
   -d '{"request_id": "'"$(uuidgen | tr A-Z a-z)"'", "project": "name:devlog", "text": "Describe the three most recent videos in the Devlog folder."}'
+```
+
+## Gmail and Calendar
+
+Tracking: [#11578](https://github.com/OpenAgentsInc/openagents/issues/11578).
+Any chat by an allowed account with Google connected can use the person's
+Gmail and Google Calendar (not only chats in a project). Gemini on Vertex AI
+decides with typed function calls whether a message is about mail or the
+calendar; anything else goes on to the general chat. A project can turn
+this off for its chats. Answers link what they used (`Used:`) and say which
+model saw it. Mail text is treated as information, never instructions.
+Messages, subjects, addresses, and event titles are never logged, and
+mail read for an answer isn't kept after it.
+
+| Tool | Policy | What |
+| --- | --- | --- |
+| `gmail_search` `{query?, limit?}` | allow | Gmail search words (`from:`, `newer_than:7d`, `is:unread`; the inbox when empty): sender, subject, date, snippet, link, newest first |
+| `gmail_read` `{message}` or `{thread}` | allow | A message or thread as text, attachments listed by name |
+| `gmail_labels` | allow | The labels |
+| `gmail_draft` `{to, cc?, subject, body, reply_to?}` | allow | Makes a draft (not sent) and returns its link |
+| `gmail_send` `{draft}` | ask | Sends a draft, only on the person's confirm |
+| `calendar_list_events` `{range?: today\|tomorrow\|week, start?, end?}` | allow | Events in the person's time zone, with links |
+| `calendar_find_free_time` `{range?, start?, end?, minutes?, day_start?, day_end?}` | allow | Free stretches within working hours |
+| `calendar_create_event` `{title, start, end?, minutes?, attendees?, location?, description?}` | ask | Adds an event, only on the person's confirm |
+
+**Sending and adding always ask.** In a chat, a draft or a proposed event is
+shown as a card at the top of the answer with "Reply "send it"" or "Reply
+"yes"". It runs only when the person's next message confirms it, before
+anything else is read in that turn, and only for the exact draft or event
+shown (a draft changed in Gmail since isn't sent). Through the API,
+`POST /v1/connections/google/tools/gmail_send` (or `calendar_create_event`)
+answers `409 confirmation_required` with `{card, confirm}`; show the card to
+the person, and when they say yes send the same call with `"confirm": CODE`
+added (the code lasts ten to twenty minutes and fits only that card). Coder
+is offered the tools that never ask; the person sends drafts themselves.
+
+**Scopes are asked for one feature at a time.** `GET /v1/connections`
+shows `google.scopes` and `google.features` (`drive`, `sheets`, `gmail`,
+`gmail_compose`, `calendar`, `calendar_events`). When a chat needs one the
+grant lacks, the answer says so with one link that asks for just that
+(`/auth/google/connect?scope=gmail`); the API answers `409
+google_scope_missing` with the `url`. `POST /v1/connections/google/connect
+{"feature": "gmail"}` gives the same link; Settings, Connections shows
+Allow buttons.
+
+| Route | What |
+| --- | --- |
+| `POST /v1/connections/google/tools/{tool}` | Run a tool above (the arguments as a JSON object) |
+| `DELETE /v1/connections/google/gmail/drafts/{id}` | Throw a draft away |
+| `GET /v1/connections/google/projects/{project}` | `{project, mail_calendar}` |
+| `POST /v1/connections/google/projects/{project}` `{mail_calendar}` | Turn Gmail and Calendar off (`false`) or on for a project's chats |
+
+```sh
+openagents connections gmail "newer_than:2d is:unread"
+openagents connections calendar week
+openagents connections connect google --feature calendar
 ```
 
 ## The access list (admins)

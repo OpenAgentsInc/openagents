@@ -8199,7 +8199,7 @@
     },
     {
       "name": "connections",
-      "summary": "Services connected to your openagents.com account: connect Google Drive, browse it, and see what's attached.",
+      "summary": "Services connected to your openagents.com account: connect Google, browse Drive, search Gmail, and see your calendar.",
       "children": [
         {
           "name": "list",
@@ -8238,7 +8238,7 @@
                   "google"
                 ],
                 "usage": [
-                  "connect google [--sheets] [--no-open]"
+                  "connect google [--sheets] [--feature FEATURE] [--no-open]"
                 ],
                 "forms": [
                   {
@@ -8258,13 +8258,20 @@
                       },
                       {
                         "kind": "option",
+                        "name": "feature",
+                        "value": "FEATURE",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
                         "name": "no-open",
                         "optional": true
                       }
                     ]
                   }
                 ],
-                "summary": "Print the link that connects Google Drive (read only), and open it in your browser on this computer. --sheets also lets chats read every tab of your Google Sheets. Open the link signed in to openagents.com as you; Google asks you to allow it.",
+                "summary": "Print the link that connects Google Drive (read only), and open it in your browser on this computer. --sheets also lets chats read every tab of your Google Sheets. --feature asks for one more thing on its own: gmail (read mail), gmail_compose (write drafts), calendar (read events), calendar_events (add events you confirm). Open the link signed in to openagents.com as you; Google asks you to allow it.",
                 "effect": "grants",
                 "runs_on": "connected_computer"
               }
@@ -8339,6 +8346,73 @@
               }
             ],
             "summary": "Browse your Drive (My Drive, or the folder's id or link), or search it, to find a folder or file to attach.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "gmail",
+          "leaf": {
+            "path": [
+              "connections",
+              "gmail"
+            ],
+            "usage": [
+              "gmail [QUERY] [--limit N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "gmail"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "QUERY",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "limit",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Search your Gmail (Gmail's search words: from:, subject:, newer_than:7d, is:unread; your inbox when empty): sender, subject, date, and link of each message, newest first.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "calendar",
+          "leaf": {
+            "path": [
+              "connections",
+              "calendar"
+            ],
+            "usage": [
+              "calendar [RANGE]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "calendar"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "RANGE",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Your Google Calendar's events: RANGE is today (the default), tomorrow, or week.",
             "effect": "read_only",
             "runs_on": "connected_computer"
           }
@@ -8456,6 +8530,14 @@
         },
         {
           "kind": "option",
+          "name": "feature",
+          "value": "FEATURE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "no-open",
           "optional": true,
           "repeated": true
@@ -8464,6 +8546,14 @@
           "kind": "option",
           "name": "folder",
           "value": "FOLDER",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "limit",
+          "value": "N",
           "open": true,
           "optional": true,
           "repeated": true

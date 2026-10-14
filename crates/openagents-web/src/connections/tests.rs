@@ -341,6 +341,16 @@ fn live(google: &FakeGoogle) -> Live {
         reconnect: false,
     };
     Live {
+        gmail: oa_connections::google::gmail::Gmail::new(
+            reqwest::Client::new(),
+            &google.endpoints(),
+            fake::ACCESS.into(),
+        ),
+        calendar: oa_connections::google::calendar::Calendar::new(
+            reqwest::Client::new(),
+            &google.endpoints(),
+            fake::ACCESS.into(),
+        ),
         drive: Drive::new(
             reqwest::Client::new(),
             google.endpoints(),

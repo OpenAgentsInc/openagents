@@ -18,9 +18,13 @@
 //!   /v1/connections/google/tools/{tool}` under its own sign-in.
 //!   Every call is checked against the connection's grant and the tool's
 //!   policy ([`oa_connections::effective_policy`]) first.
+//! - Gmail and Calendar ([`mail`], #11578): any chat of an allowed account
+//!   with Google connected can read mail and events, make drafts, and,
+//!   only on the person's confirm, send a draft or add an event.
 
 pub(crate) mod access;
 pub(crate) mod chat;
+pub(crate) mod mail;
 pub(crate) mod media;
 pub(crate) mod sources;
 #[cfg(test)]
@@ -39,7 +43,9 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use hmac::{Hmac, Mac};
 use maud::{Markup, html};
 use oa_connections::core::{Connection, Policy, Scope};
+use oa_connections::google::calendar::Calendar;
 use oa_connections::google::drive::{self, Call, Drive, Readers};
+use oa_connections::google::gmail::Gmail;
 use oa_connections::google::oauth::{self, OAuthError, Pkce};
 use oa_connections::google::{self as google_api, DRIVE_READONLY, Endpoints, SHEETS_READONLY};
 use openagents_ui::actions::{Alert, Badge, Button, ButtonLink, ButtonType, ButtonVariant, Color};
@@ -102,6 +108,7 @@ pub(crate) fn routes() -> Router<App> {
         .route(API_DRIVE, get(api_drive))
         .route(API_TOOL, post(api_tool))
         .merge(sources::routes())
+        .merge(mail::routes())
         .merge(access::routes())
 }
 
@@ -209,6 +216,8 @@ impl Unready {
 /// connection as the core sees it.
 pub(crate) struct Live {
     pub drive: Drive,
+    pub gmail: Gmail,
+    pub calendar: Calendar,
     pub connection: Connection,
     pub owner: String,
 }
@@ -249,6 +258,8 @@ pub(crate) async fn live(app: &App, owner: &str) -> Result<Live, Unready> {
         Err(OAuthError::Unreachable) => return Err(Unready::Unavailable),
     };
     Ok(Live {
+        gmail: Gmail::new(google.http.clone(), &google.endpoints, token.clone()),
+        calendar: Calendar::new(google.http.clone(), &google.endpoints, token.clone()),
         drive: Drive::new(
             google.http.clone(),
             google.endpoints.clone(),
@@ -437,9 +448,68 @@ async fn view(
                     (MarkdownRoot::new(html! { p { "Google can't be connected on this server yet." } }))
                 }
             }
+            @if let Some(stored) = stored.as_ref().filter(|s| !s.reconnect && google.is_some()) {
+                (mail_section(stored))
+            }
             (MarkdownRoot::new(html! {
                 p { "Attach Drive folders and files to a project from its page in " a href=(crate::projects::PAGE) { "Projects" } "." }
             }))
+        }
+    }
+}
+
+/// Gmail and Calendar on the settings page: what chats may do with each,
+/// and the link that allows what isn't allowed yet.
+fn mail_section(stored: &Stored) -> Markup {
+    let on = features(Some(stored));
+    let row = |label: &str, hint: &str, allow: Option<(&str, &str)>| {
+        html! {
+            div class="oa-settings-row" {
+                div class="oa-settings-text" {
+                    span class="oa-settings-label" { (label) }
+                    span class="oa-settings-hint" { (hint) }
+                }
+                div class="oa-settings-control" {
+                    @if let Some((text, feature)) = allow {
+                        (action_link(text, &format!("{CONNECT}?scope={feature}")))
+                    }
+                }
+            }
+        }
+    };
+    let gmail = on["gmail"] == json!(true);
+    let drafts = on["gmail_compose"] == json!(true);
+    let calendar = on["calendar"] == json!(true);
+    let events = on["calendar_events"] == json!(true);
+    html! {
+        section class="oa-settings-group" aria-labelledby="connections-mail" {
+            h2 #connections-mail { "Gmail and Calendar" }
+            (row(
+                "Gmail",
+                match (gmail, drafts) {
+                    (true, true) => "Chats can read your mail and write drafts. Nothing is sent unless you say so.",
+                    (true, false) => "Chats can read your mail. Allow drafts to have them write emails for you to send.",
+                    _ => "Allow it so chats can find and read your mail.",
+                },
+                match (gmail, drafts) {
+                    (false, _) => Some(("Allow Gmail", "gmail")),
+                    (true, false) => Some(("Allow drafts", "gmail_compose")),
+                    _ => None,
+                },
+            ))
+            (row(
+                "Calendar",
+                match (calendar, events) {
+                    (true, true) => "Chats can read your calendar and add events you confirm.",
+                    (true, false) => "Chats can read your calendar. Allow events to have them add ones you confirm.",
+                    _ => "Allow it so chats can see your events and free time.",
+                },
+                match (calendar, events) {
+                    (false, _) => Some(("Allow Calendar", "calendar")),
+                    (true, false) => Some(("Allow events", "calendar_events")),
+                    _ => None,
+                },
+            ))
         }
     }
 }
@@ -571,8 +641,9 @@ fn redirect_uri(service: &CloudSession) -> String {
 struct ConnectQuery {
     #[serde(default)]
     return_to: Option<String>,
-    /// `sheets`: ask only for Sheets (incremental consent); `drive`: only
-    /// Drive; neither: both.
+    /// One feature to ask for on its own (incremental consent): `drive`,
+    /// `sheets`, `gmail`, `gmail_compose`, `calendar`, `calendar_events`
+    /// ([`google_api::FEATURES`]); none: Drive and Sheets.
     #[serde(default)]
     scope: Option<String>,
 }
@@ -609,11 +680,11 @@ async fn connect(
         owner: account_owner(&viewer.account_id),
         issued: now(),
     };
-    let scopes: &[&str] = match query.scope.as_deref() {
-        Some("sheets") => &[SHEETS_READONLY],
-        Some("drive") => &[DRIVE_READONLY],
-        _ => &[DRIVE_READONLY, SHEETS_READONLY],
-    };
+    let scopes: &[&str] = query
+        .scope
+        .as_deref()
+        .and_then(google_api::feature_scopes)
+        .unwrap_or(&[DRIVE_READONLY, SHEETS_READONLY]);
     let url = oauth::authorize_url(
         &google.endpoints,
         &google.client,
@@ -640,7 +711,7 @@ struct CallbackQuery {
     error: Option<String>,
 }
 
-fn encode(value: &str) -> String {
+pub(crate) fn encode(value: &str) -> String {
     url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
 }
 
@@ -732,8 +803,15 @@ async fn finished(app: &App, headers: &HeaderMap, query: CallbackQuery) -> Respo
         Ok(grant) => grant,
         Err(_) => return back_with("failed"),
     };
-    if !grant.scopes.iter().any(|s| s == DRIVE_READONLY) {
-        // The person unticked Drive on Google's page.
+    let integration = google_api::integration(&Endpoints::default());
+    let oa_connections::AuthTemplate::OAuth2 {
+        scopes: offered, ..
+    } = &integration.auth
+    else {
+        return back_with("failed");
+    };
+    if !grant.scopes.iter().any(|s| offered.contains(s)) {
+        // The person unticked everything asked for on Google's page.
         return back_with("declined");
     }
     let saved = store.update(&owner, |account| {
@@ -889,6 +967,7 @@ async fn api_list(State(app): State<App>, headers: HeaderMap) -> Response {
         "email": stored.and_then(|s| s.identity.clone()),
         "scopes": stored.map(|s| s.granted_scopes.clone()).unwrap_or_default(),
         "sheets": stored.is_some_and(|s| drive::has_sheets(&s.granted_scopes)),
+        "features": features(stored),
         "connected_at": stored.map(|s| crate::projects::api::rfc3339(s.connected_at)),
     });
     let sources: Vec<Value> = account
@@ -902,11 +981,36 @@ async fn api_list(State(app): State<App>, headers: HeaderMap) -> Response {
     )
 }
 
+/// Which features the stored grant allows (`drive`, `gmail`, ...): a
+/// feature is on when every tool it gates can run.
+pub(crate) fn features(stored: Option<&Stored>) -> Value {
+    let integration = google_api::integration(&Endpoints::default());
+    let connection = stored.map(|s| s.connection("_"));
+    let mut out = serde_json::Map::new();
+    for (feature, _) in google_api::FEATURES {
+        let on = connection.as_ref().is_some_and(|c| {
+            integration
+                .tools
+                .iter()
+                .filter(|t| google_api::feature_for(t) == Some(feature))
+                .all(|t| c.grants(t))
+        }) && match feature {
+            "sheets" => stored.is_some_and(|s| drive::has_sheets(&s.granted_scopes)),
+            _ => true,
+        };
+        out.insert(feature.into(), json!(on));
+    }
+    Value::Object(out)
+}
+
 #[derive(Deserialize, Default)]
 struct ConnectBody {
     /// Also read every tab of Sheets.
     #[serde(default)]
     sheets: bool,
+    /// One feature to ask for on its own (`gmail`, `calendar`, ...).
+    #[serde(default)]
+    feature: Option<String>,
     /// A same-site path to land on after Google.
     #[serde(default)]
     return_to: Option<String>,
@@ -954,10 +1058,22 @@ async fn api_connect(
         .as_ref()
         .is_some_and(|s| !s.reconnect && s.granted_scopes.iter().any(|g| g == DRIVE_READONLY));
     // Sheets on top of a working Drive connection asks only for Sheets.
-    let (scope, scopes): (Option<&str>, Vec<&str>) = match (body.sheets, drive_granted) {
-        (false, _) => (Some("drive"), vec![DRIVE_READONLY]),
-        (true, true) => (Some("sheets"), vec![SHEETS_READONLY]),
-        (true, false) => (None, vec![DRIVE_READONLY, SHEETS_READONLY]),
+    let asked = body
+        .feature
+        .as_deref()
+        .and_then(|f| google_api::feature_scopes(f).map(|scopes| (f, scopes)));
+    if body.feature.is_some() && asked.is_none() {
+        return crate::coder_sync::refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "feature is one of drive, sheets, gmail, gmail_compose, calendar, calendar_events.",
+        );
+    }
+    let (scope, scopes): (Option<&str>, Vec<&str>) = match (asked, body.sheets, drive_granted) {
+        (Some((feature, scopes)), _, _) => (Some(feature), scopes.to_vec()),
+        (None, false, _) => (Some("drive"), vec![DRIVE_READONLY]),
+        (None, true, true) => (Some("sheets"), vec![SHEETS_READONLY]),
+        (None, true, false) => (None, vec![DRIVE_READONLY, SHEETS_READONLY]),
     };
     let mut query = Vec::new();
     if let Some(scope) = scope {
@@ -983,7 +1099,7 @@ async fn api_connect(
             "url": url,
             "scopes": scopes,
             "status": google_state(&app, stored.as_ref()).await,
-            "message": "Open this link in a browser signed in to openagents.com as you. Google asks you to allow read-only access, then you come back here.",
+            "message": "Open this link in a browser signed in to openagents.com as you. Google asks you to allow it, then you come back here.",
         }),
     )
 }
@@ -1139,6 +1255,9 @@ async fn api_tool(
             );
         }
     };
+    if mail::names(&tool) {
+        return mail::api_tool(&app, service, &owner, &tool, arguments).await;
+    }
     let live = match live(&app, &owner).await {
         Ok(live) => live,
         Err(unready) => return api_unready(service, unready),

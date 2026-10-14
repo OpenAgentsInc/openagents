@@ -1,5 +1,5 @@
-//! `openagents connections` (#11574): the services connected to the
-//! person's openagents.com account (Google Drive first), from the command
+//! `openagents connections` (#11574, #11578): the services connected to the
+//! person's openagents.com account (Google: Drive, Gmail, Calendar), from the command
 //! line, through the website's `/v1/connections` routes
 //! (`docs/api/connections.md`). Attaching Drive folders and files to a
 //! project is `openagents projects sources`.
@@ -24,17 +24,27 @@ pub(crate) const USAGE: &str = "usage: openagents connections [COMMAND] [--accou
   list        The services connected to your openagents.com account: Google
               Drive, whether it's connected and as whom, and the Drive
               sources attached to your projects.
-  connect google [--sheets] [--no-open]
+  connect google [--sheets] [--feature FEATURE] [--no-open]
               Print the link that connects Google Drive (read only), and open
               it in your browser on this computer. --sheets also lets chats
-              read every tab of your Google Sheets. Open the link signed in
-              to openagents.com as you; Google asks you to allow it.
+              read every tab of your Google Sheets. --feature asks for one
+              more thing on its own: gmail (read mail), gmail_compose (write
+              drafts), calendar (read events), calendar_events (add events
+              you confirm). Open the link signed in to openagents.com as
+              you; Google asks you to allow it.
   remove google
               Disconnect Google. Your projects keep their Drive sources for
               when you connect it again.
   drive [QUERY] [--folder FOLDER]
               Browse your Drive (My Drive, or the folder's id or link), or
               search it, to find a folder or file to attach.
+  gmail [QUERY] [--limit N]
+              Search your Gmail (Gmail's search words: from:, subject:,
+              newer_than:7d, is:unread; your inbox when empty): sender,
+              subject, date, and link of each message, newest first.
+  calendar [RANGE]
+              Your Google Calendar's events: RANGE is today (the default),
+              tomorrow, or week.
   access list
               Admins: who may use Google Drive connections while Google
               hasn't approved the app. Admins always may.
@@ -53,6 +63,8 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("connect google", Effect::Grants),
     Declared::computer("remove google", Effect::Grants),
     Declared::computer("drive", Effect::ReadOnly),
+    Declared::computer("gmail", Effect::ReadOnly),
+    Declared::computer("calendar", Effect::ReadOnly),
     Declared::computer("access list", Effect::ReadOnly),
     Declared::computer("access add", Effect::Grants),
     Declared::computer("access remove", Effect::Grants),
@@ -88,9 +100,11 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     };
     let (known, fewest, most): (&[&str], usize, usize) = match command.as_str() {
         "list" => (&["account-dir"], 0, 0),
-        "connect google" => (&["account-dir", "sheets", "no-open"], 0, 0),
+        "connect google" => (&["account-dir", "sheets", "feature", "no-open"], 0, 0),
         "remove google" => (&["account-dir"], 0, 0),
         "drive" => (&["account-dir", "folder"], 0, 1),
+        "gmail" => (&["account-dir", "limit"], 0, 1),
+        "calendar" => (&["account-dir"], 0, 1),
         "access list" => (&["account-dir"], 0, 0),
         "access add" | "access remove" => (&["account-dir"], 1, 1),
         "connect" | "remove" => unreachable!("joined above"),
@@ -139,7 +153,13 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             .send(
                 site.http
                     .post(site.url("/v1/connections/google/connect"))
-                    .json(&json!({"sheets": args.switch("sheets")})),
+                    .json(&{
+                        let mut body = json!({"sheets": args.switch("sheets")});
+                        if let Some(feature) = args.option("feature") {
+                            body["feature"] = json!(feature);
+                        }
+                        body
+                    }),
             )
             .map(|consent| {
                 let url = consent["url"].as_str().unwrap_or_default().to_owned();
@@ -166,6 +186,39 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             };
             api.get(&path)
                 .map(|listed| output.emit(&listed, drive_text))
+        }
+        "gmail" => {
+            let limit = match args.option("limit").map(str::parse::<u32>) {
+                None => 10,
+                Some(Ok(n)) if (1..=20).contains(&n) => n,
+                Some(_) => {
+                    return output.usage("connections", "--limit is 1 to 20", USAGE);
+                }
+            };
+            api.send(
+                site.http
+                    .post(site.url("/v1/connections/google/tools/gmail_search"))
+                    .json(
+                        &json!({"query": rest.first().map_or("", String::as_str), "limit": limit}),
+                    ),
+            )
+            .map(|found| output.emit(&found, gmail_text))
+        }
+        "calendar" => {
+            let range = rest.first().map_or("today", String::as_str);
+            if !matches!(range, "today" | "tomorrow" | "week") {
+                return output.usage(
+                    "connections",
+                    "calendar takes today, tomorrow, or week",
+                    USAGE,
+                );
+            }
+            api.send(
+                site.http
+                    .post(site.url("/v1/connections/google/tools/calendar_list_events"))
+                    .json(&json!({"range": range})),
+            )
+            .map(|found| output.emit(&found, calendar_text))
         }
         "access list" => api
             .get("/v1/admin/access/drive-connections")
@@ -288,8 +341,10 @@ fn status_text(status: &str, email: Option<&str>) -> String {
 
 fn list_text(listed: &Value) -> String {
     let google = &listed["google"];
+    let features = &google["features"];
+    let on = |name: &str| features[name] == json!(true);
     let mut lines = vec![format!(
-        "Google Drive: {}{}",
+        "Google: {}{}",
         status_text(
             google["status"].as_str().unwrap_or("unavailable"),
             google["email"].as_str()
@@ -300,6 +355,21 @@ fn list_text(listed: &Value) -> String {
             ""
         }
     )];
+    if google["status"] == "connected" {
+        lines.push(format!(
+            "Gmail: {}. Calendar: {}.",
+            match (on("gmail"), on("gmail_compose")) {
+                (true, true) => "reads mail and writes drafts",
+                (true, false) => "reads mail",
+                _ => "not allowed (openagents connections connect google --feature gmail)",
+            },
+            match (on("calendar"), on("calendar_events")) {
+                (true, true) => "reads events and adds ones you confirm",
+                (true, false) => "reads events",
+                _ => "not allowed (openagents connections connect google --feature calendar)",
+            }
+        ));
+    }
     let sources = listed["sources"].as_array().cloned().unwrap_or_default();
     if sources.is_empty() {
         lines.push(
@@ -378,6 +448,65 @@ fn drive_text(listed: &Value) -> String {
     lines.join("\n")
 }
 
+fn gmail_text(found: &Value) -> String {
+    let messages = found["result"]["messages"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    if messages.is_empty() {
+        return "No messages match.".into();
+    }
+    let mut lines = Vec::new();
+    for message in &messages {
+        lines.push(format!(
+            "{}{}  {}  {}\n  {}",
+            if message["unread"] == json!(true) {
+                "* "
+            } else {
+                ""
+            },
+            message["date"].as_str().unwrap_or_default(),
+            message["from"].as_str().unwrap_or_default(),
+            message["subject"].as_str().unwrap_or("(no subject)"),
+            message["link"].as_str().unwrap_or_default(),
+        ));
+    }
+    lines.join("\n")
+}
+
+fn calendar_text(found: &Value) -> String {
+    let events = found["result"]["events"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let zone = found["result"]["time_zone"].as_str().unwrap_or("UTC");
+    if events.is_empty() {
+        return format!("No events ({zone}).");
+    }
+    let mut lines = vec![format!("Times in {zone}:")];
+    for event in &events {
+        let when = if event["all_day"] == json!(true) {
+            format!("{} (all day)", event["start"].as_str().unwrap_or_default())
+        } else {
+            let start = event["start"].as_str().unwrap_or_default();
+            let end = event["end"].as_str().unwrap_or_default();
+            // `2026-10-15T10:00:00-05:00` as `2026-10-15 10:00`.
+            let short = |t: &str| t.get(..16).unwrap_or(t).replace('T', " ");
+            format!(
+                "{} to {}",
+                short(start),
+                short(end).get(11..).unwrap_or_default()
+            )
+        };
+        lines.push(format!(
+            "  {when}  {}\n    {}",
+            event["title"].as_str().unwrap_or("(no title)"),
+            event["link"].as_str().unwrap_or_default(),
+        ));
+    }
+    lines.join("\n")
+}
+
 fn access_text(listed: &Value) -> String {
     let entries = listed["data"].as_array().cloned().unwrap_or_default();
     let mut lines = vec!["Google Drive connections: site admins, and".to_owned()];
@@ -416,7 +545,7 @@ mod tests {
             "sources": [{"name": "Finances", "kind": "folder", "link": "https://drive.google.com/drive/folders/f1", "project": "prj_a"}],
         }));
         assert!(
-            on.starts_with("Google Drive: connected as chris@openagents.com, with Sheets"),
+            on.starts_with("Google: connected as chris@openagents.com, with Sheets"),
             "{on}"
         );
         assert!(
@@ -433,6 +562,30 @@ mod tests {
         );
         assert!(text.contains("https://openagents.com/auth/google/connect?scope=drive"));
         assert!(text.contains("signed in to openagents.com"));
+    }
+
+    #[test]
+    fn mail_and_events_are_listed_with_their_links() {
+        let mail = gmail_text(&json!({"result": {"messages": [
+            {"date": "Tue, 14 Oct 2026", "from": "A <a@b.co>", "subject": "Hi", "link": "https://mail.google.com/mail/#all/t1", "unread": true}
+        ]}}));
+        assert_eq!(
+            mail,
+            "* Tue, 14 Oct 2026  A <a@b.co>  Hi\n  https://mail.google.com/mail/#all/t1"
+        );
+        let events = calendar_text(
+            &json!({"result": {"time_zone": "America/Chicago", "events": [
+                {"title": "Standup", "start": "2026-10-15T10:00:00-05:00", "end": "2026-10-15T10:15:00-05:00", "link": "https://calendar.google.com/e1"}
+            ]}}),
+        );
+        assert!(
+            events.contains("2026-10-15 10:00 to 10:15  Standup"),
+            "{events}"
+        );
+        assert_eq!(
+            gmail_text(&json!({"result": {"messages": []}})),
+            "No messages match."
+        );
     }
 
     #[test]

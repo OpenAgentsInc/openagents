@@ -222,7 +222,7 @@ Coder:
                website): list, show one with its chats, add, remove, and
                private files.
   connections  Services connected to your openagents.com account: connect
-               Google Drive, browse it, and see what's attached.
+               Google, browse Drive, search Gmail, and see your calendar.
   board        GitHub Project boards: list items by status, add an issue, and
                move it to a status.
   lease        Run a command under a lease on a shared resource (build slots,

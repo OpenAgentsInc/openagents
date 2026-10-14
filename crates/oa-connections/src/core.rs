@@ -202,13 +202,21 @@ pub struct ToolSpec {
     pub input_schema: Value,
     #[serde(default)]
     pub scopes: Vec<String>,
+    /// Its own default, when the HTTP method's isn't right: a Gmail draft
+    /// is a `POST` that changes nothing anyone sees (allow), a Calendar
+    /// free/busy query is a `POST` that only reads (allow), and sending
+    /// mail always asks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy: Option<Policy>,
 }
 
 impl ToolSpec {
-    /// Its policy when no rule applies.
+    /// Its policy when no rule applies: its own default, else its HTTP
+    /// method's.
     #[must_use]
     pub fn default_policy(&self) -> Policy {
-        Policy::for_method(self.method)
+        self.policy
+            .unwrap_or_else(|| Policy::for_method(self.method))
     }
 
     /// The name a model calls it by: dots become underscores
@@ -446,6 +454,7 @@ mod tests {
             method,
             input_schema: json!({"type": "object"}),
             scopes: vec!["https://www.googleapis.com/auth/drive.readonly".into()],
+            policy: None,
         }
     }
 

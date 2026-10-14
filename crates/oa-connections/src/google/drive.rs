@@ -918,6 +918,7 @@ pub fn tool_specs() -> Vec<ToolSpec> {
                 "additionalProperties": false
             }),
             scopes: scopes.clone(),
+            policy: None,
         },
         ToolSpec {
             id: "drive.list_folder".into(),
@@ -933,6 +934,7 @@ pub fn tool_specs() -> Vec<ToolSpec> {
                 "additionalProperties": false
             }),
             scopes: scopes.clone(),
+            policy: None,
         },
         ToolSpec {
             id: "drive.read".into(),
@@ -947,6 +949,7 @@ pub fn tool_specs() -> Vec<ToolSpec> {
                 "additionalProperties": false
             }),
             scopes,
+            policy: None,
         },
     ]
 }

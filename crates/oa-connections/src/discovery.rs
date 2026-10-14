@@ -99,6 +99,7 @@ fn tool(id: &str, method: &Value) -> Option<ToolSpec> {
             .flatten()
             .filter_map(|scope| scope.as_str().map(str::to_owned))
             .collect(),
+        policy: None,
     })
 }
 

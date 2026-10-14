@@ -2102,6 +2102,21 @@ async fn answer(
         }
         _ => None,
     };
+    // An account allowed Connections with Google connected: Gemini answers
+    // questions about its Gmail and Calendar, or hands the message on
+    // (#11578).
+    let mail = match (&door, parts.is_empty()) {
+        (Some(_), true) => {
+            crate::connections::mail::door(
+                &app,
+                &owner,
+                chat.project.as_deref(),
+                format!("/chat/{}", chat.id),
+            )
+            .await
+        }
+        _ => None,
+    };
     // Images or PDFs go to the door that takes them; the hosted chat
     // answers with the words only when it can't (#11174).
     let door: Option<Box<dyn openagents_chat::basic_coder::Door>> = match (door, vision) {
@@ -2112,13 +2127,22 @@ async fn answer(
                 fallback: Some((door, fallback_turns)),
             }))
         }
-        (Some(door), _) => match drive {
-            Some(mut drive) => {
-                drive.fallback = Some(door);
-                Some(Box::new(drive))
+        (Some(door), _) => {
+            let door: Box<dyn openagents_chat::basic_coder::Door> = match mail {
+                Some(mut mail) => {
+                    mail.fallback = Some(door);
+                    Box::new(mail)
+                }
+                None => door,
+            };
+            match drive {
+                Some(mut drive) => {
+                    drive.fallback = Some(door);
+                    Some(Box::new(drive))
+                }
+                None => Some(door),
             }
-            None => Some(door),
-        },
+        }
         (None, _) => None,
     };
     // The chat's project's repository, read for this turn with the

@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "Connections (#11238): integrations, named per-account connections whose secrets stay server-side, scopes, and per-tool policy, with Google Drive as the first integration (OAuth, Discovery-derived tools, and the read-only drive.search, drive.list_folder, and drive.read)."
+description = "Connections (#11238): integrations, named per-account connections whose secrets stay server-side, scopes, and per-tool policy, with Google as the first integration (OAuth, Discovery-derived tools, the read-only Drive tools, Gmail search/read/drafts with send only on confirm, and Calendar events and free time with create only on confirm)."
 
 [features]
 # `fake`: a fake Google (OAuth, Drive, Sheets) for tests in this crate and
@@ -14,7 +14,11 @@ fake = ["dep:axum", "dep:tokio"]
 [dependencies]
 axum = { version = "0.8", optional = true }
 base64 = "0.22"
+futures = "0.3"
 getrandom = "0.3"
+# Calendar days and working hours in the person's own time zone, with the
+# time zone database built in (a slim container has none).
+jiff = { version = "0.2.37", features = ["tzdb-bundle-always"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
