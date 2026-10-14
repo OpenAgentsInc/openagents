@@ -336,6 +336,53 @@ mod tests {
         assert!(why.contains("\"level\""), "{why}");
     }
 
+    fn volume_of(features: Value) -> f64 {
+        let mut part = doc::new_part("p", "P", "Aluminum", None);
+        part["features"] = features;
+        let eval = evaluate(&part).unwrap_or_else(|p| panic!("{p:?}"));
+        eval.report["mass"]["volume_cm3"].as_f64().unwrap() * 1000.0
+    }
+
+    #[test]
+    fn sweep_loft_draft_and_mirror_build_from_documents() {
+        let pi = std::f64::consts::PI;
+        // A rod: a circle swept 50 mm along a line.
+        let rod = volume_of(json!([
+            {"id": "section", "op": "sketch", "params": {"plane": "YZ", "draw": [
+                {"op": "sketch.circle.center", "params": {"center": [0, 0], "radius": 3}}]}},
+            {"id": "route", "op": "sketch", "params": {"plane": "XY", "draw": [
+                {"op": "sketch.line", "params": {"points": [[0, 0], [50, 0]], "ids": ["run"]}}]}},
+            {"id": "rod", "op": "solid.sweep", "params": {"sketch": "section", "path_sketch": "route", "path": ["run"]}}
+        ]));
+        assert!((rod - pi * 9.0 * 50.0).abs() / rod < 0.01, "sweep {rod}");
+        // A square frustum: 20 mm square to 10 mm square over 30 mm.
+        let frustum = volume_of(json!([
+            {"id": "foot", "op": "sketch", "params": {"plane": "XY", "draw": [
+                {"op": "sketch.rectangle.center", "params": {"center": [0, 0], "corner": [10, 10]}}]}},
+            {"id": "head", "op": "sketch", "params": {"plane": "XY", "offset": 30, "draw": [
+                {"op": "sketch.rectangle.center", "params": {"center": [0, 0], "corner": [5, 5]}}]}},
+            {"id": "tower", "op": "solid.loft", "params": {"sections": [{"sketch": "foot"}, {"sketch": "head"}]}}
+        ]));
+        assert!((frustum - 7000.0).abs() < 20.0, "loft {frustum}");
+        // A 5° draft on one side of a 20 mm cube, about the floor: a wedge
+        // of ½·20²·tan 5°·20 comes off or goes on.
+        let drafted = volume_of(json!([
+            {"id": "b", "op": "solid.box", "params": {"length": 20, "width": 20, "height": 20, "center": [0, 0, 10]}},
+            {"id": "taper", "op": "solid.draft", "params": {"faces": ["b:+x"], "angle": 5, "neutral": "XY"}}
+        ]));
+        let wedge = 0.5 * 400.0 * 5f64.to_radians().tan() * 20.0;
+        assert!(
+            ((drafted - 8000.0).abs() - wedge).abs() < 5.0,
+            "draft {drafted}"
+        );
+        // A block mirrored across YZ: two solids, twice the volume.
+        let pair = volume_of(json!([
+            {"id": "b", "op": "solid.box", "params": {"length": 10, "width": 10, "height": 10, "center": [20, 0, 5]}},
+            {"id": "twin", "op": "solid.mirror", "params": {"bodies": ["b"], "plane": "YZ"}}
+        ]));
+        assert!((pair - 2000.0).abs() < 1.0, "mirror {pair}");
+    }
+
     #[test]
     fn exports_step_3mf_and_glb_and_reads_step_back() {
         let mut eval = evaluate(&plate()).unwrap();
