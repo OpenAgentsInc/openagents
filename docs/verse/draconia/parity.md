@@ -928,6 +928,29 @@ $B -b --factory-startup --python scripts/blender/draconia_set.py -- ~/work/film-
   between ash roots and bright lengths; MetaHuman's cards (warmer) show
   through the gaps. The robe is unchanged (round 17).
 
+### Round 17, 2026-10-14: the robe's top follows the neckline, a hood behind the neck
+
+- **What changed** (`draconia_cloth.py`, set in `metahuman_import.py`).
+  - `ROBE_NECK_R`: the robe's top follows the neckline. It keeps every
+    face further than 8.5 cm from the neck's axis instead of stopping at
+    one height. On MetaHuman's body the old height lay below the
+    shoulders' line and left a flat shelf.
+  - `HOOD_DRAPE`: a soft roll lying on the robe round the back of the
+    neck, thicker at the back. It is placed on the body's nearest point
+    to a ring at the neck's base: rays cast down met the head or started
+    inside the thick back of the neck. A thin green lining tube runs
+    along its inner edge.
+- **Artifacts.** `~/Downloads/draconia-parity-round-17.png` (reference |
+  round 16 | round 17, the medium neutral shot only: the face and hair
+  are unchanged, so the full-face grid was not re-rendered); the progress
+  sheet; `~/work/film-out/draconia/parity/round-17/`.
+- **Honest state.** A small change on screen: the robe now rises to the
+  collar over the shoulders, its green facing with it, and the hood is
+  mostly hidden behind her at this framing. The robe still reads near
+  black where the reference's is a dark teal-green with a visible hood
+  roll. Round 18 turns to the face (the owner: it does not read as
+  Draconia).
+
 ## Peacock scene
 
 The peacock guardian (reference 113.0–118.0 s, [shots.md](shots.md)),

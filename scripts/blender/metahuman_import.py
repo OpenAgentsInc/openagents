@@ -1003,6 +1003,11 @@ def main():
         draconia_cloth.KNOT_SIZE = 1.15
         # Round 16: finer stripes (about 3 cm a repeat, the reference's).
         draconia_cloth.TIE_STRIPES = 32.0
+        # Round 17: the robe's top follows the neckline and a hood lies on
+        # it round the back of the neck, with a green lining edge.
+        draconia_cloth.ROBE_NECK_R = float(os.environ.get("MH_ROBE_NECK_R", "0.085"))
+        draconia_cloth.HOOD_DRAPE = os.environ.get("MH_HOOD", "1") == "1"
+        draconia_cloth.HOOD_R = float(os.environ.get("MH_HOOD_R", "0.1"))
         draconia_cloth.COLLAR_GAP = 0.7
         draconia_cloth.ROBE_OPEN_TOP = -0.03
         # Round 14: the sweater stops 3 cm under the neck's base, so the
