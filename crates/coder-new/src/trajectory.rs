@@ -17,6 +17,30 @@ use crate::{
     live::{Chat, Entry},
 };
 
+/// The card a finished `delegate` call's `output` reports, as the call's
+/// export carries it: its id, agent and task.
+fn folded_card(
+    chat: &Chat,
+    reported: &std::collections::HashSet<usize>,
+    output: &Value,
+) -> Option<Value> {
+    let child = output.get("child")?.as_str()?;
+    reported
+        .iter()
+        .find_map(|index| match chat.entries.get(*index) {
+            Some(Entry::Delegation {
+                id,
+                name,
+                task,
+                running: false,
+                ..
+            }) if id.split_once(':').map_or(id.as_str(), |(_, rest)| rest) == child => {
+                Some(json!({"id": id, "agent": name, "task": task}))
+            }
+            _ => None,
+        })
+}
+
 /// Render a transcript without running a model or a tool.
 pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
     let mut session = Session::opening(
@@ -28,7 +52,13 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
     );
     session.state = if chat.busy { "running" } else { "ended" }.into();
     let mut steps = Vec::new();
+    // A finished card a `delegate` call reports is folded into that call
+    // (#11575): one call, one result, and the card restored from it.
+    let reported = crate::live::reported_cards(&chat.entries);
     for (index, entry) in chat.entries.iter().enumerate() {
+        if reported.contains(&index) && matches!(entry, Entry::Delegation { running: false, .. }) {
+            continue;
+        }
         let step = match entry {
             Entry::User(text) => Step::said(Source::User, text),
             Entry::Assistant {
@@ -60,6 +90,9 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
                 extra.insert("running".into(), json!(running));
                 if *running && !output.is_null() {
                     extra.insert("pending_output".into(), output.clone());
+                }
+                if let Some(card) = folded_card(chat, &reported, output) {
+                    extra.insert("delegation".into(), card);
                 }
                 Step::called(Call {
                     id: format!("call-{}", index + 1),
@@ -703,6 +736,22 @@ pub fn from_document(value: &Value) -> Result<Chat, String> {
                         });
                         continue;
                     }
+                    let card = call.pointer("/extra/delegation").map(|card| {
+                        let text = |key: &str| {
+                            card.get(key)
+                                .and_then(Value::as_str)
+                                .unwrap_or_default()
+                                .to_owned()
+                        };
+                        Entry::Delegation {
+                            id: text("id"),
+                            name: text("agent"),
+                            task: text("task"),
+                            output: output.clone(),
+                            running: false,
+                            progress: None,
+                        }
+                    });
                     chat.entries.push(Entry::Tool {
                         name: call
                             .get("function_name")
@@ -713,6 +762,7 @@ pub fn from_document(value: &Value) -> Result<Chat, String> {
                         output,
                         running: false,
                     });
+                    chat.entries.extend(card);
                 }
             }
             Some("system") => {}

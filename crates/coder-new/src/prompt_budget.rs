@@ -343,6 +343,7 @@ mod tests {
             cli: true,
             acp: true,
             claude: true,
+            codex: false,
             openrouter: true,
             solver: true,
             comms: true,

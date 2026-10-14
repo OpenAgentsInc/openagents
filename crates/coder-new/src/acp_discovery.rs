@@ -274,8 +274,37 @@ fn directories(variable: &dyn Fn(&str) -> Option<OsString>) -> Vec<PathBuf> {
                 directories.push(path);
             }
         }
+        // npm installs under nvm (Codex's `npm i -g @openai/codex`), for a
+        // Coder started without the shell's nvm PATH (#11575): each
+        // installed Node's bin, the newest version first.
+        for path in nvm_bins(&home) {
+            if !directories.contains(&path) {
+                directories.push(path);
+            }
+        }
     }
     directories
+}
+
+/// `~/.nvm/versions/node/*/bin`, the highest Node version first.
+fn nvm_bins(home: &Path) -> Vec<PathBuf> {
+    let Ok(read) = std::fs::read_dir(home.join(".nvm/versions/node")) else {
+        return Vec::new();
+    };
+    let version = |path: &PathBuf| -> Vec<u64> {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| {
+                name.trim_start_matches('v')
+                    .split('.')
+                    .map(|part| part.parse().unwrap_or(0))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let mut versions: Vec<PathBuf> = read.flatten().map(|entry| entry.path()).collect();
+    versions.sort_by_key(|path| std::cmp::Reverse(version(path)));
+    versions.into_iter().map(|path| path.join("bin")).collect()
 }
 
 fn absolute_executable(candidates: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
@@ -336,6 +365,20 @@ mod tests {
             }
             path
         }
+    }
+
+    /// #11575: Codex installed with npm under nvm is found without the
+    /// shell's nvm PATH, on the newest Node that has it.
+    #[test]
+    #[cfg(unix)]
+    fn codex_under_nvm_is_found_without_the_nvm_path() {
+        let fixture = Fixture::new();
+        let older = fixture.file(".nvm/versions/node/v9.11.2/bin", "codex", true);
+        let newer = fixture.file(".nvm/versions/node/v24.13.1/bin", "codex", true);
+        let agents = discover(&|name| fixture.variable(name));
+        let codex = agents.iter().find(|agent| agent.id == "codex").unwrap();
+        assert_eq!(codex.program, std::fs::canonicalize(newer).unwrap());
+        assert_ne!(codex.program, std::fs::canonicalize(older).unwrap());
     }
 
     #[test]

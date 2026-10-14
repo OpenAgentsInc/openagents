@@ -769,7 +769,15 @@ impl Provider {
                             .as_str()
                             .filter(|task| !task.trim().is_empty())?;
                         match call.name.as_str() {
-                            "microcoder" if execution.microcoder && object.len() == 1 => {
+                            // A read-only run is a delegation too: without its
+                            // card the child's own steps (a `Run`, its model
+                            // calls) showed as the parent's (#11575).
+                            "microcoder"
+                                if execution.microcoder
+                                    && object
+                                        .keys()
+                                        .all(|key| key == "task" || key == "read_only") =>
+                            {
                                 Some("microcoder".to_owned())
                             }
                             "acp_subagent" if execution.acp && object.len() == 2 => execution
@@ -1757,6 +1765,7 @@ mod tests {
             cli: false,
             acp: false,
             claude: true,
+            codex: false,
             openrouter: false,
             solver: false,
             comms: false,
@@ -3125,6 +3134,73 @@ mod tests {
             matches!(children.last().unwrap(), RuntimeEvent::Tool {output,running:false,..} if output["tokens"] == 5)
         );
         assert_eq!(server.join().unwrap().len(), 3);
+    }
+
+    /// #11575: a read-only Microcoder call is a delegation too, so its own
+    /// steps never show as the parent's, and a placeholder command its
+    /// model gives only to view a file (`true`) never runs.
+    #[test]
+    fn a_read_only_microcoder_call_is_a_delegation_and_runs_no_placeholder() {
+        let dir = tempfile::tempdir().unwrap();
+        if coder_boundary::Boundary::writing(dir.path())
+            .build()
+            .is_err()
+        {
+            return;
+        }
+        std::fs::write(
+            dir.path().join("Cargo.toml"),
+            "[workspace]\nresolver = \"2\"\n",
+        )
+        .unwrap();
+        let delegate = format!(
+            "data: {}\n\ndata: [DONE]\n\n",
+            json!({"choices":[{"delta":{"tool_calls":[{"index":0,"id":"micro-ro","function":{"name":"microcoder","arguments":"{\"read_only\":true,\"task\":\"Read Cargo.toml and name its resolver.\"}"}}]},"finish_reason":"tool_calls"}]})
+        );
+        let step = |action: Value| {
+            json!({"model":"fixture/child","choices":[{"message":{"content":action.to_string()},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5,"cost":0.0}}).to_string()
+        };
+        let look = step(
+            json!({"rationale":"View the file.","commands":["true"],"view":["Cargo.toml"],"freeze_tests":false,"expand":[],"finished":false,"reply":"","ask":"none"}),
+        );
+        let done = step(
+            json!({"rationale":"Seen.","commands":[],"view":[],"freeze_tests":false,"expand":[],"finished":true,"reply":"The resolver is 2.","ask":"none"}),
+        );
+        let (base, server) = sequence(vec![delegate, look, done, final_reply("Resolver 2.")]);
+        let provider = Provider::with_base(ApiKey::new(FIXTURE_TOKEN), &base).unwrap();
+        let mut settings = jev_settings(jev_plugin_endpoint(), None);
+        settings.jev_enabled = false;
+        settings.microcoder = true;
+        settings.cwd = dir.path().to_path_buf();
+        let mut events = vec![];
+        let result = runtime()
+            .block_on(provider.chat_with_plugins(
+                "fixture/model",
+                &crate::models::GenerationOptions::default(),
+                vec![Message::user("Delegate it read-only.")],
+                &settings,
+                &mut |_| {},
+                &mut |_| {},
+                &mut |event| events.push(event),
+                &Arc::new(AtomicBool::new(false)),
+            ))
+            .unwrap();
+        assert_eq!(result.text, "Resolver 2.");
+        // Everything the child did, its model calls included, is on its card.
+        let parent: Vec<_> = events
+            .iter()
+            .filter(|event| !matches!(event, RuntimeEvent::Delegation { .. }))
+            .collect();
+        assert!(
+            parent
+                .iter()
+                .all(|event| matches!(event, RuntimeEvent::Usage(_) | RuntimeEvent::Harness(_))),
+            "{parent:?}"
+        );
+        let shown = format!("{events:?}");
+        assert!(!shown.contains("\"command\": String(\"true\")"), "{shown}");
+        assert!(!shown.contains("command\":\"true"), "{shown}");
+        assert_eq!(server.join().unwrap().len(), 4);
     }
 
     fn jev_plugin_endpoint() -> String {

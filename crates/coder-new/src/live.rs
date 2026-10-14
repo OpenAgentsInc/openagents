@@ -399,6 +399,9 @@ impl Chat {
             } if name == crate::plan::TOOL => crate::plan::message(output),
             _ => None,
         });
+        // A card whose `delegate` result is already in the chat is the
+        // child's live view, not a second result (#11575).
+        let reported = reported_cards(&self.entries);
         current_plan
             .into_iter()
             .chain(
@@ -407,6 +410,9 @@ impl Chat {
                     .enumerate()
                     .skip(start)
                     .filter_map(|(index, entry)| {
+                        if reported.contains(&index) {
+                            return None;
+                        }
                         if let Entry::Tool { name, .. } = entry
                             && (crate::long_session::hidden_from_model(name)
                                 || name == crate::plan::TOOL)
@@ -475,6 +481,43 @@ impl Chat {
             )
             .collect()
     }
+}
+
+/// The child a delegation card shows: its id without the request prefix
+/// (`2:run-1.d1` is `run-1.d1`) or a nested child's path (`run-1.d1/...`).
+fn card_child(id: &str) -> &str {
+    let id = id.split_once(':').map_or(id, |(_, rest)| rest);
+    id.split('/').next().unwrap_or(id)
+}
+
+/// The delegation cards (and their nested children's) whose child a
+/// finished `delegate` call in `entries` already reports (#11575): the
+/// tool's result is the delegation's one result, and the card is its live
+/// view, so the model and the export read the result once.
+#[must_use]
+pub(crate) fn reported_cards(entries: &[Entry]) -> std::collections::HashSet<usize> {
+    let children: std::collections::HashSet<&str> = entries
+        .iter()
+        .filter_map(|entry| match entry {
+            Entry::Tool {
+                name,
+                output,
+                running: false,
+                ..
+            } if name == coder_sdk::delegation::TOOL => {
+                output.get("child").and_then(serde_json::Value::as_str)
+            }
+            _ => None,
+        })
+        .collect();
+    entries
+        .iter()
+        .enumerate()
+        .filter_map(|(index, entry)| match entry {
+            Entry::Delegation { id, .. } if children.contains(card_child(id)) => Some(index),
+            _ => None,
+        })
+        .collect()
 }
 
 pub(crate) fn model_slug(model: &str) -> Option<String> {

@@ -314,10 +314,10 @@ fn agent_model(chat: &crate::live::Chat) -> Option<&str> {
 /// run the tests"). `None` before it has done anything.
 fn agent_activity(chat: &crate::live::Chat) -> Option<String> {
     fn latest_line(text: &str) -> Option<String> {
-        text.lines()
-            .map(str::trim)
-            .rfind(|line| !line.is_empty())
-            .map(str::to_owned)
+        text.lines().rev().find_map(preview_words)
+    }
+    fn first_line(text: &str) -> Option<String> {
+        text.lines().find_map(preview_words)
     }
     if let Some(line) = latest_line(&chat.partial) {
         return Some(line);
@@ -326,7 +326,11 @@ fn agent_activity(chat: &crate::live::Chat) -> Option<String> {
         crate::live::Entry::Tool { name, output, .. } if name == crate::claude_stream::THINKING => {
             latest_line(crate::claude_stream::entry_text(output))
         }
-        crate::live::Entry::Tool { name, .. } if name == crate::claude_stream::NOTICE => None,
+        // A notice is what just happened to the agent ("ran on OpenCode's
+        // free Cat Jam instead", #11575).
+        crate::live::Entry::Tool { name, output, .. } if name == crate::claude_stream::NOTICE => {
+            latest_line(crate::claude_stream::entry_text(output))
+        }
         crate::live::Entry::Tool { name, input, .. } => {
             // An agent's own lowercase tool id ("bash") reads as a name.
             let tool = crate::claude_tools::display_name(name);
@@ -356,14 +360,47 @@ fn agent_activity(chat: &crate::live::Chat) -> Option<String> {
                 format!("{tool} · {what}")
             })
         }
-        crate::live::Entry::Assistant { text, .. } => latest_line(text),
+        crate::live::Entry::Assistant { text, .. } => first_line(text),
         crate::live::Entry::User(_) | crate::live::Entry::Delegation { .. } => None,
     })
+}
+
+/// One line of an agent's Markdown as the rail previews it: the words,
+/// without a code fence, a heading's or list's or quote's marker, or the
+/// bold and code marks around them (#11575: a reply ending in a fence
+/// previewed as a bare "```"). `None` for a line with no words.
+fn preview_words(line: &str) -> Option<String> {
+    let line = line.trim();
+    if line.starts_with("```") || line.starts_with("~~~") {
+        return None;
+    }
+    let line = line.trim_start_matches(['#', '>', ' ']);
+    let line = line
+        .strip_prefix("- ")
+        .or_else(|| line.strip_prefix("* "))
+        .or_else(|| line.strip_prefix("+ "))
+        .unwrap_or(line);
+    let words = line.replace("**", "").replace('`', "");
+    let words = words.trim();
+    words
+        .chars()
+        .any(char::is_alphanumeric)
+        .then(|| words.to_owned())
 }
 
 /// A model's name as a person reads it: a Claude model by its picker name
 /// ("Opus 5.5"), any other by its own short name.
 fn model_words(model: &str) -> String {
+    // OpenCode's free models by the names its picker shows ("Cat Jam").
+    if model.starts_with("opencode/") {
+        let label = crate::opencode_chat::rail_label(model);
+        if let Some(name) = label
+            .strip_prefix("OpenCode (")
+            .and_then(|rest| rest.strip_suffix(')'))
+        {
+            return name.to_owned();
+        }
+    }
     let bare = model.rsplit('/').next().unwrap_or(model);
     crate::claude::MODELS
         .iter()
@@ -3694,6 +3731,49 @@ mod agent_rail_tests {
         );
         chat.partial = "Writing the restore step\nnow".into();
         assert_eq!(super::agent_activity(&chat).as_deref(), Some("now"));
+    }
+
+    /// #11575: a reply in Markdown previews as its words, never a bare
+    /// code fence, and a notice (OpenCode's free-model retry) shows as what
+    /// just happened.
+    #[test]
+    fn an_agent_preview_is_words_not_a_code_fence() {
+        let mut chat = Chat {
+            entries: vec![Entry::User("Read Cargo.toml".into())],
+            ..Chat::default()
+        };
+        chat.entries.push(Entry::Assistant {
+            text: "```\n## **Edition** is `2024`\n- rust 1.97\n```".into(),
+            model: None,
+            elapsed_ms: None,
+        });
+        assert_eq!(
+            super::agent_activity(&chat).as_deref(),
+            Some("Edition is 2024")
+        );
+        chat.partial = "The members are:\n```toml".into();
+        assert_eq!(
+            super::agent_activity(&chat).as_deref(),
+            Some("The members are:")
+        );
+        chat.partial = "```".into();
+        assert_eq!(
+            super::agent_activity(&chat).as_deref(),
+            Some("Edition is 2024")
+        );
+        chat.partial.clear();
+        chat.entries.push(Entry::Tool {
+            name: crate::claude_stream::NOTICE.into(),
+            input: serde_json::Value::Null,
+            output: serde_json::json!({"text": "OpenCode's cursor/composer-2.5 failed, so it ran on OpenCode's free Cat Jam. Trying again."}),
+            running: false,
+        });
+        assert!(
+            super::agent_activity(&chat)
+                .unwrap()
+                .contains("free Cat Jam")
+        );
+        assert_eq!(super::model_words("opencode/cat-jam-free"), "Cat Jam");
     }
 }
 

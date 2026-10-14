@@ -575,6 +575,7 @@ impl Plugins {
             // delegate (#11548).
             acp: self.bundled.acp && !crate::no_harness::forced(),
             claude: self.bundled.claude && !crate::no_harness::forced(),
+            codex: self.bundled.codex && !crate::no_harness::forced(),
             openrouter: self.enabled,
             solver: self.bundled.solver,
             comms: self.bundled.comms,

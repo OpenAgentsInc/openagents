@@ -48,12 +48,23 @@ contents of every path in `view`, read after the last step's commands ran, or sa
 unchanged since an earlier section: keep the files you need there instead of printing them with \
 cat. A non-empty `view` replaces the list; an empty \
 one keeps it. Set `finished` to true, with no commands, \
-only when the task is complete. Every other step must run at least one command: the \
+only when the task is complete. Every other step must run at least one command or put a \
+file not yet in view in `view`; never run a placeholder such as `true` or `:`. The \
 files in view are already current, so asking to see them again does nothing. The user reads \
 only `reply`, never the rationale: when you set `finished`, write in `reply` the answer to \
 their message, or what you did and found, addressed to them. A question that needs no \
 command, such as who you are, is finished in the first step with its answer in `reply`. \
 You are Coder, the OpenAgents coding agent.";
+
+/// Whether `command` does nothing at all: `true` or `:`, alone. A model
+/// that only wants to view a file ran one to have a command (#11575).
+#[must_use]
+pub fn placeholder(command: &str) -> bool {
+    matches!(
+        command.trim().trim_end_matches(';').trim(),
+        "true" | ":" | ""
+    )
+}
 
 /// What every generation is also told when the knowledge base is on.
 pub const KB_SYSTEM: &str = " The Knowledge base section lists reference entries, chosen \
@@ -1406,7 +1417,7 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
                  steps in a row"
             ));
         }
-        let (text, generator, generated) = match early {
+        let (text, generator, mut generated) = match early {
             Some((text, generated)) => (text, models.generator, generated),
             None => {
                 let text = transcript.next(
@@ -1435,6 +1446,12 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
             }
         };
         model.generated(&generated, &format!("step {step} model"));
+        // A placeholder command (`true`, `:`) does nothing: it is neither
+        // shown nor run, and a step that only views a file needs no
+        // command (#11575).
+        if let Ok(action) = &mut generated.action {
+            action.commands.retain(|command| !placeholder(command));
+        }
         // A stop while the model wrote the step: the call was interrupted,
         // not failed, and nothing it said is used.
         if env.stopped() {

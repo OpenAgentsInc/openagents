@@ -61,6 +61,20 @@ pub struct Available {
 /// agents. Read at call time, never put in the tool's description.
 #[must_use]
 pub fn available(execution: &ExecutionSettings, provider: bool) -> Vec<Available> {
+    available_with(
+        execution,
+        provider,
+        execution.codex && crate::codex::available(),
+    )
+}
+
+/// [`available`], with whether the Codex plugin's Codex is installed and
+/// signed in already read (`codex_ready`).
+fn available_with(
+    execution: &ExecutionSettings,
+    provider: bool,
+    codex_ready: bool,
+) -> Vec<Available> {
     let mut harnesses = Vec::new();
     if execution.claude
         && (cfg!(test)
@@ -84,10 +98,19 @@ pub fn available(execution: &ExecutionSettings, provider: bool) -> Vec<Available
             .iter()
             .filter(|agent| execution.acp && agent.enabled && agent.validate().is_ok())
     };
-    if let Some(codex) = agents().find(|agent| agent.id == CODEX) {
+    // Codex is a target when its ACP agent is on, or when the Codex plugin
+    // is on and Codex is installed and signed in (#11575): ACP Subagents
+    // off must not hide it, as the Claude Code and OpenCode harnesses
+    // aren't hidden. The check reads the path and `auth.json`, never runs
+    // Codex.
+    let codex = agents()
+        .find(|agent| agent.id == CODEX)
+        .map(|agent| agent.name.clone())
+        .or_else(|| codex_ready.then(|| "Codex".to_owned()));
+    if let Some(name) = codex {
         harnesses.push(Available {
             id: CODEX.into(),
-            name: codex.name.clone(),
+            name,
             models: Some(
                 crate::codex::MODELS
                     .iter()
@@ -251,6 +274,12 @@ impl Host for CoderHost {
                             });
                         }
                     };
+                    // The card opens running and closes with the child's
+                    // own report: without the closing event the card stays
+                    // running until the turn ends, which marked a finished
+                    // child "The turn ended before this agent reported
+                    // back" (#11575).
+                    emit(card_event(&child, None));
                     let record = record_start(host.routing.as_ref(), &host.execution, &child);
                     let report = run_child(
                         &host.execution,
@@ -261,6 +290,7 @@ impl Host for CoderHost {
                     )
                     .await;
                     record_end(record, &report);
+                    emit(card_event(&child, Some(&report)));
                     report
                 }),
                 Err(error) => fallback.failed(&format!("The child could not start: {error}")),
@@ -402,6 +432,17 @@ fn record_end(
     );
 }
 
+/// The event that opens (`report` none) or closes a child's card in the
+/// parent's chat: the `delegate` tool, running or with the child's report.
+pub(crate) fn card_event(child: &Child, report: Option<&Report>) -> RuntimeEvent {
+    RuntimeEvent::Tool {
+        name: coder_sdk::delegation::TOOL.to_owned(),
+        input: json!({"to": child.target.harness, "read_only": child.request.read_only}),
+        output: report.map_or(Value::Null, Report::to_value),
+        running: report.is_none(),
+    }
+}
+
 /// The name a child shows: its harness, with the model when the call
 /// named one.
 pub(crate) fn label(target: &Target) -> String {
@@ -538,7 +579,7 @@ pub async fn run_child(
         }
         emit(event);
     };
-    let result = engine(execution, provider, child, &cwd, cancel, &mut record).await;
+    let (result, ran_on) = engine(execution, provider, child, &cwd, cancel, &mut record).await;
     crate::bundled_runtime::set_child_env(before);
     let reply = match &result {
         Ok(reply) => reply.clone(),
@@ -554,8 +595,26 @@ pub async fn run_child(
         .summarized(&summary)
         .with_checks(checks)
         .with_files(files);
+    // The model the child actually ran on, and why, when Coder moved it
+    // off the configured one (#11575).
+    if let Some(fallback) = ran_on {
+        report.model = Some(fallback.to.clone());
+        report.summary = coder_sdk::delegation::clip(
+            &format!("{} {}", fallback.said(), report.summary)
+                .trim()
+                .to_owned(),
+            coder_sdk::delegation::SUMMARY_MAX,
+        );
+    }
     if let Err(error) = result {
         report = report.failed(&error);
+    } else if reply.trim().is_empty() && report.changed_files.is_empty() {
+        // A child that ended saying and changing nothing did not do the
+        // task (#11575: OpenCode stopped silently after a refused step and
+        // was reported done).
+        let failed = format!("{} ended without an answer.", child.target.name);
+        let said = format!("{} {failed}", report.summary).trim().to_owned();
+        report = report.failed(&said);
     } else if done == Some(false) {
         report.outcome = Outcome::Failed;
     }
@@ -575,12 +634,143 @@ pub async fn run_child(
     report
 }
 
-/// The child's reply from its harness, or why it failed.
+/// An OpenCode child moved off the model its configuration names onto
+/// OpenCode's free default (#11575).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Fallback {
+    /// The configured model that failed.
+    pub from: String,
+    /// The free model it ran on instead.
+    pub to: String,
+}
+
+impl Fallback {
+    /// The free model's name as OpenCode's picker shows it ("Cat Jam").
+    fn name(&self) -> String {
+        crate::opencode_chat::rail_label(&self.to)
+            .trim_start_matches("OpenCode (")
+            .trim_end_matches(')')
+            .to_owned()
+    }
+
+    /// One short line for the report, after the run.
+    pub(crate) fn said(&self) -> String {
+        format!(
+            "OpenCode's {} failed, so it ran on OpenCode's free {} instead.",
+            self.from,
+            self.name()
+        )
+    }
+
+    /// One short line for the rail, as the second run starts.
+    pub(crate) fn retrying(&self) -> String {
+        format!(
+            "OpenCode's {} failed; trying again on OpenCode's free {}.",
+            self.from,
+            self.name()
+        )
+    }
+}
+
+/// Whether an OpenCode child failed because the provider behind its model
+/// refused: a version it no longer supports ("Update Required"), a model
+/// that is gone, or a provider that would not start or sign in. OpenCode's
+/// free model runs through OpenCode Zen, so the same task can still run.
+#[must_use]
+pub(crate) fn opencode_provider_refused(error: &str) -> bool {
+    coder_delegate::delegate::opencode_model_gone(error)
+        || [
+            " refused this version",
+            "Update Required",
+            "no longer supported",
+            "ProviderAuthError",
+            "ProviderInitError",
+        ]
+        .iter()
+        .any(|marker| error.contains(marker))
+}
+
+/// The model an OpenCode child runs when the call names none: on the
+/// `opencode run` path the person's OpenCode pick, else (its ACP agent,
+/// which takes a read-only task) what their OpenCode configuration names.
+fn opencode_configured(read_only: bool) -> Option<String> {
+    if !read_only && crate::opencode_chat::installed() {
+        return Some(crate::opencode_chat::model(None));
+    }
+    #[cfg(test)]
+    {
+        TEST_OPENCODE_MODEL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+    #[cfg(not(test))]
+    acp_client::opencode::configured_model(&|name| std::env::var_os(name))
+}
+
+/// A test's stand-in for the model the person's OpenCode configuration
+/// names; a unit test never reads the computer's.
+#[cfg(test)]
+pub(crate) static TEST_OPENCODE_MODEL: std::sync::Mutex<Option<String>> =
+    std::sync::Mutex::new(None);
+
+/// The child's reply from its harness, or why it failed, and the model it
+/// fell back to when its configured OpenCode model was refused: the same
+/// task runs once more on OpenCode's free default, said in the child's
+/// chat, and the person's configuration is left as it is (#11575).
 async fn engine(
     execution: &ExecutionSettings,
     provider: Option<GenerationProvider>,
     child: &Child,
     cwd: &Path,
+    cancel: &Arc<AtomicBool>,
+    emit: &mut (dyn FnMut(RuntimeEvent) + Send),
+) -> (Result<String, String>, Option<Fallback>) {
+    let first = engine_once(execution, provider.clone(), child, cwd, None, cancel, emit).await;
+    let Err(error) = &first else {
+        return (first, None);
+    };
+    if child.target.harness != OPENCODE
+        || child.target.model.is_some()
+        || !opencode_provider_refused(error)
+        || cancel.load(std::sync::atomic::Ordering::Relaxed)
+    {
+        return (first, None);
+    }
+    let free = crate::opencode_chat::auto_model().to_owned();
+    let from = opencode_configured(child.request.read_only).unwrap_or_else(|| "its model".into());
+    if from == free {
+        return (first, None);
+    }
+    let fallback = Fallback { from, to: free };
+    emit(RuntimeEvent::Tool {
+        name: crate::claude_stream::NOTICE.to_owned(),
+        input: Value::Null,
+        output: json!({"text": fallback.retrying()}),
+        running: false,
+    });
+    emit(RuntimeEvent::Model(fallback.to.clone()));
+    let second = engine_once(
+        execution,
+        provider,
+        child,
+        cwd,
+        Some(&fallback.to),
+        cancel,
+        emit,
+    )
+    .await;
+    (second, Some(fallback))
+}
+
+/// One run of the child on its harness; `opencode_model` runs an OpenCode
+/// child on that model instead of its configured one.
+async fn engine_once(
+    execution: &ExecutionSettings,
+    provider: Option<GenerationProvider>,
+    child: &Child,
+    cwd: &Path,
+    opencode_model: Option<&str>,
     cancel: &Arc<AtomicBool>,
     emit: &mut (dyn FnMut(RuntimeEvent) + Send),
 ) -> Result<String, String> {
@@ -623,7 +813,9 @@ async fn engine(
                 session: None,
                 last_model: None,
                 briefing: None,
-                model: model.map_or_else(|| crate::opencode_chat::model(None), str::to_owned),
+                model: model
+                    .or(opencode_model)
+                    .map_or_else(|| crate::opencode_chat::model(None), str::to_owned),
                 tools: false,
             };
             crate::opencode_chat::run(turn, cancel, emit, &mut |_| {})
@@ -631,17 +823,56 @@ async fn engine(
                 .map(|streamed| streamed.text)
         }
         harness => {
-            let agent = execution
-                .agents
-                .iter()
-                .find(|agent| agent.id == harness)
-                .ok_or_else(|| format!("{harness} is no longer installed here."))?;
+            let installed = execution.agents.iter().find(|agent| agent.id == harness);
+            // Codex taken through its plugin has no ACP agent entry: it runs
+            // on the native Codex bridge.
+            let native;
+            let agent = match installed {
+                Some(agent) => agent,
+                None if harness == CODEX => {
+                    native = codex_agent()
+                        .ok_or_else(|| format!("{harness} is no longer installed here."))?;
+                    &native
+                }
+                // OpenCode as a harness without its ACP agent listed: the
+                // installed program's own ACP agent.
+                None if harness == OPENCODE => {
+                    native = opencode_agent()
+                        .ok_or_else(|| format!("{harness} is no longer installed here."))?;
+                    &native
+                }
+                None => return Err(format!("{harness} is no longer installed here.")),
+            };
             let program = agent.program.clone();
             let output = if agent.transport == AgentTransport::CodexCli {
                 crate::bundled_runtime::codex_delegated(
                     &program, task, cwd, model, read_only, cancel, emit,
                 )
                 .await?
+            } else if agent.id == OPENCODE
+                && let Some(named) = model.or(opencode_model)
+            {
+                // OpenCode's ACP agent takes its model from the inline
+                // configuration, merged under the gate's permission; the
+                // person's own configuration file is left alone.
+                let before = crate::bundled_runtime::child_env();
+                let mut vars = before.clone();
+                vars.retain(|(name, _)| name.to_string_lossy() != acp_client::opencode::CONFIG_VAR);
+                vars.push((
+                    acp_client::opencode::CONFIG_VAR.into(),
+                    json!({"model": named}).to_string().into(),
+                ));
+                crate::bundled_runtime::set_child_env(vars);
+                let output = crate::bundled_runtime::acp_briefed(
+                    agent, task, cwd, None, read_only, None, cancel, emit,
+                )
+                .await;
+                crate::bundled_runtime::set_child_env(before);
+                let mut output = output?;
+                if output.get("model").is_none_or(Value::is_null) {
+                    output["model"] = json!(named);
+                }
+                output
             } else {
                 crate::bundled_runtime::acp_briefed(
                     agent, task, cwd, model, read_only, None, cancel, emit,
@@ -651,6 +882,32 @@ async fn engine(
             Ok(output["reply"].as_str().unwrap_or_default().to_owned())
         }
     }
+}
+
+/// OpenCode's own ACP agent, from the installed program.
+fn opencode_agent() -> Option<crate::bundled_runtime::AcpAgent> {
+    Some(crate::bundled_runtime::AcpAgent {
+        id: OPENCODE.into(),
+        name: "OpenCode".into(),
+        program: crate::opencode_chat::binary()?,
+        transport: AgentTransport::Acp,
+        arguments: acp_client::opencode::arguments(),
+        mode: None,
+        enabled: true,
+    })
+}
+
+/// Codex on the native bridge, from the program the Codex plugin runs.
+fn codex_agent() -> Option<crate::bundled_runtime::AcpAgent> {
+    Some(crate::bundled_runtime::AcpAgent {
+        id: CODEX.into(),
+        name: "Codex".into(),
+        program: crate::codex::program()?,
+        transport: AgentTransport::CodexCli,
+        arguments: Vec::new(),
+        mode: None,
+        enabled: true,
+    })
 }
 
 fn in_git(directory: &Path) -> bool {

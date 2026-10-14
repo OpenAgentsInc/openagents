@@ -422,3 +422,337 @@ async fn a_delegated_cursor_child_says_plainly_what_coder_cannot_hold() {
         "Cursor's ask was answered"
     );
 }
+
+/// #11575: a child's card opens running and closes with the child's own
+/// report, so the turn's end finds nothing to mark "The turn ended before
+/// this agent reported back"; the model reads the delegation's result
+/// once, the export has one call for it, and a reopened chat still shows
+/// the card.
+#[tokio::test(flavor = "multi_thread")]
+#[cfg(unix)]
+async fn a_finished_child_closes_its_card_and_is_one_result() {
+    let _gate_lock = crate::approval::test_lock()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let dir = tempfile::tempdir().unwrap();
+    let mut execution = execution();
+    execution.cwd = dir.path().to_owned();
+    execution.fleet = None;
+    let mut missing = agent("goose", "Goose");
+    missing.program = dir.path().join("no-such-agent");
+    execution.agents = vec![missing];
+    let arguments = json!({"to": "goose", "task": "Read Cargo.toml.", "read_only": true});
+    let mut events = Vec::new();
+    let output = execute(
+        &execution,
+        CODER,
+        arguments.clone(),
+        None,
+        &Arc::new(AtomicBool::new(false)),
+        &mut |event| events.push(event),
+    )
+    .await
+    .unwrap();
+    assert_eq!(output["outcome"], "failed", "{output}");
+    let child = output["child"].as_str().unwrap().to_owned();
+    // The card's first event opens it and its last closes it with the report.
+    let card = |event: &RuntimeEvent| match event {
+        RuntimeEvent::Delegation { event, .. } => match event.as_ref() {
+            RuntimeEvent::Tool {
+                name,
+                output,
+                running,
+                ..
+            } if name == coder_sdk::delegation::TOOL => Some((output.clone(), *running)),
+            _ => None,
+        },
+        _ => None,
+    };
+    assert_eq!(card(events.first().unwrap()), Some((Value::Null, true)));
+    assert_eq!(card(events.last().unwrap()), Some((output.clone(), false)));
+
+    let mut app = crate::App::default();
+    app.set_mode(crate::Mode::Live);
+    app.live.busy = true;
+    let id = app.request_id;
+    app.apply_update(crate::live::Update::Tool {
+        id,
+        name: coder_sdk::delegation::TOOL.into(),
+        input: arguments.clone(),
+        output: Value::Null,
+        running: true,
+    });
+    for event in events {
+        let RuntimeEvent::Delegation {
+            id: delegation,
+            name,
+            task,
+            event,
+        } = event
+        else {
+            panic!("a child event")
+        };
+        app.apply_update(crate::live::Update::Delegation {
+            id,
+            delegation,
+            name,
+            task,
+            event: *event,
+        });
+    }
+    app.apply_update(crate::live::Update::Tool {
+        id,
+        name: coder_sdk::delegation::TOOL.into(),
+        input: arguments,
+        output: output.clone(),
+        running: false,
+    });
+    app.apply_update(crate::live::Update::Finished {
+        id,
+        result: Ok(openrouter::Streamed {
+            text: "One delegation failed.".into(),
+            ..openrouter::Streamed::default()
+        }),
+    });
+    assert!(!app.delegations[0].running);
+    let entries = serde_json::to_string(
+        &app.live
+            .entries
+            .iter()
+            .filter_map(|entry| match entry {
+                crate::live::Entry::Delegation {
+                    output, running, ..
+                } => Some((output.clone(), *running)),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+    )
+    .unwrap();
+    assert!(!entries.contains("turn ended"), "{entries}");
+    assert!(entries.contains(&child), "{entries}");
+    // The model reads the result once: the tool's, not the card's too.
+    let messages = app.live.messages();
+    assert_eq!(
+        messages
+            .iter()
+            .filter(|message| message.content.contains(&child))
+            .count(),
+        1,
+        "{messages:?}"
+    );
+    // One call in the export, with the card folded into it.
+    let document = crate::trajectory::document(&app.live, "t", "m", dir.path());
+    let calls: Vec<&Value> = document["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|step| step.pointer("/tool_calls/0"))
+        .collect();
+    assert_eq!(calls.len(), 1, "{document}");
+    assert_eq!(calls[0]["function_name"], "delegate");
+    assert!(
+        calls[0]["extra"]["delegation"]["id"]
+            .as_str()
+            .unwrap()
+            .ends_with(&child)
+    );
+    assert_eq!(document["final_metrics"]["extra"]["tool_calls_total"], 1);
+    assert!(!document.to_string().contains("turn ended"));
+    // A reopened chat has the call and its card.
+    let restored = crate::trajectory::from_document(&document).unwrap();
+    assert!(
+        restored.entries.iter().any(|entry| matches!(entry,
+        crate::live::Entry::Delegation { running: false, output, .. } if output["child"] == child))
+    );
+    assert_eq!(
+        restored
+            .messages()
+            .iter()
+            .filter(|m| m.content.contains(&child))
+            .count(),
+        1
+    );
+}
+
+/// #11575: Codex is a delegation target when the Codex plugin is on and
+/// Codex is installed and signed in, with ACP Subagents off; with the
+/// plugin off, or Codex not ready, it isn't.
+#[test]
+fn codex_is_a_target_through_its_plugin_without_acp_subagents() {
+    let mut execution = execution();
+    execution.acp = false;
+    execution.codex = true;
+    let ids = |execution: &ExecutionSettings, ready: bool| -> Vec<String> {
+        available_with(execution, false, ready)
+            .into_iter()
+            .map(|harness| harness.id)
+            .collect()
+    };
+    assert_eq!(ids(&execution, true), vec!["claude-code", "codex", "coder"]);
+    assert_eq!(ids(&execution, false), vec!["claude-code", "coder"]);
+    // The ACP agent still counts with ACP Subagents on.
+    execution.acp = true;
+    assert!(ids(&execution, false).contains(&"codex".to_owned()));
+}
+
+/// #11575: OpenCode's configured model refused by its provider (Cursor's
+/// "Update Required") runs the same task once more on OpenCode's free
+/// default, through OpenCode's inline configuration (the person's file is
+/// untouched); the child's chat says so and the report names the model it
+/// ran on.
+#[tokio::test(flavor = "multi_thread")]
+#[cfg(unix)]
+async fn a_refused_opencode_model_runs_again_on_the_free_default() {
+    use std::os::unix::fs::PermissionsExt;
+    let _gate_lock = crate::approval::test_lock()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let dir = tempfile::tempdir().unwrap();
+    let main = dir.path().join("main");
+    std::fs::create_dir_all(&main).unwrap();
+    repo(&main);
+    // The refused run: OpenCode's recorded refusal, in Cursor's words.
+    let refused_dir = dir.path().join("refused");
+    std::fs::create_dir_all(&refused_dir).unwrap();
+    let mut refused = acp_client::replay::blocks(acp_client::replay::OPENCODE_REFUSED);
+    let last = refused.last_mut().unwrap().last_mut().unwrap();
+    last["error"]["message"] = json!(
+        "Internal error: Update Required Your version of Cursor is no longer supported. Please update to the latest version at cursor.com/downloads to continue."
+    );
+    let refused = acp_client::replay::script(&refused_dir, &refused);
+    let ok_dir = dir.path().join("ok");
+    std::fs::create_dir_all(&ok_dir).unwrap();
+    let ok = acp_client::replay::script(
+        &ok_dir,
+        &acp_client::replay::blocks(acp_client::replay::OPENCODE_TURN),
+    );
+    let configs = dir.path().join("configs");
+    let program = dir.path().join("opencode");
+    std::fs::write(
+        &program,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$OPENCODE_CONFIG_CONTENT\" >> '{configs}'\ncase \"$OPENCODE_CONFIG_CONTENT\" in\n  *cat-jam*) exec '{ok}' \"$@\" ;;\n  *) exec '{refused}' \"$@\" ;;\nesac\n",
+            configs = configs.display(),
+            ok = ok.display(),
+            refused = refused.display(),
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+    *TEST_OPENCODE_MODEL
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some("cursor/composer-2.5".into());
+    let mut execution = on_acp(&main, "opencode", "OpenCode", program);
+    execution.agents[0].arguments = acp_client::opencode::arguments();
+    let (sender, mut events) = tokio::sync::mpsc::unbounded_channel();
+    let delegator = Delegator::new(
+        Arc::new(CoderHost::new(
+            execution,
+            None,
+            Arc::new(AtomicBool::new(false)),
+            Some(sender),
+        )),
+        Lineage::root("run-x", CODER),
+        Authority::default(),
+        &dir.path().join("runs"),
+    );
+    let report = delegator
+        .delegate(json!({"to": "opencode", "task": "Say hello."}))
+        .await
+        .unwrap();
+    *TEST_OPENCODE_MODEL
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    assert_eq!(report.outcome, Outcome::Done, "{report:?}");
+    assert_eq!(
+        report.model.as_deref(),
+        Some(crate::opencode_chat::DEFAULT_MODEL)
+    );
+    assert!(
+        report.summary.contains("cursor/composer-2.5 failed"),
+        "{report:?}"
+    );
+    assert!(report.summary.contains("Cat Jam"), "{report:?}");
+    let configs = std::fs::read_to_string(&configs).unwrap();
+    let configs: Vec<&str> = configs.lines().collect();
+    assert_eq!(configs.len(), 2, "{configs:?}");
+    assert!(!configs[0].contains("cat-jam"), "{configs:?}");
+    // The free model, under the gate's permission.
+    assert!(configs[1].contains("opencode/cat-jam-free"), "{configs:?}");
+    assert!(configs[1].contains("permission"), "{configs:?}");
+    let mut notice = None;
+    let mut model = None;
+    while let Ok(event) = events.try_recv() {
+        if let RuntimeEvent::Delegation { event, .. } = event {
+            match *event {
+                RuntimeEvent::Tool { name, output, .. } if name == crate::claude_stream::NOTICE => {
+                    notice = output["text"].as_str().map(str::to_owned);
+                }
+                // The rail's model moves to the free one with the notice.
+                RuntimeEvent::Model(named) if notice.is_some() && model.is_none() => {
+                    model = Some(named);
+                }
+                _ => {}
+            }
+        }
+    }
+    let notice = notice.expect("the child's chat says it ran on the free model");
+    assert!(
+        notice.contains("cursor/composer-2.5") && notice.contains("Cat Jam"),
+        "{notice}"
+    );
+    assert_eq!(model.as_deref(), Some(crate::opencode_chat::DEFAULT_MODEL));
+}
+
+/// The retry is for a provider refusal only, never an ordinary failure.
+#[test]
+fn only_a_provider_refusal_moves_opencode_to_its_free_model() {
+    assert!(opencode_provider_refused(
+        "OpenCode on cursor/composer-2.5 refused this version: Internal error: Update Required"
+    ));
+    assert!(opencode_provider_refused("Model not found: cursor/x"));
+    assert!(!opencode_provider_refused(
+        "The agent could not finish the task: it timed out."
+    ));
+}
+
+/// #11575: a child that ends saying and changing nothing is not done.
+#[tokio::test(flavor = "multi_thread")]
+#[cfg(unix)]
+async fn a_child_that_ends_without_an_answer_failed() {
+    let _gate_lock = crate::approval::test_lock()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let dir = tempfile::tempdir().unwrap();
+    let main = dir.path().join("main");
+    std::fs::create_dir_all(&main).unwrap();
+    repo(&main);
+    let agent_dir = dir.path().join("agent");
+    std::fs::create_dir_all(&agent_dir).unwrap();
+    let mut blocks = acp_client::replay::blocks(acp_client::replay::OPENCODE_TURN);
+    for block in &mut blocks {
+        block.retain(|frame| frame["params"]["update"]["sessionUpdate"] != "agent_message_chunk");
+    }
+    let program = acp_client::replay::script(&agent_dir, &blocks);
+    let mut execution = on_acp(&main, "opencode", "OpenCode", program);
+    execution.agents[0].arguments = acp_client::opencode::arguments();
+    let delegator = Delegator::new(
+        Arc::new(host(execution)),
+        Lineage::root("run-x", CODER),
+        Authority::default(),
+        &dir.path().join("runs"),
+    );
+    let report = delegator
+        .delegate(json!({"to": "opencode", "task": "Say hello.", "read_only": true}))
+        .await
+        .unwrap();
+    assert_eq!(report.outcome, Outcome::Failed, "{report:?}");
+    assert!(
+        report
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("ended without an answer"),
+        "{report:?}"
+    );
+}

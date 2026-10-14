@@ -29,6 +29,10 @@ pub struct ExecutionSettings {
     /// starts Claude Code or uses its login: not `auto`'s local lane, not a
     /// background agent, not Solver.
     pub claude: bool,
+    /// The Codex plugin is on (#11510): with Codex installed and signed in
+    /// it is a delegation target whether or not ACP Subagents is on
+    /// (#11575).
+    pub codex: bool,
     /// OpenRouter BYOK is on, so /models lists the person's OpenRouter
     /// models (#11519).
     pub openrouter: bool,
@@ -1256,6 +1260,7 @@ mod tests {
             cli: false,
             acp: false,
             claude: true,
+            codex: false,
             openrouter: false,
             solver: false,
             comms: false,

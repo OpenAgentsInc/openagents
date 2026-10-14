@@ -45,7 +45,7 @@ impl Generate for Script {
             .replies
             .borrow_mut()
             .pop_front()
-            .unwrap_or_else(|| Ok(act("again", &["true"], false)));
+            .unwrap_or_else(|| Ok(act("again", &["echo again"], false)));
         Generated {
             action,
             model: "fake".to_string(),
@@ -658,7 +658,7 @@ async fn the_stuck_guard_falls_back_to_the_rule_and_has_a_minimum_window() {
     // Progress in between resets the count: Jev judges each step moving
     // forward, so the same command never ends the run.
     let mut replies: Vec<Result<NextAction, String>> = (0..20)
-        .map(|_| Ok(act("again", &["true"], false)))
+        .map(|_| Ok(act("again", &["echo again"], false)))
         .collect();
     replies.push(Ok(act("done", &[], true)));
     let script = Script::new(replies);
@@ -2310,4 +2310,17 @@ async fn the_monitor_decision_hook_escalates_on_the_loop_and_on_claude_code() {
             .unwrap()
             .contains("`fail build` failed 3 times")
     );
+}
+
+/// #11575: a placeholder command never runs, and the prompt says a step
+/// that only views a file needs none.
+#[test]
+fn a_placeholder_command_is_no_command() {
+    for command in ["true", " : ", "true;", ""] {
+        assert!(crate::run::placeholder(command), "{command:?}");
+    }
+    for command in ["true && ls", "cat Cargo.toml", "truex"] {
+        assert!(!crate::run::placeholder(command), "{command:?}");
+    }
+    assert!(crate::run::SYSTEM.contains("never run a placeholder such as `true`"));
 }
