@@ -660,7 +660,7 @@ async fn start_claude(
         .await
         {
             Ok(tasks) => Some(tasks),
-            Err(message) => return refusal(StatusCode::CONFLICT, &message),
+            Err(refused) => return work_refusal(&refused),
         }
     };
     let (environment, task) = if working.is_some() {
@@ -784,7 +784,7 @@ async fn begin_solver(
         crate::work_runs::Engine::Solver,
     )
     .await
-    .map_err(|message| refusal(StatusCode::CONFLICT, &message))
+    .map_err(|refused| work_refusal(&refused))
 }
 
 /// Stops Solver runs that were asked for but couldn't be recorded on
@@ -1179,7 +1179,7 @@ pub(crate) fn terminal_composer(
     match notice {
         Some(notice) => composer
             .draft(notice.draft.clone())
-            .status(html! { (notice.text) })
+            .status(notice_body(&notice.text, notice.link))
             .render(),
         None => composer.render(),
     }
@@ -1830,7 +1830,7 @@ async fn follow_claude(
         .await
         {
             Ok(tasks) => Some(tasks),
-            Err(message) => return refusal(StatusCode::CONFLICT, &message),
+            Err(refused) => return work_refusal(&refused),
         }
     };
     let (environment, task) = if working.is_some() {
@@ -2772,22 +2772,53 @@ fn request_digest(text: &str, selection: Option<&Selection>) -> String {
 /// send handlers ([`send_new`], [`send_follow`]) can show it in the
 /// composer instead of as a page of its own ([`shown`]).
 fn refusal(status: StatusCode, text: &str) -> Response {
+    linked_refusal(status, text, None)
+}
+
+/// Work that couldn't start ([`work::begin_work`]), with its one link.
+fn work_refusal(refused: &work::WorkRefused) -> Response {
+    linked_refusal(StatusCode::CONFLICT, &refused.text, refused.link)
+}
+
+/// A refusal whose words end with one link that fixes it.
+fn linked_refusal(
+    status: StatusCode,
+    text: &str,
+    link: Option<(&'static str, &'static str)>,
+) -> Response {
     let mut response = crate::chat_html::protect(
-        (status, html! {p.oa-thread-error role="alert" {(text)}}).into_response(),
+        (
+            status,
+            html! {p.oa-thread-error role="alert" {(notice_body(text, link))}},
+        )
+            .into_response(),
     );
-    response.extensions_mut().insert(Refused(text.to_owned()));
     response
+        .extensions_mut()
+        .insert(Refused(text.to_owned(), link));
+    response
+}
+
+/// A refusal's words and, after them, its link.
+fn notice_body(text: &str, link: Option<(&'static str, &'static str)>) -> Markup {
+    html! {
+        (text)
+        @if let Some((href, label)) = link {
+            " " a href=(href) { (label) }
+        }
+    }
 }
 
 /// Why a message was refused, on the refusal's response.
 #[derive(Clone)]
-struct Refused(String);
+struct Refused(String, Option<(&'static str, &'static str)>);
 
-/// A refused message shown in the composer: why, and the text put back in
-/// the box.
+/// A refused message shown in the composer: why, the text put back in
+/// the box, and the one link that fixes it when there is one.
 pub(crate) struct Notice {
     pub(crate) text: String,
     pub(crate) draft: String,
+    pub(crate) link: Option<(&'static str, &'static str)>,
 }
 
 /// The response header that marks an HTMX send's refusal: the shell
@@ -2859,14 +2890,14 @@ async fn shown(
     draft: String,
     project: Option<String>,
 ) -> Response {
-    let Some(Refused(text)) = response.extensions().get::<Refused>().cloned() else {
+    let Some(Refused(text, link)) = response.extensions().get::<Refused>().cloned() else {
         return response;
     };
     let status = response.status();
     if hx_request(headers) {
-        return inline_refusal(status, &text);
+        return inline_refusal(status, &text, link);
     }
-    let notice = Notice { text, draft };
+    let notice = Notice { text, draft, link };
     let mut page = match chat {
         Some(id) => show_page(app, headers, id, Some(&notice)).await,
         None => super::home::page(app, headers, project.as_deref(), Some(&notice)).await,
@@ -2882,13 +2913,17 @@ async fn shown(
 /// it replaces the composer's status region out of band (the shell script
 /// lets a response with [`REFUSED_HEADER`] swap), and the page stays as it
 /// is (no main swap, no new URL).
-fn inline_refusal(status: StatusCode, text: &str) -> Response {
+fn inline_refusal(
+    status: StatusCode,
+    text: &str,
+    link: Option<(&'static str, &'static str)>,
+) -> Response {
     let mut response = crate::chat_html::protect(
         (
             status,
             html! {
                 div #chat-form-status.oa-composer-status role="status" aria-live="polite"
-                    hx-swap-oob="true" { (text) }
+                    hx-swap-oob="true" { (notice_body(text, link)) }
             },
         )
             .into_response(),
@@ -2963,7 +2998,7 @@ pub(crate) fn composer_with(
     if let Some(notice) = notice {
         composer = composer
             .draft(notice.draft.clone())
-            .status(html! { (notice.text) });
+            .status(notice_body(&notice.text, notice.link));
     }
     composer.render()
 }

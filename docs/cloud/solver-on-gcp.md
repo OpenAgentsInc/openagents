@@ -159,20 +159,21 @@ gcloud compute ssh "${H[@]}" --tunnel-through-iap --command 'sudo google_metadat
 gcloud compute ssh "${H[@]}" --tunnel-through-iap --command 'sudo systemctl stop oa-solver-dispatch'
 ```
 
-**The requester's own GitHub token (#11572):** openagents.com's web and
-its account service run with the GitHub App `openagents-coder` (App id
-4771671; Secret Manager `openagents-web-production-github-app` for its
-private file and `coder-github-app-key` for its key, added by
-`scripts/deploy/web.sh promote` and `deploy/production/render.py`). A
-person who installs the App from Projects (**Install OpenAgents on your
-repositories**) gets an App grant; a Solver run they ask for on a
-repository of one of their projects then carries a broker ticket, and the
-dispatcher pushes and opens the pull request with that person's token
-for that one repository, so the pull request is the App's. A person
-connected only by OAuth (no App grant), or a repository the App isn't
-installed on, still gets no ticket, and the run takes the pool's token.
-A project added before the App was installed may need to be added again
-so it records the installation.
+**The requester's own GitHub token (#11572):** when a Solver run is asked
+for, the site asks the account service for a credential-broker ticket for
+the run's repository. Without the GitHub App (production today) the ticket
+is on the person's own GitHub OAuth grant: it is issued only when that
+token holds `repo` (they connected **private repositories**) and GitHub
+says they can push to the repository. At claim the ticket is redeemed
+once, and the token goes only to the claiming host as `run.github_token`
+(never logged or kept on the run), so the pull request is opened as the
+person. If their access can't do it, the run is refused in the chat in
+plain words with one link, **Connect private repositories**
+(`/auth/github/repos?access=private`); `POST /v1/work` answers the same
+error with `fix_path`. An account that installed the GitHub App gets the
+App's installation token for that one repository instead. The pool's
+token is used only when the site can't ask (no account service, or the
+repository isn't one of the person's projects).
 
 Each run logs one line when it is taken, naming which GitHub token it
 uses ("with the requester's GitHub token" or "with the pool's GitHub

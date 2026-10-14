@@ -222,14 +222,7 @@ OAuth grant keep working until they install the App. Code:
 "client_secret", "token_encryption_key", "private_key"}`, where
 `private_key` names the `.pem` GitHub generated (relative to the file);
 both mode 0600, kept at `~/work/.secrets/github-app-{local,staging,
-production}.json` and `.pem`. Production (openagents.com, #11572) uses
-the App `openagents-coder` (id 4771671): its private file is the Secret
-Manager secret `openagents-web-production-github-app` (client secret from
-`coder-github-client-secret`, its own token encryption key) and its key
-`coder-github-app-key`, passed to the `web` and `gateway` containers as
-`GITHUB_APP_JSON` and `GITHUB_APP_PEM`. The App's settings on GitHub must
-list `https://openagents.com/auth/github/callback` as a callback URL and
-`https://openagents.com/auth/github/setup` as the setup URL.
+production}.json` and `.pem`.
 
 - Web server: `--github-app PRIVATE_JSON` (reads the client id and slug).
   With it, `/projects` offers **Install on repositories**.
@@ -274,6 +267,18 @@ repository gets a ticket, not a token:
 | --- | --- |
 | `POST /v1/account/github/broker` (session) `{repository, seconds}` | `{ticket, expires_unix, path}`; `ogb_` tickets last 2 hours by default (5 minutes to a day), kept only as a SHA-256 digest; disconnecting drops them |
 | `POST /v1/github/git-credential` (no session) form `ticket, protocol, host, path` | Git's credential lines `username`, `password`, `password_expiry_utc` for `https://github.com/<owner>/<name>` of the ticket's project only; anything else gets an error and no token |
+
+**Without the App (#11572).** An account with no App grant (or a service
+without the App) gets a ticket on its OAuth grant instead, only when the
+token holds `repo` ("Include private repositories"; otherwise `409
+github_needs_repo_access`) and GitHub says the person can push to the
+repository (`/repos/{owner}/{name}` `permissions.push`; otherwise `403
+github_cannot_push`). Redeeming it answers `username` and `password` with
+the person's own OAuth token. That token reaches every repository the
+person can, not one, so it goes only to the one machine that redeems the
+ticket; the App's installation token stays the narrower path for an
+account that installed it. Solver in the cloud uses this: the run pushes
+and opens its pull request as the person who asked.
 
 The machine's credential (`OPENAGENTS_GIT_BROKER`, value `<broker URL>
 <ticket>`, `oa_auth::repos::broker::credential_value`) feeds

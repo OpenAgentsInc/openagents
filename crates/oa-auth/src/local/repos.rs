@@ -187,7 +187,13 @@ async fn broker_ticket(
 
 /// The credential broker: no session, the ticket in the form body.
 async fn git_credential(State(state): State<LocalService>, body: axum::body::Bytes) -> Response {
-    let (status, text) = repos::broker::credential(&state.0.dir, state.0.app.as_ref(), &body).await;
+    let (status, text) = repos::broker::credential(
+        &state.0.dir,
+        Some(&state.0.github),
+        state.0.app.as_ref(),
+        &body,
+    )
+    .await;
     (
         StatusCode::from_u16(status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
         [

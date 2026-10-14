@@ -770,6 +770,7 @@ fn composer_typing(headers: &HeaderMap) -> Response {
     let notice = Notice {
         text: String::new(),
         draft: "Plan a quiet weekend in the mountains".to_owned(),
+        link: None,
     };
     home(headers, None, Some(&notice), html! {}, &[])
 }
@@ -778,6 +779,7 @@ fn composer_refused(headers: &HeaderMap) -> Response {
     let notice = Notice {
         text: "That message is too long. Shorten it and send again.".to_owned(),
         draft: "A very long sample message".to_owned(),
+        link: None,
     };
     home(headers, None, Some(&notice), html! {}, &[])
 }

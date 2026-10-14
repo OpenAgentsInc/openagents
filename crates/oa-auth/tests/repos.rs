@@ -759,3 +759,86 @@ async fn projects_hold_zero_or_more_repositories() {
         && p["repositories"][0]["repository"] == "octo-local/hello-world"
         && p["repositories"][0]["primary"] == true));
 }
+
+/// Without the GitHub App, a credential-broker ticket hands one machine the
+/// person's own OAuth token (#11572), and only when it has `repo`.
+#[tokio::test]
+async fn the_broker_hands_out_the_persons_own_token_only_with_private_access() {
+    let world = world().await;
+    let session = sign_in(&world, "octo-local").await;
+    let ticket_for = |repository: &'static str| {
+        call(
+            &world,
+            "POST",
+            &session,
+            "/v1/account/github/broker",
+            json!({"repository": repository, "seconds": 600}),
+        )
+    };
+
+    // Not connected: no ticket.
+    let (status, body) = ticket_for("octo-local/hello-world").await;
+    assert_eq!(
+        (status, body["error"]["code"].clone()),
+        (409, json!("github_not_connected"))
+    );
+
+    // Public only: the token can't push for the person.
+    assert_eq!(grant(&world, &session, false, "octo-local").await.0, 200);
+    let (status, _) = call(
+        &world,
+        "POST",
+        &session,
+        "/v1/projects",
+        json!({"repositories": ["octo-local/hello-world"]}),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let (status, body) = ticket_for("octo-local/hello-world").await;
+    assert_eq!(
+        (status, body["error"]["code"].clone()),
+        (409, json!("github_needs_repo_access"))
+    );
+
+    // Private access: a ticket, redeemed for the person's token for that
+    // repository only.
+    assert_eq!(grant(&world, &session, true, "octo-local").await.0, 200);
+    let (status, body) = ticket_for("octo-local/hello-world").await;
+    assert_eq!(status, 200, "{body}");
+    let ticket = body["ticket"].as_str().unwrap().to_string();
+    let redeem = |path: &'static str, ticket: String| {
+        world
+            .http
+            .post(format!("{}{}", world.service, oa_auth::repos::broker::PATH))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "ticket={ticket}&protocol=https&host=github.com&path={path}"
+            ))
+            .send()
+    };
+    let answer = redeem("octo-local/hello-world.git", ticket.clone())
+        .await
+        .unwrap();
+    assert_eq!(answer.status().as_u16(), 200);
+    let text = answer.text().await.unwrap();
+    assert!(
+        text.starts_with("username=x-access-token\npassword="),
+        "{text}"
+    );
+    assert!(
+        text.lines()
+            .any(|l| l.len() > "password=".len() && l.starts_with("password="))
+    );
+    let answer = redeem("octo-local/secret-plans", ticket.clone())
+        .await
+        .unwrap();
+    assert_eq!(answer.status().as_u16(), 403);
+    assert!(!answer.text().await.unwrap().contains("password"));
+
+    // A repository that isn't one of the person's projects: no ticket.
+    let (status, body) = ticket_for("octo-local/secret-plans").await;
+    assert_eq!(
+        (status, body["error"]["code"].clone()),
+        (404, json!("repository_not_found"))
+    );
+}

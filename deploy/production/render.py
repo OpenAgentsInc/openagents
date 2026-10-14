@@ -38,12 +38,6 @@ INVITE_ONLY = json.dumps(
 # third-party analytics). The Secret Manager secret
 # openagents-posthog-project-token is no longer referenced.
 THIRD_PARTY_ANALYTICS = {"POSTHOG_PROJECT_TOKEN", "POSTHOG_HOST"}
-# The GitHub App (#11572, docs/auth/github.md "GitHub App"): App 4771671
-# (openagents-coder), its private file and its key, for the web
-# (`--github-app`) and the gateway's account service (App grants and
-# credential-broker tickets). People connected by OAuth keep working.
-GITHUB_APP_SECRETS = (("openagents-web-production-github-app", "GITHUB_APP_JSON"),
-                      ("coder-github-app-key", "GITHUB_APP_PEM"))
 SYSTEM = ("serving.knative.dev/", "client.knative.dev/", "run.googleapis.com/operation-id",
           "run.googleapis.com/ingress-status", "run.googleapis.com/urls",
           "run.googleapis.com/creator", "run.googleapis.com/lastModifier")
@@ -55,9 +49,6 @@ def secret(name, var):
 
 def plain(var, value):
     return {"name": var, "value": value}
-
-
-GITHUB_APP = tuple(secret(name, var) for name, var in GITHUB_APP_SECRETS)
 
 
 def keep(entries, drop):
@@ -116,7 +107,6 @@ def main():
         secret("openagents-vertex-sa-key", "VERTEX_SA_JSON"),
         # Work hosts that take "work on this issue" runs (#11258).
         secret("openagents-work-host-token", "OPENAGENTS_WORK_HOST_TOKEN"),
-        *GITHUB_APP,
     ] + ([] if args.files else [
         # The actor runtime (#11253, docs/deployment/actors.md) in the
         # account database. Mac jobs go through it only while the live
@@ -160,7 +150,6 @@ def main():
             secret("openagents-vercel-gateway-api-key", "AI_GATEWAY_API_KEY"),
             secret("openagents-gateway-production-byok-keyring", "BYOK_KEYRING_JSON"),
             secret("openagents-gateway-production-store-key", "INFERENCE_STORE_KEY"),
-            *GITHUB_APP,
         ] + ([] if args.files else [secret(DATABASE_SECRET, "OPENAGENTS_ACCOUNTS_DATABASE_URL")]),
         "volumeMounts": [{"name": "stack", "mountPath": "/stack"}],
         "resources": {"limits": {"cpu": "1", "memory": "512Mi"}},

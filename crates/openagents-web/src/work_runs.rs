@@ -36,8 +36,10 @@
 //! take turns with the account's other runs. When it is asked for, the
 //! website asks the account service for a credential-broker ticket for its
 //! repository ([`Ticket`]); when a host takes the run, the ticket is
-//! redeemed once for a GitHub token scoped to that repository, handed to
-//! that host only, and dropped from the record. Its progress lines
+//! redeemed once for the person's GitHub token (their own OAuth token, or
+//! the App's token for that one repository when they installed it, #11572),
+//! handed to that host only, and dropped from the record. Access that can't
+//! push there refuses the run with a link to connect private repositories. Its progress lines
 //! (`box`, `stage`, `briefing`, `thinking`, `tool`, `checks`, `pr`, `cost`,
 //! `notice`) read in plain words in the chat it started from
 //! ([`solver_words`]).
@@ -1752,7 +1754,19 @@ async fn submit_route(State(app): State<App>, headers: HeaderMap, body: Bytes) -
     let owner = account_owner(&viewer.account_id);
     let repo = sent.repo.trim().to_owned();
     let github = if engine == Engine::Solver && valid_repo(&repo) {
-        github_ticket(&app, &headers, &repo).await
+        match github_ticket(&app, &headers, &repo).await {
+            Ok(ticket) => ticket,
+            Err(error) => {
+                return answer(
+                    StatusCode::from_u16(error.status()).unwrap_or(StatusCode::CONFLICT),
+                    json!({"error": {
+                        "code": error.code(),
+                        "message": error.to_string(),
+                        "fix_path": CONNECT_PRIVATE,
+                    }}),
+                );
+            }
+        }
     } else {
         None
     };
@@ -2065,12 +2079,21 @@ fn password(text: &str) -> Option<String> {
 }
 
 /// A credential-broker ticket for `repo` under this request's session (the
-/// sign-in cookie, or the app's own `Bearer sess_…`), so a Solver run gets
-/// GitHub access as the person who asked; `None` when the account service
-/// gives none (GitHub not connected, the repository not one of the
-/// person's projects): the run then uses the host's own access.
-pub(crate) async fn github_ticket(app: &App, headers: &HeaderMap, repo: &str) -> Option<Ticket> {
-    let service = app.config.cloud.as_deref()?;
+/// sign-in cookie, or the app's own `Bearer sess_…`), so a Solver run
+/// pushes and opens its pull request as the person who asked, with their
+/// own GitHub token (#11572). `Err` when the person's GitHub access can't
+/// do it and they can fix that ([`person_fixes`]): the run is refused with
+/// those words. `Ok(None)` when this site has no account service, it isn't
+/// answering, or the repository isn't one of the person's projects: the
+/// run then uses the host's own access.
+pub(crate) async fn github_ticket(
+    app: &App,
+    headers: &HeaderMap,
+    repo: &str,
+) -> Result<Option<Ticket>, oa_auth::repos::RepoError> {
+    let Some(service) = app.config.cloud.as_deref() else {
+        return Ok(None);
+    };
     let bearer = headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
@@ -2089,8 +2112,35 @@ pub(crate) async fn github_ticket(app: &App, headers: &HeaderMap, repo: &str) ->
                 .await
         }
     };
-    ticket.ok().map(Ticket::new)
+    match ticket {
+        Ok(ticket) => Ok(Some(Ticket::new(ticket))),
+        Err(crate::cloud::session::github::RepoCallError::Repo(error)) if person_fixes(error) => {
+            Err(error)
+        }
+        Err(_) => Ok(None),
+    }
 }
+
+/// GitHub answers about the person's own access that they can fix: not
+/// connected, reconnect, public repositories only, no push, single
+/// sign-on, an organization's restrictions.
+pub(crate) fn person_fixes(error: oa_auth::repos::RepoError) -> bool {
+    use oa_auth::repos::RepoError as E;
+    matches!(
+        error,
+        E::NotConnected
+            | E::Reconnect
+            | E::OtherGithub
+            | E::NeedsRepoAccess
+            | E::CannotPush
+            | E::SsoRequired
+            | E::Forbidden
+    )
+}
+
+/// Where a person fixes [`person_fixes`]'s access: connecting GitHub with
+/// private repositories (the consent that asks for `repo`).
+pub(crate) const CONNECT_PRIVATE: &str = "/auth/github/repos?access=private";
 
 async fn report_route(
     State(app): State<App>,
@@ -2510,7 +2560,10 @@ async fn submit_page(
         .and_then(Engine::parse)
         .unwrap_or_default();
     let github = if engine == Engine::Solver && valid_repo(&repo) {
-        github_ticket(&app, &headers, &repo).await
+        match github_ticket(&app, &headers, &repo).await {
+            Ok(ticket) => ticket,
+            Err(error) => return problem(StatusCode::CONFLICT, &error.to_string()),
+        }
     } else {
         None
     };

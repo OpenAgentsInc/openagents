@@ -215,8 +215,10 @@ async fn broker_ticket(
 /// The credential broker: no session; the ticket is in the form body.
 /// The answer is Git's credential format, never logged.
 async fn git_credential(State(state): State<Arc<ServeState>>, body: axum::body::Bytes) -> Response {
+    let github = github(&state);
     let app = app(&state);
-    let (status, text) = oa_auth::repos::broker::credential(&state.dir, app.as_ref(), &body).await;
+    let (status, text) =
+        oa_auth::repos::broker::credential(&state.dir, github.as_ref(), app.as_ref(), &body).await;
     (
         StatusCode::from_u16(status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
         [

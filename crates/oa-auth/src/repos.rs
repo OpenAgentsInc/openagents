@@ -467,10 +467,15 @@ pub enum RepoError {
     NotInstalled,
     /// The GitHub App's installation on that account is suspended.
     Suspended,
+    /// The person connected GitHub for public repositories only, so their
+    /// token can't change code (#11572): connect private repositories.
+    NeedsRepoAccess,
+    /// The person's GitHub account can't push to that repository.
+    CannotPush,
 }
 
 impl RepoError {
-    const ALL: [Self; 17] = [
+    const ALL: [Self; 19] = [
         Self::NotConnected,
         Self::Reconnect,
         Self::OtherGithub,
@@ -488,6 +493,8 @@ impl RepoError {
         Self::Storage,
         Self::NotInstalled,
         Self::Suspended,
+        Self::NeedsRepoAccess,
+        Self::CannotPush,
     ];
 
     /// A stable code for the HTTP error envelope.
@@ -511,6 +518,8 @@ impl RepoError {
             Self::Storage => "github_access_storage",
             Self::NotInstalled => "github_app_not_installed",
             Self::Suspended => "github_app_suspended",
+            Self::NeedsRepoAccess => "github_needs_repo_access",
+            Self::CannotPush => "github_cannot_push",
         }
     }
 
@@ -518,11 +527,15 @@ impl RepoError {
     #[must_use]
     pub fn status(self) -> u16 {
         match self {
-            Self::NotConnected | Self::Reconnect | Self::OtherGithub | Self::Full => 409,
+            Self::NotConnected
+            | Self::Reconnect
+            | Self::OtherGithub
+            | Self::Full
+            | Self::NeedsRepoAccess => 409,
             Self::NotFound | Self::NotInstalled => 404,
             Self::Denied => 401,
             Self::Invalid => 400,
-            Self::SsoRequired | Self::Forbidden | Self::Suspended => 403,
+            Self::SsoRequired | Self::Forbidden | Self::Suspended | Self::CannotPush => 403,
             Self::RateLimited => 429,
             Self::GithubError | Self::BadAnswer => 502,
             Self::Unavailable | Self::NotConfigured => 503,
@@ -566,6 +579,12 @@ impl std::fmt::Display for RepoError {
             }
             Self::Suspended => {
                 "OpenAgents is suspended on that GitHub account. An owner can turn it back on in the account's GitHub settings."
+            }
+            Self::NeedsRepoAccess => {
+                "Your GitHub connection reaches public repositories only, so OpenAgents can't push for you. Connect private repositories, then try again."
+            }
+            Self::CannotPush => {
+                "Your GitHub account can't push to that repository. Ask its owner for write access, then try again."
             }
         })
     }
@@ -707,7 +726,17 @@ pub async fn answer_with(
             Call::BrokerTicket {
                 repository,
                 seconds,
-            } => broker::ticket(dir, app_ready()?, account, &repository, seconds)?,
+            } => match via_app {
+                // The App, when the account installed it: tokens for one
+                // repository from its installation.
+                Some(_) => broker::ticket(dir, true, account, &repository, seconds)?,
+                // Otherwise the person's own OAuth token (#11572): it must
+                // reach private repositories (`repo`) and push to this one.
+                None => {
+                    can_push(dir, github()?, account, &repository).await?;
+                    broker::ticket(dir, false, account, &repository, seconds)?
+                }
+            },
             Call::RemoveProject(id) => {
                 remove_project(dir, account, &id)?;
                 json!({"removed": id})
@@ -951,6 +980,34 @@ async fn look_up(
             None,
         )),
     }
+}
+
+/// The account's OAuth token has `repo` and pushes to `repository`
+/// (`owner/name`), as GitHub says now (#11572).
+async fn can_push(
+    dir: &Path,
+    github: &Github,
+    account: &str,
+    repository: &str,
+) -> Result<(), RepoError> {
+    if !full_name(repository) {
+        return Err(RepoError::Invalid);
+    }
+    let (token, private) = token(dir, github, account)?;
+    if !private {
+        return Err(RepoError::NeedsRepoAccess);
+    }
+    let answer = github
+        .api(token.as_str(), &format!("/repos/{repository}"))
+        .await?;
+    let body = checked(dir, account, answer)?.body;
+    if body["disabled"].as_bool() == Some(true) || body["archived"].as_bool() == Some(true) {
+        return Err(RepoError::CannotPush);
+    }
+    if body["permissions"]["push"].as_bool() != Some(true) {
+        return Err(RepoError::CannotPush);
+    }
+    Ok(())
 }
 
 /// `repository` (`owner/name`) read with the account's OAuth token.

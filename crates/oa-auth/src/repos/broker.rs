@@ -12,11 +12,15 @@
 //!    `github.com`, and posts the ticket and the repository path Git asked
 //!    about to [`PATH`] ([`credential`]).
 //! 3. The broker checks the ticket, that the path is the ticket's project,
-//!    and answers in Git's credential format with an installation token
-//!    scoped to that one repository, from the token cache (reused while
-//!    under 50 minutes old with 5 minutes left, minted again otherwise).
-//!    Anything else gets an error and no token; the helper never falls
-//!    back to an older one.
+//!    and answers in Git's credential format. An account that installed
+//!    the GitHub App gets an installation token scoped to that one
+//!    repository, from the token cache (reused while under 50 minutes old
+//!    with 5 minutes left, minted again otherwise). Any other account gets
+//!    the person's own OAuth token (#11572), which must have `repo` (the
+//!    ticket was issued only after GitHub said the person can push to the
+//!    repository); it reaches every repository the person can, so it goes
+//!    only to the one machine that redeems the ticket. Anything else gets
+//!    an error and no token; the helper never falls back to an older one.
 
 use std::path::Path;
 
@@ -27,8 +31,9 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
-use super::{RepoError, full_name, hex, load, load_by_digest, mutate, now};
+use super::{RepoError, full_name, hex, load, load_by_digest, mutate, now, token};
 use crate::app::AppClient;
+use crate::github::Github;
 
 /// The broker's route on the account service.
 pub const PATH: &str = "/v1/github/git-credential";
@@ -61,11 +66,12 @@ pub fn credential_value(service_origin: &str, ticket: &str) -> String {
 }
 
 /// Issue a ticket for `repository` (`owner/name`), one of the account's
-/// projects' repositories.
+/// projects' repositories, under the account's GitHub App grant (`app`)
+/// or its OAuth grant.
 /// `seconds` 0 means [`DEFAULT_SECONDS`].
 pub(super) fn ticket(
     dir: &Path,
-    _app: &AppClient,
+    app: bool,
     account: &str,
     repository: &str,
     seconds: u64,
@@ -92,8 +98,12 @@ pub(super) fn ticket(
     let now = now();
     let expires_unix = now + seconds;
     mutate(dir, account, |record| {
-        let grant = record.app.as_ref().ok_or(RepoError::NotConnected)?;
-        if grant.revoked_unix.is_some() {
+        let revoked = if app {
+            record.app.as_ref().map(|grant| grant.revoked_unix)
+        } else {
+            record.grant.as_ref().map(|grant| grant.revoked_unix)
+        };
+        if revoked.ok_or(RepoError::NotConnected)?.is_some() {
             return Err(RepoError::Reconnect);
         }
         let repository_id = record
@@ -161,16 +171,29 @@ impl From<RepoError> for Refused {
 /// Answer one Git credential request: `form` is the helper's
 /// `application/x-www-form-urlencoded` body with `ticket`, `protocol`,
 /// `host`, and `path` (`owner/name` or `owner/name.git`). On success, the
-/// lines Git reads: `username`, `password`, `password_expiry_utc`.
-pub async fn credential(dir: &Path, app: Option<&AppClient>, form: &[u8]) -> (u16, String) {
-    match answer(dir, app, form).await {
+/// lines Git reads: `username`, `password`, and `password_expiry_utc` for
+/// an installation token. `github` is the OAuth App, `app` the GitHub App.
+pub async fn credential(
+    dir: &Path,
+    github: Option<&Github>,
+    app: Option<&AppClient>,
+    form: &[u8],
+) -> (u16, String) {
+    match answer(dir, github, app, form).await {
         Ok(text) => (200, text),
         Err(refused) => (refused.status(), format!("error={}\n", refused.code())),
     }
 }
 
-async fn answer(dir: &Path, app: Option<&AppClient>, form: &[u8]) -> Result<String, Refused> {
-    let app = app.ok_or(RepoError::NotConfigured)?;
+async fn answer(
+    dir: &Path,
+    github: Option<&Github>,
+    app: Option<&AppClient>,
+    form: &[u8],
+) -> Result<String, Refused> {
+    if github.is_none() && app.is_none() {
+        return Err(RepoError::NotConfigured.into());
+    }
     if form.len() > 4096 {
         return Err(Refused::Ticket);
     }
@@ -216,7 +239,19 @@ async fn answer(dir: &Path, app: Option<&AppClient>, form: &[u8]) -> Result<Stri
     if !project.repository.eq_ignore_ascii_case(path) {
         return Err(Refused::Repository);
     }
-    let grant = record.app.as_ref().ok_or(RepoError::NotConnected)?;
+    // The account's GitHub App grant when this service has the App;
+    // otherwise its own OAuth token (#11572).
+    let (Some(app), Some(grant)) = (app, record.app.as_ref()) else {
+        let github = github.ok_or(RepoError::NotConfigured)?;
+        let (token, private) = token(dir, github, &record.account)?;
+        if !private {
+            return Err(RepoError::NeedsRepoAccess.into());
+        }
+        return Ok(format!(
+            "username=x-access-token\npassword={}\n",
+            token.as_str()
+        ));
+    };
     if grant.revoked_unix.is_some() {
         return Err(RepoError::Reconnect.into());
     }

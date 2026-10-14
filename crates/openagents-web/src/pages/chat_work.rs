@@ -585,10 +585,30 @@ pub(super) fn issues_named(text: &str, repository: Option<&str>) -> Vec<(String,
     found
 }
 
+/// Why work couldn't start: the words, and the one link that fixes it
+/// when there is one (connecting private repositories on GitHub).
+pub(super) struct WorkRefused {
+    pub(super) text: String,
+    pub(super) link: Option<(&'static str, &'static str)>,
+}
+
+impl From<String> for WorkRefused {
+    fn from(text: String) -> Self {
+        Self { text, link: None }
+    }
+}
+
+impl From<&str> for WorkRefused {
+    fn from(text: &str) -> Self {
+        Self::from(text.to_owned())
+    }
+}
+
 /// Hands `issues` to `engine` (the briefed agent, or Solver in the cloud)
 /// for the signed-in person, each a task of the chat; `Err` says why it
-/// can't. A Solver run gets the person's GitHub access for its
-/// repository ([`crate::work_runs::github_ticket`]).
+/// can't. A Solver run gets the person's own GitHub access for its
+/// repository ([`crate::work_runs::github_ticket`]); when that access
+/// can't push there, the run is refused with a link to fix it (#11572).
 pub(super) async fn begin_work(
     app: &App,
     headers: &HeaderMap,
@@ -596,7 +616,7 @@ pub(super) async fn begin_work(
     issues: &[(String, u64)],
     source: &str,
     engine: crate::work_runs::Engine,
-) -> Result<Vec<ChatTask>, String> {
+) -> Result<Vec<ChatTask>, WorkRefused> {
     let requester = crate::work_runs::web_requester(app, headers)
         .await
         .ok_or("Working on issues isn't open to this account yet.")?;
@@ -604,7 +624,15 @@ pub(super) async fn begin_work(
     let mut tasks = Vec::new();
     for (repo, issue) in issues {
         let github = if solver {
-            crate::work_runs::github_ticket(app, headers, repo).await
+            crate::work_runs::github_ticket(app, headers, repo)
+                .await
+                .map_err(|error| WorkRefused {
+                    text: format!("Solver in the cloud works as you on GitHub. {error}"),
+                    link: Some((
+                        crate::work_runs::CONNECT_PRIVATE,
+                        "Connect private repositories",
+                    )),
+                })?
         } else {
             None
         };
@@ -964,7 +992,7 @@ async fn run(
                     &offer,
                     prompt,
                     agents,
-                    Some(error.as_str()),
+                    Some(error.text.as_str()),
                 );
             }
         };
