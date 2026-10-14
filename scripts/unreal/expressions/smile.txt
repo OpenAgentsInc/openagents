@@ -3,8 +3,8 @@
 # large while she smiles, so the cheeks barely raise the lower lids and
 # there's no squint (corner pull eased in round 6: the smile measured 12%
 # wide).
-CTRL_expressions.mouthCornerPullL 0.45
-CTRL_expressions.mouthCornerPullR 0.42
+CTRL_expressions.mouthCornerPullL 0.55
+CTRL_expressions.mouthCornerPullR 0.52
 CTRL_expressions.eyeCheekRaiseL 0.06
 CTRL_expressions.eyeCheekRaiseR 0.05
 # Round 19: no lip press and lighter dimples (the lips read thin and the

@@ -1070,6 +1070,37 @@ $B -b --factory-startup --python scripts/blender/draconia_set.py -- ~/work/film-
     the jaw-angle edits overshoot; round 20 eases them.
   - The smile's mouth is 7% narrow.
 
+### Round 20, 2026-10-14: the jaw eased back, a wider smile
+
+- **What changed.**
+  - `face_v`: the taper under the mouth is now 9% (round 19's 12%
+    overshot) and the jaw-angle narrowing 10% (it was 14%).
+  - A fast test at 6%/7% overshot the other way: the jaw came out +2%
+    and the chin +4%.
+  - Smile: corners pulled 0.55/0.52 (0.45/0.42), for the reference's
+    wider smile.
+- **Measured** (outline, round 19 → round 20):
+
+  | Measure | 0:24 neutral | 0:54 smile |
+  | --- | --- | --- |
+  | Width at the jaw (0.75) | -6.8% → -3.7% | -17.1% → -13.8% |
+  | Width at the chin (0.90) | -7.9% → -4.4% | -16.1% → -12.8% |
+  | Mouth width | -2.5% → +0.5% | -7.4% → -2.1% |
+  | Eye opening | -3.6% → -4.7% | +2.0% → +1.2% |
+  | Mouth to chin | -1.0% → -1.1% | -4.9% → -2.6% |
+
+- **Artifacts.** `~/Downloads/draconia-fullface-mh-v17.png` (reference |
+  round 19 | round 20), `~/Downloads/draconia-parity-round-20.png`, the
+  progress sheet, and a clip of every round's medium shot so far,
+  `~/Downloads/draconia-parity-round-20.mp4`;
+  `~/work/film-out/draconia/parity/round-20/`.
+- **Honest state.**
+  - The neutral face is within 5% everywhere on both measures.
+  - The smile is still 13% narrow at the jaw. The reference's smile
+    bunches and widens her cheeks, and ours barely raises them; round 7
+    kept the cheek raise low so her eyes stay open.
+  - The brows sit 7% high for the eye spacing.
+
 ## Peacock scene
 
 The peacock guardian (reference 113.0–118.0 s, [shots.md](shots.md)),

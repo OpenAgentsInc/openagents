@@ -195,7 +195,7 @@ def lip_post(vs, marks):
 # 8-14% wide.
 FACE_V = {
     "short": 0.15,  # the lower face shortened by this share of mouth-to-chin
-    "taper": 0.12,  # the face's width under the mouth narrowed, most at the chin
+    "taper": 0.09,  # the face's width under the mouth narrowed, most at the chin
     "jowl": 0.0035,  # the jowls drawn in (m)
     "cheekbone": 0.003,  # cheekbones forward and out (m)
     "hollow": 0.007,  # the hollow under them (m, inward)
@@ -205,7 +205,7 @@ FACE_V = {
     "tip": 0.0015,  # the nose tip smaller (m, back)
     "lip": 0.0008,  # the upper lip forward (m)
     "lower_lip": 0.0003,  # the lower lip forward (m)
-    "gonial": 0.14,  # the jaw's angles (under the ears) drawn in
+    "gonial": 0.1,  # the jaw's angles (under the ears) drawn in
     "neck": 0.1,  # the neck slimmer (x; half that in depth)
     "brow": 0.0015,  # the brows lower (m), as the larger eyes rise toward them
     "tuck": 0.004,  # under the chin drawn back (m), a crisp jaw-to-neck angle
