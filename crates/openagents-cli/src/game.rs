@@ -143,8 +143,14 @@ pub(crate) fn request(words: &[String]) -> Result<(String, Value), String> {
         ));
     }
     let mut call = json!({});
-    if let Some(game) = positional.get(1) {
-        call["game"] = json!(game);
+    // The Lab's tools take the game they're about; on the command line it
+    // may be left out, and the one game is meant.
+    if command != "list" {
+        call["game"] = json!(
+            positional
+                .get(1)
+                .map_or("the-ice-cream-man", String::as_str)
+        );
     }
     for name in allowed {
         if let Some(value) = args.option(name) {
@@ -318,7 +324,7 @@ mod tests {
     fn commands_become_game_tool_calls() {
         let (tool, call) = request(&words("compare --a 1")).unwrap();
         assert_eq!(tool, "game_compare");
-        assert_eq!(call, json!({"a": "1"}));
+        assert_eq!(call, json!({"game": "the-ice-cream-man", "a": "1"}));
         let (tool, call) = request(&words("open the-ice-cream-man --version 2")).unwrap();
         assert_eq!(tool, "game_open");
         assert_eq!(call, json!({"game": "the-ice-cream-man", "version": "2"}));

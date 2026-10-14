@@ -1,14 +1,12 @@
 //! Game Lab in the web chat (docs/game-lab/README.md, docs/game-lab/mvp.md).
 //!
 //! When this server is told where a Game Lab runs (`OPENAGENTS_GAME_LAB`,
-//! a loopback URL: the Lab keeps its versions on the Mac it runs on), a
-//! message goes to [`GameDoor`]: Gemini with the Lab's tools declared as
-//! typed functions (`game_open`, `game_play`, `game_edit`,
-//! `game_versions`, `game_compare`, `game_notes`, `game_list`; the Lab
-//! serves their declarations at `/api/tools`) and one more,
-//! `general_chat`. The model's typed function choice is the route: it
-//! works on a game or hands the message to the chat behind it (Video Lab,
-//! then the general chat). No words of the message are matched here.
+//! a loopback URL: the Lab keeps its versions on the Mac it runs on), its
+//! tools (`game_open`, `game_play`, `game_edit`, `game_versions`,
+//! `game_compare`, `game_notes`, `game_list`; the Lab serves their
+//! declarations at `/api/tools`) join Video Lab's in one chat turn
+//! ([`crate::labs`], #11619): the model's typed function choice is the
+//! route. No words of the message are matched here.
 //!
 //! A tool's result carries a card (`"card": "game_lab"`): the game, the
 //! version and its address fragment (the version's numbers and words, as
@@ -17,9 +15,6 @@
 //! the game itself in a frame (`/chat/{id}/game/play`), a Play button,
 //! Compare, and a note at the time and place in the run.
 
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use axum::Router;
@@ -27,19 +22,12 @@ use axum::extract::{Form, Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
-use inference::upstream::vertex;
 use maud::{Markup, html};
-use openagents_chat::basic_coder::{self, Door, Failure, Reply, Role as TurnRole, Turn};
-use openagents_chat::router::Context;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::App;
-use crate::chat_vision::{Gemini, gemini_text};
-use crate::connections::chat::{HANDOFF, gemini_call};
 
-/// The most model steps (tool rounds) one answer takes.
-const MAX_STEPS: usize = 8;
 /// How long one Lab call may take (an edit plays 24 bot runs).
 const LAB_DEADLINE: Duration = Duration::from_secs(90);
 /// The card kind a Game Lab tool returns.
@@ -84,7 +72,7 @@ async fn manifest(lab: &str) -> Result<(Vec<Value>, Vec<Value>), String> {
 }
 
 /// One tool call on the Lab: its JSON result.
-async fn run_tool(lab: &str, name: &str, arguments: &Value) -> Result<Value, String> {
+pub(crate) async fn run_tool(lab: &str, name: &str, arguments: &Value) -> Result<Value, String> {
     if !name.starts_with("game_")
         || !name[5..]
             .chars()
@@ -104,47 +92,30 @@ async fn run_tool(lab: &str, name: &str, arguments: &Value) -> Result<Value, Str
         .map_err(|e| e.to_string())
 }
 
-/// A door that works on Game Lab games, or hands the message to
-/// `fallback`.
-pub(crate) struct GameDoor {
-    pub gemini: Gemini,
-    pub lab: String,
-    pub tools: Vec<Value>,
-    pub documents: Vec<Value>,
-    pub fallback: Option<Box<dyn Door>>,
-}
-
-/// The Game Lab door, when a Lab is configured and answering and this
-/// server has Gemini. Like Video Lab's, a Game Lab is only ever configured
-/// on the computer it runs on, so whoever uses this site there is its
-/// owner, signed in or not.
-pub(crate) async fn door(_app: &App) -> Option<GameDoor> {
+/// The Game Lab on this Mac, when one is configured and answering: its
+/// tools and games ([`crate::labs`] puts them in the chat's turn).
+pub(crate) async fn manifest_here() -> Option<crate::labs::Lab> {
     let lab = lab_url()?;
-    // Game Lab's turns run on Gemini 4 Argon (Vertex, global), the Labs' model.
-    let gemini = Gemini::from_env_for(vertex::ARGON)?;
-    let (tools, documents) = match manifest(&lab).await {
-        Ok(found) => found,
+    match manifest(&lab).await {
+        Ok((tools, documents)) => Some(crate::labs::Lab {
+            kind: crate::labs::Kind::Game,
+            url: lab,
+            tools,
+            documents,
+        }),
         Err(why) => {
             eprintln!("openagents-web: game lab: not answering at {lab}: {why}");
-            return None;
+            None
         }
-    };
-    Some(GameDoor {
-        gemini,
-        lab,
-        tools,
-        documents,
-        fallback: None,
-    })
+    }
 }
 
 /// What the model is told about Game Lab.
-fn guidance(documents: &[Value]) -> String {
+pub(crate) fn guidance(documents: &[Value]) -> String {
     let mut out = String::from(
         "\n\nThis chat can play and change the owner's games in Game Lab, on this Mac, with the game_* tools. \
 When the message is about one of these games (open it, play it, change how it plays, its rules, items, the Ice Cream Man's \
-behaviour, its layout or its words, compare versions, notes), use the tools; otherwise call general_chat (films and videos are \
-not games). The chat shows a card with the game under your answer, so don't paste links or fragments; say in a sentence or \
+behaviour, its layout or its words, compare versions, notes), use the game_* tools, always naming the game. The chat shows a card with the game under your answer, so don't paste links or fragments; say in a sentence or \
 two, as \"I\", what you did and what changed. \
 To change a game, read its document first (game_open), then call game_edit with a JSON Patch on the document and a \
 one-line summary in plain words. Paths are /SECTION/NAME, e.g. /man/man_chase. Speeds are in man_wander, \
@@ -165,167 +136,6 @@ the bot runs measured.\n\nGames:\n",
         ));
     }
     out
-}
-
-/// The function declarations Gemini gets: the Lab's tools and the hand-off.
-fn declarations(tools: &[Value]) -> Vec<Value> {
-    let mut out: Vec<Value> = tools
-        .iter()
-        .map(|tool| {
-            json!({
-                "type": "function",
-                "name": tool["name"],
-                "description": tool["description"],
-                "parameters": tool["parameters"],
-            })
-        })
-        .collect();
-    out.push(json!({
-        "type": "function",
-        "name": HANDOFF,
-        "description": "Hand the message to OpenAgents' general chat, for anything that isn't about a game in Game Lab.",
-        "parameters": {"type": "object", "properties": {}},
-    }));
-    out
-}
-
-fn request(instructions: &str, turns: &[Turn], tools: &[Value]) -> Value {
-    let input: Vec<Value> = turns
-        .iter()
-        .map(|turn| {
-            let role = match turn.role {
-                TurnRole::User => "user",
-                TurnRole::Assistant => "assistant",
-            };
-            json!({"type": "message", "role": role, "content": turn.text})
-        })
-        .collect();
-    json!({
-        "model": vertex::ARGON,
-        "instructions": instructions,
-        "input": input,
-        "tools": declarations(tools),
-        "stream": false,
-        "store": false,
-    })
-}
-
-enum Ending {
-    Answer { text: String, card: Option<Value> },
-    Handoff,
-}
-
-async fn converse(
-    gemini: &Gemini,
-    lab: &str,
-    tools: &[Value],
-    instructions: &str,
-    turns: &[Turn],
-) -> Result<Ending, String> {
-    let mut body = gemini.body(&request(instructions, turns, tools))?;
-    let mut card: Option<Value> = None;
-    for step in 0..=MAX_STEPS {
-        if step == MAX_STEPS {
-            body["toolConfig"] = json!({"functionCallingConfig": {"mode": "NONE"}});
-        }
-        let reply = gemini_call(gemini, &body).await?;
-        let content = reply["candidates"][0]["content"].clone();
-        let calls: Vec<Value> = content["parts"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|part| part["functionCall"].is_object())
-            .map(|part| part["functionCall"].clone())
-            .collect();
-        if calls.is_empty() {
-            let text = gemini_text(&reply).ok_or("Gemini answered nothing")?;
-            return Ok(Ending::Answer { text, card });
-        }
-        if calls.iter().any(|call| call["name"] == HANDOFF) && card.is_none() {
-            return Ok(Ending::Handoff);
-        }
-        let mut responses = Vec::new();
-        for call in &calls {
-            let name = call["name"].as_str().unwrap_or_default().to_owned();
-            let arguments = match &call["args"] {
-                Value::Object(_) => call["args"].clone(),
-                _ => json!({}),
-            };
-            let response = match run_tool(lab, &name, &arguments).await {
-                Ok(mut result) => {
-                    if let Some(found) = result.get("card").filter(|c| c["card"] == CARD) {
-                        card = Some(found.clone());
-                    }
-                    // The model reads the words; the card is for the person.
-                    if let Some(object) = result.as_object_mut() {
-                        object.remove("card");
-                    }
-                    json!({"result": result})
-                }
-                Err(why) => json!({"error": why}),
-            };
-            eprintln!("openagents-web: game lab: {name}");
-            let mut part = json!({"functionResponse": {"name": name, "response": response}});
-            if let Some(id) = call["id"].as_str() {
-                part["functionResponse"]["id"] = json!(id);
-            }
-            responses.push(part);
-        }
-        let contents = body["contents"]
-            .as_array_mut()
-            .ok_or("the request has no contents")?;
-        contents.push(json!({"role": "model", "parts": content["parts"].clone()}));
-        contents.push(json!({"role": "user", "parts": responses}));
-    }
-    Err("Gemini kept calling tools".into())
-}
-
-impl Door for GameDoor {
-    fn ask(
-        &self,
-        turns: Vec<Turn>,
-        context: Context,
-        reply: Arc<Mutex<Reply>>,
-    ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
-        let instructions = format!(
-            "{}{}",
-            basic_coder::instructions(&context),
-            guidance(&self.documents)
-        );
-        let fallback = self
-            .fallback
-            .as_ref()
-            .map(|door| door.ask(turns.clone(), context.clone(), reply.clone()));
-        let gemini = self.gemini.clone();
-        let lab = self.lab.clone();
-        let tools = self.tools.clone();
-        Box::pin(async move {
-            match converse(&gemini, &lab, &tools, &instructions, &turns).await {
-                Ok(Ending::Answer { text, card }) => {
-                    let mut reply = basic_coder::lock(&reply);
-                    reply.text = text;
-                    reply.model = Some(gemini.row.id.clone());
-                    reply.meta.tier = Some("model".into());
-                    reply.meta.route = Some("game_lab".into());
-                    reply.meta.cards = card.into_iter().collect();
-                    reply.done = true;
-                }
-                other => {
-                    if let Err(why) = &other {
-                        eprintln!("openagents-web: game lab: {why}; the next chat answers");
-                    }
-                    match fallback {
-                        Some(job) => job.await,
-                        None => {
-                            basic_coder::lock(&reply).failure = Some(Failure::Transport(
-                                other.err().unwrap_or_else(|| "no general chat".into()),
-                            ));
-                        }
-                    }
-                }
-            }
-        })
-    }
 }
 
 /// The Game Lab cards a reply keeps.

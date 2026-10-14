@@ -39,7 +39,11 @@ starts reuse that build. Add `--no-build` to skip it.
   Its log is `~/.openagents/full-local/logs/lab.log`.
 - **The chat's Lab tools.** Gemini 4 Argon on Vertex (global) calls them. Its credential is
   `$GOOGLE_APPLICATION_CREDENTIALS`, or else
-  `~/work/.secrets/gcp-mvp-automation.json`.
+  `~/work/.secrets/gcp-mvp-automation.json`. One turn sees Video Lab's and
+  Game Lab's tools together, with the chat's current Lab document (the
+  last card shown) as context, so "compare the latest with v2 at 0:25"
+  after a film goes to the film and "compare with the original" after the
+  game goes to the game (`crates/openagents-web/src/labs.rs`, #11619).
 - **The gateway on 8790**, because the film review page holds 8791. Your
   review page and its notes are left alone.
 

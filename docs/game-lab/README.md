@@ -79,7 +79,7 @@ the message (workspace rule: no ad-hoc keyword routing).
 | `game_play(game, version?)` | The card, ready to play |
 | `game_edit(game, patch, summary, version?)` | A JSON Patch on the document, as a new version. The only write |
 | `game_versions(game)` | Each version's summary, author and bot win rate |
-| `game_compare(game, a?, b?)` | Two versions side by side: what changed, and the measured differences over the same seeded bot runs |
+| `game_compare(game, a?, b?)` | Two versions side by side: what changed, and the measured differences over the same seeded bot runs. A version the game doesn't have, or a version with itself, is refused |
 | `game_notes(game, version?, text?, seconds?, room?)` | Reads the notes, or saves one at a time and place in a run |
 
 `game_edit` checks an edit in three steps before anything is saved:
@@ -142,10 +142,17 @@ tests. The next version then builds once and plays as data again.
   build, and serves the tools at `/api/tools` and `/api/tool/{name}`, the
   card at `/api/card`, the build at `/build/{file}` and its own play page at
   `/play`. It binds to loopback only.
-- **The web chat** (`crates/openagents-web/src/game_lab.rs`). With
-  `OPENAGENTS_GAME_LAB` set to a loopback URL, a `GameDoor` gives Gemini 4 Argon
-  (Vertex, global) the Lab's tools plus `general_chat`. Whatever isn't about a game is handed on
-  to Video Lab's door and then the general chat. The play page
+- **The web chat** (`crates/openagents-web/src/game_lab.rs`,
+  `crates/openagents-web/src/labs.rs`). With `OPENAGENTS_GAME_LAB` set to a
+  loopback URL, one chat turn gives Gemini 4 Argon (Vertex, global) both
+  Labs' tools together (`game_*`, Video Lab's `lab_*`) plus `general_chat`,
+  with the chat's current Lab document as context: the last card it showed,
+  its kind and id. A follow-up ("compare with the original") goes to that
+  document's Lab by the model's typed choice, never by matching words
+  (#11619). Every game tool but `game_list` needs the game named: a call
+  without one, or naming a Video Lab document, is refused and returns no
+  numbers, and a compare of versions the game doesn't have is refused
+  plainly. Whatever is about neither Lab goes on to the general chat. The play page
   (`/chat/{id}/game/play`) and the build (`/chat/game/build/{file}`) are
   served through the site. Only this site may frame them, and the chat
   page's policy allows same-origin frames.

@@ -450,16 +450,22 @@ impl Lab {
     /// Runs a tool: its JSON result, or `{"error": ...}`.
     #[must_use]
     pub fn run(&self, name: &str, args: &Value) -> Value {
-        let game = args["game"]
-            .as_str()
-            .filter(|g| !g.trim().is_empty())
-            .unwrap_or(ICE_CREAM_MAN)
-            .to_owned();
         if let Some(problem) = unknown_arguments(name, args) {
             return json!({"error": problem});
         }
+        // A tool works on the game it names, never on one picked for it: a
+        // call meant for something else (a film) gets no game's numbers
+        // (#11619).
+        let game = args["game"]
+            .as_str()
+            .map(str::trim)
+            .unwrap_or_default()
+            .to_owned();
+        if name != "game_list" && game.is_empty() {
+            return json!({"error": format!("{name} needs the game it's about (game); the games are: {ICE_CREAM_MAN}. Nothing was done.")});
+        }
         if name != "game_list" && self.latest(&game).is_none() {
-            return json!({"error": format!("There's no game called {game} in the Lab; the games are: {ICE_CREAM_MAN}.")});
+            return json!({"error": format!("There's no game called {game} in Game Lab; the games are: {ICE_CREAM_MAN}. Nothing was done.")});
         }
         let result = match name {
             "game_list" => Ok(self.list()),
@@ -615,9 +621,14 @@ impl Lab {
         for n in [a, b] {
             if self.load(game, n).is_none() {
                 return Err(format!(
-                    "There's no version {n}; the versions are 1 to {latest}."
+                    "{game} has no version {n}; its versions are 1 to {latest}. Nothing was compared."
                 ));
             }
+        }
+        if a == b {
+            return Err(format!(
+                "That's version {a} with itself; {game} has versions 1 to {latest}. Nothing was compared."
+            ));
         }
         let card = self.card(game, b, Some(a))?;
         let compare = &card["compare"];
@@ -746,31 +757,30 @@ fn unknown_arguments(name: &str, args: &Value) -> Option<String> {
 /// The tools' declarations, for the chat's model.
 #[must_use]
 pub fn tools() -> Value {
-    let game =
-        json!({"type": "string", "description": "the game's id; the-ice-cream-man (the default)"});
+    let game = json!({"type": "string", "description": "the game's id, e.g. the-ice-cream-man"});
     let version =
         json!({"type": "integer", "description": "a version number; the latest when left out"});
     json!({"tools": [
         {"name": "game_list", "description": "List the games in Game Lab on this computer.",
          "parameters": {"type": "object", "properties": {}}},
         {"name": "game_open", "description": "Open a game in Game Lab: its latest version (or the one asked for), its whole game.v1 document (every setting you can change), its bot-run stats, and a card where it can be played.",
-         "parameters": {"type": "object", "properties": {"game": game, "version": version}}},
+         "parameters": {"type": "object", "required": ["game"], "properties": {"game": game, "version": version}}},
         {"name": "game_play", "description": "Show a version in a card where the person can play it right in the chat.",
-         "parameters": {"type": "object", "properties": {"game": game, "version": version}}},
+         "parameters": {"type": "object", "required": ["game"], "properties": {"game": game, "version": version}}},
         {"name": "game_edit", "description": "Change a game by a JSON Patch (RFC 6902) on its game.v1 document, making a new version. Read the document first with game_open. Paths are /SECTION/NAME, e.g. /man/man_chase or /layout/extra_closets or /copy/title. The edit is checked against the game's schema and rules, and the bot plays 24 seeded runs with it: an edit that breaks the rules or that nobody can win is refused with the reason, and nothing is saved.",
-         "parameters": {"type": "object", "required": ["patch", "summary"], "properties": {
+         "parameters": {"type": "object", "required": ["game", "patch", "summary"], "properties": {
             "game": game,
             "patch": {"type": "string", "description": "the JSON Patch as a JSON string, e.g. [{\"op\":\"replace\",\"path\":\"/man/man_chase\",\"value\":4.48}]"},
             "summary": {"type": "string", "description": "one line in plain words saying what the edit changes"},
             "version": {"type": "integer", "description": "the version to change; the latest when left out"}}}},
         {"name": "game_versions", "description": "The versions of a game: each one's summary, who made it, and its bot win rate.",
-         "parameters": {"type": "object", "properties": {"game": game}}},
+         "parameters": {"type": "object", "required": ["game"], "properties": {"game": game}}},
         {"name": "game_compare", "description": "Two versions side by side: what changed, and the measured differences from 24 seeded bot runs each (escapes, escape time, hits taken, times spotted, hiding spots). Version 1 is the original game. a defaults to the version before b; b to the latest.",
-         "parameters": {"type": "object", "properties": {"game": game,
+         "parameters": {"type": "object", "required": ["game"], "properties": {"game": game,
             "a": {"type": "integer", "description": "the first version, e.g. 1 for the original"},
             "b": {"type": "integer", "description": "the second version; the latest when left out"}}}},
         {"name": "game_notes", "description": "Read the notes on a game (each at a time and place in a run), or save one when text is given.",
-         "parameters": {"type": "object", "properties": {"game": game, "version": version,
+         "parameters": {"type": "object", "required": ["game"], "properties": {"game": game, "version": version,
             "text": {"type": "string", "description": "a note to save"},
             "seconds": {"type": "number", "description": "the time in the run the note is about"},
             "room": {"type": "string", "description": "the room the note is about"}}}}
@@ -819,7 +829,7 @@ mod tests {
         assert_eq!(document, doc::original());
         assert_eq!(record["digest"], digest(&document));
         assert!(record["stats"]["escaped"].as_u64().unwrap() > 0);
-        let opened = lab.run("game_open", &json!({}));
+        let opened = lab.run("game_open", &json!({"game": ICE_CREAM_MAN}));
         assert_eq!(opened["card"]["card"], CARD);
         assert_eq!(opened["card"]["fragment"], "seed=7");
     }
@@ -830,7 +840,7 @@ mod tests {
         let patch = "[{\"op\":\"replace\",\"path\":\"/man/man_chase\",\"value\":4.48},{\"op\":\"replace\",\"path\":\"/man/man_wander\",\"value\":1.92},{\"op\":\"replace\",\"path\":\"/layout/extra_closets\",\"value\":2}]";
         let edited = lab.run(
             "game_edit",
-            &json!({"patch": patch, "summary": "He's 20% slower; two more closets"}),
+            &json!({"game": ICE_CREAM_MAN, "patch": patch, "summary": "He's 20% slower; two more closets"}),
         );
         assert_eq!(edited["saved"], true, "{edited}");
         assert_eq!(edited["version"], 2);
@@ -840,7 +850,7 @@ mod tests {
                 .unwrap()
                 .contains("t.man_chase=4.48")
         );
-        let compared = lab.run("game_compare", &json!({"a": 1}));
+        let compared = lab.run("game_compare", &json!({"game": ICE_CREAM_MAN, "a": 1}));
         assert_eq!(
             compared["changes"].as_array().unwrap().len(),
             3,
@@ -876,7 +886,10 @@ mod tests {
             ),
             ("[{\"op\":\"remove\",\"path\":\"/man/sight\"}]", "missing"),
         ] {
-            let result = lab.run("game_edit", &json!({"patch": patch, "summary": "x"}));
+            let result = lab.run(
+                "game_edit",
+                &json!({"game": ICE_CREAM_MAN, "patch": patch, "summary": "x"}),
+            );
             assert_eq!(result["refused"], true, "{result}");
             assert!(
                 result["reason"].as_str().unwrap().contains(says),
@@ -898,12 +911,52 @@ mod tests {
         let (_dir, lab) = lab();
         let saved = lab.run(
             "game_notes",
-            &json!({"text": "He's too slow here", "seconds": 42.25, "room": "Kitchen"}),
+            &json!({"game": ICE_CREAM_MAN, "text": "He's too slow here", "seconds": 42.25, "room": "Kitchen"}),
         );
         assert_eq!(saved["saved"], true, "{saved}");
-        let read = lab.run("game_notes", &json!({}));
+        let read = lab.run("game_notes", &json!({"game": ICE_CREAM_MAN}));
         assert_eq!(read["notes"][0]["room"], "Kitchen");
         assert_eq!(read["notes"][0]["seconds"], 42.3);
         assert_eq!(read["card"]["notes"], 1);
+    }
+
+    #[test]
+    fn a_compare_never_answers_for_a_game_it_was_not_asked_about() {
+        let (_dir, lab) = lab();
+        // A follow-up meant for a film: no game named, or a film named.
+        for args in [
+            json!({"a": 2}),
+            json!({"game": "episode-290", "a": 2}),
+            json!({"game": "", "a": 2}),
+        ] {
+            let result = lab.run("game_compare", &args);
+            let error = result["error"].as_str().unwrap_or_default();
+            assert!(error.contains("Nothing was done"), "{result}");
+            assert!(result.get("differences").is_none() && result.get("card").is_none());
+        }
+        // Versions the game doesn't have are refused, not made up.
+        let result = lab.run("game_compare", &json!({"game": ICE_CREAM_MAN, "a": 2}));
+        assert!(
+            result["error"]
+                .as_str()
+                .unwrap()
+                .contains("has no version 2"),
+            "{result}"
+        );
+        let result = lab.run("game_compare", &json!({"game": ICE_CREAM_MAN}));
+        assert!(
+            result["error"].as_str().unwrap().contains("with itself"),
+            "{result}"
+        );
+        assert!(result.get("differences").is_none());
+        // The declarations ask for the game on every tool but the list.
+        for tool in tools()["tools"].as_array().unwrap() {
+            let required = tool["parameters"]["required"].to_string();
+            assert_eq!(
+                required.contains("\"game\""),
+                tool["name"] != "game_list",
+                "{tool}"
+            );
+        }
     }
 }

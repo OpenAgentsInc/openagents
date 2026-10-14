@@ -50,6 +50,7 @@ mod game_lab;
 mod github_refs;
 mod github_tools;
 mod lab;
+mod labs;
 mod layout;
 mod link_preview;
 pub mod mac_jobs;

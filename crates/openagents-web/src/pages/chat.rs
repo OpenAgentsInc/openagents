@@ -2320,17 +2320,20 @@ async fn answer(
         (Some(_), true) => crate::github_tools::issues::door(&payer, repo.as_ref()),
         _ => None,
     };
-    // With a Video Lab on this Mac, Gemini works on the owner's films with
-    // the Lab's tools, or hands the message on (docs/video-lab/mvp.md).
-    let lab = match (&door, parts.is_empty()) {
-        (Some(_), true) => crate::lab::door(&app, &payer).await,
-        _ => None,
-    };
-    // With a Game Lab on this Mac, Gemini plays and changes the owner's
-    // games with its tools, or hands the message on to Video Lab and the
-    // chat behind it (docs/game-lab/mvp.md).
-    let game_lab = match (&door, parts.is_empty()) {
-        (Some(_), true) => crate::game_lab::door(&app).await,
+    // With a Video Lab or a Game Lab on this Mac, one Gemini turn sees both
+    // Labs' tools, with the chat's current Lab document (the last card it
+    // showed), and works on a film or a game or hands the message on
+    // (docs/video-lab/mvp.md, docs/game-lab/mvp.md, #11619).
+    let labs = match (&door, parts.is_empty()) {
+        (Some(_), true) => {
+            let current = crate::labs::current(
+                chat.requests
+                    .iter()
+                    .filter(|r| r.id != request_id)
+                    .filter_map(|r| r.reply.as_ref()),
+            );
+            crate::labs::door(&app, current).await
+        }
         _ => None,
     };
     // Images or PDFs go to the door that takes them; the hosted chat
@@ -2369,17 +2372,10 @@ async fn answer(
                 }
                 None => door,
             };
-            let door: Box<dyn openagents_chat::basic_coder::Door> = match lab {
-                Some(mut lab) => {
-                    lab.fallback = Some(door);
-                    Box::new(lab)
-                }
-                None => door,
-            };
-            match game_lab {
-                Some(mut game_lab) => {
-                    game_lab.fallback = Some(door);
-                    Some(Box::new(game_lab))
+            match labs {
+                Some(mut labs) => {
+                    labs.fallback = Some(door);
+                    Some(Box::new(labs))
                 }
                 None => Some(door),
             }
