@@ -148,7 +148,7 @@ The latest day with a full sweep for each backend.
 | h100-clef-27b | 3.83 | 1 | 0.30 s | $0.464 | 13.48 | 4k (5.0k measured) tok × 13 q, c=4 | 1 | 2026-10-11 |
 | sealed-gpu | 2.94 | 2 | 0.78 s | $0.646 | 3.11 | 0.5k (0.6k measured) tok × 1 q, c=2 | 8 | 2026-10-11 |
 | sealed-cpu | 0.04 | 1 | 31.28 s | $3.472 | 0.04 | 0.5k (0.6k measured) tok × 1 q, c=1 | 1 | 2026-10-11 |
-| coderos-clef-prod | 3.75 | 1 | 0.29 s | $0.0089 | 15.44 | 4k (5.5k measured) tok × 13 q, c=1 | 1 | 2026-10-13 |
+| coderos-clef-prod | 3.80 | 1 | 0.28 s | $0.0088 | 15.48 | 4k (5.5k measured) tok × 13 q, c=1 | 1 | 2026-10-14 |
 <!-- dt:summary:end -->
 
 ## Method
@@ -415,14 +415,14 @@ oa-att-tdx-1: 8 TDX vCPUs, Psionic Clef-Flash CPU, NIP-ATT sealed. Model `clef-f
 
 ### coderos-clef-prod
 
-RTX 4080 16 GB, the production pylon-clef Psionic Clef-Flash Q4_K_M CUDA server (port 18096), measured read-only at low concurrency beside its live traffic. Model `clef-flash`, plan `daily`, 2026-10-13, run on `coderos-4080`. Price: CoderOS-4080 amortized hardware + power (assumption, see doc).
+RTX 4080 16 GB, the production pylon-clef Psionic Clef-Flash Q4_K_M CUDA server (port 18096), measured read-only at low concurrency beside its live traffic. Model `clef-flash`, plan `daily`, 2026-10-14, run on `coderos-4080`. Price: CoderOS-4080 amortized hardware + power (assumption, see doc).
 
 | Point | Shape | Conc | OK / failed | Decisions/s | Peak 10 s | p50 s | p90 s | p99 s | busy retries | $ / 1,000 | GPU util mean / max, mem max |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| c1 | 1.5k (1.7k measured) tok × 1 q | 1 | 169 / 0 | 3.75 | 3.80 | 0.26 | 0.28 | 0.29 | 0 | $0.0089 | 97 % / 100 %, 10.0 GB |
-| c2 | 1.5k (1.7k measured) tok × 1 q | 2 | 168 / 0 | 3.69 | 3.80 | 0.53 | 0.55 | 0.56 | 0 | $0.0090 | 98 % / 100 %, 10.0 GB |
-| t4000q13-cold | 4k (5.5k measured) tok × 13 q | 1 | 54 / 0 | 15.44 | 15.60 | 0.85 | 0.86 | 0.87 | 0 | $0.0022 | 99 % / 100 %, 10.3 GB |
-| router-cold | router (8,692 tok) | 1 | 33 / 0 | 3.18 | 3.80 | 1.48 | 2.03 | 2.03 | 0 | $0.0105 | 98 % / 100 %, 10.7 GB |
+| c1 | 1.5k (1.7k measured) tok × 1 q | 1 | 171 / 0 | 3.80 | 3.80 | 0.26 | 0.27 | 0.28 | 0 | $0.0088 | 97 % / 100 %, 9.7 GB |
+| c2 | 1.5k (1.7k measured) tok × 1 q | 2 | 172 / 0 | 3.78 | 3.80 | 0.53 | 0.55 | 0.55 | 0 | $0.0088 | 98 % / 100 %, 9.7 GB |
+| t4000q13-cold | 4k (5.5k measured) tok × 13 q | 1 | 54 / 0 | 15.48 | 15.60 | 0.85 | 0.86 | 0.86 | 0 | $0.0022 | 99 % / 100 %, 10.1 GB |
+| router-cold | router (8,692 tok) | 1 | 33 / 0 | 3.10 | 3.80 | 1.48 | 2.02 | 2.68 | 0 | $0.0107 | 98 % / 100 %, 10.5 GB |
 
 <!-- dt:backends:end -->
 
@@ -439,12 +439,15 @@ every run in Cloud Storage (scheduled and by hand).
 | gateway-jev | 2026-10-11 | full | 86.39 | 32 | 0.62 s | $0.0662 |
 | gateway-jev | 2026-10-12 | daily | 1.85 | 1 | 0.71 s | $0.0717 |
 | gateway-jev | 2026-10-13 | daily | 9.87 | 1 | 0.12 s | $0.0718 |
+| gateway-jev | 2026-10-14 | daily | 9.62 | 1 | 0.16 s | $0.0717 |
 | gateway-pylon | 2026-10-11 | full | 4.14 | 4 | 1.24 s | $0.0081 |
 | gateway-pylon | 2026-10-12 | daily | 1.45 | 4 | 3.65 s | $0.0229 |
 | gateway-pylon | 2026-10-13 | daily | 4.29 | 1 | 0.55 s | $0.0078 |
+| gateway-pylon | 2026-10-14 | daily | 3.65 | 4 | 2.32 s | $0.0091 |
 | vertex-gemini | 2026-10-11 | full | 3.50 | 16 | 6.35 s | $1.722 |
 | vertex-gemini | 2026-10-12 | daily | 1.39 | 4 | 8.88 s | $1.895 |
 | vertex-gemini | 2026-10-13 | daily | 1.41 | 4 | 6.63 s | $1.829 |
+| vertex-gemini | 2026-10-14 | daily | 1.46 | 4 | 6.33 s | $1.826 |
 | coderos-clef | 2026-10-11 | full | 4.21 | 1 | 0.27 s | $0.0079 |
 | coderos-llamacpp | 2026-10-11 | full | 3.14 | 1 | 0.66 s | $0.0106 |
 | h100-clef-flash | 2026-10-11 | full | 9.87 | 4 | 0.43 s | $0.180 |
@@ -453,8 +456,10 @@ every run in Cloud Storage (scheduled and by hand).
 | sealed-cpu | 2026-10-11 | full | 0.04 | 1 | 31.28 s | $3.472 |
 | sealed-cpu | 2026-10-12 | daily | 0.03 | 1 | 32.81 s | $3.906 |
 | sealed-cpu | 2026-10-13 | daily | 0.03 | 1 | 32.99 s | $4.032 |
+| sealed-cpu | 2026-10-14 | daily | 0.03 | 1 | 33.32 s | $4.032 |
 | coderos-clef-prod | 2026-10-12 | daily | 3.78 | 1 | 0.28 s | $0.0088 |
 | coderos-clef-prod | 2026-10-13 | daily | 3.75 | 1 | 0.29 s | $0.0089 |
+| coderos-clef-prod | 2026-10-14 | daily | 3.80 | 1 | 0.28 s | $0.0088 |
 <!-- dt:trend:end -->
 
 ## First run (2026-10-11): how it was taken
